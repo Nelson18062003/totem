@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/*
+ * TOTEM — design system. Inspiré des tokens VOG (couleurs marque, DM Sans,
+ * rayons doux) mais avec une identité propre : surface sombre "totem".
+ */
+@theme {
+  --color-surface: #0e0f13;          /* fond de page sombre */
+  --color-surface-raised: #171922;   /* cartes */
+  --color-surface-sunken: #0a0b0e;   /* zones creusées (console) */
+  --color-ink: #f4f4f6;              /* texte principal */
+  --color-ink-soft: #9a9ba6;         /* texte secondaire */
+  --color-line: #262835;             /* bordures */
+
+  --color-brand: #ff9900;            /* accent marque */
+  --color-brand-strong: #ffb84d;     /* accent lisible sur fond sombre */
+  --color-brand-soft: #2a2113;       /* fond d'accent discret */
+
+  --color-success: #37d67a;
+  --color-success-soft: #12241a;
+  --color-warning: #ffb020;
+  --color-warning-soft: #2a2113;
+  --color-danger: #ff5a5f;
+  --color-danger-soft: #2a1517;
+
+  --text-display: clamp(1.75rem, 1.55rem + 1vw, 2.25rem);
+  --text-title: clamp(1.375rem, 1.275rem + 0.5vw, 1.625rem);
+  --text-heading: 1.125rem;
+  --text-body: 1rem;
+  --text-small: 0.875rem;
+  --text-caption: 0.75rem;
+
+  --radius-card: 1rem;    /* 16px */
+  --radius-btn: 0.875rem; /* 14px */
+  --radius-pill: 999px;
+
+  --font-sans: var(--font-dm-sans), -apple-system, system-ui, "Segoe UI",
+    Roboto, sans-serif;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Halo décoratif discret derrière l'en-tête */
+.halo {
+  background:
+    radial-gradient(60% 120% at 50% -10%, rgba(255, 153, 0, 0.14), transparent 70%);
+}
