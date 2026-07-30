@@ -69,8 +69,8 @@ export default function Console() {
     <div className="flex h-[calc(100dvh-8rem)] flex-col gap-3 md:h-[calc(100dvh-6rem)]">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-title font-bold">Console USSD</h1>
-          <p className="text-small text-ink-soft">Pilotez le menu comme si le téléphone était en main.</p>
+          <h1 className="text-title font-bold">Console USSD brute</h1>
+          <p className="text-small text-ink-soft">Pour un code particulier. Le plus simple reste les Actions guidées.</p>
         </div>
         <div className="flex rounded-pill border border-line p-0.5">
           {(["MTN", "Orange"] as const).map((o) => (

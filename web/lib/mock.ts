@@ -17,6 +17,10 @@ export type Paiement = {
   numero: string;
   montant: number;
   heure: string;
+  date: string; // ex. "Aujourd’hui", "Hier"
+  reference: string; // identifiant de transaction MoMo/OM
+  soldeApres: number;
+  smsBrut: string; // le SMS exact reçu — preuve pour litiges
 };
 
 export type EtatRobot = {
@@ -44,12 +48,25 @@ export const sims: Sim[] = [
   { id: "orange", operateur: "Orange", numero: "699 88 77 66", solde: 415000, signal: 22, enLigne: true },
 ];
 
+function mkPaiement(
+  id: string, sim: "MTN" | "Orange", nom: string, numero: string,
+  montant: number, heure: string, date: string, reference: string, soldeApres: number,
+): Paiement {
+  const op = sim === "MTN" ? "MobileMoney" : "Orange Money";
+  const smsBrut = `${op}: Vous avez recu ${montant.toLocaleString("fr-FR")} FCFA de ${nom} (${numero}). ` +
+    `Ref: ${reference}. Nouveau solde: ${soldeApres.toLocaleString("fr-FR")} FCFA.`;
+  return { id, sim, nom, numero, montant, heure, date, reference, soldeApres, smsBrut };
+}
+
 export const paiements: Paiement[] = [
-  { id: "p1", sim: "MTN", nom: "NGONO Marie", numero: "682 59 53 28", montant: 25000, heure: "09:47" },
-  { id: "p2", sim: "Orange", nom: "TCHOUMI Paul", numero: "699 10 22 33", montant: 15000, heure: "09:12" },
-  { id: "p3", sim: "MTN", nom: "FOTSO Jean", numero: "677 45 66 77", montant: 50000, heure: "08:35" },
-  { id: "p4", sim: "MTN", nom: "ABENA Rose", numero: "690 33 44 55", montant: 10000, heure: "07:58" },
-  { id: "p5", sim: "Orange", nom: "KAMGA Eric", numero: "655 12 88 99", montant: 35000, heure: "01:12" },
+  mkPaiement("p1", "MTN", "NGONO Marie", "682 59 53 28", 25000, "09:47", "Aujourd’hui", "PP250730.0947.A12345", 872500),
+  mkPaiement("p2", "Orange", "TCHOUMI Paul", "699 10 22 33", 15000, "09:12", "Aujourd’hui", "OM250730.0912.B67890", 415000),
+  mkPaiement("p3", "MTN", "FOTSO Jean", "677 45 66 77", 50000, "08:35", "Aujourd’hui", "PP250730.0835.C24680", 847500),
+  mkPaiement("p4", "MTN", "ABENA Rose", "690 33 44 55", 10000, "07:58", "Aujourd’hui", "PP250730.0758.D13579", 797500),
+  mkPaiement("p5", "Orange", "KAMGA Eric", "655 12 88 99", 35000, "01:12", "Aujourd’hui", "OM250730.0112.E11223", 400000),
+  mkPaiement("p6", "MTN", "MBALLA Sophie", "679 88 11 22", 40000, "22:40", "Hier", "PP250729.2240.F33445", 787500),
+  mkPaiement("p7", "Orange", "ESSOMBA Luc", "656 77 99 00", 5000, "18:05", "Hier", "OM250729.1805.G55667", 365000),
+  mkPaiement("p8", "MTN", "NGONO Marie", "682 59 53 28", 12000, "14:20", "Hier", "PP250729.1420.H77889", 747500),
 ];
 
 // Encaissements des 7 derniers jours (FCFA) pour le graphique Rapports.

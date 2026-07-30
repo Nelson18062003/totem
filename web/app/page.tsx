@@ -56,12 +56,12 @@ export default function Accueil() {
       {/* Actions rapides */}
       <section className="grid grid-cols-2 gap-3">
         <Link
-          href="/console"
+          href="/actions"
           className="rounded-card bg-brand p-4 text-center font-bold text-black transition hover:opacity-90"
         >
-          ⌨️ Ouvrir la console
+          💸 Envoyer de l’argent
           <span className="mt-0.5 block text-caption font-normal text-black/70">
-            Taper *126# à distance
+            Retrait, crédit, transfert…
           </span>
         </Link>
         <Link
