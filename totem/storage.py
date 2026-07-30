@@ -2,6 +2,7 @@
 """Journal du robot : SMS reçus, transcriptions USSD, événements.
 
 SQLite : un seul fichier, robuste, consultable plus tard par l'app web.
+Chaque ligne porte le compte (opérateur) d'origine.
 Les montants MoMo sont extraits des SMS pour les rapports quotidiens.
 """
 
@@ -21,30 +22,42 @@ class Journal:
             self.conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS sms(
-                    id INTEGER PRIMARY KEY, date TEXT, expediteur TEXT, texte TEXT);
+                    id INTEGER PRIMARY KEY, date TEXT, expediteur TEXT,
+                    texte TEXT, compte TEXT);
                 CREATE TABLE IF NOT EXISTS ussd(
-                    id INTEGER PRIMARY KEY, date TEXT, direction TEXT, texte TEXT);
+                    id INTEGER PRIMARY KEY, date TEXT, direction TEXT,
+                    texte TEXT, compte TEXT);
                 CREATE TABLE IF NOT EXISTS evenements(
                     id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
                 """
             )
+            # Migration douce des bases créées avant le multi-comptes.
+            self._ajouter_colonne_si_absente("sms", "compte")
+            self._ajouter_colonne_si_absente("ussd", "compte")
             self.conn.commit()
+
+    def _ajouter_colonne_si_absente(self, table, colonne):
+        existantes = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+        if colonne not in existantes:
+            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} TEXT")
 
     def _maintenant(self):
         return datetime.now().isoformat(timespec="seconds")
 
-    def sms(self, expediteur, texte):
+    def sms(self, expediteur, texte, compte=""):
         with self.verrou:
-            self.conn.execute("INSERT INTO sms(date, expediteur, texte) VALUES(?,?,?)",
-                              (self._maintenant(), expediteur, texte))
+            self.conn.execute(
+                "INSERT INTO sms(date, expediteur, texte, compte) VALUES(?,?,?,?)",
+                (self._maintenant(), expediteur, texte, compte))
             self.conn.commit()
 
-    def ussd(self, direction, texte):
-        """direction : 'envoyé' ou 'reçu'. Ne JAMAIS journaliser un PIN :
-        l'appelant doit remplacer le PIN par des étoiles avant l'appel."""
+    def ussd(self, direction, texte, compte=""):
+        """direction : « envoyé » ou « reçu ». Ne JAMAIS journaliser un PIN :
+        l'appelant remplace le PIN par des étoiles avant l'appel."""
         with self.verrou:
-            self.conn.execute("INSERT INTO ussd(date, direction, texte) VALUES(?,?,?)",
-                              (self._maintenant(), direction, texte))
+            self.conn.execute(
+                "INSERT INTO ussd(date, direction, texte, compte) VALUES(?,?,?,?)",
+                (self._maintenant(), direction, texte, compte))
             self.conn.commit()
 
     def evenement(self, texte):
@@ -54,19 +67,19 @@ class Journal:
             self.conn.commit()
 
     def derniers_sms(self, n=5):
+        """[(date, expéditeur, texte, compte)] du plus récent au plus ancien."""
         with self.verrou:
-            lignes = self.conn.execute(
-                "SELECT date, expediteur, texte FROM sms ORDER BY id DESC LIMIT ?", (n,)
+            return self.conn.execute(
+                "SELECT date, expediteur, texte, COALESCE(compte, '') "
+                "FROM sms ORDER BY id DESC LIMIT ?", (n,)
             ).fetchall()
-        return lignes
 
     def rapport_du_jour(self):
-        """Statistiques des dernières 24 h : nb d'encaissements et total FCFA."""
+        """(nb d'encaissements, total FCFA, nb de SMS) sur les dernières 24 h."""
         depuis = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
         with self.verrou:
             lignes = self.conn.execute(
-                "SELECT texte FROM sms WHERE date >= ?", (depuis,)
-            ).fetchall()
+                "SELECT texte FROM sms WHERE date >= ?", (depuis,)).fetchall()
         nb, total = 0, 0
         for (texte,) in lignes:
             m = RE_MONTANT_RECU.search(texte)
