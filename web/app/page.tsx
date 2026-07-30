@@ -14,9 +14,9 @@ export default function Accueil() {
           <p className="text-small text-ink-soft">Bonjour, Nelson</p>
           <h1 className="mt-0.5 text-title font-semibold tracking-tight">Vue d’ensemble</h1>
         </div>
-        <button className="text-ink-faint transition hover:text-ink" aria-label="Réglages">
+        <Link href="/reglages" className="text-ink-faint transition hover:text-ink" aria-label="Réglages">
           <IconSettings size={18} />
-        </button>
+        </Link>
       </header>
 
       {/* Solde */}
