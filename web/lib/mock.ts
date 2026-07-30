@@ -6,41 +6,33 @@ export type Sim = {
   operateur: "MTN" | "Orange";
   numero: string;
   solde: number;
-  signal: number; // 0..31
+  signal: number;
   enLigne: boolean;
 };
 
 export type Paiement = {
   id: string;
   sim: "MTN" | "Orange";
+  sens: "in" | "out";
   nom: string;
   numero: string;
   montant: number;
   heure: string;
-  date: string; // ex. "Aujourd’hui", "Hier"
-  reference: string; // identifiant de transaction MoMo/OM
+  date: string;
+  reference: string;
   soldeApres: number;
-  smsBrut: string; // le SMS exact reçu — preuve pour litiges
+  smsBrut: string;
+  categorie: "Client" | "Transfert" | "Retrait" | "Crédit";
 };
 
 export type EtatRobot = {
-  nom: string;
-  enLigne: boolean;
-  lieu: string;
-  batterie: number; // %
-  surSecteur: boolean;
-  internet: "Starlink" | "4G (secours)";
-  majTexte: string;
+  nom: string; enLigne: boolean; lieu: string; batterie: number;
+  surSecteur: boolean; internet: string; majTexte: string;
 };
 
 export const robot: EtatRobot = {
-  nom: "TOTEM",
-  enLigne: true,
-  lieu: "Douala, bureau",
-  batterie: 100,
-  surSecteur: true,
-  internet: "Starlink",
-  majTexte: "il y a 12 s",
+  nom: "TOTEM", enLigne: true, lieu: "Douala", batterie: 100,
+  surSecteur: true, internet: "Starlink", majTexte: "12 s",
 };
 
 export const sims: Sim[] = [
@@ -48,48 +40,53 @@ export const sims: Sim[] = [
   { id: "orange", operateur: "Orange", numero: "699 88 77 66", solde: 415000, signal: 22, enLigne: true },
 ];
 
-function mkPaiement(
-  id: string, sim: "MTN" | "Orange", nom: string, numero: string,
-  montant: number, heure: string, date: string, reference: string, soldeApres: number,
+export const soldeTotal = sims.reduce((s, x) => s + x.solde, 0);
+
+function mk(
+  id: string, sim: "MTN" | "Orange", sens: "in" | "out", nom: string, numero: string,
+  montant: number, heure: string, date: string, ref: string, soldeApres: number,
+  categorie: Paiement["categorie"],
 ): Paiement {
   const op = sim === "MTN" ? "MobileMoney" : "Orange Money";
-  const smsBrut = `${op}: Vous avez recu ${montant.toLocaleString("fr-FR")} FCFA de ${nom} (${numero}). ` +
-    `Ref: ${reference}. Nouveau solde: ${soldeApres.toLocaleString("fr-FR")} FCFA.`;
-  return { id, sim, nom, numero, montant, heure, date, reference, soldeApres, smsBrut };
+  const verbe = sens === "in" ? "recu" : "envoye";
+  const smsBrut = `${op}: Vous avez ${verbe} ${montant.toLocaleString("fr-FR")} FCFA ` +
+    `${sens === "in" ? "de" : "a"} ${nom} (${numero}). Ref: ${ref}. ` +
+    `Nouveau solde: ${soldeApres.toLocaleString("fr-FR")} FCFA.`;
+  return { id, sim, sens, nom, numero, montant, heure, date, reference: ref, soldeApres, smsBrut, categorie };
 }
 
 export const paiements: Paiement[] = [
-  mkPaiement("p1", "MTN", "NGONO Marie", "682 59 53 28", 25000, "09:47", "Aujourd’hui", "PP250730.0947.A12345", 872500),
-  mkPaiement("p2", "Orange", "TCHOUMI Paul", "699 10 22 33", 15000, "09:12", "Aujourd’hui", "OM250730.0912.B67890", 415000),
-  mkPaiement("p3", "MTN", "FOTSO Jean", "677 45 66 77", 50000, "08:35", "Aujourd’hui", "PP250730.0835.C24680", 847500),
-  mkPaiement("p4", "MTN", "ABENA Rose", "690 33 44 55", 10000, "07:58", "Aujourd’hui", "PP250730.0758.D13579", 797500),
-  mkPaiement("p5", "Orange", "KAMGA Eric", "655 12 88 99", 35000, "01:12", "Aujourd’hui", "OM250730.0112.E11223", 400000),
-  mkPaiement("p6", "MTN", "MBALLA Sophie", "679 88 11 22", 40000, "22:40", "Hier", "PP250729.2240.F33445", 787500),
-  mkPaiement("p7", "Orange", "ESSOMBA Luc", "656 77 99 00", 5000, "18:05", "Hier", "OM250729.1805.G55667", 365000),
-  mkPaiement("p8", "MTN", "NGONO Marie", "682 59 53 28", 12000, "14:20", "Hier", "PP250729.1420.H77889", 747500),
+  mk("p1", "MTN", "in", "NGONO Marie", "682 59 53 28", 25000, "09:47", "Aujourd’hui", "PP0947.A12345", 872500, "Client"),
+  mk("p2", "Orange", "in", "TCHOUMI Paul", "699 10 22 33", 15000, "09:12", "Aujourd’hui", "OM0912.B67890", 415000, "Client"),
+  mk("p3", "MTN", "in", "FOTSO Jean", "677 45 66 77", 50000, "08:35", "Aujourd’hui", "PP0835.C24680", 847500, "Client"),
+  mk("p4", "MTN", "out", "Fournisseur SARL", "690 33 44 55", 80000, "08:10", "Aujourd’hui", "PP0810.D13579", 797500, "Transfert"),
+  mk("p5", "MTN", "in", "ABENA Rose", "690 33 44 55", 10000, "07:58", "Aujourd’hui", "PP0758.E11223", 877500, "Client"),
+  mk("p6", "Orange", "in", "KAMGA Eric", "655 12 88 99", 35000, "01:12", "Aujourd’hui", "OM0112.F33445", 400000, "Client"),
+  mk("p7", "MTN", "in", "MBALLA Sophie", "679 88 11 22", 40000, "22:40", "Hier", "PP2240.G55667", 787500, "Client"),
+  mk("p8", "Orange", "out", "Recharge crédit", "656 77 99 00", 5000, "18:05", "Hier", "OM1805.H77889", 365000, "Crédit"),
 ];
 
-// Encaissements des 7 derniers jours (FCFA) pour le graphique Rapports.
-export const septJours: { jour: string; montant: number }[] = [
-  { jour: "Lun", montant: 287000 },
-  { jour: "Mar", montant: 342000 },
-  { jour: "Mer", montant: 198000 },
-  { jour: "Jeu", montant: 405000 },
-  { jour: "Ven", montant: 512000 },
-  { jour: "Sam", montant: 366000 },
+// 7 derniers jours d'encaissements (FCFA)
+export const septJours = [
+  { jour: "Lun", montant: 287000 }, { jour: "Mar", montant: 342000 },
+  { jour: "Mer", montant: 198000 }, { jour: "Jeu", montant: 405000 },
+  { jour: "Ven", montant: 512000 }, { jour: "Sam", montant: 366000 },
   { jour: "Dim", montant: 241000 },
+];
+
+// Meilleurs clients (cumul)
+export const topClients = [
+  { nom: "NGONO Marie", nb: 12, total: 312000 },
+  { nom: "FOTSO Jean", nb: 8, total: 245000 },
+  { nom: "MBALLA Sophie", nb: 6, total: 180000 },
+  { nom: "KAMGA Eric", nb: 5, total: 142000 },
 ];
 
 export function fcfa(n: number): string {
   return n.toLocaleString("fr-FR").replace(/ /g, " ") + " FCFA";
 }
-
-// Menu MoMo simulé pour la console USSD de la maquette.
-export const menuMoMo: Record<string, { texte: string; ouvert: boolean }> = {
-  "*126#": {
-    texte: "MTN MoMo\n1. Transfert d'argent\n2. Retrait d'argent\n3. Paiements\n4. Épargne\n5. Mon compte\n6. Quitter",
-    ouvert: true,
-  },
-  "5": { texte: "Mon compte\n1. Consulter le solde\n2. Dernières transactions\n3. Retour", ouvert: true },
-  "1": { texte: "Votre solde MoMo est de 872 500 FCFA.", ouvert: false },
-};
+export function fcfaCourt(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(".0", "") + " M";
+  if (n >= 1000) return Math.round(n / 1000) + " k";
+  return String(n);
+}
