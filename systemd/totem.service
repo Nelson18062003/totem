@@ -1,0 +1,15 @@
+[Unit]
+Description=TOTEM (bot Telegram + modem SIM7600)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m totem
+WorkingDirectory=/opt/totem
+Restart=always
+RestartSec=10
+# Le service redémarre toujours : c'est le premier étage du chien de garde.
+
+[Install]
+WantedBy=multi-user.target
