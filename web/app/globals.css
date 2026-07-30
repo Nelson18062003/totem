@@ -1,36 +1,36 @@
 @import "tailwindcss";
 
 /*
- * TOTEM — design premium fintech (inspiration Revolut Metal).
- * Fond noir profond, cartes en dégradé, boutons pilules, hiérarchie forte.
+ * TOTEM — design clair inspiré de Revolut Web.
+ * Fond très clair, sidebar teintée, cartes blanches spacieuses, accent orange TOTEM.
  */
 @theme {
-  --color-surface: #08080b;           /* fond de page, noir profond */
-  --color-surface-raised: #141419;    /* cartes */
-  --color-surface-2: #1c1c23;         /* surfaces secondaires */
-  --color-surface-sunken: #050507;    /* zones creusées */
-  --color-ink: #f5f5f7;               /* texte principal */
-  --color-ink-soft: #8e8e98;          /* texte secondaire */
-  --color-ink-faint: #55555f;         /* texte discret */
-  --color-line: #24242c;              /* bordures */
+  --color-surface: #f6f7f9;           /* fond de page, gris très clair */
+  --color-surface-raised: #ffffff;    /* cartes blanches */
+  --color-surface-2: #eef0f3;         /* chips, hover sidebar */
+  --color-surface-sunken: #f1f2f5;    /* zones creusées */
+  --color-ink: #14151a;               /* texte principal */
+  --color-ink-soft: #676872;          /* texte secondaire (AA sur blanc) */
+  --color-ink-faint: #9a9ba5;         /* texte discret */
+  --color-line: #e7e9ee;              /* bordures */
 
-  --color-brand: #ff9500;             /* accent marque */
-  --color-brand-2: #ffb340;           /* accent clair */
-  --color-brand-soft: #2a1e0a;        /* fond d'accent discret */
-  --color-brand-strong: #ffb340;      /* accent lisible sur fond sombre */
+  --color-brand: #ff9500;             /* accent marque (fonds) */
+  --color-brand-2: #b45f00;           /* accent lisible en TEXTE sur clair */
+  --color-brand-soft: #fff3e0;        /* fond d'accent doux */
+  --color-brand-strong: #b45f00;
 
-  /* Couleurs catégories (façon Revolut) — pour pastilles/icônes */
-  --color-teal: #2dd4bf;
-  --color-blue: #4d8cff;
-  --color-violet: #8b7bff;
-  --color-pink: #ff6ba6;
-  --color-green: #34d399;
-  --color-red: #ff5c5c;
+  /* Couleurs catégories (façon Revolut) — lisibles sur clair */
+  --color-teal: #0d9488;
+  --color-blue: #2563eb;
+  --color-violet: #6d5efc;
+  --color-pink: #db2f7f;
+  --color-green: #0ca35a;
+  --color-red: #e23b3b;
 
-  --color-success: #34d399;
-  --color-success-soft: #0f2a20;
-  --color-danger: #ff5c5c;
-  --color-warning: #ffb340;
+  --color-success: #0ca35a;
+  --color-success-soft: #e4f6ec;
+  --color-danger: #e23b3b;
+  --color-warning: #b45f00;
 
   --text-hero: clamp(2.25rem, 1.8rem + 2.2vw, 3.25rem);
   --text-display: clamp(1.75rem, 1.5rem + 1.2vw, 2.25rem);
@@ -40,8 +40,8 @@
   --text-small: 0.875rem;
   --text-caption: 0.75rem;
 
-  --radius-card: 1.25rem;   /* 20px */
-  --radius-btn: 1rem;       /* 16px */
+  --radius-card: 1.25rem;
+  --radius-btn: 1rem;
   --radius-pill: 999px;
 
   --font-sans: var(--font-dm-sans), -apple-system, system-ui, "Segoe UI",
@@ -58,44 +58,44 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* ── Carte bancaire premium (dégradés type Revolut Metal) ─────────────── */
+/* ── Carte « compte principal » — sombre premium sur fond clair (Metal) ── */
 .card-metal {
   background:
-    radial-gradient(120% 140% at 0% 0%, rgba(255,255,255,0.10), transparent 45%),
-    linear-gradient(135deg, #2a2a32 0%, #16161c 55%, #0d0d11 100%);
-  box-shadow: 0 18px 40px -18px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.06);
+    radial-gradient(120% 140% at 0% 0%, rgba(255,255,255,0.08), transparent 45%),
+    linear-gradient(135deg, #2b2b34 0%, #17171d 60%, #101014 100%);
+  color: #f5f5f7;
+  box-shadow: 0 16px 34px -20px rgba(20,21,26,0.5);
 }
 .card-mtn {
   background:
-    radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,0.22), transparent 45%),
-    linear-gradient(135deg, #ffcc00 0%, #f5a800 45%, #b26f00 100%);
+    radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,0.28), transparent 45%),
+    linear-gradient(135deg, #ffcf2e 0%, #f7ab00 45%, #cc8400 100%);
   color: #1a1300;
-  box-shadow: 0 18px 40px -18px rgba(245,168,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+  box-shadow: 0 16px 34px -20px rgba(247,171,0,0.55);
 }
 .card-orange {
   background:
-    radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,0.20), transparent 45%),
-    linear-gradient(135deg, #ff8a3d 0%, #ff5a1f 45%, #c22e00 100%);
+    radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,0.22), transparent 45%),
+    linear-gradient(135deg, #ff8a3d 0%, #ff5a1f 45%, #d63500 100%);
   color: #fff;
-  box-shadow: 0 18px 40px -18px rgba(255,90,31,0.5), inset 0 1px 0 rgba(255,255,255,0.25);
+  box-shadow: 0 16px 34px -20px rgba(255,90,31,0.5);
 }
-/* La puce dorée d'une carte bancaire */
 .card-chip {
   width: 34px; height: 26px; border-radius: 6px;
   background: linear-gradient(135deg, #f4d47a, #b9902f);
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
 }
 
-/* Halo décoratif derrière le solde */
+/* Halo décoratif très doux */
 .halo-hero {
-  background: radial-gradient(70% 100% at 50% 0%, rgba(255,149,0,0.16), transparent 65%);
+  background: radial-gradient(70% 100% at 50% 0%, rgba(255,149,0,0.10), transparent 65%);
 }
 
-/* Verre dépoli léger */
+/* Barre mobile en verre clair */
 .glass {
-  background: rgba(20,20,25,0.72);
+  background: rgba(255,255,255,0.85);
   backdrop-filter: blur(14px);
-  border: 1px solid var(--color-line);
+  border-top: 1px solid var(--color-line);
 }
 
 .tabnums { font-variant-numeric: tabular-nums; }

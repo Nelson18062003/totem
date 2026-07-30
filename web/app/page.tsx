@@ -38,14 +38,14 @@ export default function Accueil() {
         <div className="card-metal relative overflow-hidden rounded-card p-5">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-caption uppercase tracking-widest text-ink-soft">Compte principal</p>
+              <p className="text-caption uppercase tracking-widest text-white/55">Compte principal</p>
               <p className="mt-3 text-title font-bold tabnums">{fcfa(sims[0].solde)}</p>
             </div>
             <span className="rounded-pill bg-[#ffcc00] px-2.5 py-1 text-caption font-bold text-black">MTN MoMo</span>
           </div>
           <div className="mt-6 flex items-end justify-between">
             <div className="card-chip" />
-            <p className="tabnums text-body tracking-widest text-ink">•••• {sims[0].numero.slice(-5)}</p>
+            <p className="tabnums text-body tracking-widest text-white/90">•••• {sims[0].numero.slice(-5)}</p>
           </div>
         </div>
       </section>

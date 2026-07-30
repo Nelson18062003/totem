@@ -11,7 +11,7 @@ for (const [route, nom] of routes) {
   await page.goto(base + route, { waitUntil: "load", timeout: 60000 });
   await page.waitForTimeout(500);
   await page.evaluate(() => { document.querySelectorAll("nextjs-portal,[data-nextjs-dev-tools-button]").forEach(e=>e.remove()); const n=document.querySelector("nav.fixed"); if(n) n.style.position="static"; });
-  await page.screenshot({ path: `/tmp/totem2-${mode}-${nom}.png`, fullPage: mode!=="desktop" });
+  await page.screenshot({ path: `/tmp/totem3-${mode}-${nom}.png`, fullPage: mode!=="desktop" });
   await page.close();
   console.log("saved", `${mode}-${nom}`);
 }
