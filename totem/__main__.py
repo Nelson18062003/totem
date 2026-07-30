@@ -24,13 +24,29 @@ def _comptes_simules(sms_auto=True):
     ]
 
 
-def _comptes_reels():
-    """Détecte les modems branchés et ouvre un compte pour chacun."""
+def _comptes_reels(patience=120):
+    """Détecte les modems branchés et ouvre un compte pour chacun.
+
+    Au démarrage à froid du Pi, les modems USB mettent une vingtaine de
+    secondes à s'annoncer, et le SIM7600 encore plus à s'enregistrer sur le
+    réseau. On patiente donc au lieu d'abandonner tout de suite.
+    """
+    import time
+
     from .detect import detecter_modems
     from .modem import ModemSerie
 
+    fin = time.time() + patience
+    trouves = []
+    while True:
+        trouves = detecter_modems()
+        if trouves or time.time() >= fin:
+            break
+        print("  aucun modem pour l'instant, nouvelle tentative dans 10 s…")
+        time.sleep(10)
+
     comptes = []
-    for info in detecter_modems():
+    for info in trouves:
         try:
             comptes.append(Compte(ModemSerie(port=info.port), info.libelle))
             print(f"  {info.libelle} sur {info.port} (IMEI {info.imei})")
@@ -117,7 +133,8 @@ def principal():
 
     Robot(comptes, transport, journal, nom=nom,
           heure_rapport=cfg["heure_rapport"], raccourcis=cfg["raccourcis"],
-          delai_session=cfg["delai_session"]).demarrer()
+          delai_session=cfg["delai_session"],
+          chemin_base=cfg["base"] if "--simulation" not in args else None).demarrer()
 
 
 if __name__ == "__main__":
