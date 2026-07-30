@@ -95,8 +95,11 @@ config.example.conf
 docs/
   GUIDE-INSTALLATION.md   pas-à-pas complet (comptes, flashage, install, dépannage)
   GUIDE-TELEGRAM.md       l'expérience Telegram : boutons, pavé PIN, groupe, sujets
+  MEMENTO.md              les commandes du quotidien (allumer, éteindre, diagnostic)
+  MISE-EN-LIGNE.md        déployer l'application web sur Vercel
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
+web/              l'application web (Next.js) — maquette sur données de démo
 ```
 
 ## Suite prévue (phases suivantes)
