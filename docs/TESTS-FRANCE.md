@@ -56,9 +56,19 @@ de crédit et de data).
 - [ ] **Accès à distance** : depuis votre téléphone en 4G (Wi-Fi coupé),
       l'appli Tailscale montre `totem` en ligne, et le bot répond
 
-## D bis. Redémarrage (à faire absolument)
+## D bis. Redémarrage et pannes silencieuses (à faire absolument)
 - [ ] Coupez le robot, envoyez-lui 3 messages (dont un code USSD), rallumez →
       il revient en ligne **sans exécuter** ces messages en retard
+- [ ] **Débranchez le câble USB du HAT**, puis lancez le robot → vous recevez
+      « ⛔ Modem injoignable » sur Telegram (et non un silence)
+- [ ] Rebranchez → « ✅ Modem retrouvé » arrive sans intervention
+- [ ] Lancez une 2ᵉ instance (`python3 -m totem` pendant que le service tourne)
+      → alerte « deux robots utilisent le même jeton ». Arrêtez-la ensuite.
+- [ ] `/diagnostic` répond : durée de marche, mémoire SMS, ICCID, IMSI,
+      disque, température. **Vérifiez que l'ICCID s'affiche** (sinon le
+      cloisonnement par SIM ne peut pas fonctionner)
+- [ ] Envoyez 5 SMS coup sur coup à la SIM → les 5 arrivent tous dans Telegram
+      (aucun perdu par excès de débit)
 
 ## E. Sécurité
 - [ ] Depuis le Telegram d'une AUTRE personne, envoyez un message au bot →

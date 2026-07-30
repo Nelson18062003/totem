@@ -13,15 +13,29 @@ Apports par rapport à un simple `sendMessage` :
 """
 
 import json
+import re
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from .entrant import Entrant
+from .mise_en_forme import brut
+
+
+class ErreurConflit(Exception):
+    """Un autre processus interroge Telegram avec le même jeton."""
 
 LIMITE_MESSAGE = 3900     # Telegram coupe à 4096 : on garde une marge
 ADMIN, OBSERVATEUR = "admin", "observateur"
+
+# Telegram tolère environ 1 message par seconde et par conversation, et 30 par
+# seconde tous chats confondus. Au-delà il répond 429 et bloque le robot
+# pendant plusieurs dizaines de secondes — le temps qu'une rafale de SMS
+# d'encaissement soit perdue. On s'auto-limite plutôt que d'aller au mur.
+INTERVALLE_PAR_CHAT = 1.05
+INTERVALLE_GLOBAL = 1 / 25
 
 
 class TransportTelegram:
@@ -35,8 +49,31 @@ class TransportTelegram:
         if self.groupe:
             self.chats_autorises.add(self.groupe)
         self.decalage = 0
+        self.conflit = False           # un autre robot utilise le même jeton
+        self._verrou_debit = threading.Lock()
+        self._dernier_envoi = {}       # chat → horodatage du dernier message
+        self._dernier_envoi_global = 0.0
 
     # ---- appels bas niveau -------------------------------------------------
+    def _patienter(self, chat, par_chat=True):
+        """Espace les envois pour rester sous les limites de Telegram.
+
+        `par_chat=False` pour les modifications d'un message existant : elles
+        sont moins sévèrement limitées, et imposer une seconde entre deux
+        appuis rendrait le pavé du code secret pénible à utiliser."""
+        with self._verrou_debit:
+            maintenant = time.monotonic()
+            attente = self._dernier_envoi_global + INTERVALLE_GLOBAL - maintenant
+            if par_chat:
+                attente = max(attente, self._dernier_envoi.get(chat, 0)
+                              + INTERVALLE_PAR_CHAT - maintenant)
+            if attente > 0:
+                time.sleep(attente)
+                maintenant = time.monotonic()
+            if par_chat:
+                self._dernier_envoi[chat] = maintenant
+            self._dernier_envoi_global = maintenant
+
     def _appel(self, methode, delai=15, **params):
         for essai in range(3):
             try:
@@ -44,8 +81,17 @@ class TransportTelegram:
                     {k: v for k, v in params.items() if v is not None}).encode()
                 req = urllib.request.Request(f"{self.base}/{methode}", data=donnees)
                 with urllib.request.urlopen(req, timeout=delai) as rep:
+                    self.conflit = False
                     return json.loads(rep.read().decode())
             except urllib.error.HTTPError as e:
+                if e.code == 409:
+                    # Deux robots interrogent le même jeton : chacun coupe
+                    # l'autre et les commandes se perdent au hasard.
+                    self.conflit = True
+                    raise ErreurConflit(
+                        "Un autre robot utilise le même jeton Telegram. "
+                        "Arrêtez l'instance en trop (sudo systemctl stop totem) "
+                        "avant de continuer.")
                 attente = self._retry_after(e)
                 if attente is None or essai == 2:
                     raise
@@ -59,7 +105,7 @@ class TransportTelegram:
             return None
         try:
             corps = json.loads(erreur.read().decode())
-            return min(int(corps["parameters"]["retry_after"]) + 1, 30)
+            return min(int(corps["parameters"]["retry_after"]) + 1, 60)
         except Exception:
             return 3
 
@@ -89,17 +135,38 @@ class TransportTelegram:
         dernier = None
         for i, morceau in enumerate(morceaux):
             final = i == len(morceaux) - 1
-            try:
-                rep = self._appel(
-                    "sendMessage", chat_id=chat, text=morceau, parse_mode="HTML",
-                    message_thread_id=sujet,
-                    disable_notification="true" if silencieux else None,
-                    reply_markup=self._clavier(boutons) if final else None,
-                )
+            rep = self._envoyer_un(
+                chat, sujet, morceau, silencieux,
+                self._clavier(boutons) if final else None)
+            if rep is not None:
                 dernier = (rep.get("result") or {}).get("message_id")
+        return dernier
+
+    def _envoyer_un(self, chat, sujet, texte, silencieux, clavier):
+        """Un message, avec repli en texte brut si la mise en forme échoue.
+
+        Un SMS d'opérateur peut contenir n'importe quoi ; si le balisage part
+        de travers, Telegram refuse le message avec un 400. Mieux vaut un
+        message sans gras qu'un encaissement jamais annoncé."""
+        for texte_a_envoyer, mode in ((texte, "HTML"), (brut(texte), None)):
+            try:
+                self._patienter(chat)
+                return self._appel(
+                    "sendMessage", chat_id=chat, text=texte_a_envoyer,
+                    parse_mode=mode, message_thread_id=sujet,
+                    disable_notification="true" if silencieux else None,
+                    reply_markup=clavier)
+            except ErreurConflit:
+                raise
+            except urllib.error.HTTPError as e:
+                if e.code != 400:
+                    time.sleep(2)
+                    return None
+                # 400 : on retente une fois sans mise en forme.
             except Exception:
                 time.sleep(2)
-        return dernier
+                return None
+        return None
 
     def modifier(self, message_id, texte, boutons=None, canal=None):
         """Réécrit un message existant : la session USSD tient sur une seule
@@ -107,13 +174,19 @@ class TransportTelegram:
         if not message_id:
             return False
         chat, _ = self._destination(canal)
-        try:
-            self._appel("editMessageText", chat_id=chat, message_id=message_id,
-                        text=texte[:LIMITE_MESSAGE], parse_mode="HTML",
-                        reply_markup=self._clavier(boutons))
-            return True
-        except Exception:
-            return False
+        for texte_a_envoyer, mode in ((texte, "HTML"), (brut(texte), None)):
+            try:
+                self._patienter(chat, par_chat=False)
+                self._appel("editMessageText", chat_id=chat, message_id=message_id,
+                            text=texte_a_envoyer[:LIMITE_MESSAGE], parse_mode=mode,
+                            reply_markup=self._clavier(boutons))
+                return True
+            except urllib.error.HTTPError as e:
+                if e.code != 400:
+                    return False
+            except Exception:
+                return False
+        return False
 
     def retirer_boutons(self, message_id, canal=None):
         """Désarme un ancien clavier pour qu'il ne soit plus cliquable."""
@@ -196,6 +269,11 @@ class TransportTelegram:
             rep = self._appel("getUpdates", delai=60, offset=self.decalage,
                               timeout=50,
                               allowed_updates='["message","callback_query"]')
+        except ErreurConflit:
+            # Inutile d'insister : tant que l'autre instance tourne, les deux
+            # se coupent mutuellement. On laisse le robot signaler le problème.
+            time.sleep(10)
+            return []
         except Exception:
             time.sleep(5)
             return []

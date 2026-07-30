@@ -85,9 +85,19 @@ config.example.conf
 docs/
   GUIDE-INSTALLATION.md   pas-à-pas complet (comptes, flashage, install, dépannage)
   GUIDE-TELEGRAM.md       l'expérience Telegram : boutons, pavé PIN, groupe, sujets
+  LIMITES-ET-RISQUES.md   ce qui peut mal tourner : traité, atténué, ou pas encore
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
 ```
+
+## Points de rupture connus
+
+Une machine qui tient de l'argent à 5 000 km mérite une liste honnête de ses
+faiblesses : mémoire SMS saturée, coupure entre lecture et enregistrement,
+codage des menus opérateur, jeton Telegram compromis, sauvegarde absente…
+
+→ [`docs/LIMITES-ET-RISQUES.md`](docs/LIMITES-ET-RISQUES.md) dit pour chacun ce
+qui est traité, ce qui est atténué et ce qui reste ouvert.
 
 ## Suite prévue (phases suivantes)
 

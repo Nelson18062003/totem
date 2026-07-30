@@ -67,6 +67,7 @@ class ModemSimule:
         self.sms_en_attente = []
         self.sms_auto = sms_auto
         self._prochain_sms_auto = time.time() + 20
+        self._index_sms = 0
 
     # ---- état -------------------------------------------------------------
     def signal(self):
@@ -164,12 +165,21 @@ class ModemSimule:
             montant=f"{montant:,}".replace(",", " "), nom=nom,
             num=f"6{random.randint(70, 99)}{random.randint(100000, 999999)}",
             solde=f"{self.solde:,}".replace(",", " "))
-        self.sms_en_attente.append((self.reseau["expediteur"], texte))
+        self._index_sms += 1
+        self.sms_en_attente.append((self._index_sms, self.reseau["expediteur"], texte))
         return texte
 
-    def lire_nouveaux_sms(self):
+    def lire_sms(self):
+        """[(index, expéditeur, texte)] — comme le modem réel, sans effacer."""
         if self.sms_auto and time.time() >= self._prochain_sms_auto:
             self.injecter_paiement()
             self._prochain_sms_auto = time.time() + random.randint(30, 90)
-        sms, self.sms_en_attente = self.sms_en_attente, []
-        return sms
+        return list(self.sms_en_attente)
+
+    def effacer_sms(self, index):
+        avant = len(self.sms_en_attente)
+        self.sms_en_attente = [s for s in self.sms_en_attente if s[0] != index]
+        return len(self.sms_en_attente) < avant
+
+    def memoire_sms(self):
+        return len(self.sms_en_attente), 50

@@ -12,6 +12,7 @@
 """
 
 import sys
+import time
 
 from .app import Robot
 from .storage import Journal
@@ -91,13 +92,42 @@ def principal():
         modem = _modem_simule(args)
         nom = cfg["nom"] + " (simulation)"
     else:
-        from .modem import ModemSerie
-        modem = ModemSerie(port=cfg["port"])
+        modem = _attendre_modem(cfg["port"], transport)
         nom = cfg["nom"]
 
     Robot(modem, transport, journal, nom=nom,
           heure_rapport=cfg["heure_rapport"], profils=cfg["profils"],
           delai_session=cfg["delai_session"]).demarrer()
+
+
+def _attendre_modem(port, transport, pause=30):
+    """Ouvre le modem, en prévenant sur Telegram tant qu'il est injoignable.
+
+    Le robot est à 5 000 km : s'il meurt parce que le HAT a bougé dans son
+    berceau, systemd le relance en boucle et personne n'est averti. On monte
+    donc Telegram d'abord, on dit ce qui ne va pas, et on réessaie."""
+    from .modem import ModemSerie
+
+    tentative = 0
+    while True:
+        try:
+            modem = ModemSerie(port=port)
+            if tentative:
+                transport.envoyer("✅ Modem retrouvé, le robot démarre.")
+            return modem
+        except Exception as e:
+            tentative += 1
+            print(f"Modem injoignable sur {port} : {e}", file=sys.stderr)
+            if tentative == 1:      # une seule alerte, pas un message toutes les 30 s
+                transport.envoyer(
+                    "⛔ <b>Modem injoignable</b>\n"
+                    f"Port : <code>{port}</code>\n"
+                    f"Erreur : {e}\n\n"
+                    "<i>Vérifiez le câble USB entre le HAT et le Pi, puis "
+                    "l'alimentation du HAT. Le robot réessaie toutes les 30 s "
+                    "et vous préviendra dès qu'il repart. Autre piste : le port "
+                    "peut avoir changé (ls /dev/ttyUSB*).</i>")
+            time.sleep(pause)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,14 @@ RE_COPS = re.compile(r'\+COPS:\s*\d+(?:,\d+,"([^"]*)")?')
 RE_ICCID = re.compile(r"\b(\d{18,22})\b")
 RE_IMSI = re.compile(r"^\s*(\d{14,15})\s*$", re.M)
 RE_CNUM = re.compile(r'\+CNUM:\s*"[^"]*"\s*,\s*"([^"]+)"')
+# +CPMS: "ME",12,255,"ME",12,255,"ME",12,255  → occupation de la mémoire SMS
+RE_CPMS = re.compile(r'\+CPMS:\s*"[^"]*",\s*(\d+),\s*(\d+)')
+
+# Emplacements de stockage des SMS, du plus grand au plus petit. La mémoire du
+# modem (ME) contient des centaines de messages ; la SIM (SM) une vingtaine
+# seulement, et un stockage plein fait PERDRE les SMS suivants — sur une SIM
+# d'encaissement, cela veut dire des paiements jamais vus.
+MEMOIRES_SMS = ("ME", "SM")
 # +CMGL: <index>,"REC UNREAD","<expéditeur>",...  puis le texte sur la ligne suivante
 RE_CMGL = re.compile(r'\+CMGL:\s*(\d+),"[^"]*","([^"]*)"[^\n]*\n(.*?)(?=\r?\n\+CMGL:|\r?\nOK\r?\n|\Z)', re.S)
 
@@ -43,6 +51,7 @@ class ModemSerie:
         self.ser = serial.Serial(port, baud, timeout=1)
         self.verrou = threading.Lock()
         self.ucs2 = False
+        self.stockage_sms = "SM"
         self._initialiser()
 
     # ---- bas niveau -------------------------------------------------------
@@ -63,8 +72,18 @@ class ModemSerie:
     def _initialiser(self):
         with self.verrou:
             for cmd in ("AT", "ATE0", "AT+CMEE=2", "AT+CUSD=1", "AT+CMGF=1",
-                        'AT+CPMS="SM","SM","SM"'):
+                        # Stocker les SMS entrants et signaler leur arrivée
+                        # plutôt que de les déverser sur le port série.
+                        "AT+CNMI=2,1,0,0,0"):
                 self._envoyer(cmd)
+            # Préférer la mémoire du modem : la SIM déborde en une journée
+            # chargée, et un stockage plein fait perdre les SMS suivants.
+            self.stockage_sms = "SM"
+            for emplacement in MEMOIRES_SMS:
+                if "OK" in self._envoyer(f'AT+CPMS="{emplacement}","{emplacement}",'
+                                         f'"{emplacement}"'):
+                    self.stockage_sms = emplacement
+                    break
             # Jeu de caractères : GSM si possible, sinon UCS2 (réponses en hexa)
             if "OK" not in self._envoyer('AT+CSCS="GSM"'):
                 self._envoyer('AT+CSCS="UCS2"')
@@ -131,7 +150,11 @@ class ModemSerie:
                 tampon += self.ser.read_all().decode(errors="replace")
                 m = RE_CUSD.search(tampon)
                 etat = int(m.group(1))
-                texte = decode_auto(m.group(2) or "")
+                # Le DCS dit dans quel alphabet le réseau a codé sa réponse.
+                # L'ignorer, c'est risquer d'afficher un menu en idéogrammes
+                # ou en chiffres hexadécimaux.
+                dcs = int(m.group(3)) if m.group(3) else None
+                texte = decode_auto(m.group(2) or "", dcs)
                 return etat, texte.strip()
             time.sleep(0.25)
         raise ErreurModem("Pas de réponse USSD du réseau (délai dépassé).")
@@ -157,15 +180,29 @@ class ModemSerie:
             self._envoyer("AT+CUSD=2")
 
     # ---- SMS --------------------------------------------------------------
-    def lire_nouveaux_sms(self):
-        """Retourne [(expéditeur, texte)] des SMS non lus, puis les efface."""
+    def lire_sms(self):
+        """[(index, expéditeur, texte)] de TOUS les SMS stockés, sans effacer.
+
+        L'effacement est laissé à l'appelant, qui ne doit le faire qu'une fois
+        le message journalisé : si le robot meurt entre la lecture et
+        l'écriture, le SMS est encore dans le modem au redémarrage. C'est
+        volontairement « lire tout » et non « lire les non-lus » — lire un
+        message le marque comme lu, et un plantage juste après le ferait
+        disparaître à jamais."""
         with self.verrou:
-            brut = self._envoyer('AT+CMGL="REC UNREAD"', attente=0.6)
-            resultats = []
-            index_a_effacer = []
-            for m in RE_CMGL.finditer(brut):
-                index_a_effacer.append(m.group(1))
-                resultats.append((decode_auto(m.group(2)), decode_auto(m.group(3).strip())))
-            for idx in index_a_effacer:
-                self._envoyer(f"AT+CMGD={idx}")
-        return resultats
+            brut = self._envoyer('AT+CMGL="ALL"', attente=0.6)
+        return [(int(m.group(1)), decode_auto(m.group(2)),
+                 decode_auto(m.group(3).strip()))
+                for m in RE_CMGL.finditer(brut)]
+
+    def effacer_sms(self, index):
+        """Efface un SMS du modem, une fois qu'il est en sécurité au journal."""
+        with self.verrou:
+            return "OK" in self._envoyer(f"AT+CMGD={index}")
+
+    def memoire_sms(self):
+        """(occupés, capacité) du stockage des SMS. Une mémoire pleine fait
+        perdre les messages suivants : c'est surveillé en continu."""
+        with self.verrou:
+            m = RE_CPMS.search(self._envoyer("AT+CPMS?"))
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)

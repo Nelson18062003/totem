@@ -39,6 +39,8 @@ RE_DEMANDE_CODE = re.compile(
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
 VERIF_SIM_SECONDES = 60
+VERIF_MEMOIRE_SECONDES = 300
+SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 
 COMMANDES_BOT = [
     ("menu", "Écran d'accueil avec les boutons"),
@@ -47,6 +49,7 @@ COMMANDES_BOT = [
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
     ("sims", "Les cartes SIM déjà passées dans le robot"),
+    ("diagnostic", "État détaillé (mémoire SMS, disque, température)"),
     ("annuler", "Fermer la session USSD en cours"),
     ("redemarrer_modem", "Relancer le modem"),
     ("aide", "Aide"),
@@ -95,7 +98,21 @@ class Robot:
         self.verrou = threading.RLock()
         self.sim = None            # ICCID de la carte en place
         self.profil = self._profil_generique("inconnu")
+        self.memoire_signalee = False
+        self.conflit_signale = False
+        self.demarre_a = time.time()
+        # Un redémarrage après l'heure du bilan ne doit pas en déclencher un.
+        self.dernier_rapport = (datetime.now().date()
+                                if self._heure_passee() else None)
         self._reinitialiser_session()
+
+    def _heure_passee(self):
+        try:
+            heure, minute = (int(x) for x in self.heure_rapport.split(":"))
+        except ValueError:
+            return True
+        maintenant = datetime.now()
+        return (maintenant.hour, maintenant.minute) >= (heure, minute)
 
     def _reinitialiser_session(self):
         self.session_ussd = False
@@ -204,6 +221,8 @@ class Robot:
                 self._export(canal)
             elif commande == "sims":
                 self._liste_sims(canal)
+            elif commande == "diagnostic":
+                self._diagnostic(canal)
             elif commande in ("annuler", "redemarrer_modem") or RE_CODE_USSD.match(texte) \
                     or self.session_ussd:
                 if not self._verifier_admin(role, entrant, canal):
@@ -240,6 +259,7 @@ class Robot:
                    "sms": lambda: self._derniers_sms(canal),
                    "rapport": lambda: self._rapport(canal=canal, manuel=True),
                    "sims": lambda: self._liste_sims(canal),
+                   "diagnostic": lambda: self._diagnostic(canal),
                    "export": lambda: self._export(canal)}
         if genre == "c" and valeur in lecture:
             lecture[valeur]()
@@ -299,13 +319,14 @@ class Robot:
         return lignes
 
     def _accueil(self, canal, role):
-        nb, total, _ = self.journal.rapport_du_jour()
+        b = self.journal.rapport_du_jour()
         self.transport.envoyer(
             f"🗿 {gras(self.nom)}\n"
             f"{gras(self.profil['nom'])} · carte {mono(self._sim_lisible(self.sim))} · "
             f"signal {self.modem.signal()}/31\n"
-            f"Dernières 24 h sur cette carte : {gras(f'{nb} encaissement(s)')} — "
-            f"{gras(self._fcfa(total))}\n\nQue faire ?",
+            f"Dernières 24 h sur cette carte : "
+            f"{gras(str(b['encaissements']) + ' entrée(s)')} — "
+            f"{gras(self._fcfa(b['recu']))}\n\nQue faire ?",
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
@@ -529,14 +550,73 @@ class Robot:
             boutons=[[("🏠 Menu", "c:menu")]])
 
     def _rapport(self, canal=None, manuel=False):
-        nb, total, nb_sms = self.journal.rapport_du_jour()
+        b = self.journal.rapport_du_jour()
+        solde_net = b["recu"] - b["envoye"]
         self.transport.envoyer(
             f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')} — "
             f"{gras(self.profil['nom'])} {mono(self._sim_lisible(self.sim))}\n"
-            f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
-            f"SMS reçus : {nb_sms}\nSignal : {self.modem.signal()}/31",
+            f"⬇️ Entrées : {gras(b['encaissements'])} — {gras(self._fcfa(b['recu']))}\n"
+            f"⬆️ Sorties : {gras(b['sorties'])} — {gras(self._fcfa(b['envoye']))}\n"
+            f"Solde du jour : {gras(self._fcfa(solde_net))}\n"
+            f"SMS reçus : {b['sms']} · Signal : {self.modem.signal()}/31",
             canal=canal if manuel else "encaissements",
             boutons=[[("📄 Export CSV", "c:export")]] if manuel else None)
+
+    def _diagnostic(self, canal=None):
+        """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
+        lignes = [f"🩺 {gras('Diagnostic')}"]
+        lignes.append(f"Robot en marche depuis {self._duree(time.time() - self.demarre_a)}")
+        try:
+            occupes, capacite = self.modem.memoire_sms()
+            lignes.append(f"Mémoire SMS ({getattr(self.modem, 'stockage_sms', '?')}) : "
+                          f"{occupes}/{capacite}")
+        except Exception:
+            lignes.append("Mémoire SMS : illisible")
+        for libelle, valeur in (("ICCID", self.sim or "indisponible"),
+                                ("IMSI", self._sans_erreur(self.modem.imsi)),
+                                ("Numéro", self._sans_erreur(self.modem.numero) or "non inscrit")):
+            lignes.append(f"{libelle} : {mono(valeur)}")
+        lignes.append(f"Signal : {self.modem.signal()}/31 · "
+                      f"Réseau : {echap(self._sans_erreur(self.modem.operateur))}")
+        for libelle, valeur in self._sante_systeme():
+            lignes.append(f"{libelle} : {echap(valeur)}")
+        self.transport.envoyer("\n".join(lignes), canal=canal,
+                               boutons=[[("🏠 Menu", "c:menu")]])
+
+    @staticmethod
+    def _sans_erreur(fonction, defaut=""):
+        try:
+            return fonction() or defaut
+        except Exception:
+            return defaut
+
+    @staticmethod
+    def _duree(secondes):
+        secondes = int(secondes)
+        jours, reste = divmod(secondes, 86400)
+        heures, reste = divmod(reste, 3600)
+        minutes = reste // 60
+        if jours:
+            return f"{jours} j {heures} h"
+        return f"{heures} h {minutes} min" if heures else f"{minutes} min"
+
+    @staticmethod
+    def _sante_systeme():
+        """Espace disque et température du Pi : les deux pannes silencieuses
+        classiques d'une carte SD qui tourne des mois sans surveillance."""
+        infos = []
+        try:
+            import shutil
+            total, _, libre = shutil.disk_usage("/")
+            infos.append(("Disque libre", f"{libre // 2**20} Mo sur {total // 2**20} Mo"))
+        except Exception:
+            pass
+        try:
+            with open("/sys/class/thermal/thermal_zone0/temp") as f:
+                infos.append(("Température", f"{int(f.read().strip()) / 1000:.0f} °C"))
+        except Exception:
+            pass
+        return infos
 
     def _export(self, canal=None):
         contenu = self.journal.export_csv(7)
@@ -552,14 +632,12 @@ class Robot:
 
     # ---- surveillance (SMS entrants, santé, SIM, rapport quotidien) --------
     def _boucle_surveillance(self):
-        dernier_rapport = None
         echecs_modem = 0
         depuis_verif_sim = 0
+        depuis_verif_memoire = 0
         while self.actif:
             try:
-                for expediteur, texte in self.modem.lire_nouveaux_sms():
-                    self.journal.sms(expediteur, texte)
-                    self._notifier_sms(expediteur, texte)
+                self._relever_sms()
                 echecs_modem = 0
             except Exception as e:
                 echecs_modem += 1
@@ -571,13 +649,75 @@ class Robot:
             if depuis_verif_sim >= VERIF_SIM_SECONDES:
                 depuis_verif_sim = 0
                 self._verifier_sim()
+            depuis_verif_memoire += self.pause_sms
+            if depuis_verif_memoire >= VERIF_MEMOIRE_SECONDES:
+                depuis_verif_memoire = 0
+                self._verifier_memoire()
+            self._signaler_conflit()
             self._expirer_session()
-            maintenant = datetime.now()
-            if maintenant.strftime("%H:%M") == self.heure_rapport \
-                    and dernier_rapport != maintenant.date():
-                dernier_rapport = maintenant.date()
-                self._rapport()
+            self._rapport_quotidien()
             time.sleep(self.pause_sms)
+
+    def _relever_sms(self):
+        """Relève les SMS du modem. L'ordre compte : on écrit au journal AVANT
+        d'effacer dans le modem. Si le robot meurt entre les deux, le message
+        sera relu au redémarrage plutôt que perdu — et le garde-fou anti-doublon
+        évite de l'annoncer deux fois."""
+        for index, expediteur, texte in self.modem.lire_sms():
+            deja_vu = self.journal.sms_existe(expediteur, texte)
+            if not deja_vu:
+                self.journal.sms(expediteur, texte)
+                self._notifier_sms(expediteur, texte)
+            if not self.modem.effacer_sms(index):
+                self.journal.evenement(
+                    f"SMS {index} non effacé du modem (il sera ignoré au prochain tour)")
+
+    def _verifier_memoire(self):
+        """Une mémoire SMS pleine fait perdre les messages suivants — donc des
+        encaissements jamais vus. On prévient bien avant la saturation."""
+        try:
+            occupes, capacite = self.modem.memoire_sms()
+        except Exception:
+            return
+        if not capacite:
+            return
+        taux = occupes / capacite
+        if taux < SEUIL_MEMOIRE:
+            self.memoire_signalee = False
+            return
+        if self.memoire_signalee:
+            return
+        self.memoire_signalee = True
+        self.journal.evenement(f"mémoire SMS à {occupes}/{capacite}")
+        self.transport.envoyer(
+            f"⚠️ {gras('Mémoire SMS presque pleine')} — {occupes}/{capacite}.\n"
+            + italique("Au-delà, le réseau ne peut plus déposer de nouveaux SMS : "
+                       "des encaissements passeraient inaperçus. Le robot efface "
+                       "normalement au fil de l'eau ; si le compte ne redescend "
+                       "pas, le modem refuse les effacements."), canal="alertes")
+
+    def _signaler_conflit(self):
+        """Deux robots sur le même jeton se coupent mutuellement : les
+        commandes se perdent au hasard, sans le moindre message d'erreur."""
+        conflit = getattr(self.transport, "conflit", False)
+        if conflit == self.conflit_signale:
+            return
+        self.conflit_signale = conflit
+        if conflit:
+            self.journal.evenement("conflit : deux instances sur le même jeton")
+            self.transport.envoyer(
+                f"⚠️ {gras('Deux robots utilisent le même jeton Telegram')}\n"
+                + italique("Vos commandes peuvent se perdre. Arrêtez l'instance "
+                           "en trop : sudo systemctl stop totem"), canal="alertes")
+
+    def _rapport_quotidien(self):
+        """Envoie le bilan une fois par jour, même si la boucle a sauté la
+        minute exacte (redémarrage du modem, réseau lent, charge…)."""
+        maintenant = datetime.now()
+        if self.dernier_rapport == maintenant.date() or not self._heure_passee():
+            return
+        self.dernier_rapport = maintenant.date()
+        self._rapport()
 
     def _notifier_sms(self, expediteur, texte):
         """Tous les SMS arrivent de la même façon : aucun n'est mis en
