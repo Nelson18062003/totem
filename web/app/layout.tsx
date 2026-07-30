@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={dmSans.variable}>
-      <body className="min-h-dvh pb-24 md:pb-0 md:pl-64">
+      <body className="min-h-dvh pb-28 md:pb-0 md:pl-60">
         <Nav />
         <main className="mx-auto w-full max-w-4xl px-4 py-5 md:px-8 md:py-9">{children}</main>
       </body>
