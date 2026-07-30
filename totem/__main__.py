@@ -60,10 +60,11 @@ def principal():
         from .console import TransportScenario
         comptes = _comptes_simules(sms_auto=False)
         scenario = [
-            "/aide", "/statut", "/comptes",
-            "*126#", "5", "1",                    # solde MTN
+            "/menu", "/statut", "/comptes",
+            "*126#", "5", "1",                    # solde MTN (menus en boutons)
             "/orange", "#150#", "5", "1",         # bascule puis solde Orange
-            "mtn *126#", "1", "677123456", "50000", "1234",  # transfert ciblé MTN
+            "mtn *126#",                          # transfert ciblé MTN
+            "1", "677123456", "50000", "1234",    # 1234 = PIN (jamais journalisé)
             "/rapport", "/sms",
         ]
         journal = Journal(":memory:")
@@ -71,7 +72,9 @@ def principal():
         comptes[0].modem.injecter_paiement("NGONO Marie", 25000)
         comptes[1].modem.injecter_paiement("TCHOUMI Paul", 15000)
         Robot(comptes, TransportScenario(scenario), journal,
-              nom="TOTEM (démo)", pause_sms=1).demarrer()
+              nom="TOTEM (démo)", pause_sms=1,
+              raccourcis={"solde": {"libelle": "💰 Solde",
+                                    "etapes": ["*126#", "5", "1"]}}).demarrer()
         print("--- Fin de la démo ---")
         return
 
@@ -93,7 +96,8 @@ def principal():
         print(f"ERREUR : {e}", file=sys.stderr)
         sys.exit(1)
 
-    transport = TransportTelegram(cfg["jeton"], cfg["chat_id"])
+    transport = TransportTelegram(cfg["jeton"], cfg["chat_id"], groupe=cfg["groupe"],
+                                  admins=cfg["admins"], sujets=cfg["sujets"])
 
     if "--simulation" in args:
         comptes = _comptes_simules()
@@ -112,7 +116,8 @@ def principal():
         nom = cfg["nom"]
 
     Robot(comptes, transport, journal, nom=nom,
-          heure_rapport=cfg["heure_rapport"]).demarrer()
+          heure_rapport=cfg["heure_rapport"], raccourcis=cfg["raccourcis"],
+          delai_session=cfg["delai_session"]).demarrer()
 
 
 if __name__ == "__main__":

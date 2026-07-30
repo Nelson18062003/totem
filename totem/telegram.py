@@ -1,57 +1,246 @@
 # -*- coding: utf-8 -*-
-"""Client Telegram minimal (longue interrogation), sans dépendance externe.
+"""Client Telegram (longue interrogation), sans dépendance externe.
 
-Sécurité : seuls les messages du propriétaire (chat_id de la config) sont
-traités ; tout autre expéditeur est ignoré silencieusement.
+Apports par rapport à un simple `sendMessage` :
+  - claviers en ligne (boutons) et édition d'un message en place ;
+  - mode HTML, découpage automatique des messages trop longs ;
+  - envoi de fichiers (export CSV) ;
+  - conversation privée **et** groupe d'équipe, avec sujets (forum) ;
+  - rôles : seuls les administrateurs peuvent piloter la SIM ;
+  - respect des limites de débit (429 / retry_after) ;
+  - au démarrage, le retard accumulé est jeté : le robot ne rejoue jamais
+    une vieille commande après un redémarrage.
 """
 
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
+from .entrant import Entrant
+
+LIMITE_MESSAGE = 3900     # Telegram coupe à 4096 : on garde une marge
+ADMIN, OBSERVATEUR = "admin", "observateur"
+
 
 class TransportTelegram:
-    def __init__(self, jeton, chat_id):
+    def __init__(self, jeton, chat_id, groupe=None, admins=(), sujets=None):
         self.base = f"https://api.telegram.org/bot{jeton}"
         self.chat_id = int(chat_id)
+        self.groupe = int(groupe) if groupe else None
+        self.admins = {int(a) for a in admins} or {self.chat_id}
+        self.sujets = sujets or {}
+        self.chats_autorises = {self.chat_id}
+        if self.groupe:
+            self.chats_autorises.add(self.groupe)
         self.decalage = 0
 
+    # ---- appels bas niveau -------------------------------------------------
     def _appel(self, methode, delai=15, **params):
-        donnees = urllib.parse.urlencode(params).encode()
-        req = urllib.request.Request(f"{self.base}/{methode}", data=donnees)
-        with urllib.request.urlopen(req, timeout=delai) as rep:
-            return json.loads(rep.read().decode())
-
-    def envoyer(self, texte):
-        for _ in range(3):
+        for essai in range(3):
             try:
-                self._appel("sendMessage", chat_id=self.chat_id, text=texte)
-                return
+                donnees = urllib.parse.urlencode(
+                    {k: v for k, v in params.items() if v is not None}).encode()
+                req = urllib.request.Request(f"{self.base}/{methode}", data=donnees)
+                with urllib.request.urlopen(req, timeout=delai) as rep:
+                    return json.loads(rep.read().decode())
+            except urllib.error.HTTPError as e:
+                attente = self._retry_after(e)
+                if attente is None or essai == 2:
+                    raise
+                time.sleep(attente)
+        return {}
+
+    @staticmethod
+    def _retry_after(erreur):
+        """Renvoie le délai imposé par Telegram (429), sinon None."""
+        if erreur.code != 429:
+            return None
+        try:
+            corps = json.loads(erreur.read().decode())
+            return min(int(corps["parameters"]["retry_after"]) + 1, 30)
+        except Exception:
+            return 3
+
+    @staticmethod
+    def _clavier(boutons):
+        """boutons = [[(libellé, donnée), …], …] → JSON attendu par Telegram."""
+        if boutons is None:
+            return None
+        return json.dumps({"inline_keyboard": [
+            [{"text": libelle, "callback_data": donnee} for libelle, donnee in ligne]
+            for ligne in boutons
+        ]})
+
+    def _destination(self, canal):
+        """canal : None/'prive', 'encaissements', 'alertes', ou un chat_id."""
+        if isinstance(canal, int):
+            return canal, None
+        if canal in ("encaissements", "alertes", "console"):
+            return (self.groupe or self.chat_id), self.sujets.get(canal)
+        return self.chat_id, None
+
+    # ---- envoi -------------------------------------------------------------
+    def envoyer(self, texte, boutons=None, canal=None, silencieux=False):
+        """Envoie (en découpant si besoin) et renvoie l'id du dernier message."""
+        chat, sujet = self._destination(canal)
+        morceaux = self._decouper(texte)
+        dernier = None
+        for i, morceau in enumerate(morceaux):
+            final = i == len(morceaux) - 1
+            try:
+                rep = self._appel(
+                    "sendMessage", chat_id=chat, text=morceau, parse_mode="HTML",
+                    message_thread_id=sujet,
+                    disable_notification="true" if silencieux else None,
+                    reply_markup=self._clavier(boutons) if final else None,
+                )
+                dernier = (rep.get("result") or {}).get("message_id")
             except Exception:
                 time.sleep(2)
+        return dernier
 
-    def supprimer(self, message_id):
-        """Efface un message du chat (utilisé pour les PIN)."""
+    def modifier(self, message_id, texte, boutons=None, canal=None):
+        """Réécrit un message existant : la session USSD tient sur une seule
+        carte qui se met à jour, au lieu d'empiler des dizaines de messages."""
+        if not message_id:
+            return False
+        chat, _ = self._destination(canal)
         try:
-            self._appel("deleteMessage", chat_id=self.chat_id, message_id=message_id)
+            self._appel("editMessageText", chat_id=chat, message_id=message_id,
+                        text=texte[:LIMITE_MESSAGE], parse_mode="HTML",
+                        reply_markup=self._clavier(boutons))
+            return True
         except Exception:
-            pass  # le droit de suppression peut expirer après 48 h : non bloquant
+            return False
+
+    def retirer_boutons(self, message_id, canal=None):
+        """Désarme un ancien clavier pour qu'il ne soit plus cliquable."""
+        if not message_id:
+            return
+        chat, _ = self._destination(canal)
+        try:
+            self._appel("editMessageReplyMarkup", chat_id=chat, message_id=message_id)
+        except Exception:
+            pass
+
+    def supprimer(self, message_id, canal=None):
+        """Efface un message du chat (utilisé pour les PIN tapés à la main).
+        En groupe, cela suppose que le robot y est administrateur."""
+        chat, _ = self._destination(canal)
+        try:
+            self._appel("deleteMessage", chat_id=chat, message_id=message_id)
+        except Exception:
+            pass  # droit expiré après 48 h, ou pas administrateur : non bloquant
+
+    def accuser(self, callback_id, texte=""):
+        """Répond au clic : sans cela le bouton tourne pendant 30 s."""
+        if not callback_id:
+            return
+        try:
+            self._appel("answerCallbackQuery", callback_query_id=callback_id,
+                        text=texte or None)
+        except Exception:
+            pass
+
+    def envoyer_fichier(self, nom, contenu, legende="", canal=None):
+        """Envoie un document (multipart, écrit à la main : zéro dépendance)."""
+        chat, sujet = self._destination(canal)
+        limite = "----totem" + str(len(contenu))
+        champs = {"chat_id": str(chat), "caption": legende, "parse_mode": "HTML"}
+        if sujet:
+            champs["message_thread_id"] = str(sujet)
+        corps = b""
+        for cle, valeur in champs.items():
+            corps += (f"--{limite}\r\nContent-Disposition: form-data; name=\"{cle}\""
+                      f"\r\n\r\n{valeur}\r\n").encode()
+        corps += (f"--{limite}\r\nContent-Disposition: form-data; name=\"document\";"
+                  f" filename=\"{nom}\"\r\nContent-Type: text/csv\r\n\r\n").encode()
+        corps += contenu + f"\r\n--{limite}--\r\n".encode()
+        req = urllib.request.Request(
+            f"{self.base}/sendDocument", data=corps,
+            headers={"Content-Type": f"multipart/form-data; boundary={limite}"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as rep:
+                return json.loads(rep.read().decode()).get("ok", False)
+        except Exception:
+            return False
+
+    def publier_commandes(self, commandes):
+        """Déclare le menu « / » : les commandes deviennent cliquables dans
+        l'application Telegram, plus besoin de les retenir."""
+        try:
+            self._appel("setMyCommands", commands=json.dumps(
+                [{"command": c, "description": d} for c, d in commandes]))
+            self._appel("setChatMenuButton", chat_id=self.chat_id,
+                        menu_button=json.dumps({"type": "commands"}))
+        except Exception:
+            pass
+
+    # ---- réception ---------------------------------------------------------
+    def vider_backlog(self):
+        """Jette les messages arrivés pendant que le robot était éteint : sinon
+        un redémarrage rejouerait d'anciennes commandes (et d'anciens USSD)."""
+        try:
+            rep = self._appel("getUpdates", delai=20, offset=-1, timeout=0)
+            majs = rep.get("result", [])
+            if majs:
+                self.decalage = majs[-1]["update_id"] + 1
+        except Exception:
+            pass
 
     def recevoir(self):
-        """Retourne [(message_id, texte)] du propriétaire. Bloque jusqu'à 50 s."""
+        """Renvoie les `Entrant` autorisés. Bloque jusqu'à 50 s."""
         try:
             rep = self._appel("getUpdates", delai=60, offset=self.decalage,
-                              timeout=50, allowed_updates='["message"]')
+                              timeout=50,
+                              allowed_updates='["message","callback_query"]')
         except Exception:
             time.sleep(5)
             return []
-        messages = []
+        entrants = []
         for maj in rep.get("result", []):
             self.decalage = maj["update_id"] + 1
-            msg = maj.get("message") or {}
-            if msg.get("chat", {}).get("id") != self.chat_id:
-                continue  # expéditeur non autorisé : ignoré
-            if "text" in msg:
-                messages.append((msg["message_id"], msg["text"]))
-        return messages
+            entrant = self._lire(maj)
+            if entrant is not None:
+                entrants.append(entrant)
+        return entrants
+
+    def _lire(self, maj):
+        clic = maj.get("callback_query")
+        msg = clic.get("message", {}) if clic else (maj.get("message") or {})
+        chat = msg.get("chat", {}).get("id")
+        if chat not in self.chats_autorises:
+            return None  # conversation non autorisée : ignorée en silence
+        auteur = (clic or msg).get("from", {})
+        commun = dict(utilisateur=auteur.get("id", 0),
+                      nom=auteur.get("first_name", ""), chat=chat,
+                      sujet=msg.get("message_thread_id", 0) or 0)
+        if clic:
+            return Entrant(texte=clic.get("data", ""), bouton=True,
+                           callback_id=clic.get("id", ""),
+                           origine_id=msg.get("message_id", 0), **commun)
+        if "text" not in msg:
+            return None
+        return Entrant(texte=msg["text"], message_id=msg.get("message_id", 0), **commun)
+
+    # ---- rôles -------------------------------------------------------------
+    def role(self, utilisateur):
+        return ADMIN if utilisateur in self.admins else OBSERVATEUR
+
+    @staticmethod
+    def _decouper(texte):
+        """Coupe sur les sauts de ligne pour rester sous la limite Telegram."""
+        if len(texte) <= LIMITE_MESSAGE:
+            return [texte]
+        morceaux, courant = [], ""
+        for ligne in texte.split("\n"):
+            if len(courant) + len(ligne) + 1 > LIMITE_MESSAGE:
+                morceaux.append(courant or ligne[:LIMITE_MESSAGE])
+                courant = ligne[:LIMITE_MESSAGE]
+            else:
+                courant = f"{courant}\n{ligne}" if courant else ligne
+        if courant:
+            morceaux.append(courant)
+        return morceaux

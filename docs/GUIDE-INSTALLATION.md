@@ -66,6 +66,15 @@
 
 Déroulez la check-list complète avec la SIM française avant tout envoi au Cameroun.
 
+## Étape 4 bis — Confort et travail en équipe (facultatif, 15 min)
+
+Le robot fonctionne déjà en tête-à-tête. Si vous voulez les **raccourcis**
+(le solde en un bouton), le **groupe d'équipe** avec des rôles, ou les **sujets**
+(un fil pour les encaissements, un pour les alertes), tout se règle dans
+`totem.conf` : voir [`GUIDE-TELEGRAM.md`](GUIDE-TELEGRAM.md).
+
+Après modification : `sudo systemctl restart totem`.
+
 ## Étape 5 — Cloner la carte de secours
 
 Sur votre PC, avec Raspberry Pi Imager ou Win32DiskImager :
@@ -79,5 +88,6 @@ La jumelle part dans le colis pour Douala.
 | Pas de message Telegram au démarrage | `sudo journalctl -u totem -n 50` et lisez l'erreur (souvent : clé/ID mal collés dans la config) |
 | « Aucune SIM détectée » | SIM mal insérée, ou PIN SIM pas désactivé |
 | Pas de réponse USSD | Signal faible (`/statut`) → déplacez l'antenne près d'une fenêtre |
-| Le port modem n'est pas ttyUSB2 | `ls /dev/ttyUSB*` puis ajustez `port =` dans la config |
+| Un modem manque à l'appel | `python3 -m totem --modems` : il liste ce que le Pi détecte (opérateur, port, IMEI, état SIM) |
+| Deux modems, un seul détecté | Alimentation insuffisante : passez par un hub USB **alimenté** |
 | Modifier la config sans SSH | Éteignez, mettez la carte SD dans le PC : le fichier `totem.conf` est visible à la racine, modifiable avec le Bloc-notes |
