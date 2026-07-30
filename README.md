@@ -26,14 +26,26 @@ quotidiens, chien de garde automatique.
 - **Seules les conversations déclarées sont écoutées** ; tout autre expéditeur
   est ignoré en silence.
 
+## Plusieurs opérateurs, plusieurs SIM
+
+Rien n'est écrit en dur pour MTN : **MTN, Orange ou tout autre réseau** est
+décrit dans `totem.conf`, et le robot choisit le bon profil (code de menu,
+raccourcis) d'après ce que le modem voit réellement dans la carte présente.
+
+Chaque SIM est identifiée par son **ICCID** — le numéro gravé sur la puce — et
+possède **son propre journal** : deux cartes du même opérateur ne mélangent
+jamais leurs SMS ni leurs rapports. Changez la carte dans le HAT : le robot le
+détecte seul, vous prévient et bascule.
+
 ## L'expérience Telegram
 
-Les menus MoMo arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
+Les menus arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
 l'aveugle), la session USSD tient sur **une seule carte qui se met à jour**, le
-**code PIN se compose sur un pavé sécurisé**, et une opération courante tient en
-**un seul bouton** (raccourcis configurables). Le robot sait aussi travailler
-dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et un
-**fil par nature d'information** si le groupe utilise les sujets.
+**code secret se compose sur un pavé sécurisé**, et une opération courante tient
+en **un seul bouton** (raccourcis configurables par opérateur). Le robot sait
+aussi travailler dans un **groupe d'équipe**, avec des **rôles** (qui pilote /
+qui observe) et un **fil par nature d'information** si le groupe utilise les
+sujets.
 
 → Tout est détaillé dans [`docs/GUIDE-TELEGRAM.md`](docs/GUIDE-TELEGRAM.md).
 
@@ -46,8 +58,12 @@ dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et 
 | `python3 -m totem --console` | Faux modem + chat dans le terminal (essai local) |
 | `python3 -m totem --demo` | Scénario automatique complet (vérification en 5 s) |
 
-PIN de simulation : `1234`. Le simulateur imite le menu MoMo (solde, transfert)
-et génère des SMS de paiement réalistes.
+Ajoutez `--orange` à `--console` ou `--demo` pour simuler une SIM Orange au lieu
+d'une SIM MTN : codes et menus différents, de quoi vérifier l'affichage des deux
+opérateurs sans démonter le HAT.
+
+Code de simulation : `1234`. Le simulateur imite les menus Mobile Money (solde,
+transfert) et génère des SMS de paiement réalistes.
 
 ## Contenu
 

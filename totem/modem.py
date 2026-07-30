@@ -15,6 +15,12 @@ from .gsm import decode_auto, encode_ucs2
 RE_CUSD = re.compile(r'\+CUSD:\s*(\d)(?:\s*,\s*"(.*?)"\s*(?:,\s*(\d+))?)?', re.S)
 RE_CSQ = re.compile(r"\+CSQ:\s*(\d+),")
 RE_COPS = re.compile(r'\+COPS:\s*\d+(?:,\d+,"([^"]*)")?')
+# Identité de la SIM : ICCID (numéro gravé sur la carte, 18 à 22 chiffres),
+# IMSI (identité de l'abonné sur le réseau), MSISDN (le numéro de téléphone,
+# rarement provisionné sur les SIM prépayées).
+RE_ICCID = re.compile(r"\b(\d{18,22})\b")
+RE_IMSI = re.compile(r"^\s*(\d{14,15})\s*$", re.M)
+RE_CNUM = re.compile(r'\+CNUM:\s*"[^"]*"\s*,\s*"([^"]+)"')
 # +CMGL: <index>,"REC UNREAD","<expéditeur>",...  puis le texte sur la ligne suivante
 RE_CMGL = re.compile(r'\+CMGL:\s*(\d+),"[^"]*","([^"]*)"[^\n]*\n(.*?)(?=\r?\n\+CMGL:|\r?\nOK\r?\n|\Z)', re.S)
 
@@ -79,6 +85,33 @@ class ModemSerie:
     def sim_presente(self):
         with self.verrou:
             return "READY" in self._envoyer("AT+CPIN?")
+
+    def iccid(self):
+        """Numéro de série gravé sur la carte SIM : identité **stable et
+        unique** de la puce, quel que soit l'opérateur. C'est lui qui sert à
+        cloisonner les journaux quand plusieurs SIM se succèdent dans le HAT.
+        Les SIM7600 répondent selon les firmwares à +CICCID, +CCID ou +ICCID."""
+        with self.verrou:
+            for commande in ("AT+CICCID", "AT+CCID", "AT+ICCID"):
+                m = RE_ICCID.search(self._envoyer(commande))
+                if m:
+                    return m.group(1)
+        return ""
+
+    def imsi(self):
+        """Identité de l'abonné sur le réseau. Ses 5 premiers chiffres sont le
+        code pays + code opérateur (624 01 = MTN Cameroun, 624 02 = Orange)."""
+        with self.verrou:
+            m = RE_IMSI.search(self._envoyer("AT+CIMI"))
+        return m.group(1) if m else ""
+
+    def numero(self):
+        """Numéro de téléphone (MSISDN). Souvent vide : la plupart des SIM
+        prépayées ne l'inscrivent pas dans la carte. Ne jamais s'en servir
+        comme identifiant — utiliser l'ICCID."""
+        with self.verrou:
+            m = RE_CNUM.search(self._envoyer("AT+CNUM"))
+        return m.group(1) if m else ""
 
     def redemarrer(self):
         with self.verrou:

@@ -28,11 +28,26 @@ de crédit et de data).
 - [ ] `/sms` liste bien ce SMS
 - [ ] `/rapport` répond (0 encaissement, normal : pas de SMS MoMo en France)
 - [ ] `/export` envoie un fichier CSV qui s'ouvre dans Excel, accents corrects
+- [ ] Tous les SMS déclenchent la même notification (aucun n'arrive en silence)
 
 ## C bis. Confort Telegram
 - [ ] Le bouton *Menu* de l'application Telegram liste bien les commandes
 - [ ] `/menu` affiche l'écran d'accueil, et chaque bouton fait ce qu'il annonce
 - [ ] Si un raccourci est configuré : un seul appui déroule toute la séquence
+- [ ] Aucun cadre gris à chasse fixe n'apparaît : le texte est lisible d'un coup
+- [ ] Les options du menu ne sont PAS écrites en texte au-dessus des boutons
+
+## C ter. Deux opérateurs, deux SIM (le vrai test)
+- [ ] Avec la SIM MTN : l'accueil affiche « 📱 Menu MTN … » et l'appui ouvre `*126#`
+- [ ] Remplacez par la SIM Orange, attendez une minute → le robot annonce
+      **« 💳 Nouvelle carte SIM détectée »** avec le bon opérateur
+- [ ] L'accueil propose maintenant le menu Orange, et le raccourci Solde
+      déroule la séquence Orange (pas celle de MTN)
+- [ ] `/sms` et `/rapport` ne montrent QUE les SMS de la carte en place
+- [ ] Remettez la SIM MTN : son journal ressort intact
+- [ ] `/sims` liste les deux cartes, la carte en place marquée ▶️
+- [ ] Dans un menu qui *parle* du code secret sans le demander (ex. Orange
+      « Gerer mon code secret »), le pavé PIN ne s'ouvre **pas** : des boutons
 
 ## D. Robustesse (les pannes de Douala, simulées à Lille)
 - [ ] **Coupure de courant** : débranchez 10 s, rebranchez → le robot revient

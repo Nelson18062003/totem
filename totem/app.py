@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Orchestrateur du robot MoMo.
+"""Orchestrateur du robot Mobile Money.
 
 Fils d'exécution :
   - boucle principale : messages et clics du propriétaire (commandes + USSD)
-  - surveillance : SMS entrants, santé du modem, rapport quotidien, expiration
-    de la session USSD
+  - surveillance : SMS entrants, santé du modem, changement de SIM, rapport
+    quotidien, expiration de la session USSD
 
-L'expérience Telegram repose sur trois idées :
-  1. **Boutons** — les menus MoMo deviennent des boutons cliquables ; plus
-     besoin de deviner « 5 » puis « 1 ». Les clics passent même quand le mode
-     confidentialité du robot est actif dans un groupe.
-  2. **Une seule carte vivante** — la session USSD se met à jour en place,
-     comme l'écran d'un téléphone, au lieu d'empiler les messages.
-  3. **Le PIN ne touche jamais la conversation** — il se compose sur un pavé
-     numérique en boutons ; seul le nombre d'étoiles est affiché.
+Trois principes de l'interface Telegram :
+  1. **Boutons** — les options d'un menu USSD deviennent des boutons ; le
+     texte du menu n'est jamais recopié en double sous les boutons.
+  2. **Une seule carte vivante** — la session se met à jour en place, comme
+     l'écran d'un téléphone, au lieu d'empiler les messages.
+  3. **Le code secret ne touche jamais la conversation** — il se compose sur
+     un pavé numérique ; seul le nombre d'étoiles est affiché.
+
+Rien n'est écrit en dur pour un opérateur : MTN, Orange ou tout autre réseau
+est décrit dans `totem.conf`, et le robot choisit le bon profil d'après ce
+que le modem voit réellement dans la SIM présente.
 """
 
 import re
@@ -21,23 +24,29 @@ import threading
 import time
 from datetime import datetime
 
-from .mise_en_forme import bloc, echap, gras, mono
+from .mise_en_forme import echap, gras, italique, mono
 from .modem import USSD_OUVERTE, ErreurModem
 from .storage import montant_recu
 
 RE_CODE_USSD = re.compile(r"^[\*#][\d\*#]+#$")
-RE_DEMANDE_PIN = re.compile(r"\bPIN\b|code secret", re.I)
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*?)\s*$")
+# Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
+# Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
+RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
+# Vocabulaire du code secret, selon les opérateurs.
+RE_DEMANDE_CODE = re.compile(
+    r"\bpin\b|code\s+(?:secret|confidentiel|pin)|mot\s+de\s+passe|password", re.I)
 
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
+VERIF_SIM_SECONDES = 60
 
 COMMANDES_BOT = [
     ("menu", "Écran d'accueil avec les boutons"),
-    ("statut", "État du robot (signal, opérateur, SIM)"),
+    ("statut", "État du robot (SIM, opérateur, signal)"),
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
+    ("sims", "Les cartes SIM déjà passées dans le robot"),
     ("annuler", "Fermer la session USSD en cours"),
     ("redemarrer_modem", "Relancer le modem"),
     ("aide", "Aide"),
@@ -47,16 +56,23 @@ AIDE = (
     "🗿 <b>TOTEM</b>\n\n"
     "Le plus simple : /menu, puis tout se fait au doigt.\n\n"
     "<b>Codes USSD</b>\n"
-    "Envoyez <code>*126#</code> (ou tout autre code) : le menu MoMo s'ouvre "
-    "sous forme de boutons. Les questions libres (numéro, montant) se "
-    "répondent par un message normal. Le code PIN se tape sur le pavé "
-    "sécurisé : il n'apparaît jamais dans la conversation.\n\n"
+    "Le robot reconnaît la SIM présente et vous propose directement le menu "
+    "de son opérateur. Vous pouvez aussi envoyer n'importe quel code "
+    "vous-même : les options du menu arrivent en boutons, les questions "
+    "libres (numéro, montant) se répondent par un message normal, et le code "
+    "secret se tape sur un pavé sécurisé qui ne laisse aucune trace dans la "
+    "conversation.\n\n"
+    "<b>Plusieurs SIM</b>\n"
+    "Chaque carte a son propre journal : les SMS et les rapports d'une SIM "
+    "ne se mélangent jamais à ceux d'une autre, même de même opérateur. "
+    "Changez la carte, le robot le voit seul et bascule.\n\n"
     "<b>Commandes</b>\n"
     "/menu — écran d'accueil\n"
-    "/statut — signal, opérateur, SIM\n"
-    "/sms — les derniers SMS reçus\n"
+    "/statut — SIM, opérateur, signal\n"
+    "/sms — les derniers SMS de la SIM en place\n"
     "/rapport — bilan des dernières 24 h\n"
     "/export — journal CSV des 7 derniers jours\n"
+    "/sims — les cartes déjà passées dans le robot\n"
     "/annuler — ferme la session USSD\n"
     "/redemarrer_modem — relance le modem\n"
     "/aide — ce message"
@@ -65,7 +81,7 @@ AIDE = (
 
 class Robot:
     def __init__(self, modem, transport, journal, nom="TOTEM",
-                 heure_rapport="21:00", pause_sms=10, raccourcis=None,
+                 heure_rapport="21:00", pause_sms=10, profils=None,
                  delai_session=180):
         self.modem = modem
         self.transport = transport
@@ -73,10 +89,12 @@ class Robot:
         self.nom = nom
         self.heure_rapport = heure_rapport
         self.pause_sms = pause_sms
-        self.raccourcis = raccourcis or {}
+        self.profils = profils or {}
         self.delai_session = delai_session
         self.actif = True
         self.verrou = threading.RLock()
+        self.sim = None            # ICCID de la carte en place
+        self.profil = self._profil_generique("inconnu")
         self._reinitialiser_session()
 
     def _reinitialiser_session(self):
@@ -89,17 +107,59 @@ class Robot:
         self.file_macro = []
         self.dernier_echange = time.time()
 
+    # ---- identité de la SIM et profil opérateur ---------------------------
+    @staticmethod
+    def _profil_generique(operateur):
+        return {"nom": operateur, "detection": "", "menu": "", "raccourcis": {}}
+
+    def _choisir_profil(self, operateur):
+        """Associe le réseau vu par le modem au profil décrit dans la config."""
+        for cle, profil in self.profils.items():
+            detection = (profil.get("detection") or "").strip()
+            if detection and detection.lower() in (operateur or "").lower():
+                return {**profil, "nom": profil.get("nom") or operateur}
+        repli = self.profils.get("*")
+        if repli:
+            return {**repli, "nom": operateur}
+        return self._profil_generique(operateur)
+
+    def _lire_sim(self):
+        """(iccid, operateur) — tolère un modem qui ne sait pas répondre."""
+        try:
+            iccid = self.modem.iccid()
+        except Exception:
+            iccid = ""
+        try:
+            operateur = self.modem.operateur()
+        except Exception:
+            operateur = "inconnu"
+        return iccid, operateur
+
+    def _adopter_sim(self, iccid, operateur):
+        self.sim = iccid
+        self.journal.definir_sim(iccid)
+        self.profil = self._choisir_profil(operateur)
+
+    @staticmethod
+    def _sim_lisible(iccid):
+        if not iccid:
+            return "identifiant indisponible"
+        return "…" + iccid[-6:]
+
     # ---- démarrage --------------------------------------------------------
     def demarrer(self, bloquant=True):
         self.transport.vider_backlog()      # ne jamais rejouer d'ancienne commande
         self.transport.publier_commandes(COMMANDES_BOT)
+        iccid, operateur = self._lire_sim()
+        self._adopter_sim(iccid, operateur)
         etat_sim = "SIM détectée" if self.modem.sim_presente() else "⚠️ AUCUNE SIM détectée"
         self.transport.envoyer(
             f"✅ {gras(self.nom)} en ligne — {echap(etat_sim)}\n"
-            f"Opérateur : {echap(self.modem.operateur())} · "
+            f"Opérateur : {gras(operateur)}\n"
+            f"Carte : {mono(self._sim_lisible(iccid))} · "
             f"Signal : {self.modem.signal()}/31",
             boutons=self._boutons_accueil(ADMIN))
-        self.journal.evenement("démarrage")
+        self.journal.evenement(f"démarrage · {operateur}")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
         if bloquant:
             self._boucle_messages()
@@ -142,6 +202,8 @@ class Robot:
                 self._rapport(canal=canal, manuel=True)
             elif commande == "export":
                 self._export(canal)
+            elif commande == "sims":
+                self._liste_sims(canal)
             elif commande in ("annuler", "redemarrer_modem") or RE_CODE_USSD.match(texte) \
                     or self.session_ussd:
                 if not self._verifier_admin(role, entrant, canal):
@@ -149,8 +211,8 @@ class Robot:
                 self._action_admin(commande, texte, entrant, canal)
             else:
                 self.transport.envoyer(
-                    "Je n'ai pas compris. Ouvrez /menu ou envoyez un code USSD "
-                    f"tel que {mono('*126#')}.", canal=canal)
+                    "Je n'ai pas compris. Ouvrez /menu, ou envoyez un code USSD.",
+                    canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
 
     def _action_admin(self, commande, texte, entrant, canal):
         if commande == "annuler":
@@ -158,13 +220,11 @@ class Robot:
         elif commande == "redemarrer_modem":
             self._redemarrer_modem(canal)
         elif RE_CODE_USSD.match(texte):
-            self.canal_session = canal
-            self.msg_session = None
-            self._ussd(texte, nouveau=True)
+            self._ouvrir_session(texte, canal)
         else:
-            # Réponse libre dans le menu en cours (numéro, montant… ou PIN tapé
-            # à la main par habitude : dans ce cas on efface le message).
-            if self.pin_actif or RE_DEMANDE_PIN.search(self.dernier_menu):
+            # Réponse libre dans le menu en cours (numéro, montant… ou code
+            # secret tapé à la main : dans ce cas on efface le message).
+            if self.pin_actif:
                 self.transport.supprimer(entrant.message_id, canal=canal)
                 self.journal.ussd("envoyé", "****")
             else:
@@ -174,22 +234,26 @@ class Robot:
 
     def _clic(self, donnee, entrant, role, canal):
         genre, _, valeur = donnee.partition(":")
-        if genre == "c" and valeur in ("menu", "statut", "sms", "rapport", "export", "aide"):
-            {"menu": lambda: self._accueil(canal, role),
-             "aide": lambda: self.transport.envoyer(AIDE, canal=canal),
-             "statut": lambda: self._statut(canal),
-             "sms": lambda: self._derniers_sms(canal),
-             "rapport": lambda: self._rapport(canal=canal, manuel=True),
-             "export": lambda: self._export(canal)}[valeur]()
+        lecture = {"menu": lambda: self._accueil(canal, role),
+                   "aide": lambda: self.transport.envoyer(AIDE, canal=canal),
+                   "statut": lambda: self._statut(canal),
+                   "sms": lambda: self._derniers_sms(canal),
+                   "rapport": lambda: self._rapport(canal=canal, manuel=True),
+                   "sims": lambda: self._liste_sims(canal),
+                   "export": lambda: self._export(canal)}
+        if genre == "c" and valeur in lecture:
+            lecture[valeur]()
             return
 
         if not self._verifier_admin(role, entrant, canal):
             return
 
-        if genre == "c" and valeur == "ussd":
+        if genre == "c" and valeur == "ouvrir":
+            self._ouvrir_session(self.profil.get("menu", ""), canal)
+        elif genre == "c" and valeur == "ussd":
             self.transport.envoyer(
-                f"⌨️ Envoyez le code à composer, par exemple {mono('*126#')}.",
-                canal=canal)
+                "⌨️ Envoyez le code à composer, par exemple "
+                f"{mono(self.profil.get('menu') or '*126#')}.", canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
         elif genre == "m":
@@ -221,29 +285,42 @@ class Robot:
     # ---- écran d'accueil ---------------------------------------------------
     def _boutons_accueil(self, role):
         lignes = []
-        if role == ADMIN and self.raccourcis:
-            noms = list(self.raccourcis)
+        if role == ADMIN:
+            if self.profil.get("menu"):
+                lignes.append([(f"📱 Menu {self.profil['nom']}"[:32], "c:ouvrir")])
+            raccourcis = self.profil.get("raccourcis") or {}
+            noms = list(raccourcis)
             for i in range(0, len(noms), 2):
-                lignes.append([(self.raccourcis[n]["libelle"], f"m:{n}")
-                               for n in noms[i:i + 2]])
+                lignes.append([(raccourcis[n]["libelle"], f"m:{n}") for n in noms[i:i + 2]])
         lignes.append([("📥 SMS reçus", "c:sms"), ("📊 Rapport 24 h", "c:rapport")])
         lignes.append([("📡 Statut", "c:statut"), ("📄 Export CSV", "c:export")])
-        if role == ADMIN:
-            lignes.append([("⌨️ Code USSD", "c:ussd"), ("❓ Aide", "c:aide")])
-        else:
-            lignes.append([("❓ Aide", "c:aide")])
+        lignes.append([("⌨️ Code USSD", "c:ussd"), ("❓ Aide", "c:aide")]
+                      if role == ADMIN else [("❓ Aide", "c:aide")])
         return lignes
 
     def _accueil(self, canal, role):
         nb, total, _ = self.journal.rapport_du_jour()
         self.transport.envoyer(
             f"🗿 {gras(self.nom)}\n"
-            f"Signal {self.modem.signal()}/31 · {echap(self.modem.operateur())}\n"
-            f"Dernières 24 h : {gras(f'{nb} encaissement(s)')} — "
+            f"{gras(self.profil['nom'])} · carte {mono(self._sim_lisible(self.sim))} · "
+            f"signal {self.modem.signal()}/31\n"
+            f"Dernières 24 h sur cette carte : {gras(f'{nb} encaissement(s)')} — "
             f"{gras(self._fcfa(total))}\n\nQue faire ?",
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
+    def _ouvrir_session(self, code, canal):
+        if not code:
+            self.transport.envoyer(
+                "Aucun code de menu n'est configuré pour cet opérateur. "
+                "Envoyez le code vous-même, ou ajoutez-le dans totem.conf.",
+                canal=canal)
+            return
+        self.canal_session = canal
+        self.msg_session = None
+        self.file_macro = []
+        self._ussd(code, nouveau=True)
+
     def _ussd(self, texte, nouveau=False):
         try:
             if nouveau:
@@ -257,40 +334,90 @@ class Robot:
         self.journal.ussd("reçu", reponse)
         self.dernier_menu = reponse
         self.session_ussd = etat == USSD_OUVERTE
-        self.pin_actif = bool(self.session_ussd and RE_DEMANDE_PIN.search(reponse))
+        self.pin_actif = self.session_ussd and self._demande_un_code(reponse)
         self.pin_tampon = ""
         self.dernier_echange = time.time()
         if self.session_ussd:
             self._afficher_session()
         else:
-            self._cloturer_session(bloc(reponse))
+            self._cloturer_session(self._texte_menu(reponse))
+
+    @classmethod
+    def _demande_un_code(cls, menu):
+        """Vrai seulement si l'opérateur ATTEND une saisie de code secret.
+
+        Un menu qui se contente de *parler* du code secret (« 5) Gerer mon
+        code secret ») porte des options numérotées : c'est une navigation,
+        pas une saisie. C'est exactement ce qui faisait apparaître le pavé
+        au mauvais moment."""
+        _, options = cls._analyser_menu(menu)
+        return not options and bool(RE_DEMANDE_CODE.search(menu))
+
+    @staticmethod
+    def _analyser_menu(menu):
+        """Sépare l'en-tête des options numérotées, sans rien perdre : toute
+        ligne non reconnue comme option reste dans l'en-tête."""
+        entete, options = [], []
+        for ligne in re.split(r"\r\n|\r|\n", menu or ""):
+            ligne = ligne.strip()
+            if not ligne:
+                continue
+            m = RE_OPTION.match(ligne)
+            if m:
+                options.append((m.group(1), m.group(2).strip()))
+            else:
+                entete.append(ligne)
+        return entete, options
+
+    @staticmethod
+    def _texte_menu(menu):
+        """Rend un texte d'opérateur lisible dans Telegram : lignes nettoyées,
+        aucun bloc de code (le cadre gris à chasse fixe cassait l'affichage
+        sur téléphone et faisait déborder les lignes longues)."""
+        lignes = [l.strip() for l in re.split(r"\r\n|\r|\n", menu or "") if l.strip()]
+        return echap("\n".join(lignes))
+
+    @staticmethod
+    def _court(texte, limite=30):
+        return texte if len(texte) <= limite else texte[:limite - 1].rstrip() + "…"
+
+    def _boutons_options(self, options):
+        """Deux boutons par ligne si les libellés sont courts, sinon un seul :
+        c'est ce qui évite les libellés tronqués et l'effet « sens dessus
+        dessous » sur les menus Orange, plus verbeux que ceux de MTN."""
+        libelles = [(f"{num}. {self._court(lib)}", f"u:{num}") for num, lib in options]
+        par_ligne = 2 if all(len(l) <= 20 for l, _ in libelles) else 1
+        return [libelles[i:i + par_ligne] for i in range(0, len(libelles), par_ligne)]
 
     def _afficher_session(self):
         """Réécrit la carte de session en place : une seule carte, vivante."""
         if self.pin_actif:
             texte, boutons = self._carte_pin()
         else:
-            options = self._options(self.dernier_menu)
-            texte = f"🗿 {gras('Session USSD')}\n{bloc(self.dernier_menu)}"
+            entete, options = self._analyser_menu(self.dernier_menu)
+            texte = f"🗿 {gras(self.profil['nom'])}"
+            if entete:
+                texte += "\n" + echap("\n".join(entete))
             if options:
-                boutons = [[(f"{num}. {lib[:28]}", f"u:{num}")
-                            for num, lib in options[i:i + 2]]
-                           for i in range(0, len(options), 2)]
+                # Les options sont DANS les boutons : ne pas les répéter en
+                # texte au-dessus, c'est ce qui rendait l'écran illisible.
+                boutons = self._boutons_options(options)
             else:
-                texte += "\n✍️ Répondez par un message (numéro, montant…)."
+                texte += "\n\n" + italique("✍️ Répondez par un message.")
                 boutons = []
-            boutons = boutons + [[("❌ Annuler", "c:annuler")]]
+            boutons = boutons + [[("❌ Fermer", "c:annuler")]]
         self._peindre(texte, boutons)
 
     def _carte_pin(self):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]
         boutons.append([("⌫", "p:eff"), ("0", "p:0"), ("✅ Valider", "p:ok")])
         boutons.append([("❌ Annuler", "c:annuler")])
+        entete, _ = self._analyser_menu(self.dernier_menu)
         return (
-            f"🔐 {gras('Code PIN')}\n{bloc(self.dernier_menu)}\n"
+            f"🔐 {gras('Code secret')}\n{echap(chr(10).join(entete))}\n\n"
             f"Saisi : {mono('•' * len(self.pin_tampon) or '—')}\n"
-            "<i>Le code se compose sur les boutons : il n'apparaît jamais "
-            "dans la conversation.</i>", boutons)
+            + italique("Le code se compose sur les boutons : il n'apparaît "
+                       "jamais dans la conversation."), boutons)
 
     def _pave(self, touche):
         if not self.pin_actif:
@@ -304,7 +431,7 @@ class Robot:
             code, self.pin_tampon = self.pin_tampon, ""
             self.pin_actif = False
             self.journal.ussd("envoyé", "****")
-            self._peindre(f"🔐 {gras('Code PIN')}\n⏳ Validation en cours…", [])
+            self._peindre(f"🔐 {gras('Code secret')}\n⏳ Validation en cours…", [])
             self._ussd(code, nouveau=False)
             self._avancer_macro()
             return
@@ -330,28 +457,22 @@ class Robot:
         self.canal_session = canal
 
     def _annuler(self, canal):
-        self.modem.ussd_annuler()
+        try:
+            self.modem.ussd_annuler()
+        except Exception:
+            pass
         if self.msg_session:
             self.transport.retirer_boutons(self.msg_session, canal=self.canal_session)
         self._reinitialiser_session()
         self.transport.envoyer("Session USSD fermée.",
                                boutons=[[("🏠 Menu", "c:menu")]], canal=canal)
 
-    @staticmethod
-    def _options(menu):
-        """Extrait « 1. Transfert d'argent » → [("1", "Transfert d'argent"), …]."""
-        options = []
-        for ligne in menu.splitlines():
-            m = RE_OPTION.match(ligne)
-            if m:
-                options.append((m.group(1), m.group(2)))
-        return options
-
     # ---- raccourcis (macros USSD) -----------------------------------------
     def _lancer_raccourci(self, nom, canal):
-        raccourci = self.raccourcis.get(nom)
+        raccourci = (self.profil.get("raccourcis") or {}).get(nom)
         if not raccourci:
-            self.transport.envoyer("Raccourci inconnu.", canal=canal)
+            self.transport.envoyer(
+                "Ce raccourci n'existe pas pour la SIM en place.", canal=canal)
             return
         etapes = list(raccourci["etapes"])
         self.canal_session = canal
@@ -362,7 +483,7 @@ class Robot:
 
     def _avancer_macro(self):
         """Déroule les étapes restantes d'un raccourci ; s'arrête d'elle-même
-        dès qu'un PIN est demandé ou que la session se referme."""
+        dès qu'un code secret est demandé ou que la session se referme."""
         while self.file_macro and self.session_ussd and not self.pin_actif:
             etape = self.file_macro.pop(0)
             time.sleep(0.4)          # laisse respirer le réseau USSD
@@ -375,8 +496,9 @@ class Robot:
     def _statut(self, canal=None):
         sim = "présente" if self.modem.sim_presente() else "⚠️ ABSENTE"
         self.transport.envoyer(
-            f"📡 {gras(self.nom)}\nSIM : {echap(sim)}\n"
-            f"Opérateur : {echap(self.modem.operateur())}\n"
+            f"📡 {gras(self.nom)}\n"
+            f"SIM : {echap(sim)} · {mono(self._sim_lisible(self.sim))}\n"
+            f"Opérateur : {gras(self.profil['nom'])}\n"
             f"Signal : {gras(f'{self.modem.signal()}/31')}\n"
             f"Session USSD : {'ouverte' if self.session_ussd else 'aucune'}",
             canal=canal)
@@ -384,18 +506,33 @@ class Robot:
     def _derniers_sms(self, canal=None):
         lignes = self.journal.derniers_sms(5)
         if not lignes:
-            self.transport.envoyer("Aucun SMS en mémoire pour l'instant.", canal=canal)
+            self.transport.envoyer(
+                "Aucun SMS en mémoire pour la SIM en place.", canal=canal)
             return
         corps = "\n\n".join(
             f"📥 {echap(d.replace('T', ' '))} — {gras(e)}\n{echap(t)}"
             for d, e, t in lignes)
-        self.transport.envoyer(corps, canal=canal,
-                               boutons=[[("🏠 Menu", "c:menu")]])
+        self.transport.envoyer(corps, canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+
+    def _liste_sims(self, canal=None):
+        lignes = self.journal.sims_connues()
+        if not lignes:
+            self.transport.envoyer("Aucune carte enregistrée pour l'instant.", canal=canal)
+            return
+        corps = "\n".join(
+            f"{'▶️' if (sim or '') == (self.sim or '') else '▫️'} "
+            f"{mono(self._sim_lisible(sim))} — {nb} SMS, dernier le "
+            f"{echap((date or '').replace('T', ' '))}"
+            for sim, nb, date in lignes)
+        self.transport.envoyer(
+            f"💳 {gras('Cartes passées dans le robot')}\n{corps}", canal=canal,
+            boutons=[[("🏠 Menu", "c:menu")]])
 
     def _rapport(self, canal=None, manuel=False):
         nb, total, nb_sms = self.journal.rapport_du_jour()
         self.transport.envoyer(
-            f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
+            f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')} — "
+            f"{gras(self.profil['nom'])} {mono(self._sim_lisible(self.sim))}\n"
             f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
             f"SMS reçus : {nb_sms}\nSignal : {self.modem.signal()}/31",
             canal=canal if manuel else "encaissements",
@@ -405,17 +542,19 @@ class Robot:
         contenu = self.journal.export_csv(7)
         nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
         if not self.transport.envoyer_fichier(
-                nom, contenu, legende="📄 Journal des 7 derniers jours.", canal=canal):
+                nom, contenu, legende="📄 Journal des 7 derniers jours "
+                f"({echap(self.profil['nom'])}).", canal=canal):
             self.transport.envoyer("⚠️ L'export n'a pas pu être envoyé.", canal=canal)
 
     @staticmethod
     def _fcfa(montant):
         return f"{montant:,}".replace(",", " ") + " FCFA"
 
-    # ---- surveillance (SMS entrants, santé, rapport quotidien) -------------
+    # ---- surveillance (SMS entrants, santé, SIM, rapport quotidien) --------
     def _boucle_surveillance(self):
         dernier_rapport = None
         echecs_modem = 0
+        depuis_verif_sim = 0
         while self.actif:
             try:
                 for expediteur, texte in self.modem.lire_nouveaux_sms():
@@ -428,6 +567,10 @@ class Robot:
                 if echecs_modem == 3:  # chien de garde : 3 échecs → reset modem
                     self._redemarrer_modem(canal="alertes", automatique=True)
                     echecs_modem = 0
+            depuis_verif_sim += self.pause_sms
+            if depuis_verif_sim >= VERIF_SIM_SECONDES:
+                depuis_verif_sim = 0
+                self._verifier_sim()
             self._expirer_session()
             maintenant = datetime.now()
             if maintenant.strftime("%H:%M") == self.heure_rapport \
@@ -437,14 +580,38 @@ class Robot:
             time.sleep(self.pause_sms)
 
     def _notifier_sms(self, expediteur, texte):
-        """Un encaissement sonne ; le reste arrive en notification discrète."""
+        """Tous les SMS arrivent de la même façon : aucun n'est mis en
+        sourdine. Le montant est simplement mis en évidence quand il y en a un."""
         montant = montant_recu(texte)
-        if montant is not None:
-            entete = f"💰 {gras('Encaissement')} — {gras(self._fcfa(montant))}"
-        else:
-            entete = f"📥 {gras('SMS')} de {gras(expediteur)}"
-        self.transport.envoyer(f"{entete}\n{echap(texte)}", canal="encaissements",
-                               silencieux=montant is None)
+        entete = (f"💰 {gras('Encaissement')} — {gras(self._fcfa(montant))}"
+                  if montant is not None
+                  else f"📥 {gras('SMS')} de {gras(expediteur)}")
+        self.transport.envoyer(
+            f"{entete}\n{echap(texte)}\n"
+            + italique(f"{self.profil['nom']} · {self._sim_lisible(self.sim)}"),
+            canal="encaissements")
+
+    def _verifier_sim(self):
+        """Détecte le remplacement physique de la carte dans le HAT."""
+        with self.verrou:
+            iccid, operateur = self._lire_sim()
+            if not iccid or iccid == self.sim:
+                if iccid and self.profil["nom"] != operateur:
+                    self.profil = self._choisir_profil(operateur)
+                return
+            ancienne = self.sim
+            if self.session_ussd:
+                self._cloturer_session("⚠️ Carte SIM changée : session fermée.")
+            self._adopter_sim(iccid, operateur)
+            self.journal.evenement(f"changement de SIM : {ancienne} → {iccid}")
+            if ancienne is None:
+                return          # première lecture : rien à annoncer
+            self.transport.envoyer(
+                f"💳 {gras('Nouvelle carte SIM détectée')}\n"
+                f"Opérateur : {gras(operateur)}\n"
+                f"Carte : {mono(self._sim_lisible(iccid))}\n"
+                + italique("Journal, rapports et raccourcis basculent sur cette carte."),
+                canal="alertes", boutons=self._boutons_accueil(ADMIN))
 
     def _expirer_session(self):
         with self.verrou:
