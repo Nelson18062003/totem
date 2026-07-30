@@ -17,7 +17,7 @@ apt-get install -y -qq python3 python3-serial > /dev/null
 
 echo "[2/6] Copie du programme vers /opt/totem…"
 mkdir -p /opt/totem /var/lib/totem
-cp -r "$ICI/robot" /opt/totem/
+cp -r "$ICI/totem" /opt/totem/   # /opt/totem/totem : « python3 -m totem » le trouve
 
 echo "[3/6] Configuration…"
 CONF=/boot/firmware/totem.conf

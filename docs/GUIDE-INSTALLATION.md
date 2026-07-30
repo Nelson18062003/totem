@@ -66,6 +66,15 @@
 
 Déroulez la check-list complète avec la SIM française avant tout envoi au Cameroun.
 
+## Étape 4 bis — Confort et travail en équipe (facultatif, 15 min)
+
+Le robot fonctionne déjà en tête-à-tête. Si vous voulez les **raccourcis**
+(le solde en un bouton), le **groupe d'équipe** avec des rôles, ou les **sujets**
+(un fil pour les encaissements, un pour les alertes), tout se règle dans
+`totem.conf` : voir [`GUIDE-TELEGRAM.md`](GUIDE-TELEGRAM.md).
+
+Après modification : `sudo systemctl restart totem`.
+
 ## Étape 5 — Cloner la carte de secours
 
 Sur votre PC, avec Raspberry Pi Imager ou Win32DiskImager :

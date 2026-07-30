@@ -21,9 +21,21 @@ quotidiens, chien de garde automatique.
 
 - **Aucun port ouvert** : le Pi ne fait que des connexions sortantes
   (Telegram + Tailscale pour la maintenance SSH). Compatible Starlink (CGNAT).
-- **Le PIN MoMo n'est jamais stocké** : tapé à chaque transaction dans le chat,
-  puis effacé du chat et journalisé en `****`.
-- **Seul le chat_id du propriétaire est écouté** ; tout autre expéditeur est ignoré.
+- **Le PIN MoMo n'est jamais stocké** : composé sur un pavé de boutons, il
+  n'existe même pas comme message Telegram ; le journal ne garde que `****`.
+- **Seules les conversations déclarées sont écoutées** ; tout autre expéditeur
+  est ignoré en silence.
+
+## L'expérience Telegram
+
+Les menus MoMo arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
+l'aveugle), la session USSD tient sur **une seule carte qui se met à jour**, le
+**code PIN se compose sur un pavé sécurisé**, et une opération courante tient en
+**un seul bouton** (raccourcis configurables). Le robot sait aussi travailler
+dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et un
+**fil par nature d'information** si le groupe utilise les sujets.
+
+→ Tout est détaillé dans [`docs/GUIDE-TELEGRAM.md`](docs/GUIDE-TELEGRAM.md).
 
 ## Modes d'exécution
 
@@ -41,18 +53,22 @@ et génère des SMS de paiement réalistes.
 
 ```
 totem/            le programme (Python 3, seule dépendance réelle : pyserial)
-  app.py          orchestrateur : commandes, sessions USSD, SMS, rapports, watchdog
+  app.py          orchestrateur : commandes, boutons, sessions USSD, pavé PIN,
+                  raccourcis, SMS, rapports, watchdog
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modem MTN MoMo pour tests sans matériel
-  telegram.py     client API Telegram (longue interrogation, filtrage chat_id)
+  telegram.py     client API Telegram (claviers, édition, fichiers, groupe, rôles)
   console.py      transports de test (console, scénario)
-  storage.py      journal SQLite (SMS, USSD, événements, rapport 24 h)
+  entrant.py      message entrant commun à tous les transports (frappe ou clic)
+  mise_en_forme.py  échappement et balisage HTML des messages
+  storage.py      journal SQLite (SMS, USSD, événements, rapport 24 h, export CSV)
   config.py       chargement totem.conf
 install.sh        installation en une commande sur Raspberry Pi OS
 systemd/          service (démarrage auto + relance)
 config.example.conf
 docs/
   GUIDE-INSTALLATION.md   pas-à-pas complet (comptes, flashage, install, dépannage)
+  GUIDE-TELEGRAM.md       l'expérience Telegram : boutons, pavé PIN, groupe, sujets
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
 ```

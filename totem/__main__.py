@@ -25,9 +25,9 @@ def principal():
         from .console import TransportScenario
         modem = _modem_simule(sms_auto=False)
         scenario = [
-            "/aide",
+            "/menu",
             "/statut",
-            "*126#",       # ouvre le menu MoMo
+            "*126#",       # ouvre le menu MoMo (rendu en boutons)
             "5", "1",      # Mon compte → Solde
             "*126#",       # transfert complet
             "1", "677123456", "50000", "1234",   # 1234 = PIN de simulation (effacé du chat)
@@ -36,7 +36,9 @@ def principal():
         ]
         transport = TransportScenario(scenario)
         journal = Journal(":memory:")
-        robot = Robot(modem, transport, journal, nom="TOTEM (démo)", pause_sms=1)
+        robot = Robot(modem, transport, journal, nom="TOTEM (démo)", pause_sms=1,
+                      raccourcis={"solde": {"libelle": "💰 Solde",
+                                            "etapes": ["*126#", "5", "1"]}})
         # Un client « paie » avant le début du scénario, pour /rapport et /sms
         modem.injecter_paiement("NGONO Marie", 25000)
         robot.demarrer()
@@ -60,7 +62,8 @@ def principal():
         print(f"ERREUR : {e}", file=sys.stderr)
         sys.exit(1)
 
-    transport = TransportTelegram(cfg["jeton"], cfg["chat_id"])
+    transport = TransportTelegram(cfg["jeton"], cfg["chat_id"], groupe=cfg["groupe"],
+                                  admins=cfg["admins"], sujets=cfg["sujets"])
     journal = Journal(cfg["base"] if "--simulation" not in args else ":memory:")
 
     if "--simulation" in args:
@@ -72,7 +75,8 @@ def principal():
         nom = cfg["nom"]
 
     Robot(modem, transport, journal, nom=nom,
-          heure_rapport=cfg["heure_rapport"]).demarrer()
+          heure_rapport=cfg["heure_rapport"], raccourcis=cfg["raccourcis"],
+          delai_session=cfg["delai_session"]).demarrer()
 
 
 if __name__ == "__main__":

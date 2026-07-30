@@ -5,6 +5,8 @@ SQLite : un seul fichier, robuste, consultable plus tard par l'app web.
 Les montants MoMo sont extraits des SMS pour les rapports quotidiens.
 """
 
+import csv
+import io
 import re
 import sqlite3
 import threading
@@ -69,8 +71,36 @@ class Journal:
             ).fetchall()
         nb, total = 0, 0
         for (texte,) in lignes:
-            m = RE_MONTANT_RECU.search(texte)
-            if m:
+            montant = montant_recu(texte)
+            if montant is not None:
                 nb += 1
-                total += int(re.sub(r"\D", "", m.group(1)) or 0)
+                total += montant
         return nb, total, len(lignes)
+
+    def export_csv(self, jours=7):
+        """Journal des SMS en CSV (octets), prêt à être envoyé dans Telegram
+        puis ouvert dans Excel ou importé dans la comptabilité."""
+        depuis = (datetime.now() - timedelta(days=jours)).isoformat(timespec="seconds")
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT date, expediteur, texte FROM sms WHERE date >= ? ORDER BY id",
+                (depuis,)
+            ).fetchall()
+        tampon = io.StringIO()
+        plume = csv.writer(tampon, delimiter=";")
+        plume.writerow(["date", "expediteur", "montant_fcfa", "message"])
+        for date, expediteur, texte in lignes:
+            montant = montant_recu(texte)
+            plume.writerow([date.replace("T", " "), expediteur,
+                            montant if montant is not None else "",
+                            texte.replace("\n", " ")])
+        # BOM : Excel ouvre alors correctement les accents.
+        return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
+
+
+def montant_recu(texte):
+    """Montant en FCFA d'un SMS « Vous avez reçu … », sinon None."""
+    m = RE_MONTANT_RECU.search(texte)
+    if not m:
+        return None
+    return int(re.sub(r"\D", "", m.group(1)) or 0)
