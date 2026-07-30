@@ -1,88 +1,96 @@
-import { fcfa, paiements, sims } from "@/lib/mock";
+import { fcfa, fcfaCourt, paiements, sims } from "@/lib/mock";
+import { IconArrowDown, IconArrowUp, IconList, IconLock, IconWallet } from "../icons";
 
-export default function Cartes() {
+export default function Comptes() {
+  const total = sims.reduce((s, x) => s + x.solde, 0);
+
   return (
-    <div className="flex flex-col gap-6">
-      <header className="pt-1">
-        <h1 className="text-title font-bold">Mes cartes</h1>
-        <p className="text-small text-ink-soft">Chaque SIM Mobile Money, comme une carte.</p>
+    <div className="flex flex-col gap-8">
+      <header>
+        <h1 className="text-title font-semibold tracking-tight">Comptes</h1>
+        <p className="mt-1 text-small text-ink-soft">Les SIM hébergées par le terminal.</p>
       </header>
 
-      {/* Cartes bancaires */}
-      <section className="flex flex-col gap-4">
-        {sims.map((sim) => (
-          <div key={sim.id}
-            className={`relative overflow-hidden rounded-card p-5 ${sim.operateur === "MTN" ? "card-mtn" : "card-orange"}`}>
+      {/* Comptes */}
+      <section className="flex flex-col gap-3">
+        {sims.map((s, i) => (
+          <div key={s.id} className={`rounded-card p-5 ${i === 0 ? "acct" : "acct-alt"}`}>
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-caption font-semibold uppercase tracking-widest opacity-80">
-                  {sim.operateur === "MTN" ? "MTN Mobile Money" : "Orange Money"}
+                <p className={`text-caption uppercase tracking-wider ${i === 0 ? "text-white/60" : "text-ink-faint"}`}>
+                  {s.operateur === "MTN" ? "MTN Mobile Money" : "Orange Money"}
                 </p>
-                <p className="mt-4 text-caption uppercase tracking-widest opacity-70">Solde</p>
-                <p className="text-display font-bold tabnums">{fcfa(sim.solde)}</p>
+                <p className="mt-3 text-display font-semibold tabnums tracking-tight">{fcfa(s.solde)}</p>
+                <p className={`mt-1 text-small tabnums ${i === 0 ? "text-white/55" : "text-ink-faint"}`}>
+                  {s.numero}
+                </p>
               </div>
-              <span className="flex items-center gap-1 rounded-pill bg-black/15 px-2.5 py-1 text-caption font-semibold">
-                <span className="size-1.5 rounded-full bg-current" /> 📶 {sim.signal}/31
+              <span className={`flex items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
+                i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
+              }`}>
+                <span className="size-1.5 rounded-full bg-positive" /> {s.signal}/31
               </span>
-            </div>
-            <div className="mt-8 flex items-end justify-between">
-              <div className="card-chip" />
-              <p className="tabnums text-body font-medium tracking-[0.2em]">•••• •••• {sim.numero.slice(-5)}</p>
             </div>
           </div>
         ))}
       </section>
 
-      {/* Actions sur cartes */}
-      <section className="grid grid-cols-3 gap-3">
+      {/* Opérations sur comptes */}
+      <section className="grid grid-cols-3 gap-2">
         {[
-          { l: "Consulter solde", i: "💰" },
-          { l: "Historique", i: "🧾" },
-          { l: "Bloquer / débloquer", i: "🔒" },
-        ].map((a) => (
-          <button key={a.l} className="flex flex-col items-center gap-2 rounded-card border border-line bg-surface-raised p-4 text-center transition hover:border-brand">
-            <span className="text-2xl">{a.i}</span>
-            <span className="text-caption text-ink-soft">{a.l}</span>
+          { l: "Consulter le solde", Icone: IconWallet },
+          { l: "Historique", Icone: IconList },
+          { l: "Verrouiller", Icone: IconLock },
+        ].map(({ l, Icone }) => (
+          <button key={l}
+            className="flex flex-col items-start gap-2.5 rounded-card border border-line bg-surface-raised p-3.5 text-left transition hover:border-ink-faint">
+            <Icone size={18} className="text-ink-soft" />
+            <span className="text-small font-medium leading-snug">{l}</span>
           </button>
         ))}
       </section>
 
       {/* Répartition */}
-      <section className="rounded-card border border-line bg-surface-raised p-5">
-        <h2 className="mb-4 text-heading font-bold">Répartition des soldes</h2>
-        {sims.map((sim) => {
-          const total = sims.reduce((s, x) => s + x.solde, 0);
-          const pct = Math.round((sim.solde / total) * 100);
-          return (
-            <div key={sim.id} className="mb-4 last:mb-0">
-              <div className="mb-1.5 flex items-center justify-between text-small">
-                <span className="font-semibold">{sim.operateur}</span>
-                <span className="tabnums text-ink-soft">{fcfa(sim.solde)} · {pct}%</span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-pill bg-surface-2">
-                <div className={`h-full rounded-pill ${sim.operateur === "MTN" ? "bg-[#f5a800]" : "bg-[#ff5a1f]"}`}
-                  style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          );
-        })}
+      <section>
+        <h2 className="mb-3 text-heading font-semibold">Répartition</h2>
+        <div className="rounded-card border border-line bg-surface-raised p-5">
+          <div className="mb-4 flex h-2 overflow-hidden rounded-sm">
+            {sims.map((s, i) => (
+              <div key={s.id} style={{ width: `${(s.solde / total) * 100}%` }}
+                className={i === 0 ? "bg-ink" : "bg-surface-3"} />
+            ))}
+          </div>
+          <ul className="divide-hair">
+            {sims.map((s, i) => (
+              <li key={s.id} className="flex items-center justify-between py-2.5">
+                <span className="flex items-center gap-2.5 text-body">
+                  <span className={`size-2.5 rounded-sm ${i === 0 ? "bg-ink" : "bg-surface-3"}`} />
+                  {s.operateur}
+                </span>
+                <span className="text-body tabnums text-ink-soft">
+                  {fcfa(s.solde)} · {Math.round((s.solde / total) * 100)}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
-      {/* Dernier mouvement par carte */}
+      {/* Mouvements */}
       <section>
-        <h2 className="mb-3 text-heading font-bold">Derniers mouvements</h2>
-        <ul className="flex flex-col gap-1">
-          {paiements.slice(0, 4).map((p) => (
-            <li key={p.id} className="flex items-center gap-3 rounded-btn px-2 py-2.5">
-              <span className={`grid size-9 place-items-center rounded-full text-caption font-bold ${
-                p.sim === "MTN" ? "bg-[#ffcc00] text-black" : "bg-[#ff6600] text-white"
-              }`}>{p.sim === "MTN" ? "M" : "O"}</span>
+        <h2 className="mb-1 text-heading font-semibold">Mouvements récents</h2>
+        <ul className="divide-hair">
+          {paiements.slice(0, 5).map((p) => (
+            <li key={p.id} className="flex items-center gap-3 py-3.5">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+                {p.sens === "in" ? <IconArrowDown size={16} /> : <IconArrowUp size={16} />}
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{p.nom}</p>
-                <p className="text-caption text-ink-soft">{p.date} · {p.heure}</p>
+                <p className="truncate text-body font-medium">{p.nom}</p>
+                <p className="text-small text-ink-faint">{p.sim} · {p.date} · {p.heure}</p>
               </div>
-              <span className={`font-bold tabnums ${p.sens === "in" ? "text-success" : "text-ink"}`}>
-                {p.sens === "in" ? "+" : "−"}{fcfa(p.montant).replace(" FCFA", "")}
+              <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : "text-ink"}`}>
+                {p.sens === "in" ? "+" : "−"}{fcfaCourt(p.montant)}
               </span>
             </li>
           ))}
