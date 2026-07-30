@@ -11,15 +11,15 @@ fi
 ICI="$(cd "$(dirname "$0")" && pwd)"
 echo "=== TOTEM — installation ==="
 
-echo "[1/6] Paquets système…"
+echo "[1/8] Paquets système…"
 apt-get update -qq
 apt-get install -y -qq python3 python3-serial > /dev/null
 
-echo "[2/6] Copie du programme vers /opt/totem…"
+echo "[2/8] Copie du programme vers /opt/totem…"
 mkdir -p /opt/totem /var/lib/totem
 cp -r "$ICI/totem" /opt/totem/   # /opt/totem/totem : « python3 -m totem » le trouve
 
-echo "[3/6] Configuration…"
+echo "[3/8] Configuration…"
 CONF=/boot/firmware/totem.conf
 [ -f /boot/totem.conf ] && CONF=/boot/totem.conf
 if [ ! -f "$CONF" ] || grep -q COLLEZ_ICI "$CONF"; then
@@ -36,12 +36,31 @@ if [ ! -f "$CONF" ] || grep -q COLLEZ_ICI "$CONF"; then
 fi
 echo "  Config : $CONF"
 
-echo "[4/6] Service systemd (démarrage automatique + relance en cas de plantage)…"
+echo "[4/8] Service systemd (démarrage automatique + relance en cas de plantage)…"
 cp "$ICI/systemd/totem.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable totem.service > /dev/null
 
-echo "[5/6] Tailscale (accès à distance sécurisé) — optionnel…"
+echo "[5/8] Chien de garde matériel (le Pi se relance seul s'il se fige)…"
+# Dernier filet de sécurité : si le système entier se bloque, la puce
+# watchdog du Raspberry Pi coupe et rallume la machine toute seule.
+if ! grep -q "^RuntimeWatchdogSec" /etc/systemd/system.conf; then
+  printf '\nRuntimeWatchdogSec=15\nRebootWatchdogSec=2min\n' >> /etc/systemd/system.conf
+  echo "  activé (effectif au prochain redémarrage)"
+else
+  echo "  déjà configuré"
+fi
+
+echo "[6/8] Limite du journal système (la carte mémoire ne doit pas se remplir)…"
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/totem.conf <<'EOF'
+[Journal]
+SystemMaxUse=64M
+MaxRetentionSec=1month
+EOF
+systemctl restart systemd-journald || true
+
+echo "[7/8] Tailscale (accès à distance sécurisé) — optionnel…"
 if ! command -v tailscale > /dev/null; then
   read -rp "  Installer Tailscale maintenant ? [O/n] " REP
   if [ "${REP:-O}" != "n" ]; then
@@ -51,7 +70,7 @@ if ! command -v tailscale > /dev/null; then
   fi
 fi
 
-echo "[6/6] Démarrage du robot…"
+echo "[8/8] Démarrage du robot…"
 systemctl restart totem.service
 sleep 3
 systemctl --no-pager -l status totem.service | head -8 || true
@@ -59,3 +78,4 @@ systemctl --no-pager -l status totem.service | head -8 || true
 echo
 echo "=== Terminé ! Le robot doit vous avoir écrit sur Telegram. ==="
 echo "Journal en direct : sudo journalctl -u totem -f"
+echo "État             : sudo systemctl status totem"

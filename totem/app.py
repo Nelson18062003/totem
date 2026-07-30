@@ -20,13 +20,17 @@ L'expérience Telegram repose sur trois idées :
 """
 
 import re
+import signal
 import threading
 import time
 from datetime import datetime
 
 from .compte import ErreurModem, libelles_uniques
 from .mise_en_forme import bloc, echap, gras, mono
+from .sante import Sante, sauvegarder_journal
 from .storage import montant_recu
+
+ARRET_PROPRE = "arrêt propre"
 
 RE_CODE_USSD = re.compile(r"^[\*#][\d\*#]+#$")
 # « mtn *126# » : viser un compte sans changer le compte courant
@@ -53,7 +57,7 @@ COMMANDES_BOT = [
 class Robot:
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
-                 delai_session=180):
+                 delai_session=180, chemin_base=None):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -62,9 +66,11 @@ class Robot:
         self.pause_sms = pause_sms
         self.raccourcis = raccourcis or {}
         self.delai_session = delai_session
+        self.chemin_base = chemin_base
         self.actif = True
         self.verrou = threading.RLock()
         self.courant = self.comptes[0] if self.comptes else None
+        self.sante = Sante()
         self._reinitialiser_session()
 
     @property
@@ -114,23 +120,52 @@ class Robot:
         ]
         return "\n".join(lignes)
 
-    # ---- démarrage --------------------------------------------------------
+    # ---- démarrage et arrêt ------------------------------------------------
     def demarrer(self, bloquant=True):
         if not self.comptes:
             self.transport.envoyer(
                 "⚠️ Aucun modem détecté. Vérifiez les branchements USB.")
             return
+        # Lu AVANT de journaliser ce démarrage : si le dernier événement connu
+        # n'est pas un arrêt propre, la fois d'avant s'est mal terminée
+        # (coupure de courant ou plantage). C'est une information précieuse.
+        precedent = self.journal.dernier_evenement()
+        brutal = precedent is not None and ARRET_PROPRE not in precedent
+
+        self._installer_arret_propre()
         self.transport.vider_backlog()      # ne jamais rejouer d'ancienne commande
         self.transport.publier_commandes(COMMANDES_BOT)
         detail = "\n".join(f"· {echap(c.resume())}" for c in self.comptes)
         pluriel = "comptes" if self.multi else "compte"
+        avertissement = (
+            "\n⚡ <i>Redémarrage après coupure de courant ou plantage : "
+            "l'arrêt précédent n'était pas propre.</i>" if brutal else "")
         self.transport.envoyer(
-            f"✅ {gras(self.nom)} en ligne — {len(self.comptes)} {pluriel}\n{detail}",
+            f"✅ {gras(self.nom)} en ligne — {len(self.comptes)} {pluriel}\n"
+            f"{detail}{avertissement}",
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
         if bloquant:
             self._boucle_messages()
+
+    def _installer_arret_propre(self):
+        """systemd envoie SIGTERM avant d'arrêter ou de redémarrer la machine :
+        on en profite pour marquer le journal, afin que le prochain démarrage
+        sache distinguer un arrêt voulu d'une coupure de courant."""
+        def _arreter(signum, frame):
+            self.arreter()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(sig, _arreter)
+            except ValueError:
+                pass    # pas dans le fil principal (démo, tests) : sans gravité
+
+    def arreter(self):
+        if not self.actif:
+            return
+        self.actif = False
+        self.journal.evenement(ARRET_PROPRE)
 
     # ---- messages et clics ------------------------------------------------
     def _boucle_messages(self):
@@ -471,6 +506,10 @@ class Robot:
         for c in self.comptes:
             marque = " ←" if self.multi and c is self.courant else ""
             lignes.append(f"· {echap(c.resume())}{marque}")
+        try:
+            lignes.append(f"\n🖥 {echap(self.sante.resume())}")
+        except Exception:
+            pass
         self.transport.envoyer("\n".join(lignes), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
 
@@ -525,16 +564,36 @@ class Robot:
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
         dernier_rapport = None
+        prochaine_sante = 0
         while self.actif:
             for compte in self.comptes:
                 self._relever_sms(compte)
             self._expirer_session()
+            # La santé du Pi change lentement : inutile de la lire à chaque tour.
+            if time.time() >= prochaine_sante:
+                prochaine_sante = time.time() + 120
+                self._veiller_sante()
             maintenant = datetime.now()
             if maintenant.strftime("%H:%M") == self.heure_rapport \
                     and dernier_rapport != maintenant.date():
                 dernier_rapport = maintenant.date()
                 self._rapport()
+                sauvegarder_journal(self.chemin_base)
             time.sleep(self.pause_sms)
+
+    def _veiller_sante(self):
+        """Alerte sur la tension, la chaleur, le disque — une fois par
+        changement d'état, jamais en boucle."""
+        try:
+            messages = self.sante.alertes()
+        except Exception as e:
+            self.journal.evenement(f"lecture santé : {e}")
+            return
+        for genre, texte in messages:
+            self.journal.evenement(f"santé — {texte}")
+            prefixe = "⚠️ " if genre == "alerte" else "✅ "
+            self.transport.envoyer(f"{prefixe}{echap(texte)}", canal="alertes",
+                                   silencieux=genre != "alerte")
 
     def _relever_sms(self, compte):
         try:

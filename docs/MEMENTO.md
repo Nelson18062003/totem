@@ -88,16 +88,25 @@ ping totem.local
 
 ## 7. Lancer et arrêter TOTEM
 
-Aujourd'hui (lancement à la main) :
+Une fois `install.sh` passé, **TOTEM démarre tout seul avec le Pi** et se
+relance seul s'il plante. Vous n'avez normalement rien à lancer.
 
 ```
-cd ~/totem
-python3 -m totem
+sudo systemctl status totem     # est-ce qu'il tourne ?
+sudo systemctl restart totem    # le relancer
+sudo systemctl stop totem       # l'arrêter (il reprendra au prochain démarrage)
+sudo journalctl -u totem -f     # voir ce qu'il fait, en direct (Ctrl+C pour sortir)
 ```
 
-**Pour l'arrêter** : `Ctrl + C`.
+Après avoir récupéré une nouvelle version du code :
 
-Autres modes utiles :
+```
+cd ~/totem && git pull
+sudo bash install.sh            # recopie le programme et relance le service
+```
+
+Modes utiles, à lancer à la main (arrêtez le service d'abord pour éviter que
+deux robots se disputent les modems) :
 
 ```
 python3 -m totem --modems       # quels modems sont détectés ?
@@ -105,14 +114,19 @@ python3 -m totem --demo         # démonstration, sans matériel
 python3 -m totem --simulation   # faux modems, vrai Telegram
 ```
 
-> À partir de la phase 7, TOTEM démarrera **tout seul** avec le Pi. Les
-> commandes deviendront :
-> ```
-> sudo systemctl status totem     # est-ce qu'il tourne ?
-> sudo systemctl restart totem    # le relancer
-> sudo systemctl stop totem       # l'arrêter
-> journalctl -u totem -f          # voir ce qu'il fait, en direct
-> ```
+### Ce que le robot surveille tout seul
+
+Il vous prévient sur Telegram, sans que vous demandiez rien :
+
+| Situation | Message |
+|---|---|
+| Redémarrage après coupure de courant | « ⚡ Redémarrage après coupure ou plantage » |
+| Alimentation qui faiblit | « ⚠️ Le Pi est en sous-tension » — **à traiter vite**, risque pour la carte mémoire |
+| Surchauffe | « ⚠️ Température élevée » |
+| Carte mémoire qui se remplit | « ⚠️ Carte mémoire pleine à N % » |
+| Modem muet | Il le redémarre seul et vous le dit |
+
+Chaque alerte n'arrive **qu'une fois**, et le retour à la normale est signalé.
 
 ---
 
@@ -133,11 +147,19 @@ hostname -I              # son adresse sur le réseau
 
 | Situation | Que faire |
 |---|---|
-| TOTEM ne répond plus sur Telegram | `Ctrl + C` puis `python3 -m totem` |
+| TOTEM ne répond plus sur Telegram | `sudo systemctl restart totem` |
+| Comprendre pourquoi il a planté | `sudo journalctl -u totem -n 50` |
 | Le modem ne répond plus | Dans Telegram : `/redemarrer` |
+| Un modem manque | `python3 -m totem --modems` ; si deux modems et un seul vu → hub USB **alimenté** |
 | Le Pi ne répond plus du tout | Débranchez, attendez 10 s, rebranchez *(seul cas où c'est permis)* |
 | Le mot de passe est refusé | Vérifiez que Verr. Maj est désactivé |
 | « command not found » | Vérifiez que vous êtes bien dans le dossier : `cd ~/totem` |
+
+### Les trois filets de sécurité
+
+1. **Le robot se relance** s'il plante (systemd, toutes les 10 s, sans jamais renoncer).
+2. **Le Pi se relance** si le système entier se fige (chien de garde matériel).
+3. **Le journal est sauvegardé** chaque soir dans `sauvegardes/`, 7 jours gardés.
 
 ---
 

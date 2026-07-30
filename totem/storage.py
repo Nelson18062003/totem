@@ -68,6 +68,14 @@ class Journal:
                               (self._maintenant(), texte))
             self.conn.commit()
 
+    def dernier_evenement(self):
+        """Texte du dernier événement journalisé, ou None si le journal est
+        vierge. Sert à savoir si l'arrêt précédent était propre."""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT texte FROM evenements ORDER BY id DESC LIMIT 1").fetchone()
+        return ligne[0] if ligne else None
+
     def derniers_sms(self, n=5):
         """[(date, expéditeur, texte, compte)] du plus récent au plus ancien."""
         with self.verrou:
