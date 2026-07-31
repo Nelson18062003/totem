@@ -143,6 +143,7 @@ class Robot:
         self.canal_session = None
         self.pin_actif = False
         self.pin_tampon = ""
+        self.saisie_tampon = ""          # ce qui se compose sur le pavé libre
         self.file_macro = []
         self.dernier_echange = time.time()
         self.montant_session = None      # montant saisi pendant la session
@@ -379,6 +380,12 @@ class Robot:
                 self._noter_trace(texte.strip())
             else:
                 self._fermer_trace()
+                # Réponse à une saisie libre : un montant, un numéro de
+                # bénéficiaire. Ce n'est pas secret, mais ça n'a rien à faire
+                # dans l'historique d'une conversation. Le pavé de boutons
+                # évite le problème ; quand l'utilisateur tape quand même, on
+                # efface derrière lui.
+                self.transport.supprimer(entrant.message_id, canal=canal)
             self.journal.ussd("envoyé", texte, compte.libelle,
                               compte.carte.iccid)
         self._ussd(compte, texte, nouveau=False)
@@ -463,6 +470,8 @@ class Robot:
             self._avancer_macro()
         elif genre == "p":
             self._pave(valeur)
+        elif genre == "s":
+            self._saisie(valeur)
 
     def _verifier_admin(self, role, entrant, canal):
         if role == ADMIN:
@@ -600,10 +609,67 @@ class Robot:
                 # opérateurs ne le disent nulle part dans le protocole. On
                 # laisse donc toujours une porte de sortie sûre à portée de
                 # doigt, plutôt que de parier sur le vocabulaire.
-                texte += "\n✍️ Répondez par un message (numéro, montant…)."
-                boutons = [[("🔐 Saisir en masqué", "c:masquer")]]
+                return self._peindre(*self._carte_saisie(etiquette))
             boutons = boutons + [[("❌ Annuler", "c:annuler")]]
         self._peindre(texte, boutons)
+
+    def _carte_saisie(self, etiquette=""):
+        """Pavé de boutons pour une saisie libre : montant, numéro…
+
+        Pourquoi des boutons plutôt que le clavier du téléphone : un message
+        tapé dans Telegram **reste dans la conversation**. Le supprimer après
+        coup ne suffit pas — il a existé, il a transité, et la suppression
+        peut échouer. Un chiffre composé sur des boutons, lui, n'est jamais un
+        message : il ne vit que dans la carte de session, qui se réécrit en
+        place et disparaît avec elle.
+
+        Contrairement au code secret, ce qui se compose ici s'affiche en
+        clair : il faut pouvoir relire un montant avant de l'envoyer. Le
+        bouton « 🔐 Masquer » reste à portée si la demande s'avère sensible.
+        """
+        titres = {"montant": "💰 Montant", "destinataire": "📱 Numéro"}
+        titre = titres.get(self.attente_saisie, "✍️ Saisie")
+        boutons = [[(c, f"s:{c}") for c in ligne] for ligne in PAVE_PIN]
+        boutons.append([("*", "s:*"), ("0", "s:0"), ("#", "s:#")])
+        boutons.append([("⌫", "s:eff"), ("✅ Valider", "s:ok")])
+        boutons.append([("🔐 Masquer", "c:masquer"), ("❌ Annuler", "c:annuler")])
+        return (
+            f"{titre}{etiquette}\n{bloc(self.dernier_menu)}\n"
+            f"Saisi : {mono(self.saisie_tampon or '—')}\n"
+            + italique("Composez sur les boutons : rien n'apparaît dans la "
+                       "conversation. Vous pouvez aussi répondre par un "
+                       "message — il sera effacé aussitôt."), boutons)
+
+    def _saisie(self, touche):
+        """Une touche du pavé libre. Miroir de _pave, sans le masquage."""
+        compte = self.session_compte
+        if compte is None or self.pin_actif:
+            return
+        self.dernier_echange = time.time()
+        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
+        if touche == "eff":
+            self.saisie_tampon = self.saisie_tampon[:-1]
+        elif touche == "ok":
+            if not self.saisie_tampon:
+                return
+            valeur, self.saisie_tampon = self.saisie_tampon, ""
+            # Une saisie libre appartient à CETTE opération : le raccourci
+            # s'arrête ici et mènera l'utilisateur jusqu'à la question.
+            self._fermer_trace()
+            self._retenir_saisie(valeur)
+            self.journal.ussd("envoyé", valeur, compte.libelle,
+                              compte.carte.iccid)
+            self._peindre(f"{gras('Saisie')}{etiquette}\n⏳ Envoi de "
+                          f"{mono(valeur)}…", [])
+            self._ussd(compte, valeur, nouveau=False)
+            self._avancer_macro()
+            return
+        elif len(self.saisie_tampon) < 32 and (touche.isdigit()
+                                               or touche in ("*", "#")):
+            self.saisie_tampon += touche
+        else:
+            return
+        self._peindre(*self._carte_saisie(etiquette))
 
     def _carte_pin(self, etiquette=""):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]

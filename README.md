@@ -22,8 +22,10 @@ quotidiens, chien de garde automatique.
 
 - **Aucun port ouvert** : le Pi ne fait que des connexions sortantes
   (Telegram + Tailscale pour la maintenance SSH). Compatible Starlink (CGNAT).
-- **Le PIN MoMo n'est jamais stocké** : composé sur un pavé de boutons, il
-  n'existe même pas comme message Telegram ; le journal ne garde que `****`.
+- **Rien ne se tape dans la conversation** : le code PIN, mais aussi les
+  montants et les numéros de bénéficiaire, se composent sur des pavés de
+  boutons. Un appui n'est pas un message — il ne laisse donc aucune trace
+  dans l'historique Telegram. Le journal ne garde du PIN que `****`.
 - **Seules les conversations déclarées sont écoutées** ; tout autre expéditeur
   est ignoré en silence.
 
@@ -32,7 +34,14 @@ quotidiens, chien de garde automatique.
 Les menus MoMo arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
 l'aveugle), la session USSD tient sur **une seule carte qui se met à jour**, le
 **code PIN se compose sur un pavé sécurisé**, et une opération courante tient en
-**un seul bouton** (raccourcis configurables). Le robot sait aussi travailler
+**un seul bouton** (raccourcis appris).
+
+Les saisies libres — montant, numéro du bénéficiaire — passent elles aussi par
+un pavé de boutons. Un message tapé au clavier resterait dans la conversation ;
+l'effacer après coup ne répare rien, il a existé et transité. Un chiffre
+composé sur des boutons n'est jamais un message : il ne vit que dans la carte
+de session, qui se réécrit en place. Le clavier reste possible quand la réponse
+demande des lettres — le message est alors effacé aussitôt. Le robot sait aussi travailler
 dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et un
 **fil par nature d'information** si le groupe utilise les sujets.
 

@@ -131,7 +131,12 @@ def principal():
             "/raccourcis",                        # il doit y figurer
             "/orange", "#150#", "5", "1",         # bascule puis solde Orange
             "mtn *126#",                          # transfert ciblé MTN
-            "1", "677123456", "50000", "1234",    # 1234 = PIN (jamais journalisé)
+            # Bénéficiaire et montant se composent sur le pavé de boutons :
+            # aucun chiffre ne devient un message de la conversation.
+            "1",
+            *[f"!s:{c}" for c in "677123456"], "!s:ok",
+            *[f"!s:{c}" for c in "50000"], "!s:ok",
+            "1234",                               # PIN (jamais journalisé)
             "/rapport", "/sms",
         ]
         journal = Journal(":memory:")

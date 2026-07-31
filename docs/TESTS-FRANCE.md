@@ -104,6 +104,21 @@ correspondent plus à aucun solde réel.
 - [ ] Changez pour la carte de l'autre opérateur → les boutons changent tout
       seuls, ceux du premier réseau ne s'affichent plus
 
+## C quinquies. Aucune donnée dans la conversation
+- [ ] Lancez un transfert. À la question du bénéficiaire, un **pavé de
+      chiffres** s'affiche — et non « répondez par un message »
+- [ ] Composez le numéro : il apparaît en clair dans la carte de session
+      (il faut pouvoir se relire), mais **aucun message n'apparaît** dans le
+      fil de la conversation
+- [ ] Même chose pour le montant
+- [ ] Puis le pavé du code, masqué par des `•`
+- [ ] **Remontez la conversation** : ni le numéro, ni le montant, ni le code
+      ne doivent y figurer
+- [ ] Répondez une fois au clavier plutôt qu'au pavé → votre message est
+      **effacé aussitôt** après avoir été transmis
+- [ ] Le bouton **🔐 Masquer** bascule sur le pavé masqué si la demande
+      s'avère sensible
+
 ## D. Robustesse (les pannes de Douala, simulées à Lille)
 - [ ] **Coupure de courant** : débranchez 10 s, rebranchez → le robot revient
       seul et renvoie « ✅ en ligne » (≈2 min), sans aucune intervention
