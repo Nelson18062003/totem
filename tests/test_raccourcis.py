@@ -27,6 +27,7 @@ from totem.storage import Journal
 from tests.test_experience_telegram import TransportEspion, donnees, libelles
 
 MTN = Carte(iccid="89237010000000000011", imsi="624010000000011")
+ORANGE = Carte(iccid="89237020000000000022", imsi="624020000000022")
 
 
 def robot(carte=MTN, **kw):
@@ -250,3 +251,56 @@ class TestSuiviDeLOperateur(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCatalogueDeDepart(unittest.TestCase):
+    """Les codes relevés sur le terrain, proposés en un bouton.
+
+    Rien n'est deviné ici : ces codes ont été composés sur un vrai téléphone.
+    Et tous sont des portes d'entrée — aucun ne mène seul au bout d'une
+    opération, chacun redemande un montant, un numéro ou le code secret. Un
+    code erroné échoue donc sans qu'un franc ait bougé.
+    """
+
+    def test_le_catalogue_orange_est_propose(self):
+        r, t, _ = robot(carte=ORANGE)
+        tape(r, "/raccourcis")
+        self.assertIn("r:cat", donnees(boutons_envoi(t)))
+        self.assertIn("#148*5#", dernier_envoi(t))
+
+    def test_installer_pose_tous_les_boutons(self):
+        r, _, _ = robot(carte=ORANGE)
+        clic(r, "r:cat")
+        appris = r.journal.raccourcis("Orange")
+        self.assertEqual(appris["solde"]["etapes"], ["#148*5#"])
+        self.assertEqual(appris["transfert"]["etapes"], ["#148*4#"])
+        self.assertEqual(appris["mon_numero"]["etapes"], ["#148*7*6#"])
+        self.assertEqual(len(appris), 5)
+
+    def test_les_boutons_installes_apparaissent_sur_l_accueil(self):
+        r, t, _ = robot(carte=ORANGE)
+        clic(r, "r:cat")
+        tape(r, "/menu")
+        self.assertIn("m:solde", donnees(boutons_envoi(t)))
+
+    def test_ne_propose_plus_ce_qui_est_deja_pose(self):
+        r, t, _ = robot(carte=ORANGE)
+        clic(r, "r:cat")
+        tape(r, "/raccourcis")
+        self.assertNotIn("r:cat", donnees(boutons_envoi(t)))
+
+    def test_un_operateur_sans_catalogue_ne_propose_rien(self):
+        """MTN n'a pas encore été relevé : on ne va pas inventer ses codes."""
+        r, t, _ = robot(carte=MTN)
+        tape(r, "/raccourcis")
+        self.assertNotIn("r:cat", donnees(boutons_envoi(t)))
+
+    def test_aucun_code_du_catalogue_ne_va_jusqu_au_bout(self):
+        """La propriété qui rend l'installation sans danger : chaque code
+        s'arrête à une question, il ne conclut jamais une opération."""
+        from totem.codes import CATALOGUE
+        for operateur, entrees in CATALOGUE.items():
+            for libelle, code, suite in entrees:
+                self.assertTrue(suite.strip(),
+                                f"{libelle} doit dire ce qui est demandé ensuite")
+                self.assertTrue(code.endswith("#"), f"{code} mal formé")

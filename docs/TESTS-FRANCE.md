@@ -104,6 +104,16 @@ correspondent plus à aucun solde réel.
 - [ ] Changez pour la carte de l'autre opérateur → les boutons changent tout
       seuls, ceux du premier réseau ne s'affichent plus
 
+### Les boutons proposés (Orange)
+- [ ] `/raccourcis` propose **➕ Installer les 5 boutons Orange** → appuyez
+- [ ] Les cinq apparaissent sur l'accueil : Solde, Dépôt, Retrait, Transfert,
+      Mon numéro
+- [ ] Essayez **💰 Solde** → le pavé du code s'ouvre, le solde s'affiche
+- [ ] Essayez **↗️ Transfert** → il s'arrête à la question du bénéficiaire,
+      **sans rien envoyer**
+- [ ] Si l'un répond « service indisponible », le code a changé : refaites
+      l'opération par le menu et appuyez sur 💾 pour le corriger
+
 ## C quinquies. Aucune donnée dans la conversation
 - [ ] Lancez un transfert. À la question du bénéficiaire, un **pavé de
       chiffres** s'affiche — et non « répondez par un message »

@@ -129,7 +129,9 @@ def principal():
             "*126#", "5", "1",                    # solde MTN (menus en boutons)
             "!r:enr", "Solde",                    # 💾 : le parcours devient un bouton
             "/raccourcis",                        # il doit y figurer
-            "/orange", "#150#", "5", "1",         # bascule puis solde Orange
+            "/orange", "/raccourcis", "!r:cat",   # catalogue Orange propose puis pose
+            "/menu",                              # les boutons Orange apparaissent
+            "#150#", "5", "1",                    # solde Orange
             "mtn *126#",                          # transfert ciblé MTN
             # Bénéficiaire et montant se composent sur le pavé de boutons :
             # aucun chiffre ne devient un message de la conversation.

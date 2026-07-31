@@ -110,6 +110,15 @@ Deux garde-fous, qui décident de ce qui entre dans un raccourci :
   montant d'hier serait au mieux faux. Le bouton mène jusqu'à la question,
   vous répondez.
 
+Pour les opérateurs déjà relevés sur le terrain, `/raccourcis` propose de
+poser les boutons d'un coup — aujourd'hui Orange Cameroun (`#148*5#` pour le
+solde, `#148*4#` pour un transfert…). Ces codes ne sont **pas devinés** : ils
+ont été composés sur un vrai téléphone. Et les proposer est sans danger, car
+chacun n'est qu'une **porte d'entrée** : aucun ne conclut une opération seul,
+tous redemandent ensuite un montant, un numéro ou le code secret. Un code
+erroné échoue donc sans qu'un franc ait bougé — et se corrige en refaisant
+l'opération une fois.
+
 Les boutons sont rangés **par opérateur**, pas par carte : les codes
 appartiennent au réseau. Changer une SIM MTN pour une autre SIM MTN ne fait
 rien disparaître ; passer à une puce Orange fait apparaître les boutons Orange
@@ -150,6 +159,7 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
                   raccourcis, multi-comptes, SMS, rapports, watchdog
   compte.py       un compte = un modem + une SIM + sa session USSD
   carte.py        identité d'une SIM : ICCID, IMSI, opérateur, itinérance
+  codes.py        codes USSD relevés sur le terrain, proposés en un bouton
   detect.py       détection des modems (regroupement par IMEI)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modems MTN et Orange pour tests sans matériel

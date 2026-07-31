@@ -29,6 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import analyser
+from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
@@ -457,6 +458,8 @@ class Robot:
                 self._demander_nom_raccourci(canal)
             elif action == "sup":
                 self._supprimer_raccourci(cible, canal)
+            elif action == "cat":
+                self._installer_catalogue(canal)
             elif action == "liste":
                 self._lister_raccourcis(canal)
         elif genre == "u":
@@ -813,11 +816,11 @@ class Robot:
                 "Enregistrement impossible : la carte n'est pas identifiée.",
                 canal=canal)
         propre = re.sub(r"[^\w\s-]", "", nom).strip()[:24]
-        if not propre:
+        identifiant = cle_code(propre)
+        if not propre or identifiant == "raccourci":
             return self.transport.envoyer(
                 "Ce nom ne contient aucune lettre. Réessayez.", canal=canal)
-        cle = propre.lower().replace(" ", "_")
-        self.journal.ajouter_raccourci(operateur, cle, propre, etapes)
+        self.journal.ajouter_raccourci(operateur, identifiant, propre, etapes)
         self.journal.evenement(
             f"raccourci « {propre} » appris pour {operateur} : {','.join(etapes)}")
         self.transport.envoyer(
@@ -848,10 +851,52 @@ class Robot:
                 "Aucun pour l'instant. Faites une opération une fois — le "
                 "solde, par exemple — puis appuyez sur 💾 à la fin : elle "
                 "deviendra un bouton.")
-        boutons = [[(f"🗑 {r['libelle']}", f"r:sup:{nom}")]
-                   for nom, r in list(appris.items())[:6]]
+        propose = [c for c in catalogue(operateur)
+                   if cle_code(c[0]) not in appris]
+        if propose:
+            lignes.append("")
+            lignes.append(italique(
+                f"Codes connus pour {echap(operateur)}, pas encore installés :"))
+            for libelle, code, suite in propose:
+                lignes.append(f"· {echap(libelle)} — {mono(code)}, "
+                              f"puis {echap(suite)}")
+            lignes.append("")
+            lignes.append(
+                "Chacun ouvre le guichet et s'arrête à la question suivante : "
+                "aucun ne déplace d'argent tout seul. Vérifiez-les une fois.")
+
+        boutons = []
+        if propose:
+            boutons.append([(f"➕ Installer les {len(propose)} boutons "
+                             f"{operateur}", "r:cat")])
+        boutons += [[(f"🗑 {r['libelle']}", f"r:sup:{nom}")]
+                    for nom, r in list(appris.items())[:6]]
         boutons.append([("🏠 Menu", "c:menu")])
         self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
+
+    def _installer_catalogue(self, canal=None):
+        """Installe d'un coup les codes connus de l'opérateur en place."""
+        operateur = self._operateur_courant()
+        propose = catalogue(operateur)
+        if not propose:
+            return self.transport.envoyer(
+                "Aucun code connu pour cet opérateur. Faites l'opération une "
+                "fois, puis appuyez sur 💾 : elle deviendra un bouton.",
+                canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+        poses = 0
+        for libelle, code, _suite in propose:
+            if self.journal.ajouter_raccourci(operateur, cle_code(libelle),
+                                              libelle, [code]):
+                poses += 1
+        self.journal.evenement(
+            f"catalogue {operateur} installé : {poses} raccourci(s)")
+        self.transport.envoyer(
+            f"✅ {gras(poses)} bouton(s) installé(s) pour "
+            f"{gras(echap(operateur))}.\n"
+            + italique("Essayez-en un : s'il répond « service indisponible », "
+                       "le code a changé — refaites l'opération par le menu "
+                       "et appuyez sur 💾 pour le corriger."),
+            canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
 
     def _supprimer_raccourci(self, nom, canal):
         operateur = self._operateur_courant()
