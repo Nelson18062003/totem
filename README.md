@@ -184,6 +184,7 @@ recus/            les reçus PDF : maquette validée, génération à brancher
                   (formats de SMS réels et défauts relevés dans son README)
 sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
 tests/            batterie de tests (python3 -m unittest discover -s tests)
+CLAUDE.md         consignes de travail : vérifier main avant toute PR, français
 install.sh        installation en une commande sur Raspberry Pi OS
 systemd/          service (démarrage auto + relance)
 config.example.conf
