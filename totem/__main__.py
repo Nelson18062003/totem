@@ -6,6 +6,7 @@
   python3 -m totem --console       → faux modems + chat dans le terminal
   python3 -m totem --demo          → scénario automatique (vérification rapide)
   python3 -m totem --modems        → liste les modems détectés, puis quitte
+  python3 -m totem --stk           → la SIM porte-t-elle une applet Mobile Money ?
 """
 
 import sys
@@ -57,6 +58,28 @@ def _comptes_reels(patience=120):
 
 def principal():
     args = sys.argv[1:]
+
+    # --- Diagnostic : la carte porte-t-elle une applet SIM Toolkit ? -------
+    # Lecture seule. Répond à la seule question qui décide de l'avenir du
+    # pilotage : l'opérateur peut-il déclarer lui-même ce qu'il attend, au
+    # lieu de nous laisser le deviner d'après le texte d'un menu ?
+    if "--stk" in args:
+        from .detect import detecter_modems
+        from .modem import ModemSerie
+        from .stk import rapport, sonder
+        trouves = detecter_modems()
+        if not trouves:
+            print("Aucun modem détecté. Vérifiez les branchements USB.")
+            return
+        for info in trouves:
+            print(f"\n########## {info.libelle} — {info.port} ##########\n")
+            try:
+                modem = ModemSerie(port=info.port)
+            except Exception as e:
+                print(f"Modem inutilisable : {e}", file=sys.stderr)
+                continue
+            print(rapport(sonder(modem)))
+        return
 
     # --- Diagnostic : que voit-on comme modems ? ---------------------------
     if "--modems" in args:

@@ -111,13 +111,28 @@ C'est documenté dans le manuel AT officiel SIMCom du SIM7500/SIM7600.
 Money, et son contenu diffère d'un pays et d'une offre à l'autre. Il faut
 vérifier sur **tes** cartes avant d'investir.
 
-**Comment le vérifier en cinq minutes**, sans écrire une ligne de code :
-insère la SIM dans un téléphone basique, et regarde si un menu « MTN MoMo » ou
-« Orange Money » apparaît dans les menus du téléphone (souvent sous
-« Services », « Applications SIM » ou « Boîte à outils SIM »).
+**Comment le vérifier — le robot le fait lui-même.** Inutile de chercher un
+téléphone basique : le modem sait poser la question à la carte.
 
-- **Le menu apparaît** → l'applet est là, le SIM Toolkit est jouable.
-- **Rien** → l'USSD est la seule voie sur cette SIM, et ce document s'arrête là.
+```
+sudo systemctl stop totem
+cd ~/totem && python3 -m totem --stk
+sudo systemctl start totem
+```
+
+La sonde est **strictement en lecture** : elle n'ouvre aucune session, ne
+saisit aucun code, ne confirme aucune opération. On peut la lancer sur une
+SIM qui contient de l'argent sans aucun risque.
+
+Elle rend l'un de ces trois verdicts :
+
+| Verdict | Ce que ça veut dire | Suite |
+|---|---|---|
+| « Une applet de paiement semble présente » | la carte porte le programme Mobile Money | la voie SIM Toolkit vaut le travail |
+| « aucun menu » / « aucun intitulé de paiement » | la carte n'a pas d'applet, ou pas de paiement | rester en USSD ; essayer l'autre SIM |
+| « Ce firmware n'expose pas le SIM Toolkit » | le modem ne sait pas relayer | rester en USSD, ce n'est pas un défaut de la carte |
+
+Lance-la sur **les deux SIM** : l'applet dépend de l'opérateur et de l'offre.
 
 ---
 
