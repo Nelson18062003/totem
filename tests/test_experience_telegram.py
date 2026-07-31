@@ -622,6 +622,57 @@ class LimitesDeTelegram(unittest.TestCase):
         self.assertEqual(sum(m.count("ligne") for m in morceaux), 2000)
 
 
+class VersionVisible(unittest.TestCase):
+    """Savoir quelle version tourne réellement.
+
+    Sans cette information, « le correctif n'existe pas » et « le correctif
+    existe mais le Pi ne l'a pas » se ressemblent exactement vus depuis
+    Telegram. C'est ce qui rend un défaut déjà corrigé impossible à clore."""
+
+    def test_version_toujours_lisible(self):
+        from totem.version import version
+        self.assertTrue(version())
+        self.assertIsInstance(version(), str)
+
+    def test_version_annoncee_dans_le_diagnostic(self):
+        from totem.version import version
+        r, t, _ = robot()
+        r._diagnostic()
+        self.assertIn(version(), t.envois[-1][0])
+
+
+class MenuBrut(unittest.TestCase):
+    """`/brut` montre la réponse de l'opérateur telle qu'elle est arrivée.
+
+    Une capture d'écran ne montre ni les fins de ligne, ni les espaces, ni les
+    caractères exotiques — or c'est là que se cachent les défauts d'affichage."""
+
+    def test_sans_menu_recu(self):
+        r, t, _ = robot()
+        r._brut()
+        self.assertIn("Aucun menu reçu", t.envois[-1][0])
+
+    def test_montre_le_texte_exact_et_le_verdict(self):
+        r, t, modem = robot("Orange")
+        modem.menu_principal = MENU_ORANGE_REEL
+        tape(r, "#150#")
+        r._brut()
+        rapport = t.envois[-1][0]
+        self.assertIn("Modifier code secret", rapport)
+        self.assertIn(r"\n", rapport)              # les fins de ligne sont visibles
+        self.assertIn("Options reconnues", rapport)
+        self.assertIn("non", rapport)              # pavé non déclenché
+
+    def test_conserve_apres_fermeture_de_session(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:5")
+        clic(r, "u:1")                              # la session se referme
+        self.assertFalse(r.session_ussd)
+        r._brut()
+        self.assertIn("Votre solde", t.envois[-1][0])
+
+
 class RolesEtAcces(unittest.TestCase):
     def test_observateur_ne_pilote_pas(self):
         r, t, _ = robot(admins=(1,))
