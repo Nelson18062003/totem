@@ -149,12 +149,24 @@ class AffichageDesMenus(unittest.TestCase):
         self.assertEqual(entete, ["Orange Money", "Bienvenue :"])
         self.assertEqual(len(options), 2)
 
-    def test_question_libre_signalee(self):
+    def test_question_libre_ouvre_un_pave_de_boutons(self):
+        """Une saisie libre se compose sur des boutons, plus au clavier.
+
+        Un message tapé dans Telegram reste dans la conversation ; l'effacer
+        après coup ne suffit pas, il a existé et transité. Un chiffre composé
+        sur des boutons n'est jamais un message.
+        """
         r, t, _ = robot()
         tape(r, "*126#")
         clic(r, "u:1")
-        self.assertIn("Répondez par un message", t.dernier_texte())
-        self.assertEqual(donnees(t.derniers_boutons()), ["c:masquer", "c:annuler"])
+        touches = donnees(t.derniers_boutons())
+        for chiffre in "0123456789":
+            self.assertIn(f"s:{chiffre}", touches)
+        self.assertIn("s:ok", touches)
+        self.assertIn("s:eff", touches)
+        # Le masquage et l'abandon restent accessibles à tout moment.
+        self.assertIn("c:masquer", touches)
+        self.assertIn("c:annuler", touches)
 
 
 # Menu réellement renvoyé par Orange Cameroun sur #148#, relevé en production.

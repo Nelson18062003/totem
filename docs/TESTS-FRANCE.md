@@ -39,8 +39,8 @@ data). Deux options, aussi valables l'une que l'autre :
 - [ ] Si le code ouvre un menu numéroté : les **boutons** apparaissent, et un
       appui fait avancer la session **dans la même carte** (pas de nouveau message)
 - [ ] Répondre par un message (au lieu du bouton) marche aussi
-- [ ] Une question libre (« entrez un numéro ») affiche bien
-      « ✍️ Répondez par un message »
+- [ ] Une question libre (« entrez un numéro ») ouvre un **pavé de chiffres**,
+      et non une invitation à taper au clavier
 - [ ] `/annuler` ferme proprement une session en cours
 - [ ] **Réactivité** : dès l'envoi du code, la carte affiche « ⏳ Composition
       de … » sans délai perceptible ; le menu la remplace à l'arrivée
@@ -88,6 +88,46 @@ correspondent plus à aucun solde réel.
 - [ ] Remettez la première : son total réapparaît, inchangé
 - [ ] Dans un menu qui *parle* du code secret sans le demander (ex. Orange
       « Gerer mon code secret »), le pavé PIN ne s'ouvre **pas** : des boutons
+
+## C quater. Vos propres boutons (à faire une fois par opérateur)
+- [ ] Consultez votre solde en passant par le menu, jusqu'au bout
+- [ ] À la fin, le bouton **💾 En faire un bouton** apparaît → appuyez
+- [ ] Nommez-le « Solde » → il apparaît sur l'écran d'accueil
+- [ ] Appuyez dessus : le parcours se déroule seul, le pavé du code s'ouvre
+- [ ] **Vérifiez que le parcours affiché ne contient PAS votre code** —
+      `/raccourcis` montre les étapes en clair, il ne doit y avoir que le
+      code composé et les chiffres du menu
+- [ ] Faites de même pour un dépôt et un retrait
+- [ ] Lancez un transfert, allez jusqu'à la question du bénéficiaire, puis
+      enregistrez → le bouton doit s'arrêter **à la question**, sans rejouer
+      ni le numéro ni le montant
+- [ ] Changez pour la carte de l'autre opérateur → les boutons changent tout
+      seuls, ceux du premier réseau ne s'affichent plus
+
+### Les boutons proposés (Orange)
+- [ ] `/raccourcis` propose **➕ Installer les 5 boutons Orange** → appuyez
+- [ ] Les cinq apparaissent sur l'accueil : Solde, Dépôt, Retrait, Transfert,
+      Mon numéro
+- [ ] Essayez **💰 Solde** → le pavé du code s'ouvre, le solde s'affiche
+- [ ] Essayez **↗️ Transfert** → il s'arrête à la question du bénéficiaire,
+      **sans rien envoyer**
+- [ ] Si l'un répond « service indisponible », le code a changé : refaites
+      l'opération par le menu et appuyez sur 💾 pour le corriger
+
+## C quinquies. Aucune donnée dans la conversation
+- [ ] Lancez un transfert. À la question du bénéficiaire, un **pavé de
+      chiffres** s'affiche — et non « répondez par un message »
+- [ ] Composez le numéro : il apparaît en clair dans la carte de session
+      (il faut pouvoir se relire), mais **aucun message n'apparaît** dans le
+      fil de la conversation
+- [ ] Même chose pour le montant
+- [ ] Puis le pavé du code, masqué par des `•`
+- [ ] **Remontez la conversation** : ni le numéro, ni le montant, ni le code
+      ne doivent y figurer
+- [ ] Répondez une fois au clavier plutôt qu'au pavé → votre message est
+      **effacé aussitôt** après avoir été transmis
+- [ ] Le bouton **🔐 Masquer** bascule sur le pavé masqué si la demande
+      s'avère sensible
 
 ## D. Robustesse (les pannes de Douala, simulées à Lille)
 - [ ] **Coupure de courant** : débranchez 10 s, rebranchez → le robot revient

@@ -29,6 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import analyser
+from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
@@ -72,6 +73,7 @@ COMMANDES_BOT = [
     ("statut", "État des modems, des SIM et du signal"),
     ("comptes", "Choisir le compte piloté"),
     ("sims", "Les cartes SIM connues et celle en place"),
+    ("raccourcis", "Vos boutons : en créer, en supprimer"),
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
@@ -110,6 +112,10 @@ class Robot:
         self.conflit_signale = False
         self.demarre_a = time.time()
         self.dernier_brut = ""   # dernière réponse USSD, pour /brut
+        # Le parcours de la dernière session, gardé le temps d'en faire un
+        # bouton — il doit donc survivre à la réinitialisation de session.
+        self.trace_a_enregistrer = []
+        self.attente_nom = False
         # Un redémarrage après l'heure du bilan ne doit pas en déclencher un.
         self.dernier_rapport = (datetime.now().date()
                                 if self._heure_passee() else None)
@@ -138,17 +144,31 @@ class Robot:
         self.canal_session = None
         self.pin_actif = False
         self.pin_tampon = ""
+        self.saisie_tampon = ""          # ce qui se compose sur le pavé libre
         self.file_macro = []
         self.dernier_echange = time.time()
         self.montant_session = None      # montant saisi pendant la session
         self.destinataire_session = ""   # bénéficiaire saisi pendant la session
         self.attente_saisie = ""         # ce que l'opérateur vient de demander
         self.confirme = False            # grosse sortie déjà confirmée ?
+        # Trace de la session : les étapes rejouables telles quelles, pour
+        # pouvoir en faire un bouton. Elle se ferme dès qu'une donnée
+        # personnelle est demandée — voir _fermer_trace.
+        self.trace = []
+        self.trace_ouverte = True
+        self.trace_rejouee = False       # session lancée par un raccourci ?
 
     def _aide(self):
         lignes = [
             f"🗿 {gras(self.nom)}", "",
             "Le plus simple : /menu, puis tout se fait au doigt.", "",
+            gras("Vos propres boutons"),
+            "Faites une opération une fois — consulter le solde, par exemple. "
+            "À la fin, appuyez sur " + gras("💾 En faire un bouton") + " : le "
+            "parcours devient un raccourci, et vous n'aurez plus jamais à "
+            "retaper les chiffres du menu. Les boutons suivent l'opérateur de "
+            "la carte : ceux d'Orange n'apparaissent pas avec une puce MTN.",
+            "",
             gras("Codes USSD"),
             f"Envoyez {mono('*126#')} (ou tout autre code) : le menu s'ouvre "
             "sous forme de boutons. Les questions libres (numéro, montant) se "
@@ -168,6 +188,7 @@ class Robot:
             "/menu — écran d'accueil",
             "/statut — signal, opérateur, SIM",
             "/sims — les cartes SIM connues, et celle en place",
+            "/raccourcis — vos boutons, et comment en créer",
             "/sms — les derniers SMS reçus",
             "/rapport — bilan des dernières 24 h",
             "/export — journal CSV des 7 derniers jours",
@@ -264,6 +285,14 @@ class Robot:
                 self._clic(texte, entrant, role, canal)
                 return
 
+            # Une saisie attendue passe avant tout : sinon « Solde » serait
+            # lu comme une commande inconnue et le nom serait perdu.
+            if self.attente_nom and not texte.startswith("/"):
+                if not self._verifier_admin(role, entrant, canal):
+                    return
+                self._enregistrer_raccourci(texte, canal)
+                return
+
             commande = self._commande(texte)
             if commande in ("start", "menu"):
                 self._accueil(canal, role)
@@ -276,6 +305,8 @@ class Robot:
                 self._lister_comptes(canal, role)
             elif commande in ("sims", "cartes", "carte"):
                 self._lister_cartes(canal)
+            elif commande in ("raccourcis", "boutons"):
+                self._lister_raccourcis(canal)
             elif commande == "sms":
                 self._derniers_sms(canal)
             elif commande == "rapport":
@@ -339,14 +370,35 @@ class Robot:
                 return
             self.journal.ussd("envoyé", "****", compte.libelle,
                               compte.carte.iccid)
+            self._fermer_trace()
         else:
             self._retenir_saisie(texte)
+            # Un chiffre seul en réponse à un menu numéroté est une
+            # navigation, donc rejouable. Tout le reste — un montant, un
+            # numéro de bénéficiaire — appartient à cette opération-là.
+            _, options = self._analyser_menu(self.dernier_menu)
+            if options and texte.strip().isdigit():
+                self._noter_trace(texte.strip())
+            else:
+                self._fermer_trace()
+                # Réponse à une saisie libre : un montant, un numéro de
+                # bénéficiaire. Ce n'est pas secret, mais ça n'a rien à faire
+                # dans l'historique d'une conversation. Le pavé de boutons
+                # évite le problème ; quand l'utilisateur tape quand même, on
+                # efface derrière lui.
+                self.transport.supprimer(entrant.message_id, canal=canal)
             self.journal.ussd("envoyé", texte, compte.libelle,
                               compte.carte.iccid)
         self._ussd(compte, texte, nouveau=False)
         self._avancer_macro()
 
     def _ouvrir_session(self, compte, code, canal):
+        # Un nouveau code composé, c'est une nouvelle opération : la trace
+        # repart à zéro, sans quoi elle accumulerait deux parcours distincts.
+        self.trace = []
+        self.trace_ouverte = True
+        self.trace_rejouee = False
+        self._noter_trace(code)
         self.canal_session = canal
         self.msg_session = None
         self._ussd(compte, code, nouveau=True)
@@ -400,16 +452,29 @@ class Robot:
                 self._accueil(canal, role)
         elif genre == "m":
             self._lancer_raccourci(valeur, canal)
+        elif genre == "r":                      # raccourcis : créer, supprimer
+            action, _, cible = valeur.partition(":")
+            if action == "enr":
+                self._demander_nom_raccourci(canal)
+            elif action == "sup":
+                self._supprimer_raccourci(cible, canal)
+            elif action == "cat":
+                self._installer_catalogue(canal)
+            elif action == "liste":
+                self._lister_raccourcis(canal)
         elif genre == "u":
             compte = self.session_compte
             if compte is None:
                 return
             self.journal.ussd("envoyé", valeur, compte.libelle,
                               compte.carte.iccid)
+            self._noter_trace(valeur)
             self._ussd(compte, valeur, nouveau=False)
             self._avancer_macro()
         elif genre == "p":
             self._pave(valeur)
+        elif genre == "s":
+            self._saisie(valeur)
 
     def _verifier_admin(self, role, entrant, canal):
         if role == ADMIN:
@@ -436,10 +501,11 @@ class Robot:
                 (("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
                 for i, c in enumerate(self.comptes[:4])
             ])
-        if role == ADMIN and self.raccourcis:
-            noms = list(self.raccourcis)
+        raccourcis = self._raccourcis_actifs() if role == ADMIN else {}
+        if raccourcis:
+            noms = list(raccourcis)
             for i in range(0, len(noms), 2):
-                lignes.append([(self.raccourcis[n]["libelle"], f"m:{n}")
+                lignes.append([(raccourcis[n]["libelle"], f"m:{n}")
                                for n in noms[i:i + 2]])
         lignes.append([("📥 SMS reçus", "c:sms"), ("📊 Rapport 24 h", "c:rapport")])
         lignes.append([("📡 Statut", "c:statut"), ("📄 Export CSV", "c:export")])
@@ -546,10 +612,67 @@ class Robot:
                 # opérateurs ne le disent nulle part dans le protocole. On
                 # laisse donc toujours une porte de sortie sûre à portée de
                 # doigt, plutôt que de parier sur le vocabulaire.
-                texte += "\n✍️ Répondez par un message (numéro, montant…)."
-                boutons = [[("🔐 Saisir en masqué", "c:masquer")]]
+                return self._peindre(*self._carte_saisie(etiquette))
             boutons = boutons + [[("❌ Annuler", "c:annuler")]]
         self._peindre(texte, boutons)
+
+    def _carte_saisie(self, etiquette=""):
+        """Pavé de boutons pour une saisie libre : montant, numéro…
+
+        Pourquoi des boutons plutôt que le clavier du téléphone : un message
+        tapé dans Telegram **reste dans la conversation**. Le supprimer après
+        coup ne suffit pas — il a existé, il a transité, et la suppression
+        peut échouer. Un chiffre composé sur des boutons, lui, n'est jamais un
+        message : il ne vit que dans la carte de session, qui se réécrit en
+        place et disparaît avec elle.
+
+        Contrairement au code secret, ce qui se compose ici s'affiche en
+        clair : il faut pouvoir relire un montant avant de l'envoyer. Le
+        bouton « 🔐 Masquer » reste à portée si la demande s'avère sensible.
+        """
+        titres = {"montant": "💰 Montant", "destinataire": "📱 Numéro"}
+        titre = titres.get(self.attente_saisie, "✍️ Saisie")
+        boutons = [[(c, f"s:{c}") for c in ligne] for ligne in PAVE_PIN]
+        boutons.append([("*", "s:*"), ("0", "s:0"), ("#", "s:#")])
+        boutons.append([("⌫", "s:eff"), ("✅ Valider", "s:ok")])
+        boutons.append([("🔐 Masquer", "c:masquer"), ("❌ Annuler", "c:annuler")])
+        return (
+            f"{titre}{etiquette}\n{bloc(self.dernier_menu)}\n"
+            f"Saisi : {mono(self.saisie_tampon or '—')}\n"
+            + italique("Composez sur les boutons : rien n'apparaît dans la "
+                       "conversation. Vous pouvez aussi répondre par un "
+                       "message — il sera effacé aussitôt."), boutons)
+
+    def _saisie(self, touche):
+        """Une touche du pavé libre. Miroir de _pave, sans le masquage."""
+        compte = self.session_compte
+        if compte is None or self.pin_actif:
+            return
+        self.dernier_echange = time.time()
+        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
+        if touche == "eff":
+            self.saisie_tampon = self.saisie_tampon[:-1]
+        elif touche == "ok":
+            if not self.saisie_tampon:
+                return
+            valeur, self.saisie_tampon = self.saisie_tampon, ""
+            # Une saisie libre appartient à CETTE opération : le raccourci
+            # s'arrête ici et mènera l'utilisateur jusqu'à la question.
+            self._fermer_trace()
+            self._retenir_saisie(valeur)
+            self.journal.ussd("envoyé", valeur, compte.libelle,
+                              compte.carte.iccid)
+            self._peindre(f"{gras('Saisie')}{etiquette}\n⏳ Envoi de "
+                          f"{mono(valeur)}…", [])
+            self._ussd(compte, valeur, nouveau=False)
+            self._avancer_macro()
+            return
+        elif len(self.saisie_tampon) < 32 and (touche.isdigit()
+                                               or touche in ("*", "#")):
+            self.saisie_tampon += touche
+        else:
+            return
+        self._peindre(*self._carte_saisie(etiquette))
 
     def _carte_pin(self, etiquette=""):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]
@@ -616,6 +739,7 @@ class Robot:
                 return
             code, self.pin_tampon = self.pin_tampon, ""
             self.pin_actif = False
+            self._fermer_trace()
             self.journal.ussd("envoyé", "****", compte.libelle,
                               compte.carte.iccid)
             self._peindre(
@@ -638,11 +762,181 @@ class Robot:
         self.msg_session = self.transport.envoyer(
             texte, boutons=boutons, canal=self.canal_session)
 
+    # ---- apprentissage des raccourcis --------------------------------------
+    def _operateur_courant(self):
+        """« MTN », « Orange »… — l'opérateur de la carte en place.
+
+        Les raccourcis sont rangés par opérateur et non par carte : les codes
+        USSD appartiennent au réseau. Changer une SIM MTN pour une autre SIM
+        MTN ne doit pas faire disparaître les boutons.
+        """
+        if not self.courant or not self.courant.carte.identifiee:
+            return ""
+        operateur = self.courant.carte.operateur
+        return "" if operateur == "SIM inconnue" else operateur
+
+    def _raccourcis_actifs(self):
+        """Les boutons à afficher : ceux du fichier de configuration, plus
+        ceux appris pour l'opérateur en place. L'appris gagne en cas de
+        même nom — c'est le plus récent, et il vient du terrain."""
+        actifs = dict(self.raccourcis)
+        operateur = self._operateur_courant()
+        if operateur:
+            try:
+                actifs.update(self.journal.raccourcis(operateur))
+            except Exception as e:
+                self.journal.evenement(f"lecture des raccourcis : {e}")
+        return actifs
+
+    def _demander_nom_raccourci(self, canal):
+        if not self.trace_a_enregistrer:
+            return self.transport.envoyer(
+                "Il n'y a plus rien à enregistrer : refaites l'opération, "
+                "puis appuyez sur 💾 à la fin.", canal=canal)
+        self.attente_nom = True
+        parcours = " → ".join(self.trace_a_enregistrer)
+        self.transport.envoyer(
+            f"💾 {gras('Nom du bouton ?')}\n"
+            f"Parcours retenu : {mono(parcours)}\n\n"
+            "Répondez par un nom court — par exemple " + mono("Solde") + ", "
+            + mono("Dépôt") + " ou " + mono("Retrait") + ".\n"
+            + italique("Le code secret n'est jamais enregistré : le bouton "
+                       "s'arrête juste avant, et vous le taperez comme "
+                       "d'habitude."),
+            canal=canal)
+
+    def _enregistrer_raccourci(self, nom, canal):
+        """Le nom saisi devient un bouton, pour l'opérateur de la carte."""
+        self.attente_nom = False
+        operateur = self._operateur_courant()
+        etapes = self.trace_a_enregistrer
+        self.trace_a_enregistrer = []
+        if not operateur or not etapes:
+            return self.transport.envoyer(
+                "Enregistrement impossible : la carte n'est pas identifiée.",
+                canal=canal)
+        propre = re.sub(r"[^\w\s-]", "", nom).strip()[:24]
+        identifiant = cle_code(propre)
+        if not propre or identifiant == "raccourci":
+            return self.transport.envoyer(
+                "Ce nom ne contient aucune lettre. Réessayez.", canal=canal)
+        self.journal.ajouter_raccourci(operateur, identifiant, propre, etapes)
+        self.journal.evenement(
+            f"raccourci « {propre} » appris pour {operateur} : {','.join(etapes)}")
+        self.transport.envoyer(
+            f"✅ {gras(echap(propre))} est maintenant un bouton, sur toutes vos "
+            f"cartes {gras(echap(operateur))}.\n"
+            f"Parcours : {mono(' → '.join(etapes))}",
+            canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+
+    def _lister_raccourcis(self, canal=None):
+        operateur = self._operateur_courant()
+        appris = self.journal.raccourcis(operateur) if operateur else {}
+        lignes = [gras("Vos boutons")]
+        if self.raccourcis:
+            lignes.append("")
+            lignes.append(italique("Depuis le fichier de configuration :"))
+            for nom, r in self.raccourcis.items():
+                lignes.append(f"· {echap(r['libelle'])} — "
+                              f"{mono(' → '.join(r['etapes']))}")
+        if appris:
+            lignes.append("")
+            lignes.append(italique(f"Appris sur le réseau {echap(operateur)} :"))
+            for nom, r in appris.items():
+                lignes.append(f"· {echap(r['libelle'])} — "
+                              f"{mono(' → '.join(r['etapes']))}")
+        if not self.raccourcis and not appris:
+            lignes.append("")
+            lignes.append(
+                "Aucun pour l'instant. Faites une opération une fois — le "
+                "solde, par exemple — puis appuyez sur 💾 à la fin : elle "
+                "deviendra un bouton.")
+        propose = [c for c in catalogue(operateur)
+                   if cle_code(c[0]) not in appris]
+        if propose:
+            lignes.append("")
+            lignes.append(italique(
+                f"Codes connus pour {echap(operateur)}, pas encore installés :"))
+            for libelle, code, suite in propose:
+                lignes.append(f"· {echap(libelle)} — {mono(code)}, "
+                              f"puis {echap(suite)}")
+            lignes.append("")
+            lignes.append(
+                "Chacun ouvre le guichet et s'arrête à la question suivante : "
+                "aucun ne déplace d'argent tout seul. Vérifiez-les une fois.")
+
+        boutons = []
+        if propose:
+            boutons.append([(f"➕ Installer les {len(propose)} boutons "
+                             f"{operateur}", "r:cat")])
+        boutons += [[(f"🗑 {r['libelle']}", f"r:sup:{nom}")]
+                    for nom, r in list(appris.items())[:6]]
+        boutons.append([("🏠 Menu", "c:menu")])
+        self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
+
+    def _installer_catalogue(self, canal=None):
+        """Installe d'un coup les codes connus de l'opérateur en place."""
+        operateur = self._operateur_courant()
+        propose = catalogue(operateur)
+        if not propose:
+            return self.transport.envoyer(
+                "Aucun code connu pour cet opérateur. Faites l'opération une "
+                "fois, puis appuyez sur 💾 : elle deviendra un bouton.",
+                canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+        poses = 0
+        for libelle, code, _suite in propose:
+            if self.journal.ajouter_raccourci(operateur, cle_code(libelle),
+                                              libelle, [code]):
+                poses += 1
+        self.journal.evenement(
+            f"catalogue {operateur} installé : {poses} raccourci(s)")
+        self.transport.envoyer(
+            f"✅ {gras(poses)} bouton(s) installé(s) pour "
+            f"{gras(echap(operateur))}.\n"
+            + italique("Essayez-en un : s'il répond « service indisponible », "
+                       "le code a changé — refaites l'opération par le menu "
+                       "et appuyez sur 💾 pour le corriger."),
+            canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+
+    def _supprimer_raccourci(self, nom, canal):
+        operateur = self._operateur_courant()
+        if operateur and self.journal.supprimer_raccourci(operateur, nom):
+            self.transport.envoyer("🗑 Bouton supprimé.", canal=canal)
+        else:
+            self.transport.envoyer("Ce bouton n'existe plus.", canal=canal)
+        self._lister_raccourcis(canal)
+
+    def _noter_trace(self, etape):
+        """Retient une étape de navigation, si la trace est encore ouverte."""
+        if self.trace_ouverte and not self.trace_rejouee:
+            self.trace.append(etape)
+
+    def _fermer_trace(self):
+        """Arrête l'enregistrement : ce qui suit n'est pas rejouable.
+
+        Un raccourci ne doit rejouer que la **navigation** — le chemin dans
+        les menus, identique à chaque fois. Dès que l'opérateur réclame une
+        donnée propre à l'opération (un montant, un bénéficiaire) ou le code
+        secret, la suite n'a plus rien de reproductible : rejouer le montant
+        d'hier serait au mieux faux, au pire coûteux.
+
+        Le bouton mènera donc jusqu'à la question, et vous répondrez.
+        """
+        self.trace_ouverte = False
+
     def _cloturer_session(self, corps):
-        self._peindre(corps, [[("🏠 Menu", "c:menu")]])
+        # Ce qu'on vient de faire mérite-t-il un bouton ? On ne propose rien
+        # après un raccourci rejoué (il existe déjà), ni sur une session vide.
+        trace = [] if self.trace_rejouee else list(self.trace)
+        boutons = []
+        if trace and self._operateur_courant():
+            boutons.append([("💾 En faire un bouton", "r:enr")])
+        boutons.append([("🏠 Menu", "c:menu")])
+        self._peindre(corps, boutons)
         canal = self.canal_session
         self._reinitialiser_session()
         self.canal_session = canal
+        self.trace_a_enregistrer = trace
 
     def _annuler(self, canal):
         compte = self.session_compte or self.courant
@@ -665,12 +959,13 @@ class Robot:
 
     # ---- raccourcis (macros USSD) -----------------------------------------
     def _lancer_raccourci(self, nom, canal):
-        raccourci = self.raccourcis.get(nom)
+        raccourci = self._raccourcis_actifs().get(nom)
         if not raccourci:
             self.transport.envoyer("Raccourci inconnu.", canal=canal)
             return
         etapes = list(raccourci["etapes"])
         self.canal_session = canal
+        self.trace_rejouee = True
         self.msg_session = None
         self.file_macro = etapes[1:]
         self._ussd(self.courant, etapes[0], nouveau=True)

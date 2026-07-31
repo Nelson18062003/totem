@@ -22,8 +22,10 @@ quotidiens, chien de garde automatique.
 
 - **Aucun port ouvert** : le Pi ne fait que des connexions sortantes
   (Telegram + Tailscale pour la maintenance SSH). Compatible Starlink (CGNAT).
-- **Le PIN MoMo n'est jamais stocké** : composé sur un pavé de boutons, il
-  n'existe même pas comme message Telegram ; le journal ne garde que `****`.
+- **Rien ne se tape dans la conversation** : le code PIN, mais aussi les
+  montants et les numéros de bénéficiaire, se composent sur des pavés de
+  boutons. Un appui n'est pas un message — il ne laisse donc aucune trace
+  dans l'historique Telegram. Le journal ne garde du PIN que `****`.
 - **Seules les conversations déclarées sont écoutées** ; tout autre expéditeur
   est ignoré en silence.
 
@@ -32,9 +34,18 @@ quotidiens, chien de garde automatique.
 Les menus MoMo arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
 l'aveugle), la session USSD tient sur **une seule carte qui se met à jour**, le
 **code PIN se compose sur un pavé sécurisé**, et une opération courante tient en
-**un seul bouton** (raccourcis configurables). Le robot sait aussi travailler
-dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et un
-**fil par nature d'information** si le groupe utilise les sujets.
+**un seul bouton** (raccourcis appris).
+
+Les saisies libres — montant, numéro du bénéficiaire — passent elles aussi par
+un pavé de boutons. Un message tapé au clavier resterait dans la conversation ;
+l'effacer après coup ne répare rien, il a existé et transité. Un chiffre
+composé sur des boutons n'est jamais un message : il ne vit que dans la carte
+de session, qui se réécrit en place. Le clavier reste possible quand la réponse
+demande des lettres — le message est alors effacé aussitôt.
+
+Le robot sait aussi travailler dans un **groupe d'équipe**, avec des **rôles**
+(qui pilote / qui observe) et un **fil par nature d'information** si le groupe
+utilise les sujets.
 
 → Tout est détaillé dans [`docs/GUIDE-TELEGRAM.md`](docs/GUIDE-TELEGRAM.md).
 
@@ -83,12 +94,45 @@ Conséquences concrètes :
 - retirer une carte ne perd rien — `/sims` liste toutes les puces connues, et
   la remettre fait ressortir son journal intact.
 
+## Vos propres boutons, appris sur le terrain
+
+Les codes USSD n'ont rien d'universel : le solde est `*126#` puis `5` puis `1`
+chez l'un, `#148*5#` chez l'autre. TOTEM ne les devine pas — deviner des
+chiffres qui déplacent de l'argent serait irresponsable. **Il les apprend.**
+
+Faites l'opération une fois, normalement. À la fin, un bouton
+**💾 En faire un bouton** apparaît : donnez-lui un nom, c'est terminé. Vous ne
+retaperez plus jamais le chemin dans les menus.
+
+Deux garde-fous, qui décident de ce qui entre dans un raccourci :
+
+- **le code secret n'y entre jamais** — un bouton qui rejouerait le PIN serait
+  un transfert en un clic ;
+- **les données de l'opération non plus** (montant, bénéficiaire) : rejouer le
+  montant d'hier serait au mieux faux. Le bouton mène jusqu'à la question,
+  vous répondez.
+
+Pour les opérateurs déjà relevés sur le terrain, `/raccourcis` propose de
+poser les boutons d'un coup — aujourd'hui Orange Cameroun (`#148*5#` pour le
+solde, `#148*4#` pour un transfert…). Ces codes ne sont **pas devinés** : ils
+ont été composés sur un vrai téléphone. Et les proposer est sans danger, car
+chacun n'est qu'une **porte d'entrée** : aucun ne conclut une opération seul,
+tous redemandent ensuite un montant, un numéro ou le code secret. Un code
+erroné échoue donc sans qu'un franc ait bougé — et se corrige en refaisant
+l'opération une fois.
+
+Les boutons sont rangés **par opérateur**, pas par carte : les codes
+appartiennent au réseau. Changer une SIM MTN pour une autre SIM MTN ne fait
+rien disparaître ; passer à une puce Orange fait apparaître les boutons Orange
+et masque ceux de MTN, tout seul.
+
 | Commande Telegram | Effet |
 |---|---|
 | `*126#` | Ouvre le menu sur le **compte courant** |
 | `mtn *126#` | Vise un compte sans changer le compte courant |
 | `/comptes` | Liste les comptes et rappelle comment basculer |
 | `/sims` | Toutes les cartes connues, celle en place marquée ▶️ |
+| `/raccourcis` | Vos boutons : les voir, en supprimer |
 | `/mtn`, `/orange`, `/1`, `/2` | Change de compte courant |
 
 Chaque compte a sa propre session USSD et son propre chien de garde : un modem
@@ -117,6 +161,7 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
                   raccourcis, multi-comptes, SMS, rapports, watchdog
   compte.py       un compte = un modem + une SIM + sa session USSD
   carte.py        identité d'une SIM : ICCID, IMSI, opérateur, itinérance
+  codes.py        codes USSD relevés sur le terrain, proposés en un bouton
   detect.py       détection des modems (regroupement par IMEI)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modems MTN et Orange pour tests sans matériel
