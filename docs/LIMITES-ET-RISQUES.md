@@ -157,8 +157,18 @@ DCS ne sert que de départage — certains firmwares annoncent un codage et en
 renvoient un autre.
 
 ### ✅ Le pavé du code secret au mauvais moment
-Un menu qui *parle* du code secret n'en demande pas un. Un menu numéroté est
-une navigation, jamais une saisie.
+Le menu Orange de `#148#` commence par **« 1:Modifier code secret »**. La
+détection cherchait les mots « code secret » n'importe où dans le texte :
+elle tombait sur l'intitulé de cette option et affichait le pavé numérique
+au lieu des sept boutons du menu.
+
+*En place* : les lignes numérotées sont d'abord isolées. Un menu qui porte
+des options est une **navigation**, jamais une saisie — quel que soit son
+vocabulaire. Le pavé ne s'ouvre que sur une invite sans aucune option
+(« Entrez votre ancien code secret : »).
+
+Le menu réel relevé en production est figé dans les tests, séparateurs
+« 1: » sans espace et lignes vides compris.
 
 ### 🟡 Les menus varient d'un opérateur et d'une offre à l'autre
 La numérotation (`1.`, `1)`, `1-`, `01 :`) est gérée. Mais un opérateur qui

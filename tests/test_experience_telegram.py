@@ -157,6 +157,56 @@ class AffichageDesMenus(unittest.TestCase):
         self.assertEqual(donnees(t.derniers_boutons()), ["c:annuler"])
 
 
+# Menu réellement renvoyé par Orange Cameroun sur #148#, relevé en production.
+# Il cumule tout ce qui piégeait l'ancienne détection : séparateur « : » sans
+# espace, et une PREMIÈRE option qui contient les mots « code secret ».
+MENU_ORANGE_REEL = """Veuillez choisir :
+1:Modifier code secret
+2:Solde de compte
+3:Dernieres transactions
+4:Langue
+5:Gestion des sous comptes
+
+6:Obtenir code point de vente
+
+7:Association"""
+
+
+class MenuReelOrange(unittest.TestCase):
+    """Cas relevé en production : le pavé PIN s'ouvrait sur ce menu.
+
+    L'ancienne détection cherchait « code secret » n'importe où dans le
+    texte ; elle tombait donc sur l'intitulé de l'option 1 et prenait un
+    menu de navigation pour une demande de saisie."""
+
+    def test_les_sept_options_sont_reconnues(self):
+        entete, options = Robot._analyser_menu(MENU_ORANGE_REEL)
+        self.assertEqual(entete, ["Veuillez choisir :"])
+        self.assertEqual([n for n, _ in options], list("1234567"))
+        self.assertEqual(options[0][1], "Modifier code secret")
+
+    def test_les_lignes_vides_ne_cassent_pas_la_lecture(self):
+        options = Robot._analyser_menu(MENU_ORANGE_REEL)[1]
+        self.assertEqual(options[5], ("6", "Obtenir code point de vente"))
+        self.assertEqual(options[6], ("7", "Association"))
+
+    def test_aucun_pave_sur_ce_menu(self):
+        self.assertFalse(Robot._demande_un_code(MENU_ORANGE_REEL))
+
+    def test_rendu_en_boutons_et_non_en_pave(self):
+        r, t, modem = robot("Orange")
+        modem.menu_principal = MENU_ORANGE_REEL
+        tape(r, "#150#")
+        self.assertFalse(r.pin_actif)
+        self.assertIn("1. Modifier code secret", libelles(t.derniers_boutons()))
+        self.assertNotIn("p:1", donnees(t.derniers_boutons()))
+
+    def test_la_suite_ouvre_bien_le_pave(self):
+        """Une fois l'option 1 choisie, Orange demande vraiment le code : là,
+        le pavé doit s'ouvrir."""
+        self.assertTrue(Robot._demande_un_code("Entrez votre ancien code secret :"))
+
+
 class PaveDuCodeSecret(unittest.TestCase):
     """Un menu qui PARLE du code secret n'en demande pas un."""
 
