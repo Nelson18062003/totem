@@ -12,40 +12,37 @@ pour chacune — qu'elles soient écrites `1. Transfert`, `1) Transfert`,
 pareil.
 
 ```
-🗿 Orange Money
-Orange Money
-Bienvenue. Choisissez :
-
-[1. Transfert d'argent]
-[2. Retrait d'argent]
-[3. Paiement marchand]
-[4. Mon compte]
-[5. Gerer mon code secret]
-[6. Quitter]
-[❌ Fermer]
+🗿 Session USSD · Orange
+┌──────────────────────────┐
+│ Orange Money             │
+│ 1. Transfert d'argent    │
+│ 2. Retrait               │
+│ 3. Paiement facture      │
+│ 4. Credit                │
+│ 5. Mon compte            │
+│ 6. Quitter               │
+└──────────────────────────┘
+[1. Transfert d'argent] [2. Retrait]
+[3. Paiement facture]   [4. Credit]
+[5. Mon compte]         [6. Quitter]
+[❌ Annuler]
 ```
 
-**Les options ne sont plus recopiées en texte au-dessus des boutons.** Avant,
-le menu apparaissait deux fois — une fois en bloc gris à chasse fixe (ce petit
-cadre avec un bouton « copier »), une fois en boutons. Sur téléphone les lignes
-longues débordaient et l'écran devenait illisible. Le bloc gris a disparu : il
-ne reste que le texte d'introduction de l'opérateur, puis les boutons.
-
-Quand les libellés sont longs, les boutons passent automatiquement à **un par
-ligne** au lieu de deux, pour ne pas être tronqués.
+Le texte complet du menu reste affiché **en plus** des boutons, dans son
+cadre à chasse fixe. C'est volontaire : si l'opérateur présente une ligne que
+le découpage ne reconnaît pas, elle reste lisible et vous pouvez répondre par
+un message. Le filet compte plus que l'économie de place.
 
 Quand l'opérateur pose une **question libre** (numéro du bénéficiaire, montant),
-il n'y a pas de bouton : vous répondez par un message normal, comme avant.
+il n'y a pas de bouton : vous répondez par un message normal.
 
 **Une seule carte, qui se met à jour.** La session USSD n'empile plus vingt
 messages : la même carte est réécrite à chaque étape, comme l'écran d'un
 téléphone. La conversation reste lisible, et l'historique complet reste dans le
 journal SQLite (et dans l'export CSV).
 
-**Une réponse immédiate, même quand le réseau traîne.** Dès que vous envoyez un
-code ou appuyez sur une option, la carte affiche aussitôt
-« ⏳ Composition de `*126#`… », puis se transforme en menu à l'arrivée de la
-réponse. L'écran ne reste plus figé sans rien dire.
+**Aucun message intermédiaire.** Ouvrir un menu ne coûte qu'un seul
+aller-retour : le menu arrive directement, sans carte d'attente préalable.
 
 Le robot ne s'inflige d'ailleurs plus d'attente inutile : il attendait
 auparavant 1,2 s après **chaque** étape « au cas où » le message ne serait pas
@@ -53,12 +50,12 @@ fini, et gelait le modem 5,6 s toutes les minutes pour vérifier la carte SIM.
 Tout cela a disparu — reste la seule latence du réseau de l'opérateur, sur
 laquelle personne n'a la main.
 
-## 2. Le code secret ne passe plus jamais dans la conversation
+## 2. Le code PIN ne passe plus jamais dans la conversation
 
 Dès que l'opérateur demande le code, un **pavé numérique en boutons** s'affiche :
 
 ```
-🔐 Code secret
+🔐 Code PIN
 Saisi : ••••
 [1] [2] [3]
 [4] [5] [6]

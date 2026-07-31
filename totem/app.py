@@ -31,7 +31,7 @@ from datetime import datetime
 from .analyse_sms import analyser
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
-from .mise_en_forme import echap, gras, italique, mono
+from .mise_en_forme import bloc, echap, gras, italique, mono
 from .sante import Sante, sauvegarder_journal
 
 ARRET_PROPRE = "arrêt propre"
@@ -428,22 +428,7 @@ class Robot:
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
-    def _afficher_attente(self, compte, envoi, nouveau):
-        """Accuse réception tout de suite.
-
-        Le réseau USSD met plusieurs secondes à répondre, et personne ne peut
-        raccourcir cela. Ce qu'on peut supprimer, c'est le silence : un écran
-        figé donne l'impression que rien ne marche."""
-        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
-        libelle = (f"⏳ Composition de {mono(envoi)}…" if nouveau
-                   else "⏳ Envoi de votre réponse…")
-        self._peindre(
-            f"🗿 {gras('Session USSD')}{etiquette}\n{libelle}\n"
-            + italique("L'opérateur met quelques secondes à répondre."), [])
-
-    def _ussd(self, compte, texte, nouveau=False, attente=True):
-        if attente:
-            self._afficher_attente(compte, texte, nouveau)
+    def _ussd(self, compte, texte, nouveau=False):
         try:
             if nouveau:
                 self.journal.ussd("envoyé", texte, compte.libelle)
@@ -469,7 +454,7 @@ class Robot:
             self._afficher_session(compte)
         else:
             entete = f"[{echap(compte.libelle)}]\n" if self.multi else ""
-            self._cloturer_session(entete + self._texte_menu(reponse))
+            self._cloturer_session(entete + bloc(reponse))
 
     @classmethod
     def _demande_un_code(cls, menu):
@@ -498,54 +483,37 @@ class Robot:
                 entete.append(ligne)
         return entete, options
 
-    @staticmethod
-    def _texte_menu(menu):
-        """Rend un texte d'opérateur lisible : lignes nettoyées, aucun bloc de
-        code — le cadre gris à chasse fixe faisait déborder les lignes longues
-        sur téléphone et rendait les menus illisibles."""
-        lignes = [l.strip() for l in re.split(r"\r\n|\r|\n", menu or "") if l.strip()]
-        return echap("\n".join(lignes))
-
-    @staticmethod
-    def _court(texte, limite=30):
-        return texte if len(texte) <= limite else texte[:limite - 1].rstrip() + "…"
-
-    def _boutons_options(self, options):
-        """Deux boutons par ligne si les libellés sont courts, sinon un seul :
-        c'est ce qui évite les libellés tronqués sur les menus verbeux."""
-        libelles = [(f"{num}. {self._court(lib)}", f"u:{num}") for num, lib in options]
-        par_ligne = 2 if all(len(l) <= 20 for l, _ in libelles) else 1
-        return [libelles[i:i + par_ligne] for i in range(0, len(libelles), par_ligne)]
-
     def _afficher_session(self, compte):
-        """Réécrit la carte de session en place : une seule carte, vivante."""
+        """Réécrit la carte de session en place : une seule carte, vivante.
+
+        Le menu est rendu tel que l'opérateur l'envoie, dans son cadre à
+        chasse fixe, avec les boutons en dessous. C'est l'affichage retenu à
+        l'usage : le texte complet reste lisible même quand le découpage en
+        boutons ne reconnaît pas toutes les lignes."""
         etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
         if self.pin_actif and self._confirmation_requise():
             texte, boutons = self._carte_confirmation(compte)
         elif self.pin_actif:
             texte, boutons = self._carte_pin(etiquette)
         else:
-            entete, options = self._analyser_menu(self.dernier_menu)
-            texte = f"🗿 {gras('Session USSD')}{etiquette}"
-            if entete:
-                texte += "\n" + echap("\n".join(entete))
+            options = self._analyser_menu(self.dernier_menu)[1]
+            texte = f"🗿 {gras('Session USSD')}{etiquette}\n{bloc(self.dernier_menu)}"
             if options:
-                # Les options sont DANS les boutons : les répéter en texte
-                # au-dessus rendait l'écran illisible.
-                boutons = self._boutons_options(options)
+                boutons = [[(f"{num}. {lib[:28]}", f"u:{num}")
+                            for num, lib in options[i:i + 2]]
+                           for i in range(0, len(options), 2)]
             else:
-                texte += "\n\n" + italique("✍️ Répondez par un message.")
+                texte += "\n✍️ Répondez par un message (numéro, montant…)."
                 boutons = []
-            boutons = boutons + [[("❌ Fermer", "c:annuler")]]
+            boutons = boutons + [[("❌ Annuler", "c:annuler")]]
         self._peindre(texte, boutons)
 
     def _carte_pin(self, etiquette=""):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]
         boutons.append([("⌫", "p:eff"), ("0", "p:0"), ("✅ Valider", "p:ok")])
         boutons.append([("❌ Annuler", "c:annuler")])
-        entete, _ = self._analyser_menu(self.dernier_menu)
         return (
-            f"🔐 {gras('Code secret')}{etiquette}\n{echap(chr(10).join(entete))}\n\n"
+            f"🔐 {gras('Code PIN')}{etiquette}\n{bloc(self.dernier_menu)}\n"
             f"Saisi : {mono('•' * len(self.pin_tampon) or '—')}\n"
             + italique("Le code se compose sur les boutons : il n'apparaît "
                        "jamais dans la conversation."), boutons)
@@ -607,8 +575,8 @@ class Robot:
             self.pin_actif = False
             self.journal.ussd("envoyé", "****", compte.libelle)
             self._peindre(
-                f"🔐 {gras('Code secret')}{etiquette}\n⏳ Validation en cours…", [])
-            self._ussd(compte, code, nouveau=False, attente=False)
+                f"🔐 {gras('Code PIN')}{etiquette}\n⏳ Validation en cours…", [])
+            self._ussd(compte, code, nouveau=False)
             self._avancer_macro()
             return
         elif touche.isdigit() and len(self.pin_tampon) < 8:
@@ -898,11 +866,16 @@ class Robot:
             return
         self.conflit_signale = conflit
         if conflit:
-            self.journal.evenement("conflit : deux instances sur le même jeton")
+            self.journal.evenement("conflit : jeton Telegram utilisé ailleurs")
             self.facteur.poster(
-                f"⚠️ {gras('Deux robots utilisent le même jeton Telegram')}\n"
-                + italique("Vos commandes peuvent se perdre. Arrêtez l'instance "
-                           "en trop : sudo systemctl stop totem"), canal="alertes")
+                f"⚠️ {gras('Telegram refuse de me répondre')}\n"
+                "Un second programme utilise la même clé de bot, "
+                "et nos commandes se perdent entre les deux.\n\n"
+                "Sur le Pi, pour vérifier :\n"
+                f"{mono('ps aux | grep totem')}\n"
+                f"{mono('sudo systemctl restart totem')}\n\n"
+                + italique("Si un seul robot tourne, l'alerte disparaîtra "
+                           "d'elle-même au prochain tour."), canal="alertes")
 
     def _rapport_quotidien(self):
         """Envoie le bilan une fois par jour, même si la boucle a sauté la

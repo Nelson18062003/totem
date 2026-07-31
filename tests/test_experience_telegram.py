@@ -101,19 +101,29 @@ def donnees(boutons):
 
 
 class AffichageDesMenus(unittest.TestCase):
-    """Le menu s'affichait deux fois : en bloc gris à chasse fixe, puis en
-    boutons. Sur téléphone, les lignes longues débordaient du cadre."""
+    """Affichage retenu à l'usage : le menu de l'opérateur est rendu tel
+    quel dans son cadre à chasse fixe, avec les boutons en dessous.
 
-    def test_aucun_bloc_de_code(self):
+    Le texte complet reste ainsi lisible même quand le découpage en boutons
+    ne reconnaît pas toutes les lignes — c'est ce filet qui compte davantage
+    que l'économie de place."""
+
+    def test_menu_rendu_dans_son_cadre(self):
         r, t, _ = robot()
         tape(r, "*126#")
-        self.assertNotIn("<pre>", t.dernier_texte())
+        self.assertIn("<pre>", t.dernier_texte())
 
-    def test_options_uniquement_dans_les_boutons(self):
+    def test_texte_et_boutons_ensemble(self):
         r, t, _ = robot()
         tape(r, "*126#")
-        self.assertNotIn("Transfert d'argent", t.dernier_texte())
+        self.assertIn("Transfert d'argent", t.dernier_texte())
         self.assertIn("1. Transfert d'argent", libelles(t.derniers_boutons()))
+
+    def test_deux_boutons_par_ligne(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        lignes_options = t.derniers_boutons()[:-1]   # hors « ❌ Annuler »
+        self.assertTrue(all(len(l) == 2 for l in lignes_options), lignes_options)
 
     def test_entete_conserve(self):
         r, t, _ = robot("Orange")
@@ -138,13 +148,6 @@ class AffichageDesMenus(unittest.TestCase):
             "Orange Money\r\nBienvenue :\r\n1) Transfert\r\n2) Retrait\r\n")
         self.assertEqual(entete, ["Orange Money", "Bienvenue :"])
         self.assertEqual(len(options), 2)
-
-    def test_libelles_longs_un_par_ligne(self):
-        r, _, _ = robot()
-        courts = r._boutons_options([("1", "Solde"), ("2", "Retrait")])
-        longs = r._boutons_options([("1", "Transfert d'argent vers un autre reseau")])
-        self.assertEqual(len(courts[0]), 2)
-        self.assertEqual(len(longs[0]), 1)
 
     def test_question_libre_signalee(self):
         r, t, _ = robot()
@@ -197,20 +200,31 @@ class PaveDuCodeSecret(unittest.TestCase):
 
 
 class Reactivite(unittest.TestCase):
-    """Le réseau met des secondes à répondre ; l'écran ne doit pas rester figé."""
+    """Aucun message intermédiaire : ouvrir un menu ne doit coûter qu'un seul
+    aller-retour Telegram.
 
-    def test_accuse_de_reception_immediat(self):
+    Une carte d'attente « ⏳ » avait été essayée puis retirée : elle ajoutait
+    un envoi supplémentaire — donc jusqu'à une seconde d'étranglement — avant
+    même que le modem soit appelé."""
+
+    def test_un_seul_message_pour_ouvrir_un_menu(self):
+        r, t, _ = robot()
+        avant = len(t.envois)
+        tape(r, "*126#")
+        self.assertEqual(len(t.envois) - avant, 1)
+
+    def test_aucune_carte_d_attente(self):
         r, t, _ = robot()
         tape(r, "*126#")
-        self.assertIn("⏳", t.envois[-1][0])
-        self.assertIn("*126#", t.envois[-1][0])
-        self.assertEqual(t.envois[-1][1], [])
+        self.assertNotIn("⏳", t.dernier_texte())
 
-    def test_l_attente_devient_le_menu_dans_la_meme_carte(self):
+    def test_navigation_sans_message_supplementaire(self):
         r, t, _ = robot()
         tape(r, "*126#")
-        self.assertNotIn("⏳", t.editions[-1][1])
-        self.assertTrue(t.editions)     # modification, pas nouveau message
+        avant = len(t.envois)
+        clic(r, "u:5")
+        self.assertEqual(len(t.envois), avant)      # une modification, pas un envoi
+        self.assertIn("Consulter le solde", t.dernier_texte())
 
 
 class ConfirmationDesSorties(unittest.TestCase):
@@ -326,14 +340,23 @@ class MemoireEtConflits(unittest.TestCase):
         r._verifier_memoire()
         self.assertFalse(any("Mémoire" in e[0] for e in t.envois))
 
-    def test_deux_robots_sur_le_meme_jeton(self):
+    def test_jeton_utilise_ailleurs(self):
         r, t, _ = robot()
         t.conflit = True
         r._signaler_conflit()
-        self.assertIn("même jeton", t.envois[-1][0])
+        self.assertIn("refuse de me répondre", t.envois[-1][0])
+        self.assertIn("ps aux", t.envois[-1][0])   # la commande de diagnostic
         avant = len(t.envois)
         r._signaler_conflit()
-        self.assertEqual(len(t.envois), avant)
+        self.assertEqual(len(t.envois), avant)     # signalé une seule fois
+
+    def test_alerte_disparait_quand_le_conflit_cesse(self):
+        r, t, _ = robot()
+        t.conflit = True
+        r._signaler_conflit()
+        t.conflit = False
+        r._signaler_conflit()
+        self.assertFalse(r.conflit_signale)
 
 
 class BilanQuotidien(unittest.TestCase):

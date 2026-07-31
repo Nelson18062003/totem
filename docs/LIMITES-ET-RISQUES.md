@@ -72,8 +72,9 @@ Lancer le service alors qu'une session tourne déjà en SSH : les deux
 interrogent Telegram, **chacun coupe l'autre**, et vos commandes se perdent au
 hasard sans aucune erreur visible.
 
-*En place* : l'erreur 409 est détectée, nommée, et vous recevez la commande
-exacte pour arrêter l'instance en trop.
+*En place* : un webhook éventuel est supprimé au démarrage — c'est la cause
+la plus courante d'un 409 alors qu'aucune autre instance ne tourne. Si le
+conflit persiste, il est nommé et accompagné des commandes de diagnostic.
 
 ### ✅ Une rafale de SMS qui fait bloquer le bot
 Telegram tolère environ **un message par seconde et par conversation**,
@@ -198,9 +199,9 @@ sont mémorisés quelques secondes ; la commande d'ICCID qui marche est retenue 
 et la vérification de SIM ne s'exécute plus pendant une session USSD.
 
 Reste la latence du réseau de l'opérateur, sur laquelle personne n'a la main.
-Elle est désormais **rendue visible** : une carte « ⏳ Composition de *126#… »
-part immédiatement, puis se transforme en menu. L'attente ne change pas, mais
-l'écran ne reste plus figé sans explication.
+Une carte d'attente « ⏳ » avait été essayée pour la rendre visible : elle a
+été retirée à l'usage, car elle ajoutait un envoi Telegram supplémentaire —
+donc jusqu'à une seconde d'étranglement — avant même d'appeler le modem.
 
 ### ✅ Une réponse AT coupée par le mot « OK »
 La fin d'une commande AT était repérée sur la présence des lettres « OK »
