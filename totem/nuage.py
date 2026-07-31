@@ -30,6 +30,9 @@ from .analyse_sms import analyser
 
 DELAI = 15          # secondes avant d'abandonner une requête
 LOT = 100           # lignes envoyées par requête
+# Après un réveil, on laisse une seconde aux arrivées voisines de rejoindre le
+# même envoi. Trois SMS reçus coup sur coup partent alors ensemble.
+DEBOUNCE = 1
 
 
 class Nuage:
@@ -44,6 +47,9 @@ class Nuage:
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
         self._marche = True
+        # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
+        # prochain battement pour transmettre ce qu'il sait déjà.
+        self._reveil = threading.Event()
 
     # ---- requêtes ---------------------------------------------------------
     def _requete(self, methode, chemin, corps=None, entetes=None):
@@ -213,14 +219,33 @@ class Nuage:
 
     def arreter(self):
         self._marche = False
+        self._reveil.set()      # ne pas attendre la fin du sommeil pour sortir
+
+    def reveiller(self):
+        """« J'ai quelque chose à transmettre, maintenant. »
+
+        Appelé dès qu'une ligne entre au journal. Sans cela, le pont dormait
+        jusqu'à une minute alors qu'il savait déjà qu'un paiement venait
+        d'arriver — un délai qu'on s'infligeait sans raison.
+
+        Plusieurs appels rapprochés ne réveillent qu'une fois : c'est le
+        propre d'un drapeau. Trois SMS reçus coup sur coup partent donc en un
+        seul envoi, pas en trois.
+        """
+        self._reveil.set()
 
     def _boucle(self, comptes, sante):
         premier = True
+        prochain_etat = 0.0
         while self._marche:
             try:
-                etat = sante.resume() if sante else None
-                self.enregistrer_terminal({"resume": etat} if etat else None)
-                self.publier_comptes(comptes)
+                # L'état du terminal et des SIM change lentement : on le
+                # republie au rythme de fond, pas à chaque paiement.
+                if time.monotonic() >= prochain_etat:
+                    prochain_etat = time.monotonic() + self.pause
+                    etat = sante.resume() if sante else None
+                    self.enregistrer_terminal({"resume": etat} if etat else None)
+                    self.publier_comptes(comptes)
                 envoyes = (self.pousser_cartes() + self.pousser_paiements()
                            + self.pousser_evenements())
                 if premier and envoyes:
@@ -230,7 +255,14 @@ class Nuage:
             except Exception as e:
                 # Un cloud injoignable est normal : on note, on continue.
                 self.derniere_erreur = str(e)
-            time.sleep(self.pause)
+            # Réveil immédiat sur nouvelle ligne, sinon battement de fond —
+            # qui reste indispensable : il rejoue ce qu'une coupure a retenu
+            # et sert de signe de vie au terminal.
+            if self._reveil.wait(timeout=self.pause):
+                self._reveil.clear()
+                # Laisser une seconde aux arrivées quasi simultanées de se
+                # joindre au même envoi, plutôt que d'ouvrir trois connexions.
+                time.sleep(DEBOUNCE)
 
     def resume(self):
         """Ligne d'état pour /statut."""

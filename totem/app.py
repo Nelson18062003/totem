@@ -871,6 +871,8 @@ class Robot:
             else "💳 Nouvelle carte SIM détectée"
         self.journal.evenement(
             f"changement de carte : {ancienne.libelle} → {compte.carte.libelle}")
+        if self.nuage:
+            self.nuage.reveiller()
         lignes = [
             gras(titre),
             f"Retirée : {echap(ancienne.libelle)}",
@@ -946,6 +948,10 @@ class Robot:
                 self.journal.sms(expediteur, texte, compte.libelle,
                                  compte.carte.iccid)
                 self._notifier_sms(compte, expediteur, texte)
+                # Le cloud est prévenu tout de suite : inutile de lui faire
+                # attendre son prochain battement pour un paiement déjà connu.
+                if self.nuage:
+                    self.nuage.reveiller()
             if not compte.effacer_sms(index):
                 self.journal.evenement(
                     f"SMS {index} non effacé sur {compte.libelle} "
