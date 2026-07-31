@@ -89,11 +89,6 @@ create table if not exists paiements (
   unique (terminal, source_id)
 );
 
-create index if not exists paiements_recu_le_idx on paiements (recu_le desc);
-create index if not exists paiements_compte_idx  on paiements (terminal, compte);
-create index if not exists paiements_carte_idx   on paiements (terminal, carte);
-create index if not exists paiements_tiers_idx   on paiements (tiers);
-
 comment on column paiements.texte is
   'Message d''origine, jamais modifié : c''est lui qui fait foi en cas de litige.';
 
@@ -123,16 +118,20 @@ create table if not exists commandes (
   traitee_le  timestamptz
 );
 
-create index if not exists commandes_attente_idx
-  on commandes (terminal, etat) where etat = 'en_attente';
-
 -- ---------------------------------------------------------------------------
 -- Mise à niveau des bases créées avant le cloisonnement par carte
 --
--- « create table if not exists » ne touche pas une table déjà là : ce bloc
--- rattrape donc les projets Supabase créés avec la version précédente du
--- schéma. Sur une base neuve il ne fait rien de plus, et le relancer n'a
--- aucun effet — c'est ce qui rend ce fichier rejouable tel quel.
+-- « create table if not exists » ne touche pas une table déjà là : sur un
+-- projet Supabase créé avec la version précédente du schéma, les nouvelles
+-- colonnes n'apparaîtraient jamais. Ce bloc les rattrape.
+--
+-- Il vient AVANT les index, et ce n'est pas un détail : un index sur la
+-- colonne « carte » écrit plus haut échouerait sur une base existante, où
+-- cette colonne n'a pas encore été ajoutée.
+--
+-- Sur une base neuve, ce bloc ne fait rien de plus. Le relancer n'a aucun
+-- effet — c'est ce qui rend ce fichier rejouable tel quel, autant de fois
+-- qu'on veut.
 -- ---------------------------------------------------------------------------
 alter table comptes   add column if not exists iccid      text;
 alter table comptes   add column if not exists reseau     text;
@@ -140,19 +139,36 @@ alter table comptes   add column if not exists itinerance boolean not null defau
 alter table paiements add column if not exists carte      text;
 
 -- La clé d'un compte était son libellé (« MTN »). Deux SIM MTN successives
--- s'écrasaient donc l'une l'autre. La clé devient l'ICCID.
+-- s'écrasaient donc l'une l'autre : une seule ligne pour deux caisses. La clé
+-- devient l'ICCID, qui distingue physiquement les puces.
+--
+-- Le filtre sur « conrelid » est nécessaire : un nom de contrainte n'est
+-- unique que par table, et sans lui on risquerait d'en viser une autre.
 do $$
 begin
   if exists (select 1 from pg_constraint
-             where conname = 'comptes_terminal_libelle_key') then
+             where conname = 'comptes_terminal_libelle_key'
+               and conrelid = 'comptes'::regclass) then
     alter table comptes drop constraint comptes_terminal_libelle_key;
   end if;
   if not exists (select 1 from pg_constraint
-                 where conname = 'comptes_terminal_iccid_key') then
+                 where conname = 'comptes_terminal_iccid_key'
+                   and conrelid = 'comptes'::regclass) then
     alter table comptes add constraint comptes_terminal_iccid_key
       unique (terminal, iccid);
   end if;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- Index — après la migration, donc toutes les colonnes existent
+-- ---------------------------------------------------------------------------
+create index if not exists paiements_recu_le_idx on paiements (recu_le desc);
+create index if not exists paiements_compte_idx  on paiements (terminal, compte);
+create index if not exists paiements_carte_idx   on paiements (terminal, carte);
+create index if not exists paiements_tiers_idx   on paiements (tiers);
+create index if not exists cartes_derniere_vue_idx on cartes (terminal, derniere_vue desc);
+create index if not exists commandes_attente_idx
+  on commandes (terminal, etat) where etat = 'en_attente';
 
 -- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit sans être connecté.

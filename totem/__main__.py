@@ -6,6 +6,7 @@
   python3 -m totem --console       → faux modems + chat dans le terminal
   python3 -m totem --demo          → scénario automatique (vérification rapide)
   python3 -m totem --modems        → liste les modems détectés, puis quitte
+  python3 -m totem --version       → la version en service sur ce Pi
   python3 -m totem --stk           → la SIM porte-t-elle une applet Mobile Money ?
 """
 
@@ -59,6 +60,14 @@ def _comptes_reels(patience=120):
 
 def principal():
     args = sys.argv[1:]
+
+    # --- Quelle version tourne ici ? ---------------------------------------
+    # Elle s'affiche déjà dans Telegram, mais c'est en SSH qu'on la cherche :
+    # juste après un « git pull », pour vérifier que le correctif est bien là.
+    if "--version" in args:
+        from .version import version
+        print(version())
+        return
 
     # --- Diagnostic : la carte porte-t-elle une applet SIM Toolkit ? -------
     # Lecture seule. Répond à la seule question qui décide de l'avenir du

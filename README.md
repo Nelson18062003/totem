@@ -103,6 +103,8 @@ qui plante n'interrompt pas l'autre.
 | `python3 -m totem --simulation` | Faux modems MTN + Orange, vrai Telegram (sans matériel) |
 | `python3 -m totem --console` | Faux modems + chat dans le terminal (essai local) |
 | `python3 -m totem --demo` | Scénario automatique complet (vérification en 5 s) |
+| `python3 -m totem --stk` | La SIM porte-t-elle une applet Mobile Money ? |
+| `python3 -m totem --version` | Quelle version tourne réellement sur ce Pi |
 
 PIN de simulation : `1234`. Le simulateur imite les menus MoMo et Orange Money
 (solde, transfert) et génère des SMS de paiement réalistes sur les deux réseaux.
@@ -118,6 +120,9 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   detect.py       détection des modems (regroupement par IMEI)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modems MTN et Orange pour tests sans matériel
+  pdu.py          décodage PDU : les SMS longs cessent d'être tronqués
+  stk.py          sonde SIM Toolkit : ce que la carte propose vraiment
+  version.py      la version réellement en service sur ce terminal
   telegram.py     client API Telegram (claviers, édition, fichiers, groupe, rôles)
   console.py      transports de test (console, scénario)
   entrant.py      message entrant commun à tous les transports (frappe ou clic)
@@ -143,6 +148,9 @@ docs/
   CLOUD.md                brancher le terminal sur Supabase (facultatif)
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
+  USSD-OU-STK.md          pourquoi l'USSD, et ce que changerait une API opérateur
+  LIMITES-ET-RISQUES.md   ce que le système ne sait pas faire, et ce qui peut casser
+  IDENTITE.md             la charte visuelle : symbole, couleurs, usages
 web/              l'application web (Next.js) — maquette sur données de démo
 ```
 
