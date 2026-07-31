@@ -99,20 +99,60 @@ class Nuage:
             return False
 
     def publier_comptes(self, comptes):
-        """État courant des SIM : solde connu, signal, opérateur."""
+        """État courant des SIM en place : signal, réseau visité, itinérance.
+
+        La clé est l'**ICCID**, pas le libellé : deux SIM MTN successives
+        doivent occuper deux lignes distinctes, sans quoi la seconde écraserait
+        l'état de la première et leurs historiques se confondraient.
+        """
         lignes = []
         for c in comptes:
+            if not c.carte.identifiee:
+                continue    # sans ICCID, on ne sait pas quelle ligne viser
             try:
                 lignes.append({
                     "terminal": self.terminal,
+                    "iccid": c.carte.iccid,
                     "libelle": c.libelle,
-                    "operateur": c.modem.operateur(),
+                    "operateur": c.carte.operateur,
+                    "reseau": c.carte.reseau or None,
+                    "itinerance": c.carte.itinerance,
                     "signal": c.signal(),
                     "maj": _horodatage(),
                 })
             except Exception:
                 continue    # un modem qui ne répond pas ne doit rien bloquer
-        return self._inserer_ou_mettre_a_jour("comptes", lignes, "terminal,libelle")
+        return self._inserer_ou_mettre_a_jour("comptes", lignes, "terminal,iccid")
+
+    def pousser_cartes(self):
+        """Envoie le registre des cartes vues, y compris celles retirées.
+
+        C'est ce qui permet à l'application web de montrer l'historique d'une
+        puce absente du boîtier, et de dire depuis quand elle l'est.
+
+        De l'IMSI, seuls les cinq premiers chiffres partent : ils donnent le
+        pays et l'opérateur, ce qui suffit à expliquer le nom du compte. Le
+        reste identifie l'abonné et n'a rien à faire dans le cloud.
+        """
+        lignes_locales = self.journal.cartes_non_envoyees(LOT)
+        if not lignes_locales:
+            return 0
+        charge = [{
+            "terminal": self.terminal,
+            "iccid": iccid,
+            "imsi_prefixe": (imsi or "")[:5],
+            "operateur": operateur,
+            "libelle": libelle,
+            "numero": numero or None,
+            "imei": imei or None,
+            "premiere_vue": _horodatage(premiere),
+            "derniere_vue": _horodatage(derniere),
+        } for (iccid, imsi, operateur, libelle, numero, imei,
+               premiere, derniere) in lignes_locales]
+        if not self._inserer_ou_mettre_a_jour("cartes", charge, "terminal,iccid"):
+            return 0
+        self.journal.marquer_cartes_envoyees([l[0] for l in lignes_locales])
+        return len(charge)
 
     def pousser_paiements(self):
         """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé."""
@@ -120,12 +160,15 @@ class Nuage:
         if not lignes_locales:
             return 0
         charge, ids = [], []
-        for id_local, date, expediteur, texte, compte in lignes_locales:
+        for id_local, date, expediteur, texte, compte, iccid in lignes_locales:
             p = analyser(texte)
             charge.append({
                 "terminal": self.terminal,
                 "source_id": id_local,
                 "compte": compte or expediteur,
+                # La carte qui a reçu le paiement : c'est elle qui rattache
+                # la somme au bon solde quand plusieurs SIM se succèdent.
+                "carte": iccid or None,
                 "sens": p.sens if p else None,
                 "montant": p.montant if p else None,
                 "tiers": p.tiers if p else None,
@@ -178,7 +221,8 @@ class Nuage:
                 etat = sante.resume() if sante else None
                 self.enregistrer_terminal({"resume": etat} if etat else None)
                 self.publier_comptes(comptes)
-                envoyes = self.pousser_paiements() + self.pousser_evenements()
+                envoyes = (self.pousser_cartes() + self.pousser_paiements()
+                           + self.pousser_evenements())
                 if premier and envoyes:
                     self.journal.evenement(
                         f"cloud : {envoyes} ligne(s) transmise(s) au démarrage")

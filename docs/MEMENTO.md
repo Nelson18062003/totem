@@ -109,7 +109,7 @@ Modes utiles, à lancer à la main (arrêtez le service d'abord pour éviter que
 deux robots se disputent les modems) :
 
 ```
-python3 -m totem --modems       # quels modems sont détectés ?
+python3 -m totem --modems       # modems, cartes SIM (ICCID), itinérance
 python3 -m totem --demo         # démonstration, sans matériel
 python3 -m totem --simulation   # faux modems, vrai Telegram
 ```

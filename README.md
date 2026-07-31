@@ -50,11 +50,45 @@ port série, on regroupe par IMEI, on retient le port AT de chaque appareil.
 L'ordre de branchement n'a aucune importance ; brancher un second modem suffit
 à faire apparaître un second compte au redémarrage.
 
+## Une carte SIM = un compte
+
+Un compte n'est pas « MTN » : c'est **cette puce-là**. Le berceau du HAT
+n'accueille qu'une carte à la fois, et rien n'empêche de l'échanger — y compris
+contre une autre SIM du même opérateur. Ce sont alors deux caisses, deux
+soldes, deux historiques.
+
+Ce qui les sépare est l'**ICCID**, le numéro de série gravé sur la puce, unique
+au monde. Trois numéros cohabitent, et les confondre coûte cher :
+
+| Numéro | Ce qu'il identifie | Change quand… |
+|---|---|---|
+| **IMEI** | le modem | on change de modem |
+| **ICCID** | la carte SIM | on change de carte |
+| **IMSI** | l'abonné (5 premiers chiffres = pays + opérateur) | on change de carte |
+
+Le nom du compte (« MTN ·8901 ») tire l'opérateur de l'IMSI et le suffixe de
+l'ICCID. **Jamais du réseau capté** : en itinérance, celui-ci désigne
+l'opérateur du pays visité — une SIM MTN Cameroun essayée en France répond
+« Orange F ». Le compte s'appellerait « Orange » pendant les essais, puis
+« MTN » à Douala : deux comptes en base pour une seule carte, et l'historique
+coupé en deux le jour même de la mise en production. Le réseau visité reste
+affiché, mais comme une mention : `MTN ·8901 (itinérance sur Orange F)`.
+
+Conséquences concrètes :
+
+- échanger une puce est **annoncé sur Telegram** dans la minute, avec ce qui
+  sort et ce qui entre ;
+- `/rapport`, `/sms` et `/export` ne couvrent que les **cartes en place** : les
+  recettes d'une puce retirée ne viennent pas gonfler le total ;
+- retirer une carte ne perd rien — `/sims` liste toutes les puces connues, et
+  la remettre fait ressortir son journal intact.
+
 | Commande Telegram | Effet |
 |---|---|
 | `*126#` | Ouvre le menu sur le **compte courant** |
 | `mtn *126#` | Vise un compte sans changer le compte courant |
 | `/comptes` | Liste les comptes et rappelle comment basculer |
+| `/sims` | Toutes les cartes connues, celle en place marquée ▶️ |
 | `/mtn`, `/orange`, `/1`, `/2` | Change de compte courant |
 
 Chaque compte a sa propre session USSD et son propre chien de garde : un modem
@@ -80,7 +114,8 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   app.py          orchestrateur : commandes, boutons, sessions USSD, pavé PIN,
                   raccourcis, multi-comptes, SMS, rapports, watchdog
   compte.py       un compte = un modem + une SIM + sa session USSD
-  detect.py       détection automatique des modems (regroupement par IMEI)
+  carte.py        identité d'une SIM : ICCID, IMSI, opérateur, itinérance
+  detect.py       détection des modems (regroupement par IMEI)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modems MTN et Orange pour tests sans matériel
   telegram.py     client API Telegram (claviers, édition, fichiers, groupe, rôles)

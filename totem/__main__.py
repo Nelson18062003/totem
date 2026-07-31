@@ -48,8 +48,9 @@ def _comptes_reels(patience=120):
     comptes = []
     for info in trouves:
         try:
-            comptes.append(Compte(ModemSerie(port=info.port), info.libelle))
-            print(f"  {info.libelle} sur {info.port} (IMEI {info.imei})")
+            comptes.append(Compte(ModemSerie(port=info.port),
+                                  carte=info.carte, imei=info.imei))
+            print(f"  {info.description} sur {info.port} (IMEI {info.imei})")
         except Exception as e:
             print(f"  Modem sur {info.port} inutilisable : {e}", file=sys.stderr)
     return comptes
@@ -60,6 +61,7 @@ def principal():
 
     # --- Diagnostic : que voit-on comme modems ? ---------------------------
     if "--modems" in args:
+        from .carte import operateur_depuis_imsi
         from .detect import detecter_modems
         trouves = detecter_modems()
         if not trouves:
@@ -68,7 +70,22 @@ def principal():
         print(f"{len(trouves)} modem(s) détecté(s) :")
         for i, m in enumerate(trouves, 1):
             sim = "SIM prête" if m.sim_prete else "SIM absente ou PIN actif"
-            print(f"  {i}. {m.libelle:<12} {m.port:<14} IMEI {m.imei}  {sim}")
+            print(f"  {i}. {m.description:<34} {m.port:<14} {sim}")
+            print(f"     modem IMEI {m.imei}")
+            if m.carte.iccid:
+                # ICCID en entier : c'est l'identité qu'il faut pouvoir
+                # comparer à celle imprimée sur la puce quand on en change.
+                print(f"     carte ICCID {m.carte.iccid}", end="")
+                # De l'IMSI, seuls le pays et l'opérateur : le reste
+                # identifierait l'abonné sans rien apprendre d'utile ici.
+                if m.carte.imsi:
+                    connu = operateur_depuis_imsi(m.carte.imsi)
+                    print(f" · réseau d'origine {m.carte.imsi[:5]}"
+                          + ("" if connu else " (inconnu de TOTEM)"), end="")
+                print(f" · {m.carte.numero}" if m.carte.numero else "")
+            elif m.sim_prete:
+                print("     carte présente mais ICCID illisible — le "
+                      "cloisonnement par SIM ne pourra pas fonctionner")
         return
 
     # --- Démo scriptée, sans matériel ni Telegram --------------------------
@@ -76,7 +93,7 @@ def principal():
         from .console import TransportScenario
         comptes = _comptes_simules(sms_auto=False)
         scenario = [
-            "/menu", "/statut", "/comptes",
+            "/menu", "/statut", "/comptes", "/sims",
             "*126#", "5", "1",                    # solde MTN (menus en boutons)
             "/orange", "#150#", "5", "1",         # bascule puis solde Orange
             "mtn *126#",                          # transfert ciblé MTN

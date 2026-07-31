@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fcfa, fcfaCourt, paiements, sims, soldeTotal } from "@/lib/mock";
+import { fcfa, fcfaCourt, paiements, simsEnPlace, soldeTotal } from "@/lib/mock";
 import { IconArrowDown, IconArrowUp, IconChevron, IconPhone, IconPlus, IconSettings, IconWallet } from "./icons";
 
 export default function Accueil() {
@@ -51,7 +51,7 @@ export default function Accueil() {
           <Link href="/cartes" className="text-small text-ink-soft transition hover:text-ink">Détails</Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {sims.map((s, i) => (
+          {simsEnPlace.map((s, i) => (
             <Link key={s.id} href="/cartes"
               className={`rounded-card p-4 transition ${i === 0 ? "acct" : "acct-alt hover:border-ink-faint"}`}>
               <div className="flex items-center justify-between">

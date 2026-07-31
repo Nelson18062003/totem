@@ -62,20 +62,29 @@ export default function Reglages() {
         <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
           {sims.map((s) => (
             <li key={s.id} className="flex items-center gap-3 py-3.5">
-              <IconWallet size={18} className="shrink-0 text-ink-soft" />
+              <IconWallet size={18}
+                className={`shrink-0 ${s.enPlace ? "text-ink-soft" : "text-ink-faint"}`} />
               <div className="min-w-0 flex-1">
-                <p className="text-body font-medium">
-                  {s.operateur === "MTN" ? "MTN Mobile Money" : "Orange Money"}
+                <p className={`text-body font-medium ${s.enPlace ? "" : "text-ink-soft"}`}>
+                  {s.libelle}
                 </p>
-                <p className="text-small tabnums text-ink-faint">{s.numero}</p>
+                <p className="text-small tabnums text-ink-faint">
+                  {s.enPlace
+                    ? `${s.numero || "numéro non provisionné"} · carte ${s.iccid.slice(-8)}`
+                    : `retirée le ${s.derniereVue} · journal conservé`}
+                </p>
               </div>
-              <span className="text-small tabnums text-ink-faint">{s.signal}/31</span>
+              <span className="shrink-0 text-small tabnums text-ink-faint">
+                {s.enPlace ? `${s.signal}/31` : "—"}
+              </span>
             </li>
           ))}
         </ul>
         <p className="mt-2 text-caption leading-relaxed text-ink-faint">
-          Un modem par opérateur. Brancher un second modem fait apparaître un
-          second compte au redémarrage du terminal.
+          Le nom d’un compte vient de la carte elle-même (son ICCID), jamais du
+          réseau capté : une puce MTN reste « MTN » même à l’étranger, en
+          itinérance. Changer de carte ouvre un compte distinct — les soldes ne
+          se mélangent pas, et l’ancienne retrouve son journal si on la remet.
         </p>
       </section>
 

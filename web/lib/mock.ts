@@ -1,13 +1,24 @@
 // Données de démonstration pour la maquette TOTEM.
 // Remplacées plus tard par l'API réelle du robot (Raspberry Pi).
 
+// Une carte SIM est identifiée par son ICCID — le numéro de série gravé sur
+// la puce, unique au monde. L'opérateur ne suffit pas : deux SIM MTN qui se
+// succèdent dans le terminal sont deux caisses distinctes, avec deux soldes.
 export type Sim = {
   id: string;
+  iccid: string;
+  libelle: string;          // « MTN ·8901 » — opérateur + 4 derniers de l'ICCID
   operateur: "MTN" | "Orange";
+  reseau: string;           // réseau visité, différent en itinérance
+  itinerance: boolean;
   numero: string;
   solde: number;
   signal: number;
-  enLigne: boolean;
+  enPlace: boolean;         // la puce est-elle dans le terminal en ce moment ?
+  premiereVue: string;
+  derniereVue: string;
+  nbPaiements: number;
+  totalRecu: number;
 };
 
 export type Paiement = {
@@ -36,11 +47,36 @@ export const robot: EtatRobot = {
 };
 
 export const sims: Sim[] = [
-  { id: "mtn", operateur: "MTN", numero: "677 12 34 56", solde: 872500, signal: 26, enLigne: true },
-  { id: "orange", operateur: "Orange", numero: "699 88 77 66", solde: 415000, signal: 22, enLigne: true },
+  {
+    id: "mtn", iccid: "89237010000000008901", libelle: "MTN ·8901",
+    operateur: "MTN", reseau: "MTN CM", itinerance: false,
+    numero: "677 12 34 56", solde: 872500, signal: 26, enPlace: true,
+    premiereVue: "12 mars 2026", derniereVue: "à l’instant",
+    nbPaiements: 214, totalRecu: 4_820_000,
+  },
+  {
+    id: "orange", iccid: "89237020000000004432", libelle: "Orange ·4432",
+    operateur: "Orange", reseau: "Orange CM", itinerance: false,
+    numero: "699 88 77 66", solde: 415000, signal: 22, enPlace: true,
+    premiereVue: "12 mars 2026", derniereVue: "à l’instant",
+    nbPaiements: 96, totalRecu: 1_640_000,
+  },
+  {
+    // Une puce retirée : son journal reste entier et consultable. C'est
+    // précisément ce que le cloisonnement par ICCID rend possible.
+    id: "mtn-ancienne", iccid: "89237010000000002215", libelle: "MTN ·2215",
+    operateur: "MTN", reseau: "MTN CM", itinerance: false,
+    numero: "", solde: 0, signal: 0, enPlace: false,
+    premiereVue: "4 janv. 2026", derniereVue: "11 mars 2026",
+    nbPaiements: 58, totalRecu: 1_115_000,
+  },
 ];
 
-export const soldeTotal = sims.reduce((s, x) => s + x.solde, 0);
+export const simsEnPlace = sims.filter((s) => s.enPlace);
+
+// Le solde du terminal ne compte que les cartes présentes : additionner celui
+// d'une puce retirée annoncerait un argent qu'on ne peut pas toucher.
+export const soldeTotal = simsEnPlace.reduce((s, x) => s + x.solde, 0);
 
 function mk(
   id: string, sim: "MTN" | "Orange", sens: "in" | "out", nom: string, numero: string,
