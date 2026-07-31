@@ -28,7 +28,7 @@ from datetime import datetime
 from .compte import ErreurModem, libelles_uniques
 from .mise_en_forme import bloc, echap, gras, mono
 from .sante import Sante, sauvegarder_journal
-from .storage import montant_recu
+from .analyse_sms import analyser
 
 ARRET_PROPRE = "arrêt propre"
 
@@ -611,16 +611,29 @@ class Robot:
             self._notifier_sms(compte, expediteur, texte)
 
     def _notifier_sms(self, compte, expediteur, texte):
-        """Un encaissement sonne ; le reste arrive en notification discrète."""
+        """Un encaissement sonne ; le reste arrive en notification discrète.
+
+        Quand le message est compris, on met en avant ce qui compte — combien,
+        de qui — plutôt que de laisser lire la phrase de l'opérateur."""
         etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
-        montant = montant_recu(texte)
-        if montant is not None:
+        paiement = analyser(texte)
+
+        if paiement and paiement.sens == "entree":
             entete = (f"💰 {gras('Encaissement')}{etiquette} — "
-                      f"{gras(self._fcfa(montant))}")
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"de {gras(paiement.tiers)}")
+            sonne = True
+        elif paiement:
+            entete = (f"↗️ {gras('Envoi')}{etiquette} — "
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"vers {gras(paiement.tiers)}")
+            sonne = False
         else:
             entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
+            sonne = False
+
         self.transport.envoyer(f"{entete}\n{echap(texte)}", canal="encaissements",
-                               silencieux=montant is None)
+                               silencieux=not sonne)
 
     def _expirer_session(self):
         with self.verrou:

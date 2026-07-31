@@ -8,12 +8,11 @@ Les montants MoMo sont extraits des SMS pour les rapports quotidiens.
 
 import csv
 import io
-import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta
 
-RE_MONTANT_RECU = re.compile(r"re[cç]u\s+([\d\s.,]+?)\s*F\s*CFA", re.I)
+from .analyse_sms import analyser
 
 
 class Journal:
@@ -99,29 +98,42 @@ class Journal:
         return nb, total, len(lignes)
 
     def export_csv(self, jours=7):
-        """Journal des SMS en CSV (octets), prêt à être envoyé dans Telegram
-        puis ouvert dans Excel ou importé dans la comptabilité."""
+        """Journal en CSV (octets), prêt pour Excel ou la comptabilité.
+
+        Chaque SMS compris devient une ligne exploitable : qui a payé, combien,
+        sous quelle référence. Le message d'origine reste en dernière colonne,
+        c'est lui qui fait foi."""
         depuis = (datetime.now() - timedelta(days=jours)).isoformat(timespec="seconds")
         with self.verrou:
             lignes = self.conn.execute(
-                "SELECT date, expediteur, texte FROM sms WHERE date >= ? ORDER BY id",
-                (depuis,)
+                "SELECT date, expediteur, texte, COALESCE(compte, '') "
+                "FROM sms WHERE date >= ? ORDER BY id", (depuis,)
             ).fetchall()
         tampon = io.StringIO()
         plume = csv.writer(tampon, delimiter=";")
-        plume.writerow(["date", "expediteur", "montant_fcfa", "message"])
-        for date, expediteur, texte in lignes:
-            montant = montant_recu(texte)
-            plume.writerow([date.replace("T", " "), expediteur,
-                            montant if montant is not None else "",
-                            texte.replace("\n", " ")])
+        plume.writerow(["date", "compte", "sens", "montant_fcfa", "tiers",
+                        "numero", "reference", "solde_apres", "message"])
+        for date, expediteur, texte, compte in lignes:
+            p = analyser(texte)
+            plume.writerow([
+                date.replace("T", " "), compte or expediteur,
+                {"entree": "reçu", "sortie": "envoyé"}.get(p.sens if p else "", ""),
+                p.montant if p else "",
+                p.tiers if p else "",
+                (p.numero or "") if p else "",
+                (p.reference or "") if p else "",
+                (p.solde_apres or "") if p else "",
+                texte.replace("\n", " "),
+            ])
         # BOM : Excel ouvre alors correctement les accents.
         return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
 
 
 def montant_recu(texte):
-    """Montant en FCFA d'un SMS « Vous avez reçu … », sinon None."""
-    m = RE_MONTANT_RECU.search(texte)
-    if not m:
-        return None
-    return int(re.sub(r"\D", "", m.group(1)) or 0)
+    """Montant en FCFA d'un encaissement, sinon None.
+
+    Délègue à l'analyseur de SMS, qui sait distinguer un vrai paiement d'une
+    publicité (« gagnez 1000 FCFA de bonus ») ou d'un code de vérification —
+    lesquels étaient auparavant comptés comme des recettes."""
+    p = analyser(texte)
+    return p.montant if p and p.sens == "entree" else None
