@@ -4,15 +4,27 @@
 SQLite : un seul fichier, robuste, consultable plus tard par l'app web.
 Chaque ligne porte le compte (opérateur) d'origine.
 Les montants MoMo sont extraits des SMS pour les rapports quotidiens.
+
+Deux files d'attente distinctes y vivent aussi, et ne visent pas la même
+destination : la colonne « envoye » suit ce qui reste à pousser vers le cloud,
+la table « sortants » ce qui reste à annoncer dans Telegram après une coupure.
 """
 
 import csv
 import io
+import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta
 
 from .analyse_sms import analyser
+
+
+def _canal(brut):
+    """Le canal est stocké en texte : « alertes », ou un identifiant de chat."""
+    if not brut:
+        return None
+    return int(brut) if re.fullmatch(r"-?\d+", brut) else brut
 
 
 class Journal:
@@ -28,6 +40,13 @@ class Journal:
                 CREATE TABLE IF NOT EXISTS ussd(
                     id INTEGER PRIMARY KEY, date TEXT, direction TEXT,
                     texte TEXT, compte TEXT);
+                -- Courrier en souffrance : ce que le robot n'a pas pu envoyer
+                -- dans Telegram (coupure Internet). Rien ne se perd, tout part
+                -- au retour du réseau. À ne pas confondre avec la file vers le
+                -- cloud (colonne « envoye »), qui vise une autre destination.
+                CREATE TABLE IF NOT EXISTS sortants(
+                    id INTEGER PRIMARY KEY, date TEXT, canal TEXT, texte TEXT,
+                    essais INTEGER DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS evenements(
                     id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
                 """
@@ -71,6 +90,68 @@ class Journal:
             self.conn.execute("INSERT INTO evenements(date, texte) VALUES(?,?)",
                               (self._maintenant(), texte))
             self.conn.commit()
+
+    def sms_existe(self, expediteur, texte, compte="", secondes=900):
+        """Ce SMS a-t-il déjà été enregistré récemment ? Garde-fou contre les
+        doublons quand l'effacement dans le modem a échoué au tour précédent."""
+        depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(
+            timespec="seconds")
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT 1 FROM sms WHERE date >= ? AND expediteur = ? AND texte = ? "
+                "AND COALESCE(compte, '') = ? LIMIT 1",
+                (depuis, expediteur, texte, compte)).fetchone() is not None
+
+    # ---- courrier Telegram en souffrance -----------------------------------
+    def enfiler(self, canal, texte):
+        """Met un message de côté pour l'envoyer dès que le réseau revient."""
+        with self.verrou:
+            self.conn.execute(
+                "INSERT INTO sortants(date, canal, texte) VALUES(?,?,?)",
+                (self._maintenant(), "" if canal is None else str(canal), texte))
+            self.conn.commit()
+
+    def courrier_en_attente(self):
+        with self.verrou:
+            return self.conn.execute("SELECT COUNT(*) FROM sortants").fetchone()[0]
+
+    def prochain_courrier(self):
+        """(id, canal, texte, essais) du plus ancien message en attente."""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT id, canal, texte, essais FROM sortants "
+                "ORDER BY id LIMIT 1").fetchone()
+        if not ligne:
+            return None
+        identifiant, canal, texte, essais = ligne
+        return identifiant, _canal(canal), texte, essais
+
+    def courrier_livre(self, identifiant):
+        with self.verrou:
+            self.conn.execute("DELETE FROM sortants WHERE id = ?", (identifiant,))
+            self.conn.commit()
+
+    def courrier_echoue(self, identifiant, essais_max=60):
+        """Compte l'échec ; abandonne au bout de nombreuses tentatives pour
+        qu'un message impossible à envoyer ne bloque pas toute la file."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE sortants SET essais = essais + 1 WHERE id = ?", (identifiant,))
+            self.conn.execute("DELETE FROM sortants WHERE id = ? AND essais >= ?",
+                              (identifiant, essais_max))
+            self.conn.commit()
+
+    # ---- sauvegarde --------------------------------------------------------
+    def sauvegarder(self, chemin):
+        """Copie cohérente du journal, même pendant que le robot écrit.
+        Envoyée dans Telegram, elle constitue la seule copie hors du Pi."""
+        destination = sqlite3.connect(chemin)
+        try:
+            with self.verrou:
+                self.conn.backup(destination)
+        finally:
+            destination.close()
+        return chemin
 
     def dernier_evenement(self):
         """Texte du dernier événement journalisé, ou None si le journal est

@@ -66,10 +66,34 @@ class Compte:
         self.session_ouverte = etat == USSD_OUVERTE
         self.dernier_menu = reponse if self.session_ouverte else ""
 
+    def iccid(self):
+        """Numéro de série de la carte présente dans CE modem. Deux SIM du
+        même opérateur qui se succèdent dans le même berceau ne portent pas
+        le même ICCID : c'est lui qui les distingue, pas l'opérateur."""
+        try:
+            return self.modem.iccid()
+        except Exception:
+            return ""
+
+    def memoire_sms(self):
+        try:
+            return self.modem.memoire_sms()
+        except Exception:
+            return (0, 0)
+
     # ---- SMS --------------------------------------------------------------
-    def lire_nouveaux_sms(self):
+    def lire_sms(self):
+        """[(index, expéditeur, texte)] sans effacer : l'appelant n'efface
+        qu'une fois le message en sécurité au journal."""
         with self.verrou:
-            return self.modem.lire_nouveaux_sms()
+            return self.modem.lire_sms()
+
+    def effacer_sms(self, index):
+        with self.verrou:
+            try:
+                return self.modem.effacer_sms(index)
+            except Exception:
+                return False
 
     def redemarrer(self):
         with self.verrou:

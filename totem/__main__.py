@@ -143,6 +143,8 @@ def principal():
     Robot(comptes, transport, journal, nom=nom,
           heure_rapport=cfg["heure_rapport"], raccourcis=cfg["raccourcis"],
           delai_session=cfg["delai_session"],
+          seuil_confirmation=cfg["seuil_confirmation"],
+          sauvegarde_quotidienne=cfg["sauvegarde_quotidienne"],
           chemin_base=cfg["base"] if "--simulation" not in args else None,
           nuage=nuage).demarrer()
 

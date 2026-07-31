@@ -5,23 +5,34 @@
 
 ## 1. Le principe : on ne tape plus, on appuie
 
-Un menu MoMo arrive dans Telegram sous forme de **boutons cliquables**. Le
-robot lit les lignes numérotées du menu de l'opérateur (`1. Transfert d'argent`,
-`2. Retrait…`) et fabrique un bouton pour chacune.
+Un menu Mobile Money arrive dans Telegram sous forme de **boutons cliquables**.
+Le robot lit les lignes numérotées du menu de l'opérateur et fabrique un bouton
+pour chacune — qu'elles soient écrites `1. Transfert`, `1) Transfert`,
+`1-Transfert` ou `01 : Transfert`, car MTN et Orange ne les numérotent pas
+pareil.
 
 ```
-🗿 Session USSD
-┌────────────────────────────┐
-│ MTN MoMo                   │
-│ 1. Transfert d'argent      │
-│ 2. Retrait d'argent        │
-│ …                          │
-└────────────────────────────┘
-[1. Transfert d'argent] [2. Retrait d'argent]
-[3. Paiements]          [4. Epargne]
-[5. Mon compte]         [6. Quitter]
-[❌ Annuler]
+🗿 Orange Money
+Orange Money
+Bienvenue. Choisissez :
+
+[1. Transfert d'argent]
+[2. Retrait d'argent]
+[3. Paiement marchand]
+[4. Mon compte]
+[5. Gerer mon code secret]
+[6. Quitter]
+[❌ Fermer]
 ```
+
+**Les options ne sont plus recopiées en texte au-dessus des boutons.** Avant,
+le menu apparaissait deux fois — une fois en bloc gris à chasse fixe (ce petit
+cadre avec un bouton « copier »), une fois en boutons. Sur téléphone les lignes
+longues débordaient et l'écran devenait illisible. Le bloc gris a disparu : il
+ne reste que le texte d'introduction de l'opérateur, puis les boutons.
+
+Quand les libellés sont longs, les boutons passent automatiquement à **un par
+ligne** au lieu de deux, pour ne pas être tronqués.
 
 Quand l'opérateur pose une **question libre** (numéro du bénéficiaire, montant),
 il n'y a pas de bouton : vous répondez par un message normal, comme avant.
@@ -31,12 +42,23 @@ messages : la même carte est réécrite à chaque étape, comme l'écran d'un
 téléphone. La conversation reste lisible, et l'historique complet reste dans le
 journal SQLite (et dans l'export CSV).
 
-## 2. Le code PIN ne passe plus jamais dans la conversation
+**Une réponse immédiate, même quand le réseau traîne.** Dès que vous envoyez un
+code ou appuyez sur une option, la carte affiche aussitôt
+« ⏳ Composition de `*126#`… », puis se transforme en menu à l'arrivée de la
+réponse. L'écran ne reste plus figé sans rien dire.
 
-Dès que l'opérateur demande le PIN, un **pavé numérique en boutons** s'affiche :
+Le robot ne s'inflige d'ailleurs plus d'attente inutile : il attendait
+auparavant 1,2 s après **chaque** étape « au cas où » le message ne serait pas
+fini, et gelait le modem 5,6 s toutes les minutes pour vérifier la carte SIM.
+Tout cela a disparu — reste la seule latence du réseau de l'opérateur, sur
+laquelle personne n'a la main.
+
+## 2. Le code secret ne passe plus jamais dans la conversation
+
+Dès que l'opérateur demande le code, un **pavé numérique en boutons** s'affiche :
 
 ```
-🔐 Code PIN
+🔐 Code secret
 Saisi : ••••
 [1] [2] [3]
 [4] [5] [6]
@@ -49,13 +71,37 @@ Telegram : rien à effacer, rien qui traîne dans les sauvegardes de l'appareil,
 rien de visible par les autres membres d'un groupe. Le journal n'enregistre que
 `****`.
 
-Si vous préférez taper le PIN à la main, cela marche toujours : le message est
-alors supprimé du chat immédiatement, comme avant.
+Si vous préférez taper le code à la main, cela marche toujours : le message est
+alors supprimé du chat immédiatement.
 
-## 3. Un bouton = une opération complète (raccourcis)
+**Le pavé ne s'ouvre que sur une vraie demande de saisie.** Un menu comme
+`5) Gerer mon code secret` *parle* du code sans rien demander : il porte des
+options numérotées, donc c'est une navigation. Le robot le voit et affiche des
+boutons, pas le pavé. Seule une invite sans aucune option numérotée
+(« Confirmez avec votre code secret : ») déclenche la saisie.
+
+## 3. Plusieurs opérateurs : un modem par réseau
+
+Le robot détecte tout seul les modems branchés et en fait un **compte** par
+opérateur. Chacun écoute son réseau en permanence : aucun paiement ne peut
+passer inaperçu, quel que soit l'opérateur du client.
+
+- `/comptes` liste les comptes et permet de basculer.
+- `mtn *126#` vise un compte sans changer de compte courant.
+- `/statut` et `/rapport` agrègent tous les comptes.
+- `python3 -m totem --modems` dit ce que le Pi détecte réellement.
+
+Chaque ligne du journal porte son compte d'origine : les encaissements MTN et
+Orange ne se mélangent jamais, ni dans `/sms`, ni dans l'export.
+
+> **Limite connue** : les raccourcis (section suivante) sont communs à tous les
+> comptes. Avec deux opérateurs dont les menus diffèrent, il faut aujourd'hui
+> composer le code du second à la main.
+
+## 4. Un bouton = une opération complète (raccourcis)
 
 Consulter le solde demandait `*126#`, puis `5`, puis `1`. Cela devient **un seul
-bouton**. Dans `totem.conf` :
+bouton** :
 
 ```ini
 [raccourcis]
@@ -63,12 +109,15 @@ solde = 💰 Solde | *126#, 5, 1
 transactions = 🧾 Dernières opérations | *126#, 5, 2
 ```
 
-Le robot joue les touches à votre place, et **s'arrête tout seul dès qu'un PIN
-est demandé** — vous gardez toujours la main sur l'argent qui sort. Les
-raccourcis apparaissent en haut de `/menu`. Adaptez les chiffres à votre menu
-opérateur (ils diffèrent entre MTN et Orange).
+Le robot joue les touches à votre place sur le compte courant, et **s'arrête
+tout seul dès qu'un code secret est demandé** — vous gardez toujours la main
+sur l'argent qui sort.
 
-## 4. Le mode groupe : travailler à plusieurs
+Pour trouver les bons chiffres : déroulez le menu une fois à la main en notant
+les touches, puis recopiez-les. ⚠️ Vérifiez les codes auprès de votre agence :
+ils changent selon les pays et les offres.
+
+## 5. Le mode groupe : travailler à plusieurs
 
 Jusqu'ici, un seul Telegram parlait au robot. Vous pouvez désormais brancher le
 robot sur un **groupe d'équipe** (vous, l'associé, la comptable, la personne sur
@@ -107,7 +156,7 @@ reste **ignoré en silence**, exactement comme avant.
 > message dans le groupe, désactivez la confidentialité :
 > @BotFather → `/setprivacy` → votre robot → *Disable*.
 
-## 5. Les sujets (forum) : un fil par nature d'information
+## 6. Les sujets (forum) : un fil par nature d'information
 
 Si le groupe est passé en mode **Sujets** (Paramètres du groupe → *Sujets*),
 chaque flux peut avoir son propre fil : les encaissements ne se mélangent plus
@@ -128,22 +177,106 @@ Répartition : les SMS de paiement et le rapport quotidien vont dans
 sessions USSD restent dans la conversation où elles ont été lancées.
 Si vous ne configurez rien, tout arrive dans le fil général — rien ne casse.
 
-## 6. Notifications : ce qui sonne et ce qui ne sonne pas
+## 7. Notifications : tous les SMS comptent
 
-- **Un encaissement sonne** : « 💰 Encaissement — 25 000 FCFA », en tête de
-  message, montant en gras.
-- Un SMS ordinaire (publicité de l'opérateur, expiration de forfait) arrive en
-  **notification silencieuse** : il est là si vous le cherchez, il ne réveille
-  personne à 2 h du matin.
+**Aucun SMS n'est mis en sourdine.** Tous arrivent de la même façon et
+déclenchent la même notification, qu'il s'agisse d'un encaissement ou d'un
+message de l'opérateur — un SMS peut annoncer une suspension de compte, une
+expiration de ligne, une opération que vous n'avez pas faite : rien de tout
+cela ne doit passer inaperçu.
 
-## 7. Export comptable
+La seule différence est **visuelle** : quand le robot reconnaît un montant reçu,
+il l'affiche en tête (« 💰 Encaissement — 25 000 FCFA ») pour que vous le
+lisiez sans ouvrir le message. Chaque SMS est signé de l'opérateur et de la
+carte qui l'a reçu.
+
+## 8. Plusieurs SIM : chaque compte a son journal
+
+Chaque SMS, chaque échange USSD est rattaché au **compte** qui l'a reçu.
+`/sms`, `/rapport` et l'export distinguent donc MTN d'Orange sans ambiguïté.
+
+Le robot lit aussi l'**ICCID** de chaque carte — le numéro de série gravé sur
+la puce, unique et stable, indépendant de l'opérateur. Il est affiché dans
+`/diagnostic` : c'est lui qui permet de savoir *quelle* carte est réellement
+en place, y compris si vous remplacez une SIM Orange par une autre SIM Orange.
+
+> Le numéro de téléphone (MSISDN) n'est **pas** utilisé comme identifiant : la
+> plupart des SIM prépayées ne l'inscrivent pas dans la puce. L'ICCID, lui, y
+> est toujours.
+
+## 9. Confirmation avant une sortie importante
+
+Au-delà d'un montant que vous fixez, **le pavé du code secret ne s'affiche
+plus directement**. Une carte s'intercale et rappelle ce que vous êtes sur le
+point de valider :
+
+```
+⚠️ Confirmation demandée
+Montant : 50 000 FCFA
+Bénéficiaire : 677123456
+Opérateur : MTN MoMo · carte …000011
+
+[✅ Confirmer]
+[❌ Annuler]
+```
+
+Dans `totem.conf` :
+
+```ini
+seuil_confirmation = 100000     ; 0 = désactivé
+```
+
+Le robot lit le montant et le bénéficiaire dans vos propres réponses au menu
+de l'opérateur — il n'invente rien. Tant que vous n'avez pas confirmé, **le
+code secret n'existe nulle part** : le pavé reste inerte, et taper le code à
+la main ne contourne rien.
+
+C'est le garde-fou si quelqu'un met la main sur votre téléphone déverrouillé :
+consulter un solde reste possible, sortir de l'argent demande un geste
+délibéré de plus.
+
+## 10. Sauvegarde : Telegram garde votre journal
+
+Le journal ne vit que sur la carte SD du Pi. Une carte morte, et tout
+l'historique des encaissements disparaît.
+
+**`/sauvegarde`** envoie une copie complète du journal dans la conversation.
+Telegram conserve le fichier indéfiniment : pas de serveur à louer, pas
+d'identifiant supplémentaire à gérer, et il est accessible depuis n'importe
+quel appareil. Le fichier ne contient **aucun code secret** (le journal n'en
+garde jamais).
+
+C'est automatique chaque jour, juste après le bilan :
+
+```ini
+sauvegarde_quotidienne = oui
+```
+
+**Pour restaurer** : téléchargez le fichier depuis Telegram, arrêtez le robot
+(`sudo systemctl stop totem`), remplacez `journal.db` par celui-ci, relancez.
+
+## 11. Rien ne se perd pendant une coupure Internet
+
+À Douala, la connexion tombe. Les paiements, eux, continuent d'arriver.
+
+Les encaissements, alertes et bilans passent désormais par une **file
+d'attente écrite sur disque** : si l'envoi échoue, le message est mis de côté
+et repart tout seul au retour du réseau, **dans l'ordre d'origine**. Un
+nouveau message ne double jamais la file — la chronologie des encaissements
+est préservée.
+
+Les échanges interactifs (menus USSD, réponses aux commandes) n'y passent
+pas : ils n'ont d'intérêt qu'immédiatement, et vous voyez tout de suite s'ils
+n'aboutissent pas.
+
+## 12. Export comptable
 
 `/export` (ou le bouton **📄 Export CSV**) envoie dans la conversation un
-fichier `totem-AAAA-MM-JJ.csv` des 7 derniers jours : date, expéditeur, montant
-déjà extrait en colonne, message complet. Il s'ouvre directement dans Excel
-(accents compris) et s'importe dans un logiciel de comptabilité.
+fichier `totem-AAAA-MM-JJ.csv` des 7 derniers jours : date, carte, expéditeur,
+montant déjà extrait en colonne, message complet. Il s'ouvre directement dans
+Excel (accents compris) et s'importe dans un logiciel de comptabilité.
 
-## 8. Les autres améliorations, invisibles mais utiles
+## 13. Les autres améliorations, invisibles mais utiles
 
 - **Menu « / » natif** : les commandes sont déclarées auprès de Telegram, elles
   apparaissent dans le bouton *Menu* de l'application. Plus rien à retenir.
@@ -160,7 +293,7 @@ déjà extrait en colonne, message complet. Il s'ouvre directement dans Excel
 - **Textes échappés** : un SMS contenant `<` ou `&` s'affiche correctement au
   lieu de casser la mise en forme.
 
-## 9. Ce qui n'a pas changé (et ne doit pas changer)
+## 14. Ce qui n'a pas changé (et ne doit pas changer)
 
 - Aucun port ouvert sur le Pi : uniquement des connexions **sortantes**.
 - Le PIN MoMo n'est **jamais** stocké.

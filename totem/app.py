@@ -19,27 +19,42 @@ L'expérience Telegram repose sur trois idées :
      numérique en boutons ; seul le nombre d'étoiles est affiché.
 """
 
+import os
 import re
+import shutil
 import signal
+import tempfile
 import threading
 import time
 from datetime import datetime
 
-from .compte import ErreurModem, libelles_uniques
-from .mise_en_forme import bloc, echap, gras, mono
-from .sante import Sante, sauvegarder_journal
 from .analyse_sms import analyser
+from .compte import ErreurModem, libelles_uniques
+from .courrier import Facteur
+from .mise_en_forme import echap, gras, italique, mono
+from .sante import Sante, sauvegarder_journal
 
 ARRET_PROPRE = "arrêt propre"
 
 RE_CODE_USSD = re.compile(r"^[\*#][\d\*#]+#$")
 # « mtn *126# » : viser un compte sans changer le compte courant
 RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
-RE_DEMANDE_PIN = re.compile(r"\bPIN\b|code secret|code confidentiel", re.I)
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*?)\s*$")
+# Vocabulaire du code secret, selon les opérateurs.
+RE_DEMANDE_CODE = re.compile(
+    r"\bpin\b|code\s+(?:secret|confidentiel|pin)|mot\s+de\s+passe|password", re.I)
+# Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
+# Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
+RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
+# Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
+# permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
+RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount", re.I)
+RE_DEMANDE_DESTINATAIRE = re.compile(
+    r"num[ée]ro|b[ée]n[ée]ficiaire|destinataire|recipient", re.I)
 
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
+VERIF_MEMOIRE_SECONDES = 300
+SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 
 COMMANDES_BOT = [
     ("menu", "Écran d'accueil avec les boutons"),
@@ -48,6 +63,8 @@ COMMANDES_BOT = [
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
+    ("diagnostic", "État détaillé (mémoire SMS, cartes, courrier)"),
+    ("sauvegarde", "Envoyer une copie du journal dans la conversation"),
     ("annuler", "Fermer la session USSD en cours"),
     ("redemarrer_modem", "Relancer le modem du compte courant"),
     ("aide", "Aide"),
@@ -57,10 +74,14 @@ COMMANDES_BOT = [
 class Robot:
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
-                 delai_session=180, chemin_base=None, nuage=None):
+                 delai_session=180, chemin_base=None, nuage=None,
+                 seuil_confirmation=0, sauvegarde_quotidienne=True):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
+        self.facteur = Facteur(journal, transport)
+        self.seuil_confirmation = seuil_confirmation
+        self.sauvegarde_quotidienne = sauvegarde_quotidienne
         self.nom = nom
         self.heure_rapport = heure_rapport
         self.pause_sms = pause_sms
@@ -72,7 +93,21 @@ class Robot:
         self.verrou = threading.RLock()
         self.courant = self.comptes[0] if self.comptes else None
         self.sante = Sante()
+        self.memoire_signalee = False
+        self.conflit_signale = False
+        self.demarre_a = time.time()
+        # Un redémarrage après l'heure du bilan ne doit pas en déclencher un.
+        self.dernier_rapport = (datetime.now().date()
+                                if self._heure_passee() else None)
         self._reinitialiser_session()
+
+    def _heure_passee(self):
+        try:
+            heure, minute = (int(x) for x in self.heure_rapport.split(":"))
+        except ValueError:
+            return True
+        maintenant = datetime.now()
+        return (maintenant.hour, maintenant.minute) >= (heure, minute)
 
     @property
     def multi(self):
@@ -91,6 +126,10 @@ class Robot:
         self.pin_tampon = ""
         self.file_macro = []
         self.dernier_echange = time.time()
+        self.montant_session = None      # montant saisi pendant la session
+        self.destinataire_session = ""   # bénéficiaire saisi pendant la session
+        self.attente_saisie = ""         # ce que l'opérateur vient de demander
+        self.confirme = False            # grosse sortie déjà confirmée ?
 
     def _aide(self):
         lignes = [
@@ -221,6 +260,8 @@ class Robot:
                 self._derniers_sms(canal)
             elif commande == "rapport":
                 self._rapport(canal=canal, manuel=True)
+            elif commande == "diagnostic":
+                self._diagnostic(canal)
             elif commande == "export":
                 self._export(canal)
             elif commande and self._compte_par_nom(commande):
@@ -231,7 +272,8 @@ class Robot:
                 self.transport.envoyer(
                     f"Compte courant : {gras(self.courant.libelle)}.", canal=canal,
                     boutons=[[("🏠 Menu", "c:menu")]])
-            elif commande in ("annuler", "redemarrer_modem") or RE_CODE_USSD.match(texte) \
+            elif commande in ("annuler", "redemarrer_modem", "sauvegarde") \
+                    or RE_CODE_USSD.match(texte) \
                     or RE_CIBLE_USSD.match(texte) or self.session_ussd:
                 if not self._verifier_admin(role, entrant, canal):
                     return
@@ -242,7 +284,9 @@ class Robot:
                     f"tel que {mono('*126#')}.", canal=canal)
 
     def _action_admin(self, commande, texte, entrant, canal):
-        if commande == "annuler":
+        if commande == "sauvegarde":
+            self._sauvegarde(canal)
+        elif commande == "annuler":
             self._annuler(canal)
             return
         if commande == "redemarrer_modem":
@@ -264,10 +308,16 @@ class Robot:
         compte = self.session_compte
         if compte is None:
             return
-        if self.pin_actif or RE_DEMANDE_PIN.search(self.dernier_menu):
+        if self.pin_actif:
             self.transport.supprimer(entrant.message_id, canal=canal)
+            if self._confirmation_requise():
+                # Même en tapant le code à la main, on ne saute pas la
+                # confirmation d'une sortie importante.
+                self._afficher_session(compte)
+                return
             self.journal.ussd("envoyé", "****", compte.libelle)
         else:
+            self._retenir_saisie(texte)
             self.journal.ussd("envoyé", texte, compte.libelle)
         self._ussd(compte, texte, nouveau=False)
         self._avancer_macro()
@@ -280,13 +330,15 @@ class Robot:
     def _clic(self, donnee, entrant, role, canal):
         genre, _, valeur = donnee.partition(":")
         if genre == "c" and valeur in ("menu", "statut", "sms", "rapport",
-                                       "export", "aide", "comptes"):
+                                       "export", "aide", "comptes",
+                                       "diagnostic"):
             {"menu": lambda: self._accueil(canal, role),
              "aide": lambda: self.transport.envoyer(self._aide(), canal=canal),
              "statut": lambda: self._statut(canal),
              "comptes": lambda: self._lister_comptes(canal, role),
              "sms": lambda: self._derniers_sms(canal),
              "rapport": lambda: self._rapport(canal=canal, manuel=True),
+             "diagnostic": lambda: self._diagnostic(canal),
              "export": lambda: self._export(canal)}[valeur]()
             return
 
@@ -300,6 +352,15 @@ class Robot:
                 canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
+        elif genre == "c" and valeur == "confirmer":
+            if self._confirmation_requise() and self.session_compte:
+                self.confirme = True
+                self.journal.ussd("envoyé",
+                                  f"[confirmation de {self.montant_session} FCFA]",
+                                  self.session_compte.libelle)
+                self._afficher_session(self.session_compte)
+        elif genre == "c" and valeur == "sauvegarde":
+            self._sauvegarde(canal)
         elif genre == "a":                      # bascule de compte
             compte = self._compte_par_nom(valeur)
             if compte:
@@ -367,7 +428,22 @@ class Robot:
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
-    def _ussd(self, compte, texte, nouveau=False):
+    def _afficher_attente(self, compte, envoi, nouveau):
+        """Accuse réception tout de suite.
+
+        Le réseau USSD met plusieurs secondes à répondre, et personne ne peut
+        raccourcir cela. Ce qu'on peut supprimer, c'est le silence : un écran
+        figé donne l'impression que rien ne marche."""
+        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
+        libelle = (f"⏳ Composition de {mono(envoi)}…" if nouveau
+                   else "⏳ Envoi de votre réponse…")
+        self._peindre(
+            f"🗿 {gras('Session USSD')}{etiquette}\n{libelle}\n"
+            + italique("L'opérateur met quelques secondes à répondre."), [])
+
+    def _ussd(self, compte, texte, nouveau=False, attente=True):
+        if attente:
+            self._afficher_attente(compte, texte, nouveau)
         try:
             if nouveau:
                 self.journal.ussd("envoyé", texte, compte.libelle)
@@ -385,47 +461,141 @@ class Robot:
         self.journal.ussd("reçu", reponse, compte.libelle)
         self.dernier_menu = reponse
         self.session_compte = compte if compte.session_ouverte else None
-        self.pin_actif = bool(compte.session_ouverte and RE_DEMANDE_PIN.search(reponse))
+        self.pin_actif = bool(compte.session_ouverte and self._demande_un_code(reponse))
         self.pin_tampon = ""
         self.dernier_echange = time.time()
+        self._noter_attente(reponse)
         if compte.session_ouverte:
             self._afficher_session(compte)
         else:
             entete = f"[{echap(compte.libelle)}]\n" if self.multi else ""
-            self._cloturer_session(entete + bloc(reponse))
+            self._cloturer_session(entete + self._texte_menu(reponse))
+
+    @classmethod
+    def _demande_un_code(cls, menu):
+        """Vrai seulement si l'opérateur ATTEND une saisie de code secret.
+
+        Un menu qui se contente de *parler* du code (« 5) Gerer mon code
+        secret ») porte des options numérotées : c'est une navigation, pas une
+        saisie. Chercher le seul mot « PIN » faisait apparaître le pavé au
+        mauvais moment."""
+        _, options = cls._analyser_menu(menu)
+        return not options and bool(RE_DEMANDE_CODE.search(menu))
+
+    @staticmethod
+    def _analyser_menu(menu):
+        """Sépare l'en-tête des options numérotées, sans rien perdre : toute
+        ligne non reconnue comme option reste dans l'en-tête."""
+        entete, options = [], []
+        for ligne in re.split(r"\r\n|\r|\n", menu or ""):
+            ligne = ligne.strip()
+            if not ligne:
+                continue
+            m = RE_OPTION.match(ligne)
+            if m:
+                options.append((m.group(1), m.group(2).strip()))
+            else:
+                entete.append(ligne)
+        return entete, options
+
+    @staticmethod
+    def _texte_menu(menu):
+        """Rend un texte d'opérateur lisible : lignes nettoyées, aucun bloc de
+        code — le cadre gris à chasse fixe faisait déborder les lignes longues
+        sur téléphone et rendait les menus illisibles."""
+        lignes = [l.strip() for l in re.split(r"\r\n|\r|\n", menu or "") if l.strip()]
+        return echap("\n".join(lignes))
+
+    @staticmethod
+    def _court(texte, limite=30):
+        return texte if len(texte) <= limite else texte[:limite - 1].rstrip() + "…"
+
+    def _boutons_options(self, options):
+        """Deux boutons par ligne si les libellés sont courts, sinon un seul :
+        c'est ce qui évite les libellés tronqués sur les menus verbeux."""
+        libelles = [(f"{num}. {self._court(lib)}", f"u:{num}") for num, lib in options]
+        par_ligne = 2 if all(len(l) <= 20 for l, _ in libelles) else 1
+        return [libelles[i:i + par_ligne] for i in range(0, len(libelles), par_ligne)]
 
     def _afficher_session(self, compte):
         """Réécrit la carte de session en place : une seule carte, vivante."""
         etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
-        if self.pin_actif:
+        if self.pin_actif and self._confirmation_requise():
+            texte, boutons = self._carte_confirmation(compte)
+        elif self.pin_actif:
             texte, boutons = self._carte_pin(etiquette)
         else:
-            options = self._options(self.dernier_menu)
-            texte = f"🗿 {gras('Session USSD')}{etiquette}\n{bloc(self.dernier_menu)}"
+            entete, options = self._analyser_menu(self.dernier_menu)
+            texte = f"🗿 {gras('Session USSD')}{etiquette}"
+            if entete:
+                texte += "\n" + echap("\n".join(entete))
             if options:
-                boutons = [[(f"{num}. {lib[:28]}", f"u:{num}")
-                            for num, lib in options[i:i + 2]]
-                           for i in range(0, len(options), 2)]
+                # Les options sont DANS les boutons : les répéter en texte
+                # au-dessus rendait l'écran illisible.
+                boutons = self._boutons_options(options)
             else:
-                texte += "\n✍️ Répondez par un message (numéro, montant…)."
+                texte += "\n\n" + italique("✍️ Répondez par un message.")
                 boutons = []
-            boutons = boutons + [[("❌ Annuler", "c:annuler")]]
+            boutons = boutons + [[("❌ Fermer", "c:annuler")]]
         self._peindre(texte, boutons)
 
     def _carte_pin(self, etiquette=""):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]
         boutons.append([("⌫", "p:eff"), ("0", "p:0"), ("✅ Valider", "p:ok")])
         boutons.append([("❌ Annuler", "c:annuler")])
+        entete, _ = self._analyser_menu(self.dernier_menu)
         return (
-            f"🔐 {gras('Code PIN')}{etiquette}\n{bloc(self.dernier_menu)}\n"
+            f"🔐 {gras('Code secret')}{etiquette}\n{echap(chr(10).join(entete))}\n\n"
             f"Saisi : {mono('•' * len(self.pin_tampon) or '—')}\n"
-            "<i>Le code se compose sur les boutons : il n'apparaît jamais "
-            "dans la conversation.</i>", boutons)
+            + italique("Le code se compose sur les boutons : il n'apparaît "
+                       "jamais dans la conversation."), boutons)
+
+    # ---- confirmation d'une sortie importante ------------------------------
+    def _noter_attente(self, menu):
+        """Retient ce que l'opérateur demande, pour pouvoir rappeler le montant
+        et le bénéficiaire au moment de valider."""
+        _, options = self._analyser_menu(menu)
+        if options:
+            self.attente_saisie = ""
+        elif RE_DEMANDE_MONTANT.search(menu):
+            self.attente_saisie = "montant"
+        elif RE_DEMANDE_DESTINATAIRE.search(menu):
+            self.attente_saisie = "destinataire"
+        else:
+            self.attente_saisie = ""
+
+    def _retenir_saisie(self, texte):
+        """Mémorise la réponse libre selon ce qui était demandé."""
+        if self.attente_saisie == "montant":
+            chiffres = re.sub(r"\D", "", texte)
+            if chiffres:
+                self.montant_session = int(chiffres)
+        elif self.attente_saisie == "destinataire":
+            self.destinataire_session = texte.strip()[:24]
+        self.attente_saisie = ""
+
+    def _confirmation_requise(self):
+        """Une sortie importante mérite un temps d'arrêt avant le code secret."""
+        return (self.seuil_confirmation > 0
+                and self.montant_session is not None
+                and self.montant_session >= self.seuil_confirmation
+                and not self.confirme)
+
+    def _carte_confirmation(self, compte):
+        destinataire = (f"\nBénéficiaire : {mono(self.destinataire_session)}"
+                        if self.destinataire_session else "")
+        return (
+            f"⚠️ {gras('Confirmation demandée')}\n"
+            f"Montant : {gras(self._fcfa(self.montant_session))}{destinataire}\n"
+            f"Compte : {gras(compte.libelle)}\n\n"
+            + italique("Au-delà du seuil que vous avez fixé, le code secret ne "
+                       "s'affiche qu'après cette confirmation."),
+            [[("✅ Confirmer", "c:confirmer")], [("❌ Annuler", "c:annuler")]])
 
     def _pave(self, touche):
         compte = self.session_compte
-        if not self.pin_actif or compte is None:
-            return
+        if not self.pin_actif or compte is None or self._confirmation_requise():
+            return    # le pavé n'existe pas tant que la sortie n'est pas confirmée
         self.dernier_echange = time.time()
         etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
         if touche == "eff":
@@ -436,8 +606,9 @@ class Robot:
             code, self.pin_tampon = self.pin_tampon, ""
             self.pin_actif = False
             self.journal.ussd("envoyé", "****", compte.libelle)
-            self._peindre(f"🔐 {gras('Code PIN')}{etiquette}\n⏳ Validation en cours…", [])
-            self._ussd(compte, code, nouveau=False)
+            self._peindre(
+                f"🔐 {gras('Code secret')}{etiquette}\n⏳ Validation en cours…", [])
+            self._ussd(compte, code, nouveau=False, attente=False)
             self._avancer_macro()
             return
         elif touche.isdigit() and len(self.pin_tampon) < 8:
@@ -564,14 +735,81 @@ class Robot:
                 nom, contenu, legende="📄 Journal des 7 derniers jours.", canal=canal):
             self.transport.envoyer("⚠️ L'export n'a pas pu être envoyé.", canal=canal)
 
+    def _sauvegarde(self, canal=None, automatique=False):
+        """Envoie le journal complet dans Telegram.
+
+        La copie locale (sauvegarder_journal) vit sur la même carte SD que
+        l'original : elle ne protège de rien si la carte meurt. Celle-ci part
+        hors du Pi, sans serveur à louer ni identifiant à gérer. Pour
+        restaurer : télécharger le fichier et le remettre à la place de
+        journal.db, robot arrêté."""
+        dossier = tempfile.mkdtemp(prefix="totem-sauvegarde-")
+        chemin = os.path.join(dossier, f"journal-{datetime.now():%Y-%m-%d}.db")
+        try:
+            self.journal.sauvegarder(chemin)
+            with open(chemin, "rb") as fichier:
+                contenu = fichier.read()
+        except Exception as e:
+            self.journal.evenement(f"échec de sauvegarde : {e}")
+            if not automatique:
+                self.transport.envoyer(f"⚠️ Sauvegarde impossible : {echap(e)}",
+                                       canal=canal)
+            return
+        finally:
+            shutil.rmtree(dossier, ignore_errors=True)
+
+        legende = (f"💾 {gras('Sauvegarde du journal')} — {len(contenu) // 1024} Ko\n"
+                   + italique("Conservez ce fichier : c'est la seule copie hors "
+                              "du Pi. Pour restaurer, remplacez journal.db par "
+                              "celui-ci, robot arrêté."))
+        if not self.transport.envoyer_fichier(
+                os.path.basename(chemin), contenu, legende=legende, canal=canal,
+                type_mime="application/x-sqlite3"):
+            self.journal.evenement("sauvegarde non transmise")
+            if not automatique:
+                self.transport.envoyer("⚠️ La sauvegarde n'a pas pu être envoyée.",
+                                       canal=canal)
+
+    def _diagnostic(self, canal=None):
+        """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
+        lignes = [f"🩺 {gras('Diagnostic')}",
+                  f"Robot en marche depuis {self._duree(time.time() - self.demarre_a)}"]
+        for compte in self.comptes:
+            occupes, capacite = compte.memoire_sms()
+            lignes.append(
+                f"\n{gras(compte.libelle)}\n"
+                f"Carte : {mono(self._sim_lisible(compte.iccid()))}\n"
+                f"Mémoire SMS : {occupes}/{capacite if capacite else '?'}\n"
+                f"Signal : {compte.signal()}/31")
+        en_attente = self.facteur.en_attente()
+        lignes.append(f"\nCourrier en attente : {en_attente}"
+                      if en_attente else "\nCourrier : tout est parti")
+        lignes.append(self.sante.resume() if hasattr(self.sante, "resume") else "")
+        self.transport.envoyer("\n".join(l for l in lignes if l), canal=canal,
+                               boutons=[[("🏠 Menu", "c:menu")]])
+
+    @staticmethod
+    def _sim_lisible(iccid):
+        return ("…" + iccid[-6:]) if iccid else "identifiant indisponible"
+
+    @staticmethod
+    def _duree(secondes):
+        secondes = int(secondes)
+        jours, reste = divmod(secondes, 86400)
+        heures, reste = divmod(reste, 3600)
+        minutes = reste // 60
+        if jours:
+            return f"{jours} j {heures} h"
+        return f"{heures} h {minutes} min" if heures else f"{minutes} min"
+
     @staticmethod
     def _fcfa(montant):
         return f"{montant:,}".replace(",", " ") + " FCFA"
 
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
-        dernier_rapport = None
         prochaine_sante = 0
+        prochaine_memoire = 0
         while self.actif:
             for compte in self.comptes:
                 self._relever_sms(compte)
@@ -580,12 +818,16 @@ class Robot:
             if time.time() >= prochaine_sante:
                 prochaine_sante = time.time() + 120
                 self._veiller_sante()
-            maintenant = datetime.now()
-            if maintenant.strftime("%H:%M") == self.heure_rapport \
-                    and dernier_rapport != maintenant.date():
-                dernier_rapport = maintenant.date()
-                self._rapport()
+            if time.time() >= prochaine_memoire:
+                prochaine_memoire = time.time() + VERIF_MEMOIRE_SECONDES
+                self._verifier_memoire()
+            self._signaler_conflit()
+            if self._rapport_quotidien():
                 sauvegarder_journal(self.chemin_base)
+            try:
+                self.facteur.distribuer()   # rattrape ce qu'une coupure a retenu
+            except Exception as e:
+                self.journal.evenement(f"erreur distribution courrier : {e}")
             time.sleep(self.pause_sms)
 
     def _veiller_sante(self):
@@ -603,8 +845,13 @@ class Robot:
                                    silencieux=genre != "alerte")
 
     def _relever_sms(self, compte):
+        """L'ordre compte : on écrit au journal AVANT d'effacer dans le modem.
+
+        Si le robot meurt entre les deux, le message est encore dans le modem
+        au redémarrage plutôt que perdu — et le garde-fou anti-doublon évite
+        de l'annoncer deux fois."""
         try:
-            messages = compte.lire_nouveaux_sms()
+            messages = compte.lire_sms()
             compte.echecs = 0
         except Exception as e:
             compte.echecs += 1
@@ -613,15 +860,70 @@ class Robot:
                 self._redemarrer_modem(compte, canal="alertes", automatique=True)
                 compte.echecs = 0
             return
-        for expediteur, texte in messages:
-            self.journal.sms(expediteur, texte, compte.libelle)
-            self._notifier_sms(compte, expediteur, texte)
+        for index, expediteur, texte in messages:
+            if not self.journal.sms_existe(expediteur, texte, compte.libelle):
+                self.journal.sms(expediteur, texte, compte.libelle)
+                self._notifier_sms(compte, expediteur, texte)
+            if not compte.effacer_sms(index):
+                self.journal.evenement(
+                    f"SMS {index} non effacé sur {compte.libelle} "
+                    "(il sera ignoré au prochain tour)")
+
+    def _verifier_memoire(self):
+        """Une mémoire SMS pleine fait perdre les messages suivants — donc des
+        encaissements jamais vus. On prévient bien avant la saturation."""
+        satures = []
+        for compte in self.comptes:
+            occupes, capacite = compte.memoire_sms()
+            if capacite and occupes / capacite >= SEUIL_MEMOIRE:
+                satures.append(f"{compte.libelle} : {occupes}/{capacite}")
+        if not satures:
+            self.memoire_signalee = False
+            return
+        if self.memoire_signalee:
+            return
+        self.memoire_signalee = True
+        self.journal.evenement("mémoire SMS presque pleine — " + " ; ".join(satures))
+        self.facteur.poster(
+            f"⚠️ {gras('Mémoire SMS presque pleine')}\n"
+            + echap("\n".join(satures)) + "\n"
+            + italique("Au-delà, le réseau ne peut plus déposer de nouveaux SMS : "
+                       "des encaissements passeraient inaperçus."), canal="alertes")
+
+    def _signaler_conflit(self):
+        """Deux robots sur le même jeton se coupent mutuellement : les
+        commandes se perdent au hasard, sans le moindre message d'erreur."""
+        conflit = getattr(self.transport, "conflit", False)
+        if conflit == self.conflit_signale:
+            return
+        self.conflit_signale = conflit
+        if conflit:
+            self.journal.evenement("conflit : deux instances sur le même jeton")
+            self.facteur.poster(
+                f"⚠️ {gras('Deux robots utilisent le même jeton Telegram')}\n"
+                + italique("Vos commandes peuvent se perdre. Arrêtez l'instance "
+                           "en trop : sudo systemctl stop totem"), canal="alertes")
+
+    def _rapport_quotidien(self):
+        """Envoie le bilan une fois par jour, même si la boucle a sauté la
+        minute exacte (redémarrage d'un modem, réseau lent, charge…)."""
+        maintenant = datetime.now()
+        if self.dernier_rapport == maintenant.date() or not self._heure_passee():
+            return False
+        self.dernier_rapport = maintenant.date()
+        self._rapport()
+        if self.sauvegarde_quotidienne:
+            self._sauvegarde(canal="alertes", automatique=True)
+        return True
 
     def _notifier_sms(self, compte, expediteur, texte):
-        """Un encaissement sonne ; le reste arrive en notification discrète.
+        """Tous les SMS arrivent de la même façon : aucun n'est mis en
+        sourdine. Un message d'opérateur peut annoncer une suspension de
+        compte ou une opération non voulue — rien ne doit passer inaperçu.
+        Seul l'AFFICHAGE distingue les cas, pour se lire d'un coup d'œil.
 
-        Quand le message est compris, on met en avant ce qui compte — combien,
-        de qui — plutôt que de laisser lire la phrase de l'opérateur."""
+        L'envoi passe par le facteur : un encaissement survenu pendant une
+        coupure Internet doit repartir tout seul au retour du réseau."""
         etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
         paiement = analyser(texte)
 
@@ -629,18 +931,14 @@ class Robot:
             entete = (f"💰 {gras('Encaissement')}{etiquette} — "
                       f"{gras(self._fcfa(paiement.montant))}\n"
                       f"de {gras(paiement.tiers)}")
-            sonne = True
         elif paiement:
             entete = (f"↗️ {gras('Envoi')}{etiquette} — "
                       f"{gras(self._fcfa(paiement.montant))}\n"
                       f"vers {gras(paiement.tiers)}")
-            sonne = False
         else:
             entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
-            sonne = False
 
-        self.transport.envoyer(f"{entete}\n{echap(texte)}", canal="encaissements",
-                               silencieux=not sonne)
+        self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
 
     def _expirer_session(self):
         with self.verrou:

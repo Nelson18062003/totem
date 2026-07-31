@@ -26,6 +26,10 @@ de crédit et de data).
 - [ ] Une question libre (« entrez un numéro ») affiche bien
       « ✍️ Répondez par un message »
 - [ ] `/annuler` ferme proprement une session en cours
+- [ ] **Réactivité** : dès l'envoi du code, la carte affiche « ⏳ Composition
+      de … » sans délai perceptible ; le menu la remplace à l'arrivée
+- [ ] Enchaînez 4 ou 5 options d'affilée → chaque écran suit le rythme du
+      réseau, sans seconde d'attente supplémentaire entre les étapes
 - [ ] Laissez une session ouverte 3 min sans répondre → le robot annonce
       « ⌛ Session USSD expirée »
 
@@ -35,11 +39,26 @@ de crédit et de data).
 - [ ] `/sms` liste bien ce SMS
 - [ ] `/rapport` répond (0 encaissement, normal : pas de SMS MoMo en France)
 - [ ] `/export` envoie un fichier CSV qui s'ouvre dans Excel, accents corrects
+- [ ] Tous les SMS déclenchent la même notification (aucun n'arrive en silence)
 
 ## C bis. Confort Telegram
 - [ ] Le bouton *Menu* de l'application Telegram liste bien les commandes
 - [ ] `/menu` affiche l'écran d'accueil, et chaque bouton fait ce qu'il annonce
 - [ ] Si un raccourci est configuré : un seul appui déroule toute la séquence
+- [ ] Aucun cadre gris à chasse fixe n'apparaît : le texte est lisible d'un coup
+- [ ] Les options du menu ne sont PAS écrites en texte au-dessus des boutons
+
+## C ter. Deux opérateurs, deux SIM (le vrai test)
+- [ ] Avec la SIM MTN : l'accueil affiche « 📱 Menu MTN … » et l'appui ouvre `*126#`
+- [ ] Remplacez par la SIM Orange, attendez une minute → le robot annonce
+      **« 💳 Nouvelle carte SIM détectée »** avec le bon opérateur
+- [ ] L'accueil propose maintenant le menu Orange, et le raccourci Solde
+      déroule la séquence Orange (pas celle de MTN)
+- [ ] `/sms` et `/rapport` ne montrent QUE les SMS de la carte en place
+- [ ] Remettez la SIM MTN : son journal ressort intact
+- [ ] `/sims` liste les deux cartes, la carte en place marquée ▶️
+- [ ] Dans un menu qui *parle* du code secret sans le demander (ex. Orange
+      « Gerer mon code secret »), le pavé PIN ne s'ouvre **pas** : des boutons
 
 ## D. Robustesse (les pannes de Douala, simulées à Lille)
 - [ ] **Coupure de courant** : débranchez 10 s, rebranchez → le robot revient
@@ -48,9 +67,36 @@ de crédit et de data).
 - [ ] **Accès à distance** : depuis votre téléphone en 4G (Wi-Fi coupé),
       l'appli Tailscale montre `totem` en ligne, et le bot répond
 
-## D bis. Redémarrage (à faire absolument)
+## D bis. Redémarrage et pannes silencieuses (à faire absolument)
 - [ ] Coupez le robot, envoyez-lui 3 messages (dont un code USSD), rallumez →
       il revient en ligne **sans exécuter** ces messages en retard
+- [ ] **Débranchez le câble USB du HAT**, puis lancez le robot → vous recevez
+      « ⛔ Modem injoignable » sur Telegram (et non un silence)
+- [ ] Rebranchez → « ✅ Modem retrouvé » arrive sans intervention
+- [ ] Lancez une 2ᵉ instance (`python3 -m totem` pendant que le service tourne)
+      → alerte « deux robots utilisent le même jeton ». Arrêtez-la ensuite.
+- [ ] `/diagnostic` répond : durée de marche, mémoire SMS, ICCID, IMSI,
+      disque, température. **Vérifiez que l'ICCID s'affiche** (sinon le
+      cloisonnement par SIM ne peut pas fonctionner)
+- [ ] Envoyez 5 SMS coup sur coup à la SIM → les 5 arrivent tous dans Telegram
+      (aucun perdu par excès de débit)
+- [ ] **Coupez Internet sur le Pi** (débranchez l'Ethernet / le Wi-Fi), envoyez
+      un SMS à la SIM → rien n'arrive, c'est normal. Rebranchez : le SMS
+      **arrive tout seul** quelques secondes plus tard
+- [ ] Coupez Internet, envoyez 3 SMS, rebranchez → les 3 arrivent **dans
+      l'ordre** où ils ont été reçus
+
+## D ter. Sauvegarde et garde-fou financier
+- [ ] `/sauvegarde` envoie un fichier `journal-AAAA-MM-JJ.db` dans la
+      conversation. Téléchargez-le et gardez-le : c'est votre filet de sécurité
+- [ ] Réglez `seuil_confirmation` bas (ex. 1000), lancez un transfert d'un
+      montant supérieur → une carte **⚠️ Confirmation demandée** s'affiche avec
+      le montant et le bénéficiaire, **avant** le pavé du code
+- [ ] Essayez de taper le code à la main à ce moment-là → refusé, la
+      confirmation reste affichée
+- [ ] Appuyez sur **✅ Confirmer** → le pavé apparaît, le transfert aboutit
+- [ ] Refaites un transfert d'un montant **inférieur** au seuil → aucune
+      confirmation, le pavé s'affiche directement
 
 ## E. Sécurité
 - [ ] Depuis le Telegram d'une AUTRE personne, envoyez un message au bot →

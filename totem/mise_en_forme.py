@@ -20,6 +20,10 @@ def gras(texte):
     return f"<b>{echap(texte)}</b>"
 
 
+def italique(texte):
+    return f"<i>{echap(texte)}</i>"
+
+
 def mono(texte):
     return f"<code>{echap(texte)}</code>"
 
