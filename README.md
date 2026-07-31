@@ -222,6 +222,8 @@ sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
 tests/            batterie de tests (python3 -m unittest discover -s tests)
 CLAUDE.md         consignes de travail : vérifier main avant toute PR, français
 install.sh        installation en une commande sur Raspberry Pi OS
+outils/           partage-wifi.ps1 : allume le partage Wi-Fi du PC Windows,
+                  puis attend le Pi et affiche son adresse (phase de test)
 systemd/          service (démarrage auto + relance)
 config.example.conf
 docs/
