@@ -89,9 +89,8 @@ class TransportTelegram:
                     # l'autre et les commandes se perdent au hasard.
                     self.conflit = True
                     raise ErreurConflit(
-                        "Un autre robot utilise le même jeton Telegram. "
-                        "Arrêtez l'instance en trop (sudo systemctl stop totem) "
-                        "avant de continuer.")
+                        "Telegram refuse l'interrogation : un autre programme "
+                        "utilise le même jeton, ou un webhook est déclaré.")
                 attente = self._retry_after(e)
                 if attente is None or essai == 2:
                     raise
@@ -255,7 +254,16 @@ class TransportTelegram:
     # ---- réception ---------------------------------------------------------
     def vider_backlog(self):
         """Jette les messages arrivés pendant que le robot était éteint : sinon
-        un redémarrage rejouerait d'anciennes commandes (et d'anciens USSD)."""
+        un redémarrage rejouerait d'anciennes commandes (et d'anciens USSD).
+
+        Au passage, on supprime un éventuel webhook : tant qu'il en existe un,
+        Telegram REFUSE toute interrogation (erreur 409) et le robot semble
+        sourd sans qu'aucune autre instance ne tourne. C'est une cause de
+        conflit bien plus courante qu'un second processus."""
+        try:
+            self._appel("deleteWebhook", delai=10, drop_pending_updates="true")
+        except Exception:
+            pass
         try:
             rep = self._appel("getUpdates", delai=20, offset=-1, timeout=0)
             majs = rep.get("result", [])
