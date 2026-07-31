@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 
 from .analyse_sms import analyser
+from .version import version
 
 DELAI = 15          # secondes avant d'abandonner une requête
 LOT = 100           # lignes envoyées par requête
@@ -88,6 +89,10 @@ class Nuage:
             "nom": self.terminal,
             "vu_le": _horodatage(),
             "sante": sante or {},
+            # Quelle version tourne réellement sur ce Pi. Sans elle, « le
+            # correctif n'existe pas » et « le correctif existe mais n'est pas
+            # déployé » se ressemblent exactement, vus de loin.
+            "version": version(),
         }
         return self._inserer_ou_mettre_a_jour("terminaux", [ligne], "id")
 

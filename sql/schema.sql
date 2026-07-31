@@ -4,6 +4,11 @@
 -- À coller dans l'éditeur SQL de Supabase (menu « SQL Editor » → « New query »),
 -- puis exécuter. Le script est rejouable : le relancer ne casse rien.
 --
+-- Vérifié sur PostgreSQL 16 : trois exécutions de suite sur une base neuve,
+-- sans erreur, puis une exécution sur une base créée avec la version
+-- précédente du schéma — données conservées, colonnes ajoutées, contrainte
+-- d'unicité basculée du libellé vers l'ICCID.
+--
 -- Principe : le Raspberry Pi reste la source de vérité. Il écrit ici une copie
 -- de ce qu'il a vu, quand il a du réseau. Le cloud sert à consulter depuis
 -- n'importe où et à survivre à la mort d'une carte mémoire — pas à décider.
@@ -15,11 +20,13 @@ create table if not exists terminaux (
   nom         text,
   vu_le       timestamptz,               -- dernier signe de vie
   sante       jsonb,                     -- température, tension, disque…
+  version     text,                      -- code réellement en service
   cree_le     timestamptz not null default now()
 );
 
 comment on table terminaux is
-  'Un boîtier TOTEM. « vu_le » permet de détecter un terminal devenu muet.';
+  'Un boîtier TOTEM. « vu_le » permet de détecter un terminal devenu muet, '
+  '« version » de vérifier qu''un correctif est bien déployé.';
 
 -- --- Cartes : le registre des SIM, présentes ou retirées --------------------
 -- L'ICCID est le numéro de série gravé sur la puce. Contrairement à
@@ -133,6 +140,7 @@ create table if not exists commandes (
 -- effet — c'est ce qui rend ce fichier rejouable tel quel, autant de fois
 -- qu'on veut.
 -- ---------------------------------------------------------------------------
+alter table terminaux add column if not exists version    text;
 alter table comptes   add column if not exists iccid      text;
 alter table comptes   add column if not exists reseau     text;
 alter table comptes   add column if not exists itinerance boolean not null default false;
