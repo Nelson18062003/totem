@@ -104,10 +104,21 @@ $conversion = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Obje
         $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
     })[0]
 
+if ($null -eq $conversion) {
+    throw ("Windows n'expose pas la conversion attendue (AsTask). Vérifiez que " +
+           "vous êtes bien dans « Windows PowerShell » et non PowerShell 7.")
+}
+
 function Attendre-Windows($Operation, $Type) {
-    # Exécute une opération Windows asynchrone et rend son résultat. Rien
-    # d'autre ne doit sortir d'ici : tout ce qu'une fonction PowerShell écrit
-    # part dans sa valeur de retour.
+    # Exécute une opération Windows asynchrone et rend son résultat.
+    #
+    # Les noms des paramètres comptent : PowerShell ne distingue pas les
+    # majuscules des minuscules, et un paramètre nommé $c aurait masqué
+    # $conversion à l'intérieur de la fonction — l'erreur aurait alors parlé
+    # d'un type qui « ne contient pas MakeGenericMethod », loin de sa cause.
+    #
+    # Rien d'autre ne doit sortir d'ici : tout ce qu'une fonction PowerShell
+    # écrit part dans sa valeur de retour.
     $tache = $conversion.MakeGenericMethod($Type).Invoke($null, @($Operation))
     $tache.Wait(-1) | Out-Null
     return $tache.Result
@@ -126,6 +137,21 @@ if ($null -eq $connexion) {
 }
 
 $partage = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager, Windows.Networking.NetworkOperators, ContentType = WindowsRuntime]::CreateFromConnectionProfile($connexion)
+
+# --- Laisser Windows finir ce qu'il avait commencé ---------------------------
+# « InTransition » : le partage est en train de s'allumer ou de s'éteindre.
+# C'est l'état où l'on retombe après une tentative interrompue en cours de
+# route. Lui donner un ordre maintenant, c'est se le faire refuser sans
+# explication ; on attend qu'il se pose.
+
+if ("$($partage.TetheringOperationalState)" -eq 'InTransition') {
+    Dire 'Windows termine une opération en cours…' Yellow
+    $patience = (Get-Date).AddSeconds(30)
+    while ("$($partage.TetheringOperationalState)" -eq 'InTransition' -and
+           (Get-Date) -lt $patience) {
+        Start-Sleep -Seconds 2
+    }
+}
 
 # --- Extinction sur demande -------------------------------------------------
 if ($Arreter) {

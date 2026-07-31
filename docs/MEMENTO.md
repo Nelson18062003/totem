@@ -82,6 +82,42 @@ Trois choses à savoir, chacune apprise en y perdant une soirée :
 
 Pour l'éteindre : `.\outils\partage-wifi.ps1 -Arreter`
 
+### Si le fichier n'est pas encore sur le PC
+
+Ces lignes font la même chose. **Chacune est complète toute seule** — il n'y a
+aucun `if` à cheval sur plusieurs lignes, donc rien ne peut se casser au
+collage. Windows PowerShell, en administrateur, tout d'un coup :
+
+```powershell
+$AsTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+"Methode trouvee : $($AsTask.Name)"
+function Attendre($op, $type) { $tache = $AsTask.MakeGenericMethod($type).Invoke($null, @($op)); $tache.Wait(-1) | Out-Null; $tache.Result }
+$R = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
+$P = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+$M = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($P)
+while ("$($M.TetheringOperationalState)" -eq 'InTransition') { Start-Sleep 2 }
+(Attendre ($M.StopTetheringAsync()) $R).Status
+$C = $M.GetCurrentAccessPointConfiguration(); $C.Ssid = 'totempc'; $C.Passphrase = 'totem12345'
+(Attendre ($M.ConfigureAccessPointAsync($C)) $R).Status
+$S = Attendre ($M.StartTetheringAsync()) $R
+"Allumage : $($S.Status)  $($S.AdditionalErrorMessage)"
+"Etat     : $($M.TetheringOperationalState)"
+```
+
+Deux lignes valent d'être lues :
+
+- `Methode trouvee : AsTask`. Vide, c'est que vous êtes dans PowerShell 7 :
+  reprenez dans « Windows PowerShell », le bleu.
+- `Etat : On`. **C'est la seule preuve que le partage tourne.** `Off`, rien ne
+  sert de chercher le Pi. `InTransition`, Windows n'a pas fini : relancez les
+  trois dernières lignes.
+
+Puis, le Pi branché depuis deux minutes, son adresse :
+
+```powershell
+$M.GetTetheringClients() | % { $_.HostNames | % { $_.CanonicalName } }
+```
+
 ---
 
 ## 6. Se connecter au Pi
