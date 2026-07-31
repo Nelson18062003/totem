@@ -49,10 +49,25 @@ Le motif est de la marque, pas de la donnée : jamais derrière un montant.
 | `totem-icone-app-ronde.svg` | Variante ronde : avatar, badge. |
 | `totem-favicon.svg` | 32 px, tracé fondu. Copié dans `web/app/icon.svg`. |
 
-## Aperçus PNG
+## PNG
 
-`totem-logo.png` et `totem-symbole.png` : à coller dans un document, un
-courriel, une présentation — partout où le SVG n'entre pas. Fond transparent.
+Le jeu complet est dans **`brand/png/`** — à coller dans un document, un
+courriel, une présentation, partout où le SVG n'entre pas.
+
+| Fichier | Largeur |
+|---|---|
+| `totem-logo.png`, `-encre`, `-sur-sable`, `-reserve` | 2000 px |
+| `totem-logo-vertical.png`, `-reserve` | 1200 px |
+| `totem-symbole.png`, `-encre`, `-reserve`, `-mini` | 1024 px |
+| `totem-icone-app.png`, `-laterite`, `-ronde` | 1024 px |
+| `totem-favicon.png` | 512 px |
+| `totem-motif.png` | 2000 px |
+| `totem-motif-tuile.png` | 512 px |
+| `planche-de-contact.png` | toutes les variantes d'un coup d'œil |
+
+Fond **transparent** partout, sauf les variantes `-reserve` : un tracé clair
+sur fond transparent est invisible là où on le colle, elles portent donc leur
+fond encre incrusté.
 
 ## Comment ça se régénère
 
