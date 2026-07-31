@@ -28,7 +28,7 @@ from datetime import datetime
 from .compte import ErreurModem, libelles_uniques
 from .mise_en_forme import bloc, echap, gras, mono
 from .sante import Sante, sauvegarder_journal
-from .storage import montant_recu
+from .analyse_sms import analyser
 
 ARRET_PROPRE = "arrêt propre"
 
@@ -57,7 +57,7 @@ COMMANDES_BOT = [
 class Robot:
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
-                 delai_session=180, chemin_base=None):
+                 delai_session=180, chemin_base=None, nuage=None):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -67,6 +67,7 @@ class Robot:
         self.raccourcis = raccourcis or {}
         self.delai_session = delai_session
         self.chemin_base = chemin_base
+        self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
         self.actif = True
         self.verrou = threading.RLock()
         self.courant = self.comptes[0] if self.comptes else None
@@ -146,6 +147,10 @@ class Robot:
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
+        if self.nuage:
+            # Synchronisation en tâche de fond : elle rattrape son retard
+            # quand le réseau le permet, et n'interrompt jamais le robot.
+            self.nuage.demarrer(comptes=self.comptes, sante=self.sante)
         if bloquant:
             self._boucle_messages()
 
@@ -508,6 +513,8 @@ class Robot:
             lignes.append(f"· {echap(c.resume())}{marque}")
         try:
             lignes.append(f"\n🖥 {echap(self.sante.resume())}")
+            if self.nuage and self.nuage.actif:
+                lignes.append(f"☁️ {echap(self.nuage.resume())}")
         except Exception:
             pass
         self.transport.envoyer("\n".join(lignes), canal=canal,
@@ -611,16 +618,29 @@ class Robot:
             self._notifier_sms(compte, expediteur, texte)
 
     def _notifier_sms(self, compte, expediteur, texte):
-        """Un encaissement sonne ; le reste arrive en notification discrète."""
+        """Un encaissement sonne ; le reste arrive en notification discrète.
+
+        Quand le message est compris, on met en avant ce qui compte — combien,
+        de qui — plutôt que de laisser lire la phrase de l'opérateur."""
         etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
-        montant = montant_recu(texte)
-        if montant is not None:
+        paiement = analyser(texte)
+
+        if paiement and paiement.sens == "entree":
             entete = (f"💰 {gras('Encaissement')}{etiquette} — "
-                      f"{gras(self._fcfa(montant))}")
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"de {gras(paiement.tiers)}")
+            sonne = True
+        elif paiement:
+            entete = (f"↗️ {gras('Envoi')}{etiquette} — "
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"vers {gras(paiement.tiers)}")
+            sonne = False
         else:
             entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
+            sonne = False
+
         self.transport.envoyer(f"{entete}\n{echap(texte)}", canal="encaissements",
-                               silencieux=montant is None)
+                               silencieux=not sonne)
 
     def _expirer_session(self):
         with self.verrou:
