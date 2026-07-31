@@ -33,15 +33,23 @@ from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
 from .sante import Sante, sauvegarder_journal
+from .version import version
 
 ARRET_PROPRE = "arrêt propre"
 
 RE_CODE_USSD = re.compile(r"^[\*#][\d\*#]+#$")
 # « mtn *126# » : viser un compte sans changer le compte courant
 RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
-# Vocabulaire du code secret, selon les opérateurs.
+# Vocabulaire d'une demande de code, volontairement LARGE.
+#
+# Se tromper n'a pas le même coût dans les deux sens :
+#   - masquer une saisie qui n'était pas secrète : sans conséquence ;
+#   - laisser passer un code en clair : il s'écrit dans la conversation.
+# On masque donc au moindre doute. « Entrez votre code », « Enter your Orange
+# Money code », « Veuillez entrer votre MDP » doivent tous déclencher le pavé.
 RE_DEMANDE_CODE = re.compile(
-    r"\bpin\b|code\s+(?:secret|confidentiel|pin)|mot\s+de\s+passe|password", re.I)
+    r"\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password",
+    re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
 RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
@@ -63,7 +71,8 @@ COMMANDES_BOT = [
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
-    ("diagnostic", "État détaillé (mémoire SMS, cartes, courrier)"),
+    ("diagnostic", "État détaillé (version, mémoire SMS, cartes)"),
+    ("brut", "Voir le dernier menu tel que l'opérateur l'a envoyé"),
     ("sauvegarde", "Envoyer une copie du journal dans la conversation"),
     ("annuler", "Fermer la session USSD en cours"),
     ("redemarrer_modem", "Relancer le modem du compte courant"),
@@ -96,6 +105,7 @@ class Robot:
         self.memoire_signalee = False
         self.conflit_signale = False
         self.demarre_a = time.time()
+        self.dernier_brut = ""   # dernière réponse USSD, pour /brut
         # Un redémarrage après l'heure du bilan ne doit pas en déclencher un.
         self.dernier_rapport = (datetime.now().date()
                                 if self._heure_passee() else None)
@@ -182,7 +192,7 @@ class Robot:
             "l'arrêt précédent n'était pas propre.</i>" if brutal else "")
         self.transport.envoyer(
             f"✅ {gras(self.nom)} en ligne — {len(self.comptes)} {pluriel}\n"
-            f"{detail}{avertissement}",
+            f"{detail}\nVersion : {mono(version())}{avertissement}",
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
@@ -262,6 +272,8 @@ class Robot:
                 self._rapport(canal=canal, manuel=True)
             elif commande == "diagnostic":
                 self._diagnostic(canal)
+            elif commande == "brut":
+                self._brut(canal)
             elif commande == "export":
                 self._export(canal)
             elif commande and self._compte_par_nom(commande):
@@ -352,6 +364,13 @@ class Robot:
                 canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
+        elif genre == "c" and valeur == "masquer":
+            # L'utilisateur nous dit lui-même que la saisie est sensible.
+            compte = self.session_compte
+            if compte is not None and not self.pin_actif:
+                self.pin_actif = True
+                self.pin_tampon = ""
+                self._afficher_session(compte)
         elif genre == "c" and valeur == "confirmer":
             if self._confirmation_requise() and self.session_compte:
                 self.confirme = True
@@ -445,6 +464,9 @@ class Robot:
             return
         self.journal.ussd("reçu", reponse, compte.libelle)
         self.dernier_menu = reponse
+        # Conservée même après la fermeture de la session : c'est elle qu'on
+        # relit quand un menu s'affiche mal.
+        self.dernier_brut = reponse
         self.session_compte = compte if compte.session_ouverte else None
         self.pin_actif = bool(compte.session_ouverte and self._demande_un_code(reponse))
         self.pin_tampon = ""
@@ -503,8 +525,13 @@ class Robot:
                             for num, lib in options[i:i + 2]]
                            for i in range(0, len(options), 2)]
             else:
+                # Saisie libre : montant, numéro, référence… Le robot ne peut
+                # pas TOUJOURS savoir si ce qu'on lui demande est secret — les
+                # opérateurs ne le disent nulle part dans le protocole. On
+                # laisse donc toujours une porte de sortie sûre à portée de
+                # doigt, plutôt que de parier sur le vocabulaire.
                 texte += "\n✍️ Répondez par un message (numéro, montant…)."
-                boutons = []
+                boutons = [[("🔐 Saisir en masqué", "c:masquer")]]
             boutons = boutons + [[("❌ Annuler", "c:annuler")]]
         self._peindre(texte, boutons)
 
@@ -741,6 +768,7 @@ class Robot:
     def _diagnostic(self, canal=None):
         """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
         lignes = [f"🩺 {gras('Diagnostic')}",
+                  f"Version : {mono(version())}",
                   f"Robot en marche depuis {self._duree(time.time() - self.demarre_a)}"]
         for compte in self.comptes:
             occupes, capacite = compte.memoire_sms()
@@ -755,6 +783,29 @@ class Robot:
         lignes.append(self.sante.resume() if hasattr(self.sante, "resume") else "")
         self.transport.envoyer("\n".join(l for l in lignes if l), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
+
+    def _brut(self, canal=None):
+        """Affiche la dernière réponse de l'opérateur telle qu'elle est
+        arrivée, caractères invisibles compris.
+
+        Quand un menu s'affiche mal, une capture d'écran ne suffit pas : elle
+        ne montre ni les fins de ligne, ni les espaces, ni les caractères
+        exotiques. C'est pourtant là que se cachent ces défauts."""
+        if not self.dernier_brut:
+            self.transport.envoyer(
+                "Aucun menu reçu depuis le démarrage. Composez un code USSD, "
+                "puis relancez /brut.", canal=canal)
+            return
+        entete, options = self._analyser_menu(self.dernier_brut)
+        pave = "OUI ⚠️" if self._demande_un_code(self.dernier_brut) else "non"
+        self.transport.envoyer(
+            f"🔬 {gras('Dernier menu reçu, tel quel')}\n"
+            f"{bloc(repr(self.dernier_brut))}\n"
+            f"Lignes d'en-tête : {len(entete)}\n"
+            f"Options reconnues : {gras(len(options))}\n"
+            f"Pavé du code déclenché : {gras(pave)}\n"
+            f"Version : {mono(version())}",
+            canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
 
     @staticmethod
     def _sim_lisible(iccid):
@@ -828,13 +879,15 @@ class Robot:
                 self._redemarrer_modem(compte, canal="alertes", automatique=True)
                 compte.echecs = 0
             return
-        for index, expediteur, texte in messages:
+        for indices, expediteur, texte in messages:
             if not self.journal.sms_existe(expediteur, texte, compte.libelle):
                 self.journal.sms(expediteur, texte, compte.libelle)
                 self._notifier_sms(compte, expediteur, texte)
-            if not compte.effacer_sms(index):
+            # Un message long occupe plusieurs emplacements : on les efface
+            # tous ensemble, sans quoi un morceau resterait orphelin.
+            if not compte.effacer_sms(indices):
                 self.journal.evenement(
-                    f"SMS {index} non effacé sur {compte.libelle} "
+                    f"SMS {indices} non effacé sur {compte.libelle} "
                     "(il sera ignoré au prochain tour)")
 
     def _verifier_memoire(self):

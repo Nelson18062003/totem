@@ -27,10 +27,60 @@ def _canal(brut):
     return int(brut) if re.fullmatch(r"-?\d+", brut) else brut
 
 
+def _conseil(chemin, erreur):
+    """Message d'erreur qui dit quel fichier, pourquoi, et quoi taper.
+
+    « attempt to write a readonly database » ne dit rien d'utile à qui n'a
+    pas écrit SQLite. Ici on nomme le fichier, l'utilisateur, et les deux
+    sorties possibles."""
+    import getpass
+    import os
+
+    try:
+        utilisateur = getpass.getuser()
+    except Exception:
+        utilisateur = str(os.getuid())
+    dossier = os.path.dirname(chemin) or "."
+    return (
+        f"Le journal « {chemin} » n'est pas accessible en écriture pour "
+        f"l'utilisateur « {utilisateur} ».\n"
+        f"({erreur})\n\n"
+        "Le service tourne en root et écrit sans difficulté ; un lancement "
+        "à la main depuis votre compte se heurte aux droits du fichier.\n\n"
+        "Deux solutions :\n"
+        f"  sudo chown -R {utilisateur} {dossier}     "
+        "← une fois pour toutes, recommandé\n"
+        "  sudo python3 -m totem …                    "
+        "← lancer avec les droits du service\n\n"
+        "Les diagnostics n'ont pas besoin du journal et fonctionnent sans "
+        "droits particuliers :\n"
+        "  python3 -m totem --modems\n"
+        "  python3 -m totem --stk"
+    )
+
+
+class JournalInaccessible(Exception):
+    """Le journal existe mais l'utilisateur courant ne peut pas y écrire.
+
+    Cas typique : le service tourne en root et a créé le fichier ; un
+    lancement manuel depuis un compte ordinaire se heurte alors aux droits.
+    L'erreur brute de SQLite (« attempt to write a readonly database ») ne
+    dit ni quel fichier, ni quoi faire."""
+
+
 class Journal:
     def __init__(self, chemin="totem.db"):
-        self.conn = sqlite3.connect(chemin, check_same_thread=False)
+        try:
+            self.conn = sqlite3.connect(chemin, check_same_thread=False)
+        except sqlite3.OperationalError as e:
+            raise JournalInaccessible(_conseil(chemin, e))
         self.verrou = threading.Lock()
+        try:
+            self._creer_tables()
+        except sqlite3.OperationalError as e:
+            raise JournalInaccessible(_conseil(chemin, e))
+
+    def _creer_tables(self):
         with self.verrou:
             self.conn.executescript(
                 """

@@ -39,15 +39,31 @@ points ou des espaces.
 paiement, débit) sont désormais comptées à part. Le bilan affiche entrées,
 sorties et solde du jour.
 
-### 🟡 Un SMS long coupé en morceaux
-Au-delà de ~160 caractères, le réseau découpe un SMS en plusieurs parties.
-En mode texte, le modem les livre comme des messages séparés : un relevé long
-arrive en deux bouts.
+### ✅ Un SMS long arrivait coupé
+Au-delà de 160 caractères, le réseau découpe un SMS en morceaux et glisse
+dans chacun un en-tête invisible : « morceau 2 sur 3 du message n° 47 ».
 
-*État* : les SMS Mobile Money tiennent en un seul message, donc l'impact réel
-est faible. Le recollage propre demande le **mode PDU** (`AT+CMGF=0`) et la
-lecture des en-têtes de concaténation. À faire si des messages tronqués
-apparaissent.
+En **mode texte** (`AT+CMGF=1`), le modem livrait ces morceaux comme des
+messages séparés, **sans cet en-tête**. Impossible de savoir qu'ils allaient
+ensemble : un relevé arrivait tronqué, et rien n'indiquait qu'il manquait la
+suite. C'est grave sur une SIM d'encaissement — un montant peut se trouver
+dans la partie perdue.
+
+*En place* : lecture en **mode PDU** (`AT+CMGF=0`), décodage complet du
+message (alphabet GSM 7 bits comme UCS2, expéditeurs nommés du type
+« MobileMoney »), reconnaissance de l'en-tête de découpe et recollage dans
+l'ordre — même quand les morceaux arrivent à l'envers, ce qui est fréquent.
+
+Tous les emplacements d'un message long sont effacés **ensemble**, sans quoi
+un morceau resterait orphelin dans le modem et reviendrait indéfiniment.
+
+Un message dont il manque une partie est **retenu**, pas livré tronqué. S'il
+attend depuis plus de quinze minutes, il est finalement livré avec une
+mention explicite des morceaux manquants — mieux vaut un message signalé
+incomplet qu'un message retenu à jamais.
+
+Si le firmware refuse le mode PDU, le robot retombe automatiquement en mode
+texte : les SMS courts continuent d'arriver.
 
 ### 🔴 Le robot ne voit que ce que l'opérateur envoie
 Si l'opérateur n'envoie pas de SMS pour une opération, elle n'existe pas pour
@@ -156,9 +172,43 @@ un menu sort en idéogrammes ou en chiffres hexadécimaux.
 DCS ne sert que de départage — certains firmwares annoncent un codage et en
 renvoient un autre.
 
+### 🟡 Le protocole USSD ne dit jamais ce qu'il attend
+C'est la limite de fond, et elle est **structurelle** : en USSD, un montant,
+un numéro de bénéficiaire, une référence et un code secret arrivent tous sous
+la même forme — du texte libre. Le réseau ne transmet aucune indication de
+type, ni aucun drapeau « cette saisie est secrète ». Le robot ne peut donc que
+lire le vocabulaire de l'opérateur, et le vocabulaire varie.
+
+*Ce que ça coûte, selon le sens de l'erreur* :
+
+| Erreur | Conséquence |
+|---|---|
+| Masquer une saisie qui n'était pas secrète | aucune |
+| Laisser passer un code en clair | **il s'écrit dans la conversation** |
+
+*En place* : le vocabulaire reconnu est volontairement large (`pin`, `code`,
+`mdp`, `secret`, `confidentiel`, `mot de passe`, `password`) — on masque au
+moindre doute. Et sur **toute** saisie libre, un bouton **🔐 Saisir en
+masqué** reste à portée de doigt : même si la détection échoue, l'utilisateur
+n'a jamais à taper un code en clair.
+
+*La vraie solution* : le **SIM Toolkit** (voir `docs/USSD-OU-STK.md`), où
+l'opérateur déclare explicitement le type de chaque saisie et un drapeau
+« ne pas afficher ». Il n'y a alors plus rien à deviner.
+
 ### ✅ Le pavé du code secret au mauvais moment
-Un menu qui *parle* du code secret n'en demande pas un. Un menu numéroté est
-une navigation, jamais une saisie.
+Le menu Orange de `#148#` commence par **« 1:Modifier code secret »**. La
+détection cherchait les mots « code secret » n'importe où dans le texte :
+elle tombait sur l'intitulé de cette option et affichait le pavé numérique
+au lieu des sept boutons du menu.
+
+*En place* : les lignes numérotées sont d'abord isolées. Un menu qui porte
+des options est une **navigation**, jamais une saisie — quel que soit son
+vocabulaire. Le pavé ne s'ouvre que sur une invite sans aucune option
+(« Entrez votre ancien code secret : »).
+
+Le menu réel relevé en production est figé dans les tests, séparateurs
+« 1: » sans espace et lignes vides compris.
 
 ### 🟡 Les menus varient d'un opérateur et d'une offre à l'autre
 La numérotation (`1.`, `1)`, `1-`, `01 :`) est gérée. Mais un opérateur qui
