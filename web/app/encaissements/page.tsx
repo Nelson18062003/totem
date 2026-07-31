@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { fcfa, fcfaCourt, paiements, type Paiement } from "@/lib/mock";
 import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDownload, IconRefund, IconSearch } from "../icons";
+import { Vide } from "../vide";
 
 export default function Encaissements() {
   const [filtre, setFiltre] = useState<"Tous" | "MTN" | "Orange">("Tous");
@@ -66,9 +67,25 @@ export default function Encaissements() {
 
       {/* Liste */}
       {Object.keys(parDate).length === 0 ? (
-        <p className="rounded-card border border-line bg-surface-raised px-5 py-10 text-center text-small text-ink-soft">
-          Aucun résultat.
-        </p>
+        recherche || filtre !== "Tous" ? (
+          <Vide
+            titre="Aucun paiement ne correspond"
+            detail="Essayez un autre nom, un autre montant, ou retirez le filtre d’opérateur."
+            action={
+              <button
+                onClick={() => { setRecherche(""); setFiltre("Tous"); }}
+                className="rounded-btn border border-line px-4 py-2 text-small font-medium transition hover:border-ink-faint"
+              >
+                Effacer la recherche
+              </button>
+            }
+          />
+        ) : (
+          <Vide
+            titre="Aucun paiement pour l’instant"
+            detail="Les paiements de vos clients apparaîtront ici dès leur réception, horodatés et prouvés."
+          />
+        )
       ) : (
         Object.entries(parDate).map(([date, items]) => (
           <section key={date}>
