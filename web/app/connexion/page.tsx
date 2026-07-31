@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Symbole } from "../marque";
 
 /**
  * Écran de connexion — maquette.
@@ -18,9 +19,7 @@ export default function Connexion() {
   return (
     <div className="mx-auto flex min-h-[70dvh] w-full max-w-sm flex-col justify-center py-10">
       <div className="mb-9">
-        <span className="grid size-10 place-items-center rounded-sm bg-ink text-body font-semibold text-white">
-          T
-        </span>
+        <Symbole size={34} className="text-laterite" />
         <h1 className="mt-5 text-title font-semibold tracking-tight">
           {etape === "identifiants" ? "Connexion" : "Vérification"}
         </h1>

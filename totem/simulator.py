@@ -88,6 +88,22 @@ class ModemSimule:
     def numero(self):
         return ""  # comme la plupart des SIM prépayées : non provisionné
 
+    def itinerance(self):
+        return False
+
+    def changer_de_carte(self, iccid, imsi=None):
+        """Simule l'échange physique de la puce dans le berceau.
+
+        Éprouve ce qui, autrement, ne se teste qu'en ouvrant le boîtier : le
+        robot doit s'apercevoir du remplacement, l'annoncer, et surtout ne pas
+        mélanger les deux historiques.
+        """
+        self._iccid = iccid
+        if imsi is not None:
+            self._imsi = imsi
+        self.etape = None
+        self.sms_en_attente = []
+
     def memoire_sms(self):
         return len(self.sms_en_attente), 50
 
@@ -168,15 +184,21 @@ class ModemSimule:
         return texte
 
     def lire_sms(self):
-        """[(index, expéditeur, texte)] — comme le modem réel, sans effacer."""
+        """[(indices, expéditeur, texte)] — comme le modem réel, sans effacer.
+        Les indices sont une liste : un message long occupe plusieurs
+        emplacements."""
         if self.sms_auto and time.time() >= self._prochain_sms_auto:
             self.injecter_paiement()
             self._prochain_sms_auto = time.time() + random.randint(30, 90)
-        return list(self.sms_en_attente)
+        return [([i], expediteur, texte)
+                for i, expediteur, texte in self.sms_en_attente]
 
-    def effacer_sms(self, index):
+    def effacer_sms(self, indices):
+        if isinstance(indices, int):
+            indices = [indices]
         avant = len(self.sms_en_attente)
-        self.sms_en_attente = [s for s in self.sms_en_attente if s[0] != index]
+        self.sms_en_attente = [s for s in self.sms_en_attente
+                               if s[0] not in set(indices)]
         return len(self.sms_en_attente) < avant
 
     @staticmethod

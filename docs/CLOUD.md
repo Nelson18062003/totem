@@ -39,8 +39,15 @@ se vide toute seule au retour du réseau.
    **tout** son contenu, collez-le dans l'éditeur.
 3. **Run**. Le script est rejouable : le relancer plus tard ne casse rien.
 
-Vérification : menu **Table Editor** → vous devez voir `terminaux`, `comptes`,
-`paiements`, `evenements`, `commandes`.
+Vérification : menu **Table Editor** → vous devez voir `terminaux`, `cartes`,
+`comptes`, `paiements`, `evenements`, `commandes`.
+
+> **Vous aviez déjà exécuté ce script ?** Refaites l'opération telle quelle.
+> `create table if not exists` ne touche pas une table existante : le fichier
+> contient donc un bloc de mise à niveau qui ajoute la table `cartes`, les
+> colonnes du cloisonnement par SIM, et remplace la clé des comptes (le libellé
+> devient l'ICCID). Rien n'est perdu, et relancer une troisième fois ne fait
+> toujours rien.
 
 ## 3. Récupérer les deux valeurs
 
@@ -92,7 +99,12 @@ transmettre. Dans Telegram, `/statut` indique désormais l'état :
 ## 5. Vérifier
 
 Supabase → **Table Editor** → `paiements`. Vos SMS doivent apparaître,
-découpés en colonnes : montant, tiers, référence, solde.
+découpés en colonnes : montant, tiers, référence, solde — et **`carte`**,
+l'ICCID de la puce qui a encaissé.
+
+Puis `cartes` : chaque SIM déjà passée dans le boîtier y a sa ligne, avec sa
+première et sa dernière apparition. C'est ce qui permettra à l'application web
+de montrer l'historique d'une carte retirée, et de dire depuis quand elle l'est.
 
 ---
 

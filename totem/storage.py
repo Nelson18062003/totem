@@ -8,6 +8,20 @@ Les montants MoMo sont extraits des SMS pour les rapports quotidiens.
 Deux files d'attente distinctes y vivent aussi, et ne visent pas la même
 destination : la colonne « envoye » suit ce qui reste à pousser vers le cloud,
 la table « sortants » ce qui reste à annoncer dans Telegram après une coupure.
+
+Cloisonnement par carte
+-----------------------
+Chaque ligne porte aussi l'**ICCID** de la SIM qui l'a produite, et la table
+`cartes` garde la trace de toutes les puces déjà vues. Deux SIM MTN qui se
+succèdent dans le berceau sont deux comptes : leurs encaissements ne doivent
+pas s'additionner, et retirer une carte ne doit pas faire disparaître son
+journal — il ressort intact quand on la remet.
+
+Les lignes antérieures au cloisonnement n'ont pas d'ICCID. On ne peut pas
+deviner à quelle carte elles appartiennent, alors on les montre toujours,
+quelle que soit la carte consultée : les cacher ressemblerait à une perte de
+données. Le mélange s'efface de lui-même, puisque toute ligne nouvelle est
+attribuée.
 """
 
 import csv
@@ -27,10 +41,60 @@ def _canal(brut):
     return int(brut) if re.fullmatch(r"-?\d+", brut) else brut
 
 
+def _conseil(chemin, erreur):
+    """Message d'erreur qui dit quel fichier, pourquoi, et quoi taper.
+
+    « attempt to write a readonly database » ne dit rien d'utile à qui n'a
+    pas écrit SQLite. Ici on nomme le fichier, l'utilisateur, et les deux
+    sorties possibles."""
+    import getpass
+    import os
+
+    try:
+        utilisateur = getpass.getuser()
+    except Exception:
+        utilisateur = str(os.getuid())
+    dossier = os.path.dirname(chemin) or "."
+    return (
+        f"Le journal « {chemin} » n'est pas accessible en écriture pour "
+        f"l'utilisateur « {utilisateur} ».\n"
+        f"({erreur})\n\n"
+        "Le service tourne en root et écrit sans difficulté ; un lancement "
+        "à la main depuis votre compte se heurte aux droits du fichier.\n\n"
+        "Deux solutions :\n"
+        f"  sudo chown -R {utilisateur} {dossier}     "
+        "← une fois pour toutes, recommandé\n"
+        "  sudo python3 -m totem …                    "
+        "← lancer avec les droits du service\n\n"
+        "Les diagnostics n'ont pas besoin du journal et fonctionnent sans "
+        "droits particuliers :\n"
+        "  python3 -m totem --modems\n"
+        "  python3 -m totem --stk"
+    )
+
+
+class JournalInaccessible(Exception):
+    """Le journal existe mais l'utilisateur courant ne peut pas y écrire.
+
+    Cas typique : le service tourne en root et a créé le fichier ; un
+    lancement manuel depuis un compte ordinaire se heurte alors aux droits.
+    L'erreur brute de SQLite (« attempt to write a readonly database ») ne
+    dit ni quel fichier, ni quoi faire."""
+
+
 class Journal:
     def __init__(self, chemin="totem.db"):
-        self.conn = sqlite3.connect(chemin, check_same_thread=False)
+        try:
+            self.conn = sqlite3.connect(chemin, check_same_thread=False)
+        except sqlite3.OperationalError as e:
+            raise JournalInaccessible(_conseil(chemin, e))
         self.verrou = threading.Lock()
+        try:
+            self._creer_tables()
+        except sqlite3.OperationalError as e:
+            raise JournalInaccessible(_conseil(chemin, e))
+
+    def _creer_tables(self):
         with self.verrou:
             self.conn.executescript(
                 """
@@ -49,11 +113,23 @@ class Journal:
                     essais INTEGER DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS evenements(
                     id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
+                -- Toutes les cartes SIM déjà vues dans ce terminal. L'ICCID
+                -- est gravé sur la puce : c'est la seule identité qui survit
+                -- au retrait, au changement de modem et à l'itinérance.
+                CREATE TABLE IF NOT EXISTS cartes(
+                    iccid TEXT PRIMARY KEY, imsi TEXT, operateur TEXT,
+                    libelle TEXT, numero TEXT, imei TEXT,
+                    premiere_vue TEXT, derniere_vue TEXT,
+                    envoye INTEGER DEFAULT 0);
                 """
             )
             # Migration douce des bases créées avant le multi-comptes.
             self._ajouter_colonne_si_absente("sms", "compte")
             self._ajouter_colonne_si_absente("ussd", "compte")
+            # Cloisonnement par carte : les lignes déjà présentes restent sans
+            # ICCID, et sont donc visibles depuis n'importe quelle carte.
+            self._ajouter_colonne_si_absente("sms", "iccid")
+            self._ajouter_colonne_si_absente("ussd", "iccid")
             # File d'attente vers le cloud : 0 tant que la ligne n'est pas
             # partie. Les lignes déjà présentes sont considérées à envoyer.
             self._ajouter_colonne_si_absente("sms", "envoye", "INTEGER DEFAULT 0")
@@ -69,20 +145,22 @@ class Journal:
     def _maintenant(self):
         return datetime.now().isoformat(timespec="seconds")
 
-    def sms(self, expediteur, texte, compte=""):
+    def sms(self, expediteur, texte, compte="", iccid=""):
         with self.verrou:
             self.conn.execute(
-                "INSERT INTO sms(date, expediteur, texte, compte) VALUES(?,?,?,?)",
-                (self._maintenant(), expediteur, texte, compte))
+                "INSERT INTO sms(date, expediteur, texte, compte, iccid) "
+                "VALUES(?,?,?,?,?)",
+                (self._maintenant(), expediteur, texte, compte, iccid))
             self.conn.commit()
 
-    def ussd(self, direction, texte, compte=""):
+    def ussd(self, direction, texte, compte="", iccid=""):
         """direction : « envoyé » ou « reçu ». Ne JAMAIS journaliser un PIN :
         l'appelant remplace le PIN par des étoiles avant l'appel."""
         with self.verrou:
             self.conn.execute(
-                "INSERT INTO ussd(date, direction, texte, compte) VALUES(?,?,?,?)",
-                (self._maintenant(), direction, texte, compte))
+                "INSERT INTO ussd(date, direction, texte, compte, iccid) "
+                "VALUES(?,?,?,?,?)",
+                (self._maintenant(), direction, texte, compte, iccid))
             self.conn.commit()
 
     def evenement(self, texte):
@@ -101,6 +179,108 @@ class Journal:
                 "SELECT 1 FROM sms WHERE date >= ? AND expediteur = ? AND texte = ? "
                 "AND COALESCE(compte, '') = ? LIMIT 1",
                 (depuis, expediteur, texte, compte)).fetchone() is not None
+
+    # ---- cartes SIM connues ------------------------------------------------
+    def voir_carte(self, carte, imei=""):
+        """Enregistre la carte présente et dit si on la découvre.
+
+        Renvoie « nouvelle » la toute première fois que cette puce est vue,
+        « connue » si elle figure déjà au registre, « inconnue » si l'ICCID
+        n'a pas pu être lu. Le robot n'annonce pas la même chose dans les deux
+        premiers cas : découvrir une puce jamais vue mérite un avertissement,
+        retrouver l'une des siennes mérite une confirmation rassurante.
+        """
+        if not carte or not carte.iccid:
+            return "inconnue"
+        maintenant = self._maintenant()
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT derniere_vue FROM cartes WHERE iccid = ?",
+                (carte.iccid,)).fetchone()
+            if ligne is None:
+                self.conn.execute(
+                    "INSERT INTO cartes(iccid, imsi, operateur, libelle, numero,"
+                    " imei, premiere_vue, derniere_vue, envoye)"
+                    " VALUES(?,?,?,?,?,?,?,?,0)",
+                    (carte.iccid, carte.imsi, carte.operateur, carte.libelle,
+                     carte.numero, imei, maintenant, maintenant))
+                etat = "nouvelle"
+            else:
+                # Le libellé et le numéro peuvent s'affiner (IMSI lu plus tard,
+                # numéro provisionné entre-temps) : on rafraîchit, et on remet
+                # la carte dans la file du cloud pour qu'il sache.
+                self.conn.execute(
+                    "UPDATE cartes SET imsi = ?, operateur = ?, libelle = ?,"
+                    " numero = ?, imei = ?, derniere_vue = ?, envoye = 0"
+                    " WHERE iccid = ?",
+                    (carte.imsi, carte.operateur, carte.libelle, carte.numero,
+                     imei, maintenant, carte.iccid))
+                etat = "connue"
+            self.conn.commit()
+        return etat
+
+    def cartes(self):
+        """Toutes les cartes vues, la plus récemment présente en tête.
+
+        [(iccid, libelle, operateur, numero, premiere_vue, derniere_vue,
+          nb_sms, total_recu)]
+        """
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT iccid, libelle, operateur, COALESCE(numero, ''),"
+                " premiere_vue, derniere_vue FROM cartes"
+                " ORDER BY derniere_vue DESC").fetchall()
+            textes = {}
+            for iccid, texte in self.conn.execute(
+                    "SELECT COALESCE(iccid, ''), texte FROM sms"):
+                textes.setdefault(iccid, []).append(texte)
+        resultat = []
+        for iccid, libelle, operateur, numero, premiere, derniere in lignes:
+            nb, total = 0, 0
+            for texte in textes.get(iccid, []):
+                montant = montant_recu(texte)
+                if montant is not None:
+                    nb += 1
+                    total += montant
+            resultat.append((iccid, libelle, operateur, numero, premiere,
+                             derniere, len(textes.get(iccid, [])), total))
+        return resultat
+
+    def cartes_non_envoyees(self, limite=100):
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT iccid, imsi, operateur, libelle, COALESCE(numero, ''),"
+                " COALESCE(imei, ''), premiere_vue, derniere_vue FROM cartes"
+                " WHERE COALESCE(envoye, 0) = 0 ORDER BY derniere_vue LIMIT ?",
+                (limite,)).fetchall()
+
+    def marquer_cartes_envoyees(self, iccids):
+        if not iccids:
+            return
+        with self.verrou:
+            self.conn.executemany(
+                "UPDATE cartes SET envoye = 1 WHERE iccid = ?",
+                [(i,) for i in iccids])
+            self.conn.commit()
+
+    @staticmethod
+    def _filtre_cartes(iccids):
+        """Clause SQL et paramètres pour ne voir que certaines cartes.
+
+        On filtre sur les cartes **présentes**, pas sur celle du compte piloté :
+        avec deux modems, ne montrer que l'un ferait disparaître les recettes de
+        l'autre du bilan quotidien. Ce qu'on écarte, ce sont les cartes retirées
+        — dont l'historique reste consultable par `/sims`.
+
+        Les lignes sans ICCID (antérieures au cloisonnement) restent visibles :
+        on ignore à qui elles appartiennent, et les masquer donnerait
+        l'impression d'un historique amputé.
+        """
+        retenus = [i for i in ([iccids] if isinstance(iccids, str) else iccids or []) if i]
+        if not retenus:
+            return "", ()
+        trous = ",".join("?" * len(retenus))
+        return f" AND (iccid IN ({trous}) OR COALESCE(iccid, '') = '')", tuple(retenus)
 
     # ---- courrier Telegram en souffrance -----------------------------------
     def enfiler(self, canal, texte):
@@ -161,13 +341,15 @@ class Journal:
                 "SELECT texte FROM evenements ORDER BY id DESC LIMIT 1").fetchone()
         return ligne[0] if ligne else None
 
-    def derniers_sms(self, n=5):
-        """[(date, expéditeur, texte, compte)] du plus récent au plus ancien."""
+    def derniers_sms(self, n=5, iccids=()):
+        """[(date, expéditeur, texte, compte)] du plus récent au plus ancien,
+        limité aux cartes indiquées si `iccids` est fourni."""
+        clause, params = self._filtre_cartes(iccids)
         with self.verrou:
             return self.conn.execute(
                 "SELECT date, expediteur, texte, COALESCE(compte, '') "
-                "FROM sms ORDER BY id DESC LIMIT ?", (n,)
-            ).fetchall()
+                f"FROM sms WHERE 1=1{clause} ORDER BY id DESC LIMIT ?",
+                params + (n,)).fetchall()
 
     # ---- file d'attente vers le cloud -------------------------------------
     # Le journal local reste la source de vérité : une ligne n'est marquée
@@ -175,10 +357,11 @@ class Journal:
     # elle ne fait qu'allonger la file.
 
     def sms_non_envoyes(self, limite=100):
-        """[(id, date, expéditeur, texte, compte)] restant à transmettre."""
+        """[(id, date, expéditeur, texte, compte, iccid)] restant à transmettre."""
         with self.verrou:
             return self.conn.execute(
-                "SELECT id, date, expediteur, texte, COALESCE(compte, '') "
+                "SELECT id, date, expediteur, texte, COALESCE(compte, ''), "
+                "COALESCE(iccid, '') "
                 "FROM sms WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
                 (limite,)).fetchall()
 
@@ -209,16 +392,25 @@ class Journal:
         with self.verrou:
             (n,) = self.conn.execute(
                 "SELECT (SELECT COUNT(*) FROM sms WHERE COALESCE(envoye,0)=0) "
-                "+ (SELECT COUNT(*) FROM evenements WHERE COALESCE(envoye,0)=0)"
+                "+ (SELECT COUNT(*) FROM evenements WHERE COALESCE(envoye,0)=0) "
+                "+ (SELECT COUNT(*) FROM cartes WHERE COALESCE(envoye,0)=0)"
             ).fetchone()
         return n
 
-    def rapport_du_jour(self):
-        """(nb d'encaissements, total FCFA, nb de SMS) sur les dernières 24 h."""
+    def rapport_du_jour(self, iccids=()):
+        """(nb d'encaissements, total FCFA, nb de SMS) sur les dernières 24 h,
+        limité aux cartes indiquées si `iccids` est fourni.
+
+        Le cloisonnement compte ici plus qu'ailleurs : additionner les recettes
+        de deux cartes différentes donnerait un total qui ne correspond à aucun
+        solde réel.
+        """
         depuis = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
+        clause, params = self._filtre_cartes(iccids)
         with self.verrou:
             lignes = self.conn.execute(
-                "SELECT texte FROM sms WHERE date >= ?", (depuis,)).fetchall()
+                f"SELECT texte FROM sms WHERE date >= ?{clause}",
+                (depuis,) + params).fetchall()
         nb, total = 0, 0
         for (texte,) in lignes:
             montant = montant_recu(texte)
@@ -227,26 +419,28 @@ class Journal:
                 total += montant
         return nb, total, len(lignes)
 
-    def export_csv(self, jours=7):
+    def export_csv(self, jours=7, iccids=()):
         """Journal en CSV (octets), prêt pour Excel ou la comptabilité.
 
         Chaque SMS compris devient une ligne exploitable : qui a payé, combien,
         sous quelle référence. Le message d'origine reste en dernière colonne,
         c'est lui qui fait foi."""
         depuis = (datetime.now() - timedelta(days=jours)).isoformat(timespec="seconds")
+        clause, params = self._filtre_cartes(iccids)
         with self.verrou:
             lignes = self.conn.execute(
-                "SELECT date, expediteur, texte, COALESCE(compte, '') "
-                "FROM sms WHERE date >= ? ORDER BY id", (depuis,)
-            ).fetchall()
+                "SELECT date, expediteur, texte, COALESCE(compte, ''), "
+                "COALESCE(iccid, '') "
+                f"FROM sms WHERE date >= ?{clause} ORDER BY id",
+                (depuis,) + params).fetchall()
         tampon = io.StringIO()
         plume = csv.writer(tampon, delimiter=";")
-        plume.writerow(["date", "compte", "sens", "montant_fcfa", "tiers",
-                        "numero", "reference", "solde_apres", "message"])
-        for date, expediteur, texte, compte in lignes:
+        plume.writerow(["date", "compte", "carte", "sens", "montant_fcfa",
+                        "tiers", "numero", "reference", "solde_apres", "message"])
+        for date, expediteur, texte, compte, ligne_iccid in lignes:
             p = analyser(texte)
             plume.writerow([
-                date.replace("T", " "), compte or expediteur,
+                date.replace("T", " "), compte or expediteur, ligne_iccid,
                 {"entree": "reçu", "sortie": "envoyé"}.get(p.sens if p else "", ""),
                 p.montant if p else "",
                 p.tiers if p else "",

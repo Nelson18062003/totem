@@ -45,7 +45,7 @@ for (const [route, nom] of routes) {
       .forEach((e) => e.remove());
   });
   // En pleine hauteur, la barre flottante suivrait le défilement : on la fige.
-  const pleine = !mobile ? false : nom === "reglages" || nom === "analyse";
+  const pleine = !mobile ? false : ["reglages", "analyse", "cartes"].includes(nom);
   if (pleine) {
     await page.evaluate(() => {
       const n = document.querySelector("nav.fixed");

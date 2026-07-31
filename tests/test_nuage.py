@@ -8,6 +8,7 @@ et qu'un envoi rejoué ne crée pas de doublon.
 
 import json
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -151,3 +152,78 @@ class TestNuage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReveilImmediat(unittest.TestCase):
+    """Un paiement connu ne doit pas attendre le prochain battement.
+
+    Le pont dormait une minute fixe entre deux tournées. Le Pi savait donc
+    qu'un encaissement venait d'arriver et le gardait pour lui — un délai
+    qu'on s'infligeait sans raison. Le battement subsiste, mais comme filet :
+    il rejoue ce qu'une coupure a retenu et sert de signe de vie.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.serveur = HTTPServer(("127.0.0.1", 0), FauxSupabase)
+        cls.port = cls.serveur.server_address[1]
+        threading.Thread(target=cls.serveur.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.serveur.shutdown()
+
+    def setUp(self):
+        FauxSupabase.recu = []
+        FauxSupabase.en_panne = False
+        self.journal = Journal(":memory:")
+        # Battement volontairement très long : si la ligne part quand même,
+        # c'est que le réveil a fonctionné et non le sommeil qui s'achève.
+        self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
+                           "douala", self.journal, pause=3600)
+
+    def tearDown(self):
+        self.nuage.arreter()
+
+    def _attendre_paiements(self, combien, delai=15):
+        fin = time.monotonic() + delai
+        while time.monotonic() < fin:
+            lignes = [l for t, corps in FauxSupabase.recu
+                      if t == "paiements" for l in corps]
+            if len(lignes) >= combien:
+                return lignes
+            time.sleep(0.05)
+        return [l for t, corps in FauxSupabase.recu
+                if t == "paiements" for l in corps]
+
+    def test_un_sms_arrive_apres_le_demarrage_part_sans_attendre(self):
+        self.nuage.demarrer()
+        self._attendre_paiements(0, delai=2)      # laisser la 1re tournée finir
+        self.journal.sms("MobileMoney",
+                         "Vous avez recu 25 000 FCFA de NGONO Marie.", "MTN")
+        self.nuage.reveiller()
+        lignes = self._attendre_paiements(1)
+        self.assertEqual(len(lignes), 1)
+        self.assertEqual(lignes[0]["montant"], 25000)
+
+    def test_trois_arrivees_rapprochees_partent_ensemble(self):
+        """Le drapeau se pose une fois : trois SMS coup sur coup ne doivent
+        pas ouvrir trois connexions."""
+        self.nuage.demarrer()
+        self._attendre_paiements(0, delai=2)
+        avant = len(FauxSupabase.recu)
+        for i in range(3):
+            self.journal.sms("MobileMoney",
+                             f"Vous avez recu {i + 1} 000 FCFA de Client.", "MTN")
+            self.nuage.reveiller()
+        self.assertEqual(len(self._attendre_paiements(3)), 3)
+        requetes = len(FauxSupabase.recu) - avant
+        self.assertLessEqual(requetes, 2, "un lot, pas une requête par SMS")
+
+    def test_arreter_ne_bloque_pas_sur_le_battement(self):
+        """Sans réveil à l'arrêt, le fil resterait endormi une heure."""
+        fil = self.nuage.demarrer()
+        self._attendre_paiements(0, delai=2)
+        self.nuage.arreter()
+        fil.join(timeout=10)
+        self.assertFalse(fil.is_alive())

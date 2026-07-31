@@ -154,7 +154,57 @@ class AffichageDesMenus(unittest.TestCase):
         tape(r, "*126#")
         clic(r, "u:1")
         self.assertIn("Répondez par un message", t.dernier_texte())
-        self.assertEqual(donnees(t.derniers_boutons()), ["c:annuler"])
+        self.assertEqual(donnees(t.derniers_boutons()), ["c:masquer", "c:annuler"])
+
+
+# Menu réellement renvoyé par Orange Cameroun sur #148#, relevé en production.
+# Il cumule tout ce qui piégeait l'ancienne détection : séparateur « : » sans
+# espace, et une PREMIÈRE option qui contient les mots « code secret ».
+MENU_ORANGE_REEL = """Veuillez choisir :
+1:Modifier code secret
+2:Solde de compte
+3:Dernieres transactions
+4:Langue
+5:Gestion des sous comptes
+
+6:Obtenir code point de vente
+
+7:Association"""
+
+
+class MenuReelOrange(unittest.TestCase):
+    """Cas relevé en production : le pavé PIN s'ouvrait sur ce menu.
+
+    L'ancienne détection cherchait « code secret » n'importe où dans le
+    texte ; elle tombait donc sur l'intitulé de l'option 1 et prenait un
+    menu de navigation pour une demande de saisie."""
+
+    def test_les_sept_options_sont_reconnues(self):
+        entete, options = Robot._analyser_menu(MENU_ORANGE_REEL)
+        self.assertEqual(entete, ["Veuillez choisir :"])
+        self.assertEqual([n for n, _ in options], list("1234567"))
+        self.assertEqual(options[0][1], "Modifier code secret")
+
+    def test_les_lignes_vides_ne_cassent_pas_la_lecture(self):
+        options = Robot._analyser_menu(MENU_ORANGE_REEL)[1]
+        self.assertEqual(options[5], ("6", "Obtenir code point de vente"))
+        self.assertEqual(options[6], ("7", "Association"))
+
+    def test_aucun_pave_sur_ce_menu(self):
+        self.assertFalse(Robot._demande_un_code(MENU_ORANGE_REEL))
+
+    def test_rendu_en_boutons_et_non_en_pave(self):
+        r, t, modem = robot("Orange")
+        modem.menu_principal = MENU_ORANGE_REEL
+        tape(r, "#150#")
+        self.assertFalse(r.pin_actif)
+        self.assertIn("1. Modifier code secret", libelles(t.derniers_boutons()))
+        self.assertNotIn("p:1", donnees(t.derniers_boutons()))
+
+    def test_la_suite_ouvre_bien_le_pave(self):
+        """Une fois l'option 1 choisie, Orange demande vraiment le code : là,
+        le pavé doit s'ouvrir."""
+        self.assertTrue(Robot._demande_un_code("Entrez votre ancien code secret :"))
 
 
 class PaveDuCodeSecret(unittest.TestCase):
@@ -197,6 +247,77 @@ class PaveDuCodeSecret(unittest.TestCase):
         tape(r, "*126#"); clic(r, "u:1"); tape(r, "677000111"); tape(r, "50000")
         tape(r, "1234", message_id=42)
         self.assertIn(42, t.supprimes)
+
+
+class QueDemandeLOperateur(unittest.TestCase):
+    """Le protocole USSD ne dit JAMAIS ce qu'il attend.
+
+    Un montant, un numéro, une référence et un code secret arrivent tous sous
+    la même forme : du texte libre. Se tromper n'a pas le même coût dans les
+    deux sens — masquer une saisie anodine ne coûte rien, laisser passer un
+    code l'écrit dans la conversation. On masque donc au moindre doute, et on
+    laisse toujours une porte de sortie sûre quand le doute subsiste."""
+
+    DEMANDES_DE_CODE = [
+        "Confirmez avec votre code secret :",
+        "Entrez votre PIN :",
+        "Confirmez par votre code Orange Money :",
+        "Entrez votre code :",
+        "Saisissez votre mot de passe",
+        "Veuillez entrer votre MDP",
+        "Enter your Orange Money code",
+        "Entrez le code de confirmation recu par SMS",
+    ]
+    SAISIES_ORDINAIRES = [
+        "Entrez le montant (FCFA) :",
+        "Entrez le numero du beneficiaire :",
+        "Entrez la reference du paiement",
+    ]
+
+    def test_toute_demande_de_code_est_masquee(self):
+        for invite in self.DEMANDES_DE_CODE:
+            with self.subTest(invite=invite):
+                self.assertTrue(Robot._demande_un_code(invite),
+                                f"code écrit en clair : {invite}")
+
+    def test_les_saisies_ordinaires_restent_libres(self):
+        for invite in self.SAISIES_ORDINAIRES:
+            with self.subTest(invite=invite):
+                self.assertFalse(Robot._demande_un_code(invite))
+
+    def test_un_menu_ne_devient_jamais_une_saisie(self):
+        """Même avec un vocabulaire élargi, la présence d'options tranche."""
+        self.assertFalse(Robot._demande_un_code(MENU_ORANGE_REEL))
+        self.assertFalse(Robot._demande_un_code(
+            "1:Modifier code secret\n2:Mot de passe oublie"))
+
+    def test_porte_de_sortie_sur_toute_saisie_libre(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:1")                       # « Entrez le numero du beneficiaire »
+        self.assertFalse(r.pin_actif)
+        self.assertIn("c:masquer", donnees(t.derniers_boutons()))
+
+    def test_la_porte_de_sortie_ouvre_le_pave(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:1")
+        clic(r, "c:masquer")
+        self.assertTrue(r.pin_actif)
+        self.assertIn("p:1", donnees(t.derniers_boutons()))
+
+    def test_saisie_masquee_a_la_demande_reste_secrete(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:1")
+        clic(r, "c:masquer")
+        for chiffre in "9876":
+            clic(r, f"p:{chiffre}")
+        self.assertIn("••••", t.dernier_texte())
+        clic(r, "p:ok")
+        journalises = [x[0] for x in r.journal.conn.execute("SELECT texte FROM ussd")]
+        self.assertNotIn("9876", journalises)
+        self.assertIn("****", journalises)
 
 
 class Reactivite(unittest.TestCase):
@@ -570,6 +691,57 @@ class LimitesDeTelegram(unittest.TestCase):
         self.assertGreater(len(morceaux), 1)
         self.assertTrue(all(len(m) <= 3900 for m in morceaux))
         self.assertEqual(sum(m.count("ligne") for m in morceaux), 2000)
+
+
+class VersionVisible(unittest.TestCase):
+    """Savoir quelle version tourne réellement.
+
+    Sans cette information, « le correctif n'existe pas » et « le correctif
+    existe mais le Pi ne l'a pas » se ressemblent exactement vus depuis
+    Telegram. C'est ce qui rend un défaut déjà corrigé impossible à clore."""
+
+    def test_version_toujours_lisible(self):
+        from totem.version import version
+        self.assertTrue(version())
+        self.assertIsInstance(version(), str)
+
+    def test_version_annoncee_dans_le_diagnostic(self):
+        from totem.version import version
+        r, t, _ = robot()
+        r._diagnostic()
+        self.assertIn(version(), t.envois[-1][0])
+
+
+class MenuBrut(unittest.TestCase):
+    """`/brut` montre la réponse de l'opérateur telle qu'elle est arrivée.
+
+    Une capture d'écran ne montre ni les fins de ligne, ni les espaces, ni les
+    caractères exotiques — or c'est là que se cachent les défauts d'affichage."""
+
+    def test_sans_menu_recu(self):
+        r, t, _ = robot()
+        r._brut()
+        self.assertIn("Aucun menu reçu", t.envois[-1][0])
+
+    def test_montre_le_texte_exact_et_le_verdict(self):
+        r, t, modem = robot("Orange")
+        modem.menu_principal = MENU_ORANGE_REEL
+        tape(r, "#150#")
+        r._brut()
+        rapport = t.envois[-1][0]
+        self.assertIn("Modifier code secret", rapport)
+        self.assertIn(r"\n", rapport)              # les fins de ligne sont visibles
+        self.assertIn("Options reconnues", rapport)
+        self.assertIn("non", rapport)              # pavé non déclenché
+
+    def test_conserve_apres_fermeture_de_session(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:5")
+        clic(r, "u:1")                              # la session se referme
+        self.assertFalse(r.session_ussd)
+        r._brut()
+        self.assertIn("Votre solde", t.envois[-1][0])
 
 
 class RolesEtAcces(unittest.TestCase):

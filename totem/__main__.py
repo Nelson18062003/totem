@@ -6,13 +6,15 @@
   python3 -m totem --console       → faux modems + chat dans le terminal
   python3 -m totem --demo          → scénario automatique (vérification rapide)
   python3 -m totem --modems        → liste les modems détectés, puis quitte
+  python3 -m totem --version       → la version en service sur ce Pi
+  python3 -m totem --stk           → la SIM porte-t-elle une applet Mobile Money ?
 """
 
 import sys
 
 from .app import Robot
 from .compte import Compte
-from .storage import Journal
+from .storage import Journal, JournalInaccessible
 
 
 def _comptes_simules(sms_auto=True):
@@ -48,8 +50,9 @@ def _comptes_reels(patience=120):
     comptes = []
     for info in trouves:
         try:
-            comptes.append(Compte(ModemSerie(port=info.port), info.libelle))
-            print(f"  {info.libelle} sur {info.port} (IMEI {info.imei})")
+            comptes.append(Compte(ModemSerie(port=info.port),
+                                  carte=info.carte, imei=info.imei))
+            print(f"  {info.description} sur {info.port} (IMEI {info.imei})")
         except Exception as e:
             print(f"  Modem sur {info.port} inutilisable : {e}", file=sys.stderr)
     return comptes
@@ -58,8 +61,39 @@ def _comptes_reels(patience=120):
 def principal():
     args = sys.argv[1:]
 
+    # --- Quelle version tourne ici ? ---------------------------------------
+    # Elle s'affiche déjà dans Telegram, mais c'est en SSH qu'on la cherche :
+    # juste après un « git pull », pour vérifier que le correctif est bien là.
+    if "--version" in args:
+        from .version import version
+        print(version())
+        return
+
+    # --- Diagnostic : la carte porte-t-elle une applet SIM Toolkit ? -------
+    # Lecture seule. Répond à la seule question qui décide de l'avenir du
+    # pilotage : l'opérateur peut-il déclarer lui-même ce qu'il attend, au
+    # lieu de nous laisser le deviner d'après le texte d'un menu ?
+    if "--stk" in args:
+        from .detect import detecter_modems
+        from .modem import ModemSerie
+        from .stk import rapport, sonder
+        trouves = detecter_modems()
+        if not trouves:
+            print("Aucun modem détecté. Vérifiez les branchements USB.")
+            return
+        for info in trouves:
+            print(f"\n########## {info.libelle} — {info.port} ##########\n")
+            try:
+                modem = ModemSerie(port=info.port)
+            except Exception as e:
+                print(f"Modem inutilisable : {e}", file=sys.stderr)
+                continue
+            print(rapport(sonder(modem)))
+        return
+
     # --- Diagnostic : que voit-on comme modems ? ---------------------------
     if "--modems" in args:
+        from .carte import operateur_depuis_imsi
         from .detect import detecter_modems
         trouves = detecter_modems()
         if not trouves:
@@ -68,7 +102,22 @@ def principal():
         print(f"{len(trouves)} modem(s) détecté(s) :")
         for i, m in enumerate(trouves, 1):
             sim = "SIM prête" if m.sim_prete else "SIM absente ou PIN actif"
-            print(f"  {i}. {m.libelle:<12} {m.port:<14} IMEI {m.imei}  {sim}")
+            print(f"  {i}. {m.description:<34} {m.port:<14} {sim}")
+            print(f"     modem IMEI {m.imei}")
+            if m.carte.iccid:
+                # ICCID en entier : c'est l'identité qu'il faut pouvoir
+                # comparer à celle imprimée sur la puce quand on en change.
+                print(f"     carte ICCID {m.carte.iccid}", end="")
+                # De l'IMSI, seuls le pays et l'opérateur : le reste
+                # identifierait l'abonné sans rien apprendre d'utile ici.
+                if m.carte.imsi:
+                    connu = operateur_depuis_imsi(m.carte.imsi)
+                    print(f" · réseau d'origine {m.carte.imsi[:5]}"
+                          + ("" if connu else " (inconnu de TOTEM)"), end="")
+                print(f" · {m.carte.numero}" if m.carte.numero else "")
+            elif m.sim_prete:
+                print("     carte présente mais ICCID illisible — le "
+                      "cloisonnement par SIM ne pourra pas fonctionner")
         return
 
     # --- Démo scriptée, sans matériel ni Telegram --------------------------
@@ -76,7 +125,7 @@ def principal():
         from .console import TransportScenario
         comptes = _comptes_simules(sms_auto=False)
         scenario = [
-            "/menu", "/statut", "/comptes",
+            "/menu", "/statut", "/comptes", "/sims",
             "*126#", "5", "1",                    # solde MTN (menus en boutons)
             "/orange", "#150#", "5", "1",         # bascule puis solde Orange
             "mtn *126#",                          # transfert ciblé MTN
@@ -128,7 +177,11 @@ def principal():
             print(message, file=sys.stderr)
             transport.envoyer(f"{cfg['nom']} : {message}")
             sys.exit(1)
-        journal = Journal(cfg["base"])
+        try:
+            journal = Journal(cfg["base"])
+        except JournalInaccessible as e:
+            print(f"\nERREUR : {e}\n", file=sys.stderr)
+            sys.exit(1)
         nom = cfg["nom"]
 
     # Le cloud n'est branché qu'en mode réel et s'il est configuré : sinon

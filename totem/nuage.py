@@ -30,6 +30,9 @@ from .analyse_sms import analyser
 
 DELAI = 15          # secondes avant d'abandonner une requête
 LOT = 100           # lignes envoyées par requête
+# Après un réveil, on laisse une seconde aux arrivées voisines de rejoindre le
+# même envoi. Trois SMS reçus coup sur coup partent alors ensemble.
+DEBOUNCE = 1
 
 
 class Nuage:
@@ -44,6 +47,9 @@ class Nuage:
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
         self._marche = True
+        # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
+        # prochain battement pour transmettre ce qu'il sait déjà.
+        self._reveil = threading.Event()
 
     # ---- requêtes ---------------------------------------------------------
     def _requete(self, methode, chemin, corps=None, entetes=None):
@@ -99,20 +105,60 @@ class Nuage:
             return False
 
     def publier_comptes(self, comptes):
-        """État courant des SIM : solde connu, signal, opérateur."""
+        """État courant des SIM en place : signal, réseau visité, itinérance.
+
+        La clé est l'**ICCID**, pas le libellé : deux SIM MTN successives
+        doivent occuper deux lignes distinctes, sans quoi la seconde écraserait
+        l'état de la première et leurs historiques se confondraient.
+        """
         lignes = []
         for c in comptes:
+            if not c.carte.identifiee:
+                continue    # sans ICCID, on ne sait pas quelle ligne viser
             try:
                 lignes.append({
                     "terminal": self.terminal,
+                    "iccid": c.carte.iccid,
                     "libelle": c.libelle,
-                    "operateur": c.modem.operateur(),
+                    "operateur": c.carte.operateur,
+                    "reseau": c.carte.reseau or None,
+                    "itinerance": c.carte.itinerance,
                     "signal": c.signal(),
                     "maj": _horodatage(),
                 })
             except Exception:
                 continue    # un modem qui ne répond pas ne doit rien bloquer
-        return self._inserer_ou_mettre_a_jour("comptes", lignes, "terminal,libelle")
+        return self._inserer_ou_mettre_a_jour("comptes", lignes, "terminal,iccid")
+
+    def pousser_cartes(self):
+        """Envoie le registre des cartes vues, y compris celles retirées.
+
+        C'est ce qui permet à l'application web de montrer l'historique d'une
+        puce absente du boîtier, et de dire depuis quand elle l'est.
+
+        De l'IMSI, seuls les cinq premiers chiffres partent : ils donnent le
+        pays et l'opérateur, ce qui suffit à expliquer le nom du compte. Le
+        reste identifie l'abonné et n'a rien à faire dans le cloud.
+        """
+        lignes_locales = self.journal.cartes_non_envoyees(LOT)
+        if not lignes_locales:
+            return 0
+        charge = [{
+            "terminal": self.terminal,
+            "iccid": iccid,
+            "imsi_prefixe": (imsi or "")[:5],
+            "operateur": operateur,
+            "libelle": libelle,
+            "numero": numero or None,
+            "imei": imei or None,
+            "premiere_vue": _horodatage(premiere),
+            "derniere_vue": _horodatage(derniere),
+        } for (iccid, imsi, operateur, libelle, numero, imei,
+               premiere, derniere) in lignes_locales]
+        if not self._inserer_ou_mettre_a_jour("cartes", charge, "terminal,iccid"):
+            return 0
+        self.journal.marquer_cartes_envoyees([l[0] for l in lignes_locales])
+        return len(charge)
 
     def pousser_paiements(self):
         """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé."""
@@ -120,12 +166,15 @@ class Nuage:
         if not lignes_locales:
             return 0
         charge, ids = [], []
-        for id_local, date, expediteur, texte, compte in lignes_locales:
+        for id_local, date, expediteur, texte, compte, iccid in lignes_locales:
             p = analyser(texte)
             charge.append({
                 "terminal": self.terminal,
                 "source_id": id_local,
                 "compte": compte or expediteur,
+                # La carte qui a reçu le paiement : c'est elle qui rattache
+                # la somme au bon solde quand plusieurs SIM se succèdent.
+                "carte": iccid or None,
                 "sens": p.sens if p else None,
                 "montant": p.montant if p else None,
                 "tiers": p.tiers if p else None,
@@ -170,15 +219,35 @@ class Nuage:
 
     def arreter(self):
         self._marche = False
+        self._reveil.set()      # ne pas attendre la fin du sommeil pour sortir
+
+    def reveiller(self):
+        """« J'ai quelque chose à transmettre, maintenant. »
+
+        Appelé dès qu'une ligne entre au journal. Sans cela, le pont dormait
+        jusqu'à une minute alors qu'il savait déjà qu'un paiement venait
+        d'arriver — un délai qu'on s'infligeait sans raison.
+
+        Plusieurs appels rapprochés ne réveillent qu'une fois : c'est le
+        propre d'un drapeau. Trois SMS reçus coup sur coup partent donc en un
+        seul envoi, pas en trois.
+        """
+        self._reveil.set()
 
     def _boucle(self, comptes, sante):
         premier = True
+        prochain_etat = 0.0
         while self._marche:
             try:
-                etat = sante.resume() if sante else None
-                self.enregistrer_terminal({"resume": etat} if etat else None)
-                self.publier_comptes(comptes)
-                envoyes = self.pousser_paiements() + self.pousser_evenements()
+                # L'état du terminal et des SIM change lentement : on le
+                # republie au rythme de fond, pas à chaque paiement.
+                if time.monotonic() >= prochain_etat:
+                    prochain_etat = time.monotonic() + self.pause
+                    etat = sante.resume() if sante else None
+                    self.enregistrer_terminal({"resume": etat} if etat else None)
+                    self.publier_comptes(comptes)
+                envoyes = (self.pousser_cartes() + self.pousser_paiements()
+                           + self.pousser_evenements())
                 if premier and envoyes:
                     self.journal.evenement(
                         f"cloud : {envoyes} ligne(s) transmise(s) au démarrage")
@@ -186,7 +255,14 @@ class Nuage:
             except Exception as e:
                 # Un cloud injoignable est normal : on note, on continue.
                 self.derniere_erreur = str(e)
-            time.sleep(self.pause)
+            # Réveil immédiat sur nouvelle ligne, sinon battement de fond —
+            # qui reste indispensable : il rejoue ce qu'une coupure a retenu
+            # et sert de signe de vie au terminal.
+            if self._reveil.wait(timeout=self.pause):
+                self._reveil.clear()
+                # Laisser une seconde aux arrivées quasi simultanées de se
+                # joindre au même envoi, plutôt que d'ouvrir trois connexions.
+                time.sleep(DEBOUNCE)
 
     def resume(self):
         """Ligne d'état pour /statut."""

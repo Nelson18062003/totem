@@ -98,18 +98,53 @@ sudo systemctl stop totem       # l'arrêter (il reprendra au prochain démarrag
 sudo journalctl -u totem -f     # voir ce qu'il fait, en direct (Ctrl+C pour sortir)
 ```
 
-Après avoir récupéré une nouvelle version du code :
+### Mettre à jour le robot
+
+⚠️ **`git pull` ne suffit pas.** Le service ne lit pas `~/totem` mais
+`/opt/totem`. Sans la deuxième commande, le Pi continue d'exécuter l'ancien
+code, et rien ne le signale.
 
 ```
 cd ~/totem && git pull
-sudo bash install.sh            # recopie le programme et relance le service
+sudo bash install.sh            # recopie le programme dans /opt/totem et relance
 ```
+
+**Vérifiez ensuite que la mise à jour a bien pris.** Le robot annonce sa
+version au démarrage, et `/diagnostic` la rappelle :
+
+```
+Version : a1b2c3d 2026-07-31
+```
+
+Comparez avec le dernier commit du dépôt :
+
+```
+cd ~/totem && git log -1 --format="%h %cd" --date=short
+```
+
+Les deux doivent être identiques. S'ils diffèrent, `install.sh` n'a pas été
+relancé — c'est la cause numéro un des « le correctif ne marche pas ».
+
+### Quand un menu s'affiche mal
+
+Composez le code USSD, puis envoyez **`/brut`**. Le robot montre la réponse
+de l'opérateur telle qu'elle est arrivée — fins de ligne et espaces compris —
+avec le nombre d'options qu'il a reconnues et s'il a cru voir une demande de
+code. Une capture d'écran ne montre pas ces détails, et c'est pourtant là que
+se cachent ces défauts. Transmettez ce message tel quel.
 
 Modes utiles, à lancer à la main (arrêtez le service d'abord pour éviter que
 deux robots se disputent les modems) :
 
+⚠️ **Une option inconnue est ignorée en silence** : le robot démarre alors
+normalement au lieu de faire le diagnostic. Si `--stk` ne dit rien sur le
+SIM Toolkit et que vous voyez « Détection des modems… », c'est que le Pi
+n'a pas encore la version qui connaît cette option — relancez
+`sudo bash install.sh`.
+
 ```
-python3 -m totem --modems       # quels modems sont détectés ?
+python3 -m totem --modems       # modems, cartes SIM (ICCID), itinérance
+python3 -m totem --stk          # la SIM porte-t-elle une applet Mobile Money ?
 python3 -m totem --demo         # démonstration, sans matériel
 python3 -m totem --simulation   # faux modems, vrai Telegram
 ```

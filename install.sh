@@ -17,7 +17,18 @@ apt-get install -y -qq python3 python3-serial > /dev/null
 
 echo "[2/8] Copie du programme vers /opt/totem…"
 mkdir -p /opt/totem /var/lib/totem
+# Le service tourne en root, mais on veut aussi pouvoir lancer le robot à la
+# main depuis son compte (diagnostics, mode simulation) sans se heurter aux
+# droits du journal.
+[ -n "${SUDO_USER:-}" ] && chown -R "$SUDO_USER" /var/lib/totem 2>/dev/null || true
+rm -rf /opt/totem/totem          # sinon d'anciens fichiers survivent à la copie
 cp -r "$ICI/totem" /opt/totem/   # /opt/totem/totem : « python3 -m totem » le trouve
+find /opt/totem -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+# Trace de la version installée : le robot l'affiche au démarrage et dans
+# /diagnostic. Sans elle, impossible de savoir si le Pi a bien la correction.
+(cd "$ICI" && git log -1 --format="%h %cd" --date=short 2>/dev/null) \
+  > /opt/totem/VERSION || echo "inconnue" > /opt/totem/VERSION
+echo "  Version installée : $(cat /opt/totem/VERSION)"
 
 echo "[3/8] Configuration…"
 CONF=/boot/firmware/totem.conf

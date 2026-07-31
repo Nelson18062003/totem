@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconCard, IconChart, IconGrid, IconHome, IconInbox } from "./icons";
+import { Logo } from "./marque";
 
 const liens = [
   { href: "/", label: "Accueil", Icone: IconHome },
@@ -20,9 +21,8 @@ export function Nav() {
     <>
       {/* Rail latéral — desktop */}
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-line bg-surface-raised px-3 py-6 md:flex">
-        <div className="mb-8 flex items-center gap-2.5 px-3">
-          <span className="grid size-7 place-items-center rounded-sm bg-ink text-[0.7rem] font-bold text-white">T</span>
-          <span className="text-body font-semibold tracking-tight">TOTEM</span>
+        <div className="mb-8 px-3">
+          <Logo />
         </div>
         <nav className="flex flex-col gap-0.5">
           {liens.map(({ href, label, Icone }) => (
