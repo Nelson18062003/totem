@@ -154,7 +154,7 @@ class AffichageDesMenus(unittest.TestCase):
         tape(r, "*126#")
         clic(r, "u:1")
         self.assertIn("Répondez par un message", t.dernier_texte())
-        self.assertEqual(donnees(t.derniers_boutons()), ["c:annuler"])
+        self.assertEqual(donnees(t.derniers_boutons()), ["c:masquer", "c:annuler"])
 
 
 # Menu réellement renvoyé par Orange Cameroun sur #148#, relevé en production.
@@ -247,6 +247,77 @@ class PaveDuCodeSecret(unittest.TestCase):
         tape(r, "*126#"); clic(r, "u:1"); tape(r, "677000111"); tape(r, "50000")
         tape(r, "1234", message_id=42)
         self.assertIn(42, t.supprimes)
+
+
+class QueDemandeLOperateur(unittest.TestCase):
+    """Le protocole USSD ne dit JAMAIS ce qu'il attend.
+
+    Un montant, un numéro, une référence et un code secret arrivent tous sous
+    la même forme : du texte libre. Se tromper n'a pas le même coût dans les
+    deux sens — masquer une saisie anodine ne coûte rien, laisser passer un
+    code l'écrit dans la conversation. On masque donc au moindre doute, et on
+    laisse toujours une porte de sortie sûre quand le doute subsiste."""
+
+    DEMANDES_DE_CODE = [
+        "Confirmez avec votre code secret :",
+        "Entrez votre PIN :",
+        "Confirmez par votre code Orange Money :",
+        "Entrez votre code :",
+        "Saisissez votre mot de passe",
+        "Veuillez entrer votre MDP",
+        "Enter your Orange Money code",
+        "Entrez le code de confirmation recu par SMS",
+    ]
+    SAISIES_ORDINAIRES = [
+        "Entrez le montant (FCFA) :",
+        "Entrez le numero du beneficiaire :",
+        "Entrez la reference du paiement",
+    ]
+
+    def test_toute_demande_de_code_est_masquee(self):
+        for invite in self.DEMANDES_DE_CODE:
+            with self.subTest(invite=invite):
+                self.assertTrue(Robot._demande_un_code(invite),
+                                f"code écrit en clair : {invite}")
+
+    def test_les_saisies_ordinaires_restent_libres(self):
+        for invite in self.SAISIES_ORDINAIRES:
+            with self.subTest(invite=invite):
+                self.assertFalse(Robot._demande_un_code(invite))
+
+    def test_un_menu_ne_devient_jamais_une_saisie(self):
+        """Même avec un vocabulaire élargi, la présence d'options tranche."""
+        self.assertFalse(Robot._demande_un_code(MENU_ORANGE_REEL))
+        self.assertFalse(Robot._demande_un_code(
+            "1:Modifier code secret\n2:Mot de passe oublie"))
+
+    def test_porte_de_sortie_sur_toute_saisie_libre(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:1")                       # « Entrez le numero du beneficiaire »
+        self.assertFalse(r.pin_actif)
+        self.assertIn("c:masquer", donnees(t.derniers_boutons()))
+
+    def test_la_porte_de_sortie_ouvre_le_pave(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:1")
+        clic(r, "c:masquer")
+        self.assertTrue(r.pin_actif)
+        self.assertIn("p:1", donnees(t.derniers_boutons()))
+
+    def test_saisie_masquee_a_la_demande_reste_secrete(self):
+        r, t, _ = robot()
+        tape(r, "*126#")
+        clic(r, "u:1")
+        clic(r, "c:masquer")
+        for chiffre in "9876":
+            clic(r, f"p:{chiffre}")
+        self.assertIn("••••", t.dernier_texte())
+        clic(r, "p:ok")
+        journalises = [x[0] for x in r.journal.conn.execute("SELECT texte FROM ussd")]
+        self.assertNotIn("9876", journalises)
+        self.assertIn("****", journalises)
 
 
 class Reactivite(unittest.TestCase):

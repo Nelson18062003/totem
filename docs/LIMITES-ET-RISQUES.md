@@ -156,6 +156,30 @@ un menu sort en idéogrammes ou en chiffres hexadécimaux.
 DCS ne sert que de départage — certains firmwares annoncent un codage et en
 renvoient un autre.
 
+### 🟡 Le protocole USSD ne dit jamais ce qu'il attend
+C'est la limite de fond, et elle est **structurelle** : en USSD, un montant,
+un numéro de bénéficiaire, une référence et un code secret arrivent tous sous
+la même forme — du texte libre. Le réseau ne transmet aucune indication de
+type, ni aucun drapeau « cette saisie est secrète ». Le robot ne peut donc que
+lire le vocabulaire de l'opérateur, et le vocabulaire varie.
+
+*Ce que ça coûte, selon le sens de l'erreur* :
+
+| Erreur | Conséquence |
+|---|---|
+| Masquer une saisie qui n'était pas secrète | aucune |
+| Laisser passer un code en clair | **il s'écrit dans la conversation** |
+
+*En place* : le vocabulaire reconnu est volontairement large (`pin`, `code`,
+`mdp`, `secret`, `confidentiel`, `mot de passe`, `password`) — on masque au
+moindre doute. Et sur **toute** saisie libre, un bouton **🔐 Saisir en
+masqué** reste à portée de doigt : même si la détection échoue, l'utilisateur
+n'a jamais à taper un code en clair.
+
+*La vraie solution* : le **SIM Toolkit** (voir `docs/USSD-OU-STK.md`), où
+l'opérateur déclare explicitement le type de chaque saisie et un drapeau
+« ne pas afficher ». Il n'y a alors plus rien à deviner.
+
 ### ✅ Le pavé du code secret au mauvais moment
 Le menu Orange de `#148#` commence par **« 1:Modifier code secret »**. La
 détection cherchait les mots « code secret » n'importe où dans le texte :

@@ -40,9 +40,16 @@ ARRET_PROPRE = "arrêt propre"
 RE_CODE_USSD = re.compile(r"^[\*#][\d\*#]+#$")
 # « mtn *126# » : viser un compte sans changer le compte courant
 RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
-# Vocabulaire du code secret, selon les opérateurs.
+# Vocabulaire d'une demande de code, volontairement LARGE.
+#
+# Se tromper n'a pas le même coût dans les deux sens :
+#   - masquer une saisie qui n'était pas secrète : sans conséquence ;
+#   - laisser passer un code en clair : il s'écrit dans la conversation.
+# On masque donc au moindre doute. « Entrez votre code », « Enter your Orange
+# Money code », « Veuillez entrer votre MDP » doivent tous déclencher le pavé.
 RE_DEMANDE_CODE = re.compile(
-    r"\bpin\b|code\s+(?:secret|confidentiel|pin)|mot\s+de\s+passe|password", re.I)
+    r"\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password",
+    re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
 RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
@@ -357,6 +364,13 @@ class Robot:
                 canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
+        elif genre == "c" and valeur == "masquer":
+            # L'utilisateur nous dit lui-même que la saisie est sensible.
+            compte = self.session_compte
+            if compte is not None and not self.pin_actif:
+                self.pin_actif = True
+                self.pin_tampon = ""
+                self._afficher_session(compte)
         elif genre == "c" and valeur == "confirmer":
             if self._confirmation_requise() and self.session_compte:
                 self.confirme = True
@@ -511,8 +525,13 @@ class Robot:
                             for num, lib in options[i:i + 2]]
                            for i in range(0, len(options), 2)]
             else:
+                # Saisie libre : montant, numéro, référence… Le robot ne peut
+                # pas TOUJOURS savoir si ce qu'on lui demande est secret — les
+                # opérateurs ne le disent nulle part dans le protocole. On
+                # laisse donc toujours une porte de sortie sûre à portée de
+                # doigt, plutôt que de parier sur le vocabulaire.
                 texte += "\n✍️ Répondez par un message (numéro, montant…)."
-                boutons = []
+                boutons = [[("🔐 Saisir en masqué", "c:masquer")]]
             boutons = boutons + [[("❌ Annuler", "c:annuler")]]
         self._peindre(texte, boutons)
 
