@@ -13,7 +13,7 @@ import sys
 
 from .app import Robot
 from .compte import Compte
-from .storage import Journal
+from .storage import Journal, JournalInaccessible
 
 
 def _comptes_simules(sms_auto=True):
@@ -151,7 +151,11 @@ def principal():
             print(message, file=sys.stderr)
             transport.envoyer(f"{cfg['nom']} : {message}")
             sys.exit(1)
-        journal = Journal(cfg["base"])
+        try:
+            journal = Journal(cfg["base"])
+        except JournalInaccessible as e:
+            print(f"\nERREUR : {e}\n", file=sys.stderr)
+            sys.exit(1)
         nom = cfg["nom"]
 
     # Le cloud n'est branché qu'en mode réel et s'il est configuré : sinon

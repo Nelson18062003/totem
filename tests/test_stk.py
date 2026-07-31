@@ -109,5 +109,39 @@ class SondeSimToolkit(unittest.TestCase):
         self.assertIn("lecture seule", texte)
 
 
+
+class JournalNonAccessible(unittest.TestCase):
+    """Un lancement à la main depuis un compte ordinaire se heurte aux droits
+    du journal, créé par le service qui tourne en root.
+
+    L'erreur brute de SQLite — « attempt to write a readonly database » — ne
+    dit ni quel fichier, ni quoi taper. Elle doit être remplacée par un
+    message qui répond aux deux."""
+
+    def test_journal_impossible_a_ouvrir(self):
+        """Panne réelle : le dossier n'existe pas et n'est pas créable."""
+        from totem.storage import Journal, JournalInaccessible
+
+        with self.assertRaises(JournalInaccessible) as capture:
+            Journal("/dossier-qui-nexiste-pas/totem/journal.db")
+        message = str(capture.exception)
+        self.assertIn("/dossier-qui-nexiste-pas/totem/journal.db", message)
+        self.assertIn("chown", message)
+        self.assertIn("--stk", message)
+
+    def test_le_conseil_repond_aux_deux_questions(self):
+        """Quel fichier ? Quoi taper ? Plus l'erreur d'origine, pour le cas
+        où ce ne serait pas un problème de droits."""
+        from totem.storage import _conseil
+
+        message = _conseil("/var/lib/totem/journal.db",
+                           "attempt to write a readonly database")
+        self.assertIn("/var/lib/totem/journal.db", message)   # quel fichier
+        self.assertIn("chown", message)                        # quoi taper
+        self.assertIn("readonly", message)                     # l'erreur d'origine
+        self.assertIn("--modems", message)                     # ce qui marche sans droits
+        self.assertIn("--stk", message)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

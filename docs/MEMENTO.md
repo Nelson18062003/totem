@@ -136,8 +136,15 @@ se cachent ces défauts. Transmettez ce message tel quel.
 Modes utiles, à lancer à la main (arrêtez le service d'abord pour éviter que
 deux robots se disputent les modems) :
 
+⚠️ **Une option inconnue est ignorée en silence** : le robot démarre alors
+normalement au lieu de faire le diagnostic. Si `--stk` ne dit rien sur le
+SIM Toolkit et que vous voyez « Détection des modems… », c'est que le Pi
+n'a pas encore la version qui connaît cette option — relancez
+`sudo bash install.sh`.
+
 ```
 python3 -m totem --modems       # quels modems sont détectés ?
+python3 -m totem --stk          # la SIM porte-t-elle une applet Mobile Money ?
 python3 -m totem --demo         # démonstration, sans matériel
 python3 -m totem --simulation   # faux modems, vrai Telegram
 ```
