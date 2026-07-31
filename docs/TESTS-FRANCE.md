@@ -39,8 +39,8 @@ data). Deux options, aussi valables l'une que l'autre :
 - [ ] Si le code ouvre un menu numéroté : les **boutons** apparaissent, et un
       appui fait avancer la session **dans la même carte** (pas de nouveau message)
 - [ ] Répondre par un message (au lieu du bouton) marche aussi
-- [ ] Une question libre (« entrez un numéro ») affiche bien
-      « ✍️ Répondez par un message »
+- [ ] Une question libre (« entrez un numéro ») ouvre un **pavé de chiffres**,
+      et non une invitation à taper au clavier
 - [ ] `/annuler` ferme proprement une session en cours
 - [ ] **Réactivité** : dès l'envoi du code, la carte affiche « ⏳ Composition
       de … » sans délai perceptible ; le menu la remplace à l'arrivée

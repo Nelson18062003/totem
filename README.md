@@ -41,9 +41,11 @@ un pavé de boutons. Un message tapé au clavier resterait dans la conversation 
 l'effacer après coup ne répare rien, il a existé et transité. Un chiffre
 composé sur des boutons n'est jamais un message : il ne vit que dans la carte
 de session, qui se réécrit en place. Le clavier reste possible quand la réponse
-demande des lettres — le message est alors effacé aussitôt. Le robot sait aussi travailler
-dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et un
-**fil par nature d'information** si le groupe utilise les sujets.
+demande des lettres — le message est alors effacé aussitôt.
+
+Le robot sait aussi travailler dans un **groupe d'équipe**, avec des **rôles**
+(qui pilote / qui observe) et un **fil par nature d'information** si le groupe
+utilise les sujets.
 
 → Tout est détaillé dans [`docs/GUIDE-TELEGRAM.md`](docs/GUIDE-TELEGRAM.md).
 
