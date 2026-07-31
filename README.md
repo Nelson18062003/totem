@@ -88,7 +88,12 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   entrant.py      message entrant commun à tous les transports (frappe ou clic)
   mise_en_forme.py  échappement et balisage HTML des messages
   storage.py      journal SQLite (SMS, USSD, événements, rapport 24 h, export CSV)
+  analyse_sms.py  lecture des SMS : montant, tiers, référence, solde
+  sante.py        santé du Pi : tension, température, disque, sauvegardes
+  nuage.py        pont vers Supabase (hors-ligne d'abord, file d'attente)
   config.py       chargement totem.conf
+sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
+tests/            batterie de tests (python3 -m unittest discover -s tests)
 install.sh        installation en une commande sur Raspberry Pi OS
 systemd/          service (démarrage auto + relance)
 config.example.conf
@@ -96,7 +101,8 @@ docs/
   GUIDE-INSTALLATION.md   pas-à-pas complet (comptes, flashage, install, dépannage)
   GUIDE-TELEGRAM.md       l'expérience Telegram : boutons, pavé PIN, groupe, sujets
   MEMENTO.md              les commandes du quotidien (allumer, éteindre, diagnostic)
-  MISE-EN-LIGNE.md        déployer l'application web sur Vercel
+  MISE-EN-LIGNE.md        déployer l’application web sur Vercel
+  CLOUD.md                brancher le terminal sur Supabase (facultatif)
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
 web/              l'application web (Next.js) — maquette sur données de démo

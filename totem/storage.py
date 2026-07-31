@@ -35,12 +35,17 @@ class Journal:
             # Migration douce des bases créées avant le multi-comptes.
             self._ajouter_colonne_si_absente("sms", "compte")
             self._ajouter_colonne_si_absente("ussd", "compte")
+            # File d'attente vers le cloud : 0 tant que la ligne n'est pas
+            # partie. Les lignes déjà présentes sont considérées à envoyer.
+            self._ajouter_colonne_si_absente("sms", "envoye", "INTEGER DEFAULT 0")
+            self._ajouter_colonne_si_absente("evenements", "envoye", "INTEGER DEFAULT 0")
             self.conn.commit()
 
-    def _ajouter_colonne_si_absente(self, table, colonne):
+    def _ajouter_colonne_si_absente(self, table, colonne, type_sql="TEXT"):
         existantes = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
         if colonne not in existantes:
-            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} TEXT")
+            self.conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN {colonne} {type_sql}")
 
     def _maintenant(self):
         return datetime.now().isoformat(timespec="seconds")
@@ -82,6 +87,50 @@ class Journal:
                 "SELECT date, expediteur, texte, COALESCE(compte, '') "
                 "FROM sms ORDER BY id DESC LIMIT ?", (n,)
             ).fetchall()
+
+    # ---- file d'attente vers le cloud -------------------------------------
+    # Le journal local reste la source de vérité : une ligne n'est marquée
+    # envoyée qu'une fois le cloud confirmé. Une coupure réseau ne perd rien,
+    # elle ne fait qu'allonger la file.
+
+    def sms_non_envoyes(self, limite=100):
+        """[(id, date, expéditeur, texte, compte)] restant à transmettre."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, date, expediteur, texte, COALESCE(compte, '') "
+                "FROM sms WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
+                (limite,)).fetchall()
+
+    def evenements_non_envoyes(self, limite=100):
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, date, texte FROM evenements "
+                "WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
+                (limite,)).fetchall()
+
+    def marquer_sms_envoyes(self, ids):
+        self._marquer("sms", ids)
+
+    def marquer_evenements_envoyes(self, ids):
+        self._marquer("evenements", ids)
+
+    def _marquer(self, table, ids):
+        if not ids:
+            return
+        with self.verrou:
+            self.conn.executemany(
+                f"UPDATE {table} SET envoye = 1 WHERE id = ?",
+                [(i,) for i in ids])
+            self.conn.commit()
+
+    def reste_a_envoyer(self):
+        """Combien de lignes attendent encore le cloud."""
+        with self.verrou:
+            (n,) = self.conn.execute(
+                "SELECT (SELECT COUNT(*) FROM sms WHERE COALESCE(envoye,0)=0) "
+                "+ (SELECT COUNT(*) FROM evenements WHERE COALESCE(envoye,0)=0)"
+            ).fetchone()
+        return n
 
     def rapport_du_jour(self):
         """(nb d'encaissements, total FCFA, nb de SMS) sur les dernières 24 h."""

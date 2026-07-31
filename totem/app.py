@@ -57,7 +57,7 @@ COMMANDES_BOT = [
 class Robot:
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
-                 delai_session=180, chemin_base=None):
+                 delai_session=180, chemin_base=None, nuage=None):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -67,6 +67,7 @@ class Robot:
         self.raccourcis = raccourcis or {}
         self.delai_session = delai_session
         self.chemin_base = chemin_base
+        self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
         self.actif = True
         self.verrou = threading.RLock()
         self.courant = self.comptes[0] if self.comptes else None
@@ -146,6 +147,10 @@ class Robot:
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
+        if self.nuage:
+            # Synchronisation en tâche de fond : elle rattrape son retard
+            # quand le réseau le permet, et n'interrompt jamais le robot.
+            self.nuage.demarrer(comptes=self.comptes, sante=self.sante)
         if bloquant:
             self._boucle_messages()
 
@@ -508,6 +513,8 @@ class Robot:
             lignes.append(f"· {echap(c.resume())}{marque}")
         try:
             lignes.append(f"\n🖥 {echap(self.sante.resume())}")
+            if self.nuage and self.nuage.actif:
+                lignes.append(f"☁️ {echap(self.nuage.resume())}")
         except Exception:
             pass
         self.transport.envoyer("\n".join(lignes), canal=canal,

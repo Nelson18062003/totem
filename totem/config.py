@@ -75,6 +75,11 @@ def charger():
                     "base": cfg.get("totem", "base", fallback="/var/lib/totem/journal.db"),
                     "delai_session": cfg.getint("totem", "delai_session", fallback=180),
                     "raccourcis": _raccourcis(cfg),
+                    # Cloud : facultatif. Sans ces valeurs, TOTEM fonctionne
+                    # exactement comme avant, entièrement hors ligne.
+                    "cloud_url": cfg.get("cloud", "url", fallback="").strip(),
+                    "cloud_cle": cfg.get("cloud", "cle", fallback="").strip(),
+                    "terminal": cfg.get("cloud", "terminal", fallback="totem").strip(),
                 }
             except KeyError as e:
                 raise ErreurConfig(f"Clé manquante dans {chemin} : {e}")

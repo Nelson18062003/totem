@@ -131,10 +131,20 @@ def principal():
         journal = Journal(cfg["base"])
         nom = cfg["nom"]
 
+    # Le cloud n'est branché qu'en mode réel et s'il est configuré : sinon
+    # l'objet est inerte et le robot se comporte exactement comme avant.
+    nuage = None
+    if "--simulation" not in args:
+        from .nuage import Nuage
+        nuage = Nuage(cfg["cloud_url"], cfg["cloud_cle"], cfg["terminal"], journal)
+        if nuage.actif:
+            print(f"  cloud : {cfg['cloud_url']} (terminal « {cfg['terminal']} »)")
+
     Robot(comptes, transport, journal, nom=nom,
           heure_rapport=cfg["heure_rapport"], raccourcis=cfg["raccourcis"],
           delai_session=cfg["delai_session"],
-          chemin_base=cfg["base"] if "--simulation" not in args else None).demarrer()
+          chemin_base=cfg["base"] if "--simulation" not in args else None,
+          nuage=nuage).demarrer()
 
 
 if __name__ == "__main__":
