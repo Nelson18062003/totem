@@ -125,8 +125,10 @@ def principal():
         from .console import TransportScenario
         comptes = _comptes_simules(sms_auto=False)
         scenario = [
-            "/menu", "/statut", "/comptes", "/sims",
+            "/menu", "/statut", "/comptes", "/sims", "/raccourcis",
             "*126#", "5", "1",                    # solde MTN (menus en boutons)
+            "!r:enr", "Solde",                    # 💾 : le parcours devient un bouton
+            "/raccourcis",                        # il doit y figurer
             "/orange", "#150#", "5", "1",         # bascule puis solde Orange
             "mtn *126#",                          # transfert ciblé MTN
             "1", "677123456", "50000", "1234",    # 1234 = PIN (jamais journalisé)

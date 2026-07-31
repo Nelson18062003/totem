@@ -83,12 +83,36 @@ Conséquences concrètes :
 - retirer une carte ne perd rien — `/sims` liste toutes les puces connues, et
   la remettre fait ressortir son journal intact.
 
+## Vos propres boutons, appris sur le terrain
+
+Les codes USSD n'ont rien d'universel : le solde est `*126#` puis `5` puis `1`
+chez l'un, `#148*5#` chez l'autre. TOTEM ne les devine pas — deviner des
+chiffres qui déplacent de l'argent serait irresponsable. **Il les apprend.**
+
+Faites l'opération une fois, normalement. À la fin, un bouton
+**💾 En faire un bouton** apparaît : donnez-lui un nom, c'est terminé. Vous ne
+retaperez plus jamais le chemin dans les menus.
+
+Deux garde-fous, qui décident de ce qui entre dans un raccourci :
+
+- **le code secret n'y entre jamais** — un bouton qui rejouerait le PIN serait
+  un transfert en un clic ;
+- **les données de l'opération non plus** (montant, bénéficiaire) : rejouer le
+  montant d'hier serait au mieux faux. Le bouton mène jusqu'à la question,
+  vous répondez.
+
+Les boutons sont rangés **par opérateur**, pas par carte : les codes
+appartiennent au réseau. Changer une SIM MTN pour une autre SIM MTN ne fait
+rien disparaître ; passer à une puce Orange fait apparaître les boutons Orange
+et masque ceux de MTN, tout seul.
+
 | Commande Telegram | Effet |
 |---|---|
 | `*126#` | Ouvre le menu sur le **compte courant** |
 | `mtn *126#` | Vise un compte sans changer le compte courant |
 | `/comptes` | Liste les comptes et rappelle comment basculer |
 | `/sims` | Toutes les cartes connues, celle en place marquée ▶️ |
+| `/raccourcis` | Vos boutons : les voir, en supprimer |
 | `/mtn`, `/orange`, `/1`, `/2` | Change de compte courant |
 
 Chaque compte a sa propre session USSD et son propre chien de garde : un modem

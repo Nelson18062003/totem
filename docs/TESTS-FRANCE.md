@@ -89,6 +89,21 @@ correspondent plus à aucun solde réel.
 - [ ] Dans un menu qui *parle* du code secret sans le demander (ex. Orange
       « Gerer mon code secret »), le pavé PIN ne s'ouvre **pas** : des boutons
 
+## C quater. Vos propres boutons (à faire une fois par opérateur)
+- [ ] Consultez votre solde en passant par le menu, jusqu'au bout
+- [ ] À la fin, le bouton **💾 En faire un bouton** apparaît → appuyez
+- [ ] Nommez-le « Solde » → il apparaît sur l'écran d'accueil
+- [ ] Appuyez dessus : le parcours se déroule seul, le pavé du code s'ouvre
+- [ ] **Vérifiez que le parcours affiché ne contient PAS votre code** —
+      `/raccourcis` montre les étapes en clair, il ne doit y avoir que le
+      code composé et les chiffres du menu
+- [ ] Faites de même pour un dépôt et un retrait
+- [ ] Lancez un transfert, allez jusqu'à la question du bénéficiaire, puis
+      enregistrez → le bouton doit s'arrêter **à la question**, sans rejouer
+      ni le numéro ni le montant
+- [ ] Changez pour la carte de l'autre opérateur → les boutons changent tout
+      seuls, ceux du premier réseau ne s'affichent plus
+
 ## D. Robustesse (les pannes de Douala, simulées à Lille)
 - [ ] **Coupure de courant** : débranchez 10 s, rebranchez → le robot revient
       seul et renvoie « ✅ en ligne » (≈2 min), sans aucune intervention
