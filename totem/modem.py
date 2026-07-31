@@ -10,6 +10,7 @@ import threading
 import time
 
 from .gsm import decode_auto, encode_ucs2
+from .pdu import ErreurPDU, decoder, recoller
 
 # +CUSD: <m>[,"<texte>",<dcs>]  — m=0 fin, m=1 réponse attendue, m=2 annulé par le réseau
 RE_CUSD = re.compile(r'\+CUSD:\s*(\d)(?:\s*,\s*"(.*?)"\s*(?:,\s*(\d+))?)?', re.S)
@@ -44,8 +45,13 @@ TTL_IMSI = 300
 TTL_SIM_PRESENTE = 8
 # Au-delà, on se contente de ce que le réseau a envoyé jusque-là.
 GRACE_CUSD = 1.2
-# +CMGL: <index>,"REC UNREAD","<expéditeur>",...  puis le texte sur la ligne suivante
+# Mode texte — repli quand le firmware refuse le mode PDU.
+# +CMGL: <index>,"REC UNREAD","<expéditeur>",…  puis le texte à la ligne
 RE_CMGL = re.compile(r'\+CMGL:\s*(\d+),"[^"]*","([^"]*)"[^\n]*\n(.*?)(?=\r?\n\+CMGL:|\r?\nOK\r?\n|\Z)', re.S)
+# Mode PDU — le seul qui livre l'en-tête de découpe des messages longs.
+# +CMGL: <index>,<état>,<alpha>,<longueur>  puis le PDU hexadécimal à la ligne
+RE_CMGL_PDU = re.compile(
+    r"\+CMGL:\s*(\d+)\s*,[^\n]*\n\s*([0-9A-Fa-f]{20,})", re.I)
 
 USSD_OUVERTE = 1
 USSD_FERMEE = 0
@@ -67,6 +73,7 @@ class ModemSerie:
         self.verrou = threading.Lock()
         self.ucs2 = False
         self.stockage_sms = "SM"
+        self.mode_pdu = False
         self._memo = {}
         self._commande_iccid = None    # celle que ce firmware accepte
         self._initialiser()
@@ -118,11 +125,19 @@ class ModemSerie:
 
     def _initialiser(self):
         with self.verrou:
-            for cmd in ("AT", "ATE0", "AT+CMEE=2", "AT+CUSD=1", "AT+CMGF=1",
+            for cmd in ("AT", "ATE0", "AT+CMEE=2", "AT+CUSD=1",
                         # Stocker les SMS entrants et signaler leur arrivée
                         # plutôt que de les déverser sur le port série.
                         "AT+CNMI=2,1,0,0,0"):
                 self._envoyer(cmd)
+            # Mode PDU : c'est le SEUL qui livre l'en-tête de découpe des
+            # messages longs. En mode texte, un SMS de plus de 160 caractères
+            # arrive en morceaux séparés, sans rien pour les rattacher — donc
+            # tronqué à l'écran. On retombe en mode texte si le firmware
+            # refuse, plutôt que de ne plus lire aucun SMS.
+            self.mode_pdu = "OK" in self._envoyer("AT+CMGF=0")
+            if not self.mode_pdu:
+                self._envoyer("AT+CMGF=1")
             # Préférer la mémoire du modem : la SIM déborde en une journée
             # chargée, et un stockage plein fait perdre les SMS suivants.
             self.stockage_sms = "SM"
@@ -273,7 +288,11 @@ class ModemSerie:
 
     # ---- SMS --------------------------------------------------------------
     def lire_sms(self):
-        """[(index, expéditeur, texte)] de TOUS les SMS stockés, sans effacer.
+        """[(indices, expéditeur, texte)] de TOUS les SMS stockés, sans effacer.
+
+        `indices` est une LISTE : un message long occupe plusieurs
+        emplacements dans le modem, et il faut tous les effacer ensemble pour
+        qu'aucun morceau ne reste orphelin.
 
         L'effacement est laissé à l'appelant, qui ne doit le faire qu'une fois
         le message journalisé : si le robot meurt entre la lecture et
@@ -282,15 +301,28 @@ class ModemSerie:
         message le marque comme lu, et un plantage juste après le ferait
         disparaître à jamais."""
         with self.verrou:
-            brut = self._envoyer('AT+CMGL="ALL"', delai=8)
-        return [(int(m.group(1)), decode_auto(m.group(2)),
-                 decode_auto(m.group(3).strip()))
-                for m in RE_CMGL.finditer(brut)]
+            commande = "AT+CMGL=4" if self.mode_pdu else 'AT+CMGL="ALL"'
+            brut = self._envoyer(commande, delai=10)
+        if not self.mode_pdu:
+            return [([int(m.group(1))], decode_auto(m.group(2)),
+                     decode_auto(m.group(3).strip()))
+                    for m in RE_CMGL.finditer(brut)]
 
-    def effacer_sms(self, index):
-        """Efface un SMS du modem, une fois qu'il est en sécurité au journal."""
+        morceaux = []
+        for m in RE_CMGL_PDU.finditer(brut):
+            try:
+                morceaux.append((int(m.group(1)), decoder(m.group(2))))
+            except ErreurPDU:
+                continue          # un PDU illisible ne doit pas bloquer les autres
+        return [(indices, expediteur, texte)
+                for indices, expediteur, texte, _ in recoller(morceaux)]
+
+    def effacer_sms(self, indices):
+        """Efface un ou plusieurs emplacements, une fois le message journalisé."""
+        if isinstance(indices, int):
+            indices = [indices]
         with self.verrou:
-            return "OK" in self._envoyer(f"AT+CMGD={index}")
+            return all("OK" in self._envoyer(f"AT+CMGD={i}") for i in indices)
 
     def memoire_sms(self):
         """(occupés, capacité) du stockage des SMS. Une mémoire pleine fait

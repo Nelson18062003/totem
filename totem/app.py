@@ -879,13 +879,15 @@ class Robot:
                 self._redemarrer_modem(compte, canal="alertes", automatique=True)
                 compte.echecs = 0
             return
-        for index, expediteur, texte in messages:
+        for indices, expediteur, texte in messages:
             if not self.journal.sms_existe(expediteur, texte, compte.libelle):
                 self.journal.sms(expediteur, texte, compte.libelle)
                 self._notifier_sms(compte, expediteur, texte)
-            if not compte.effacer_sms(index):
+            # Un message long occupe plusieurs emplacements : on les efface
+            # tous ensemble, sans quoi un morceau resterait orphelin.
+            if not compte.effacer_sms(indices):
                 self.journal.evenement(
-                    f"SMS {index} non effacé sur {compte.libelle} "
+                    f"SMS {indices} non effacé sur {compte.libelle} "
                     "(il sera ignoré au prochain tour)")
 
     def _verifier_memoire(self):

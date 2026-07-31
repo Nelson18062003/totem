@@ -88,10 +88,11 @@ class Compte:
         with self.verrou:
             return self.modem.lire_sms()
 
-    def effacer_sms(self, index):
+    def effacer_sms(self, indices):
+        """`indices` : un emplacement, ou la liste des morceaux d'un long SMS."""
         with self.verrou:
             try:
-                return self.modem.effacer_sms(index)
+                return self.modem.effacer_sms(indices)
             except Exception:
                 return False
 
