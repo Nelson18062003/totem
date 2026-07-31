@@ -1,10 +1,15 @@
 @import "tailwindcss";
 
 /*
- * TOTEM — design sobre.
- * Une seule couleur froide (bleu d'encre), base neutre. Pas de dégradés
+ * TOTEM — jetons de la charte. Voir docs/IDENTITE.md.
+ *
+ * Une seule couleur froide (bleu de garde), base neutre. Pas de dégradés
  * brillants, pas d'emoji, pas de couleurs vives : la hiérarchie vient de la
  * typographie et de l'espace, la couleur ne sert qu'à porter un sens.
+ *
+ * Le froid n'est pas un goût, c'est une décision : MTN est jaune, Orange est
+ * orange. Une marque chaude se ferait avaler par ses opérateurs. TOTEM reste
+ * la surface neutre sur laquelle ces deux jaunes se posent.
  */
 @theme {
   /* Neutres — la base de tout */
@@ -17,7 +22,7 @@
   --color-ink-faint: #8e909a;        /* texte tertiaire */
   --color-line: #e6e7eb;             /* bordures fines */
 
-  /* L'unique couleur d'accent : bleu d'encre, froid et sobre */
+  /* L'unique couleur d'accent : bleu de garde, froid et sobre */
   --color-accent: #1f3a8a;
   --color-accent-hover: #182d6b;
   --color-accent-soft: #eef1f8;
@@ -27,6 +32,16 @@
   --color-positive: #17603f;         /* crédit (sombre, pas vif) */
   --color-negative: #8a2020;         /* débit */
   --color-alert: #8a5a10;
+
+  /* Couleur de récit — latérite de Douala. Réservée aux supports éditoriaux
+     (couverture de documentation, page de présentation). Jamais dans l'app :
+     elle n'est ni un état ni une action. */
+  --color-laterite: #9a4b2e;
+
+  /* Couleurs opérateur — ce sont des données, pas la marque. Autorisées en
+     liseré, pastille ou point (≤ 4 px), jamais en aplat de fond ni en texte. */
+  --color-op-mtn: #ffcc00;
+  --color-op-orange: #ff7900;
 
   --text-hero: clamp(2rem, 1.6rem + 2vw, 2.75rem);
   --text-display: clamp(1.625rem, 1.4rem + 1vw, 2rem);
@@ -43,6 +58,10 @@
 
   --font-sans: var(--font-dm-sans), -apple-system, system-ui, "Segoe UI",
     Roboto, sans-serif;
+
+  /* Interlettrage du mot TOTEM — lapidaire, comme une inscription gravée.
+     Ne s'applique qu'au nom de la marque, jamais au reste des capitales. */
+  --tracking-marque: 0.18em;
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }

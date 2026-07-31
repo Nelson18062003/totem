@@ -18,6 +18,11 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "fr",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      // Les tuiles masquables : le symbole n'occupe que 60 % du carré, elles
+      // survivent donc au rognage rond ou en goutte des lanceurs Android.
+      // (Android ignore le SVG pour les icônes de manifeste : il faut du PNG.)
+      { src: "/icone-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+      { src: "/icone-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }
