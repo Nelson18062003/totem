@@ -117,6 +117,24 @@ create table if not exists evenements (
   unique (terminal, source_id)
 );
 
+-- --- Reçus : les PDF joints aux notifications ------------------------------
+-- Le document lui-même vit dans le stockage (compartiment « recus ») ; cette
+-- table dit ce qu'il contient et où le trouver. La carte SD du Pi n'en garde
+-- aucune copie : un reçu se refabrique à l'identique depuis son SMS, qui est
+-- dans « paiements ».
+create table if not exists recus (
+  id          bigint generated always as identity primary key,
+  terminal    text not null references terminaux(id) on delete cascade,
+  numero      text not null,             -- « TM-2026-0731-0042 »
+  genre       text not null check (genre in ('transfert', 'solde')),
+  reference   text,                      -- ID de transaction de l'opérateur
+  montant     numeric,
+  chemin      text not null,             -- objet de stockage : « totem/xxx.pdf »
+  etabli_le   timestamptz not null,
+  cree_le     timestamptz not null default now(),
+  unique (terminal, numero)
+);
+
 -- --- Commandes : le canal descendant (phase 6) -----------------------------
 -- Déclaré maintenant pour éviter une migration plus tard. Inutilisé tant que
 -- l'application web ne pilote pas encore le terminal.
@@ -208,11 +226,12 @@ alter table comptes    enable row level security;
 alter table paiements  enable row level security;
 alter table evenements enable row level security;
 alter table commandes  enable row level security;
+alter table recus      enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes']
+  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus']
   loop
     execute format(
       'drop policy if exists "lecture connectee" on %I; '
@@ -226,3 +245,28 @@ end $$;
 drop policy if exists "demander une commande" on commandes;
 create policy "demander une commande" on commandes
   for insert to authenticated with check (true);
+
+-- ---------------------------------------------------------------------------
+-- Le compartiment de stockage des reçus
+--
+-- Les PDF n'ont pas à s'accumuler sur la carte SD du Pi : le terminal les
+-- fabrique en mémoire, les envoie sur Telegram, puis les dépose ici. Le
+-- compartiment est privé — on y accède en étant connecté, ou avec la clé de
+-- service, qui ne quitte jamais le Pi.
+--
+-- Le bloc ne fait rien sur une base PostgreSQL ordinaire, où le schéma
+-- « storage » n'existe pas : ce fichier doit rester exécutable partout.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (select 1 from information_schema.tables
+             where table_schema = 'storage' and table_name = 'buckets') then
+    insert into storage.buckets (id, name, public)
+    values ('recus', 'recus', false)
+    on conflict (id) do nothing;
+
+    execute $p$drop policy if exists "recus lecture connectee" on storage.objects$p$;
+    execute $p$create policy "recus lecture connectee" on storage.objects
+              for select to authenticated using (bucket_id = 'recus')$p$;
+  end if;
+end $$;

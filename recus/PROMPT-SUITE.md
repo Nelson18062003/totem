@@ -1,6 +1,12 @@
 # Prompt de reprise — brancher les reçus PDF
 
-À copier tel quel dans une nouvelle session Claude Code sur ce dépôt.
+> **Fait.** Les cinq étapes ci-dessous ont été suivies : le parseur comprend le
+> transfert d'Orange, la règle qui donne droit à un reçu est écrite dans
+> `totem/declencheur.py`, le PDF se fabrique en Python seul
+> (`totem/pdf.py`, `totem/recu.py`), et il part sur Telegram puis dans le
+> stockage Supabase. Ce qui reste ouvert est en bas de `recus/README.md`.
+>
+> Ce texte est conservé comme cahier des charges d'origine.
 
 ---
 

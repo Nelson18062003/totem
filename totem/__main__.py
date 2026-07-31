@@ -208,6 +208,7 @@ def principal():
           seuil_confirmation=cfg["seuil_confirmation"],
           sauvegarde_quotidienne=cfg["sauvegarde_quotidienne"],
           chemin_base=cfg["base"] if "--simulation" not in args else None,
+          numeros=cfg["numeros"], recus=cfg["recus"],
           nuage=nuage).demarrer()
 
 

@@ -51,6 +51,27 @@ def _raccourcis(cfg):
     return resultat
 
 
+def _numeros(cfg):
+    """Section [numeros] : le numéro de chaque puce, écrit à la main.
+
+        orange = 696103864
+        mtn    = 677123456
+
+    Presque aucune SIM prépayée ne déclare son propre numéro au modem. Sans
+    cette liste, TOTEM lit bien « Transfert de A vers B » mais ne sait pas
+    laquelle des deux lignes est la sienne — et un reçu qui annonce
+    « Montant reçu » sur un envoi est un faux document.
+
+    La clé peut être l'ICCID de la puce, le libellé du compte ou le nom de
+    l'opérateur : on prend ce que le propriétaire a sous les yeux.
+    """
+    if not cfg.has_section("numeros"):
+        return {}
+    return {cle.strip().lower(): re.sub(r"\D", "", valeur)
+            for cle, valeur in cfg.items("numeros")
+            if re.sub(r"\D", "", valeur)}
+
+
 def charger():
     for chemin in CHEMINS:
         if chemin and os.path.isfile(chemin):
@@ -79,6 +100,10 @@ def charger():
                     "sauvegarde_quotidienne": cfg.getboolean(
                         "totem", "sauvegarde_quotidienne", fallback=True),
                     "raccourcis": _raccourcis(cfg),
+                    "numeros": _numeros(cfg),
+                    # Un reçu PDF joint aux opérations comprises. Se coupe
+                    # d'un seul mot si l'on n'en veut pas.
+                    "recus": cfg.getboolean("totem", "recus", fallback=True),
                     # Cloud : facultatif. Sans ces valeurs, TOTEM fonctionne
                     # exactement comme avant, entièrement hors ligne.
                     "cloud_url": cfg.get("cloud", "url", fallback="").strip(),

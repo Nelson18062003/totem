@@ -21,8 +21,11 @@ mkdir -p /opt/totem /var/lib/totem
 # main depuis son compte (diagnostics, mode simulation) sans se heurter aux
 # droits du journal.
 [ -n "${SUDO_USER:-}" ] && chown -R "$SUDO_USER" /var/lib/totem 2>/dev/null || true
-rm -rf /opt/totem/totem          # sinon d'anciens fichiers survivent à la copie
+rm -rf /opt/totem/totem /opt/totem/brand   # sinon d'anciens fichiers survivent
 cp -r "$ICI/totem" /opt/totem/   # /opt/totem/totem : « python3 -m totem » le trouve
+# La charte : le symbole des reçus PDF y est décrit une seule fois, et TOTEM
+# ne le redessine pas de son côté. Sans ce dossier, pas de logo sur les reçus.
+cp -r "$ICI/brand" /opt/totem/
 find /opt/totem -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 # Trace de la version installée : le robot l'affiche au démarrage et dans
 # /diagnostic. Sans elle, impossible de savoir si le Pi a bien la correction.
