@@ -200,10 +200,20 @@ docs/
 web/              l'application web (Next.js) — maquette sur données de démo
 ```
 
-## Suite prévue (phases suivantes)
+## Suite prévue
 
-1. **App web** (cloud, même stack que `apps/web`) : tableau de bord, boutons
-   d'action qui pilotent le robot, historique/export — le journal SQLite est
-   déjà la source de données.
-2. **Pont vogtravel.com** : rapprochement automatique des SMS « Vous avez reçu… »
-   avec les réservations → billets marqués payés sans intervention.
+L'application web existe déjà en maquette, sur données de démonstration. Reste
+à la brancher sur le réel, dans cet ordre :
+
+1. **Vraies données et connexion.** Le site lit les tables Supabase que le
+   terminal alimente. Les deux vont ensemble : les règles d'accès de la base
+   exigent d'être connecté pour lire quoi que ce soit, donc sans
+   authentification le site n'afficherait que des pages vides.
+2. **Mise en ligne**, pour y accéder de n'importe où.
+3. **La mise en page de bureau** : tableau dense, recherche, filtres, export
+   comptable. Le téléphone sert à réagir, l'écran large à comprendre — ce ne
+   sont pas les mêmes usages, ni les mêmes écrans.
+4. **Le canal descendant.** Les boutons du site déposent une consigne dans la
+   table `commandes` ; le terminal la relève et compose le code sur la SIM.
+   Le code secret ne transitera pas en clair : la table transportera une
+   enveloppe que seul le Pi sait ouvrir.
