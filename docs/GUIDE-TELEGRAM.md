@@ -80,54 +80,42 @@ options numérotées, donc c'est une navigation. Le robot le voit et affiche des
 boutons, pas le pavé. Seule une invite sans aucune option numérotée
 (« Confirmez avec votre code secret : ») déclenche la saisie.
 
-## 3. Plusieurs opérateurs : MTN, Orange, et les autres
+## 3. Plusieurs opérateurs : un modem par réseau
 
-Rien n'est écrit en dur pour MTN. Chaque opérateur est décrit dans
-`totem.conf`, et **le robot choisit tout seul le bon profil** d'après le réseau
-que le modem voit réellement dans la SIM présente :
+Le robot détecte tout seul les modems branchés et en fait un **compte** par
+opérateur. Chacun écoute son réseau en permanence : aucun paiement ne peut
+passer inaperçu, quel que soit l'opérateur du client.
 
-```ini
-[operateur.mtn]
-nom = MTN MoMo
-detection = MTN          ; cherché dans le nom du réseau vu par le modem
-menu = *126#
+- `/comptes` liste les comptes et permet de basculer.
+- `mtn *126#` vise un compte sans changer de compte courant.
+- `/statut` et `/rapport` agrègent tous les comptes.
+- `python3 -m totem --modems` dit ce que le Pi détecte réellement.
 
-[operateur.orange]
-nom = Orange Money
-detection = Orange
-menu = #148#
-```
+Chaque ligne du journal porte son compte d'origine : les encaissements MTN et
+Orange ne se mélangent jamais, ni dans `/sms`, ni dans l'export.
 
-Résultat : vous n'avez plus à vous souvenir si c'est `*126#` ou `#148#`.
-L'écran d'accueil affiche un bouton **📱 Menu Orange Money** ou **📱 Menu MTN
-MoMo** selon la carte en place, et un seul appui ouvre le bon menu.
-
-> ⚠️ Vérifiez les codes auprès de votre agence : ils changent selon les pays et
-> les offres. Ceux du fichier d'exemple sont des points de départ.
-
-Un opérateur non décrit n'empêche rien : le robot affiche son nom réel et vous
-composez le code vous-même.
+> **Limite connue** : les raccourcis (section suivante) sont communs à tous les
+> comptes. Avec deux opérateurs dont les menus diffèrent, il faut aujourd'hui
+> composer le code du second à la main.
 
 ## 4. Un bouton = une opération complète (raccourcis)
 
 Consulter le solde demandait `*126#`, puis `5`, puis `1`. Cela devient **un seul
-bouton**. Les raccourcis appartiennent à un opérateur, puisque les touches ne
-sont pas les mêmes :
+bouton** :
 
 ```ini
-[raccourcis.mtn]
+[raccourcis]
 solde = 💰 Solde | *126#, 5, 1
-
-[raccourcis.orange]
-solde = 💰 Solde | #148#, 4, 1
+transactions = 🧾 Dernières opérations | *126#, 5, 2
 ```
 
-Le bouton **💰 Solde** est le même pour vous ; derrière, le robot joue la
-séquence de l'opérateur en place. Il **s'arrête tout seul dès qu'un code secret
-est demandé** — vous gardez toujours la main sur l'argent qui sort.
+Le robot joue les touches à votre place sur le compte courant, et **s'arrête
+tout seul dès qu'un code secret est demandé** — vous gardez toujours la main
+sur l'argent qui sort.
 
 Pour trouver les bons chiffres : déroulez le menu une fois à la main en notant
-les touches, puis recopiez-les.
+les touches, puis recopiez-les. ⚠️ Vérifiez les codes auprès de votre agence :
+ils changent selon les pays et les offres.
 
 ## 5. Le mode groupe : travailler à plusieurs
 
@@ -202,27 +190,15 @@ il l'affiche en tête (« 💰 Encaissement — 25 000 FCFA ») pour que vous le
 lisiez sans ouvrir le message. Chaque SMS est signé de l'opérateur et de la
 carte qui l'a reçu.
 
-## 8. Plusieurs SIM : chaque carte a son journal
+## 8. Plusieurs SIM : chaque compte a son journal
 
-Le robot lit l'**ICCID** de la carte présente — le numéro de série gravé sur la
-puce, unique et stable, indépendant de l'opérateur. Tout ce qui est enregistré
-(SMS, transcriptions USSD, événements) est rattaché à cette carte.
+Chaque SMS, chaque échange USSD est rattaché au **compte** qui l'a reçu.
+`/sms`, `/rapport` et l'export distinguent donc MTN d'Orange sans ambiguïté.
 
-Conséquences concrètes :
-
-- `/sms`, `/rapport` et `/export` ne montrent **que** la carte en place. Deux
-  SIM Orange différentes ne mélangent jamais leurs encaissements.
-- Vous changez la carte dans le HAT : le robot s'en aperçoit tout seul (il
-  vérifie chaque minute), vous prévient — **« 💳 Nouvelle carte SIM détectée »** —
-  bascule sur le profil du bon opérateur, et referme proprement toute session
-  USSD en cours.
-- `/sims` liste toutes les cartes déjà passées dans le robot, avec le nombre de
-  SMS et la date de dernière activité. La carte en place est marquée ▶️.
-- Rien n'est perdu quand vous remettez une ancienne carte : son journal
-  ressort intact.
-
-Le jour où vous ajoutez un deuxième module HAT, cette base ne changera pas :
-c'est déjà un journal par carte, il ne restera qu'à faire tourner deux modems.
+Le robot lit aussi l'**ICCID** de chaque carte — le numéro de série gravé sur
+la puce, unique et stable, indépendant de l'opérateur. Il est affiché dans
+`/diagnostic` : c'est lui qui permet de savoir *quelle* carte est réellement
+en place, y compris si vous remplacez une SIM Orange par une autre SIM Orange.
 
 > Le numéro de téléphone (MSISDN) n'est **pas** utilisé comme identifiant : la
 > plupart des SIM prépayées ne l'inscrivent pas dans la puce. L'ICCID, lui, y

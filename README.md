@@ -16,7 +16,8 @@ quotidiens, chien de garde automatique.
         ▼
 [api.telegram.org] ◄── connexion sortante uniquement (rien d'exposé)
         ▲
-[Raspberry Pi à Douala : robot Python] ──USB── [SIM7600G-H + SIM MTN] ──radio── [MTN]
+[Raspberry Pi à Douala] ──USB─┬─ [modem + SIM MTN]    ──radio── [MTN]
+                              └─ [modem + SIM Orange] ──radio── [Orange]
 ```
 
 - **Aucun port ouvert** : le Pi ne fait que des connexions sortantes
@@ -26,80 +27,86 @@ quotidiens, chien de garde automatique.
 - **Seules les conversations déclarées sont écoutées** ; tout autre expéditeur
   est ignoré en silence.
 
-## Plusieurs opérateurs, plusieurs SIM
-
-Rien n'est écrit en dur pour MTN : **MTN, Orange ou tout autre réseau** est
-décrit dans `totem.conf`, et le robot choisit le bon profil (code de menu,
-raccourcis) d'après ce que le modem voit réellement dans la carte présente.
-
-Chaque SIM est identifiée par son **ICCID** — le numéro gravé sur la puce — et
-possède **son propre journal** : deux cartes du même opérateur ne mélangent
-jamais leurs SMS ni leurs rapports. Changez la carte dans le HAT : le robot le
-détecte seul, vous prévient et bascule.
-
 ## L'expérience Telegram
 
-Les menus arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
+Les menus MoMo arrivent en **boutons cliquables** (fini le « 5 » puis « 1 » à
 l'aveugle), la session USSD tient sur **une seule carte qui se met à jour**, le
-**code secret se compose sur un pavé sécurisé**, et une opération courante tient
-en **un seul bouton** (raccourcis configurables par opérateur). Le robot sait
-aussi travailler dans un **groupe d'équipe**, avec des **rôles** (qui pilote /
-qui observe) et un **fil par nature d'information** si le groupe utilise les
-sujets.
+**code PIN se compose sur un pavé sécurisé**, et une opération courante tient en
+**un seul bouton** (raccourcis configurables). Le robot sait aussi travailler
+dans un **groupe d'équipe**, avec des **rôles** (qui pilote / qui observe) et un
+**fil par nature d'information** si le groupe utilise les sujets.
 
 → Tout est détaillé dans [`docs/GUIDE-TELEGRAM.md`](docs/GUIDE-TELEGRAM.md).
+
+## Multi-comptes
+
+Un modem = une SIM = un opérateur. Les modules « double SIM » du marché sont à
+**veille simple** (une seule carte enregistrée à la fois) : un SMS arrivé sur la
+carte inactive serait perdu. TOTEM utilise donc **un modem par opérateur**, tous
+à l'écoute en permanence.
+
+Les modems sont **détectés automatiquement** (`detect.py`) : on interroge chaque
+port série, on regroupe par IMEI, on retient le port AT de chaque appareil.
+L'ordre de branchement n'a aucune importance ; brancher un second modem suffit
+à faire apparaître un second compte au redémarrage.
+
+| Commande Telegram | Effet |
+|---|---|
+| `*126#` | Ouvre le menu sur le **compte courant** |
+| `mtn *126#` | Vise un compte sans changer le compte courant |
+| `/comptes` | Liste les comptes et rappelle comment basculer |
+| `/mtn`, `/orange`, `/1`, `/2` | Change de compte courant |
+
+Chaque compte a sa propre session USSD et son propre chien de garde : un modem
+qui plante n'interrompt pas l'autre.
 
 ## Modes d'exécution
 
 | Commande | Usage |
 |---|---|
-| `python3 -m totem` | Production (Pi + SIM7600 + Telegram) |
-| `python3 -m totem --simulation` | Faux modem MTN + vrai Telegram (test sans matériel) |
-| `python3 -m totem --console` | Faux modem + chat dans le terminal (essai local) |
+| `python3 -m totem` | Production (détection automatique des modems + Telegram) |
+| `python3 -m totem --modems` | Diagnostic : liste les modems détectés, puis quitte |
+| `python3 -m totem --simulation` | Faux modems MTN + Orange, vrai Telegram (sans matériel) |
+| `python3 -m totem --console` | Faux modems + chat dans le terminal (essai local) |
 | `python3 -m totem --demo` | Scénario automatique complet (vérification en 5 s) |
 
-Ajoutez `--orange` à `--console` ou `--demo` pour simuler une SIM Orange au lieu
-d'une SIM MTN : codes et menus différents, de quoi vérifier l'affichage des deux
-opérateurs sans démonter le HAT.
-
-Code de simulation : `1234`. Le simulateur imite les menus Mobile Money (solde,
-transfert) et génère des SMS de paiement réalistes.
+PIN de simulation : `1234`. Le simulateur imite les menus MoMo et Orange Money
+(solde, transfert) et génère des SMS de paiement réalistes sur les deux réseaux.
 
 ## Contenu
 
 ```
 totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   app.py          orchestrateur : commandes, boutons, sessions USSD, pavé PIN,
-                  raccourcis, SMS, rapports, watchdog
+                  raccourcis, multi-comptes, SMS, rapports, watchdog
+  compte.py       un compte = un modem + une SIM + sa session USSD
+  detect.py       détection automatique des modems (regroupement par IMEI)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
-  simulator.py    faux modem MTN MoMo pour tests sans matériel
+  simulator.py    faux modems MTN et Orange pour tests sans matériel
   telegram.py     client API Telegram (claviers, édition, fichiers, groupe, rôles)
-  courrier.py     acheminement fiable des annonces (survit aux coupures réseau)
   console.py      transports de test (console, scénario)
   entrant.py      message entrant commun à tous les transports (frappe ou clic)
   mise_en_forme.py  échappement et balisage HTML des messages
-  storage.py      journal SQLite par SIM (SMS, USSD, courrier en attente,
-                  rapport 24 h, export CSV, sauvegarde)
+  storage.py      journal SQLite (SMS, USSD, événements, rapport 24 h, export CSV)
+  analyse_sms.py  lecture des SMS : montant, tiers, référence, solde
+  sante.py        santé du Pi : tension, température, disque, sauvegardes
+  nuage.py        pont vers Supabase (hors-ligne d'abord, file d'attente)
   config.py       chargement totem.conf
+sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
+tests/            batterie de tests (python3 -m unittest discover -s tests)
 install.sh        installation en une commande sur Raspberry Pi OS
 systemd/          service (démarrage auto + relance)
 config.example.conf
 docs/
   GUIDE-INSTALLATION.md   pas-à-pas complet (comptes, flashage, install, dépannage)
   GUIDE-TELEGRAM.md       l'expérience Telegram : boutons, pavé PIN, groupe, sujets
-  LIMITES-ET-RISQUES.md   ce qui peut mal tourner : traité, atténué, ou pas encore
+  MEMENTO.md              les commandes du quotidien (allumer, éteindre, diagnostic)
+  MISE-EN-LIGNE.md        déployer l’application web sur Vercel
+  CLOUD.md                brancher le terminal sur Supabase (facultatif)
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
+web/              l'application web (Next.js) — maquette sur données de démo
 ```
-
-## Points de rupture connus
-
-Une machine qui tient de l'argent à 5 000 km mérite une liste honnête de ses
-faiblesses : mémoire SMS saturée, coupure entre lecture et enregistrement,
-codage des menus opérateur, jeton Telegram compromis, sauvegarde absente…
-
-→ [`docs/LIMITES-ET-RISQUES.md`](docs/LIMITES-ET-RISQUES.md) dit pour chacun ce
-qui est traité, ce qui est atténué et ce qui reste ouvert.
 
 ## Suite prévue (phases suivantes)
 

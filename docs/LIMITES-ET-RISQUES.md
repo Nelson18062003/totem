@@ -219,19 +219,31 @@ pas reprendre au milieu.
 ## 5. Multi-SIM et multi-modem
 
 ### ✅ Deux cartes ne mélangent plus leurs journaux
-Chaque écriture porte l'ICCID de la carte. Changement de carte détecté en
-moins d'une minute.
+Chaque écriture porte le compte (opérateur) d'origine ; `/sms`, `/rapport` et
+l'export distinguent donc les réseaux. L'ICCID de chaque carte est lisible
+dans `/diagnostic`, ce qui permet de savoir quelle puce est réellement en
+place — y compris si vous remplacez une SIM Orange par une autre SIM Orange.
 
 ### 🟡 L'ICCID peut ne pas se lire
 Trois commandes AT sont essayées (`+CICCID`, `+CCID`, `+ICCID`) car les
-firmwares diffèrent. Si aucune ne répond, l'identifiant est vide : tout
-retombe dans un journal commun, comme avant. À vérifier au premier essai
-avec `/diagnostic`.
+firmwares diffèrent. Si aucune ne répond, `/diagnostic` affiche « identifiant
+indisponible » : le cloisonnement des journaux par compte continue de
+fonctionner, mais vous ne pouvez plus savoir *quelle* carte est en place.
+À vérifier au premier essai avec `/diagnostic`.
 
-### 🔴 Un seul modem à la fois
-Deux SIM actives en même temps demandent deux HAT, donc deux ports série et
-deux boucles de surveillance. La base est prête (un journal par carte), mais
-le programme ne pilote aujourd'hui **qu'un seul modem**.
+### ✅ Un seul modem à la fois
+Deux SIM actives demandaient deux HAT, donc deux ports série et deux boucles
+de surveillance.
+
+*En place* : le robot détecte les modems branchés et en fait un **compte** par
+opérateur, chacun avec sa session USSD, son chien de garde et son journal.
+`python3 -m totem --modems` liste ce que le Pi voit.
+
+### 🟡 Les raccourcis sont communs à tous les comptes
+Avec deux opérateurs dont les menus diffèrent, une seule liste de raccourcis
+ne peut pas convenir aux deux : le code du second se compose à la main.
+
+*À faire* : rattacher chaque raccourci à un opérateur.
 
 ---
 
@@ -274,6 +286,7 @@ disque à vous reste la ceinture de sécurité.
 2. **Vérification du menu attendu avant d'enchaîner un raccourci** — pour
    qu'un opérateur qui réorganise son menu ne mène pas ailleurs en silence.
 3. **Mode PDU pour les SMS longs** — le jour où un message arrive tronqué.
-4. **Second modem** — quand le deuxième HAT arrivera. La base est prête.
+4. **Raccourcis par opérateur** — pour que le bouton « Solde » marche sur les
+   deux comptes sans retaper le code du second.
 5. **Copie de sauvegarde ailleurs que dans Telegram** — pour ne pas dépendre
    d'un seul compte.

@@ -1,15 +1,36 @@
 [Unit]
-Description=TOTEM (bot Telegram + modem SIM7600)
+Description=TOTEM — pilotage Mobile Money à distance
+Documentation=https://github.com/Nelson18062003/totem
 After=network-online.target
 Wants=network-online.target
+# Ne jamais renoncer : sans cette ligne, systemd abandonne après quelques
+# relances rapprochées, et le robot resterait mort jusqu'à intervention humaine.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/python3 -m totem
 WorkingDirectory=/opt/totem
+# Les modems USB mettent une vingtaine de secondes à s'annoncer au démarrage
+# à froid du Pi ; le programme patiente aussi de son côté.
+ExecStartPre=/bin/sleep 15
+
+# Premier étage du chien de garde : quoi qu'il arrive, on relance.
 Restart=always
 RestartSec=10
-# Le service redémarre toujours : c'est le premier étage du chien de garde.
+
+# Laisser au robot le temps de marquer le journal (« arrêt propre ») avant de
+# le tuer : c'est ainsi qu'il saura, au démarrage suivant, distinguer un arrêt
+# voulu d'une coupure de courant.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# En cas de manque de mémoire, le robot ne doit pas être la première victime.
+OOMScoreAdjust=-500
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=totem
 
 [Install]
 WantedBy=multi-user.target

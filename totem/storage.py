@@ -2,12 +2,12 @@
 """Journal du robot : SMS reçus, transcriptions USSD, événements.
 
 SQLite : un seul fichier, robuste, consultable plus tard par l'app web.
-Les montants Mobile Money sont extraits des SMS pour les rapports quotidiens.
+Chaque ligne porte le compte (opérateur) d'origine.
+Les montants MoMo sont extraits des SMS pour les rapports quotidiens.
 
-**Cloisonnement par SIM.** Chaque ligne porte l'ICCID de la carte présente au
-moment de l'écriture. Deux SIM Orange différentes ne mélangent donc jamais
-leurs SMS ni leurs rapports, même si elles se succèdent dans le même HAT.
-Les lectures portent par défaut sur la SIM courante.
+Deux files d'attente distinctes y vivent aussi, et ne visent pas la même
+destination : la colonne « envoye » suit ce qui reste à pousser vers le cloud,
+la table « sortants » ce qui reste à annoncer dans Telegram après une coupure.
 """
 
 import csv
@@ -17,152 +17,92 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta
 
-# Les opérateurs n'écrivent pas les sommes de la même façon : « 25 000 FCFA »,
-# « 25.000 F CFA », « 25000 XAF ». Et « reçu » perd souvent sa cédille dans les
-# SMS en alphabet réduit.
-DEVISE = r"(?:F\s*\.?\s*CFA|FCFA|XAF|F)"
-MONTANT = r"([\d][\d\s., ]*)"
-RE_MONTANT_RECU = re.compile(
-    rf"\b(?:re[cç]u|recus|credite|crédité|encaiss\w*)\b[^\d]{{0,40}}{MONTANT}\s*{DEVISE}",
-    re.I)
-RE_MONTANT_ENVOYE = re.compile(
-    rf"\b(?:envoy\w+|transf\w+|debite|débité|retrait\w*|paiement)\b[^\d]{{0,40}}"
-    rf"{MONTANT}\s*{DEVISE}", re.I)
+from .analyse_sms import analyser
 
-TABLES = ("sms", "ussd", "evenements")
+
+def _canal(brut):
+    """Le canal est stocké en texte : « alertes », ou un identifiant de chat."""
+    if not brut:
+        return None
+    return int(brut) if re.fullmatch(r"-?\d+", brut) else brut
 
 
 class Journal:
     def __init__(self, chemin="totem.db"):
         self.conn = sqlite3.connect(chemin, check_same_thread=False)
         self.verrou = threading.Lock()
-        self.sim = ""          # ICCID de la SIM en place ; "" tant qu'inconnue
         with self.verrou:
             self.conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS sms(
-                    id INTEGER PRIMARY KEY, date TEXT, expediteur TEXT, texte TEXT);
+                    id INTEGER PRIMARY KEY, date TEXT, expediteur TEXT,
+                    texte TEXT, compte TEXT);
                 CREATE TABLE IF NOT EXISTS ussd(
-                    id INTEGER PRIMARY KEY, date TEXT, direction TEXT, texte TEXT);
-                CREATE TABLE IF NOT EXISTS evenements(
-                    id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
+                    id INTEGER PRIMARY KEY, date TEXT, direction TEXT,
+                    texte TEXT, compte TEXT);
                 -- Courrier en souffrance : ce que le robot n'a pas pu envoyer
-                -- (coupure Internet). Rien ne se perd, tout part au retour.
+                -- dans Telegram (coupure Internet). Rien ne se perd, tout part
+                -- au retour du réseau. À ne pas confondre avec la file vers le
+                -- cloud (colonne « envoye »), qui vise une autre destination.
                 CREATE TABLE IF NOT EXISTS sortants(
                     id INTEGER PRIMARY KEY, date TEXT, canal TEXT, texte TEXT,
                     essais INTEGER DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS evenements(
+                    id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
                 """
             )
-            self._migrer_colonne_sim()
+            # Migration douce des bases créées avant le multi-comptes.
+            self._ajouter_colonne_si_absente("sms", "compte")
+            self._ajouter_colonne_si_absente("ussd", "compte")
+            # File d'attente vers le cloud : 0 tant que la ligne n'est pas
+            # partie. Les lignes déjà présentes sont considérées à envoyer.
+            self._ajouter_colonne_si_absente("sms", "envoye", "INTEGER DEFAULT 0")
+            self._ajouter_colonne_si_absente("evenements", "envoye", "INTEGER DEFAULT 0")
             self.conn.commit()
 
-    def _migrer_colonne_sim(self):
-        """Ajoute la colonne `sim` aux journaux créés avant le multi-SIM.
-        Les anciennes lignes gardent une SIM vide : elles restent lisibles."""
-        for table in TABLES:
-            colonnes = [c[1] for c in self.conn.execute(f"PRAGMA table_info({table})")]
-            if "sim" not in colonnes:
-                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN sim TEXT DEFAULT ''")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_sim ON sms(sim, date)")
-
-    def definir_sim(self, iccid):
-        """Déclare la SIM en place. Tout ce qui suit lui est rattaché."""
-        with self.verrou:
-            self.sim = iccid or ""
+    def _ajouter_colonne_si_absente(self, table, colonne, type_sql="TEXT"):
+        existantes = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+        if colonne not in existantes:
+            self.conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN {colonne} {type_sql}")
 
     def _maintenant(self):
         return datetime.now().isoformat(timespec="seconds")
 
-    def sms(self, expediteur, texte):
+    def sms(self, expediteur, texte, compte=""):
         with self.verrou:
             self.conn.execute(
-                "INSERT INTO sms(date, expediteur, texte, sim) VALUES(?,?,?,?)",
-                (self._maintenant(), expediteur, texte, self.sim))
+                "INSERT INTO sms(date, expediteur, texte, compte) VALUES(?,?,?,?)",
+                (self._maintenant(), expediteur, texte, compte))
             self.conn.commit()
 
-    def ussd(self, direction, texte):
-        """direction : 'envoyé' ou 'reçu'. Ne JAMAIS journaliser un PIN :
-        l'appelant doit remplacer le PIN par des étoiles avant l'appel."""
+    def ussd(self, direction, texte, compte=""):
+        """direction : « envoyé » ou « reçu ». Ne JAMAIS journaliser un PIN :
+        l'appelant remplace le PIN par des étoiles avant l'appel."""
         with self.verrou:
             self.conn.execute(
-                "INSERT INTO ussd(date, direction, texte, sim) VALUES(?,?,?,?)",
-                (self._maintenant(), direction, texte, self.sim))
+                "INSERT INTO ussd(date, direction, texte, compte) VALUES(?,?,?,?)",
+                (self._maintenant(), direction, texte, compte))
             self.conn.commit()
 
     def evenement(self, texte):
         with self.verrou:
-            self.conn.execute(
-                "INSERT INTO evenements(date, texte, sim) VALUES(?,?,?)",
-                (self._maintenant(), texte, self.sim))
+            self.conn.execute("INSERT INTO evenements(date, texte) VALUES(?,?)",
+                              (self._maintenant(), texte))
             self.conn.commit()
 
-    def derniers_sms(self, n=5, toutes_sims=False):
-        condition, parametres = self._filtre_sim(toutes_sims)
-        with self.verrou:
-            return self.conn.execute(
-                f"SELECT date, expediteur, texte FROM sms {condition} "
-                "ORDER BY id DESC LIMIT ?", (*parametres, n)).fetchall()
-
-    def rapport_du_jour(self, toutes_sims=False, heures=24):
-        """Bilan des dernières 24 h : entrées, sorties et volume de SMS."""
-        depuis = (datetime.now() - timedelta(hours=heures)).isoformat(timespec="seconds")
-        condition, parametres = self._filtre_sim(toutes_sims, "date >= ?")
-        with self.verrou:
-            lignes = self.conn.execute(
-                f"SELECT texte FROM sms {condition}", (depuis, *parametres)).fetchall()
-        bilan = {"encaissements": 0, "recu": 0, "sorties": 0, "envoye": 0,
-                 "sms": len(lignes)}
-        for (texte,) in lignes:
-            entree = montant_recu(texte)
-            if entree is not None:
-                bilan["encaissements"] += 1
-                bilan["recu"] += entree
-                continue
-            sortie = montant_envoye(texte)
-            if sortie is not None:
-                bilan["sorties"] += 1
-                bilan["envoye"] += sortie
-        return bilan
-
-    def sms_existe(self, expediteur, texte, secondes=900):
+    def sms_existe(self, expediteur, texte, compte="", secondes=900):
         """Ce SMS a-t-il déjà été enregistré récemment ? Garde-fou contre les
         doublons quand l'effacement dans le modem a échoué au tour précédent."""
-        depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(timespec="seconds")
+        depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(
+            timespec="seconds")
         with self.verrou:
             return self.conn.execute(
                 "SELECT 1 FROM sms WHERE date >= ? AND expediteur = ? AND texte = ? "
-                "AND sim = ? LIMIT 1",
-                (depuis, expediteur, texte, self.sim)).fetchone() is not None
+                "AND COALESCE(compte, '') = ? LIMIT 1",
+                (depuis, expediteur, texte, compte)).fetchone() is not None
 
-    def export_csv(self, jours=7, toutes_sims=False):
-        """Journal des SMS en CSV (octets), prêt à être envoyé dans Telegram
-        puis ouvert dans Excel ou importé dans la comptabilité."""
-        depuis = (datetime.now() - timedelta(days=jours)).isoformat(timespec="seconds")
-        condition, parametres = self._filtre_sim(toutes_sims, "date >= ?")
-        with self.verrou:
-            lignes = self.conn.execute(
-                f"SELECT date, sim, expediteur, texte FROM sms {condition} ORDER BY id",
-                (depuis, *parametres)).fetchall()
-        tampon = io.StringIO()
-        plume = csv.writer(tampon, delimiter=";")
-        plume.writerow(["date", "sim", "expediteur", "montant_fcfa", "message"])
-        for date, sim, expediteur, texte in lignes:
-            montant = montant_recu(texte)
-            plume.writerow([date.replace("T", " "), sim or "", expediteur,
-                            montant if montant is not None else "",
-                            texte.replace("\n", " ")])
-        # BOM : Excel ouvre alors correctement les accents.
-        return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
-
-    def sims_connues(self):
-        """[(iccid, nb de SMS, dernière activité)] — l'historique des cartes
-        qui sont passées dans le HAT."""
-        with self.verrou:
-            return self.conn.execute(
-                "SELECT sim, COUNT(*), MAX(date) FROM sms GROUP BY sim "
-                "ORDER BY MAX(date) DESC").fetchall()
-
-    # ---- courrier en souffrance -------------------------------------------
+    # ---- courrier Telegram en souffrance -----------------------------------
     def enfiler(self, canal, texte):
         """Met un message de côté pour l'envoyer dès que le réseau revient."""
         with self.verrou:
@@ -173,8 +113,7 @@ class Journal:
 
     def courrier_en_attente(self):
         with self.verrou:
-            return self.conn.execute(
-                "SELECT COUNT(*) FROM sortants").fetchone()[0]
+            return self.conn.execute("SELECT COUNT(*) FROM sortants").fetchone()[0]
 
     def prochain_courrier(self):
         """(id, canal, texte, essais) du plus ancien message en attente."""
@@ -214,41 +153,117 @@ class Journal:
             destination.close()
         return chemin
 
-    def _filtre_sim(self, toutes_sims, condition_base=""):
-        """Construit le WHERE : la SIM courante, sauf demande explicite."""
-        clauses = [condition_base] if condition_base else []
-        parametres = []
-        if not toutes_sims:
-            clauses.append("sim = ?")
-            parametres.append(self.sim)
-        return ("WHERE " + " AND ".join(clauses)) if clauses else "", tuple(parametres)
+    def dernier_evenement(self):
+        """Texte du dernier événement journalisé, ou None si le journal est
+        vierge. Sert à savoir si l'arrêt précédent était propre."""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT texte FROM evenements ORDER BY id DESC LIMIT 1").fetchone()
+        return ligne[0] if ligne else None
 
+    def derniers_sms(self, n=5):
+        """[(date, expéditeur, texte, compte)] du plus récent au plus ancien."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT date, expediteur, texte, COALESCE(compte, '') "
+                "FROM sms ORDER BY id DESC LIMIT ?", (n,)
+            ).fetchall()
 
-def _canal(brut):
-    """Le canal est stocké en texte : « alertes », ou un identifiant de chat."""
-    if not brut:
-        return None
-    if re.fullmatch(r"-?\d+", brut):
-        return int(brut)
-    return brut
+    # ---- file d'attente vers le cloud -------------------------------------
+    # Le journal local reste la source de vérité : une ligne n'est marquée
+    # envoyée qu'une fois le cloud confirmé. Une coupure réseau ne perd rien,
+    # elle ne fait qu'allonger la file.
 
+    def sms_non_envoyes(self, limite=100):
+        """[(id, date, expéditeur, texte, compte)] restant à transmettre."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, date, expediteur, texte, COALESCE(compte, '') "
+                "FROM sms WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
+                (limite,)).fetchall()
 
-def _nombre(brut):
-    """« 25 000 » / « 25.000 » / « 25,000 » → 25000. None si illisible."""
-    chiffres = re.sub(r"\D", "", brut or "")
-    return int(chiffres) if chiffres else None
+    def evenements_non_envoyes(self, limite=100):
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, date, texte FROM evenements "
+                "WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
+                (limite,)).fetchall()
+
+    def marquer_sms_envoyes(self, ids):
+        self._marquer("sms", ids)
+
+    def marquer_evenements_envoyes(self, ids):
+        self._marquer("evenements", ids)
+
+    def _marquer(self, table, ids):
+        if not ids:
+            return
+        with self.verrou:
+            self.conn.executemany(
+                f"UPDATE {table} SET envoye = 1 WHERE id = ?",
+                [(i,) for i in ids])
+            self.conn.commit()
+
+    def reste_a_envoyer(self):
+        """Combien de lignes attendent encore le cloud."""
+        with self.verrou:
+            (n,) = self.conn.execute(
+                "SELECT (SELECT COUNT(*) FROM sms WHERE COALESCE(envoye,0)=0) "
+                "+ (SELECT COUNT(*) FROM evenements WHERE COALESCE(envoye,0)=0)"
+            ).fetchone()
+        return n
+
+    def rapport_du_jour(self):
+        """(nb d'encaissements, total FCFA, nb de SMS) sur les dernières 24 h."""
+        depuis = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT texte FROM sms WHERE date >= ?", (depuis,)).fetchall()
+        nb, total = 0, 0
+        for (texte,) in lignes:
+            montant = montant_recu(texte)
+            if montant is not None:
+                nb += 1
+                total += montant
+        return nb, total, len(lignes)
+
+    def export_csv(self, jours=7):
+        """Journal en CSV (octets), prêt pour Excel ou la comptabilité.
+
+        Chaque SMS compris devient une ligne exploitable : qui a payé, combien,
+        sous quelle référence. Le message d'origine reste en dernière colonne,
+        c'est lui qui fait foi."""
+        depuis = (datetime.now() - timedelta(days=jours)).isoformat(timespec="seconds")
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT date, expediteur, texte, COALESCE(compte, '') "
+                "FROM sms WHERE date >= ? ORDER BY id", (depuis,)
+            ).fetchall()
+        tampon = io.StringIO()
+        plume = csv.writer(tampon, delimiter=";")
+        plume.writerow(["date", "compte", "sens", "montant_fcfa", "tiers",
+                        "numero", "reference", "solde_apres", "message"])
+        for date, expediteur, texte, compte in lignes:
+            p = analyser(texte)
+            plume.writerow([
+                date.replace("T", " "), compte or expediteur,
+                {"entree": "reçu", "sortie": "envoyé"}.get(p.sens if p else "", ""),
+                p.montant if p else "",
+                p.tiers if p else "",
+                (p.numero or "") if p else "",
+                (p.reference or "") if p else "",
+                (p.solde_apres or "") if p else "",
+                texte.replace("\n", " "),
+            ])
+        # BOM : Excel ouvre alors correctement les accents.
+        return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
 
 
 def montant_recu(texte):
-    """Montant en FCFA d'un SMS d'encaissement, sinon None."""
-    m = RE_MONTANT_RECU.search(texte or "")
-    return _nombre(m.group(1)) if m else None
+    """Montant en FCFA d'un encaissement, sinon None.
 
-
-def montant_envoye(texte):
-    """Montant en FCFA d'un SMS de sortie (envoi, retrait, paiement), sinon None.
-    Un débit non reconnu est un débit qu'on ne verra pas passer."""
-    if montant_recu(texte) is not None:
-        return None            # un encaissement n'est pas une sortie
-    m = RE_MONTANT_ENVOYE.search(texte or "")
-    return _nombre(m.group(1)) if m else None
+    Délègue à l'analyseur de SMS, qui sait distinguer un vrai paiement d'une
+    publicité (« gagnez 1000 FCFA de bonus ») ou d'un code de vérification —
+    lesquels étaient auparavant comptés comme des recettes."""
+    p = analyser(texte)
+    return p.montant if p and p.sens == "entree" else None

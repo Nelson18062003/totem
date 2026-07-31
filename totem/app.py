@@ -1,44 +1,50 @@
 # -*- coding: utf-8 -*-
-"""Orchestrateur du robot Mobile Money.
+"""Orchestrateur TOTEM — pilote un ou plusieurs comptes Mobile Money.
 
 Fils d'exécution :
   - boucle principale : messages et clics du propriétaire (commandes + USSD)
-  - surveillance : SMS entrants, santé du modem, changement de SIM, rapport
-    quotidien, expiration de la session USSD
+  - surveillance : SMS entrants de TOUS les comptes, santé des modems,
+    rapport quotidien, expiration de la session USSD
 
-Trois principes de l'interface Telegram :
-  1. **Boutons** — les options d'un menu USSD deviennent des boutons ; le
-     texte du menu n'est jamais recopié en double sous les boutons.
-  2. **Une seule carte vivante** — la session se met à jour en place, comme
-     l'écran d'un téléphone, au lieu d'empiler les messages.
-  3. **Le code secret ne touche jamais la conversation** — il se compose sur
-     un pavé numérique ; seul le nombre d'étoiles est affiché.
+Chaque compte a son propre modem : les réseaux sont écoutés en permanence,
+donc aucun paiement ne peut passer inaperçu, quel que soit l'opérateur.
 
-Rien n'est écrit en dur pour un opérateur : MTN, Orange ou tout autre réseau
-est décrit dans `totem.conf`, et le robot choisit le bon profil d'après ce
-que le modem voit réellement dans la SIM présente.
+L'expérience Telegram repose sur trois idées :
+  1. **Boutons** — les menus MoMo deviennent des boutons cliquables ; plus
+     besoin de deviner « 5 » puis « 1 ». Les clics passent même quand le mode
+     confidentialité du robot est actif dans un groupe.
+  2. **Une seule carte vivante** — la session USSD se met à jour en place,
+     comme l'écran d'un téléphone, au lieu d'empiler les messages.
+  3. **Le PIN ne touche jamais la conversation** — il se compose sur un pavé
+     numérique en boutons ; seul le nombre d'étoiles est affiché.
 """
 
 import os
 import re
 import shutil
+import signal
 import tempfile
 import threading
 import time
 from datetime import datetime
 
+from .analyse_sms import analyser
+from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import echap, gras, italique, mono
-from .modem import USSD_OUVERTE, ErreurModem
-from .storage import montant_recu
+from .sante import Sante, sauvegarder_journal
+
+ARRET_PROPRE = "arrêt propre"
 
 RE_CODE_USSD = re.compile(r"^[\*#][\d\*#]+#$")
-# Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
-# Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
+# « mtn *126# » : viser un compte sans changer le compte courant
+RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
 # Vocabulaire du code secret, selon les opérateurs.
 RE_DEMANDE_CODE = re.compile(
     r"\bpin\b|code\s+(?:secret|confidentiel|pin)|mot\s+de\s+passe|password", re.I)
+# Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
+# Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
+RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
 # Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
 # permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
 RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount", re.I)
@@ -47,57 +53,30 @@ RE_DEMANDE_DESTINATAIRE = re.compile(
 
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
-VERIF_SIM_SECONDES = 60
 VERIF_MEMOIRE_SECONDES = 300
 SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 
 COMMANDES_BOT = [
     ("menu", "Écran d'accueil avec les boutons"),
-    ("statut", "État du robot (SIM, opérateur, signal)"),
+    ("statut", "État des modems, des SIM et du signal"),
+    ("comptes", "Choisir le compte piloté"),
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
-    ("sims", "Les cartes SIM déjà passées dans le robot"),
-    ("diagnostic", "État détaillé (mémoire SMS, disque, température)"),
+    ("diagnostic", "État détaillé (mémoire SMS, cartes, courrier)"),
     ("sauvegarde", "Envoyer une copie du journal dans la conversation"),
     ("annuler", "Fermer la session USSD en cours"),
-    ("redemarrer_modem", "Relancer le modem"),
+    ("redemarrer_modem", "Relancer le modem du compte courant"),
     ("aide", "Aide"),
 ]
 
-AIDE = (
-    "🗿 <b>TOTEM</b>\n\n"
-    "Le plus simple : /menu, puis tout se fait au doigt.\n\n"
-    "<b>Codes USSD</b>\n"
-    "Le robot reconnaît la SIM présente et vous propose directement le menu "
-    "de son opérateur. Vous pouvez aussi envoyer n'importe quel code "
-    "vous-même : les options du menu arrivent en boutons, les questions "
-    "libres (numéro, montant) se répondent par un message normal, et le code "
-    "secret se tape sur un pavé sécurisé qui ne laisse aucune trace dans la "
-    "conversation.\n\n"
-    "<b>Plusieurs SIM</b>\n"
-    "Chaque carte a son propre journal : les SMS et les rapports d'une SIM "
-    "ne se mélangent jamais à ceux d'une autre, même de même opérateur. "
-    "Changez la carte, le robot le voit seul et bascule.\n\n"
-    "<b>Commandes</b>\n"
-    "/menu — écran d'accueil\n"
-    "/statut — SIM, opérateur, signal\n"
-    "/sms — les derniers SMS de la SIM en place\n"
-    "/rapport — bilan des dernières 24 h\n"
-    "/export — journal CSV des 7 derniers jours\n"
-    "/sims — les cartes déjà passées dans le robot\n"
-    "/annuler — ferme la session USSD\n"
-    "/redemarrer_modem — relance le modem\n"
-    "/aide — ce message"
-)
-
 
 class Robot:
-    def __init__(self, modem, transport, journal, nom="TOTEM",
-                 heure_rapport="21:00", pause_sms=10, profils=None,
-                 delai_session=180, seuil_confirmation=0,
-                 sauvegarde_quotidienne=True):
-        self.modem = modem
+    def __init__(self, comptes, transport, journal, nom="TOTEM",
+                 heure_rapport="21:00", pause_sms=10, raccourcis=None,
+                 delai_session=180, chemin_base=None, nuage=None,
+                 seuil_confirmation=0, sauvegarde_quotidienne=True):
+        self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
         self.facteur = Facteur(journal, transport)
@@ -106,12 +85,14 @@ class Robot:
         self.nom = nom
         self.heure_rapport = heure_rapport
         self.pause_sms = pause_sms
-        self.profils = profils or {}
+        self.raccourcis = raccourcis or {}
         self.delai_session = delai_session
+        self.chemin_base = chemin_base
+        self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
         self.actif = True
         self.verrou = threading.RLock()
-        self.sim = None            # ICCID de la carte en place
-        self.profil = self._profil_generique("inconnu")
+        self.courant = self.comptes[0] if self.comptes else None
+        self.sante = Sante()
         self.memoire_signalee = False
         self.conflit_signale = False
         self.demarre_a = time.time()
@@ -128,8 +109,16 @@ class Robot:
         maintenant = datetime.now()
         return (maintenant.hour, maintenant.minute) >= (heure, minute)
 
+    @property
+    def multi(self):
+        return len(self.comptes) > 1
+
+    @property
+    def session_ussd(self):
+        return self.session_compte is not None
+
     def _reinitialiser_session(self):
-        self.session_ussd = False
+        self.session_compte = None   # le compte qui porte la session en cours
         self.dernier_menu = ""
         self.msg_session = None
         self.canal_session = None
@@ -142,62 +131,85 @@ class Robot:
         self.attente_saisie = ""         # ce que l'opérateur vient de demander
         self.confirme = False            # grosse sortie déjà confirmée ?
 
-    # ---- identité de la SIM et profil opérateur ---------------------------
-    @staticmethod
-    def _profil_generique(operateur):
-        return {"nom": operateur, "detection": "", "menu": "", "raccourcis": {}}
+    def _aide(self):
+        lignes = [
+            f"🗿 {gras(self.nom)}", "",
+            "Le plus simple : /menu, puis tout se fait au doigt.", "",
+            gras("Codes USSD"),
+            f"Envoyez {mono('*126#')} (ou tout autre code) : le menu s'ouvre "
+            "sous forme de boutons. Les questions libres (numéro, montant) se "
+            "répondent par un message normal. Le code PIN se tape sur le pavé "
+            "sécurisé : il n'apparaît jamais dans la conversation.",
+        ]
+        if self.multi:
+            lignes += [
+                "", gras("Plusieurs comptes"),
+                f"{mono('mtn *126#')} — viser un compte sans changer de compte courant",
+                "/comptes — liste des comptes et bascule",
+            ]
+        lignes += [
+            "", gras("Commandes"),
+            "/menu — écran d'accueil",
+            "/statut — signal, opérateur, SIM",
+            "/sms — les derniers SMS reçus",
+            "/rapport — bilan des dernières 24 h",
+            "/export — journal CSV des 7 derniers jours",
+            "/annuler — ferme la session USSD",
+            "/redemarrer_modem — relance le modem du compte courant",
+            "/aide — ce message",
+        ]
+        return "\n".join(lignes)
 
-    def _choisir_profil(self, operateur):
-        """Associe le réseau vu par le modem au profil décrit dans la config."""
-        for cle, profil in self.profils.items():
-            detection = (profil.get("detection") or "").strip()
-            if detection and detection.lower() in (operateur or "").lower():
-                return {**profil, "nom": profil.get("nom") or operateur}
-        repli = self.profils.get("*")
-        if repli:
-            return {**repli, "nom": operateur}
-        return self._profil_generique(operateur)
-
-    def _lire_sim(self):
-        """(iccid, operateur) — tolère un modem qui ne sait pas répondre."""
-        try:
-            iccid = self.modem.iccid()
-        except Exception:
-            iccid = ""
-        try:
-            operateur = self.modem.operateur()
-        except Exception:
-            operateur = "inconnu"
-        return iccid, operateur
-
-    def _adopter_sim(self, iccid, operateur):
-        self.sim = iccid
-        self.journal.definir_sim(iccid)
-        self.profil = self._choisir_profil(operateur)
-
-    @staticmethod
-    def _sim_lisible(iccid):
-        if not iccid:
-            return "identifiant indisponible"
-        return "…" + iccid[-6:]
-
-    # ---- démarrage --------------------------------------------------------
+    # ---- démarrage et arrêt ------------------------------------------------
     def demarrer(self, bloquant=True):
+        if not self.comptes:
+            self.transport.envoyer(
+                "⚠️ Aucun modem détecté. Vérifiez les branchements USB.")
+            return
+        # Lu AVANT de journaliser ce démarrage : si le dernier événement connu
+        # n'est pas un arrêt propre, la fois d'avant s'est mal terminée
+        # (coupure de courant ou plantage). C'est une information précieuse.
+        precedent = self.journal.dernier_evenement()
+        brutal = precedent is not None and ARRET_PROPRE not in precedent
+
+        self._installer_arret_propre()
         self.transport.vider_backlog()      # ne jamais rejouer d'ancienne commande
         self.transport.publier_commandes(COMMANDES_BOT)
-        iccid, operateur = self._lire_sim()
-        self._adopter_sim(iccid, operateur)
-        etat_sim = "SIM détectée" if self.modem.sim_presente() else "⚠️ AUCUNE SIM détectée"
+        detail = "\n".join(f"· {echap(c.resume())}" for c in self.comptes)
+        pluriel = "comptes" if self.multi else "compte"
+        avertissement = (
+            "\n⚡ <i>Redémarrage après coupure de courant ou plantage : "
+            "l'arrêt précédent n'était pas propre.</i>" if brutal else "")
         self.transport.envoyer(
-            f"✅ {gras(self.nom)} en ligne — {echap(etat_sim)}\n"
-            f"Opérateur : {gras(operateur)}\n"
-            f"Carte : {mono(self._sim_lisible(iccid))} · "
-            f"Signal : {self.modem.signal()}/31",
+            f"✅ {gras(self.nom)} en ligne — {len(self.comptes)} {pluriel}\n"
+            f"{detail}{avertissement}",
             boutons=self._boutons_accueil(ADMIN))
-        self.journal.evenement(f"démarrage · {operateur}")
+        self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
+        if self.nuage:
+            # Synchronisation en tâche de fond : elle rattrape son retard
+            # quand le réseau le permet, et n'interrompt jamais le robot.
+            self.nuage.demarrer(comptes=self.comptes, sante=self.sante)
         if bloquant:
             self._boucle_messages()
+
+    def _installer_arret_propre(self):
+        """systemd envoie SIGTERM avant d'arrêter ou de redémarrer la machine :
+        on en profite pour marquer le journal, afin que le prochain démarrage
+        sache distinguer un arrêt voulu d'une coupure de courant."""
+        def _arreter(signum, frame):
+            self.arreter()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(sig, _arreter)
+            except ValueError:
+                pass    # pas dans le fil principal (démo, tests) : sans gravité
+
+    def arreter(self):
+        if not self.actif:
+            return
+        self.actif = False
+        self.journal.evenement(ARRET_PROPRE)
 
     # ---- messages et clics ------------------------------------------------
     def _boucle_messages(self):
@@ -210,6 +222,17 @@ class Robot:
             except Exception as e:  # ne jamais mourir sur un message
                 self.journal.evenement(f"erreur boucle messages : {e}")
                 time.sleep(2)
+
+    def _compte_par_nom(self, nom):
+        """Retrouve un compte par libellé (« mtn ») ou par rang (« 2 »)."""
+        n = nom.strip().lower().lstrip("/")
+        if n.isdigit():
+            i = int(n) - 1
+            return self.comptes[i] if 0 <= i < len(self.comptes) else None
+        for c in self.comptes:
+            if c.libelle.lower().startswith(n):
+                return c
+        return None
 
     def _traiter(self, entrant):
         with self.verrou:
@@ -227,95 +250,130 @@ class Robot:
             if commande in ("start", "menu"):
                 self._accueil(canal, role)
             elif commande in ("aide", "help"):
-                self.transport.envoyer(AIDE, canal=canal,
+                self.transport.envoyer(self._aide(), canal=canal,
                                        boutons=[[("🏠 Menu", "c:menu")]])
             elif commande == "statut":
                 self._statut(canal)
+            elif commande in ("comptes", "compte"):
+                self._lister_comptes(canal, role)
             elif commande == "sms":
                 self._derniers_sms(canal)
             elif commande == "rapport":
                 self._rapport(canal=canal, manuel=True)
-            elif commande == "export":
-                self._export(canal)
-            elif commande == "sims":
-                self._liste_sims(canal)
             elif commande == "diagnostic":
                 self._diagnostic(canal)
+            elif commande == "export":
+                self._export(canal)
+            elif commande and self._compte_par_nom(commande):
+                # /mtn, /orange, /1, /2 — bascule de compte courant
+                if not self._verifier_admin(role, entrant, canal):
+                    return
+                self.courant = self._compte_par_nom(commande)
+                self.transport.envoyer(
+                    f"Compte courant : {gras(self.courant.libelle)}.", canal=canal,
+                    boutons=[[("🏠 Menu", "c:menu")]])
             elif commande in ("annuler", "redemarrer_modem", "sauvegarde") \
                     or RE_CODE_USSD.match(texte) \
-                    or self.session_ussd:
+                    or RE_CIBLE_USSD.match(texte) or self.session_ussd:
                 if not self._verifier_admin(role, entrant, canal):
                     return
                 self._action_admin(commande, texte, entrant, canal)
             else:
                 self.transport.envoyer(
-                    "Je n'ai pas compris. Ouvrez /menu, ou envoyez un code USSD.",
-                    canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+                    "Je n'ai pas compris. Ouvrez /menu ou envoyez un code USSD "
+                    f"tel que {mono('*126#')}.", canal=canal)
 
     def _action_admin(self, commande, texte, entrant, canal):
-        if commande == "annuler":
-            self._annuler(canal)
-        elif commande == "sauvegarde":
+        if commande == "sauvegarde":
             self._sauvegarde(canal)
-        elif commande == "redemarrer_modem":
-            self._redemarrer_modem(canal)
-        elif RE_CODE_USSD.match(texte):
-            self._ouvrir_session(texte, canal)
+        elif commande == "annuler":
+            self._annuler(canal)
+            return
+        if commande == "redemarrer_modem":
+            self._redemarrer_modem(self.courant, canal=canal)
+            return
+
+        # « mtn *126# » : exécution ciblée, sans changer le compte courant
+        cible = RE_CIBLE_USSD.match(texte)
+        if cible:
+            compte = self._compte_par_nom(cible.group(1))
+            if compte:
+                return self._ouvrir_session(compte, cible.group(2), canal)
+
+        if RE_CODE_USSD.match(texte):
+            return self._ouvrir_session(self.courant, texte, canal)
+
+        # Réponse libre dans le menu en cours (numéro, montant… ou PIN tapé
+        # à la main par habitude : dans ce cas on efface le message).
+        compte = self.session_compte
+        if compte is None:
+            return
+        if self.pin_actif:
+            self.transport.supprimer(entrant.message_id, canal=canal)
+            if self._confirmation_requise():
+                # Même en tapant le code à la main, on ne saute pas la
+                # confirmation d'une sortie importante.
+                self._afficher_session(compte)
+                return
+            self.journal.ussd("envoyé", "****", compte.libelle)
         else:
-            # Réponse libre dans le menu en cours (numéro, montant… ou code
-            # secret tapé à la main : dans ce cas on efface le message).
-            if self.pin_actif:
-                self.transport.supprimer(entrant.message_id, canal=canal)
-                if self._confirmation_requise():
-                    # Même en tapant le code à la main, on ne saute pas la
-                    # confirmation d'une sortie importante.
-                    self._afficher_session()
-                    return
-                self.journal.ussd("envoyé", "****")
-            else:
-                self._retenir_saisie(texte)
-                self.journal.ussd("envoyé", texte)
-            self._ussd(texte, nouveau=False)
-            self._avancer_macro()
+            self._retenir_saisie(texte)
+            self.journal.ussd("envoyé", texte, compte.libelle)
+        self._ussd(compte, texte, nouveau=False)
+        self._avancer_macro()
+
+    def _ouvrir_session(self, compte, code, canal):
+        self.canal_session = canal
+        self.msg_session = None
+        self._ussd(compte, code, nouveau=True)
 
     def _clic(self, donnee, entrant, role, canal):
         genre, _, valeur = donnee.partition(":")
-        lecture = {"menu": lambda: self._accueil(canal, role),
-                   "aide": lambda: self.transport.envoyer(AIDE, canal=canal),
-                   "statut": lambda: self._statut(canal),
-                   "sms": lambda: self._derniers_sms(canal),
-                   "rapport": lambda: self._rapport(canal=canal, manuel=True),
-                   "sims": lambda: self._liste_sims(canal),
-                   "diagnostic": lambda: self._diagnostic(canal),
-                   "export": lambda: self._export(canal)}
-        if genre == "c" and valeur in lecture:
-            lecture[valeur]()
+        if genre == "c" and valeur in ("menu", "statut", "sms", "rapport",
+                                       "export", "aide", "comptes",
+                                       "diagnostic"):
+            {"menu": lambda: self._accueil(canal, role),
+             "aide": lambda: self.transport.envoyer(self._aide(), canal=canal),
+             "statut": lambda: self._statut(canal),
+             "comptes": lambda: self._lister_comptes(canal, role),
+             "sms": lambda: self._derniers_sms(canal),
+             "rapport": lambda: self._rapport(canal=canal, manuel=True),
+             "diagnostic": lambda: self._diagnostic(canal),
+             "export": lambda: self._export(canal)}[valeur]()
             return
 
         if not self._verifier_admin(role, entrant, canal):
             return
 
-        if genre == "c" and valeur == "ouvrir":
-            self._ouvrir_session(self.profil.get("menu", ""), canal)
-        elif genre == "c" and valeur == "ussd":
+        if genre == "c" and valeur == "ussd":
+            cible = f" sur {gras(self.courant.libelle)}" if self.multi else ""
             self.transport.envoyer(
-                "⌨️ Envoyez le code à composer, par exemple "
-                f"{mono(self.profil.get('menu') or '*126#')}.", canal=canal)
+                f"⌨️ Envoyez le code à composer{cible}, par exemple {mono('*126#')}.",
+                canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
         elif genre == "c" and valeur == "confirmer":
-            if self._confirmation_requise():
+            if self._confirmation_requise() and self.session_compte:
                 self.confirme = True
-                self.journal.ussd(
-                    "envoyé", f"[confirmation de {self.montant_session} FCFA]")
-                self._afficher_session()
+                self.journal.ussd("envoyé",
+                                  f"[confirmation de {self.montant_session} FCFA]",
+                                  self.session_compte.libelle)
+                self._afficher_session(self.session_compte)
         elif genre == "c" and valeur == "sauvegarde":
             self._sauvegarde(canal)
+        elif genre == "a":                      # bascule de compte
+            compte = self._compte_par_nom(valeur)
+            if compte:
+                self.courant = compte
+                self._accueil(canal, role)
         elif genre == "m":
             self._lancer_raccourci(valeur, canal)
         elif genre == "u":
-            self.journal.ussd("envoyé", valeur)
-            self._ussd(valeur, nouveau=False)
+            compte = self.session_compte
+            if compte is None:
+                return
+            self.journal.ussd("envoyé", valeur, compte.libelle)
+            self._ussd(compte, valeur, nouveau=False)
             self._avancer_macro()
         elif genre == "p":
             self._pave(valeur)
@@ -326,7 +384,7 @@ class Robot:
         self.journal.evenement(
             f"refus : {entrant.nom or entrant.utilisateur} a tenté « {entrant.texte} »")
         self.transport.envoyer(
-            "🔒 Vous suivez l'activité de la SIM, mais son pilotage est réservé "
+            "🔒 Vous suivez l'activité des SIM, mais leur pilotage est réservé "
             "aux administrateurs.", canal=canal)
         return False
 
@@ -340,130 +398,87 @@ class Robot:
     # ---- écran d'accueil ---------------------------------------------------
     def _boutons_accueil(self, role):
         lignes = []
-        if role == ADMIN:
-            if self.profil.get("menu"):
-                lignes.append([(f"📱 Menu {self.profil['nom']}"[:32], "c:ouvrir")])
-            raccourcis = self.profil.get("raccourcis") or {}
-            noms = list(raccourcis)
+        if self.multi:
+            lignes.append([
+                (("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
+                for i, c in enumerate(self.comptes[:4])
+            ])
+        if role == ADMIN and self.raccourcis:
+            noms = list(self.raccourcis)
             for i in range(0, len(noms), 2):
-                lignes.append([(raccourcis[n]["libelle"], f"m:{n}") for n in noms[i:i + 2]])
+                lignes.append([(self.raccourcis[n]["libelle"], f"m:{n}")
+                               for n in noms[i:i + 2]])
         lignes.append([("📥 SMS reçus", "c:sms"), ("📊 Rapport 24 h", "c:rapport")])
         lignes.append([("📡 Statut", "c:statut"), ("📄 Export CSV", "c:export")])
-        lignes.append([("⌨️ Code USSD", "c:ussd"), ("❓ Aide", "c:aide")]
-                      if role == ADMIN else [("❓ Aide", "c:aide")])
+        if role == ADMIN:
+            lignes.append([("⌨️ Code USSD", "c:ussd"), ("❓ Aide", "c:aide")])
+        else:
+            lignes.append([("❓ Aide", "c:aide")])
         return lignes
 
     def _accueil(self, canal, role):
-        b = self.journal.rapport_du_jour()
+        nb, total, _ = self.journal.rapport_du_jour()
+        etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
+        courant = (f"\nCompte piloté : {gras(self.courant.libelle)}"
+                   if self.multi else "")
         self.transport.envoyer(
-            f"🗿 {gras(self.nom)}\n"
-            f"{gras(self.profil['nom'])} · carte {mono(self._sim_lisible(self.sim))} · "
-            f"signal {self.modem.signal()}/31\n"
-            f"Dernières 24 h sur cette carte : "
-            f"{gras(str(b['encaissements']) + ' entrée(s)')} — "
-            f"{gras(self._fcfa(b['recu']))}\n\nQue faire ?",
+            f"🗿 {gras(self.nom)}\n{etats}{courant}\n"
+            f"Dernières 24 h : {gras(f'{nb} encaissement(s)')} — "
+            f"{gras(self._fcfa(total))}\n\nQue faire ?",
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
-    def _ouvrir_session(self, code, canal):
-        if not code:
-            self.transport.envoyer(
-                "Aucun code de menu n'est configuré pour cet opérateur. "
-                "Envoyez le code vous-même, ou ajoutez-le dans totem.conf.",
-                canal=canal)
-            return
-        self.canal_session = canal
-        self.msg_session = None
-        self.file_macro = []
-        self._ussd(code, nouveau=True)
-
-    def _afficher_attente(self, envoi, nouveau):
+    def _afficher_attente(self, compte, envoi, nouveau):
         """Accuse réception tout de suite.
 
         Le réseau USSD met plusieurs secondes à répondre, et personne ne peut
         raccourcir cela. Ce qu'on peut supprimer, c'est le silence : un écran
-        qui ne bouge pas donne l'impression que rien ne marche."""
+        figé donne l'impression que rien ne marche."""
+        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
         libelle = (f"⏳ Composition de {mono(envoi)}…" if nouveau
                    else "⏳ Envoi de votre réponse…")
         self._peindre(
-            f"🗿 {gras(self.profil['nom'])}\n{libelle}\n"
+            f"🗿 {gras('Session USSD')}{etiquette}\n{libelle}\n"
             + italique("L'opérateur met quelques secondes à répondre."), [])
 
-    def _ussd(self, texte, nouveau=False, attente=True):
+    def _ussd(self, compte, texte, nouveau=False, attente=True):
         if attente:
-            self._afficher_attente(texte, nouveau)
+            self._afficher_attente(compte, texte, nouveau)
         try:
             if nouveau:
-                self.journal.ussd("envoyé", texte)
-                etat, reponse = self.modem.ussd_demarrer(texte)
+                self.journal.ussd("envoyé", texte, compte.libelle)
+                reponse = compte.ussd_demarrer(texte)
             else:
-                etat, reponse = self.modem.ussd_repondre(texte)
+                reponse = compte.ussd_repondre(texte)
         except ErreurModem as e:
-            self._cloturer_session(f"⚠️ {echap(e)}")
+            self._cloturer_session(f"⚠️ [{echap(compte.libelle)}] {echap(e)}")
             return
-        self.journal.ussd("reçu", reponse)
+        except Exception as e:
+            self.journal.evenement(f"erreur USSD {compte.libelle} : {e}")
+            self._cloturer_session(
+                f"⚠️ [{echap(compte.libelle)}] Le modem n'a pas répondu.")
+            return
+        self.journal.ussd("reçu", reponse, compte.libelle)
         self.dernier_menu = reponse
-        self.session_ussd = etat == USSD_OUVERTE
-        self.pin_actif = self.session_ussd and self._demande_un_code(reponse)
+        self.session_compte = compte if compte.session_ouverte else None
+        self.pin_actif = bool(compte.session_ouverte and self._demande_un_code(reponse))
         self.pin_tampon = ""
         self.dernier_echange = time.time()
         self._noter_attente(reponse)
-        if self.session_ussd:
-            self._afficher_session()
+        if compte.session_ouverte:
+            self._afficher_session(compte)
         else:
-            self._cloturer_session(self._texte_menu(reponse))
-
-    def _noter_attente(self, menu):
-        """Retient ce que l'opérateur demande, pour pouvoir rappeler le montant
-        et le bénéficiaire au moment de valider."""
-        _, options = self._analyser_menu(menu)
-        if options:
-            self.attente_saisie = ""
-            return
-        if RE_DEMANDE_MONTANT.search(menu):
-            self.attente_saisie = "montant"
-        elif RE_DEMANDE_DESTINATAIRE.search(menu):
-            self.attente_saisie = "destinataire"
-        else:
-            self.attente_saisie = ""
-
-    def _retenir_saisie(self, texte):
-        """Mémorise la réponse libre de l'utilisateur selon ce qui était demandé."""
-        if self.attente_saisie == "montant":
-            chiffres = re.sub(r"\D", "", texte)
-            if chiffres:
-                self.montant_session = int(chiffres)
-        elif self.attente_saisie == "destinataire":
-            self.destinataire_session = texte.strip()[:24]
-        self.attente_saisie = ""
-
-    def _confirmation_requise(self):
-        """Une sortie importante mérite un temps d'arrêt avant le code secret."""
-        return (self.seuil_confirmation > 0
-                and self.montant_session is not None
-                and self.montant_session >= self.seuil_confirmation
-                and not self.confirme)
-
-    def _carte_confirmation(self):
-        destinataire = (f"\nBénéficiaire : {mono(self.destinataire_session)}"
-                        if self.destinataire_session else "")
-        return (
-            f"⚠️ {gras('Confirmation demandée')}\n"
-            f"Montant : {gras(self._fcfa(self.montant_session))}{destinataire}\n"
-            f"Opérateur : {echap(self.profil['nom'])} · "
-            f"carte {mono(self._sim_lisible(self.sim))}\n\n"
-            + italique("Au-delà du seuil que vous avez fixé, le code secret ne "
-                       "s'affiche qu'après cette confirmation."),
-            [[("✅ Confirmer", "c:confirmer")], [("❌ Annuler", "c:annuler")]])
+            entete = f"[{echap(compte.libelle)}]\n" if self.multi else ""
+            self._cloturer_session(entete + self._texte_menu(reponse))
 
     @classmethod
     def _demande_un_code(cls, menu):
         """Vrai seulement si l'opérateur ATTEND une saisie de code secret.
 
-        Un menu qui se contente de *parler* du code secret (« 5) Gerer mon
-        code secret ») porte des options numérotées : c'est une navigation,
-        pas une saisie. C'est exactement ce qui faisait apparaître le pavé
-        au mauvais moment."""
+        Un menu qui se contente de *parler* du code (« 5) Gerer mon code
+        secret ») porte des options numérotées : c'est une navigation, pas une
+        saisie. Chercher le seul mot « PIN » faisait apparaître le pavé au
+        mauvais moment."""
         _, options = cls._analyser_menu(menu)
         return not options and bool(RE_DEMANDE_CODE.search(menu))
 
@@ -485,9 +500,9 @@ class Robot:
 
     @staticmethod
     def _texte_menu(menu):
-        """Rend un texte d'opérateur lisible dans Telegram : lignes nettoyées,
-        aucun bloc de code (le cadre gris à chasse fixe cassait l'affichage
-        sur téléphone et faisait déborder les lignes longues)."""
+        """Rend un texte d'opérateur lisible : lignes nettoyées, aucun bloc de
+        code — le cadre gris à chasse fixe faisait déborder les lignes longues
+        sur téléphone et rendait les menus illisibles."""
         lignes = [l.strip() for l in re.split(r"\r\n|\r|\n", menu or "") if l.strip()]
         return echap("\n".join(lignes))
 
@@ -497,26 +512,26 @@ class Robot:
 
     def _boutons_options(self, options):
         """Deux boutons par ligne si les libellés sont courts, sinon un seul :
-        c'est ce qui évite les libellés tronqués et l'effet « sens dessus
-        dessous » sur les menus Orange, plus verbeux que ceux de MTN."""
+        c'est ce qui évite les libellés tronqués sur les menus verbeux."""
         libelles = [(f"{num}. {self._court(lib)}", f"u:{num}") for num, lib in options]
         par_ligne = 2 if all(len(l) <= 20 for l, _ in libelles) else 1
         return [libelles[i:i + par_ligne] for i in range(0, len(libelles), par_ligne)]
 
-    def _afficher_session(self):
+    def _afficher_session(self, compte):
         """Réécrit la carte de session en place : une seule carte, vivante."""
+        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
         if self.pin_actif and self._confirmation_requise():
-            texte, boutons = self._carte_confirmation()
+            texte, boutons = self._carte_confirmation(compte)
         elif self.pin_actif:
-            texte, boutons = self._carte_pin()
+            texte, boutons = self._carte_pin(etiquette)
         else:
             entete, options = self._analyser_menu(self.dernier_menu)
-            texte = f"🗿 {gras(self.profil['nom'])}"
+            texte = f"🗿 {gras('Session USSD')}{etiquette}"
             if entete:
                 texte += "\n" + echap("\n".join(entete))
             if options:
-                # Les options sont DANS les boutons : ne pas les répéter en
-                # texte au-dessus, c'est ce qui rendait l'écran illisible.
+                # Les options sont DANS les boutons : les répéter en texte
+                # au-dessus rendait l'écran illisible.
                 boutons = self._boutons_options(options)
             else:
                 texte += "\n\n" + italique("✍️ Répondez par un message.")
@@ -524,21 +539,65 @@ class Robot:
             boutons = boutons + [[("❌ Fermer", "c:annuler")]]
         self._peindre(texte, boutons)
 
-    def _carte_pin(self):
+    def _carte_pin(self, etiquette=""):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]
         boutons.append([("⌫", "p:eff"), ("0", "p:0"), ("✅ Valider", "p:ok")])
         boutons.append([("❌ Annuler", "c:annuler")])
         entete, _ = self._analyser_menu(self.dernier_menu)
         return (
-            f"🔐 {gras('Code secret')}\n{echap(chr(10).join(entete))}\n\n"
+            f"🔐 {gras('Code secret')}{etiquette}\n{echap(chr(10).join(entete))}\n\n"
             f"Saisi : {mono('•' * len(self.pin_tampon) or '—')}\n"
             + italique("Le code se compose sur les boutons : il n'apparaît "
                        "jamais dans la conversation."), boutons)
 
+    # ---- confirmation d'une sortie importante ------------------------------
+    def _noter_attente(self, menu):
+        """Retient ce que l'opérateur demande, pour pouvoir rappeler le montant
+        et le bénéficiaire au moment de valider."""
+        _, options = self._analyser_menu(menu)
+        if options:
+            self.attente_saisie = ""
+        elif RE_DEMANDE_MONTANT.search(menu):
+            self.attente_saisie = "montant"
+        elif RE_DEMANDE_DESTINATAIRE.search(menu):
+            self.attente_saisie = "destinataire"
+        else:
+            self.attente_saisie = ""
+
+    def _retenir_saisie(self, texte):
+        """Mémorise la réponse libre selon ce qui était demandé."""
+        if self.attente_saisie == "montant":
+            chiffres = re.sub(r"\D", "", texte)
+            if chiffres:
+                self.montant_session = int(chiffres)
+        elif self.attente_saisie == "destinataire":
+            self.destinataire_session = texte.strip()[:24]
+        self.attente_saisie = ""
+
+    def _confirmation_requise(self):
+        """Une sortie importante mérite un temps d'arrêt avant le code secret."""
+        return (self.seuil_confirmation > 0
+                and self.montant_session is not None
+                and self.montant_session >= self.seuil_confirmation
+                and not self.confirme)
+
+    def _carte_confirmation(self, compte):
+        destinataire = (f"\nBénéficiaire : {mono(self.destinataire_session)}"
+                        if self.destinataire_session else "")
+        return (
+            f"⚠️ {gras('Confirmation demandée')}\n"
+            f"Montant : {gras(self._fcfa(self.montant_session))}{destinataire}\n"
+            f"Compte : {gras(compte.libelle)}\n\n"
+            + italique("Au-delà du seuil que vous avez fixé, le code secret ne "
+                       "s'affiche qu'après cette confirmation."),
+            [[("✅ Confirmer", "c:confirmer")], [("❌ Annuler", "c:annuler")]])
+
     def _pave(self, touche):
-        if not self.pin_actif or self._confirmation_requise():
+        compte = self.session_compte
+        if not self.pin_actif or compte is None or self._confirmation_requise():
             return    # le pavé n'existe pas tant que la sortie n'est pas confirmée
         self.dernier_echange = time.time()
+        etiquette = f" · {echap(compte.libelle)}" if self.multi else ""
         if touche == "eff":
             self.pin_tampon = self.pin_tampon[:-1]
         elif touche == "ok":
@@ -546,16 +605,17 @@ class Robot:
                 return
             code, self.pin_tampon = self.pin_tampon, ""
             self.pin_actif = False
-            self.journal.ussd("envoyé", "****")
-            self._peindre(f"🔐 {gras('Code secret')}\n⏳ Validation en cours…", [])
-            self._ussd(code, nouveau=False, attente=False)
+            self.journal.ussd("envoyé", "****", compte.libelle)
+            self._peindre(
+                f"🔐 {gras('Code secret')}{etiquette}\n⏳ Validation en cours…", [])
+            self._ussd(compte, code, nouveau=False, attente=False)
             self._avancer_macro()
             return
         elif touche.isdigit() and len(self.pin_tampon) < 8:
             self.pin_tampon += touche
         else:
             return
-        texte, boutons = self._carte_pin()
+        texte, boutons = self._carte_pin(etiquette)
         self._peindre(texte, boutons)
 
     def _peindre(self, texte, boutons):
@@ -573,156 +633,114 @@ class Robot:
         self.canal_session = canal
 
     def _annuler(self, canal):
-        try:
-            self.modem.ussd_annuler()
-        except Exception:
-            pass
+        compte = self.session_compte or self.courant
+        compte.ussd_annuler()
         if self.msg_session:
             self.transport.retirer_boutons(self.msg_session, canal=self.canal_session)
         self._reinitialiser_session()
         self.transport.envoyer("Session USSD fermée.",
                                boutons=[[("🏠 Menu", "c:menu")]], canal=canal)
 
+    @staticmethod
+    def _options(menu):
+        """Extrait « 1. Transfert d'argent » → [("1", "Transfert d'argent"), …]."""
+        options = []
+        for ligne in menu.splitlines():
+            m = RE_OPTION.match(ligne)
+            if m:
+                options.append((m.group(1), m.group(2)))
+        return options
+
     # ---- raccourcis (macros USSD) -----------------------------------------
     def _lancer_raccourci(self, nom, canal):
-        raccourci = (self.profil.get("raccourcis") or {}).get(nom)
+        raccourci = self.raccourcis.get(nom)
         if not raccourci:
-            self.transport.envoyer(
-                "Ce raccourci n'existe pas pour la SIM en place.", canal=canal)
+            self.transport.envoyer("Raccourci inconnu.", canal=canal)
             return
         etapes = list(raccourci["etapes"])
         self.canal_session = canal
         self.msg_session = None
         self.file_macro = etapes[1:]
-        self._ussd(etapes[0], nouveau=True)
+        self._ussd(self.courant, etapes[0], nouveau=True)
         self._avancer_macro()
 
     def _avancer_macro(self):
         """Déroule les étapes restantes d'un raccourci ; s'arrête d'elle-même
-        dès qu'un code secret est demandé ou que la session se referme."""
+        dès qu'un PIN est demandé ou que la session se referme."""
         while self.file_macro and self.session_ussd and not self.pin_actif:
             etape = self.file_macro.pop(0)
-            self.journal.ussd("envoyé", etape)
-            # Pas de pause artificielle : l'aller-retour avec le réseau
-            # espace déjà largement les étapes.
-            self._ussd(etape, nouveau=False)
+            compte = self.session_compte
+            time.sleep(0.4)          # laisse respirer le réseau USSD
+            self.journal.ussd("envoyé", etape, compte.libelle)
+            self._ussd(compte, etape, nouveau=False)
         if not self.session_ussd:
             self.file_macro = []
 
     # ---- informations ------------------------------------------------------
     def _statut(self, canal=None):
-        sim = "présente" if self.modem.sim_presente() else "⚠️ ABSENTE"
-        self.transport.envoyer(
-            f"📡 {gras(self.nom)}\n"
-            f"SIM : {echap(sim)} · {mono(self._sim_lisible(self.sim))}\n"
-            f"Opérateur : {gras(self.profil['nom'])}\n"
-            f"Signal : {gras(f'{self.modem.signal()}/31')}\n"
-            f"Session USSD : {'ouverte' if self.session_ussd else 'aucune'}",
-            canal=canal)
+        lignes = [f"📡 {gras(self.nom)}"]
+        for c in self.comptes:
+            marque = " ←" if self.multi and c is self.courant else ""
+            lignes.append(f"· {echap(c.resume())}{marque}")
+        try:
+            lignes.append(f"\n🖥 {echap(self.sante.resume())}")
+            if self.nuage and self.nuage.actif:
+                lignes.append(f"☁️ {echap(self.nuage.resume())}")
+        except Exception:
+            pass
+        self.transport.envoyer("\n".join(lignes), canal=canal,
+                               boutons=[[("🏠 Menu", "c:menu")]])
+
+    def _lister_comptes(self, canal=None, role=ADMIN):
+        if not self.multi:
+            return self.transport.envoyer(
+                f"Un seul compte : {gras(self.courant.libelle)}.", canal=canal,
+                boutons=[[("🏠 Menu", "c:menu")]])
+        lignes = [gras("Comptes disponibles")]
+        for i, c in enumerate(self.comptes, 1):
+            marque = "  ← piloté" if c is self.courant else ""
+            lignes.append(f"{i}. {echap(c.resume())}{marque}")
+        boutons = [[(("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
+                    for i, c in enumerate(self.comptes[:4])],
+                   [("🏠 Menu", "c:menu")]]
+        self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
 
     def _derniers_sms(self, canal=None):
         lignes = self.journal.derniers_sms(5)
         if not lignes:
-            self.transport.envoyer(
-                "Aucun SMS en mémoire pour la SIM en place.", canal=canal)
+            self.transport.envoyer("Aucun SMS en mémoire pour l'instant.", canal=canal)
             return
-        corps = "\n\n".join(
-            f"📥 {echap(d.replace('T', ' '))} — {gras(e)}\n{echap(t)}"
-            for d, e, t in lignes)
-        self.transport.envoyer(corps, canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
-
-    def _liste_sims(self, canal=None):
-        lignes = self.journal.sims_connues()
-        if not lignes:
-            self.transport.envoyer("Aucune carte enregistrée pour l'instant.", canal=canal)
-            return
-        corps = "\n".join(
-            f"{'▶️' if (sim or '') == (self.sim or '') else '▫️'} "
-            f"{mono(self._sim_lisible(sim))} — {nb} SMS, dernier le "
-            f"{echap((date or '').replace('T', ' '))}"
-            for sim, nb, date in lignes)
-        self.transport.envoyer(
-            f"💳 {gras('Cartes passées dans le robot')}\n{corps}", canal=canal,
-            boutons=[[("🏠 Menu", "c:menu")]])
-
-    def _rapport(self, canal=None, manuel=False):
-        b = self.journal.rapport_du_jour()
-        solde_net = b["recu"] - b["envoye"]
-        corps = (
-            f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')} — "
-            f"{gras(self.profil['nom'])} {mono(self._sim_lisible(self.sim))}\n"
-            f"⬇️ Entrées : {gras(b['encaissements'])} — {gras(self._fcfa(b['recu']))}\n"
-            f"⬆️ Sorties : {gras(b['sorties'])} — {gras(self._fcfa(b['envoye']))}\n"
-            f"Solde du jour : {gras(self._fcfa(solde_net))}\n"
-            f"SMS reçus : {b['sms']} · Signal : {self.modem.signal()}/31")
-        if manuel:
-            self.transport.envoyer(corps, canal=canal,
-                                   boutons=[[("📄 Export CSV", "c:export")]])
-        else:
-            self.facteur.poster(corps, canal="encaissements")
-
-    def _diagnostic(self, canal=None):
-        """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
-        lignes = [f"🩺 {gras('Diagnostic')}"]
-        lignes.append(f"Robot en marche depuis {self._duree(time.time() - self.demarre_a)}")
-        try:
-            occupes, capacite = self.modem.memoire_sms()
-            lignes.append(f"Mémoire SMS ({getattr(self.modem, 'stockage_sms', '?')}) : "
-                          f"{occupes}/{capacite}")
-        except Exception:
-            lignes.append("Mémoire SMS : illisible")
-        for libelle, valeur in (("ICCID", self.sim or "indisponible"),
-                                ("IMSI", self._sans_erreur(self.modem.imsi)),
-                                ("Numéro", self._sans_erreur(self.modem.numero) or "non inscrit")):
-            lignes.append(f"{libelle} : {mono(valeur)}")
-        lignes.append(f"Signal : {self.modem.signal()}/31 · "
-                      f"Réseau : {echap(self._sans_erreur(self.modem.operateur))}")
-        for libelle, valeur in self._sante_systeme():
-            lignes.append(f"{libelle} : {echap(valeur)}")
-        self.transport.envoyer("\n".join(lignes), canal=canal,
+        blocs = []
+        for date, expediteur, texte, compte in lignes:
+            etiquette = f"[{echap(compte)}] " if self.multi and compte else ""
+            blocs.append(f"📥 {etiquette}{echap(date.replace('T', ' '))} — "
+                         f"{gras(expediteur)}\n{echap(texte)}")
+        self.transport.envoyer("\n\n".join(blocs), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
 
-    @staticmethod
-    def _sans_erreur(fonction, defaut=""):
-        try:
-            return fonction() or defaut
-        except Exception:
-            return defaut
+    def _rapport(self, canal=None, manuel=False):
+        nb, total, nb_sms = self.journal.rapport_du_jour()
+        etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
+        self.transport.envoyer(
+            f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
+            f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
+            f"SMS reçus : {nb_sms}\n{etats}",
+            canal=canal if manuel else "encaissements",
+            boutons=[[("📄 Export CSV", "c:export")]] if manuel else None)
 
-    @staticmethod
-    def _duree(secondes):
-        secondes = int(secondes)
-        jours, reste = divmod(secondes, 86400)
-        heures, reste = divmod(reste, 3600)
-        minutes = reste // 60
-        if jours:
-            return f"{jours} j {heures} h"
-        return f"{heures} h {minutes} min" if heures else f"{minutes} min"
-
-    @staticmethod
-    def _sante_systeme():
-        """Espace disque et température du Pi : les deux pannes silencieuses
-        classiques d'une carte SD qui tourne des mois sans surveillance."""
-        infos = []
-        try:
-            import shutil
-            total, _, libre = shutil.disk_usage("/")
-            infos.append(("Disque libre", f"{libre // 2**20} Mo sur {total // 2**20} Mo"))
-        except Exception:
-            pass
-        try:
-            with open("/sys/class/thermal/thermal_zone0/temp") as f:
-                infos.append(("Température", f"{int(f.read().strip()) / 1000:.0f} °C"))
-        except Exception:
-            pass
-        return infos
+    def _export(self, canal=None):
+        contenu = self.journal.export_csv(7)
+        nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
+        if not self.transport.envoyer_fichier(
+                nom, contenu, legende="📄 Journal des 7 derniers jours.", canal=canal):
+            self.transport.envoyer("⚠️ L'export n'a pas pu être envoyé.", canal=canal)
 
     def _sauvegarde(self, canal=None, automatique=False):
         """Envoie le journal complet dans Telegram.
 
-        C'est la seule copie hors du Pi : une carte SD morte, et tout
-        l'historique des encaissements disparaît. Telegram garde le fichier
-        indéfiniment, sans serveur à louer ni identifiant à gérer. Pour
+        La copie locale (sauvegarder_journal) vit sur la même carte SD que
+        l'original : elle ne protège de rien si la carte meurt. Celle-ci part
+        hors du Pi, sans serveur à louer ni identifiant à gérer. Pour
         restaurer : télécharger le fichier et le remettre à la place de
         journal.db, robot arrêté."""
         dossier = tempfile.mkdtemp(prefix="totem-sauvegarde-")
@@ -740,8 +758,7 @@ class Robot:
         finally:
             shutil.rmtree(dossier, ignore_errors=True)
 
-        legende = (f"💾 {gras('Sauvegarde du journal')} — "
-                   f"{len(contenu) // 1024} Ko\n"
+        legende = (f"💾 {gras('Sauvegarde du journal')} — {len(contenu) // 1024} Ko\n"
                    + italique("Conservez ce fichier : c'est la seule copie hors "
                               "du Pi. Pour restaurer, remplacez journal.db par "
                               "celui-ci, robot arrêté."))
@@ -753,87 +770,125 @@ class Robot:
                 self.transport.envoyer("⚠️ La sauvegarde n'a pas pu être envoyée.",
                                        canal=canal)
 
-    def _export(self, canal=None):
-        contenu = self.journal.export_csv(7)
-        nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
-        if not self.transport.envoyer_fichier(
-                nom, contenu, legende="📄 Journal des 7 derniers jours "
-                f"({echap(self.profil['nom'])}).", canal=canal):
-            self.transport.envoyer("⚠️ L'export n'a pas pu être envoyé.", canal=canal)
+    def _diagnostic(self, canal=None):
+        """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
+        lignes = [f"🩺 {gras('Diagnostic')}",
+                  f"Robot en marche depuis {self._duree(time.time() - self.demarre_a)}"]
+        for compte in self.comptes:
+            occupes, capacite = compte.memoire_sms()
+            lignes.append(
+                f"\n{gras(compte.libelle)}\n"
+                f"Carte : {mono(self._sim_lisible(compte.iccid()))}\n"
+                f"Mémoire SMS : {occupes}/{capacite if capacite else '?'}\n"
+                f"Signal : {compte.signal()}/31")
+        en_attente = self.facteur.en_attente()
+        lignes.append(f"\nCourrier en attente : {en_attente}"
+                      if en_attente else "\nCourrier : tout est parti")
+        lignes.append(self.sante.resume() if hasattr(self.sante, "resume") else "")
+        self.transport.envoyer("\n".join(l for l in lignes if l), canal=canal,
+                               boutons=[[("🏠 Menu", "c:menu")]])
+
+    @staticmethod
+    def _sim_lisible(iccid):
+        return ("…" + iccid[-6:]) if iccid else "identifiant indisponible"
+
+    @staticmethod
+    def _duree(secondes):
+        secondes = int(secondes)
+        jours, reste = divmod(secondes, 86400)
+        heures, reste = divmod(reste, 3600)
+        minutes = reste // 60
+        if jours:
+            return f"{jours} j {heures} h"
+        return f"{heures} h {minutes} min" if heures else f"{minutes} min"
 
     @staticmethod
     def _fcfa(montant):
         return f"{montant:,}".replace(",", " ") + " FCFA"
 
-    # ---- surveillance (SMS entrants, santé, SIM, rapport quotidien) --------
+    # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
-        echecs_modem = 0
-        depuis_verif_sim = 0
-        depuis_verif_memoire = 0
+        prochaine_sante = 0
+        prochaine_memoire = 0
         while self.actif:
-            try:
-                self._relever_sms()
-                echecs_modem = 0
-            except Exception as e:
-                echecs_modem += 1
-                self.journal.evenement(f"erreur lecture SMS : {e}")
-                if echecs_modem == 3:  # chien de garde : 3 échecs → reset modem
-                    self._redemarrer_modem(canal="alertes", automatique=True)
-                    echecs_modem = 0
-            depuis_verif_sim += self.pause_sms
-            if depuis_verif_sim >= VERIF_SIM_SECONDES:
-                depuis_verif_sim = 0
-                self._verifier_sim()
-            depuis_verif_memoire += self.pause_sms
-            if depuis_verif_memoire >= VERIF_MEMOIRE_SECONDES:
-                depuis_verif_memoire = 0
+            for compte in self.comptes:
+                self._relever_sms(compte)
+            self._expirer_session()
+            # La santé du Pi change lentement : inutile de la lire à chaque tour.
+            if time.time() >= prochaine_sante:
+                prochaine_sante = time.time() + 120
+                self._veiller_sante()
+            if time.time() >= prochaine_memoire:
+                prochaine_memoire = time.time() + VERIF_MEMOIRE_SECONDES
                 self._verifier_memoire()
             self._signaler_conflit()
-            self._expirer_session()
-            self._rapport_quotidien()
+            if self._rapport_quotidien():
+                sauvegarder_journal(self.chemin_base)
             try:
                 self.facteur.distribuer()   # rattrape ce qu'une coupure a retenu
             except Exception as e:
                 self.journal.evenement(f"erreur distribution courrier : {e}")
             time.sleep(self.pause_sms)
 
-    def _relever_sms(self):
-        """Relève les SMS du modem. L'ordre compte : on écrit au journal AVANT
-        d'effacer dans le modem. Si le robot meurt entre les deux, le message
-        sera relu au redémarrage plutôt que perdu — et le garde-fou anti-doublon
-        évite de l'annoncer deux fois."""
-        for index, expediteur, texte in self.modem.lire_sms():
-            deja_vu = self.journal.sms_existe(expediteur, texte)
-            if not deja_vu:
-                self.journal.sms(expediteur, texte)
-                self._notifier_sms(expediteur, texte)
-            if not self.modem.effacer_sms(index):
+    def _veiller_sante(self):
+        """Alerte sur la tension, la chaleur, le disque — une fois par
+        changement d'état, jamais en boucle."""
+        try:
+            messages = self.sante.alertes()
+        except Exception as e:
+            self.journal.evenement(f"lecture santé : {e}")
+            return
+        for genre, texte in messages:
+            self.journal.evenement(f"santé — {texte}")
+            prefixe = "⚠️ " if genre == "alerte" else "✅ "
+            self.transport.envoyer(f"{prefixe}{echap(texte)}", canal="alertes",
+                                   silencieux=genre != "alerte")
+
+    def _relever_sms(self, compte):
+        """L'ordre compte : on écrit au journal AVANT d'effacer dans le modem.
+
+        Si le robot meurt entre les deux, le message est encore dans le modem
+        au redémarrage plutôt que perdu — et le garde-fou anti-doublon évite
+        de l'annoncer deux fois."""
+        try:
+            messages = compte.lire_sms()
+            compte.echecs = 0
+        except Exception as e:
+            compte.echecs += 1
+            self.journal.evenement(f"lecture SMS {compte.libelle} : {e}")
+            if compte.echecs == 3:  # chien de garde : on relance CE modem
+                self._redemarrer_modem(compte, canal="alertes", automatique=True)
+                compte.echecs = 0
+            return
+        for index, expediteur, texte in messages:
+            if not self.journal.sms_existe(expediteur, texte, compte.libelle):
+                self.journal.sms(expediteur, texte, compte.libelle)
+                self._notifier_sms(compte, expediteur, texte)
+            if not compte.effacer_sms(index):
                 self.journal.evenement(
-                    f"SMS {index} non effacé du modem (il sera ignoré au prochain tour)")
+                    f"SMS {index} non effacé sur {compte.libelle} "
+                    "(il sera ignoré au prochain tour)")
 
     def _verifier_memoire(self):
         """Une mémoire SMS pleine fait perdre les messages suivants — donc des
         encaissements jamais vus. On prévient bien avant la saturation."""
-        try:
-            occupes, capacite = self.modem.memoire_sms()
-        except Exception:
-            return
-        if not capacite:
-            return
-        taux = occupes / capacite
-        if taux < SEUIL_MEMOIRE:
+        satures = []
+        for compte in self.comptes:
+            occupes, capacite = compte.memoire_sms()
+            if capacite and occupes / capacite >= SEUIL_MEMOIRE:
+                satures.append(f"{compte.libelle} : {occupes}/{capacite}")
+        if not satures:
             self.memoire_signalee = False
             return
         if self.memoire_signalee:
             return
         self.memoire_signalee = True
-        self.journal.evenement(f"mémoire SMS à {occupes}/{capacite}")
+        self.journal.evenement("mémoire SMS presque pleine — " + " ; ".join(satures))
         self.facteur.poster(
-            f"⚠️ {gras('Mémoire SMS presque pleine')} — {occupes}/{capacite}.\n"
+            f"⚠️ {gras('Mémoire SMS presque pleine')}\n"
+            + echap("\n".join(satures)) + "\n"
             + italique("Au-delà, le réseau ne peut plus déposer de nouveaux SMS : "
-                       "des encaissements passeraient inaperçus. Le robot efface "
-                       "normalement au fil de l'eau ; si le compte ne redescend "
-                       "pas, le modem refuse les effacements."), canal="alertes")
+                       "des encaissements passeraient inaperçus."), canal="alertes")
 
     def _signaler_conflit(self):
         """Deux robots sur le même jeton se coupent mutuellement : les
@@ -844,85 +899,71 @@ class Robot:
         self.conflit_signale = conflit
         if conflit:
             self.journal.evenement("conflit : deux instances sur le même jeton")
-            self.transport.envoyer(
+            self.facteur.poster(
                 f"⚠️ {gras('Deux robots utilisent le même jeton Telegram')}\n"
                 + italique("Vos commandes peuvent se perdre. Arrêtez l'instance "
                            "en trop : sudo systemctl stop totem"), canal="alertes")
 
     def _rapport_quotidien(self):
         """Envoie le bilan une fois par jour, même si la boucle a sauté la
-        minute exacte (redémarrage du modem, réseau lent, charge…)."""
+        minute exacte (redémarrage d'un modem, réseau lent, charge…)."""
         maintenant = datetime.now()
         if self.dernier_rapport == maintenant.date() or not self._heure_passee():
-            return
+            return False
         self.dernier_rapport = maintenant.date()
         self._rapport()
         if self.sauvegarde_quotidienne:
             self._sauvegarde(canal="alertes", automatique=True)
+        return True
 
-    def _notifier_sms(self, expediteur, texte):
+    def _notifier_sms(self, compte, expediteur, texte):
         """Tous les SMS arrivent de la même façon : aucun n'est mis en
-        sourdine. Le montant est simplement mis en évidence quand il y en a un."""
-        montant = montant_recu(texte)
-        entete = (f"💰 {gras('Encaissement')} — {gras(self._fcfa(montant))}"
-                  if montant is not None
-                  else f"📥 {gras('SMS')} de {gras(expediteur)}")
-        # Par le facteur : un encaissement annoncé pendant une coupure réseau
-        # doit repartir tout seul au retour de la connexion.
-        self.facteur.poster(
-            f"{entete}\n{echap(texte)}\n"
-            + italique(f"{self.profil['nom']} · {self._sim_lisible(self.sim)}"),
-            canal="encaissements")
+        sourdine. Un message d'opérateur peut annoncer une suspension de
+        compte ou une opération non voulue — rien ne doit passer inaperçu.
+        Seul l'AFFICHAGE distingue les cas, pour se lire d'un coup d'œil.
 
-    def _verifier_sim(self):
-        """Détecte le remplacement physique de la carte dans le HAT."""
-        if self.session_ussd:
-            # Interroger le modem pendant que l'utilisateur navigue dans un
-            # menu, c'est lui faire attendre notre tour de parole.
-            return
-        with self.verrou:
-            iccid, operateur = self._lire_sim()
-            if not iccid or iccid == self.sim:
-                if iccid and self.profil["nom"] != operateur:
-                    self.profil = self._choisir_profil(operateur)
-                return
-            ancienne = self.sim
-            if self.session_ussd:
-                self._cloturer_session("⚠️ Carte SIM changée : session fermée.")
-            self._adopter_sim(iccid, operateur)
-            self.journal.evenement(f"changement de SIM : {ancienne} → {iccid}")
-            if ancienne is None:
-                return          # première lecture : rien à annoncer
-            self.facteur.poster(
-                f"💳 {gras('Nouvelle carte SIM détectée')}\n"
-                f"Opérateur : {gras(operateur)}\n"
-                f"Carte : {mono(self._sim_lisible(iccid))}\n"
-                + italique("Journal, rapports et raccourcis basculent sur cette carte."),
-                canal="alertes")
+        L'envoi passe par le facteur : un encaissement survenu pendant une
+        coupure Internet doit repartir tout seul au retour du réseau."""
+        etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
+        paiement = analyser(texte)
+
+        if paiement and paiement.sens == "entree":
+            entete = (f"💰 {gras('Encaissement')}{etiquette} — "
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"de {gras(paiement.tiers)}")
+        elif paiement:
+            entete = (f"↗️ {gras('Envoi')}{etiquette} — "
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"vers {gras(paiement.tiers)}")
+        else:
+            entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
+
+        self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
 
     def _expirer_session(self):
         with self.verrou:
-            if not self.session_ussd:
+            compte = self.session_compte
+            if compte is None:
                 return
             if time.time() - self.dernier_echange < self.delai_session:
                 return
-            try:
-                self.modem.ussd_annuler()
-            except Exception:
-                pass
-            self.journal.evenement("session USSD expirée")
+            compte.ussd_annuler()
+            self.journal.evenement(f"session USSD expirée ({compte.libelle})")
             self._cloturer_session(
                 "⌛ Session USSD expirée (sans réponse trop longtemps). "
                 "L'opérateur l'aurait fermée de son côté.")
 
-    def _redemarrer_modem(self, canal=None, automatique=False):
+    def _redemarrer_modem(self, compte, canal=None, automatique=False):
+        etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
         self.transport.envoyer(
-            "⚠️ Le modem ne répond plus, je le redémarre…" if automatique
-            else "Redémarrage du modem (≈30 s)…", canal=canal)
+            f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…" if automatique
+            else f"{etiquette}Redémarrage du modem (≈30 s)…", canal=canal)
         try:
-            self.modem.redemarrer()
+            compte.redemarrer()
         except Exception as e:
-            self.transport.envoyer(f"❌ Échec du redémarrage : {echap(e)}", canal=canal)
+            self.transport.envoyer(
+                f"❌ {etiquette}Échec du redémarrage : {echap(e)}", canal=canal)
             return
         self.transport.envoyer(
-            f"✅ Modem revenu en ligne. Signal : {self.modem.signal()}/31", canal=canal)
+            f"✅ {etiquette}Modem revenu en ligne. Signal : {compte.signal()}/31",
+            canal=canal)

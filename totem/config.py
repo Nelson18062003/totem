@@ -19,31 +19,29 @@ CHEMINS = [
     "/etc/totem.conf",
 ]
 
-PROFIL_PAR_DEFAUT = "*"
-
 
 class ErreurConfig(Exception):
     pass
 
 
 def _liste(valeur):
-    """« 123, 456 » → [123, 456]. Tolère espaces, points-virgules, vide."""
+    """« 123, 456 » → [123, 456 ]. Tolère espaces, points-virgules, vide."""
     return [int(x) for x in re.split(r"[,;\s]+", valeur.strip()) if x]
 
 
-def _raccourcis(cfg, section):
-    """Macros USSD lancées en un seul bouton :
+def _raccourcis(cfg):
+    """Section [raccourcis] : des macros USSD lancées en un seul bouton.
 
         solde = 💰 Solde | *126#, 5, 1
 
     Le libellé avant « | » est facultatif ; les étapes sont jouées dans
     l'ordre, la première étant le code à composer. Le déroulé s'interrompt
-    de lui-même dès qu'un code secret est demandé.
+    de lui-même dès qu'un code PIN est demandé.
     """
     resultat = {}
-    if not cfg.has_section(section):
+    if not cfg.has_section("raccourcis"):
         return resultat
-    for nom, valeur in cfg.items(section):
+    for nom, valeur in cfg.items("raccourcis"):
         libelle, separateur, suite = valeur.partition("|")
         if not separateur:
             libelle, suite = f"⚡ {nom.capitalize()}", valeur
@@ -53,55 +51,16 @@ def _raccourcis(cfg, section):
     return resultat
 
 
-def _profils(cfg):
-    """Un profil par opérateur : comment le reconnaître, quel code compose son
-    menu, et quels raccourcis lui appartiennent.
-
-        [operateur.orange]
-        nom = Orange Money
-        detection = Orange        ← cherché dans le nom du réseau vu par le modem
-        menu = #148#
-
-        [raccourcis.orange]
-        solde = 💰 Solde | #148#, 4, 1
-
-    La section [raccourcis] sans suffixe reste valable : elle sert de profil
-    de repli quand l'opérateur détecté ne correspond à aucun profil.
-    """
-    profils = {}
-
-    def creer(cle):
-        return profils.setdefault(cle, {
-            "nom": cle.upper() if cle != PROFIL_PAR_DEFAUT else "",
-            "detection": "" if cle == PROFIL_PAR_DEFAUT else cle,
-            "menu": "", "raccourcis": {},
-        })
-
-    for section in cfg.sections():
-        famille, _, cle = section.partition(".")
-        cle = cle.strip().lower()
-        if famille == "operateur" and cle:
-            profil = creer(cle)
-            profil["nom"] = cfg.get(section, "nom", fallback=cle.upper()).strip()
-            profil["detection"] = cfg.get(section, "detection", fallback=cle).strip()
-            profil["menu"] = cfg.get(section, "menu", fallback="").strip()
-        elif famille == "raccourcis" and cle:
-            creer(cle)["raccourcis"] = _raccourcis(cfg, section)
-
-    if cfg.has_section("raccourcis"):     # ancienne forme, sans opérateur
-        creer(PROFIL_PAR_DEFAUT)["raccourcis"] = _raccourcis(cfg, "raccourcis")
-    return profils
-
-
 def charger():
     for chemin in CHEMINS:
         if chemin and os.path.isfile(chemin):
             cfg = configparser.ConfigParser()
             cfg.read(chemin, encoding="utf-8")
             try:
+                chat_id = cfg["telegram"]["chat_id"].strip()
                 return {
                     "jeton": cfg["telegram"]["jeton"].strip(),
-                    "chat_id": cfg["telegram"]["chat_id"].strip(),
+                    "chat_id": chat_id,
                     "groupe": cfg.get("telegram", "groupe", fallback="").strip(),
                     "admins": _liste(cfg.get("telegram", "admins", fallback="")),
                     "sujets": {
@@ -111,7 +70,6 @@ def charger():
                                                fallback="").strip()]
                         if valeur
                     },
-                    "port": cfg.get("modem", "port", fallback="/dev/ttyUSB2"),
                     "nom": cfg.get("totem", "nom", fallback="TOTEM"),
                     "heure_rapport": cfg.get("totem", "heure_rapport", fallback="21:00"),
                     "base": cfg.get("totem", "base", fallback="/var/lib/totem/journal.db"),
@@ -120,7 +78,12 @@ def charger():
                                                      fallback=0),
                     "sauvegarde_quotidienne": cfg.getboolean(
                         "totem", "sauvegarde_quotidienne", fallback=True),
-                    "profils": _profils(cfg),
+                    "raccourcis": _raccourcis(cfg),
+                    # Cloud : facultatif. Sans ces valeurs, TOTEM fonctionne
+                    # exactement comme avant, entièrement hors ligne.
+                    "cloud_url": cfg.get("cloud", "url", fallback="").strip(),
+                    "cloud_cle": cfg.get("cloud", "cle", fallback="").strip(),
+                    "terminal": cfg.get("cloud", "terminal", fallback="totem").strip(),
                 }
             except KeyError as e:
                 raise ErreurConfig(f"Clé manquante dans {chemin} : {e}")

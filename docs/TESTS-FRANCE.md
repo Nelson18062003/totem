@@ -7,8 +7,15 @@ Matériel : le robot monté + une SIM française prépayée (PIN désactivé, un
 de crédit et de data).
 
 ## A. Démarrage
-- [ ] Au branchement, le robot envoie « ✅ … en ligne. SIM détectée » sur Telegram (≈2 min)
-- [ ] `/statut` répond : opérateur français affiché, signal ≥ 12/31
+- [ ] Au branchement, le robot annonce « ✅ … en ligne — N compte(s) » sur Telegram (≈2 min)
+- [ ] `/statut` répond : opérateur affiché, signal ≥ 12/31
+- [ ] `python3 -m totem --modems` liste bien chaque modem branché
+
+## A bis. Second modem (quand il arrive)
+- [ ] Brancher le second modem sur le **hub USB alimenté**, puis redémarrer TOTEM
+- [ ] Le démarrage annonce **2 comptes**, chacun avec son opérateur
+- [ ] `/comptes` affiche les deux, avec des boutons de bascule
+- [ ] Un SMS reçu sur chaque SIM arrive bien, étiqueté du bon opérateur
 
 ## B. USSD interactif (le cœur du projet)
 - [ ] Envoyez un code USSD de votre opérateur (ex. Lycamobile `*131#`,
