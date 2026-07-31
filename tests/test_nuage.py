@@ -67,6 +67,21 @@ class TestNuage(unittest.TestCase):
         self.assertIsNone(muet.demarrer())
         self.assertEqual(muet.resume(), "cloud désactivé")
 
+    # --- identité du terminal ---
+    def test_le_terminal_annonce_sa_version(self):
+        """Savoir, depuis n'importe où, quel code tourne sur le Pi.
+
+        C'est ce qui distingue « le correctif n'existe pas » de « le
+        correctif existe mais n'est pas déployé » — deux situations qui se
+        ressemblent exactement vues de loin."""
+        from totem.version import version
+
+        self.assertTrue(self.nuage.enregistrer_terminal({"disque": "42 %"}))
+        ligne = self._lignes("terminaux")[-1]
+        self.assertEqual(ligne["version"], version())
+        self.assertTrue(ligne["version"])
+        self.assertEqual(ligne["id"], "douala")
+
     # --- envoi ---
     def test_envoie_les_paiements_compris(self):
         self.journal.sms(
