@@ -74,10 +74,12 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modem MTN MoMo pour tests sans matériel
   telegram.py     client API Telegram (claviers, édition, fichiers, groupe, rôles)
+  courrier.py     acheminement fiable des annonces (survit aux coupures réseau)
   console.py      transports de test (console, scénario)
   entrant.py      message entrant commun à tous les transports (frappe ou clic)
   mise_en_forme.py  échappement et balisage HTML des messages
-  storage.py      journal SQLite (SMS, USSD, événements, rapport 24 h, export CSV)
+  storage.py      journal SQLite par SIM (SMS, USSD, courrier en attente,
+                  rapport 24 h, export CSV, sauvegarde)
   config.py       chargement totem.conf
 install.sh        installation en une commande sur Raspberry Pi OS
 systemd/          service (démarrage auto + relance)

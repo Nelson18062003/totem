@@ -41,7 +41,8 @@ class _TransportTexte:
     def accuser(self, callback_id, texte=""):
         pass
 
-    def envoyer_fichier(self, nom, contenu, legende="", canal=None):
+    def envoyer_fichier(self, nom, contenu, legende="", canal=None,
+                        type_mime="text/csv"):
         print(f"\n📎 {nom} ({len(contenu)} octets) — {brut(legende)}")
         return True
 
@@ -67,7 +68,11 @@ class TransportConsole(_TransportTexte):
 
 
 class TransportScenario(_TransportTexte):
-    """Rejoue une liste de messages puis s'arrête : pour la démo automatisée."""
+    """Rejoue une liste de messages puis s'arrête : pour la démo automatisée.
+
+    Une entrée préfixée de « ! » simule un appui sur un bouton plutôt qu'un
+    message tapé — sans quoi la démo ne pourrait pas franchir les étapes qui
+    n'existent qu'en boutons (confirmation d'une sortie, pavé du code)."""
 
     def __init__(self, messages):
         super().__init__()
@@ -79,5 +84,9 @@ class TransportScenario(_TransportTexte):
             raise KeyboardInterrupt  # fin du scénario
         self.compteur += 1
         texte = self.messages.pop(0)
+        if texte.startswith("!"):
+            print(f"\n👆 [{texte[1:]}]")
+            return [Entrant(texte=texte[1:], bouton=True, callback_id="demo",
+                            origine_id=self.dernier_id)]
         print(f"\n👤 {texte}")
         return [Entrant(texte=texte, message_id=self.compteur)]

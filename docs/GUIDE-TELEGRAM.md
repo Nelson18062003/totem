@@ -217,14 +217,79 @@ c'est déjà un journal par carte, il ne restera qu'à faire tourner deux modems
 > plupart des SIM prépayées ne l'inscrivent pas dans la puce. L'ICCID, lui, y
 > est toujours.
 
-## 9. Export comptable
+## 9. Confirmation avant une sortie importante
+
+Au-delà d'un montant que vous fixez, **le pavé du code secret ne s'affiche
+plus directement**. Une carte s'intercale et rappelle ce que vous êtes sur le
+point de valider :
+
+```
+⚠️ Confirmation demandée
+Montant : 50 000 FCFA
+Bénéficiaire : 677123456
+Opérateur : MTN MoMo · carte …000011
+
+[✅ Confirmer]
+[❌ Annuler]
+```
+
+Dans `totem.conf` :
+
+```ini
+seuil_confirmation = 100000     ; 0 = désactivé
+```
+
+Le robot lit le montant et le bénéficiaire dans vos propres réponses au menu
+de l'opérateur — il n'invente rien. Tant que vous n'avez pas confirmé, **le
+code secret n'existe nulle part** : le pavé reste inerte, et taper le code à
+la main ne contourne rien.
+
+C'est le garde-fou si quelqu'un met la main sur votre téléphone déverrouillé :
+consulter un solde reste possible, sortir de l'argent demande un geste
+délibéré de plus.
+
+## 10. Sauvegarde : Telegram garde votre journal
+
+Le journal ne vit que sur la carte SD du Pi. Une carte morte, et tout
+l'historique des encaissements disparaît.
+
+**`/sauvegarde`** envoie une copie complète du journal dans la conversation.
+Telegram conserve le fichier indéfiniment : pas de serveur à louer, pas
+d'identifiant supplémentaire à gérer, et il est accessible depuis n'importe
+quel appareil. Le fichier ne contient **aucun code secret** (le journal n'en
+garde jamais).
+
+C'est automatique chaque jour, juste après le bilan :
+
+```ini
+sauvegarde_quotidienne = oui
+```
+
+**Pour restaurer** : téléchargez le fichier depuis Telegram, arrêtez le robot
+(`sudo systemctl stop totem`), remplacez `journal.db` par celui-ci, relancez.
+
+## 11. Rien ne se perd pendant une coupure Internet
+
+À Douala, la connexion tombe. Les paiements, eux, continuent d'arriver.
+
+Les encaissements, alertes et bilans passent désormais par une **file
+d'attente écrite sur disque** : si l'envoi échoue, le message est mis de côté
+et repart tout seul au retour du réseau, **dans l'ordre d'origine**. Un
+nouveau message ne double jamais la file — la chronologie des encaissements
+est préservée.
+
+Les échanges interactifs (menus USSD, réponses aux commandes) n'y passent
+pas : ils n'ont d'intérêt qu'immédiatement, et vous voyez tout de suite s'ils
+n'aboutissent pas.
+
+## 12. Export comptable
 
 `/export` (ou le bouton **📄 Export CSV**) envoie dans la conversation un
 fichier `totem-AAAA-MM-JJ.csv` des 7 derniers jours : date, carte, expéditeur,
 montant déjà extrait en colonne, message complet. Il s'ouvre directement dans
 Excel (accents compris) et s'importe dans un logiciel de comptabilité.
 
-## 10. Les autres améliorations, invisibles mais utiles
+## 13. Les autres améliorations, invisibles mais utiles
 
 - **Menu « / » natif** : les commandes sont déclarées auprès de Telegram, elles
   apparaissent dans le bouton *Menu* de l'application. Plus rien à retenir.
@@ -241,7 +306,7 @@ Excel (accents compris) et s'importe dans un logiciel de comptabilité.
 - **Textes échappés** : un SMS contenant `<` ou `&` s'affiche correctement au
   lieu de casser la mise en forme.
 
-## 11. Ce qui n'a pas changé (et ne doit pas changer)
+## 14. Ce qui n'a pas changé (et ne doit pas changer)
 
 - Aucun port ouvert sur le Pi : uniquement des connexions **sortantes**.
 - Le PIN MoMo n'est **jamais** stocké.

@@ -48,7 +48,9 @@ def principal():
             modem.reseau["code"],   # ouvre le menu de l'opérateur simulé
             compte, "1",            # Mon compte → Solde
             modem.reseau["code"],   # transfert complet
-            "1", "677123456", "50000", "1234",   # 1234 = code de simulation
+            "1", "677123456", "50000",  # 50 000 > seuil : confirmation demandée
+            "!c:confirmer",             # appui sur « ✅ Confirmer »
+            "!p:1", "!p:2", "!p:3", "!p:4", "!p:ok",   # code au pavé sécurisé
             "/rapport",
             "/sms",
             "/sims",
@@ -58,7 +60,8 @@ def principal():
             scenario[2:2] = [modem.reseau["code"], "5"]
         journal = Journal(":memory:")
         robot = Robot(modem, TransportScenario(scenario), journal,
-                      nom="TOTEM (démo)", pause_sms=1, profils=PROFILS_SIMULES)
+                      nom="TOTEM (démo)", pause_sms=1, profils=PROFILS_SIMULES,
+                      seuil_confirmation=25000, sauvegarde_quotidienne=False)
         # Un client « paie » avant le début du scénario, pour /rapport et /sms
         modem.injecter_paiement("NGONO Marie", 25000)
         robot.demarrer()
@@ -97,7 +100,9 @@ def principal():
 
     Robot(modem, transport, journal, nom=nom,
           heure_rapport=cfg["heure_rapport"], profils=cfg["profils"],
-          delai_session=cfg["delai_session"]).demarrer()
+          delai_session=cfg["delai_session"],
+          seuil_confirmation=cfg["seuil_confirmation"],
+          sauvegarde_quotidienne=cfg["sauvegarde_quotidienne"]).demarrer()
 
 
 def _attendre_modem(port, transport, pause=30):

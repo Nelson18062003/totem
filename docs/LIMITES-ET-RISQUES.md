@@ -90,13 +90,15 @@ répondait 400 et **le message était perdu**.
 *En place* : en cas de refus, le message est renvoyé aussitôt sans mise en
 forme. Mieux vaut un texte sans gras qu'un encaissement jamais annoncé.
 
-### 🟡 Plus d'Internet à Douala
-Sans réseau, le robot ne peut rien envoyer. Il réessaie et repart seul quand
-la connexion revient, mais **les alertes émises pendant la coupure sont
-perdues** (les SMS, eux, restent au journal).
+### ✅ Plus d'Internet à Douala
+Sans réseau, le robot ne pouvait rien envoyer, et **les alertes émises pendant
+la coupure étaient perdues** — or c'est justement pendant une coupure que les
+paiements continuent d'arriver.
 
-*À faire* : une file d'attente persistante qui rejoue les annonces au retour
-du réseau.
+*En place* : encaissements, alertes et bilans passent par une file d'attente
+écrite sur disque. Un envoi qui échoue est mis de côté et repart seul au
+retour du réseau, dans l'ordre d'origine. Un message impossible à envoyer est
+abandonné au bout de nombreuses tentatives pour ne pas bloquer la file.
 
 ### 🔴 Panne de courant prolongée / carte SD morte
 Le Pi ne redémarre pas tout seul sans électricité, et une carte SD finit par
@@ -115,6 +117,14 @@ Journalisé en `****`. Saisie au clavier toujours possible, message effacé.
 Seules les conversations déclarées sont écoutées ; seuls les `admins`
 pilotent la SIM ; toute tentative refusée est journalisée.
 
+### ✅ Une sortie importante sans garde-fou
+Qui tient votre téléphone déverrouillé tenait le robot.
+
+*En place* : au-delà d'un montant que vous fixez (`seuil_confirmation`), le
+pavé du code secret ne s'affiche qu'après une carte de confirmation rappelant
+le montant et le bénéficiaire. Tant qu'elle n'est pas validée, le code
+n'existe nulle part — et le taper à la main ne contourne rien.
+
 ### 🟡 Le jeton du bot est la clé du royaume
 Qui obtient le fichier `totem.conf` obtient le contrôle du robot. Le fichier
 vit sur la partition de démarrage, lisible dès qu'on a la carte SD en main.
@@ -127,9 +137,10 @@ Les conversations avec un bot ne sont **pas** chiffrées de bout en bout. Les
 montants et les menus passent par les serveurs de Telegram. C'est un choix
 assumé (rien d'autre n'offre cette simplicité d'usage), mais il faut le savoir.
 
-### 🔴 Un téléphone volé et déverrouillé
-Celui qui a votre Telegram a le robot. Une confirmation à deux facteurs pour
-les opérations sortantes (au-delà d'un montant) reste à construire.
+### 🟡 Un téléphone volé et déverrouillé
+Celui qui a votre Telegram a le robot. La confirmation au-delà d'un montant
+(ci-dessus) est le premier garde-fou ; elle ralentit un voleur pressé, elle
+n'arrête pas quelqu'un de déterminé qui connaît votre code Mobile Money.
 
 ---
 
@@ -207,22 +218,28 @@ signal, réseau, espace disque et température du Pi.
 Le bilan suit l'heure locale de la machine. Un Pi mal réglé envoie le rapport
 au mauvais moment. À vérifier avec `timedatectl` (fuseau `Africa/Douala`).
 
-### 🔴 Pas de sauvegarde hors du Pi
-Le journal SQLite ne vit que sur la carte SD. `/export` permet de sortir les
-7 derniers jours à la main ; une copie automatique vers un stockage distant
-reste à faire.
+### ✅ Pas de sauvegarde hors du Pi
+Le journal SQLite ne vivait que sur la carte SD. Une carte morte effaçait tout
+l'historique des encaissements.
+
+*En place* : `/sauvegarde` envoie une copie complète du journal dans Telegram,
+automatiquement chaque jour après le bilan. Telegram conserve le fichier
+indéfiniment : aucun serveur à louer, aucun identifiant de plus à gérer. Pour
+restaurer, il suffit de remplacer `journal.db` par le fichier téléchargé.
+
+*Reste* : la sauvegarde vit dans la même conversation Telegram que le reste.
+Un compte Telegram perdu emporte les deux. Une copie occasionnelle vers un
+disque à vous reste la ceinture de sécurité.
 
 ---
 
 ## Ce que je construirais ensuite, dans cet ordre
 
-1. **Sauvegarde du journal hors du Pi** — une perte de carte SD efface
-   l'historique. C'est le risque le plus coûteux encore ouvert.
-2. **File d'attente persistante des annonces** — pour que rien ne se perde
-   pendant une coupure Internet.
-3. **Confirmation à deux temps au-delà d'un montant** — le seul vrai garde-fou
-   contre un téléphone compromis.
-4. **Mini App Telegram** — l'app web `web/` servie dans Telegram : tableaux,
+1. **Mini App Telegram** — l'app web `web/` servie dans Telegram : tableaux,
    filtres, historique par carte. C'est le pas au-delà des boutons.
-5. **Mode PDU pour les SMS longs** — le jour où un message arrive tronqué.
-6. **Second modem** — quand le deuxième HAT arrivera.
+2. **Vérification du menu attendu avant d'enchaîner un raccourci** — pour
+   qu'un opérateur qui réorganise son menu ne mène pas ailleurs en silence.
+3. **Mode PDU pour les SMS longs** — le jour où un message arrive tronqué.
+4. **Second modem** — quand le deuxième HAT arrivera. La base est prête.
+5. **Copie de sauvegarde ailleurs que dans Telegram** — pour ne pas dépendre
+   d'un seul compte.

@@ -19,11 +19,15 @@ est décrit dans `totem.conf`, et le robot choisit le bon profil d'après ce
 que le modem voit réellement dans la SIM présente.
 """
 
+import os
 import re
+import shutil
+import tempfile
 import threading
 import time
 from datetime import datetime
 
+from .courrier import Facteur
 from .mise_en_forme import echap, gras, italique, mono
 from .modem import USSD_OUVERTE, ErreurModem
 from .storage import montant_recu
@@ -35,6 +39,11 @@ RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
 # Vocabulaire du code secret, selon les opérateurs.
 RE_DEMANDE_CODE = re.compile(
     r"\bpin\b|code\s+(?:secret|confidentiel|pin)|mot\s+de\s+passe|password", re.I)
+# Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
+# permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
+RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount", re.I)
+RE_DEMANDE_DESTINATAIRE = re.compile(
+    r"num[ée]ro|b[ée]n[ée]ficiaire|destinataire|recipient", re.I)
 
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
@@ -50,6 +59,7 @@ COMMANDES_BOT = [
     ("export", "Journal des 7 derniers jours en CSV"),
     ("sims", "Les cartes SIM déjà passées dans le robot"),
     ("diagnostic", "État détaillé (mémoire SMS, disque, température)"),
+    ("sauvegarde", "Envoyer une copie du journal dans la conversation"),
     ("annuler", "Fermer la session USSD en cours"),
     ("redemarrer_modem", "Relancer le modem"),
     ("aide", "Aide"),
@@ -85,10 +95,14 @@ AIDE = (
 class Robot:
     def __init__(self, modem, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, profils=None,
-                 delai_session=180):
+                 delai_session=180, seuil_confirmation=0,
+                 sauvegarde_quotidienne=True):
         self.modem = modem
         self.transport = transport
         self.journal = journal
+        self.facteur = Facteur(journal, transport)
+        self.seuil_confirmation = seuil_confirmation
+        self.sauvegarde_quotidienne = sauvegarde_quotidienne
         self.nom = nom
         self.heure_rapport = heure_rapport
         self.pause_sms = pause_sms
@@ -123,6 +137,10 @@ class Robot:
         self.pin_tampon = ""
         self.file_macro = []
         self.dernier_echange = time.time()
+        self.montant_session = None      # montant saisi pendant la session
+        self.destinataire_session = ""   # bénéficiaire saisi pendant la session
+        self.attente_saisie = ""         # ce que l'opérateur vient de demander
+        self.confirme = False            # grosse sortie déjà confirmée ?
 
     # ---- identité de la SIM et profil opérateur ---------------------------
     @staticmethod
@@ -223,7 +241,8 @@ class Robot:
                 self._liste_sims(canal)
             elif commande == "diagnostic":
                 self._diagnostic(canal)
-            elif commande in ("annuler", "redemarrer_modem") or RE_CODE_USSD.match(texte) \
+            elif commande in ("annuler", "redemarrer_modem", "sauvegarde") \
+                    or RE_CODE_USSD.match(texte) \
                     or self.session_ussd:
                 if not self._verifier_admin(role, entrant, canal):
                     return
@@ -236,6 +255,8 @@ class Robot:
     def _action_admin(self, commande, texte, entrant, canal):
         if commande == "annuler":
             self._annuler(canal)
+        elif commande == "sauvegarde":
+            self._sauvegarde(canal)
         elif commande == "redemarrer_modem":
             self._redemarrer_modem(canal)
         elif RE_CODE_USSD.match(texte):
@@ -245,8 +266,14 @@ class Robot:
             # secret tapé à la main : dans ce cas on efface le message).
             if self.pin_actif:
                 self.transport.supprimer(entrant.message_id, canal=canal)
+                if self._confirmation_requise():
+                    # Même en tapant le code à la main, on ne saute pas la
+                    # confirmation d'une sortie importante.
+                    self._afficher_session()
+                    return
                 self.journal.ussd("envoyé", "****")
             else:
+                self._retenir_saisie(texte)
                 self.journal.ussd("envoyé", texte)
             self._ussd(texte, nouveau=False)
             self._avancer_macro()
@@ -276,6 +303,14 @@ class Robot:
                 f"{mono(self.profil.get('menu') or '*126#')}.", canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
+        elif genre == "c" and valeur == "confirmer":
+            if self._confirmation_requise():
+                self.confirme = True
+                self.journal.ussd(
+                    "envoyé", f"[confirmation de {self.montant_session} FCFA]")
+                self._afficher_session()
+        elif genre == "c" and valeur == "sauvegarde":
+            self._sauvegarde(canal)
         elif genre == "m":
             self._lancer_raccourci(valeur, canal)
         elif genre == "u":
@@ -358,10 +393,54 @@ class Robot:
         self.pin_actif = self.session_ussd and self._demande_un_code(reponse)
         self.pin_tampon = ""
         self.dernier_echange = time.time()
+        self._noter_attente(reponse)
         if self.session_ussd:
             self._afficher_session()
         else:
             self._cloturer_session(self._texte_menu(reponse))
+
+    def _noter_attente(self, menu):
+        """Retient ce que l'opérateur demande, pour pouvoir rappeler le montant
+        et le bénéficiaire au moment de valider."""
+        _, options = self._analyser_menu(menu)
+        if options:
+            self.attente_saisie = ""
+            return
+        if RE_DEMANDE_MONTANT.search(menu):
+            self.attente_saisie = "montant"
+        elif RE_DEMANDE_DESTINATAIRE.search(menu):
+            self.attente_saisie = "destinataire"
+        else:
+            self.attente_saisie = ""
+
+    def _retenir_saisie(self, texte):
+        """Mémorise la réponse libre de l'utilisateur selon ce qui était demandé."""
+        if self.attente_saisie == "montant":
+            chiffres = re.sub(r"\D", "", texte)
+            if chiffres:
+                self.montant_session = int(chiffres)
+        elif self.attente_saisie == "destinataire":
+            self.destinataire_session = texte.strip()[:24]
+        self.attente_saisie = ""
+
+    def _confirmation_requise(self):
+        """Une sortie importante mérite un temps d'arrêt avant le code secret."""
+        return (self.seuil_confirmation > 0
+                and self.montant_session is not None
+                and self.montant_session >= self.seuil_confirmation
+                and not self.confirme)
+
+    def _carte_confirmation(self):
+        destinataire = (f"\nBénéficiaire : {mono(self.destinataire_session)}"
+                        if self.destinataire_session else "")
+        return (
+            f"⚠️ {gras('Confirmation demandée')}\n"
+            f"Montant : {gras(self._fcfa(self.montant_session))}{destinataire}\n"
+            f"Opérateur : {echap(self.profil['nom'])} · "
+            f"carte {mono(self._sim_lisible(self.sim))}\n\n"
+            + italique("Au-delà du seuil que vous avez fixé, le code secret ne "
+                       "s'affiche qu'après cette confirmation."),
+            [[("✅ Confirmer", "c:confirmer")], [("❌ Annuler", "c:annuler")]])
 
     @classmethod
     def _demande_un_code(cls, menu):
@@ -412,7 +491,9 @@ class Robot:
 
     def _afficher_session(self):
         """Réécrit la carte de session en place : une seule carte, vivante."""
-        if self.pin_actif:
+        if self.pin_actif and self._confirmation_requise():
+            texte, boutons = self._carte_confirmation()
+        elif self.pin_actif:
             texte, boutons = self._carte_pin()
         else:
             entete, options = self._analyser_menu(self.dernier_menu)
@@ -441,8 +522,8 @@ class Robot:
                        "jamais dans la conversation."), boutons)
 
     def _pave(self, touche):
-        if not self.pin_actif:
-            return
+        if not self.pin_actif or self._confirmation_requise():
+            return    # le pavé n'existe pas tant que la sortie n'est pas confirmée
         self.dernier_echange = time.time()
         if touche == "eff":
             self.pin_tampon = self.pin_tampon[:-1]
@@ -552,15 +633,18 @@ class Robot:
     def _rapport(self, canal=None, manuel=False):
         b = self.journal.rapport_du_jour()
         solde_net = b["recu"] - b["envoye"]
-        self.transport.envoyer(
+        corps = (
             f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')} — "
             f"{gras(self.profil['nom'])} {mono(self._sim_lisible(self.sim))}\n"
             f"⬇️ Entrées : {gras(b['encaissements'])} — {gras(self._fcfa(b['recu']))}\n"
             f"⬆️ Sorties : {gras(b['sorties'])} — {gras(self._fcfa(b['envoye']))}\n"
             f"Solde du jour : {gras(self._fcfa(solde_net))}\n"
-            f"SMS reçus : {b['sms']} · Signal : {self.modem.signal()}/31",
-            canal=canal if manuel else "encaissements",
-            boutons=[[("📄 Export CSV", "c:export")]] if manuel else None)
+            f"SMS reçus : {b['sms']} · Signal : {self.modem.signal()}/31")
+        if manuel:
+            self.transport.envoyer(corps, canal=canal,
+                                   boutons=[[("📄 Export CSV", "c:export")]])
+        else:
+            self.facteur.poster(corps, canal="encaissements")
 
     def _diagnostic(self, canal=None):
         """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
@@ -618,6 +702,42 @@ class Robot:
             pass
         return infos
 
+    def _sauvegarde(self, canal=None, automatique=False):
+        """Envoie le journal complet dans Telegram.
+
+        C'est la seule copie hors du Pi : une carte SD morte, et tout
+        l'historique des encaissements disparaît. Telegram garde le fichier
+        indéfiniment, sans serveur à louer ni identifiant à gérer. Pour
+        restaurer : télécharger le fichier et le remettre à la place de
+        journal.db, robot arrêté."""
+        dossier = tempfile.mkdtemp(prefix="totem-sauvegarde-")
+        chemin = os.path.join(dossier, f"journal-{datetime.now():%Y-%m-%d}.db")
+        try:
+            self.journal.sauvegarder(chemin)
+            with open(chemin, "rb") as fichier:
+                contenu = fichier.read()
+        except Exception as e:
+            self.journal.evenement(f"échec de sauvegarde : {e}")
+            if not automatique:
+                self.transport.envoyer(f"⚠️ Sauvegarde impossible : {echap(e)}",
+                                       canal=canal)
+            return
+        finally:
+            shutil.rmtree(dossier, ignore_errors=True)
+
+        legende = (f"💾 {gras('Sauvegarde du journal')} — "
+                   f"{len(contenu) // 1024} Ko\n"
+                   + italique("Conservez ce fichier : c'est la seule copie hors "
+                              "du Pi. Pour restaurer, remplacez journal.db par "
+                              "celui-ci, robot arrêté."))
+        if not self.transport.envoyer_fichier(
+                os.path.basename(chemin), contenu, legende=legende, canal=canal,
+                type_mime="application/x-sqlite3"):
+            self.journal.evenement("sauvegarde non transmise")
+            if not automatique:
+                self.transport.envoyer("⚠️ La sauvegarde n'a pas pu être envoyée.",
+                                       canal=canal)
+
     def _export(self, canal=None):
         contenu = self.journal.export_csv(7)
         nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
@@ -656,6 +776,10 @@ class Robot:
             self._signaler_conflit()
             self._expirer_session()
             self._rapport_quotidien()
+            try:
+                self.facteur.distribuer()   # rattrape ce qu'une coupure a retenu
+            except Exception as e:
+                self.journal.evenement(f"erreur distribution courrier : {e}")
             time.sleep(self.pause_sms)
 
     def _relever_sms(self):
@@ -689,7 +813,7 @@ class Robot:
             return
         self.memoire_signalee = True
         self.journal.evenement(f"mémoire SMS à {occupes}/{capacite}")
-        self.transport.envoyer(
+        self.facteur.poster(
             f"⚠️ {gras('Mémoire SMS presque pleine')} — {occupes}/{capacite}.\n"
             + italique("Au-delà, le réseau ne peut plus déposer de nouveaux SMS : "
                        "des encaissements passeraient inaperçus. Le robot efface "
@@ -718,6 +842,8 @@ class Robot:
             return
         self.dernier_rapport = maintenant.date()
         self._rapport()
+        if self.sauvegarde_quotidienne:
+            self._sauvegarde(canal="alertes", automatique=True)
 
     def _notifier_sms(self, expediteur, texte):
         """Tous les SMS arrivent de la même façon : aucun n'est mis en
@@ -726,7 +852,9 @@ class Robot:
         entete = (f"💰 {gras('Encaissement')} — {gras(self._fcfa(montant))}"
                   if montant is not None
                   else f"📥 {gras('SMS')} de {gras(expediteur)}")
-        self.transport.envoyer(
+        # Par le facteur : un encaissement annoncé pendant une coupure réseau
+        # doit repartir tout seul au retour de la connexion.
+        self.facteur.poster(
             f"{entete}\n{echap(texte)}\n"
             + italique(f"{self.profil['nom']} · {self._sim_lisible(self.sim)}"),
             canal="encaissements")
@@ -746,12 +874,12 @@ class Robot:
             self.journal.evenement(f"changement de SIM : {ancienne} → {iccid}")
             if ancienne is None:
                 return          # première lecture : rien à annoncer
-            self.transport.envoyer(
+            self.facteur.poster(
                 f"💳 {gras('Nouvelle carte SIM détectée')}\n"
                 f"Opérateur : {gras(operateur)}\n"
                 f"Carte : {mono(self._sim_lisible(iccid))}\n"
                 + italique("Journal, rapports et raccourcis basculent sur cette carte."),
-                canal="alertes", boutons=self._boutons_accueil(ADMIN))
+                canal="alertes")
 
     def _expirer_session(self):
         with self.verrou:

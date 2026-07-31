@@ -46,6 +46,11 @@ class Journal:
                     id INTEGER PRIMARY KEY, date TEXT, direction TEXT, texte TEXT);
                 CREATE TABLE IF NOT EXISTS evenements(
                     id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
+                -- Courrier en souffrance : ce que le robot n'a pas pu envoyer
+                -- (coupure Internet). Rien ne se perd, tout part au retour.
+                CREATE TABLE IF NOT EXISTS sortants(
+                    id INTEGER PRIMARY KEY, date TEXT, canal TEXT, texte TEXT,
+                    essais INTEGER DEFAULT 0);
                 """
             )
             self._migrer_colonne_sim()
@@ -157,6 +162,58 @@ class Journal:
                 "SELECT sim, COUNT(*), MAX(date) FROM sms GROUP BY sim "
                 "ORDER BY MAX(date) DESC").fetchall()
 
+    # ---- courrier en souffrance -------------------------------------------
+    def enfiler(self, canal, texte):
+        """Met un message de côté pour l'envoyer dès que le réseau revient."""
+        with self.verrou:
+            self.conn.execute(
+                "INSERT INTO sortants(date, canal, texte) VALUES(?,?,?)",
+                (self._maintenant(), "" if canal is None else str(canal), texte))
+            self.conn.commit()
+
+    def courrier_en_attente(self):
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT COUNT(*) FROM sortants").fetchone()[0]
+
+    def prochain_courrier(self):
+        """(id, canal, texte, essais) du plus ancien message en attente."""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT id, canal, texte, essais FROM sortants "
+                "ORDER BY id LIMIT 1").fetchone()
+        if not ligne:
+            return None
+        identifiant, canal, texte, essais = ligne
+        return identifiant, _canal(canal), texte, essais
+
+    def courrier_livre(self, identifiant):
+        with self.verrou:
+            self.conn.execute("DELETE FROM sortants WHERE id = ?", (identifiant,))
+            self.conn.commit()
+
+    def courrier_echoue(self, identifiant, essais_max=60):
+        """Compte l'échec ; abandonne au bout de nombreuses tentatives pour
+        qu'un message impossible à envoyer ne bloque pas toute la file."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE sortants SET essais = essais + 1 WHERE id = ?", (identifiant,))
+            self.conn.execute("DELETE FROM sortants WHERE id = ? AND essais >= ?",
+                              (identifiant, essais_max))
+            self.conn.commit()
+
+    # ---- sauvegarde --------------------------------------------------------
+    def sauvegarder(self, chemin):
+        """Copie cohérente du journal, même pendant que le robot écrit.
+        Envoyée dans Telegram, elle constitue la seule copie hors du Pi."""
+        destination = sqlite3.connect(chemin)
+        try:
+            with self.verrou:
+                self.conn.backup(destination)
+        finally:
+            destination.close()
+        return chemin
+
     def _filtre_sim(self, toutes_sims, condition_base=""):
         """Construit le WHERE : la SIM courante, sauf demande explicite."""
         clauses = [condition_base] if condition_base else []
@@ -165,6 +222,15 @@ class Journal:
             clauses.append("sim = ?")
             parametres.append(self.sim)
         return ("WHERE " + " AND ".join(clauses)) if clauses else "", tuple(parametres)
+
+
+def _canal(brut):
+    """Le canal est stocké en texte : « alertes », ou un identifiant de chat."""
+    if not brut:
+        return None
+    if re.fullmatch(r"-?\d+", brut):
+        return int(brut)
+    return brut
 
 
 def _nombre(brut):

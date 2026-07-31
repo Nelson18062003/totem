@@ -217,7 +217,8 @@ class TransportTelegram:
         except Exception:
             pass
 
-    def envoyer_fichier(self, nom, contenu, legende="", canal=None):
+    def envoyer_fichier(self, nom, contenu, legende="", canal=None,
+                        type_mime="text/csv"):
         """Envoie un document (multipart, écrit à la main : zéro dépendance)."""
         chat, sujet = self._destination(canal)
         limite = "----totem" + str(len(contenu))
@@ -229,7 +230,7 @@ class TransportTelegram:
             corps += (f"--{limite}\r\nContent-Disposition: form-data; name=\"{cle}\""
                       f"\r\n\r\n{valeur}\r\n").encode()
         corps += (f"--{limite}\r\nContent-Disposition: form-data; name=\"document\";"
-                  f" filename=\"{nom}\"\r\nContent-Type: text/csv\r\n\r\n").encode()
+                  f" filename=\"{nom}\"\r\nContent-Type: {type_mime}\r\n\r\n").encode()
         corps += contenu + f"\r\n--{limite}--\r\n".encode()
         req = urllib.request.Request(
             f"{self.base}/sendDocument", data=corps,

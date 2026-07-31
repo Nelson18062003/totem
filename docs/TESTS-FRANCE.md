@@ -69,6 +69,23 @@ de crédit et de data).
       cloisonnement par SIM ne peut pas fonctionner)
 - [ ] Envoyez 5 SMS coup sur coup à la SIM → les 5 arrivent tous dans Telegram
       (aucun perdu par excès de débit)
+- [ ] **Coupez Internet sur le Pi** (débranchez l'Ethernet / le Wi-Fi), envoyez
+      un SMS à la SIM → rien n'arrive, c'est normal. Rebranchez : le SMS
+      **arrive tout seul** quelques secondes plus tard
+- [ ] Coupez Internet, envoyez 3 SMS, rebranchez → les 3 arrivent **dans
+      l'ordre** où ils ont été reçus
+
+## D ter. Sauvegarde et garde-fou financier
+- [ ] `/sauvegarde` envoie un fichier `journal-AAAA-MM-JJ.db` dans la
+      conversation. Téléchargez-le et gardez-le : c'est votre filet de sécurité
+- [ ] Réglez `seuil_confirmation` bas (ex. 1000), lancez un transfert d'un
+      montant supérieur → une carte **⚠️ Confirmation demandée** s'affiche avec
+      le montant et le bénéficiaire, **avant** le pavé du code
+- [ ] Essayez de taper le code à la main à ce moment-là → refusé, la
+      confirmation reste affichée
+- [ ] Appuyez sur **✅ Confirmer** → le pavé apparaît, le transfert aboutit
+- [ ] Refaites un transfert d'un montant **inférieur** au seuil → aucune
+      confirmation, le pavé s'affiche directement
 
 ## E. Sécurité
 - [ ] Depuis le Telegram d'une AUTRE personne, envoyez un message au bot →

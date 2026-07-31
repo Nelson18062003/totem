@@ -116,6 +116,10 @@ def charger():
                     "heure_rapport": cfg.get("totem", "heure_rapport", fallback="21:00"),
                     "base": cfg.get("totem", "base", fallback="/var/lib/totem/journal.db"),
                     "delai_session": cfg.getint("totem", "delai_session", fallback=180),
+                    "seuil_confirmation": cfg.getint("totem", "seuil_confirmation",
+                                                     fallback=0),
+                    "sauvegarde_quotidienne": cfg.getboolean(
+                        "totem", "sauvegarde_quotidienne", fallback=True),
                     "profils": _profils(cfg),
                 }
             except KeyError as e:
