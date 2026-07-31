@@ -149,6 +149,15 @@ python3 -m totem --demo         # démonstration, sans matériel
 python3 -m totem --simulation   # faux modems, vrai Telegram
 ```
 
+### Créer un bouton pour une opération courante
+
+Faites l'opération une fois dans Telegram (le solde, par exemple). À la fin,
+appuyez sur **💾 En faire un bouton**, donnez un nom. C'est tout — rien à
+modifier dans un fichier, rien à redémarrer.
+
+`/raccourcis` liste vos boutons et permet d'en supprimer. Ils suivent
+l'opérateur de la carte en place.
+
 ### Ce que le robot surveille tout seul
 
 Il vous prévient sur Telegram, sans que vous demandiez rien :

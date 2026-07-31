@@ -121,6 +121,14 @@ class Journal:
                     libelle TEXT, numero TEXT, imei TEXT,
                     premiere_vue TEXT, derniere_vue TEXT,
                     envoye INTEGER DEFAULT 0);
+                -- Raccourcis appris en observant une opération réelle.
+                -- Rangés par OPÉRATEUR et non par carte : les codes sont ceux
+                -- du réseau, pas de la puce. Changer de SIM MTN pour une autre
+                -- SIM MTN ne doit pas faire disparaître les boutons.
+                CREATE TABLE IF NOT EXISTS raccourcis(
+                    id INTEGER PRIMARY KEY, operateur TEXT NOT NULL,
+                    nom TEXT NOT NULL, libelle TEXT, etapes TEXT NOT NULL,
+                    cree_le TEXT, UNIQUE(operateur, nom));
                 """
             )
             # Migration douce des bases créées avant le multi-comptes.
@@ -281,6 +289,48 @@ class Journal:
             return "", ()
         trous = ",".join("?" * len(retenus))
         return f" AND (iccid IN ({trous}) OR COALESCE(iccid, '') = '')", tuple(retenus)
+
+    # ---- raccourcis appris -------------------------------------------------
+    # Les codes USSD n'ont rien d'universel : le solde est « *126# puis 5
+    # puis 1 » chez l'un, « #148*5# » chez l'autre. Les deviner serait
+    # irresponsable — une erreur de chiffre envoie de l'argent ailleurs. On
+    # les apprend donc en regardant l'utilisateur faire l'opération une fois.
+
+    def ajouter_raccourci(self, operateur, nom, libelle, etapes):
+        """Enregistre (ou remplace) un raccourci pour cet opérateur."""
+        if not operateur or not nom or not etapes:
+            return False
+        with self.verrou:
+            self.conn.execute(
+                "INSERT INTO raccourcis(operateur, nom, libelle, etapes, cree_le)"
+                " VALUES(?,?,?,?,?)"
+                " ON CONFLICT(operateur, nom) DO UPDATE SET"
+                " libelle = excluded.libelle, etapes = excluded.etapes,"
+                " cree_le = excluded.cree_le",
+                (operateur, nom[:24], (libelle or nom)[:32],
+                 ",".join(etapes), self._maintenant()))
+            self.conn.commit()
+        return True
+
+    def raccourcis(self, operateur):
+        """{nom: {libelle, etapes}} pour l'opérateur de la carte en place."""
+        if not operateur:
+            return {}
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT nom, libelle, etapes FROM raccourcis"
+                " WHERE operateur = ? ORDER BY id", (operateur,)).fetchall()
+        return {nom: {"libelle": libelle or nom,
+                      "etapes": [e for e in etapes.split(",") if e]}
+                for nom, libelle, etapes in lignes}
+
+    def supprimer_raccourci(self, operateur, nom):
+        with self.verrou:
+            curseur = self.conn.execute(
+                "DELETE FROM raccourcis WHERE operateur = ? AND nom = ?",
+                (operateur, nom))
+            self.conn.commit()
+        return curseur.rowcount > 0
 
     # ---- courrier Telegram en souffrance -----------------------------------
     def enfiler(self, canal, texte):
