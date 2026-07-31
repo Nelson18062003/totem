@@ -187,6 +187,8 @@ class Nuage:
                 "reference": (p.reference if p else None),
                 "solde_apres": (p.solde_apres if p else None),
                 "frais": (p.frais if p else None),
+                "commission": (p.commission if p else None),
+                "montant_brut": (p.montant_brut if p else None),
                 "texte": texte,
                 "recu_le": _horodatage(date),
             })

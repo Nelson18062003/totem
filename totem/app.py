@@ -28,7 +28,7 @@ import threading
 import time
 from datetime import datetime
 
-from .analyse_sms import analyser
+from .analyse_sms import analyser, formater_montant, masquer_secrets
 from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
@@ -1136,7 +1136,14 @@ class Robot:
 
     @staticmethod
     def _fcfa(montant):
-        return f"{montant:,}".replace(",", " ") + " FCFA"
+        return formater_montant(montant) + " FCFA"
+
+    def _nos_numeros(self):
+        """Les numéros des cartes en place — ce qui permet de dire de quel
+        côté d'un transfert on se trouve. Souvent vide : une SIM prépayée ne
+        déclare pas toujours son propre numéro. Dans ce cas le sens reste
+        inconnu, et c'est plus honnête que de le deviner."""
+        return tuple(c.carte.numero for c in self.comptes if c.carte.numero)
 
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
@@ -1290,6 +1297,11 @@ class Robot:
                 compte.echecs = 0
             return
         for indices, expediteur, texte in messages:
+            # Un code à usage unique ne doit survivre nulle part : ni au
+            # journal, ni dans la sauvegarde envoyée hors du Pi, ni sur
+            # Telegram. On le masque ici, une fois, et tout ce qui suit ne
+            # voit plus que la version sûre.
+            texte = masquer_secrets(texte)
             if not self.journal.sms_existe(expediteur, texte, compte.libelle):
                 self.journal.sms(expediteur, texte, compte.libelle,
                                  compte.carte.iccid)
@@ -1366,16 +1378,25 @@ class Robot:
         L'envoi passe par le facteur : un encaissement survenu pendant une
         coupure Internet doit repartir tout seul au retour du réseau."""
         etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
-        paiement = analyser(texte)
+        paiement = analyser(texte, numeros=self._nos_numeros())
 
         if paiement and paiement.sens == "entree":
             entete = (f"💰 {gras('Encaissement')}{etiquette} — "
                       f"{gras(self._fcfa(paiement.montant))}\n"
                       f"de {gras(paiement.tiers)}")
-        elif paiement:
+        elif paiement and paiement.sens == "sortie":
             entete = (f"↗️ {gras('Envoi')}{etiquette} — "
                       f"{gras(self._fcfa(paiement.montant))}\n"
                       f"vers {gras(paiement.tiers)}")
+        elif paiement:
+            # Orange nomme les deux parties sans dire laquelle est la nôtre, et
+            # la SIM ne déclare pas toujours son numéro. Plutôt qu'un
+            # « Encaissement » qui pourrait être un envoi, on montre le
+            # mouvement tel qu'il est écrit.
+            entete = (f"🔁 {gras('Transfert')}{etiquette} — "
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"{gras(echap(str(paiement.emetteur)))} → "
+                      f"{gras(echap(str(paiement.beneficiaire)))}")
         else:
             entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
 

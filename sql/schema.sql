@@ -83,13 +83,20 @@ create table if not exists paiements (
   -- ICCID de la carte qui a reçu ce paiement. C'est lui qui rattache la somme
   -- au bon solde : deux SIM du même opérateur ne partagent pas leur caisse.
   carte        text,
+  -- Nul quand le SMS nomme les deux parties sans dire laquelle est la nôtre
+  -- (forme d'Orange Money) et que la SIM ne déclare pas son propre numéro.
+  -- Mieux vaut un sens inconnu qu'un sens inversé.
   sens         text check (sens in ('entree', 'sortie')),
-  montant      bigint,
+  -- numeric, pas bigint : Orange annonce des soldes à la décimale
+  -- (« 2784137.6 FCFA »). Un entier les aurait tronqués ou refusés.
+  montant      numeric,
   tiers        text,                     -- nom si connu, sinon numéro
   numero       text,
   reference    text,                     -- référence de transaction opérateur
-  solde_apres  bigint,
-  frais        bigint,
+  solde_apres  numeric,
+  frais        numeric,
+  commission   numeric,                  -- Orange la détaille à part des frais
+  montant_brut numeric,                  -- « Montant Transaction », avant frais
   texte        text not null,            -- le SMS d'origine : il fait foi
   recu_le      timestamptz not null,
   cree_le      timestamptz not null default now(),
@@ -145,6 +152,16 @@ alter table comptes   add column if not exists iccid      text;
 alter table comptes   add column if not exists reseau     text;
 alter table comptes   add column if not exists itinerance boolean not null default false;
 alter table paiements add column if not exists carte      text;
+alter table paiements add column if not exists commission   numeric;
+alter table paiements add column if not exists montant_brut numeric;
+
+-- Les montants étaient des entiers. Orange annonce ses soldes à la décimale
+-- (« Nouveau Solde: 2784137.6 FCFA ») : sur une base existante, l'insertion
+-- serait refusée. Relancer ces trois lignes sur des colonnes déjà en numeric
+-- ne fait rien.
+alter table paiements alter column montant     type numeric;
+alter table paiements alter column solde_apres type numeric;
+alter table paiements alter column frais       type numeric;
 
 -- La clé d'un compte était son libellé (« MTN »). Deux SIM MTN successives
 -- s'écrasaient donc l'une l'autre : une seule ligne pour deux caisses. La clé
