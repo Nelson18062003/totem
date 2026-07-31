@@ -92,8 +92,9 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   sante.py        santé du Pi : tension, température, disque, sauvegardes
   nuage.py        pont vers Supabase (hors-ligne d'abord, file d'attente)
   config.py       chargement totem.conf
-brand/            la marque : symbole, verrouillages, icônes, et les scripts
-                  qui les régénèrent (charte : docs/IDENTITE.md)
+brand/            la marque : « La Tresse », verrouillages, icônes, motif,
+                  et les scripts qui régénèrent le tout
+                  (charte : docs/IDENTITE.md)
 sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
 tests/            batterie de tests (python3 -m unittest discover -s tests)
 install.sh        installation en une commande sur Raspberry Pi OS

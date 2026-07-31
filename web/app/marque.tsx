@@ -1,33 +1,67 @@
+"use client";
+
+import { useId } from "react";
+
 // Marque TOTEM — symbole et verrouillage.
 //
-// Le symbole est « Le Pilier » : un T dont le fût porte deux incisions et
-// repose sur un socle. Un seul tracé, règle `evenodd` — il se peint donc dans
-// n'importe quelle couleur, sur n'importe quel fond, sans réserve de fond.
+// Le symbole est « La Tresse » : deux brins qui se croisent à chaque registre
+// et se rejoignent aux deux bouts. Entre deux croisements, le vide dessine un
+// losange — le treillis naît du tressage, il n'est pas posé dessus.
 //
-// Les tracés de référence vivent dans `brand/` ; ce fichier en est le portage
-// React. Toute retouche se fait dans `brand/`, jamais ici seulement.
-// Voir docs/IDENTITE.md.
+// Les tracés de référence sont produits par `brand/generer.py`, qui fait
+// autorité. Ce fichier en est le portage React. Voir docs/IDENTITE.md.
 
-const FUT =
-  "M4.2 3H27.8A1.2 1.2 0 0 1 29 4.2V8.2A1.2 1.2 0 0 1 27.8 9.4H19.4V24.6H22" +
-  "A1.2 1.2 0 0 1 23.2 25.8V27.8A1.2 1.2 0 0 1 22 29H10A1.2 1.2 0 0 1 8.8 27.8" +
-  "V25.8A1.2 1.2 0 0 1 10 24.6H12.6V9.4H4.2A1.2 1.2 0 0 1 3 8.2V4.2" +
-  "A1.2 1.2 0 0 1 4.2 3Z";
+const BRIN_A =
+  "M16 4.4C17.54 5.302 22.6 6.462 22.6 8.267C22.6 10.071 19.08 10.329 16 12.133" +
+  "C12.92 13.938 9.4 14.196 9.4 16C9.4 17.804 12.92 18.062 16 19.867" +
+  "C19.08 21.671 22.6 21.929 22.6 23.733C22.6 25.538 17.54 26.698 16 27.6";
 
-const INCISIONS =
-  "M14.1 13.35H17.9A0.4 0.4 0 0 1 18.3 13.75V14.95A0.4 0.4 0 0 1 17.9 15.35" +
-  "H14.1A0.4 0.4 0 0 1 13.7 14.95V13.75A0.4 0.4 0 0 1 14.1 13.35Z" +
-  "M14.1 18.95H17.9A0.4 0.4 0 0 1 18.3 19.35V20.55A0.4 0.4 0 0 1 17.9 20.95" +
-  "H14.1A0.4 0.4 0 0 1 13.7 20.55V19.35A0.4 0.4 0 0 1 14.1 18.95Z";
+const BRIN_B =
+  "M16 4.4C14.46 5.302 9.4 6.462 9.4 8.267C9.4 10.071 12.92 10.329 16 12.133" +
+  "C19.08 13.938 22.6 14.196 22.6 16C22.6 17.804 19.08 18.062 16 19.867" +
+  "C12.92 21.671 9.4 21.929 9.4 23.733C9.4 25.538 14.46 26.698 16 27.6";
+
+const EPAISSEUR = 4.8;
+
+/** Les deux croisements intérieurs, et le brin qu'ils interrompent. */
+const CROISEMENTS = [
+  { y: 12.133, dessous: "b" },
+  { y: 19.867, dessous: "a" },
+] as const;
+
+function Coupe({ y }: { y: number }) {
+  // Le brin du dessous est interrompu sur toute la largeur de celui du dessus,
+  // plus un jeu : c'est ce vide qui donne le passage dessus-dessous.
+  return (
+    <rect
+      x={-7.68}
+      y={-3.55}
+      width={15.36}
+      height={7.1}
+      fill="#000"
+      transform={`translate(16,${y}) rotate(149.64)`}
+    />
+  );
+}
 
 /**
  * Le symbole seul, à la couleur du texte courant.
  *
- * En dessous de 20 px les incisions se bouchent : elles mesurent alors moins
- * d'un pixel sur un écran non-retina. On sert donc le tracé simplifié — la
- * même silhouette, la gravure en moins.
+ * En dessous de 22 px, les jours du tressage tombent sous le pixel et se
+ * bouchent : on fond alors les deux brins. C'est la même silhouette, le
+ * passage en moins.
  */
-export function Symbole({ size = 24, className }: { size?: number; className?: string }) {
+export function Symbole({ size = 26, className }: { size?: number; className?: string }) {
+  const id = useId();
+  const tisse = size >= 22;
+  const brin = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: EPAISSEUR,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
   return (
     <svg
       viewBox="0 0 32 32"
@@ -37,23 +71,45 @@ export function Symbole({ size = 24, className }: { size?: number; className?: s
       role="img"
       aria-label="TOTEM"
     >
-      <path fill="currentColor" fillRule="evenodd" d={size >= 20 ? FUT + INCISIONS : FUT} />
+      {tisse && (
+        <defs>
+          {(["a", "b"] as const).map((brinId) => (
+            <mask
+              key={brinId}
+              id={`${id}-${brinId}`}
+              maskUnits="userSpaceOnUse"
+              x={-0.2}
+              y={-0.4}
+              width={32.4}
+              height={32.8}
+            >
+              <rect x={-0.2} y={-0.4} width={32.4} height={32.8} fill="#fff" />
+              {CROISEMENTS.filter((c) => c.dessous === brinId).map((c) => (
+                <Coupe key={c.y} y={c.y} />
+              ))}
+            </mask>
+          ))}
+        </defs>
+      )}
+      <path d={BRIN_A} {...brin} mask={tisse ? `url(#${id}-a)` : undefined} />
+      <path d={BRIN_B} {...brin} mask={tisse ? `url(#${id}-b)` : undefined} />
     </svg>
   );
 }
 
 /**
- * Le verrouillage horizontal : symbole + mot, à la couleur du texte courant.
+ * Le verrouillage horizontal : symbole + mot.
  *
- * Le symbole fait 1,5 fois la hauteur de capitale du mot, comme dans les
+ * Le symbole fait 1,45 fois la hauteur de capitale du mot, comme dans les
  * fichiers de `brand/`. Avec `text-body` (15 px, capitale ≈ 10,5 px) cela
- * donne un tracé visible de 16 px, soit une boîte de 20 — le symbole
- * n'occupant que 26 des 32 unités de sa grille.
+ * donne un tracé visible de 15 px — soit une boîte de 17, le tracé n'occupant
+ * que 28 des 32 unités de sa grille. On monte à 22 pour garder le tressage
+ * visible : c'est le seul endroit où la marque prime sur la règle.
  */
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className ?? ""}`}>
-      <Symbole size={20} />
+      <Symbole size={22} className="text-laterite" />
       <span className="text-body font-bold uppercase tracking-marque">Totem</span>
     </span>
   );

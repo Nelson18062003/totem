@@ -19,7 +19,7 @@ export default function Connexion() {
   return (
     <div className="mx-auto flex min-h-[70dvh] w-full max-w-sm flex-col justify-center py-10">
       <div className="mb-9">
-        <Symbole size={32} className="text-ink" />
+        <Symbole size={34} className="text-laterite" />
         <h1 className="mt-5 text-title font-semibold tracking-tight">
           {etape === "identifiants" ? "Connexion" : "Vérification"}
         </h1>

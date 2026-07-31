@@ -17,203 +17,225 @@ n'importe où. Trois traits fondent tout le reste :
 
 | Trait | Ce que ça veut dire | Ce que ça impose au design |
 |---|---|---|
-| **Planté** | L'objet ne bouge pas. C'est sa raison d'être. | Une marque stable, verticale, posée sur une base. Rien qui flotte. |
-| **Traversé** | On agit *à travers* lui, on ne le manipule pas. | Sobriété : l'interface est un passage, pas un spectacle. |
-| **Gardien** | Le PIN n'est jamais stocké, aucun port n'est ouvert. | Une forme dense, fermée, sans transparence ni brillance. |
+| **Planté** | L'objet ne bouge pas. C'est sa raison d'être. | Une marque verticale, dense, qui tient debout toute seule. |
+| **Traversé** | On agit *à travers* lui, on ne le manipule pas. | Une forme faite de passages, pas de blocs. |
+| **Double** | Un modem par opérateur, tous deux à l'écoute en permanence. | Deux brins, jamais un seul, jamais confondus. |
 
-Le nom porte déjà l'image : un totem est une pièce **verticale**, **gravée**,
-**empilée**, plantée à l'entrée. Le symbole ne fait que la dessiner.
+### D'où vient la forme
+
+Un totem n'est pas une colonne. Le premier jet de cette identité dessinait un
+chapiteau, un fût et un socle — c'est-à-dire le vocabulaire de la colonne
+gréco-romaine, posé sur un produit camerounais. L'erreur était de fond.
+
+La forme vient d'ailleurs : du **tressage**. Vannerie de raphia, claustras de
+bambou, treillis de losanges des Grassfields — une géométrie du pays, qui dit
+exactement ce que fait le produit. On n'y emprunte aucun motif particulier,
+encore moins un signe rituel : seulement la grammaire commune du tissage,
+deux brins qui se croisent.
 
 ---
 
-## 2. Le symbole — « Le Pilier »
+## 2. Le symbole — « La Tresse »
 
 ![Le symbole](../brand/totem-symbole.svg)
 
-Un **T** dont le fût porte **deux incisions** et repose sur un **socle évasé**.
+**Deux brins qui se croisent à chaque registre et se rejoignent aux deux
+bouts.**
 
-Trois lectures, dans cet ordre :
+Ce que le tressage dit, et qu'aucune autre forme ne disait :
 
-1. **Un T** — l'initiale. C'est ce qu'on voit à 16 px, et c'est suffisant.
-2. **Une colonne gravée** — chapiteau, fût incisé, socle : la silhouette d'un
-   totem vue de face. C'est ce qui apparaît à partir de 20 px.
-3. **Un empilement** — les incisions découpent le fût en trois bandes, comme
-   les figures superposées d'un mât. Elles rappellent aussi qu'il y a
-   **plusieurs comptes empilés dans un seul objet** (un modem par opérateur).
+- **Deux brins, jamais confondus.** MTN et Orange, chacun sur son modem, tous
+  deux à l'écoute. Ils se croisent en permanence sans jamais fusionner — c'est
+  très exactement l'architecture multi-comptes.
+- **Ni début ni fin.** Les brins convergent en haut et en bas : le lien ne se
+  rompt pas. File d'attente hors ligne, chien de garde, reprise automatique.
+- **Le vide fait le motif.** Entre deux croisements, le blanc dessine un
+  **losange**. Le treillis n'est pas posé sur la marque : il naît du tressage.
+- **Vertical, à registres répétés.** Un mât, vu de face. Un totem.
 
-Le symbole ne varie **jamais** : le nombre d'incisions est fixe, quel que soit
-le nombre de comptes branchés. Une marque qui change au gré des données n'est
-plus une marque.
+Le symbole ne varie **jamais** : trois losanges, quel que soit le nombre de
+comptes branchés. Une marque qui suit les données n'est plus une marque.
 
 ### Construction
 
-Grille de **32 × 32**, contenu inscrit dans **26 × 26** (marge de 3 sur les
-quatre côtés). Toutes les mesures sont en unités de grille.
+Grille de **32 × 32**, tracé inscrit dans **18 × 28**.
 
-```
-   0        3                                  29    32
-0  ┌────────────────────────────────────────────────┐
-3  │        ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓         │  chapiteau : 26 × 6,4
-   │        ┗━━━━━━━━━━┓         ┏━━━━━━━━┛         │
-9,4│                   ┃         ┃                  │  fût : 6,8 de large
-   │                   ┃  ▁▁▁▁▁  ┃                  │  incision 1 : 4,6 × 2
-   │                   ┃  ▁▁▁▁▁  ┃                  │  incision 2 : 4,6 × 2
-24,6│         ┏━━━━━━━━┛         ┗━━━━━━━━┓         │
-   │         ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛         │  socle : 14,4 × 4,4
-29 │                                                │
-32 └────────────────────────────────────────────────┘
-```
+| Paramètre | Valeur | Ce que ça règle |
+|---|---|---|
+| Losanges | **3** | le nombre de registres |
+| Axe | **16** | l'axe de symétrie |
+| Écart d'un brin à l'axe | **6,6** | la largeur de la tresse |
+| Épaisseur d'un brin | **4,8** | la matière |
+| Cambrure | **0,7** | 0 = brin droit, 1 = brin cordé |
+| Jeu au passage dessous | **1,15** | la respiration du croisement |
 
-- **Rayon des angles saillants : 1,2.** Les angles rentrants restent vifs —
-  c'est la règle des vraies lettres, pas des icônes.
-- **Incisions : traversantes en largeur ? Non.** Elles s'arrêtent à 1,1 des
-  bords du fût. Une incision qui touche le bord coupe la silhouette et le
-  symbole se lit alors comme un T *cassé*. Elle doit rester une gravure.
-- **Un seul tracé, règle `evenodd`.** Les incisions sont des trous, pas des
-  formes blanches posées dessus : le symbole se peint donc dans n'importe
-  quelle couleur, sur n'importe quel fond, sans réserve.
+Les brins sont deux polylignes qui **coïncident aux bornes paires** — ce sont
+les croisements — et atteignent leur écart maximal aux bornes impaires. La
+cambrure les transforme en cordes par interpolation Catmull-Rom.
+
+Le passage dessus-dessous n'est pas un empilement : le brin du dessous est
+**interrompu par un masque orienté le long de celui du dessus**. C'est un
+entrelacs véritable, qui tient dans n'importe quelle couleur sur n'importe
+quel fond.
 
 ### Variante petite taille
 
-Une incision mesure 2 unités de haut sur 32, soit **6,25 % de la taille
-rendue**. En dessous de **20 px**, elle passe sous 1,25 px et se bouche sur un
-écran non-retina. On sert alors `totem-symbole-mini.svg` : la même silhouette, la gravure
-en moins. Le composant React `<Symbole/>` bascule tout seul au-dessous de 20.
+Le jour du tressage mesure environ 7 unités sur 32 avec le jeu, soit **22 % de
+la largeur du tracé** — mais il est vu de biais, et ce qui compte est sa
+projection : elle passe sous le pixel dès que le symbole descend en dessous de
+**22 px**. On sert alors `totem-symbole-mini.svg` : les deux brins fondus. Même
+silhouette, le passage en moins. Le composant `<Symbole/>` bascule tout seul.
 
 **Taille minimale absolue : 16 px.**
 
 ---
 
-## 3. Le mot
+## 3. Le motif — la claustra
+
+![Le motif](../brand/totem-motif.svg)
+
+C'est la partie de l'identité qui n'existait pas du tout avant. **La même
+tresse, répétée.** Les colonnes voisines sont décalées d'un demi-losange : les
+vides s'imbriquent, et l'ensemble devient un mur ajouré.
+
+| Fichier | Usage |
+|---|---|
+| `totem-motif.svg` | Un panneau fini — couverture, affiche, autocollant du boîtier. |
+| `totem-motif-tuile.svg` | Une période du tressage, **raccordable à l'infini**. C'est la source de la classe CSS `.claustra`. |
+
+La claustra est de la **marque**, pas de la donnée. Elle a droit aux écrans qui
+parlent de TOTEM — connexion, couverture de documentation, page de
+présentation. Elle n'a jamais le droit de passer derrière un montant, un solde
+ou un état : un fond travaillé sous un chiffre, c'est du bruit sur une
+information qui compte.
+
+---
+
+## 4. Le mot
 
 `TOTEM` s'écrit en **DM Sans Bold (700)**, **capitales**, interlettrage
 **+0,18 em**.
 
-L'interlettrage large est délibéré : il donne au mot une allure **lapidaire**,
-d'inscription gravée dans la pierre. Il ne s'applique **qu'au nom de la
-marque** — le jeton `--tracking-marque`. Partout ailleurs, les capitales
-gardent l'interlettrage courant.
+L'écart large est délibéré : il donne au mot une allure **lapidaire**,
+d'inscription gravée, et il fait contrepoids à la densité du symbole. Il ne
+s'applique **qu'au nom de la marque** — le jeton `--tracking-marque`. Partout
+ailleurs, les capitales gardent l'interlettrage courant.
 
 Les fichiers de `brand/` contiennent le mot **vectorisé** : ils ne dépendent
-d'aucune police installée. Dans l'application, le mot reste du texte vivant
-(composant `<Logo/>`), ce qui le laisse sélectionnable et accessible.
+d'aucune police installée. Dans l'application il reste du texte vivant
+(composant `<Logo/>`), donc sélectionnable et lisible par un lecteur d'écran.
 
 ---
 
-## 4. Les verrouillages
+## 5. Les verrouillages
 
 | Fichier | Usage |
 |---|---|
-| `totem-logo.svg` | Le verrouillage de référence. Par défaut, partout. |
-| `totem-logo-vertical.svg` | Formats étroits ou carrés : couvertures, affiches, autocollant sur le boîtier. |
+| `totem-logo.svg` | Le verrouillage de référence : symbole latérite, mot encre. |
+| `totem-logo-vertical.svg` | Formats étroits ou carrés : couvertures, affiches, autocollant du boîtier. |
+| `totem-logo-encre.svg` | Quand la couleur est impossible (fax, tampon, gravure une couleur). |
 | `totem-symbole.svg` | Seul, quand le nom est déjà écrit à côté : favicon, avatar, en-tête d'app. |
 
 **Proportions du verrouillage horizontal** (unité = hauteur de capitale) :
 
-- hauteur du symbole = **1,5 ×** la hauteur de capitale,
-- écart symbole ↔ mot = **0,7 ×**,
+- hauteur du symbole = **1,45 ×** la hauteur de capitale (**2,1 ×** en vertical),
+- écart symbole ↔ mot = **0,78 ×**,
 - le symbole est centré **optiquement sur la capitale**, pas sur la ligne de base.
-
-Dans le verrouillage vertical, le symbole passe à **2 ×** la hauteur de
-capitale et l'écart reste à 0,7 ×.
 
 ### Zone de protection
 
 Aucun élément — texte, image, bord de page, bord de bouton — n'entre dans une
-marge égale à **la moitié de la hauteur du symbole**, tout autour du
-verrouillage.
+marge égale à **la largeur du symbole**, tout autour du verrouillage. Le
+symbole étant étroit et haut, c'est une marge plus généreuse qu'il n'y paraît :
+elle empêche la tresse d'être lue comme une texture de fond.
 
 ### Tailles minimales
 
 | | Écran | Impression |
 |---|---|---|
-| Verrouillage horizontal | 100 px de large | 25 mm |
+| Verrouillage horizontal | 110 px de large | 28 mm |
 | Verrouillage vertical | 60 px de large | 15 mm |
 | Symbole seul | 16 px | 5 mm |
 
 ---
 
-## 5. Ce qu'on ne fait pas
+## 6. Ce qu'on ne fait pas
 
+- ❌ **Défaire le tressage.** Les brins passent dessus-dessous. Deux brins qui
+  se superposent sans se croiser ne sont plus une tresse, c'est un gribouillis.
+- ❌ **Ajouter ou retirer des losanges** selon le nombre de comptes.
+- ❌ **Utiliser le motif comme fond** derrière un montant, un solde ou un état.
 - ❌ **Recomposer le mot** dans une autre police, ou lui retirer son interlettrage.
 - ❌ **Déformer** : le verrouillage se met à l'échelle proportionnellement, point.
-- ❌ **Faire varier le nombre d'incisions** selon le nombre de comptes.
-- ❌ **Poser un dégradé, une ombre portée, un biseau, une brillance.** Le symbole
-  est un aplat mat. Toujours.
-- ❌ **Le poser sur une photo chargée** sans aplat de protection.
-- ❌ **Le colorer** autrement qu'en encre, en blanc, ou dans la couleur du texte
-  courant. Jamais en jaune MTN, jamais en orange Orange.
-- ❌ **Recréer le mot avec un T majuscule ordinaire** en guise de symbole : le
-  symbole est un tracé précis, il ne s'improvise pas.
+- ❌ **Poser un dégradé, une ombre portée, un biseau.** La marque est un aplat mat.
+- ❌ **Colorer le symbole** autrement qu'en latérite, en encre, en blanc, ou
+  dans la couleur du texte courant. Jamais en jaune MTN, jamais en orange Orange.
 - ❌ **Enfermer le symbole dans un cercle ou un carré** ailleurs que dans les
   icônes applicatives fournies.
 
 ---
 
-## 6. Couleurs
+## 7. Couleurs
 
-La règle tient en une ligne : **la couleur ne décore rien, elle porte un sens.**
+Deux matières, toutes deux du pays. **La latérite** — la terre rouge sur
+laquelle le totem est planté — porte la marque. **L'indigo** — la teinture des
+tissus — porte l'action. L'une dit qui l'on est, l'autre dit ce qu'on peut
+faire. Autour, des neutres **tièdes**, pas des gris bleutés de tableau de bord.
 
-### Neutres — la base de tout
+Aucune des deux ne se confond avec un opérateur : MTN est un jaune vif, Orange
+un orange vif ; la latérite est sombre et rabattue, l'indigo est froid. TOTEM
+reste la surface sur laquelle ces deux couleurs-là viennent se poser.
+
+### La marque
 
 | Jeton | Hex | Rôle | Contraste sur `surface` |
 |---|---|---|---|
-| `surface` | `#fbfbfc` | Fond de page | — |
-| `surface-raised` | `#ffffff` | Cartes | — |
-| `surface-2` | `#f2f3f5` | Champs, survol, puces | — |
-| `surface-3` | `#e9eaee` | Séparateurs pleins, barres | — |
-| `line` | `#e6e7eb` | Bordures fines | — |
-| `ink` | `#16171a` | **Couleur de marque.** Texte principal. | 17,3:1 |
-| `ink-soft` | `#5d5f68` | Texte secondaire | 6,2:1 |
-| `ink-faint` | `#8e909a` | Texte tertiaire | 3,1:1 ⚠️ |
+| `laterite` | `#9A4B2E` | **La couleur de la marque.** Le symbole, la claustra. | 5,9:1 |
+| `laterite-clair` | `#D08A63` | La même, sur fond sombre. | 6,4:1 sur `ink` |
+| `sable` | `#F4EFE9` | Le fond des surfaces de marque. | — |
 
-> ⚠️ `ink-faint` ne passe pas le seuil AA (4,5:1) pour du texte courant.
-> Réservé aux mentions non essentielles en corps ≥ 18,66 px gras ou ≥ 24 px
-> normal, ou aux éléments décoratifs. **Ne jamais y mettre un montant, un état
-> ou une consigne.** À corriger si un jour ces libellés deviennent essentiels
-> — `#71737d` passerait à 4,6:1.
-
-### Accent — une seule, froide
+### Neutres tièdes
 
 | Jeton | Hex | Rôle | Contraste |
 |---|---|---|---|
-| `accent` | `#1f3a8a` | Bleu de garde. Liens, sélection, action principale. | 10,0:1 |
-| `accent-hover` | `#182d6b` | Survol | — |
-| `accent-soft` | `#eef1f8` | Fond d'état sélectionné | — |
+| `surface` | `#FBFAF9` | Fond de page | — |
+| `surface-raised` | `#FFFFFF` | Cartes | — |
+| `surface-2` | `#F4F2F0` | Champs, survol, puces | — |
+| `surface-3` | `#EBE8E5` | Séparateurs pleins, barres | — |
+| `line` | `#E8E5E1` | Bordures fines | — |
+| `ink` | `#16171A` | Texte principal | 17,2:1 |
+| `ink-soft` | `#62605C` | Texte secondaire | 6,0:1 |
+| `ink-faint` | `#77726B` | Texte tertiaire | **4,6:1 — passe AA** |
 
-**Pourquoi froid.** MTN est jaune, Orange est orange. Une marque chaude se
-ferait avaler par ses propres opérateurs : chaque carte de compte porterait la
-couleur d'un concurrent de la nôtre. TOTEM reste la **surface neutre** sur
-laquelle ces deux couleurs se posent. C'est une décision stratégique, pas un
-goût.
+> Le gris tertiaire de la version précédente (`#8E909A`) plafonnait à 3,07:1,
+> sous le seuil AA. Il est corrigé ici : le passage à des neutres tièdes a été
+> l'occasion de le remonter à 4,6:1. Plus aucune couleur de texte du système
+> n'est sous le seuil.
+
+### L'action
+
+| Jeton | Hex | Rôle | Contraste |
+|---|---|---|---|
+| `accent` | `#1F3A8A` | Indigo. Liens, sélection, action principale. | 9,9:1 |
+| `accent-hover` | `#182D6B` | Survol | — |
+| `accent-soft` | `#EEF1F8` | Fond d'état sélectionné | — |
 
 ### Sémantique — désaturée
 
 | Jeton | Hex | Rôle | Contraste |
 |---|---|---|---|
-| `positive` | `#17603f` | Crédit, encaissement | 7,3:1 |
-| `negative` | `#8a2020` | Débit, sortie | 8,8:1 |
-| `alert` | `#8a5a10` | Attention, file d'attente | 5,7:1 |
+| `positive` | `#17603F` | Crédit, encaissement | 7,2:1 |
+| `negative` | `#8A2020` | Débit, sortie | 8,7:1 |
+| `alert` | `#7D5410` | Attention, file d'attente | 6,4:1 |
 
 Sombres et mates, jamais vives. Un encaissement n'est pas une fête.
-
-### Couleur de récit
-
-| Jeton | Hex | Rôle | Contraste |
-|---|---|---|---|
-| `laterite` | `#9a4b2e` | Latérite de Douala. **Supports éditoriaux uniquement.** | 5,9:1 |
-
-C'est la couleur de la terre sur laquelle le totem est planté : elle ancre la
-marque quelque part. Autorisée sur une couverture de documentation, une page
-de présentation, un filet éditorial. **Interdite dans l'application** : elle
-n'est ni un état, ni une action, et elle n'a rien à y dire.
 
 ### Couleurs opérateur — ce sont des données
 
 | Jeton | Hex | |
 |---|---|---|
-| `op-mtn` | `#ffcc00` | |
-| `op-orange` | `#ff7900` | |
+| `op-mtn` | `#FFCC00` | |
+| `op-orange` | `#FF7900` | |
 
 Elles n'appartiennent pas à TOTEM. Autorisées en **liseré, pastille ou point
 de 4 px maximum**, pour distinguer deux comptes. Jamais en aplat de fond,
@@ -221,10 +243,12 @@ jamais en texte, jamais dans le logo.
 
 ---
 
-## 7. Typographie
+## 8. Typographie
 
-**Une seule famille : DM Sans.** Chargée par `next/font` — aucun appel réseau
-au moment du rendu, aucun saut de mise en page.
+**Une seule famille : DM Sans.** Pas de police d'accompagnement — les rôles se
+distinguent par la graisse, la casse et l'interlettrage, pas par un second
+dessin. Chargée par `next/font` : aucun appel réseau au rendu, aucun saut de
+mise en page.
 
 | Graisse | Usage |
 |---|---|
@@ -254,26 +278,26 @@ au moment du rendu, aucun saut de mise en page.
 
 ---
 
-## 8. Formes et icônes
+## 9. Formes et icônes
 
 **Rayons** — trois valeurs, pas quatre :
 `--radius-card` 12 px · `--radius-btn` 8 px · `--radius-sm` 6 px.
-Les pilules (`rounded-full`) sont réservées à la barre de navigation mobile et
-aux pastilles d'état.
 
 **Icônes** — jeu maison dans `web/app/icons.tsx` : trait de **1,5 px**, grille
-**24 × 24**, extrémités et jointures arrondies, jamais de remplissage.
+**24 × 24**, extrémités et jointures arrondies, jamais de remplissage. Le trait
+arrondi des icônes est le même que celui des brins : c'est ce qui les fait
+tenir ensemble.
 
-**Aucun emoji dans l'interface.** Un emoji est rendu par le système : il
-change de dessin d'un téléphone à l'autre, et il fait basculer l'application du
-côté du jouet. Le `🗿` du README est une licence éditoriale, pas un composant.
+**Aucun emoji dans l'interface.** Un emoji est rendu par le système : il change
+de dessin d'un téléphone à l'autre, et il fait basculer l'application du côté
+du jouet. Le `🗿` du README est une licence éditoriale, pas un composant.
 
 **Aucune ombre décorative.** Une seule ombre dans tout le système, celle de la
-barre flottante mobile, et elle sert à établir un plan — pas à faire joli.
+barre flottante mobile, et elle sert à établir un plan.
 
 ---
 
-## 9. Ton
+## 10. Ton
 
 TOTEM parle **français**, à la deuxième personne du pluriel, à un propriétaire
 qui n'est pas informaticien.
@@ -290,11 +314,11 @@ qui n'est pas informaticien.
 
 ---
 
-## 10. Les fichiers
+## 11. Les fichiers
 
-Tout est dans [`brand/`](../brand/). Voir le [README](../brand/README.md) pour
-le détail fichier par fichier.
+Tout est dans [`brand/`](../brand/) — voir son [README](../brand/README.md).
 
-Les tracés sont générés depuis une source unique. Si le symbole doit bouger,
-il bouge dans `brand/`, puis on reporte dans `web/app/marque.tsx` — jamais
-l'inverse, et jamais dans un seul des deux.
+Le symbole est décrit **une seule fois**, en coordonnées de grille, dans
+`brand/generer.py`. Tout le reste en découle : les verrouillages, les icônes,
+le motif, la tuile. Si la tresse doit bouger, elle bouge là, puis on reporte
+dans `web/app/marque.tsx` — jamais l'inverse, et jamais dans un seul des deux.

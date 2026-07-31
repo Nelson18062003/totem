@@ -3,40 +3,43 @@
 /*
  * TOTEM — jetons de la charte. Voir docs/IDENTITE.md.
  *
- * Une seule couleur froide (bleu de garde), base neutre. Pas de dégradés
- * brillants, pas d'emoji, pas de couleurs vives : la hiérarchie vient de la
- * typographie et de l'espace, la couleur ne sert qu'à porter un sens.
+ * Deux matières, toutes deux du pays : la LATÉRITE, terre rouge sur laquelle
+ * le totem est planté, et l'INDIGO, teinture des tissus. L'une porte la
+ * marque, l'autre porte l'action. Autour, des neutres tièdes — pas des gris
+ * bleutés de tableau de bord.
  *
- * Le froid n'est pas un goût, c'est une décision : MTN est jaune, Orange est
- * orange. Une marque chaude se ferait avaler par ses opérateurs. TOTEM reste
- * la surface neutre sur laquelle ces deux jaunes se posent.
+ * Aucune des deux ne peut être confondue avec un opérateur : MTN est jaune vif,
+ * Orange est orange vif. La latérite est sombre et rabattue, l'indigo est froid.
+ * TOTEM reste la surface sur laquelle ces deux couleurs-là viennent se poser.
  */
 @theme {
-  /* Neutres — la base de tout */
-  --color-surface: #fbfbfc;          /* fond de page */
+  /* Neutres tièdes — la base de tout */
+  --color-surface: #fbfaf9;          /* fond de page */
   --color-surface-raised: #ffffff;   /* cartes */
-  --color-surface-2: #f2f3f5;        /* champs, hover, chips */
-  --color-surface-3: #e9eaee;        /* séparateurs pleins, barres */
-  --color-ink: #16171a;              /* texte principal */
-  --color-ink-soft: #5d5f68;         /* texte secondaire */
-  --color-ink-faint: #8e909a;        /* texte tertiaire */
-  --color-line: #e6e7eb;             /* bordures fines */
+  --color-surface-2: #f4f2f0;        /* champs, hover, chips */
+  --color-surface-3: #ebe8e5;        /* séparateurs pleins, barres */
+  --color-ink: #16171a;              /* texte principal — 17,2:1 */
+  --color-ink-soft: #62605c;         /* texte secondaire — 6,0:1 */
+  --color-ink-faint: #77726b;        /* texte tertiaire — 4,6:1, passe AA */
+  --color-line: #e8e5e1;             /* bordures fines */
 
-  /* L'unique couleur d'accent : bleu de garde, froid et sobre */
-  --color-accent: #1f3a8a;
+  /* Latérite — LA couleur de la marque. Le symbole, les surfaces de marque.
+     Dans l'app elle ne sert qu'à porter la marque, jamais un état. */
+  --color-laterite: #9a4b2e;         /* 5,9:1 */
+  --color-laterite-clair: #d08a63;   /* sur fond sombre — 6,4:1 sur encre */
+  --color-sable: #f4efe9;            /* le fond des surfaces de marque */
+
+  /* Indigo — l'unique couleur d'action. Froide, elle ne dispute rien à la
+     latérite : l'une dit qui l'on est, l'autre dit ce qu'on peut faire. */
+  --color-accent: #1f3a8a;           /* 9,9:1 */
   --color-accent-hover: #182d6b;
   --color-accent-soft: #eef1f8;
   --color-accent-ink: #1f3a8a;
 
   /* Sémantique — désaturée, discrète */
-  --color-positive: #17603f;         /* crédit (sombre, pas vif) */
-  --color-negative: #8a2020;         /* débit */
-  --color-alert: #8a5a10;
-
-  /* Couleur de récit — latérite de Douala. Réservée aux supports éditoriaux
-     (couverture de documentation, page de présentation). Jamais dans l'app :
-     elle n'est ni un état ni une action. */
-  --color-laterite: #9a4b2e;
+  --color-positive: #17603f;         /* crédit — 7,2:1 */
+  --color-negative: #8a2020;         /* débit — 8,7:1 */
+  --color-alert: #7d5410;            /* attente — 6,4:1 */
 
   /* Couleurs opérateur — ce sont des données, pas la marque. Autorisées en
      liseré, pastille ou point (≤ 4 px), jamais en aplat de fond ni en texte. */
@@ -90,3 +93,13 @@ body {
 
 /* Ligne de séparation interne des listes */
 .divide-hair > * + * { border-top: 1px solid var(--color-line); }
+
+/* La claustra — le tressage répété, en fond de surface de marque.
+   Un mur ajouré : c'est de la marque, pas de la donnée. Réservée aux écrans
+   qui parlent de TOTEM (connexion, couverture), jamais derrière des montants. */
+.claustra {
+  background-color: var(--color-sable);
+  background-image: url("/motif.svg");
+  background-repeat: repeat;
+  background-size: 56px auto;
+}
