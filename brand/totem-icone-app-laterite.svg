@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="512" height="512" role="img" aria-label="TOTEM">
+  <title>TOTEM</title>
+  <rect width="32" height="32" rx="7.2" fill="#9a4b2e"/>
+  <g transform="translate(5.44,5.44) scale(0.66)">
+  <defs><mask id="i3a" maskUnits="userSpaceOnUse" x="4.60" y="-0.40" width="22.80" height="32.80"><rect x="4.60" y="-0.40" width="22.80" height="32.80" fill="#fff"/><rect x="-7.68" y="-3.55" width="15.36" height="7.10" fill="#000" transform="translate(16.00,19.87) rotate(149.64)"/></mask><mask id="i3b" maskUnits="userSpaceOnUse" x="4.60" y="-0.40" width="22.80" height="32.80"><rect x="4.60" y="-0.40" width="22.80" height="32.80" fill="#fff"/><rect x="-7.68" y="-3.55" width="15.36" height="7.10" fill="#000" transform="translate(16.00,12.13) rotate(149.64)"/></mask></defs>
+  <path d="M16.000 4.400C17.540 5.302 22.600 6.462 22.600 8.267C22.600 10.071 19.080 10.329 16.000 12.133C12.920 13.938 9.400 14.196 9.400 16.000C9.400 17.804 12.920 18.062 16.000 19.867C19.080 21.671 22.600 21.929 22.600 23.733C22.600 25.538 17.540 26.698 16.000 27.600" fill="none" stroke="#f4efe9" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#i3a)"/>
+  <path d="M16.000 4.400C14.460 5.302 9.400 6.462 9.400 8.267C9.400 10.071 12.920 10.329 16.000 12.133C19.080 13.938 22.600 14.196 22.600 16.000C22.600 17.804 19.080 18.062 16.000 19.867C12.920 21.671 9.400 21.929 9.400 23.733C9.400 25.538 14.460 26.698 16.000 27.600" fill="none" stroke="#f4efe9" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#i3b)"/>
+  </g>
+</svg>
