@@ -42,6 +42,17 @@ messages : la même carte est réécrite à chaque étape, comme l'écran d'un
 téléphone. La conversation reste lisible, et l'historique complet reste dans le
 journal SQLite (et dans l'export CSV).
 
+**Une réponse immédiate, même quand le réseau traîne.** Dès que vous envoyez un
+code ou appuyez sur une option, la carte affiche aussitôt
+« ⏳ Composition de `*126#`… », puis se transforme en menu à l'arrivée de la
+réponse. L'écran ne reste plus figé sans rien dire.
+
+Le robot ne s'inflige d'ailleurs plus d'attente inutile : il attendait
+auparavant 1,2 s après **chaque** étape « au cas où » le message ne serait pas
+fini, et gelait le modem 5,6 s toutes les minutes pour vérifier la carte SIM.
+Tout cela a disparu — reste la seule latence du réseau de l'opérateur, sur
+laquelle personne n'a la main.
+
 ## 2. Le code secret ne passe plus jamais dans la conversation
 
 Dès que l'opérateur demande le code, un **pavé numérique en boutons** s'affiche :

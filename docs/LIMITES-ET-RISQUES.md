@@ -175,6 +175,40 @@ mais il peut afficher autre chose que prévu.
 
 *À faire* : vérifier que le menu attendu correspond avant d'enchaîner.
 
+### ✅ Une navigation lente
+Le code s'infligeait à lui-même plusieurs secondes d'attente par écran, en
+plus de la latence du réseau :
+
+| Ce qui coûtait du temps | Avant | Après |
+|---|---|---|
+| Ouvrir un menu, puis chaque touche | 1 200 ms **par étape** | ~0 ms |
+| Lire signal + opérateur + SIM (accueil, `/statut`) | 900 ms | ~0 ms |
+| Vérifier la SIM, **toutes les 60 s**, modem bloqué pendant ce temps | 5 600 ms | ~0 ms |
+
+*Causes* : une pause fixe de 1,2 s après chaque réponse USSD « pour laisser
+arriver la fin du message » ; une pause fixe de 0,3 s avant de lire chaque
+réponse AT ; et surtout trois commandes d'ICCID essayées à chaque
+vérification, dont une à laquelle beaucoup de firmwares ne répondent
+**rien** — soit 5,6 s de modem gelé chaque minute.
+
+*En place* : la fin d'une réponse USSD est détectée au lieu d'être attendue
+(le sursis de 1,2 s ne sert plus que si le message arrive vraiment en
+morceaux) ; la lecture du port démarre immédiatement ; les états lus souvent
+sont mémorisés quelques secondes ; la commande d'ICCID qui marche est retenue ;
+et la vérification de SIM ne s'exécute plus pendant une session USSD.
+
+Reste la latence du réseau de l'opérateur, sur laquelle personne n'a la main.
+Elle est désormais **rendue visible** : une carte « ⏳ Composition de *126#… »
+part immédiatement, puis se transforme en menu. L'attente ne change pas, mais
+l'écran ne reste plus figé sans explication.
+
+### ✅ Une réponse AT coupée par le mot « OK »
+La fin d'une commande AT était repérée sur la présence des lettres « OK »
+n'importe où dans la réponse. Un SMS contenant « Transaction OK » interrompait
+la lecture au milieu, tronquant le message.
+
+*En place* : la fin est repérée sur une ligne `OK` / `ERROR` entière.
+
 ### 🔴 Une session USSD est fragile par nature
 Le réseau peut fermer une session sans prévenir, et le délai de réponse
 dépasse parfois 30 s en zone chargée. Le robot annonce l'échec, mais ne peut

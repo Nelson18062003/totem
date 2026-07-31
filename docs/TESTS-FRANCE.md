@@ -19,6 +19,10 @@ de crédit et de data).
 - [ ] Une question libre (« entrez un numéro ») affiche bien
       « ✍️ Répondez par un message »
 - [ ] `/annuler` ferme proprement une session en cours
+- [ ] **Réactivité** : dès l'envoi du code, la carte affiche « ⏳ Composition
+      de … » sans délai perceptible ; le menu la remplace à l'arrivée
+- [ ] Enchaînez 4 ou 5 options d'affilée → chaque écran suit le rythme du
+      réseau, sans seconde d'attente supplémentaire entre les étapes
 - [ ] Laissez une session ouverte 3 min sans répondre → le robot annonce
       « ⌛ Session USSD expirée »
 

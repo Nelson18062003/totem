@@ -377,7 +377,21 @@ class Robot:
         self.file_macro = []
         self._ussd(code, nouveau=True)
 
-    def _ussd(self, texte, nouveau=False):
+    def _afficher_attente(self, envoi, nouveau):
+        """Accuse réception tout de suite.
+
+        Le réseau USSD met plusieurs secondes à répondre, et personne ne peut
+        raccourcir cela. Ce qu'on peut supprimer, c'est le silence : un écran
+        qui ne bouge pas donne l'impression que rien ne marche."""
+        libelle = (f"⏳ Composition de {mono(envoi)}…" if nouveau
+                   else "⏳ Envoi de votre réponse…")
+        self._peindre(
+            f"🗿 {gras(self.profil['nom'])}\n{libelle}\n"
+            + italique("L'opérateur met quelques secondes à répondre."), [])
+
+    def _ussd(self, texte, nouveau=False, attente=True):
+        if attente:
+            self._afficher_attente(texte, nouveau)
         try:
             if nouveau:
                 self.journal.ussd("envoyé", texte)
@@ -534,7 +548,7 @@ class Robot:
             self.pin_actif = False
             self.journal.ussd("envoyé", "****")
             self._peindre(f"🔐 {gras('Code secret')}\n⏳ Validation en cours…", [])
-            self._ussd(code, nouveau=False)
+            self._ussd(code, nouveau=False, attente=False)
             self._avancer_macro()
             return
         elif touche.isdigit() and len(self.pin_tampon) < 8:
@@ -588,8 +602,9 @@ class Robot:
         dès qu'un code secret est demandé ou que la session se referme."""
         while self.file_macro and self.session_ussd and not self.pin_actif:
             etape = self.file_macro.pop(0)
-            time.sleep(0.4)          # laisse respirer le réseau USSD
             self.journal.ussd("envoyé", etape)
+            # Pas de pause artificielle : l'aller-retour avec le réseau
+            # espace déjà largement les étapes.
             self._ussd(etape, nouveau=False)
         if not self.session_ussd:
             self.file_macro = []
@@ -861,6 +876,10 @@ class Robot:
 
     def _verifier_sim(self):
         """Détecte le remplacement physique de la carte dans le HAT."""
+        if self.session_ussd:
+            # Interroger le modem pendant que l'utilisateur navigue dans un
+            # menu, c'est lui faire attendre notre tour de parole.
+            return
         with self.verrou:
             iccid, operateur = self._lire_sim()
             if not iccid or iccid == self.sim:
