@@ -49,7 +49,7 @@ def _comptes_reels(patience=120):
     for info in trouves:
         try:
             comptes.append(Compte(ModemSerie(port=info.port), info.libelle))
-            print(f"  {info.libelle} sur {info.port} (IMEI {info.imei})")
+            print(f"  {info.description} sur {info.port} (IMEI {info.imei})")
         except Exception as e:
             print(f"  Modem sur {info.port} inutilisable : {e}", file=sys.stderr)
     return comptes
@@ -65,10 +65,19 @@ def principal():
         if not trouves:
             print("Aucun modem détecté. Vérifiez les branchements USB.")
             return
+        from .detect import operateur_depuis_imsi
         print(f"{len(trouves)} modem(s) détecté(s) :")
         for i, m in enumerate(trouves, 1):
             sim = "SIM prête" if m.sim_prete else "SIM absente ou PIN actif"
-            print(f"  {i}. {m.libelle:<12} {m.port:<14} IMEI {m.imei}  {sim}")
+            print(f"  {i}. {m.description:<32} {m.port:<14} {sim}")
+            # Les 5 premiers chiffres de l'IMSI (pays + opérateur) suffisent à
+            # expliquer le nom du compte ; le reste identifierait la carte.
+            if m.imsi:
+                inconnu = "" if operateur_depuis_imsi(m.imsi) else \
+                    "  ← opérateur inconnu de TOTEM"
+                print(f"     IMEI {m.imei} · carte {m.imsi[:5]}{inconnu}")
+            else:
+                print(f"     IMEI {m.imei}")
         return
 
     # --- Démo scriptée, sans matériel ni Telegram --------------------------

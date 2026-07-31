@@ -50,6 +50,14 @@ port série, on regroupe par IMEI, on retient le port AT de chaque appareil.
 L'ordre de branchement n'a aucune importance ; brancher un second modem suffit
 à faire apparaître un second compte au redémarrage.
 
+Le compte est nommé d'après l'**IMSI** de la carte, jamais d'après le réseau sur
+lequel le modem est enregistré. En itinérance, ce dernier désigne l'opérateur du
+pays visité : une SIM MTN Cameroun essayée en France répond « Orange F ». Le nom
+du compte resterait donc « Orange » pendant les essais, puis deviendrait « MTN »
+à Douala — soit deux comptes dans la base pour une seule carte, et l'historique
+coupé en deux. L'IMSI, lui, est gravé sur la SIM et ne change nulle part. Le
+réseau visité n'est plus qu'une mention : `MTN (itinérance sur Orange F)`.
+
 | Commande Telegram | Effet |
 |---|---|
 | `*126#` | Ouvre le menu sur le **compte courant** |
@@ -80,7 +88,7 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   app.py          orchestrateur : commandes, boutons, sessions USSD, pavé PIN,
                   raccourcis, multi-comptes, SMS, rapports, watchdog
   compte.py       un compte = un modem + une SIM + sa session USSD
-  detect.py       détection automatique des modems (regroupement par IMEI)
+  detect.py       détection des modems (regroupement par IMEI, nom par IMSI)
   modem.py        modem réel SIM7600 (AT : +CUSD interactif, +CMGL, UCS2…)
   simulator.py    faux modems MTN et Orange pour tests sans matériel
   telegram.py     client API Telegram (claviers, édition, fichiers, groupe, rôles)

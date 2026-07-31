@@ -3,13 +3,25 @@
 > Règle d'or : **si ces tests passent chez vous, ça marchera à Douala** —
 > le logiciel est identique, seule la SIM change. Cochez chaque case.
 
-Matériel : le robot monté + une SIM française prépayée (PIN désactivé, un peu
-de crédit et de data).
+Matériel : le robot monté + une SIM (PIN désactivé, un peu de crédit et de
+data). Deux options, aussi valables l'une que l'autre :
+
+- **une SIM française prépayée** — pour éprouver la mécanique sans toucher au
+  compte de production ;
+- **la vraie SIM MTN Cameroun**, qui fonctionnera ici **en itinérance** :
+  MTN n'ayant pas d'antennes en France, la carte emprunte celles d'un opérateur
+  français. Plus proche du réel, mais les SMS de paiement qui arrivent pendant
+  l'essai sont de vrais encaissements.
 
 ## A. Démarrage
 - [ ] Au branchement, le robot annonce « ✅ … en ligne — N compte(s) » sur Telegram (≈2 min)
 - [ ] `/statut` répond : opérateur affiché, signal ≥ 12/31
 - [ ] `python3 -m totem --modems` liste bien chaque modem branché
+- [ ] **Le compte porte le nom de l'opérateur de la carte, pas du réseau visité.**
+      Avec une SIM MTN essayée en France, on doit lire `MTN (itinérance sur
+      Orange F)` — et surtout pas `Orange`. Le nom vient de l'IMSI, gravé sur la
+      carte : c'est ce qui garantit que l'historique ne se coupe pas en deux le
+      jour où le boîtier arrive à Douala et retrouve son réseau d'origine.
 
 ## A bis. Second modem (quand il arrive)
 - [ ] Brancher le second modem sur le **hub USB alimenté**, puis redémarrer TOTEM
