@@ -28,6 +28,13 @@ class Compte:
         self.session_ouverte = False    # une session USSD par compte
         self.dernier_menu = ""
         self.echecs = 0                 # compteur du chien de garde
+        # Une panne de modem s'annonce une fois, pas à chaque tour de
+        # surveillance. `panne_signalee` retient qu'on l'a déjà dite ;
+        # `prochaine_tentative` espace les essais au lieu de marteler un
+        # modem qui vient de refuser trois fois de suite.
+        self.panne_signalee = False
+        self.prochaine_tentative = 0.0
+        self.attente_modem = 0          # l'écart courant entre deux essais
         self.verrou = threading.Lock()  # une seule opération USSD à la fois
 
     # ---- état -------------------------------------------------------------

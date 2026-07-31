@@ -1318,6 +1318,11 @@ class Robot:
         try:
             messages = compte.lire_sms()
             compte.echecs = 0
+            # Un modem peut revenir sans qu'on l'ait redémarré : le câble se
+            # remet en place, l'alimentation se stabilise. C'est ici qu'on
+            # l'apprend, et il faut le dire — sinon la dernière chose annoncée
+            # reste « le modem ne répond plus », alors que tout va bien.
+            self._annoncer_retour(compte)
         except Exception as e:
             compte.echecs += 1
             self.journal.evenement(f"lecture SMS {compte.libelle} : {e}")
@@ -1565,16 +1570,66 @@ class Robot:
                 "L'opérateur l'aurait fermée de son côté.")
 
     def _redemarrer_modem(self, compte, canal=None, automatique=False):
+        """Relance le modem d'un compte.
+
+        Une panne matérielle dure. Le robot doit continuer d'essayer — mais
+        une alerte identique répétée toutes les minutes ne dit rien de plus
+        que la première, et finit par enterrer les encaissements sous le
+        bruit. On annonce donc la panne une fois, on réessaie de plus en plus
+        espacé, et on ne reparle que pour dire que c'est revenu.
+        """
         etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
-        self.transport.envoyer(
-            f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…" if automatique
-            else f"{etiquette}Redémarrage du modem (≈30 s)…", canal=canal)
+
+        if automatique:
+            if time.time() < compte.prochaine_tentative:
+                return
+            # Une minute, puis deux, puis quatre… jusqu'à une demi-heure.
+            compte.attente_modem = min(max(compte.attente_modem * 2, 60), 1800)
+            compte.prochaine_tentative = time.time() + compte.attente_modem
+
+        if not automatique or not compte.panne_signalee:
+            self.transport.envoyer(
+                f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…"
+                if automatique
+                else f"{etiquette}Redémarrage du modem (≈30 s)…", canal=canal)
+
         try:
             compte.redemarrer()
         except Exception as e:
-            self.transport.envoyer(
-                f"❌ {etiquette}Échec du redémarrage : {echap(e)}", canal=canal)
+            self.journal.evenement(f"redémarrage {compte.libelle} : {e}")
+            if not compte.panne_signalee:
+                compte.panne_signalee = True
+                self.transport.envoyer(
+                    f"❌ {etiquette}{gras('Le modem ne répond plus')}\n"
+                    f"{echap(e)}\n\n"
+                    + italique(
+                        "Je continue d'essayer, de plus en plus espacé, et je "
+                        "préviens dès qu'il revient. Sur place : vérifier le "
+                        "câble USB entre le HAT et le Pi, puis l'alimentation "
+                        "— le modem réclame 3 A en pointe, et décroche du bus "
+                        "quand le bloc est trop juste."), canal=canal)
             return
+
+        if not self._annoncer_retour(compte, canal):
+            self.transport.envoyer(
+                f"✅ {etiquette}Modem revenu en ligne. "
+                f"Signal : {compte.signal()}/31", canal=canal)
+
+    def _annoncer_retour(self, compte, canal="alertes"):
+        """Dit que le modem répond de nouveau, si on avait annoncé le contraire.
+
+        Renvoie vrai quand quelque chose a été dit. Rien à annoncer dans le cas
+        courant — un modem qui n'est jamais tombé n'a pas à se signaler.
+        """
+        revenu = compte.panne_signalee
+        compte.panne_signalee = False
+        compte.attente_modem = 0
+        compte.prochaine_tentative = 0.0
+        if not revenu:
+            return False
+        etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
+        self.journal.evenement(f"modem revenu ({compte.libelle})")
         self.transport.envoyer(
-            f"✅ {etiquette}Modem revenu en ligne. Signal : {compte.signal()}/31",
-            canal=canal)
+            f"✅ {etiquette}{gras('Le modem répond de nouveau')}\n"
+            f"Signal : {compte.signal()}/31", canal=canal)
+        return True
