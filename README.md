@@ -182,7 +182,8 @@ brand/            la marque : « La Tresse », verrouillages, icônes, motif,
                   (charte : docs/IDENTITE.md)
 sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
 tests/            batterie de tests (python3 -m unittest discover -s tests)
-install.sh        installation en une commande sur Raspberry Pi OS
+install.sh        première installation sur Raspberry Pi OS
+maj.sh            mises à jour ensuite : sudo bash maj.sh
 systemd/          service (démarrage auto + relance)
 config.example.conf
 docs/

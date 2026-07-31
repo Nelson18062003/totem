@@ -104,10 +104,19 @@ sudo journalctl -u totem -f     # voir ce qu'il fait, en direct (Ctrl+C pour sor
 `/opt/totem`. Sans la deuxième commande, le Pi continue d'exécuter l'ancien
 code, et rien ne le signale.
 
+**Une seule commande fait tout :**
+
 ```
-cd ~/totem && git pull
-sudo bash install.sh            # recopie le programme dans /opt/totem et relance
+cd ~/totem && sudo bash maj.sh
 ```
+
+Elle récupère le code, le recopie vers `/opt/totem`, relance le robot, et
+affiche l'ancienne puis la nouvelle version — de quoi voir d'un coup d'œil que
+la mise à jour a pris. Elle s'arrête si des fichiers ont été modifiés à la main
+sur le Pi, plutôt que de les écraser.
+
+`install.sh` ne sert plus que pour une **première** installation (paquets,
+service, chien de garde, Tailscale).
 
 **Vérifiez ensuite que la mise à jour a bien pris.** Le robot annonce sa
 version au démarrage, et `/diagnostic` la rappelle :
@@ -140,7 +149,7 @@ deux robots se disputent les modems) :
 normalement au lieu de faire le diagnostic. Si `--stk` ne dit rien sur le
 SIM Toolkit et que vous voyez « Détection des modems… », c'est que le Pi
 n'a pas encore la version qui connaît cette option — relancez
-`sudo bash install.sh`.
+`sudo bash maj.sh`.
 
 ```
 python3 -m totem --modems       # modems, cartes SIM (ICCID), itinérance
