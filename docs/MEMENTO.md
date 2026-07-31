@@ -143,7 +143,7 @@ n'a pas encore la version qui connaît cette option — relancez
 `sudo bash install.sh`.
 
 ```
-python3 -m totem --modems       # quels modems sont détectés ?
+python3 -m totem --modems       # modems, cartes SIM (ICCID), itinérance
 python3 -m totem --stk          # la SIM porte-t-elle une applet Mobile Money ?
 python3 -m totem --demo         # démonstration, sans matériel
 python3 -m totem --simulation   # faux modems, vrai Telegram

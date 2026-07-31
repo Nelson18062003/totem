@@ -22,6 +22,8 @@ RE_COPS = re.compile(r'\+COPS:\s*\d+(?:,\d+,"([^"]*)")?')
 RE_ICCID = re.compile(r"\b(\d{18,22})\b")
 RE_IMSI = re.compile(r"^\s*(\d{14,15})\s*$", re.M)
 RE_CNUM = re.compile(r'\+CNUM:\s*"[^"]*"\s*,\s*"([^"]+)"')
+# +CREG: <n>,<stat> — stat 5 = enregistré sur un réseau visité (itinérance).
+RE_CREG = re.compile(r"\+CREG:\s*\d+,(\d+)")
 # +CPMS: "ME",12,255,"ME",12,255,"ME",12,255  → occupation de la mémoire SMS
 RE_CPMS = re.compile(r'\+CPMS:\s*"[^"]*",\s*(\d+),\s*(\d+)')
 
@@ -123,6 +125,15 @@ class ModemSerie:
     def _oublier(self):
         self._memo.clear()
 
+    def oublier_cache(self):
+        """Jette les lectures mémorisées.
+
+        Indispensable après un changement de carte : l'IMSI est gardé cinq
+        minutes, et servir celui de la puce précédente ferait porter à la
+        nouvelle le nom de l'ancienne — donc le mauvais opérateur, dans le
+        journal comme dans le cloud."""
+        self._oublier()
+
     def _initialiser(self):
         with self.verrou:
             for cmd in ("AT", "ATE0", "AT+CMEE=2", "AT+CUSD=1",
@@ -214,6 +225,17 @@ class ModemSerie:
         with self.verrou:
             m = RE_CNUM.search(self._envoyer("AT+CNUM"))
         return m.group(1) if m else ""
+
+    def itinerance(self):
+        """La carte est-elle enregistrée sur un réseau qui n'est pas le sien ?
+
+        +CREG: <n>,<stat> — stat 5 signifie « enregistré, en itinérance ».
+        C'est le cas d'une SIM camerounaise essayée depuis la France : le nom
+        du réseau devient celui de l'opérateur visité, et il ne faut surtout
+        pas en déduire l'opérateur de la carte (voir carte.py)."""
+        with self.verrou:
+            m = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
+        return bool(m and m.group(1) == "5")
 
     def redemarrer(self):
         with self.verrou:

@@ -3,13 +3,29 @@
 > Règle d'or : **si ces tests passent chez vous, ça marchera à Douala** —
 > le logiciel est identique, seule la SIM change. Cochez chaque case.
 
-Matériel : le robot monté + une SIM française prépayée (PIN désactivé, un peu
-de crédit et de data).
+Matériel : le robot monté + une SIM (PIN désactivé, un peu de crédit et de
+data). Deux options, aussi valables l'une que l'autre :
+
+- **une SIM française prépayée** — pour éprouver la mécanique sans toucher au
+  compte de production ;
+- **la vraie SIM MTN Cameroun**, qui fonctionne ici **en itinérance** : MTN
+  n'ayant pas d'antennes en France, la carte emprunte celles d'un opérateur
+  français. Plus proche du réel, mais les SMS de paiement qui arrivent pendant
+  l'essai sont de vrais encaissements.
 
 ## A. Démarrage
 - [ ] Au branchement, le robot annonce « ✅ … en ligne — N compte(s) » sur Telegram (≈2 min)
 - [ ] `/statut` répond : opérateur affiché, signal ≥ 12/31
 - [ ] `python3 -m totem --modems` liste bien chaque modem branché
+- [ ] **Le compte porte le nom de l'opérateur de la CARTE, pas du réseau capté.**
+      Avec une SIM MTN essayée en France, on doit lire
+      `MTN ·xxxx (itinérance sur Orange F)` — et surtout pas `Orange`. Le nom
+      vient de l'IMSI, gravé sur la puce : c'est ce qui garantit que
+      l'historique ne se coupe pas en deux le jour où le boîtier arrive à
+      Douala et retrouve son réseau d'origine.
+- [ ] `--modems` affiche l'**ICCID complet** : comparez-le au numéro imprimé
+      sur la puce. S'il manque, le cloisonnement par carte ne peut pas
+      fonctionner
 
 ## A bis. Second modem (quand il arrive)
 - [ ] Brancher le second modem sur le **hub USB alimenté**, puis redémarrer TOTEM
@@ -57,6 +73,19 @@ de crédit et de data).
 - [ ] `/sms` et `/rapport` ne montrent QUE les SMS de la carte en place
 - [ ] Remettez la SIM MTN : son journal ressort intact
 - [ ] `/sims` liste les deux cartes, la carte en place marquée ▶️
+
+### Deux SIM du MÊME opérateur (le piège)
+C'est le cas qu'un nom d'opérateur seul ne sait pas distinguer, et celui où une
+erreur ne se voit pas : les chiffres s'additionnent en silence et ne
+correspondent plus à aucun solde réel.
+
+- [ ] Notez le solde affiché, puis remplacez la SIM MTN par une **autre** SIM MTN
+- [ ] Le robot annonce bien un changement de carte, avec **deux suffixes
+      différents** (« MTN ·0011 » retirée, « MTN ·0099 » en place)
+- [ ] `/rapport` repart à zéro : les encaissements de la première puce ne sont
+      **pas** comptés sur la seconde
+- [ ] `/sims` affiche les deux lignes MTN, chacune avec son propre total
+- [ ] Remettez la première : son total réapparaît, inchangé
 - [ ] Dans un menu qui *parle* du code secret sans le demander (ex. Orange
       « Gerer mon code secret »), le pavé PIN ne s'ouvre **pas** : des boutons
 

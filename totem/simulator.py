@@ -88,6 +88,22 @@ class ModemSimule:
     def numero(self):
         return ""  # comme la plupart des SIM prépayées : non provisionné
 
+    def itinerance(self):
+        return False
+
+    def changer_de_carte(self, iccid, imsi=None):
+        """Simule l'échange physique de la puce dans le berceau.
+
+        Éprouve ce qui, autrement, ne se teste qu'en ouvrant le boîtier : le
+        robot doit s'apercevoir du remplacement, l'annoncer, et surtout ne pas
+        mélanger les deux historiques.
+        """
+        self._iccid = iccid
+        if imsi is not None:
+            self._imsi = imsi
+        self.etape = None
+        self.sms_en_attente = []
+
     def memoire_sms(self):
         return len(self.sms_en_attente), 50
 

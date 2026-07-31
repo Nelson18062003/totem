@@ -62,12 +62,16 @@ RE_DEMANDE_DESTINATAIRE = re.compile(
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
 VERIF_MEMOIRE_SECONDES = 300
+# Un échange de SIM demande d'ouvrir le boîtier : inutile de guetter à la
+# seconde. Une minute suffit pour que l'annonce paraisse immédiate.
+VERIF_CARTES_SECONDES = 60
 SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 
 COMMANDES_BOT = [
     ("menu", "Écran d'accueil avec les boutons"),
     ("statut", "État des modems, des SIM et du signal"),
     ("comptes", "Choisir le compte piloté"),
+    ("sims", "Les cartes SIM connues et celle en place"),
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
@@ -156,11 +160,14 @@ class Robot:
                 "", gras("Plusieurs comptes"),
                 f"{mono('mtn *126#')} — viser un compte sans changer de compte courant",
                 "/comptes — liste des comptes et bascule",
+                "Chaque carte SIM garde son propre journal : en changer ne "
+                "mélange pas les caisses.",
             ]
         lignes += [
             "", gras("Commandes"),
             "/menu — écran d'accueil",
             "/statut — signal, opérateur, SIM",
+            "/sims — les cartes SIM connues, et celle en place",
             "/sms — les derniers SMS reçus",
             "/rapport — bilan des dernières 24 h",
             "/export — journal CSV des 7 derniers jours",
@@ -185,6 +192,7 @@ class Robot:
         self._installer_arret_propre()
         self.transport.vider_backlog()      # ne jamais rejouer d'ancienne commande
         self.transport.publier_commandes(COMMANDES_BOT)
+        self._recenser_cartes(silencieux=True)
         detail = "\n".join(f"· {echap(c.resume())}" for c in self.comptes)
         pluriel = "comptes" if self.multi else "compte"
         avertissement = (
@@ -266,6 +274,8 @@ class Robot:
                 self._statut(canal)
             elif commande in ("comptes", "compte"):
                 self._lister_comptes(canal, role)
+            elif commande in ("sims", "cartes", "carte"):
+                self._lister_cartes(canal)
             elif commande == "sms":
                 self._derniers_sms(canal)
             elif commande == "rapport":
@@ -327,10 +337,12 @@ class Robot:
                 # confirmation d'une sortie importante.
                 self._afficher_session(compte)
                 return
-            self.journal.ussd("envoyé", "****", compte.libelle)
+            self.journal.ussd("envoyé", "****", compte.libelle,
+                              compte.carte.iccid)
         else:
             self._retenir_saisie(texte)
-            self.journal.ussd("envoyé", texte, compte.libelle)
+            self.journal.ussd("envoyé", texte, compte.libelle,
+                              compte.carte.iccid)
         self._ussd(compte, texte, nouveau=False)
         self._avancer_macro()
 
@@ -343,11 +355,12 @@ class Robot:
         genre, _, valeur = donnee.partition(":")
         if genre == "c" and valeur in ("menu", "statut", "sms", "rapport",
                                        "export", "aide", "comptes",
-                                       "diagnostic"):
+                                       "diagnostic", "sims"):
             {"menu": lambda: self._accueil(canal, role),
              "aide": lambda: self.transport.envoyer(self._aide(), canal=canal),
              "statut": lambda: self._statut(canal),
              "comptes": lambda: self._lister_comptes(canal, role),
+             "sims": lambda: self._lister_cartes(canal),
              "sms": lambda: self._derniers_sms(canal),
              "rapport": lambda: self._rapport(canal=canal, manuel=True),
              "diagnostic": lambda: self._diagnostic(canal),
@@ -391,7 +404,8 @@ class Robot:
             compte = self.session_compte
             if compte is None:
                 return
-            self.journal.ussd("envoyé", valeur, compte.libelle)
+            self.journal.ussd("envoyé", valeur, compte.libelle,
+                              compte.carte.iccid)
             self._ussd(compte, valeur, nouveau=False)
             self._avancer_macro()
         elif genre == "p":
@@ -436,7 +450,7 @@ class Robot:
         return lignes
 
     def _accueil(self, canal, role):
-        nb, total, _ = self.journal.rapport_du_jour()
+        nb, total, _ = self.journal.rapport_du_jour(self._cartes_en_place())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
         courant = (f"\nCompte piloté : {gras(self.courant.libelle)}"
                    if self.multi else "")
@@ -450,7 +464,8 @@ class Robot:
     def _ussd(self, compte, texte, nouveau=False):
         try:
             if nouveau:
-                self.journal.ussd("envoyé", texte, compte.libelle)
+                self.journal.ussd("envoyé", texte, compte.libelle,
+                              compte.carte.iccid)
                 reponse = compte.ussd_demarrer(texte)
             else:
                 reponse = compte.ussd_repondre(texte)
@@ -462,7 +477,8 @@ class Robot:
             self._cloturer_session(
                 f"⚠️ [{echap(compte.libelle)}] Le modem n'a pas répondu.")
             return
-        self.journal.ussd("reçu", reponse, compte.libelle)
+        self.journal.ussd("reçu", reponse, compte.libelle,
+                          compte.carte.iccid)
         self.dernier_menu = reponse
         # Conservée même après la fermeture de la session : c'est elle qu'on
         # relit quand un menu s'affiche mal.
@@ -600,7 +616,8 @@ class Robot:
                 return
             code, self.pin_tampon = self.pin_tampon, ""
             self.pin_actif = False
-            self.journal.ussd("envoyé", "****", compte.libelle)
+            self.journal.ussd("envoyé", "****", compte.libelle,
+                              compte.carte.iccid)
             self._peindre(
                 f"🔐 {gras('Code PIN')}{etiquette}\n⏳ Validation en cours…", [])
             self._ussd(compte, code, nouveau=False)
@@ -666,7 +683,8 @@ class Robot:
             etape = self.file_macro.pop(0)
             compte = self.session_compte
             time.sleep(0.4)          # laisse respirer le réseau USSD
-            self.journal.ussd("envoyé", etape, compte.libelle)
+            self.journal.ussd("envoyé", etape, compte.libelle,
+                              compte.carte.iccid)
             self._ussd(compte, etape, nouveau=False)
         if not self.session_ussd:
             self.file_macro = []
@@ -701,7 +719,7 @@ class Robot:
         self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
 
     def _derniers_sms(self, canal=None):
-        lignes = self.journal.derniers_sms(5)
+        lignes = self.journal.derniers_sms(5, self._cartes_en_place())
         if not lignes:
             self.transport.envoyer("Aucun SMS en mémoire pour l'instant.", canal=canal)
             return
@@ -714,7 +732,7 @@ class Robot:
                                boutons=[[("🏠 Menu", "c:menu")]])
 
     def _rapport(self, canal=None, manuel=False):
-        nb, total, nb_sms = self.journal.rapport_du_jour()
+        nb, total, nb_sms = self.journal.rapport_du_jour(self._cartes_en_place())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
         self.transport.envoyer(
             f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
@@ -724,7 +742,7 @@ class Robot:
             boutons=[[("📄 Export CSV", "c:export")]] if manuel else None)
 
     def _export(self, canal=None):
-        contenu = self.journal.export_csv(7)
+        contenu = self.journal.export_csv(7, self._cartes_en_place())
         nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
         if not self.transport.envoyer_fichier(
                 nom, contenu, legende="📄 Journal des 7 derniers jours.", canal=canal):
@@ -829,7 +847,13 @@ class Robot:
     def _boucle_surveillance(self):
         prochaine_sante = 0
         prochaine_memoire = 0
+        prochaines_cartes = 0
         while self.actif:
+            # Avant de relever les SMS : si la puce a été échangée, les
+            # messages qui suivent appartiennent à la nouvelle carte.
+            if time.time() >= prochaines_cartes:
+                prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
+                self._recenser_cartes()
             for compte in self.comptes:
                 self._relever_sms(compte)
             self._expirer_session()
@@ -848,6 +872,97 @@ class Robot:
             except Exception as e:
                 self.journal.evenement(f"erreur distribution courrier : {e}")
             time.sleep(self.pause_sms)
+
+    # ---- cartes SIM --------------------------------------------------------
+    def _cartes_en_place(self):
+        """ICCID de toutes les cartes actuellement insérées.
+
+        C'est le périmètre de ce qu'on affiche : le bilan du jour doit couvrir
+        les deux modems, pas seulement celui qu'on pilote — sinon les recettes
+        d'un opérateur disparaîtraient de l'écran. Ce qui en est exclu, ce sont
+        les cartes retirées : leur historique reste entier, consultable par
+        /sims, mais il ne s'additionne pas à celui des cartes en place.
+
+        Vide tant qu'aucun ICCID n'est lisible : les vues montrent alors tout,
+        comme avant. Mieux vaut un historique mélangé qu'un écran vide.
+        """
+        return tuple(c.carte.iccid for c in self.comptes if c.carte.identifiee)
+
+    def _recenser_cartes(self, silencieux=False):
+        """Relit la puce de chaque modem et signale les changements.
+
+        Appelé au démarrage (en silence : l'annonce de mise en ligne dit déjà
+        quelles cartes sont en place) puis à chaque tour de surveillance. C'est
+        ce qui rend le remplacement d'une SIM visible sans rien redémarrer.
+        """
+        for compte in self.comptes:
+            try:
+                ancienne = compte.relire_carte()
+            except Exception as e:
+                self.journal.evenement(f"lecture carte {compte.libelle} : {e}")
+                continue
+            if not compte.carte.identifiee:
+                continue
+            etat = self.journal.voir_carte(compte.carte, compte.imei)
+            if silencieux:
+                continue
+            if ancienne:
+                self._annoncer_changement_carte(compte, ancienne, etat)
+            elif etat == "nouvelle":
+                # Première lecture réussie sur un modem dont l'ICCID était
+                # jusque-là illisible : ce n'est pas un remplacement.
+                self.journal.evenement(f"carte identifiée : {compte.libelle}")
+
+    def _annoncer_changement_carte(self, compte, ancienne, etat):
+        """Une puce a été retirée et une autre insérée. C'est l'événement le
+        plus lourd de conséquences du quotidien : l'argent qui arrivera
+        désormais n'est plus sur le même compte."""
+        connue = etat == "connue"
+        titre = "💳 Carte SIM déjà connue remise en place" if connue \
+            else "💳 Nouvelle carte SIM détectée"
+        self.journal.evenement(
+            f"changement de carte : {ancienne.libelle} → {compte.carte.libelle}")
+        if self.nuage:
+            self.nuage.reveiller()
+        lignes = [
+            gras(titre),
+            f"Retirée : {echap(ancienne.libelle)}",
+            f"En place : {gras(echap(compte.carte.description))}",
+        ]
+        if compte.carte.numero:
+            lignes.append(f"Numéro : {echap(compte.carte.numero)}")
+        lignes.append("")
+        lignes.append(
+            "Son historique et son solde lui sont propres : les encaissements "
+            "de la carte précédente ne s'y ajoutent pas." if not connue else
+            "Son journal ressort intact — rien n'a été perdu pendant son absence.")
+        self.transport.envoyer("\n".join(lignes), canal="alertes",
+                               boutons=[[("💳 Cartes", "c:sims"),
+                                         ("🏠 Menu", "c:menu")]])
+
+    def _lister_cartes(self, canal=None):
+        """Toutes les puces déjà passées dans ce terminal, celle en place en
+        tête. Répond à la question « c'est bien la bonne SIM qui est dedans ? »."""
+        cartes = self.journal.cartes()
+        if not cartes:
+            return self.transport.envoyer(
+                "Aucune carte identifiée pour l'instant. Le modem n'a pas encore "
+                "réussi à lire l'ICCID de la puce insérée.", canal=canal,
+                boutons=[[("🏠 Menu", "c:menu")]])
+        en_place = {c.carte.iccid for c in self.comptes if c.carte.identifiee}
+        lignes = [gras("Cartes SIM connues")]
+        for iccid, libelle, _operateur, numero, premiere, derniere, nb, total in cartes:
+            marque = "▶️ " if iccid in en_place else "▫️ "
+            detail = f" · {numero}" if numero else ""
+            lignes.append(
+                f"{marque}{gras(echap(libelle))}{echap(detail)}\n"
+                f"    {nb} SMS · {self._fcfa(total)} encaissés\n"
+                f"    vue du {echap(premiere[:10])} au {echap(derniere[:10])}")
+        lignes.append("")
+        lignes.append("▶️ en place · ▫️ retirée. Chaque carte garde son propre "
+                      "journal : la remettre le fait ressortir intact.")
+        self.transport.envoyer("\n".join(lignes), canal=canal,
+                               boutons=[[("🏠 Menu", "c:menu")]])
 
     def _veiller_sante(self):
         """Alerte sur la tension, la chaleur, le disque — une fois par
@@ -881,8 +996,13 @@ class Robot:
             return
         for indices, expediteur, texte in messages:
             if not self.journal.sms_existe(expediteur, texte, compte.libelle):
-                self.journal.sms(expediteur, texte, compte.libelle)
+                self.journal.sms(expediteur, texte, compte.libelle,
+                                 compte.carte.iccid)
                 self._notifier_sms(compte, expediteur, texte)
+                # Le cloud est prévenu tout de suite : inutile de lui faire
+                # attendre son prochain battement pour un paiement déjà connu.
+                if self.nuage:
+                    self.nuage.reveiller()
             # Un message long occupe plusieurs emplacements : on les efface
             # tous ensemble, sans quoi un morceau resterait orphelin.
             if not compte.effacer_sms(indices):

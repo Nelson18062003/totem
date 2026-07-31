@@ -21,17 +21,47 @@ create table if not exists terminaux (
 comment on table terminaux is
   'Un boîtier TOTEM. « vu_le » permet de détecter un terminal devenu muet.';
 
--- --- Comptes : une SIM Mobile Money ----------------------------------------
+-- --- Cartes : le registre des SIM, présentes ou retirées --------------------
+-- L'ICCID est le numéro de série gravé sur la puce. Contrairement à
+-- l'opérateur, il est unique au monde : deux SIM MTN achetées le même jour ne
+-- le partagent pas. C'est donc lui qui sépare les historiques quand on change
+-- de carte dans le berceau — l'opérateur seul les mélangerait.
+--
+-- De l'IMSI, on ne garde que les cinq premiers chiffres (pays + opérateur) :
+-- ils expliquent le nom du compte, le reste identifie l'abonné et n'a rien à
+-- faire ici.
+create table if not exists cartes (
+  id            bigint generated always as identity primary key,
+  terminal      text not null references terminaux(id) on delete cascade,
+  iccid         text not null,
+  imsi_prefixe  text,                    -- « 62401 » = MTN Cameroun
+  operateur     text,                    -- « MTN », « Orange »
+  libelle       text,                    -- « MTN ·8901 »
+  numero        text,                    -- MSISDN, souvent absent
+  imei          text,                    -- dernier modem qui l'a hébergée
+  premiere_vue  timestamptz,
+  derniere_vue  timestamptz,
+  cree_le       timestamptz not null default now(),
+  unique (terminal, iccid)
+);
+
+comment on table cartes is
+  'Toutes les SIM vues par un terminal. « derniere_vue » dit depuis quand une carte a été retirée.';
+
+-- --- Comptes : l'état courant d'une SIM en place ----------------------------
 create table if not exists comptes (
   id          bigint generated always as identity primary key,
   terminal    text not null references terminaux(id) on delete cascade,
-  libelle     text not null,             -- « MTN », « Orange »
-  operateur   text,                      -- nom réseau complet
+  iccid       text,                      -- la carte : clé réelle du compte
+  libelle     text not null,             -- « MTN ·8901 »
+  operateur   text,                      -- opérateur d'origine, lu sur l'IMSI
+  reseau      text,                      -- réseau visité (itinérance)
+  itinerance  boolean not null default false,
   numero      text,
   solde       bigint,                    -- en FCFA, tel que le SMS l'annonce
   signal      int,                       -- 0..31
   maj         timestamptz not null default now(),
-  unique (terminal, libelle)
+  unique (terminal, iccid)
 );
 
 -- --- Paiements : ce que les SMS racontent, une fois compris -----------------
@@ -42,7 +72,10 @@ create table if not exists paiements (
   -- il garantit qu'un même paiement renvoyé deux fois (reprise après coupure)
   -- n'apparaisse qu'une seule fois ici.
   source_id    bigint not null,
-  compte       text,                     -- libellé du compte (« MTN »)
+  compte       text,                     -- libellé du compte (« MTN ·8901 »)
+  -- ICCID de la carte qui a reçu ce paiement. C'est lui qui rattache la somme
+  -- au bon solde : deux SIM du même opérateur ne partagent pas leur caisse.
+  carte        text,
   sens         text check (sens in ('entree', 'sortie')),
   montant      bigint,
   tiers        text,                     -- nom si connu, sinon numéro
@@ -58,6 +91,7 @@ create table if not exists paiements (
 
 create index if not exists paiements_recu_le_idx on paiements (recu_le desc);
 create index if not exists paiements_compte_idx  on paiements (terminal, compte);
+create index if not exists paiements_carte_idx   on paiements (terminal, carte);
 create index if not exists paiements_tiers_idx   on paiements (tiers);
 
 comment on column paiements.texte is
@@ -93,6 +127,34 @@ create index if not exists commandes_attente_idx
   on commandes (terminal, etat) where etat = 'en_attente';
 
 -- ---------------------------------------------------------------------------
+-- Mise à niveau des bases créées avant le cloisonnement par carte
+--
+-- « create table if not exists » ne touche pas une table déjà là : ce bloc
+-- rattrape donc les projets Supabase créés avec la version précédente du
+-- schéma. Sur une base neuve il ne fait rien de plus, et le relancer n'a
+-- aucun effet — c'est ce qui rend ce fichier rejouable tel quel.
+-- ---------------------------------------------------------------------------
+alter table comptes   add column if not exists iccid      text;
+alter table comptes   add column if not exists reseau     text;
+alter table comptes   add column if not exists itinerance boolean not null default false;
+alter table paiements add column if not exists carte      text;
+
+-- La clé d'un compte était son libellé (« MTN »). Deux SIM MTN successives
+-- s'écrasaient donc l'une l'autre. La clé devient l'ICCID.
+do $$
+begin
+  if exists (select 1 from pg_constraint
+             where conname = 'comptes_terminal_libelle_key') then
+    alter table comptes drop constraint comptes_terminal_libelle_key;
+  end if;
+  if not exists (select 1 from pg_constraint
+                 where conname = 'comptes_terminal_iccid_key') then
+    alter table comptes add constraint comptes_terminal_iccid_key
+      unique (terminal, iccid);
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit sans être connecté.
 --
 -- Le Pi écrit avec la clé « service_role », qui contourne ces règles — c'est
@@ -100,6 +162,7 @@ create index if not exists commandes_attente_idx
 -- L'application web lit avec la clé publique, et n'obtient rien sans session.
 -- ---------------------------------------------------------------------------
 alter table terminaux  enable row level security;
+alter table cartes     enable row level security;
 alter table comptes    enable row level security;
 alter table paiements  enable row level security;
 alter table evenements enable row level security;
@@ -108,7 +171,7 @@ alter table commandes  enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['terminaux','comptes','paiements','evenements','commandes']
+  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes']
   loop
     execute format(
       'drop policy if exists "lecture connectee" on %I; '
