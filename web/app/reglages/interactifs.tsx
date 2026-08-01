@@ -71,6 +71,14 @@ export function ReglageNumero({
         setEdition(false);
         setEtat("repos");
         router.refresh(); // la page relit la base, numéro à jour partout
+      } else if (/inconnue/i.test(resultat.resultat || "")) {
+        // Le terminal tourne une version d'avant ce réglage : il ne connaît
+        // pas encore la demande. On le dit clairement, avec l'issue de secours.
+        setEtat("erreur");
+        setMessage(
+          "Ton terminal doit être mis à jour pour régler le numéro d’ici. " +
+            "En attendant, fais-le sur Telegram avec /reglages.",
+        );
       } else {
         setEtat("erreur");
         setMessage(resultat.resultat || "Le terminal a refusé.");
