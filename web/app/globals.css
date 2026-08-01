@@ -69,6 +69,12 @@
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
 
+/* Au clavier (desktop surtout), le focus se voit — à la souris, il se tait. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 body {
   background: var(--color-surface);
   color: var(--color-ink);

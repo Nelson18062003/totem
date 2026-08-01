@@ -1,11 +1,14 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
-import { robot, sims } from "@/lib/mock";
+import { chargerDonnees } from "@/lib/serveur";
 import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
+import { Bascule, SectionCodes } from "./interactifs";
 
-export default function Reglages() {
+export const dynamic = "force-dynamic";
+
+export default async function Reglages() {
+  const { terminal, sims } = await chargerDonnees();
+  const carte = sims.find((s) => s.enPlace);
+
   return (
     <div className="flex flex-col gap-8">
       <header>
@@ -24,25 +27,35 @@ export default function Reglages() {
         </div>
       </section>
 
+      {/* Grand écran : deux colonnes de réglages, pas une pile sans fin. */}
+      <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-10">
+      <div className="flex flex-col gap-8">
       {/* État du terminal */}
       <section>
         <h2 className="mb-3 text-heading font-semibold">Terminal</h2>
         <div className="rounded-card border border-line bg-surface-raised">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <span className="flex items-center gap-2.5 text-body">
-              <span className="size-2 rounded-full bg-positive" />
-              En ligne
-            </span>
-            <span className="text-small tabnums text-ink-faint">
-              mis à jour il y a {robot.majTexte}
-            </span>
-          </div>
-          <dl className="divide-hair px-4">
-            <Ligne t="Emplacement" v={robot.lieu} />
-            <Ligne t="Connexion" v={robot.internet} />
-            <Ligne t="Alimentation" v={robot.surSecteur ? "Secteur" : `Batterie ${robot.batterie} %`} />
-            <Ligne t="Version" v="TOTEM 1.0" />
-          </dl>
+          {terminal ? (
+            <>
+              <div className="flex items-center justify-between border-b border-line px-4 py-3">
+                <span className="flex items-center gap-2.5 text-body">
+                  <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                  {terminal.enLigne ? "En ligne" : "Muet"}
+                </span>
+                <span className="text-small tabnums text-ink-faint">
+                  mis à jour {terminal.majTexte}
+                </span>
+              </div>
+              <dl className="divide-hair px-4">
+                <Ligne t="Nom" v={terminal.nom} />
+                {terminal.version && <Ligne t="Version" v={terminal.version} />}
+              </dl>
+            </>
+          ) : (
+            <p className="px-4 py-4 text-small leading-relaxed text-ink-soft">
+              Aucun terminal ne s’est encore annoncé dans la base. Dès que le
+              robot aura du réseau, son état apparaîtra ici.
+            </p>
+          )}
           <div className="border-t border-line p-3">
             <button className="w-full rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
               Redémarrer le terminal
@@ -59,27 +72,33 @@ export default function Reglages() {
             Voir les soldes
           </Link>
         </div>
-        <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
-          {sims.map((s) => (
-            <li key={s.id} className="flex items-center gap-3 py-3.5">
-              <IconWallet size={18}
-                className={`shrink-0 ${s.enPlace ? "text-ink-soft" : "text-ink-faint"}`} />
-              <div className="min-w-0 flex-1">
-                <p className={`text-body font-medium ${s.enPlace ? "" : "text-ink-soft"}`}>
-                  {s.libelle}
-                </p>
-                <p className="text-small tabnums text-ink-faint">
-                  {s.enPlace
-                    ? `${s.numero || "numéro non provisionné"} · carte ${s.iccid.slice(-8)}`
-                    : `retirée le ${s.derniereVue} · journal conservé`}
-                </p>
-              </div>
-              <span className="shrink-0 text-small tabnums text-ink-faint">
-                {s.enPlace ? `${s.signal}/31` : "—"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {sims.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line px-4 py-6 text-center text-small text-ink-faint">
+            Aucune carte encore vue par le terminal.
+          </p>
+        ) : (
+          <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
+            {sims.map((s) => (
+              <li key={s.iccid} className="flex items-center gap-3 py-3.5">
+                <IconWallet size={18}
+                  className={`shrink-0 ${s.enPlace ? "text-ink-soft" : "text-ink-faint"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-body font-medium ${s.enPlace ? "" : "text-ink-soft"}`}>
+                    {s.libelle}
+                  </p>
+                  <p className="text-small tabnums text-ink-faint">
+                    {s.enPlace
+                      ? `${s.numero || "numéro non provisionné"} · carte ${s.iccid.slice(-8)}`
+                      : `retirée le ${s.derniereVue} · journal conservé`}
+                  </p>
+                </div>
+                <span className="shrink-0 text-small tabnums text-ink-faint">
+                  {s.enPlace && s.signal != null ? `${s.signal}/31` : "—"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <p className="mt-2 text-caption leading-relaxed text-ink-faint">
           Le nom d’un compte vient de la carte elle-même (son ICCID), jamais du
           réseau capté : une puce MTN reste « MTN » même à l’étranger, en
@@ -98,6 +117,11 @@ export default function Reglages() {
           <Bascule t="Doubler les alertes sur Telegram" defaut />
         </div>
       </section>
+      </div>
+
+      <div className="flex flex-col gap-8">
+      {/* Codes USSD — ceux de l'opérateur de la carte en place */}
+      <SectionCodes operateur={carte?.operateur ?? "Orange"} />
 
       {/* Sécurité */}
       <section>
@@ -111,6 +135,8 @@ export default function Reglages() {
           chaque opération, puis disparaît.
         </p>
       </section>
+      </div>
+      </div>
 
       <Link
         href="/connexion"
@@ -149,25 +175,5 @@ function Rangee({
         <IconChevron size={16} className="text-ink-faint" />
       </button>
     </li>
-  );
-}
-
-function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
-  const [actif, setActif] = useState(Boolean(defaut));
-  return (
-    <div className="flex items-center justify-between py-3">
-      <span className="pr-4 text-body">{t}</span>
-      <button
-        onClick={() => setActif((a) => !a)}
-        role="switch"
-        aria-checked={actif}
-        aria-label={t}
-        className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${
-          actif ? "justify-end bg-ink" : "justify-start bg-surface-3"
-        }`}
-      >
-        <span className="size-5 rounded-full bg-white shadow-sm" />
-      </button>
-    </div>
   );
 }
