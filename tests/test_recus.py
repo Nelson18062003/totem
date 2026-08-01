@@ -346,5 +346,116 @@ class TestSoldeLuAuMenu(unittest.TestCase):
         self.assertIsNone(motif_du_menu(TRANSFERT_ORANGE))
 
 
+class TestRienNeDeborde(unittest.TestCase):
+    """La maquette a été dessinée sur « PRIX MONO SARL » et « WONDER PHONE ».
+
+    Le premier vrai reçu portait « NKENGAFAC MARICOLE NGWA » — et le nom
+    sortait de la page. Un document dont le texte mord sur le bord n'est pas
+    présentable à un client : ces cas-là sont donc verrouillés ici, une fois
+    pour toutes.
+    """
+
+    QUAND = datetime.datetime(2026, 8, 1, 11, 21)
+
+    def _paiement(self, emetteur, beneficiaire, montant=100,
+                  reference="PP260801.1121.A89624"):
+        from totem.analyse_sms import Paiement, Partie
+        return Paiement(sens="sortie", montant=montant, texte="",
+                        reference=reference, frais=0, commission=0,
+                        montant_brut=montant,
+                        emetteur=Partie("696103864", emetteur),
+                        beneficiaire=Partie("697457589", beneficiaire))
+
+    def _debordements(self, fabrique):
+        """Refait le document en gardant le gabarit sous la main."""
+        import totem.recu as R
+        gabarits, vrai = [], R.Gabarit
+
+        class Mouchard(vrai):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                gabarits.append(self)
+
+        R.Gabarit = Mouchard
+        try:
+            fabrique()
+        finally:
+            R.Gabarit = vrai
+        return gabarits[0].debordements()
+
+    def _verifier(self, titre, fabrique):
+        debords = self._debordements(fabrique)
+        self.assertEqual(
+            debords, [],
+            f"{titre} : {[c for c, _, _ in debords]} sort des marges")
+
+    def test_les_noms_de_la_maquette(self):
+        self._verifier("noms courts", lambda: recu_transfert(
+            self._paiement("PRIX MONO SARL", "WONDER PHONE"), "TM-1", self.QUAND))
+
+    def test_le_nom_qui_debordait(self):
+        self._verifier("NKENGAFAC MARICOLE NGWA", lambda: recu_transfert(
+            self._paiement("WONDER PHONE", "NKENGAFAC MARICOLE NGWA"),
+            "TM-2026-0801-0018", self.QUAND))
+
+    def test_des_raisons_sociales_a_rallonge(self):
+        self._verifier("six mots des deux côtés", lambda: recu_transfert(
+            self._paiement("ETABLISSEMENT DE COMMERCE GENERAL DU LITTORAL",
+                           "NKENGAFAC MARICOLE NGWA EPOUSE TCHOUMI"),
+            "TM-1", self.QUAND))
+
+    def test_un_seul_mot_plus_large_que_sa_colonne(self):
+        """Rien à couper au mot : il ne reste qu'à rétrécir."""
+        self._verifier("un seul mot", lambda: recu_transfert(
+            self._paiement("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+                           "MMMMMMMMMMMMMMMMMMMMMMMM"), "TM-1", self.QUAND))
+
+    def test_un_montant_enorme(self):
+        self._verifier("987 654 321,75", lambda: recu_transfert(
+            self._paiement("A", "B", montant=987654321.75), "TM-1", self.QUAND))
+
+    def test_une_reference_interminable(self):
+        self._verifier("référence longue", lambda: recu_transfert(
+            self._paiement("A", "B",
+                           reference="PP260801.1121.A89624.SUITE.ENCORE.PLUS.LONG"),
+            "TM-1", self.QUAND))
+
+    def test_un_numero_de_recu_tres_long(self):
+        self._verifier("numéro long", lambda: recu_transfert(
+            self._paiement("A", "B"), "TM-2026-0801-0018-BIS-TER-QUATER",
+            self.QUAND))
+
+    def test_un_solde_enorme_et_un_compte_a_rallonge(self):
+        self._verifier("solde de onze chiffres", lambda: recu_solde(
+            98765432198.75, "ETABLISSEMENT DE COMMERCE GENERAL DU LITTORAL",
+            "697457589", "TS-1", self.QUAND))
+
+    def test_sans_aucun_nom(self):
+        self._verifier("parties anonymes", lambda: recu_transfert(
+            self._paiement(None, None), "TM-1", self.QUAND))
+
+    def test_les_deux_colonnes_gardent_la_meme_taille(self):
+        """« DE » et « À » se lisent ensemble : un nom rétréci d'un côté doit
+        rétrécir l'autre, sinon le reçu paraît bancal."""
+        import totem.recu as R
+        gabarits, vrai = [], R.Gabarit
+
+        class Mouchard(vrai):
+            def __init__(self, *a, **k):
+                super().__init__(*a, **k)
+                gabarits.append(self)
+
+        R.Gabarit = Mouchard
+        try:
+            recu_transfert(self._paiement(
+                "A", "NKENGAFAC MARICOLE NGWA EPOUSE TCHOUMI DE DOUALA"),
+                "TM-1", self.QUAND)
+        finally:
+            R.Gabarit = vrai
+        gabarit = gabarits[0]
+        _, corps_court = gabarit._bloc_nom("A", 100)
+        self.assertEqual(corps_court, 27)      # un nom court garde son corps
+
+
 if __name__ == "__main__":
     unittest.main()

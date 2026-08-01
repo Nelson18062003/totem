@@ -66,6 +66,9 @@ TRANCHE = 0.22                 # écart entre tranches de trois chiffres, en em
 PART_DEVISE, ECART_DEVISE = 0.42, 0.34
 
 COTE_SYMBOLE = 78 * 0.75       # les 78 px de la maquette, en points
+# Un nom de deux mots tient sur une ligne, trois se replient. Au-delà, on
+# rétrécit plutôt que d'empiler : le bloc doit rester centré sur la page.
+LIGNES_NOM = 2
 
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
         "août", "septembre", "octobre", "novembre", "décembre"]
@@ -137,6 +140,76 @@ class Gabarit:
     def _hauteur(corps, interligne=None):
         return corps * (1.302 if interligne is None else interligne)
 
+    # -- rien ne dépasse -----------------------------------------------------
+    # La maquette a été dessinée sur « PRIX MONO SARL » et « WONDER PHONE ».
+    # Un vrai nom camerounais fait volontiers trois mots — « NKENGAFAC
+    # MARICOLE NGWA » — et sortait de la page. Le navigateur repliait tout
+    # seul ; ici, il faut le faire soi-même, et le faire partout.
+
+    def _replier(self, texte, police, corps, largeur, interlettrage=0.0,
+                 lignes_max=2):
+        """Coupe au mot pour tenir dans `largeur`, comme un navigateur.
+
+        Un mot seul plus large que sa colonne ne se coupe pas : on le rend tel
+        quel, et l'appelant réduira le corps. Mieux vaut un nom plus petit
+        qu'un nom tronqué — sur un reçu, c'est une identité.
+        """
+        mots = (texte or "").split()
+        if not mots:
+            return [""]
+        lignes, courante = [], ""
+        for mot in mots:
+            essai = f"{courante} {mot}".strip()
+            if courante and police.largeur(essai, corps, interlettrage) > largeur:
+                lignes.append(courante)
+                courante = mot
+            else:
+                courante = essai
+        lignes.append(courante)
+        if len(lignes) <= lignes_max:
+            return lignes
+        # Trop de lignes : on regroupe le reste sur la dernière, elle sera
+        # rétrécie pour tenir.
+        return lignes[:lignes_max - 1] + [" ".join(lignes[lignes_max - 1:])]
+
+    def _corps_ajuste(self, texte, police, corps, largeur, interlettrage=0.0):
+        """Le corps le plus grand qui tienne dans `largeur`.
+
+        La largeur d'un texte est proportionnelle à son corps : une règle de
+        trois suffit, et elle est exacte. Aucun plancher — un texte qui
+        déborde de la page est pire qu'un texte petit.
+        """
+        mesure = police.largeur(texte, corps, interlettrage)
+        if mesure <= largeur or mesure <= 0:
+            return corps
+        return corps * largeur / mesure
+
+    def _bloc_nom(self, texte, largeur):
+        """Le nom d'une partie : ses lignes, et le corps qui les fait tenir.
+
+        On replie d'abord, on rétrécit ensuite, puis on replie de nouveau : à
+        un corps plus petit, la coupure au mot ne tombe plus au même endroit,
+        et le résultat est plus régulier qu'un simple écrasement.
+        """
+        corps = CORPS_NOM
+        for _ in range(12):
+            lignes = self._replier(texte, self.grasse, corps, largeur,
+                                   ECART_NOM, LIGNES_NOM)
+            trop_large = max(
+                (self.grasse.largeur(l, corps, ECART_NOM) for l in lignes),
+                default=0)
+            if trop_large <= largeur:
+                return lignes, corps
+            corps *= max(0.9, largeur / trop_large)
+        return lignes, corps
+
+    def _poser_ajuste(self, x, ligne_de_base, texte, police, corps, teinte,
+                      largeur, interlettrage=0.0):
+        """Pose un texte en le rétrécissant juste ce qu'il faut."""
+        reduit = self._corps_ajuste(texte, police, corps, largeur, interlettrage)
+        return self.page.texte(x, ligne_de_base, texte, police, reduit, teinte,
+                               interlettrage)
+
     # -- zone 1 : qui émet le reçu ------------------------------------------
     def _entete(self, type_document, numero):
         haut = MARGE_V
@@ -162,7 +235,9 @@ class Gabarit:
         return bas + 9 * MM
 
     def _a_droite(self, texte, ligne_de_base, police, corps, teinte,
-                  interlettrage=SUIVI):
+                  interlettrage=SUIVI, largeur_max=None):
+        corps = self._corps_ajuste(texte, police, corps,
+                                   largeur_max or UTILE / 2, interlettrage)
         largeur = police.largeur(texte, corps, interlettrage)
         self.page.texte(DROITE - largeur, ligne_de_base, texte, police, corps,
                         teinte, interlettrage)
@@ -174,13 +249,36 @@ class Gabarit:
                         texte.upper(), self.grasse, CORPS_ETIQUETTE,
                         ETIQUETTE, ECART_ETIQUETTE)
 
+    def _largeur_somme(self, valeur, corps, part_devise, ecart_devise):
+        """Ce que le montant occupera, devise comprise. Tout y est
+        proportionnel au corps : la largeur l'est donc aussi, et il suffit
+        d'une règle de trois pour le faire tenir."""
+        entier, _, decimales = formater_montant(valeur).partition(",")
+        tranches = entier.split(" ")
+        large = sum(self.grasse.largeur(t, corps, ECART_SOMME) for t in tranches)
+        large += TRANCHE * corps * (len(tranches) - 1)
+        if decimales:
+            large += (0.02 * corps
+                      + self.grasse.largeur("," + decimales, corps, ECART_SOMME))
+        corps_devise = part_devise * corps
+        return (large + ecart_devise * corps_devise
+                + self.grasse.largeur("FCFA", corps_devise, -0.01))
+
     def somme(self, x, ligne_de_base, valeur, corps, part_devise=PART_DEVISE,
-              ecart_devise=ECART_DEVISE):
+              ecart_devise=ECART_DEVISE, largeur_max=None):
         """Le montant, tranche par tranche.
 
         Aucune espace n'est employée comme séparateur : l'écart est une
         fraction du corps, donc identique à 74 pt et à 17 pt.
+
+        `largeur_max` : un solde à huit chiffres et une décimale est bien plus
+        large que les « 184 137 » de la maquette. Le corps se réduit alors
+        juste ce qu'il faut, sans que rien d'autre ne bouge.
         """
+        if largeur_max:
+            mesure = self._largeur_somme(valeur, corps, part_devise, ecart_devise)
+            if mesure > largeur_max:
+                corps = corps * largeur_max / mesure
         entier, _, decimales = formater_montant(valeur).partition(",")
         for i, tranche in enumerate(entier.split(" ")):
             if i:
@@ -197,41 +295,72 @@ class Gabarit:
                              corps_devise, SECOND, -0.01)
         return x
 
-    def partie(self, x, haut, etiquette, nom, numero):
-        """Une colonne « DE » ou « À » : l'étiquette, le nom, le numéro."""
+    def partie(self, x, haut, etiquette, lignes, numero, place_nom,
+               largeur, corps_nom=CORPS_NOM):
+        """Une colonne « DE » ou « À » : l'étiquette, le nom, le numéro.
+
+        `place_nom` : la hauteur réservée au nom. Elle est la même pour les
+        deux colonnes, sans quoi un nom replié sur deux lignes ferait
+        descendre son numéro et pas celui d'en face.
+        """
         self.etiquette(x, haut, etiquette)
         haut += CORPS_ETIQUETTE + 6 * MM
-        self.page.texte(x, self._base(haut, CORPS_NOM, 1.18), nom or "—",
-                        self.grasse, CORPS_NOM, ENCRE, ECART_NOM)
-        haut += self._hauteur(CORPS_NOM, 1.18) + 3 * MM
-        self.page.texte(x, self._base(haut, CORPS_NUM), numero_lisible(numero),
-                        self.normale, CORPS_NUM, SECOND, SUIVI)
-
-    HAUTEUR_PARTIE = (CORPS_ETIQUETTE + 6 * MM + CORPS_NOM * 1.18 + 3 * MM
-                      + CORPS_NUM * 1.302)
+        y = haut
+        for morceau in lignes:
+            # Un nom d'un seul tenant plus large que la colonne ne se coupe
+            # pas au mot : il se rétrécit. Tronquer une identité sur un reçu
+            # serait pire que de l'écrire un peu plus petit.
+            self._poser_ajuste(x, self._base(y, corps_nom, 1.18), morceau,
+                               self.grasse, corps_nom, ENCRE, largeur, ECART_NOM)
+            y += self._hauteur(corps_nom, 1.18)
+        haut += place_nom + 3 * MM
+        self._poser_ajuste(x, self._base(haut, CORPS_NUM),
+                           numero_lisible(numero), self.normale, CORPS_NUM,
+                           SECOND, largeur, SUIVI)
 
     # -- zone 2 : ce qui s'est passé ----------------------------------------
     def centre(self, bas, etiquette_somme, valeur, parties):
         """Le montant à gauche, les parties à droite, chacun centré dans la
-        bande qui reste entre l'en-tête et le bandeau des preuves."""
+        bande qui reste entre l'en-tête et le bandeau des preuves.
+
+        Rien ne dépasse : les noms se replient au mot, comme le ferait un
+        navigateur, et le montant se réduit s'il est trop large. Un document
+        dont le texte sort de la page n'est pas présentable à un client.
+        """
         interieur_haut = self.bas_entete + 14 * MM
         interieur_bas = bas - 14 * MM
         milieu = (interieur_haut + interieur_bas) / 2
+
+        largeur_somme = UTILE * 0.42
+        colonne = (UTILE - largeur_somme - 24 * MM - 20 * MM) / 2
+
+        # On replie d'abord, on positionne ensuite : la hauteur du bloc dépend
+        # du nombre de lignes, et le centrage dépend de la hauteur.
+        blocs = [self._bloc_nom(nom or "—", colonne) for _, nom, _ in parties]
+        # Le plus petit corps l'emporte pour les deux colonnes : « DE » et
+        # « À » se lisent ensemble, ils ne peuvent pas avoir deux tailles.
+        corps_nom = min((c for _, c in blocs), default=CORPS_NOM)
+        replis = [self._replier(nom or "—", self.grasse, corps_nom, colonne,
+                                ECART_NOM, LIGNES_NOM)
+                  for _, nom, _ in parties]
+        lignes_nom = max((len(l) for l in replis), default=1)
+        place_nom = lignes_nom * self._hauteur(corps_nom, 1.18)
+        hauteur_partie = (CORPS_ETIQUETTE + 6 * MM + place_nom + 3 * MM
+                          + self._hauteur(CORPS_NUM))
 
         hauteur_somme = CORPS_ETIQUETTE + 6 * MM + CORPS_SOMME
         haut = milieu - hauteur_somme / 2
         self.etiquette(GAUCHE, haut, etiquette_somme)
         self.somme(GAUCHE,
                    self._base(haut + CORPS_ETIQUETTE + 6 * MM, CORPS_SOMME, 1.0),
-                   valeur, CORPS_SOMME)
+                   valeur, CORPS_SOMME, largeur_max=largeur_somme)
 
-        largeur_somme = UTILE * 0.42
         x = GAUCHE + largeur_somme + 24 * MM
-        colonne = (UTILE - largeur_somme - 24 * MM - 20 * MM) / 2
-        haut = milieu - self.HAUTEUR_PARTIE / 2
-        for i, (nom_colonne, nom, numero) in enumerate(parties):
+        haut = milieu - hauteur_partie / 2
+        for i, ((nom_colonne, _, numero), lignes) in enumerate(
+                zip(parties, replis)):
             self.partie(x + i * (colonne + 20 * MM), haut, nom_colonne,
-                        nom, numero)
+                        lignes, numero, place_nom, colonne, corps_nom)
 
     # -- zone 3 : les preuves ------------------------------------------------
     def preuves(self, colonnes):
@@ -270,11 +399,12 @@ class Gabarit:
             for valeur in valeurs:
                 base = self._base(y, CORPS_PREUVE, 1.28)
                 if isinstance(valeur, str):
-                    self.page.texte(x, base, valeur, self.grasse,
-                                    CORPS_PREUVE, ENCRE, -0.02)
+                    self._poser_ajuste(x, base, valeur, self.grasse,
+                                       CORPS_PREUVE, ENCRE, largeur, -0.02)
                 else:
                     self.somme(x, base, valeur, CORPS_PREUVE,
-                               part_devise=0.66, ecart_devise=0.3)
+                               part_devise=0.66, ecart_devise=0.3,
+                               largeur_max=largeur)
                 y += self._hauteur(CORPS_PREUVE, 1.28)
             x += largeur + ecart
         return haut
@@ -300,6 +430,13 @@ class Gabarit:
                           CORPS_PIED)
         self.page.texte(GAUCHE, base, f"{self.operateur} · Douala, Cameroun",
                         self.normale, CORPS_PIED, ETIQUETTE, SUIVI)
+
+    def debordements(self, tolerance=0.5):
+        """Les textes qui sortent des marges. Vide, toujours — c'est le
+        contrat. Un reçu dont un nom mord sur le bord n'est pas présentable."""
+        return [(contenu, gauche, droite)
+                for gauche, droite, contenu in self.page.empreintes
+                if gauche < GAUCHE - tolerance or droite > DROITE + tolerance]
 
     def octets(self):
         return Document(self.page).octets()
