@@ -20,9 +20,13 @@ class FauxNuage:
         self.maj = []               # (identifiant, champs) dans l'ordre
         self.soldes = []            # (iccid, solde)
         self.republies = 0
+        self.reveils = 0
 
     def commandes_en_attente(self):
         return []
+
+    def reveiller(self):
+        self.reveils += 1
 
     def commande_maj(self, identifiant, champs):
         self.maj.append((identifiant, dict(champs)))
@@ -73,11 +77,24 @@ class FauxCompte:
 
 
 class FauxJournal:
-    def __init__(self):
+    def __init__(self, registre=(FausseCarte.iccid,)):
         self.evenements = []
+        self.registre = set(registre)   # les ICCID connus du terminal
+        self.identites = []             # (iccid, champs) enregistrés
 
     def evenement(self, texte):
         self.evenements.append(texte)
+
+    def definir_identite(self, iccid, numero=None, nom=None):
+        if iccid not in self.registre:
+            return False
+        champs = {}
+        if numero is not None:
+            champs["numero"] = numero
+        if nom is not None:
+            champs["nom"] = nom
+        self.identites.append((iccid, champs))
+        return True
 
 
 def pilote(compte, nuage=None):
@@ -151,6 +168,45 @@ class TestGuichet(unittest.TestCase):
         p._traiter({"id": 7, "type": "ussd_fin", "parametres": {}})
         self.assertIsNone(p._session)
         self.assertFalse(compte.session_ouverte)
+
+
+class TestIdentiteDepuisLaPlateforme(unittest.TestCase):
+    """Le numéro et le nom d'une carte, réglés depuis l'application web —
+    exactement comme /reglages sur Telegram. C'est ce numéro qui dit, ensuite,
+    de quel côté d'un dépôt se trouve le terminal."""
+
+    def test_numero_enregistre_et_cloud_reveille(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 20, "type": "identite",
+                    "parametres": {"iccid": FausseCarte.iccid, "numero": "696103864"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertEqual(p.journal.identites, [(FausseCarte.iccid, {"numero": "696103864"})])
+        self.assertEqual(nuage.reveils, 1)      # le web le voit tout de suite
+
+    def test_numero_invalide_refuse_sans_rien_ecrire(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 21, "type": "identite",
+                    "parametres": {"iccid": FausseCarte.iccid, "numero": "12"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(p.journal.identites, [])
+
+    def test_carte_inconnue_du_registre_refusee(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 22, "type": "identite",
+                    "parametres": {"iccid": "00000000000000000000", "numero": "696103864"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(p.journal.identites, [])
+
+    def test_le_nom_seul_est_accepte(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 23, "type": "identite",
+                    "parametres": {"iccid": FausseCarte.iccid, "nom": "WONDER PHONE"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertEqual(p.journal.identites, [(FausseCarte.iccid, {"nom": "WONDER PHONE"})])
 
 
 class TestRecuApresCoup(unittest.TestCase):
