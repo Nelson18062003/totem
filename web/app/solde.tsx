@@ -4,11 +4,13 @@ import { useState } from "react";
 import { fcfa } from "@/lib/types";
 import { IconRefresh } from "./icons";
 
+type Etat = "repos" | "envoi" | "lent" | "erreur";
+
 /**
- * Le solde connu, et de quand il date. Le solde n'existe pas « en direct » :
- * la carte ne le connaît que par le dernier SMS, ou en interrogeant le réseau.
- * Actualiser demandera au terminal de composer le code du solde sur la SIM
- * (canal de commandes — la table est prête, le branchement arrive).
+ * Le solde connu, et de quand il date. Un solde n'est jamais « en direct » :
+ * il vient du dernier SMS, ou d'une interrogation réseau. Actualiser dépose
+ * une vraie demande dans la base ; le terminal de Douala la relève, republie
+ * son état, et la page se recharge sur des données fraîches.
  */
 export function Solde({
   libelle,
@@ -19,14 +21,33 @@ export function Solde({
   solde: number | null;
   source: string;
 }) {
-  const [interrogation, setInterrogation] = useState<"repos" | "en_cours">("repos");
+  const [etat, setEtat] = useState<Etat>("repos");
 
-  const actualiser = () => {
-    if (interrogation === "en_cours") return;
-    setInterrogation("en_cours");
-    // Le canal de commandes n'est pas encore branché : on recharge simplement
-    // la page, qui relit la base — sans prétendre avoir interrogé le réseau.
-    setTimeout(() => window.location.reload(), 900);
+  const actualiser = async () => {
+    if (etat === "envoi") return;
+    setEtat("envoi");
+    try {
+      const r = await fetch("/api/commande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "solde", parametres: {} }),
+      });
+      if (!r.ok) throw new Error();
+      const { id } = (await r.json()) as { id: number };
+      for (let i = 0; i < 10; i++) {
+        await new Promise((res) => setTimeout(res, 1300));
+        const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
+          .then((x) => (x.ok ? x.json() : null))
+          .catch(() => null);
+        if (c && (c.etat === "faite" || c.etat === "echouee")) {
+          window.location.reload();
+          return;
+        }
+      }
+      setEtat("lent");
+    } catch {
+      setEtat("erreur");
+    }
   };
 
   return (
@@ -38,19 +59,23 @@ export function Solde({
         </p>
         <button
           onClick={actualiser}
-          aria-label="Relire le solde"
-          title="Relire le solde depuis la base"
+          aria-label="Actualiser : demander au terminal de republier son état"
+          title="Demander au terminal de republier son état"
           className="grid size-9 place-items-center rounded-full border border-line text-ink-soft transition hover:border-ink-faint hover:text-ink"
         >
-          <IconRefresh size={16} className={interrogation === "en_cours" ? "animate-spin" : ""} />
+          <IconRefresh size={16} className={etat === "envoi" ? "animate-spin" : ""} />
         </button>
       </div>
       <p className="mt-1.5 text-small text-ink-soft">
-        {interrogation === "en_cours"
-          ? "Relecture de la base…"
-          : solde == null
-            ? "Aucun solde connu pour l’instant."
-            : `D’après ${source}`}
+        {etat === "envoi"
+          ? "Demande envoyée au terminal de Douala…"
+          : etat === "lent"
+            ? "Le terminal n’a pas encore répondu — il relève ses demandes toutes les quelques secondes. Rechargez dans un instant."
+            : etat === "erreur"
+              ? "La demande n’a pas pu partir. Réessayez."
+              : solde == null
+                ? "Aucun solde connu pour l’instant : interrogez le réseau depuis Code USSD → Solde."
+                : `D’après ${source}`}
       </p>
     </section>
   );

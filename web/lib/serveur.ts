@@ -51,7 +51,8 @@ type LigneTerminal = {
 };
 type LigneCarte = {
   iccid: string; operateur: string | null; libelle: string | null;
-  numero: string | null; premiere_vue: string | null; derniere_vue: string | null;
+  nom: string | null; numero: string | null;
+  premiere_vue: string | null; derniere_vue: string | null;
 };
 type LigneCompte = {
   iccid: string | null; libelle: string; operateur: string | null;
@@ -115,7 +116,7 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 export async function chargerDonnees(): Promise<Donnees> {
   const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version&order=vu_le.desc.nullslast&limit=1"),
-    lire<LigneCarte>("cartes?select=iccid,operateur,libelle,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
+    lire<LigneCarte>("cartes?select=iccid,operateur,libelle,nom,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
     lire<LignePaiement>("paiements?select=id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
     lire<LigneRecu>("recus?select=numero,reference,chemin&order=etabli_le.desc&limit=1000"),
@@ -157,6 +158,24 @@ export async function chargerDonnees(): Promise<Donnees> {
   const sims: Sim[] = cartes.map((c) => {
     const compte = comptes.find((x) => x.iccid === c.iccid);
     const entrees = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
+    // Le solde le plus frais des deux sources : celui publié par le terminal
+    // (interrogation réseau) ou le « Nouveau Solde » du dernier SMS de cette
+    // carte. Toujours daté — jamais présenté comme un solde « en direct ».
+    const dernierSms = lignes.find((l) => l.carte === c.iccid && l.solde_apres != null);
+    const soldePublie = compte?.solde == null ? null : Number(compte.solde);
+    const smsPlusFrais = Boolean(
+      dernierSms &&
+      (!compte || soldePublie == null ||
+        new Date(dernierSms.recu_le) > new Date(compte.maj)),
+    );
+    const solde = smsPlusFrais
+      ? Number(dernierSms!.solde_apres)
+      : soldePublie;
+    const soldeSource = smsPlusFrais
+      ? `le SMS de ${heure(dernierSms!.recu_le)}`
+      : soldePublie != null && compte
+        ? `la mise à jour du terminal, ${heure(compte.maj)}`
+        : "";
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );
@@ -166,9 +185,10 @@ export async function chargerDonnees(): Promise<Donnees> {
       operateur: compte?.operateur || c.operateur || "?",
       reseau: compte?.reseau ?? "",
       itinerance: compte?.itinerance ?? false,
+      nom: c.nom || "",
       numero: compte?.numero || c.numero || "",
-      solde: compte?.solde == null ? null : Number(compte.solde),
-      soldeSource: compte ? `la mise à jour du terminal, ${heure(compte.maj)}` : "",
+      solde,
+      soldeSource,
       signal: compte?.signal ?? null,
       enPlace,
       premiereVue: dateCourte(c.premiere_vue),
@@ -201,4 +221,48 @@ export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
   } catch {
     return null;
   }
+}
+
+// --- Le canal de commandes ---------------------------------------------------
+// L'application dépose une demande ; le robot de Douala la relève, l'exécute
+// sur la vraie SIM, et écrit le résultat ici même.
+
+async function terminalVise(): Promise<string | null> {
+  const t = await lire<{ id: string }>(
+    "terminaux?select=id&order=vu_le.desc.nullslast&limit=1");
+  return t[0]?.id ?? null;
+}
+
+export async function creerCommande(
+  genre: string,
+  parametres: Record<string, unknown>,
+): Promise<number | null> {
+  if (!relie) return null;
+  const terminal = await terminalVise();
+  if (!terminal) return null;
+  try {
+    const r = await fetch(`${url}/rest/v1/commandes`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=representation",
+      },
+      body: JSON.stringify({ terminal, type: genre, parametres }),
+      cache: "no-store",
+    });
+    if (!r.ok) return null;
+    const lignes = (await r.json()) as { id: number }[];
+    return lignes[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function lireCommande(
+  id: number,
+): Promise<{ etat: string; resultat: string | null } | null> {
+  const lignes = await lire<{ id: number; etat: string; resultat: string | null }>(
+    `commandes?select=id,etat,resultat&id=eq.${id}&limit=1`);
+  const c = lignes.find((x) => x.id === id);
+  return c ? { etat: c.etat, resultat: c.resultat } : null;
 }

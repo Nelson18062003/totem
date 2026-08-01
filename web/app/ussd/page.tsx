@@ -4,8 +4,12 @@ import { ConsoleUssd } from "./console";
 
 export const dynamic = "force-dynamic";
 
-export default async function CodeUssd() {
-  const { sims } = await chargerDonnees();
+export default async function CodeUssd({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string }>;
+}) {
+  const [{ sims }, { code }] = await Promise.all([chargerDonnees(), searchParams]);
   const carte = sims.find((s) => s.enPlace);
 
   if (!carte) {
@@ -28,7 +32,8 @@ export default async function CodeUssd() {
 
   return (
     <ConsoleUssd
-      carte={{ libelle: carte.libelle, operateur: carte.operateur, solde: carte.solde }}
+      carte={{ libelle: carte.libelle, operateur: carte.operateur }}
+      codeInitial={typeof code === "string" ? code.replace(/[^0-9#*]/g, "").slice(0, 32) : undefined}
     />
   );
 }
