@@ -22,6 +22,7 @@ class FauxSupabase(BaseHTTPRequestHandler):
 
     recu = []           # toutes les lignes reçues, par table
     en_panne = False
+    refuser_texte = None  # sous-chaîne : tout lot la contenant est rejeté (400)
 
     def do_POST(self):
         if FauxSupabase.en_panne:
@@ -29,6 +30,12 @@ class FauxSupabase(BaseHTTPRequestHandler):
             return
         taille = int(self.headers.get("Content-Length", 0))
         corps = json.loads(self.rfile.read(taille) or b"[]")
+        # Une donnée que la base rejette pour de bon (colonne absente, type
+        # invalide…) : Supabase répond 4xx, pas 5xx.
+        if FauxSupabase.refuser_texte is not None and any(
+                FauxSupabase.refuser_texte in (l.get("texte") or "") for l in corps):
+            self.send_error(400, "donnee refusee")
+            return
         table = self.path.lstrip("/").split("?")[0].replace("rest/v1/", "")
         FauxSupabase.recu.append((table, corps))
         self.send_response(201)
@@ -52,6 +59,7 @@ class TestNuage(unittest.TestCase):
     def setUp(self):
         FauxSupabase.recu = []
         FauxSupabase.en_panne = False
+        FauxSupabase.refuser_texte = None
         self.journal = Journal(":memory:")
         self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
                            "douala", self.journal)
@@ -149,6 +157,42 @@ class TestNuage(unittest.TestCase):
         (ligne,) = self._lignes("paiements")
         self.assertEqual(ligne["source_id"], 1)
         self.assertEqual(ligne["terminal"], "douala")
+
+    # --- une ligne refusée ne bloque pas les autres ---
+    def test_un_paiement_refuse_ne_bloque_pas_les_suivants(self):
+        """Le vrai incident : la base rejette UN SMS (donnée mal formée) et,
+        avant, tout le lot restait coincé — la plateforme cessait d'afficher
+        les nouveaux paiements alors que Telegram continuait de les recevoir.
+        Désormais les bons passent, le fautif est mis de côté."""
+        self.journal.sms("MoMo", "Vous avez recu 1000 FCFA de 677000111", "MTN")
+        self.journal.sms("MoMo", "SMS EMPOISONNE que la base refuse", "MTN")
+        self.journal.sms("MoMo", "Vous avez recu 3000 FCFA de 677000222", "MTN")
+        FauxSupabase.refuser_texte = "EMPOISONNE"
+
+        self.assertEqual(self.nuage.pousser_paiements(), 2)   # les deux bons
+        # Plus aucun SMS en attente : la file est débloquée (le fautif est mis
+        # de côté, pas laissé en travers).
+        self.assertEqual(self.journal.sms_non_envoyes(100), [])
+        textes = " ".join(l["texte"] for l in self._lignes("paiements"))
+        self.assertIn("1000 FCFA", textes)
+        self.assertIn("3000 FCFA", textes)
+        self.assertNotIn("EMPOISONNE", textes)               # le fautif n'est pas passé
+
+    def test_le_paiement_refuse_est_signale_avec_l_erreur(self):
+        self.journal.sms("MoMo", "SMS EMPOISONNE", "MTN")
+        FauxSupabase.refuser_texte = "EMPOISONNE"
+        self.nuage.pousser_paiements()
+        evenements = " ".join(e[2] for e in self.journal.evenements_non_envoyes(10))
+        self.assertIn("refusé par le cloud", evenements)
+        self.assertIn("400", evenements)                     # l'erreur exacte de la base
+
+    def test_une_coupure_ne_met_rien_en_quarantaine(self):
+        """Si TOUT échoue par coupure réseau (5xx), rien n'est mis de côté :
+        on garde tout et on réessaiera. Une panne de nuit ne perd pas un SMS."""
+        self.journal.sms("MoMo", "Vous avez recu 1000 FCFA de 677000111", "MTN")
+        FauxSupabase.en_panne = True
+        self.assertEqual(self.nuage.pousser_paiements(), 0)
+        self.assertEqual(self.journal.reste_a_envoyer(), 1)  # gardé, pas quarantiné
 
     # --- événements ---
     def test_envoie_les_evenements(self):
