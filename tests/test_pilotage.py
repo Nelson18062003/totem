@@ -155,3 +155,60 @@ class TestGuichet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLaMainRepriseDepuisTelegram(unittest.TestCase):
+    """Le guichet à distance s'efface devant Telegram — un humain est au bout
+    du fil. Mais il faut le lui DIRE : sans ça sa session reste ouverte dans
+    ses livres, et sa réponse suivante — qui peut être un code secret — part
+    dans le menu qu'on vient d'ouvrir depuis Telegram."""
+
+    def test_le_guichet_lache_sa_session(self):
+        from totem.pilotage import Pilotage
+        from totem.compte import Compte
+        from totem.simulator import ModemSimule
+        from totem.storage import Journal
+
+        journal = Journal(":memory:")
+        compte = Compte(ModemSimule("Orange"), "Orange")
+        guichet = Pilotage(None, [compte], journal)
+        guichet._session = {"compte": compte, "vie": 0}
+
+        self.assertTrue(guichet.ceder(compte))
+        self.assertIsNone(guichet._session)
+
+    def test_un_autre_compte_ne_le_derange_pas(self):
+        from totem.pilotage import Pilotage
+        from totem.compte import Compte
+        from totem.simulator import ModemSimule
+        from totem.storage import Journal
+
+        journal = Journal(":memory:")
+        orange = Compte(ModemSimule("Orange"), "Orange")
+        mtn = Compte(ModemSimule("MTN"), "MTN")
+        guichet = Pilotage(None, [orange, mtn], journal)
+        guichet._session = {"compte": orange, "vie": 0}
+
+        self.assertFalse(guichet.ceder(mtn))
+        self.assertIsNotNone(guichet._session)
+
+    def test_ouvrir_depuis_telegram_previent_le_guichet(self):
+        """Le bout à bout : le robot doit appeler ceder() de lui-même."""
+        import sys
+        sys.path.insert(0, "tests")
+        from test_reglages import TransportEspion
+        from totem.app import Robot
+        from totem.compte import Compte
+        from totem.pilotage import Pilotage
+        from totem.simulator import ModemSimule
+        from totem.storage import Journal
+
+        journal = Journal(":memory:")
+        compte = Compte(ModemSimule("Orange"), "Orange")
+        robot = Robot([compte], TransportEspion(), journal)
+        robot.pilotage = Pilotage(None, [compte], journal)
+        robot.pilotage._session = {"compte": compte, "vie": 0}
+
+        robot._ouvrir_session(compte, "#150#", None)
+        self.assertIsNone(robot.pilotage._session,
+                          "le guichet garde une session devenue fausse")

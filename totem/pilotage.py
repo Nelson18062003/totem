@@ -90,6 +90,21 @@ class Pilotage:
                 "guichet à distance : session abandonnée, raccrochée")
             self._raccrocher()
 
+    def ceder(self, compte):
+        """Telegram reprend la main sur ce compte : on lâche notre session.
+
+        Sans ça, la nôtre resterait ouverte dans nos livres alors que
+        l'opérateur, lui, en a ouvert une autre. La réponse suivante venue de
+        la plateforme partirait dans un menu qui a bougé — et cette réponse
+        peut être un code secret. Le refus poli vaut infiniment mieux.
+        """
+        if self._session and self._session["compte"] is compte:
+            self.journal.evenement(
+                "guichet à distance : session reprise depuis Telegram")
+            self._session = None      # sans annuler : Telegram tient la ligne
+            return True
+        return False
+
     def _raccrocher(self):
         if self._session:
             try:

@@ -434,6 +434,12 @@ class Robot:
         self._avancer_macro()
 
     def _ouvrir_session(self, compte, code, canal):
+        # Le guichet à distance s'efface devant Telegram — un humain est au
+        # bout du fil. Encore faut-il le lui dire : sa session resterait
+        # ouverte dans ses livres, et sa réponse suivante — qui peut être un
+        # code secret — partirait dans le menu qu'on vient d'ouvrir ici.
+        if self.pilotage is not None:
+            self.pilotage.ceder(compte)
         # Un nouveau code composé, c'est une nouvelle opération : la trace
         # repart à zéro, sans quoi elle accumulerait deux parcours distincts.
         self.trace = []

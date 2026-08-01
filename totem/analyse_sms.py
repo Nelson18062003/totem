@@ -134,12 +134,22 @@ RE_TIERS = re.compile(
     r"(?P<nom>[^().,;:\n]{2,40}?)?\s*"
     r"(?:\(\s*(?P<num1>[+\d][\d\s]{6,20})\s*\)|(?P<num2>\b[+\d][\d\s]{7,20}\b))")
 
-# Les libellés les plus longs d'abord : « ID transaction » avant « id », sans
-# quoi la référence relevée serait le mot « transaction » lui-même.
+# Les libellés les plus longs d'abord : « ID transaction » avant « id ».
+#
+# Le refus qui suit n'est pas une précaution de style. Quand la référence est
+# trop courte pour le motif, l'expression recule sur l'alternative « id » et
+# capture le mot « transaction » qui la suit. Deux transferts différents
+# reçoivent alors la MÊME référence — or elle est unique en base : le second
+# n'obtient aucun reçu, sans que rien ne le signale.
+#
+# Mieux vaut aucune référence qu'une fausse : le garde-fou anti-doublon
+# retombe alors sur la ligne du journal, qui, elle, ne se répète jamais.
 RE_REFERENCE = re.compile(
     r"\b(?:id\s*(?:de\s*)?(?:la\s*)?transaction|financial\s*transaction\s*id"
     r"|transaction\s*id|reference|ref|txn|id)\b"
-    r"\s*[:.\-]?\s*([A-Za-z0-9][A-Za-z0-9._\-]{3,40})")
+    r"\s*[:.\-]?\s*"
+    r"(?!transaction\b|reference\b|ref\b|id\b|txn\b)"
+    r"([A-Za-z0-9][A-Za-z0-9._\-]{3,40})")
 
 RE_SOLDE = re.compile(
     r"\b(?:nouveau\s+solde|solde(?:\s+(?:actuel|disponible))?"
