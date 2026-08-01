@@ -78,6 +78,12 @@ def _nombre(brut):
     entier = re.sub(r"[.,]", "", entier)
     if not entier:
         return None
+    # Un montant Mobile Money tient en une douzaine de chiffres. Au-delà, ce
+    # n'est pas un montant : on refuse, plutôt que de risquer un calcul démesuré
+    # (« int » et « 10 ** n » lèvent sur des milliers de chiffres — et
+    # analyser() ne doit JAMAIS lever, même sur un SMS trafiqué).
+    if len(entier) > 15 or len(decimale) > 6:
+        return None
     valeur = int(entier)
     if decimale:
         valeur = round(valeur + int(decimale) / 10 ** len(decimale), len(decimale))
@@ -111,9 +117,11 @@ def _neuf_derniers(numero):
 # devise sous l'une de ses formes (FCFA, F CFA, XAF, CFA, F).
 MONTANT = r"([\d][\d\s.,]*)\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)"
 
-RE_RECU = re.compile(r"\b(?:recu|receive[sd]?|credite)\b.{0,20}?" + MONTANT, re.S)
+RE_RECU = re.compile(
+    r"\b(?:recu|receive[sd]?|credite|cash\s*in)\b.{0,20}?" + MONTANT, re.S)
 RE_ENVOYE = re.compile(
-    r"\b(?:envoye|transfere|debite|paye|retire|payment de|paiement de)\b.{0,20}?" + MONTANT, re.S)
+    r"\b(?:envoye|transfere|debite|paye|retire|sent|cash\s*out"
+    r"|payment de|paiement de)\b.{0,20}?" + MONTANT, re.S)
 
 # La forme d'Orange Money, relevée sur de vraies captures :
 #   « Transfert de 656483918 PRIX MONO SARL vers 696103864 WONDER PHONE reussi. »
@@ -127,6 +135,28 @@ RE_TRANSFERT = re.compile(
     r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
     r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
     r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes|success)\b")
+
+# Les opérations d'agent (dépôt, retrait) nomment le bénéficiaire APRÈS
+# « vers », le numéro D'ABORD puis la raison sociale — l'ordre inverse d'un
+# reçu classique. L'émetteur, lui, apparaît parfois en fin de message :
+#   « Depot de 50000 FCFA vers 690933686 NGANGOM NOUBEWE reussi from 80684177 »
+#   « Retrait vers 690933686 NGANGOM NOUBEWE effectue »
+# Le mot de réussite est exigé — une opération échouée n'est pas un mouvement.
+# Le sens n'est pas tranché ici : preciser_sens() dira, une fois les cartes
+# connues, laquelle des deux lignes est la nôtre.
+RE_OPERATION = re.compile(
+    r"\b(?:depot|retrait|transfert|transfer|paiement|payment|envoi)\b"
+    r"(?P<avant>[^\n]*?)"
+    r"\bvers\s+"
+    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s+"
+    r"(?P<nom_benef>[A-Za-z][^\d\n]{0,40}?)?\s*"
+    r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes|success)\b"
+    r"(?P<apres>[^\n]*)")
+
+# L'émetteur nommé en fin de message : « ... reussi from 80684177 ».
+RE_EMETTEUR_FIN = re.compile(
+    r"\b(?:from|de|par)\s+(?P<num>[+\d][\d\s]{6,20})"
+    r"\s*(?P<nom>[A-Za-z][^\d\n]{0,40}?)?(?:[.,;\n]|$)")
 
 # « de NGONO Marie (677123456) » / « de 677123456 » / « from Marie »
 RE_TIERS = re.compile(
@@ -171,6 +201,12 @@ RE_COMMISSION = re.compile(r"\bcommission\b[^\d]{0,20}?" + MONTANT, re.S)
 RE_MONTANT_NET = re.compile(r"\bmontant\s+net\b[^\d]{0,20}?" + MONTANT, re.S)
 RE_MONTANT_BRUT = re.compile(
     r"\bmontant\s+(?:de\s+la\s+)?transaction\b[^\d]{0,20}?" + MONTANT, re.S)
+# Un champ « Montant : 50000 FCFA » isolé — dernier recours pour les dépôts
+# et retraits qui ne détaillent ni « net » ni « transaction ».
+RE_MONTANT_SIMPLE = re.compile(r"\bmontant\b[^\d]{0,20}?" + MONTANT, re.S)
+# Un montant nu, sans mot-clé, cherché dans le seul fragment « depot de 50000
+# FCFA vers … » : trop court pour contenir des frais ou un solde.
+RE_MONTANT_SEUL = re.compile(MONTANT, re.S)
 
 # Mots qui trahissent un message publicitaire ou un code de connexion : on ne
 # veut surtout pas les compter comme des encaissements.
@@ -246,6 +282,10 @@ class Paiement:
             return self.nom or self.numero
         if self.emetteur and self.beneficiaire:
             return f"{self.emetteur} → {self.beneficiaire}"
+        if self.beneficiaire:
+            return str(self.beneficiaire)
+        if self.emetteur:
+            return str(self.emetteur)
         return "Inconnu"
 
     @property
@@ -373,6 +413,50 @@ def _transfert_orange(m, norme, propre, texte):
         emetteur=emetteur, beneficiaire=beneficiaire)
 
 
+def _operation_agent(m, norme, propre, texte):
+    """Un dépôt ou un retrait d'agent : le bénéficiaire est nommé après
+    « vers » (numéro puis nom), l'émetteur parfois en fin de message.
+
+    Comme pour un transfert, le sens n'est pas décidé ici : le SMS dit qui
+    envoie et qui reçoit, pas laquelle des deux lignes est la nôtre.
+    """
+    beneficiaire = Partie(
+        re.sub(r"\s+", "", m.group("num_benef")),
+        _nettoyer_nom(_tel_quel(m, "nom_benef", norme, propre)))
+
+    # L'émetteur, s'il est nommé après le mot de réussite (« ... from 806… »).
+    # Sur ce fragment de fin, l'alignement avec le texte d'origine ne tient
+    # plus : le numéro suffit, c'est lui qui tranchera le sens.
+    emetteur = None
+    fin = RE_EMETTEUR_FIN.search(m.group("apres") or "")
+    if fin:
+        emetteur = Partie(re.sub(r"\s+", "", fin.group("num")),
+                          _nettoyer_nom(fin.group("nom")))
+
+    # Le montant, entre le verbe et « vers » (« depot de 50000 FCFA vers … »),
+    # sinon dans un champ « Montant ». Jamais deviné : sans montant lisible,
+    # on renonce et le SMS reste affiché tel quel.
+    montant = None
+    tete = RE_MONTANT_SEUL.search(m.group("avant") or "")
+    if tete:
+        montant = _nombre(tete.group(1))
+    if montant is None:
+        montant = (_montant_nomme(RE_MONTANT_NET, norme)
+                   or _montant_nomme(RE_MONTANT_BRUT, norme)
+                   or _montant_nomme(RE_MONTANT_SIMPLE, norme))
+    if not montant:
+        return None
+
+    return Paiement(
+        sens=None, montant=montant, texte=texte,
+        reference=_reference(norme, propre),
+        solde_apres=_montant_nomme(RE_SOLDE, norme),
+        frais=_montant_nomme(RE_FRAIS, norme),
+        commission=_montant_nomme(RE_COMMISSION, norme),
+        emetteur=emetteur if emetteur else None,
+        beneficiaire=beneficiaire)
+
+
 def _reference(norme, propre):
     m = RE_REFERENCE.search(norme)
     if not m:
@@ -405,6 +489,15 @@ def analyser(texte, numeros=()):
         if paiement is not None:
             paiement.preciser_sens(numeros)
         return paiement
+
+    operation = RE_OPERATION.search(norme)
+    if operation:
+        paiement = _operation_agent(operation, norme, propre, texte)
+        if paiement is not None:
+            paiement.preciser_sens(numeros)
+            return paiement
+        # Sans montant lisible, ce n'était pas exploitable comme opération :
+        # on laisse la suite tenter une lecture plus simple.
 
     entree = RE_RECU.search(norme)
     sortie = None if entree else RE_ENVOYE.search(norme)

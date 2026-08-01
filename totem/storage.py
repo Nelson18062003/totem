@@ -481,14 +481,19 @@ class Journal:
             self.conn.commit()
 
     def courrier_echoue(self, identifiant, essais_max=60):
-        """Compte l'échec ; abandonne au bout de nombreuses tentatives pour
-        qu'un message impossible à envoyer ne bloque pas toute la file."""
+        """Compte l'échec ; abandonne au bout de `essais_max` tentatives pour
+        qu'un message impossible à envoyer ne bloque pas toute la file.
+
+        Renvoie True si le message vient d'être abandonné, pour que l'appelant
+        puisse le signaler au lieu de le perdre en silence."""
         with self.verrou:
             self.conn.execute(
                 "UPDATE sortants SET essais = essais + 1 WHERE id = ?", (identifiant,))
-            self.conn.execute("DELETE FROM sortants WHERE id = ? AND essais >= ?",
-                              (identifiant, essais_max))
+            curseur = self.conn.execute(
+                "DELETE FROM sortants WHERE id = ? AND essais >= ?",
+                (identifiant, essais_max))
             self.conn.commit()
+            return curseur.rowcount > 0
 
     # ---- reçus PDF ---------------------------------------------------------
     # Le document n'est pas conservé : il se refabrique à l'identique depuis le

@@ -511,6 +511,25 @@ class BilanQuotidien(unittest.TestCase):
         self.assertEqual(r.dernier_rapport, datetime.now().date())
 
 
+class TransportPointilleux:
+    """Transport de test qui DISTINGUE coupure et refus, comme le vrai (via
+    `acheminer`). `refuse` : sous-chaîne d'un message que Telegram rejette
+    pour de bon (fil fermé, robot exclu) ; `reseau=False` : coupure Internet."""
+
+    def __init__(self, refuse=None, reseau=True):
+        self.refuse = refuse
+        self.reseau = reseau
+        self.livres = []          # (texte, canal) des messages réellement partis
+
+    def acheminer(self, texte, canal=None, silencieux=False):
+        if not self.reseau:
+            return "reseau"
+        if self.refuse is not None and self.refuse in texte:
+            return "refuse"
+        self.livres.append((texte, canal))
+        return "livre"
+
+
 class CourrierHorsLigne(unittest.TestCase):
     """Une coupure Internet ne doit pas faire disparaître un encaissement."""
 
@@ -547,12 +566,47 @@ class CourrierHorsLigne(unittest.TestCase):
         self.facteur.distribuer()
         self.assertEqual([e[0] for e in self.transport.envois], ["D", "E"])
 
-    def test_message_increvable_abandonne(self):
-        self.transport.reseau = False
-        self.facteur.poster("Z")
+    def test_coupure_ne_jette_jamais_un_encaissement(self):
+        # Une coupure touche TOUT : on garde le message et on le rejoue au
+        # retour du réseau. Même après une nuit entière, rien n'est perdu.
+        t = TransportPointilleux(reseau=False)
+        f = Facteur(self.journal, t)
+        f.poster("A", "encaissements")
         for _ in range(70):
-            self.facteur.distribuer()
-        self.assertEqual(self.facteur.en_attente(), 0)
+            f.distribuer()
+        self.assertEqual(f.en_attente(), 1)   # toujours là
+        t.reseau = True
+        f.distribuer()
+        self.assertEqual([x[0] for x in t.livres], ["A"])
+
+    def test_message_refuse_est_abandonne_vite(self):
+        # Telegram REFUSE ce message précis (fil supprimé) : on l'écarte en
+        # quelques essais, pas au bout de soixante.
+        t = TransportPointilleux(refuse="Z")
+        f = Facteur(self.journal, t)
+        f.poster("Z", "encaissements")
+        f.distribuer()
+        self.assertEqual(f.en_attente(), 0)
+
+    def test_un_refus_ne_bloque_pas_les_suivants(self):
+        # Le vrai bug de production : un message refusé en tête ne doit PAS
+        # empêcher les messages parfaitement livrables derrière lui de partir.
+        t = TransportPointilleux(refuse="POISON")
+        f = Facteur(self.journal, t)
+        f.poster("POISON en tete", "encaissements")
+        f.poster("bon message", "encaissements")
+        f.distribuer()
+        self.assertIn("bon message", [x[0] for x in t.livres])
+
+    def test_abandon_previent_le_proprietaire(self):
+        alertes = []
+        t = TransportPointilleux(refuse="POISON")
+        f = Facteur(self.journal, t,
+                    sur_abandon=lambda canal, txt: alertes.append((canal, txt)))
+        f.poster("POISON", "encaissements")
+        f.distribuer()
+        self.assertEqual(len(alertes), 1)
+        self.assertEqual(alertes[0][0], "encaissements")
 
     def test_canal_conserve(self):
         self.transport.reseau = False
@@ -695,6 +749,45 @@ class LimitesDeTelegram(unittest.TestCase):
             tg = TransportTelegram("J", 111)
             self.assertEqual(tg.recevoir(), [])
             self.assertTrue(tg.conflit)
+        finally:
+            urllib.request.urlopen = vrai
+
+    def test_acheminer_refuse_un_400_persistant(self):
+        # Un 400 qui persiste même SANS mise en forme n'est pas un souci de
+        # balisage : c'est le message ou sa cible (fil supprimé) que Telegram
+        # refuse. Le facteur doit l'écarter, pas le rejouer indéfiniment.
+        def urlopen_400(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 400, "message thread not found", {},
+                io.BytesIO(b"{}"))
+        vrai = urllib.request.urlopen
+        urllib.request.urlopen = urlopen_400
+        try:
+            self.assertEqual(TransportTelegram("J", 111).acheminer("x"), "refuse")
+        finally:
+            urllib.request.urlopen = vrai
+
+    def test_acheminer_refuse_un_403(self):
+        # Robot exclu du groupe : inutile de s'acharner sur ce message.
+        def urlopen_403(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 403, "bot was kicked", {}, io.BytesIO(b"{}"))
+        vrai = urllib.request.urlopen
+        urllib.request.urlopen = urlopen_403
+        try:
+            self.assertEqual(TransportTelegram("J", 111).acheminer("x"), "refuse")
+        finally:
+            urllib.request.urlopen = vrai
+
+    def test_acheminer_reseau_sur_incident_passager(self):
+        # Un 5xx est passager : on garde le message et on réessaiera.
+        def urlopen_500(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 500, "Internal Server Error", {}, io.BytesIO(b"{}"))
+        vrai = urllib.request.urlopen
+        urllib.request.urlopen = urlopen_500
+        try:
+            self.assertEqual(TransportTelegram("J", 111).acheminer("x"), "reseau")
         finally:
             urllib.request.urlopen = vrai
 
