@@ -1,10 +1,29 @@
+"use client";
+
 import Link from "next/link";
-import { fcfa, fcfaCourt, paiements, simsEnPlace, soldeTotal } from "@/lib/mock";
-import { IconArrowDown, IconArrowUp, IconChevron, IconPhone, IconPlus, IconSettings, IconWallet } from "./icons";
+import { useState } from "react";
+import { fcfa, fcfaCourt, paiements, simsEnPlace } from "@/lib/mock";
+import {
+  IconArrowDown, IconArrowUp, IconChevron, IconHash, IconInbox,
+  IconPhone, IconRefresh, IconSettings, IconWallet,
+} from "./icons";
 
 export default function Accueil() {
-  const entrees = paiements.filter((p) => p.sens === "in" && p.date === "Aujourd’hui");
-  const totalJour = entrees.reduce((s, p) => s + p.montant, 0);
+  const carte = simsEnPlace[0];
+
+  // Le solde n'existe pas « en direct » : la carte ne le connaît que par le
+  // dernier SMS, ou en interrogeant le réseau. Actualiser = demander au
+  // terminal de composer le code du solde sur la vraie SIM.
+  const [interrogation, setInterrogation] = useState<"repos" | "en_cours" | "faite">("repos");
+  const source =
+    interrogation === "faite" ? "l’interrogation du réseau, à l’instant" : carte.soldeSource;
+
+  const actualiser = () => {
+    if (interrogation === "en_cours") return;
+    setInterrogation("en_cours");
+    // Maquette : la vraie demande partira au terminal par la base de données.
+    setTimeout(() => setInterrogation("faite"), 1800);
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -19,22 +38,38 @@ export default function Accueil() {
         </Link>
       </header>
 
-      {/* Solde */}
+      {/* Solde connu — et de quand il date */}
       <section>
-        <p className="text-small text-ink-soft">Solde disponible</p>
-        <p className="mt-1 text-hero font-semibold tabnums tracking-tight">{fcfa(soldeTotal)}</p>
+        <p className="text-small text-ink-soft">
+          Solde · {carte.libelle}
+        </p>
+        <div className="mt-1 flex items-center gap-3">
+          <p className="text-hero font-semibold tabnums tracking-tight">{fcfa(carte.solde)}</p>
+          <button
+            onClick={actualiser}
+            aria-label="Actualiser le solde"
+            title="Demander le solde au réseau"
+            className="grid size-9 place-items-center rounded-full border border-line text-ink-soft transition hover:border-ink-faint hover:text-ink"
+          >
+            <IconRefresh size={16} className={interrogation === "en_cours" ? "animate-spin" : ""} />
+          </button>
+        </div>
         <p className="mt-1.5 text-small text-ink-soft">
-          <span className="font-medium text-positive">+{fcfa(totalJour)}</span> encaissés aujourd’hui
+          {interrogation === "en_cours"
+            ? "Le terminal interroge le réseau…"
+            : `D’après ${source}`}
         </p>
       </section>
 
-      {/* Opérations */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {/* Les gestes du quotidien — les mêmes qu'au guichet */}
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {[
-          { href: "/encaissements", label: "Encaisser", Icone: IconPlus },
-          { href: "/actions", label: "Envoyer", Icone: IconArrowUp },
-          { href: "/actions", label: "Retirer", Icone: IconWallet },
-          { href: "/actions", label: "Crédit", Icone: IconPhone },
+          { href: "/actions", label: "Dépôt", Icone: IconArrowDown },
+          { href: "/actions", label: "Retrait", Icone: IconWallet },
+          { href: "/actions", label: "Transfert", Icone: IconArrowUp },
+          { href: "/actions", label: "Mon numéro", Icone: IconPhone },
+          { href: "/sms", label: "SMS reçus", Icone: IconInbox },
+          { href: "/ussd", label: "Code USSD", Icone: IconHash },
         ].map(({ href, label, Icone }, i) => (
           <Link key={i} href={href}
             className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
@@ -44,28 +79,23 @@ export default function Accueil() {
         ))}
       </section>
 
-      {/* Comptes */}
+      {/* La carte en place */}
       <section>
         <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-heading font-semibold">Comptes</h2>
+          <h2 className="text-heading font-semibold">Carte en place</h2>
           <Link href="/cartes" className="text-small text-ink-soft transition hover:text-ink">Détails</Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          {simsEnPlace.map((s, i) => (
-            <Link key={s.id} href="/cartes"
-              className={`rounded-card p-4 transition ${i === 0 ? "acct" : "acct-alt hover:border-ink-faint"}`}>
+          {simsEnPlace.map((s) => (
+            <Link key={s.id} href="/cartes" className="acct rounded-card p-4 transition">
               <div className="flex items-center justify-between">
-                <span className={`text-caption uppercase tracking-wider ${i === 0 ? "text-white/60" : "text-ink-faint"}`}>
+                <span className="text-caption uppercase tracking-wider text-white/60">
                   {s.operateur === "MTN" ? "MTN Mobile Money" : "Orange Money"}
                 </span>
-                <span className={`text-caption tabnums ${i === 0 ? "text-white/50" : "text-ink-faint"}`}>
-                  {s.signal}/31
-                </span>
+                <span className="text-caption tabnums text-white/50">{s.signal}/31</span>
               </div>
               <p className="mt-4 text-display font-semibold tabnums tracking-tight">{fcfa(s.solde)}</p>
-              <p className={`mt-1 text-small tabnums ${i === 0 ? "text-white/55" : "text-ink-faint"}`}>
-                •••• {s.numero.slice(-5)}
-              </p>
+              <p className="mt-1 text-small tabnums text-white/55">{s.numero}</p>
             </Link>
           ))}
         </div>

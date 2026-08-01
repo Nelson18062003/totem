@@ -19,6 +19,8 @@ const routes = [
   ["/encaissements", "encaissements"],
   ["/analyse", "analyse"],
   ["/actions", "actions"],
+  ["/sms", "sms"],
+  ["/ussd", "ussd"],
   ["/connexion", "connexion"],
   ["/reglages", "reglages"],
 ];

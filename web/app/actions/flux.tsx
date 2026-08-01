@@ -17,20 +17,23 @@ export type Flux = {
   operateur: "MTN" | "Orange";
   champs: Champ[];
   recap: (v: Record<string, string>) => { label: string; valeur: string }[];
-  succes: (v: Record<string, string>) => string;
+  // Ce que le terminal va composer sur la vraie SIM (le code du guichet).
+  code: string;
 };
 
-type Etape = "saisie" | "recap" | "pin" | "fait";
+// Le code secret ne se saisit jamais ici : rien de ce qui passe par le
+// navigateur et le cloud ne doit pouvoir rejouer une opération. La demande
+// part au terminal, et c'est le pavé sécurisé de Telegram qui conclut.
+type Etape = "saisie" | "recap" | "transmis";
 
 export function FluxGuide({ flux, onFermer }: { flux: Flux; onFermer: () => void }) {
   const [etape, setEtape] = useState<Etape>("saisie");
   const [valeurs, setValeurs] = useState<Record<string, string>>({});
-  const [pin, setPin] = useState("");
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
   const complet = flux.champs.every((c) => c.facultatif || (valeurs[c.cle] ?? "").trim().length > 0);
 
-  const etapeNum = { saisie: 1, recap: 2, pin: 3, fait: 3 }[etape];
+  const etapeNum = { saisie: 1, recap: 2, transmis: 3 }[etape];
 
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
@@ -77,42 +80,35 @@ export function FluxGuide({ flux, onFermer }: { flux: Flux; onFermer: () => void
                   <dd className="text-small font-medium tabnums">{r.valeur}</dd>
                 </div>
               ))}
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-small text-ink-soft">Frais</dt>
+                <dd className="text-small text-ink-faint">indiqués par {flux.operateur} avant le code secret</dd>
+              </div>
             </dl>
             <div className="flex gap-2">
               <button onClick={() => setEtape("saisie")} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
                 Modifier
               </button>
-              <button onClick={() => setEtape("pin")} className="flex-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                Confirmer
+              <button onClick={() => setEtape("transmis")} className="flex-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+                Envoyer au terminal
               </button>
             </div>
           </div>
         )}
 
-        {etape === "pin" && (
-          <form onSubmit={(e) => { e.preventDefault(); if (pin.length >= 4) setEtape("fait"); }}
-            className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-small text-ink-soft">Code PIN Mobile Money</span>
-              <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-                type="password" inputMode="numeric" maxLength={5} autoFocus
-                className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-center text-title tracking-[0.4em] outline-none transition focus:border-ink" />
-            </label>
-            <p className="text-caption leading-relaxed text-ink-faint">
-              Le code est transmis au réseau puis effacé. Il n’est jamais enregistré.
+        {etape === "transmis" && (
+          <div className="flex flex-col gap-4 py-1">
+            <p className="text-body leading-relaxed">
+              La demande est partie au terminal de Douala, qui compose{" "}
+              <span className="tabnums font-medium">{flux.code}</span> sur la carte.
             </p>
-            <button type="submit" disabled={pin.length < 4}
-              className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-              Valider
-            </button>
-          </form>
-        )}
-
-        {etape === "fait" && (
-          <div className="flex flex-col gap-5 py-2">
-            <p className="text-body leading-relaxed">{flux.succes(valeurs)}</p>
-            <button onClick={onFermer} className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-              Terminé
+            <p className="text-small leading-relaxed text-ink-soft">
+              Le code secret se compose sur le pavé sécurisé de Telegram — jamais
+              ici. La confirmation de l’opérateur arrivera ensuite dans les SMS
+              reçus.
+            </p>
+            <button onClick={onFermer} className="mt-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+              Compris
             </button>
           </div>
         )}

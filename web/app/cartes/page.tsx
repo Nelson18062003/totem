@@ -58,7 +58,8 @@ export default function Comptes() {
         ))}
       </section>
 
-      {/* Répartition */}
+      {/* Répartition — n'a de sens qu'avec plusieurs cartes en place */}
+      {simsEnPlace.length > 1 && (
       <section>
         <h2 className="mb-3 text-heading font-semibold">Répartition</h2>
         <div className="rounded-card border border-line bg-surface-raised p-5">
@@ -83,6 +84,7 @@ export default function Comptes() {
           </ul>
         </div>
       </section>
+      )}
 
       {/* Cartes retirées — l'historique d'une puce absente reste consultable */}
       {retirees.length > 0 && (

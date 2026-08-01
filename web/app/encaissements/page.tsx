@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { fcfa, fcfaCourt, paiements, type Paiement } from "@/lib/mock";
-import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDownload, IconRefund, IconSearch } from "../icons";
+import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDownload, IconSearch } from "../icons";
 import { Vide } from "../vide";
 
 export default function Encaissements() {
@@ -152,12 +152,11 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
           <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
         </div>
 
-        <div className="mt-5 flex gap-2">
-          <button className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-            <IconCopy size={15} /> Copier
-          </button>
-          <button className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-            <IconRefund size={15} /> Rembourser
+        {/* Pas de bouton « Rembourser » : aucun geste qui déplace de l'argent
+            ne part d'une fiche de consultation. Les opérations ont leur page. */}
+        <div className="mt-5">
+          <button className="flex w-full items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
+            <IconCopy size={15} /> Copier le SMS
           </button>
         </div>
       </div>

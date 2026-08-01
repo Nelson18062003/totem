@@ -2,17 +2,20 @@
 // Remplacées plus tard par l'API réelle du robot (Raspberry Pi).
 
 // Une carte SIM est identifiée par son ICCID — le numéro de série gravé sur
-// la puce, unique au monde. L'opérateur ne suffit pas : deux SIM MTN qui se
-// succèdent dans le terminal sont deux caisses distinctes, avec deux soldes.
+// la puce, unique au monde. L'opérateur ne suffit pas : deux SIM du même
+// opérateur qui se succèdent dans le terminal sont deux caisses distinctes.
 export type Sim = {
   id: string;
   iccid: string;
-  libelle: string;          // « MTN ·8901 » — opérateur + 4 derniers de l'ICCID
+  libelle: string;          // « Orange ·4432 » — opérateur + 4 derniers de l'ICCID
   operateur: "MTN" | "Orange";
   reseau: string;           // réseau visité, différent en itinérance
   itinerance: boolean;
   numero: string;
   solde: number;
+  // Le solde n'est jamais « en direct » : la SIM ne le connaît que par le
+  // dernier SMS reçu, ou par une interrogation USSD. On garde donc sa source.
+  soldeSource: string;      // « le SMS de 09 h 47 », « l'interrogation de 08 h 02 »
   signal: number;
   enPlace: boolean;         // la puce est-elle dans le terminal en ce moment ?
   premiereVue: string;
@@ -46,27 +49,33 @@ export const robot: EtatRobot = {
   surSecteur: true, internet: "Starlink", majTexte: "12 s",
 };
 
+// La puce en place aujourd'hui est une Orange — comme dans la réalité.
+// Les MTN passées par le boîtier restent consultables : journal intact.
 export const sims: Sim[] = [
-  {
-    id: "mtn", iccid: "89237010000000008901", libelle: "MTN ·8901",
-    operateur: "MTN", reseau: "MTN CM", itinerance: false,
-    numero: "677 12 34 56", solde: 872500, signal: 26, enPlace: true,
-    premiereVue: "12 mars 2026", derniereVue: "à l’instant",
-    nbPaiements: 214, totalRecu: 4_820_000,
-  },
   {
     id: "orange", iccid: "89237020000000004432", libelle: "Orange ·4432",
     operateur: "Orange", reseau: "Orange CM", itinerance: false,
-    numero: "699 88 77 66", solde: 415000, signal: 22, enPlace: true,
+    numero: "699 88 77 66", solde: 415000,
+    soldeSource: "le SMS de 09 h 47",
+    signal: 22, enPlace: true,
     premiereVue: "12 mars 2026", derniereVue: "à l’instant",
     nbPaiements: 96, totalRecu: 1_640_000,
+  },
+  {
+    id: "mtn", iccid: "89237010000000008901", libelle: "MTN ·8901",
+    operateur: "MTN", reseau: "MTN CM", itinerance: false,
+    numero: "", solde: 0, soldeSource: "",
+    signal: 0, enPlace: false,
+    premiereVue: "12 mars 2026", derniereVue: "28 juil. 2026",
+    nbPaiements: 214, totalRecu: 4_820_000,
   },
   {
     // Une puce retirée : son journal reste entier et consultable. C'est
     // précisément ce que le cloisonnement par ICCID rend possible.
     id: "mtn-ancienne", iccid: "89237010000000002215", libelle: "MTN ·2215",
     operateur: "MTN", reseau: "MTN CM", itinerance: false,
-    numero: "", solde: 0, signal: 0, enPlace: false,
+    numero: "", solde: 0, soldeSource: "",
+    signal: 0, enPlace: false,
     premiereVue: "4 janv. 2026", derniereVue: "11 mars 2026",
     nbPaiements: 58, totalRecu: 1_115_000,
   },
@@ -83,24 +92,72 @@ function mk(
   montant: number, heure: string, date: string, ref: string, soldeApres: number,
   categorie: Paiement["categorie"],
 ): Paiement {
-  const op = sim === "MTN" ? "MobileMoney" : "Orange Money";
-  const verbe = sens === "in" ? "recu" : "envoye";
-  const smsBrut = `${op}: Vous avez ${verbe} ${montant.toLocaleString("fr-FR")} FCFA ` +
-    `${sens === "in" ? "de" : "a"} ${nom} (${numero}). Ref: ${ref}. ` +
-    `Nouveau solde: ${soldeApres.toLocaleString("fr-FR")} FCFA.`;
+  // Les SMS Orange réels portent l'ID de transaction et le « Nouveau Solde » —
+  // c'est de là que vient le dernier solde connu.
+  const smsBrut = sim === "Orange"
+    ? `Vous avez ${sens === "in" ? "recu un transfert de" : "transfere"} ` +
+      `${montant.toLocaleString("fr-FR")} FCFA ${sens === "in" ? "de" : "vers"} ` +
+      `${numero.replace(/\s/g, "")} ${nom}. Details: ID transaction: ${ref}, ` +
+      `Nouveau Solde: ${soldeApres.toLocaleString("fr-FR")} FCFA`
+    : `MobileMoney: Vous avez ${sens === "in" ? "recu" : "envoye"} ` +
+      `${montant.toLocaleString("fr-FR")} FCFA ${sens === "in" ? "de" : "a"} ` +
+      `${nom} (${numero}). Ref: ${ref}. ` +
+      `Nouveau solde: ${soldeApres.toLocaleString("fr-FR")} FCFA.`;
   return { id, sim, sens, nom, numero, montant, heure, date, reference: ref, soldeApres, smsBrut, categorie };
 }
 
 export const paiements: Paiement[] = [
-  mk("p1", "MTN", "in", "NGONO Marie", "682 59 53 28", 25000, "09:47", "Aujourd’hui", "PP0947.A12345", 872500, "Client"),
-  mk("p2", "Orange", "in", "TCHOUMI Paul", "699 10 22 33", 15000, "09:12", "Aujourd’hui", "OM0912.B67890", 415000, "Client"),
-  mk("p3", "MTN", "in", "FOTSO Jean", "677 45 66 77", 50000, "08:35", "Aujourd’hui", "PP0835.C24680", 847500, "Client"),
-  mk("p4", "MTN", "out", "Fournisseur SARL", "690 33 44 55", 80000, "08:10", "Aujourd’hui", "PP0810.D13579", 797500, "Transfert"),
-  mk("p5", "MTN", "in", "ABENA Rose", "690 33 44 55", 10000, "07:58", "Aujourd’hui", "PP0758.E11223", 877500, "Client"),
-  mk("p6", "Orange", "in", "KAMGA Eric", "655 12 88 99", 35000, "01:12", "Aujourd’hui", "OM0112.F33445", 400000, "Client"),
-  mk("p7", "MTN", "in", "MBALLA Sophie", "679 88 11 22", 40000, "22:40", "Hier", "PP2240.G55667", 787500, "Client"),
-  mk("p8", "Orange", "out", "Recharge crédit", "656 77 99 00", 5000, "18:05", "Hier", "OM1805.H77889", 365000, "Crédit"),
+  mk("p1", "Orange", "in", "NGONO Marie", "699 59 53 28", 25000, "09:47", "Aujourd’hui", "PP260801.0947.A12345", 415000, "Client"),
+  mk("p2", "Orange", "in", "TCHOUMI Paul", "699 10 22 33", 15000, "09:12", "Aujourd’hui", "PP260801.0912.B67890", 390000, "Client"),
+  mk("p3", "Orange", "in", "FOTSO Jean", "697 45 66 77", 50000, "08:35", "Aujourd’hui", "PP260801.0835.C24680", 375000, "Client"),
+  mk("p4", "Orange", "out", "Fournisseur SARL", "690 33 44 55", 80000, "08:10", "Aujourd’hui", "PP260801.0810.D13579", 325000, "Transfert"),
+  mk("p5", "Orange", "in", "ABENA Rose", "655 33 44 55", 10000, "07:58", "Aujourd’hui", "PP260801.0758.E11223", 405000, "Client"),
+  mk("p6", "Orange", "in", "KAMGA Eric", "655 12 88 99", 35000, "22:40", "Hier", "PP260731.2240.F33445", 395000, "Client"),
+  mk("p7", "Orange", "out", "Recharge crédit", "656 77 99 00", 5000, "18:05", "Hier", "PP260731.1805.G55667", 360000, "Crédit"),
+  // Encaissés par la MTN ·8901 avant son retrait du 28 juillet.
+  mk("p8", "MTN", "in", "MBALLA Sophie", "679 88 11 22", 40000, "16:12", "28 juillet", "PP1612.H77889", 787500, "Client"),
+  mk("p9", "MTN", "in", "NGONO Marie", "682 59 53 28", 22000, "11:03", "28 juillet", "PP1103.J11223", 747500, "Client"),
 ];
+
+// --- SMS reçus, tels quels ---------------------------------------------------
+// Tout ce que la carte reçoit passe ici : paiements compris, mais aussi le
+// solde, la publicité — et les codes à usage unique, jamais montrés en clair.
+export type Sms = {
+  id: string;
+  heure: string;
+  date: string;
+  expediteur: string;
+  texte: string;
+  nature: "paiement" | "solde" | "code" | "autre";
+};
+
+const smsBruts: Sms[] = [
+  ...paiements
+    .filter((p) => p.date === "Aujourd’hui" || p.date === "Hier")
+    .map((p) => ({
+      id: `s-${p.id}`, heure: p.heure, date: p.date,
+      expediteur: "OrangeMoney", texte: p.smsBrut, nature: "paiement" as const,
+    })),
+  {
+    id: "s-solde", heure: "08:02", date: "Aujourd’hui", expediteur: "OrangeMoney",
+    texte: "Le solde de votre compte est de 395000FCFA.", nature: "solde",
+  },
+  {
+    // Le vrai SMS contient un code à six chiffres. Il n'est jamais montré ni
+    // archivé en clair : c'est une clé d'entrée sur le compte.
+    id: "s-code", heure: "17:40", date: "Hier", expediteur: "OrangeMoney",
+    texte: "Le code de 696103864 est: ••••••. Orange Money vous remercie.", nature: "code",
+  },
+  {
+    id: "s-pub", heure: "12:15", date: "Hier", expediteur: "Orange",
+    texte: "Profitez de 10 Go a 2000 FCFA valable 7 jours. Composez le #145#.", nature: "autre",
+  },
+];
+
+export const smsRecus: Sms[] = smsBruts.sort((a, b) => {
+  const jour = (d: string) => (d === "Aujourd’hui" ? 0 : d === "Hier" ? 1 : 2);
+  return jour(a.date) - jour(b.date) || b.heure.localeCompare(a.heure);
+});
 
 // 7 derniers jours d'encaissements (FCFA)
 export const septJours = [
@@ -119,7 +176,7 @@ export const topClients = [
 ];
 
 export function fcfa(n: number): string {
-  return n.toLocaleString("fr-FR").replace(/ /g, " ") + " FCFA";
+  return n.toLocaleString("fr-FR").replace(/ /g, " ") + " FCFA";
 }
 export function fcfaCourt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(".0", "") + " M";

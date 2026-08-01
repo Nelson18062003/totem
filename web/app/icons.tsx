@@ -70,6 +70,12 @@ export const IconBank = ({ size, className }: P) => (
 export const IconChevron = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="m9 6 6 6-6 6" /></svg>
 );
+export const IconRefresh = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M20 12a8 8 0 1 1-2.34-5.66" /><path d="M20 4v4.5h-4.5" /></svg>
+);
+export const IconHash = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M9.5 4 8 20M16 4l-1.5 16M4.5 9h16M3.5 15h16" /></svg>
+);
 export const IconDoc = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h4" /></svg>
 );

@@ -1,28 +1,46 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { IconArrowUp, IconBank, IconChevron, IconList, IconPhone, IconWallet } from "../icons";
+import { simsEnPlace } from "@/lib/mock";
+import {
+  IconArrowDown, IconArrowUp, IconChevron, IconHash,
+  IconInbox, IconPhone, IconWallet,
+} from "../icons";
 import { Flux, FluxGuide, montantFcfa } from "./flux";
 
-function fluxEnvoyer(op: "MTN" | "Orange"): Flux {
+// Les codes composés viennent du catalogue relevé sur le terrain (codes.py) :
+// rien n'est deviné. Chaque code n'ouvre que le guichet — l'opérateur redemande
+// ensuite le détail, et le code secret se compose sur Telegram.
+function fluxTransfert(op: "MTN" | "Orange"): Flux {
   return {
-    titre: "Envoyer de l’argent", operateur: op,
+    titre: "Transfert d’argent", operateur: op, code: "#148*4#",
     champs: [
-      { cle: "numero", label: "Numéro du bénéficiaire", type: "numero", aide: "677 12 34 56" },
+      { cle: "numero", label: "Numéro du bénéficiaire", type: "numero", aide: "699 12 34 56" },
       { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "50 000" },
-      { cle: "motif", label: "Motif", type: "texte", aide: "Facultatif", facultatif: true },
     ],
     recap: (v) => [
       { label: "Bénéficiaire", valeur: v.numero },
       { label: "Montant", valeur: montantFcfa(v.montant) },
-      { label: "Frais estimés", valeur: montantFcfa(String(Math.max(100, Math.round(parseInt(v.montant.replace(/\D/g, "") || "0") / 100)))) },
     ],
-    succes: (v) => `Transfert de ${montantFcfa(v.montant)} vers ${v.numero} effectué.`,
+  };
+}
+function fluxDepot(op: "MTN" | "Orange"): Flux {
+  return {
+    titre: "Dépôt d’argent", operateur: op, code: "#148*2#",
+    champs: [
+      { cle: "numero", label: "Numéro à créditer", type: "numero", aide: "699 12 34 56" },
+      { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "20 000" },
+    ],
+    recap: (v) => [
+      { label: "Numéro", valeur: v.numero },
+      { label: "Montant", valeur: montantFcfa(v.montant) },
+    ],
   };
 }
 function fluxRetrait(op: "MTN" | "Orange"): Flux {
   return {
-    titre: "Retrait d’argent", operateur: op,
+    titre: "Retrait d’argent", operateur: op, code: "#148*3#",
     champs: [
       { cle: "point", label: "Numéro de l’agent", type: "numero", aide: "650 00 00 00" },
       { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "20 000" },
@@ -31,32 +49,26 @@ function fluxRetrait(op: "MTN" | "Orange"): Flux {
       { label: "Agent", valeur: v.point },
       { label: "Montant", valeur: montantFcfa(v.montant) },
     ],
-    succes: (v) => `Retrait de ${montantFcfa(v.montant)} autorisé chez ${v.point}.`,
-  };
-}
-function fluxCredit(op: "MTN" | "Orange"): Flux {
-  return {
-    titre: "Acheter du crédit", operateur: op,
-    champs: [
-      { cle: "numero", label: "Numéro à recharger", type: "numero", aide: "677 12 34 56" },
-      { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "1 000" },
-    ],
-    recap: (v) => [
-      { label: "Numéro", valeur: v.numero },
-      { label: "Crédit", valeur: montantFcfa(v.montant) },
-    ],
-    succes: (v) => `Crédit de ${montantFcfa(v.montant)} envoyé au ${v.numero}.`,
   };
 }
 
 export default function Operations() {
-  const [op, setOp] = useState<"MTN" | "Orange">("MTN");
+  const carte = simsEnPlace[0];
+  const op = carte.operateur;
   const [flux, setFlux] = useState<Flux | null>(null);
+  const [demande, setDemande] = useState<string | null>(null);
 
   const operations = [
-    { titre: "Envoyer de l’argent", sous: "Vers un numéro Mobile Money", Icone: IconArrowUp, f: fluxEnvoyer },
+    { titre: "Dépôt", sous: "Créditer un compte Mobile Money", Icone: IconArrowDown, f: fluxDepot },
     { titre: "Retrait", sous: "Chez un agent", Icone: IconWallet, f: fluxRetrait },
-    { titre: "Acheter du crédit", sous: "Recharge téléphonique", Icone: IconPhone, f: fluxCredit },
+    { titre: "Transfert", sous: "Envoyer vers un numéro", Icone: IconArrowUp, f: fluxTransfert },
+  ];
+
+  // Les consultations n'engagent pas d'argent : un seul geste, le terminal
+  // compose le code, la réponse revient ici et sur Telegram.
+  const consultations = [
+    { l: "Consulter le solde", code: "#148*5#", Icone: IconWallet },
+    { l: "Mon numéro", code: "#148*7*6#", Icone: IconPhone },
   ];
 
   return (
@@ -66,14 +78,9 @@ export default function Operations() {
           <h1 className="text-title font-semibold tracking-tight">Opérations</h1>
           <p className="mt-1 text-small text-ink-soft">Sans composer de code USSD.</p>
         </div>
-        <div className="flex rounded-btn border border-line bg-surface-raised p-0.5">
-          {(["MTN", "Orange"] as const).map((o) => (
-            <button key={o} onClick={() => setOp(o)}
-              className={`rounded-sm px-3 py-1.5 text-small transition ${
-                op === o ? "bg-ink font-medium text-white" : "text-ink-soft hover:text-ink"
-              }`}>{o}</button>
-          ))}
-        </div>
+        <span className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft">
+          {carte.libelle}
+        </span>
       </header>
 
       {/* Opérations */}
@@ -101,22 +108,41 @@ export default function Operations() {
       <section>
         <h2 className="mb-3 text-heading font-semibold">Consultation</h2>
         <div className="grid grid-cols-2 gap-2">
-          {[
-            { l: "Consulter le solde", Icone: IconBank },
-            { l: "Dernières transactions", Icone: IconList },
-          ].map(({ l, Icone }) => (
-            <button key={l}
+          {consultations.map(({ l, code, Icone }) => (
+            <button key={l} onClick={() => setDemande(code)}
               className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
               <Icone size={18} className="text-ink-soft" />
               <span className="text-left leading-snug">{l}</span>
             </button>
           ))}
         </div>
+        {demande && (
+          <p className="mt-3 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-ink-soft">
+            Demande envoyée au terminal : il compose{" "}
+            <span className="tabnums font-medium text-ink">{demande}</span> sur la
+            carte. La réponse s’affichera ici et sur Telegram.
+          </p>
+        )}
+      </section>
+
+      {/* Le reste du guichet */}
+      <section className="grid grid-cols-2 gap-2">
+        {[
+          { href: "/sms", l: "SMS reçus", Icone: IconInbox },
+          { href: "/ussd", l: "Code USSD", Icone: IconHash },
+        ].map(({ href, l, Icone }) => (
+          <Link key={l} href={href}
+            className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
+            <Icone size={18} className="text-ink-soft" />
+            <span className="text-left leading-snug">{l}</span>
+          </Link>
+        ))}
       </section>
 
       <p className="text-caption leading-relaxed text-ink-faint">
-        Le code PIN n’est jamais enregistré : il est saisi à chaque opération, transmis au réseau,
-        puis effacé.
+        Le code secret ne se saisit jamais dans le navigateur : chaque opération
+        se conclut sur le pavé sécurisé de Telegram, et n’est enregistrée nulle
+        part.
       </p>
 
       {flux && <FluxGuide flux={flux} onFermer={() => setFlux(null)} />}
