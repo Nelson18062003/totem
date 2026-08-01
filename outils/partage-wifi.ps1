@@ -104,9 +104,21 @@ $conversion = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Obje
         $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
     })[0]
 
-if ($null -eq $conversion) {
-    throw ("Windows n'expose pas la conversion attendue (AsTask). Vérifiez que " +
-           "vous êtes bien dans « Windows PowerShell » et non PowerShell 7.")
+# Toutes les opérations Windows ne rendent pas la même chose. Allumer et
+# éteindre rendent un RÉSULTAT (IAsyncOperation<T>) ; régler le nom du réseau
+# ne rend RIEN (IAsyncAction). Les confondre produit un message trompeur :
+# « Impossible de convertir l'objet de type System.__ComObject ». Il faut donc
+# deux conversions, et savoir laquelle employer.
+$conversion_sans_resultat = ([System.WindowsRuntimeSystemExtensions].GetMethods() |
+    Where-Object {
+        $_.Name -eq 'AsTask' -and
+        $_.GetParameters().Count -eq 1 -and
+        $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncAction'
+    })[0]
+
+if ($null -eq $conversion -or $null -eq $conversion_sans_resultat) {
+    throw ("Windows n'expose pas les conversions attendues (AsTask). Vérifiez " +
+           "que vous êtes bien dans « Windows PowerShell » et non PowerShell 7.")
 }
 
 function Attendre-Windows($Operation, $Type) {
@@ -122,6 +134,14 @@ function Attendre-Windows($Operation, $Type) {
     $tache = $conversion.MakeGenericMethod($Type).Invoke($null, @($Operation))
     $tache.Wait(-1) | Out-Null
     return $tache.Result
+}
+
+function Attendre-Rien($Operation) {
+    # Une opération Windows qui ne rend aucun résultat : on attend, c'est tout.
+    # (Un commentaire, pas une chaîne : tout ce qu'une fonction PowerShell
+    # écrit part dans sa valeur de retour.)
+    $tache = $conversion_sans_resultat.Invoke($null, @($Operation))
+    $tache.Wait(-1) | Out-Null
 }
 
 $Resultat = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult, Windows.Networking.NetworkOperators, ContentType = WindowsRuntime]
@@ -180,10 +200,8 @@ if ($reglage.Ssid -ne $Nom -or $reglage.Passphrase -ne $Cle) {
     }
     $reglage.Ssid = $Nom
     $reglage.Passphrase = $Cle
-    $issue = Attendre-Windows ($partage.ConfigureAccessPointAsync($reglage)) $Resultat
-    if ($issue.Status -ne $Succes) {
-        throw "Réglage refusé : $($issue.Status) $($issue.AdditionalErrorMessage)"
-    }
+    # Celle-ci ne rend rien : elle réussit, ou elle lève.
+    Attendre-Rien ($partage.ConfigureAccessPointAsync($reglage))
     Dire "Réseau renommé « $Nom »." Green
 }
 
