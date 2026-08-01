@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { codesUssd, simsEnPlace } from "@/lib/mock";
+import { codesUssd, fcfa, simsEnPlace } from "@/lib/mock";
 import { IconClose, IconHash } from "../icons";
+import { PaveSecret } from "../pave-secret";
 
 // Maquette : menu inventé, du même genre que ce que le réseau renvoie. La
 // vraie session traversera le terminal, qui composera le code sur la carte.
@@ -16,7 +17,8 @@ const MENU_DEMO = {
 
 type Session =
   | { etat: "menu"; code: string }
-  | { etat: "suite"; code: string; choix: string };
+  | { etat: "pin"; code: string; choix: string }
+  | { etat: "reponse"; code: string; choix: string };
 
 export default function ConsoleUssd() {
   const carte = simsEnPlace[0];
@@ -24,8 +26,12 @@ export default function ConsoleUssd() {
   const [session, setSession] = useState<Session | null>(null);
 
   const composer = (code: string) => {
-    if (!code.trim()) return;
-    setSession({ etat: "menu", code: code.trim() });
+    const c = code.trim();
+    if (!c) return;
+    // Un code qui vise directement une opération saute le menu : le réseau
+    // demande aussitôt le code secret — comme sur un vrai téléphone.
+    if (c === "#148*5#") setSession({ etat: "pin", code: c, choix: "Consultation de solde" });
+    else setSession({ etat: "menu", code: c });
     setSaisie("");
   };
 
@@ -70,7 +76,7 @@ export default function ConsoleUssd() {
         ))}
       </div>
 
-      {/* La session — une seule carte, qui se met à jour, comme sur Telegram */}
+      {/* La session — une seule carte, qui se met à jour en place */}
       {session && (
         <section className="rounded-card border border-line bg-surface-raised">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
@@ -88,7 +94,7 @@ export default function ConsoleUssd() {
                 {MENU_DEMO.options.map((o, i) => (
                   <li key={o}>
                     <button
-                      onClick={() => setSession({ etat: "suite", code: session.code, choix: o })}
+                      onClick={() => setSession({ etat: "pin", code: session.code, choix: o })}
                       className="flex w-full items-center gap-3 rounded-btn border border-line px-3.5 py-2.5 text-left text-small transition hover:border-ink-faint"
                     >
                       <span className="tabnums text-ink-faint">{i + 1}</span>
@@ -98,13 +104,26 @@ export default function ConsoleUssd() {
                 ))}
               </ul>
             </div>
+          ) : session.etat === "pin" ? (
+            <div className="flex flex-col gap-4 p-4">
+              <p className="max-w-[85%] self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
+                {session.choix}. Entrez votre code secret pour continuer :
+              </p>
+              <PaveSecret
+                onValider={() => setSession({ ...session, etat: "reponse" })}
+              />
+            </div>
           ) : (
             <div className="flex flex-col gap-3 p-4">
-              <p className="text-body">{session.choix}</p>
-              <p className="text-small leading-relaxed text-ink-soft">
-                La suite demande le code secret : le pavé sécurisé de Telegram
-                prend le relais, et la confirmation arrivera dans les SMS reçus.
-                Rien de secret ne passe par le navigateur.
+              <p className="max-w-[85%] self-end rounded-card bg-ink px-3.5 py-2.5 text-small text-white">••••</p>
+              <p className="max-w-[85%] self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed">
+                {session.choix === "Consultation de solde"
+                  ? `Le solde de votre compte est de ${fcfa(carte.solde)}.`
+                  : "Votre demande est en cours de traitement. Vous recevrez un SMS de confirmation."}
+              </p>
+              <p className="text-caption leading-relaxed text-ink-faint">
+                La réponse du réseau arrive aussi dans les SMS reçus, telle
+                quelle.
               </p>
               <button onClick={() => setSession(null)}
                 className="mt-1 self-start rounded-btn border border-line px-4 py-2 text-small font-medium text-ink-soft transition hover:border-ink-faint">

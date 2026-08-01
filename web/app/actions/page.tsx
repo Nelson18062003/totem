@@ -7,11 +7,11 @@ import {
   IconArrowDown, IconArrowUp, IconChevron, IconHash,
   IconInbox, IconPhone, IconWallet,
 } from "../icons";
-import { Flux, FluxGuide, montantFcfa } from "./flux";
+import { chiffres, Flux, FluxGuide, montantFcfa } from "./flux";
 
 // Les codes composés viennent du catalogue relevé sur le terrain (codes.py) :
-// rien n'est deviné. Chaque code n'ouvre que le guichet — l'opérateur redemande
-// ensuite le détail, et le code secret se compose sur Telegram.
+// rien n'est deviné. Le terminal déroule le menu de l'opérateur en répondant
+// avec vos informations, et le code secret se compose ici, sur son pavé.
 function fluxTransfert(op: "MTN" | "Orange"): Flux {
   return {
     titre: "Transfert d’argent", operateur: op, code: codeUssd(op, "transfert"),
@@ -23,6 +23,14 @@ function fluxTransfert(op: "MTN" | "Orange"): Flux {
       { label: "Bénéficiaire", valeur: v.numero },
       { label: "Montant", valeur: montantFcfa(v.montant) },
     ],
+    dialogue: (v) => [
+      { demande: "Orange Money — Transfert d’argent. Entrez le numero du beneficiaire :", reponse: chiffres(v.numero) },
+      { demande: "Entrez le montant :", reponse: chiffres(v.montant) },
+    ],
+    confirmation: (v) =>
+      `Transfert de ${montantFcfa(v.montant)} vers ${chiffres(v.numero)}. Entrez votre code secret pour confirmer :`,
+    succes: (v) =>
+      `Votre transfert de ${montantFcfa(v.montant)} vers ${chiffres(v.numero)} est en cours. Vous recevrez un SMS de confirmation.`,
   };
 }
 function fluxDepot(op: "MTN" | "Orange"): Flux {
@@ -36,6 +44,14 @@ function fluxDepot(op: "MTN" | "Orange"): Flux {
       { label: "Numéro", valeur: v.numero },
       { label: "Montant", valeur: montantFcfa(v.montant) },
     ],
+    dialogue: (v) => [
+      { demande: "Orange Money — Depot. Entrez le numero a crediter :", reponse: chiffres(v.numero) },
+      { demande: "Entrez le montant :", reponse: chiffres(v.montant) },
+    ],
+    confirmation: (v) =>
+      `Depot de ${montantFcfa(v.montant)} sur le ${chiffres(v.numero)}. Entrez votre code secret pour confirmer :`,
+    succes: (v) =>
+      `Votre depot de ${montantFcfa(v.montant)} est en cours. Vous recevrez un SMS de confirmation.`,
   };
 }
 function fluxRetrait(op: "MTN" | "Orange"): Flux {
@@ -49,6 +65,14 @@ function fluxRetrait(op: "MTN" | "Orange"): Flux {
       { label: "Agent", valeur: v.point },
       { label: "Montant", valeur: montantFcfa(v.montant) },
     ],
+    dialogue: (v) => [
+      { demande: "Orange Money — Retrait. Entrez le numero de l’agent :", reponse: chiffres(v.point) },
+      { demande: "Entrez le montant :", reponse: chiffres(v.montant) },
+    ],
+    confirmation: (v) =>
+      `Retrait de ${montantFcfa(v.montant)} chez l’agent ${chiffres(v.point)}. Entrez votre code secret pour confirmer :`,
+    succes: (v) =>
+      `Votre retrait de ${montantFcfa(v.montant)} est autorise. Presentez-vous chez l’agent. Un SMS de confirmation arrive.`,
   };
 }
 
@@ -65,7 +89,7 @@ export default function Operations() {
   ];
 
   // Les consultations n'engagent pas d'argent : un seul geste, le terminal
-  // compose le code, la réponse revient ici et sur Telegram.
+  // compose le code, la réponse revient ici.
   const consultations = [
     { l: "Consulter le solde", code: codeUssd(op, "solde"), Icone: IconWallet },
     { l: "Mon numéro", code: codeUssd(op, "mon_numero"), Icone: IconPhone },
@@ -120,7 +144,7 @@ export default function Operations() {
           <p className="mt-3 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-ink-soft">
             Demande envoyée au terminal : il compose{" "}
             <span className="tabnums font-medium text-ink">{demande}</span> sur la
-            carte. La réponse s’affichera ici et sur Telegram.
+            carte. La réponse du réseau s’affichera ici.
           </p>
         )}
       </section>
@@ -140,9 +164,9 @@ export default function Operations() {
       </section>
 
       <p className="text-caption leading-relaxed text-ink-faint">
-        Le code secret ne se saisit jamais dans le navigateur : chaque opération
-        se conclut sur le pavé sécurisé de Telegram, et n’est enregistrée nulle
-        part.
+        Le code secret se compose sur son pavé, au moment où le réseau le
+        demande. Il part au réseau puis disparaît : jamais enregistré, jamais
+        journalisé autrement que « •••• ».
       </p>
 
       {flux && <FluxGuide flux={flux} onFermer={() => setFlux(null)} />}

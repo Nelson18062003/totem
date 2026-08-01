@@ -223,9 +223,11 @@ function SectionCodes() {
       <p className="mt-2 text-caption leading-relaxed text-ink-faint">
         Chaque opérateur a ses propres codes ; ceux-ci appartiennent au réseau
         Orange et suivront toute carte Orange. Aucun code MTN n’a encore été
-        relevé sur le terrain — plutôt que d’en deviner, faites l’opération une
-        fois depuis Telegram : le terminal proposera d’en faire un bouton. Un
-        code n’ouvre que le guichet ; le code secret, lui, reste sur Telegram.
+        relevé sur le terrain — plutôt que d’en deviner, saisissez ici ceux du
+        vrai téléphone, ou faites l’opération une fois dans la console : le
+        terminal proposera d’en faire un bouton. Un code n’ouvre que le
+        guichet ; le code secret se compose sur son pavé au moment voulu, et
+        n’est jamais enregistré.
       </p>
     </section>
   );
