@@ -36,8 +36,9 @@ export default function ConsoleUssd() {
   };
 
   return (
-    <div className="flex flex-col gap-7">
-      <header>
+    // Grand écran : le cadran à gauche, l'écran de session à droite.
+    <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-x-10">
+      <header className="lg:col-span-2">
         <h1 className="text-title font-semibold tracking-tight">Code USSD</h1>
         <p className="mt-1 text-small text-ink-soft">
           Composez comme sur le téléphone : le terminal de Douala tape le code
@@ -45,40 +46,56 @@ export default function ConsoleUssd() {
         </p>
       </header>
 
-      {/* Composer */}
-      <form
-        onSubmit={(e) => { e.preventDefault(); composer(saisie); }}
-        className="flex items-center gap-2"
-      >
-        <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
-          <IconHash size={16} className="text-ink-faint" />
-          <input
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value.replace(/[^0-9#*]/g, ""))}
-            inputMode="tel"
-            placeholder="#148#"
-            className="flex-1 bg-transparent py-2.5 text-body tabnums outline-none placeholder:text-ink-faint"
-          />
-        </div>
-        <button type="submit" disabled={!saisie.trim()}
-          className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-          Composer
-        </button>
-      </form>
-
-      {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages */}
-      <div className="flex flex-wrap gap-1.5">
-        {codesUssd[carte.operateur].map((c) => (
-          <button key={c.code} onClick={() => composer(c.code)}
-            className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink">
-            {c.libelle} <span className="tabnums text-ink-faint">{c.code}</span>
+      {/* La colonne du cadran : composer, puis les raccourcis */}
+      <div className="flex flex-col gap-5 lg:col-start-1">
+        <form
+          onSubmit={(e) => { e.preventDefault(); composer(saisie); }}
+          className="flex items-center gap-2"
+        >
+          <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
+            <IconHash size={16} className="text-ink-faint" />
+            <input
+              value={saisie}
+              onChange={(e) => setSaisie(e.target.value.replace(/[^0-9#*]/g, ""))}
+              inputMode="tel"
+              placeholder="#148#"
+              className="flex-1 bg-transparent py-2.5 text-body tabnums outline-none placeholder:text-ink-faint"
+            />
+          </div>
+          <button type="submit" disabled={!saisie.trim()}
+            className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+            Composer
           </button>
-        ))}
+        </form>
+
+        {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages */}
+        <div className="flex flex-wrap gap-1.5">
+          {codesUssd[carte.operateur].map((c) => (
+            <button key={c.code} onClick={() => composer(c.code)}
+              className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink">
+              {c.libelle} <span className="tabnums text-ink-faint">{c.code}</span>
+            </button>
+          ))}
+        </div>
+
+        <p className="hidden text-caption leading-relaxed text-ink-faint lg:block">
+          Une opération faite ici peut devenir un bouton : refaites-la une
+          fois, et le terminal la retient — sans jamais retenir le code
+          secret, ni un montant.
+        </p>
       </div>
 
-      {/* La session — une seule carte, qui se met à jour en place */}
+      {/* Sur grand écran, l'écran du téléphone : la session vit à droite */}
+      {!session && (
+        <div className="hidden items-center justify-center rounded-card border border-dashed border-line px-6 py-16 text-center lg:col-start-2 lg:flex">
+          <p className="max-w-56 text-small leading-relaxed text-ink-faint">
+            Aucune session en cours. Composez un code, la réponse du réseau
+            s’affichera ici.
+          </p>
+        </div>
+      )}
       {session && (
-        <section className="rounded-card border border-line bg-surface-raised">
+        <section className="rounded-card border border-line bg-surface-raised lg:col-start-2">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-small font-medium tabnums">{session.code}</p>
             <button onClick={() => setSession(null)} aria-label="Fermer la session"
@@ -134,7 +151,7 @@ export default function ConsoleUssd() {
         </section>
       )}
 
-      <p className="text-caption leading-relaxed text-ink-faint">
+      <p className="text-caption leading-relaxed text-ink-faint lg:hidden">
         Une opération faite ici peut devenir un bouton : refaites-la une fois,
         et le terminal la retient — sans jamais retenir le code secret, ni un
         montant.

@@ -2,6 +2,7 @@
 //
 //   npm run build && npx next start -p 3112
 //   node scripts/shot.mjs            → mobile (390×844)
+//   node scripts/shot.mjs tablette   → tablette (834×1112)
 //   node scripts/shot.mjs desktop    → bureau (1440×900)
 //
 // Les images atterrissent dans /tmp/totem-<mode>-<nom>.png.
@@ -11,7 +12,12 @@ const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 
 const base = process.env.TOTEM_URL ?? "http://localhost:3112";
 const mode = process.argv[2] ?? "mobile";
-const mobile = mode !== "desktop";
+const tailles = {
+  mobile: { width: 390, height: 844 },
+  tablette: { width: 834, height: 1112 },
+  desktop: { width: 1440, height: 900 },
+};
+const mobile = mode === "mobile";
 
 const routes = [
   ["/", "accueil"],
@@ -34,10 +40,10 @@ const browser = await chromium.launch({
 
 for (const [route, nom] of routes) {
   const page = await browser.newPage({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    viewport: tailles[mode] ?? tailles.mobile,
     deviceScaleFactor: 2,
-    isMobile: mobile,
-    hasTouch: mobile,
+    isMobile: mode !== "desktop",
+    hasTouch: mode !== "desktop",
   });
   await page.goto(base + route, { waitUntil: "load", timeout: 60000 });
   await page.waitForTimeout(600);

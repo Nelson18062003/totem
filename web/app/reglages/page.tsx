@@ -24,6 +24,9 @@ export default function Reglages() {
         </div>
       </section>
 
+      {/* Grand écran : deux colonnes de réglages, pas une pile sans fin. */}
+      <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-10">
+      <div className="flex flex-col gap-8">
       {/* État du terminal */}
       <section>
         <h2 className="mb-3 text-heading font-semibold">Terminal</h2>
@@ -88,9 +91,6 @@ export default function Reglages() {
         </p>
       </section>
 
-      {/* Codes USSD */}
-      <SectionCodes />
-
       {/* Notifications */}
       <section>
         <h2 className="mb-3 text-heading font-semibold">Notifications</h2>
@@ -101,6 +101,11 @@ export default function Reglages() {
           <Bascule t="Doubler les alertes sur Telegram" defaut />
         </div>
       </section>
+      </div>
+
+      <div className="flex flex-col gap-8">
+      {/* Codes USSD */}
+      <SectionCodes />
 
       {/* Sécurité */}
       <section>
@@ -114,6 +119,8 @@ export default function Reglages() {
           chaque opération, puis disparaît.
         </p>
       </section>
+      </div>
+      </div>
 
       <Link
         href="/connexion"

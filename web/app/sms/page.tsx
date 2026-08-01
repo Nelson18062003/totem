@@ -31,7 +31,8 @@ export default function SmsRecus() {
   }, {});
 
   return (
-    <div className="flex flex-col gap-7">
+    // Des lignes de SMS trop larges se lisent mal : on borne la colonne.
+    <div className="flex max-w-3xl flex-col gap-7">
       <header>
         <h1 className="text-title font-semibold tracking-tight">SMS reçus</h1>
         <p className="mt-1 text-small text-ink-soft">

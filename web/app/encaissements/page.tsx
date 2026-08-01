@@ -40,29 +40,30 @@ export default function Encaissements() {
         <p className="mt-1 text-small text-ink-faint">{entrees.length} paiements</p>
       </section>
 
-      {/* Recherche */}
-      <div className="flex items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
-        <IconSearch size={16} className="text-ink-faint" />
-        <input value={recherche} onChange={(e) => setRecherche(e.target.value)}
-          placeholder="Nom, numéro, montant, référence"
-          className="flex-1 bg-transparent py-2.5 text-body outline-none placeholder:text-ink-faint" />
-        {recherche && (
-          <button onClick={() => setRecherche("")} className="text-ink-faint transition hover:text-ink">
-            <IconClose size={15} />
-          </button>
-        )}
-      </div>
-
-      {/* Filtres */}
-      <div className="flex gap-1.5">
-        {(["Tous", "MTN", "Orange"] as const).map((f) => (
-          <button key={f} onClick={() => setFiltre(f)}
-            className={`rounded-btn border px-3.5 py-1.5 text-small transition ${
-              filtre === f
-                ? "border-ink bg-ink font-medium text-white"
-                : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
-            }`}>{f}</button>
-        ))}
+      {/* Recherche et filtres — une seule ligne dès que la largeur le permet */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
+          <IconSearch size={16} className="text-ink-faint" />
+          <input value={recherche} onChange={(e) => setRecherche(e.target.value)}
+            placeholder="Nom, numéro, montant, référence"
+            className="flex-1 bg-transparent py-2.5 text-body outline-none placeholder:text-ink-faint" />
+          {recherche && (
+            <button onClick={() => setRecherche("")} className="text-ink-faint transition hover:text-ink"
+              aria-label="Effacer la recherche">
+              <IconClose size={15} />
+            </button>
+          )}
+        </div>
+        <div className="flex gap-1.5">
+          {(["Tous", "MTN", "Orange"] as const).map((f) => (
+            <button key={f} onClick={() => setFiltre(f)}
+              className={`rounded-btn border px-3.5 py-1.5 text-small transition sm:py-2.5 ${
+                filtre === f
+                  ? "border-ink bg-ink font-medium text-white"
+                  : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+              }`}>{f}</button>
+          ))}
+        </div>
       </div>
 
       {/* Liste */}

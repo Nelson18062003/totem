@@ -14,8 +14,8 @@ export default function Comptes() {
         </p>
       </header>
 
-      {/* Cartes en place */}
-      <section className="flex flex-col gap-3">
+      {/* Cartes en place — côte à côte dès que la largeur le permet */}
+      <section className="grid gap-3 sm:grid-cols-2">
         {simsEnPlace.map((s, i) => (
           <div key={s.id} className={`rounded-card p-5 ${i === 0 ? "acct" : "acct-alt"}`}>
             <div className="flex items-start justify-between">

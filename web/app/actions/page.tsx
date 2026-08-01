@@ -96,8 +96,9 @@ export default function Operations() {
   ];
 
   return (
-    <div className="flex flex-col gap-7">
-      <header className="flex items-end justify-between">
+    // Grand écran : les trois opérations à gauche, la consultation à droite.
+    <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
+      <header className="flex items-end justify-between lg:col-span-2">
         <div>
           <h1 className="text-title font-semibold tracking-tight">Opérations</h1>
           <p className="mt-1 text-small text-ink-soft">Sans composer de code USSD.</p>
@@ -108,12 +109,12 @@ export default function Operations() {
       </header>
 
       {/* Opérations */}
-      <section className="overflow-hidden rounded-card border border-line bg-surface-raised">
+      <section className="overflow-hidden rounded-card border border-line bg-surface-raised lg:col-start-1">
         <ul className="divide-hair">
           {operations.map(({ titre, sous, Icone, f }) => (
             <li key={titre}>
               <button onClick={() => setFlux(f(op))}
-                className="flex w-full items-center gap-3.5 px-4 py-4 text-left transition hover:bg-surface-2/60">
+                className="flex w-full items-center gap-3.5 px-4 py-4 text-left transition hover:bg-surface-2/60 lg:py-5">
                 <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
                   <Icone size={18} />
                 </span>
@@ -128,42 +129,44 @@ export default function Operations() {
         </ul>
       </section>
 
-      {/* Consultation */}
-      <section>
-        <h2 className="mb-3 text-heading font-semibold">Consultation</h2>
-        <div className="grid grid-cols-2 gap-2">
-          {consultations.map(({ l, code, Icone }) => (
-            <button key={l} onClick={() => setDemande(code)}
+      <aside className="flex flex-col gap-7 lg:col-start-2 lg:row-span-2 lg:row-start-2">
+        {/* Consultation */}
+        <section>
+          <h2 className="mb-3 text-heading font-semibold">Consultation</h2>
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+            {consultations.map(({ l, code, Icone }) => (
+              <button key={l} onClick={() => setDemande(code)}
+                className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
+                <Icone size={18} className="text-ink-soft" />
+                <span className="text-left leading-snug">{l}</span>
+              </button>
+            ))}
+          </div>
+          {demande && (
+            <p className="mt-3 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-ink-soft">
+              Demande envoyée au terminal : il compose{" "}
+              <span className="tabnums font-medium text-ink">{demande}</span> sur la
+              carte. La réponse du réseau s’affichera ici.
+            </p>
+          )}
+        </section>
+
+        {/* Le reste du guichet */}
+        <section className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+          {[
+            { href: "/sms", l: "SMS reçus", Icone: IconInbox },
+            { href: "/ussd", l: "Code USSD", Icone: IconHash },
+          ].map(({ href, l, Icone }) => (
+            <Link key={l} href={href}
               className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
               <Icone size={18} className="text-ink-soft" />
               <span className="text-left leading-snug">{l}</span>
-            </button>
+            </Link>
           ))}
-        </div>
-        {demande && (
-          <p className="mt-3 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-ink-soft">
-            Demande envoyée au terminal : il compose{" "}
-            <span className="tabnums font-medium text-ink">{demande}</span> sur la
-            carte. La réponse du réseau s’affichera ici.
-          </p>
-        )}
-      </section>
+        </section>
+      </aside>
 
-      {/* Le reste du guichet */}
-      <section className="grid grid-cols-2 gap-2">
-        {[
-          { href: "/sms", l: "SMS reçus", Icone: IconInbox },
-          { href: "/ussd", l: "Code USSD", Icone: IconHash },
-        ].map(({ href, l, Icone }) => (
-          <Link key={l} href={href}
-            className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
-            <Icone size={18} className="text-ink-soft" />
-            <span className="text-left leading-snug">{l}</span>
-          </Link>
-        ))}
-      </section>
-
-      <p className="text-caption leading-relaxed text-ink-faint">
+      <p className="text-caption leading-relaxed text-ink-faint lg:col-start-1">
         Le code secret se compose sur son pavé, au moment où le réseau le
         demande. Il part au réseau puis disparaît : jamais enregistré, jamais
         journalisé autrement que « •••• ».
