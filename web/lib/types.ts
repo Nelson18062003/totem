@@ -10,6 +10,11 @@ export type Sim = {
   operateur: string;        // « MTN », « Orange »
   reseau: string;           // réseau visité, différent en itinérance
   itinerance: boolean;
+  // Le nom commercial du compte et son numéro. Ni la puce ni le réseau ne les
+  // connaissent : la plupart des SIM prépayées ne déclarent pas leur numéro,
+  // et le nom n'est connu que du propriétaire. Ils s'inscrivent depuis
+  // Telegram (/reglages) et le terminal les remonte ici. Vides sinon.
+  nom: string;
   numero: string;
   solde: number | null;     // le dernier solde connu — jamais « en direct »
   soldeSource: string;      // « le SMS de 09 h 47 », « la mise à jour de 8 h 02 »

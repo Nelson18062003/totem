@@ -84,11 +84,11 @@ export default async function Reglages() {
                   className={`shrink-0 ${s.enPlace ? "text-ink-soft" : "text-ink-faint"}`} />
                 <div className="min-w-0 flex-1">
                   <p className={`text-body font-medium ${s.enPlace ? "" : "text-ink-soft"}`}>
-                    {s.libelle}
+                    {s.nom || s.libelle}
                   </p>
                   <p className="text-small tabnums text-ink-faint">
                     {s.enPlace
-                      ? `${s.numero || "numéro non provisionné"} · carte ${s.iccid.slice(-8)}`
+                      ? `${s.numero || "numéro à renseigner"} · ${s.libelle} · carte ${s.iccid.slice(-8)}`
                       : `retirée le ${s.derniereVue} · journal conservé`}
                   </p>
                 </div>
@@ -100,10 +100,20 @@ export default async function Reglages() {
           </ul>
         )}
         <p className="mt-2 text-caption leading-relaxed text-ink-faint">
-          Le nom d’un compte vient de la carte elle-même (son ICCID), jamais du
-          réseau capté : une puce MTN reste « MTN » même à l’étranger, en
-          itinérance. Changer de carte ouvre un compte distinct — les soldes ne
-          se mélangent pas, et l’ancienne retrouve son journal si on la remet.
+          Une carte est identifiée par son ICCID, jamais par le réseau capté :
+          une puce MTN reste « MTN » même à l’étranger, en itinérance. Changer
+          de carte ouvre un compte distinct — les soldes ne se mélangent pas,
+          et l’ancienne retrouve son journal si on la remet.
+        </p>
+        <p className="mt-2 text-caption leading-relaxed text-ink-faint">
+          Le <strong className="font-medium text-ink-soft">nom</strong> et le{" "}
+          <strong className="font-medium text-ink-soft">numéro</strong> ne se
+          lisent ni sur la puce ni sur le réseau : la plupart des SIM prépayées
+          ne déclarent pas leur numéro. C’est vous qui les inscrivez, depuis
+          Telegram — <code className="tabnums">/reglages</code> — et le
+          terminal les remonte ici. Sans le numéro, un reçu de transfert ne
+          peut pas dire de quel côté vous êtes : il écrit « Montant net »
+          plutôt que « Montant reçu » ou « Montant envoyé ».
         </p>
       </section>
 

@@ -157,10 +157,15 @@ Trois règles gouvernent son existence :
   en clair : il est masqué avant le journal, la sauvegarde et Telegram.
 - **Le sens n'est pas deviné.** Orange écrit « Transfert de 656483918 PRIX
   MONO SARL vers 696103864 WONDER PHONE » : il nomme les deux parties sans
-  dire laquelle est la nôtre. Déclarez le numéro de vos puces dans la section
-  `[numeros]` de `totem.conf` et le reçu dira « Montant reçu » ou « Montant
-  envoyé » à bon escient. Sans cette déclaration il dit « Montant net », qui
-  est vrai dans les deux sens.
+  dire laquelle est la nôtre. Envoyez **`/reglages`** dans Telegram — le robot
+  demande le numéro et le nom de chaque puce, et le reçu dit alors « Montant
+  reçu » ou « Montant envoyé » à bon escient. Sans cette déclaration il dit
+  « Montant net », qui est vrai dans les deux sens.
+
+Ces deux renseignements ne se lisent nulle part : une SIM prépayée ne déclare
+presque jamais son numéro, et le nom commercial du compte n'est connu que de
+son propriétaire. Ils sont rangés par **carte**, donc ils survivent au retrait
+de la puce et remontent jusqu'à l'application web.
 
 Rien ne s'accumule sur la carte SD : le PDF est fabriqué en mémoire, envoyé,
 puis déposé dans le stockage Supabase. Il se refabrique à l'identique depuis

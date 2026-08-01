@@ -51,7 +51,8 @@ type LigneTerminal = {
 };
 type LigneCarte = {
   iccid: string; operateur: string | null; libelle: string | null;
-  numero: string | null; premiere_vue: string | null; derniere_vue: string | null;
+  nom: string | null; numero: string | null;
+  premiere_vue: string | null; derniere_vue: string | null;
 };
 type LigneCompte = {
   iccid: string | null; libelle: string; operateur: string | null;
@@ -115,7 +116,7 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 export async function chargerDonnees(): Promise<Donnees> {
   const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version&order=vu_le.desc.nullslast&limit=1"),
-    lire<LigneCarte>("cartes?select=iccid,operateur,libelle,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
+    lire<LigneCarte>("cartes?select=iccid,operateur,libelle,nom,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
     lire<LignePaiement>("paiements?select=id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
     lire<LigneRecu>("recus?select=numero,reference,chemin&order=etabli_le.desc&limit=1000"),
@@ -184,6 +185,7 @@ export async function chargerDonnees(): Promise<Donnees> {
       operateur: compte?.operateur || c.operateur || "?",
       reseau: compte?.reseau ?? "",
       itinerance: compte?.itinerance ?? false,
+      nom: c.nom || "",
       numero: compte?.numero || c.numero || "",
       solde,
       soldeSource,

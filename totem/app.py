@@ -30,7 +30,8 @@ from datetime import datetime
 
 from .analyse_sms import analyser, formater_montant, masquer_secrets
 from .declencheur import TRANSFERT, motif_du_menu, motif_du_sms
-from .recu import numero_de_recu, recu_solde, recu_transfert
+from .recu import (numero_de_recu, numero_lisible, recu_solde,
+                   recu_transfert)
 from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
@@ -86,6 +87,7 @@ COMMANDES_BOT = [
     ("sms", "Les derniers SMS reçus"),
     ("rapport", "Bilan des dernières 24 h"),
     ("export", "Journal des 7 derniers jours en CSV"),
+    ("reglages", "Le numéro et le nom de chaque puce"),
     ("diagnostic", "État détaillé (version, mémoire SMS, cartes)"),
     ("brut", "Voir le dernier menu tel que l'opérateur l'a envoyé"),
     ("sauvegarde", "Envoyer une copie du journal dans la conversation"),
@@ -132,6 +134,10 @@ class Robot:
         # bouton — il doit donc survivre à la réinitialisation de session.
         self.trace_a_enregistrer = []
         self.attente_nom = False
+        # Une saisie de réglage en cours : (« num » ou « nom », ICCID visé).
+        # Le robot ne demande jamais deux choses à la fois.
+        self.attente_identite = None
+        self.canal_identite = None
         # Un redémarrage après l'heure du bilan ne doit pas en déclencher un.
         self.dernier_rapport = (datetime.now().date()
                                 if self._heure_passee() else None)
@@ -307,6 +313,15 @@ class Robot:
                 self._clic(texte, entrant, role, canal)
                 return
 
+            # Un réglage demandé attend sa réponse : « 696103864 » ne doit
+            # pas être lu comme un code USSD, ni « WONDER PHONE » comme une
+            # commande inconnue.
+            if self.attente_identite and not texte.startswith("/"):
+                if not self._verifier_admin(role, entrant, canal):
+                    return
+                self._enregistrer_identite(texte, canal)
+                return
+
             # Une saisie attendue passe avant tout : sinon « Solde » serait
             # lu comme une commande inconnue et le nom serait perdu.
             if self.attente_nom and not texte.startswith("/"):
@@ -325,6 +340,10 @@ class Robot:
                 self._statut(canal)
             elif commande in ("comptes", "compte"):
                 self._lister_comptes(canal, role)
+            elif commande in ("reglages", "parametres", "numero"):
+                if not self._verifier_admin(role, entrant, canal):
+                    return
+                self._reglages(canal)
             elif commande in ("sims", "cartes", "carte"):
                 self._lister_cartes(canal)
             elif commande in ("raccourcis", "boutons"):
@@ -427,14 +446,22 @@ class Robot:
 
     def _clic(self, donnee, entrant, role, canal):
         genre, _, valeur = donnee.partition(":")
+        if genre == "i":                      # réglage d'identité de carte
+            if not self._verifier_admin(role, entrant, canal):
+                return
+            champ, _, iccid = valeur.partition(":")
+            self._demander_identite(champ, iccid, canal)
+            return
+
         if genre == "c" and valeur in ("menu", "statut", "sms", "rapport",
                                        "export", "aide", "comptes",
-                                       "diagnostic", "sims"):
+                                       "diagnostic", "sims", "reglages"):
             {"menu": lambda: self._accueil(canal, role),
              "aide": lambda: self.transport.envoyer(self._aide(), canal=canal),
              "statut": lambda: self._statut(canal),
              "comptes": lambda: self._lister_comptes(canal, role),
              "sims": lambda: self._lister_cartes(canal),
+             "reglages": lambda: self._reglages(canal),
              "sms": lambda: self._derniers_sms(canal),
              "rapport": lambda: self._rapport(canal=canal, manuel=True),
              "diagnostic": lambda: self._diagnostic(canal),
@@ -532,9 +559,9 @@ class Robot:
         lignes.append([("📥 SMS reçus", "c:sms"), ("📊 Rapport 24 h", "c:rapport")])
         lignes.append([("📡 Statut", "c:statut"), ("📄 Export CSV", "c:export")])
         if role == ADMIN:
-            lignes.append([("⌨️ Code USSD", "c:ussd"), ("❓ Aide", "c:aide")])
-        else:
-            lignes.append([("❓ Aide", "c:aide")])
+            lignes.append([("⌨️ Code USSD", "c:ussd"),
+                           ("⚙️ Réglages", "c:reglages")])
+        lignes.append([("❓ Aide", "c:aide")])
         return lignes
 
     def _accueil(self, canal, role):
@@ -834,6 +861,10 @@ class Robot:
     def _enregistrer_raccourci(self, nom, canal):
         """Le nom saisi devient un bouton, pour l'opérateur de la carte."""
         self.attente_nom = False
+        # Une saisie de réglage en cours : (« num » ou « nom », ICCID visé).
+        # Le robot ne demande jamais deux choses à la fois.
+        self.attente_identite = None
+        self.canal_identite = None
         operateur = self._operateur_courant()
         etapes = self.trace_a_enregistrer
         self.trace_a_enregistrer = []
@@ -1174,12 +1205,18 @@ class Robot:
         honnête que de le deviner.
         """
         declares = [c.carte.numero for c in self.comptes if c.carte.numero]
-        return tuple(declares) + tuple(self.numeros.values())
+        return (tuple(self.journal.numeros_declares()) + tuple(declares)
+                + tuple(self.numeros.values()))
 
     def _numero_du_compte(self, compte):
         """Le numéro de CETTE carte. La configuration prime : elle a été
         écrite à la main en regardant la puce, le modem se contente de
         répéter ce que la SIM veut bien dire."""
+        # Ce que vous avez inscrit dans Telegram passe avant tout : c'est le
+        # plus récent, et le seul que quelqu'un ait vérifié de ses yeux.
+        numero, _ = self.journal.identite(compte.carte.iccid)
+        if numero:
+            return numero
         for cle in (compte.carte.iccid, compte.libelle, compte.carte.operateur):
             if cle and cle.lower() in self.numeros:
                 return self.numeros[cle.lower()]
@@ -1282,6 +1319,93 @@ class Robot:
         self.transport.envoyer("\n".join(lignes), canal="alertes",
                                boutons=[[("💳 Cartes", "c:sims"),
                                          ("🏠 Menu", "c:menu")]])
+
+    # ---- réglages : l'identité des puces -----------------------------------
+    # Une SIM prépayée ne déclare presque jamais son numéro, et personne ne
+    # connaît le nom commercial du compte à part son propriétaire. Plutôt que
+    # de le faire éditer un fichier sur le Pi, on le lui demande ici.
+
+    def _reglages(self, canal=None):
+        """Ce que TOTEM sait de chaque puce, et ce qu'il attend de vous."""
+        lignes = [f"⚙️ {gras('Réglages')}", "",
+                  "Le numéro et le nom de chaque puce. Ils ne se lisent pas "
+                  "sur la carte : c'est vous qui les connaissez.", ""]
+        boutons = []
+        for compte in self.comptes:
+            iccid = compte.carte.iccid
+            if not iccid:
+                lignes.append(f"▫️ {gras(echap(compte.libelle))}\n"
+                              "    carte illisible — rien à régler ici")
+                continue
+            numero, nom = self.journal.identite(iccid)
+            lignes.append(
+                f"▶️ {gras(echap(compte.libelle))}\n"
+                f"    📱 {echap(numero_lisible(numero)) if numero else italique('numéro à renseigner')}\n"
+                f"    🏷 {echap(nom) if nom else italique('nom à renseigner')}")
+            court = compte.libelle[:10]
+            boutons.append([(f"📱 Numéro · {court}", f"i:num:{iccid}"),
+                            (f"🏷 Nom · {court}", f"i:nom:{iccid}")])
+
+        lignes += ["", italique(
+            "Le numéro sert à dire de quel côté d'un transfert vous êtes : "
+            "sans lui, le reçu écrit « Montant net » au lieu de « Montant "
+            "reçu » ou « Montant envoyé ». Le nom paraît sur le reçu de solde.")]
+        boutons.append([("🏠 Menu", "c:menu")])
+        self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
+
+    def _demander_identite(self, champ, iccid, canal=None):
+        """Ouvre la saisie. La réponse suivante sera lue comme la valeur."""
+        compte = self._compte_par_iccid(iccid)
+        if compte is None or compte.carte.iccid != iccid:
+            return self.transport.envoyer(
+                "Cette carte n'est plus en place.", canal=canal,
+                boutons=[[("⚙️ Réglages", "c:reglages")]])
+        self.attente_identite = (champ, iccid)
+        self.canal_identite = canal
+        if champ == "num":
+            question = (f"📱 Envoyez le numéro de la puce "
+                        f"{gras(echap(compte.libelle))}.\n"
+                        + italique("Neuf chiffres, par exemple 696103864."))
+        else:
+            question = (f"🏷 Envoyez le nom du compte "
+                        f"{gras(echap(compte.libelle))}.\n"
+                        + italique("Celui qui paraîtra sur les reçus, par "
+                                   "exemple WONDER PHONE."))
+        self.transport.envoyer(question, canal=canal,
+                               boutons=[[("❌ Annuler", "c:reglages")]])
+
+    def _enregistrer_identite(self, texte, canal=None):
+        """Lit la réponse attendue, la contrôle, puis l'inscrit."""
+        champ, iccid = self.attente_identite
+        self.attente_identite = None
+
+        if champ == "num":
+            chiffres = re.sub(r"\D", "", texte)
+            if not 8 <= len(chiffres) <= 15:
+                return self.transport.envoyer(
+                    "Ce n'est pas un numéro de téléphone. Rien n'a été "
+                    "enregistré.", canal=canal,
+                    boutons=[[("⚙️ Réglages", "c:reglages")]])
+            valeur, quoi = chiffres, f"Numéro : {gras(numero_lisible(chiffres))}"
+            enregistre = self.journal.definir_identite(iccid, numero=valeur)
+        else:
+            valeur = re.sub(r"\s+", " ", texte).strip()[:40]
+            if len(valeur) < 2:
+                return self.transport.envoyer(
+                    "Ce nom est trop court. Rien n'a été enregistré.",
+                    canal=canal, boutons=[[("⚙️ Réglages", "c:reglages")]])
+            quoi = f"Nom : {gras(echap(valeur))}"
+            enregistre = self.journal.definir_identite(iccid, nom=valeur)
+
+        if not enregistre:
+            return self.transport.envoyer(
+                "Cette carte n'est pas au registre du terminal.", canal=canal,
+                boutons=[[("⚙️ Réglages", "c:reglages")]])
+        self.journal.evenement(f"identité de carte modifiée ({champ})")
+        if self.nuage:
+            self.nuage.reveiller()     # l'application web le verra tout de suite
+        self.transport.envoyer(f"✅ {quoi}", canal=canal)
+        self._reglages(canal)
 
     def _lister_cartes(self, canal=None):
         """Toutes les puces déjà passées dans ce terminal, celle en place en
@@ -1456,7 +1580,10 @@ class Robot:
                        f"{italique('N° ' + numero)}")
         else:
             propre = self._compte_par_iccid(iccid)
-            pdf = recu_solde(motif.solde, compte or operateur,
+            # `nom` porte déjà le nom du FICHIER : celui du compte a son
+            # propre nom de variable, sans quoi le reçu partirait sans titre.
+            _, nom_compte = self.journal.identite(iccid)
+            pdf = recu_solde(motif.solde, nom_compte or compte or operateur,
                              self._numero_du_compte(propre) if propre else "",
                              numero, quand, operateur)
             legende = (f"🧾 {gras('Reçu de solde')} — "

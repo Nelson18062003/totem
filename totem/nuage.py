@@ -157,6 +157,9 @@ class Nuage:
             "imsi_prefixe": (imsi or "")[:5],
             "operateur": operateur,
             "libelle": libelle,
+            # Le nom commercial du compte, déclaré depuis Telegram. C'est lui
+            # que l'application web affiche, et qui paraît sur les reçus.
+            "nom": self.journal.identite(iccid)[1] or None,
             "numero": numero or None,
             "imei": imei or None,
             "premiere_vue": _horodatage(premiere),

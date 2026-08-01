@@ -43,8 +43,14 @@ create table if not exists cartes (
   iccid         text not null,
   imsi_prefixe  text,                    -- « 62401 » = MTN Cameroun
   operateur     text,                    -- « MTN », « Orange »
-  libelle       text,                    -- « MTN ·8901 »
-  numero        text,                    -- MSISDN, souvent absent
+  libelle       text,                    -- « MTN ·8901 », déduit de l'ICCID
+  -- Nom commercial du compte (« WONDER PHONE »), déclaré depuis Telegram.
+  -- Ni la puce ni le réseau ne le connaissent : seul le propriétaire le sait.
+  nom           text,
+  -- MSISDN. La puce ne le déclare presque jamais ; c'est donc le propriétaire
+  -- qui l'inscrit, et sans lui un reçu ne sait pas de quel côté d'un
+  -- transfert se trouve le terminal.
+  numero        text,
   imei          text,                    -- dernier modem qui l'a hébergée
   premiere_vue  timestamptz,
   derniere_vue  timestamptz,
@@ -169,6 +175,7 @@ alter table terminaux add column if not exists version    text;
 alter table comptes   add column if not exists iccid      text;
 alter table comptes   add column if not exists reseau     text;
 alter table comptes   add column if not exists itinerance boolean not null default false;
+alter table cartes    add column if not exists nom        text;
 alter table paiements add column if not exists carte      text;
 alter table paiements add column if not exists commission   numeric;
 alter table paiements add column if not exists montant_brut numeric;
