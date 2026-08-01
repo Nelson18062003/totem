@@ -106,7 +106,8 @@ class Robot:
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
-        self.facteur = Facteur(journal, transport)
+        self.facteur = Facteur(journal, transport,
+                               sur_abandon=self._courrier_abandonne)
         self.seuil_confirmation = seuil_confirmation
         self.sauvegarde_quotidienne = sauvegarde_quotidienne
         self.nom = nom
@@ -128,6 +129,7 @@ class Robot:
         self.sante = Sante()
         self.memoire_signalee = False
         self.conflit_signale = False
+        self._dernier_avert_courrier = 0.0   # anti-répétition de l'alerte facteur
         self.demarre_a = time.time()
         self.dernier_brut = ""   # dernière réponse USSD, pour /brut
         # Le parcours de la dernière session, gardé le temps d'en faire un
@@ -1718,14 +1720,47 @@ class Robot:
             # la SIM ne déclare pas toujours son numéro. Plutôt qu'un
             # « Encaissement » qui pourrait être un envoi, on montre le
             # mouvement tel qu'il est écrit.
+            if paiement.emetteur and paiement.beneficiaire:
+                corps = (f"{gras(echap(str(paiement.emetteur)))} → "
+                         f"{gras(echap(str(paiement.beneficiaire)))}")
+            else:
+                # Un seul tiers nommé (dépôt/retrait qui ne cite que l'autre
+                # partie) : on le montre, sans inventer de flèche.
+                corps = gras(echap(paiement.tiers))
             entete = (f"🔁 {gras('Transfert')}{etiquette} — "
-                      f"{gras(self._fcfa(paiement.montant))}\n"
-                      f"{gras(echap(str(paiement.emetteur)))} → "
-                      f"{gras(echap(str(paiement.beneficiaire)))}")
+                      f"{gras(self._fcfa(paiement.montant))}\n{corps}")
         else:
             entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
 
         self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
+
+    def _courrier_abandonne(self, canal, texte):
+        """Le facteur a dû jeter un message que Telegram refusait obstinément
+        (fil de discussion fermé ou supprimé, robot sorti du groupe).
+
+        On prévient le propriétaire — mais EN DIRECT, dans la conversation
+        privée, jamais par le fil en cause qui est justement cassé — et pas
+        plus d'une fois par quart d'heure, pour ne pas noyer la panne sous ses
+        propres répétitions."""
+        maintenant = time.time()
+        if maintenant - self._dernier_avert_courrier < 900:
+            return
+        self._dernier_avert_courrier = maintenant
+        ou = {"encaissements": "les encaissements",
+              "alertes": "les alertes"}.get(canal, "les notifications")
+        self.journal.evenement(f"courrier abandonné (canal {canal or 'privé'})")
+        try:
+            self.transport.envoyer(
+                f"⚠️ {gras('Une notification n’a pas pu être publiée')}\n"
+                f"Je n’arrive plus à écrire dans le fil réservé à {ou}. "
+                "Il a peut-être été fermé ou supprimé, ou je n’en suis plus "
+                "membre.\n\n"
+                + italique(
+                    "Vérifie ce fil dans le groupe Telegram. Le message a été "
+                    "mis de côté pour ne pas bloquer les suivants — l’USSD et "
+                    "les autres envois ne sont pas touchés."))
+        except Exception:
+            pass
 
     def _expirer_session(self):
         with self.verrou:

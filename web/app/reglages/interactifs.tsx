@@ -1,8 +1,141 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codesUssd, type CodeUssd } from "@/lib/codes";
 import { IconClose, IconHash, IconPlus } from "../icons";
+
+/**
+ * Le numéro d'une puce, réglé depuis la plateforme. C'est lui qui dit de quel
+ * côté d'un dépôt ou d'un transfert se trouve le terminal : sans lui, un dépôt
+ * s'affiche sans qu'on sache s'il sort ou entre.
+ *
+ * La saisie ne touche jamais un modem : elle dépose une demande que le robot
+ * de Douala relève, contrôle et applique — puis republie. On attend sa
+ * confirmation avant de dire que c'est fait.
+ */
+export function ReglageNumero({
+  iccid,
+  numeroInitial,
+  libelle,
+}: {
+  iccid: string;
+  numeroInitial: string;
+  libelle: string;
+}) {
+  const router = useRouter();
+  const [numero, setNumero] = useState(numeroInitial);
+  const [edition, setEdition] = useState(false);
+  const [brouillon, setBrouillon] = useState(numeroInitial);
+  const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
+  const [message, setMessage] = useState("");
+
+  async function attendre(id: number) {
+    // Le robot relève les demandes toutes les quelques secondes : on patiente
+    // jusqu'à ~40 s, puis on considère qu'il n'a pas répondu.
+    for (let i = 0; i < 26; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const rep = await fetch(`/api/commande/${id}`, { cache: "no-store" });
+      if (!rep.ok) continue;
+      const c = await rep.json();
+      if (c.etat === "faite" || c.etat === "echouee") return c;
+    }
+    return null;
+  }
+
+  async function enregistrer() {
+    const propre = brouillon.replace(/\D/g, "");
+    if (propre.length < 8) {
+      setEtat("erreur");
+      setMessage("Neuf chiffres, par exemple 696103864.");
+      return;
+    }
+    setEtat("envoi");
+    setMessage("");
+    try {
+      const rep = await fetch("/api/commande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "identite", parametres: { iccid, numero: propre } }),
+      });
+      const { id, erreur } = await rep.json();
+      if (!rep.ok || !id) throw new Error(erreur || "demande refusée");
+      const resultat = await attendre(id);
+      if (!resultat) {
+        setEtat("erreur");
+        setMessage("Le terminal n’a pas répondu. Est-il en ligne ?");
+        return;
+      }
+      if (resultat.etat === "faite") {
+        setNumero(propre);
+        setEdition(false);
+        setEtat("repos");
+        router.refresh(); // la page relit la base, numéro à jour partout
+      } else {
+        setEtat("erreur");
+        setMessage(resultat.resultat || "Le terminal a refusé.");
+      }
+    } catch {
+      setEtat("erreur");
+      setMessage("La demande n’a pas pu partir. Réessayez.");
+    }
+  }
+
+  if (!edition) {
+    return (
+      <button
+        onClick={() => {
+          setBrouillon(numero);
+          setEdition(true);
+          setEtat("repos");
+          setMessage("");
+        }}
+        className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
+        title={`Régler le numéro de ${libelle}`}
+      >
+        {numero || "numéro à renseigner"}
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <span className="flex items-center gap-1.5">
+        <input
+          value={brouillon}
+          autoFocus
+          inputMode="tel"
+          disabled={etat === "envoi"}
+          onChange={(e) => setBrouillon(e.target.value.replace(/[^\d\s]/g, ""))}
+          onKeyDown={(e) => e.key === "Enter" && enregistrer()}
+          placeholder="696103864"
+          className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-small tabnums outline-none disabled:opacity-50"
+        />
+        <button
+          onClick={enregistrer}
+          disabled={etat === "envoi"}
+          className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40"
+        >
+          {etat === "envoi" ? "…" : "OK"}
+        </button>
+        <button
+          onClick={() => setEdition(false)}
+          aria-label="Annuler"
+          disabled={etat === "envoi"}
+          className="grid size-8 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink disabled:opacity-40"
+        >
+          <IconClose size={14} />
+        </button>
+      </span>
+      {etat === "envoi" && (
+        <span className="text-caption text-ink-faint">Le terminal enregistre…</span>
+      )}
+      {etat === "erreur" && (
+        <span className="max-w-52 text-right text-caption text-negative">{message}</span>
+      )}
+    </span>
+  );
+}
 
 /**
  * Les codes du guichet, par opérateur. Rien n'est deviné : le catalogue de

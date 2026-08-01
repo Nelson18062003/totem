@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { chargerDonnees } from "@/lib/serveur";
 import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
-import { Bascule, SectionCodes } from "./interactifs";
+import { Bascule, ReglageNumero, SectionCodes } from "./interactifs";
 
 export const dynamic = "force-dynamic";
 
@@ -86,13 +86,22 @@ export default async function Reglages() {
                   <p className={`text-body font-medium ${s.enPlace ? "" : "text-ink-soft"}`}>
                     {s.nom || s.libelle}
                   </p>
-                  <p className="text-small tabnums text-ink-faint">
-                    {s.enPlace
-                      ? `${s.numero || "numéro à renseigner"} · ${s.libelle} · carte ${s.iccid.slice(-8)}`
-                      : `retirée le ${s.derniereVue} · journal conservé`}
-                  </p>
+                  {s.enPlace ? (
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-small tabnums text-ink-faint">
+                      <ReglageNumero
+                        iccid={s.iccid}
+                        numeroInitial={s.numero}
+                        libelle={s.libelle}
+                      />
+                      <span>· {s.libelle} · carte {s.iccid.slice(-8)}</span>
+                    </p>
+                  ) : (
+                    <p className="text-small tabnums text-ink-faint">
+                      retirée le {s.derniereVue} · journal conservé
+                    </p>
+                  )}
                 </div>
-                <span className="shrink-0 text-small tabnums text-ink-faint">
+                <span className="shrink-0 self-start pt-0.5 text-small tabnums text-ink-faint">
                   {s.enPlace && s.signal != null ? `${s.signal}/31` : "—"}
                 </span>
               </li>
@@ -106,14 +115,13 @@ export default async function Reglages() {
           et l’ancienne retrouve son journal si on la remet.
         </p>
         <p className="mt-2 text-caption leading-relaxed text-ink-faint">
-          Le <strong className="font-medium text-ink-soft">nom</strong> et le{" "}
-          <strong className="font-medium text-ink-soft">numéro</strong> ne se
-          lisent ni sur la puce ni sur le réseau : la plupart des SIM prépayées
-          ne déclarent pas leur numéro. C’est vous qui les inscrivez, depuis
-          Telegram — <code className="tabnums">/reglages</code> — et le
-          terminal les remonte ici. Sans le numéro, un reçu de transfert ne
-          peut pas dire de quel côté vous êtes : il écrit « Montant net »
-          plutôt que « Montant reçu » ou « Montant envoyé ».
+          Le <strong className="font-medium text-ink-soft">numéro</strong> ne
+          se lit ni sur la puce ni sur le réseau : la plupart des SIM prépayées
+          ne le déclarent pas. Touchez-le ci-dessus pour l’inscrire d’ici — ou
+          depuis Telegram, <code className="tabnums">/reglages</code>. Sans lui,
+          un dépôt ou un transfert s’affiche sans qu’on sache s’il sort ou
+          entre : le reçu écrit « Montant net » au lieu de « Montant reçu » ou
+          « Montant envoyé ».
         </p>
       </section>
 

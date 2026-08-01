@@ -85,6 +85,92 @@ class TestEnvois(unittest.TestCase):
         self.assertEqual(p.sens, "sortie")
         self.assertEqual(p.montant, 20000)
 
+    def test_mtn_sent_anglais(self):
+        p = analyser("You have sent 15000 FCFA to KAMDEM Paul (699112233). "
+                     "Fee: 100 FCFA. New balance: 5000 FCFA")
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.montant, 15000)
+        self.assertEqual(p.nom, "KAMDEM Paul")
+
+    def test_mtn_cash_in_anglais(self):
+        p = analyser("Cash In of 40000 FCFA. Your balance is 60000 FCFA.")
+        self.assertEqual(p.sens, "entree")
+        self.assertEqual(p.montant, 40000)
+
+
+class TestOperationAgent(unittest.TestCase):
+    """Dépôts et retraits d'agent : le bénéficiaire est nommé APRÈS « vers »
+    (numéro d'abord, nom ensuite), et l'émetteur parfois en fin de message.
+    Avant correction, ces SMS tombaient en « message quelconque » et le nom
+    comme le numéro du client ne s'affichaient nulle part."""
+
+    DEPOT = ("Depot de 50000 FCFA vers 690933686 NGANGOM NOUBEWE reussi "
+             "from 80684177. Frais: 0 FCFA, Nouveau Solde: 2768937.6 FCFA")
+
+    def test_les_deux_parties_sont_lues(self):
+        p = analyser(self.DEPOT)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 50000)
+        self.assertEqual(p.beneficiaire.numero, "690933686")
+        self.assertEqual(p.beneficiaire.nom, "NGANGOM NOUBEWE")
+        self.assertEqual(p.emetteur.numero, "80684177")
+
+    def test_sens_tranche_par_ma_carte(self):
+        # 80684177 est une de mes SIM : le dépôt part de chez moi → sortie,
+        # et le tiers affiché est l'autre partie, avec son numéro.
+        p = analyser(self.DEPOT, numeros=["80684177"])
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.nom, "NGANGOM NOUBEWE")
+        self.assertEqual(p.numero, "690933686")
+
+    def test_un_seul_tiers_nomme_reste_affichable(self):
+        # Retrait sans émetteur cité : on ne tranche pas le sens, mais le nom
+        # et le numéro du client restent visibles (plus jamais « Inconnu »).
+        p = analyser("Retrait de 30000 FCFA vers 690933686 NGANGOM NOUBEWE "
+                     "effectue. Frais: 300 FCFA")
+        self.assertEqual(p.montant, 30000)
+        self.assertIn("NGANGOM NOUBEWE", p.tiers)
+        self.assertIn("690933686", p.tiers)
+
+    def test_sans_montant_lisible_on_ninvente_pas(self):
+        # Aucun montant de transaction (que des frais et un solde) : la règle
+        # d'or interdit d'inventer, le SMS reste affiché tel quel.
+        p = analyser("Depot vers 690933686 NGANGOM NOUBEWE reussi from 80684177. "
+                     "Frais: 0 FCFA, Nouveau Solde: 2768937.6 FCFA")
+        self.assertIsNone(p)
+
+    def test_operation_echouee_nest_pas_un_paiement(self):
+        self.assertIsNone(analyser(
+            "Depot de 50000 FCFA vers 690933686 NGANGOM NOUBEWE echoue. "
+            "Solde insuffisant."))
+
+    # Le vrai SMS de dépôt reçu en production, avec ses deux parties nommées,
+    # son montant dans les champs détaillés, sa référence et son solde.
+    VRAI_DEPOT = (
+        "Depot vers 690933686 NGANGOM NOUBEWE reussi from 696103864 WONDER "
+        "PHONE. Informations detaillees : Montant transaction : 10000FCFA, "
+        "ID de Transaction : CI260801.1355.D50164, Frais : 0FCFA, Commission "
+        ": 0 FCFA, Montant Net Debite : 10000FCFA, Nouveau Solde : 2773937.6FCFA.")
+
+    def test_vrai_depot_de_production(self):
+        p = analyser(self.VRAI_DEPOT)
+        self.assertEqual(p.montant, 10000)
+        self.assertEqual(p.reference, "CI260801.1355.D50164")
+        self.assertEqual(p.frais, 0)
+        self.assertEqual(p.solde_apres, 2773937.6)
+        self.assertEqual(p.emetteur.nom, "WONDER PHONE")        # majuscules gardées
+        self.assertEqual(p.emetteur.numero, "696103864")
+        self.assertEqual(p.beneficiaire.nom, "NGANGOM NOUBEWE")
+        self.assertEqual(p.beneficiaire.numero, "690933686")
+
+    def test_vrai_depot_sens_selon_ma_carte(self):
+        # WONDER PHONE (696103864) dépose vers le client : l'argent sort de
+        # ma carte, et c'est le client qu'on affiche en face.
+        p = analyser(self.VRAI_DEPOT, numeros=["696103864"])
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.nom, "NGANGOM NOUBEWE")
+        self.assertEqual(p.numero, "690933686")
+
 
 class TestCeQuiNestPasUnPaiement(unittest.TestCase):
     """Un faux encaissement fausserait les comptes : mieux vaut ne rien
@@ -138,6 +224,13 @@ class TestRobustesse(unittest.TestCase):
         self.assertEqual(d["montant"], 25000)
         self.assertEqual(d["sens"], "entree")
         self.assertIn("texte", d)
+
+    def test_nombre_demesure_ne_leve_jamais(self):
+        # Un SMS trafiqué avec des milliers de chiffres ferait lever « int »
+        # ou « 10 ** n ». analyser() doit renvoyer None, jamais planter.
+        for taille in (309, 4400):
+            enorme = "9" * taille + " FCFA"
+            self.assertIsNone(analyser(f"Vous avez recu {enorme} de Marie"))
 
 
 class TestTransfertOrange(unittest.TestCase):

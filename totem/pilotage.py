@@ -32,6 +32,7 @@ ouverte depuis Telegram, la demande web est refusée poliment — et
 inversement, une session web abandonnée se referme seule après deux minutes.
 """
 
+import re
 import threading
 import time
 
@@ -138,6 +139,8 @@ class Pilotage:
                 resultat = "Session refermée."
             elif genre == "recu":
                 resultat = self._etablir_recu(parametres)
+            elif genre == "identite":
+                resultat = self._definir_identite(parametres)
             else:
                 raise ValueError(f"demande inconnue : {genre}")
             etat = "faite"
@@ -170,6 +173,41 @@ class Pilotage:
         self.journal.evenement(f"guichet à distance : reçu {numero} demandé")
         return (f"Reçu {numero} en fabrication : il sera archivé et "
                 "téléchargeable dans un instant.")
+
+    def _definir_identite(self, parametres):
+        """Inscrit le numéro et/ou le nom d'une carte depuis la plateforme,
+        exactement comme /reglages sur Telegram.
+
+        C'est ce numéro qui dira, ensuite, de quel côté d'un dépôt ou d'un
+        transfert se trouve le terminal : sans lui, un dépôt reste affiché
+        sans savoir s'il sort ou entre. Les mêmes contrôles qu'au clavier
+        Telegram, car cette valeur devient une source de vérité."""
+        iccid = str(parametres.get("iccid") or "").strip()
+        if not iccid:
+            raise RefusPoli("Aucune carte visée.")
+        champs = {}
+        if parametres.get("numero") is not None:
+            chiffres = re.sub(r"\D", "", str(parametres.get("numero")))
+            if not 8 <= len(chiffres) <= 15:
+                raise RefusPoli("Ce n'est pas un numéro de téléphone.")
+            champs["numero"] = chiffres
+        if parametres.get("nom") is not None:
+            nom = re.sub(r"\s+", " ", str(parametres.get("nom"))).strip()[:40]
+            if len(nom) < 2:
+                raise RefusPoli("Ce nom est trop court.")
+            champs["nom"] = nom
+        if not champs:
+            raise RefusPoli("Rien à enregistrer.")
+        if not self.journal.definir_identite(iccid, **champs):
+            raise RefusPoli("Cette carte n'est pas au registre du terminal.")
+        self.journal.evenement("guichet à distance : identité de carte modifiée")
+        self.nuage.reveiller()      # l'application web le verra tout de suite
+        dit = []
+        if "numero" in champs:
+            dit.append(f"numéro {champs['numero']}")
+        if "nom" in champs:
+            dit.append(f"nom « {champs['nom']} »")
+        return "Enregistré : " + " et ".join(dit) + "."
 
     def _republier(self):
         """« Actualiser » : l'état des comptes, repoussé à l'instant."""

@@ -3,7 +3,9 @@ import { creerCommande, relie } from "@/lib/serveur";
 export const dynamic = "force-dynamic";
 
 // Les seules demandes que le guichet accepte — tout le reste est refusé.
-const GENRES = new Set(["solde", "ussd", "ussd_reponse", "ussd_fin", "recu"]);
+const GENRES = new Set([
+  "solde", "ussd", "ussd_reponse", "ussd_fin", "recu", "identite",
+]);
 
 /**
  * Dépose une demande pour le terminal. Le corps n'est JAMAIS journalisé :
@@ -30,6 +32,26 @@ export async function POST(req: Request) {
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
   if (Number.isInteger(brut.source_id) && brut.source_id > 0) {
     parametres.source_id = brut.source_id;
+  }
+  // Réglage de l'identité d'une carte : l'ICCID vise la puce, le numéro et le
+  // nom sont nettoyés ici puis revérifiés par le terminal, qui reste juge.
+  if (typeof brut.iccid === "string") {
+    parametres.iccid = brut.iccid.replace(/\D/g, "").slice(0, 22);
+  }
+  if (typeof brut.numero === "string") {
+    const num = brut.numero.replace(/\D/g, "").slice(0, 15);
+    if (num) parametres.numero = num;
+  }
+  if (typeof brut.nom === "string") {
+    const nom = brut.nom.trim().slice(0, 40);
+    if (nom) parametres.nom = nom;
+  }
+
+  // Un réglage d'identité doit viser une carte et porter au moins une valeur.
+  if (genre === "identite" &&
+      (!parametres.iccid || (!parametres.numero && !parametres.nom))) {
+    return Response.json(
+      { erreur: "carte ou valeur manquante" }, { status: 400 });
   }
 
   if (!relie) {

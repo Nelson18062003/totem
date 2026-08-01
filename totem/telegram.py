@@ -134,38 +134,71 @@ class TransportTelegram:
         dernier = None
         for i, morceau in enumerate(morceaux):
             final = i == len(morceaux) - 1
-            rep = self._envoyer_un(
+            _etat, rep = self._envoyer_un(
                 chat, sujet, morceau, silencieux,
                 self._clavier(boutons) if final else None)
             if rep is not None:
                 dernier = (rep.get("result") or {}).get("message_id")
         return dernier
 
+    def acheminer(self, texte, canal=None, silencieux=False):
+        """Comme envoyer(), mais pour le facteur : DIT pourquoi ça a échoué.
+
+        « livre »  : parti.
+        « reseau » : coupure ou incident passager (5xx, 429) — on réessaiera
+                     le même message tel quel.
+        « refuse » : Telegram rejette CE message pour de bon (fil de discussion
+                     fermé ou supprimé, robot sorti du groupe, cible
+                     introuvable). S'acharner bloquerait toute la file."""
+        chat, sujet = self._destination(canal)
+        pire = "livre"
+        for morceau in self._decouper(texte):
+            try:
+                etat, _rep = self._envoyer_un(chat, sujet, morceau, silencieux, None)
+            except ErreurConflit:
+                return "reseau"     # l'autre instance nous coupe : on réessaiera
+            if etat == "refuse":
+                return "refuse"
+            if etat == "reseau":
+                pire = "reseau"
+        return pire
+
     def _envoyer_un(self, chat, sujet, texte, silencieux, clavier):
         """Un message, avec repli en texte brut si la mise en forme échoue.
 
         Un SMS d'opérateur peut contenir n'importe quoi ; si le balisage part
         de travers, Telegram refuse le message avec un 400. Mieux vaut un
-        message sans gras qu'un encaissement jamais annoncé."""
+        message sans gras qu'un encaissement jamais annoncé.
+
+        Renvoie (état, réponse) : l'état vaut « livre », « reseau » (échec
+        passager, on réessaiera) ou « refuse » (Telegram rejette ce message)."""
         for texte_a_envoyer, mode in ((texte, "HTML"), (brut(texte), None)):
             try:
                 self._patienter(chat)
-                return self._appel(
+                rep = self._appel(
                     "sendMessage", chat_id=chat, text=texte_a_envoyer,
                     parse_mode=mode, message_thread_id=sujet,
                     disable_notification="true" if silencieux else None,
                     reply_markup=clavier)
+                return "livre", rep
             except ErreurConflit:
                 raise
             except urllib.error.HTTPError as e:
-                if e.code != 400:
-                    time.sleep(2)
-                    return None
-                # 400 : on retente une fois sans mise en forme.
+                if e.code == 400:
+                    continue     # mise en forme : on retente en texte brut
+                # 401/403/404 : la cible est fermée, supprimée, ou nous n'y
+                # avons plus le droit — inutile de réessayer ce message.
+                if e.code in (401, 403, 404):
+                    return "refuse", None
+                time.sleep(2)    # 5xx, 429 épuisé… : passager, on réessaiera
+                return "reseau", None
             except Exception:
                 time.sleep(2)
-                return None
-        return None
+                return "reseau", None
+        # Les deux essais ont pris un 400, y compris sans aucune mise en forme :
+        # ce n'est donc pas le balisage, c'est le message ou sa cible que
+        # Telegram refuse. Inutile de le rejouer indéfiniment.
+        return "refuse", None
 
     def modifier(self, message_id, texte, boutons=None, canal=None):
         """Réécrit un message existant : la session USSD tient sur une seule
