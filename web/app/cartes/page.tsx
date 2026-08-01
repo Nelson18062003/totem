@@ -139,14 +139,14 @@ export default async function Comptes() {
             {paiements.slice(0, 5).map((p) => (
               <li key={p.id} className="flex items-center gap-3 py-3.5">
                 <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                  {p.sens === "in" ? <IconArrowDown size={16} /> : <IconArrowUp size={16} />}
+                  {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "?"}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-body font-medium">{p.nom}</p>
                   <p className="text-small text-ink-faint">{p.sim} · {p.date} · {p.heure}</p>
                 </div>
-                <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : "text-ink"}`}>
-                  {p.sens === "in" ? "+" : "−"}{fcfa(p.montant)}
+                <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
+                  {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
                 </span>
               </li>
             ))}

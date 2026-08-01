@@ -58,6 +58,8 @@ type LigneCompte = {
   reseau: string | null; itinerance: boolean; numero: string | null;
   solde: number | null; signal: number | null; maj: string;
 };
+type LigneRecu = { numero: string; reference: string | null; chemin: string };
+
 type LignePaiement = {
   id: number; compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
@@ -111,11 +113,12 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 // --- Le chargement complet ---------------------------------------------------
 
 export async function chargerDonnees(): Promise<Donnees> {
-  const [terminaux, cartes, comptes, lignes] = await Promise.all([
+  const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=iccid,operateur,libelle,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
     lire<LignePaiement>("paiements?select=id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
+    lire<LigneRecu>("recus?select=numero,reference,chemin&order=etabli_le.desc&limit=1000"),
   ]);
 
   const t = terminaux[0];
@@ -134,21 +137,26 @@ export async function chargerDonnees(): Promise<Donnees> {
     .map((l) => ({
       id: String(l.id),
       sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
-      sens: l.sens === "entree" ? "in" : "out",
+      // Le robot laisse le sens vide quand le SMS ne permet pas de trancher :
+      // on l'affiche comme inconnu, jamais comme une sortie par défaut.
+      sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
       nom: l.tiers || l.numero || "Inconnu",
       numero: l.numero ?? "",
-      montant: l.montant!,
+      montant: Number(l.montant),
       heure: heure(l.recu_le),
       date: libelleJour(l.recu_le),
       recuLe: l.recu_le,
       reference: l.reference ?? "",
-      soldeApres: l.solde_apres,
+      soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
       smsBrut: l.texte,
+      recu: l.reference
+        ? recus.find((r) => r.reference === l.reference)?.numero ?? null
+        : null,
     }));
 
   const sims: Sim[] = cartes.map((c) => {
     const compte = comptes.find((x) => x.iccid === c.iccid);
-    const recus = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
+    const entrees = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );
@@ -159,16 +167,38 @@ export async function chargerDonnees(): Promise<Donnees> {
       reseau: compte?.reseau ?? "",
       itinerance: compte?.itinerance ?? false,
       numero: compte?.numero || c.numero || "",
-      solde: compte?.solde ?? null,
+      solde: compte?.solde == null ? null : Number(compte.solde),
       soldeSource: compte ? `la mise à jour du terminal, ${heure(compte.maj)}` : "",
       signal: compte?.signal ?? null,
       enPlace,
       premiereVue: dateCourte(c.premiere_vue),
       derniereVue: dateCourte(c.derniere_vue),
-      nbPaiements: recus.length,
-      totalRecu: recus.reduce((s, l) => s + (l.montant ?? 0), 0),
+      nbPaiements: entrees.length,
+      totalRecu: entrees.reduce((s, l) => s + Number(l.montant ?? 0), 0),
     };
   });
 
   return { relie, terminal, sims, paiements };
+}
+
+export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
+  if (!relie) return null;
+  const propre = numero.replace(/[^A-Za-z0-9._-]/g, "");
+  const fiches = await lire<{ numero: string; chemin: string }>(
+    `recus?select=numero,chemin&numero=eq.${propre}&limit=1`,
+  );
+  // On revérifie le numéro nous-mêmes : le chemin servi ne dépend jamais
+  // de ce que le service distant a bien voulu filtrer.
+  const chemin = fiches.find((f) => f.numero === propre)?.chemin;
+  if (!chemin) return null;
+  try {
+    const r = await fetch(`${url}/storage/v1/object/recus/${chemin}`, {
+      headers: { apikey: cle!, authorization: `Bearer ${cle}` },
+      cache: "no-store",
+    });
+    if (!r.ok) return null;
+    return await r.arrayBuffer();
+  } catch {
+    return null;
+  }
 }

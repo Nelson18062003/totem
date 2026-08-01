@@ -24,7 +24,9 @@ export type Sim = {
 export type Paiement = {
   id: string;
   sim: string;              // libellé court de l'opérateur (« Orange »)
-  sens: "in" | "out";
+  // « ? » : le SMS nomme les deux parties sans dire laquelle est la nôtre
+  // (forme d'Orange). Mieux vaut un sens inconnu qu'un sens inversé.
+  sens: "in" | "out" | "?";
   nom: string;
   numero: string;
   montant: number;
@@ -34,6 +36,7 @@ export type Paiement = {
   reference: string;
   soldeApres: number | null;
   smsBrut: string;
+  recu: string | null;      // numéro du reçu PDF archivé, s'il existe
 };
 
 export type EtatTerminal = {

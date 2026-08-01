@@ -103,15 +103,16 @@ export function ListeEncaissements({
                   <button onClick={() => setDetail(p)}
                     className="flex w-full items-center gap-3 py-3.5 text-left transition hover:opacity-70">
                     <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                      {p.sens === "in" ? <IconArrowDown size={16} /> : <IconArrowUp size={16} />}
+                      {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "?"}
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-body font-medium">{p.nom}</p>
                       <p className="text-small text-ink-faint">{p.sim} · {p.heure}</p>
                     </div>
-                    {/* Le montant complet, toujours : jamais « 25 k ». */}
-                    <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : "text-ink"}`}>
-                      {p.sens === "in" ? "+" : "−"}{fcfa(p.montant)}
+                    {/* Le montant complet, toujours : jamais « 25 k ». Un sens
+                        inconnu s'affiche sans signe : on ne tranche pas à sa place. */}
+                    <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
+                      {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
                     </span>
                   </button>
                 </li>
@@ -137,9 +138,11 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-small text-ink-soft">{p.sens === "in" ? "Paiement reçu" : "Paiement envoyé"}</p>
+            <p className="text-small text-ink-soft">
+              {p.sens === "in" ? "Paiement reçu" : p.sens === "out" ? "Paiement envoyé" : "Mouvement — sens à confirmer sur le SMS"}
+            </p>
             <p className="mt-1 text-display font-semibold tabnums tracking-tight">
-              {p.sens === "in" ? "+" : "−"}{fcfa(p.montant)}
+              {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
             </p>
             <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
           </div>
@@ -167,12 +170,14 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
             className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
             <IconCopy size={15} /> Copier le SMS
           </button>
-          {/* La maquette du reçu, dessinée sur de vrais SMS (recus/) ; la
-              génération à partir de ce paiement-ci viendra avec le branchement. */}
-          <a href="/demo/recu-transfert.pdf" target="_blank" rel="noopener"
-            className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-            <IconDoc size={15} /> Reçu PDF
-          </a>
+          {/* Le vrai reçu, archivé par le robot dans le stockage. S'il n'a
+              pas (encore) été établi, on ne montre rien plutôt qu'un faux. */}
+          {p.recu && (
+            <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
+              className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+              <IconDoc size={15} /> Reçu PDF
+            </a>
+          )}
         </div>
       </div>
     </div>

@@ -40,7 +40,7 @@ export default async function SmsRecus() {
                       <span className={`rounded-sm px-1.5 py-0.5 text-caption font-medium ${
                         p.sens === "in" ? "bg-ink text-white" : "bg-surface-2 text-ink-soft"
                       }`}>
-                        {p.sens === "in" ? "Reçu" : "Envoyé"}
+                        {p.sens === "in" ? "Reçu" : p.sens === "out" ? "Envoyé" : "À confirmer"}
                       </span>
                       <span className="text-small tabnums text-ink-faint">{p.heure}</span>
                     </span>
