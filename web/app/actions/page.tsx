@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { simsEnPlace } from "@/lib/mock";
+import { codeUssd, simsEnPlace } from "@/lib/mock";
 import {
   IconArrowDown, IconArrowUp, IconChevron, IconHash,
   IconInbox, IconPhone, IconWallet,
@@ -14,7 +14,7 @@ import { Flux, FluxGuide, montantFcfa } from "./flux";
 // ensuite le détail, et le code secret se compose sur Telegram.
 function fluxTransfert(op: "MTN" | "Orange"): Flux {
   return {
-    titre: "Transfert d’argent", operateur: op, code: "#148*4#",
+    titre: "Transfert d’argent", operateur: op, code: codeUssd(op, "transfert"),
     champs: [
       { cle: "numero", label: "Numéro du bénéficiaire", type: "numero", aide: "699 12 34 56" },
       { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "50 000" },
@@ -27,7 +27,7 @@ function fluxTransfert(op: "MTN" | "Orange"): Flux {
 }
 function fluxDepot(op: "MTN" | "Orange"): Flux {
   return {
-    titre: "Dépôt d’argent", operateur: op, code: "#148*2#",
+    titre: "Dépôt d’argent", operateur: op, code: codeUssd(op, "depot"),
     champs: [
       { cle: "numero", label: "Numéro à créditer", type: "numero", aide: "699 12 34 56" },
       { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "20 000" },
@@ -40,7 +40,7 @@ function fluxDepot(op: "MTN" | "Orange"): Flux {
 }
 function fluxRetrait(op: "MTN" | "Orange"): Flux {
   return {
-    titre: "Retrait d’argent", operateur: op, code: "#148*3#",
+    titre: "Retrait d’argent", operateur: op, code: codeUssd(op, "retrait"),
     champs: [
       { cle: "point", label: "Numéro de l’agent", type: "numero", aide: "650 00 00 00" },
       { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "20 000" },
@@ -67,8 +67,8 @@ export default function Operations() {
   // Les consultations n'engagent pas d'argent : un seul geste, le terminal
   // compose le code, la réponse revient ici et sur Telegram.
   const consultations = [
-    { l: "Consulter le solde", code: "#148*5#", Icone: IconWallet },
-    { l: "Mon numéro", code: "#148*7*6#", Icone: IconPhone },
+    { l: "Consulter le solde", code: codeUssd(op, "solde"), Icone: IconWallet },
+    { l: "Mon numéro", code: codeUssd(op, "mon_numero"), Icone: IconPhone },
   ];
 
   return (

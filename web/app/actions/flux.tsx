@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fcfa } from "@/lib/mock";
 import { IconClose } from "../icons";
 
@@ -96,23 +96,66 @@ export function FluxGuide({ flux, onFermer }: { flux: Flux; onFermer: () => void
           </div>
         )}
 
-        {etape === "transmis" && (
-          <div className="flex flex-col gap-4 py-1">
-            <p className="text-body leading-relaxed">
-              La demande est partie au terminal de Douala, qui compose{" "}
-              <span className="tabnums font-medium">{flux.code}</span> sur la carte.
-            </p>
-            <p className="text-small leading-relaxed text-ink-soft">
-              Le code secret se compose sur le pavé sécurisé de Telegram — jamais
-              ici. La confirmation de l’opérateur arrivera ensuite dans les SMS
-              reçus.
-            </p>
-            <button onClick={onFermer} className="mt-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-              Compris
-            </button>
-          </div>
-        )}
+        {etape === "transmis" && <Parcours flux={flux} onFermer={onFermer} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Le parcours réel d'une demande, étape par étape. La maquette avance seule
+ * jusqu'au moment du code secret : là, c'est Telegram qui a la main — le
+ * navigateur ne fait qu'attendre le SMS de confirmation.
+ */
+function Parcours({ flux, onFermer }: { flux: Flux; onFermer: () => void }) {
+  const etapes = [
+    "La demande part au terminal de Douala",
+    `Le terminal compose ${flux.code} sur la carte`,
+    "Il répond aux questions du menu avec vos informations",
+    "Le code secret se compose sur Telegram — jamais ici",
+    "Le SMS de confirmation arrive, avec son reçu",
+  ];
+
+  // La frise avance jusqu'à l'étape Telegram, puis attend.
+  const [rendue, setRendue] = useState(0);
+  useEffect(() => {
+    if (rendue >= 3) return;
+    const t = setTimeout(() => setRendue((r) => r + 1), 1100);
+    return () => clearTimeout(t);
+  }, [rendue]);
+
+  return (
+    <div className="flex flex-col gap-5 py-1">
+      <ol className="flex flex-col gap-3.5">
+        {etapes.map((texte, i) => {
+          const faite = i < rendue;
+          const enCours = i === rendue;
+          return (
+            <li key={i} className="flex items-start gap-3">
+              <span
+                className={`mt-1 size-2.5 shrink-0 rounded-full ${
+                  faite ? "bg-ink" : enCours ? "animate-pulse bg-ink" : "bg-surface-3"
+                }`}
+              />
+              <span
+                className={`text-small leading-relaxed ${
+                  faite ? "text-ink" : enCours ? "font-medium text-ink" : "text-ink-faint"
+                }`}
+              >
+                {texte}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="text-caption leading-relaxed text-ink-faint">
+        {rendue >= 3
+          ? "Le terminal attend le code secret sur le pavé Telegram. Vous pouvez fermer : la confirmation apparaîtra dans les SMS reçus."
+          : "La demande suit son chemin — rien de secret ne passe par le navigateur."}
+      </p>
+      <button onClick={onFermer} className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+        Compris
+      </button>
     </div>
   );
 }

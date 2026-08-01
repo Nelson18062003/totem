@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { fcfa, fcfaCourt, paiements, type Paiement } from "@/lib/mock";
-import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDownload, IconSearch } from "../icons";
+import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDoc, IconDownload, IconSearch } from "../icons";
 import { Vide } from "../vide";
 
 export default function Encaissements() {
@@ -154,10 +154,16 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
 
         {/* Pas de bouton « Rembourser » : aucun geste qui déplace de l'argent
             ne part d'une fiche de consultation. Les opérations ont leur page. */}
-        <div className="mt-5">
-          <button className="flex w-full items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
+        <div className="mt-5 flex gap-2">
+          <button className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
             <IconCopy size={15} /> Copier le SMS
           </button>
+          {/* La maquette du reçu, dessinée sur de vrais SMS (recus/) ; la
+              génération à partir de ce paiement-ci viendra avec le branchement. */}
+          <a href="/demo/recu-transfert.pdf" target="_blank" rel="noopener"
+            className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+            <IconDoc size={15} /> Reçu PDF
+          </a>
         </div>
       </div>
     </div>

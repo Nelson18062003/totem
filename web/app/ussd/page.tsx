@@ -1,19 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { simsEnPlace } from "@/lib/mock";
+import { codesUssd, simsEnPlace } from "@/lib/mock";
 import { IconClose, IconHash } from "../icons";
-
-// Raccourcis proposés : le catalogue relevé sur le terrain (codes.py).
-// Aucun code deviné — chacun n'ouvre que le guichet.
-const CATALOGUE = [
-  { libelle: "Menu", code: "#148#" },
-  { libelle: "Solde", code: "#148*5#" },
-  { libelle: "Dépôt", code: "#148*2#" },
-  { libelle: "Retrait", code: "#148*3#" },
-  { libelle: "Transfert", code: "#148*4#" },
-  { libelle: "Mon numéro", code: "#148*7*6#" },
-];
 
 // Maquette : menu inventé, du même genre que ce que le réseau renvoie. La
 // vraie session traversera le terminal, qui composera le code sur la carte.
@@ -71,9 +60,9 @@ export default function ConsoleUssd() {
         </button>
       </form>
 
-      {/* Les codes déjà relevés sur le terrain */}
+      {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages */}
       <div className="flex flex-wrap gap-1.5">
-        {CATALOGUE.map((c) => (
+        {codesUssd[carte.operateur].map((c) => (
           <button key={c.code} onClick={() => composer(c.code)}
             className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink">
             {c.libelle} <span className="tabnums text-ink-faint">{c.code}</span>
