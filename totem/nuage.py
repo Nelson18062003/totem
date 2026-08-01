@@ -71,17 +71,40 @@ class Nuage:
 
     def _inserer(self, table, lignes, cle_unicite):
         """Insertion rejouable : les doublons sont ignorés côté base."""
+        return self._tenter_insert(table, lignes, cle_unicite) == "ok"
+
+    def _tenter_insert(self, table, lignes, cle_unicite):
+        """Insertion rejouable qui DIT pourquoi elle échoue :
+          « ok »     — inséré (les doublons sont ignorés côté base).
+          « reseau » — cloud injoignable ou panne passagère (5xx) : on garde
+                       tout et on réessaiera le même envoi.
+          « refuse » — la base REJETTE ces données (4xx : colonne absente,
+                       type invalide…). Un lot entier peut alors rester bloqué
+                       sur une seule ligne mal formée — d'où la reprise ligne
+                       par ligne chez l'appelant.
+        """
         if not lignes:
-            return True
+            return "ok"
         try:
             self._requete(
                 "POST", f"{table}?on_conflict={cle_unicite}", lignes,
                 {"Prefer": "return=minimal,resolution=ignore-duplicates"})
             self.derniere_erreur = None
-            return True
+            return "ok"
+        except urllib.error.HTTPError as e:
+            self.derniere_erreur = self._detail_erreur(e)
+            return "refuse" if 400 <= e.code < 500 else "reseau"
         except Exception as e:
             self.derniere_erreur = str(e)
-            return False
+            return "reseau"
+
+    @staticmethod
+    def _detail_erreur(erreur):
+        try:
+            corps = erreur.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            corps = ""
+        return f"{erreur.code} {corps}".strip()
 
     # ---- envois -----------------------------------------------------------
     def enregistrer_terminal(self, sante=None):
@@ -172,39 +195,77 @@ class Nuage:
         return len(charge)
 
     def pousser_paiements(self):
-        """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé."""
+        """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé.
+
+        Un SMS que la base refuse (donnée mal formée, colonne manquante) ne
+        doit JAMAIS geler tous les suivants — sinon la plateforme cesse
+        d'afficher les nouveaux paiements alors que Telegram, lui, continue de
+        les recevoir. En cas de refus du lot entier, on reprend ligne par
+        ligne : les bonnes passent, la fautive est mise de côté et signalée.
+        """
         lignes_locales = self.journal.sms_non_envoyes(LOT)
         if not lignes_locales:
             return 0
         charge, ids = [], []
         for id_local, date, expediteur, texte, compte, iccid in lignes_locales:
-            p = analyser(texte)
-            charge.append({
-                "terminal": self.terminal,
-                "source_id": id_local,
-                "compte": compte or expediteur,
-                # Qui a envoyé le SMS — ce que le téléphone afficherait.
-                "expediteur": expediteur or None,
-                # La carte qui a reçu le paiement : c'est elle qui rattache
-                # la somme au bon solde quand plusieurs SIM se succèdent.
-                "carte": iccid or None,
-                "sens": p.sens if p else None,
-                "montant": p.montant if p else None,
-                "tiers": p.tiers if p else None,
-                "numero": (p.numero if p else None),
-                "reference": (p.reference if p else None),
-                "solde_apres": (p.solde_apres if p else None),
-                "frais": (p.frais if p else None),
-                "commission": (p.commission if p else None),
-                "montant_brut": (p.montant_brut if p else None),
-                "texte": texte,
-                "recu_le": _horodatage(date),
-            })
+            charge.append(
+                self._ligne_paiement(id_local, date, expediteur, texte, compte, iccid))
             ids.append(id_local)
-        if not self._inserer("paiements", charge, "terminal,source_id"):
-            return 0
-        self.journal.marquer_sms_envoyes(ids)
-        return len(ids)
+        etat = self._tenter_insert("paiements", charge, "terminal,source_id")
+        if etat == "ok":
+            self.journal.marquer_sms_envoyes(ids)
+            return len(ids)
+        if etat == "reseau":
+            return 0        # coupure : on garde tout, on réessaiera à l'identique
+        return self._paiements_un_par_un(ids, charge)
+
+    def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid):
+        """La ligne cloud d'un SMS. L'analyse ne doit jamais faire échouer la
+        transmission : un SMS incompréhensible part quand même, tel quel."""
+        try:
+            p = analyser(texte)
+        except Exception:
+            p = None
+        return {
+            "terminal": self.terminal,
+            "source_id": id_local,
+            "compte": compte or expediteur,
+            # Qui a envoyé le SMS — ce que le téléphone afficherait.
+            "expediteur": expediteur or None,
+            # La carte qui a reçu le paiement : c'est elle qui rattache
+            # la somme au bon solde quand plusieurs SIM se succèdent.
+            "carte": iccid or None,
+            "sens": p.sens if p else None,
+            "montant": p.montant if p else None,
+            "tiers": p.tiers if p else None,
+            "numero": (p.numero if p else None),
+            "reference": (p.reference if p else None),
+            "solde_apres": (p.solde_apres if p else None),
+            "frais": (p.frais if p else None),
+            "commission": (p.commission if p else None),
+            "montant_brut": (p.montant_brut if p else None),
+            "texte": texte,
+            "recu_le": _horodatage(date),
+        }
+
+    def _paiements_un_par_un(self, ids, charge):
+        """Reprise après le refus d'un lot. Les lignes valides passent ; celle
+        que la base rejette est signalée (avec l'erreur exacte) puis marquée
+        transmise — elle reste au journal local et sur Telegram, mais ne
+        bloque plus la plateforme pour toutes les autres."""
+        envoyes = 0
+        for id_local, ligne in zip(ids, charge):
+            etat = self._tenter_insert("paiements", [ligne], "terminal,source_id")
+            if etat == "reseau":
+                break       # coupure en cours de reprise : on garde le reste
+            if etat == "refuse":
+                self.journal.evenement(
+                    f"paiement {id_local} refusé par le cloud, mis de côté : "
+                    f"{self.derniere_erreur}")
+            self.journal.marquer_sms_envoyes([id_local])
+            if etat == "ok":
+                envoyes += 1
+        return envoyes
 
     def pousser_evenements(self):
         lignes_locales = self.journal.evenements_non_envoyes(LOT)
