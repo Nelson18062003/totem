@@ -1,33 +1,14 @@
-"use client";
-
-import { useMemo, useState } from "react";
-import { smsRecus, type Sms } from "@/lib/mock";
+import { chargerDonnees } from "@/lib/serveur";
+import type { Paiement } from "@/lib/types";
 import { Vide } from "../vide";
 
-const NATURES: { cle: "tous" | Sms["nature"]; libelle: string }[] = [
-  { cle: "tous", libelle: "Tous" },
-  { cle: "paiement", libelle: "Paiements" },
-  { cle: "solde", libelle: "Soldes" },
-  { cle: "autre", libelle: "Autres" },
-];
+export const dynamic = "force-dynamic";
 
-const BADGE: Record<Sms["nature"], { libelle: string; classes: string }> = {
-  paiement: { libelle: "Paiement", classes: "bg-ink text-white" },
-  solde: { libelle: "Solde", classes: "bg-surface-2 text-ink-soft" },
-  code: { libelle: "Code masqué", classes: "bg-surface-2 text-ink-soft" },
-  autre: { libelle: "Autre", classes: "bg-surface-2 text-ink-faint" },
-};
+export default async function SmsRecus() {
+  const { paiements } = await chargerDonnees();
 
-export default function SmsRecus() {
-  const [nature, setNature] = useState<(typeof NATURES)[number]["cle"]>("tous");
-
-  const liste = useMemo(
-    () => smsRecus.filter((s) => nature === "tous" || s.nature === nature),
-    [nature],
-  );
-
-  const parDate = liste.reduce<Record<string, Sms[]>>((acc, s) => {
-    (acc[s.date] ||= []).push(s); return acc;
+  const parDate = paiements.reduce<Record<string, Paiement[]>>((acc, p) => {
+    (acc[p.date] ||= []).push(p); return acc;
   }, {});
 
   return (
@@ -36,57 +17,49 @@ export default function SmsRecus() {
       <header>
         <h1 className="text-title font-semibold tracking-tight">SMS reçus</h1>
         <p className="mt-1 text-small text-ink-soft">
-          Tout ce que la carte reçoit, tel quel. C’est le message d’origine qui
-          fait foi — les paiements en sont extraits, jamais réécrits.
+          Le message d’origine de chaque paiement, tel que la carte l’a reçu.
+          C’est lui qui fait foi — les montants en sont extraits, jamais réécrits.
         </p>
       </header>
 
-      {/* Filtres */}
-      <div className="flex gap-1.5">
-        {NATURES.map((n) => (
-          <button key={n.cle} onClick={() => setNature(n.cle)}
-            className={`rounded-btn border px-3.5 py-1.5 text-small transition ${
-              nature === n.cle
-                ? "border-ink bg-ink font-medium text-white"
-                : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
-            }`}>{n.libelle}</button>
-        ))}
-      </div>
-
       {Object.keys(parDate).length === 0 ? (
         <Vide
-          titre="Aucun message de cette nature"
-          detail="Changez de filtre pour revoir l’ensemble des SMS reçus par la carte."
+          titre="Aucun message pour l’instant"
+          detail="Les SMS des paiements apparaîtront ici dès que le terminal en recevra."
         />
       ) : (
         Object.entries(parDate).map(([date, items]) => (
           <section key={date}>
             <p className="mb-1 text-caption uppercase tracking-wider text-ink-faint">{date}</p>
             <ul className="divide-hair">
-              {items.map((s) => (
-                <li key={s.id} className="py-3.5">
+              {items.map((p) => (
+                <li key={p.id} className="py-3.5">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-small font-medium">{s.expediteur}</p>
+                    <p className="text-small font-medium">{p.sim}</p>
                     <span className="flex items-center gap-2">
-                      <span className={`rounded-sm px-1.5 py-0.5 text-caption font-medium ${BADGE[s.nature].classes}`}>
-                        {BADGE[s.nature].libelle}
+                      <span className={`rounded-sm px-1.5 py-0.5 text-caption font-medium ${
+                        p.sens === "in" ? "bg-ink text-white" : "bg-surface-2 text-ink-soft"
+                      }`}>
+                        {p.sens === "in" ? "Reçu" : "Envoyé"}
                       </span>
-                      <span className="text-small tabnums text-ink-faint">{s.heure}</span>
+                      <span className="text-small tabnums text-ink-faint">{p.heure}</span>
                     </span>
                   </div>
-                  <p className="mt-1.5 text-small leading-relaxed text-ink-soft">{s.texte}</p>
-                  {s.nature === "code" && (
-                    <p className="mt-1 text-caption leading-relaxed text-ink-faint">
-                      Un code à usage unique ouvre le compte : il n’est jamais
-                      montré ni archivé en clair.
-                    </p>
-                  )}
+                  <p className="mt-1.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
                 </li>
               ))}
             </ul>
           </section>
         ))
       )}
+
+      <p className="text-caption leading-relaxed text-ink-faint">
+        Les autres SMS — solde, publicité, codes à usage unique — restent pour
+        l’instant dans le journal du terminal, consultables sur Telegram. Les
+        faire remonter ici demande une table de plus dans la base ; c’est une
+        prochaine étape. Un code à usage unique, lui, ne sera jamais montré en
+        clair.
+      </p>
     </div>
   );
 }

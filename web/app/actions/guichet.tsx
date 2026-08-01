@@ -1,0 +1,178 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { codeUssd } from "@/lib/codes";
+import type { Sim } from "@/lib/types";
+import {
+  IconArrowDown, IconArrowUp, IconChevron, IconHash,
+  IconInbox, IconPhone, IconWallet,
+} from "../icons";
+import { chiffres, Flux, FluxGuide, montantFcfa } from "./flux";
+
+// Les codes composés viennent du catalogue relevé sur le terrain (codes.py) :
+// rien n'est deviné. Le terminal déroule le menu de l'opérateur en répondant
+// avec vos informations, et le code secret se compose ici, sur son pavé.
+function fluxTransfert(op: string): Flux {
+  return {
+    titre: "Transfert d’argent", operateur: op, code: codeUssd(op, "transfert"),
+    champs: [
+      { cle: "numero", label: "Numéro du bénéficiaire", type: "numero", aide: "699 12 34 56" },
+      { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "50 000" },
+    ],
+    recap: (v) => [
+      { label: "Bénéficiaire", valeur: v.numero },
+      { label: "Montant", valeur: montantFcfa(v.montant) },
+    ],
+    dialogue: (v) => [
+      { demande: "Orange Money — Transfert d’argent. Entrez le numero du beneficiaire :", reponse: chiffres(v.numero) },
+      { demande: "Entrez le montant :", reponse: chiffres(v.montant) },
+    ],
+    confirmation: (v) =>
+      `Transfert de ${montantFcfa(v.montant)} vers ${chiffres(v.numero)}. Entrez votre code secret pour confirmer :`,
+    succes: (v) =>
+      `Votre transfert de ${montantFcfa(v.montant)} vers ${chiffres(v.numero)} est en cours. Vous recevrez un SMS de confirmation.`,
+  };
+}
+function fluxDepot(op: string): Flux {
+  return {
+    titre: "Dépôt d’argent", operateur: op, code: codeUssd(op, "depot"),
+    champs: [
+      { cle: "numero", label: "Numéro à créditer", type: "numero", aide: "699 12 34 56" },
+      { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "20 000" },
+    ],
+    recap: (v) => [
+      { label: "Numéro", valeur: v.numero },
+      { label: "Montant", valeur: montantFcfa(v.montant) },
+    ],
+    dialogue: (v) => [
+      { demande: "Orange Money — Depot. Entrez le numero a crediter :", reponse: chiffres(v.numero) },
+      { demande: "Entrez le montant :", reponse: chiffres(v.montant) },
+    ],
+    confirmation: (v) =>
+      `Depot de ${montantFcfa(v.montant)} sur le ${chiffres(v.numero)}. Entrez votre code secret pour confirmer :`,
+    succes: (v) =>
+      `Votre depot de ${montantFcfa(v.montant)} est en cours. Vous recevrez un SMS de confirmation.`,
+  };
+}
+function fluxRetrait(op: string): Flux {
+  return {
+    titre: "Retrait d’argent", operateur: op, code: codeUssd(op, "retrait"),
+    champs: [
+      { cle: "point", label: "Numéro de l’agent", type: "numero", aide: "650 00 00 00" },
+      { cle: "montant", label: "Montant (FCFA)", type: "montant", aide: "20 000" },
+    ],
+    recap: (v) => [
+      { label: "Agent", valeur: v.point },
+      { label: "Montant", valeur: montantFcfa(v.montant) },
+    ],
+    dialogue: (v) => [
+      { demande: "Orange Money — Retrait. Entrez le numero de l’agent :", reponse: chiffres(v.point) },
+      { demande: "Entrez le montant :", reponse: chiffres(v.montant) },
+    ],
+    confirmation: (v) =>
+      `Retrait de ${montantFcfa(v.montant)} chez l’agent ${chiffres(v.point)}. Entrez votre code secret pour confirmer :`,
+    succes: (v) =>
+      `Votre retrait de ${montantFcfa(v.montant)} est autorise. Presentez-vous chez l’agent. Un SMS de confirmation arrive.`,
+  };
+}
+
+export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }) {
+  const op = carte.operateur;
+  const [flux, setFlux] = useState<Flux | null>(null);
+  const [demande, setDemande] = useState<string | null>(null);
+
+  const operations = [
+    { titre: "Dépôt", sous: "Créditer un compte Mobile Money", Icone: IconArrowDown, f: fluxDepot },
+    { titre: "Retrait", sous: "Chez un agent", Icone: IconWallet, f: fluxRetrait },
+    { titre: "Transfert", sous: "Envoyer vers un numéro", Icone: IconArrowUp, f: fluxTransfert },
+  ];
+
+  // Les consultations n'engagent pas d'argent : un seul geste, le terminal
+  // compose le code, la réponse revient ici.
+  const consultations = [
+    { l: "Consulter le solde", code: codeUssd(op, "solde"), Icone: IconWallet },
+    { l: "Mon numéro", code: codeUssd(op, "mon_numero"), Icone: IconPhone },
+  ];
+
+  return (
+    // Grand écran : les trois opérations à gauche, la consultation à droite.
+    <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
+      <header className="flex items-end justify-between lg:col-span-2">
+        <div>
+          <h1 className="text-title font-semibold tracking-tight">Opérations</h1>
+          <p className="mt-1 text-small text-ink-soft">Sans composer de code USSD.</p>
+        </div>
+        <span className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft">
+          {carte.libelle}
+        </span>
+      </header>
+
+      {/* Opérations */}
+      <section className="overflow-hidden rounded-card border border-line bg-surface-raised lg:col-start-1">
+        <ul className="divide-hair">
+          {operations.map(({ titre, sous, Icone, f }) => (
+            <li key={titre}>
+              <button onClick={() => setFlux(f(op))}
+                className="flex w-full items-center gap-3.5 px-4 py-4 text-left transition hover:bg-surface-2/60 lg:py-5">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+                  <Icone size={18} />
+                </span>
+                <div className="flex-1">
+                  <p className="text-body font-medium">{titre}</p>
+                  <p className="text-small text-ink-faint">{sous}</p>
+                </div>
+                <IconChevron size={16} className="text-ink-faint" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <aside className="flex flex-col gap-7 lg:col-start-2 lg:row-span-2 lg:row-start-2">
+        {/* Consultation */}
+        <section>
+          <h2 className="mb-3 text-heading font-semibold">Consultation</h2>
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+            {consultations.map(({ l, code, Icone }) => (
+              <button key={l} onClick={() => setDemande(code)}
+                className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
+                <Icone size={18} className="text-ink-soft" />
+                <span className="text-left leading-snug">{l}</span>
+              </button>
+            ))}
+          </div>
+          {demande && (
+            <p className="mt-3 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-ink-soft">
+              Demande envoyée au terminal : il compose{" "}
+              <span className="tabnums font-medium text-ink">{demande}</span> sur la
+              carte. La réponse du réseau s’affichera ici.
+            </p>
+          )}
+        </section>
+
+        {/* Le reste du guichet */}
+        <section className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+          {[
+            { href: "/sms", l: "SMS reçus", Icone: IconInbox },
+            { href: "/ussd", l: "Code USSD", Icone: IconHash },
+          ].map(({ href, l, Icone }) => (
+            <Link key={l} href={href}
+              className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
+              <Icone size={18} className="text-ink-soft" />
+              <span className="text-left leading-snug">{l}</span>
+            </Link>
+          ))}
+        </section>
+      </aside>
+
+      <p className="text-caption leading-relaxed text-ink-faint lg:col-start-1">
+        Le code secret se compose sur son pavé, au moment où le réseau le
+        demande. Il part au réseau puis disparaît : jamais enregistré, jamais
+        journalisé autrement que « •••• ».
+      </p>
+
+      {flux && <FluxGuide flux={flux} onFermer={() => setFlux(null)} />}
+    </div>
+  );
+}

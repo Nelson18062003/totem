@@ -125,3 +125,31 @@ file s'allonge. Elle se vide au retour du service.
 **« Puis-je arrêter le cloud ? »**
 Videz les lignes `url` et `cle`, relancez : TOTEM redevient entièrement hors
 ligne, sans rien perdre.
+
+---
+
+## Relier l'application web à la base
+
+L'application web (`web/`) lit la même base que le robot alimente. Elle a
+besoin de deux variables d'environnement, **côté serveur uniquement** :
+
+| Variable | Valeur |
+|---|---|
+| `SUPABASE_URL` | l'adresse du projet, `https://xxxxxxxxxxxx.supabase.co` |
+| `SUPABASE_CLE` | la clé de service (Settings → API → `service_role`) |
+
+- **Sur Vercel** : Settings → Environment Variables, ajouter les deux, puis
+  redéployer.
+- **En local** : créer `web/.env.local` avec ces deux lignes, puis
+  `npm run dev`.
+
+Sans elles, l'application l'affiche clairement (« Non relié ») et ne montre
+**aucune donnée** — jamais de chiffres inventés.
+
+Pourquoi la clé de service, alors qu'elle ne doit « jamais quitter le Pi » ?
+Parce que les règles de la base refusent toute lecture sans session, et que
+l'écran de connexion (Supabase Auth) n'existe pas encore. La clé ne sert
+qu'entre le serveur de l'application et Supabase : elle n'est **jamais**
+envoyée au navigateur (pas de préfixe `NEXT_PUBLIC_`). Dès que la connexion
+par mot de passe sera en place, on la remplacera par la clé publique et une
+session — et la clé de service retournera vivre uniquement sur le Pi.

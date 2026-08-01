@@ -1,7 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
+import { chargerDonnees, relie } from "@/lib/serveur";
 import { Coquille } from "./coquille";
+
+// L'état du terminal change à chaque instant : rien ne se fige à la
+// compilation, chaque visite relit la base.
+export const dynamic = "force-dynamic";
 
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 
@@ -23,11 +28,12 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const { terminal } = relie ? await chargerDonnees() : { terminal: null };
   return (
     <html lang="fr" className={dmSans.variable}>
       <body className="min-h-dvh">
-        <Coquille>{children}</Coquille>
+        <Coquille relie={relie} terminal={terminal}>{children}</Coquille>
       </body>
     </html>
   );

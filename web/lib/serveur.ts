@@ -1,0 +1,174 @@
+// Lecture de la base Supabase — côté serveur uniquement.
+//
+// Les règles de la base (sql/schema.sql) refusent toute lecture sans session :
+// la clé utilisée ici ne quitte donc JAMAIS le serveur. Elle vient de deux
+// variables d'environnement (sur Vercel : Settings → Environment Variables,
+// en local : web/.env.local) :
+//
+//   SUPABASE_URL   https://xxxxxxxxxxxx.supabase.co   (docs/CLOUD.md)
+//   SUPABASE_CLE   la clé de service — server-only, pas de NEXT_PUBLIC_
+//
+// Tant que l'application n'a pas son écran de connexion (Supabase Auth), la
+// clé de service est le seul moyen de lire ; elle reste acceptable parce
+// qu'elle ne transite que du serveur de l'application vers Supabase. Le jour
+// où la connexion existe, on la remplace par la clé publique + session.
+//
+// Le Raspberry Pi reste la source de vérité : ici on ne fait que LIRE ce
+// qu'il a poussé. Aucune donnée n'est inventée : sans variables, les écrans
+// sont vides et le disent.
+
+import type { Donnees, EtatTerminal, Paiement, Sim } from "./types";
+
+const url = process.env.SUPABASE_URL;
+const cle = process.env.SUPABASE_CLE;
+
+export const relie = Boolean(url && cle);
+
+const FUSEAU = "Africa/Douala"; // l'argent vit à Douala : les heures aussi
+
+async function lire<T>(chemin: string): Promise<T[]> {
+  if (!relie) return [];
+  try {
+    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+      headers: { apikey: cle!, authorization: `Bearer ${cle}` },
+      cache: "no-store",
+    });
+    if (!r.ok) {
+      console.error(`Supabase : ${chemin} → ${r.status}`);
+      return [];
+    }
+    return (await r.json()) as T[];
+  } catch (e) {
+    console.error(`Supabase injoignable : ${String(e)}`);
+    return [];
+  }
+}
+
+// --- Ce que le robot écrit (colonnes de sql/schema.sql) ----------------------
+
+type LigneTerminal = {
+  id: string; nom: string | null; vu_le: string | null; version: string | null;
+};
+type LigneCarte = {
+  iccid: string; operateur: string | null; libelle: string | null;
+  numero: string | null; premiere_vue: string | null; derniere_vue: string | null;
+};
+type LigneCompte = {
+  iccid: string | null; libelle: string; operateur: string | null;
+  reseau: string | null; itinerance: boolean; numero: string | null;
+  solde: number | null; signal: number | null; maj: string;
+};
+type LignePaiement = {
+  id: number; compte: string | null; carte: string | null; sens: string;
+  montant: number | null; tiers: string | null; numero: string | null;
+  reference: string | null; solde_apres: number | null; texte: string;
+  recu_le: string;
+};
+
+// --- Mise en forme des dates -------------------------------------------------
+
+function heure(ts: string): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit", minute: "2-digit", timeZone: FUSEAU,
+  }).format(new Date(ts));
+}
+
+function jourLocal(d: Date): string {
+  return new Intl.DateTimeFormat("fr-CA", { timeZone: FUSEAU }).format(d);
+}
+
+function libelleJour(ts: string): string {
+  const jour = jourLocal(new Date(ts));
+  const present = new Date();
+  if (jour === jourLocal(present)) return "Aujourd’hui";
+  if (jour === jourLocal(new Date(present.getTime() - 86_400_000))) return "Hier";
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric", month: "long", timeZone: FUSEAU,
+  }).format(new Date(ts));
+}
+
+function dateCourte(ts: string | null): string {
+  if (!ts) return "—";
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric", month: "short", year: "numeric", timeZone: FUSEAU,
+  }).format(new Date(ts));
+}
+
+function ecartHumain(ts: string | null): string {
+  if (!ts) return "jamais vu";
+  const s = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+  if (s < 60) return `il y a ${s} s`;
+  if (s < 3600) return `il y a ${Math.round(s / 60)} min`;
+  if (s < 86_400) return `il y a ${Math.round(s / 3600)} h`;
+  return `il y a ${Math.round(s / 86_400)} j`;
+}
+
+// Une carte est « en place » si le terminal l'a vue il y a moins de dix
+// minutes : au-delà, elle a été retirée (ou le terminal s'est tu — et alors
+// c'est lui qu'on signale comme muet).
+const EN_PLACE_MS = 10 * 60 * 1000;
+
+// --- Le chargement complet ---------------------------------------------------
+
+export async function chargerDonnees(): Promise<Donnees> {
+  const [terminaux, cartes, comptes, lignes] = await Promise.all([
+    lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version&order=vu_le.desc.nullslast&limit=1"),
+    lire<LigneCarte>("cartes?select=iccid,operateur,libelle,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
+    lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
+    lire<LignePaiement>("paiements?select=id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
+  ]);
+
+  const t = terminaux[0];
+  const terminal: EtatTerminal | null = t
+    ? {
+        id: t.id,
+        nom: t.nom || t.id.charAt(0).toUpperCase() + t.id.slice(1),
+        enLigne: Boolean(t.vu_le && Date.now() - new Date(t.vu_le).getTime() < 3 * 60 * 1000),
+        majTexte: ecartHumain(t.vu_le),
+        version: t.version ?? "",
+      }
+    : null;
+
+  const paiements: Paiement[] = lignes
+    .filter((l) => l.montant != null)
+    .map((l) => ({
+      id: String(l.id),
+      sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
+      sens: l.sens === "entree" ? "in" : "out",
+      nom: l.tiers || l.numero || "Inconnu",
+      numero: l.numero ?? "",
+      montant: l.montant!,
+      heure: heure(l.recu_le),
+      date: libelleJour(l.recu_le),
+      recuLe: l.recu_le,
+      reference: l.reference ?? "",
+      soldeApres: l.solde_apres,
+      smsBrut: l.texte,
+    }));
+
+  const sims: Sim[] = cartes.map((c) => {
+    const compte = comptes.find((x) => x.iccid === c.iccid);
+    const recus = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
+    const enPlace = Boolean(
+      c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
+    );
+    return {
+      iccid: c.iccid,
+      libelle: compte?.libelle || c.libelle || `Carte ·${c.iccid.slice(-4)}`,
+      operateur: compte?.operateur || c.operateur || "?",
+      reseau: compte?.reseau ?? "",
+      itinerance: compte?.itinerance ?? false,
+      numero: compte?.numero || c.numero || "",
+      solde: compte?.solde ?? null,
+      soldeSource: compte ? `la mise à jour du terminal, ${heure(compte.maj)}` : "",
+      signal: compte?.signal ?? null,
+      enPlace,
+      premiereVue: dateCourte(c.premiere_vue),
+      derniereVue: dateCourte(c.derniere_vue),
+      nbPaiements: recus.length,
+      totalRecu: recus.reduce((s, l) => s + (l.montant ?? 0), 0),
+    };
+  });
+
+  return { relie, terminal, sims, paiements };
+}

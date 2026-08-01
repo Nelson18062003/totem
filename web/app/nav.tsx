@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { EtatTerminal } from "@/lib/types";
 import { IconCard, IconChart, IconGrid, IconHash, IconHome, IconInbox, IconList, IconSettings } from "./icons";
 import { Logo } from "./marque";
 
@@ -44,7 +45,7 @@ function useBarreEffacable() {
   return cachee;
 }
 
-export function Nav() {
+export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
   const path = usePathname();
   const cachee = useBarreEffacable();
   const actif = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
@@ -92,11 +93,22 @@ export function Nav() {
             Réglages
           </Link>
           <div className="mt-4 px-3">
-            <p className="flex items-center gap-2 text-small text-ink-soft">
-              <span className="size-1.5 rounded-full bg-positive" />
-              Terminal actif
-            </p>
-            <p className="mt-1 text-caption text-ink-faint">Douala · Starlink</p>
+            {terminal ? (
+              <>
+                <p className="flex items-center gap-2 text-small text-ink-soft">
+                  <span className={`size-1.5 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                  {terminal.enLigne ? "Terminal actif" : "Terminal muet"}
+                </p>
+                <p className="mt-1 text-caption text-ink-faint">
+                  {terminal.nom} · {terminal.majTexte}
+                </p>
+              </>
+            ) : (
+              <p className="flex items-center gap-2 text-small text-ink-faint">
+                <span className="size-1.5 rounded-full bg-surface-3" />
+                Aucun terminal relié
+              </p>
+            )}
           </div>
         </div>
       </aside>

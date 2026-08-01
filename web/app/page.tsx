@@ -1,29 +1,18 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
-import { fcfa, fcfaCourt, paiements, robot, simsEnPlace } from "@/lib/mock";
+import { chargerDonnees } from "@/lib/serveur";
+import { fcfa } from "@/lib/types";
 import {
   IconArrowDown, IconArrowUp, IconChevron, IconHash, IconInbox,
-  IconPhone, IconRefresh, IconSettings, IconWallet,
+  IconPhone, IconSettings, IconWallet,
 } from "./icons";
+import { Solde } from "./solde";
 
-export default function Accueil() {
-  const carte = simsEnPlace[0];
+export const dynamic = "force-dynamic";
 
-  // Le solde n'existe pas « en direct » : la carte ne le connaît que par le
-  // dernier SMS, ou en interrogeant le réseau. Actualiser = demander au
-  // terminal de composer le code du solde sur la vraie SIM.
-  const [interrogation, setInterrogation] = useState<"repos" | "en_cours" | "faite">("repos");
-  const source =
-    interrogation === "faite" ? "l’interrogation du réseau, à l’instant" : carte.soldeSource;
-
-  const actualiser = () => {
-    if (interrogation === "en_cours") return;
-    setInterrogation("en_cours");
-    // Maquette : la vraie demande partira au terminal par la base de données.
-    setTimeout(() => setInterrogation("faite"), 1800);
-  };
+export default async function Accueil() {
+  const { terminal, sims, paiements } = await chargerDonnees();
+  const enPlace = sims.filter((s) => s.enPlace);
+  const carte = enPlace[0] ?? null;
 
   return (
     // Sur grand écran, la page se déplie en deux colonnes : le flux du
@@ -41,27 +30,18 @@ export default function Accueil() {
       </header>
 
       {/* Solde connu — et de quand il date */}
-      <section className="lg:col-start-1">
-        <p className="text-small text-ink-soft">
-          Solde · {carte.libelle}
-        </p>
-        <div className="mt-1 flex items-center gap-3">
-          <p className="text-hero font-semibold tabnums tracking-tight">{fcfa(carte.solde)}</p>
-          <button
-            onClick={actualiser}
-            aria-label="Actualiser le solde"
-            title="Demander le solde au réseau"
-            className="grid size-9 place-items-center rounded-full border border-line text-ink-soft transition hover:border-ink-faint hover:text-ink"
-          >
-            <IconRefresh size={16} className={interrogation === "en_cours" ? "animate-spin" : ""} />
-          </button>
-        </div>
-        <p className="mt-1.5 text-small text-ink-soft">
-          {interrogation === "en_cours"
-            ? "Le terminal interroge le réseau…"
-            : `D’après ${source}`}
-        </p>
-      </section>
+      {carte ? (
+        <Solde libelle={carte.libelle} solde={carte.solde} source={carte.soldeSource} />
+      ) : (
+        <section className="lg:col-start-1">
+          <p className="text-small text-ink-soft">Solde</p>
+          <p className="mt-1 text-hero font-semibold tabnums tracking-tight">—</p>
+          <p className="mt-1.5 text-small text-ink-soft">
+            Aucune carte en place pour l’instant : le solde apparaîtra dès que
+            le terminal aura vu une SIM.
+          </p>
+        </section>
+      )}
 
       {/* Les gestes du quotidien — les mêmes qu'au guichet */}
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-start-1">
@@ -88,35 +68,55 @@ export default function Accueil() {
             <h2 className="text-heading font-semibold">Carte en place</h2>
             <Link href="/cartes" className="text-small text-ink-soft transition hover:text-ink">Détails</Link>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            {simsEnPlace.map((s) => (
-              <Link key={s.id} href="/cartes" className="acct rounded-card p-4 transition">
-                <div className="flex items-center justify-between">
-                  <span className="text-caption uppercase tracking-wider text-white/60">
-                    {s.operateur === "MTN" ? "MTN Mobile Money" : "Orange Money"}
-                  </span>
-                  <span className="text-caption tabnums text-white/50">{s.signal}/31</span>
-                </div>
-                <p className="mt-4 text-display font-semibold tabnums tracking-tight">{fcfa(s.solde)}</p>
-                <p className="mt-1 text-small tabnums text-white/55">{s.numero}</p>
-              </Link>
-            ))}
-          </div>
+          {enPlace.length === 0 ? (
+            <p className="rounded-card border border-dashed border-line px-4 py-6 text-center text-small text-ink-faint">
+              Aucune carte dans le terminal.
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              {enPlace.map((s) => (
+                <Link key={s.iccid} href="/cartes" className="acct rounded-card p-4 transition">
+                  <div className="flex items-center justify-between">
+                    <span className="text-caption uppercase tracking-wider text-white/60">
+                      {s.operateur === "MTN" ? "MTN Mobile Money" : s.operateur === "Orange" ? "Orange Money" : s.libelle}
+                    </span>
+                    {s.signal != null && (
+                      <span className="text-caption tabnums text-white/50">{s.signal}/31</span>
+                    )}
+                  </div>
+                  <p className="mt-4 text-display font-semibold tabnums tracking-tight">
+                    {s.solde == null ? "—" : fcfa(s.solde)}
+                  </p>
+                  <p className="mt-1 text-small tabnums text-white/55">
+                    {s.numero || `carte ${s.iccid.slice(-8)}`}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* L'état du terminal — jusqu'ici réservé au rail, absent du téléphone */}
+        {/* L'état du terminal */}
         <section>
           <h2 className="mb-3 text-heading font-semibold">Terminal</h2>
           <Link href="/reglages"
             className="block rounded-card border border-line bg-surface-raised p-4 transition hover:border-ink-faint">
-            <p className="flex items-center gap-2.5 text-body">
-              <span className="size-2 rounded-full bg-positive" />
-              En ligne
-              <span className="ml-auto text-small tabnums text-ink-faint">il y a {robot.majTexte}</span>
-            </p>
-            <p className="mt-2 text-small text-ink-soft">
-              {robot.lieu} · {robot.internet} · {robot.surSecteur ? "sur secteur" : "sur batterie"}
-            </p>
+            {terminal ? (
+              <>
+                <p className="flex items-center gap-2.5 text-body">
+                  <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                  {terminal.enLigne ? "En ligne" : "Muet"}
+                  <span className="ml-auto text-small tabnums text-ink-faint">{terminal.majTexte}</span>
+                </p>
+                <p className="mt-2 text-small text-ink-soft">
+                  {terminal.nom}{terminal.version ? ` · ${terminal.version}` : ""}
+                </p>
+              </>
+            ) : (
+              <p className="text-small text-ink-soft">
+                Aucun terminal ne s’est encore annoncé.
+              </p>
+            )}
           </Link>
         </section>
       </aside>
@@ -129,22 +129,28 @@ export default function Accueil() {
             Tout voir <IconChevron size={14} />
           </Link>
         </div>
-        <ul className="divide-hair">
-          {paiements.slice(0, 6).map((p) => (
-            <li key={p.id} className="flex items-center gap-3 py-3.5">
-              <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                {p.sens === "in" ? <IconArrowDown size={16} /> : <IconArrowUp size={16} />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-body font-medium">{p.nom}</p>
-                <p className="text-small text-ink-faint">{p.sim} · {p.categorie} · {p.heure}</p>
-              </div>
-              <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : "text-ink"}`}>
-                {p.sens === "in" ? "+" : "−"}{fcfaCourt(p.montant)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {paiements.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-small text-ink-faint">
+            Aucun paiement enregistré pour l’instant.
+          </p>
+        ) : (
+          <ul className="divide-hair">
+            {paiements.slice(0, 6).map((p) => (
+              <li key={p.id} className="flex items-center gap-3 py-3.5">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+                  {p.sens === "in" ? <IconArrowDown size={16} /> : <IconArrowUp size={16} />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-body font-medium">{p.nom}</p>
+                  <p className="text-small text-ink-faint">{p.sim} · {p.heure}</p>
+                </div>
+                <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : "text-ink"}`}>
+                  {p.sens === "in" ? "+" : "−"}{fcfa(p.montant)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

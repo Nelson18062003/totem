@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fcfa } from "@/lib/mock";
+import { fcfa } from "@/lib/types";
 import { IconClose } from "../icons";
 import { PaveSecret } from "../pave-secret";
 
@@ -15,7 +15,7 @@ export type Champ = {
 
 export type Flux = {
   titre: string;
-  operateur: "MTN" | "Orange";
+  operateur: string;
   champs: Champ[];
   recap: (v: Record<string, string>) => { label: string; valeur: string }[];
   // Ce que le terminal compose sur la vraie SIM (le code du guichet).
