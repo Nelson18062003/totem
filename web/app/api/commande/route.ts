@@ -3,7 +3,7 @@ import { creerCommande, relie } from "@/lib/serveur";
 export const dynamic = "force-dynamic";
 
 // Les seules demandes que le guichet accepte — tout le reste est refusé.
-const GENRES = new Set(["solde", "ussd", "ussd_reponse", "ussd_fin"]);
+const GENRES = new Set(["solde", "ussd", "ussd_reponse", "ussd_fin", "recu"]);
 
 /**
  * Dépose une demande pour le terminal. Le corps n'est JAMAIS journalisé :
@@ -28,6 +28,9 @@ export async function POST(req: Request) {
   if (typeof brut.texte === "string") parametres.texte = brut.texte.slice(0, 120);
   if (brut.secret === true) parametres.secret = true;
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
+  if (Number.isInteger(brut.source_id) && brut.source_id > 0) {
+    parametres.source_id = brut.source_id;
+  }
 
   if (!relie) {
     return Response.json({ erreur: "plateforme non reliée à la base" }, { status: 503 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { fcfa, type Paiement } from "@/lib/types";
 import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
@@ -153,6 +154,46 @@ export function ListeEncaissements({
 }
 
 function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
+  const router = useRouter();
+  const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
+  const [mot, setMot] = useState("");
+
+  // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
+  // qui fait foi — même numéro, même document, à la demande.
+  const etablirRecu = async () => {
+    if (etabli === "envoi" || p.sourceId == null) return;
+    setEtabli("envoi");
+    try {
+      const r = await fetch("/api/commande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "recu", parametres: { source_id: p.sourceId } }),
+      });
+      if (!r.ok) throw new Error();
+      const { id } = (await r.json()) as { id: number };
+      for (let i = 0; i < 20; i++) {
+        await new Promise((res) => setTimeout(res, 1300));
+        const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
+          .then((x) => (x.ok ? x.json() : null))
+          .catch(() => null);
+        if (c && (c.etat === "faite" || c.etat === "echouee")) {
+          setMot(c.resultat || "");
+          setEtabli(c.etat === "faite" ? "fait" : "refus");
+          if (c.etat === "faite") {
+            // Laisser au terminal le temps d'archiver, puis relire la base :
+            // l'icône de téléchargement apparaîtra sur la ligne.
+            setTimeout(() => router.refresh(), 8000);
+          }
+          return;
+        }
+      }
+      throw new Error();
+    } catch {
+      setMot("Le terminal n’a pas répondu — est-il allumé, et à jour ?");
+      setEtabli("refus");
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
       <div className="w-full max-w-md rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
@@ -193,13 +234,26 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
             className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
             <IconCopy size={15} /> Copier le SMS
           </button>
-          {p.recu && (
+          {p.recu ? (
             <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
               className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
               <IconDoc size={15} /> Reçu PDF
             </a>
+          ) : (
+            p.sourceId != null && etabli !== "fait" && (
+              <button onClick={etablirRecu} disabled={etabli === "envoi"}
+                className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
+                <IconDoc size={15} />
+                {etabli === "envoi" ? "Demande au terminal…" : "Établir le reçu"}
+              </button>
+            )
           )}
         </div>
+        {mot && (
+          <p className={`mt-3 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
+            {mot}
+          </p>
+        )}
       </div>
     </div>
   );
