@@ -4,13 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { EtatTerminal } from "@/lib/types";
-import { IconCard, IconChart, IconGrid, IconHash, IconHome, IconInbox, IconList, IconSettings } from "./icons";
+import { IconCard, IconChart, IconGrid, IconHash, IconHome, IconInbox, IconSettings } from "./icons";
 import { Logo } from "./marque";
 
 const liens = [
   { href: "/", label: "Accueil", Icone: IconHome },
   { href: "/cartes", label: "Comptes", Icone: IconCard },
-  { href: "/encaissements", label: "Reçus", Icone: IconInbox },
+  { href: "/encaissements", label: "SMS reçus", Icone: IconInbox },
   { href: "/analyse", label: "Analyse", Icone: IconChart },
   { href: "/actions", label: "Opérations", Icone: IconGrid },
 ];
@@ -19,7 +19,6 @@ const liens = [
 // Sur téléphone, ces deux pages se rejoignent depuis l'accueil et Opérations —
 // la barre flottante reste à cinq boutons pour rester lisible.
 const liensSecondaires = [
-  { href: "/sms", label: "SMS reçus", Icone: IconList },
   { href: "/ussd", label: "Code USSD", Icone: IconHash },
 ];
 

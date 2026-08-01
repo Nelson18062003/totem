@@ -34,7 +34,8 @@ export type Paiement = {
   sens: "in" | "out" | "?";
   nom: string;
   numero: string;
-  montant: number;
+  // Null pour un SMS qui n'est pas un paiement (information, publicité…).
+  montant: number | null;
   heure: string;
   date: string;             // « Aujourd'hui », « Hier », « 28 juillet »
   recuLe: string;           // l'horodatage exact, pour les calculs
@@ -50,6 +51,9 @@ export type EtatTerminal = {
   enLigne: boolean;
   majTexte: string;         // « il y a 12 s »
   version: string;
+  // La santé physique du Pi, telle que le robot la résume :
+  // « 35 °C · disque 12 % (98 Go libres) ». Vide si rien n'est remonté.
+  sante: string;
 };
 
 export type Donnees = {

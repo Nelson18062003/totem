@@ -15,27 +15,16 @@ import { PaveSecret } from "../pave-secret";
 
 type Msg = { de: "reseau" | "vous"; texte: string };
 
-// « 1) Transfert » / « 2. Dépôt » / « 3 - Retrait » → des boutons.
+// « 1) Transfert » — une ligne d'option numérotée du menu de l'opérateur.
 const RE_OPTION = /^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$/;
 
-function analyserMenu(texte: string): { entete: string[]; options: [string, string][] } {
-  const entete: string[] = [];
-  const options: [string, string][] = [];
-  for (const brute of (texte || "").split(/\r\n|\r|\n/)) {
-    const ligne = brute.trim();
-    if (!ligne) continue;
-    const m = RE_OPTION.exec(ligne);
-    if (m) options.push([m[1], m[2].trim()]);
-    else entete.push(ligne);
-  }
-  return { entete, options };
-}
-
-// Le réseau attend-il le code secret ? (même règle que le robot : un menu qui
-// PARLE du code sans rien demander porte des options numérotées.)
+// Le réseau attend-il le code secret ? (même règle que le robot : un menu
+// qui PARLE du code sans rien demander porte des options numérotées.)
 function demandeUnCode(texte: string): boolean {
-  const { options } = analyserMenu(texte);
-  return options.length === 0 &&
+  const porteOptions = (texte || "")
+    .split(/\r\n|\r|\n/)
+    .some((l) => RE_OPTION.test(l.trim()));
+  return !porteOptions &&
     /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password/i.test(texte);
 }
 
@@ -138,7 +127,6 @@ export function ConsoleUssd({
   }, [codeInitial]);
 
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
-  const { options } = analyserMenu(dernier);
   const pave = enSession && !attente && demandeUnCode(dernier);
 
   return (
@@ -233,21 +221,6 @@ export function ConsoleUssd({
               </p>
             )}
 
-            {/* Les options du menu, en boutons — comme sur Telegram */}
-            {enSession && !attente && !pave && options.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1.5">
-                {options.map(([n, libelle]) => (
-                  <li key={n}>
-                    <button onClick={() => repondre(n)}
-                      className="flex w-full items-center gap-3 rounded-btn border border-line px-3.5 py-2.5 text-left text-small transition hover:border-ink-faint">
-                      <span className="tabnums text-ink-faint">{n}</span>
-                      {libelle}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
             {/* Le pavé, quand le réseau attend le code secret */}
             {pave && (
               <div className="mt-2 rounded-card border border-line p-4">
@@ -255,7 +228,7 @@ export function ConsoleUssd({
               </div>
             )}
 
-            {/* Réponse libre : un montant, un numéro */}
+            {/* Réponse libre : le chiffre du menu, un montant, un numéro */}
             {enSession && !attente && !pave && (
               <form
                 onSubmit={(e) => { e.preventDefault(); repondre(reponse); }}
@@ -265,7 +238,8 @@ export function ConsoleUssd({
                   value={reponse}
                   onChange={(e) => setReponse(e.target.value)}
                   inputMode="tel"
-                  placeholder="Votre réponse (chiffre, montant, numéro…)"
+                  placeholder="Votre réponse (chiffre du menu, montant, numéro…)"
+                  autoFocus
                   className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
                 />
                 <button type="submit" disabled={!reponse.trim()}
@@ -273,6 +247,14 @@ export function ConsoleUssd({
                   Envoyer
                 </button>
               </form>
+            )}
+
+            {/* Le geste de sortie, impossible à manquer. */}
+            {enSession && (
+              <button onClick={fermer} disabled={attente}
+                className="mt-2 rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
+                Annuler la session
+              </button>
             )}
             <div ref={bas} />
           </div>
