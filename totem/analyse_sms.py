@@ -424,14 +424,14 @@ def _operation_agent(m, norme, propre, texte):
         re.sub(r"\s+", "", m.group("num_benef")),
         _nettoyer_nom(_tel_quel(m, "nom_benef", norme, propre)))
 
-    # L'émetteur, s'il est nommé après le mot de réussite (« ... from 806… »).
-    # Sur ce fragment de fin, l'alignement avec le texte d'origine ne tient
-    # plus : le numéro suffit, c'est lui qui tranchera le sens.
+    # L'émetteur, s'il est nommé après le mot de réussite (« ... from 806…
+    # WONDER PHONE »). On cherche sur le texte normalisé complet, à partir de
+    # la fin du motif, pour retrouver le nom avec ses majuscules d'origine.
     emetteur = None
-    fin = RE_EMETTEUR_FIN.search(m.group("apres") or "")
+    fin = RE_EMETTEUR_FIN.search(norme, m.start("apres"))
     if fin:
         emetteur = Partie(re.sub(r"\s+", "", fin.group("num")),
-                          _nettoyer_nom(fin.group("nom")))
+                          _nettoyer_nom(_tel_quel(fin, "nom", norme, propre)))
 
     # Le montant, entre le verbe et « vers » (« depot de 50000 FCFA vers … »),
     # sinon dans un champ « Montant ». Jamais deviné : sans montant lisible,

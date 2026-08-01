@@ -144,6 +144,33 @@ class TestOperationAgent(unittest.TestCase):
             "Depot de 50000 FCFA vers 690933686 NGANGOM NOUBEWE echoue. "
             "Solde insuffisant."))
 
+    # Le vrai SMS de dépôt reçu en production, avec ses deux parties nommées,
+    # son montant dans les champs détaillés, sa référence et son solde.
+    VRAI_DEPOT = (
+        "Depot vers 690933686 NGANGOM NOUBEWE reussi from 696103864 WONDER "
+        "PHONE. Informations detaillees : Montant transaction : 10000FCFA, "
+        "ID de Transaction : CI260801.1355.D50164, Frais : 0FCFA, Commission "
+        ": 0 FCFA, Montant Net Debite : 10000FCFA, Nouveau Solde : 2773937.6FCFA.")
+
+    def test_vrai_depot_de_production(self):
+        p = analyser(self.VRAI_DEPOT)
+        self.assertEqual(p.montant, 10000)
+        self.assertEqual(p.reference, "CI260801.1355.D50164")
+        self.assertEqual(p.frais, 0)
+        self.assertEqual(p.solde_apres, 2773937.6)
+        self.assertEqual(p.emetteur.nom, "WONDER PHONE")        # majuscules gardées
+        self.assertEqual(p.emetteur.numero, "696103864")
+        self.assertEqual(p.beneficiaire.nom, "NGANGOM NOUBEWE")
+        self.assertEqual(p.beneficiaire.numero, "690933686")
+
+    def test_vrai_depot_sens_selon_ma_carte(self):
+        # WONDER PHONE (696103864) dépose vers le client : l'argent sort de
+        # ma carte, et c'est le client qu'on affiche en face.
+        p = analyser(self.VRAI_DEPOT, numeros=["696103864"])
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.nom, "NGANGOM NOUBEWE")
+        self.assertEqual(p.numero, "690933686")
+
 
 class TestCeQuiNestPasUnPaiement(unittest.TestCase):
     """Un faux encaissement fausserait les comptes : mieux vaut ne rien
