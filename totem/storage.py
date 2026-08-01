@@ -169,6 +169,10 @@ class Journal:
             # partie. Les lignes déjà présentes sont considérées à envoyer.
             self._ajouter_colonne_si_absente("sms", "envoye", "INTEGER DEFAULT 0")
             self._ajouter_colonne_si_absente("evenements", "envoye", "INTEGER DEFAULT 0")
+            # L'identité déclarée à la main : le numéro de la puce et le nom
+            # sous lequel elle encaisse. La SIM ne les dit presque jamais, et
+            # sans eux un reçu ne sait pas de quel côté d'un transfert on est.
+            self._ajouter_colonne_si_absente("cartes", "nom")
             self._reprendre_recus()
             self.conn.commit()
 
@@ -323,6 +327,51 @@ class Journal:
             resultat.append((iccid, libelle, operateur, numero, premiere,
                              derniere, len(textes.get(iccid, [])), total))
         return resultat
+
+    # ---- l'identité déclarée d'une carte -----------------------------------
+    # Le numéro et le nom ne se lisent pas sur la puce : c'est le propriétaire
+    # qui les connaît. Ils s'inscrivent depuis Telegram, une fois, et suivent
+    # ensuite la carte partout — y compris si elle change de modem.
+
+    def definir_identite(self, iccid, numero=None, nom=None):
+        """Inscrit le numéro et/ou le nom d'une carte. Renvoie False si la
+        carte n'est pas au registre — on n'invente pas une puce jamais vue."""
+        if not iccid:
+            return False
+        with self.verrou:
+            if not self.conn.execute("SELECT 1 FROM cartes WHERE iccid = ?",
+                                     (iccid,)).fetchone():
+                return False
+            if numero is not None:
+                self.conn.execute("UPDATE cartes SET numero = ? WHERE iccid = ?",
+                                  (numero, iccid))
+            if nom is not None:
+                self.conn.execute("UPDATE cartes SET nom = ? WHERE iccid = ?",
+                                  (nom, iccid))
+            # La ligne repart vers le cloud : l'application web doit voir le
+            # changement sans attendre qu'il se passe autre chose.
+            self.conn.execute("UPDATE cartes SET envoye = 0 WHERE iccid = ?",
+                              (iccid,))
+            self.conn.commit()
+        return True
+
+    def identite(self, iccid):
+        """(numéro, nom) d'une carte, chacun vide s'il n'a pas été déclaré."""
+        if not iccid:
+            return "", ""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT COALESCE(numero, ''), COALESCE(nom, '') "
+                "FROM cartes WHERE iccid = ?", (iccid,)).fetchone()
+        return tuple(ligne) if ligne else ("", "")
+
+    def numeros_declares(self):
+        """Tous les numéros inscrits, quelle que soit la carte. C'est avec eux
+        qu'on décide de quel côté d'un transfert se trouve le terminal."""
+        with self.verrou:
+            return [n for (n,) in self.conn.execute(
+                "SELECT numero FROM cartes WHERE numero IS NOT NULL "
+                "AND numero <> ''")]
 
     def cartes_non_envoyees(self, limite=100):
         with self.verrou:
