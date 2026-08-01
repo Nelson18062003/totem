@@ -48,11 +48,11 @@ async function lire<T>(chemin: string): Promise<T[]> {
 
 type LigneTerminal = {
   id: string; nom: string | null; vu_le: string | null; version: string | null;
-  sante: { resume?: string } | null;
+  sante?: { resume?: string } | null;
 };
 type LigneCarte = {
   iccid: string; operateur: string | null; libelle: string | null;
-  nom: string | null; numero: string | null;
+  nom?: string | null; numero: string | null;
   premiere_vue: string | null; derniere_vue: string | null;
 };
 type LigneCompte = {
@@ -63,7 +63,7 @@ type LigneCompte = {
 type LigneRecu = { numero: string; reference: string | null; chemin: string };
 
 type LignePaiement = {
-  id: number; source_id: number | null; expediteur: string | null;
+  id: number; source_id?: number | null; expediteur?: string | null;
   compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
@@ -116,12 +116,17 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 // --- Le chargement complet ---------------------------------------------------
 
 export async function chargerDonnees(): Promise<Donnees> {
+  // « select=* » à dessein : exiger une colonne par son nom rend l'écran
+  // VIDE quand la base a une migration de retard (la requête entière est
+  // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
+  // moins riche — jamais une liste vide. Les champs du type non présents
+  // arrivent à undefined, que chaque lecture traite déjà comme null.
   const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
-    lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version,sante&order=vu_le.desc.nullslast&limit=1"),
-    lire<LigneCarte>("cartes?select=iccid,operateur,libelle,nom,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
-    lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
-    lire<LignePaiement>("paiements?select=id,source_id,expediteur,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
-    lire<LigneRecu>("recus?select=numero,reference,chemin&order=etabli_le.desc&limit=1000"),
+    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
+    lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
+    lire<LigneCompte>("comptes?select=*"),
+    lire<LignePaiement>("paiements?select=*&order=recu_le.desc&limit=1000"),
+    lire<LigneRecu>("recus?select=*&order=etabli_le.desc&limit=1000"),
   ]);
 
   const t = terminaux[0];
@@ -180,7 +185,7 @@ export async function chargerDonnees(): Promise<Donnees> {
       soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
       smsBrut: l.texte,
       recu: recuDe(l),
-      sourceId: l.source_id,
+      sourceId: l.source_id ?? null,
     }));
 
   const sims: Sim[] = cartes.map((c) => {
