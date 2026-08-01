@@ -140,14 +140,20 @@ class Journal:
                 -- le même message relu dans un autre emplacement.
                 CREATE TABLE IF NOT EXISTS recus(
                     id INTEGER PRIMARY KEY,
-                    sms_id INTEGER NOT NULL UNIQUE,
+                    -- D'où vient le document : « sms » pour un encaissement,
+                    -- « ussd » pour un solde consulté au menu. Un solde ne
+                    -- passe pas toujours par un SMS — le plus souvent
+                    -- l'opérateur le dit à l'écran, et nulle part ailleurs.
+                    source TEXT NOT NULL DEFAULT 'sms',
+                    source_id INTEGER NOT NULL,
                     genre TEXT NOT NULL,
                     numero TEXT NOT NULL,
                     reference TEXT,
                     date TEXT,
                     envoye INTEGER DEFAULT 0,
                     archive INTEGER DEFAULT 0,
-                    essais INTEGER DEFAULT 0);
+                    essais INTEGER DEFAULT 0,
+                    UNIQUE(source, source_id));
                 CREATE UNIQUE INDEX IF NOT EXISTS recus_reference
                     ON recus(reference) WHERE reference IS NOT NULL;
                 """
@@ -163,7 +169,43 @@ class Journal:
             # partie. Les lignes déjà présentes sont considérées à envoyer.
             self._ajouter_colonne_si_absente("sms", "envoye", "INTEGER DEFAULT 0")
             self._ajouter_colonne_si_absente("evenements", "envoye", "INTEGER DEFAULT 0")
+            self._reprendre_recus()
             self.conn.commit()
+
+    def _reprendre_recus(self):
+        """Les premiers reçus ne connaissaient que les SMS.
+
+        La table portait une colonne « sms_id », et son unicité empêchait
+        d'inscrire un solde relevé au menu USSD — qui n'a pas de SMS derrière
+        lui. On rebâtit la table sous sa forme actuelle, en gardant ce qu'elle
+        contient : sans ça, des reçus déjà envoyés repartiraient une seconde
+        fois.
+        """
+        colonnes = {r[1] for r in self.conn.execute("PRAGMA table_info(recus)")}
+        if not colonnes or "source" in colonnes:
+            return
+        self.conn.executescript("""
+            ALTER TABLE recus RENAME TO recus_avant;
+            CREATE TABLE recus(
+                id INTEGER PRIMARY KEY,
+                source TEXT NOT NULL DEFAULT 'sms',
+                source_id INTEGER NOT NULL,
+                genre TEXT NOT NULL,
+                numero TEXT NOT NULL,
+                reference TEXT,
+                date TEXT,
+                envoye INTEGER DEFAULT 0,
+                archive INTEGER DEFAULT 0,
+                essais INTEGER DEFAULT 0,
+                UNIQUE(source, source_id));
+            INSERT INTO recus(id, source, source_id, genre, numero, reference,
+                              date, envoye, archive, essais)
+                SELECT id, 'sms', sms_id, genre, numero, reference,
+                       date, envoye, archive, essais FROM recus_avant;
+            DROP TABLE recus_avant;
+            CREATE UNIQUE INDEX IF NOT EXISTS recus_reference
+                ON recus(reference) WHERE reference IS NOT NULL;
+        """)
 
     def _ajouter_colonne_si_absente(self, table, colonne, type_sql="TEXT"):
         existantes = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
@@ -187,13 +229,17 @@ class Journal:
 
     def ussd(self, direction, texte, compte="", iccid=""):
         """direction : « envoyé » ou « reçu ». Ne JAMAIS journaliser un PIN :
-        l'appelant remplace le PIN par des étoiles avant l'appel."""
+        l'appelant remplace le PIN par des étoiles avant l'appel.
+
+        Renvoie l'identifiant de la ligne : un solde lu à l'écran peut donner
+        lieu à un reçu, et c'est par lui qu'on le rattache."""
         with self.verrou:
-            self.conn.execute(
+            curseur = self.conn.execute(
                 "INSERT INTO ussd(date, direction, texte, compte, iccid) "
                 "VALUES(?,?,?,?,?)",
                 (self._maintenant(), direction, texte, compte, iccid))
             self.conn.commit()
+            return curseur.lastrowid
 
     def evenement(self, texte):
         with self.verrou:
@@ -400,18 +446,21 @@ class Journal:
     # SMS, qui lui reste au journal. Ce qu'on garde ici, c'est la promesse de
     # l'envoyer, et la certitude de ne pas l'envoyer deux fois.
 
-    def programmer_recu(self, sms_id, genre, numero, reference=None):
+    def programmer_recu(self, source_id, genre, numero, reference=None,
+                        source="sms"):
         """Inscrit un reçu à fabriquer. Renvoie False s'il existe déjà.
 
-        Le même SMS relu après un redémarrage du modem tombe sur l'un des deux
-        verrous d'unicité et ne produit pas de second document.
+        `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
+        menu. Le même SMS relu après un redémarrage du modem tombe sur l'un des
+        deux verrous d'unicité et ne produit pas de second document.
         """
         try:
             with self.verrou:
                 self.conn.execute(
-                    "INSERT INTO recus(sms_id, genre, numero, reference, date) "
-                    "VALUES(?,?,?,?,?)",
-                    (sms_id, genre, numero, reference or None, self._maintenant()))
+                    "INSERT INTO recus(source, source_id, genre, numero, "
+                    "reference, date) VALUES(?,?,?,?,?,?)",
+                    (source, source_id, genre, numero, reference or None,
+                     self._maintenant()))
                 self.conn.commit()
             return True
         except sqlite3.IntegrityError:
@@ -428,9 +477,13 @@ class Journal:
             timespec="seconds")
         with self.verrou:
             return self.conn.execute(
-                "SELECT r.id, r.genre, r.numero, r.date, s.texte, "
-                "       COALESCE(s.compte, ''), COALESCE(s.iccid, '') "
-                "FROM recus r JOIN sms s ON s.id = r.sms_id "
+                "SELECT r.id, r.genre, r.numero, r.date, "
+                "       COALESCE(s.texte, u.texte, ''), "
+                "       COALESCE(s.compte, u.compte, ''), "
+                "       COALESCE(s.iccid, u.iccid, '') "
+                "FROM recus r "
+                "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
+                "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
                 "WHERE r.envoye = 0 AND r.date <= ? ORDER BY r.id LIMIT ?",
                 (avant, limite)).fetchall()
 
@@ -438,9 +491,13 @@ class Journal:
         """Les reçus partis sur Telegram mais pas encore déposés dans le cloud."""
         with self.verrou:
             return self.conn.execute(
-                "SELECT r.id, r.genre, r.numero, r.date, s.texte, "
-                "       COALESCE(s.compte, ''), COALESCE(s.iccid, '') "
-                "FROM recus r JOIN sms s ON s.id = r.sms_id "
+                "SELECT r.id, r.genre, r.numero, r.date, "
+                "       COALESCE(s.texte, u.texte, ''), "
+                "       COALESCE(s.compte, u.compte, ''), "
+                "       COALESCE(s.iccid, u.iccid, '') "
+                "FROM recus r "
+                "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
+                "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
                 "WHERE r.envoye = 1 AND r.archive = 0 ORDER BY r.id LIMIT ?",
                 (limite,)).fetchall()
 

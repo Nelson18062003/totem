@@ -14,7 +14,7 @@ import unittest
 
 from totem.app import Robot
 from totem.compte import Compte
-from totem.declencheur import SOLDE, TRANSFERT, motif_du_sms
+from totem.declencheur import SOLDE, TRANSFERT, motif_du_menu, motif_du_sms
 from totem.recu import numero_de_recu, recu_solde, recu_transfert
 from totem.simulator import ModemSimule
 from totem.storage import Journal
@@ -46,6 +46,22 @@ class TransportEspion:
             return False
         self.fichiers.append((nom, contenu, legende, type_mime))
         return True
+
+    # Les échanges d'un menu USSD : ils modifient un message en place plutôt
+    # que d'en empiler un nouveau. Rien à retenir ici, seulement à ne pas
+    # faire échouer le parcours.
+    def modifier(self, message_id, texte, boutons=None, canal=None):
+        self.messages.append(texte)
+        return True
+
+    def supprimer(self, message_id, canal=None):
+        pass
+
+    def retirer_boutons(self, message_id, canal=None):
+        pass
+
+    def accuser(self, callback_id, texte=""):
+        pass
 
     def recevoir(self):
         return []
@@ -260,6 +276,74 @@ class TestLaFabriquePdf(unittest.TestCase):
         for trace, coupes in traces:
             self.assertTrue(trace.startswith("M16.000 4.400C"))
             self.assertEqual(len(coupes), 1)     # un croisement à masquer
+
+
+class TestSoldeLuAuMenu(unittest.TestCase):
+    """Le solde ne passe presque jamais par un SMS : l'opérateur l'affiche à
+    l'écran, et nulle part ailleurs. Appuyer sur « Solde » et ne rien recevoir,
+    c'est le trou qu'on ferme ici."""
+
+    def test_une_reponse_de_solde_donne_un_recu(self):
+        motif = motif_du_menu("Votre solde est de 2 784 137,6 FCFA.")
+        self.assertIsNotNone(motif)
+        self.assertEqual(motif.genre, SOLDE)
+        self.assertEqual(motif.solde, 2784137.6)
+
+    def test_un_menu_nen_donne_pas(self):
+        """Des options numérotées veulent dire qu'il reste à choisir : il ne
+        s'est encore rien passé."""
+        self.assertIsNone(motif_du_menu(
+            "Mon compte\n1. Consulter le solde\n2. Dernieres transactions\n3. Retour"))
+        self.assertIsNone(motif_du_menu(
+            "Orange Money\n1) Transfert d'argent\n2) Retrait\n5) Mon compte"))
+
+    def test_une_question_nen_donne_pas(self):
+        self.assertIsNone(motif_du_menu("Entrez le montant (FCFA) :"))
+        self.assertIsNone(motif_du_menu("Confirmez avec votre code PIN :"))
+        self.assertIsNone(motif_du_menu("Transfert\nEntrez le numero du beneficiaire :"))
+
+    def test_un_echec_nen_donne_pas(self):
+        self.assertIsNone(motif_du_menu("Solde insuffisant. Operation annulee."))
+
+    def test_le_parcours_complet_du_bouton_solde(self):
+        """#150#, puis « Mon compte », puis « Consulter le solde » : un seul
+        reçu, à la fin, et rien sur les écrans intermédiaires."""
+        robot, compte, modem, journal = _robot()
+        for etape, nouveau in (("#150#", True), ("5", False), ("1", False)):
+            robot._ussd(compte, etape, nouveau=nouveau)
+            if etape != "1":
+                self.assertEqual(journal.recus_en_attente(), 0,
+                                 "un menu ne doit pas produire de reçu")
+        self.assertEqual(journal.recus_en_attente(), 1)
+
+        _distribuer(robot, journal)
+        self.assertEqual(len(robot.transport.fichiers), 1)
+        nom, contenu, legende, _ = robot.transport.fichiers[0]
+        self.assertTrue(nom.startswith("TS-"))     # « S » comme session USSD
+        self.assertTrue(contenu.startswith(b"%PDF"))
+        self.assertIn("Reçu de solde", legende)
+
+    def test_le_meme_solde_consulte_deux_fois_donne_deux_recus(self):
+        """Ce n'est pas un doublon : ce sont deux relevés à deux instants."""
+        robot, compte, modem, journal = _robot()
+        for _ in range(2):
+            for etape, nouveau in (("#150#", True), ("5", False), ("1", False)):
+                robot._ussd(compte, etape, nouveau=nouveau)
+        self.assertEqual(journal.recus_en_attente(), 2)
+
+    def test_un_numero_de_sms_et_un_numero_de_solde_ne_se_confondent_pas(self):
+        """Les deux journaux ont leurs propres numéros de ligne : sans lettre
+        distinctive, le SMS n° 4 et la réponse USSD n° 4 porteraient le même
+        numéro de reçu — et le cloud, qui les range par numéro, en perdrait un."""
+        import datetime
+        quand = datetime.datetime(2026, 8, 1, 9, 47)
+        self.assertNotEqual(numero_de_recu(quand, 4, "sms"),
+                            numero_de_recu(quand, 4, "ussd"))
+
+    def test_un_transfert_reste_sur_le_chemin_du_sms(self):
+        """La réponse USSD d'un transfert ne doit pas doubler le reçu que le
+        SMS de confirmation produira."""
+        self.assertIsNone(motif_du_menu(TRANSFERT_ORANGE))
 
 
 if __name__ == "__main__":

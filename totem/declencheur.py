@@ -61,6 +61,41 @@ class Motif:
         return f"<Motif {self.genre}>"
 
 
+# Une option numérotée : « 1. Consulter le solde », « 2) Retrait ». Leur
+# présence dit qu'on est devant un menu, pas devant une réponse.
+RE_OPTION = re.compile(r"^\s*\d{1,2}\s*[.):\-]\s*\S", re.M)
+
+# Ce qui attend une saisie : on n'établit pas de document sur une question.
+RE_ATTENTE = re.compile(
+    r"\bentrez\b|\bsaisissez\b|\bveuillez\s+(?:entrer|saisir)\b|\bconfirmez\b"
+    r"|\benter\b|\bchoisissez\b|\bmontant\b|\bbeneficiaire\b")
+
+
+def motif_du_menu(reponse):
+    """Un reçu de solde à partir d'une réponse USSD.
+
+    Le solde ne voyage pas toujours par SMS : le plus souvent l'opérateur
+    l'affiche à l'écran, et nulle part ailleurs. Appuyer sur « Solde » et ne
+    rien recevoir, c'est ce trou-là.
+
+    Trois refus, avant même de chercher un montant :
+
+      - un **menu** — des options numérotées veulent dire qu'il reste à
+        choisir, donc qu'il ne s'est rien passé ;
+      - une **question** — « Entrez le montant » n'est pas un fait établi ;
+      - tout ce que `solde_annonce()` écarte déjà : publicité, code, paiement.
+    """
+    if not reponse or not reponse.strip():
+        return None
+    if RE_OPTION.search(reponse):
+        return None
+    norme = _normaliser(reponse)
+    if RE_ATTENTE.search(norme) or RE_ECHEC.search(norme):
+        return None
+    solde = solde_annonce(reponse)
+    return Motif(SOLDE, solde=solde) if solde is not None else None
+
+
 def motif_du_sms(texte, numeros=()):
     """Renvoie un `Motif`, ou None si ce SMS ne mérite aucun reçu.
 
@@ -89,4 +124,5 @@ def motif_du_sms(texte, numeros=()):
     return None
 
 
-__all__ = ["Motif", "SOLDE", "TRANSFERT", "motif_du_sms"]
+__all__ = ["Motif", "SOLDE", "TRANSFERT", "motif_du_menu",
+           "motif_du_sms"]

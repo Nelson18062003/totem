@@ -79,15 +79,23 @@ def heure_en_lettres(quand):
     return f"{quand.hour} h {quand.minute:02d}"
 
 
-def numero_de_recu(quand, sms_id):
+# La deuxième lettre dit d'où vient le document : d'un Message, ou d'une
+# Session au menu. Sans elle, le SMS n° 5 et la réponse USSD n° 5 porteraient
+# le même numéro le même jour — et le second écraserait le premier dans le
+# cloud, qui les range par numéro.
+PREFIXES = {"sms": "TM", "ussd": "TS"}
+
+
+def numero_de_recu(quand, source_id, source="sms"):
     """« TM-2026-0731-0042 ».
 
-    Le compteur est l'identifiant du SMS au journal : il ne se répète jamais,
-    et refabriquer un reçu après coup lui redonne exactement le même numéro.
-    Un compteur remis à zéro chaque jour aurait obligé à tenir un état de
-    plus, pour un numéro moins sûr.
+    Le compteur est l'identifiant de la ligne au journal : il ne se répète
+    jamais, et refabriquer un reçu après coup lui redonne exactement le même
+    numéro. Un compteur remis à zéro chaque jour aurait obligé à tenir un état
+    de plus, pour un numéro moins sûr.
     """
-    return f"TM-{quand.year}-{quand.month:02d}{quand.day:02d}-{sms_id:04d}"
+    tete = PREFIXES.get(source, "TM")
+    return f"{tete}-{quand.year}-{quand.month:02d}{quand.day:02d}-{source_id:04d}"
 
 
 def numero_lisible(numero):

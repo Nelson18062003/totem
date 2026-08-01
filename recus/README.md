@@ -31,7 +31,13 @@ aussi ce que fait `totem/recu.py`, qui embarque la même police depuis
 | Document | Déclencheur |
 |---|---|
 | **Reçu de transfert** | un SMS d'opération réussie |
-| **Reçu de solde** | un SMS de solde, après une interrogation USSD |
+| **Reçu de solde** | la réponse de l'opérateur à une interrogation de solde |
+
+Le solde ne passe **pas** par un SMS : l'opérateur l'affiche dans la session
+USSD, et nulle part ailleurs. Le déclencheur est donc la réponse elle-même —
+celle qui clôt le parcours, pas les menus qui y mènent. Un écran d'options
+numérotées ou une question (« Entrez le montant ») ne produit rien : il ne
+s'est encore rien passé.
 
 Aperçus dans [`apercus/`](apercus/). Format actuel : **A3 paysage**.
 

@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import analyser, formater_montant, masquer_secrets
-from .declencheur import TRANSFERT, motif_du_sms
+from .declencheur import TRANSFERT, motif_du_menu, motif_du_sms
 from .recu import numero_de_recu, recu_solde, recu_transfert
 from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
@@ -557,8 +557,12 @@ class Robot:
             self._cloturer_session(
                 f"⚠️ [{echap(compte.libelle)}] Le modem n'a pas répondu.")
             return
-        self.journal.ussd("reçu", reponse, compte.libelle,
-                          compte.carte.iccid)
+        ussd_id = self.journal.ussd("reçu", reponse, compte.libelle,
+                                    compte.carte.iccid)
+        # Le solde ne passe presque jamais par un SMS : l'opérateur l'affiche
+        # ici, et nulle part ailleurs. Sans cette ligne, appuyer sur « Solde »
+        # ne produisait aucun reçu — c'est justement ce qu'on attendait d'elle.
+        self._programmer_recu(ussd_id, reponse, source="ussd")
         self.dernier_menu = reponse
         # Conservée même après la fermeture de la session : c'est elle qu'on
         # relit quand un menu s'affiche mal.
@@ -1362,17 +1366,23 @@ class Robot:
     # l'annonce d'un encaissement. Le SMS est donc seulement inscrit, et la
     # boucle de surveillance s'en occupe une dizaine de secondes plus tard.
 
-    def _programmer_recu(self, sms_id, texte):
-        """Inscrit ce SMS pour un reçu, s'il en mérite un."""
-        if not self.recus or not sms_id:
+    def _programmer_recu(self, source_id, texte, source="sms"):
+        """Inscrit ce message pour un reçu, s'il en mérite un.
+
+        `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
+        menu. Les deux n'ont pas les mêmes garde-fous — une réponse USSD peut
+        être un menu ou une question, un SMS non.
+        """
+        if not self.recus or not source_id:
             return None
         try:
-            motif = motif_du_sms(texte, numeros=self._nos_numeros())
+            motif = (motif_du_menu(texte) if source == "ussd"
+                     else motif_du_sms(texte, numeros=self._nos_numeros()))
             if motif is None:
                 return None
-            numero = numero_de_recu(datetime.now(), sms_id)
-            self.journal.programmer_recu(sms_id, motif.genre, numero,
-                                         motif.reference)
+            numero = numero_de_recu(datetime.now(), source_id, source)
+            self.journal.programmer_recu(source_id, motif.genre, numero,
+                                         motif.reference, source=source)
             return numero
         except Exception as e:
             # Un reçu manqué est un désagrément ; une relève de SMS
@@ -1425,7 +1435,7 @@ class Robot:
         rien n'est conservé sur la carte SD."""
         _, genre, numero, date, texte, compte, iccid = ligne
         quand = datetime.fromisoformat(date)
-        motif = motif_du_sms(texte, numeros=self._nos_numeros())
+        motif = self._motif(texte)
         nom = f"{numero}.pdf"
         if motif is None or motif.genre != genre:
             return nom, None, ""
@@ -1449,7 +1459,7 @@ class Robot:
     def _fiche_recu(self, ligne):
         """Ce qu'on inscrit dans le cloud à côté du fichier."""
         _, genre, numero, date, texte, _, _ = ligne
-        motif = motif_du_sms(texte, numeros=self._nos_numeros())
+        motif = self._motif(texte)
         montant = None
         if motif is not None:
             montant = (motif.paiement.montant if motif.paiement is not None
@@ -1457,6 +1467,16 @@ class Robot:
         return {"numero": numero, "genre": genre, "montant": montant,
                 "reference": motif.reference if motif else None,
                 "etabli_le": date}
+
+    def _motif(self, texte):
+        """Relit un message déjà inscrit, sans savoir d'où il vient.
+
+        Les deux règles sont prudentes chacune de son côté, et le genre
+        attendu est vérifié juste après : essayer les deux ne peut pas
+        fabriquer un document qui n'avait pas lieu d'être.
+        """
+        return (motif_du_sms(texte, numeros=self._nos_numeros())
+                or motif_du_menu(texte))
 
     def _compte_par_iccid(self, iccid):
         for compte in self.comptes:

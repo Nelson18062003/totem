@@ -150,6 +150,9 @@ Trois règles gouvernent son existence :
   solde relevé. Un transfert échoué, une publicité, un message incompris n'en
   produisent aucun. En cas de doute, pas de reçu : le SMS reste lisible en
   clair, comme avant. Un reçu faux vaut moins que pas de reçu.
+- **Le solde ne vient pas d'un SMS.** L'opérateur l'affiche dans la session
+  USSD. C'est donc la réponse qui clôt le parcours qui déclenche le reçu — pas
+  les menus qui y mènent, ni les questions qu'ils posent.
 - **Un code à usage unique n'en produit jamais**, et n'est même pas conservé
   en clair : il est masqué avant le journal, la sauvegarde et Telegram.
 - **Le sens n'est pas deviné.** Orange écrit « Transfert de 656483918 PRIX
