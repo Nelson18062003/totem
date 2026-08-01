@@ -63,7 +63,7 @@ type LigneCompte = {
 type LigneRecu = { numero: string; reference: string | null; chemin: string };
 
 type LignePaiement = {
-  id: number; source_id: number | null;
+  id: number; source_id: number | null; expediteur: string | null;
   compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
@@ -120,7 +120,7 @@ export async function chargerDonnees(): Promise<Donnees> {
     lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version,sante&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=iccid,operateur,libelle,nom,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
-    lire<LignePaiement>("paiements?select=id,source_id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
+    lire<LignePaiement>("paiements?select=id,source_id,expediteur,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
     lire<LigneRecu>("recus?select=numero,reference,chemin&order=etabli_le.desc&limit=1000"),
   ]);
 
@@ -152,15 +152,13 @@ export async function chargerDonnees(): Promise<Donnees> {
     return recus.find((r) => ligneDuRecu(r.numero) === l.source_id)?.numero ?? null;
   };
 
-  // Un SMS sans tiers n'est pas « Inconnu » : on dit ce que c'est.
+  // Chaque SMS affiche QUI l'a envoyé, comme la messagerie du téléphone :
+  // « OrangeMoney », « Orange », « MTN »… Les lignes d'avant cette colonne
+  // n'ont pas l'expéditeur : on affiche alors l'opérateur de la carte.
   const nomDe = (l: LignePaiement): string => {
-    if (l.tiers) return l.tiers;
-    if (l.numero) return l.numero;
-    const t = l.texte.toLowerCase();
-    if (/le solde de votre compte/.test(t)) return "Solde du compte";
-    if (/\bcode\b.*\best\b|[•]{3,}/.test(t)) return "Code à usage unique";
-    if (l.montant != null) return "Paiement";
-    return "Message de l’opérateur";
+    if (l.expediteur) return l.expediteur;
+    const operateur = (l.compte ?? "").split(" ")[0];
+    return operateur || l.tiers || l.numero || "SMS";
   };
 
   // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris

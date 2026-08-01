@@ -106,6 +106,9 @@ create table if not exists paiements (
   frais        numeric,
   commission   numeric,                  -- Orange la détaille à part des frais
   montant_brut numeric,                  -- « Montant Transaction », avant frais
+  -- Qui a envoyé le SMS, tel que le téléphone l'affiche : « OrangeMoney »,
+  -- « Orange », « MTN »… C'est le nom que la liste des SMS met en avant.
+  expediteur   text,
   texte        text not null,            -- le SMS d'origine : il fait foi
   recu_le      timestamptz not null,
   cree_le      timestamptz not null default now(),
@@ -180,6 +183,7 @@ alter table comptes   add column if not exists reseau     text;
 alter table comptes   add column if not exists itinerance boolean not null default false;
 alter table cartes    add column if not exists nom        text;
 alter table paiements add column if not exists carte      text;
+alter table paiements add column if not exists expediteur   text;
 alter table paiements add column if not exists commission   numeric;
 alter table paiements add column if not exists montant_brut numeric;
 

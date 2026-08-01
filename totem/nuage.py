@@ -183,6 +183,8 @@ class Nuage:
                 "terminal": self.terminal,
                 "source_id": id_local,
                 "compte": compte or expediteur,
+                # Qui a envoyé le SMS — ce que le téléphone afficherait.
+                "expediteur": expediteur or None,
                 # La carte qui a reçu le paiement : c'est elle qui rattache
                 # la somme au bon solde quand plusieurs SIM se succèdent.
                 "carte": iccid or None,
