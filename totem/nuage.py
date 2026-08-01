@@ -252,6 +252,61 @@ class Nuage:
             "recus", [dict(ligne, terminal=self.terminal, chemin=chemin)],
             "terminal,numero")
 
+    # ---- guichet à distance (table « commandes ») --------------------------
+    # L'application web dépose une demande ; le robot la lit ici, l'exécute
+    # sur la vraie SIM, puis écrit le résultat. Le canal descendant, enfin.
+
+    def _lire(self, chemin):
+        """GET sur l'API, réponse JSON décodée. Léve en cas d'accroc."""
+        req = urllib.request.Request(f"{self.url}/rest/v1/{chemin}")
+        req.add_header("apikey", self.cle)
+        req.add_header("Authorization", f"Bearer {self.cle}")
+        with urllib.request.urlopen(req, timeout=DELAI) as rep:
+            return json.loads(rep.read().decode() or "[]")
+
+    def commandes_en_attente(self):
+        """Les demandes que l'application web a déposées pour CE terminal."""
+        if not self.actif:
+            return []
+        try:
+            lignes = self._lire(
+                f"commandes?terminal=eq.{self.terminal}&etat=eq.en_attente"
+                "&order=demandee_le.asc&limit=10")
+            self.derniere_erreur = None
+            return lignes
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return []
+
+    def commande_maj(self, identifiant, champs):
+        """Fait avancer une demande : prise en charge, résultat, échec."""
+        try:
+            self._requete(
+                "PATCH", f"commandes?id=eq.{int(identifiant)}", champs)
+            self.derniere_erreur = None
+            return True
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return False
+
+    def publier_solde(self, iccid, solde):
+        """Un solde lu à l'instant sur le réseau : la base le reflète.
+
+        C'est la seule écriture de solde côté nuage — il vient toujours de
+        l'opérateur (réponse USSD), jamais d'un calcul à nous.
+        """
+        if not (self.actif and iccid):
+            return False
+        try:
+            self._requete(
+                "PATCH", f"comptes?terminal=eq.{self.terminal}&iccid=eq.{iccid}",
+                {"solde": solde, "maj": _horodatage()})
+            self.derniere_erreur = None
+            return True
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return False
+
     # ---- boucle -----------------------------------------------------------
     def demarrer(self, comptes=None, sante=None):
         """Lance la synchronisation en tâche de fond. Sans configuration,

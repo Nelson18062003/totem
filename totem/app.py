@@ -35,6 +35,7 @@ from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
+from .pilotage import Pilotage
 from .sante import Sante, sauvegarder_journal
 from .version import version
 
@@ -113,6 +114,7 @@ class Robot:
         self.delai_session = delai_session
         self.chemin_base = chemin_base
         self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
+        self.pilotage = None    # le guichet à distance, démarré avec le nuage
         # Les numéros des puces, déclarés dans la configuration. Une SIM
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
         # sait pas de quel côté d'un transfert il se trouve.
@@ -243,6 +245,10 @@ class Robot:
             # Synchronisation en tâche de fond : elle rattrape son retard
             # quand le réseau le permet, et n'interrompt jamais le robot.
             self.nuage.demarrer(comptes=self.comptes, sante=self.sante)
+            # Le guichet à distance : l'application web dépose ses demandes
+            # dans la base, ce fil les exécute sur les vraies SIM.
+            self.pilotage = Pilotage(self.nuage, self.comptes, self.journal)
+            self.pilotage.demarrer()
         if bloquant:
             self._boucle_messages()
 
@@ -262,6 +268,8 @@ class Robot:
         if not self.actif:
             return
         self.actif = False
+        if self.pilotage:
+            self.pilotage.arreter()
         self.journal.evenement(ARRET_PROPRE)
 
     # ---- messages et clics ------------------------------------------------
