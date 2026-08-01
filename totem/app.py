@@ -28,7 +28,9 @@ import threading
 import time
 from datetime import datetime
 
-from .analyse_sms import analyser
+from .analyse_sms import analyser, formater_montant, masquer_secrets
+from .declencheur import TRANSFERT, motif_du_menu, motif_du_sms
+from .recu import numero_de_recu, recu_solde, recu_transfert
 from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
@@ -67,6 +69,12 @@ VERIF_MEMOIRE_SECONDES = 300
 # seconde. Une minute suffit pour que l'annonce paraisse immédiate.
 VERIF_CARTES_SECONDES = 60
 SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
+# Le délai entre l'annonce du SMS et le reçu qui la suit. Assez pour que les
+# deux messages ne se bousculent pas dans la conversation ni dans les limites
+# de Telegram, assez peu pour qu'on n'ait pas le temps de s'impatienter.
+DELAI_RECU = 10
+# Le nom commercial du service, tel qu'il apparaît en pied de reçu.
+SERVICES = {"Orange": "Orange Money", "MTN": "MTN MoMo"}
 
 COMMANDES_BOT = [
     ("menu", "Écran d'accueil avec les boutons"),
@@ -90,7 +98,8 @@ class Robot:
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
                  delai_session=180, chemin_base=None, nuage=None,
-                 seuil_confirmation=0, sauvegarde_quotidienne=True):
+                 seuil_confirmation=0, sauvegarde_quotidienne=True,
+                 numeros=None, recus=True):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -104,6 +113,11 @@ class Robot:
         self.delai_session = delai_session
         self.chemin_base = chemin_base
         self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
+        # Les numéros des puces, déclarés dans la configuration. Une SIM
+        # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
+        # sait pas de quel côté d'un transfert il se trouve.
+        self.numeros = dict(numeros or {})
+        self.recus = recus      # joindre un reçu PDF aux opérations comprises
         self.actif = True
         self.verrou = threading.RLock()
         self.courant = self.comptes[0] if self.comptes else None
@@ -543,8 +557,12 @@ class Robot:
             self._cloturer_session(
                 f"⚠️ [{echap(compte.libelle)}] Le modem n'a pas répondu.")
             return
-        self.journal.ussd("reçu", reponse, compte.libelle,
-                          compte.carte.iccid)
+        ussd_id = self.journal.ussd("reçu", reponse, compte.libelle,
+                                    compte.carte.iccid)
+        # Le solde ne passe presque jamais par un SMS : l'opérateur l'affiche
+        # ici, et nulle part ailleurs. Sans cette ligne, appuyer sur « Solde »
+        # ne produisait aucun reçu — c'est justement ce qu'on attendait d'elle.
+        self._programmer_recu(ussd_id, reponse, source="ussd")
         self.dernier_menu = reponse
         # Conservée même après la fermeture de la session : c'est elle qu'on
         # relit quand un menu s'affiche mal.
@@ -1136,7 +1154,28 @@ class Robot:
 
     @staticmethod
     def _fcfa(montant):
-        return f"{montant:,}".replace(",", " ") + " FCFA"
+        return formater_montant(montant) + " FCFA"
+
+    def _nos_numeros(self):
+        """Tous les numéros qui sont les nôtres — ce qui permet de dire de quel
+        côté d'un transfert on se trouve.
+
+        Deux sources : ce que la puce déclare (rare : la plupart des SIM
+        prépayées ne provisionnent pas leur MSISDN) et ce que la configuration
+        annonce. Si les deux se taisent, le sens reste inconnu, et c'est plus
+        honnête que de le deviner.
+        """
+        declares = [c.carte.numero for c in self.comptes if c.carte.numero]
+        return tuple(declares) + tuple(self.numeros.values())
+
+    def _numero_du_compte(self, compte):
+        """Le numéro de CETTE carte. La configuration prime : elle a été
+        écrite à la main en regardant la puce, le modem se contente de
+        répéter ce que la SIM veut bien dire."""
+        for cle in (compte.carte.iccid, compte.libelle, compte.carte.operateur):
+            if cle and cle.lower() in self.numeros:
+                return self.numeros[cle.lower()]
+        return compte.carte.numero or ""
 
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
@@ -1159,6 +1198,7 @@ class Robot:
             if time.time() >= prochaine_memoire:
                 prochaine_memoire = time.time() + VERIF_MEMOIRE_SECONDES
                 self._verifier_memoire()
+            self._distribuer_recus()
             self._signaler_conflit()
             if self._rapport_quotidien():
                 sauvegarder_journal(self.chemin_base)
@@ -1282,6 +1322,11 @@ class Robot:
         try:
             messages = compte.lire_sms()
             compte.echecs = 0
+            # Un modem peut revenir sans qu'on l'ait redémarré : le câble se
+            # remet en place, l'alimentation se stabilise. C'est ici qu'on
+            # l'apprend, et il faut le dire — sinon la dernière chose annoncée
+            # reste « le modem ne répond plus », alors que tout va bien.
+            self._annoncer_retour(compte)
         except Exception as e:
             compte.echecs += 1
             self.journal.evenement(f"lecture SMS {compte.libelle} : {e}")
@@ -1290,10 +1335,20 @@ class Robot:
                 compte.echecs = 0
             return
         for indices, expediteur, texte in messages:
+            # Un code à usage unique ne doit survivre nulle part : ni au
+            # journal, ni dans la sauvegarde envoyée hors du Pi, ni sur
+            # Telegram. On le masque ici, une fois, et tout ce qui suit ne
+            # voit plus que la version sûre.
+            texte = masquer_secrets(texte)
             if not self.journal.sms_existe(expediteur, texte, compte.libelle):
-                self.journal.sms(expediteur, texte, compte.libelle,
-                                 compte.carte.iccid)
+                sms_id = self.journal.sms(expediteur, texte, compte.libelle,
+                                          compte.carte.iccid)
                 self._notifier_sms(compte, expediteur, texte)
+                # Le reçu ne part pas maintenant : l'alerte doit arriver la
+                # première, et un PDF ne doit jamais retarder l'annonce d'un
+                # encaissement. Il est seulement inscrit ; la boucle de
+                # surveillance le fabriquera et l'enverra dans la foulée.
+                self._programmer_recu(sms_id, texte)
                 # Le cloud est prévenu tout de suite : inutile de lui faire
                 # attendre son prochain battement pour un paiement déjà connu.
                 if self.nuage:
@@ -1304,6 +1359,137 @@ class Robot:
                 self.journal.evenement(
                     f"SMS {indices} non effacé sur {compte.libelle} "
                     "(il sera ignoré au prochain tour)")
+
+    # ---- reçus PDF ---------------------------------------------------------
+    # Un reçu ne se fabrique jamais dans le fil du SMS : l'alerte doit partir
+    # tout de suite, et l'échec d'un document ne doit pas faire perdre
+    # l'annonce d'un encaissement. Le SMS est donc seulement inscrit, et la
+    # boucle de surveillance s'en occupe une dizaine de secondes plus tard.
+
+    def _programmer_recu(self, source_id, texte, source="sms"):
+        """Inscrit ce message pour un reçu, s'il en mérite un.
+
+        `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
+        menu. Les deux n'ont pas les mêmes garde-fous — une réponse USSD peut
+        être un menu ou une question, un SMS non.
+        """
+        if not self.recus or not source_id:
+            return None
+        try:
+            motif = (motif_du_menu(texte) if source == "ussd"
+                     else motif_du_sms(texte, numeros=self._nos_numeros()))
+            if motif is None:
+                return None
+            numero = numero_de_recu(datetime.now(), source_id, source)
+            self.journal.programmer_recu(source_id, motif.genre, numero,
+                                         motif.reference, source=source)
+            return numero
+        except Exception as e:
+            # Un reçu manqué est un désagrément ; une relève de SMS
+            # interrompue est une perte d'argent. On note, et on continue.
+            self.journal.evenement(f"reçu non programmé : {e}")
+            return None
+
+    def _distribuer_recus(self):
+        """Fabrique, envoie, puis archive les reçus mûrs."""
+        if not self.recus:
+            return
+        for ligne in self.journal.recus_a_envoyer(DELAI_RECU):
+            identifiant = ligne[0]
+            try:
+                nom, pdf, legende = self._fabriquer_recu(ligne)
+            except Exception as e:
+                self.journal.evenement(f"reçu {ligne[2]} illisible : {e}")
+                self.journal.recu_echoue(identifiant)
+                continue
+            if pdf is None:
+                self.journal.recu_echoue(identifiant, essais_max=1)
+                continue
+            if self.transport.envoyer_fichier(nom, pdf, legende,
+                                              canal="encaissements",
+                                              type_mime="application/pdf"):
+                self.journal.recu_envoye(identifiant)
+            else:
+                # Réseau absent : on repassera. Le document n'est pas perdu,
+                # il n'a simplement pas encore été fabriqué pour de bon.
+                self.journal.recu_echoue(identifiant)
+                break
+
+        if not (self.nuage and self.nuage.actif):
+            return
+        for ligne in self.journal.recus_a_archiver():
+            try:
+                nom, pdf, _ = self._fabriquer_recu(ligne)
+            except Exception:
+                self.journal.recu_archive(ligne[0])   # inutile d'insister
+                continue
+            if pdf is None or self.nuage.archiver_recu(
+                    nom, pdf, self._fiche_recu(ligne)):
+                self.journal.recu_archive(ligne[0])
+            else:
+                break
+
+    def _fabriquer_recu(self, ligne):
+        """(nom de fichier, PDF, légende) — ou (nom, None, «») si le SMS n'est
+        plus compris. Le document se refait à l'identique depuis le message :
+        rien n'est conservé sur la carte SD."""
+        _, genre, numero, date, texte, compte, iccid = ligne
+        quand = datetime.fromisoformat(date)
+        motif = self._motif(texte)
+        nom = f"{numero}.pdf"
+        if motif is None or motif.genre != genre:
+            return nom, None, ""
+
+        operateur = self._operateur_de(compte, iccid)
+        if genre == TRANSFERT:
+            pdf = recu_transfert(motif.paiement, numero, quand, operateur)
+            legende = (f"🧾 {gras('Reçu de transfert')} — "
+                       f"{gras(self._fcfa(motif.paiement.montant))}\n"
+                       f"{italique('N° ' + numero)}")
+        else:
+            propre = self._compte_par_iccid(iccid)
+            pdf = recu_solde(motif.solde, compte or operateur,
+                             self._numero_du_compte(propre) if propre else "",
+                             numero, quand, operateur)
+            legende = (f"🧾 {gras('Reçu de solde')} — "
+                       f"{gras(self._fcfa(motif.solde))}\n"
+                       f"{italique('N° ' + numero)}")
+        return nom, pdf, legende
+
+    def _fiche_recu(self, ligne):
+        """Ce qu'on inscrit dans le cloud à côté du fichier."""
+        _, genre, numero, date, texte, _, _ = ligne
+        motif = self._motif(texte)
+        montant = None
+        if motif is not None:
+            montant = (motif.paiement.montant if motif.paiement is not None
+                       else motif.solde)
+        return {"numero": numero, "genre": genre, "montant": montant,
+                "reference": motif.reference if motif else None,
+                "etabli_le": date}
+
+    def _motif(self, texte):
+        """Relit un message déjà inscrit, sans savoir d'où il vient.
+
+        Les deux règles sont prudentes chacune de son côté, et le genre
+        attendu est vérifié juste après : essayer les deux ne peut pas
+        fabriquer un document qui n'avait pas lieu d'être.
+        """
+        return (motif_du_sms(texte, numeros=self._nos_numeros())
+                or motif_du_menu(texte))
+
+    def _compte_par_iccid(self, iccid):
+        for compte in self.comptes:
+            if iccid and compte.carte.iccid == iccid:
+                return compte
+        return self.comptes[0] if self.comptes else None
+
+    def _operateur_de(self, libelle, iccid):
+        """« Orange Money » ou « MTN MoMo », d'après la carte."""
+        compte = self._compte_par_iccid(iccid)
+        source = (compte.carte.operateur if compte else "") or libelle or ""
+        return SERVICES.get(source.split()[0] if source.split() else "",
+                            source or "Mobile Money")
 
     def _verifier_memoire(self):
         """Une mémoire SMS pleine fait perdre les messages suivants — donc des
@@ -1366,16 +1552,25 @@ class Robot:
         L'envoi passe par le facteur : un encaissement survenu pendant une
         coupure Internet doit repartir tout seul au retour du réseau."""
         etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
-        paiement = analyser(texte)
+        paiement = analyser(texte, numeros=self._nos_numeros())
 
         if paiement and paiement.sens == "entree":
             entete = (f"💰 {gras('Encaissement')}{etiquette} — "
                       f"{gras(self._fcfa(paiement.montant))}\n"
                       f"de {gras(paiement.tiers)}")
-        elif paiement:
+        elif paiement and paiement.sens == "sortie":
             entete = (f"↗️ {gras('Envoi')}{etiquette} — "
                       f"{gras(self._fcfa(paiement.montant))}\n"
                       f"vers {gras(paiement.tiers)}")
+        elif paiement:
+            # Orange nomme les deux parties sans dire laquelle est la nôtre, et
+            # la SIM ne déclare pas toujours son numéro. Plutôt qu'un
+            # « Encaissement » qui pourrait être un envoi, on montre le
+            # mouvement tel qu'il est écrit.
+            entete = (f"🔁 {gras('Transfert')}{etiquette} — "
+                      f"{gras(self._fcfa(paiement.montant))}\n"
+                      f"{gras(echap(str(paiement.emetteur)))} → "
+                      f"{gras(echap(str(paiement.beneficiaire)))}")
         else:
             entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
 
@@ -1395,16 +1590,66 @@ class Robot:
                 "L'opérateur l'aurait fermée de son côté.")
 
     def _redemarrer_modem(self, compte, canal=None, automatique=False):
+        """Relance le modem d'un compte.
+
+        Une panne matérielle dure. Le robot doit continuer d'essayer — mais
+        une alerte identique répétée toutes les minutes ne dit rien de plus
+        que la première, et finit par enterrer les encaissements sous le
+        bruit. On annonce donc la panne une fois, on réessaie de plus en plus
+        espacé, et on ne reparle que pour dire que c'est revenu.
+        """
         etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
-        self.transport.envoyer(
-            f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…" if automatique
-            else f"{etiquette}Redémarrage du modem (≈30 s)…", canal=canal)
+
+        if automatique:
+            if time.time() < compte.prochaine_tentative:
+                return
+            # Une minute, puis deux, puis quatre… jusqu'à une demi-heure.
+            compte.attente_modem = min(max(compte.attente_modem * 2, 60), 1800)
+            compte.prochaine_tentative = time.time() + compte.attente_modem
+
+        if not automatique or not compte.panne_signalee:
+            self.transport.envoyer(
+                f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…"
+                if automatique
+                else f"{etiquette}Redémarrage du modem (≈30 s)…", canal=canal)
+
         try:
             compte.redemarrer()
         except Exception as e:
-            self.transport.envoyer(
-                f"❌ {etiquette}Échec du redémarrage : {echap(e)}", canal=canal)
+            self.journal.evenement(f"redémarrage {compte.libelle} : {e}")
+            if not compte.panne_signalee:
+                compte.panne_signalee = True
+                self.transport.envoyer(
+                    f"❌ {etiquette}{gras('Le modem ne répond plus')}\n"
+                    f"{echap(e)}\n\n"
+                    + italique(
+                        "Je continue d'essayer, de plus en plus espacé, et je "
+                        "préviens dès qu'il revient. Sur place : vérifier le "
+                        "câble USB entre le HAT et le Pi, puis l'alimentation "
+                        "— le modem réclame 3 A en pointe, et décroche du bus "
+                        "quand le bloc est trop juste."), canal=canal)
             return
+
+        if not self._annoncer_retour(compte, canal):
+            self.transport.envoyer(
+                f"✅ {etiquette}Modem revenu en ligne. "
+                f"Signal : {compte.signal()}/31", canal=canal)
+
+    def _annoncer_retour(self, compte, canal="alertes"):
+        """Dit que le modem répond de nouveau, si on avait annoncé le contraire.
+
+        Renvoie vrai quand quelque chose a été dit. Rien à annoncer dans le cas
+        courant — un modem qui n'est jamais tombé n'a pas à se signaler.
+        """
+        revenu = compte.panne_signalee
+        compte.panne_signalee = False
+        compte.attente_modem = 0
+        compte.prochaine_tentative = 0.0
+        if not revenu:
+            return False
+        etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
+        self.journal.evenement(f"modem revenu ({compte.libelle})")
         self.transport.envoyer(
-            f"✅ {etiquette}Modem revenu en ligne. Signal : {compte.signal()}/31",
-            canal=canal)
+            f"✅ {etiquette}{gras('Le modem répond de nouveau')}\n"
+            f"Signal : {compte.signal()}/31", canal=canal)
+        return True

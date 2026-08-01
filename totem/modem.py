@@ -71,6 +71,8 @@ class ModemSerie:
     def __init__(self, port="/dev/ttyUSB2", baud=115200):
         import serial  # pyserial — importé ici pour que le mode simulation s'en passe
 
+        self.port = port
+        self.baud = baud
         self.ser = serial.Serial(port, baud, timeout=1)
         self.verrou = threading.Lock()
         self.ucs2 = False
@@ -238,12 +240,71 @@ class ModemSerie:
         return bool(m and m.group(1) == "5")
 
     def redemarrer(self):
-        with self.verrou:
-            self._envoyer("AT+CFUN=1,1", delai=2)
+        """Relance le modem, puis **rouvre le port**.
+
+        Ce second geste n'est pas une précaution, c'est le cœur de l'affaire.
+        Un modem qui redémarre disparaît du bus USB et y revient : le fichier
+        de communication ouvert au démarrage du robot devient alors définitivement
+        mort, et tout ce qu'on lui écrit répond « Input/output error ». Sans
+        réouverture, le robot annonçait un redémarrage raté toutes les minutes,
+        indéfiniment, alors que le modem était peut-être déjà revenu.
+
+        L'ordre de redémarrage peut très bien échouer — si le modem s'est déjà
+        évanoui, il n'y a plus personne pour l'entendre. On n'en fait pas une
+        erreur : c'est la réouverture qui décide.
+        """
+        try:
+            with self.verrou:
+                self._envoyer("AT+CFUN=1,1", delai=2)
+        except Exception:
+            pass
         self._oublier()          # tout est à relire après un redémarrage
         self._commande_iccid = None
-        time.sleep(25)
+        self._rouvrir()
         self._initialiser()
+
+    def _rouvrir(self, patience=45):
+        """Referme le port et le rouvre, en acceptant qu'il ait changé de nom.
+
+        Au retour sur le bus USB, le noyau ne rend pas forcément le même
+        numéro : le modem parti de `/dev/ttyUSB2` peut revenir sur `ttyUSB6`.
+        S'entêter sur l'ancien chemin, c'est attendre un port qui n'existera
+        plus jamais — on redemande donc lequel est le bon.
+        """
+        import serial
+
+        try:
+            self.ser.close()
+        except Exception:
+            pass
+
+        fin = time.time() + patience
+        derniere = None
+        while time.time() < fin:
+            time.sleep(2)
+            for chemin in self._chemins_possibles():
+                try:
+                    self.ser = serial.Serial(chemin, self.baud, timeout=1)
+                    self.port = chemin
+                    return
+                except Exception as e:
+                    derniere = e
+        raise ErreurModem(
+            f"le modem n'est pas revenu sur le port série après {patience} s "
+            f"({derniere}). Vérifiez le câble USB et l'alimentation : le HAT "
+            f"réclame 3 A, un chargeur trop juste le fait décrocher du bus.")
+
+    def _chemins_possibles(self):
+        """Le port précédent d'abord — c'est le cas courant — puis ceux que la
+        détection propose. On ne devine aucun numéro : on regarde."""
+        chemins = [self.port]
+        try:
+            from .detect import detecter_modems
+            chemins += [info.port for info in detecter_modems()]
+        except Exception:
+            pass
+        vus = set()
+        return [c for c in chemins if c and not (c in vus or vus.add(c))]
 
     # ---- USSD -------------------------------------------------------------
     @staticmethod

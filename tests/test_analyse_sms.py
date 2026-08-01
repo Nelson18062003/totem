@@ -11,7 +11,17 @@ Lancer :  python3 -m unittest discover -s tests
 
 import unittest
 
-from totem.analyse_sms import analyser
+from totem.analyse_sms import (analyser, code_a_usage_unique, formater_montant,
+                               masquer_secrets, solde_annonce)
+
+# Le vrai SMS d'Orange Money, relevé sur les captures du propriétaire en
+# juillet 2026. Il sert de référence à tout ce fichier : c'est lui qu'il faut
+# continuer à comprendre, pas une reformulation commode.
+TRANSFERT_ORANGE = (
+    "Transfert de 656483918 PRIX MONO SARL vers 696103864 WONDER PHONE reussi. "
+    "Details: ID transaction: PP260731.1319.B45805, "
+    "Montant Transaction: 184137FCFA, Frais: 0 FCFA, Commission: 0 FCFA, "
+    "Montant Net: 184137 FCFA, Nouveau Solde: 2784137.6 FCFA")
 
 
 class TestEncaissements(unittest.TestCase):
@@ -128,6 +138,148 @@ class TestRobustesse(unittest.TestCase):
         self.assertEqual(d["montant"], 25000)
         self.assertEqual(d["sens"], "entree")
         self.assertIn("texte", d)
+
+
+class TestTransfertOrange(unittest.TestCase):
+    """La forme réelle d'Orange Money : elle nomme les deux parties et
+    détaille l'opération. Avant correction, `analyser()` renvoyait None et
+    aucun reçu n'aurait jamais pu se déclencher."""
+
+    def test_champ_par_champ(self):
+        p = analyser(TRANSFERT_ORANGE)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.emetteur.numero, "656483918")
+        self.assertEqual(p.emetteur.nom, "PRIX MONO SARL")
+        self.assertEqual(p.beneficiaire.numero, "696103864")
+        self.assertEqual(p.beneficiaire.nom, "WONDER PHONE")
+        self.assertEqual(p.reference, "PP260731.1319.B45805")
+        self.assertEqual(p.montant_brut, 184137)
+        self.assertEqual(p.frais, 0)
+        self.assertEqual(p.commission, 0)
+        self.assertEqual(p.montant, 184137)        # le Montant Net d'Orange
+        self.assertEqual(p.solde_apres, 2784137.6)
+
+    def test_le_sens_reste_inconnu_sans_notre_numero(self):
+        """Le SMS dit qui envoie et qui reçoit, pas laquelle des deux lignes
+        est la nôtre. Trancher au hasard inverserait le libellé du reçu."""
+        p = analyser(TRANSFERT_ORANGE)
+        self.assertIsNone(p.sens)
+        self.assertFalse(p.sens_connu)
+
+    def test_sens_encaissement(self):
+        p = analyser(TRANSFERT_ORANGE, numeros=["696103864"])
+        self.assertEqual(p.sens, "entree")
+        self.assertEqual(p.nom, "PRIX MONO SARL")    # le tiers, c'est l'autre
+        self.assertEqual(p.numero, "656483918")
+
+    def test_sens_envoi(self):
+        p = analyser(TRANSFERT_ORANGE, numeros=["+237656483918"])
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.nom, "WONDER PHONE")
+
+    def test_numero_etranger_ne_tranche_rien(self):
+        p = analyser(TRANSFERT_ORANGE, numeros=["677000000"])
+        self.assertIsNone(p.sens)
+
+    def test_transfert_echoue_nest_pas_un_paiement(self):
+        self.assertIsNone(analyser(
+            "Transfert de 656483918 PRIX MONO SARL vers 696103864 WONDER "
+            "PHONE echoue. Solde insuffisant."))
+
+    def test_sans_les_noms(self):
+        p = analyser("Transfert de 656483918 vers 696103864 reussi. "
+                     "Montant Net: 5000 FCFA")
+        self.assertEqual(p.montant, 5000)
+        self.assertEqual(p.emetteur.numero, "656483918")
+        self.assertIsNone(p.emetteur.nom)
+
+    def test_le_texte_reste_intact(self):
+        self.assertEqual(analyser(TRANSFERT_ORANGE).texte, TRANSFERT_ORANGE)
+
+
+class TestSeparateurDecimal(unittest.TestCase):
+    """Le point sépare des milliers dans « 1.250.000 » et des décimales dans
+    « 2784137.6 ». La confusion lisait le solde dix fois trop grand."""
+
+    def test_solde_decimal(self):
+        self.assertEqual(analyser(TRANSFERT_ORANGE).solde_apres, 2784137.6)
+
+    def test_pas_dix_fois_trop_grand(self):
+        self.assertNotEqual(analyser(TRANSFERT_ORANGE).solde_apres, 27841376)
+
+    def test_milliers_toujours_compris(self):
+        p = analyser("Vous avez recu 1.250.000 FCFA de ABENA Rose (690334455)")
+        self.assertEqual(p.montant, 1250000)
+
+    def test_un_montant_rond_reste_entier(self):
+        """Les sommes du bilan, l'export et le cloud n'ont pas à changer de
+        type pour un montant qui n'a jamais eu de décimale."""
+        self.assertIsInstance(analyser(TRANSFERT_ORANGE).montant, int)
+
+    def test_formatage(self):
+        self.assertEqual(formater_montant(0), "0")
+        self.assertEqual(formater_montant(184137), "184 137")
+        self.assertEqual(formater_montant(2784137.6), "2 784 137,6")
+        self.assertEqual(formater_montant(999.5), "999,5")
+
+
+class TestSoldeSeul(unittest.TestCase):
+    """« Le solde de votre compte est de 2784137.6FCFA. » — ni référence, ni
+    horodatage. C'est la réponse à une interrogation USSD."""
+
+    def test_solde_lu(self):
+        self.assertEqual(
+            solde_annonce("Le solde de votre compte est de 2784137.6FCFA."),
+            2784137.6)
+
+    def test_un_paiement_nest_pas_une_interrogation_de_solde(self):
+        self.assertIsNone(solde_annonce(TRANSFERT_ORANGE))
+        self.assertIsNone(solde_annonce(
+            "Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+            "Nouveau solde: 872 500 FCFA."))
+
+    def test_ni_publicite_ni_code(self):
+        self.assertIsNone(solde_annonce(
+            "PROMO! Solde de bonus 1000 FCFA offert !"))
+        self.assertIsNone(solde_annonce(
+            "Le code de 696103864 est: 515318.Orange Money vous remercie."))
+
+
+class TestCodeAUsageUnique(unittest.TestCase):
+    """Un code à usage unique ne doit ni devenir un reçu, ni être archivé en
+    clair, ni être relayé tel quel."""
+
+    CODE = "Le code de 696103864 est: 515318.Orange Money vous remercie."
+
+    def test_reconnu(self):
+        self.assertTrue(code_a_usage_unique(self.CODE))
+
+    def test_nest_pas_un_paiement(self):
+        self.assertIsNone(analyser(self.CODE))
+
+    def test_masque(self):
+        masque = masquer_secrets(self.CODE)
+        self.assertNotIn("515318", masque)
+        self.assertIn("696103864", masque)     # le numéro n'est pas un secret
+        self.assertIn("•", masque)
+
+    def test_un_vrai_paiement_nest_jamais_masque(self):
+        """Un encaissement qui contiendrait le mot « code » doit rester
+        lisible en entier : le masquage ne s'applique qu'aux secrets."""
+        sms = ("Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+               "Code marchand: 4455. Nouveau solde: 872 500 FCFA.")
+        self.assertFalse(code_a_usage_unique(sms))
+        self.assertEqual(masquer_secrets(sms), sms)
+        self.assertEqual(analyser(sms).montant, 25000)
+
+    def test_autres_tournures(self):
+        self.assertTrue(code_a_usage_unique("Votre code OTP: 483920"))
+        self.assertTrue(code_a_usage_unique(
+            "Votre code de verification est 123456. Ne partagez ce code."))
+
+    def test_un_message_ordinaire_nest_pas_un_secret(self):
+        self.assertFalse(code_a_usage_unique("Bonjour, es-tu disponible ?"))
+        self.assertFalse(code_a_usage_unique(TRANSFERT_ORANGE))
 
 
 if __name__ == "__main__":

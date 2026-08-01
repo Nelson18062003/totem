@@ -53,9 +53,74 @@ Le Pi redémarre seul. Reconnectez-vous après ~2 minutes.
 
 ---
 
-## 5. Se connecter au Pi
+## 5. Allumer le partage Wi-Fi du PC
 
-*(Pendant la phase de test : rallumez d'abord le partage Wi-Fi du PC.)*
+Pendant la phase de test, le Pi n'a pas de box à lui : il se raccroche au
+partage Wi-Fi du PC. **Dans PowerShell, en administrateur**, depuis le dossier
+du dépôt :
+
+```
+.\outils\partage-wifi.ps1
+```
+
+Le script allume le partage, pose le bon nom de réseau, puis **attend le Pi et
+affiche son adresse**. Vous n'avez plus qu'à recopier la ligne `ssh` qu'il
+donne.
+
+Trois choses à savoir, chacune apprise en y perdant une soirée :
+
+- **Lancez le fichier, ne le recopiez pas ligne par ligne.** Collé morceau par
+  morceau, PowerShell exécute le `if` tout seul, refuse le `else` qui suit —
+  et le partage n'est jamais allumé, sans que rien ne le signale.
+- **Le partage d'abord, le Pi ensuite.** Le Pi ne cherche son réseau qu'au
+  démarrage. Allumé avant le partage, il ne le verra pas, même une heure après.
+  Débranchez-le, rebranchez-le.
+- **Le nom du réseau doit être celui inscrit dans la carte SD.** Si vous avez
+  mis le Wi-Fi de votre box en flashant, le Pi cherchera la box et restera
+  invisible. Le script s'appelle alors avec ce nom-là :
+  `.\outils\partage-wifi.ps1 -Nom LE_NOM_DE_LA_BOX -Cle LE_MOT_DE_PASSE`
+
+Pour l'éteindre : `.\outils\partage-wifi.ps1 -Arreter`
+
+### Si le fichier n'est pas encore sur le PC
+
+Ces lignes font la même chose. **Chacune est complète toute seule** — il n'y a
+aucun `if` à cheval sur plusieurs lignes, donc rien ne peut se casser au
+collage. Windows PowerShell, en administrateur, tout d'un coup :
+
+```powershell
+$AsTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+"Methode trouvee : $($AsTask.Name)"
+function Attendre($op, $type) { $tache = $AsTask.MakeGenericMethod($type).Invoke($null, @($op)); $tache.Wait(-1) | Out-Null; $tache.Result }
+$R = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
+$P = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+$M = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($P)
+while ("$($M.TetheringOperationalState)" -eq 'InTransition') { Start-Sleep 2 }
+(Attendre ($M.StopTetheringAsync()) $R).Status
+$C = $M.GetCurrentAccessPointConfiguration(); $C.Ssid = 'totempc'; $C.Passphrase = 'totem12345'
+(Attendre ($M.ConfigureAccessPointAsync($C)) $R).Status
+$S = Attendre ($M.StartTetheringAsync()) $R
+"Allumage : $($S.Status)  $($S.AdditionalErrorMessage)"
+"Etat     : $($M.TetheringOperationalState)"
+```
+
+Deux lignes valent d'être lues :
+
+- `Methode trouvee : AsTask`. Vide, c'est que vous êtes dans PowerShell 7 :
+  reprenez dans « Windows PowerShell », le bleu.
+- `Etat : On`. **C'est la seule preuve que le partage tourne.** `Off`, rien ne
+  sert de chercher le Pi. `InTransition`, Windows n'a pas fini : relancez les
+  trois dernières lignes.
+
+Puis, le Pi branché depuis deux minutes, son adresse :
+
+```powershell
+$M.GetTetheringClients() | % { $_.HostNames | % { $_.CanonicalName } }
+```
+
+---
+
+## 6. Se connecter au Pi
 
 ```
 ssh totem@totem.local
@@ -63,17 +128,23 @@ ssh totem@totem.local
 
 - Le mot de passe **ne s'affiche pas** pendant la frappe : c'est normal, tapez
   à l'aveugle puis Entrée.
-- Si `totem.local` ne répond pas, cherchez son adresse :
+- « **Could not resolve hostname** » ne veut pas dire que TOTEM est en panne :
+  votre PC n'a pas trouvé le *nom*, il n'a même pas essayé de se connecter. Le
+  Pi est éteint, ou il n'est pas sur le même réseau. Reprenez au point 5.
+- L'adresse, elle, marche toujours quand le nom échoue. Le script du point 5
+  l'affiche ; sinon, cherchez-la :
   ```
   2..40 | % { ping -n 1 -w 200 192.168.137.$_ | Out-Null }; arp -a | findstr 192.168.137
   ```
-  puis `ssh totem@192.168.137.xxx`
+  puis `ssh totem@` suivi de l'adresse **que ce balayage a affichée**. S'il
+  n'affiche rien, il n'y a personne sur le réseau : inutile d'inventer une
+  adresse, retournez au point 5.
 
 **Pour sortir du Pi** (sans l'éteindre) : `exit` — ou les touches `Ctrl + D`.
 
 ---
 
-## 6. Savoir s'il est allumé, sans le toucher
+## 7. Savoir s'il est allumé, sans le toucher
 
 Depuis le PC :
 
@@ -86,7 +157,7 @@ ping totem.local
 
 ---
 
-## 7. Lancer et arrêter TOTEM
+## 8. Lancer et arrêter TOTEM
 
 Une fois `install.sh` passé, **TOTEM démarre tout seul avec le Pi** et se
 relance seul s'il plante. Vous n'avez normalement rien à lancer.
@@ -174,7 +245,7 @@ Chaque alerte n'arrive **qu'une fois**, et le retour à la normale est signalé.
 
 ---
 
-## 8. Vérifier que tout va bien
+## 9. Vérifier que tout va bien
 
 ```
 ls /dev/ttyUSB*          # les modems branchés (5 ports par modem)
@@ -187,7 +258,7 @@ hostname -I              # son adresse sur le réseau
 
 ---
 
-## 9. En cas de blocage
+## 10. En cas de blocage
 
 | Situation | Que faire |
 |---|---|
@@ -207,7 +278,7 @@ hostname -I              # son adresse sur le réseau
 
 ---
 
-## 10. À Douala, plus tard
+## 11. À Douala, plus tard
 
 La personne sur place n'aura **que deux gestes** possibles :
 

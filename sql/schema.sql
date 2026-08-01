@@ -83,13 +83,20 @@ create table if not exists paiements (
   -- ICCID de la carte qui a reçu ce paiement. C'est lui qui rattache la somme
   -- au bon solde : deux SIM du même opérateur ne partagent pas leur caisse.
   carte        text,
+  -- Nul quand le SMS nomme les deux parties sans dire laquelle est la nôtre
+  -- (forme d'Orange Money) et que la SIM ne déclare pas son propre numéro.
+  -- Mieux vaut un sens inconnu qu'un sens inversé.
   sens         text check (sens in ('entree', 'sortie')),
-  montant      bigint,
+  -- numeric, pas bigint : Orange annonce des soldes à la décimale
+  -- (« 2784137.6 FCFA »). Un entier les aurait tronqués ou refusés.
+  montant      numeric,
   tiers        text,                     -- nom si connu, sinon numéro
   numero       text,
   reference    text,                     -- référence de transaction opérateur
-  solde_apres  bigint,
-  frais        bigint,
+  solde_apres  numeric,
+  frais        numeric,
+  commission   numeric,                  -- Orange la détaille à part des frais
+  montant_brut numeric,                  -- « Montant Transaction », avant frais
   texte        text not null,            -- le SMS d'origine : il fait foi
   recu_le      timestamptz not null,
   cree_le      timestamptz not null default now(),
@@ -108,6 +115,24 @@ create table if not exists evenements (
   survenu_le  timestamptz not null,
   cree_le     timestamptz not null default now(),
   unique (terminal, source_id)
+);
+
+-- --- Reçus : les PDF joints aux notifications ------------------------------
+-- Le document lui-même vit dans le stockage (compartiment « recus ») ; cette
+-- table dit ce qu'il contient et où le trouver. La carte SD du Pi n'en garde
+-- aucune copie : un reçu se refabrique à l'identique depuis son SMS, qui est
+-- dans « paiements ».
+create table if not exists recus (
+  id          bigint generated always as identity primary key,
+  terminal    text not null references terminaux(id) on delete cascade,
+  numero      text not null,             -- « TM-2026-0731-0042 »
+  genre       text not null check (genre in ('transfert', 'solde')),
+  reference   text,                      -- ID de transaction de l'opérateur
+  montant     numeric,
+  chemin      text not null,             -- objet de stockage : « totem/xxx.pdf »
+  etabli_le   timestamptz not null,
+  cree_le     timestamptz not null default now(),
+  unique (terminal, numero)
 );
 
 -- --- Commandes : le canal descendant (phase 6) -----------------------------
@@ -145,6 +170,16 @@ alter table comptes   add column if not exists iccid      text;
 alter table comptes   add column if not exists reseau     text;
 alter table comptes   add column if not exists itinerance boolean not null default false;
 alter table paiements add column if not exists carte      text;
+alter table paiements add column if not exists commission   numeric;
+alter table paiements add column if not exists montant_brut numeric;
+
+-- Les montants étaient des entiers. Orange annonce ses soldes à la décimale
+-- (« Nouveau Solde: 2784137.6 FCFA ») : sur une base existante, l'insertion
+-- serait refusée. Relancer ces trois lignes sur des colonnes déjà en numeric
+-- ne fait rien.
+alter table paiements alter column montant     type numeric;
+alter table paiements alter column solde_apres type numeric;
+alter table paiements alter column frais       type numeric;
 
 -- La clé d'un compte était son libellé (« MTN »). Deux SIM MTN successives
 -- s'écrasaient donc l'une l'autre : une seule ligne pour deux caisses. La clé
@@ -191,11 +226,12 @@ alter table comptes    enable row level security;
 alter table paiements  enable row level security;
 alter table evenements enable row level security;
 alter table commandes  enable row level security;
+alter table recus      enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes']
+  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus']
   loop
     execute format(
       'drop policy if exists "lecture connectee" on %I; '
@@ -209,3 +245,28 @@ end $$;
 drop policy if exists "demander une commande" on commandes;
 create policy "demander une commande" on commandes
   for insert to authenticated with check (true);
+
+-- ---------------------------------------------------------------------------
+-- Le compartiment de stockage des reçus
+--
+-- Les PDF n'ont pas à s'accumuler sur la carte SD du Pi : le terminal les
+-- fabrique en mémoire, les envoie sur Telegram, puis les dépose ici. Le
+-- compartiment est privé — on y accède en étant connecté, ou avec la clé de
+-- service, qui ne quitte jamais le Pi.
+--
+-- Le bloc ne fait rien sur une base PostgreSQL ordinaire, où le schéma
+-- « storage » n'existe pas : ce fichier doit rester exécutable partout.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (select 1 from information_schema.tables
+             where table_schema = 'storage' and table_name = 'buckets') then
+    insert into storage.buckets (id, name, public)
+    values ('recus', 'recus', false)
+    on conflict (id) do nothing;
+
+    execute $p$drop policy if exists "recus lecture connectee" on storage.objects$p$;
+    execute $p$create policy "recus lecture connectee" on storage.objects
+              for select to authenticated using (bucket_id = 'recus')$p$;
+  end if;
+end $$;

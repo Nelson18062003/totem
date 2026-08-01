@@ -138,6 +138,40 @@ et masque ceux de MTN, tout seul.
 Chaque compte a sa propre session USSD et son propre chien de garde : un modem
 qui plante n'interrompt pas l'autre.
 
+## Le reçu PDF
+
+Quand un SMS d'opération arrive, TOTEM prévient tout de suite, puis **joint un
+reçu PDF une dizaine de secondes après**. Un document propre, présentable à un
+client, qui reprend ce que dit le SMS — jamais autre chose.
+
+Trois règles gouvernent son existence :
+
+- **Un reçu ne s'établit que sur un fait acquis.** Un transfert réussi, un
+  solde relevé. Un transfert échoué, une publicité, un message incompris n'en
+  produisent aucun. En cas de doute, pas de reçu : le SMS reste lisible en
+  clair, comme avant. Un reçu faux vaut moins que pas de reçu.
+- **Le solde ne vient pas d'un SMS.** L'opérateur l'affiche dans la session
+  USSD. C'est donc la réponse qui clôt le parcours qui déclenche le reçu — pas
+  les menus qui y mènent, ni les questions qu'ils posent.
+- **Un code à usage unique n'en produit jamais**, et n'est même pas conservé
+  en clair : il est masqué avant le journal, la sauvegarde et Telegram.
+- **Le sens n'est pas deviné.** Orange écrit « Transfert de 656483918 PRIX
+  MONO SARL vers 696103864 WONDER PHONE » : il nomme les deux parties sans
+  dire laquelle est la nôtre. Déclarez le numéro de vos puces dans la section
+  `[numeros]` de `totem.conf` et le reçu dira « Montant reçu » ou « Montant
+  envoyé » à bon escient. Sans cette déclaration il dit « Montant net », qui
+  est vrai dans les deux sens.
+
+Rien ne s'accumule sur la carte SD : le PDF est fabriqué en mémoire, envoyé,
+puis déposé dans le stockage Supabase. Il se refabrique à l'identique depuis
+son SMS, qui reste au journal — c'est aussi ce qui garantit qu'un même message
+relu après un redémarrage ne produit pas un second document.
+
+Le PDF est fabriqué **en Python seul**, sans navigateur : deux pages coûtaient
+2,5 s et quelques centaines de mégaoctets à Chromium, contre une dizaine de
+millisecondes ici. Sur un Pi 4 qui interroge deux modems en même temps, la
+différence n'est pas cosmétique.
+
 ## Modes d'exécution
 
 | Commande | Usage |
@@ -174,18 +208,25 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   mise_en_forme.py  échappement et balisage HTML des messages
   storage.py      journal SQLite (SMS, USSD, événements, rapport 24 h, export CSV)
   analyse_sms.py  lecture des SMS : montant, tiers, référence, solde
+  declencheur.py  ce qui donne droit à un reçu — et ce qui n'y donne jamais
+  recu.py         le reçu PDF : la maquette de recus/, transcrite en Python
+  pdf.py          fabrique de PDF : polices TrueType embarquées, tracés
+  logo.py         « La Tresse » posée sur un PDF, lue dans brand/generer.py
+  polices/        DM Sans, embarquée dans chaque reçu (le Pi est parfois seul)
   sante.py        santé du Pi : tension, température, disque, sauvegardes
   nuage.py        pont vers Supabase (hors-ligne d'abord, file d'attente)
   config.py       chargement totem.conf
 brand/            la marque : « La Tresse », verrouillages, icônes, motif,
                   et les scripts qui régénèrent le tout
                   (charte : docs/IDENTITE.md)
-recus/            les reçus PDF : maquette validée, génération à brancher
-                  (formats de SMS réels et défauts relevés dans son README)
+recus/            les reçus PDF : la maquette de référence et ses aperçus.
+                  La génération est branchée — voir totem/recu.py
 sql/schema.sql    structure de la base Supabase, à coller dans son éditeur SQL
 tests/            batterie de tests (python3 -m unittest discover -s tests)
 CLAUDE.md         consignes de travail : vérifier main avant toute PR, français
 install.sh        installation en une commande sur Raspberry Pi OS
+outils/           partage-wifi.ps1 : allume le partage Wi-Fi du PC Windows,
+                  puis attend le Pi et affiche son adresse (phase de test)
 systemd/          service (démarrage auto + relance)
 config.example.conf
 docs/

@@ -1,21 +1,28 @@
 # recus/ — les reçus PDF
 
-État : **maquette validée, génération non branchée.**
+État : **maquette validée, génération branchée.**
+
+Le robot fabrique et joint ces documents tout seul depuis `totem/recu.py`,
+qui transcrit la maquette sans passer par un navigateur. Ce dossier reste la
+**référence du dessin** : c'est ici qu'on vient vérifier à quoi un reçu doit
+ressembler.
 
 Quand un SMS Mobile Money arrive sur une carte, TOTEM le lit, le comprend, et
-prévient sur Telegram. L'étape suivante est de joindre un **reçu PDF** au
-message — un document propre, présentable à un client, qui reprend ce que dit
-le SMS.
+prévient sur Telegram. Une dizaine de secondes plus tard, il joint un **reçu
+PDF** au message — un document propre, présentable à un client, qui reprend ce
+que dit le SMS.
 
 Ce dossier contient la maquette de ces documents. Elle a été dessinée sur de
 **vrais SMS Orange Money**, pas sur des exemples inventés.
 
 ```sh
-node recus/maquette.mjs      # écrit apercus/recu-transfert.pdf et recu-solde.pdf
+node recus/maquette.mjs      # la maquette de référence (Chromium)
 ```
 
 Le script télécharge DM Sans lui-même et l'incruste dans le PDF : le fichier
-produit ne dépend d'aucune police installée sur la machine qui l'ouvre.
+produit ne dépend d'aucune police installée sur la machine qui l'ouvre. C'est
+aussi ce que fait `totem/recu.py`, qui embarque la même police depuis
+`totem/polices/`.
 
 ---
 
@@ -24,7 +31,13 @@ produit ne dépend d'aucune police installée sur la machine qui l'ouvre.
 | Document | Déclencheur |
 |---|---|
 | **Reçu de transfert** | un SMS d'opération réussie |
-| **Reçu de solde** | un SMS de solde, après une interrogation USSD |
+| **Reçu de solde** | la réponse de l'opérateur à une interrogation de solde |
+
+Le solde ne passe **pas** par un SMS : l'opérateur l'affiche dans la session
+USSD, et nulle part ailleurs. Le déclencheur est donc la réponse elle-même —
+celle qui clôt le parcours, pas les menus qui y mènent. Un écran d'options
+numérotées ou une question (« Entrez le montant ») ne produit rien : il ne
+s'est encore rien passé.
 
 Aperçus dans [`apercus/`](apercus/). Format actuel : **A3 paysage**.
 
@@ -81,39 +94,53 @@ Le code de 696103864 est: 515318.Orange Money vous remercie.
 
 ---
 
-## Trois défauts du code actuel, à corriger avant de brancher
+## Trois défauts du code, corrigés
 
-Vérifiés sur `main`, avec `totem/analyse_sms.py`.
+Relevés sur `main`, puis réparés dans `totem/analyse_sms.py`. Chacun a son
+test dans `tests/test_analyse_sms.py`.
 
-### 1. Bloquant — le SMS de transfert n'est pas reconnu
+### 1. Bloquant — le SMS de transfert n'était pas reconnu ✅
 
 ```python
 >>> analyser("Transfert de 656483918 PRIX MONO SARL vers 696103864 …")
 None
 ```
 
-`RE_ENVOYE` cherche le verbe `transfere` ; Orange écrit le nom **`Transfert`**.
-Aucune des deux expressions ne matche. Ces transferts ne deviennent donc pas
-des paiements structurés — **rien ne peut déclencher un reçu tant que ce n'est
-pas réparé.**
+`RE_ENVOYE` cherchait le verbe `transfere` ; Orange écrit le nom
+**`Transfert`**. Aucune des deux expressions ne matchait, et **rien ne pouvait
+déclencher un reçu**.
 
-### 2. Le solde est lu dix fois trop grand
+`RE_TRANSFERT` reconnaît maintenant cette forme et en tire les deux parties
+avec numéro *et* nom, l'ID de transaction, le montant transaction, les frais,
+la commission et le montant net. Le mot de réussite est **exigé** : un
+transfert échoué ne devient pas un paiement.
+
+### 2. Le solde était lu dix fois trop grand ✅
 
 ```python
 >>> _nombre("2784137.6")
 27841376        # attendu : 2784137,6
 ```
 
-`_nombre()` retire tous les caractères non chiffrés. Le point est un séparateur
-de milliers dans `1.250.000`, mais une **décimale** dans `2784137.6`. Règle à
-appliquer : trois chiffres après le séparateur → milliers ; un ou deux →
-décimale.
+`_nombre()` retirait tous les caractères non chiffrés. Le point est un
+séparateur de milliers dans `1.250.000`, mais une **décimale** dans
+`2784137.6`. La règle appliquée : trois chiffres après le dernier séparateur →
+milliers ; un ou deux → décimale.
 
-### 3. Le SMS de code n'est pas marqué sensible
+Un montant rond reste un entier, donc le bilan quotidien, l'export CSV et le
+cloud voient exactement ce qu'ils voyaient. Côté Supabase, les colonnes de
+montant passent de `bigint` à `numeric` — un solde à la décimale aurait été
+refusé.
 
-`analyser()` renvoie bien `None` — il n'est pas pris pour un paiement, tant
-mieux. Mais il échappe aussi à `RE_BRUIT` : rien ne le signale comme **code à
-usage unique**. Il ne devrait ni être archivé en clair, ni relayé tel quel.
+### 3. Le SMS de code n'était pas marqué sensible ✅
+
+`analyser()` renvoyait bien `None` — il n'était pas pris pour un paiement,
+tant mieux. Mais rien ne le signalait comme **code à usage unique**.
+
+`code_a_usage_unique()` le reconnaît, `masquer_secrets()` remplace le code par
+des points, et le robot applique ce masque **avant** le journal, la sauvegarde
+et Telegram. Le verdict s'appuie sur celui d'`analyser()` : un encaissement qui
+mentionne un « code marchand » reste lisible en entier.
 
 ---
 
@@ -171,15 +198,26 @@ Le mot **« Maquette »** en pied de page saute en production.
 
 ---
 
-## Ce qui reste à décider
+## Ce qui a été décidé
 
-- **Le format.** L'A3 paysage fait 42 × 30 cm : parfait à l'écran, lourd pour
-  WhatsApp. Le même gabarit se décline en petit format, seules les tailles
-  changent.
-- **Le sens.** La maquette montre un encaissement. Pour un envoi, il faut
-  savoir de quel côté est la carte TOTEM — donc connaître son propre numéro et
-  le comparer à ceux du SMS.
-- **La fabrication.** Cette maquette passe par Chromium. Sur un Pi 4, c'est
-  lourd pour un PDF par transaction : un générateur PDF en Python pur serait
-  plus sage. Le dessin ne changerait pas, seulement la mécanique.
+- **Le format** reste l'**A3 paysage**, tel que validé.
+- **Le sens** se lit dans la configuration. La section `[numeros]` de
+  `totem.conf` porte le numéro de chaque puce ; `preciser_sens()` compare et
+  tranche. Sans déclaration, l'étiquette devient « Montant net » — vraie dans
+  les deux sens — au lieu d'un « Montant reçu » qui pourrait être un envoi.
+- **La fabrication** ne passe plus par Chromium. `totem/pdf.py` écrit le PDF
+  directement, polices TrueType embarquées comprises : **9 ms** pour une page
+  contre 2,5 s pour deux avec un navigateur, et rien de plus à installer sur
+  le Pi. Mesuré, pas supposé.
+- **La conservation.** Aucun PDF ne reste sur la carte SD. Il est fabriqué en
+  mémoire, envoyé sur Telegram, déposé dans le stockage Supabase, et se
+  refabrique à l'identique depuis son SMS si besoin.
+
+## Ce qui reste ouvert
+
 - **MTN.** Format inconnu à ce jour. On ignore même si l'expéditeur y figure.
+  Rien n'a été codé à l'aveugle : le jour où un SMS MTN sera relevé, il
+  s'ajoutera comme la forme d'Orange s'est ajoutée.
+- **Un transfert sortant Orange.** Jamais observé. Le format est probablement
+  le même, ce n'est toujours pas vérifié.
+- **Le code USSD du solde.** `#150*1#` reste au jugé.

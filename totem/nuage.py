@@ -34,6 +34,9 @@ LOT = 100           # lignes envoyées par requête
 # Après un réveil, on laisse une seconde aux arrivées voisines de rejoindre le
 # même envoi. Trois SMS reçus coup sur coup partent alors ensemble.
 DEBOUNCE = 1
+# Le compartiment de stockage où atterrissent les reçus PDF. Il est créé par
+# sql/schema.sql, en même temps que les tables.
+SEAU = "recus"
 
 
 class Nuage:
@@ -187,6 +190,8 @@ class Nuage:
                 "reference": (p.reference if p else None),
                 "solde_apres": (p.solde_apres if p else None),
                 "frais": (p.frais if p else None),
+                "commission": (p.commission if p else None),
+                "montant_brut": (p.montant_brut if p else None),
                 "texte": texte,
                 "recu_le": _horodatage(date),
             })
@@ -210,6 +215,42 @@ class Nuage:
             return 0
         self.journal.marquer_evenements_envoyes([l[0] for l in lignes_locales])
         return len(charge)
+
+    # ---- reçus PDF ---------------------------------------------------------
+    # La carte SD du Pi n'est pas grande, et un reçu n'a rien à y faire : il
+    # est fabriqué en mémoire, envoyé sur Telegram, puis déposé ici. Supabase
+    # devient l'archive — consultable de n'importe où, sauvegardée, et sans
+    # rien qui s'accumule à Douala.
+
+    def archiver_recu(self, nom, contenu, ligne=None):
+        """Dépose le PDF dans le stockage, puis inscrit sa fiche.
+
+        Renvoie False au moindre accroc — l'appelant réessaiera. Un dépôt
+        refait écrase le précédent à l'identique : le document est une pure
+        conséquence du SMS, il ne peut pas différer d'une fois sur l'autre.
+        """
+        if not self.actif:
+            return False
+        chemin = f"{self.terminal}/{nom}"
+        url = f"{self.url}/storage/v1/object/{SEAU}/{chemin}"
+        requete = urllib.request.Request(url, data=contenu, method="POST")
+        requete.add_header("apikey", self.cle)
+        requete.add_header("Authorization", f"Bearer {self.cle}")
+        requete.add_header("Content-Type", "application/pdf")
+        # Sans cet en-tête, un second dépôt du même chemin répondrait 409 et
+        # le reçu resterait éternellement « à archiver ».
+        requete.add_header("x-upsert", "true")
+        try:
+            with urllib.request.urlopen(requete, timeout=DELAI):
+                pass
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return False
+        if ligne is None:
+            return True
+        return self._inserer_ou_mettre_a_jour(
+            "recus", [dict(ligne, terminal=self.terminal, chemin=chemin)],
+            "terminal,numero")
 
     # ---- boucle -----------------------------------------------------------
     def demarrer(self, comptes=None, sante=None):

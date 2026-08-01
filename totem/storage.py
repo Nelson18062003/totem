@@ -129,6 +129,33 @@ class Journal:
                     id INTEGER PRIMARY KEY, operateur TEXT NOT NULL,
                     nom TEXT NOT NULL, libelle TEXT, etapes TEXT NOT NULL,
                     cree_le TEXT, UNIQUE(operateur, nom));
+                -- Reçus à fabriquer, puis à envoyer. Le PDF lui-même n'est
+                -- jamais écrit ici : il se refabrique à l'identique à partir
+                -- du SMS, qui est juste à côté. Ce qui compte, c'est de ne
+                -- l'envoyer qu'UNE fois.
+                --
+                -- Deux verrous contre le doublon : le SMS d'origine, unique
+                -- par construction, et la référence de transaction, qui
+                -- survit à un redémarrage du modem — c'est elle qui rattrape
+                -- le même message relu dans un autre emplacement.
+                CREATE TABLE IF NOT EXISTS recus(
+                    id INTEGER PRIMARY KEY,
+                    -- D'où vient le document : « sms » pour un encaissement,
+                    -- « ussd » pour un solde consulté au menu. Un solde ne
+                    -- passe pas toujours par un SMS — le plus souvent
+                    -- l'opérateur le dit à l'écran, et nulle part ailleurs.
+                    source TEXT NOT NULL DEFAULT 'sms',
+                    source_id INTEGER NOT NULL,
+                    genre TEXT NOT NULL,
+                    numero TEXT NOT NULL,
+                    reference TEXT,
+                    date TEXT,
+                    envoye INTEGER DEFAULT 0,
+                    archive INTEGER DEFAULT 0,
+                    essais INTEGER DEFAULT 0,
+                    UNIQUE(source, source_id));
+                CREATE UNIQUE INDEX IF NOT EXISTS recus_reference
+                    ON recus(reference) WHERE reference IS NOT NULL;
                 """
             )
             # Migration douce des bases créées avant le multi-comptes.
@@ -142,7 +169,43 @@ class Journal:
             # partie. Les lignes déjà présentes sont considérées à envoyer.
             self._ajouter_colonne_si_absente("sms", "envoye", "INTEGER DEFAULT 0")
             self._ajouter_colonne_si_absente("evenements", "envoye", "INTEGER DEFAULT 0")
+            self._reprendre_recus()
             self.conn.commit()
+
+    def _reprendre_recus(self):
+        """Les premiers reçus ne connaissaient que les SMS.
+
+        La table portait une colonne « sms_id », et son unicité empêchait
+        d'inscrire un solde relevé au menu USSD — qui n'a pas de SMS derrière
+        lui. On rebâtit la table sous sa forme actuelle, en gardant ce qu'elle
+        contient : sans ça, des reçus déjà envoyés repartiraient une seconde
+        fois.
+        """
+        colonnes = {r[1] for r in self.conn.execute("PRAGMA table_info(recus)")}
+        if not colonnes or "source" in colonnes:
+            return
+        self.conn.executescript("""
+            ALTER TABLE recus RENAME TO recus_avant;
+            CREATE TABLE recus(
+                id INTEGER PRIMARY KEY,
+                source TEXT NOT NULL DEFAULT 'sms',
+                source_id INTEGER NOT NULL,
+                genre TEXT NOT NULL,
+                numero TEXT NOT NULL,
+                reference TEXT,
+                date TEXT,
+                envoye INTEGER DEFAULT 0,
+                archive INTEGER DEFAULT 0,
+                essais INTEGER DEFAULT 0,
+                UNIQUE(source, source_id));
+            INSERT INTO recus(id, source, source_id, genre, numero, reference,
+                              date, envoye, archive, essais)
+                SELECT id, 'sms', sms_id, genre, numero, reference,
+                       date, envoye, archive, essais FROM recus_avant;
+            DROP TABLE recus_avant;
+            CREATE UNIQUE INDEX IF NOT EXISTS recus_reference
+                ON recus(reference) WHERE reference IS NOT NULL;
+        """)
 
     def _ajouter_colonne_si_absente(self, table, colonne, type_sql="TEXT"):
         existantes = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
@@ -154,22 +217,29 @@ class Journal:
         return datetime.now().isoformat(timespec="seconds")
 
     def sms(self, expediteur, texte, compte="", iccid=""):
+        """Renvoie l'identifiant de la ligne écrite : c'est lui qui rattache
+        un éventuel reçu à son message d'origine."""
         with self.verrou:
-            self.conn.execute(
+            curseur = self.conn.execute(
                 "INSERT INTO sms(date, expediteur, texte, compte, iccid) "
                 "VALUES(?,?,?,?,?)",
                 (self._maintenant(), expediteur, texte, compte, iccid))
             self.conn.commit()
+            return curseur.lastrowid
 
     def ussd(self, direction, texte, compte="", iccid=""):
         """direction : « envoyé » ou « reçu ». Ne JAMAIS journaliser un PIN :
-        l'appelant remplace le PIN par des étoiles avant l'appel."""
+        l'appelant remplace le PIN par des étoiles avant l'appel.
+
+        Renvoie l'identifiant de la ligne : un solde lu à l'écran peut donner
+        lieu à un reçu, et c'est par lui qu'on le rattache."""
         with self.verrou:
-            self.conn.execute(
+            curseur = self.conn.execute(
                 "INSERT INTO ussd(date, direction, texte, compte, iccid) "
                 "VALUES(?,?,?,?,?)",
                 (self._maintenant(), direction, texte, compte, iccid))
             self.conn.commit()
+            return curseur.lastrowid
 
     def evenement(self, texte):
         with self.verrou:
@@ -370,6 +440,94 @@ class Journal:
             self.conn.execute("DELETE FROM sortants WHERE id = ? AND essais >= ?",
                               (identifiant, essais_max))
             self.conn.commit()
+
+    # ---- reçus PDF ---------------------------------------------------------
+    # Le document n'est pas conservé : il se refabrique à l'identique depuis le
+    # SMS, qui lui reste au journal. Ce qu'on garde ici, c'est la promesse de
+    # l'envoyer, et la certitude de ne pas l'envoyer deux fois.
+
+    def programmer_recu(self, source_id, genre, numero, reference=None,
+                        source="sms"):
+        """Inscrit un reçu à fabriquer. Renvoie False s'il existe déjà.
+
+        `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
+        menu. Le même SMS relu après un redémarrage du modem tombe sur l'un des
+        deux verrous d'unicité et ne produit pas de second document.
+        """
+        try:
+            with self.verrou:
+                self.conn.execute(
+                    "INSERT INTO recus(source, source_id, genre, numero, "
+                    "reference, date) VALUES(?,?,?,?,?,?)",
+                    (source, source_id, genre, numero, reference or None,
+                     self._maintenant()))
+                self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def recus_a_envoyer(self, apres_secondes=0, limite=5):
+        """Les reçus mûrs, du plus ancien au plus récent.
+
+        `apres_secondes` laisse au message texte le temps de partir en premier :
+        l'alerte doit arriver tout de suite, le document quelques secondes
+        après. [(id, genre, numero, date, texte, compte, iccid)]
+        """
+        avant = (datetime.now() - timedelta(seconds=apres_secondes)).isoformat(
+            timespec="seconds")
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT r.id, r.genre, r.numero, r.date, "
+                "       COALESCE(s.texte, u.texte, ''), "
+                "       COALESCE(s.compte, u.compte, ''), "
+                "       COALESCE(s.iccid, u.iccid, '') "
+                "FROM recus r "
+                "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
+                "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
+                "WHERE r.envoye = 0 AND r.date <= ? ORDER BY r.id LIMIT ?",
+                (avant, limite)).fetchall()
+
+    def recus_a_archiver(self, limite=5):
+        """Les reçus partis sur Telegram mais pas encore déposés dans le cloud."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT r.id, r.genre, r.numero, r.date, "
+                "       COALESCE(s.texte, u.texte, ''), "
+                "       COALESCE(s.compte, u.compte, ''), "
+                "       COALESCE(s.iccid, u.iccid, '') "
+                "FROM recus r "
+                "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
+                "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
+                "WHERE r.envoye = 1 AND r.archive = 0 ORDER BY r.id LIMIT ?",
+                (limite,)).fetchall()
+
+    def recu_envoye(self, identifiant):
+        with self.verrou:
+            self.conn.execute("UPDATE recus SET envoye = 1, essais = 0 "
+                              "WHERE id = ?", (identifiant,))
+            self.conn.commit()
+
+    def recu_archive(self, identifiant):
+        with self.verrou:
+            self.conn.execute("UPDATE recus SET archive = 1 WHERE id = ?",
+                              (identifiant,))
+            self.conn.commit()
+
+    def recu_echoue(self, identifiant, essais_max=60):
+        """Compte l'échec, et renonce au bout d'un long moment : un document
+        qu'on n'arrive jamais à fabriquer ne doit pas bloquer les suivants."""
+        with self.verrou:
+            self.conn.execute("UPDATE recus SET essais = essais + 1 "
+                              "WHERE id = ?", (identifiant,))
+            self.conn.execute("UPDATE recus SET envoye = 1, archive = 1 "
+                              "WHERE id = ? AND essais >= ?",
+                              (identifiant, essais_max))
+            self.conn.commit()
+
+    def recus_en_attente(self):
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT COUNT(*) FROM recus WHERE envoye = 0").fetchone()[0]
 
     # ---- sauvegarde --------------------------------------------------------
     def sauvegarder(self, chemin):
