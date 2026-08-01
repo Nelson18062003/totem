@@ -5,7 +5,7 @@ import type { EtatTerminal } from "@/lib/types";
 import { Nav } from "./nav";
 
 /** Pages qui s'affichent seules, sans navigation ni bandeau. */
-const PLEIN_ECRAN = ["/connexion"];
+const PLEIN_ECRAN = ["/connexion", "/presentation"];
 
 export function Coquille({
   relie,

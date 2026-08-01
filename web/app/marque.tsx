@@ -45,32 +45,32 @@ function Coupe({ y }: { y: number }) {
 }
 
 /**
- * Le symbole seul, à la couleur du texte courant.
+ * Les deux brins tressés, à poser dans un `<svg viewBox="0 0 32 32">`.
  *
- * En dessous de 22 px, les jours du tressage tombent sous le pixel et se
- * bouchent : on fond alors les deux brins. C'est la même silhouette, le
- * passage en moins.
+ * C'est la tresse elle-même, sans son cadre : le composant `<Symbole/>`
+ * l'habille pour l'usage courant, la page de présentation la fait se
+ * dessiner. `brin` s'ajoute aux attributs des deux tracés — il permet par
+ * exemple de piloter leur contour — sans jamais toucher au dessin.
  */
-export function Symbole({ size = 26, className }: { size?: number; className?: string }) {
+export function Brins({
+  tisse = true,
+  brin,
+}: {
+  tisse?: boolean;
+  brin?: React.ComponentProps<"path">;
+}) {
   const id = useId();
-  const tisse = size >= 22;
-  const brin = {
+  const trait = {
     fill: "none",
     stroke: "currentColor",
     strokeWidth: EPAISSEUR,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
+    ...brin,
   };
 
   return (
-    <svg
-      viewBox="0 0 32 32"
-      width={size}
-      height={size}
-      className={className}
-      role="img"
-      aria-label="TOTEM"
-    >
+    <>
       {tisse && (
         <defs>
           {(["a", "b"] as const).map((brinId) => (
@@ -91,8 +91,30 @@ export function Symbole({ size = 26, className }: { size?: number; className?: s
           ))}
         </defs>
       )}
-      <path d={BRIN_A} {...brin} mask={tisse ? `url(#${id}-a)` : undefined} />
-      <path d={BRIN_B} {...brin} mask={tisse ? `url(#${id}-b)` : undefined} />
+      <path d={BRIN_A} {...trait} mask={tisse ? `url(#${id}-a)` : undefined} />
+      <path d={BRIN_B} {...trait} mask={tisse ? `url(#${id}-b)` : undefined} />
+    </>
+  );
+}
+
+/**
+ * Le symbole seul, à la couleur du texte courant.
+ *
+ * En dessous de 22 px, les jours du tressage tombent sous le pixel et se
+ * bouchent : on fond alors les deux brins. C'est la même silhouette, le
+ * passage en moins.
+ */
+export function Symbole({ size = 26, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width={size}
+      height={size}
+      className={className}
+      role="img"
+      aria-label="TOTEM"
+    >
+      <Brins tisse={size >= 22} />
     </svg>
   );
 }
