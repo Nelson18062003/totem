@@ -253,7 +253,8 @@ class Robot:
             self.nuage.demarrer(comptes=self.comptes, sante=self.sante)
             # Le guichet à distance : l'application web dépose ses demandes
             # dans la base, ce fil les exécute sur les vraies SIM.
-            self.pilotage = Pilotage(self.nuage, self.comptes, self.journal)
+            self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
+                                     programmeur=self._recu_apres_coup)
             self.pilotage.demarrer()
         if bloquant:
             self._boucle_messages()
@@ -1527,6 +1528,15 @@ class Robot:
             # interrompue est une perte d'argent. On note, et on continue.
             self.journal.evenement(f"reçu non programmé : {e}")
             return None
+
+    def _recu_apres_coup(self, source_id):
+        """Établit (ou ré-établit) le reçu d'un SMS passé, à la demande de
+        la plateforme. Le numéro ne dépend que de la ligne du journal : un
+        reçu redemandé reprend exactement le même."""
+        texte = self.journal.texte_sms(source_id)
+        if not texte:
+            return None
+        return self._programmer_recu(source_id, texte)
 
     def _distribuer_recus(self):
         """Fabrique, envoie, puis archive les reçus mûrs."""

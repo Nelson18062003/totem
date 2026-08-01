@@ -495,6 +495,18 @@ class Journal:
     # SMS, qui lui reste au journal. Ce qu'on garde ici, c'est la promesse de
     # l'envoyer, et la certitude de ne pas l'envoyer deux fois.
 
+    def texte_sms(self, identifiant):
+        """Le texte d'un SMS du journal, ou None. Sert au guichet à distance :
+        établir après coup le reçu d'un message passé exige de le relire."""
+        try:
+            with self.verrou:
+                ligne = self.conn.execute(
+                    "SELECT texte FROM sms WHERE id = ?",
+                    (int(identifiant),)).fetchone()
+            return ligne[0] if ligne else None
+        except Exception:
+            return None
+
     def programmer_recu(self, source_id, genre, numero, reference=None,
                         source="sms"):
         """Inscrit un reçu à fabriquer. Renvoie False s'il existe déjà.

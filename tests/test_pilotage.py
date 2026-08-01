@@ -153,6 +153,32 @@ class TestGuichet(unittest.TestCase):
         self.assertFalse(compte.session_ouverte)
 
 
+class TestRecuApresCoup(unittest.TestCase):
+    """Le reçu d'un message passé, établi à la demande de la plateforme."""
+
+    def test_un_recu_est_programme(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p.programmeur = lambda source_id: f"TM-2026-0801-{source_id:04d}"
+        p._traiter({"id": 9, "type": "recu", "parametres": {"source_id": 42}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertIn("TM-2026-0801-0042", nuage.maj[-1][1]["resultat"])
+
+    def test_un_message_sans_droit_est_refuse(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p.programmeur = lambda source_id: None      # publicité, code, échec…
+        p._traiter({"id": 10, "type": "recu", "parametres": {"source_id": 7}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertIn("ne donne pas droit", nuage.maj[-1][1]["resultat"])
+
+    def test_sans_fabrique_le_refus_est_poli(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)          # programmeur absent
+        p._traiter({"id": 11, "type": "recu", "parametres": {"source_id": 1}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+
+
 if __name__ == "__main__":
     unittest.main()
 

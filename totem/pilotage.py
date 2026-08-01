@@ -13,6 +13,8 @@ Quatre demandes existent :
     ussd           ouvrir une session en composant un code (« #148*5# »)
     ussd_reponse   répondre au menu ouvert (un chiffre, un numéro, un montant…)
     ussd_fin       raccrocher
+    recu           établir le reçu d'un SMS passé (il se refabrique à
+                   l'identique depuis le message, qui fait foi)
 
 Le code secret
 --------------
@@ -49,11 +51,15 @@ PAS_SESSION = 1.5
 class Pilotage:
     """Relève les demandes de l'application web et les exécute."""
 
-    def __init__(self, nuage, comptes, journal, pause=PAS_REPOS):
+    def __init__(self, nuage, comptes, journal, pause=PAS_REPOS,
+                 programmeur=None):
         self.nuage = nuage
         self.comptes = comptes
         self.journal = journal
         self.pause = pause
+        # Inscrit un reçu à fabriquer pour une ligne du journal (le robot le
+        # fournit). None : ce terminal ne fabrique pas de reçus.
+        self.programmeur = programmeur
         self._marche = False
         # La session ouverte PAR LE WEB : compte visé et dernier signe de vie.
         # None quand le web n'a pas la main — une session Telegram éventuelle
@@ -130,6 +136,8 @@ class Pilotage:
             elif genre == "ussd_fin":
                 self._raccrocher()
                 resultat = "Session refermée."
+            elif genre == "recu":
+                resultat = self._etablir_recu(parametres)
             else:
                 raise ValueError(f"demande inconnue : {genre}")
             etat = "faite"
@@ -141,6 +149,27 @@ class Pilotage:
 
         self.nuage.commande_maj(identifiant, {
             "etat": etat, "resultat": resultat, "traitee_le": _horodatage()})
+
+    def _etablir_recu(self, parametres):
+        """Le reçu d'un message passé, refabriqué depuis le SMS d'origine.
+
+        Rien n'est inventé : si le message ne donne pas droit à un reçu
+        (publicité, code à usage unique, échec), le refus est explicite.
+        """
+        if not self.programmeur:
+            raise RefusPoli("Ce terminal ne fabrique pas de reçus.")
+        try:
+            source_id = int(parametres.get("source_id"))
+        except (TypeError, ValueError):
+            raise RefusPoli("Message introuvable au journal.")
+        numero = self.programmeur(source_id)
+        if not numero:
+            raise RefusPoli(
+                "Ce message ne donne pas droit à un reçu — seuls un transfert "
+                "réussi ou un solde annoncé en produisent un.")
+        self.journal.evenement(f"guichet à distance : reçu {numero} demandé")
+        return (f"Reçu {numero} en fabrication : il sera archivé et "
+                "téléchargeable dans un instant.")
 
     def _republier(self):
         """« Actualiser » : l'état des comptes, repoussé à l'instant."""

@@ -43,6 +43,7 @@ export type Paiement = {
   soldeApres: number | null;
   smsBrut: string;
   recu: string | null;      // numéro du reçu PDF archivé, s'il existe
+  sourceId: number | null;  // la ligne du journal du terminal (pour établir un reçu)
 };
 
 export type EtatTerminal = {

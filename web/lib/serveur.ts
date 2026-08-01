@@ -63,7 +63,8 @@ type LigneCompte = {
 type LigneRecu = { numero: string; reference: string | null; chemin: string };
 
 type LignePaiement = {
-  id: number; compte: string | null; carte: string | null; sens: string;
+  id: number; source_id: number | null; expediteur: string | null;
+  compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
   recu_le: string;
@@ -119,7 +120,7 @@ export async function chargerDonnees(): Promise<Donnees> {
     lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version,sante&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=iccid,operateur,libelle,nom,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
-    lire<LignePaiement>("paiements?select=id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
+    lire<LignePaiement>("paiements?select=id,source_id,expediteur,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
     lire<LigneRecu>("recus?select=numero,reference,chemin&order=etabli_le.desc&limit=1000"),
   ]);
 
@@ -135,6 +136,31 @@ export async function chargerDonnees(): Promise<Donnees> {
       }
     : null;
 
+  // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
+  // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
+  // pour les transferts comme pour les soldes — aucune devinette.
+  const ligneDuRecu = (numero: string): number | null => {
+    const m = /-(\d+)$/.exec(numero);
+    return m ? Number(m[1]) : null;
+  };
+  const recuDe = (l: LignePaiement): string | null => {
+    const parReference = l.reference
+      ? recus.find((r) => r.reference && r.reference === l.reference)
+      : undefined;
+    if (parReference) return parReference.numero;
+    if (l.source_id == null) return null;
+    return recus.find((r) => ligneDuRecu(r.numero) === l.source_id)?.numero ?? null;
+  };
+
+  // Chaque SMS affiche QUI l'a envoyé, comme la messagerie du téléphone :
+  // « OrangeMoney », « Orange », « MTN »… Les lignes d'avant cette colonne
+  // n'ont pas l'expéditeur : on affiche alors l'opérateur de la carte.
+  const nomDe = (l: LignePaiement): string => {
+    if (l.expediteur) return l.expediteur;
+    const operateur = (l.compte ?? "").split(" ")[0];
+    return operateur || l.tiers || l.numero || "SMS";
+  };
+
   // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
   // portent un montant, les autres restent lisibles tels quels.
   const paiements: Paiement[] = lignes
@@ -144,7 +170,7 @@ export async function chargerDonnees(): Promise<Donnees> {
       // Le robot laisse le sens vide quand le SMS ne permet pas de trancher :
       // on l'affiche comme inconnu, jamais comme une sortie par défaut.
       sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
-      nom: l.tiers || l.numero || "Inconnu",
+      nom: nomDe(l),
       numero: l.numero ?? "",
       montant: l.montant == null ? null : Number(l.montant),
       heure: heure(l.recu_le),
@@ -153,9 +179,8 @@ export async function chargerDonnees(): Promise<Donnees> {
       reference: l.reference ?? "",
       soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
       smsBrut: l.texte,
-      recu: l.reference
-        ? recus.find((r) => r.reference === l.reference)?.numero ?? null
-        : null,
+      recu: recuDe(l),
+      sourceId: l.source_id,
     }));
 
   const sims: Sim[] = cartes.map((c) => {
