@@ -2,9 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { fcfa, type Paiement } from "@/lib/types";
-import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDoc, IconDownload, IconSearch } from "../icons";
+import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
 
+/**
+ * Tous les SMS reçus par les cartes, tels quels — c'est par eux que tout
+ * arrive. Ceux que le robot a compris portent leur montant ; ceux qui ont un
+ * reçu PDF archivé se téléchargent d'un geste, directement sur la ligne.
+ */
 export function ListeEncaissements({
   paiements,
   operateurs,
@@ -22,12 +27,13 @@ export function ListeEncaissements({
       if (filtre !== "Tous" && p.sim !== filtre) return false;
       if (!q) return true;
       return p.nom.toLowerCase().includes(q) || p.numero.replace(/\s/g, "").includes(q)
-        || String(p.montant).includes(q) || p.reference.toLowerCase().includes(q);
+        || String(p.montant ?? "").includes(q) || p.reference.toLowerCase().includes(q)
+        || p.smsBrut.toLowerCase().includes(q);
     });
   }, [paiements, filtre, recherche]);
 
-  const entrees = liste.filter((p) => p.sens === "in" && p.date === "Aujourd’hui");
-  const totalIn = entrees.reduce((s, p) => s + p.montant, 0);
+  const entrees = liste.filter((p) => p.sens === "in" && p.montant != null && p.date === "Aujourd’hui");
+  const totalIn = entrees.reduce((s, p) => s + (p.montant ?? 0), 0);
 
   const parDate = liste.reduce<Record<string, Paiement[]>>((acc, p) => {
     (acc[p.date] ||= []).push(p); return acc;
@@ -36,8 +42,11 @@ export function ListeEncaissements({
   return (
     <div className="flex flex-col gap-7">
       <header>
-        <h1 className="text-title font-semibold tracking-tight">Encaissements</h1>
-        <p className="mt-1 text-small text-ink-soft">Chaque paiement reçu, horodaté et prouvé.</p>
+        <h1 className="text-title font-semibold tracking-tight">SMS reçus</h1>
+        <p className="mt-1 text-small text-ink-soft">
+          Tout ce que les cartes reçoivent, tel quel. C’est le message d’origine
+          qui fait foi — et son reçu se télécharge quand il existe.
+        </p>
       </header>
 
       <section>
@@ -51,7 +60,7 @@ export function ListeEncaissements({
         <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
           <IconSearch size={16} className="text-ink-faint" />
           <input value={recherche} onChange={(e) => setRecherche(e.target.value)}
-            placeholder="Nom, numéro, montant, référence"
+            placeholder="Nom, numéro, montant, texte du SMS"
             className="flex-1 bg-transparent py-2.5 text-body outline-none placeholder:text-ink-faint" />
           {recherche && (
             <button onClick={() => setRecherche("")} className="text-ink-faint transition hover:text-ink"
@@ -72,12 +81,12 @@ export function ListeEncaissements({
         </div>
       </div>
 
-      {/* Liste */}
+      {/* La liste des SMS */}
       {Object.keys(parDate).length === 0 ? (
         recherche || filtre !== "Tous" ? (
           <Vide
-            titre="Aucun paiement ne correspond"
-            detail="Essayez un autre nom, un autre montant, ou retirez le filtre d’opérateur."
+            titre="Aucun SMS ne correspond"
+            detail="Essayez un autre mot, un autre montant, ou retirez le filtre d’opérateur."
             action={
               <button
                 onClick={() => { setRecherche(""); setFiltre("Tous"); }}
@@ -89,8 +98,8 @@ export function ListeEncaissements({
           />
         ) : (
           <Vide
-            titre="Aucun paiement pour l’instant"
-            detail="Les paiements de vos clients apparaîtront ici dès leur réception, horodatés et prouvés."
+            titre="Aucun SMS pour l’instant"
+            detail="Chaque message reçu par une carte apparaîtra ici. Si la carte devrait en recevoir et que rien n'arrive, vérifiez le terminal : un silence prolongé n'est pas normal."
           />
         )
       ) : (
@@ -99,32 +108,44 @@ export function ListeEncaissements({
             <p className="mb-1 text-caption uppercase tracking-wider text-ink-faint">{date}</p>
             <ul className="divide-hair">
               {items.map((p) => (
-                <li key={p.id}>
+                <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
-                    className="flex w-full items-center gap-3 py-3.5 text-left transition hover:opacity-70">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                      {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "?"}
+                    className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
+                    <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+                      {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-body font-medium">{p.nom}</p>
-                      <p className="text-small text-ink-faint">{p.sim} · {p.heure}</p>
-                    </div>
-                    {/* Le montant complet, toujours : jamais « 25 k ». Un sens
-                        inconnu s'affiche sans signe : on ne tranche pas à sa place. */}
-                    <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
-                      {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className="truncate text-body font-medium">{p.nom}</span>
+                        {/* Montant complet, jamais abrégé ; sans signe quand le
+                            sens n'est pas établi. */}
+                        {p.montant != null && (
+                          <span className={`shrink-0 text-body font-medium tabnums ${
+                            p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"
+                          }`}>
+                            {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block truncate text-small text-ink-faint">
+                        {p.sim} · {p.heure} · {p.smsBrut}
+                      </span>
                     </span>
                   </button>
+                  {/* Le reçu PDF, à portée de main quand il existe. */}
+                  {p.recu && (
+                    <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
+                      title="Télécharger le reçu PDF"
+                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft transition hover:border-ink hover:text-ink">
+                      <IconDoc size={16} />
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
           </section>
         ))
       )}
-
-      <button className="flex items-center justify-center gap-2 rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink">
-        <IconDownload size={16} /> Exporter (tableur)
-      </button>
 
       {detail && <Detail p={detail} onFermer={() => setDetail(null)} />}
     </div>
@@ -139,11 +160,15 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-small text-ink-soft">
-              {p.sens === "in" ? "Paiement reçu" : p.sens === "out" ? "Paiement envoyé" : "Mouvement — sens à confirmer sur le SMS"}
+              {p.montant == null
+                ? "SMS reçu"
+                : p.sens === "in" ? "Paiement reçu" : p.sens === "out" ? "Paiement envoyé" : "Mouvement — sens à confirmer"}
             </p>
-            <p className="mt-1 text-display font-semibold tabnums tracking-tight">
-              {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
-            </p>
+            {p.montant != null && (
+              <p className="mt-1 text-display font-semibold tabnums tracking-tight">
+                {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
+              </p>
+            )}
             <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
           </div>
           <button onClick={onFermer} className="text-ink-faint transition hover:text-ink"><IconClose size={18} /></button>
@@ -162,16 +187,12 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
           <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
         </div>
 
-        {/* Pas de bouton « Rembourser » : aucun geste qui déplace de l'argent
-            ne part d'une fiche de consultation. Les opérations ont leur page. */}
         <div className="mt-5 flex gap-2">
           <button
             onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
             className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
             <IconCopy size={15} /> Copier le SMS
           </button>
-          {/* Le vrai reçu, archivé par le robot dans le stockage. S'il n'a
-              pas (encore) été établi, on ne montre rien plutôt qu'un faux. */}
           {p.recu && (
             <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
               className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">

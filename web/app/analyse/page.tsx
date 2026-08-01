@@ -16,8 +16,8 @@ function septDerniersJours(paiements: Paiement[]) {
     const d = new Date(present.getTime() - i * 86_400_000);
     const cle = d.toDateString();
     const montant = paiements
-      .filter((p) => p.sens === "in" && new Date(p.recuLe).toDateString() === cle)
-      .reduce((s, p) => s + p.montant, 0);
+      .filter((p) => p.sens === "in" && p.montant != null && new Date(p.recuLe).toDateString() === cle)
+      .reduce((s, p) => s + (p.montant ?? 0), 0);
     jours.push({ jour: JOURS[d.getDay()], montant });
   }
   return jours;
@@ -28,9 +28,9 @@ function semaine(paiements: Paiement[], debut: number, fin: number) {
   return paiements
     .filter((p) => {
       const t = new Date(p.recuLe).getTime();
-      return p.sens === "in" && t > present - debut * 86_400_000 && t <= present - fin * 86_400_000;
+      return p.sens === "in" && p.montant != null && t > present - debut * 86_400_000 && t <= present - fin * 86_400_000;
     })
-    .reduce((s, p) => s + p.montant, 0);
+    .reduce((s, p) => s + (p.montant ?? 0), 0);
 }
 
 export default async function Analyse() {
@@ -63,9 +63,9 @@ export default async function Analyse() {
 
   // Les clients qui reviennent, sur tout l'historique chargé.
   const parClient = new Map<string, { nb: number; total: number }>();
-  for (const p of paiements.filter((x) => x.sens === "in")) {
+  for (const p of paiements.filter((x) => x.sens === "in" && x.montant != null)) {
     const c = parClient.get(p.nom) ?? { nb: 0, total: 0 };
-    c.nb += 1; c.total += p.montant;
+    c.nb += 1; c.total += p.montant ?? 0;
     parClient.set(p.nom, c);
   }
   const topClients = [...parClient.entries()]

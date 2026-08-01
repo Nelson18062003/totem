@@ -48,6 +48,7 @@ async function lire<T>(chemin: string): Promise<T[]> {
 
 type LigneTerminal = {
   id: string; nom: string | null; vu_le: string | null; version: string | null;
+  sante: { resume?: string } | null;
 };
 type LigneCarte = {
   iccid: string; operateur: string | null; libelle: string | null;
@@ -115,7 +116,7 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 
 export async function chargerDonnees(): Promise<Donnees> {
   const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
-    lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version&order=vu_le.desc.nullslast&limit=1"),
+    lire<LigneTerminal>("terminaux?select=id,nom,vu_le,version,sante&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=iccid,operateur,libelle,nom,numero,premiere_vue,derniere_vue&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=iccid,libelle,operateur,reseau,itinerance,numero,solde,signal,maj"),
     lire<LignePaiement>("paiements?select=id,compte,carte,sens,montant,tiers,numero,reference,solde_apres,texte,recu_le&order=recu_le.desc&limit=1000"),
@@ -130,11 +131,13 @@ export async function chargerDonnees(): Promise<Donnees> {
         enLigne: Boolean(t.vu_le && Date.now() - new Date(t.vu_le).getTime() < 3 * 60 * 1000),
         majTexte: ecartHumain(t.vu_le),
         version: t.version ?? "",
+        sante: t.sante?.resume ?? "",
       }
     : null;
 
+  // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
+  // portent un montant, les autres restent lisibles tels quels.
   const paiements: Paiement[] = lignes
-    .filter((l) => l.montant != null)
     .map((l) => ({
       id: String(l.id),
       sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
@@ -143,7 +146,7 @@ export async function chargerDonnees(): Promise<Donnees> {
       sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
       nom: l.tiers || l.numero || "Inconnu",
       numero: l.numero ?? "",
-      montant: Number(l.montant),
+      montant: l.montant == null ? null : Number(l.montant),
       heure: heure(l.recu_le),
       date: libelleJour(l.recu_le),
       recuLe: l.recu_le,
@@ -158,24 +161,11 @@ export async function chargerDonnees(): Promise<Donnees> {
   const sims: Sim[] = cartes.map((c) => {
     const compte = comptes.find((x) => x.iccid === c.iccid);
     const entrees = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
-    // Le solde le plus frais des deux sources : celui publié par le terminal
-    // (interrogation réseau) ou le « Nouveau Solde » du dernier SMS de cette
-    // carte. Toujours daté — jamais présenté comme un solde « en direct ».
-    const dernierSms = lignes.find((l) => l.carte === c.iccid && l.solde_apres != null);
-    const soldePublie = compte?.solde == null ? null : Number(compte.solde);
-    const smsPlusFrais = Boolean(
-      dernierSms &&
-      (!compte || soldePublie == null ||
-        new Date(dernierSms.recu_le) > new Date(compte.maj)),
-    );
-    const solde = smsPlusFrais
-      ? Number(dernierSms!.solde_apres)
-      : soldePublie;
-    const soldeSource = smsPlusFrais
-      ? `le SMS de ${heure(dernierSms!.recu_le)}`
-      : soldePublie != null && compte
-        ? `la mise à jour du terminal, ${heure(compte.maj)}`
-        : "";
+    // Le solde vient du terminal, point : c'est l'interrogation réseau
+    // (déclenchée depuis la plateforme) qui le met à jour — jamais un SMS.
+    const solde = compte?.solde == null ? null : Number(compte.solde);
+    const soldeSource =
+      solde != null && compte ? `l’interrogation du ${heure(compte.maj)}` : "";
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );
