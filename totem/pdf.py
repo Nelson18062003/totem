@@ -189,6 +189,10 @@ class Page:
         self.largeur = largeur
         self.hauteur = hauteur
         self.polices = {}          # nom PDF → Police
+        # L'emprise de chaque texte posé : (gauche, droite, contenu). Rien ne
+        # s'en sert pour dessiner — c'est ce qui permet de vérifier, après
+        # coup, qu'aucun mot n'est sorti de la page.
+        self.empreintes = []
         self._flux = []
 
     def _y(self, y):
@@ -249,7 +253,9 @@ class Page:
             f"BT /{nom} {corps:.3f} Tf {interlettrage * corps:.4f} Tc "
             f"{r:.4f} {v:.4f} {b:.4f} rg "
             f"{x:.3f} {self._y(ligne_de_base):.3f} Td <{hexa}> Tj ET")
-        return police.largeur(contenu, corps, interlettrage)
+        largeur = police.largeur(contenu, corps, interlettrage)
+        self.empreintes.append((x, x + largeur, contenu))
+        return largeur
 
     def _enregistrer(self, police):
         for nom, connue in self.polices.items():
