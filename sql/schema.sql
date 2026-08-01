@@ -71,7 +71,10 @@ create table if not exists comptes (
   reseau      text,                      -- réseau visité (itinérance)
   itinerance  boolean not null default false,
   numero      text,
-  solde       bigint,                    -- en FCFA, tel que le SMS l'annonce
+  -- numeric, pas bigint : Orange annonce des soldes à la décimale
+  -- (« 2784137.6 FCFA »). En bigint, PostgreSQL arrondit SANS RIEN DIRE, et
+  -- la plateforme afficherait un solde que l'opérateur n'a jamais annoncé.
+  solde       numeric,                   -- en FCFA, tel que l'opérateur l'annonce
   signal      int,                       -- 0..31
   maj         timestamptz not null default now(),
   unique (terminal, iccid)
@@ -181,9 +184,11 @@ alter table paiements add column if not exists commission   numeric;
 alter table paiements add column if not exists montant_brut numeric;
 
 -- Les montants étaient des entiers. Orange annonce ses soldes à la décimale
--- (« Nouveau Solde: 2784137.6 FCFA ») : sur une base existante, l'insertion
--- serait refusée. Relancer ces trois lignes sur des colonnes déjà en numeric
--- ne fait rien.
+-- (« Nouveau Solde: 2784137.6 FCFA ») : en bigint, PostgreSQL les ARRONDIT
+-- sans rien signaler, et la plateforme afficherait un solde que l'opérateur
+-- n'a jamais annoncé. Relancer ces lignes sur des colonnes déjà en numeric ne
+-- fait rien.
+alter table comptes   alter column solde       type numeric;
 alter table paiements alter column montant     type numeric;
 alter table paiements alter column solde_apres type numeric;
 alter table paiements alter column frais       type numeric;

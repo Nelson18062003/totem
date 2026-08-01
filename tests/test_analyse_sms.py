@@ -282,5 +282,36 @@ class TestCodeAUsageUnique(unittest.TestCase):
         self.assertFalse(code_a_usage_unique(TRANSFERT_ORANGE))
 
 
+class TestLaReference(unittest.TestCase):
+    """Une fausse référence est pire qu'aucune : elle sert de garde-fou contre
+    les doublons, et deux paiements qui la partagent n'en produisent qu'un."""
+
+    def test_la_vraie_capture(self):
+        self.assertEqual(analyser(TRANSFERT_ORANGE).reference,
+                         "PP260731.1319.B45805")
+
+    def test_le_mot_transaction_nest_jamais_une_reference(self):
+        """Trop courte pour le motif, la référence faisait reculer
+        l'expression sur « id » — qui capturait le mot « transaction ». Deux
+        transferts recevaient alors la même, et le second perdait son reçu."""
+        a = analyser("Transfert de 656483918 A vers 696103864 B reussi. "
+                     "Details: ID transaction: PP1, Montant Net: 100 FCFA")
+        b = analyser("Transfert de 656483918 A vers 696103864 B reussi. "
+                     "Details: ID transaction: XY2, Montant Net: 200 FCFA")
+        self.assertNotEqual(a.reference, "transaction")
+        self.assertIsNone(a.reference)
+        self.assertNotEqual((a.reference, b.reference), ("transaction",) * 2)
+
+    def test_les_autres_formes_restent_comprises(self):
+        self.assertEqual(
+            analyser("Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+                     "Ref: PP250730.0947.A12345.").reference,
+            "PP250730.0947.A12345")
+        self.assertEqual(
+            analyser("Orange Money: Vous avez recu 35000 F CFA de 655128899. "
+                     "Reference OM0112.E11223.").reference,
+            "OM0112.E11223")
+
+
 if __name__ == "__main__":
     unittest.main()
