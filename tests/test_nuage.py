@@ -236,6 +236,19 @@ class TestNuage(unittest.TestCase):
         self.assertEqual(self.nuage.pousser_paiements(), 0)
         self.assertEqual(self.journal.reste_a_envoyer(), 1)  # gardé, pas quarantiné
 
+    def test_un_evenement_refuse_ne_bloque_pas_les_suivants(self):
+        # M1 : la reprise ligne par ligne vaut AUSSI pour les événements, pas
+        # seulement les paiements. Un événement empoisonné ne gèle plus la file.
+        self.journal.evenement("evenement A")
+        self.journal.evenement("POISON evenement")
+        self.journal.evenement("evenement C")
+        FauxSupabase.refuser_texte = "POISON"
+        self.assertEqual(self.nuage.pousser_evenements(), 2)
+        textes = " ".join(l["texte"] for l in self._lignes("evenements"))
+        self.assertIn("evenement A", textes)
+        self.assertIn("evenement C", textes)
+        self.assertNotIn("POISON", textes)
+
     # --- événements ---
     def test_envoie_les_evenements(self):
         self.journal.evenement("démarrage (2 comptes)")

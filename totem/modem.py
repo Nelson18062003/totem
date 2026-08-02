@@ -350,6 +350,12 @@ class ModemSerie:
         raise ErreurModem("Pas de réponse USSD du réseau (délai dépassé).")
 
     def _cusd(self, charge):
+        # Défense en profondeur contre l'injection AT : en mode GSM, un
+        # guillemet ou un retour chariot dans la charge refermerait la chaîne
+        # de la commande AT+CUSD et permettrait d'injecter d'autres ordres au
+        # modem. On les retire toujours — un code USSD ou une réponse de menu
+        # n'en contient jamais légitimement.
+        charge = re.sub(r'["\r\n\x00-\x1f]', "", charge)
         if self.ucs2:
             charge = encode_ucs2(charge)
         with self.verrou:

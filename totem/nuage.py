@@ -73,30 +73,30 @@ class Nuage:
         with urllib.request.urlopen(req, timeout=DELAI) as rep:
             return rep.status
 
-    def _inserer(self, table, lignes, cle_unicite):
-        """Insertion rejouable : les doublons sont ignorés côté base."""
-        return self._tenter_insert(table, lignes, cle_unicite) == "ok"
-
-    def _tenter_insert(self, table, lignes, cle_unicite):
+    def _tenter_insert(self, table, lignes, cle_unicite,
+                       resolution="ignore-duplicates"):
         """Insertion rejouable qui DIT ce qui s'est passé :
-          « ok »     — inséré (les doublons sont ignorés côté base).
+          « ok »     — inséré (les doublons sont ignorés ou fusionnés).
           « reseau » — cloud injoignable ou panne passagère (5xx) : on garde
                        tout et on réessaiera le même envoi.
           « schema » — colonne ou table absente. C'est réparable côté base (une
-                       migration), et ça touche TOUS les SMS, pas un seul :
-                       les écarter un par un les perdrait tous en silence. On
-                       garde donc tout, on alerte, et le retard remonte tout
-                       seul dès la colonne ajoutée.
+                       migration), et ça touche TOUTES les lignes, pas une :
+                       les écarter les perdrait toutes en silence. On garde
+                       donc tout, on alerte, et le retard remonte tout seul dès
+                       la colonne ajoutée.
           « refuse » — la base rejette CETTE ligne pour une valeur qui lui est
                        propre (type invalide, contrainte). On l'écarte pour ne
                        pas bloquer les autres.
+
+        `resolution` : « ignore-duplicates » pour des lignes immuables (SMS,
+        événements), « merge-duplicates » pour un état à rafraîchir (cartes).
         """
         if not lignes:
             return "ok"
         try:
             self._requete(
                 "POST", f"{table}?on_conflict={cle_unicite}", lignes,
-                {"Prefer": "return=minimal,resolution=ignore-duplicates"})
+                {"Prefer": f"return=minimal,resolution={resolution}"})
             self.derniere_erreur = None
             return "ok"
         except urllib.error.HTTPError as e:
@@ -108,6 +108,42 @@ class Nuage:
         except Exception as e:
             self.derniere_erreur = str(e)
             return "reseau"
+
+    def _pousser_lot(self, table, cle_unicite, ids, charge, marquer, sujet,
+                     resolution="ignore-duplicates"):
+        """Envoie un lot avec reprise ligne par ligne : les bonnes lignes
+        passent, une ligne refusée pour de bon (4xx propre à elle) est écartée
+        et signalée, un défaut de schéma ou une coupure gardent TOUT.
+
+        Une seule ligne empoisonnée ne peut donc plus geler toute une file —
+        ni pour les paiements, ni pour les événements, ni pour les cartes.
+        `marquer(liste_ids)` marque les lignes transmises ; `sujet` les nomme
+        dans les messages."""
+        etat = self._tenter_insert(table, charge, cle_unicite, resolution)
+        if etat == "ok":
+            marquer(ids)
+            return len(ids)
+        if etat == "reseau":
+            return 0
+        if etat == "schema":
+            self._alerter(None)
+            return 0
+        envoyes = 0
+        for id_local, ligne in zip(ids, charge):
+            e = self._tenter_insert(table, [ligne], cle_unicite, resolution)
+            if e in ("reseau", "schema"):
+                if e == "schema":
+                    self._alerter(id_local)
+                break
+            if e == "refuse":
+                self.journal.evenement(
+                    f"{sujet} {id_local} refusé par le cloud, mis de côté : "
+                    f"{self.derniere_erreur}")
+                self._alerter(id_local)
+            marquer([id_local])
+            if e == "ok":
+                envoyes += 1
+        return envoyes
 
     @staticmethod
     def _lire_corps(erreur):
@@ -199,6 +235,7 @@ class Nuage:
         lignes_locales = self.journal.cartes_non_envoyees(LOT)
         if not lignes_locales:
             return 0
+        ids = [l[0] for l in lignes_locales]
         charge = [{
             "terminal": self.terminal,
             "iccid": iccid,
@@ -214,10 +251,11 @@ class Nuage:
             "derniere_vue": _horodatage(derniere),
         } for (iccid, imsi, operateur, libelle, numero, imei,
                premiere, derniere) in lignes_locales]
-        if not self._inserer_ou_mettre_a_jour("cartes", charge, "terminal,iccid"):
-            return 0
-        self.journal.marquer_cartes_envoyees([l[0] for l in lignes_locales])
-        return len(charge)
+        # « merge » : une carte déjà connue se met à jour (derniere_vue…).
+        return self._pousser_lot(
+            "cartes", "terminal,iccid", ids, charge,
+            self.journal.marquer_cartes_envoyees, "carte",
+            resolution="merge-duplicates")
 
     def pousser_paiements(self):
         """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé.
@@ -236,19 +274,9 @@ class Nuage:
             charge.append(
                 self._ligne_paiement(id_local, date, expediteur, texte, compte, iccid))
             ids.append(id_local)
-        etat = self._tenter_insert("paiements", charge, "terminal,source_id")
-        if etat == "ok":
-            self.journal.marquer_sms_envoyes(ids)
-            return len(ids)
-        if etat == "reseau":
-            return 0        # coupure : on garde tout, on réessaiera à l'identique
-        if etat == "schema":
-            # Une colonne manque à la base. On NE jette rien (ce serait perdre
-            # TOUS les SMS) : on garde, on alerte, et tout remonte dès qu'elle
-            # est ajoutée. On alerte une fois par tour au plus.
-            self._alerter(None)
-            return 0
-        return self._paiements_un_par_un(ids, charge)
+        return self._pousser_lot(
+            "paiements", "terminal,source_id", ids, charge,
+            self.journal.marquer_sms_envoyes, "paiement")
 
     def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid):
         """La ligne cloud d'un SMS. L'analyse ne doit jamais faire échouer la
@@ -279,44 +307,20 @@ class Nuage:
             "recu_le": _horodatage(date),
         }
 
-    def _paiements_un_par_un(self, ids, charge):
-        """Reprise après le refus d'un lot. Les lignes valides passent ; celle
-        que la base rejette est signalée (avec l'erreur exacte) puis marquée
-        transmise — elle reste au journal local et sur Telegram, mais ne
-        bloque plus la plateforme pour toutes les autres."""
-        envoyes = 0
-        for id_local, ligne in zip(ids, charge):
-            etat = self._tenter_insert("paiements", [ligne], "terminal,source_id")
-            if etat in ("reseau", "schema"):
-                # Coupure, ou colonne manquante commune à tous : on garde le
-                # reste et on réessaiera. Rien n'est écarté.
-                if etat == "schema":
-                    self._alerter(id_local)
-                break
-            if etat == "refuse":
-                self.journal.evenement(
-                    f"paiement {id_local} refusé par le cloud, mis de côté : "
-                    f"{self.derniere_erreur}")
-                self._alerter(id_local)
-            self.journal.marquer_sms_envoyes([id_local])
-            if etat == "ok":
-                envoyes += 1
-        return envoyes
-
     def pousser_evenements(self):
         lignes_locales = self.journal.evenements_non_envoyes(LOT)
         if not lignes_locales:
             return 0
+        ids = [l[0] for l in lignes_locales]
         charge = [{
             "terminal": self.terminal,
             "source_id": id_local,
             "texte": texte,
             "survenu_le": _horodatage(date),
         } for id_local, date, texte in lignes_locales]
-        if not self._inserer("evenements", charge, "terminal,source_id"):
-            return 0
-        self.journal.marquer_evenements_envoyes([l[0] for l in lignes_locales])
-        return len(charge)
+        return self._pousser_lot(
+            "evenements", "terminal,source_id", ids, charge,
+            self.journal.marquer_evenements_envoyes, "événement")
 
     # ---- reçus PDF ---------------------------------------------------------
     # La carte SD du Pi n'est pas grande, et un reçu n'a rien à y faire : il
