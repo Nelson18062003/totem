@@ -1272,7 +1272,24 @@ class Robot:
                 self.facteur.distribuer()   # rattrape ce qu'une coupure a retenu
             except Exception as e:
                 self.journal.evenement(f"erreur distribution courrier : {e}")
-            time.sleep(self.pause_sms)
+            self._attendre_sms(self.pause_sms)
+
+    def _attendre_sms(self, delai):
+        """Dort au plus `delai` secondes entre deux tours — mais se réveille
+        DÈS qu'un modem annonce un SMS (« +CMTI »). La détection devient ainsi
+        quasi immédiate : le SMS est relevé, notifié sur Telegram et poussé au
+        cloud dans la foulée. La boucle périodique n'est plus qu'un filet de
+        sécurité, au cas où une annonce se perdrait."""
+        fin = time.time() + delai
+        while self.actif and time.time() < fin:
+            for compte in self.comptes:
+                # Ne pas lire le port pendant un menu USSD ouvert : la réponse
+                # attendue par la session n'est pas à nous.
+                if getattr(compte, "session_ouverte", False):
+                    continue
+                if compte.sms_annonce():
+                    return
+            time.sleep(0.3)
 
     # ---- cartes SIM --------------------------------------------------------
     def _cartes_en_place(self):

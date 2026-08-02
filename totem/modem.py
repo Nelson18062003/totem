@@ -80,6 +80,7 @@ class ModemSerie:
         self.mode_pdu = False
         self._memo = {}
         self._commande_iccid = None    # celle que ce firmware accepte
+        self._traine_urc = b""         # fin des annonces non sollicitées (+CMTI)
         self._initialiser()
 
     # ---- bas niveau -------------------------------------------------------
@@ -376,6 +377,31 @@ class ModemSerie:
             self._envoyer("AT+CUSD=2")
 
     # ---- SMS --------------------------------------------------------------
+    def sms_annonce(self):
+        """Un SMS vient-il de s'annoncer sur le port (« +CMTI ») ?
+
+        Le modem est réglé par AT+CNMI pour signaler tout SMS entrant par cette
+        ligne, plutôt que de le déverser. On la guette pour relever le message
+        AUSSITÔT, sans attendre le tour de surveillance suivant.
+
+        Non bloquant. Consomme au passage les lignes non sollicitées en attente
+        — elles seraient de toute façon jetées au début de la commande suivante
+        (`reset_input_buffer`). Un « +CMTI » qui arriverait coupé en deux
+        lectures est rattrapé par la courte traîne conservée."""
+        try:
+            with self.verrou:
+                en_attente = getattr(self.ser, "in_waiting", 0)
+                brut = self.ser.read(en_attente) if en_attente else b""
+        except Exception:
+            return False
+        if not brut:
+            return False
+        self._traine_urc = (self._traine_urc + brut)[-64:]
+        if b"+CMTI" in self._traine_urc or b"+CMT" in self._traine_urc:
+            self._traine_urc = b""
+            return True
+        return False
+
     def lire_sms(self):
         """[(indices, expéditeur, texte)] de TOUS les SMS stockés, sans effacer.
 
