@@ -142,6 +142,20 @@ class Compte:
             return (0, 0)
 
     # ---- SMS --------------------------------------------------------------
+    def sms_annonce(self):
+        """Le modem a-t-il signalé un SMS entrant (+CMTI) ? Non bloquant.
+
+        Sert à relever tout de suite, sans attendre le prochain tour. Un modem
+        simulé (démo, tests) n'a pas cette annonce : on répond simplement non,
+        et la relève périodique fait le travail comme avant."""
+        annonce = getattr(self.modem, "sms_annonce", None)
+        if annonce is None:
+            return False
+        try:
+            return annonce()
+        except Exception:
+            return False
+
     def lire_sms(self):
         """[(index, expéditeur, texte)] sans effacer : l'appelant n'efface
         qu'une fois le message en sécurité au journal."""

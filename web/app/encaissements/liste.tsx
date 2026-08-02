@@ -179,7 +179,10 @@ export function ListeEncaissements({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
-                        <span className="truncate text-body font-medium">{p.nom}</span>
+                        {/* Qui, quand — la source du SMS, brève. */}
+                        <span className="truncate text-small text-ink-soft">
+                          {p.sim} · {p.heure}
+                        </span>
                         {/* Montant complet, jamais abrégé ; sans signe quand le
                             sens n'est pas établi. */}
                         {p.montant != null && (
@@ -190,8 +193,11 @@ export function ListeEncaissements({
                           </span>
                         )}
                       </span>
-                      <span className="mt-0.5 block truncate text-small text-ink-faint">
-                        {p.sim} · {p.heure} · {p.smsBrut}
+                      {/* Le SMS EN ENTIER : c'est lui qu'on vient lire. Jamais
+                          tronqué, jamais reformulé — le message d'origine, tel
+                          que la carte l'a reçu. */}
+                      <span className="mt-1 block whitespace-pre-wrap break-words text-body text-ink">
+                        {p.smsBrut}
                       </span>
                     </span>
                   </button>
