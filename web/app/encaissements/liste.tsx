@@ -2,9 +2,30 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { fcfa, type Paiement } from "@/lib/types";
-import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
+import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
+
+// Chaque catégorie de SMS a sa pastille et son libellé, comme une boîte de
+// réception. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
+const CAT: Record<Categorie, { emoji: string; label: string }> = {
+  encaissement: { emoji: "💰", label: "Encaissement" },
+  envoi: { emoji: "↗️", label: "Envoi" },
+  transfert: { emoji: "🔁", label: "Transfert" },
+  depot: { emoji: "📥", label: "Dépôt" },
+  retrait: { emoji: "📤", label: "Retrait" },
+  solde: { emoji: "📊", label: "Solde" },
+  code: { emoji: "🔑", label: "Code" },
+  publicite: { emoji: "📢", label: "Pub" },
+  message: { emoji: "💬", label: "Message" },
+  inconnu: { emoji: "✉️", label: "SMS" },
+};
+
+// L'ordre des filtres de catégorie : les mouvements d'argent d'abord.
+const ORDRE_CAT: Categorie[] = [
+  "encaissement", "envoi", "transfert", "depot", "retrait",
+  "solde", "code", "publicite", "message", "inconnu",
+];
 
 /**
  * Tous les SMS reçus par les cartes, tels quels — c'est par eux que tout
@@ -19,19 +40,28 @@ export function ListeEncaissements({
   operateurs: string[];
 }) {
   const [filtre, setFiltre] = useState("Tous");
+  const [categorie, setCategorie] = useState<Categorie | "Toutes">("Toutes");
   const [recherche, setRecherche] = useState("");
   const [detail, setDetail] = useState<Paiement | null>(null);
+
+  // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
+  // pas un filtre pour une catégorie qu'on n'a jamais reçue.
+  const categories = useMemo(() => {
+    const vues = new Set(paiements.map((p) => p.categorie));
+    return ORDRE_CAT.filter((c) => vues.has(c));
+  }, [paiements]);
 
   const liste = useMemo(() => {
     const q = recherche.trim().toLowerCase().replace(/\s/g, "");
     return paiements.filter((p) => {
       if (filtre !== "Tous" && p.sim !== filtre) return false;
+      if (categorie !== "Toutes" && p.categorie !== categorie) return false;
       if (!q) return true;
       return p.nom.toLowerCase().includes(q) || p.numero.replace(/\s/g, "").includes(q)
         || String(p.montant ?? "").includes(q) || p.reference.toLowerCase().includes(q)
         || p.smsBrut.toLowerCase().includes(q);
     });
-  }, [paiements, filtre, recherche]);
+  }, [paiements, filtre, categorie, recherche]);
 
   const entrees = liste.filter((p) => p.sens === "in" && p.montant != null && p.date === "Aujourd’hui");
   const totalIn = entrees.reduce((s, p) => s + (p.montant ?? 0), 0);
@@ -82,18 +112,32 @@ export function ListeEncaissements({
         </div>
       </div>
 
+      {/* Filtre par catégorie — seulement celles réellement reçues */}
+      {categories.length > 1 && (
+        <div className="-mt-3 flex flex-wrap gap-1.5">
+          <Chip actif={categorie === "Toutes"} onClick={() => setCategorie("Toutes")}>
+            Toutes
+          </Chip>
+          {categories.map((c) => (
+            <Chip key={c} actif={categorie === c} onClick={() => setCategorie(c)}>
+              {CAT[c].emoji} {CAT[c].label}
+            </Chip>
+          ))}
+        </div>
+      )}
+
       {/* La liste des SMS */}
       {Object.keys(parDate).length === 0 ? (
-        recherche || filtre !== "Tous" ? (
+        recherche || filtre !== "Tous" || categorie !== "Toutes" ? (
           <Vide
             titre="Aucun SMS ne correspond"
-            detail="Essayez un autre mot, un autre montant, ou retirez le filtre d’opérateur."
+            detail="Essayez un autre mot, un autre montant, ou retirez un filtre."
             action={
               <button
-                onClick={() => { setRecherche(""); setFiltre("Tous"); }}
+                onClick={() => { setRecherche(""); setFiltre("Tous"); setCategorie("Toutes"); }}
                 className="rounded-btn border border-line px-4 py-2 text-small font-medium transition hover:border-ink-faint"
               >
-                Effacer la recherche
+                Tout afficher
               </button>
             }
           />
@@ -112,8 +156,9 @@ export function ListeEncaissements({
                 <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
-                    <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                      {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
+                    <span title={CAT[p.categorie].label}
+                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-body">
+                      {CAT[p.categorie].emoji}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
@@ -216,6 +261,7 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         </div>
 
         <dl className="mt-6 divide-hair">
+          <L t="Catégorie" v={`${CAT[p.categorie].emoji} ${CAT[p.categorie].label}`} />
           <L t="Opérateur" v={p.sim} />
           {p.numero && <L t="Numéro" v={p.numero} />}
           <L t="Date" v={`${p.date} à ${p.heure}`} />
@@ -256,6 +302,29 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         )}
       </div>
     </div>
+  );
+}
+
+function Chip({
+  actif,
+  onClick,
+  children,
+}: {
+  actif: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-small transition ${
+        actif
+          ? "border-ink bg-ink font-medium text-white"
+          : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
