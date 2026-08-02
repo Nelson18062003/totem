@@ -291,6 +291,31 @@ export async function creerCommande(
   }
 }
 
+// La NATURE choisie par le propriétaire pour un SMS (depot/retrait/transfert/
+// solde). C'est une métadonnée d'affichage, pas le contenu du SMS : le robot
+// ne réécrit jamais une ligne déjà transmise, donc c'est ici qu'on la pose,
+// directement sur la ligne visée par son identifiant.
+export async function definirNature(
+  id: number,
+  nature: string | null,
+): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/paiements?id=eq.${id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=minimal",
+      },
+      body: JSON.stringify({ nature }),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function lireCommande(
   id: number,
 ): Promise<{ etat: string; resultat: string | null } | null> {

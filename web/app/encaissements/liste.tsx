@@ -27,6 +27,13 @@ const ORDRE_CAT: Categorie[] = [
   "solde", "code", "publicite", "message", "inconnu",
 ];
 
+// Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
+const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
+
+// La catégorie effective : la nature choisie par le propriétaire l'emporte sur
+// la catégorie devinée par le terminal.
+const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
+
 /**
  * Tous les SMS reçus par les cartes, tels quels — c'est par eux que tout
  * arrive. Ceux que le robot a compris portent leur montant ; ceux qui ont un
@@ -47,7 +54,7 @@ export function ListeEncaissements({
   // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
   // pas un filtre pour une catégorie qu'on n'a jamais reçue.
   const categories = useMemo(() => {
-    const vues = new Set(paiements.map((p) => p.categorie));
+    const vues = new Set(paiements.map(catDe));
     return ORDRE_CAT.filter((c) => vues.has(c));
   }, [paiements]);
 
@@ -55,7 +62,7 @@ export function ListeEncaissements({
     const q = recherche.trim().toLowerCase().replace(/\s/g, "");
     return paiements.filter((p) => {
       if (filtre !== "Tous" && p.sim !== filtre) return false;
-      if (categorie !== "Toutes" && p.categorie !== categorie) return false;
+      if (categorie !== "Toutes" && catDe(p) !== categorie) return false;
       if (!q) return true;
       return p.nom.toLowerCase().includes(q) || p.numero.replace(/\s/g, "").includes(q)
         || String(p.montant ?? "").includes(q) || p.reference.toLowerCase().includes(q)
@@ -156,9 +163,9 @@ export function ListeEncaissements({
                 <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
-                    <span title={CAT[p.categorie].label}
+                    <span title={CAT[catDe(p)].label}
                       className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-body">
-                      {CAT[p.categorie].emoji}
+                      {CAT[catDe(p)].emoji}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
@@ -202,6 +209,28 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
   const router = useRouter();
   const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
   const [mot, setMot] = useState("");
+  const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
+  const [classe, setClasse] = useState(false);
+
+  // Le propriétaire décide la nature d'un SMS (dépôt/retrait/transfert/solde) :
+  // elle s'affiche ainsi partout, et son reçu s'établit dans la foulée.
+  const classer = async (n: Categorie) => {
+    if (classe) return;
+    setClasse(true);
+    setNature(n);
+    try {
+      await fetch("/api/nature", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: Number(p.id), nature: n }),
+      });
+      if (p.sourceId != null && !p.recu) await etablirRecu();
+      router.refresh();
+    } catch {
+      /* l'échec reste visible via l'état du reçu */
+    }
+    setClasse(false);
+  };
 
   // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
   // qui fait foi — même numéro, même document, à la demande.
@@ -261,13 +290,34 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         </div>
 
         <dl className="mt-6 divide-hair">
-          <L t="Catégorie" v={`${CAT[p.categorie].emoji} ${CAT[p.categorie].label}`} />
+          <L t="Catégorie" v={`${CAT[catDe(p)].emoji} ${CAT[catDe(p)].label}`} />
           <L t="Opérateur" v={p.sim} />
           {p.numero && <L t="Numéro" v={p.numero} />}
           <L t="Date" v={`${p.date} à ${p.heure}`} />
           {p.reference && <L t="Référence" v={p.reference} />}
           {p.soldeApres != null && <L t="Solde après" v={fcfa(p.soldeApres)} />}
         </dl>
+
+        <div className="mt-5">
+          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
+            Nature — pour le reçu
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {NATURES.map((n) => (
+              <button key={n} onClick={() => classer(n)} disabled={classe}
+                className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
+                  nature === n
+                    ? "border-ink bg-ink font-medium text-white"
+                    : "border-line text-ink-soft hover:border-ink-faint"
+                }`}>
+                {CAT[n].emoji} {CAT[n].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
+            Choisir une nature l’affiche ainsi partout et établit son reçu.
+          </p>
+        </div>
 
         <div className="mt-5">
           <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">Message reçu</p>
