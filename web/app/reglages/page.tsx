@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { chargerDonnees } from "@/lib/serveur";
 import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
-import { Bascule, ReglageNumero, SectionCodes } from "./interactifs";
+import { Bascule, BoutonDeconnexion, ReglageNumero, SectionCodes } from "./interactifs";
 
 export const dynamic = "force-dynamic";
 
@@ -156,12 +156,7 @@ export default async function Reglages() {
       </div>
       </div>
 
-      <Link
-        href="/connexion"
-        className="rounded-btn border border-line bg-surface-raised py-3 text-center text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink"
-      >
-        Se déconnecter
-      </Link>
+      <BoutonDeconnexion />
     </div>
   );
 }
