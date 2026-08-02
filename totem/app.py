@@ -28,7 +28,8 @@ import threading
 import time
 from datetime import datetime
 
-from .analyse_sms import analyser, formater_montant, masquer_secrets
+from .analyse_sms import (analyser, categoriser, formater_montant,
+                          masquer_secrets)
 from .declencheur import TRANSFERT, motif_du_menu, motif_du_sms
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
                    recu_transfert)
@@ -1625,8 +1626,17 @@ class Robot:
 
         operateur = self._operateur_de(compte, iccid)
         if genre == TRANSFERT:
-            pdf = recu_transfert(motif.paiement, numero, quand, operateur)
-            legende = (f"🧾 {gras('Reçu de transfert')} — "
+            # Le titre suit la nature réelle du SMS : un dépôt donne un « Reçu
+            # de dépôt », un retrait un « Reçu de retrait ». Le reste (envois,
+            # encaissements, transferts entre comptes) reste « Reçu de
+            # transfert » — le document, lui, est identique.
+            titre = {"depot": "Reçu de dépôt",
+                     "retrait": "Reçu de retrait"}.get(
+                         categoriser(texte, numeros=self._nos_numeros()),
+                         "Reçu de transfert")
+            pdf = recu_transfert(motif.paiement, numero, quand, operateur,
+                                 titre=titre)
+            legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
                        f"{italique('N° ' + numero)}")
         else:
