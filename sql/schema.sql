@@ -218,6 +218,35 @@ begin
   end if;
 end $$;
 
+-- Le grand livre ne doit pas s'effacer par accident. Les tables financières
+-- (paiements, reçus) étaient en « on delete cascade » sur le terminal :
+-- supprimer par erreur la ligne « douala » aurait effacé, en silence et sans
+-- retour, tous les encaissements et tous les reçus. On bascule ces deux clés
+-- en « restrict » : tant qu'il reste de l'argent tracé, la base REFUSE de
+-- supprimer le terminal. Les tables d'état (cartes, comptes, événements,
+-- commandes) gardent la cascade — elles n'ont pas la même valeur de preuve.
+--
+-- Rejouable : on retire la clé existante (quel que soit son nom) puis on pose
+-- la version « restrict ». Sur une base déjà migrée, on repose la même.
+do $$
+declare tbl text; nom text;
+begin
+  foreach tbl in array array['paiements','recus']
+  loop
+    for nom in
+      select conname from pg_constraint
+      where conrelid = tbl::regclass and contype = 'f'
+        and confrelid = 'terminaux'::regclass
+    loop
+      execute format('alter table %I drop constraint %I', tbl, nom);
+    end loop;
+    execute format(
+      'alter table %I add constraint %I foreign key (terminal) '
+      'references terminaux(id) on delete restrict',
+      tbl, tbl || '_terminal_restrict_fkey');
+  end loop;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Index — après la migration, donc toutes les colonnes existent
 -- ---------------------------------------------------------------------------
@@ -226,6 +255,9 @@ create index if not exists paiements_compte_idx  on paiements (terminal, compte)
 create index if not exists paiements_carte_idx   on paiements (terminal, carte);
 create index if not exists paiements_tiers_idx   on paiements (tiers);
 create index if not exists cartes_derniere_vue_idx on cartes (terminal, derniere_vue desc);
+-- Le web trie les reçus par date d'établissement (recus?order=etabli_le.desc) :
+-- sans index, c'est un tri complet de la table à chaque page.
+create index if not exists recus_etabli_le_idx on recus (terminal, etabli_le desc);
 create index if not exists commandes_attente_idx
   on commandes (terminal, etat) where etat = 'en_attente';
 

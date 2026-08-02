@@ -211,7 +211,10 @@ class Nuage:
                 lignes.append({
                     "terminal": self.terminal,
                     "iccid": c.carte.iccid,
-                    "libelle": c.libelle,
+                    # « libelle » est NOT NULL côté base : un libellé vide ferait
+                    # rejeter TOUT le lot de comptes en silence. On garantit une
+                    # valeur, à défaut les 4 derniers chiffres de l'ICCID.
+                    "libelle": c.libelle or f"·{c.carte.iccid[-4:]}",
                     "operateur": c.carte.operateur,
                     "reseau": c.carte.reseau or None,
                     "itinerance": c.carte.itinerance,
