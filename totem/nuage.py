@@ -461,11 +461,13 @@ class Nuage:
                 if time.monotonic() >= prochain_etat:
                     prochain_etat = time.monotonic() + self.pause
                     etat = sante.resume() if sante else None
-                    # On publie AUSSI le retard de synchro : ce que le robot a
-                    # relevé mais pas encore transmis. La plateforme peut ainsi
-                    # dire « je suis en retard » plutôt que de montrer un cloud
-                    # incomplet comme s'il était à jour.
-                    info = {"en_attente": self.journal.reste_a_envoyer()}
+                    # On publie AUSSI le retard de synchro : les SMS relevés
+                    # mais pas encore transmis. La plateforme peut ainsi dire
+                    # « je suis en retard » plutôt que de montrer une boîte de
+                    # réception incomplète comme si elle était à jour. On ne
+                    # compte que les SMS : les événements et les cartes, souvent
+                    # en transit, feraient clignoter le bandeau pour rien.
+                    info = {"en_attente": self.journal.sms_en_attente()}
                     if etat:
                         info["resume"] = etat
                     self.enregistrer_terminal(info)

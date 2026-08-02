@@ -674,6 +674,18 @@ class Journal:
                 [(i,) for i in ids])
             self.conn.commit()
 
+    def sms_en_attente(self):
+        """Combien de SMS le robot a relevés mais pas encore transmis au cloud.
+
+        Distinct de `reste_a_envoyer` (qui compte aussi les événements et les
+        cartes, souvent en transit) : c'est ce compteur-ci qui dit à la liste
+        des SMS si elle est complète, sans la faire clignoter pour un simple
+        événement en attente."""
+        with self.verrou:
+            (n,) = self.conn.execute(
+                "SELECT COUNT(*) FROM sms WHERE COALESCE(envoye,0)=0").fetchone()
+        return n
+
     def reste_a_envoyer(self):
         """Combien de lignes attendent encore le cloud."""
         with self.verrou:
