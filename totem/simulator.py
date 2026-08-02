@@ -184,13 +184,13 @@ class ModemSimule:
         return texte
 
     def lire_sms(self):
-        """[(indices, expéditeur, texte)] — comme le modem réel, sans effacer.
-        Les indices sont une liste : un message long occupe plusieurs
-        emplacements."""
+        """[(indices, expéditeur, texte, emis_le)] — comme le modem réel, sans
+        effacer. Les indices sont une liste : un message long occupe plusieurs
+        emplacements. Le simulateur n'a pas d'heure réseau : emis_le = None."""
         if self.sms_auto and time.time() >= self._prochain_sms_auto:
             self.injecter_paiement()
             self._prochain_sms_auto = time.time() + random.randint(30, 90)
-        return [([i], expediteur, texte)
+        return [([i], expediteur, texte, None)
                 for i, expediteur, texte in self.sms_en_attente]
 
     def effacer_sms(self, indices):

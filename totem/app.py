@@ -1494,7 +1494,7 @@ class Robot:
                 self._redemarrer_modem(compte, canal="alertes", automatique=True)
                 compte.echecs = 0
             return
-        for indices, expediteur, texte in messages:
+        for indices, expediteur, texte, emis_le in messages:
             # Un SMS qui fait échouer son propre traitement (disque plein,
             # journal verrouillé, mise en forme d'une notification…) ne doit
             # PAS emporter avec lui la relève des suivants ni le fil de
@@ -1508,8 +1508,13 @@ class Robot:
                 # que la version sûre.
                 texte = masquer_secrets(texte)
                 if not self.journal.sms_existe(expediteur, texte, compte.libelle):
-                    sms_id = self.journal.sms(expediteur, texte, compte.libelle,
-                                              compte.carte.iccid)
+                    # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
+                    # vraie de l'opération, distincte de l'heure de relève —
+                    # elles divergent après une coupure, et c'est la réseau qui
+                    # fait foi pour l'ordre et les reçus.
+                    sms_id = self.journal.sms(
+                        expediteur, texte, compte.libelle, compte.carte.iccid,
+                        emis_le=emis_le.isoformat() if emis_le else None)
                     self._notifier_sms(compte, expediteur, texte)
                     # Le reçu ne part pas maintenant : l'alerte doit arriver la
                     # première, et un PDF ne doit jamais retarder l'annonce

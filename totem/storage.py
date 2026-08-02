@@ -173,6 +173,9 @@ class Journal:
             # sous lequel elle encaisse. La SIM ne les dit presque jamais, et
             # sans eux un reçu ne sait pas de quel côté d'un transfert on est.
             self._ajouter_colonne_si_absente("cartes", "nom")
+            # L'heure RÉSEAU du SMS (TP-SCTS), à côté de l'heure de relève :
+            # après une coupure, les deux divergent, et c'est elle qui fait foi.
+            self._ajouter_colonne_si_absente("sms", "emis_le")
             self._reprendre_recus()
             self.conn.commit()
 
@@ -220,14 +223,19 @@ class Journal:
     def _maintenant(self):
         return datetime.now().isoformat(timespec="seconds")
 
-    def sms(self, expediteur, texte, compte="", iccid=""):
+    def sms(self, expediteur, texte, compte="", iccid="", emis_le=None):
         """Renvoie l'identifiant de la ligne écrite : c'est lui qui rattache
-        un éventuel reçu à son message d'origine."""
+        un éventuel reçu à son message d'origine.
+
+        `date` reste l'heure de RELÈVE (heure du Pi) — c'est elle qui borne le
+        garde-fou anti-doublon. `emis_le` est l'heure RÉSEAU du SMS (TP-SCTS),
+        conservée à part : c'est l'heure vraie de l'opération, celle qui fera
+        foi pour l'ordre et les reçus."""
         with self.verrou:
             curseur = self.conn.execute(
-                "INSERT INTO sms(date, expediteur, texte, compte, iccid) "
-                "VALUES(?,?,?,?,?)",
-                (self._maintenant(), expediteur, texte, compte, iccid))
+                "INSERT INTO sms(date, expediteur, texte, compte, iccid, emis_le) "
+                "VALUES(?,?,?,?,?,?)",
+                (self._maintenant(), expediteur, texte, compte, iccid, emis_le))
             self.conn.commit()
             return curseur.lastrowid
 
@@ -636,11 +644,11 @@ class Journal:
     # elle ne fait qu'allonger la file.
 
     def sms_non_envoyes(self, limite=100):
-        """[(id, date, expéditeur, texte, compte, iccid)] restant à transmettre."""
+        """[(id, date, expéditeur, texte, compte, iccid, emis_le)] à transmettre."""
         with self.verrou:
             return self.conn.execute(
                 "SELECT id, date, expediteur, texte, COALESCE(compte, ''), "
-                "COALESCE(iccid, '') "
+                "COALESCE(iccid, ''), emis_le "
                 "FROM sms WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
                 (limite,)).fetchall()
 

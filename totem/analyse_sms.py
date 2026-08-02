@@ -214,6 +214,14 @@ RE_BRUIT = re.compile(
     r"\b(?:promo|promotion|bonus|gagnez|felicitations|offre|forfait|"
     r"mot de passe|code de verification|otp|ne partagez)\b")
 
+# Détection ÉLARGIE de la réclame, pour la seule catégorisation (jamais pour
+# rejeter un paiement) : on ne l'applique qu'à un SMS déjà écarté comme
+# mouvement d'argent et comme solde. Elle peut donc être plus large sans
+# risque de requalifier un encaissement.
+RE_PUB = re.compile(
+    r"\b(?:gagner|jackpot|tente\s+ta\s+chance|max\s*it|illimite|abonne|"
+    r"data|reseau\s+social|whatsapp|recharge|rechargez|cadeau)\b")
+
 # Un code à usage unique : « Le code de 696103864 est: 515318. » Ce n'est pas
 # un paiement, mais surtout ce n'est pas un texte à conserver ni à relayer.
 RE_CODE_UNIQUE = re.compile(
@@ -545,6 +553,46 @@ def solde_annonce(texte):
     return _nombre(m.group(1)) if m else None
 
 
+def categoriser(texte, numeros=()):
+    """Range un SMS reçu dans une catégorie, pour la boîte de réception.
+
+    Rien n'est jeté : la catégorie n'est qu'une aide à la lecture et au tri.
+    Un SMS reste toujours consultable en entier, quelle que soit sa catégorie.
+
+    Les valeurs possibles :
+      encaissement · envoi · transfert · depot · retrait  — des mouvements
+      solde   — une interrogation de solde (« #150# »)
+      code    — un code à usage unique (masqué)
+      publicite — une réclame de l'opérateur
+      message — un SMS quelconque (de n'importe qui)
+    """
+    if not texte or not texte.strip():
+        return "message"
+    if code_a_usage_unique(texte):
+        return "code"
+    norme = _normaliser(texte)
+    # On tranche d'ABORD si c'est de l'argent : ainsi un motif publicitaire ne
+    # peut jamais requalifier un vrai paiement (« 2 millions », « gagné »…).
+    paiement = analyser(texte, numeros=numeros)
+    if paiement is not None:
+        if re.search(r"\bdepot\b", norme):
+            return "depot"
+        if re.search(r"\bretrait\b|\bretire\b", norme):
+            return "retrait"
+        if re.search(r"\btransfert\b", norme):
+            return "transfert"
+        if paiement.sens == "entree":
+            return "encaissement"
+        if paiement.sens == "sortie":
+            return "envoi"
+        return "transfert"      # deux parties nommées, sens encore indéterminé
+    if solde_annonce(texte) is not None:
+        return "solde"
+    if RE_BRUIT.search(norme) or RE_PUB.search(norme):
+        return "publicite"
+    return "message"
+
+
 def code_a_usage_unique(texte):
     """Ce SMS transporte-t-il un code à usage unique ?
 
@@ -579,5 +627,5 @@ def masquer_secrets(texte):
     return re.sub(RE_CODE_UNIQUE.pattern, _points, texte, flags=re.I)
 
 
-__all__ = ["Paiement", "Partie", "analyser", "solde_annonce",
+__all__ = ["Paiement", "Partie", "analyser", "solde_annonce", "categoriser",
            "code_a_usage_unique", "masquer_secrets", "formater_montant"]

@@ -26,7 +26,7 @@ import time
 import urllib.error
 import urllib.request
 
-from .analyse_sms import analyser
+from .analyse_sms import analyser, categoriser
 from .version import version
 
 DELAI = 15          # secondes avant d'abandonner une requête
@@ -273,21 +273,23 @@ class Nuage:
         if not lignes_locales:
             return 0
         charge, ids = [], []
-        for id_local, date, expediteur, texte, compte, iccid in lignes_locales:
-            charge.append(
-                self._ligne_paiement(id_local, date, expediteur, texte, compte, iccid))
+        for id_local, date, expediteur, texte, compte, iccid, emis_le in lignes_locales:
+            charge.append(self._ligne_paiement(
+                id_local, date, expediteur, texte, compte, iccid, emis_le))
             ids.append(id_local)
         return self._pousser_lot(
             "paiements", "terminal,source_id", ids, charge,
             self.journal.marquer_sms_envoyes, "paiement")
 
-    def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid):
+    def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid,
+                        emis_le=None):
         """La ligne cloud d'un SMS. L'analyse ne doit jamais faire échouer la
         transmission : un SMS incompréhensible part quand même, tel quel."""
         try:
             p = analyser(texte)
+            cat = categoriser(texte)
         except Exception:
-            p = None
+            p, cat = None, "message"
         return {
             "terminal": self.terminal,
             "source_id": id_local,
@@ -297,6 +299,8 @@ class Nuage:
             # La carte qui a reçu le paiement : c'est elle qui rattache
             # la somme au bon solde quand plusieurs SIM se succèdent.
             "carte": iccid or None,
+            # La catégorie devinée : encaissement, pub, code, message…
+            "categorie": cat,
             "sens": p.sens if p else None,
             "montant": p.montant if p else None,
             "tiers": p.tiers if p else None,
@@ -307,6 +311,9 @@ class Nuage:
             "commission": (p.commission if p else None),
             "montant_brut": (p.montant_brut if p else None),
             "texte": texte,
+            # L'heure réseau (TP-SCTS) quand on l'a, sinon rien : le web
+            # retombe alors sur recu_le. Les deux portent leur fuseau.
+            "emis_le": _horodatage(emis_le) if emis_le else None,
             "recu_le": _horodatage(date),
         }
 

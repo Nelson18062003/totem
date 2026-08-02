@@ -120,6 +120,27 @@ class TestNuage(unittest.TestCase):
         # Le message d'origine part toujours : c'est lui qui fait foi.
         self.assertIn("25 000 FCFA", ligne["texte"])
 
+    def test_heure_reseau_et_categorie_partent_au_cloud(self):
+        # G2 + catégorie : l'heure réseau (TP-SCTS) et la catégorie devinée
+        # accompagnent chaque SMS jusqu'au cloud.
+        self.journal.sms(
+            "OrangeMoney",
+            "Vous avez recu 25000 FCFA de NGONO Marie (677123456)",
+            "Orange", emis_le="2026-08-02T13:45:00+01:00")
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        (ligne,) = self._lignes("paiements")
+        self.assertEqual(ligne["categorie"], "encaissement")
+        self.assertIn("13:45", ligne["emis_le"])
+
+    def test_sms_sans_heure_reseau_retombe_sur_la_releve(self):
+        # Mode texte / vieux SMS : pas d'heure réseau → emis_le nul, le web
+        # retombera sur recu_le. Rien ne casse.
+        self.journal.sms("Papa", "Rappelle-moi", "MTN")   # emis_le par défaut None
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        (ligne,) = self._lignes("paiements")
+        self.assertIsNone(ligne["emis_le"])
+        self.assertEqual(ligne["categorie"], "message")
+
     def test_sms_incompris_transmis_quand_meme(self):
         """Un SMS non reconnu n'est pas perdu : il part sans analyse."""
         self.journal.sms("Papa", "Rappelle-moi ce soir", "MTN")

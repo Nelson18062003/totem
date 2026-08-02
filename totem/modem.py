@@ -393,8 +393,10 @@ class ModemSerie:
             commande = "AT+CMGL=4" if self.mode_pdu else 'AT+CMGL="ALL"'
             brut = self._envoyer(commande, delai=10)
         if not self.mode_pdu:
+            # Le mode texte ne livre pas l'horodatage réseau : emis_le = None,
+            # l'appelant retombera sur l'heure de relève du Pi.
             return [([int(m.group(1))], decode_auto(m.group(2)),
-                     decode_auto(m.group(3).strip()))
+                     decode_auto(m.group(3).strip()), None)
                     for m in RE_CMGL.finditer(brut)]
 
         morceaux, illisibles = [], []
@@ -404,8 +406,9 @@ class ModemSerie:
                 morceaux.append((index, decoder(m.group(2))))
             except ErreurPDU:
                 illisibles.append(index)   # on connaît sa place : on pourra l'effacer
-        messages = [(indices, expediteur, texte)
-                    for indices, expediteur, texte, _ in recoller(morceaux)]
+        # recoller livre l'horodatage réseau (TP-SCTS) du message : on le
+        # PROPAGE désormais au lieu de le jeter — c'est l'heure vraie du SMS.
+        messages = list(recoller(morceaux))
         # Un PDU illisible n'était ni journalisé ni effacé : il occupait un
         # emplacement à CHAQUE tour et finissait par saturer la mémoire du
         # modem — donc par faire perdre les vrais SMS suivants. On le remonte
@@ -414,7 +417,7 @@ class ModemSerie:
         for index in illisibles:
             messages.append(
                 ([index], "modem",
-                 "⚠️ SMS reçu mais non décodable (format PDU illisible)."))
+                 "⚠️ SMS reçu mais non décodable (format PDU illisible).", None))
         return messages
 
     def effacer_sms(self, indices):
