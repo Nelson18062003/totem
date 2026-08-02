@@ -478,7 +478,17 @@ class Nuage:
 
 
 def _horodatage(iso=None):
-    """Les dates du journal local sont naïves (heure du Pi). On les envoie
-    telles quelles ; Supabase les interprète dans son fuseau."""
+    """Une heure destinée au cloud, TOUJOURS avec son fuseau.
+
+    Les dates du journal local sont naïves (heure du Pi, Douala). Envoyées
+    telles quelles dans une colonne `timestamptz`, Supabase les interprète en
+    UTC — et le web, qui reformate en heure de Douala, ajoute une heure de
+    trop. On attache donc l'offset local du Pi : « 13:45 » devient
+    « 13:45+01:00 », que tout le monde comprend pareil."""
     from datetime import datetime
-    return (iso or datetime.now().isoformat(timespec="seconds"))
+    dt = datetime.fromisoformat(iso) if iso else datetime.now()
+    if dt.tzinfo is None:
+        # datetime naïf → considéré comme l'heure LOCALE du Pi, rendu conscient
+        # de son fuseau (astimezone() sur un naïf suppose l'heure locale).
+        dt = dt.astimezone()
+    return dt.isoformat(timespec="seconds")

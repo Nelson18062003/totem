@@ -288,12 +288,17 @@ class Journal:
                      carte.numero, imei, maintenant, maintenant))
                 etat = "nouvelle"
             else:
-                # Le libellé et le numéro peuvent s'affiner (IMSI lu plus tard,
-                # numéro provisionné entre-temps) : on rafraîchit, et on remet
-                # la carte dans la file du cloud pour qu'il sache.
+                # Le libellé et l'IMSI peuvent s'affiner (IMSI lu plus tard),
+                # on les rafraîchit. Mais le NUMÉRO ne se touche que s'il
+                # arrive une vraie valeur : la puce ne le déclare presque
+                # jamais (AT+CNUM vide), alors que le propriétaire, lui, l'a
+                # saisi à la main. Un « rafraîchissement » avec du vide
+                # l'effacerait toutes les minutes — et c'est la donnée qui dit
+                # de quel côté d'un transfert on se trouve.
                 self.conn.execute(
                     "UPDATE cartes SET imsi = ?, operateur = ?, libelle = ?,"
-                    " numero = ?, imei = ?, derniere_vue = ?, envoye = 0"
+                    " numero = COALESCE(NULLIF(?, ''), numero),"
+                    " imei = ?, derniere_vue = ?, envoye = 0"
                     " WHERE iccid = ?",
                     (carte.imsi, carte.operateur, carte.libelle, carte.numero,
                      imei, maintenant, carte.iccid))

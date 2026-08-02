@@ -250,6 +250,15 @@ class TestNuage(unittest.TestCase):
         self.assertEqual(ligne["id"], "douala")
         self.assertIn("vu_le", ligne)
 
+    def test_l_heure_envoyee_porte_son_fuseau(self):
+        # G1 : une heure naïve stockée en timestamptz serait lue en UTC, puis
+        # ré-affichée en heure de Douala → une heure de trop. On envoie donc
+        # toujours l'offset. « now » comme une date du journal.
+        from totem.nuage import _horodatage
+        self.assertRegex(_horodatage(), r"[+-]\d\d:\d\d$")
+        self.assertRegex(_horodatage("2026-08-02T13:45:00"),
+                         r"^2026-08-02T13:45:00[+-]\d\d:\d\d$")
+
 
 if __name__ == "__main__":
     unittest.main()
