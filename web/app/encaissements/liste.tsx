@@ -42,9 +42,11 @@ const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
 export function ListeEncaissements({
   paiements,
   operateurs,
+  enAttente = 0,
 }: {
   paiements: Paiement[];
   operateurs: string[];
+  enAttente?: number;
 }) {
   const [filtre, setFiltre] = useState("Tous");
   const [categorie, setCategorie] = useState<Categorie | "Toutes">("Toutes");
@@ -86,6 +88,14 @@ export function ListeEncaissements({
           qui fait foi — et son reçu se télécharge quand il existe.
         </p>
       </header>
+
+      {enAttente > 0 && (
+        <p className="rounded-card border border-line bg-surface-2 px-4 py-2.5 text-small text-ink-soft">
+          ⏳ Le terminal a {enAttente} message{enAttente > 1 ? "s" : ""} en cours
+          de transmission — cette liste n’est peut-être pas encore complète.
+          Elle se met à jour toute seule.
+        </p>
+      )}
 
       <section>
         <p className="text-small text-ink-soft">Reçu aujourd’hui</p>

@@ -48,7 +48,7 @@ async function lire<T>(chemin: string): Promise<T[]> {
 
 type LigneTerminal = {
   id: string; nom: string | null; vu_le: string | null; version: string | null;
-  sante?: { resume?: string } | null;
+  sante?: { resume?: string; en_attente?: number } | null;
 };
 type LigneCarte = {
   iccid: string; operateur: string | null; libelle: string | null;
@@ -139,6 +139,7 @@ export async function chargerDonnees(): Promise<Donnees> {
         majTexte: ecartHumain(t.vu_le),
         version: t.version ?? "",
         sante: t.sante?.resume ?? "",
+        enAttente: t.sante?.en_attente ?? 0,
       }
     : null;
 

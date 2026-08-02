@@ -461,7 +461,14 @@ class Nuage:
                 if time.monotonic() >= prochain_etat:
                     prochain_etat = time.monotonic() + self.pause
                     etat = sante.resume() if sante else None
-                    self.enregistrer_terminal({"resume": etat} if etat else None)
+                    # On publie AUSSI le retard de synchro : ce que le robot a
+                    # relevé mais pas encore transmis. La plateforme peut ainsi
+                    # dire « je suis en retard » plutôt que de montrer un cloud
+                    # incomplet comme s'il était à jour.
+                    info = {"en_attente": self.journal.reste_a_envoyer()}
+                    if etat:
+                        info["resume"] = etat
+                    self.enregistrer_terminal(info)
                     self.publier_comptes(comptes)
                 envoyes = (self.pousser_cartes() + self.pousser_paiements()
                            + self.pousser_evenements())

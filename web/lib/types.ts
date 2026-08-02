@@ -62,6 +62,9 @@ export type EtatTerminal = {
   // La santé physique du Pi, telle que le robot la résume :
   // « 35 °C · disque 12 % (98 Go libres) ». Vide si rien n'est remonté.
   sante: string;
+  // Ce que le robot a relevé mais pas encore transmis au cloud : quand c'est
+  // significatif, la plateforme le dit plutôt que de paraître à jour.
+  enAttente: number;
 };
 
 export type Donnees = {
