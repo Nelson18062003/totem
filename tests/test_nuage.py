@@ -23,7 +23,7 @@ class FauxSupabase(BaseHTTPRequestHandler):
     recu = []           # toutes les lignes reçues, par table
     en_panne = False
     refuser_texte = None  # sous-chaîne : tout lot la contenant est rejeté (400)
-    colonne_absente = False  # simule un défaut de schéma (PGRST204)
+    colonnes_absentes = set()  # colonnes que la base n'a pas (défaut PGRST204)
 
     def do_POST(self):
         if FauxSupabase.en_panne:
@@ -31,17 +31,20 @@ class FauxSupabase(BaseHTTPRequestHandler):
             return
         taille = int(self.headers.get("Content-Length", 0))
         corps = json.loads(self.rfile.read(taille) or b"[]")
-        # Une colonne manquante : PostgREST répond 400 avec le code PGRST204.
-        # Ça touche TOUS les envois tant que la colonne n'est pas ajoutée.
-        if FauxSupabase.colonne_absente:
-            msg = (b'{"code":"PGRST204","message":"Could not find the '
-                   b'\'expediteur\' column of \'paiements\' in the schema cache"}')
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(msg)))
-            self.end_headers()
-            self.wfile.write(msg)
-            return
+        # Une base à qui il manque une colonne refuse tant qu'on la lui envoie,
+        # avec le code PGRST204 — et accepte dès qu'on ne l'envoie plus. C'est
+        # exactement ce que fait une base pas encore migrée.
+        for col in FauxSupabase.colonnes_absentes:
+            if any(col in l for l in corps):
+                msg = (f'{{"code":"PGRST204","message":"Could not find the '
+                       f"'{col}' column of 'paiements' in the schema cache\"}}"
+                       ).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+                return
         # Une donnée que la base rejette pour de bon (type invalide…) : 4xx.
         if FauxSupabase.refuser_texte is not None and any(
                 FauxSupabase.refuser_texte in (l.get("texte") or "") for l in corps):
@@ -71,7 +74,7 @@ class TestNuage(unittest.TestCase):
         FauxSupabase.recu = []
         FauxSupabase.en_panne = False
         FauxSupabase.refuser_texte = None
-        FauxSupabase.colonne_absente = False
+        FauxSupabase.colonnes_absentes = set()
         self.journal = Journal(":memory:")
         self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
                            "douala", self.journal)
@@ -230,24 +233,53 @@ class TestNuage(unittest.TestCase):
         self.assertEqual(len(incidents), 1)
         self.assertIn("400", incidents[0][1])
 
-    def test_colonne_manquante_ne_perd_aucun_sms(self):
-        """L'incident réel : la colonne 'expediteur' manquait à la base.
-        C'est commun à TOUS les SMS — les écarter les perdrait tous. On les
-        garde, on alerte, et tout remonte dès que la colonne est ajoutée."""
+    def test_colonne_manquante_laisse_passer_le_sms_quand_meme(self):
+        """L'incident réel : la colonne 'expediteur' manquait à la base, et plus
+        AUCUN SMS ne s'affichait. Désormais le robot retire la colonne absente
+        et enregistre le SMS sans elle : le message arrive, quitte à perdre une
+        info d'enrichissement. Le texte, lui, passe toujours."""
         incidents = []
         self.nuage.sur_incident = lambda sid, err: incidents.append(err)
         self.journal.sms("MoMo", "Vous avez recu 1000 FCFA de 677000111", "MTN")
-        FauxSupabase.colonne_absente = True
+        FauxSupabase.colonnes_absentes = {"expediteur"}
+
+        self.assertEqual(self.nuage.pousser_paiements(), 1)       # le SMS EST passé
+        self.assertEqual(self.journal.sms_non_envoyes(100), [])   # rien en attente
+        self.assertEqual(incidents, [])                           # pas d'alerte : ce n'est pas une panne
+        ligne = self._lignes("paiements")[0]
+        self.assertNotIn("expediteur", ligne)                    # la colonne absente a été retirée
+        self.assertIn("1000 FCFA", ligne["texte"])               # le texte, lui, est bien là
+
+    def test_plusieurs_colonnes_absentes_le_sms_arrive_et_c_est_noté(self):
+        """Une base en retard de plusieurs versions (ni expediteur, ni categorie,
+        ni emis_le) : le robot les retire une à une et enregistre quand même le
+        SMS. L'événement le note une fois, pour inviter à migrer, sans alarmer."""
+        self.journal.sms("MoMo", "Depot de 10000 FCFA reussi", "MTN")
+        FauxSupabase.colonnes_absentes = {"expediteur", "categorie", "emis_le"}
+
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        ligne = self._lignes("paiements")[0]
+        for absente in ("expediteur", "categorie", "emis_le"):
+            self.assertNotIn(absente, ligne)
+        self.assertIn("10000 FCFA", ligne["texte"])
+        # Le journal en garde une trace lisible (une fois), mentionnant la migration.
+        traces = " ".join(t for _id, _date, t in
+                          self.journal.evenements_non_envoyes(100))
+        self.assertIn("migration", traces.lower())
+
+    def test_colonne_essentielle_absente_garde_tout_et_alerte(self):
+        """Si c'est le TEXTE du SMS qui manque à la base — un vrai défaut de
+        structure, pas un simple retard — on ne bricole pas : on garde tout et
+        on alerte, comme avant."""
+        incidents = []
+        self.nuage.sur_incident = lambda sid, err: incidents.append(err)
+        self.journal.sms("MoMo", "Vous avez recu 1000 FCFA de 677000111", "MTN")
+        FauxSupabase.colonnes_absentes = {"texte"}
 
         self.assertEqual(self.nuage.pousser_paiements(), 0)
-        self.assertNotEqual(self.journal.sms_non_envoyes(100), [])  # GARDÉ, pas jeté
-        self.assertEqual(len(incidents), 1)                         # et signalé
+        self.assertNotEqual(self.journal.sms_non_envoyes(100), [])  # gardé
+        self.assertEqual(len(incidents), 1)                          # et alerté
         self.assertIn("PGRST204", incidents[0])
-
-        # La colonne est ajoutée à la base : le SMS remonte tout seul.
-        FauxSupabase.colonne_absente = False
-        self.assertEqual(self.nuage.pousser_paiements(), 1)
-        self.assertEqual(self.journal.sms_non_envoyes(100), [])
 
     def test_une_coupure_ne_met_rien_en_quarantaine(self):
         """Si TOUT échoue par coupure réseau (5xx), rien n'est mis de côté :

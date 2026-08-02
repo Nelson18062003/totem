@@ -21,6 +21,7 @@ Aucune dépendance : urllib suffit, et le Pi n'a rien de plus à installer.
 """
 
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -38,6 +39,22 @@ DEBOUNCE = 1
 # sql/schema.sql, en même temps que les tables.
 SEAU = "recus"
 
+# Les colonnes sans lesquelles une ligne perd son sens : on ne les retire
+# JAMAIS pour forcer un envoi. Tout le reste (categorie, expediteur, emis_le,
+# montant…) n'est que de l'enrichissement : si la base ne l'a pas encore, mieux
+# vaut enregistrer le SMS sans cette info que de ne rien enregistrer du tout.
+# Le texte du SMS, lui, doit toujours passer.
+SOCLE = {
+    "paiements":  {"terminal", "source_id", "texte", "recu_le"},
+    "evenements": {"terminal", "source_id", "texte", "survenu_le"},
+    "cartes":     {"terminal", "iccid"},
+    "comptes":    {"terminal", "iccid", "libelle"},
+}
+
+# PostgREST nomme la colonne absente ainsi : « Could not find the 'expediteur'
+# column of 'paiements' in the schema cache ». On en extrait « expediteur ».
+_RE_COLONNE_ABSENTE = re.compile(r"the '([^']+)' column")
+
 
 class Nuage:
     """Envoie le journal local vers Supabase. Inerte si non configuré."""
@@ -54,6 +71,9 @@ class Nuage:
         # prévenir le propriétaire sur Telegram, au lieu de l'écarter en
         # silence. Posé par le robot s'il a un transport.
         self.sur_incident = None
+        # Colonnes qu'on a déjà découvertes absentes de la base et signalées une
+        # fois : on ne réécrit pas le même avis à chaque envoi.
+        self._absentes_signalees = set()
         self._marche = True
         # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
         # prochain battement pour transmettre ce qu'il sait déjà.
@@ -79,41 +99,88 @@ class Nuage:
           « ok »     — inséré (les doublons sont ignorés ou fusionnés).
           « reseau » — cloud injoignable ou panne passagère (5xx) : on garde
                        tout et on réessaiera le même envoi.
-          « schema » — colonne ou table absente. C'est réparable côté base (une
-                       migration), et ça touche TOUTES les lignes, pas une :
-                       les écarter les perdrait toutes en silence. On garde
-                       donc tout, on alerte, et le retard remonte tout seul dès
-                       la colonne ajoutée.
+          « schema » — une colonne ESSENTIELLE (le texte du SMS, le terminal…)
+                       manque vraiment : là, on garde tout et on alerte.
           « refuse » — la base rejette CETTE ligne pour une valeur qui lui est
                        propre (type invalide, contrainte). On l'écarte pour ne
                        pas bloquer les autres.
+
+        Une colonne d'enrichissement absente (categorie, expediteur, emis_le…)
+        ne fait PLUS tout échouer : on la retire de la charge et on réessaie,
+        pour que le SMS lui-même arrive quand même. On ne renonce que si c'est
+        une colonne du socle qui manque — un vrai défaut de structure. Ainsi,
+        même sur une base pas encore migrée, le message s'affiche.
 
         `resolution` : « ignore-duplicates » pour des lignes immuables (SMS,
         événements), « merge-duplicates » pour un état à rafraîchir (cartes).
         """
         if not lignes:
             return "ok"
-        try:
-            self._requete(
-                "POST", f"{table}?on_conflict={cle_unicite}", lignes,
-                {"Prefer": f"return=minimal,resolution={resolution}"})
-            self.derniere_erreur = None
-            return "ok"
-        except urllib.error.HTTPError as e:
-            corps = self._lire_corps(e)
-            self.derniere_erreur = f"{e.code} {corps}".strip()
-            if not 400 <= e.code < 500:
+        # Copie : on peut retirer des clés sans toucher au journal d'appel.
+        lignes = [dict(l) for l in lignes]
+        socle = SOCLE.get(table, {"terminal"})
+        retirees = []
+        for _ in range(32):     # au pire, une passe par colonne d'enrichissement
+            try:
+                self._requete(
+                    "POST", f"{table}?on_conflict={cle_unicite}", lignes,
+                    {"Prefer": f"return=minimal,resolution={resolution}"})
+                self.derniere_erreur = None
+                if retirees:
+                    self._signaler_degrade(table, retirees)
+                return "ok"
+            except urllib.error.HTTPError as e:
+                corps = self._lire_corps(e)
+                self.derniere_erreur = f"{e.code} {corps}".strip()
+                if not 400 <= e.code < 500:
+                    return "reseau"
+                if not self._defaut_de_schema(corps):
+                    return "refuse"
+                # Défaut de schéma : peut-on sauver le SMS en laissant tomber la
+                # colonne fautive ? Oui, sauf si elle est au socle.
+                col = self._colonne_absente(corps)
+                if col and col not in socle and any(col in l for l in lignes):
+                    for l in lignes:
+                        l.pop(col, None)
+                    retirees.append(col)
+                    continue
+                return "schema"
+            except Exception as e:
+                self.derniere_erreur = str(e)
                 return "reseau"
-            return "schema" if self._defaut_de_schema(corps) else "refuse"
-        except Exception as e:
-            self.derniere_erreur = str(e)
-            return "reseau"
+        return "schema"
+
+    @staticmethod
+    def _colonne_absente(corps):
+        """Le nom de la colonne que PostgREST dit introuvable, s'il le donne."""
+        m = _RE_COLONNE_ABSENTE.search(corps or "")
+        return m.group(1) if m else None
+
+    def _signaler_degrade(self, table, retirees):
+        """Note UNE seule fois, au journal, qu'on a enregistré sans certaines
+        colonnes absentes de la base. Le SMS est bien là ; il manque juste ces
+        informations, que la migration Supabase rétablit. Pas d'alerte Telegram :
+        le message est passé, ce n'est pas une panne."""
+        nouvelles = set(retirees) - self._absentes_signalees
+        if not nouvelles:
+            return
+        self._absentes_signalees |= nouvelles
+        try:
+            self.journal.evenement(
+                f"{table} : le message est enregistré, mais sans "
+                f"{', '.join(sorted(nouvelles))} — colonne(s) absente(s) de la "
+                f"base. Rejouer la migration Supabase les rétablit.")
+        except Exception:
+            pass
 
     def _pousser_lot(self, table, cle_unicite, ids, charge, marquer, sujet,
                      resolution="ignore-duplicates"):
         """Envoie un lot avec reprise ligne par ligne : les bonnes lignes
         passent, une ligne refusée pour de bon (4xx propre à elle) est écartée
-        et signalée, un défaut de schéma ou une coupure gardent TOUT.
+        et signalée, une coupure garde TOUT pour réessayer. Une colonne
+        d'enrichissement absente n'arrête plus rien (l'insertion la retire et
+        réessaie) ; seul un défaut de structure sur une colonne essentielle
+        renvoie « schema », et là on garde tout et on alerte.
 
         Une seule ligne empoisonnée ne peut donc plus geler toute une file —
         ni pour les paiements, ni pour les événements, ni pour les cartes.
