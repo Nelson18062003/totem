@@ -397,14 +397,25 @@ class ModemSerie:
                      decode_auto(m.group(3).strip()))
                     for m in RE_CMGL.finditer(brut)]
 
-        morceaux = []
+        morceaux, illisibles = [], []
         for m in RE_CMGL_PDU.finditer(brut):
+            index = int(m.group(1))
             try:
-                morceaux.append((int(m.group(1)), decoder(m.group(2))))
+                morceaux.append((index, decoder(m.group(2))))
             except ErreurPDU:
-                continue          # un PDU illisible ne doit pas bloquer les autres
-        return [(indices, expediteur, texte)
-                for indices, expediteur, texte, _ in recoller(morceaux)]
+                illisibles.append(index)   # on connaît sa place : on pourra l'effacer
+        messages = [(indices, expediteur, texte)
+                    for indices, expediteur, texte, _ in recoller(morceaux)]
+        # Un PDU illisible n'était ni journalisé ni effacé : il occupait un
+        # emplacement à CHAQUE tour et finissait par saturer la mémoire du
+        # modem — donc par faire perdre les vrais SMS suivants. On le remonte
+        # comme un message « non décodable » : l'appelant le journalise (trace
+        # qu'un message est arrivé) et l'efface (libère la place).
+        for index in illisibles:
+            messages.append(
+                ([index], "modem",
+                 "⚠️ SMS reçu mais non décodable (format PDU illisible)."))
+        return messages
 
     def effacer_sms(self, indices):
         """Efface un ou plusieurs emplacements, une fois le message journalisé."""

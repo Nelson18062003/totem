@@ -5,20 +5,30 @@ import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
 
-const JOURS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+// L'argent vit à Douala : les jours se découpent dans SON fuseau, exactement
+// comme la liste des SMS (lib/serveur.ts). Sans cela, un encaissement de
+// minuit à Douala tombait, ici, dans le jour de la veille (fuseau du serveur
+// de rendu) — et la liste et le graphe montraient deux jours différents.
+const FUSEAU = "Africa/Douala";
+
+function jourDouala(iso: string): string {
+  return new Intl.DateTimeFormat("fr-CA", { timeZone: FUSEAU }).format(new Date(iso));
+}
 
 // Les encaissements des 7 derniers jours, calculés sur les vrais paiements —
 // aucun chiffre n'est écrit à la main.
 function septDerniersJours(paiements: Paiement[]) {
   const jours: { jour: string; montant: number }[] = [];
-  const present = new Date();
+  const present = Date.now();
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(present.getTime() - i * 86_400_000);
-    const cle = d.toDateString();
+    const d = new Date(present - i * 86_400_000);
+    const cle = jourDouala(d.toISOString());
     const montant = paiements
-      .filter((p) => p.sens === "in" && p.montant != null && new Date(p.recuLe).toDateString() === cle)
+      .filter((p) => p.sens === "in" && p.montant != null && jourDouala(p.recuLe) === cle)
       .reduce((s, p) => s + (p.montant ?? 0), 0);
-    jours.push({ jour: JOURS[d.getDay()], montant });
+    const nom = new Intl.DateTimeFormat("fr-FR", { timeZone: FUSEAU, weekday: "short" })
+      .format(d).replace(".", "");
+    jours.push({ jour: nom.charAt(0).toUpperCase() + nom.slice(1), montant });
   }
   return jours;
 }
