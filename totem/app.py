@@ -117,6 +117,11 @@ class Robot:
         self.delai_session = delai_session
         self.chemin_base = chemin_base
         self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
+        if self.nuage is not None:
+            # Quand la base refuse un paiement, le propriétaire doit l'apprendre
+            # sur Telegram — sinon un SMS cesse d'apparaître sur la plateforme
+            # sans que rien ne le dise.
+            self.nuage.sur_incident = self._incident_cloud
         self.pilotage = None    # le guichet à distance, démarré avec le nuage
         # Les numéros des puces, déclarés dans la configuration. Une SIM
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
@@ -130,6 +135,7 @@ class Robot:
         self.memoire_signalee = False
         self.conflit_signale = False
         self._dernier_avert_courrier = 0.0   # anti-répétition de l'alerte facteur
+        self._dernier_avert_cloud = 0.0      # anti-répétition de l'alerte cloud
         self.demarre_a = time.time()
         self.dernier_brut = ""   # dernière réponse USSD, pour /brut
         # Le parcours de la dernière session, gardé le temps d'en faire un
@@ -1759,6 +1765,26 @@ class Robot:
                     "Vérifie ce fil dans le groupe Telegram. Le message a été "
                     "mis de côté pour ne pas bloquer les suivants — l’USSD et "
                     "les autres envois ne sont pas touchés."))
+        except Exception:
+            pass
+
+    def _incident_cloud(self, source_id, erreur):
+        """La base a refusé un paiement. Pour que le propriétaire cesse de
+        chercher pourquoi un SMS n'apparaît pas sur la plateforme, on le dit
+        sur Telegram — avec l'erreur exacte, pour pouvoir corriger la cause —
+        et pas plus d'une fois par quart d'heure."""
+        maintenant = time.time()
+        if maintenant - self._dernier_avert_cloud < 900:
+            return
+        self._dernier_avert_cloud = maintenant
+        try:
+            self.transport.envoyer(
+                f"⚠️ {gras('Un SMS n’a pas pu s’afficher sur la plateforme')}\n"
+                "La base de données l’a refusé, je l’ai donc mis de côté pour "
+                "ne pas bloquer les suivants. Il reste ici, sur Telegram.\n\n"
+                f"Raison technique : {mono(echap(str(erreur))[:300])}\n\n"
+                + italique("Transmets-moi cette raison : elle dit exactement "
+                           "quoi corriger côté base."))
         except Exception:
             pass
 

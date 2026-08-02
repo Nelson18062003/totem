@@ -186,6 +186,17 @@ class TestNuage(unittest.TestCase):
         self.assertIn("refusé par le cloud", evenements)
         self.assertIn("400", evenements)                     # l'erreur exacte de la base
 
+    def test_un_refus_previent_le_proprietaire(self):
+        # Le propriétaire doit l'apprendre (sur Telegram, via ce rappel), avec
+        # l'erreur exacte — pas chercher en vain pourquoi un SMS n'apparaît pas.
+        incidents = []
+        self.nuage.sur_incident = lambda sid, err: incidents.append((sid, err))
+        self.journal.sms("MoMo", "SMS EMPOISONNE", "MTN")
+        FauxSupabase.refuser_texte = "EMPOISONNE"
+        self.nuage.pousser_paiements()
+        self.assertEqual(len(incidents), 1)
+        self.assertIn("400", incidents[0][1])
+
     def test_une_coupure_ne_met_rien_en_quarantaine(self):
         """Si TOUT échoue par coupure réseau (5xx), rien n'est mis de côté :
         on garde tout et on réessaiera. Une panne de nuit ne perd pas un SMS."""

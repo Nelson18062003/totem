@@ -50,6 +50,10 @@ class Nuage:
         self.pause = pause
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
+        # Appelé (source_id, erreur) quand la base REFUSE un paiement : de quoi
+        # prévenir le propriétaire sur Telegram, au lieu de l'écarter en
+        # silence. Posé par le robot s'il a un transport.
+        self.sur_incident = None
         self._marche = True
         # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
         # prochain battement pour transmettre ce qu'il sait déjà.
@@ -262,6 +266,11 @@ class Nuage:
                 self.journal.evenement(
                     f"paiement {id_local} refusé par le cloud, mis de côté : "
                     f"{self.derniere_erreur}")
+                if self.sur_incident:
+                    try:
+                        self.sur_incident(id_local, self.derniere_erreur)
+                    except Exception:
+                        pass
             self.journal.marquer_sms_envoyes([id_local])
             if etat == "ok":
                 envoyes += 1
