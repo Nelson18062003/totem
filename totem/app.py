@@ -1779,9 +1779,10 @@ class Robot:
         self._dernier_avert_cloud = maintenant
         try:
             self.transport.envoyer(
-                f"⚠️ {gras('Un SMS n’a pas pu s’afficher sur la plateforme')}\n"
-                "La base de données l’a refusé, je l’ai donc mis de côté pour "
-                "ne pas bloquer les suivants. Il reste ici, sur Telegram.\n\n"
+                f"⚠️ {gras('Des SMS n’arrivent pas sur la plateforme')}\n"
+                "La base de données les refuse. Ils restent ici sur Telegram "
+                "et sur le terminal — rien n’est perdu — mais ils n’apparaissent "
+                "pas sur le site tant que ce n’est pas corrigé.\n\n"
                 f"Raison technique : {mono(echap(str(erreur))[:300])}\n\n"
                 + italique("Transmets-moi cette raison : elle dit exactement "
                            "quoi corriger côté base."))

@@ -23,6 +23,7 @@ class FauxSupabase(BaseHTTPRequestHandler):
     recu = []           # toutes les lignes reçues, par table
     en_panne = False
     refuser_texte = None  # sous-chaîne : tout lot la contenant est rejeté (400)
+    colonne_absente = False  # simule un défaut de schéma (PGRST204)
 
     def do_POST(self):
         if FauxSupabase.en_panne:
@@ -30,8 +31,18 @@ class FauxSupabase(BaseHTTPRequestHandler):
             return
         taille = int(self.headers.get("Content-Length", 0))
         corps = json.loads(self.rfile.read(taille) or b"[]")
-        # Une donnée que la base rejette pour de bon (colonne absente, type
-        # invalide…) : Supabase répond 4xx, pas 5xx.
+        # Une colonne manquante : PostgREST répond 400 avec le code PGRST204.
+        # Ça touche TOUS les envois tant que la colonne n'est pas ajoutée.
+        if FauxSupabase.colonne_absente:
+            msg = (b'{"code":"PGRST204","message":"Could not find the '
+                   b'\'expediteur\' column of \'paiements\' in the schema cache"}')
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+            return
+        # Une donnée que la base rejette pour de bon (type invalide…) : 4xx.
         if FauxSupabase.refuser_texte is not None and any(
                 FauxSupabase.refuser_texte in (l.get("texte") or "") for l in corps):
             self.send_error(400, "donnee refusee")
@@ -60,6 +71,7 @@ class TestNuage(unittest.TestCase):
         FauxSupabase.recu = []
         FauxSupabase.en_panne = False
         FauxSupabase.refuser_texte = None
+        FauxSupabase.colonne_absente = False
         self.journal = Journal(":memory:")
         self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
                            "douala", self.journal)
@@ -196,6 +208,25 @@ class TestNuage(unittest.TestCase):
         self.nuage.pousser_paiements()
         self.assertEqual(len(incidents), 1)
         self.assertIn("400", incidents[0][1])
+
+    def test_colonne_manquante_ne_perd_aucun_sms(self):
+        """L'incident réel : la colonne 'expediteur' manquait à la base.
+        C'est commun à TOUS les SMS — les écarter les perdrait tous. On les
+        garde, on alerte, et tout remonte dès que la colonne est ajoutée."""
+        incidents = []
+        self.nuage.sur_incident = lambda sid, err: incidents.append(err)
+        self.journal.sms("MoMo", "Vous avez recu 1000 FCFA de 677000111", "MTN")
+        FauxSupabase.colonne_absente = True
+
+        self.assertEqual(self.nuage.pousser_paiements(), 0)
+        self.assertNotEqual(self.journal.sms_non_envoyes(100), [])  # GARDÉ, pas jeté
+        self.assertEqual(len(incidents), 1)                         # et signalé
+        self.assertIn("PGRST204", incidents[0])
+
+        # La colonne est ajoutée à la base : le SMS remonte tout seul.
+        FauxSupabase.colonne_absente = False
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        self.assertEqual(self.journal.sms_non_envoyes(100), [])
 
     def test_une_coupure_ne_met_rien_en_quarantaine(self):
         """Si TOUT échoue par coupure réseau (5xx), rien n'est mis de côté :

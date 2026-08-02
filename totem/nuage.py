@@ -78,14 +78,18 @@ class Nuage:
         return self._tenter_insert(table, lignes, cle_unicite) == "ok"
 
     def _tenter_insert(self, table, lignes, cle_unicite):
-        """Insertion rejouable qui DIT pourquoi elle échoue :
+        """Insertion rejouable qui DIT ce qui s'est passé :
           « ok »     — inséré (les doublons sont ignorés côté base).
           « reseau » — cloud injoignable ou panne passagère (5xx) : on garde
                        tout et on réessaiera le même envoi.
-          « refuse » — la base REJETTE ces données (4xx : colonne absente,
-                       type invalide…). Un lot entier peut alors rester bloqué
-                       sur une seule ligne mal formée — d'où la reprise ligne
-                       par ligne chez l'appelant.
+          « schema » — colonne ou table absente. C'est réparable côté base (une
+                       migration), et ça touche TOUS les SMS, pas un seul :
+                       les écarter un par un les perdrait tous en silence. On
+                       garde donc tout, on alerte, et le retard remonte tout
+                       seul dès la colonne ajoutée.
+          « refuse » — la base rejette CETTE ligne pour une valeur qui lui est
+                       propre (type invalide, contrainte). On l'écarte pour ne
+                       pas bloquer les autres.
         """
         if not lignes:
             return "ok"
@@ -96,19 +100,36 @@ class Nuage:
             self.derniere_erreur = None
             return "ok"
         except urllib.error.HTTPError as e:
-            self.derniere_erreur = self._detail_erreur(e)
-            return "refuse" if 400 <= e.code < 500 else "reseau"
+            corps = self._lire_corps(e)
+            self.derniere_erreur = f"{e.code} {corps}".strip()
+            if not 400 <= e.code < 500:
+                return "reseau"
+            return "schema" if self._defaut_de_schema(corps) else "refuse"
         except Exception as e:
             self.derniere_erreur = str(e)
             return "reseau"
 
     @staticmethod
-    def _detail_erreur(erreur):
+    def _lire_corps(erreur):
         try:
-            corps = erreur.read().decode("utf-8", "replace")[:300]
+            return erreur.read().decode("utf-8", "replace")[:300]
         except Exception:
-            corps = ""
-        return f"{erreur.code} {corps}".strip()
+            return ""
+
+    @staticmethod
+    def _defaut_de_schema(corps):
+        """Colonne ou table absente : PostgREST le signale par PGRST204/205 ou
+        par « schema cache » / « could not find ». Réparable, et commun à tout."""
+        c = corps.lower()
+        return ("pgrst204" in c or "pgrst205" in c
+                or "schema cache" in c or "could not find" in c)
+
+    def _alerter(self, source_id):
+        if self.sur_incident:
+            try:
+                self.sur_incident(source_id, self.derniere_erreur)
+            except Exception:
+                pass
 
     # ---- envois -----------------------------------------------------------
     def enregistrer_terminal(self, sante=None):
@@ -221,6 +242,12 @@ class Nuage:
             return len(ids)
         if etat == "reseau":
             return 0        # coupure : on garde tout, on réessaiera à l'identique
+        if etat == "schema":
+            # Une colonne manque à la base. On NE jette rien (ce serait perdre
+            # TOUS les SMS) : on garde, on alerte, et tout remonte dès qu'elle
+            # est ajoutée. On alerte une fois par tour au plus.
+            self._alerter(None)
+            return 0
         return self._paiements_un_par_un(ids, charge)
 
     def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid):
@@ -260,17 +287,17 @@ class Nuage:
         envoyes = 0
         for id_local, ligne in zip(ids, charge):
             etat = self._tenter_insert("paiements", [ligne], "terminal,source_id")
-            if etat == "reseau":
-                break       # coupure en cours de reprise : on garde le reste
+            if etat in ("reseau", "schema"):
+                # Coupure, ou colonne manquante commune à tous : on garde le
+                # reste et on réessaiera. Rien n'est écarté.
+                if etat == "schema":
+                    self._alerter(id_local)
+                break
             if etat == "refuse":
                 self.journal.evenement(
                     f"paiement {id_local} refusé par le cloud, mis de côté : "
                     f"{self.derniere_erreur}")
-                if self.sur_incident:
-                    try:
-                        self.sur_incident(id_local, self.derniere_erreur)
-                    except Exception:
-                        pass
+                self._alerter(id_local)
             self.journal.marquer_sms_envoyes([id_local])
             if etat == "ok":
                 envoyes += 1
