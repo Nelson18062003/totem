@@ -137,6 +137,10 @@ class Robot:
         self.conflit_signale = False
         self._dernier_avert_courrier = 0.0   # anti-répétition de l'alerte facteur
         self._dernier_avert_cloud = 0.0      # anti-répétition de l'alerte cloud
+        # Échéanciers du tour de surveillance (cartes, santé, mémoire).
+        self._prochaine_sante = 0
+        self._prochaine_memoire = 0
+        self._prochaines_cartes = 0
         self.demarre_a = time.time()
         self.dernier_brut = ""   # dernière réponse USSD, pour /brut
         # Le parcours de la dernière session, gardé le temps d'en faire un
@@ -1240,39 +1244,71 @@ class Robot:
 
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
-        prochaine_sante = 0
-        prochaine_memoire = 0
-        prochaines_cartes = 0
+        """Le fil qui fait tout arriver : SMS, reçus, alertes, cloud.
+
+        S'il s'arrête, TOUT se tait d'un coup — plus d'annonce sur Telegram,
+        plus de reçu, plus rien vers la plateforme — alors que le robot
+        répond encore aux commandes et que le signe de vie (envoyé par le fil
+        du nuage, distinct) continue de rassurer l'écran. C'est la panne la
+        plus sournoise du système : rien ne SEMBLE cassé, et rien n'arrive.
+
+        Ce fil est donc bâti pour ne jamais mourir : chaque étape du tour est
+        isolée (`_etape`), et ce filet-ci rattrape même ce qui échapperait à
+        l'isolement. Un incident se lit au journal ; il ne coupe plus rien."""
+        self._prochaine_sante = 0
+        self._prochaine_memoire = 0
+        self._prochaines_cartes = 0
         while self.actif:
-            # Avant de relever les SMS : si la puce a été échangée, les
-            # messages qui suivent appartiennent à la nouvelle carte.
-            if time.time() >= prochaines_cartes:
-                prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
-                self._recenser_cartes()
-            for compte in self.comptes:
-                # Filet ultime : rien de ce qui touche une carte ne doit
-                # pouvoir arrêter la relève des autres, ni le fil lui-même.
-                try:
-                    self._relever_sms(compte)
-                except Exception as e:
-                    self._noter(f"relève SMS {compte.libelle} : {e}")
-            self._expirer_session()
-            # La santé du Pi change lentement : inutile de la lire à chaque tour.
-            if time.time() >= prochaine_sante:
-                prochaine_sante = time.time() + 120
-                self._veiller_sante()
-            if time.time() >= prochaine_memoire:
-                prochaine_memoire = time.time() + VERIF_MEMOIRE_SECONDES
-                self._verifier_memoire()
-            self._distribuer_recus()
-            self._signaler_conflit()
-            if self._rapport_quotidien():
-                sauvegarder_journal(self.chemin_base)
             try:
-                self.facteur.distribuer()   # rattrape ce qu'une coupure a retenu
+                self._tour_de_surveillance()
             except Exception as e:
-                self.journal.evenement(f"erreur distribution courrier : {e}")
+                # Ne devrait jamais se produire : chaque étape est déjà
+                # isolée. Mais « ne devrait pas » a déjà tué ce fil une fois
+                # — on note, et le tour suivant a lieu quoi qu'il arrive.
+                self._noter(f"tour de surveillance interrompu : {e}")
             self._attendre_sms(self.pause_sms)
+
+    def _tour_de_surveillance(self):
+        """Un tour complet de surveillance, par étapes isolées : celle qui
+        échoue (disque plein, base indisponible, refus Telegram…) est notée
+        au journal et ne prive ni les étapes suivantes, ni le tour d'après."""
+        # Avant de relever les SMS : si la puce a été échangée, les
+        # messages qui suivent appartiennent à la nouvelle carte.
+        if time.time() >= self._prochaines_cartes:
+            self._prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
+            self._etape("recensement des cartes", self._recenser_cartes)
+        for compte in self.comptes:
+            # Rien de ce qui touche une carte ne doit pouvoir arrêter la
+            # relève des autres.
+            try:
+                self._relever_sms(compte)
+            except Exception as e:
+                self._noter(f"relève SMS {compte.libelle} : {e}")
+        self._etape("expiration de session", self._expirer_session)
+        # La santé du Pi change lentement : inutile de la lire à chaque tour.
+        if time.time() >= self._prochaine_sante:
+            self._prochaine_sante = time.time() + 120
+            self._etape("santé du terminal", self._veiller_sante)
+        if time.time() >= self._prochaine_memoire:
+            self._prochaine_memoire = time.time() + VERIF_MEMOIRE_SECONDES
+            self._etape("mémoire des modems", self._verifier_memoire)
+        self._etape("distribution des reçus", self._distribuer_recus)
+        self._etape("conflit de robots", self._signaler_conflit)
+        self._etape("rapport quotidien", self._rapport_et_sauvegarde)
+        # Rattrape ce qu'une coupure a retenu.
+        self._etape("distribution du courrier", self.facteur.distribuer)
+
+    def _etape(self, nom, action):
+        """Une étape du tour, incapable de tuer le fil : l'incident est noté
+        (par `_noter`, qui ne lève jamais non plus) et la suite a lieu."""
+        try:
+            action()
+        except Exception as e:
+            self._noter(f"{nom} : {e}")
+
+    def _rapport_et_sauvegarde(self):
+        if self._rapport_quotidien():
+            sauvegarder_journal(self.chemin_base)
 
     def _attendre_sms(self, delai):
         """Dort au plus `delai` secondes entre deux tours — mais se réveille
@@ -1530,9 +1566,16 @@ class Robot:
                     # vraie de l'opération, distincte de l'heure de relève —
                     # elles divergent après une coupure, et c'est la réseau qui
                     # fait foi pour l'ordre et les reçus.
+                    # Garde-fou : quoi que le maillon d'avant ait mis dans
+                    # `emis_le`, le SMS passe. Une heure réseau perdue est un
+                    # détail ; un SMS bloqué en boucle est la panne totale —
+                    # c'est arrivé (un booléen à la place de l'heure, et plus
+                    # RIEN n'arrivait, ni Telegram ni plateforme).
+                    heure_reseau = (emis_le.isoformat()
+                                    if hasattr(emis_le, "isoformat") else None)
                     sms_id = self.journal.sms(
                         expediteur, texte, compte.libelle, compte.carte.iccid,
-                        emis_le=emis_le.isoformat() if emis_le else None)
+                        emis_le=heure_reseau)
                     self._notifier_sms(compte, expediteur, texte)
                     # Le reçu ne part pas maintenant : l'alerte doit arriver la
                     # première, et un PDF ne doit jamais retarder l'annonce
