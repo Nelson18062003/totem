@@ -226,14 +226,24 @@ class LectureParLeModem(unittest.TestCase):
                 fabriquer_pdu("Seconde partie.", reference=9, total=2, position=2)]
         messages = self._modem(pdus).lire_sms()
         self.assertEqual(len(messages), 1)
-        indices, expediteur, texte = messages[0]
+        indices, expediteur, texte, emis_le = messages[0]
         self.assertEqual(texte, "Premiere partie. Seconde partie.")
         self.assertEqual(sorted(indices), [1, 2])
+        # G2 : l'heure réseau (TP-SCTS) est PROPAGÉE, plus jetée.
+        self.assertIsNotNone(emis_le)
 
-    def test_pdu_illisible_n_empeche_pas_les_autres(self):
-        pdus = ["ZZZZZZZZZZZZZZZZZZZZZZ", fabriquer_pdu("Message valable.")]
+    def test_pdu_illisible_est_remonte_pour_effacement(self):
+        # M8 : un PDU hexadécimal mais indécodable est remonté comme « non
+        # décodable » avec son index — pour être journalisé PUIS effacé, sinon
+        # il occupe la mémoire du modem à chaque tour et fait perdre les vrais
+        # SMS. Il n'empêche pas les autres d'être lus.
+        mauvais = "FF" * 12    # hexadécimal, ≥20 caractères, mais indécodable
+        pdus = [mauvais, fabriquer_pdu("Message valable.")]
         messages = self._modem(pdus).lire_sms()
-        self.assertEqual([t for _, _, t in messages], ["Message valable."])
+        self.assertTrue(any(t == "Message valable." for _, _, t, _ in messages))
+        illisible = [(idx, t) for idx, _, t, _ in messages if "non décodable" in t]
+        self.assertEqual(len(illisible), 1)
+        self.assertEqual(illisible[0][0], [1])   # son index → effaçable
 
 
 if __name__ == "__main__":

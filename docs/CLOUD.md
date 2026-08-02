@@ -137,11 +137,20 @@ besoin de deux variables d'environnement, **côté serveur uniquement** :
 |---|---|
 | `SUPABASE_URL` | l'adresse du projet, `https://xxxxxxxxxxxx.supabase.co` |
 | `SUPABASE_CLE` | la clé de service (Settings → API → `service_role`) |
+| `SESSION_SECRET` | une longue phrase secrète au hasard — elle signe les sessions et **active le verrou** de la plateforme |
+| `TOTEM_MOT_DE_PASSE` | le mot de passe du propriétaire pour se connecter au site |
 
-- **Sur Vercel** : Settings → Environment Variables, ajouter les deux, puis
+- **Sur Vercel** : Settings → Environment Variables, ajouter les quatre, puis
   redéployer.
-- **En local** : créer `web/.env.local` avec ces deux lignes, puis
-  `npm run dev`.
+- **En local** : créer `web/.env.local` avec ces lignes, puis `npm run dev`.
+
+⚠️ **Le verrou.** Tant que `SESSION_SECRET` n'est pas défini, le site est
+**ouvert** (pratique en développement). **Dès qu'on le pose**, tout est
+protégé : plus rien ne se lit ni ne s'appelle sans se connecter avec
+`TOTEM_MOT_DE_PASSE`. Ce mot de passe **n'est pas** le code PIN Mobile Money —
+celui-là ne se saisit qu'au moment d'une opération et n'est enregistré nulle
+part. Avant toute mise en ligne publique, ces deux variables **doivent** être
+définies.
 
 Sans elles, l'application l'affiche clairement (« Non relié ») et ne montre
 **aucune donnée** — jamais de chiffres inventés.

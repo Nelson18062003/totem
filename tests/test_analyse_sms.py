@@ -11,8 +11,8 @@ Lancer :  python3 -m unittest discover -s tests
 
 import unittest
 
-from totem.analyse_sms import (analyser, code_a_usage_unique, formater_montant,
-                               masquer_secrets, solde_annonce)
+from totem.analyse_sms import (analyser, categoriser, code_a_usage_unique,
+                               formater_montant, masquer_secrets, solde_annonce)
 
 # Le vrai SMS d'Orange Money, relevé sur les captures du propriétaire en
 # juillet 2026. Il sert de référence à tout ce fichier : c'est lui qu'il faut
@@ -195,6 +195,53 @@ class TestCeQuiNestPasUnPaiement(unittest.TestCase):
 
     def test_montant_illisible(self):
         self.assertIsNone(analyser("Vous avez recu un virement FCFA de Marie"))
+
+
+class TestCategoriser(unittest.TestCase):
+    """La catégorie d'un SMS, pour la boîte de réception. Un paiement est
+    toujours tranché AVANT la publicité : un motif de réclame ne doit jamais
+    requalifier un vrai encaissement."""
+
+    MIENS = ["696103864"]
+
+    def c(self, texte):
+        return categoriser(texte, numeros=self.MIENS)
+
+    def test_depot(self):
+        self.assertEqual(self.c(
+            "Depot vers 690933686 NGANGOM NOUBEWE reussi from 696103864 WONDER "
+            "PHONE. Montant transaction : 10000FCFA"), "depot")
+
+    def test_transfert(self):
+        self.assertEqual(self.c(
+            "Transfert de 696103864 WONDER PHONE vers 697457589 NKENGAFAC "
+            "reussi. Montant Net: 100 FCFA"), "transfert")
+
+    def test_retrait(self):
+        self.assertEqual(self.c("Vous avez retire 30000 FCFA chez AGENT"), "retrait")
+
+    def test_encaissement(self):
+        self.assertEqual(self.c(
+            "Vous avez recu 25000 FCFA de NGONO Marie (677123456)"), "encaissement")
+
+    def test_solde(self):
+        self.assertEqual(self.c("Le solde de votre compte est de 2773937.6FCFA."),
+                         "solde")
+
+    def test_code(self):
+        self.assertEqual(self.c("Le code de 696103864 est: 515318. Merci."), "code")
+
+    def test_publicite(self):
+        self.assertEqual(self.c(
+            "Entre nous, c'est l'amour fou! 2 millions a gagner chaque jour "
+            "avec Orange Money! Tape #150*0#"), "publicite")
+
+    def test_message_quelconque(self):
+        self.assertEqual(self.c("Salut, tu es dispo demain ?"), "message")
+
+    def test_vide(self):
+        self.assertEqual(self.c(""), "message")
+        self.assertEqual(categoriser(None), "message")
 
 
 class TestRobustesse(unittest.TestCase):

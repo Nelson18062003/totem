@@ -257,6 +257,30 @@ export function SectionCodes({ operateur }: { operateur: string }) {
   );
 }
 
+export function BoutonDeconnexion() {
+  const router = useRouter();
+  const [envoi, setEnvoi] = useState(false);
+  async function sortir() {
+    setEnvoi(true);
+    try {
+      await fetch("/api/deconnexion", { method: "POST" });
+    } catch {
+      /* on redirige de toute façon vers la connexion */
+    }
+    router.replace("/connexion");
+    router.refresh();
+  }
+  return (
+    <button
+      onClick={sortir}
+      disabled={envoi}
+      className="rounded-btn border border-line bg-surface-raised py-3 text-center text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-50"
+    >
+      {envoi ? "Déconnexion…" : "Se déconnecter"}
+    </button>
+  );
+}
+
 export function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
   const [actif, setActif] = useState(Boolean(defaut));
   return (

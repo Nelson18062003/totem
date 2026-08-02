@@ -39,6 +39,22 @@ class TestRegistreDesCartes(unittest.TestCase):
         self.assertEqual(self.journal.voir_carte(Carte(imsi=IMSI_MTN)), "inconnue")
         self.assertEqual(self.journal.cartes(), [])
 
+    def test_le_numero_declare_survit_au_recensement(self):
+        # C1 : le propriétaire déclare un numéro ; le recensement suivant (le
+        # robot relit la puce toutes les 60 s, numéro vide sur une prépayée) ne
+        # doit PAS l'effacer — c'est la donnée qui tranche le sens des dépôts.
+        carte = Carte(iccid=MTN_A, imsi=IMSI_MTN)      # prépayée : pas de numéro
+        self.journal.voir_carte(carte)
+        self.journal.definir_identite(MTN_A, numero="696103864")
+        self.journal.voir_carte(carte)                 # un tour de recensement
+        self.assertEqual(self.journal.identite(MTN_A)[0], "696103864")
+        self.assertIn("696103864", self.journal.numeros_declares())
+
+    def test_un_numero_lu_sur_la_puce_est_enregistre(self):
+        # L'inverse doit rester vrai : si la puce déclare un numéro, on le garde.
+        self.journal.voir_carte(Carte(iccid=MTN_A, imsi=IMSI_MTN, numero="650000000"))
+        self.assertEqual(self.journal.identite(MTN_A)[0], "650000000")
+
     def test_une_carte_retiree_puis_remise_reste_la_meme_ligne(self):
         a = Carte(iccid=MTN_A, imsi=IMSI_MTN)
         b = Carte(iccid=MTN_B, imsi=IMSI_MTN)

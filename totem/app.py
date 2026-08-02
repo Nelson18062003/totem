@@ -28,7 +28,8 @@ import threading
 import time
 from datetime import datetime
 
-from .analyse_sms import analyser, formater_montant, masquer_secrets
+from .analyse_sms import (analyser, categoriser, formater_montant,
+                          masquer_secrets)
 from .declencheur import TRANSFERT, motif_du_menu, motif_du_sms
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
                    recu_transfert)
@@ -117,6 +118,11 @@ class Robot:
         self.delai_session = delai_session
         self.chemin_base = chemin_base
         self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
+        if self.nuage is not None:
+            # Quand la base refuse un paiement, le propriétaire doit l'apprendre
+            # sur Telegram — sinon un SMS cesse d'apparaître sur la plateforme
+            # sans que rien ne le dise.
+            self.nuage.sur_incident = self._incident_cloud
         self.pilotage = None    # le guichet à distance, démarré avec le nuage
         # Les numéros des puces, déclarés dans la configuration. Une SIM
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
@@ -130,6 +136,7 @@ class Robot:
         self.memoire_signalee = False
         self.conflit_signale = False
         self._dernier_avert_courrier = 0.0   # anti-répétition de l'alerte facteur
+        self._dernier_avert_cloud = 0.0      # anti-répétition de l'alerte cloud
         self.demarre_a = time.time()
         self.dernier_brut = ""   # dernière réponse USSD, pour /brut
         # Le parcours de la dernière session, gardé le temps d'en faire un
@@ -1243,7 +1250,12 @@ class Robot:
                 prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
                 self._recenser_cartes()
             for compte in self.comptes:
-                self._relever_sms(compte)
+                # Filet ultime : rien de ce qui touche une carte ne doit
+                # pouvoir arrêter la relève des autres, ni le fil lui-même.
+                try:
+                    self._relever_sms(compte)
+                except Exception as e:
+                    self._noter(f"relève SMS {compte.libelle} : {e}")
             self._expirer_session()
             # La santé du Pi change lentement : inutile de la lire à chaque tour.
             if time.time() >= prochaine_sante:
@@ -1454,6 +1466,14 @@ class Robot:
             self.transport.envoyer(f"{prefixe}{echap(texte)}", canal="alertes",
                                    silencieux=genre != "alerte")
 
+    def _noter(self, texte):
+        """Journalise un incident sans JAMAIS lever : le journal lui-même peut
+        échouer (disque plein), et cela ne doit pas tuer le fil appelant."""
+        try:
+            self.journal.evenement(texte)
+        except Exception:
+            pass
+
     def _relever_sms(self, compte):
         """L'ordre compte : on écrit au journal AVANT d'effacer dans le modem.
 
@@ -1475,31 +1495,45 @@ class Robot:
                 self._redemarrer_modem(compte, canal="alertes", automatique=True)
                 compte.echecs = 0
             return
-        for indices, expediteur, texte in messages:
-            # Un code à usage unique ne doit survivre nulle part : ni au
-            # journal, ni dans la sauvegarde envoyée hors du Pi, ni sur
-            # Telegram. On le masque ici, une fois, et tout ce qui suit ne
-            # voit plus que la version sûre.
-            texte = masquer_secrets(texte)
-            if not self.journal.sms_existe(expediteur, texte, compte.libelle):
-                sms_id = self.journal.sms(expediteur, texte, compte.libelle,
-                                          compte.carte.iccid)
-                self._notifier_sms(compte, expediteur, texte)
-                # Le reçu ne part pas maintenant : l'alerte doit arriver la
-                # première, et un PDF ne doit jamais retarder l'annonce d'un
-                # encaissement. Il est seulement inscrit ; la boucle de
-                # surveillance le fabriquera et l'enverra dans la foulée.
-                self._programmer_recu(sms_id, texte)
-                # Le cloud est prévenu tout de suite : inutile de lui faire
-                # attendre son prochain battement pour un paiement déjà connu.
-                if self.nuage:
-                    self.nuage.reveiller()
+        for indices, expediteur, texte, emis_le in messages:
+            # Un SMS qui fait échouer son propre traitement (disque plein,
+            # journal verrouillé, mise en forme d'une notification…) ne doit
+            # PAS emporter avec lui la relève des suivants ni le fil de
+            # surveillance. On isole chaque message, et on ne l'efface JAMAIS
+            # tant qu'il n'a pas été journalisé : sinon un encaissement
+            # disparaîtrait sans laisser de trace.
+            try:
+                # Un code à usage unique ne doit survivre nulle part : ni au
+                # journal, ni dans la sauvegarde hors du Pi, ni sur Telegram.
+                # On le masque ici, une fois, et tout ce qui suit ne voit plus
+                # que la version sûre.
+                texte = masquer_secrets(texte)
+                if not self.journal.sms_existe(expediteur, texte, compte.libelle):
+                    # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
+                    # vraie de l'opération, distincte de l'heure de relève —
+                    # elles divergent après une coupure, et c'est la réseau qui
+                    # fait foi pour l'ordre et les reçus.
+                    sms_id = self.journal.sms(
+                        expediteur, texte, compte.libelle, compte.carte.iccid,
+                        emis_le=emis_le.isoformat() if emis_le else None)
+                    self._notifier_sms(compte, expediteur, texte)
+                    # Le reçu ne part pas maintenant : l'alerte doit arriver la
+                    # première, et un PDF ne doit jamais retarder l'annonce
+                    # d'un encaissement. Il est seulement inscrit ; la boucle
+                    # de surveillance le fabriquera dans la foulée.
+                    self._programmer_recu(sms_id, texte)
+                    # Le cloud est prévenu tout de suite : inutile de lui faire
+                    # attendre son battement pour un paiement déjà connu.
+                    if self.nuage:
+                        self.nuage.reveiller()
+            except Exception as e:
+                self._noter(f"traitement SMS {indices} ({compte.libelle}) : {e}")
+                continue        # on n'efface pas : à réessayer au prochain tour
             # Un message long occupe plusieurs emplacements : on les efface
             # tous ensemble, sans quoi un morceau resterait orphelin.
             if not compte.effacer_sms(indices):
-                self.journal.evenement(
-                    f"SMS {indices} non effacé sur {compte.libelle} "
-                    "(il sera ignoré au prochain tour)")
+                self._noter(f"SMS {indices} non effacé sur {compte.libelle} "
+                            "(il sera ignoré au prochain tour)")
 
     # ---- reçus PDF ---------------------------------------------------------
     # Un reçu ne se fabrique jamais dans le fil du SMS : l'alerte doit partir
@@ -1592,8 +1626,17 @@ class Robot:
 
         operateur = self._operateur_de(compte, iccid)
         if genre == TRANSFERT:
-            pdf = recu_transfert(motif.paiement, numero, quand, operateur)
-            legende = (f"🧾 {gras('Reçu de transfert')} — "
+            # Le titre suit la nature réelle du SMS : un dépôt donne un « Reçu
+            # de dépôt », un retrait un « Reçu de retrait ». Le reste (envois,
+            # encaissements, transferts entre comptes) reste « Reçu de
+            # transfert » — le document, lui, est identique.
+            titre = {"depot": "Reçu de dépôt",
+                     "retrait": "Reçu de retrait"}.get(
+                         categoriser(texte, numeros=self._nos_numeros()),
+                         "Reçu de transfert")
+            pdf = recu_transfert(motif.paiement, numero, quand, operateur,
+                                 titre=titre)
+            legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
                        f"{italique('N° ' + numero)}")
         else:
@@ -1759,6 +1802,27 @@ class Robot:
                     "Vérifie ce fil dans le groupe Telegram. Le message a été "
                     "mis de côté pour ne pas bloquer les suivants — l’USSD et "
                     "les autres envois ne sont pas touchés."))
+        except Exception:
+            pass
+
+    def _incident_cloud(self, source_id, erreur):
+        """La base a refusé un paiement. Pour que le propriétaire cesse de
+        chercher pourquoi un SMS n'apparaît pas sur la plateforme, on le dit
+        sur Telegram — avec l'erreur exacte, pour pouvoir corriger la cause —
+        et pas plus d'une fois par quart d'heure."""
+        maintenant = time.time()
+        if maintenant - self._dernier_avert_cloud < 900:
+            return
+        self._dernier_avert_cloud = maintenant
+        try:
+            self.transport.envoyer(
+                f"⚠️ {gras('Des SMS n’arrivent pas sur la plateforme')}\n"
+                "La base de données les refuse. Ils restent ici sur Telegram "
+                "et sur le terminal — rien n’est perdu — mais ils n’apparaissent "
+                "pas sur le site tant que ce n’est pas corrigé.\n\n"
+                f"Raison technique : {mono(echap(str(erreur))[:300])}\n\n"
+                + italique("Transmets-moi cette raison : elle dit exactement "
+                           "quoi corriger côté base."))
         except Exception:
             pass
 

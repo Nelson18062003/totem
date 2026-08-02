@@ -27,7 +27,14 @@ export async function POST(req: Request) {
     if (!code) return Response.json({ erreur: "code vide" }, { status: 400 });
     parametres.code = code;
   }
-  if (typeof brut.texte === "string") parametres.texte = brut.texte.slice(0, 120);
+  if (typeof brut.texte === "string") {
+    // On retire guillemets, retours à la ligne et caractères de contrôle : en
+    // mode GSM, un « " » ou un « \r » dans une réponse USSD refermerait la
+    // chaîne de la commande AT et injecterait des ordres au modem (ex. effacer
+    // les SMS). Le terminal ré-échappe de son côté ; ici on nettoie à l'entrée.
+    // eslint-disable-next-line no-control-regex
+    parametres.texte = brut.texte.replace(/["\r\n\x00-\x1f]/g, "").slice(0, 120);
+  }
   if (brut.secret === true) parametres.secret = true;
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
   if (Number.isInteger(brut.source_id) && brut.source_id > 0) {

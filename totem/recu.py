@@ -447,18 +447,23 @@ class Gabarit:
 ETIQUETTES_SOMME = {"entree": "Montant reçu", "sortie": "Montant envoyé"}
 
 
-def recu_transfert(paiement, numero, quand, operateur="Orange Money"):
+def recu_transfert(paiement, numero, quand, operateur="Orange Money",
+                   titre="Reçu de transfert"):
     """Le reçu d'une opération réussie.
 
     `quand` : la date de l'opération. Le SMS d'Orange ne l'écrit pas en toutes
     lettres ; c'est l'heure de réception par le terminal qui fait foi.
+
+    `titre` : « Reçu de transfert » par défaut, mais « Reçu de dépôt » ou
+    « Reçu de retrait » quand le SMS dit qu'il s'agit de l'un ou de l'autre —
+    le document nomme alors l'opération telle qu'elle est.
 
     Quand le sens n'est pas connu — le SMS nomme les deux parties sans dire
     laquelle est la nôtre — l'étiquette devient « Montant net », le terme
     qu'emploie Orange lui-même. Écrire « Montant reçu » sur un envoi ferait du
     reçu un faux document.
     """
-    gabarit = Gabarit("Reçu de transfert", numero, operateur)
+    gabarit = Gabarit(titre, numero, operateur)
 
     preuves = [("ID transaction", [paiement.reference or "—"], 2.2),
                ("Date", [date_en_lettres(quand), heure_en_lettres(quand)], 1.3)]

@@ -48,7 +48,7 @@ async function lire<T>(chemin: string): Promise<T[]> {
 
 type LigneTerminal = {
   id: string; nom: string | null; vu_le: string | null; version: string | null;
-  sante?: { resume?: string } | null;
+  sante?: { resume?: string; en_attente?: number } | null;
 };
 type LigneCarte = {
   iccid: string; operateur: string | null; libelle: string | null;
@@ -67,7 +67,8 @@ type LignePaiement = {
   compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
-  recu_le: string;
+  categorie?: string | null; nature?: string | null;
+  emis_le?: string | null; recu_le: string;
 };
 
 // --- Mise en forme des dates -------------------------------------------------
@@ -138,6 +139,7 @@ export async function chargerDonnees(): Promise<Donnees> {
         majTexte: ecartHumain(t.vu_le),
         version: t.version ?? "",
         sante: t.sante?.resume ?? "",
+        enAttente: t.sante?.en_attente ?? 0,
       }
     : null;
 
@@ -166,9 +168,18 @@ export async function chargerDonnees(): Promise<Donnees> {
     return operateur || l.tiers || l.numero || "SMS";
   };
 
+  // L'heure retenue pour l'ordre et l'affichage : l'heure RÉSEAU du SMS quand
+  // on la connaît (elle diverge de l'heure de relève après une coupure), sinon
+  // l'heure de relève. On trie ici, côté serveur, indépendamment de l'ordre
+  // renvoyé par la base (qui peut être en retard sur une migration).
+  const moment = (l: LignePaiement): string => l.emis_le || l.recu_le;
+  const parNature = (v: string | null | undefined): Paiement["nature"] =>
+    (v as Paiement["nature"]) || null;
+
   // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
   // portent un montant, les autres restent lisibles tels quels.
-  const paiements: Paiement[] = lignes
+  const paiements: Paiement[] = [...lignes]
+    .sort((a, b) => (moment(a) < moment(b) ? 1 : moment(a) > moment(b) ? -1 : 0))
     .map((l) => ({
       id: String(l.id),
       sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
@@ -178,9 +189,12 @@ export async function chargerDonnees(): Promise<Donnees> {
       nom: nomDe(l),
       numero: l.numero ?? "",
       montant: l.montant == null ? null : Number(l.montant),
-      heure: heure(l.recu_le),
-      date: libelleJour(l.recu_le),
-      recuLe: l.recu_le,
+      heure: heure(moment(l)),
+      date: libelleJour(moment(l)),
+      recuLe: moment(l),
+      // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne).
+      categorie: (l.categorie as Paiement["categorie"]) || "message",
+      nature: parNature(l.nature),
       reference: l.reference ?? "",
       soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
       smsBrut: l.texte,
@@ -275,6 +289,31 @@ export async function creerCommande(
     return lignes[0]?.id ?? null;
   } catch {
     return null;
+  }
+}
+
+// La NATURE choisie par le propriétaire pour un SMS (depot/retrait/transfert/
+// solde). C'est une métadonnée d'affichage, pas le contenu du SMS : le robot
+// ne réécrit jamais une ligne déjà transmise, donc c'est ici qu'on la pose,
+// directement sur la ligne visée par son identifiant.
+export async function definirNature(
+  id: number,
+  nature: string | null,
+): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/paiements?id=eq.${id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=minimal",
+      },
+      body: JSON.stringify({ nature }),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
   }
 }
 

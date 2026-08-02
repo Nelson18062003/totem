@@ -26,7 +26,7 @@ import time
 import urllib.error
 import urllib.request
 
-from .analyse_sms import analyser
+from .analyse_sms import analyser, categoriser
 from .version import version
 
 DELAI = 15          # secondes avant d'abandonner une requête
@@ -50,6 +50,10 @@ class Nuage:
         self.pause = pause
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
+        # Appelé (source_id, erreur) quand la base REFUSE un paiement : de quoi
+        # prévenir le propriétaire sur Telegram, au lieu de l'écarter en
+        # silence. Posé par le robot s'il a un transport.
+        self.sur_incident = None
         self._marche = True
         # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
         # prochain battement pour transmettre ce qu'il sait déjà.
@@ -69,42 +73,99 @@ class Nuage:
         with urllib.request.urlopen(req, timeout=DELAI) as rep:
             return rep.status
 
-    def _inserer(self, table, lignes, cle_unicite):
-        """Insertion rejouable : les doublons sont ignorés côté base."""
-        return self._tenter_insert(table, lignes, cle_unicite) == "ok"
-
-    def _tenter_insert(self, table, lignes, cle_unicite):
-        """Insertion rejouable qui DIT pourquoi elle échoue :
-          « ok »     — inséré (les doublons sont ignorés côté base).
+    def _tenter_insert(self, table, lignes, cle_unicite,
+                       resolution="ignore-duplicates"):
+        """Insertion rejouable qui DIT ce qui s'est passé :
+          « ok »     — inséré (les doublons sont ignorés ou fusionnés).
           « reseau » — cloud injoignable ou panne passagère (5xx) : on garde
                        tout et on réessaiera le même envoi.
-          « refuse » — la base REJETTE ces données (4xx : colonne absente,
-                       type invalide…). Un lot entier peut alors rester bloqué
-                       sur une seule ligne mal formée — d'où la reprise ligne
-                       par ligne chez l'appelant.
+          « schema » — colonne ou table absente. C'est réparable côté base (une
+                       migration), et ça touche TOUTES les lignes, pas une :
+                       les écarter les perdrait toutes en silence. On garde
+                       donc tout, on alerte, et le retard remonte tout seul dès
+                       la colonne ajoutée.
+          « refuse » — la base rejette CETTE ligne pour une valeur qui lui est
+                       propre (type invalide, contrainte). On l'écarte pour ne
+                       pas bloquer les autres.
+
+        `resolution` : « ignore-duplicates » pour des lignes immuables (SMS,
+        événements), « merge-duplicates » pour un état à rafraîchir (cartes).
         """
         if not lignes:
             return "ok"
         try:
             self._requete(
                 "POST", f"{table}?on_conflict={cle_unicite}", lignes,
-                {"Prefer": "return=minimal,resolution=ignore-duplicates"})
+                {"Prefer": f"return=minimal,resolution={resolution}"})
             self.derniere_erreur = None
             return "ok"
         except urllib.error.HTTPError as e:
-            self.derniere_erreur = self._detail_erreur(e)
-            return "refuse" if 400 <= e.code < 500 else "reseau"
+            corps = self._lire_corps(e)
+            self.derniere_erreur = f"{e.code} {corps}".strip()
+            if not 400 <= e.code < 500:
+                return "reseau"
+            return "schema" if self._defaut_de_schema(corps) else "refuse"
         except Exception as e:
             self.derniere_erreur = str(e)
             return "reseau"
 
+    def _pousser_lot(self, table, cle_unicite, ids, charge, marquer, sujet,
+                     resolution="ignore-duplicates"):
+        """Envoie un lot avec reprise ligne par ligne : les bonnes lignes
+        passent, une ligne refusée pour de bon (4xx propre à elle) est écartée
+        et signalée, un défaut de schéma ou une coupure gardent TOUT.
+
+        Une seule ligne empoisonnée ne peut donc plus geler toute une file —
+        ni pour les paiements, ni pour les événements, ni pour les cartes.
+        `marquer(liste_ids)` marque les lignes transmises ; `sujet` les nomme
+        dans les messages."""
+        etat = self._tenter_insert(table, charge, cle_unicite, resolution)
+        if etat == "ok":
+            marquer(ids)
+            return len(ids)
+        if etat == "reseau":
+            return 0
+        if etat == "schema":
+            self._alerter(None)
+            return 0
+        envoyes = 0
+        for id_local, ligne in zip(ids, charge):
+            e = self._tenter_insert(table, [ligne], cle_unicite, resolution)
+            if e in ("reseau", "schema"):
+                if e == "schema":
+                    self._alerter(id_local)
+                break
+            if e == "refuse":
+                self.journal.evenement(
+                    f"{sujet} {id_local} refusé par le cloud, mis de côté : "
+                    f"{self.derniere_erreur}")
+                self._alerter(id_local)
+            marquer([id_local])
+            if e == "ok":
+                envoyes += 1
+        return envoyes
+
     @staticmethod
-    def _detail_erreur(erreur):
+    def _lire_corps(erreur):
         try:
-            corps = erreur.read().decode("utf-8", "replace")[:300]
+            return erreur.read().decode("utf-8", "replace")[:300]
         except Exception:
-            corps = ""
-        return f"{erreur.code} {corps}".strip()
+            return ""
+
+    @staticmethod
+    def _defaut_de_schema(corps):
+        """Colonne ou table absente : PostgREST le signale par PGRST204/205 ou
+        par « schema cache » / « could not find ». Réparable, et commun à tout."""
+        c = corps.lower()
+        return ("pgrst204" in c or "pgrst205" in c
+                or "schema cache" in c or "could not find" in c)
+
+    def _alerter(self, source_id):
+        if self.sur_incident:
+            try:
+                self.sur_incident(source_id, self.derniere_erreur)
+            except Exception:
+                pass
 
     # ---- envois -----------------------------------------------------------
     def enregistrer_terminal(self, sante=None):
@@ -150,7 +211,10 @@ class Nuage:
                 lignes.append({
                     "terminal": self.terminal,
                     "iccid": c.carte.iccid,
-                    "libelle": c.libelle,
+                    # « libelle » est NOT NULL côté base : un libellé vide ferait
+                    # rejeter TOUT le lot de comptes en silence. On garantit une
+                    # valeur, à défaut les 4 derniers chiffres de l'ICCID.
+                    "libelle": c.libelle or f"·{c.carte.iccid[-4:]}",
                     "operateur": c.carte.operateur,
                     "reseau": c.carte.reseau or None,
                     "itinerance": c.carte.itinerance,
@@ -174,6 +238,7 @@ class Nuage:
         lignes_locales = self.journal.cartes_non_envoyees(LOT)
         if not lignes_locales:
             return 0
+        ids = [l[0] for l in lignes_locales]
         charge = [{
             "terminal": self.terminal,
             "iccid": iccid,
@@ -189,10 +254,11 @@ class Nuage:
             "derniere_vue": _horodatage(derniere),
         } for (iccid, imsi, operateur, libelle, numero, imei,
                premiere, derniere) in lignes_locales]
-        if not self._inserer_ou_mettre_a_jour("cartes", charge, "terminal,iccid"):
-            return 0
-        self.journal.marquer_cartes_envoyees([l[0] for l in lignes_locales])
-        return len(charge)
+        # « merge » : une carte déjà connue se met à jour (derniere_vue…).
+        return self._pousser_lot(
+            "cartes", "terminal,iccid", ids, charge,
+            self.journal.marquer_cartes_envoyees, "carte",
+            resolution="merge-duplicates")
 
     def pousser_paiements(self):
         """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé.
@@ -207,25 +273,23 @@ class Nuage:
         if not lignes_locales:
             return 0
         charge, ids = [], []
-        for id_local, date, expediteur, texte, compte, iccid in lignes_locales:
-            charge.append(
-                self._ligne_paiement(id_local, date, expediteur, texte, compte, iccid))
+        for id_local, date, expediteur, texte, compte, iccid, emis_le in lignes_locales:
+            charge.append(self._ligne_paiement(
+                id_local, date, expediteur, texte, compte, iccid, emis_le))
             ids.append(id_local)
-        etat = self._tenter_insert("paiements", charge, "terminal,source_id")
-        if etat == "ok":
-            self.journal.marquer_sms_envoyes(ids)
-            return len(ids)
-        if etat == "reseau":
-            return 0        # coupure : on garde tout, on réessaiera à l'identique
-        return self._paiements_un_par_un(ids, charge)
+        return self._pousser_lot(
+            "paiements", "terminal,source_id", ids, charge,
+            self.journal.marquer_sms_envoyes, "paiement")
 
-    def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid):
+    def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid,
+                        emis_le=None):
         """La ligne cloud d'un SMS. L'analyse ne doit jamais faire échouer la
         transmission : un SMS incompréhensible part quand même, tel quel."""
         try:
             p = analyser(texte)
+            cat = categoriser(texte)
         except Exception:
-            p = None
+            p, cat = None, "message"
         return {
             "terminal": self.terminal,
             "source_id": id_local,
@@ -235,6 +299,8 @@ class Nuage:
             # La carte qui a reçu le paiement : c'est elle qui rattache
             # la somme au bon solde quand plusieurs SIM se succèdent.
             "carte": iccid or None,
+            # La catégorie devinée : encaissement, pub, code, message…
+            "categorie": cat,
             "sens": p.sens if p else None,
             "montant": p.montant if p else None,
             "tiers": p.tiers if p else None,
@@ -245,42 +311,26 @@ class Nuage:
             "commission": (p.commission if p else None),
             "montant_brut": (p.montant_brut if p else None),
             "texte": texte,
+            # L'heure réseau (TP-SCTS) quand on l'a, sinon rien : le web
+            # retombe alors sur recu_le. Les deux portent leur fuseau.
+            "emis_le": _horodatage(emis_le) if emis_le else None,
             "recu_le": _horodatage(date),
         }
-
-    def _paiements_un_par_un(self, ids, charge):
-        """Reprise après le refus d'un lot. Les lignes valides passent ; celle
-        que la base rejette est signalée (avec l'erreur exacte) puis marquée
-        transmise — elle reste au journal local et sur Telegram, mais ne
-        bloque plus la plateforme pour toutes les autres."""
-        envoyes = 0
-        for id_local, ligne in zip(ids, charge):
-            etat = self._tenter_insert("paiements", [ligne], "terminal,source_id")
-            if etat == "reseau":
-                break       # coupure en cours de reprise : on garde le reste
-            if etat == "refuse":
-                self.journal.evenement(
-                    f"paiement {id_local} refusé par le cloud, mis de côté : "
-                    f"{self.derniere_erreur}")
-            self.journal.marquer_sms_envoyes([id_local])
-            if etat == "ok":
-                envoyes += 1
-        return envoyes
 
     def pousser_evenements(self):
         lignes_locales = self.journal.evenements_non_envoyes(LOT)
         if not lignes_locales:
             return 0
+        ids = [l[0] for l in lignes_locales]
         charge = [{
             "terminal": self.terminal,
             "source_id": id_local,
             "texte": texte,
             "survenu_le": _horodatage(date),
         } for id_local, date, texte in lignes_locales]
-        if not self._inserer("evenements", charge, "terminal,source_id"):
-            return 0
-        self.journal.marquer_evenements_envoyes([l[0] for l in lignes_locales])
-        return len(charge)
+        return self._pousser_lot(
+            "evenements", "terminal,source_id", ids, charge,
+            self.journal.marquer_evenements_envoyes, "événement")
 
     # ---- reçus PDF ---------------------------------------------------------
     # La carte SD du Pi n'est pas grande, et un reçu n'a rien à y faire : il
@@ -411,7 +461,16 @@ class Nuage:
                 if time.monotonic() >= prochain_etat:
                     prochain_etat = time.monotonic() + self.pause
                     etat = sante.resume() if sante else None
-                    self.enregistrer_terminal({"resume": etat} if etat else None)
+                    # On publie AUSSI le retard de synchro : les SMS relevés
+                    # mais pas encore transmis. La plateforme peut ainsi dire
+                    # « je suis en retard » plutôt que de montrer une boîte de
+                    # réception incomplète comme si elle était à jour. On ne
+                    # compte que les SMS : les événements et les cartes, souvent
+                    # en transit, feraient clignoter le bandeau pour rien.
+                    info = {"en_attente": self.journal.sms_en_attente()}
+                    if etat:
+                        info["resume"] = etat
+                    self.enregistrer_terminal(info)
                     self.publier_comptes(comptes)
                 envoyes = (self.pousser_cartes() + self.pousser_paiements()
                            + self.pousser_evenements())
@@ -442,7 +501,17 @@ class Nuage:
 
 
 def _horodatage(iso=None):
-    """Les dates du journal local sont naïves (heure du Pi). On les envoie
-    telles quelles ; Supabase les interprète dans son fuseau."""
+    """Une heure destinée au cloud, TOUJOURS avec son fuseau.
+
+    Les dates du journal local sont naïves (heure du Pi, Douala). Envoyées
+    telles quelles dans une colonne `timestamptz`, Supabase les interprète en
+    UTC — et le web, qui reformate en heure de Douala, ajoute une heure de
+    trop. On attache donc l'offset local du Pi : « 13:45 » devient
+    « 13:45+01:00 », que tout le monde comprend pareil."""
     from datetime import datetime
-    return (iso or datetime.now().isoformat(timespec="seconds"))
+    dt = datetime.fromisoformat(iso) if iso else datetime.now()
+    if dt.tzinfo is None:
+        # datetime naïf → considéré comme l'heure LOCALE du Pi, rendu conscient
+        # de son fuseau (astimezone() sur un naïf suppose l'heure locale).
+        dt = dt.astimezone()
+    return dt.isoformat(timespec="seconds")

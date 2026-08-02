@@ -148,6 +148,16 @@ class TestLeDocument(unittest.TestCase):
         self.assertTrue(pdf.rstrip().endswith(b"%%EOF"))
         self.assertGreater(len(pdf), 10_000)      # la police est embarquée
 
+    def test_le_titre_suit_la_nature(self):
+        # Un dépôt / un retrait donnent un reçu qui le DIT, pas un « transfert »
+        # générique. Le document reste par ailleurs identique.
+        motif = motif_du_sms(TRANSFERT_ORANGE, numeros=["696103864"])
+        for titre in ("Reçu de dépôt", "Reçu de retrait", "Reçu de transfert"):
+            pdf = recu_transfert(motif.paiement, "TM-2026-0731-0042", self.QUAND,
+                                 titre=titre)
+            self.assertTrue(pdf.startswith(b"%PDF-1.7"))
+            self.assertGreater(len(pdf), 10_000)
+
     def test_le_solde_produit_un_pdf(self):
         pdf = recu_solde(2784137.6, "WONDER PHONE", "696103864",
                          "TM-2026-0731-0043", self.QUAND)

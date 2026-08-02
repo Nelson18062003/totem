@@ -109,8 +109,21 @@ create table if not exists paiements (
   -- Qui a envoyé le SMS, tel que le téléphone l'affiche : « OrangeMoney »,
   -- « Orange », « MTN »… C'est le nom que la liste des SMS met en avant.
   expediteur   text,
+  -- La catégorie devinée du SMS, pour la boîte de réception : encaissement,
+  -- envoi, transfert, depot, retrait, solde, code, publicite, message.
+  categorie    text,
+  -- La nature CHOISIE par le propriétaire (depot/retrait/transfert/solde),
+  -- qui l'emporte sur la catégorie devinée et déclenche le reçu.
+  nature       text,
   texte        text not null,            -- le SMS d'origine : il fait foi
+  -- Heure RÉSEAU du SMS (TP-SCTS) quand le PDU la donne : l'heure vraie de
+  -- l'opération. « recu_le » est l'heure de relève du Pi ; les deux divergent
+  -- après une coupure, et c'est « emis_le » qui fait foi pour l'ordre.
+  emis_le      timestamptz,
   recu_le      timestamptz not null,
+  -- L'heure retenue pour l'ordre d'affichage : réseau si connue, sinon relève.
+  -- Colonne calculée, indexée : le tri ne balaie jamais la table.
+  moment       timestamptz generated always as (coalesce(emis_le, recu_le)) stored,
   cree_le      timestamptz not null default now(),
   unique (terminal, source_id)
 );
@@ -186,6 +199,12 @@ alter table paiements add column if not exists carte      text;
 alter table paiements add column if not exists expediteur   text;
 alter table paiements add column if not exists commission   numeric;
 alter table paiements add column if not exists montant_brut numeric;
+alter table paiements add column if not exists categorie    text;
+alter table paiements add column if not exists nature       text;
+alter table paiements add column if not exists emis_le      timestamptz;
+-- La colonne calculée « moment » vient APRÈS emis_le (elle en dépend).
+alter table paiements add column if not exists moment       timestamptz
+  generated always as (coalesce(emis_le, recu_le)) stored;
 
 -- Les montants étaient des entiers. Orange annonce ses soldes à la décimale
 -- (« Nouveau Solde: 2784137.6 FCFA ») : en bigint, PostgreSQL les ARRONDIT
@@ -218,14 +237,48 @@ begin
   end if;
 end $$;
 
+-- Le grand livre ne doit pas s'effacer par accident. Les tables financières
+-- (paiements, reçus) étaient en « on delete cascade » sur le terminal :
+-- supprimer par erreur la ligne « douala » aurait effacé, en silence et sans
+-- retour, tous les encaissements et tous les reçus. On bascule ces deux clés
+-- en « restrict » : tant qu'il reste de l'argent tracé, la base REFUSE de
+-- supprimer le terminal. Les tables d'état (cartes, comptes, événements,
+-- commandes) gardent la cascade — elles n'ont pas la même valeur de preuve.
+--
+-- Rejouable : on retire la clé existante (quel que soit son nom) puis on pose
+-- la version « restrict ». Sur une base déjà migrée, on repose la même.
+do $$
+declare tbl text; nom text;
+begin
+  foreach tbl in array array['paiements','recus']
+  loop
+    for nom in
+      select conname from pg_constraint
+      where conrelid = tbl::regclass and contype = 'f'
+        and confrelid = 'terminaux'::regclass
+    loop
+      execute format('alter table %I drop constraint %I', tbl, nom);
+    end loop;
+    execute format(
+      'alter table %I add constraint %I foreign key (terminal) '
+      'references terminaux(id) on delete restrict',
+      tbl, tbl || '_terminal_restrict_fkey');
+  end loop;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Index — après la migration, donc toutes les colonnes existent
 -- ---------------------------------------------------------------------------
 create index if not exists paiements_recu_le_idx on paiements (recu_le desc);
+-- L'affichage est trié par « moment » (heure réseau si connue, sinon relève).
+create index if not exists paiements_moment_idx on paiements (terminal, moment desc);
 create index if not exists paiements_compte_idx  on paiements (terminal, compte);
 create index if not exists paiements_carte_idx   on paiements (terminal, carte);
 create index if not exists paiements_tiers_idx   on paiements (tiers);
 create index if not exists cartes_derniere_vue_idx on cartes (terminal, derniere_vue desc);
+-- Le web trie les reçus par date d'établissement (recus?order=etabli_le.desc) :
+-- sans index, c'est un tri complet de la table à chaque page.
+create index if not exists recus_etabli_le_idx on recus (terminal, etabli_le desc);
 create index if not exists commandes_attente_idx
   on commandes (terminal, etat) where etat = 'en_attente';
 

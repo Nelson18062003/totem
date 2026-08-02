@@ -350,6 +350,12 @@ class ModemSerie:
         raise ErreurModem("Pas de réponse USSD du réseau (délai dépassé).")
 
     def _cusd(self, charge):
+        # Défense en profondeur contre l'injection AT : en mode GSM, un
+        # guillemet ou un retour chariot dans la charge refermerait la chaîne
+        # de la commande AT+CUSD et permettrait d'injecter d'autres ordres au
+        # modem. On les retire toujours — un code USSD ou une réponse de menu
+        # n'en contient jamais légitimement.
+        charge = re.sub(r'["\r\n\x00-\x1f]', "", charge)
         if self.ucs2:
             charge = encode_ucs2(charge)
         with self.verrou:
@@ -387,18 +393,32 @@ class ModemSerie:
             commande = "AT+CMGL=4" if self.mode_pdu else 'AT+CMGL="ALL"'
             brut = self._envoyer(commande, delai=10)
         if not self.mode_pdu:
+            # Le mode texte ne livre pas l'horodatage réseau : emis_le = None,
+            # l'appelant retombera sur l'heure de relève du Pi.
             return [([int(m.group(1))], decode_auto(m.group(2)),
-                     decode_auto(m.group(3).strip()))
+                     decode_auto(m.group(3).strip()), None)
                     for m in RE_CMGL.finditer(brut)]
 
-        morceaux = []
+        morceaux, illisibles = [], []
         for m in RE_CMGL_PDU.finditer(brut):
+            index = int(m.group(1))
             try:
-                morceaux.append((int(m.group(1)), decoder(m.group(2))))
+                morceaux.append((index, decoder(m.group(2))))
             except ErreurPDU:
-                continue          # un PDU illisible ne doit pas bloquer les autres
-        return [(indices, expediteur, texte)
-                for indices, expediteur, texte, _ in recoller(morceaux)]
+                illisibles.append(index)   # on connaît sa place : on pourra l'effacer
+        # recoller livre l'horodatage réseau (TP-SCTS) du message : on le
+        # PROPAGE désormais au lieu de le jeter — c'est l'heure vraie du SMS.
+        messages = list(recoller(morceaux))
+        # Un PDU illisible n'était ni journalisé ni effacé : il occupait un
+        # emplacement à CHAQUE tour et finissait par saturer la mémoire du
+        # modem — donc par faire perdre les vrais SMS suivants. On le remonte
+        # comme un message « non décodable » : l'appelant le journalise (trace
+        # qu'un message est arrivé) et l'efface (libère la place).
+        for index in illisibles:
+            messages.append(
+                ([index], "modem",
+                 "⚠️ SMS reçu mais non décodable (format PDU illisible).", None))
+        return messages
 
     def effacer_sms(self, indices):
         """Efface un ou plusieurs emplacements, une fois le message journalisé."""

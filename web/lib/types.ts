@@ -26,6 +26,11 @@ export type Sim = {
   totalRecu: number;
 };
 
+// La catégorie d'un SMS reçu, comme une boîte de réception les range.
+export type Categorie =
+  | "encaissement" | "envoi" | "transfert" | "depot" | "retrait"
+  | "solde" | "code" | "publicite" | "message" | "inconnu";
+
 export type Paiement = {
   id: string;
   sim: string;              // libellé court de l'opérateur (« Orange »)
@@ -38,7 +43,9 @@ export type Paiement = {
   montant: number | null;
   heure: string;
   date: string;             // « Aujourd'hui », « Hier », « 28 juillet »
-  recuLe: string;           // l'horodatage exact, pour les calculs
+  recuLe: string;           // l'horodatage retenu (réseau si connu, sinon relève)
+  categorie: Categorie;     // devinée par le terminal
+  nature: Categorie | null; // choisie par le propriétaire (pour le reçu)
   reference: string;
   soldeApres: number | null;
   smsBrut: string;
@@ -55,6 +62,9 @@ export type EtatTerminal = {
   // La santé physique du Pi, telle que le robot la résume :
   // « 35 °C · disque 12 % (98 Go libres) ». Vide si rien n'est remonté.
   sante: string;
+  // Ce que le robot a relevé mais pas encore transmis au cloud : quand c'est
+  // significatif, la plateforme le dit plutôt que de paraître à jour.
+  enAttente: number;
 };
 
 export type Donnees = {

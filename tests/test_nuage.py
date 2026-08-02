@@ -23,6 +23,7 @@ class FauxSupabase(BaseHTTPRequestHandler):
     recu = []           # toutes les lignes reçues, par table
     en_panne = False
     refuser_texte = None  # sous-chaîne : tout lot la contenant est rejeté (400)
+    colonne_absente = False  # simule un défaut de schéma (PGRST204)
 
     def do_POST(self):
         if FauxSupabase.en_panne:
@@ -30,8 +31,18 @@ class FauxSupabase(BaseHTTPRequestHandler):
             return
         taille = int(self.headers.get("Content-Length", 0))
         corps = json.loads(self.rfile.read(taille) or b"[]")
-        # Une donnée que la base rejette pour de bon (colonne absente, type
-        # invalide…) : Supabase répond 4xx, pas 5xx.
+        # Une colonne manquante : PostgREST répond 400 avec le code PGRST204.
+        # Ça touche TOUS les envois tant que la colonne n'est pas ajoutée.
+        if FauxSupabase.colonne_absente:
+            msg = (b'{"code":"PGRST204","message":"Could not find the '
+                   b'\'expediteur\' column of \'paiements\' in the schema cache"}')
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+            return
+        # Une donnée que la base rejette pour de bon (type invalide…) : 4xx.
         if FauxSupabase.refuser_texte is not None and any(
                 FauxSupabase.refuser_texte in (l.get("texte") or "") for l in corps):
             self.send_error(400, "donnee refusee")
@@ -60,6 +71,7 @@ class TestNuage(unittest.TestCase):
         FauxSupabase.recu = []
         FauxSupabase.en_panne = False
         FauxSupabase.refuser_texte = None
+        FauxSupabase.colonne_absente = False
         self.journal = Journal(":memory:")
         self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
                            "douala", self.journal)
@@ -107,6 +119,27 @@ class TestNuage(unittest.TestCase):
         self.assertEqual(ligne["compte"], "MTN")
         # Le message d'origine part toujours : c'est lui qui fait foi.
         self.assertIn("25 000 FCFA", ligne["texte"])
+
+    def test_heure_reseau_et_categorie_partent_au_cloud(self):
+        # G2 + catégorie : l'heure réseau (TP-SCTS) et la catégorie devinée
+        # accompagnent chaque SMS jusqu'au cloud.
+        self.journal.sms(
+            "OrangeMoney",
+            "Vous avez recu 25000 FCFA de NGONO Marie (677123456)",
+            "Orange", emis_le="2026-08-02T13:45:00+01:00")
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        (ligne,) = self._lignes("paiements")
+        self.assertEqual(ligne["categorie"], "encaissement")
+        self.assertIn("13:45", ligne["emis_le"])
+
+    def test_sms_sans_heure_reseau_retombe_sur_la_releve(self):
+        # Mode texte / vieux SMS : pas d'heure réseau → emis_le nul, le web
+        # retombera sur recu_le. Rien ne casse.
+        self.journal.sms("Papa", "Rappelle-moi", "MTN")   # emis_le par défaut None
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        (ligne,) = self._lignes("paiements")
+        self.assertIsNone(ligne["emis_le"])
+        self.assertEqual(ligne["categorie"], "message")
 
     def test_sms_incompris_transmis_quand_meme(self):
         """Un SMS non reconnu n'est pas perdu : il part sans analyse."""
@@ -186,6 +219,36 @@ class TestNuage(unittest.TestCase):
         self.assertIn("refusé par le cloud", evenements)
         self.assertIn("400", evenements)                     # l'erreur exacte de la base
 
+    def test_un_refus_previent_le_proprietaire(self):
+        # Le propriétaire doit l'apprendre (sur Telegram, via ce rappel), avec
+        # l'erreur exacte — pas chercher en vain pourquoi un SMS n'apparaît pas.
+        incidents = []
+        self.nuage.sur_incident = lambda sid, err: incidents.append((sid, err))
+        self.journal.sms("MoMo", "SMS EMPOISONNE", "MTN")
+        FauxSupabase.refuser_texte = "EMPOISONNE"
+        self.nuage.pousser_paiements()
+        self.assertEqual(len(incidents), 1)
+        self.assertIn("400", incidents[0][1])
+
+    def test_colonne_manquante_ne_perd_aucun_sms(self):
+        """L'incident réel : la colonne 'expediteur' manquait à la base.
+        C'est commun à TOUS les SMS — les écarter les perdrait tous. On les
+        garde, on alerte, et tout remonte dès que la colonne est ajoutée."""
+        incidents = []
+        self.nuage.sur_incident = lambda sid, err: incidents.append(err)
+        self.journal.sms("MoMo", "Vous avez recu 1000 FCFA de 677000111", "MTN")
+        FauxSupabase.colonne_absente = True
+
+        self.assertEqual(self.nuage.pousser_paiements(), 0)
+        self.assertNotEqual(self.journal.sms_non_envoyes(100), [])  # GARDÉ, pas jeté
+        self.assertEqual(len(incidents), 1)                         # et signalé
+        self.assertIn("PGRST204", incidents[0])
+
+        # La colonne est ajoutée à la base : le SMS remonte tout seul.
+        FauxSupabase.colonne_absente = False
+        self.assertEqual(self.nuage.pousser_paiements(), 1)
+        self.assertEqual(self.journal.sms_non_envoyes(100), [])
+
     def test_une_coupure_ne_met_rien_en_quarantaine(self):
         """Si TOUT échoue par coupure réseau (5xx), rien n'est mis de côté :
         on garde tout et on réessaiera. Une panne de nuit ne perd pas un SMS."""
@@ -193,6 +256,19 @@ class TestNuage(unittest.TestCase):
         FauxSupabase.en_panne = True
         self.assertEqual(self.nuage.pousser_paiements(), 0)
         self.assertEqual(self.journal.reste_a_envoyer(), 1)  # gardé, pas quarantiné
+
+    def test_un_evenement_refuse_ne_bloque_pas_les_suivants(self):
+        # M1 : la reprise ligne par ligne vaut AUSSI pour les événements, pas
+        # seulement les paiements. Un événement empoisonné ne gèle plus la file.
+        self.journal.evenement("evenement A")
+        self.journal.evenement("POISON evenement")
+        self.journal.evenement("evenement C")
+        FauxSupabase.refuser_texte = "POISON"
+        self.assertEqual(self.nuage.pousser_evenements(), 2)
+        textes = " ".join(l["texte"] for l in self._lignes("evenements"))
+        self.assertIn("evenement A", textes)
+        self.assertIn("evenement C", textes)
+        self.assertNotIn("POISON", textes)
 
     # --- événements ---
     def test_envoie_les_evenements(self):
@@ -207,6 +283,15 @@ class TestNuage(unittest.TestCase):
         (ligne,) = self._lignes("terminaux")
         self.assertEqual(ligne["id"], "douala")
         self.assertIn("vu_le", ligne)
+
+    def test_l_heure_envoyee_porte_son_fuseau(self):
+        # G1 : une heure naïve stockée en timestamptz serait lue en UTC, puis
+        # ré-affichée en heure de Douala → une heure de trop. On envoie donc
+        # toujours l'offset. « now » comme une date du journal.
+        from totem.nuage import _horodatage
+        self.assertRegex(_horodatage(), r"[+-]\d\d:\d\d$")
+        self.assertRegex(_horodatage("2026-08-02T13:45:00"),
+                         r"^2026-08-02T13:45:00[+-]\d\d:\d\d$")
 
 
 if __name__ == "__main__":

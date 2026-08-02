@@ -2,9 +2,37 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { fcfa, type Paiement } from "@/lib/types";
-import { IconArrowDown, IconArrowUp, IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
+import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
+
+// Chaque catégorie de SMS a sa pastille et son libellé, comme une boîte de
+// réception. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
+const CAT: Record<Categorie, { emoji: string; label: string }> = {
+  encaissement: { emoji: "💰", label: "Encaissement" },
+  envoi: { emoji: "↗️", label: "Envoi" },
+  transfert: { emoji: "🔁", label: "Transfert" },
+  depot: { emoji: "📥", label: "Dépôt" },
+  retrait: { emoji: "📤", label: "Retrait" },
+  solde: { emoji: "📊", label: "Solde" },
+  code: { emoji: "🔑", label: "Code" },
+  publicite: { emoji: "📢", label: "Pub" },
+  message: { emoji: "💬", label: "Message" },
+  inconnu: { emoji: "✉️", label: "SMS" },
+};
+
+// L'ordre des filtres de catégorie : les mouvements d'argent d'abord.
+const ORDRE_CAT: Categorie[] = [
+  "encaissement", "envoi", "transfert", "depot", "retrait",
+  "solde", "code", "publicite", "message", "inconnu",
+];
+
+// Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
+const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
+
+// La catégorie effective : la nature choisie par le propriétaire l'emporte sur
+// la catégorie devinée par le terminal.
+const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
 
 /**
  * Tous les SMS reçus par les cartes, tels quels — c'est par eux que tout
@@ -14,24 +42,35 @@ import { Vide } from "../vide";
 export function ListeEncaissements({
   paiements,
   operateurs,
+  enAttente = 0,
 }: {
   paiements: Paiement[];
   operateurs: string[];
+  enAttente?: number;
 }) {
   const [filtre, setFiltre] = useState("Tous");
+  const [categorie, setCategorie] = useState<Categorie | "Toutes">("Toutes");
   const [recherche, setRecherche] = useState("");
   const [detail, setDetail] = useState<Paiement | null>(null);
+
+  // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
+  // pas un filtre pour une catégorie qu'on n'a jamais reçue.
+  const categories = useMemo(() => {
+    const vues = new Set(paiements.map(catDe));
+    return ORDRE_CAT.filter((c) => vues.has(c));
+  }, [paiements]);
 
   const liste = useMemo(() => {
     const q = recherche.trim().toLowerCase().replace(/\s/g, "");
     return paiements.filter((p) => {
       if (filtre !== "Tous" && p.sim !== filtre) return false;
+      if (categorie !== "Toutes" && catDe(p) !== categorie) return false;
       if (!q) return true;
       return p.nom.toLowerCase().includes(q) || p.numero.replace(/\s/g, "").includes(q)
         || String(p.montant ?? "").includes(q) || p.reference.toLowerCase().includes(q)
         || p.smsBrut.toLowerCase().includes(q);
     });
-  }, [paiements, filtre, recherche]);
+  }, [paiements, filtre, categorie, recherche]);
 
   const entrees = liste.filter((p) => p.sens === "in" && p.montant != null && p.date === "Aujourd’hui");
   const totalIn = entrees.reduce((s, p) => s + (p.montant ?? 0), 0);
@@ -49,6 +88,14 @@ export function ListeEncaissements({
           qui fait foi — et son reçu se télécharge quand il existe.
         </p>
       </header>
+
+      {enAttente > 0 && (
+        <p className="rounded-card border border-line bg-surface-2 px-4 py-2.5 text-small text-ink-soft">
+          ⏳ Le terminal a {enAttente} message{enAttente > 1 ? "s" : ""} en cours
+          de transmission — cette liste n’est peut-être pas encore complète.
+          Elle se met à jour toute seule.
+        </p>
+      )}
 
       <section>
         <p className="text-small text-ink-soft">Reçu aujourd’hui</p>
@@ -82,18 +129,32 @@ export function ListeEncaissements({
         </div>
       </div>
 
+      {/* Filtre par catégorie — seulement celles réellement reçues */}
+      {categories.length > 1 && (
+        <div className="-mt-3 flex flex-wrap gap-1.5">
+          <Chip actif={categorie === "Toutes"} onClick={() => setCategorie("Toutes")}>
+            Toutes
+          </Chip>
+          {categories.map((c) => (
+            <Chip key={c} actif={categorie === c} onClick={() => setCategorie(c)}>
+              {CAT[c].emoji} {CAT[c].label}
+            </Chip>
+          ))}
+        </div>
+      )}
+
       {/* La liste des SMS */}
       {Object.keys(parDate).length === 0 ? (
-        recherche || filtre !== "Tous" ? (
+        recherche || filtre !== "Tous" || categorie !== "Toutes" ? (
           <Vide
             titre="Aucun SMS ne correspond"
-            detail="Essayez un autre mot, un autre montant, ou retirez le filtre d’opérateur."
+            detail="Essayez un autre mot, un autre montant, ou retirez un filtre."
             action={
               <button
-                onClick={() => { setRecherche(""); setFiltre("Tous"); }}
+                onClick={() => { setRecherche(""); setFiltre("Tous"); setCategorie("Toutes"); }}
                 className="rounded-btn border border-line px-4 py-2 text-small font-medium transition hover:border-ink-faint"
               >
-                Effacer la recherche
+                Tout afficher
               </button>
             }
           />
@@ -112,8 +173,9 @@ export function ListeEncaissements({
                 <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
-                    <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                      {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
+                    <span title={CAT[catDe(p)].label}
+                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-body">
+                      {CAT[catDe(p)].emoji}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
@@ -157,6 +219,28 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
   const router = useRouter();
   const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
   const [mot, setMot] = useState("");
+  const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
+  const [classe, setClasse] = useState(false);
+
+  // Le propriétaire décide la nature d'un SMS (dépôt/retrait/transfert/solde) :
+  // elle s'affiche ainsi partout, et son reçu s'établit dans la foulée.
+  const classer = async (n: Categorie) => {
+    if (classe) return;
+    setClasse(true);
+    setNature(n);
+    try {
+      await fetch("/api/nature", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: Number(p.id), nature: n }),
+      });
+      if (p.sourceId != null && !p.recu) await etablirRecu();
+      router.refresh();
+    } catch {
+      /* l'échec reste visible via l'état du reçu */
+    }
+    setClasse(false);
+  };
 
   // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
   // qui fait foi — même numéro, même document, à la demande.
@@ -216,12 +300,34 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         </div>
 
         <dl className="mt-6 divide-hair">
+          <L t="Catégorie" v={`${CAT[catDe(p)].emoji} ${CAT[catDe(p)].label}`} />
           <L t="Opérateur" v={p.sim} />
           {p.numero && <L t="Numéro" v={p.numero} />}
           <L t="Date" v={`${p.date} à ${p.heure}`} />
           {p.reference && <L t="Référence" v={p.reference} />}
           {p.soldeApres != null && <L t="Solde après" v={fcfa(p.soldeApres)} />}
         </dl>
+
+        <div className="mt-5">
+          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
+            Nature — pour le reçu
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {NATURES.map((n) => (
+              <button key={n} onClick={() => classer(n)} disabled={classe}
+                className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
+                  nature === n
+                    ? "border-ink bg-ink font-medium text-white"
+                    : "border-line text-ink-soft hover:border-ink-faint"
+                }`}>
+                {CAT[n].emoji} {CAT[n].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
+            Choisir une nature l’affiche ainsi partout et établit son reçu.
+          </p>
+        </div>
 
         <div className="mt-5">
           <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">Message reçu</p>
@@ -256,6 +362,29 @@ function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
         )}
       </div>
     </div>
+  );
+}
+
+function Chip({
+  actif,
+  onClick,
+  children,
+}: {
+  actif: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-small transition ${
+        actif
+          ? "border-ink bg-ink font-medium text-white"
+          : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
