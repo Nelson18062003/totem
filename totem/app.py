@@ -1566,9 +1566,16 @@ class Robot:
                     # vraie de l'opération, distincte de l'heure de relève —
                     # elles divergent après une coupure, et c'est la réseau qui
                     # fait foi pour l'ordre et les reçus.
+                    # Garde-fou : quoi que le maillon d'avant ait mis dans
+                    # `emis_le`, le SMS passe. Une heure réseau perdue est un
+                    # détail ; un SMS bloqué en boucle est la panne totale —
+                    # c'est arrivé (un booléen à la place de l'heure, et plus
+                    # RIEN n'arrivait, ni Telegram ni plateforme).
+                    heure_reseau = (emis_le.isoformat()
+                                    if hasattr(emis_le, "isoformat") else None)
                     sms_id = self.journal.sms(
                         expediteur, texte, compte.libelle, compte.carte.iccid,
-                        emis_le=emis_le.isoformat() if emis_le else None)
+                        emis_le=heure_reseau)
                     self._notifier_sms(compte, expediteur, texte)
                     # Le reçu ne part pas maintenant : l'alerte doit arriver la
                     # première, et un PDF ne doit jamais retarder l'annonce

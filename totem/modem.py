@@ -432,9 +432,19 @@ class ModemSerie:
                 morceaux.append((index, decoder(m.group(2))))
             except ErreurPDU:
                 illisibles.append(index)   # on connaît sa place : on pourra l'effacer
-        # recoller livre l'horodatage réseau (TP-SCTS) du message : on le
-        # PROPAGE désormais au lieu de le jeter — c'est l'heure vraie du SMS.
-        messages = list(recoller(morceaux))
+        # L'heure réseau (TP-SCTS) de chaque emplacement, lue sur le PDU :
+        # c'est l'heure vraie de l'opération, celle que le journal retient.
+        # ATTENTION : le 4e champ de `recoller` est « complet » (vrai/faux),
+        # PAS cette heure — l'avoir confondu a bloqué la relève entière
+        # (« 'bool' object has no attribute 'isoformat' » à chaque tour, et
+        # aucun SMS ne passait plus). On la reprend donc ici, sur les
+        # morceaux eux-mêmes, avant de la propager à l'appelant.
+        heures = {index: morceau.horodatage for index, morceau in morceaux}
+        messages = []
+        for indices, expediteur, texte, _complet in recoller(morceaux):
+            emis_le = max((h for h in (heures.get(i) for i in indices) if h),
+                          default=None)
+            messages.append((indices, expediteur, texte, emis_le))
         # Un PDU illisible n'était ni journalisé ni effacé : il occupait un
         # emplacement à CHAQUE tour et finissait par saturer la mémoire du
         # modem — donc par faire perdre les vrais SMS suivants. On le remonte
