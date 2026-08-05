@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { textesGuichet } from "@/lib/textes/guichet";
 import { IconClose } from "./icons";
+import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";
 
 /**
@@ -29,17 +31,20 @@ export type Operation = {
 
 type Msg = { de: "reseau" | "vous"; texte: string };
 
-// La question du réseau ↔ le champ qui peut y répondre tout seul.
+// La question du réseau ↔ le champ qui peut y répondre tout seul. Les
+// opérateurs camerounais écrivent dans les deux langues : chaque motif porte
+// donc les mots français ET anglais — c'est du texte opérateur qu'on lit,
+// jamais celui de l'écran.
 const RECONNAISSANCE: { motif: RegExp; type: ChampOperation["type"] }[] = [
-  { motif: /num[ée]ro|beneficiaire|b[ée]n[ée]ficiaire|abonn[ée]|agent|destinataire|t[ée]l[ée]phone/i, type: "numero" },
-  { motif: /montant|somme|combien/i, type: "montant" },
+  { motif: /num[ée]ro|beneficiaire|b[ée]n[ée]ficiaire|abonn[ée]|agent|destinataire|t[ée]l[ée]phone|number|recipient|beneficiary|receiver|subscriber|phone/i, type: "numero" },
+  { motif: /montant|somme|combien|amount|how\s+much/i, type: "montant" },
 ];
 
 const RE_OPTION = /^\s*\d{1,2}\s*[.):\-]\s*\S/m;
 
 function demandeUnCode(texte: string): boolean {
   return !RE_OPTION.test(texte || "") &&
-    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password/i.test(texte || "");
+    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte || "");
 }
 
 export function OperationPopup({
@@ -51,6 +56,8 @@ export function OperationPopup({
   onFermer: () => void;
   onTermine?: () => void;       // après une session aboutie (rafraîchir le solde…)
 }) {
+  const langue = useLangue();
+  const t = textesGuichet[langue];
   const [etape, setEtape] = useState<"saisie" | "session">(
     operation.champs.length ? "saisie" : "session",
   );
@@ -90,7 +97,8 @@ export function OperationPopup({
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
-        throw new Error(corps?.erreur || "la demande n’a pas pu partir");
+        // corps.erreur arrive déjà dans la langue de l'écran : tel quel.
+        throw new Error(corps?.erreur || t.demandePasPartie);
       }
       const { id } = (await r.json()) as { id: number };
       for (let i = 0; i < 25; i++) {
@@ -101,16 +109,16 @@ export function OperationPopup({
         if (c && (c.etat === "faite" || c.etat === "echouee")) {
           setAttente(false);
           if (genre === "ussd_fin") return null;
-          const texte = c.resultat || (c.etat === "faite" ? "(réponse vide)" : "Échec.");
+          const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
           setFil((f) => [...f, { de: "reseau", texte }]);
           if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
           setEnSession(true);
           return texte;
         }
       }
-      throw new Error("le terminal n’a pas répondu — est-il allumé, et à jour ?");
+      throw new Error(t.terminalMuet);
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : "petit accroc — réessayez");
+      setErreur(e instanceof Error ? e.message : t.accroc);
       setAttente(false);
       return null;
     }
@@ -174,12 +182,12 @@ export function OperationPopup({
         <div className="mb-5 flex items-start justify-between">
           <div>
             <p className="text-caption uppercase tracking-wider text-ink-faint">
-              {etape === "saisie" ? "Préparation" : enSession ? "Session en cours" : "Session"}
+              {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
               {" · "}<span className="tabnums">{operation.code}</span>
             </p>
             <h2 className="mt-1 text-heading font-semibold">{operation.titre}</h2>
           </div>
-          <button onClick={annuler} aria-label="Fermer" className="text-ink-faint transition hover:text-ink">
+          <button onClick={annuler} aria-label={t.fermer} className="text-ink-faint transition hover:text-ink">
             <IconClose size={18} />
           </button>
         </div>
@@ -195,17 +203,15 @@ export function OperationPopup({
               </label>
             ))}
             <p className="text-caption leading-relaxed text-ink-faint">
-              La session s’ouvre sur la carte, à Douala. La plateforme répond aux
-              questions du menu avec ces informations ; le code secret se
-              compose ensuite sur son pavé.
+              {t.noteSaisie}
             </p>
             <div className="mt-1 flex gap-2">
               <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
-                Annuler
+                {t.annuler}
               </button>
               <button disabled={!complet} onClick={lancer}
                 className="flex-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                Lancer
+                {t.lancer}
               </button>
             </div>
           </div>
@@ -221,7 +227,7 @@ export function OperationPopup({
                   {m.texte}
                 </p>
               ))}
-              {attente && <p className="self-start px-1 text-caption text-ink-faint">le terminal compose…</p>}
+              {attente && <p className="self-start px-1 text-caption text-ink-faint">{t.terminalCompose}</p>}
               {erreur && (
                 <p className="self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-negative">
                   {erreur}
@@ -240,11 +246,11 @@ export function OperationPopup({
               <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
                 className="flex items-center gap-2">
                 <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
-                  inputMode="tel" placeholder="Votre réponse"
+                  inputMode="tel" placeholder={t.votreReponse}
                   className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
                 <button type="submit" disabled={!reponseLibre.trim()}
                   className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  Envoyer
+                  {t.envoyer}
                 </button>
               </form>
             )}
@@ -252,19 +258,18 @@ export function OperationPopup({
             {fini ? (
               <>
                 <p className="text-caption leading-relaxed text-ink-faint">
-                  La confirmation de l’opérateur arrivera dans les SMS reçus,
-                  avec son reçu quand il y a lieu.
+                  {t.confirmationSms}
                 </p>
                 <button onClick={onFermer}
                   className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                  Terminé
+                  {t.termine}
                 </button>
               </>
             ) : (
               /* Le geste de sortie, impossible à manquer. */
               <button onClick={annuler} disabled={attente}
                 className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                Annuler la session
+                {t.annulerSession}
               </button>
             )}
           </div>

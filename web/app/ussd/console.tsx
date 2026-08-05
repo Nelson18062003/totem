@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { codesUssd } from "@/lib/codes";
+import { textesUssd } from "@/lib/textes/ussd";
 import type { Sim } from "@/lib/types";
 import { IconClose, IconHash } from "../icons";
+import { useLangue } from "../langue";
 import { PaveSecret } from "../pave-secret";
 
 /**
@@ -20,12 +22,13 @@ const RE_OPTION = /^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$/;
 
 // Le réseau attend-il le code secret ? (même règle que le robot : un menu
 // qui PARLE du code sans rien demander porte des options numérotées.)
+// Le motif lit du texte opérateur, écrit en français comme en anglais.
 function demandeUnCode(texte: string): boolean {
   const porteOptions = (texte || "")
     .split(/\r\n|\r|\n/)
     .some((l) => RE_OPTION.test(l.trim()));
   return !porteOptions &&
-    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password/i.test(texte);
+    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte);
 }
 
 export function ConsoleUssd({
@@ -35,6 +38,8 @@ export function ConsoleUssd({
   carte: Pick<Sim, "libelle" | "operateur">;
   codeInitial?: string;
 }) {
+  const langue = useLangue();
+  const t = textesUssd[langue];
   const [saisie, setSaisie] = useState("");
   const [reponse, setReponse] = useState("");
   const [fil, setFil] = useState<Msg[]>([]);
@@ -64,7 +69,8 @@ export function ConsoleUssd({
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
-        throw new Error(corps?.erreur || "la demande n’a pas pu partir");
+        // corps.erreur arrive déjà dans la langue de l'écran : tel quel.
+        throw new Error(corps?.erreur || t.demandePasPartie);
       }
       const { id } = (await r.json()) as { id: number };
       // Le terminal relève ses demandes toutes les quelques secondes : on
@@ -80,7 +86,7 @@ export function ConsoleUssd({
           } else {
             setFil((f) => [...f, {
               de: "reseau",
-              texte: c.resultat || (c.etat === "faite" ? "(réponse vide)" : "Échec."),
+              texte: c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec),
             }]);
             setEnSession(c.etat === "faite");
           }
@@ -88,9 +94,9 @@ export function ConsoleUssd({
           return;
         }
       }
-      throw new Error("le terminal n’a pas répondu — est-il allumé, et à jour ?");
+      throw new Error(t.terminalMuet);
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : "petit accroc — réessayez");
+      setErreur(e instanceof Error ? e.message : t.accroc);
       setAttente(false);
     }
   };
@@ -133,11 +139,8 @@ export function ConsoleUssd({
     // Grand écran : le cadran à gauche, l'écran de session à droite.
     <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-x-10">
       <header className="lg:col-span-2">
-        <h1 className="text-title font-semibold tracking-tight">Code USSD</h1>
-        <p className="mt-1 text-small text-ink-soft">
-          Composez comme sur le téléphone : le terminal de Douala tape le code
-          sur la carte {carte.libelle}, et la réponse du réseau revient ici.
-        </p>
+        <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+        <p className="mt-1 text-small text-ink-soft">{t.sousTitre(carte.libelle)}</p>
       </header>
 
       {/* La colonne du cadran : composer, puis les raccourcis */}
@@ -158,24 +161,23 @@ export function ConsoleUssd({
           </div>
           <button type="submit" disabled={!saisie.trim() || attente}
             className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-            Composer
+            {t.composer}
           </button>
         </form>
 
-        {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages */}
+        {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages.
+            Le libellé suit la langue par la clé du catalogue ; le code, jamais. */}
         <div className="flex flex-wrap gap-1.5">
           {(codesUssd[carte.operateur] ?? []).map((c) => (
             <button key={c.code} onClick={() => composer(c.code)} disabled={attente}
               className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-40">
-              {c.libelle} <span className="tabnums text-ink-faint">{c.code}</span>
+              {t.libelleCode(c.cle, c.libelle)} <span className="tabnums text-ink-faint">{c.code}</span>
             </button>
           ))}
         </div>
 
         <p className="hidden text-caption leading-relaxed text-ink-faint lg:block">
-          La session traverse le terminal de Douala : chaque réponse affichée
-          ici est celle de l’opérateur, mot pour mot. Le code secret, lui, se
-          compose sur son pavé et n’est enregistré nulle part.
+          {t.noteSession}
         </p>
       </div>
 
@@ -183,17 +185,16 @@ export function ConsoleUssd({
       {fil.length === 0 && !attente ? (
         <div className="hidden items-center justify-center rounded-card border border-dashed border-line px-6 py-16 text-center lg:col-start-2 lg:flex">
           <p className="max-w-56 text-small leading-relaxed text-ink-faint">
-            Aucune session en cours. Composez un code, la réponse du réseau
-            s’affichera ici.
+            {t.aucuneSession}
           </p>
         </div>
       ) : (
         <section className="rounded-card border border-line bg-surface-raised lg:col-start-2">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-small font-medium">
-              {enSession ? "Session en cours" : "Session terminée"} · {carte.libelle}
+              {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
-            <button onClick={fermer} aria-label="Raccrocher la session" disabled={attente}
+            <button onClick={fermer} aria-label={t.raccrocher} disabled={attente}
               className="text-ink-faint transition hover:text-ink disabled:opacity-40">
               <IconClose size={16} />
             </button>
@@ -212,7 +213,7 @@ export function ConsoleUssd({
             ))}
             {attente && (
               <p className="self-start px-1 text-caption text-ink-faint">
-                le terminal compose…
+                {t.terminalCompose}
               </p>
             )}
             {erreur && (
@@ -238,13 +239,13 @@ export function ConsoleUssd({
                   value={reponse}
                   onChange={(e) => setReponse(e.target.value)}
                   inputMode="tel"
-                  placeholder="Votre réponse (chiffre du menu, montant, numéro…)"
+                  placeholder={t.votreReponseDetail}
                   autoFocus
                   className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
                 />
                 <button type="submit" disabled={!reponse.trim()}
                   className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  Envoyer
+                  {t.envoyer}
                 </button>
               </form>
             )}
@@ -253,7 +254,7 @@ export function ConsoleUssd({
             {enSession && (
               <button onClick={fermer} disabled={attente}
                 className="mt-2 rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                Annuler la session
+                {t.annulerSession}
               </button>
             )}
             <div ref={bas} />
@@ -262,8 +263,7 @@ export function ConsoleUssd({
       )}
 
       <p className="text-caption leading-relaxed text-ink-faint lg:hidden">
-        La session traverse le terminal de Douala : chaque réponse affichée ici
-        est celle de l’opérateur, mot pour mot.
+        {t.noteSessionCourte}
       </p>
     </div>
   );
