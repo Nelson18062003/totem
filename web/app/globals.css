@@ -119,9 +119,15 @@ body {
 :root { --rail: 15rem; }
 html[data-rail="replie"] { --rail: 4.5rem; }
 
+/* L'entrée d'une page est un FONDU PUR — jamais de transform ici. Un
+   conteneur qui glisse devient le repère des fenêtres « fixed » qu'il
+   contient : la session USSD et la fiche d'un SMS se retrouvaient
+   enfermées, rétrécies, dans la colonne de la page au lieu de couvrir
+   l'écran. Le glissement reste permis sur la fenêtre elle-même (.surgit),
+   qui ne contient personne. */
 @keyframes entree {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .entree { animation: entree 0.22s ease-out both; }
 
