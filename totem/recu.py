@@ -33,6 +33,7 @@ import os
 from .analyse_sms import formater_montant
 from .logo import poser
 from .pdf import MM, Document, Page, Police
+from .textes import langue_active, normaliser, t
 
 # --- La charte --------------------------------------------------------------
 ENCRE = "#16171a"        # le texte
@@ -70,15 +71,32 @@ COTE_SYMBOLE = 78 * 0.75       # les 78 px de la maquette, en points
 # rétrécit plutôt que d'empiler : le bloc doit rester centré sur la page.
 LIGNES_NOM = 2
 
-MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
-        "août", "septembre", "octobre", "novembre", "décembre"]
+# Le document est bilingue : anglais par défaut, français au choix. Chaque
+# fonction accepte `langue=None` et retombe alors sur la langue active — les
+# appelants n'ont rien à passer.
+MOIS = {
+    "en": ["January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December"],
+    "fr": ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+           "août", "septembre", "octobre", "novembre", "décembre"],
+}
 
 
-def date_en_lettres(quand):
-    return f"{quand.day} {MOIS[quand.month - 1]} {quand.year}"
+def _langue_choisie(langue):
+    return normaliser(langue) if langue else langue_active()
 
 
-def heure_en_lettres(quand):
+def date_en_lettres(quand, langue=None):
+    """« 5 August 2026 » en anglais, « 5 août 2026 » en français."""
+    choisie = _langue_choisie(langue)
+    return f"{quand.day} {MOIS[choisie][quand.month - 1]} {quand.year}"
+
+
+def heure_en_lettres(quand, langue=None):
+    """« 13:19 » en anglais, « 13 h 19 » en français."""
+    choisie = _langue_choisie(langue)
+    if choisie == "en":
+        return f"{quand.hour}:{quand.minute:02d}"
     return f"{quand.hour} h {quand.minute:02d}"
 
 
@@ -115,12 +133,14 @@ class Gabarit:
     on transcrit une maquette, qui se lit de haut en bas.
     """
 
-    def __init__(self, type_document, numero, operateur="Orange Money"):
+    def __init__(self, type_document, numero, operateur="Orange Money",
+                 langue=None):
         self.page = Page(LARGEUR, HAUTEUR)
         self.normale = Police(os.path.join(POLICES, "dmsans-400.ttf"), "DMSans")
         self.grasse = Police(os.path.join(POLICES, "dmsans-700.ttf"),
                              "DMSansGras")
         self.operateur = operateur
+        self.langue = _langue_choisie(langue)
         self.page.rectangle(0, 0, LARGEUR, HAUTEUR, "#ffffff")
         self.bas_entete = self._entete(type_document, numero)
 
@@ -249,17 +269,33 @@ class Gabarit:
                         texte.upper(), self.grasse, CORPS_ETIQUETTE,
                         ETIQUETTE, ECART_ETIQUETTE)
 
+    def _decomposer_montant(self, valeur):
+        """Les tranches de milliers, les décimales, et leur séparateur.
+
+        `formater_montant` suit la langue : « 2,784,137.6 » en anglais,
+        « 2 784 137,6 » en français. Le séparateur de milliers est aussitôt
+        retiré — les tranches se posent une à une, l'écart est une fraction
+        du corps — mais celui des décimales reste imprimé : point en anglais,
+        virgule en français.
+        """
+        if self.langue == "en":
+            entier, _, decimales = formater_montant(valeur, "en").partition(".")
+            return entier.split(","), decimales, "."
+        entier, _, decimales = formater_montant(valeur, "fr").partition(",")
+        return entier.split(" "), decimales, ","
+
     def _largeur_somme(self, valeur, corps, part_devise, ecart_devise):
         """Ce que le montant occupera, devise comprise. Tout y est
         proportionnel au corps : la largeur l'est donc aussi, et il suffit
         d'une règle de trois pour le faire tenir."""
-        entier, _, decimales = formater_montant(valeur).partition(",")
-        tranches = entier.split(" ")
-        large = sum(self.grasse.largeur(t, corps, ECART_SOMME) for t in tranches)
+        tranches, decimales, separateur = self._decomposer_montant(valeur)
+        large = sum(self.grasse.largeur(morceau, corps, ECART_SOMME)
+                    for morceau in tranches)
         large += TRANCHE * corps * (len(tranches) - 1)
         if decimales:
             large += (0.02 * corps
-                      + self.grasse.largeur("," + decimales, corps, ECART_SOMME))
+                      + self.grasse.largeur(separateur + decimales, corps,
+                                            ECART_SOMME))
         corps_devise = part_devise * corps
         return (large + ecart_devise * corps_devise
                 + self.grasse.largeur("FCFA", corps_devise, -0.01))
@@ -279,15 +315,15 @@ class Gabarit:
             mesure = self._largeur_somme(valeur, corps, part_devise, ecart_devise)
             if mesure > largeur_max:
                 corps = corps * largeur_max / mesure
-        entier, _, decimales = formater_montant(valeur).partition(",")
-        for i, tranche in enumerate(entier.split(" ")):
+        tranches, decimales, separateur = self._decomposer_montant(valeur)
+        for i, tranche in enumerate(tranches):
             if i:
                 x += TRANCHE * corps
             x += self.page.texte(x, ligne_de_base, tranche, self.grasse,
                                  corps, ENCRE, ECART_SOMME)
         if decimales:
             x += 0.02 * corps
-            x += self.page.texte(x, ligne_de_base, "," + decimales,
+            x += self.page.texte(x, ligne_de_base, separateur + decimales,
                                  self.grasse, corps, ENCRE, ECART_SOMME)
         corps_devise = part_devise * corps
         x += ecart_devise * corps_devise
@@ -428,7 +464,8 @@ class Gabarit:
     def pied(self):
         base = self._base(HAUTEUR - MARGE_V - self._hauteur(CORPS_PIED),
                           CORPS_PIED)
-        self.page.texte(GAUCHE, base, f"{self.operateur} · Douala, Cameroun",
+        lieu = t("Douala, Cameroon", "Douala, Cameroun", self.langue)
+        self.page.texte(GAUCHE, base, f"{self.operateur} · {lieu}",
                         self.normale, CORPS_PIED, ETIQUETTE, SUIVI)
 
     def debordements(self, tolerance=0.5):
@@ -444,71 +481,103 @@ class Gabarit:
 
 # --- Les deux documents -----------------------------------------------------
 
-ETIQUETTES_SOMME = {"entree": "Montant reçu", "sortie": "Montant envoyé"}
+# L'étiquette au-dessus du gros montant, selon le sens de l'opération. Les
+# deux langues vivent côte à côte : (anglais, français).
+ETIQUETTES_SOMME = {"entree": ("Amount received", "Montant reçu"),
+                    "sortie": ("Amount sent", "Montant envoyé")}
+SOMME_SANS_SENS = ("Net amount", "Montant net")
+
+
+def etiquette_somme(sens, langue=None):
+    """« Amount received / sent », « Montant reçu / envoyé » — et quand le
+    sens n'est pas connu, « Net amount / Montant net », le terme qu'emploie
+    Orange lui-même."""
+    en, fr = ETIQUETTES_SOMME.get(sens, SOMME_SANS_SENS)
+    return t(en, fr, langue)
 
 
 def recu_transfert(paiement, numero, quand, operateur="Orange Money",
-                   titre="Reçu de transfert"):
+                   titre=None, langue=None):
     """Le reçu d'une opération réussie.
 
     `quand` : la date de l'opération. Le SMS d'Orange ne l'écrit pas en toutes
     lettres ; c'est l'heure de réception par le terminal qui fait foi.
 
-    `titre` : « Reçu de transfert » par défaut, mais « Reçu de dépôt » ou
-    « Reçu de retrait » quand le SMS dit qu'il s'agit de l'un ou de l'autre —
-    le document nomme alors l'opération telle qu'elle est.
+    `titre` : « Transfer receipt / Reçu de transfert » par défaut, mais
+    l'appelant passe « Deposit receipt / Reçu de dépôt » ou « Withdrawal
+    receipt / Reçu de retrait » quand le SMS dit qu'il s'agit de l'un ou de
+    l'autre — le document nomme alors l'opération telle qu'elle est.
+
+    `langue` : « en » ou « fr » ; sans elle, la langue active du robot.
 
     Quand le sens n'est pas connu — le SMS nomme les deux parties sans dire
-    laquelle est la nôtre — l'étiquette devient « Montant net », le terme
-    qu'emploie Orange lui-même. Écrire « Montant reçu » sur un envoi ferait du
-    reçu un faux document.
+    laquelle est la nôtre — l'étiquette devient « Net amount / Montant net »,
+    le terme qu'emploie Orange lui-même. Écrire « Montant reçu » sur un envoi
+    ferait du reçu un faux document.
     """
-    gabarit = Gabarit(titre, numero, operateur)
+    langue = _langue_choisie(langue)
+    gabarit = Gabarit(titre or t("Transfer receipt", "Reçu de transfert",
+                                 langue),
+                      numero, operateur, langue)
 
-    preuves = [("ID transaction", [paiement.reference or "—"], 2.2),
-               ("Date", [date_en_lettres(quand), heure_en_lettres(quand)], 1.3)]
+    preuves = [(t("Transaction ID", "ID transaction", langue),
+                [paiement.reference or "—"], 2.2),
+               (t("Date", "Date", langue),
+                [date_en_lettres(quand, langue),
+                 heure_en_lettres(quand, langue)], 1.3)]
     if paiement.montant_brut is not None:
-        preuves.append(("Montant transaction", [paiement.montant_brut], 1.5))
+        preuves.append((t("Transaction amount", "Montant transaction", langue),
+                        [paiement.montant_brut], 1.5))
     if paiement.frais is not None:
-        preuves.append(("Frais", [paiement.frais], 1))
+        preuves.append((t("Fees", "Frais", langue), [paiement.frais], 1))
     if paiement.commission is not None:
-        preuves.append(("Commission", [paiement.commission], 1))
+        preuves.append((t("Commission", "Commission", langue),
+                        [paiement.commission], 1))
     haut = gabarit.preuves(preuves)
 
+    de, a = t("From", "De", langue), t("To", "À", langue)
     emetteur = paiement.emetteur
     beneficiaire = paiement.beneficiaire
     if emetteur is None or beneficiaire is None:
         # Les formes plus anciennes ne nomment qu'un seul tiers : on met le
         # compte en face, sans inventer l'autre côté.
-        connu = ("De", paiement.nom, paiement.numero)
-        parties = [connu, ("À", None, None)]
+        connu = (de, paiement.nom, paiement.numero)
+        parties = [connu, (a, None, None)]
     else:
-        parties = [("De", emetteur.nom, emetteur.numero),
-                   ("À", beneficiaire.nom, beneficiaire.numero)]
+        parties = [(de, emetteur.nom, emetteur.numero),
+                   (a, beneficiaire.nom, beneficiaire.numero)]
 
-    gabarit.centre(haut, ETIQUETTES_SOMME.get(paiement.sens, "Montant net"),
+    gabarit.centre(haut, etiquette_somme(paiement.sens, langue),
                    paiement.montant, parties)
     gabarit.pied()
     return gabarit.octets()
 
 
 def recu_solde(solde, compte, numero_ligne, numero, quand,
-               operateur="Orange Money"):
+               operateur="Orange Money", langue=None):
     """Le reçu d'une interrogation de solde.
 
     Le SMS ne porte ni référence ni horodatage : la seule date honnête est
     celle de sa réception, et c'est ce que dit l'étiquette.
+
+    `langue` : « en » ou « fr » ; sans elle, la langue active du robot.
     """
-    gabarit = Gabarit("Reçu de solde", numero, operateur)
+    langue = _langue_choisie(langue)
+    gabarit = Gabarit(t("Balance receipt", "Reçu de solde", langue),
+                      numero, operateur, langue)
     haut = gabarit.preuves([
-        ("Opérateur", [operateur], 1.4),
-        ("Date du relevé", [date_en_lettres(quand)], 1.4),
-        ("Heure du relevé", [heure_en_lettres(quand)], 1),
+        (t("Operator", "Opérateur", langue), [operateur], 1.4),
+        (t("Statement date", "Date du relevé", langue),
+         [date_en_lettres(quand, langue)], 1.4),
+        (t("Statement time", "Heure du relevé", langue),
+         [heure_en_lettres(quand, langue)], 1),
     ])
-    gabarit.centre(haut, "Solde du compte", solde,
-                   [("Compte", compte, numero_ligne)])
+    gabarit.centre(haut, t("Account balance", "Solde du compte", langue),
+                   solde, [(t("Account", "Compte", langue),
+                            compte, numero_ligne)])
     gabarit.pied()
     return gabarit.octets()
 
 
-__all__ = ["numero_de_recu", "recu_solde", "recu_transfert"]
+__all__ = ["etiquette_somme", "numero_de_recu", "recu_solde",
+           "recu_transfert"]

@@ -1,6 +1,6 @@
 // Reçus PDF TOTEM — A3 paysage.
 //
-//   node recus.mjs
+//   node recus/maquette.mjs
 //
 // Trois zones, de haut en bas, dans l'ordre où on lit :
 //
@@ -10,6 +10,18 @@
 //
 // Un seul montant en gros : celui qui a réellement changé de main. Les frais
 // et la commission sont des lignes de détail, jamais un second gros chiffre.
+//
+// Le document est bilingue, anglais d'abord — comme `totem/recu.py`, qui
+// transcrit cette maquette. Une seule commande produit les deux jeux
+// d'aperçus dans `apercus/` :
+//
+//   recu-transfert.pdf/png, recu-solde.pdf/png        anglais (langue principale)
+//   recu-transfert-fr.pdf/png, recu-solde-fr.pdf/png  français
+//
+// La langue change les libellés, les mois en toutes lettres, l'heure
+// (« 13:19 » / « 13 h 19 ») et le séparateur décimal des montants (point en
+// anglais, virgule en français). Elle ne touche jamais : les numéros de reçu,
+// « FCFA », le signe « − », ni les données venues du SMS (noms, références).
 import { createRequire } from "module";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
@@ -83,7 +95,12 @@ function symbole(taille, couleur) {
 //
 // Second piège, celui d'Orange : « 2784137.6FCFA ». Le point est une décimale,
 // pas un séparateur de milliers.
-function montant(valeur, { devise = true } = {}) {
+//
+// Le séparateur décimal imprimé suit la langue : point en anglais
+// (« 2,784,137.6 » chez `formater_montant`), virgule en français
+// (« 2 784 137,6 »). Les milliers, eux, n'ont jamais de séparateur écrit :
+// l'écart entre tranches est une marge, dans les deux langues.
+function montant(valeur, langue, { devise = true } = {}) {
   const negatif = valeur < 0;
   let brut = Math.abs(valeur).toFixed(2);
   // On ne garde les décimales que si elles disent quelque chose.
@@ -94,11 +111,12 @@ function montant(valeur, { devise = true } = {}) {
   for (let i = entier.length; i > 0; i -= 3) {
     tranches.unshift(entier.slice(Math.max(0, i - 3), i));
   }
+  const separateur = langue === "en" ? "." : ",";
 
   return (
     (negatif ? "−" : "") +
     tranches.map((t) => `<span class="g">${t}</span>`).join("") +
-    (decimales ? `<span class="dec">,${decimales}</span>` : "") +
+    (decimales ? `<span class="dec">${separateur}${decimales}</span>` : "") +
     (devise ? `<span class="dev">FCFA</span>` : "")
   );
 }
@@ -174,8 +192,58 @@ const haut = (type, recu) => `
 const preuve = (k, v, poids = 1) =>
   `<div style="flex:${poids}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
 
-const pied = () => `
-  <div class="pied"><span>Orange Money · Douala, Cameroun</span><span>Maquette</span></div>`;
+// --- Les deux langues --------------------------------------------------------
+//
+// Les mêmes libellés que `totem/recu.py`, mot pour mot : la maquette fait foi
+// visuellement, le Python fait foi en service — ils ne doivent jamais diverger.
+// Les données du SMS (noms, numéros, références) restent telles quelles.
+const LIBELLES = {
+  en: {
+    transfert: "Transfer receipt",
+    solde: "Balance receipt",
+    montantRecu: "Amount received",
+    de: "From",
+    a: "To",
+    idTransaction: "Transaction ID",
+    date: "Date",
+    montantTransaction: "Transaction amount",
+    frais: "Fees",
+    commission: "Commission",
+    soldeCompte: "Account balance",
+    compte: "Account",
+    operateur: "Operator",
+    dateReleve: "Statement date",
+    heureReleve: "Statement time",
+    lieu: "Douala, Cameroon",
+    dateEnLettres: "31 July 2026",
+    heureTransfert: "13:19",
+    heureSolde: "15:45",
+  },
+  fr: {
+    transfert: "Reçu de transfert",
+    solde: "Reçu de solde",
+    montantRecu: "Montant reçu",
+    de: "De",
+    a: "À",
+    idTransaction: "ID transaction",
+    date: "Date",
+    montantTransaction: "Montant transaction",
+    frais: "Frais",
+    commission: "Commission",
+    soldeCompte: "Solde du compte",
+    compte: "Compte",
+    operateur: "Opérateur",
+    dateReleve: "Date du relevé",
+    heureReleve: "Heure du relevé",
+    lieu: "Douala, Cameroun",
+    dateEnLettres: "31 juillet 2026",
+    heureTransfert: "13 h 19",
+    heureSolde: "15 h 45",
+  },
+};
+
+const pied = (l) => `
+  <div class="pied"><span>Orange Money · ${l.lieu}</span><span>Maquette</span></div>`;
 
 // --- 1. Reçu de transfert ----------------------------------------------------
 const t = {
@@ -185,31 +253,31 @@ const t = {
   frais: 0,
   commission: 0,
   id: "PP260731.1319.B45805",
-  date: "31 juillet 2026",
-  heure: "13 h 19",
   deNom: "PRIX MONO SARL",
   deNum: "656 483 918",
   aNom: "WONDER PHONE",
   aNum: "696 103 864",
 };
 
-const transfert = `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
+const transfert = (langue) => {
+  const l = LIBELLES[langue];
+  return `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
 <div class="page">
-  ${haut("Reçu de transfert", t.recu)}
+  ${haut(l.transfert, t.recu)}
 
   <div class="centre">
     <div class="somme-bloc">
-      <div class="k">Montant reçu</div>
-      <div class="somme">${montant(t.net)}</div>
+      <div class="k">${l.montantRecu}</div>
+      <div class="somme">${montant(t.net, langue)}</div>
     </div>
     <div class="tiers">
       <div>
-        <div class="k">De</div>
+        <div class="k">${l.de}</div>
         <div class="nom">${t.deNom}</div>
         <div class="num">${t.deNum}</div>
       </div>
       <div>
-        <div class="k">À</div>
+        <div class="k">${l.a}</div>
         <div class="nom">${t.aNom}</div>
         <div class="num">${t.aNum}</div>
       </div>
@@ -217,38 +285,39 @@ const transfert = `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
   </div>
 
   <div class="preuves">
-    ${preuve("ID transaction", t.id, 2.2)}
-    ${preuve("Date", `${t.date}<br>${t.heure}`, 1.3)}
-    ${preuve("Montant transaction", montant(t.brut), 1.5)}
-    ${preuve("Frais", montant(t.frais), 1)}
-    ${preuve("Commission", montant(t.commission), 1)}
+    ${preuve(l.idTransaction, t.id, 2.2)}
+    ${preuve(l.date, `${l.dateEnLettres}<br>${l.heureTransfert}`, 1.3)}
+    ${preuve(l.montantTransaction, montant(t.brut, langue), 1.5)}
+    ${preuve(l.frais, montant(t.frais, langue), 1)}
+    ${preuve(l.commission, montant(t.commission, langue), 1)}
   </div>
 
-  ${pied()}
+  ${pied(l)}
 </div>`;
+};
 
 // --- 2. Reçu de solde --------------------------------------------------------
 const s = {
   recu: "TM-2026-0731-0043",
   solde: 2784137.6,
-  date: "31 juillet 2026",
-  heure: "15 h 45",
   compte: "WONDER PHONE",
   numero: "696 103 864",
 };
 
-const solde = `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
+const solde = (langue) => {
+  const l = LIBELLES[langue];
+  return `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
 <div class="page">
-  ${haut("Reçu de solde", s.recu)}
+  ${haut(l.solde, s.recu)}
 
   <div class="centre">
     <div class="somme-bloc">
-      <div class="k">Solde du compte</div>
-      <div class="somme">${montant(s.solde)}</div>
+      <div class="k">${l.soldeCompte}</div>
+      <div class="somme">${montant(s.solde, langue)}</div>
     </div>
     <div class="tiers">
       <div>
-        <div class="k">Compte</div>
+        <div class="k">${l.compte}</div>
         <div class="nom">${s.compte}</div>
         <div class="num">${s.numero}</div>
       </div>
@@ -257,22 +326,32 @@ const solde = `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
   </div>
 
   <div class="preuves">
-    ${preuve("Opérateur", "Orange Money", 1.4)}
-    ${preuve("Date du relevé", s.date, 1.4)}
-    ${preuve("Heure du relevé", s.heure, 1)}
+    ${preuve(l.operateur, "Orange Money", 1.4)}
+    ${preuve(l.dateReleve, l.dateEnLettres, 1.4)}
+    ${preuve(l.heureReleve, l.heureSolde, 1)}
   </div>
 
-  ${pied()}
+  ${pied(l)}
 </div>`;
+};
 
 // --- Rendu -------------------------------------------------------------------
+// L'anglais, langue principale, garde les noms de fichiers historiques ; le
+// français prend le suffixe « -fr ».
+const documents = [
+  ["recu-transfert", transfert("en")],
+  ["recu-solde", solde("en")],
+  ["recu-transfert-fr", transfert("fr")],
+  ["recu-solde-fr", solde("fr")],
+];
+
 const navigateur = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium",
   args: ["--no-sandbox", "--no-proxy-server"],
   proxy: { server: "direct://" },
 });
 
-for (const [nom, html] of [["recu-transfert", transfert], ["recu-solde", solde]]) {
+for (const [nom, html] of documents) {
   const base = join(ICI, "apercus", nom);
   const page = await navigateur.newPage();
   await page.setContent(html, { waitUntil: "load" });

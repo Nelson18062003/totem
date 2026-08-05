@@ -6,16 +6,22 @@ qu'il y a lieu d'en établir un. Le dessin lui-même n'est pas testé ici — il
 se regarde, il ne s'assert pas ; ce qui est vérifié, c'est qu'un PDF sort,
 qu'il sort une seule fois, et qu'il ne sort jamais pour un secret.
 
+Le document est bilingue : anglais par défaut — la langue des tests —,
+français quand on le demande via `textes.definir_langue("fr")`. Chaque test
+qui change la langue la remet en anglais, sans quoi il salirait les suivants.
+
 Lancer :  python3 -m unittest discover -s tests
 """
 
 import datetime
 import unittest
 
+from totem import textes
 from totem.app import Robot
 from totem.compte import Compte
 from totem.declencheur import SOLDE, TRANSFERT, motif_du_menu, motif_du_sms
-from totem.recu import numero_de_recu, recu_solde, recu_transfert
+from totem.recu import (date_en_lettres, etiquette_somme, heure_en_lettres,
+                        numero_de_recu, recu_solde, recu_transfert)
 from totem.simulator import ModemSimule
 from totem.storage import Journal
 
@@ -98,6 +104,25 @@ def _distribuer(robot, journal):
         journal.recus_a_envoyer = vraie
 
 
+def _gabarit_espionne(fabrique):
+    """Refait le document en gardant le gabarit sous la main : ses empreintes
+    disent ce qui a été posé sur la page, et où."""
+    import totem.recu as R
+    gabarits, vrai = [], R.Gabarit
+
+    class Mouchard(vrai):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            gabarits.append(self)
+
+    R.Gabarit = Mouchard
+    try:
+        fabrique()
+    finally:
+        R.Gabarit = vrai
+    return gabarits[0]
+
+
 class TestQuiMeriteUnRecu(unittest.TestCase):
     """La règle est explicite, donc elle se teste ligne à ligne."""
 
@@ -152,7 +177,8 @@ class TestLeDocument(unittest.TestCase):
         # Un dépôt / un retrait donnent un reçu qui le DIT, pas un « transfert »
         # générique. Le document reste par ailleurs identique.
         motif = motif_du_sms(TRANSFERT_ORANGE, numeros=["696103864"])
-        for titre in ("Reçu de dépôt", "Reçu de retrait", "Reçu de transfert"):
+        for titre in ("Deposit receipt", "Withdrawal receipt",
+                      "Transfer receipt", "Reçu de dépôt", "Reçu de retrait"):
             pdf = recu_transfert(motif.paiement, "TM-2026-0731-0042", self.QUAND,
                                  titre=titre)
             self.assertTrue(pdf.startswith(b"%PDF-1.7"))
@@ -164,20 +190,121 @@ class TestLeDocument(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-1.7"))
 
     def test_le_sens_inconnu_ne_ment_pas(self):
-        """Sans notre numéro, le document ne peut pas annoncer « Montant
-        reçu » : il dirait peut-être l'inverse de la vérité."""
+        """Sans notre numéro, le document ne peut pas annoncer « Amount
+        received » : il dirait peut-être l'inverse de la vérité."""
         from totem.recu import ETIQUETTES_SOMME
         motif = motif_du_sms(TRANSFERT_ORANGE)     # aucun numéro fourni
         self.assertIsNone(motif.paiement.sens)
         self.assertNotIn(None, ETIQUETTES_SOMME)
-        self.assertEqual(ETIQUETTES_SOMME.get(motif.paiement.sens,
-                                              "Montant net"), "Montant net")
+        self.assertEqual(etiquette_somme(motif.paiement.sens), "Net amount")
+        self.assertEqual(etiquette_somme(motif.paiement.sens, "fr"),
+                         "Montant net")
+
+    def test_les_dates_en_toutes_lettres(self):
+        """« 5 August 2026 » en anglais — la langue par défaut —, « 5 août
+        2026 » en français ; l'heure suit l'usage de chaque langue."""
+        quand = datetime.datetime(2026, 8, 5, 13, 19)
+        self.assertEqual(date_en_lettres(quand), "5 August 2026")
+        self.assertEqual(heure_en_lettres(quand), "13:19")
+        self.assertEqual(date_en_lettres(quand, "fr"), "5 août 2026")
+        self.assertEqual(heure_en_lettres(quand, "fr"), "13 h 19")
 
     def test_numero_stable(self):
         """Refabriquer un reçu doit lui redonner le même numéro."""
         self.assertEqual(numero_de_recu(self.QUAND, 42), "TM-2026-0731-0042")
         self.assertEqual(numero_de_recu(self.QUAND, 42),
                          numero_de_recu(self.QUAND, 42))
+
+
+class TestLaLangueDuDocument(unittest.TestCase):
+    """Le même reçu dans les deux langues : anglais par défaut, français via
+    `textes.definir_langue("fr")` — comme le fera `totem.conf` en service."""
+
+    QUAND = datetime.datetime(2026, 7, 31, 13, 19)
+
+    def tearDown(self):
+        textes.definir_langue("en")
+
+    def _textes_du_solde(self):
+        gabarit = _gabarit_espionne(lambda: recu_solde(
+            2784137.6, "WONDER PHONE", "696103864",
+            "TS-2026-0731-0043", self.QUAND))
+        return [contenu for _, _, contenu in gabarit.page.empreintes]
+
+    def test_le_solde_en_anglais(self):
+        poses = self._textes_du_solde()
+        for exacte in ("ACCOUNT BALANCE", "ACCOUNT", "OPERATOR",
+                       "31 July 2026", "13:19"):
+            self.assertIn(exacte, poses)
+        for attendu in ("Balance receipt", "Douala, Cameroon"):
+            self.assertTrue(any(attendu in p for p in poses),
+                            f"« {attendu} » manque au reçu anglais")
+        # Le séparateur décimal est un POINT : « 2 784 137.6 » se pose en
+        # tranches « 2 » « 784 » « 137 » puis « .6 ».
+        self.assertIn(".6", poses)
+        self.assertNotIn(",6", poses)
+        # Ce que la langue ne touche pas : le numéro de reçu et la devise.
+        self.assertTrue(any("TS-2026-0731-0043" in p for p in poses))
+        self.assertIn("FCFA", poses)
+
+    def test_le_solde_en_francais(self):
+        textes.definir_langue("fr")
+        poses = self._textes_du_solde()
+        for exacte in ("SOLDE DU COMPTE", "COMPTE", "OPÉRATEUR",
+                       "31 juillet 2026", "13 h 19"):
+            self.assertIn(exacte, poses)
+        for attendu in ("Reçu de solde", "Douala, Cameroun"):
+            self.assertTrue(any(attendu in p for p in poses),
+                            f"« {attendu} » manque au reçu français")
+        # Le séparateur décimal est une VIRGULE.
+        self.assertIn(",6", poses)
+        self.assertNotIn(".6", poses)
+        self.assertTrue(any("TS-2026-0731-0043" in p for p in poses))
+        self.assertIn("FCFA", poses)
+
+    def test_le_transfert_dans_les_deux_langues(self):
+        motif = motif_du_sms(TRANSFERT_ORANGE, numeros=["696103864"])
+
+        def poses():
+            gabarit = _gabarit_espionne(lambda: recu_transfert(
+                motif.paiement, "TM-2026-0731-0042", self.QUAND))
+            return [contenu for _, _, contenu in gabarit.page.empreintes]
+
+        anglais = poses()
+        # Les étiquettes se posent d'un seul tenant, en capitales : on peut
+        # les exiger telles quelles — « TO » en substring matcherait TOTEM.
+        for exacte in ("AMOUNT RECEIVED", "FROM", "TO", "TRANSACTION ID",
+                       "FEES"):
+            self.assertIn(exacte, anglais)
+        for attendu in ("Transfer receipt", "Douala, Cameroon"):
+            self.assertTrue(any(attendu in p for p in anglais),
+                            f"« {attendu} » manque au reçu anglais")
+
+        textes.definir_langue("fr")
+        francais = poses()
+        for exacte in ("MONTANT REÇU", "DE", "À", "ID TRANSACTION", "FRAIS"):
+            self.assertIn(exacte, francais)
+        for attendu in ("Reçu de transfert", "Douala, Cameroun"):
+            self.assertTrue(any(attendu in p for p in francais),
+                            f"« {attendu} » manque au reçu français")
+
+        # Les données venues du SMS, elles, ne bougent pas d'une langue à
+        # l'autre : noms, numéros, référence.
+        for donnee in ("PRIX MONO SARL", "WONDER PHONE",
+                       "PP260731.1319.B45805", "696 103 864"):
+            for jeu in (anglais, francais):
+                self.assertTrue(any(donnee in p for p in jeu),
+                                f"« {donnee} » manque au reçu")
+
+    def test_la_langue_peut_etre_imposee_par_parametre(self):
+        """La langue active reste l'anglais ; `langue="fr"` doit suffire à
+        produire un reçu français, sans toucher au réglage global."""
+        gabarit = _gabarit_espionne(lambda: recu_solde(
+            1000, "WONDER PHONE", "696103864", "TS-1", self.QUAND,
+            langue="fr"))
+        poses = [contenu for _, _, contenu in gabarit.page.empreintes]
+        self.assertTrue(any("Reçu de solde" in p for p in poses))
+        self.assertEqual(textes.langue_active(), "en")
 
 
 class TestLaChaine(unittest.TestCase):
@@ -196,7 +323,8 @@ class TestLaChaine(unittest.TestCase):
         self.assertTrue(nom.endswith(".pdf"))
         self.assertEqual(type_mime, "application/pdf")
         self.assertTrue(contenu.startswith(b"%PDF"))
-        self.assertIn("Reçu de transfert", legende)
+        # La langue des tests est l'anglais : la légende doit l'être aussi.
+        self.assertIn("Transfer receipt", legende)
 
     def test_un_seul_recu_par_sms(self):
         """Le modem relit parfois un message après un redémarrage. La
@@ -331,7 +459,7 @@ class TestSoldeLuAuMenu(unittest.TestCase):
         nom, contenu, legende, _ = robot.transport.fichiers[0]
         self.assertTrue(nom.startswith("TS-"))     # « S » comme session USSD
         self.assertTrue(contenu.startswith(b"%PDF"))
-        self.assertIn("Reçu de solde", legende)
+        self.assertIn("Balance receipt", legende)
 
     def test_le_meme_solde_consulte_deux_fois_donne_deux_recus(self):
         """Ce n'est pas un doublon : ce sont deux relevés à deux instants."""
@@ -362,10 +490,14 @@ class TestRienNeDeborde(unittest.TestCase):
     Le premier vrai reçu portait « NKENGAFAC MARICOLE NGWA » — et le nom
     sortait de la page. Un document dont le texte mord sur le bord n'est pas
     présentable à un client : ces cas-là sont donc verrouillés ici, une fois
-    pour toutes.
+    pour toutes — et dans les deux langues, car un libellé anglais plus long
+    (« Transaction amount ») ou plus court change où tombent les coupures.
     """
 
     QUAND = datetime.datetime(2026, 8, 1, 11, 21)
+
+    def tearDown(self):
+        textes.definir_langue("en")
 
     def _paiement(self, emetteur, beneficiaire, montant=100,
                   reference="PP260801.1121.A89624"):
@@ -376,28 +508,15 @@ class TestRienNeDeborde(unittest.TestCase):
                         emetteur=Partie("696103864", emetteur),
                         beneficiaire=Partie("697457589", beneficiaire))
 
-    def _debordements(self, fabrique):
-        """Refait le document en gardant le gabarit sous la main."""
-        import totem.recu as R
-        gabarits, vrai = [], R.Gabarit
-
-        class Mouchard(vrai):
-            def __init__(self, *a, **k):
-                super().__init__(*a, **k)
-                gabarits.append(self)
-
-        R.Gabarit = Mouchard
-        try:
-            fabrique()
-        finally:
-            R.Gabarit = vrai
-        return gabarits[0].debordements()
-
     def _verifier(self, titre, fabrique):
-        debords = self._debordements(fabrique)
-        self.assertEqual(
-            debords, [],
-            f"{titre} : {[c for c, _, _ in debords]} sort des marges")
+        for langue in ("en", "fr"):
+            textes.definir_langue(langue)
+            debords = _gabarit_espionne(fabrique).debordements()
+            self.assertEqual(
+                debords, [],
+                f"{titre} ({langue}) : {[c for c, _, _ in debords]} "
+                "sort des marges")
+        textes.definir_langue("en")
 
     def test_les_noms_de_la_maquette(self):
         self._verifier("noms courts", lambda: recu_transfert(
@@ -447,22 +566,9 @@ class TestRienNeDeborde(unittest.TestCase):
     def test_les_deux_colonnes_gardent_la_meme_taille(self):
         """« DE » et « À » se lisent ensemble : un nom rétréci d'un côté doit
         rétrécir l'autre, sinon le reçu paraît bancal."""
-        import totem.recu as R
-        gabarits, vrai = [], R.Gabarit
-
-        class Mouchard(vrai):
-            def __init__(self, *a, **k):
-                super().__init__(*a, **k)
-                gabarits.append(self)
-
-        R.Gabarit = Mouchard
-        try:
-            recu_transfert(self._paiement(
-                "A", "NKENGAFAC MARICOLE NGWA EPOUSE TCHOUMI DE DOUALA"),
-                "TM-1", self.QUAND)
-        finally:
-            R.Gabarit = vrai
-        gabarit = gabarits[0]
+        gabarit = _gabarit_espionne(lambda: recu_transfert(self._paiement(
+            "A", "NKENGAFAC MARICOLE NGWA EPOUSE TCHOUMI DE DOUALA"),
+            "TM-1", self.QUAND))
         _, corps_court = gabarit._bloc_nom("A", 100)
         self.assertEqual(corps_court, 27)      # un nom court garde son corps
 
