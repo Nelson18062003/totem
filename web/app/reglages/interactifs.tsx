@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { changerLangue, useLangue } from "@/app/langue";
 import { codesUssd, type CodeUssd } from "@/lib/codes";
+import { LANGUES } from "@/lib/langue";
+import { textesReglages } from "@/lib/textes/reglages";
 import { IconClose, IconHash, IconPlus } from "../icons";
 
 /**
@@ -24,6 +27,8 @@ export function ReglageNumero({
   libelle: string;
 }) {
   const router = useRouter();
+  const langue = useLangue();
+  const t = textesReglages[langue];
   const [numero, setNumero] = useState(numeroInitial);
   const [edition, setEdition] = useState(false);
   const [brouillon, setBrouillon] = useState(numeroInitial);
@@ -47,7 +52,7 @@ export function ReglageNumero({
     const propre = brouillon.replace(/\D/g, "");
     if (propre.length < 8) {
       setEtat("erreur");
-      setMessage("Neuf chiffres, par exemple 696103864.");
+      setMessage(t.neufChiffres);
       return;
     }
     setEtat("envoi");
@@ -63,7 +68,7 @@ export function ReglageNumero({
       const resultat = await attendre(id);
       if (!resultat) {
         setEtat("erreur");
-        setMessage("Le terminal n’a pas répondu. Est-il en ligne ?");
+        setMessage(t.pasRepondu);
         return;
       }
       if (resultat.etat === "faite") {
@@ -75,17 +80,15 @@ export function ReglageNumero({
         // Le terminal tourne une version d'avant ce réglage : il ne connaît
         // pas encore la demande. On le dit clairement, avec l'issue de secours.
         setEtat("erreur");
-        setMessage(
-          "Ton terminal doit être mis à jour pour régler le numéro d’ici. " +
-            "En attendant, fais-le sur Telegram avec /reglages.",
-        );
+        setMessage(t.majRequise);
       } else {
+        // Le résultat écrit par le robot arrive déjà dans la langue choisie.
         setEtat("erreur");
-        setMessage(resultat.resultat || "Le terminal a refusé.");
+        setMessage(resultat.resultat || t.aRefuse);
       }
     } catch {
       setEtat("erreur");
-      setMessage("La demande n’a pas pu partir. Réessayez.");
+      setMessage(t.pasPartie);
     }
   }
 
@@ -99,9 +102,9 @@ export function ReglageNumero({
           setMessage("");
         }}
         className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
-        title={`Régler le numéro de ${libelle}`}
+        title={t.reglerNumero(libelle)}
       >
-        {numero || "numéro à renseigner"}
+        {numero || t.numeroARenseigner}
       </button>
     );
   }
@@ -128,7 +131,7 @@ export function ReglageNumero({
         </button>
         <button
           onClick={() => setEdition(false)}
-          aria-label="Annuler"
+          aria-label={t.annuler}
           disabled={etat === "envoi"}
           className="grid size-8 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink disabled:opacity-40"
         >
@@ -136,7 +139,7 @@ export function ReglageNumero({
         </button>
       </span>
       {etat === "envoi" && (
-        <span className="text-caption text-ink-faint">Le terminal enregistre…</span>
+        <span className="text-caption text-ink-faint">{t.enregistrement}</span>
       )}
       {etat === "erreur" && (
         <span className="max-w-52 text-right text-caption text-negative">{message}</span>
@@ -149,8 +152,13 @@ export function ReglageNumero({
  * Les codes du guichet, par opérateur. Rien n'est deviné : le catalogue de
  * départ a été composé sur un vrai téléphone, et chaque code se corrige ou
  * s'ajoute ici — un opérateur qui change son menu ne casse rien.
+ *
+ * Les codes eux-mêmes (#148#…) ne se traduisent jamais : seuls les libellés
+ * autour changent de langue. Un raccourci ajouté à la main garde son nom.
  */
 export function SectionCodes({ operateur }: { operateur: string }) {
+  const langue = useLangue();
+  const t = textesReglages[langue];
   const [codes, setCodes] = useState<CodeUssd[]>(codesUssd[operateur] ?? []);
   const [enEdition, setEnEdition] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState("");
@@ -177,23 +185,21 @@ export function SectionCodes({ operateur }: { operateur: string }) {
 
   return (
     <section>
-      <h2 className="mb-3 text-heading font-semibold">Codes USSD</h2>
+      <h2 className="mb-3 text-heading font-semibold">{t.codesUssd}</h2>
       <div className="rounded-card border border-line bg-surface-raised">
         <p className="border-b border-line px-4 py-3 text-caption uppercase tracking-wider text-ink-faint">
-          {operateur} · carte en place
+          {t.carteEnPlace(operateur)}
         </p>
         {codes.length === 0 && !ajout && (
           <p className="px-4 py-4 text-small leading-relaxed text-ink-soft">
-            Aucun code {operateur} n’a encore été relevé sur le terrain — et on
-            ne devine pas un chiffre qui déplace de l’argent. Saisissez ceux du
-            vrai téléphone ci-dessous.
+            {t.aucunCode(operateur)}
           </p>
         )}
         <ul className="divide-hair px-4">
           {codes.map((c) => (
             <li key={c.cle} className="flex items-center gap-3 py-3">
               <IconHash size={16} className="shrink-0 text-ink-faint" />
-              <span className="flex-1 text-body">{c.libelle}</span>
+              <span className="flex-1 text-body">{t.libellesCodes[c.cle] ?? c.libelle}</span>
               {enEdition === c.cle ? (
                 <span className="flex items-center gap-1.5">
                   <input
@@ -210,7 +216,7 @@ export function SectionCodes({ operateur }: { operateur: string }) {
               ) : (
                 <button
                   onClick={() => { setEnEdition(c.cle); setBrouillon(c.code); }}
-                  title="Modifier ce code"
+                  title={t.modifierCode}
                   className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
                 >
                   {c.code}
@@ -223,7 +229,7 @@ export function SectionCodes({ operateur }: { operateur: string }) {
           {ajout ? (
             <div className="flex flex-col gap-2 sm:flex-row">
               <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
-                placeholder="Nom (« Factures »)" autoFocus
+                placeholder={t.nomExemple} autoFocus
                 className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-small outline-none transition focus:border-ink" />
               <input value={nouveauCode} onChange={(e) => setNouveauCode(proprer(e.target.value))}
                 placeholder="#148*6#" inputMode="tel"
@@ -231,9 +237,9 @@ export function SectionCodes({ operateur }: { operateur: string }) {
               <span className="flex gap-2">
                 <button onClick={ajouter} disabled={!nouveauNom.trim() || !nouveauCode.trim()}
                   className="flex-1 rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  Ajouter
+                  {t.ajouter}
                 </button>
-                <button onClick={() => setAjout(false)} aria-label="Annuler l’ajout"
+                <button onClick={() => setAjout(false)} aria-label={t.annulerAjout}
                   className="grid size-9 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink">
                   <IconClose size={15} />
                 </button>
@@ -242,16 +248,56 @@ export function SectionCodes({ operateur }: { operateur: string }) {
           ) : (
             <button onClick={() => setAjout(true)}
               className="flex w-full items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-              <IconPlus size={15} /> Ajouter un raccourci
+              <IconPlus size={15} /> {t.ajouterRaccourci}
             </button>
           )}
         </div>
       </div>
       <p className="mt-2 text-caption leading-relaxed text-ink-faint">
-        Chaque opérateur a ses propres codes ; ceux-ci appartiennent au réseau
-        et suivront toute carte du même opérateur. Un code n’ouvre que le
-        guichet ; le code secret se compose sur son pavé au moment voulu, et
-        n’est jamais enregistré.
+        {t.noteCodes}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * La langue de la plateforme, au choix du propriétaire. Le clic pose le
+ * cookie et recharge : le serveur repeint tout dans la nouvelle langue.
+ * Les noms des deux choix (« English », « Français ») ne se traduisent pas :
+ * chacun se reconnaît dans sa propre écriture.
+ */
+export function SectionLangue() {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  const active = LANGUES.find((l) => l.code === langue);
+
+  return (
+    <section>
+      <h2 className="mb-3 text-heading font-semibold">{t.langue}</h2>
+      <div className="rounded-card border border-line bg-surface-raised">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <span className="text-small text-ink-soft">{t.langueActive}</span>
+          <span className="text-small font-medium">{active?.libelle}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 p-3">
+          {LANGUES.map(({ code, libelle }) => (
+            <button
+              key={code}
+              aria-pressed={code === langue}
+              onClick={() => code !== langue && changerLangue(code)}
+              className={`rounded-btn py-2.5 text-small font-medium transition ${
+                code === langue
+                  ? "bg-ink text-white"
+                  : "border border-line hover:border-ink-faint"
+              }`}
+            >
+              {libelle}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="mt-2 text-caption leading-relaxed text-ink-faint">
+        {t.noteLangue}
       </p>
     </section>
   );
@@ -259,6 +305,8 @@ export function SectionCodes({ operateur }: { operateur: string }) {
 
 export function BoutonDeconnexion() {
   const router = useRouter();
+  const langue = useLangue();
+  const t = textesReglages[langue];
   const [envoi, setEnvoi] = useState(false);
   async function sortir() {
     setEnvoi(true);
@@ -276,7 +324,7 @@ export function BoutonDeconnexion() {
       disabled={envoi}
       className="rounded-btn border border-line bg-surface-raised py-3 text-center text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-50"
     >
-      {envoi ? "Déconnexion…" : "Se déconnecter"}
+      {envoi ? t.deconnexion : t.seDeconnecter}
     </button>
   );
 }
