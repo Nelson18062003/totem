@@ -30,9 +30,10 @@ export function changerLangue(langue: Langue) {
   window.location.reload();
 }
 
-/** La bascule EN | FR bien en vue : la langue active pleine, l'autre à un
- *  geste. Chaque segment est écrit dans sa propre langue — celle qui la
- *  cherche peut la lire. */
+/** La bascule English | Français bien en vue : la langue active pleine,
+ *  l'autre à un geste. Les noms s'écrivent EN TOUTES LETTRES, chacun dans sa
+ *  propre langue — pas d'abréviation : celle qui la cherche doit la lire
+ *  sans avoir rien à décoder. */
 export function BasculeLangue({ className = "" }: { className?: string }) {
   const langue = useLangue();
   return (
@@ -41,18 +42,18 @@ export function BasculeLangue({ className = "" }: { className?: string }) {
       aria-label={langue === "en" ? "Language" : "Langue"}
       className={`inline-flex shrink-0 overflow-hidden rounded-full border border-line bg-surface-raised ${className}`}
     >
-      {LANGUES.map(({ code, bascule }) => (
+      {LANGUES.map(({ code, libelle, bascule }) => (
         <button
           key={code}
           lang={code}
           onClick={() => code !== langue && changerLangue(code)}
           aria-pressed={code === langue}
           title={code === langue ? undefined : bascule}
-          className={`px-3 py-1.5 text-caption font-semibold uppercase tracking-wide transition ${
+          className={`px-3 py-1.5 text-caption font-medium transition ${
             code === langue ? "bg-ink text-white" : "text-ink-soft hover:text-ink"
           }`}
         >
-          {code}
+          {libelle}
         </button>
       ))}
     </div>

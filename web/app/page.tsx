@@ -19,7 +19,10 @@ export default async function Accueil() {
     // Grand écran : le guichet à gauche, le terminal et ses détails à droite.
     <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
       {/* En-tête */}
-      <header className="flex items-center justify-between lg:col-span-2">
+      {/* En toutes lettres, la bascule prend la place d'un titre : quand
+          l'écran est étroit, elle passe sur sa propre ligne au lieu de
+          serrer « Vue d'ensemble ». */}
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:col-span-2">
         <div>
           <p className="text-small text-ink-soft">{t.bonjour}</p>
           <h1 className="mt-0.5 text-title font-semibold tracking-tight">{t.titre}</h1>
