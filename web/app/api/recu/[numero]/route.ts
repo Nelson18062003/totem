@@ -21,7 +21,10 @@ export async function GET(
     headers: {
       "content-type": "application/pdf",
       "content-disposition": `inline; filename="${numero}.pdf"`,
-      "cache-control": "private, max-age=3600",
+      // Jamais de cache : un reçu peut être REFABRIQUÉ sous le même numéro
+      // (nature rechoisie sur la fiche) — un navigateur qui garderait
+      // l'ancien document une heure montrerait un reçu périmé.
+      "cache-control": "private, no-store",
     },
   });
 }

@@ -1923,10 +1923,12 @@ class Robot:
             if motif is None:
                 return None
             numero = numero_de_recu(datetime.now(), source_id, source)
-            self.journal.programmer_recu(source_id, motif.genre, numero,
-                                         motif.reference, source=source,
-                                         nature=nature)
-            return numero
+            # Le numéro EN VIGUEUR peut être celui d'un document déjà inscrit
+            # (même message redemandé un autre jour, même référence) : c'est
+            # lui qu'on annonce, jamais un numéro qui n'existe pas.
+            return self.journal.programmer_recu(
+                source_id, motif.genre, numero, motif.reference,
+                source=source, nature=nature)
         except Exception as e:
             # Un reçu manqué est un désagrément ; une relève de SMS
             # interrompue est une perte d'argent. On note, et on continue.

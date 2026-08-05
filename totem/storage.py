@@ -552,8 +552,9 @@ class Journal:
 
     def programmer_recu(self, source_id, genre, numero, reference=None,
                         source="sms", nature=None):
-        """Inscrit un reçu à fabriquer. Renvoie False s'il existait déjà tel
-        quel.
+        """Inscrit un reçu à fabriquer. Renvoie le numéro EN VIGUEUR pour ce
+        message (celui inscrit, qui peut différer du numéro proposé si le
+        document existait déjà), ou None si rien ne le désigne.
 
         `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
         menu. Le même SMS relu après un redémarrage du modem tombe sur l'un des
@@ -572,18 +573,42 @@ class Journal:
                     (source, source_id, genre, numero, reference or None,
                      self._maintenant(), nature or None))
                 self.conn.commit()
-            return True
+            return numero
         except sqlite3.IntegrityError:
             with self.verrou:
-                self.conn.execute(
-                    "UPDATE recus SET genre = ?, nature = ?, "
-                    "envoye = 0, archive = 0, essais = 0 "
-                    "WHERE source = ? AND source_id = ? "
-                    "AND (genre != ? OR COALESCE(nature, '') != COALESCE(?, ''))",
-                    (genre, nature or None, source, source_id,
-                     genre, nature or None))
+                try:
+                    # La référence suit le nouveau genre (un solde n'en a pas,
+                    # un transfert si) — sauf si un AUTRE document la tient
+                    # déjà : elle reste alors où elle est, sans rien casser.
+                    self.conn.execute(
+                        "UPDATE recus SET genre = ?, nature = ?, "
+                        "reference = ?, envoye = 0, archive = 0, essais = 0 "
+                        "WHERE source = ? AND source_id = ? "
+                        "AND (genre != ? OR COALESCE(nature, '') != COALESCE(?, ''))",
+                        (genre, nature or None, reference or None,
+                         source, source_id, genre, nature or None))
+                except sqlite3.IntegrityError:
+                    self.conn.execute(
+                        "UPDATE recus SET genre = ?, nature = ?, "
+                        "envoye = 0, archive = 0, essais = 0 "
+                        "WHERE source = ? AND source_id = ? "
+                        "AND (genre != ? OR COALESCE(nature, '') != COALESCE(?, ''))",
+                        (genre, nature or None, source, source_id,
+                         genre, nature or None))
                 self.conn.commit()
-            return False
+                # Le numéro EN VIGUEUR : celui de la ligne de ce message —
+                # jamais celui recalculé du jour, qui peut différer si le
+                # reçu se redemande un autre jour. À défaut, celui du
+                # document jumeau qui tient déjà cette référence.
+                ligne = self.conn.execute(
+                    "SELECT numero FROM recus "
+                    "WHERE source = ? AND source_id = ?",
+                    (source, source_id)).fetchone()
+                if ligne is None and reference:
+                    ligne = self.conn.execute(
+                        "SELECT numero FROM recus WHERE reference = ?",
+                        (reference,)).fetchone()
+            return ligne[0] if ligne else None
 
     def recus_a_relire(self):
         """[(id, source_id, genre, numero, nature)] de tous les reçus nés
