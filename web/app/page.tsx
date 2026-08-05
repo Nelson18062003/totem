@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { textesAccueil } from "@/lib/textes/accueil";
 import { AccueilGuichet } from "./accueil-client";
 import { DerniersSms } from "./derniers-sms";
 import { IconChevron, IconSettings } from "./icons";
@@ -7,7 +9,9 @@ import { IconChevron, IconSettings } from "./icons";
 export const dynamic = "force-dynamic";
 
 export default async function Accueil() {
-  const { terminal, sims, paiements } = await chargerDonnees({ sms: 30, recus: 60 });
+  const langue = await langueServeur();
+  const t = textesAccueil[langue];
+  const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: 30, recus: 60 });
   const carte = sims.find((s) => s.enPlace) ?? null;
 
   return (
@@ -16,10 +20,10 @@ export default async function Accueil() {
       {/* En-tête */}
       <header className="flex items-baseline justify-between lg:col-span-2">
         <div>
-          <p className="text-small text-ink-soft">Bonjour, Nelson</p>
-          <h1 className="mt-0.5 text-title font-semibold tracking-tight">Vue d’ensemble</h1>
+          <p className="text-small text-ink-soft">{t.bonjour}</p>
+          <h1 className="mt-0.5 text-title font-semibold tracking-tight">{t.titre}</h1>
         </div>
-        <Link href="/reglages" className="text-ink-faint transition hover:text-ink lg:hidden" aria-label="Réglages">
+        <Link href="/reglages" className="text-ink-faint transition hover:text-ink lg:hidden" aria-label={t.reglages}>
           <IconSettings size={18} />
         </Link>
       </header>
@@ -30,46 +34,45 @@ export default async function Accueil() {
           carte={{
             libelle: carte.libelle, operateur: carte.operateur,
             numero: carte.numero, solde: carte.solde,
-            soldeSource: carte.soldeSource, signal: carte.signal,
+            soldeMaj: carte.soldeMaj, signal: carte.signal,
             iccid: carte.iccid,
           }}
         />
       ) : (
         <section className="rounded-card border border-dashed border-line px-4 py-10 text-center lg:col-start-1">
-          <p className="text-body font-medium">Aucune carte dans le terminal</p>
+          <p className="text-body font-medium">{t.aucuneCarte}</p>
           <p className="mx-auto mt-1.5 max-w-sm text-small leading-relaxed text-ink-soft">
-            Dès qu’une SIM sera vue par le terminal, son solde et le guichet
-            apparaîtront ici.
+            {t.aucuneCarteDetail}
           </p>
         </section>
       )}
 
       {/* Le terminal, avec ses détails techniques */}
       <aside className="lg:col-start-2 lg:row-span-3 lg:row-start-2">
-        <h2 className="mb-3 text-heading font-semibold">Terminal</h2>
+        <h2 className="mb-3 text-heading font-semibold">{t.terminal}</h2>
         <Link href="/reglages"
           className="block rounded-card border border-line bg-surface-raised transition hover:border-ink-faint">
           {terminal ? (
             <>
               <p className="flex items-center gap-2.5 border-b border-line px-4 py-3 text-body">
                 <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
-                {terminal.enLigne ? "En ligne" : "Muet"}
+                {terminal.enLigne ? t.enLigne : t.muet}
                 <span className="ml-auto text-small tabnums text-ink-faint">{terminal.majTexte}</span>
               </p>
               <dl className="divide-hair px-4 pb-1">
                 <div className="flex items-center justify-between py-2.5">
-                  <dt className="text-small text-ink-soft">Emplacement</dt>
+                  <dt className="text-small text-ink-soft">{t.emplacement}</dt>
                   <dd className="text-small font-medium">{terminal.nom}</dd>
                 </div>
                 {terminal.version && (
                   <div className="flex items-center justify-between py-2.5">
-                    <dt className="text-small text-ink-soft">Version</dt>
+                    <dt className="text-small text-ink-soft">{t.version}</dt>
                     <dd className="text-small font-medium tabnums">{terminal.version}</dd>
                   </div>
                 )}
                 {terminal.sante && (
                   <div className="py-2.5">
-                    <dt className="text-small text-ink-soft">Santé du boîtier</dt>
+                    <dt className="text-small text-ink-soft">{t.sante}</dt>
                     <dd className="mt-1 text-small font-medium leading-relaxed tabnums">
                       {terminal.sante}
                     </dd>
@@ -79,7 +82,7 @@ export default async function Accueil() {
             </>
           ) : (
             <p className="px-4 py-4 text-small leading-relaxed text-ink-soft">
-              Aucun terminal ne s’est encore annoncé.
+              {t.aucunTerminal}
             </p>
           )}
         </Link>
@@ -88,15 +91,14 @@ export default async function Accueil() {
       {/* Les derniers SMS — c'est par eux que tout arrive */}
       <section className="lg:col-start-1">
         <div className="mb-1 flex items-baseline justify-between">
-          <h2 className="text-heading font-semibold">Derniers SMS</h2>
+          <h2 className="text-heading font-semibold">{t.derniersSms}</h2>
           <Link href="/encaissements" className="flex items-center gap-0.5 text-small text-ink-soft transition hover:text-ink">
-            Tout voir <IconChevron size={14} />
+            {t.toutVoir} <IconChevron size={14} />
           </Link>
         </div>
         {paiements.length === 0 ? (
           <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-small text-ink-faint">
-            Aucun SMS reçu pour l’instant. Si la carte devrait en recevoir,
-            vérifiez le terminal — un silence prolongé n’est pas normal.
+            {t.aucunSms}
           </p>
         ) : (
           // Cliquables : chaque ligne ouvre la même fiche que la boîte de

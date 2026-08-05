@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useLangue } from "@/app/langue";
+import { textesCharpente } from "@/lib/textes/charpente";
 
 // La veille interroge une route minuscule (/api/actualite). Cinq secondes :
 // assez vif pour qu'un encaissement « apparaisse tout seul », assez espacé
@@ -68,9 +70,12 @@ export function useActualite(): number {
 
 /** La pastille « N nouveaux » — sobre, dans le ton de la maison. */
 export function Pastille({ n }: { n: number }) {
+  const langue = useLangue();
+  const t = textesCharpente[langue];
   if (n <= 0) return null;
   return (
-    <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-ink px-1.5 py-0.5 text-caption font-medium leading-none text-white">
+    <span aria-label={t.nonLus(n)}
+      className="ml-auto grid min-w-5 place-items-center rounded-full bg-ink px-1.5 py-0.5 text-caption font-medium leading-none text-white">
       {n > 99 ? "99+" : n}
     </span>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useLangue } from "@/app/langue";
+import { textesCharpente } from "@/lib/textes/charpente";
 import { fcfa, type Paiement } from "@/lib/types";
 import { FicheSms } from "./fiche-sms";
 import { IconArrowDown, IconArrowUp, IconDoc } from "./icons";
@@ -12,6 +14,8 @@ import { IconArrowDown, IconArrowUp, IconDoc } from "./icons";
  * passer par « Tout voir » pour agir sur un message qu'on a sous les yeux.
  */
 export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
+  const langue = useLangue();
+  const t = textesCharpente[langue];
   const [detail, setDetail] = useState<Paiement | null>(null);
 
   return (
@@ -28,7 +32,7 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
                 <span className="flex items-center gap-1.5 text-body font-medium">
                   {/* Le point plein = pas encore ouvert, comme dans la boîte. */}
                   {p.nonLu && (
-                    <span aria-label="non lu"
+                    <span aria-label={t.nonLu}
                       className="size-1.5 shrink-0 rounded-full bg-ink" />
                   )}
                   <span className="truncate">{p.nom}</span>
@@ -37,7 +41,7 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
               </span>
               {p.montant != null && (
                 <span className={`shrink-0 text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
-                  {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
+                  {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
                 </span>
               )}
             </button>
@@ -45,7 +49,7 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
                 boîte de réception. */}
             {p.recu && (
               <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
-                title="Télécharger le reçu PDF"
+                title={t.telechargerRecu}
                 className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft transition hover:border-ink hover:text-ink">
                 <IconDoc size={16} />
               </a>
