@@ -150,6 +150,10 @@ class Robot:
             # sur Telegram — sinon un SMS cesse d'apparaître sur la plateforme
             # sans que rien ne le dise.
             self.nuage.sur_incident = self._incident_cloud
+            # Et le nuage reçoit nos numéros : le sens d'un transfert
+            # (reçu/envoyé) part ainsi jusqu'à la plateforme, au lieu d'un
+            # éternel « à confirmer ».
+            self.nuage.fournir_numeros = self._nos_numeros
         self.pilotage = None    # le guichet à distance, démarré avec le nuage
         # Les numéros des puces, déclarés dans la configuration. Une SIM
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne

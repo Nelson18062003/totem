@@ -124,6 +124,49 @@ class TestLaRetransmission(unittest.TestCase):
         self.assertNotIn("nature", charge[0])
         self.assertNotIn("lu_le", charge[0])
 
+    def test_le_sens_part_avec_les_numeros_du_robot(self):
+        """Le robot prête ses numéros au nuage : la plateforme peut écrire
+        « reçu » au lieu d'un éternel « sens à confirmer »."""
+        journal = Journal(":memory:")
+        journal.sms("OrangeMoney", TRANSFERT_EN)
+        nuage = Nuage("https://exemple.supabase.co", "cle", "totem", journal)
+        nuage.fournir_numeros = lambda: ("696103864",)
+        vus = []
+        nuage._tenter_insert = (
+            lambda table, charge, cle, resolution: vus.append(charge) or "ok")
+        nuage.pousser_paiements()
+        self.assertEqual(vus[0][0]["sens"], "entree")
+        self.assertEqual(vus[0][0]["tiers"], "IBRAHIM DAHIROU")
+
+    def test_le_robot_prete_ses_numeros_au_nuage(self):
+        journal = Journal(":memory:")
+        nuage = Nuage("https://exemple.supabase.co", "cle", "totem", journal)
+        robot = Robot([Compte(ModemSimule("Orange"), "Orange")],
+                      TransportMuet(), journal, nuage=nuage,
+                      numeros={"orange": "696103864"})
+        self.assertIsNotNone(nuage.fournir_numeros)
+        self.assertIn("696103864", nuage.fournir_numeros())
+
+    def test_le_drainage_vide_la_file_en_un_battement(self):
+        """Après une relecture, des centaines de SMS ne doivent pas partir au
+        compte-gouttes d'un lot par minute."""
+        journal = Journal(":memory:")
+        for i in range(250):
+            journal.sms("OrangeMoney", f"message numero {i}")
+        nuage = Nuage("https://exemple.supabase.co", "cle", "totem", journal)
+        appels = []
+
+        def espion(table, charge, cle_unicite, resolution):
+            appels.append((table, len(charge)))
+            return "ok"
+
+        nuage._tenter_insert = espion
+        total = nuage._pousser_tout()
+        self.assertEqual(total, 250)
+        self.assertEqual(len(journal.sms_non_envoyes()), 0)
+        lots = [n for (table, n) in appels if table == "paiements"]
+        self.assertEqual(sorted(lots, reverse=True), [100, 100, 50])
+
 
 if __name__ == "__main__":
     unittest.main()

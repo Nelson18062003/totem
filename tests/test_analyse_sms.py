@@ -412,6 +412,41 @@ class TestTransfertOrangeAnglais(unittest.TestCase):
         self.assertEqual(solde_annonce(texte), 5035788.6)
 
 
+class TestVerbesAnglais(unittest.TestCase):
+    """Les tournures anglaises de MTN et d'Orange, hors transfert détaillé."""
+
+    def test_recu_anglais(self):
+        texte = ("You have received 25000 FCFA from NGONO Marie (677123456). "
+                 "Transaction ID: 1234567890. New balance: 50000 FCFA.")
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant), ("entree", 25000))
+        self.assertEqual((p.nom, p.numero), ("NGONO Marie", "677123456"))
+        self.assertEqual(p.solde_apres, 50000)
+        self.assertEqual(categoriser(texte), "encaissement")
+
+    def test_credite_anglais(self):
+        texte = "Your account has been credited 5000 FCFA from 670000001."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant), ("entree", 5000))
+
+    def test_paye_anglais(self):
+        texte = "You have paid 10000 FCFA to SHOP XYZ. Fees: 100 FCFA."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant, p.frais), ("sortie", 10000, 100))
+        self.assertEqual(categoriser(texte), "envoi")
+
+    def test_transfere_anglais(self):
+        texte = "You have transferred 15000 FCFA to 699112233 JOHN DOE."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant), ("sortie", 15000))
+
+    def test_retire_anglais(self):
+        texte = "You have withdrawn 20000 FCFA. New balance: 5000 FCFA."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant, p.solde_apres),
+                         ("sortie", 20000, 5000))
+
+
 class TestBruitAnglais(unittest.TestCase):
     """Publicités, codes et pièges anglophones : rien ne devient un paiement."""
 

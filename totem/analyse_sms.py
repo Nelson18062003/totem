@@ -127,9 +127,10 @@ def _neuf_derniers(numero):
 MONTANT = r"([\d][\d\s.,]*)\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)"
 
 RE_RECU = re.compile(
-    r"\b(?:recu|receive[sd]?|credite|cash\s*in)\b.{0,20}?" + MONTANT, re.S)
+    r"\b(?:recu|receive[sd]?|credite[d]?|cash\s*in)\b.{0,20}?" + MONTANT, re.S)
 RE_ENVOYE = re.compile(
     r"\b(?:envoye|transfere|debite|paye|retire|sent|cash\s*out"
+    r"|transferred|paid|withdrawn|debited"
     r"|payment de|paiement de)\b.{0,20}?" + MONTANT, re.S)
 
 # La forme d'Orange Money, relevée sur de vraies captures :
