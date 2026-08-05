@@ -150,6 +150,10 @@ class Robot:
             # sur Telegram — sinon un SMS cesse d'apparaître sur la plateforme
             # sans que rien ne le dise.
             self.nuage.sur_incident = self._incident_cloud
+            # Et le nuage reçoit nos numéros : le sens d'un transfert
+            # (reçu/envoyé) part ainsi jusqu'à la plateforme, au lieu d'un
+            # éternel « à confirmer ».
+            self.nuage.fournir_numeros = self._nos_numeros
         self.pilotage = None    # le guichet à distance, démarré avec le nuage
         # Les numéros des puces, déclarés dans la configuration. Une SIM
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
@@ -182,6 +186,40 @@ class Robot:
         self.dernier_rapport = (datetime.now().date()
                                 if self._heure_passee() else None)
         self._reinitialiser_session()
+        self._relire_sms_si_lecteur_change()
+
+    def _relire_sms_si_lecteur_change(self):
+        """Quand le lecteur de SMS s'améliore, les messages passés sont relus.
+
+        La plateforme affiche ce que le robot a compris au moment de l'envoi.
+        Si une mise à jour apprend au lecteur une forme nouvelle (le transfert
+        anglais d'Orange, par exemple), les lignes déjà transmises resteraient
+        à moitié lues pour toujours. Alors : l'empreinte du lecteur est
+        mémorisée, et dès qu'elle change, tous les SMS repartent dans la file
+        du cloud — chacun est relu à l'envoi, et la ligne se met à jour
+        (« merge »). Le texte d'origine, lui, ne bouge jamais ; la nature
+        choisie et les lectures faites sur la plateforme non plus.
+        """
+        try:
+            import hashlib
+
+            from . import analyse_sms
+            with open(analyse_sms.__file__, "rb") as source:
+                empreinte = hashlib.sha1(source.read()).hexdigest()
+            if self.journal.lire_memo("empreinte_lecteur") == empreinte:
+                return
+            relus = self.journal.remettre_sms_a_transmettre()
+            self.journal.ecrire_memo("empreinte_lecteur", empreinte)
+            if relus:
+                self.journal.evenement(t(
+                    f"the SMS reader changed: {relus} past message(s) "
+                    "re-read and re-sent to the platform",
+                    f"le lecteur de SMS a changé : {relus} message(s) "
+                    "passé(s) relu(s) et retransmis à la plateforme"))
+        except Exception:
+            # Ne jamais empêcher le robot de démarrer pour une relecture :
+            # elle retentera au prochain démarrage.
+            pass
 
     def _heure_passee(self):
         try:

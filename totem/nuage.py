@@ -68,6 +68,10 @@ class Nuage:
         self.pause = pause
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
+        # Les numéros de NOS puces, fournis par le robot : c'est ce qui permet
+        # de dire de quel côté d'un transfert se trouve le terminal — et donc
+        # à la plateforme d'écrire « reçu » plutôt que « sens à confirmer ».
+        self.fournir_numeros = None
         # Appelé (source_id, erreur) quand la base REFUSE un paiement : de quoi
         # prévenir le propriétaire sur Telegram, au lieu de l'écarter en
         # silence. Posé par le robot s'il a un transport.
@@ -350,17 +354,26 @@ class Nuage:
             charge.append(self._ligne_paiement(
                 id_local, date, expediteur, texte, compte, iccid, emis_le))
             ids.append(id_local)
+        # « merge » : un SMS retransmis MET À JOUR sa ligne — c'est ce qui
+        # permet de relire les messages passés quand le lecteur s'améliore.
+        # Ce que la plateforme a posé elle-même (nature, lu_le) n'est pas dans
+        # la charge : le merge ne touche que les colonnes envoyées.
         return self._pousser_lot(
             "paiements", "terminal,source_id", ids, charge,
-            self.journal.marquer_sms_envoyes, t("payment", "paiement"))
+            self.journal.marquer_sms_envoyes, t("payment", "paiement"),
+            resolution="merge-duplicates")
 
     def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid,
                         emis_le=None):
         """La ligne cloud d'un SMS. L'analyse ne doit jamais faire échouer la
         transmission : un SMS incompréhensible part quand même, tel quel."""
         try:
-            p = analyser(texte)
-            cat = categoriser(texte)
+            numeros = tuple(self.fournir_numeros()) if self.fournir_numeros else ()
+        except Exception:
+            numeros = ()
+        try:
+            p = analyser(texte, numeros=numeros)
+            cat = categoriser(texte, numeros=numeros)
         except Exception:
             p, cat = None, "message"
         return {
@@ -545,8 +558,7 @@ class Nuage:
                         info["resume"] = etat
                     self.enregistrer_terminal(info)
                     self.publier_comptes(comptes)
-                envoyes = (self.pousser_cartes() + self.pousser_paiements()
-                           + self.pousser_evenements())
+                envoyes = self._pousser_tout()
                 if premier and envoyes:
                     self.journal.evenement(t(
                         f"cloud: {envoyes} line(s) sent at startup",
@@ -563,6 +575,25 @@ class Nuage:
                 # Laisser une seconde aux arrivées quasi simultanées de se
                 # joindre au même envoi, plutôt que d'ouvrir trois connexions.
                 time.sleep(DEBOUNCE)
+
+    def _pousser_tout(self):
+        """Vide les files vers le cloud, lot après lot, et dit combien.
+
+        Un seul lot par battement suffirait au quotidien, mais pas après une
+        relecture des SMS passés : des milliers de lignes attendraient des
+        heures, bandeau « en retard » affiché sur la plateforme. Tant qu'un
+        lot est parti plein, on enchaîne — la file décroît strictement, une
+        coupure réseau rend zéro et sort.
+        """
+        total = 0
+        while self._marche if hasattr(self, "_marche") else True:
+            envoyes = (self.pousser_cartes() + self.pousser_paiements()
+                       + self.pousser_evenements())
+            total += envoyes
+            if envoyes < LOT:
+                break
+            time.sleep(0.2)     # respirer entre deux lots pleins
+        return total
 
     def resume(self):
         """Ligne d'état pour /statut."""

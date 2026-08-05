@@ -412,6 +412,71 @@ class TestTransfertOrangeAnglais(unittest.TestCase):
         self.assertEqual(solde_annonce(texte), 5035788.6)
 
 
+class TestVerbesAnglais(unittest.TestCase):
+    """Les tournures anglaises de MTN et d'Orange, hors transfert détaillé."""
+
+    def test_recu_anglais(self):
+        texte = ("You have received 25000 FCFA from NGONO Marie (677123456). "
+                 "Transaction ID: 1234567890. New balance: 50000 FCFA.")
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant), ("entree", 25000))
+        self.assertEqual((p.nom, p.numero), ("NGONO Marie", "677123456"))
+        self.assertEqual(p.solde_apres, 50000)
+        self.assertEqual(categoriser(texte), "encaissement")
+
+    def test_credite_anglais(self):
+        texte = "Your account has been credited 5000 FCFA from 670000001."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant), ("entree", 5000))
+
+    def test_paye_anglais(self):
+        texte = "You have paid 10000 FCFA to SHOP XYZ. Fees: 100 FCFA."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant, p.frais), ("sortie", 10000, 100))
+        self.assertEqual(categoriser(texte), "envoi")
+
+    def test_transfere_anglais(self):
+        texte = "You have transferred 15000 FCFA to 699112233 JOHN DOE."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant), ("sortie", 15000))
+
+    def test_retire_anglais(self):
+        texte = "You have withdrawn 20000 FCFA. New balance: 5000 FCFA."
+        p = analyser(texte)
+        self.assertEqual((p.sens, p.montant, p.solde_apres),
+                         ("sortie", 20000, 5000))
+
+
+class TestBruitAnglais(unittest.TestCase):
+    """Publicités, codes et pièges anglophones : rien ne devient un paiement."""
+
+    def test_la_reclame_ne_paie_pas(self):
+        pub = "Congratulations! You have won 2,000,000 FCFA with Orange Money!"
+        self.assertIsNone(analyser(pub))
+        self.assertEqual(categoriser(pub), "publicite")
+
+    def test_le_forfait_reste_une_reclame(self):
+        pub = "Win big! Buy a data bundle today and get free airtime."
+        self.assertIsNone(analyser(pub))
+        self.assertEqual(categoriser(pub), "publicite")
+
+    def test_le_code_anglais_est_masque(self):
+        code = "Your one-time password is 481516. Do not share it."
+        self.assertEqual(categoriser(code), "code")
+        self.assertNotIn("481516", masquer_secrets(code))
+
+    def test_une_entreprise_nommee_win_paie_quand_meme(self):
+        """« win » est un mot de réclame, mais WIN TELECOM est un client :
+        le rejet du bruit ne doit jamais tuer un vrai transfert."""
+        texte = ("Successful transfer from 655001122 WIN TELECOM to "
+                 "696103864 WONDER PHONE. Net amount :5000 FCFA, "
+                 "New balance: 100000 FCFA.")
+        p = analyser(texte, numeros=("696103864",))
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+        self.assertEqual(p.emetteur.nom, "WIN TELECOM")
+
+
 class TestSeparateurDecimal(unittest.TestCase):
     """Le point sépare des milliers dans « 1.250.000 » et des décimales dans
     « 2784137.6 ». La confusion lisait le solde dix fois trop grand."""

@@ -35,7 +35,9 @@ NATURES = ("depot", "retrait", "transfert", "solde")
 # rend le refus visible plutôt qu'implicite.
 RE_ECHEC = re.compile(
     r"\b(?:echec|echoue|echouee|annul(?:e|ee|ation)|rejet(?:e|ee)|refus(?:e|ee)"
-    r"|insuffisant|insuffisante|impossible|non\s+abouti[e]?|failed|declined)\b")
+    r"|insuffisant|insuffisante|impossible|non\s+abouti[e]?|failed|declined"
+    r"|unsuccessful|cancell?ed|rejected|denied|insufficient"
+    r"|could\s+not\b|unable\b)\b")
 
 
 class Motif:
@@ -73,7 +75,9 @@ RE_OPTION = re.compile(r"^\s*\d{1,2}\s*[.):\-]\s*\S", re.M)
 # Ce qui attend une saisie : on n'établit pas de document sur une question.
 RE_ATTENTE = re.compile(
     r"\bentrez\b|\bsaisissez\b|\bveuillez\s+(?:entrer|saisir)\b|\bconfirmez\b"
-    r"|\benter\b|\bchoisissez\b|\bmontant\b|\bbeneficiaire\b")
+    r"|\benter\b|\bchoisissez\b|\bmontant\b|\bbeneficiaire\b"
+    r"|\bselect\b|\bchoose\b|\brecipient\b|\bamount\b|how\s+much"
+    r"|\bconfirm\b")
 
 
 def motif_du_menu(reponse):
