@@ -170,6 +170,11 @@ def principal():
         print(f"ERREUR : {e}", file=sys.stderr)
         sys.exit(1)
 
+    # La langue du robot, fixée une fois pour toutes : chaque texte sortant
+    # (Telegram, reçus, rapports) la suit. Anglais par défaut.
+    from .textes import definir_langue
+    definir_langue(cfg.get("langue"))
+
     transport = TransportTelegram(cfg["jeton"], cfg["chat_id"], groupe=cfg["groupe"],
                                   admins=cfg["admins"], sujets=cfg["sujets"])
 

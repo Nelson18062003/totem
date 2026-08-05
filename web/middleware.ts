@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESSION, verifierSession } from "@/lib/session";
+import { COOKIE_LANGUE, langueDe } from "@/lib/langue";
 
 // Le verrou de la plateforme. Tant que `SESSION_SECRET` n'est pas défini, il
 // n'y a AUCUN verrou (utile en développement local) — mais dès qu'on le pose
@@ -24,7 +25,9 @@ export async function middleware(req: NextRequest) {
   // Une API répond « connexion requise » (le navigateur gère) ; une page
   // renvoie vers l'écran de connexion.
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ erreur: "connexion requise" }, { status: 401 });
+    const langue = langueDe(req.cookies.get(COOKIE_LANGUE)?.value);
+    const erreur = langue === "en" ? "sign-in required" : "connexion requise";
+    return NextResponse.json({ erreur }, { status: 401 });
   }
   const versConnexion = req.nextUrl.clone();
   versConnexion.pathname = "/connexion";

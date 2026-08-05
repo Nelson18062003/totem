@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { COOKIE_SESSION, egaliteConstante, signerSession } from "@/lib/session";
+import { langueServeur } from "@/lib/langue-serveur";
+import { erreurApi } from "@/lib/textes/api";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +12,7 @@ export const dynamic = "force-dynamic";
  * d'une opération et n'est enregistré nulle part.
  */
 export async function POST(req: Request) {
+  const langue = await langueServeur();
   const corps = await req.json().catch(() => null);
   const propose = typeof corps?.motdepasse === "string" ? corps.motdepasse : "";
 
@@ -20,10 +23,10 @@ export async function POST(req: Request) {
   // de toute façon pas actif). On répond franchement.
   if (!secret || !attendu) {
     return Response.json(
-      { erreur: "connexion non configurée sur ce déploiement" }, { status: 503 });
+      { erreur: erreurApi(langue, "connexionNonConfiguree") }, { status: 503 });
   }
   if (!propose || !egaliteConstante(propose, attendu)) {
-    return Response.json({ erreur: "mot de passe incorrect" }, { status: 401 });
+    return Response.json({ erreur: erreurApi(langue, "motDePasseIncorrect") }, { status: 401 });
   }
 
   const jeton = await signerSession(secret);

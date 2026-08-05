@@ -1,4 +1,6 @@
 import { creerCommande, relie } from "@/lib/serveur";
+import { langueServeur } from "@/lib/langue-serveur";
+import { erreurApi } from "@/lib/textes/api";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +15,11 @@ const GENRES = new Set([
  * ici — le robot le masque en base sitôt lu.
  */
 export async function POST(req: Request) {
+  const langue = await langueServeur();
   const corps = await req.json().catch(() => null);
   const genre = typeof corps?.type === "string" ? corps.type : "";
   if (!GENRES.has(genre)) {
-    return Response.json({ erreur: "demande inconnue" }, { status: 400 });
+    return Response.json({ erreur: erreurApi(langue, "demandeInconnue") }, { status: 400 });
   }
 
   const brut = corps?.parametres ?? {};
@@ -24,7 +27,7 @@ export async function POST(req: Request) {
   const parametres: Record<string, unknown> = {};
   if (typeof brut.code === "string") {
     const code = brut.code.replace(/[^0-9#*]/g, "").slice(0, 32);
-    if (!code) return Response.json({ erreur: "code vide" }, { status: 400 });
+    if (!code) return Response.json({ erreur: erreurApi(langue, "codeVide") }, { status: 400 });
     parametres.code = code;
   }
   if (typeof brut.texte === "string") {
@@ -58,15 +61,19 @@ export async function POST(req: Request) {
   if (genre === "identite" &&
       (!parametres.iccid || (!parametres.numero && !parametres.nom))) {
     return Response.json(
-      { erreur: "carte ou valeur manquante" }, { status: 400 });
+      { erreur: erreurApi(langue, "carteOuValeurManquante") }, { status: 400 });
   }
 
+  // La langue voyage avec la demande : le terminal répond dans la langue de
+  // l'écran qui l'a déposée (les réponses du réseau, elles, restent intactes).
+  parametres.langue = langue;
+
   if (!relie) {
-    return Response.json({ erreur: "plateforme non reliée à la base" }, { status: 503 });
+    return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
   const id = await creerCommande(genre, parametres);
   if (id == null) {
-    return Response.json({ erreur: "la demande n’a pas pu être déposée" }, { status: 502 });
+    return Response.json({ erreur: erreurApi(langue, "depotImpossible") }, { status: 502 });
   }
   return Response.json({ id });
 }

@@ -1,6 +1,8 @@
 // Types partagés entre le serveur (qui lit la base) et les écrans.
 // Aucune donnée ici : les valeurs viennent de Supabase, ou de nulle part.
 
+import type { Langue } from "./langue";
+
 // Une carte SIM est identifiée par son ICCID — le numéro de série gravé sur
 // la puce, unique au monde. L'opérateur ne suffit pas : deux SIM du même
 // opérateur qui se succèdent dans le terminal sont deux caisses distinctes.
@@ -17,7 +19,9 @@ export type Sim = {
   nom: string;
   numero: string;
   solde: number | null;     // le dernier solde connu — jamais « en direct »
-  soldeSource: string;      // « le SMS de 09 h 47 », « la mise à jour de 8 h 02 »
+  // L'heure de l'interrogation réseau qui a donné ce solde (« 09:47 »).
+  // Les écrans l'habillent d'une phrase dans la langue du moment.
+  soldeMaj: string | null;
   signal: number | null;
   enPlace: boolean;
   premiereVue: string;
@@ -42,7 +46,11 @@ export type Paiement = {
   // Null pour un SMS qui n'est pas un paiement (information, publicité…).
   montant: number | null;
   heure: string;
-  date: string;             // « Aujourd'hui », « Hier », « 28 juillet »
+  date: string;             // « Today », « Hier », « 28 juillet » — déjà traduit
+  // La clé STABLE du jour (« 2026-08-05 », heure de Douala) : c'est elle qui
+  // sert à regrouper et à filtrer. Le libellé `date` n'est qu'un habit — le
+  // comparer casserait dès qu'on change de langue.
+  jour: string;
   recuLe: string;           // l'horodatage retenu (réseau si connu, sinon relève)
   categorie: Categorie;     // devinée par le terminal
   nature: Categorie | null; // choisie par le propriétaire (pour le reçu)
@@ -77,11 +85,19 @@ export type Donnees = {
   paiements: Paiement[];
 };
 
-export function fcfa(n: number): string {
-  return n.toLocaleString("fr-FR").replace(/ /g, " ") + " FCFA";
+export function fcfa(n: number, langue: Langue): string {
+  return nombre(n, langue) + " FCFA";
 }
 
 // Le nombre seul, complet, sans abréviation : 287 000 — jamais « 287 k ».
-export function nombre(n: number): string {
-  return n.toLocaleString("fr-FR").replace(/ /g, " ");
+// En anglais, le séparateur de milliers est la virgule : 287,000.
+export function nombre(n: number, langue: Langue): string {
+  return langue === "en"
+    ? n.toLocaleString("en-US")
+    : n.toLocaleString("fr-FR").replace(/ /g, " ");
+}
+
+/** Le jour d'un instant, vu de Douala, sous forme de clé « 2026-08-05 ». */
+export function jourDouala(d: Date): string {
+  return new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" }).format(d);
 }

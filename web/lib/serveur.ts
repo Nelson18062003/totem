@@ -18,6 +18,8 @@
 // sont vides et le disent.
 
 import type { Donnees, EtatTerminal, Paiement, Sim } from "./types";
+import { jourDouala } from "./types";
+import type { Langue } from "./langue";
 
 const url = process.env.SUPABASE_URL;
 const cle = process.env.SUPABASE_CLE;
@@ -76,40 +78,44 @@ type LignePaiement = {
 
 // --- Mise en forme des dates -------------------------------------------------
 
+// La locale des dates suit la langue de l'écran ; le fuseau, lui, ne bouge
+// jamais : l'argent vit à Douala.
+const LOCALE: Record<Langue, string> = { en: "en-GB", fr: "fr-FR" };
+
 function heure(ts: string): string {
   return new Intl.DateTimeFormat("fr-FR", {
     hour: "2-digit", minute: "2-digit", timeZone: FUSEAU,
   }).format(new Date(ts));
 }
 
-function jourLocal(d: Date): string {
-  return new Intl.DateTimeFormat("fr-CA", { timeZone: FUSEAU }).format(d);
-}
-
-function libelleJour(ts: string): string {
-  const jour = jourLocal(new Date(ts));
+function libelleJour(ts: string, langue: Langue): string {
+  const jour = jourDouala(new Date(ts));
   const present = new Date();
-  if (jour === jourLocal(present)) return "Aujourd’hui";
-  if (jour === jourLocal(new Date(present.getTime() - 86_400_000))) return "Hier";
-  return new Intl.DateTimeFormat("fr-FR", {
+  if (jour === jourDouala(present)) return langue === "en" ? "Today" : "Aujourd’hui";
+  if (jour === jourDouala(new Date(present.getTime() - 86_400_000))) {
+    return langue === "en" ? "Yesterday" : "Hier";
+  }
+  return new Intl.DateTimeFormat(LOCALE[langue], {
     day: "numeric", month: "long", timeZone: FUSEAU,
   }).format(new Date(ts));
 }
 
-function dateCourte(ts: string | null): string {
+function dateCourte(ts: string | null, langue: Langue): string {
   if (!ts) return "—";
-  return new Intl.DateTimeFormat("fr-FR", {
+  return new Intl.DateTimeFormat(LOCALE[langue], {
     day: "numeric", month: "short", year: "numeric", timeZone: FUSEAU,
   }).format(new Date(ts));
 }
 
-function ecartHumain(ts: string | null): string {
-  if (!ts) return "jamais vu";
+function ecartHumain(ts: string | null, langue: Langue): string {
+  if (!ts) return langue === "en" ? "never seen" : "jamais vu";
   const s = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
-  if (s < 60) return `il y a ${s} s`;
-  if (s < 3600) return `il y a ${Math.round(s / 60)} min`;
-  if (s < 86_400) return `il y a ${Math.round(s / 3600)} h`;
-  return `il y a ${Math.round(s / 86_400)} j`;
+  const forme = (n: number, unite: string) =>
+    langue === "en" ? `${n} ${unite} ago` : `il y a ${n} ${unite}`;
+  if (s < 60) return forme(s, "s");
+  if (s < 3600) return forme(Math.round(s / 60), "min");
+  if (s < 86_400) return forme(Math.round(s / 3600), "h");
+  return forme(Math.round(s / 86_400), langue === "en" ? "d" : "j");
 }
 
 // Une carte est « en place » si le terminal l'a vue il y a moins de dix
@@ -119,13 +125,13 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 
 // --- Le chargement complet ---------------------------------------------------
 
-function versTerminal(t: LigneTerminal | undefined): EtatTerminal | null {
+function versTerminal(t: LigneTerminal | undefined, langue: Langue): EtatTerminal | null {
   return t
     ? {
         id: t.id,
         nom: t.nom || t.id.charAt(0).toUpperCase() + t.id.slice(1),
         enLigne: Boolean(t.vu_le && Date.now() - new Date(t.vu_le).getTime() < 3 * 60 * 1000),
-        majTexte: ecartHumain(t.vu_le),
+        majTexte: ecartHumain(t.vu_le, langue),
         version: t.version ?? "",
         sante: t.sante?.resume ?? "",
         enAttente: t.sante?.en_attente ?? 0,
@@ -136,13 +142,14 @@ function versTerminal(t: LigneTerminal | undefined): EtatTerminal | null {
 /** Le terminal seul — pour la coquille, qui n'a pas besoin du reste.
  *  Avant, elle rechargeait TOUT (SMS et reçus compris) à chaque page :
  *  chaque clic payait deux fois le plein tarif. */
-export async function chargerTerminal(): Promise<EtatTerminal | null> {
+export async function chargerTerminal(langue: Langue): Promise<EtatTerminal | null> {
   const terminaux = await lire<LigneTerminal>(
     "terminaux?select=*&order=vu_le.desc.nullslast&limit=1");
-  return versTerminal(terminaux[0]);
+  return versTerminal(terminaux[0], langue);
 }
 
 export async function chargerDonnees(
+  langue: Langue,
   // Chaque page dit ce dont elle a besoin : l'accueil montre 6 SMS, inutile
   // d'en charger 1000. `sms: 0` saute la requête entièrement. ATTENTION :
   // les compteurs des cartes (nbPaiements, totalRecu) ne comptent que ce qui
@@ -168,7 +175,7 @@ export async function chargerDonnees(
       : Promise.resolve([] as LigneRecu[]),
   ]);
 
-  const terminal = versTerminal(terminaux[0]);
+  const terminal = versTerminal(terminaux[0], langue);
 
   // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
   // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
@@ -217,7 +224,8 @@ export async function chargerDonnees(
       numero: l.numero ?? "",
       montant: l.montant == null ? null : Number(l.montant),
       heure: heure(moment(l)),
-      date: libelleJour(moment(l)),
+      date: libelleJour(moment(l), langue),
+      jour: jourDouala(new Date(moment(l))),
       recuLe: moment(l),
       // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne).
       categorie: (l.categorie as Paiement["categorie"]) || "message",
@@ -239,8 +247,7 @@ export async function chargerDonnees(
     // Le solde vient du terminal, point : c'est l'interrogation réseau
     // (déclenchée depuis la plateforme) qui le met à jour — jamais un SMS.
     const solde = compte?.solde == null ? null : Number(compte.solde);
-    const soldeSource =
-      solde != null && compte ? `l’interrogation du ${heure(compte.maj)}` : "";
+    const soldeMaj = solde != null && compte ? heure(compte.maj) : null;
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );
@@ -253,11 +260,11 @@ export async function chargerDonnees(
       nom: c.nom || "",
       numero: compte?.numero || c.numero || "",
       solde,
-      soldeSource,
+      soldeMaj,
       signal: compte?.signal ?? null,
       enPlace,
-      premiereVue: dateCourte(c.premiere_vue),
-      derniereVue: dateCourte(c.derniere_vue),
+      premiereVue: dateCourte(c.premiere_vue, langue),
+      derniereVue: dateCourte(c.derniere_vue, langue),
       nbPaiements: entrees.length,
       totalRecu: entrees.reduce((s, l) => s + Number(l.montant ?? 0), 0),
     };

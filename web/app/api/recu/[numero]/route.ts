@@ -1,4 +1,6 @@
 import { chargerRecu } from "@/lib/serveur";
+import { langueServeur } from "@/lib/langue-serveur";
+import { erreurApi } from "@/lib/textes/api";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +13,10 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
+  const langue = await langueServeur();
   const { numero } = await params;
   const pdf = await chargerRecu(numero);
-  if (!pdf) return new Response("Reçu introuvable", { status: 404 });
+  if (!pdf) return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   return new Response(pdf, {
     headers: {
       "content-type": "application/pdf",
