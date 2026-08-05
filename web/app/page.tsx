@@ -4,6 +4,7 @@ import { chargerDonnees } from "@/lib/serveur";
 import { textesAccueil } from "@/lib/textes/accueil";
 import { AccueilGuichet } from "./accueil-client";
 import { DerniersSms } from "./derniers-sms";
+import { BasculeLangue } from "./langue";
 import { IconChevron, IconSettings } from "./icons";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +19,19 @@ export default async function Accueil() {
     // Grand écran : le guichet à gauche, le terminal et ses détails à droite.
     <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
       {/* En-tête */}
-      <header className="flex items-baseline justify-between lg:col-span-2">
+      <header className="flex items-center justify-between lg:col-span-2">
         <div>
           <p className="text-small text-ink-soft">{t.bonjour}</p>
           <h1 className="mt-0.5 text-title font-semibold tracking-tight">{t.titre}</h1>
         </div>
-        <Link href="/reglages" className="text-ink-faint transition hover:text-ink lg:hidden" aria-label={t.reglages}>
-          <IconSettings size={18} />
-        </Link>
+        {/* La langue, en évidence dès l'accueil — quelle que soit la taille
+            d'écran. L'engrenage reste le chemin des réglages sur téléphone. */}
+        <div className="flex items-center gap-3">
+          <BasculeLangue />
+          <Link href="/reglages" className="text-ink-faint transition hover:text-ink lg:hidden" aria-label={t.reglages}>
+            <IconSettings size={18} />
+          </Link>
+        </div>
       </header>
 
       {/* Le guichet : la carte (seul solde) et les cinq gestes */}

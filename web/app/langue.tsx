@@ -5,7 +5,7 @@
 // par le crochet `useLangue()`.
 
 import { createContext, useContext } from "react";
-import { COOKIE_LANGUE, LANGUE_DEFAUT, type Langue } from "@/lib/langue";
+import { COOKIE_LANGUE, LANGUE_DEFAUT, LANGUES, type Langue } from "@/lib/langue";
 
 const ContexteLangue = createContext<Langue>(LANGUE_DEFAUT);
 
@@ -28,4 +28,33 @@ export function changerLangue(langue: Langue) {
   const unAn = 60 * 60 * 24 * 365;
   document.cookie = `${COOKIE_LANGUE}=${langue}; path=/; max-age=${unAn}; samesite=lax`;
   window.location.reload();
+}
+
+/** La bascule EN | FR bien en vue : la langue active pleine, l'autre à un
+ *  geste. Chaque segment est écrit dans sa propre langue — celle qui la
+ *  cherche peut la lire. */
+export function BasculeLangue({ className = "" }: { className?: string }) {
+  const langue = useLangue();
+  return (
+    <div
+      role="group"
+      aria-label={langue === "en" ? "Language" : "Langue"}
+      className={`inline-flex shrink-0 overflow-hidden rounded-full border border-line bg-surface-raised ${className}`}
+    >
+      {LANGUES.map(({ code, bascule }) => (
+        <button
+          key={code}
+          lang={code}
+          onClick={() => code !== langue && changerLangue(code)}
+          aria-pressed={code === langue}
+          title={code === langue ? undefined : bascule}
+          className={`px-3 py-1.5 text-caption font-semibold uppercase tracking-wide transition ${
+            code === langue ? "bg-ink text-white" : "text-ink-soft hover:text-ink"
+          }`}
+        >
+          {code}
+        </button>
+      ))}
+    </div>
+  );
 }
