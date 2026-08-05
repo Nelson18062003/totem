@@ -31,6 +31,14 @@ TRANSFERT_ORANGE = (
     "Montant Transaction: 184137FCFA, Frais: 0 FCFA, Commission: 0 FCFA, "
     "Montant Net: 184137 FCFA, Nouveau Solde: 2784137.6 FCFA")
 SOLDE_ORANGE = "Le solde de votre compte est de 2784137.6FCFA."
+# Les mêmes messages, la ligne réglée en anglais chez l'opérateur — textes
+# relevés sur de vraies captures de production (août 2026).
+TRANSFERT_ORANGE_EN = (
+    "Successful transfer from 696413104 IBRAHIM DAHIROU to 696103864 "
+    "WONDER PHONE. Details: Transaction ID: PP260805.1402.C55918, "
+    "Transaction amount: 1300000 FCFA, Charges: 0 FCFA, Commission: 0 FCFA, "
+    "Net amount :1300000 FCFA, New balance: 6335788.6 FCFA.")
+SOLDE_ORANGE_EN = "The balance of your account is 5035788.6FCFA."
 CODE_ORANGE = "Le code de 696103864 est: 515318.Orange Money vous remercie."
 
 
@@ -390,6 +398,77 @@ class TestLaChaine(unittest.TestCase):
         robot, compte, modem, journal = _robot(numeros={})
         motif = motif_du_sms(TRANSFERT_ORANGE, numeros=robot._nos_numeros())
         self.assertIsNone(motif.paiement.sens)
+
+
+class TestLeRecuVoulu(unittest.TestCase):
+    """Le reçu demandé depuis la plateforme suit la nature choisie.
+
+    Le bug vécu : un transfert reçu en anglais, marqué « transfert » par le
+    propriétaire, ressortait en reçu de SOLDE — le lecteur ne comprenait pas
+    la forme anglaise, et le robot se repliait sur le « New balance » du même
+    message. Ni l'un ni l'autre ne doivent se reproduire.
+    """
+
+    def test_le_transfert_anglais_donne_un_recu_de_transfert(self):
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)
+        self.assertEqual(len(robot.transport.fichiers), 1)
+        _, contenu, legende, _ = robot.transport.fichiers[0]
+        self.assertIn("Transfer receipt", legende)
+        self.assertNotIn("Balance receipt", legende)
+        self.assertIn("1,300,000", legende)
+        self.assertTrue(contenu.startswith(b"%PDF"))
+
+    def test_la_nature_solde_prend_le_nouveau_solde_du_transfert(self):
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)          # le document automatique part
+        numero = robot._recu_apres_coup(1, nature="solde")
+        self.assertIsNotNone(numero)
+        _distribuer(robot, journal)          # refabriqué sous le nouveau genre
+        _, _, legende, _ = robot.transport.fichiers[-1]
+        self.assertIn("Balance receipt", legende)
+        self.assertIn("6,335,788.6", legende)
+
+    def test_la_nature_depot_habille_le_titre(self):
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)
+        robot._recu_apres_coup(1, nature="depot")
+        _distribuer(robot, journal)
+        _, _, legende, _ = robot.transport.fichiers[-1]
+        self.assertIn("Deposit receipt", legende)
+
+    def test_un_solde_pur_refuse_la_nature_transfert(self):
+        """Pas de montant lisible : pas de document de transfert — refus,
+        jamais un repli silencieux sur un autre document."""
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", SOLDE_ORANGE_EN))
+        robot._relever_sms(compte)
+        self.assertIsNone(robot._recu_apres_coup(1, nature="transfert"))
+
+    def test_redemander_sans_changer_ne_refabrique_pas(self):
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)
+        robot._recu_apres_coup(1)            # même demande, même document
+        _distribuer(robot, journal)
+        self.assertEqual(len(robot.transport.fichiers), 1)
+
+    def test_la_variante_francaise_suit_aussi_la_nature(self):
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)
+        robot._recu_apres_coup(1, nature="solde")
+        _distribuer(robot, journal)
+        _, _, legende, _ = robot.transport.fichiers[-1]
+        self.assertIn("Balance receipt", legende)
 
 
 class TestLaFabriquePdf(unittest.TestCase):

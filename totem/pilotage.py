@@ -37,6 +37,7 @@ import threading
 import time
 
 from .analyse_sms import solde_annonce
+from .declencheur import NATURES
 from .nuage import _horodatage
 from .textes import t
 
@@ -182,13 +183,21 @@ class Pilotage:
         except (TypeError, ValueError):
             raise RefusPoli(t("Message not found in the log.",
                               "Message introuvable au journal.", langue=langue))
-        numero = self.programmeur(source_id)
+        # La nature choisie sur la plateforme (dépôt/retrait/transfert/solde) :
+        # c'est elle qui décide du document. Une valeur inconnue est ignorée —
+        # le robot retombe alors sur sa propre lecture du SMS.
+        nature = parametres.get("nature")
+        if nature not in NATURES:
+            nature = None
+        numero = self.programmeur(source_id, nature=nature)
         if not numero:
             raise RefusPoli(t(
-                "This message does not come with a receipt — only a "
-                "successful transfer or an announced balance produces one.",
-                "Ce message ne donne pas droit à un reçu — seuls un transfert "
-                "réussi ou un solde annoncé en produisent un.", langue=langue))
+                "This message does not carry what that receipt needs — a "
+                "readable amount for a transfer, an announced balance for a "
+                "balance receipt.",
+                "Ce message ne porte pas de quoi remplir ce reçu — un montant "
+                "lisible pour un transfert, un solde annoncé pour un reçu de "
+                "solde.", langue=langue))
         self.journal.evenement(t(
             f"remote desk: receipt {numero} requested",
             f"guichet à distance : reçu {numero} demandé"))

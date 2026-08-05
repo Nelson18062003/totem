@@ -145,6 +145,34 @@ RE_TRANSFERT = re.compile(
     r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
     r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes|success)\b")
 
+# La même forme, côté anglophone — relevée sur une vraie capture (Orange,
+# ligne réglée en anglais) :
+#   « Successful transfer from 696413104 IBRAHIM DAHIROU to 696103864
+#     WONDER PHONE. Details: Transaction ID: PP260805.1402.C55918, ... »
+# Le mot de réussite vient AVANT le verbe, les parties après « from » et
+# « to ». Même exigence : sans lui, pas de transfert.
+RE_TRANSFERT_EN = re.compile(
+    r"\b(?:successful|completed)\s+transfer\b[^\n]{0,30}?"
+    r"\bfrom\s+"
+    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
+    r"(?P<nom_emetteur>[^\d\n]{0,40}?)\s*"
+    r"\bto\s+"
+    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
+    r"(?P<nom_benef>[^\d\n]{0,40}?)"
+    r"(?:[.,;:\n]|$)")
+
+# Et la variante où la réussite se dit à la fin :
+#   « Transfer of 50000 FCFA from 6xx to 6yy NAME successful. »
+RE_TRANSFERT_EN_FIN = re.compile(
+    r"\btransfer\b[^\n]{0,40}?"
+    r"\bfrom\s+"
+    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
+    r"(?P<nom_emetteur>[^\d\n]{0,40}?)\s*"
+    r"\bto\s+"
+    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
+    r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
+    r"\b(?:successful(?:ly)?|completed|confirmed)\b")
+
 # Les opérations d'agent (dépôt, retrait) nomment le bénéficiaire APRÈS
 # « vers », le numéro D'ABORD puis la raison sociale — l'ordre inverse d'un
 # reçu classique. L'émetteur, lui, apparaît parfois en fin de message :
@@ -154,12 +182,14 @@ RE_TRANSFERT = re.compile(
 # Le sens n'est pas tranché ici : preciser_sens() dira, une fois les cartes
 # connues, laquelle des deux lignes est la nôtre.
 RE_OPERATION = re.compile(
-    r"\b(?:depot|retrait|transfert|transfer|paiement|payment|envoi)\b"
+    r"\b(?:depot|deposit|retrait|withdrawal|transfert|transfer"
+    r"|paiement|payment|envoi)\b"
     r"(?P<avant>[^\n]*?)"
-    r"\bvers\s+"
+    r"\b(?:vers|to)\s+"
     r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s+"
     r"(?P<nom_benef>[A-Za-z][^\d\n]{0,40}?)?\s*"
-    r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes|success)\b"
+    r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes"
+    r"|success(?:ful(?:ly)?)?|completed)\b"
     r"(?P<apres>[^\n]*)")
 
 # L'émetteur nommé en fin de message : « ... reussi from 80684177 ».
@@ -200,19 +230,24 @@ RE_SOLDE = re.compile(
 # et le chiffre, bien plus que le motif ci-dessus n'en tolère. On l'accepte
 # large, mais seulement dans `solde_annonce()`, qui a déjà écarté les
 # paiements, les publicités et les codes.
-RE_SOLDE_SEUL = re.compile(r"\bsolde\b[^\d]{0,40}?" + MONTANT, re.S)
+RE_SOLDE_SEUL = re.compile(
+    r"\b(?:solde|balance)\b[^\d]{0,40}?" + MONTANT, re.S)
 
-RE_FRAIS = re.compile(r"\b(?:frais|fee[s]?)\b[^\d]{0,20}?" + MONTANT, re.S)
+RE_FRAIS = re.compile(
+    r"\b(?:frais|fee[s]?|charge[s]?)\b[^\d]{0,20}?" + MONTANT, re.S)
 RE_COMMISSION = re.compile(r"\bcommission\b[^\d]{0,20}?" + MONTANT, re.S)
 
 # Orange détaille lui-même le brut et le net. On ne recalcule ni l'un ni
 # l'autre : ce que l'opérateur annonce fait foi.
-RE_MONTANT_NET = re.compile(r"\bmontant\s+net\b[^\d]{0,20}?" + MONTANT, re.S)
+RE_MONTANT_NET = re.compile(
+    r"\b(?:montant\s+net|net\s+amount)\b[^\d]{0,20}?" + MONTANT, re.S)
 RE_MONTANT_BRUT = re.compile(
-    r"\bmontant\s+(?:de\s+la\s+)?transaction\b[^\d]{0,20}?" + MONTANT, re.S)
+    r"\b(?:montant\s+(?:de\s+la\s+)?transaction"
+    r"|transaction\s+amount)\b[^\d]{0,20}?" + MONTANT, re.S)
 # Un champ « Montant : 50000 FCFA » isolé — dernier recours pour les dépôts
 # et retraits qui ne détaillent ni « net » ni « transaction ».
-RE_MONTANT_SIMPLE = re.compile(r"\bmontant\b[^\d]{0,20}?" + MONTANT, re.S)
+RE_MONTANT_SIMPLE = re.compile(
+    r"\b(?:montant|amount)\b[^\d]{0,20}?" + MONTANT, re.S)
 # Un montant nu, sans mot-clé, cherché dans le seul fragment « depot de 50000
 # FCFA vers … » : trop court pour contenir des frais ou un solde.
 RE_MONTANT_SEUL = re.compile(MONTANT, re.S)
@@ -418,6 +453,13 @@ def _transfert_orange(m, norme, propre, texte):
     net = _montant_nomme(RE_MONTANT_NET, norme)
     brut = _montant_nomme(RE_MONTANT_BRUT, norme)
     montant = net if net is not None else brut
+    if montant is None:
+        # « Transfer of 50000 FCFA from … » : le montant vit dans la tête de
+        # phrase, avant la première partie — jamais plus loin, pour ne pas
+        # confondre avec les frais ou le solde qui suivent.
+        tete = RE_MONTANT_SEUL.search(norme, m.start(), m.start("num_emetteur"))
+        if tete:
+            montant = _nombre(tete.group(1))
     if not montant:
         return None     # un transfert sans montant lisible n'est pas exploitable
 
@@ -502,7 +544,8 @@ def analyser(texte, numeros=()):
     if RE_BRUIT.search(norme):
         return None     # publicité, code de vérification : pas un paiement
 
-    transfert = RE_TRANSFERT.search(norme)
+    transfert = (RE_TRANSFERT.search(norme) or RE_TRANSFERT_EN.search(norme)
+                 or RE_TRANSFERT_EN_FIN.search(norme))
     if transfert:
         paiement = _transfert_orange(transfert, norme, propre, texte)
         if paiement is not None:
@@ -558,7 +601,9 @@ def solde_annonce(texte):
     norme = _normaliser(texte)
     if RE_BRUIT.search(norme) or RE_CODE_UNIQUE.search(norme):
         return None
-    if RE_TRANSFERT.search(norme) or RE_RECU.search(norme) or RE_ENVOYE.search(norme):
+    if (RE_TRANSFERT.search(norme) or RE_TRANSFERT_EN.search(norme)
+            or RE_TRANSFERT_EN_FIN.search(norme) or RE_OPERATION.search(norme)
+            or RE_RECU.search(norme) or RE_ENVOYE.search(norme)):
         return None
     m = RE_SOLDE.search(norme) or RE_SOLDE_SEUL.search(norme)
     return _nombre(m.group(1)) if m else None
@@ -586,11 +631,12 @@ def categoriser(texte, numeros=()):
     # peut jamais requalifier un vrai paiement (« 2 millions », « gagné »…).
     paiement = analyser(texte, numeros=numeros)
     if paiement is not None:
-        if re.search(r"\bdepot\b", norme):
+        if re.search(r"\bdepot\b|\bdeposit\b", norme):
             return "depot"
-        if re.search(r"\bretrait\b|\bretire\b", norme):
+        if re.search(r"\bretrait\b|\bretire\b|\bwithdraw(?:al|n)?\b"
+                     r"|\bcash\s*out\b", norme):
             return "retrait"
-        if re.search(r"\btransfert\b", norme):
+        if re.search(r"\btransfert\b|\btransfer\b", norme):
             return "transfert"
         if paiement.sens == "entree":
             return "encaissement"

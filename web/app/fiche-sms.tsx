@@ -83,7 +83,9 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   };
 
   // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
-  // qui fait foi — même numéro, même document, à la demande.
+  // qui fait foi — même numéro, à la demande. La nature choisie voyage avec
+  // la demande : c'est ELLE qui décide du document (un transfert marqué
+  // « transfert » ne peut pas revenir en reçu de solde).
   const etablirRecu = async () => {
     if (etabli === "envoi" || p.sourceId == null) return;
     setEtabli("envoi");
@@ -91,7 +93,10 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
       const r = await fetch("/api/commande", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "recu", parametres: { source_id: p.sourceId } }),
+        body: JSON.stringify({
+          type: "recu",
+          parametres: { source_id: p.sourceId, ...(nature ? { nature } : {}) },
+        }),
       });
       if (!r.ok) throw new Error();
       const { id } = (await r.json()) as { id: number };

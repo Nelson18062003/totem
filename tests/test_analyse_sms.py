@@ -347,6 +347,71 @@ class TestTransfertOrange(unittest.TestCase):
         self.assertEqual(analyser(TRANSFERT_ORANGE).texte, TRANSFERT_ORANGE)
 
 
+class TestTransfertOrangeAnglais(unittest.TestCase):
+    """La même forme d'Orange, la ligne réglée en anglais chez l'opérateur.
+
+    Texte relevé sur une vraie capture de production (août 2026) : le mot de
+    réussite vient AVANT le verbe, les parties après « from » et « to », et
+    les champs s'appellent Transaction amount / Charges / Net amount /
+    New balance.
+    """
+
+    TEXTE = ("Successful transfer from 696413104 IBRAHIM DAHIROU to "
+             "696103864 WONDER PHONE. Details: Transaction ID: "
+             "PP260805.1402.C55918, Transaction amount: 1300000 FCFA, "
+             "Charges: 0 FCFA, Commission: 0 FCFA, Net amount :1300000 FCFA, "
+             "New balance: 6335788.6 FCFA.")
+
+    def test_tout_est_lu(self):
+        p = analyser(self.TEXTE, numeros=("696103864",))
+        self.assertIsNotNone(p)
+        self.assertEqual(p.sens, "entree")
+        self.assertEqual(p.montant, 1300000)
+        self.assertEqual(p.reference, "PP260805.1402.C55918")
+        self.assertEqual(p.solde_apres, 6335788.6)
+        self.assertEqual(p.frais, 0)
+        self.assertEqual(p.emetteur.nom, "IBRAHIM DAHIROU")
+        self.assertEqual(p.emetteur.numero, "696413104")
+        self.assertEqual(p.beneficiaire.nom, "WONDER PHONE")
+
+    def test_categorise_transfert_pas_solde(self):
+        """Le bug vécu : « New balance » faisait passer tout le transfert
+        pour une interrogation de solde."""
+        self.assertEqual(categoriser(self.TEXTE), "transfert")
+        self.assertIsNone(solde_annonce(self.TEXTE))
+
+    def test_la_reussite_en_fin_de_phrase(self):
+        texte = ("Transfer of 50000 FCFA from 655001122 to 696103864 "
+                 "WONDER PHONE successful. Transaction ID: AB12.CD34.")
+        p = analyser(texte, numeros=("696103864",))
+        self.assertIsNotNone(p)
+        self.assertEqual((p.sens, p.montant, p.reference),
+                         ("entree", 50000, "AB12.CD34"))
+
+    def test_sans_mot_de_reussite_rien(self):
+        texte = ("Transfer from 655001122 to 696103864 failed. "
+                 "Insufficient balance.")
+        self.assertIsNone(analyser(texte))
+        self.assertIsNone(solde_annonce(texte))
+
+    def test_depot_et_retrait_anglais(self):
+        depot = ("Deposit of 50000 FCFA to 690933686 NGANGOM NOUBEWE "
+                 "successful from 80684177 AGENT SNC. New balance: 150000 FCFA.")
+        self.assertEqual(categoriser(depot), "depot")
+        p = analyser(depot)
+        self.assertEqual((p.montant, p.solde_apres), (50000, 150000))
+        retrait = ("Withdrawal of 25000 FCFA to 690933686 NGANGOM NOUBEWE "
+                   "completed. Fees: 500 FCFA.")
+        self.assertEqual(categoriser(retrait), "retrait")
+        q = analyser(retrait)
+        self.assertEqual((q.montant, q.frais), (25000, 500))
+
+    def test_le_solde_anglais_reste_un_solde(self):
+        texte = "The balance of your account is 5035788.6FCFA."
+        self.assertEqual(categoriser(texte), "solde")
+        self.assertEqual(solde_annonce(texte), 5035788.6)
+
+
 class TestSeparateurDecimal(unittest.TestCase):
     """Le point sépare des milliers dans « 1.250.000 » et des décimales dans
     « 2784137.6 ». La confusion lisait le solde dix fois trop grand."""
