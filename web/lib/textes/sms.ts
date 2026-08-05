@@ -57,6 +57,9 @@ const en = {
   regenerationLente:
     "The terminal is taking longer than expected. The PDF will be replaced "
     + "as soon as it finishes — try opening it again in a minute.",
+  regenerationEnRoute:
+    "The rebuild is on its way — open the PDF again in about a minute to "
+    + "see the new document.",
   demandeAuTerminal: "Asking the terminal…",
   etablirRecu: "Issue the receipt",
   terminalMuet: "The terminal did not answer — is it switched on, and up to date?",
@@ -128,6 +131,9 @@ const fr: typeof en = {
   regenerationLente:
     "Le terminal prend plus de temps que prévu. Le PDF sera remplacé dès "
     + "qu'il aura fini — réessayez de l'ouvrir dans une minute.",
+  regenerationEnRoute:
+    "La refabrication est en route — rouvrez le PDF dans une minute environ "
+    + "pour voir le nouveau document.",
   demandeAuTerminal: "Demande au terminal…",
   etablirRecu: "Établir le reçu",
   terminalMuet: "Le terminal n’a pas répondu — est-il allumé, et à jour ?",

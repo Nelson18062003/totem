@@ -133,6 +133,16 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
             // d'établissement dans le cloud, et on ne dit « c'est le
             // nouveau » que quand elle a vraiment avancé.
             setMot(t.regenerationEnCours);
+            if (!etabliAvant) {
+              // Le repère d'avant n'a pas pu être lu : impossible de
+              // CONSTATER le remplacement — alors on ne le certifie pas.
+              // Message d'attente honnête, et la main revient.
+              await new Promise((res) => setTimeout(res, 15000));
+              setMot(t.regenerationEnRoute);
+              setEtabli("repos");
+              router.refresh();
+              return;
+            }
             for (let attente = 0; attente < 30; attente++) {
               await new Promise((res) => setTimeout(res, 3000));
               const etabliApres = await ficheRecu();
