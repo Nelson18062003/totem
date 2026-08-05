@@ -98,6 +98,85 @@ class TestLeDemarrage(unittest.TestCase):
         self.assertFalse(any("relu" in t or "re-read" in t for t in evenements))
 
 
+class TestLesVieuxRecus(unittest.TestCase):
+    """L'icône de la plateforme sert le PDF archivé : un vieux reçu de solde
+    y resterait pour toujours si le changement de lecteur ne le refaisait pas.
+    """
+
+    def _journal_avec_vieux_recu(self, nature=None):
+        journal = Journal(":memory:")
+        identifiant = journal.sms("OrangeMoney", TRANSFERT_EN)
+        journal.marquer_sms_envoyes([identifiant])
+        # L'état d'avant : le lecteur d'époque n'avait vu qu'un solde.
+        journal.programmer_recu(identifiant, "solde", "TM-2026-0805-0075",
+                                nature=nature)
+        (ligne,) = journal.recus_a_envoyer(-60)
+        journal.recu_envoye(ligne[0])
+        journal.recu_archive(ligne[0])
+        journal.ecrire_memo("empreinte_lecteur", "une-autre-version")
+        return journal, ligne[0]
+
+    def test_le_vieux_recu_de_solde_est_repris_en_transfert(self):
+        journal, identifiant = self._journal_avec_vieux_recu()
+        _robot(journal)
+        genre, archive, envoye, numero = journal.conn.execute(
+            "SELECT genre, archive, envoye, numero FROM recus WHERE id = ?",
+            (identifiant,)).fetchone()
+        self.assertEqual(genre, "transfert")
+        self.assertEqual(archive, 0)      # l'archive du cloud sera refaite
+        self.assertEqual(envoye, 1)       # Telegram, lui, n'est pas re-spammé
+        self.assertEqual(numero, "TM-2026-0805-0075")   # même numéro
+        evenements = [l[-1] for l in journal.evenements_non_envoyes(10)]
+        self.assertTrue(any("reçu" in t or "receipt" in t for t in evenements),
+                        evenements)
+
+    def test_une_nature_choisie_a_la_main_ne_se_discute_pas(self):
+        journal, identifiant = self._journal_avec_vieux_recu(nature="solde")
+        _robot(journal)
+        genre, archive = journal.conn.execute(
+            "SELECT genre, archive FROM recus WHERE id = ?",
+            (identifiant,)).fetchone()
+        self.assertEqual(genre, "solde")
+        self.assertEqual(archive, 1)
+
+    def test_une_lecture_inchangee_ne_rearchive_rien(self):
+        journal = Journal(":memory:")
+        identifiant = journal.sms("OrangeMoney", TRANSFERT_EN)
+        journal.programmer_recu(identifiant, "transfert", "TM-2026-0805-0001",
+                                reference="PP260805.1402.C55918")
+        (ligne,) = journal.recus_a_envoyer(-60)
+        journal.recu_envoye(ligne[0])
+        journal.recu_archive(ligne[0])
+        journal.ecrire_memo("empreinte_lecteur", "une-autre-version")
+        _robot(journal)
+        archive = journal.conn.execute(
+            "SELECT archive FROM recus WHERE id = ?",
+            (ligne[0],)).fetchone()[0]
+        self.assertEqual(archive, 1)
+
+    def test_l_archive_refaite_est_un_transfert_sous_le_meme_numero(self):
+        class FauxNuage:
+            actif = True
+
+            def __init__(self):
+                self.archives = []
+
+            def archiver_recu(self, nom, contenu, fiche=None):
+                self.archives.append((nom, fiche))
+                return True
+
+        journal, identifiant = self._journal_avec_vieux_recu()
+        robot = _robot(journal)
+        robot.numeros = {"orange": "696103864"}
+        robot.nuage = FauxNuage()
+        robot._distribuer_recus()
+        self.assertEqual(len(robot.nuage.archives), 1)
+        nom, fiche = robot.nuage.archives[0]
+        self.assertEqual(nom, "TM-2026-0805-0075.pdf")
+        self.assertEqual(fiche["genre"], "transfert")
+        self.assertEqual(fiche["montant"], 1300000)
+
+
 class TestLaRetransmission(unittest.TestCase):
     def test_les_paiements_partent_en_merge(self):
         """Sans « merge », une ligne retransmise serait ignorée par le cloud

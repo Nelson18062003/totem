@@ -585,6 +585,36 @@ class Journal:
                 self.conn.commit()
             return False
 
+    def recus_a_relire(self):
+        """[(id, source_id, genre, numero)] des reçus nés d'un SMS et SANS
+        nature choisie par le propriétaire : eux seuls suivent la lecture du
+        robot — une nature posée à la main ne se discute pas."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, source_id, genre, numero FROM recus "
+                "WHERE source = 'sms' AND nature IS NULL").fetchall()
+
+    def corriger_genre_recu(self, identifiant, genre, reference=None):
+        """Corrige le genre d'un reçu et le remet à archiver.
+
+        Le document déjà parti sur Telegram y reste — on ne re-spamme pas la
+        conversation — mais l'archive du cloud, celle que sert la plateforme,
+        sera refaite sous le même numéro avec le bon contenu.
+        """
+        with self.verrou:
+            try:
+                self.conn.execute(
+                    "UPDATE recus SET genre = ?, reference = ?, "
+                    "archive = 0, essais = 0 WHERE id = ?",
+                    (genre, reference or None, identifiant))
+            except sqlite3.IntegrityError:
+                # La référence est déjà tenue par un autre document : on
+                # corrige le genre sans elle.
+                self.conn.execute(
+                    "UPDATE recus SET genre = ?, archive = 0, essais = 0 "
+                    "WHERE id = ?", (genre, identifiant))
+            self.conn.commit()
+
     def recus_a_envoyer(self, apres_secondes=0, limite=5):
         """Les reçus mûrs, du plus ancien au plus récent.
 

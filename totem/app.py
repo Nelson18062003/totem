@@ -203,23 +203,55 @@ class Robot:
         try:
             import hashlib
 
-            from . import analyse_sms
-            with open(analyse_sms.__file__, "rb") as source:
-                empreinte = hashlib.sha1(source.read()).hexdigest()
+            from . import analyse_sms, declencheur
+            h = hashlib.sha1()
+            # Les deux fichiers qui LISENT : l'analyseur des SMS et la règle
+            # des reçus. L'un ou l'autre change → tout se relit.
+            for module in (analyse_sms, declencheur):
+                with open(module.__file__, "rb") as source:
+                    h.update(source.read())
+            empreinte = h.hexdigest()
             if self.journal.lire_memo("empreinte_lecteur") == empreinte:
                 return
             relus = self.journal.remettre_sms_a_transmettre()
+            repris = self._reprendre_vieux_recus()
             self.journal.ecrire_memo("empreinte_lecteur", empreinte)
-            if relus:
+            if relus or repris:
                 self.journal.evenement(t(
                     f"the SMS reader changed: {relus} past message(s) "
-                    "re-read and re-sent to the platform",
+                    f"re-read and re-sent, {repris} receipt(s) redone under "
+                    "their true type",
                     f"le lecteur de SMS a changé : {relus} message(s) "
-                    "passé(s) relu(s) et retransmis à la plateforme"))
+                    f"relu(s) et retransmis, {repris} reçu(s) refait(s) "
+                    "sous leur vrai type"))
         except Exception:
             # Ne jamais empêcher le robot de démarrer pour une relecture :
             # elle retentera au prochain démarrage.
             pass
+
+    def _reprendre_vieux_recus(self):
+        """Refait les reçus archivés dont la lecture a changé.
+
+        Le cas vécu : un transfert anglais, incompris à l'époque, avait
+        laissé un reçu de SOLDE archivé — et l'icône de la plateforme sert
+        ce document-là pour toujours. Quand le lecteur change, chaque reçu
+        né d'un SMS (et sans nature posée à la main, qui ne se discute pas)
+        est relu : si le genre a changé, la ligne est corrigée et le
+        document se ré-archive sous le même numéro. Telegram, lui, garde ce
+        qu'il a reçu : pas de renvoi.
+        """
+        repris = 0
+        for identifiant, source_id, genre, numero in self.journal.recus_a_relire():
+            texte = self.journal.texte_sms(source_id)
+            if not texte:
+                continue
+            motif = motif_du_sms(texte, numeros=self._nos_numeros())
+            if motif is None or motif.genre == genre:
+                continue
+            self.journal.corriger_genre_recu(identifiant, motif.genre,
+                                             motif.reference)
+            repris += 1
+        return repris
 
     def _heure_passee(self):
         try:
