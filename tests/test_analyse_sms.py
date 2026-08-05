@@ -412,6 +412,36 @@ class TestTransfertOrangeAnglais(unittest.TestCase):
         self.assertEqual(solde_annonce(texte), 5035788.6)
 
 
+class TestBruitAnglais(unittest.TestCase):
+    """Publicités, codes et pièges anglophones : rien ne devient un paiement."""
+
+    def test_la_reclame_ne_paie_pas(self):
+        pub = "Congratulations! You have won 2,000,000 FCFA with Orange Money!"
+        self.assertIsNone(analyser(pub))
+        self.assertEqual(categoriser(pub), "publicite")
+
+    def test_le_forfait_reste_une_reclame(self):
+        pub = "Win big! Buy a data bundle today and get free airtime."
+        self.assertIsNone(analyser(pub))
+        self.assertEqual(categoriser(pub), "publicite")
+
+    def test_le_code_anglais_est_masque(self):
+        code = "Your one-time password is 481516. Do not share it."
+        self.assertEqual(categoriser(code), "code")
+        self.assertNotIn("481516", masquer_secrets(code))
+
+    def test_une_entreprise_nommee_win_paie_quand_meme(self):
+        """« win » est un mot de réclame, mais WIN TELECOM est un client :
+        le rejet du bruit ne doit jamais tuer un vrai transfert."""
+        texte = ("Successful transfer from 655001122 WIN TELECOM to "
+                 "696103864 WONDER PHONE. Net amount :5000 FCFA, "
+                 "New balance: 100000 FCFA.")
+        p = analyser(texte, numeros=("696103864",))
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+        self.assertEqual(p.emetteur.nom, "WIN TELECOM")
+
+
 class TestSeparateurDecimal(unittest.TestCase):
     """Le point sépare des milliers dans « 1.250.000 » et des décimales dans
     « 2784137.6 ». La confusion lisait le solde dix fois trop grand."""

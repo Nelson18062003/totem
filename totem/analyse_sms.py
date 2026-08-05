@@ -256,7 +256,13 @@ RE_MONTANT_SEUL = re.compile(MONTANT, re.S)
 # veut surtout pas les compter comme des encaissements.
 RE_BRUIT = re.compile(
     r"\b(?:promo|promotion|bonus|gagnez|felicitations|offre|forfait|"
-    r"mot de passe|code de verification|otp|ne partagez)\b")
+    r"mot de passe|code de verification|otp|ne partagez|"
+    # Les mêmes marqueurs, côté anglophone. Volontairement étroits : ce motif
+    # REJETTE un paiement, et un mot trop large (« win » — WIN TELECOM est un
+    # nom d'entreprise plausible) tuerait un vrai transfert. Les mots larges
+    # vivent dans RE_PUB, qui ne sert qu'à catégoriser.
+    r"congratulations|you\s+have\s+won|do\s+not\s+share|"
+    r"verification\s+code|one[-\s]?time\s+password)\b")
 
 # Détection ÉLARGIE de la réclame, pour la seule catégorisation (jamais pour
 # rejeter un paiement) : on ne l'applique qu'à un SMS déjà écarté comme
@@ -264,7 +270,9 @@ RE_BRUIT = re.compile(
 # risque de requalifier un encaissement.
 RE_PUB = re.compile(
     r"\b(?:gagner|jackpot|tente\s+ta\s+chance|max\s*it|illimite|abonne|"
-    r"data|reseau\s+social|whatsapp|recharge|rechargez|cadeau)\b")
+    r"data|reseau\s+social|whatsapp|recharge|rechargez|cadeau|"
+    r"win|won|gift|reward|offer|bundle|unlimited|subscribe|"
+    r"top\s*up|airtime)\b")
 
 # Un code à usage unique : « Le code de 696103864 est: 515318. » Ce n'est pas
 # un paiement, mais surtout ce n'est pas un texte à conserver ni à relayer.

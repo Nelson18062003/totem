@@ -128,6 +128,11 @@ class Journal:
                     essais INTEGER DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS evenements(
                     id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
+                -- La mémoire du robot entre deux démarrages : de petites
+                -- valeurs nommées (l'empreinte du lecteur de SMS…). Rien
+                -- d'important n'y vit : la perdre ne perd aucune donnée.
+                CREATE TABLE IF NOT EXISTS memos(
+                    cle TEXT PRIMARY KEY, valeur TEXT);
                 -- Toutes les cartes SIM déjà vues dans ce terminal. L'ICCID
                 -- est gravé sur la puce : c'est la seule identité qui survit
                 -- au retrait, au changement de modem et à l'itinérance.
@@ -677,6 +682,35 @@ class Journal:
     # Le journal local reste la source de vérité : une ligne n'est marquée
     # envoyée qu'une fois le cloud confirmé. Une coupure réseau ne perd rien,
     # elle ne fait qu'allonger la file.
+
+    def lire_memo(self, cle):
+        """Une valeur de la mémoire du robot, ou None."""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT valeur FROM memos WHERE cle = ?", (cle,)).fetchone()
+        return ligne[0] if ligne else None
+
+    def ecrire_memo(self, cle, valeur):
+        with self.verrou:
+            self.conn.execute(
+                "INSERT INTO memos(cle, valeur) VALUES(?, ?) "
+                "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+                (cle, str(valeur)))
+            self.conn.commit()
+
+    def remettre_sms_a_transmettre(self):
+        """Remet TOUS les SMS dans la file vers le cloud, et dit combien.
+
+        Sert quand le lecteur de SMS s'améliore : chaque message est relu au
+        moment de l'envoi, et la plateforme reçoit la nouvelle lecture — le
+        texte d'origine, lui, ne bouge jamais.
+        """
+        with self.verrou:
+            n = self.conn.execute(
+                "UPDATE sms SET envoye = 0 "
+                "WHERE COALESCE(envoye, 0) != 0").rowcount
+            self.conn.commit()
+        return n
 
     def sms_non_envoyes(self, limite=100):
         """[(id, date, expéditeur, texte, compte, iccid, emis_le)] à transmettre."""

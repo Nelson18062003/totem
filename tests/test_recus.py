@@ -171,6 +171,32 @@ class TestQuiMeriteUnRecu(unittest.TestCase):
         self.assertIsNone(motif_du_sms(""))
 
 
+class TestRefusAnglais(unittest.TestCase):
+    """Échecs et questions en anglais : jamais de document dessus."""
+
+    def test_un_echec_anglais_ne_produit_rien(self):
+        for texte in (
+            "Transfer to 696103864 could not be completed. Insufficient funds.",
+            "Transaction unsuccessful. Please try again later.",
+            "Your transfer of 5000 FCFA was cancelled.",
+        ):
+            self.assertIsNone(motif_du_sms(texte), texte)
+
+    def test_une_question_ussd_anglaise_nest_pas_un_solde(self):
+        for reponse in (
+            "Please enter the recipient number",
+            "Enter amount (FCFA):",
+            "Select an option to confirm",
+        ):
+            self.assertIsNone(motif_du_menu(reponse), reponse)
+
+    def test_le_solde_ussd_anglais_donne_un_recu(self):
+        motif = motif_du_menu("Your balance is 5000.5 FCFA")
+        self.assertIsNotNone(motif)
+        self.assertEqual(motif.genre, SOLDE)
+        self.assertEqual(motif.solde, 5000.5)
+
+
 class TestLeDocument(unittest.TestCase):
     QUAND = datetime.datetime(2026, 7, 31, 13, 19)
 

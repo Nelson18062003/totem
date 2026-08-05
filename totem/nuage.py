@@ -350,9 +350,14 @@ class Nuage:
             charge.append(self._ligne_paiement(
                 id_local, date, expediteur, texte, compte, iccid, emis_le))
             ids.append(id_local)
+        # « merge » : un SMS retransmis MET À JOUR sa ligne — c'est ce qui
+        # permet de relire les messages passés quand le lecteur s'améliore.
+        # Ce que la plateforme a posé elle-même (nature, lu_le) n'est pas dans
+        # la charge : le merge ne touche que les colonnes envoyées.
         return self._pousser_lot(
             "paiements", "terminal,source_id", ids, charge,
-            self.journal.marquer_sms_envoyes, t("payment", "paiement"))
+            self.journal.marquer_sms_envoyes, t("payment", "paiement"),
+            resolution="merge-duplicates")
 
     def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid,
                         emis_le=None):
