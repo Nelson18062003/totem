@@ -130,16 +130,21 @@ class TestLesVieuxRecus(unittest.TestCase):
         self.assertTrue(any("reçu" in t or "receipt" in t for t in evenements),
                         evenements)
 
-    def test_une_nature_choisie_a_la_main_ne_se_discute_pas(self):
+    def test_une_nature_choisie_garde_son_genre_mais_se_rafraichit(self):
+        """Le choix du propriétaire ne se discute pas — mais le CONTENU du
+        document (montant, référence) suit la nouvelle lecture : l'archive
+        se refait, sous le même genre."""
         journal, identifiant = self._journal_avec_vieux_recu(nature="solde")
         _robot(journal)
         genre, archive = journal.conn.execute(
             "SELECT genre, archive FROM recus WHERE id = ?",
             (identifiant,)).fetchone()
         self.assertEqual(genre, "solde")
-        self.assertEqual(archive, 1)
+        self.assertEqual(archive, 0)
 
-    def test_une_lecture_inchangee_ne_rearchive_rien(self):
+    def test_une_lecture_de_meme_genre_rearchive_quand_meme(self):
+        """Un lecteur qui change peut corriger un montant ou une référence
+        SANS changer le genre : le document archivé doit suivre aussi."""
         journal = Journal(":memory:")
         identifiant = journal.sms("OrangeMoney", TRANSFERT_EN)
         journal.programmer_recu(identifiant, "transfert", "TM-2026-0805-0001",
@@ -149,6 +154,23 @@ class TestLesVieuxRecus(unittest.TestCase):
         journal.recu_archive(ligne[0])
         journal.ecrire_memo("empreinte_lecteur", "une-autre-version")
         _robot(journal)
+        genre, archive, envoye = journal.conn.execute(
+            "SELECT genre, archive, envoye FROM recus WHERE id = ?",
+            (ligne[0],)).fetchone()
+        self.assertEqual(genre, "transfert")
+        self.assertEqual(archive, 0)      # refait à neuf dans le cloud
+        self.assertEqual(envoye, 1)       # Telegram, lui, reste tranquille
+
+    def test_un_lecteur_inchange_laisse_les_archives_en_paix(self):
+        journal = Journal(":memory:")
+        identifiant = journal.sms("OrangeMoney", TRANSFERT_EN)
+        journal.programmer_recu(identifiant, "transfert", "TM-2026-0805-0001",
+                                reference="PP260805.1402.C55918")
+        _robot(journal)                   # pose l'empreinte (et relit tout)
+        (ligne,) = journal.recus_a_envoyer(-60)
+        journal.recu_envoye(ligne[0])
+        journal.recu_archive(ligne[0])    # l'archive est faite, tout est calme
+        _robot(journal)                   # même lecteur : rien ne bouge
         archive = journal.conn.execute(
             "SELECT archive FROM recus WHERE id = ?",
             (ligne[0],)).fetchone()[0]

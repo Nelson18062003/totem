@@ -241,15 +241,28 @@ class Robot:
         qu'il a reçu : pas de renvoi.
         """
         repris = 0
-        for identifiant, source_id, genre, numero in self.journal.recus_a_relire():
+        for (identifiant, source_id, genre, numero,
+             nature) in self.journal.recus_a_relire():
             texte = self.journal.texte_sms(source_id)
             if not texte:
                 continue
             motif = motif_du_sms(texte, numeros=self._nos_numeros())
-            if motif is None or motif.genre == genre:
+            if nature:
+                # Le choix du propriétaire ne se discute pas : même genre,
+                # mais le CONTENU (montant, référence, parties) peut avoir
+                # changé avec la lecture — le document se refait à neuf.
+                if motif_selon_nature(motif, nature) is None:
+                    continue
+                self.journal.rearchiver_recu(identifiant)
+            elif motif is None:
                 continue
-            self.journal.corriger_genre_recu(identifiant, motif.genre,
-                                             motif.reference)
+            elif motif.genre != genre:
+                self.journal.corriger_genre_recu(identifiant, motif.genre,
+                                                 motif.reference)
+            else:
+                # Même genre, mais un montant ou une référence a pu bouger
+                # avec la nouvelle lecture : on ne compare pas, on refait.
+                self.journal.rearchiver_recu(identifiant)
             repris += 1
         return repris
 
