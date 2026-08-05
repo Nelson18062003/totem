@@ -92,6 +92,9 @@ def charger():
                         if valeur
                     },
                     "nom": cfg.get("totem", "nom", fallback="TOTEM"),
+                    # La langue du robot : « en » (défaut) ou « fr ». Les
+                    # textes de l'opérateur, eux, restent toujours intacts.
+                    "langue": cfg.get("totem", "langue", fallback="en").strip().lower(),
                     "heure_rapport": cfg.get("totem", "heure_rapport", fallback="21:00"),
                     "base": cfg.get("totem", "base", fallback="/var/lib/totem/journal.db"),
                     "delai_session": cfg.getint("totem", "delai_session", fallback=180),

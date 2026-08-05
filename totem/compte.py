@@ -15,6 +15,7 @@ import threading
 
 from .carte import Carte
 from .modem import USSD_OUVERTE, ErreurModem
+from .textes import t
 
 
 class Compte:
@@ -52,10 +53,13 @@ class Compte:
 
     def resume(self):
         """Ligne d'état lisible : « MTN · SIM présente · signal 26/31 »."""
-        sim = "SIM présente" if self.sim_prete() else "SIM absente"
+        sim = (t("SIM present", "SIM présente") if self.sim_prete()
+               else t("SIM missing", "SIM absente"))
         s = self.signal()
-        force = "signal inconnu" if s == 99 else f"signal {s}/31"
-        etat = " · session ouverte" if self.session_ouverte else ""
+        force = (t("signal unknown", "signal inconnu") if s == 99
+                 else f"signal {s}/31")
+        etat = (t(" · session open", " · session ouverte")
+                if self.session_ouverte else "")
         return f"{self.libelle} · {sim} · {force}{etat}"
 
     # ---- USSD -------------------------------------------------------------

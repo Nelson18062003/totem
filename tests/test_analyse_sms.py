@@ -272,6 +272,16 @@ class TestRobustesse(unittest.TestCase):
         self.assertEqual(d["sens"], "entree")
         self.assertIn("texte", d)
 
+    def test_le_tiers_inconnu_suit_la_langue(self):
+        from totem import textes
+        from totem.analyse_sms import Partie
+        self.assertEqual(str(Partie()), "Unknown")
+        textes.definir_langue("fr")
+        try:
+            self.assertEqual(str(Partie()), "Inconnu")
+        finally:
+            textes.definir_langue("en")
+
     def test_nombre_demesure_ne_leve_jamais(self):
         # Un SMS trafiqué avec des milliers de chiffres ferait lever « int »
         # ou « 10 ** n ». analyser() doit renvoyer None, jamais planter.
@@ -357,10 +367,23 @@ class TestSeparateurDecimal(unittest.TestCase):
         self.assertIsInstance(analyser(TRANSFERT_ORANGE).montant, int)
 
     def test_formatage(self):
+        """Anglais par défaut : virgule pour les milliers, point décimal."""
         self.assertEqual(formater_montant(0), "0")
-        self.assertEqual(formater_montant(184137), "184 137")
-        self.assertEqual(formater_montant(2784137.6), "2 784 137,6")
-        self.assertEqual(formater_montant(999.5), "999,5")
+        self.assertEqual(formater_montant(184137), "184,137")
+        self.assertEqual(formater_montant(2784137.6), "2,784,137.6")
+        self.assertEqual(formater_montant(999.5), "999.5")
+
+    def test_formatage_francais(self):
+        """La forme camerounaise : espace pour les milliers, virgule décimale.
+        Par le paramètre ponctuel comme par la langue du robot."""
+        self.assertEqual(formater_montant(184137, langue="fr"), "184 137")
+        self.assertEqual(formater_montant(2784137.6, langue="fr"), "2 784 137,6")
+        from totem import textes
+        textes.definir_langue("fr")
+        try:
+            self.assertEqual(formater_montant(999.5), "999,5")
+        finally:
+            textes.definir_langue("en")
 
 
 class TestSoldeSeul(unittest.TestCase):

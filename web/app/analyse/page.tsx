@@ -1,5 +1,8 @@
+import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import { fcfa, nombre, type Paiement } from "@/lib/types";
+import type { Langue } from "@/lib/langue";
+import { textesAnalyse } from "@/lib/textes/analyse";
+import { fcfa, jourDouala, nombre, type Paiement } from "@/lib/types";
 import { IconDoc } from "../icons";
 import { Vide } from "../vide";
 
@@ -11,22 +14,21 @@ export const dynamic = "force-dynamic";
 // de rendu) — et la liste et le graphe montraient deux jours différents.
 const FUSEAU = "Africa/Douala";
 
-function jourDouala(iso: string): string {
-  return new Intl.DateTimeFormat("fr-CA", { timeZone: FUSEAU }).format(new Date(iso));
-}
-
 // Les encaissements des 7 derniers jours, calculés sur les vrais paiements —
-// aucun chiffre n'est écrit à la main.
-function septDerniersJours(paiements: Paiement[]) {
+// aucun chiffre n'est écrit à la main. Les noms de jours suivent la langue.
+function septDerniersJours(paiements: Paiement[], langue: Langue) {
   const jours: { jour: string; montant: number }[] = [];
   const present = Date.now();
+  const locale = langue === "en" ? "en-GB" : "fr-FR";
   for (let i = 6; i >= 0; i--) {
     const d = new Date(present - i * 86_400_000);
-    const cle = jourDouala(d.toISOString());
+    const cle = jourDouala(d);
     const montant = paiements
-      .filter((p) => p.sens === "in" && p.montant != null && jourDouala(p.recuLe) === cle)
+      .filter((p) => p.sens === "in" && p.montant != null && jourDouala(new Date(p.recuLe)) === cle)
       .reduce((s, p) => s + (p.montant ?? 0), 0);
-    const nom = new Intl.DateTimeFormat("fr-FR", { timeZone: FUSEAU, weekday: "short" })
+    // « lun. » devient « Lun », « Mon » reste « Mon » : sans point, une
+    // majuscule initiale dans les deux langues.
+    const nom = new Intl.DateTimeFormat(locale, { timeZone: FUSEAU, weekday: "short" })
       .format(d).replace(".", "");
     jours.push({ jour: nom.charAt(0).toUpperCase() + nom.slice(1), montant });
   }
@@ -44,24 +46,23 @@ function semaine(paiements: Paiement[], debut: number, fin: number) {
 }
 
 export default async function Analyse() {
-  const { paiements } = await chargerDonnees();
+  const langue = await langueServeur();
+  const t = textesAnalyse[langue];
+  const { paiements } = await chargerDonnees(langue);
 
   if (paiements.length === 0) {
     return (
       <div className="flex flex-col gap-8">
         <header>
-          <h1 className="text-title font-semibold tracking-tight">Analyse</h1>
-          <p className="mt-1 text-small text-ink-soft">Sept derniers jours.</p>
+          <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+          <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
         </header>
-        <Vide
-          titre="Rien à analyser pour l’instant"
-          detail="Dès que des paiements arriveront, cette page montrera la semaine, les meilleurs jours et les principaux clients."
-        />
+        <Vide titre={t.rienTitre} detail={t.rienDetail} />
       </div>
     );
   }
 
-  const septJours = septDerniersJours(paiements);
+  const septJours = septDerniersJours(paiements, langue);
   const total = septJours.reduce((s, d) => s + d.montant, 0);
   const moyenne = Math.round(total / 7);
   const meilleur = septJours.reduce((a, b) => (b.montant > a.montant ? b : a));
@@ -87,20 +88,20 @@ export default async function Analyse() {
     // Grand écran : les chiffres et le graphique à gauche, les clients à droite.
     <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
       <header className="lg:col-span-2">
-        <h1 className="text-title font-semibold tracking-tight">Analyse</h1>
-        <p className="mt-1 text-small text-ink-soft">Sept derniers jours.</p>
+        <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+        <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
       </header>
 
       {/* Chiffre principal */}
       <section className="lg:col-start-1">
-        <p className="text-small text-ink-soft">Encaissements de la semaine</p>
-        <p className="mt-1 text-hero font-semibold tabnums tracking-tight">{fcfa(total)}</p>
+        <p className="text-small text-ink-soft">{t.encaissementsSemaine}</p>
+        <p className="mt-1 text-hero font-semibold tabnums tracking-tight">{fcfa(total, langue)}</p>
         {evolution != null && (
           <p className="mt-1.5 text-small text-ink-soft">
             <span className={`font-medium ${evolution >= 0 ? "text-positive" : "text-negative"}`}>
               {evolution >= 0 ? "+" : ""}{evolution} %
             </span>{" "}
-            par rapport à la semaine précédente
+            {t.parRapportSemainePrecedente}
           </p>
         )}
       </section>
@@ -108,20 +109,20 @@ export default async function Analyse() {
       {/* Repères */}
       <section className="grid grid-cols-2 divide-x divide-line rounded-card border border-line bg-surface-raised lg:col-start-1">
         <div className="px-5 py-4">
-          <p className="text-small text-ink-soft">Moyenne par jour</p>
-          <p className="mt-1 text-heading font-semibold tabnums">{fcfa(moyenne)}</p>
+          <p className="text-small text-ink-soft">{t.moyenneParJour}</p>
+          <p className="mt-1 text-heading font-semibold tabnums">{fcfa(moyenne, langue)}</p>
         </div>
         <div className="px-5 py-4">
-          <p className="text-small text-ink-soft">Meilleur jour</p>
+          <p className="text-small text-ink-soft">{t.meilleurJour}</p>
           <p className="mt-1 text-heading font-semibold tabnums">
-            {meilleur.jour} · {nombre(meilleur.montant)}
+            {meilleur.jour} · {nombre(meilleur.montant, langue)}
           </p>
         </div>
       </section>
 
       {/* Graphique — monochrome, montants complets */}
       <section className="lg:col-start-1">
-        <h2 className="mb-4 text-heading font-semibold">Encaissements par jour</h2>
+        <h2 className="mb-4 text-heading font-semibold">{t.encaissementsParJour}</h2>
         <div className="flex items-end justify-between gap-1.5 sm:gap-2.5" style={{ height: 160 }}>
           {septJours.map((d, i) => {
             const h = Math.round((d.montant / max) * 118) + 6;
@@ -129,7 +130,7 @@ export default async function Analyse() {
             return (
               <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-2">
                 <span className={`max-w-full truncate text-[0.625rem] tabnums sm:text-caption ${best ? "font-medium text-ink" : "text-ink-faint"}`}>
-                  {d.montant > 0 ? nombre(d.montant) : ""}
+                  {d.montant > 0 ? nombre(d.montant, langue) : ""}
                 </span>
                 <div className={`w-full rounded-sm ${best ? "bg-ink" : "bg-surface-3"}`} style={{ height: h }} />
                 <span className="text-caption text-ink-faint">{d.jour}</span>
@@ -137,22 +138,22 @@ export default async function Analyse() {
             );
           })}
         </div>
-        <p className="mt-3 text-caption text-ink-faint">Montants en FCFA.</p>
+        <p className="mt-3 text-caption text-ink-faint">{t.montantsEnFcfa}</p>
       </section>
 
       {/* Clients */}
       {topClients.length > 0 && (
         <section className="lg:col-start-2 lg:row-span-3 lg:row-start-2">
-          <h2 className="mb-1 text-heading font-semibold">Principaux clients</h2>
+          <h2 className="mb-1 text-heading font-semibold">{t.principauxClients}</h2>
           <ul className="divide-hair">
             {topClients.map((c, i) => (
               <li key={c.nom} className="flex items-center gap-3.5 py-3.5">
                 <span className="w-4 text-small tabnums text-ink-faint">{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-body font-medium">{c.nom}</p>
-                  <p className="text-small text-ink-faint">{c.nb} paiements</p>
+                  <p className="text-small text-ink-faint">{t.nbPaiements(c.nb)}</p>
                 </div>
-                <span className="text-body font-medium tabnums">{fcfa(c.total)}</span>
+                <span className="text-body font-medium tabnums">{fcfa(c.total, langue)}</span>
               </li>
             ))}
           </ul>
@@ -160,7 +161,7 @@ export default async function Analyse() {
       )}
 
       <button className="flex items-center justify-center gap-2 rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink lg:col-start-1">
-        <IconDoc size={16} /> Exporter le bilan
+        <IconDoc size={16} /> {t.exporterBilan}
       </button>
     </div>
   );

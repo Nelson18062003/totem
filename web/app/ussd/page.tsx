@@ -1,4 +1,6 @@
+import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { textesUssd } from "@/lib/textes/ussd";
 import { Vide } from "../vide";
 import { ConsoleUssd } from "./console";
 
@@ -9,23 +11,22 @@ export default async function CodeUssd({
 }: {
   searchParams: Promise<{ code?: string }>;
 }) {
-  const [{ sims }, { code }] = await Promise.all([chargerDonnees({ sms: 0, recus: 0 }), searchParams]);
+  const langue = await langueServeur();
+  const t = textesUssd[langue];
+  const [{ sims }, { code }] = await Promise.all([
+    chargerDonnees(langue, { sms: 0, recus: 0 }),
+    searchParams,
+  ]);
   const carte = sims.find((s) => s.enPlace);
 
   if (!carte) {
     return (
       <div className="flex flex-col gap-7">
         <header>
-          <h1 className="text-title font-semibold tracking-tight">Code USSD</h1>
-          <p className="mt-1 text-small text-ink-soft">
-            Composer un code exige une carte en place : le terminal n’en voit
-            aucune pour l’instant.
-          </p>
+          <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+          <p className="mt-1 text-small text-ink-soft">{t.sansCarteSousTitre}</p>
         </header>
-        <Vide
-          titre="Aucune carte dans le terminal"
-          detail="Dès qu'une SIM sera vue, vous pourrez composer ses codes ici, comme sur un téléphone."
-        />
+        <Vide titre={t.aucuneCarte} detail={t.aucuneCarteDetail} />
       </div>
     );
   }

@@ -106,7 +106,22 @@ class TestCloisonnement(unittest.TestCase):
         csv = self.journal.export_csv(7, [MTN_B]).decode("utf-8-sig")
         self.assertIn(MTN_B, csv)
         self.assertNotIn(MTN_A, csv)
+        self.assertIn("card", csv.splitlines()[0])
+        self.assertIn("received", csv)       # le sens, traduit à l'export
+
+    def test_export_csv_en_francais(self):
+        """Les en-têtes et le sens se traduisent à l'export — jamais ce qui
+        est stocké en base."""
+        from totem import textes
+        textes.definir_langue("fr")
+        try:
+            csv = self.journal.export_csv(7, [MTN_B]).decode("utf-8-sig")
+        finally:
+            textes.definir_langue("en")
         self.assertIn("carte", csv.splitlines()[0])
+        self.assertIn("reçu", csv)
+        # La base, elle, n'a pas bougé : le SMS d'origine reste tel quel.
+        self.assertIn("Vous avez recu 5 000 FCFA", csv)
 
     def test_les_lignes_anterieures_restent_visibles(self):
         """Les SMS enregistrés avant le cloisonnement n'ont pas d'ICCID. Les

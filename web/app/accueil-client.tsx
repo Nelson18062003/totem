@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codeUssd } from "@/lib/codes";
 import { fcfa, type Sim } from "@/lib/types";
+import { textesAccueil } from "@/lib/textes/accueil";
+import { useLangue } from "@/app/langue";
 import { IconArrowDown, IconArrowUp, IconPhone, IconRefresh, IconWallet } from "./icons";
 import { OperationPopup, type Operation } from "./operation";
 
@@ -16,50 +18,52 @@ import { OperationPopup, type Operation } from "./operation";
 export function AccueilGuichet({
   carte,
 }: {
-  carte: Pick<Sim, "libelle" | "operateur" | "numero" | "solde" | "soldeSource" | "signal" | "iccid">;
+  carte: Pick<Sim, "libelle" | "operateur" | "numero" | "solde" | "soldeMaj" | "signal" | "iccid">;
 }) {
   const router = useRouter();
+  const langue = useLangue();
+  const t = textesAccueil[langue];
   const [operation, setOperation] = useState<Operation | null>(null);
   const op = carte.operateur;
 
   const solde = (): Operation =>
-    ({ titre: "Consulter le solde", code: codeUssd(op, "solde"), champs: [] });
+    ({ titre: t.consulterSolde, code: codeUssd(op, "solde"), champs: [] });
 
   const operations: { label: string; Icone: typeof IconWallet; fabrique: () => Operation }[] = [
     {
-      label: "Dépôt", Icone: IconArrowDown,
+      label: t.depot, Icone: IconArrowDown,
       fabrique: (): Operation => ({
-        titre: "Dépôt d’argent", code: codeUssd(op, "depot"),
+        titre: t.depotTitre, code: codeUssd(op, "depot"),
         champs: [
-          { cle: "numero", label: "Numéro à créditer", aide: "699 12 34 56", type: "numero" },
-          { cle: "montant", label: "Montant (FCFA)", aide: "20 000", type: "montant" },
+          { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
+          { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" },
         ],
       }),
     },
     {
-      label: "Retrait", Icone: IconWallet,
+      label: t.retrait, Icone: IconWallet,
       fabrique: (): Operation => ({
-        titre: "Retrait d’argent", code: codeUssd(op, "retrait"),
+        titre: t.retraitTitre, code: codeUssd(op, "retrait"),
         champs: [
-          { cle: "point", label: "Numéro de l’agent", aide: "650 00 00 00", type: "numero" },
-          { cle: "montant", label: "Montant (FCFA)", aide: "20 000", type: "montant" },
+          { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
+          { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" },
         ],
       }),
     },
     {
-      label: "Transfert", Icone: IconArrowUp,
+      label: t.transfert, Icone: IconArrowUp,
       fabrique: (): Operation => ({
-        titre: "Transfert d’argent", code: codeUssd(op, "transfert"),
+        titre: t.transfertTitre, code: codeUssd(op, "transfert"),
         champs: [
-          { cle: "numero", label: "Numéro du bénéficiaire", aide: "699 12 34 56", type: "numero" },
-          { cle: "montant", label: "Montant (FCFA)", aide: "50 000", type: "montant" },
+          { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
+          { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" },
         ],
       }),
     },
-    { label: "Solde", Icone: IconRefresh, fabrique: (): Operation => solde() },
+    { label: t.solde, Icone: IconRefresh, fabrique: (): Operation => solde() },
     {
-      label: "Mon numéro", Icone: IconPhone,
-      fabrique: (): Operation => ({ titre: "Mon numéro", code: codeUssd(op, "mon_numero"), champs: [] }),
+      label: t.monNumero, Icone: IconPhone,
+      fabrique: (): Operation => ({ titre: t.monNumero, code: codeUssd(op, "mon_numero"), champs: [] }),
     },
   ].filter((o) => o.fabrique().code);
 
@@ -78,12 +82,12 @@ export function AccueilGuichet({
         </div>
         <div className="mt-4 flex items-center gap-3">
           <p className="text-hero font-semibold tabnums tracking-tight">
-            {carte.solde == null ? "—" : fcfa(carte.solde)}
+            {carte.solde == null ? "—" : fcfa(carte.solde, langue)}
           </p>
           <button
             onClick={() => setOperation(solde())}
-            aria-label="Actualiser le solde : interroger le réseau"
-            title="Interroger le réseau"
+            aria-label={t.actualiserAria}
+            title={t.interrogerReseau}
             className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
           >
             <IconRefresh size={16} />
@@ -91,11 +95,13 @@ export function AccueilGuichet({
         </div>
         <p className="mt-1.5 text-small text-white/55">
           {carte.solde == null
-            ? "Aucun solde connu : appuyez sur la flèche pour interroger le réseau."
-            : `D’après ${carte.soldeSource}`}
+            ? t.aucunSoldeConnu
+            : carte.soldeMaj
+              ? t.soldeMaj(carte.soldeMaj)
+              : t.soldeSansHeure}
         </p>
         <p className="mt-3 text-small tabnums text-white/55">
-          {carte.numero || `carte ${carte.iccid.slice(-8)}`} · {carte.libelle}
+          {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
         </p>
       </section>
 
@@ -110,8 +116,8 @@ export function AccueilGuichet({
         ))}
         {operations.length === 0 && (
           <p className="col-span-full rounded-card border border-dashed border-line px-4 py-5 text-center text-small leading-relaxed text-ink-faint">
-            Aucun code {op} relevé sur le terrain : ajoutez-les dans les{" "}
-            <Link href="/reglages" className="underline underline-offset-4">Réglages</Link>.
+            {t.aucunCode(op)}{" "}
+            <Link href="/reglages" className="underline underline-offset-4">{t.aucunCodeLien}</Link>.
           </p>
         )}
       </section>

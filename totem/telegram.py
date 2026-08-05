@@ -22,6 +22,7 @@ import urllib.request
 
 from .entrant import Entrant
 from .mise_en_forme import brut
+from .textes import t
 
 
 class ErreurConflit(Exception):
@@ -88,9 +89,11 @@ class TransportTelegram:
                     # Deux robots interrogent le même jeton : chacun coupe
                     # l'autre et les commandes se perdent au hasard.
                     self.conflit = True
-                    raise ErreurConflit(
+                    raise ErreurConflit(t(
+                        "Telegram refuses to answer us: another program is "
+                        "using the same token, or a webhook is set.",
                         "Telegram refuse l'interrogation : un autre programme "
-                        "utilise le même jeton, ou un webhook est déclaré.")
+                        "utilise le même jeton, ou un webhook est déclaré."))
                 attente = self._retry_after(e)
                 if attente is None or essai == 2:
                     raise

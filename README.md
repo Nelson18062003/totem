@@ -49,6 +49,16 @@ utilise les sujets.
 
 → Tout est détaillé dans [`docs/GUIDE-TELEGRAM.md`](docs/GUIDE-TELEGRAM.md).
 
+## Deux langues, l'anglais d'abord
+
+TOTEM parle **anglais et français** — l'anglais est la langue principale. Sur
+la plateforme web, chacun choisit sa langue (réglages, ou l'écran de
+connexion) ; le robot suit `langue = en|fr` dans `totem.conf` ; les reçus PDF
+et les rapports suivent. Les menus USSD et les SMS de l'opérateur, eux,
+s'affichent toujours **mot pour mot**, dans la langue où la SIM les a reçus —
+leur langue se règle chez l'opérateur, pas dans TOTEM. Le détail :
+[`docs/LANGUES.md`](docs/LANGUES.md).
+
 ## Multi-comptes
 
 Un modem = une SIM = un opérateur. Les modules « double SIM » du marché sont à

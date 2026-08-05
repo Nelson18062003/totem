@@ -22,7 +22,10 @@ from totem.app import Robot
 from totem.compte import Compte
 from totem.modem import ModemSerie
 
-from test_pdu import fabriquer_pdu
+try:
+    from test_pdu import fabriquer_pdu               # discover -s tests
+except ImportError:                                  # python3 -m unittest tests.…
+    from tests.test_pdu import fabriquer_pdu
 
 
 def _modem_pdu(reponse_cmgl):

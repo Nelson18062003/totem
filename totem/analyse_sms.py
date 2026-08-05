@@ -92,16 +92,25 @@ def _nombre(brut):
     return valeur
 
 
-def formater_montant(valeur):
-    """« 2 784 137,6 » — la forme camerounaise, décimales seulement si elles
-    disent quelque chose. Même règle que la maquette des reçus."""
+def formater_montant(valeur, langue=None):
+    """Le montant dans la langue du moment, décimales seulement si elles
+    disent quelque chose. Même règle que la maquette des reçus.
+
+    En français : « 2 784 137,6 » (espace, virgule) — la forme camerounaise.
+    En anglais :  « 2,784,137.6 » (virgule, point).
+    """
     if valeur is None:
         return ""
+    from .textes import langue_active, normaliser
+    choisie = normaliser(langue) if langue else langue_active()
     entier = int(abs(valeur))
-    corps = f"{entier:,}".replace(",", " ")   # espace ordinaire, comme ailleurs
     reste = round(abs(valeur) - entier, 2)
-    if reste:
-        corps += "," + f"{reste:.2f}".split(".")[1].rstrip("0")
+    decimales = f"{reste:.2f}".split(".")[1].rstrip("0") if reste else ""
+    if choisie == "en":
+        corps = f"{entier:,}" + ("." + decimales if decimales else "")
+    else:
+        corps = f"{entier:,}".replace(",", " ")   # espace ordinaire, comme ailleurs
+        corps += ("," + decimales) if decimales else ""
     return ("−" if valeur < 0 else "") + corps
 
 
@@ -248,9 +257,10 @@ class Partie:
                 and self.nom == autre.nom)
 
     def __str__(self):
+        from .textes import t
         if self.nom and self.numero:
             return f"{self.nom} ({self.numero})"
-        return self.nom or self.numero or "Inconnu"
+        return self.nom or self.numero or t("Unknown", "Inconnu")
 
     def __repr__(self):
         return f"<Partie {self}>"
@@ -294,7 +304,8 @@ class Paiement:
             return str(self.beneficiaire)
         if self.emetteur:
             return str(self.emetteur)
-        return "Inconnu"
+        from .textes import t
+        return t("Unknown", "Inconnu")
 
     @property
     def sens_connu(self):

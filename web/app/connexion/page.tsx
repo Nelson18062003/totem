@@ -1,7 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import { LANGUES } from "@/lib/langue";
+import { textesConnexion } from "@/lib/textes/connexion";
+import { changerLangue, useLangue } from "@/app/langue";
 import { Symbole } from "../marque";
 
 /**
@@ -14,6 +17,8 @@ import { Symbole } from "../marque";
  */
 export default function Connexion() {
   const router = useRouter();
+  const langue = useLangue();
+  const t = textesConnexion[langue];
   const [motDePasse, setMotDePasse] = useState("");
   const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
   const [message, setMessage] = useState("");
@@ -34,12 +39,13 @@ export default function Connexion() {
         router.refresh();
         return;
       }
+      // La route répond déjà dans la langue de l'écran : afficher tel quel.
       const { erreur } = await r.json().catch(() => ({ erreur: "" }));
       setEtat("erreur");
-      setMessage(erreur || "Mot de passe incorrect.");
+      setMessage(erreur || t.motDePasseIncorrect);
     } catch {
       setEtat("erreur");
-      setMessage("Connexion impossible pour l’instant. Réessayez.");
+      setMessage(t.connexionImpossible);
     }
   }
 
@@ -47,15 +53,15 @@ export default function Connexion() {
     <div className="mx-auto flex min-h-[70dvh] w-full max-w-sm flex-col justify-center py-10">
       <div className="mb-9">
         <Symbole size={34} className="text-laterite" />
-        <h1 className="mt-5 text-title font-semibold tracking-tight">Connexion</h1>
+        <h1 className="mt-5 text-title font-semibold tracking-tight">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">
-          Accès réservé au propriétaire du terminal.
+          {t.sousTitre}
         </p>
       </div>
 
       <form onSubmit={entrer} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
-          <span className="text-small text-ink-soft">Mot de passe</span>
+          <span className="text-small text-ink-soft">{t.motDePasse}</span>
           <input
             type="password"
             value={motDePasse}
@@ -72,7 +78,7 @@ export default function Connexion() {
           disabled={!motDePasse || etat === "envoi"}
           className="mt-2 rounded-btn bg-ink py-3 text-body font-medium text-white transition hover:opacity-90 disabled:opacity-35"
         >
-          {etat === "envoi" ? "Vérification…" : "Se connecter"}
+          {etat === "envoi" ? t.verification : t.seConnecter}
         </button>
 
         {etat === "erreur" && (
@@ -80,9 +86,29 @@ export default function Connexion() {
         )}
       </form>
 
+      {/* Le choix de la langue — chaque nom dans sa propre langue */}
+      <div className="mt-8 flex items-center justify-center gap-2 text-caption" aria-label={t.langue}>
+        {LANGUES.map(({ code, libelle }, i) => (
+          <Fragment key={code}>
+            {i > 0 && <span aria-hidden className="text-ink-faint">·</span>}
+            <button
+              type="button"
+              onClick={() => changerLangue(code)}
+              aria-current={code === langue || undefined}
+              className={
+                code === langue
+                  ? "font-medium text-ink"
+                  : "text-ink-faint transition hover:text-ink-soft"
+              }
+            >
+              {libelle}
+            </button>
+          </Fragment>
+        ))}
+      </div>
+
       <p className="mt-10 text-caption leading-relaxed text-ink-faint">
-        Le code PIN Mobile Money n’est jamais demandé ici. Il ne se saisit qu’au
-        moment d’une opération, et n’est enregistré nulle part.
+        {t.notePin}
       </p>
     </div>
   );

@@ -7,6 +7,7 @@ affichés en texte (on tape le chiffre correspondant), le reste est identique.
 
 from .entrant import Entrant
 from .mise_en_forme import brut
+from .textes import t
 
 ADMIN = "admin"
 
@@ -36,14 +37,16 @@ class _TransportTexte:
         pass
 
     def supprimer(self, message_id, canal=None):
-        print("   ✂️  (message utilisateur effacé — protection PIN)")
+        print(t("   ✂️  (user message deleted — PIN protection)",
+                "   ✂️  (message utilisateur effacé — protection PIN)"))
 
     def accuser(self, callback_id, texte=""):
         pass
 
     def envoyer_fichier(self, nom, contenu, legende="", canal=None,
                         type_mime="text/csv"):
-        print(f"\n📎 {nom} ({len(contenu)} octets) — {brut(legende)}")
+        print(t(f"\n📎 {nom} ({len(contenu)} bytes) — {brut(legende)}",
+                f"\n📎 {nom} ({len(contenu)} octets) — {brut(legende)}"))
         return True
 
     def publier_commandes(self, commandes):
@@ -61,7 +64,7 @@ class TransportConsole(_TransportTexte):
 
     def recevoir(self):
         try:
-            texte = input("\nVous > ").strip()
+            texte = input(t("\nYou > ", "\nVous > ")).strip()
         except EOFError:
             raise KeyboardInterrupt
         return [Entrant(texte=texte)] if texte else []

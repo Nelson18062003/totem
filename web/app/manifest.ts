@@ -5,17 +5,19 @@ import type { MetadataRoute } from "next";
  * s'ouvre alors en plein écran, sans barre de navigateur, comme une vraie
  * application.
  */
+// Le manifeste est un fichier figé, servi hors session : il parle la langue
+// principale de la plateforme, l'anglais. Les écrans, eux, suivent le réglage.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TOTEM — pilotage Mobile Money",
+    name: "TOTEM — Mobile Money control",
     short_name: "TOTEM",
     description:
-      "Pilotez vos SIM MTN Mobile Money et Orange Money à distance, depuis n'importe où dans le monde.",
+      "Run your MTN Mobile Money and Orange Money SIMs remotely, from anywhere in the world.",
     start_url: "/",
     display: "standalone",
     background_color: "#fbfaf9",
     theme_color: "#fbfaf9",
-    lang: "fr",
+    lang: "en",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
       // Les tuiles masquables : le symbole n'occupe que 66 % du carré, elles

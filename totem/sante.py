@@ -15,6 +15,8 @@ import re
 import shutil
 import subprocess
 
+from .textes import t
+
 # Bits renvoyés par « vcgencmd get_throttled » (documentation Raspberry Pi).
 SOUS_TENSION = 0x1          # sous-tension en ce moment
 BRIDAGE_FREQ = 0x2          # fréquence bridée en ce moment
@@ -66,12 +68,12 @@ def duree_marche():
         with open("/proc/uptime") as f:
             secondes = float(f.read().split()[0])
     except Exception:
-        return "inconnu"
+        return t("unknown", "inconnu")
     jours, reste = divmod(int(secondes), 86400)
     heures, reste = divmod(reste, 3600)
     minutes = reste // 60
     if jours:
-        return f"{jours} j {heures} h"
+        return t(f"{jours} d {heures} h", f"{jours} j {heures} h")
     if heures:
         return f"{heures} h {minutes} min"
     return f"{minutes} min"
@@ -85,19 +87,21 @@ class Sante:
 
     def resume(self):
         """Ligne d'état lisible pour /statut."""
-        parties = [f"en marche depuis {duree_marche()}"]
-        t = temperature()
-        if t is not None:
-            parties.append(f"{t:.0f} °C")
+        duree = duree_marche()
+        parties = [t(f"up for {duree}", f"en marche depuis {duree}")]
+        temp = temperature()
+        if temp is not None:
+            parties.append(f"{temp:.0f} °C")
         occupe, libre = disque()
         if occupe is not None:
-            parties.append(f"disque {occupe} % ({libre} Go libres)")
+            parties.append(t(f"disk {occupe}% ({libre} GB free)",
+                             f"disque {occupe} % ({libre} Go libres)"))
         drapeaux = bridage()
         if drapeaux:
             if drapeaux & SOUS_TENSION:
-                parties.append("SOUS-TENSION")
+                parties.append(t("UNDERVOLTAGE", "SOUS-TENSION"))
             elif drapeaux & SOUS_TENSION_PASSEE:
-                parties.append("sous-tension passée")
+                parties.append(t("undervoltage earlier", "sous-tension passée"))
         return " · ".join(parties)
 
     def alertes(self):
@@ -108,31 +112,45 @@ class Sante:
         if drapeaux is not None:
             messages += self._bascule(
                 "tension", bool(drapeaux & SOUS_TENSION),
-                "Alimentation insuffisante : le Pi est en sous-tension. "
-                "Vérifiez l'alimentation, le câble, ou passez les modems sur "
-                "un hub USB alimenté. Risque de corruption de la carte mémoire.",
-                "Alimentation revenue à la normale.")
+                t("The power supply is falling short: the Pi is undervolted. "
+                  "Check the power supply and the cable, or move the modems "
+                  "to a powered USB hub. The memory card is at risk of "
+                  "corruption.",
+                  "Alimentation insuffisante : le Pi est en sous-tension. "
+                  "Vérifiez l'alimentation, le câble, ou passez les modems sur "
+                  "un hub USB alimenté. Risque de corruption de la carte mémoire."),
+                t("Power is back to normal.",
+                  "Alimentation revenue à la normale."))
             messages += self._bascule(
                 "bridage", bool(drapeaux & (BRIDAGE | BRIDAGE_FREQ)),
-                "Le Pi se bride (chaleur ou tension). Les temps de réponse "
-                "vont s'allonger.",
-                "Le Pi ne se bride plus.")
+                t("The Pi is slowing itself down (heat or power). Responses "
+                  "will take longer.",
+                  "Le Pi se bride (chaleur ou tension). Les temps de réponse "
+                  "vont s'allonger."),
+                t("The Pi is running at full speed again.",
+                  "Le Pi ne se bride plus."))
 
-        t = temperature()
-        if t is not None:
+        temp = temperature()
+        if temp is not None:
             messages += self._bascule(
-                "temperature", t >= TEMP_ALERTE,
-                f"Température élevée : {t:.0f} °C. Dégagez l'appareil, "
-                "vérifiez que les radiateurs sont bien collés.",
-                "Température revenue à la normale.")
+                "temperature", temp >= TEMP_ALERTE,
+                t(f"High temperature: {temp:.0f} °C. Give the device some "
+                  "air, and check that the heat sinks are firmly attached.",
+                  f"Température élevée : {temp:.0f} °C. Dégagez l'appareil, "
+                  "vérifiez que les radiateurs sont bien collés."),
+                t("Temperature is back to normal.",
+                  "Température revenue à la normale."))
 
         occupe, libre = disque()
         if occupe is not None:
             messages += self._bascule(
                 "disque", occupe >= DISQUE_ALERTE,
-                f"Carte mémoire pleine à {occupe} % ({libre} Go libres). "
-                "Le journal ne pourra bientôt plus s'écrire.",
-                "Espace disque redevenu suffisant.")
+                t(f"Memory card {occupe}% full ({libre} GB free). "
+                  "The log will soon have nowhere to write.",
+                  f"Carte mémoire pleine à {occupe} % ({libre} Go libres). "
+                  "Le journal ne pourra bientôt plus s'écrire."),
+                t("Disk space is sufficient again.",
+                  "Espace disque redevenu suffisant."))
 
         return messages
 

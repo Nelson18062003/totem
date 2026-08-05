@@ -371,8 +371,8 @@ class ConfirmationDesSorties(unittest.TestCase):
     def test_montant_et_beneficiaire_rappeles(self):
         r, t = self._transfert(25000)
         self.assertTrue(r._confirmation_requise())
-        self.assertIn("Confirmation demandée", t.dernier_texte())
-        self.assertIn("50 000 FCFA", t.dernier_texte())
+        self.assertIn("Confirmation needed", t.dernier_texte())
+        self.assertIn("50,000 FCFA", t.dernier_texte())
         self.assertIn("677000111", t.dernier_texte())
 
     def test_pave_inerte_avant_confirmation(self):
@@ -431,7 +431,7 @@ class RelevesDesSms(unittest.TestCase):
         r._relever_sms(r.comptes[0])
         r._relever_sms(r.comptes[0])                 # même message relu
         self.assertEqual(r.journal.rapport_du_jour()[0], 1)
-        annonces = [e for e in t.envois if "Encaissement" in e[0]]
+        annonces = [e for e in t.envois if "Payment received" in e[0]]
         self.assertEqual(len(annonces), 1)
 
     def test_sms_conserve_tant_qu_il_n_est_pas_efface(self):
@@ -456,7 +456,7 @@ class MemoireEtConflits(unittest.TestCase):
         r, t, modem = robot()
         modem.memoire_sms = lambda: (45, 50)
         r._verifier_memoire()
-        self.assertIn("Mémoire SMS presque pleine", t.envois[-1][0])
+        self.assertIn("SMS storage almost full", t.envois[-1][0])
         self.assertEqual(t.envois[-1][2], "alertes")
 
     def test_alerte_non_repetee(self):
@@ -471,13 +471,13 @@ class MemoireEtConflits(unittest.TestCase):
         r, t, modem = robot()
         modem.memoire_sms = lambda: (5, 50)
         r._verifier_memoire()
-        self.assertFalse(any("Mémoire" in e[0] for e in t.envois))
+        self.assertFalse(any("storage" in e[0] for e in t.envois))
 
     def test_jeton_utilise_ailleurs(self):
         r, t, _ = robot()
         t.conflit = True
         r._signaler_conflit()
-        self.assertIn("refuse de me répondre", t.envois[-1][0])
+        self.assertIn("stopped answering", t.envois[-1][0])
         self.assertIn("ps aux", t.envois[-1][0])   # la commande de diagnostic
         avant = len(t.envois)
         r._signaler_conflit()
@@ -497,7 +497,7 @@ class BilanQuotidien(unittest.TestCase):
         r, t, _ = robot(heure_rapport="00:00", sauvegarde_quotidienne=False)
         r.dernier_rapport = None
         self.assertTrue(r._rapport_quotidien())
-        self.assertTrue(any("Dernières 24 h" in e[0] for e in t.envois))
+        self.assertTrue(any("Last 24 hours" in e[0] for e in t.envois))
 
     def test_non_rejoue_le_meme_jour(self):
         r, t, _ = robot(heure_rapport="00:00", sauvegarde_quotidienne=False)
@@ -648,7 +648,7 @@ class SauvegardeDuJournal(unittest.TestCase):
         r, t, _ = robot()
         t.envoyer_fichier = lambda *a, **k: False
         r._sauvegarde()
-        self.assertIn("n'a pas pu être envoyée", t.envois[-1][0])
+        self.assertIn("could not be sent", t.envois[-1][0])
         avant = len(t.envois)
         r._sauvegarde(automatique=True)
         self.assertEqual(len(t.envois), avant)
@@ -826,7 +826,7 @@ class MenuBrut(unittest.TestCase):
     def test_sans_menu_recu(self):
         r, t, _ = robot()
         r._brut()
-        self.assertIn("Aucun menu reçu", t.envois[-1][0])
+        self.assertIn("No menu received", t.envois[-1][0])
 
     def test_montre_le_texte_exact_et_le_verdict(self):
         r, t, modem = robot("Orange")
@@ -836,8 +836,8 @@ class MenuBrut(unittest.TestCase):
         rapport = t.envois[-1][0]
         self.assertIn("Modifier code secret", rapport)
         self.assertIn(r"\n", rapport)              # les fins de ligne sont visibles
-        self.assertIn("Options reconnues", rapport)
-        self.assertIn("non", rapport)              # pavé non déclenché
+        self.assertIn("Options recognized", rapport)
+        self.assertIn("<b>no</b>", rapport)        # pavé non déclenché
 
     def test_conserve_apres_fermeture_de_session(self):
         r, t, _ = robot()
@@ -859,13 +859,59 @@ class RolesEtAcces(unittest.TestCase):
     def test_observateur_peut_consulter(self):
         r, t, _ = robot(admins=(1,))
         tape(r, "/rapport", utilisateur=2)
-        self.assertIn("Dernières 24 h", t.envois[-1][0])
+        self.assertIn("Last 24 hours", t.envois[-1][0])
 
     def test_refus_journalise(self):
         r, _, _ = robot(admins=(1,))
         tape(r, "*126#", utilisateur=2)
         evenements = [x[0] for x in r.journal.conn.execute("SELECT texte FROM evenements")]
         self.assertTrue(any("refus" in e for e in evenements))
+
+
+class VarianteFrancaise(unittest.TestCase):
+    """La même expérience en français, quand totem.conf le demande.
+
+    L'anglais est la langue par défaut ; ces cas vérifient que la bascule
+    change bien les textes ET la façon d'écrire les montants."""
+
+    def setUp(self):
+        from totem import textes
+        textes.definir_langue("fr")
+        self.addCleanup(textes.definir_langue, "en")
+
+    def test_rapport_en_francais(self):
+        r, t, _ = robot()
+        tape(r, "/rapport")
+        self.assertIn("Dernières 24 h", t.envois[-1][0])
+        self.assertIn("Encaissements :", t.envois[-1][0])
+
+    def test_montants_a_la_francaise(self):
+        r, t, _ = robot(seuil_confirmation=25000)
+        tape(r, "*126#"); clic(r, "u:1"); tape(r, "677000111"); tape(r, "50000")
+        self.assertIn("Confirmation demandée", t.dernier_texte())
+        self.assertIn("50 000 FCFA", t.dernier_texte())
+
+    def test_alerte_memoire_en_francais(self):
+        r, t, modem = robot()
+        modem.memoire_sms = lambda: (45, 50)
+        r._verifier_memoire()
+        self.assertIn("Mémoire SMS presque pleine", t.envois[-1][0])
+
+    def test_encaissement_annonce_en_francais(self):
+        r, t, _ = robot()
+        r._notifier_sms(r.comptes[0], "MoMo", "Vous avez recu 25 000 FCFA de A.")
+        self.assertIn("Encaissement", t.envois[-1][0])
+
+    def test_le_pin_reste_masque_dans_les_deux_langues(self):
+        """« **** » n'est pas un texte à traduire : c'est la règle."""
+        r, _, _ = robot()
+        tape(r, "*126#"); clic(r, "u:1"); tape(r, "677000111"); tape(r, "50000")
+        for chiffre in "1234":
+            clic(r, f"p:{chiffre}")
+        clic(r, "p:ok")
+        journalises = [x[0] for x in r.journal.conn.execute("SELECT texte FROM ussd")]
+        self.assertNotIn("1234", journalises)
+        self.assertIn("****", journalises)
 
 
 if __name__ == "__main__":

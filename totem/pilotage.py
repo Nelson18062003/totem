@@ -38,6 +38,7 @@ import time
 
 from .analyse_sms import solde_annonce
 from .nuage import _horodatage
+from .textes import t
 
 # Une session web sans nouvelles pendant ce délai est raccrochée : un menu
 # USSD abandonné bloquerait le combiné pour Telegram comme pour le web.
@@ -88,13 +89,16 @@ class Pilotage:
                     self._traiter(demande)
                 self._expirer_session()
             except Exception as e:   # jamais mourir sur une demande
-                self.journal.evenement(f"guichet à distance : erreur {e}")
+                self.journal.evenement(t(
+                    f"remote desk: error {e}",
+                    f"guichet à distance : erreur {e}"))
             time.sleep(PAS_SESSION if self._session else self.pause)
 
     def _expirer_session(self):
         if self._session and time.time() - self._session["vie"] > SESSION_MUETTE:
-            self.journal.evenement(
-                "guichet à distance : session abandonnée, raccrochée")
+            self.journal.evenement(t(
+                "remote desk: session abandoned, hung up",
+                "guichet à distance : session abandonnée, raccrochée"))
             self._raccrocher()
 
     def ceder(self, compte):
@@ -106,8 +110,9 @@ class Pilotage:
         peut être un code secret. Le refus poli vaut infiniment mieux.
         """
         if self._session and self._session["compte"] is compte:
-            self.journal.evenement(
-                "guichet à distance : session reprise depuis Telegram")
+            self.journal.evenement(t(
+                "remote desk: session taken back from Telegram",
+                "guichet à distance : session reprise depuis Telegram"))
             self._session = None      # sans annuler : Telegram tient la ligne
             return True
         return False
@@ -125,56 +130,74 @@ class Pilotage:
         identifiant = demande.get("id")
         genre = (demande.get("type") or "").strip()
         parametres = demande.get("parametres") or {}
+        # La langue de la demande : la plateforme la joint à chaque commande.
+        # La réponse repart dans cette langue-là ; à défaut, celle du robot.
+        langue = parametres.get("langue") or None
         self.nuage.commande_maj(identifiant, {"etat": "en_cours"})
 
         try:
             if genre == "solde":
-                resultat = self._republier()
+                resultat = self._republier(langue)
             elif genre == "ussd":
-                resultat = self._ouvrir(parametres)
+                resultat = self._ouvrir(parametres, langue)
             elif genre == "ussd_reponse":
-                resultat = self._repondre(identifiant, parametres)
+                resultat = self._repondre(identifiant, parametres, langue)
             elif genre == "ussd_fin":
                 self._raccrocher()
-                resultat = "Session refermée."
+                resultat = t("Session closed.", "Session refermée.",
+                             langue=langue)
             elif genre == "recu":
-                resultat = self._etablir_recu(parametres)
+                resultat = self._etablir_recu(parametres, langue)
             elif genre == "identite":
-                resultat = self._definir_identite(parametres)
+                resultat = self._definir_identite(parametres, langue)
             else:
-                raise ValueError(f"demande inconnue : {genre}")
+                raise ValueError(t(f"unknown request: {genre}",
+                                   f"demande inconnue : {genre}",
+                                   langue=langue))
             etat = "faite"
         except RefusPoli as r:
             etat, resultat = "echouee", str(r)
         except Exception as e:
-            etat, resultat = "echouee", f"Le terminal n'a pas pu faire : {e}"
-            self.journal.evenement(f"guichet à distance : échec ({genre})")
+            etat, resultat = "echouee", t(
+                f"The terminal could not do it: {e}",
+                f"Le terminal n'a pas pu faire : {e}", langue=langue)
+            self.journal.evenement(t(f"remote desk: failure ({genre})",
+                                     f"guichet à distance : échec ({genre})"))
 
         self.nuage.commande_maj(identifiant, {
             "etat": etat, "resultat": resultat, "traitee_le": _horodatage()})
 
-    def _etablir_recu(self, parametres):
+    def _etablir_recu(self, parametres, langue=None):
         """Le reçu d'un message passé, refabriqué depuis le SMS d'origine.
 
         Rien n'est inventé : si le message ne donne pas droit à un reçu
         (publicité, code à usage unique, échec), le refus est explicite.
         """
         if not self.programmeur:
-            raise RefusPoli("Ce terminal ne fabrique pas de reçus.")
+            raise RefusPoli(t("This terminal does not produce receipts.",
+                              "Ce terminal ne fabrique pas de reçus.",
+                              langue=langue))
         try:
             source_id = int(parametres.get("source_id"))
         except (TypeError, ValueError):
-            raise RefusPoli("Message introuvable au journal.")
+            raise RefusPoli(t("Message not found in the log.",
+                              "Message introuvable au journal.", langue=langue))
         numero = self.programmeur(source_id)
         if not numero:
-            raise RefusPoli(
+            raise RefusPoli(t(
+                "This message does not come with a receipt — only a "
+                "successful transfer or an announced balance produces one.",
                 "Ce message ne donne pas droit à un reçu — seuls un transfert "
-                "réussi ou un solde annoncé en produisent un.")
-        self.journal.evenement(f"guichet à distance : reçu {numero} demandé")
-        return (f"Reçu {numero} en fabrication : il sera archivé et "
-                "téléchargeable dans un instant.")
+                "réussi ou un solde annoncé en produisent un.", langue=langue))
+        self.journal.evenement(t(
+            f"remote desk: receipt {numero} requested",
+            f"guichet à distance : reçu {numero} demandé"))
+        return t(f"Receipt {numero} is being made: it will be archived and "
+                 "ready to download in a moment.",
+                 f"Reçu {numero} en fabrication : il sera archivé et "
+                 "téléchargeable dans un instant.", langue=langue)
 
-    def _definir_identite(self, parametres):
+    def _definir_identite(self, parametres, langue=None):
         """Inscrit le numéro et/ou le nom d'une carte depuis la plateforme,
         exactement comme /reglages sur Telegram.
 
@@ -184,70 +207,93 @@ class Pilotage:
         Telegram, car cette valeur devient une source de vérité."""
         iccid = str(parametres.get("iccid") or "").strip()
         if not iccid:
-            raise RefusPoli("Aucune carte visée.")
+            raise RefusPoli(t("No card selected.", "Aucune carte visée.",
+                              langue=langue))
         champs = {}
         if parametres.get("numero") is not None:
             chiffres = re.sub(r"\D", "", str(parametres.get("numero")))
             if not 8 <= len(chiffres) <= 15:
-                raise RefusPoli("Ce n'est pas un numéro de téléphone.")
+                raise RefusPoli(t("That is not a phone number.",
+                                  "Ce n'est pas un numéro de téléphone.",
+                                  langue=langue))
             champs["numero"] = chiffres
         if parametres.get("nom") is not None:
             nom = re.sub(r"\s+", " ", str(parametres.get("nom"))).strip()[:40]
             if len(nom) < 2:
-                raise RefusPoli("Ce nom est trop court.")
+                raise RefusPoli(t("That name is too short.",
+                                  "Ce nom est trop court.", langue=langue))
             champs["nom"] = nom
         if not champs:
-            raise RefusPoli("Rien à enregistrer.")
+            raise RefusPoli(t("Nothing to save.", "Rien à enregistrer.",
+                              langue=langue))
         if not self.journal.definir_identite(iccid, **champs):
-            raise RefusPoli("Cette carte n'est pas au registre du terminal.")
-        self.journal.evenement("guichet à distance : identité de carte modifiée")
+            raise RefusPoli(t(
+                "This card is not in the terminal's register.",
+                "Cette carte n'est pas au registre du terminal.",
+                langue=langue))
+        self.journal.evenement(t(
+            "remote desk: card identity changed",
+            "guichet à distance : identité de carte modifiée"))
         self.nuage.reveiller()      # l'application web le verra tout de suite
         dit = []
         if "numero" in champs:
-            dit.append(f"numéro {champs['numero']}")
+            dit.append(t(f"number {champs['numero']}",
+                         f"numéro {champs['numero']}", langue=langue))
         if "nom" in champs:
-            dit.append(f"nom « {champs['nom']} »")
-        return "Enregistré : " + " et ".join(dit) + "."
+            dit.append(t(f"name “{champs['nom']}”",
+                         f"nom « {champs['nom']} »", langue=langue))
+        lien = t(" and ", " et ", langue=langue)
+        return t("Saved: ", "Enregistré : ", langue=langue) + lien.join(dit) + "."
 
-    def _republier(self):
+    def _republier(self, langue=None):
         """« Actualiser » : l'état des comptes, repoussé à l'instant."""
         self.nuage.publier_comptes(self.comptes)
         self.nuage.enregistrer_terminal()
-        return "État du terminal republié."
+        return t("Terminal state published again.",
+                 "État du terminal republié.", langue=langue)
 
-    def _compte_vise(self, parametres):
+    def _compte_vise(self, parametres, langue=None):
         nom = (parametres.get("compte") or "").strip().lower()
         if nom:
             for c in self.comptes:
                 if c.libelle.lower().startswith(nom):
                     return c
-            raise RefusPoli(f"Aucun compte « {nom} » sur ce terminal.")
+            raise RefusPoli(t(f"No account “{nom}” on this terminal.",
+                              f"Aucun compte « {nom} » sur ce terminal.",
+                              langue=langue))
         if not self.comptes:
-            raise RefusPoli("Aucune carte dans le terminal.")
+            raise RefusPoli(t("No card in the terminal.",
+                              "Aucune carte dans le terminal.", langue=langue))
         return self.comptes[0]
 
-    def _ouvrir(self, parametres):
+    def _ouvrir(self, parametres, langue=None):
         code = (parametres.get("code") or "").strip()
         if not code:
-            raise RefusPoli("Aucun code à composer.")
-        compte = self._compte_vise(parametres)
+            raise RefusPoli(t("No code to dial.", "Aucun code à composer.",
+                              langue=langue))
+        compte = self._compte_vise(parametres, langue)
         # Une session Telegram a la priorité : c'est un humain au bout.
         if compte.session_ouverte and self._session is None:
-            raise RefusPoli(
+            raise RefusPoli(t(
+                "A session is already open on Telegram for this account. "
+                "Finish it there, then try again here.",
                 "Une session est déjà ouverte sur Telegram pour ce compte. "
-                "Terminez-la, puis recommencez ici.")
+                "Terminez-la, puis recommencez ici.", langue=langue))
         self._raccrocher()          # notre éventuelle session précédente
-        self.journal.evenement(
-            f"guichet à distance : {code} ({compte.libelle})")
+        self.journal.evenement(t(
+            f"remote desk: {code} ({compte.libelle})",
+            f"guichet à distance : {code} ({compte.libelle})"))
         reponse = compte.ussd_demarrer(code)
         self._noter_session(compte)
         self._relever_solde(compte, reponse)
         return reponse
 
-    def _repondre(self, identifiant, parametres):
+    def _repondre(self, identifiant, parametres, langue=None):
         if not self._session:
-            raise RefusPoli(
-                "Aucune session en cours : composez d'abord un code.")
+            raise RefusPoli(t(
+                "No session in progress: dial a code first.",
+                "Aucune session en cours : composez d'abord un code.",
+                langue=langue))
         compte = self._session["compte"]
         texte = str(parametres.get("texte") or "")
         if parametres.get("secret"):
@@ -256,7 +302,7 @@ class Pilotage:
             self.nuage.commande_maj(
                 identifiant, {"parametres": {"secret": True}})
         if not texte:
-            raise RefusPoli("Réponse vide.")
+            raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
         reponse = compte.ussd_repondre(texte)
         self._noter_session(compte)
         self._relever_solde(compte, reponse)

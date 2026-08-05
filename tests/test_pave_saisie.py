@@ -163,6 +163,30 @@ class TestClavierEnSecours(unittest.TestCase):
         self.assertIn("677123456", journalise)
 
 
+class TestLangueDuPave(unittest.TestCase):
+    """Le pavé parle anglais par défaut, français quand la langue le dit."""
+
+    def _aller_a_la_question(self, r):
+        tape(r, "*126#")
+        clic(r, "u:1")
+
+    def test_anglais_par_defaut(self):
+        r, t = robot()
+        self._aller_a_la_question(r)
+        self.assertIn("Typed:", t.dernier_texte())
+
+    def test_francais_sur_demande(self):
+        from totem import textes
+        textes.definir_langue("fr")
+        self.addCleanup(textes.definir_langue, "en")
+        r, t = robot()
+        self._aller_a_la_question(r)
+        self.assertIn("Saisi :", t.dernier_texte())
+        libelles = [b[0] for ligne in t.derniers_boutons() for b in ligne]
+        self.assertIn("✅ Valider", libelles)
+        self.assertIn("🔐 Masquer", libelles)
+
+
 def _lignes_ussd(r):
     return r.journal.conn.execute(
         "SELECT id, direction, texte FROM ussd").fetchall()

@@ -88,7 +88,17 @@ class TestNuage(unittest.TestCase):
         muet = Nuage("", "", "douala", self.journal)
         self.assertFalse(muet.actif)
         self.assertIsNone(muet.demarrer())
-        self.assertEqual(muet.resume(), "cloud désactivé")
+        self.assertEqual(muet.resume(), "cloud disabled")
+
+    def test_le_resume_parle_aussi_francais(self):
+        from totem import textes
+        muet = Nuage("", "", "douala", self.journal)
+        textes.definir_langue("fr")
+        try:
+            self.assertEqual(muet.resume(), "cloud désactivé")
+            self.assertEqual(self.nuage.resume(), "cloud à jour")
+        finally:
+            textes.definir_langue("en")
 
     # --- identité du terminal ---
     def test_le_terminal_annonce_sa_version(self):
@@ -164,12 +174,12 @@ class TestNuage(unittest.TestCase):
         self.assertEqual(self.nuage.pousser_paiements(), 0)   # échec silencieux
         self.assertEqual(self.journal.reste_a_envoyer(), 1)   # rien n'est perdu
         self.assertIsNotNone(self.nuage.derniere_erreur)
-        self.assertIn("en attente", self.nuage.resume())
+        self.assertIn("waiting", self.nuage.resume())
 
         FauxSupabase.en_panne = False                          # le réseau revient
         self.assertEqual(self.nuage.pousser_paiements(), 1)
         self.assertEqual(self.journal.reste_a_envoyer(), 0)
-        self.assertEqual(self.nuage.resume(), "cloud à jour")
+        self.assertEqual(self.nuage.resume(), "cloud up to date")
 
     def test_file_se_vide_dans_l_ordre(self):
         for i in range(3):
@@ -219,7 +229,7 @@ class TestNuage(unittest.TestCase):
         FauxSupabase.refuser_texte = "EMPOISONNE"
         self.nuage.pousser_paiements()
         evenements = " ".join(e[2] for e in self.journal.evenements_non_envoyes(10))
-        self.assertIn("refusé par le cloud", evenements)
+        self.assertIn("refused by the cloud", evenements)
         self.assertIn("400", evenements)                     # l'erreur exacte de la base
 
     def test_un_refus_previent_le_proprietaire(self):

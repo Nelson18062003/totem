@@ -32,6 +32,7 @@ import threading
 from datetime import datetime, timedelta
 
 from .analyse_sms import analyser
+from .textes import t
 
 
 def _canal(brut):
@@ -55,7 +56,21 @@ def _conseil(chemin, erreur):
     except Exception:
         utilisateur = str(os.getuid())
     dossier = os.path.dirname(chemin) or "."
-    return (
+    return t(
+        f"The log “{chemin}” is not writable for user “{utilisateur}”.\n"
+        f"({erreur})\n\n"
+        "The service runs as root and writes without trouble; a manual "
+        "launch from your account runs into the file's permissions.\n\n"
+        "Two ways out:\n"
+        f"  sudo chown -R {utilisateur} {dossier}     "
+        "← once and for all, recommended\n"
+        "  sudo python3 -m totem …                    "
+        "← run with the service's rights\n\n"
+        "The diagnostics do not need the log and work without any special "
+        "rights:\n"
+        "  python3 -m totem --modems\n"
+        "  python3 -m totem --stk",
+
         f"Le journal « {chemin} » n'est pas accessible en écriture pour "
         f"l'utilisateur « {utilisateur} ».\n"
         f"({erreur})\n\n"
@@ -734,13 +749,20 @@ class Journal:
                 (depuis,) + params).fetchall()
         tampon = io.StringIO()
         plume = csv.writer(tampon, delimiter=";")
-        plume.writerow(["date", "compte", "carte", "sens", "montant_fcfa",
-                        "tiers", "numero", "reference", "solde_apres", "message"])
+        # Les en-têtes et le sens se traduisent AU MOMENT de l'export : la
+        # base, elle, garde ses valeurs telles quelles.
+        plume.writerow(t(
+            ["date", "account", "card", "direction", "amount_fcfa",
+             "party", "number", "reference", "balance_after", "message"],
+            ["date", "compte", "carte", "sens", "montant_fcfa",
+             "tiers", "numero", "reference", "solde_apres", "message"]))
+        sens_dits = {"entree": t("received", "reçu"),
+                     "sortie": t("sent", "envoyé")}
         for date, expediteur, texte, compte, ligne_iccid in lignes:
             p = analyser(texte)
             plume.writerow([
                 date.replace("T", " "), compte or expediteur, ligne_iccid,
-                {"entree": "reçu", "sortie": "envoyé"}.get(p.sens if p else "", ""),
+                sens_dits.get(p.sens if p else "", ""),
                 p.montant if p else "",
                 p.tiers if p else "",
                 (p.numero or "") if p else "",

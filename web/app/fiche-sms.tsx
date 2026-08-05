@@ -2,23 +2,27 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useLangue } from "@/app/langue";
+import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
 import { IconClose, IconCopy, IconDoc } from "./icons";
 import { reveillerLaVeille } from "./veille";
 
-// Chaque catégorie de SMS a sa pastille et son libellé, comme une boîte de
-// réception. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
-export const CAT: Record<Categorie, { emoji: string; label: string }> = {
-  encaissement: { emoji: "💰", label: "Encaissement" },
-  envoi: { emoji: "↗️", label: "Envoi" },
-  transfert: { emoji: "🔁", label: "Transfert" },
-  depot: { emoji: "📥", label: "Dépôt" },
-  retrait: { emoji: "📤", label: "Retrait" },
-  solde: { emoji: "📊", label: "Solde" },
-  code: { emoji: "🔑", label: "Code" },
-  publicite: { emoji: "📢", label: "Pub" },
-  message: { emoji: "💬", label: "Message" },
-  inconnu: { emoji: "✉️", label: "SMS" },
+// Chaque catégorie de SMS a sa pastille, comme une boîte de réception. Son
+// libellé, lui, vit dans le dictionnaire bilingue (lib/textes/sms.ts) — les
+// clés ("encaissement", "depot"…) sont des données et ne se traduisent pas.
+// La catégorie n'est qu'une aide : le SMS reste lisible en entier.
+export const CAT: Record<Categorie, string> = {
+  encaissement: "💰",
+  envoi: "↗️",
+  transfert: "🔁",
+  depot: "📥",
+  retrait: "📤",
+  solde: "📊",
+  code: "🔑",
+  publicite: "📢",
+  message: "💬",
+  inconnu: "✉️",
 };
 
 // Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
@@ -37,6 +41,8 @@ export const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
  */
 export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
   const router = useRouter();
+  const langue = useLangue();
+  const t = textesSms[langue];
   const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
   const [mot, setMot] = useState("");
   const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
@@ -107,7 +113,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
       }
       throw new Error();
     } catch {
-      setMot("Le terminal n’a pas répondu — est-il allumé, et à jour ?");
+      setMot(t.terminalMuet);
       setEtabli("refus");
     }
   };
@@ -120,12 +126,12 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           <div>
             <p className="text-small text-ink-soft">
               {p.montant == null
-                ? "SMS reçu"
-                : p.sens === "in" ? "Paiement reçu" : p.sens === "out" ? "Paiement envoyé" : "Mouvement — sens à confirmer"}
+                ? t.smsRecu
+                : p.sens === "in" ? t.paiementRecu : p.sens === "out" ? t.paiementEnvoye : t.sensAConfirmer}
             </p>
             {p.montant != null && (
               <p className="mt-1 text-display font-semibold tabnums tracking-tight">
-                {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
+                {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
               </p>
             )}
             <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
@@ -134,17 +140,17 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
         </div>
 
         <dl className="mt-6 divide-hair">
-          <L t="Catégorie" v={`${CAT[catDe(p)].emoji} ${CAT[catDe(p)].label}`} />
-          <L t="Opérateur" v={p.sim} />
-          {p.numero && <L t="Numéro" v={p.numero} />}
-          <L t="Date" v={`${p.date} à ${p.heure}`} />
-          {p.reference && <L t="Référence" v={p.reference} />}
-          {p.soldeApres != null && <L t="Solde après" v={fcfa(p.soldeApres)} />}
+          <L t={t.categorie} v={`${CAT[catDe(p)]} ${t.cat[catDe(p)]}`} />
+          <L t={t.operateur} v={p.sim} />
+          {p.numero && <L t={t.numero} v={p.numero} />}
+          <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
+          {p.reference && <L t={t.reference} v={p.reference} />}
+          {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
         </dl>
 
         <div className="mt-5">
           <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
-            Nature — pour le reçu
+            {t.natureTitre}
           </p>
           <div className="flex flex-wrap gap-1.5">
             {NATURES.map((n) => (
@@ -154,17 +160,17 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
                     ? "border-ink bg-ink font-medium text-white"
                     : "border-line text-ink-soft hover:border-ink-faint"
                 }`}>
-                {CAT[n].emoji} {CAT[n].label}
+                {CAT[n]} {t.cat[n]}
               </button>
             ))}
           </div>
           <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
-            Choisir une nature l’affiche ainsi partout et établit son reçu.
+            {t.natureAide}
           </p>
         </div>
 
         <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">Message reçu</p>
+          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.messageRecu}</p>
           <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
         </div>
 
@@ -172,19 +178,19 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           <button
             onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
             className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-            <IconCopy size={15} /> Copier le SMS
+            <IconCopy size={15} /> {t.copierSms}
           </button>
           {p.recu ? (
             <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
               className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-              <IconDoc size={15} /> Reçu PDF
+              <IconDoc size={15} /> {t.recuPdf}
             </a>
           ) : (
             p.sourceId != null && etabli !== "fait" && (
               <button onClick={etablirRecu} disabled={etabli === "envoi"}
                 className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
                 <IconDoc size={15} />
-                {etabli === "envoi" ? "Demande au terminal…" : "Établir le reçu"}
+                {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
               </button>
             )
           )}
