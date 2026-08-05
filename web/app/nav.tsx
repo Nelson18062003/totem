@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useLangue } from "@/app/langue";
+import { changerLangue, useLangue } from "@/app/langue";
+import { autreLangue } from "@/lib/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
 import type { EtatTerminal } from "@/lib/types";
 import { IconCard, IconChart, IconChevron, IconGrid, IconHash, IconHome, IconInbox, IconSettings } from "./icons";
@@ -54,6 +55,9 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
   const langue = useLangue();
   const t = textesCharpente[langue];
   const cachee = useBarreEffacable();
+  // La bascule de langue, visible sur chaque écran : le bouton porte le nom
+  // de l'AUTRE langue, dans cette langue — celle qui la cherche peut la lire.
+  const autre = autreLangue(langue);
   const actif = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   // La veille : rafraîchit l'écran dès qu'un SMS entre en base, et porte la
   // pastille des non-lus. Elle vit ici parce que la barre est sur chaque page.
@@ -118,6 +122,16 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
             <IconSettings size={18} className="shrink-0" />
             {!replie && t.reglages}
           </Link>
+          {/* Un geste pour changer de langue, depuis n'importe quelle page. */}
+          <button onClick={() => changerLangue(autre.code)}
+            aria-label={autre.bascule} title={autre.bascule}
+            lang={autre.code}
+            className={`${classeLien(false)} w-full`}>
+            <span className="w-[18px] shrink-0 text-center text-caption font-semibold uppercase tracking-wide">
+              {autre.code}
+            </span>
+            {!replie && autre.libelle}
+          </button>
           <div className={`mt-4 ${replie ? "flex justify-center" : "px-3"}`}>
             {terminal ? (
               replie ? (
@@ -185,6 +199,14 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
               </Link>
             );
           })}
+          {/* La bascule de langue, à portée de pouce sur chaque écran. */}
+          <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
+          <button onClick={() => changerLangue(autre.code)}
+            aria-label={autre.bascule} title={autre.bascule}
+            lang={autre.code}
+            className="flex size-11 items-center justify-center rounded-full text-caption font-semibold uppercase tracking-wide text-ink-soft active:bg-surface-2">
+            {autre.code}
+          </button>
         </div>
       </nav>
     </>

@@ -21,8 +21,15 @@ export function langueDe(valeur: string | null | undefined): Langue {
   return valeur === "fr" ? "fr" : valeur === "en" ? "en" : LANGUE_DEFAUT;
 }
 
-/** Les deux choix, pour les sélecteurs de langue. */
-export const LANGUES: { code: Langue; libelle: string }[] = [
-  { code: "en", libelle: "English" },
-  { code: "fr", libelle: "Français" },
+/** Les deux choix, pour les sélecteurs de langue.
+ *  `bascule` : l'invitation à passer à CETTE langue, écrite dans cette
+ *  langue — c'est la personne qui la cherche qui doit pouvoir la lire. */
+export const LANGUES: { code: Langue; libelle: string; bascule: string }[] = [
+  { code: "en", libelle: "English", bascule: "Switch to English" },
+  { code: "fr", libelle: "Français", bascule: "Passer en français" },
 ];
+
+/** L'autre langue que celle donnée — la cible du bouton de bascule. */
+export function autreLangue(langue: Langue) {
+  return LANGUES.find((l) => l.code !== langue)!;
+}

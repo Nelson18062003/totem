@@ -142,6 +142,11 @@ export default async function Reglages() {
       </div>
 
       <div className="flex flex-col gap-8">
+      {/* La langue de la plateforme — en tête de colonne : c'est le premier
+          réglage qu'un nouvel arrivant cherche. La bascule vit aussi dans la
+          navigation, sur chaque écran. */}
+      <SectionLangue />
+
       {/* Codes USSD — ceux de l'opérateur de la carte en place */}
       <SectionCodes operateur={carte?.operateur ?? "Orange"} />
 
@@ -156,9 +161,6 @@ export default async function Reglages() {
           {t.notePin}
         </p>
       </section>
-
-      {/* La langue de la plateforme — au choix du propriétaire */}
-      <SectionLangue />
       </div>
       </div>
 
