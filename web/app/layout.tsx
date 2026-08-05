@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
-import { chargerDonnees, relie } from "@/lib/serveur";
+import { chargerTerminal, relie } from "@/lib/serveur";
 import { Coquille } from "./coquille";
 
 // L'état du terminal change à chaque instant : rien ne se fige à la
@@ -29,7 +29,9 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const { terminal } = relie ? await chargerDonnees() : { terminal: null };
+  // Le terminal seul : la coquille n'affiche que lui. Recharger les 1000 SMS
+  // et les 1000 reçus ici doublait le coût de CHAQUE page.
+  const terminal = relie ? await chargerTerminal() : null;
   return (
     <html lang="fr" className={dmSans.variable}>
       <body className="min-h-dvh">

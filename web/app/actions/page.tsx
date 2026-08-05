@@ -5,7 +5,7 @@ import { Guichet } from "./guichet";
 export const dynamic = "force-dynamic";
 
 export default async function Operations() {
-  const { sims } = await chargerDonnees();
+  const { sims } = await chargerDonnees({ sms: 0, recus: 0 });
   const carte = sims.find((s) => s.enPlace);
 
   if (!carte) {

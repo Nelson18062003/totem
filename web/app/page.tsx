@@ -7,7 +7,7 @@ import { IconChevron, IconSettings } from "./icons";
 export const dynamic = "force-dynamic";
 
 export default async function Accueil() {
-  const { terminal, sims, paiements } = await chargerDonnees();
+  const { terminal, sims, paiements } = await chargerDonnees({ sms: 30, recus: 60 });
   const carte = sims.find((s) => s.enPlace) ?? null;
 
   return (

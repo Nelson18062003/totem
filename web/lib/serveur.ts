@@ -119,22 +119,8 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 
 // --- Le chargement complet ---------------------------------------------------
 
-export async function chargerDonnees(): Promise<Donnees> {
-  // « select=* » à dessein : exiger une colonne par son nom rend l'écran
-  // VIDE quand la base a une migration de retard (la requête entière est
-  // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
-  // moins riche — jamais une liste vide. Les champs du type non présents
-  // arrivent à undefined, que chaque lecture traite déjà comme null.
-  const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
-    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
-    lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
-    lire<LigneCompte>("comptes?select=*"),
-    lire<LignePaiement>("paiements?select=*&order=recu_le.desc&limit=1000"),
-    lire<LigneRecu>("recus?select=*&order=etabli_le.desc&limit=1000"),
-  ]);
-
-  const t = terminaux[0];
-  const terminal: EtatTerminal | null = t
+function versTerminal(t: LigneTerminal | undefined): EtatTerminal | null {
+  return t
     ? {
         id: t.id,
         nom: t.nom || t.id.charAt(0).toUpperCase() + t.id.slice(1),
@@ -145,6 +131,44 @@ export async function chargerDonnees(): Promise<Donnees> {
         enAttente: t.sante?.en_attente ?? 0,
       }
     : null;
+}
+
+/** Le terminal seul — pour la coquille, qui n'a pas besoin du reste.
+ *  Avant, elle rechargeait TOUT (SMS et reçus compris) à chaque page :
+ *  chaque clic payait deux fois le plein tarif. */
+export async function chargerTerminal(): Promise<EtatTerminal | null> {
+  const terminaux = await lire<LigneTerminal>(
+    "terminaux?select=*&order=vu_le.desc.nullslast&limit=1");
+  return versTerminal(terminaux[0]);
+}
+
+export async function chargerDonnees(
+  // Chaque page dit ce dont elle a besoin : l'accueil montre 6 SMS, inutile
+  // d'en charger 1000. `sms: 0` saute la requête entièrement. ATTENTION :
+  // les compteurs des cartes (nbPaiements, totalRecu) ne comptent que ce qui
+  // est chargé — la page qui les affiche (Comptes) charge donc tout.
+  bornes?: { sms?: number; recus?: number },
+): Promise<Donnees> {
+  const nSms = bornes?.sms ?? 1000;
+  const nRecus = bornes?.recus ?? 1000;
+  // « select=* » à dessein : exiger une colonne par son nom rend l'écran
+  // VIDE quand la base a une migration de retard (la requête entière est
+  // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
+  // moins riche — jamais une liste vide. Les champs du type non présents
+  // arrivent à undefined, que chaque lecture traite déjà comme null.
+  const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
+    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
+    lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
+    lire<LigneCompte>("comptes?select=*"),
+    nSms > 0
+      ? lire<LignePaiement>(`paiements?select=*&order=recu_le.desc&limit=${nSms}`)
+      : Promise.resolve([] as LignePaiement[]),
+    nRecus > 0
+      ? lire<LigneRecu>(`recus?select=*&order=etabli_le.desc&limit=${nRecus}`)
+      : Promise.resolve([] as LigneRecu[]),
+  ]);
+
+  const terminal = versTerminal(terminaux[0]);
 
   // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
   // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
