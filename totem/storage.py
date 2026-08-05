@@ -192,6 +192,11 @@ class Journal:
             # après une coupure, les deux divergent, et c'est elle qui fait foi.
             self._ajouter_colonne_si_absente("sms", "emis_le")
             self._reprendre_recus()
+            # La nature choisie par le propriétaire pour un reçu demandé
+            # depuis la plateforme (depot/retrait/transfert/solde) : elle
+            # habille le titre du document, jamais les données stockées.
+            # Après _reprendre_recus : la reconstruction repartirait sans elle.
+            self._ajouter_colonne_si_absente("recus", "nature")
             self.conn.commit()
 
     def _reprendre_recus(self):
@@ -541,23 +546,38 @@ class Journal:
             return None
 
     def programmer_recu(self, source_id, genre, numero, reference=None,
-                        source="sms"):
-        """Inscrit un reçu à fabriquer. Renvoie False s'il existe déjà.
+                        source="sms", nature=None):
+        """Inscrit un reçu à fabriquer. Renvoie False s'il existait déjà tel
+        quel.
 
         `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
         menu. Le même SMS relu après un redémarrage du modem tombe sur l'un des
         deux verrous d'unicité et ne produit pas de second document.
+
+        `nature` : le choix du propriétaire, quand la demande vient de la
+        plateforme. Redemander le reçu d'un message avec une AUTRE nature
+        refabrique le document — même numéro, nouveau genre — au lieu de
+        resservir l'ancien.
         """
         try:
             with self.verrou:
                 self.conn.execute(
                     "INSERT INTO recus(source, source_id, genre, numero, "
-                    "reference, date) VALUES(?,?,?,?,?,?)",
+                    "reference, date, nature) VALUES(?,?,?,?,?,?,?)",
                     (source, source_id, genre, numero, reference or None,
-                     self._maintenant()))
+                     self._maintenant(), nature or None))
                 self.conn.commit()
             return True
         except sqlite3.IntegrityError:
+            with self.verrou:
+                self.conn.execute(
+                    "UPDATE recus SET genre = ?, nature = ?, "
+                    "envoye = 0, archive = 0, essais = 0 "
+                    "WHERE source = ? AND source_id = ? "
+                    "AND (genre != ? OR COALESCE(nature, '') != COALESCE(?, ''))",
+                    (genre, nature or None, source, source_id,
+                     genre, nature or None))
+                self.conn.commit()
             return False
 
     def recus_a_envoyer(self, apres_secondes=0, limite=5):
@@ -565,7 +585,7 @@ class Journal:
 
         `apres_secondes` laisse au message texte le temps de partir en premier :
         l'alerte doit arriver tout de suite, le document quelques secondes
-        après. [(id, genre, numero, date, texte, compte, iccid)]
+        après. [(id, genre, numero, date, texte, compte, iccid, nature)]
         """
         avant = (datetime.now() - timedelta(seconds=apres_secondes)).isoformat(
             timespec="seconds")
@@ -574,7 +594,7 @@ class Journal:
                 "SELECT r.id, r.genre, r.numero, r.date, "
                 "       COALESCE(s.texte, u.texte, ''), "
                 "       COALESCE(s.compte, u.compte, ''), "
-                "       COALESCE(s.iccid, u.iccid, '') "
+                "       COALESCE(s.iccid, u.iccid, ''), r.nature "
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
@@ -588,7 +608,7 @@ class Journal:
                 "SELECT r.id, r.genre, r.numero, r.date, "
                 "       COALESCE(s.texte, u.texte, ''), "
                 "       COALESCE(s.compte, u.compte, ''), "
-                "       COALESCE(s.iccid, u.iccid, '') "
+                "       COALESCE(s.iccid, u.iccid, ''), r.nature "
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "

@@ -25,6 +25,11 @@ from .analyse_sms import _normaliser, analyser, code_a_usage_unique, solde_annon
 TRANSFERT = "transfert"
 SOLDE = "solde"
 
+# Les natures qu'un propriétaire peut choisir à la main sur la plateforme.
+# Les trois premières habillent un document de transfert ; « solde » exige
+# un solde annoncé.
+NATURES = ("depot", "retrait", "transfert", "solde")
+
 # Les mots qui disent qu'il ne s'est rien passé. L'analyseur écarte déjà la
 # forme d'Orange, qui exige « reussi » ; ceci couvre les autres tournures, et
 # rend le refus visible plutôt qu'implicite.
@@ -124,5 +129,33 @@ def motif_du_sms(texte, numeros=()):
     return None
 
 
-__all__ = ["Motif", "SOLDE", "TRANSFERT", "motif_du_menu",
-           "motif_du_sms"]
+def motif_selon_nature(motif, nature):
+    """Plie le motif à la nature choisie par le propriétaire — ou refuse.
+
+    C'est le propriétaire qui décide ce qu'est son SMS ; mais un document ne
+    se fabrique jamais sans les faits qui le remplissent :
+
+      - « solde » exige un solde : celui d'une interrogation, ou le
+        « nouveau solde » qu'un mouvement annonce ;
+      - « depot », « retrait », « transfert » exigent un mouvement compris
+        (montant lisible) — jamais un repli sur le solde du même SMS, qui
+        ferait un document de solde là où on a demandé un transfert.
+
+    `nature` à None : le motif repart tel quel. Renvoie None quand le SMS ne
+    porte pas de quoi remplir honnêtement le document demandé.
+    """
+    if nature is None:
+        return motif
+    if motif is None:
+        return None
+    if nature == SOLDE:
+        if motif.genre == SOLDE:
+            return motif
+        if motif.paiement is not None and motif.paiement.solde_apres is not None:
+            return Motif(SOLDE, solde=motif.paiement.solde_apres)
+        return None
+    return motif if motif.genre == TRANSFERT else None
+
+
+__all__ = ["Motif", "NATURES", "SOLDE", "TRANSFERT", "motif_du_menu",
+           "motif_du_sms", "motif_selon_nature"]

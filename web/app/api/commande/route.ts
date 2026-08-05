@@ -40,6 +40,12 @@ export async function POST(req: Request) {
   }
   if (brut.secret === true) parametres.secret = true;
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
+  // La nature choisie pour un reçu : une des quatre valeurs connues, rien
+  // d'autre ne passe.
+  if (typeof brut.nature === "string" &&
+      ["depot", "retrait", "transfert", "solde"].includes(brut.nature)) {
+    parametres.nature = brut.nature;
+  }
   if (Number.isInteger(brut.source_id) && brut.source_id > 0) {
     parametres.source_id = brut.source_id;
   }

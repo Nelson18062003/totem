@@ -30,7 +30,8 @@ from datetime import datetime
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
                           masquer_secrets)
-from .declencheur import TRANSFERT, motif_du_menu, motif_du_sms
+from .declencheur import (SOLDE, TRANSFERT, motif_du_menu,
+                          motif_du_sms, motif_selon_nature)
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
                    recu_transfert)
 from .codes import catalogue, cle as cle_code
@@ -1819,23 +1820,29 @@ class Robot:
     # l'annonce d'un encaissement. Le SMS est donc seulement inscrit, et la
     # boucle de surveillance s'en occupe une dizaine de secondes plus tard.
 
-    def _programmer_recu(self, source_id, texte, source="sms"):
+    def _programmer_recu(self, source_id, texte, source="sms", nature=None):
         """Inscrit ce message pour un reçu, s'il en mérite un.
 
         `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
         menu. Les deux n'ont pas les mêmes garde-fous — une réponse USSD peut
         être un menu ou une question, un SMS non.
+
+        `nature` : le choix du propriétaire quand la demande vient de la
+        plateforme. C'est lui qui décide du document — et sans les faits pour
+        le remplir honnêtement, on refuse plutôt que de replier sur un autre.
         """
         if not self.recus or not source_id:
             return None
         try:
             motif = (motif_du_menu(texte) if source == "ussd"
                      else motif_du_sms(texte, numeros=self._nos_numeros()))
+            motif = motif_selon_nature(motif, nature)
             if motif is None:
                 return None
             numero = numero_de_recu(datetime.now(), source_id, source)
             self.journal.programmer_recu(source_id, motif.genre, numero,
-                                         motif.reference, source=source)
+                                         motif.reference, source=source,
+                                         nature=nature)
             return numero
         except Exception as e:
             # Un reçu manqué est un désagrément ; une relève de SMS
@@ -1843,14 +1850,15 @@ class Robot:
             self.journal.evenement(f"reçu non programmé : {e}")
             return None
 
-    def _recu_apres_coup(self, source_id):
+    def _recu_apres_coup(self, source_id, nature=None):
         """Établit (ou ré-établit) le reçu d'un SMS passé, à la demande de
         la plateforme. Le numéro ne dépend que de la ligne du journal : un
-        reçu redemandé reprend exactement le même."""
+        reçu redemandé reprend exactement le même — mais une autre nature
+        refabrique le document sous son nouveau titre."""
         texte = self.journal.texte_sms(source_id)
         if not texte:
             return None
-        return self._programmer_recu(source_id, texte)
+        return self._programmer_recu(source_id, texte, nature=nature)
 
     def _distribuer_recus(self):
         """Fabrique, envoie, puis archive les reçus mûrs."""
@@ -1895,22 +1903,27 @@ class Robot:
         """(nom de fichier, PDF, légende) — ou (nom, None, «») si le SMS n'est
         plus compris. Le document se refait à l'identique depuis le message :
         rien n'est conservé sur la carte SD."""
-        _, genre, numero, date, texte, compte, iccid = ligne
+        _, genre, numero, date, texte, compte, iccid, nature = ligne
         quand = datetime.fromisoformat(date)
-        motif = self._motif(texte)
+        # Le genre INSCRIT fait foi : un solde demandé sur un SMS de transfert
+        # se remplit avec le « nouveau solde » que ce transfert annonce.
+        motif = motif_selon_nature(
+            self._motif(texte), "solde" if genre == SOLDE else "transfert")
         nom = f"{numero}.pdf"
         if motif is None or motif.genre != genre:
             return nom, None, ""
 
         operateur = self._operateur_de(compte, iccid)
         if genre == TRANSFERT:
-            # Le titre suit la nature réelle du SMS : un dépôt donne un « Reçu
-            # de dépôt », un retrait un « Reçu de retrait ». Le reste (envois,
-            # encaissements, transferts entre comptes) reste « Reçu de
-            # transfert » — le document, lui, est identique.
+            # Le titre suit la nature CHOISIE par le propriétaire quand elle
+            # existe, la nature lue dans le SMS sinon : un dépôt donne un
+            # « Reçu de dépôt », un retrait un « Reçu de retrait ». Le reste
+            # (envois, encaissements, transferts entre comptes) reste « Reçu
+            # de transfert » — le document, lui, est identique.
             titre = {"depot": t("Deposit receipt", "Reçu de dépôt"),
                      "retrait": t("Withdrawal receipt", "Reçu de retrait")}.get(
-                         categoriser(texte, numeros=self._nos_numeros()),
+                         nature or categoriser(texte,
+                                               numeros=self._nos_numeros()),
                          t("Transfer receipt", "Reçu de transfert"))
             pdf = recu_transfert(motif.paiement, numero, quand, operateur,
                                  titre=titre)
@@ -1932,8 +1945,9 @@ class Robot:
 
     def _fiche_recu(self, ligne):
         """Ce qu'on inscrit dans le cloud à côté du fichier."""
-        _, genre, numero, date, texte, _, _ = ligne
-        motif = self._motif(texte)
+        _, genre, numero, date, texte, _, _, _ = ligne
+        motif = motif_selon_nature(
+            self._motif(texte), "solde" if genre == SOLDE else "transfert")
         montant = None
         if motif is not None:
             montant = (motif.paiement.montant if motif.paiement is not None

@@ -247,18 +247,47 @@ class TestRecuApresCoup(unittest.TestCase):
     def test_un_recu_est_programme(self):
         compte = FauxCompte([])
         p, nuage = pilote(compte)
-        p.programmeur = lambda source_id: f"TM-2026-0801-{source_id:04d}"
+        p.programmeur = lambda source_id, nature=None: f"TM-2026-0801-{source_id:04d}"
         p._traiter({"id": 9, "type": "recu", "parametres": {"source_id": 42}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
         self.assertIn("TM-2026-0801-0042", nuage.maj[-1][1]["resultat"])
 
+    def test_la_nature_choisie_est_transmise(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        recues = []
+
+        def programmeur(source_id, nature=None):
+            recues.append((source_id, nature))
+            return "TM-2026-0805-0042"
+
+        p.programmeur = programmeur
+        p._traiter({"id": 30, "type": "recu",
+                    "parametres": {"source_id": 42, "nature": "transfert"}})
+        self.assertEqual(recues, [(42, "transfert")])
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+
+    def test_une_nature_inconnue_est_ignoree(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        recues = []
+
+        def programmeur(source_id, nature=None):
+            recues.append((source_id, nature))
+            return "TM-2026-0805-0042"
+
+        p.programmeur = programmeur
+        p._traiter({"id": 31, "type": "recu",
+                    "parametres": {"source_id": 42, "nature": "fantaisie"}})
+        self.assertEqual(recues, [(42, None)])
+
     def test_un_message_sans_droit_est_refuse(self):
         compte = FauxCompte([])
         p, nuage = pilote(compte)
-        p.programmeur = lambda source_id: None      # publicité, code, échec…
+        p.programmeur = lambda source_id, nature=None: None   # publicité, code, échec…
         p._traiter({"id": 10, "type": "recu", "parametres": {"source_id": 7}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
-        self.assertIn("does not come with a receipt", nuage.maj[-1][1]["resultat"])
+        self.assertIn("does not carry what that receipt needs", nuage.maj[-1][1]["resultat"])
 
     def test_sans_fabrique_le_refus_est_poli(self):
         compte = FauxCompte([])
