@@ -6,7 +6,7 @@ import { Bascule, BoutonDeconnexion, ReglageNumero, SectionCodes } from "./inter
 export const dynamic = "force-dynamic";
 
 export default async function Reglages() {
-  const { terminal, sims } = await chargerDonnees();
+  const { terminal, sims } = await chargerDonnees({ sms: 0, recus: 0 });
   const carte = sims.find((s) => s.enPlace);
 
   return (

@@ -69,6 +69,9 @@ type LignePaiement = {
   reference: string | null; solde_apres: number | null; texte: string;
   categorie?: string | null; nature?: string | null;
   emis_le?: string | null; recu_le: string;
+  // Quand le propriétaire a ouvert ce SMS sur la plateforme. `null` = pas
+  // encore lu ; `undefined` = base pas encore migrée (la notion n'existe pas).
+  lu_le?: string | null;
 };
 
 // --- Mise en forme des dates -------------------------------------------------
@@ -116,22 +119,8 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 
 // --- Le chargement complet ---------------------------------------------------
 
-export async function chargerDonnees(): Promise<Donnees> {
-  // « select=* » à dessein : exiger une colonne par son nom rend l'écran
-  // VIDE quand la base a une migration de retard (la requête entière est
-  // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
-  // moins riche — jamais une liste vide. Les champs du type non présents
-  // arrivent à undefined, que chaque lecture traite déjà comme null.
-  const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
-    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
-    lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
-    lire<LigneCompte>("comptes?select=*"),
-    lire<LignePaiement>("paiements?select=*&order=recu_le.desc&limit=1000"),
-    lire<LigneRecu>("recus?select=*&order=etabli_le.desc&limit=1000"),
-  ]);
-
-  const t = terminaux[0];
-  const terminal: EtatTerminal | null = t
+function versTerminal(t: LigneTerminal | undefined): EtatTerminal | null {
+  return t
     ? {
         id: t.id,
         nom: t.nom || t.id.charAt(0).toUpperCase() + t.id.slice(1),
@@ -142,6 +131,44 @@ export async function chargerDonnees(): Promise<Donnees> {
         enAttente: t.sante?.en_attente ?? 0,
       }
     : null;
+}
+
+/** Le terminal seul — pour la coquille, qui n'a pas besoin du reste.
+ *  Avant, elle rechargeait TOUT (SMS et reçus compris) à chaque page :
+ *  chaque clic payait deux fois le plein tarif. */
+export async function chargerTerminal(): Promise<EtatTerminal | null> {
+  const terminaux = await lire<LigneTerminal>(
+    "terminaux?select=*&order=vu_le.desc.nullslast&limit=1");
+  return versTerminal(terminaux[0]);
+}
+
+export async function chargerDonnees(
+  // Chaque page dit ce dont elle a besoin : l'accueil montre 6 SMS, inutile
+  // d'en charger 1000. `sms: 0` saute la requête entièrement. ATTENTION :
+  // les compteurs des cartes (nbPaiements, totalRecu) ne comptent que ce qui
+  // est chargé — la page qui les affiche (Comptes) charge donc tout.
+  bornes?: { sms?: number; recus?: number },
+): Promise<Donnees> {
+  const nSms = bornes?.sms ?? 1000;
+  const nRecus = bornes?.recus ?? 1000;
+  // « select=* » à dessein : exiger une colonne par son nom rend l'écran
+  // VIDE quand la base a une migration de retard (la requête entière est
+  // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
+  // moins riche — jamais une liste vide. Les champs du type non présents
+  // arrivent à undefined, que chaque lecture traite déjà comme null.
+  const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
+    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
+    lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
+    lire<LigneCompte>("comptes?select=*"),
+    nSms > 0
+      ? lire<LignePaiement>(`paiements?select=*&order=recu_le.desc&limit=${nSms}`)
+      : Promise.resolve([] as LignePaiement[]),
+    nRecus > 0
+      ? lire<LigneRecu>(`recus?select=*&order=etabli_le.desc&limit=${nRecus}`)
+      : Promise.resolve([] as LigneRecu[]),
+  ]);
+
+  const terminal = versTerminal(terminaux[0]);
 
   // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
   // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
@@ -200,6 +227,10 @@ export async function chargerDonnees(): Promise<Donnees> {
       smsBrut: l.texte,
       recu: recuDe(l),
       sourceId: l.source_id ?? null,
+      // Non lu SEULEMENT si la base connaît la notion (colonne présente) et
+      // que la ligne n'a jamais été ouverte. Base pas migrée → tout est « lu » :
+      // la fonctionnalité dort, elle ne crie pas faux.
+      nonLu: l.lu_le === null,
     }));
 
   const sims: Sim[] = cartes.map((c) => {
@@ -309,6 +340,58 @@ export async function definirNature(
         "content-type": "application/json", prefer: "return=minimal",
       },
       body: JSON.stringify({ nature }),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// --- La veille : ce qui permet à l'écran de bouger tout seul -----------------
+// Deux chiffres légers, interrogés régulièrement par le navigateur : le dernier
+// SMS connu (s'il monte, l'écran se rafraîchit) et le nombre de non-lus (la
+// pastille du menu). Volontairement minuscule : la veille passe souvent.
+
+export async function chargerActualite(): Promise<{ dernier: number; nonLus: number }> {
+  if (!relie) return { dernier: 0, nonLus: 0 };
+  const entetes = { apikey: cle!, authorization: `Bearer ${cle}` };
+  let dernier = 0;
+  let nonLus = 0;
+  try {
+    const r = await fetch(`${url}/rest/v1/paiements?select=id&order=id.desc&limit=1`, {
+      headers: entetes, cache: "no-store",
+    });
+    if (r.ok) {
+      const lignes = (await r.json()) as { id: number }[];
+      dernier = lignes[0]?.id ?? 0;
+    }
+    // Le compte est lu dans l'en-tête « content-range » (« 0-0/42 » → 42).
+    // Base pas encore migrée (colonne absente) → réponse 400 → zéro, sans bruit.
+    const c = await fetch(`${url}/rest/v1/paiements?select=id&lu_le=is.null&limit=1`, {
+      headers: { ...entetes, prefer: "count=exact" }, cache: "no-store",
+    });
+    if (c.ok) {
+      const plage = c.headers.get("content-range");
+      nonLus = Number(plage?.split("/")[1] ?? 0) || 0;
+    }
+  } catch {
+    /* cloud injoignable : la prochaine veille réessaiera */
+  }
+  return { dernier, nonLus };
+}
+
+/** Marque un SMS comme lu : le propriétaire vient d'ouvrir sa fiche. */
+export async function marquerLu(id: number): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/paiements?id=eq.${id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=minimal",
+      },
+      body: JSON.stringify({ lu_le: new Date().toISOString() }),
       cache: "no-store",
     });
     return r.ok;

@@ -9,7 +9,7 @@ export default async function CodeUssd({
 }: {
   searchParams: Promise<{ code?: string }>;
 }) {
-  const [{ sims }, { code }] = await Promise.all([chargerDonnees(), searchParams]);
+  const [{ sims }, { code }] = await Promise.all([chargerDonnees({ sms: 0, recus: 0 }), searchParams]);
   const carte = sims.find((s) => s.enPlace);
 
   if (!carte) {

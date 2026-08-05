@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { chargerDonnees } from "@/lib/serveur";
-import { fcfa } from "@/lib/types";
 import { AccueilGuichet } from "./accueil-client";
-import { IconArrowDown, IconArrowUp, IconChevron, IconSettings } from "./icons";
+import { DerniersSms } from "./derniers-sms";
+import { IconChevron, IconSettings } from "./icons";
 
 export const dynamic = "force-dynamic";
 
 export default async function Accueil() {
-  const { terminal, sims, paiements } = await chargerDonnees();
+  const { terminal, sims, paiements } = await chargerDonnees({ sms: 30, recus: 60 });
   const carte = sims.find((s) => s.enPlace) ?? null;
 
   return (
@@ -99,24 +99,9 @@ export default async function Accueil() {
             vérifiez le terminal — un silence prolongé n’est pas normal.
           </p>
         ) : (
-          <ul className="divide-hair">
-            {paiements.slice(0, 6).map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                  {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium">{p.nom}</p>
-                  <p className="truncate text-small text-ink-faint">{p.sim} · {p.heure} · {p.smsBrut}</p>
-                </div>
-                {p.montant != null && (
-                  <span className={`shrink-0 text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
-                    {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+          // Cliquables : chaque ligne ouvre la même fiche que la boîte de
+          // réception — le message en entier, sa nature, son reçu.
+          <DerniersSms paiements={paiements.slice(0, 6)} />
         )}
       </section>
     </div>

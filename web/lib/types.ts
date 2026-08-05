@@ -51,6 +51,9 @@ export type Paiement = {
   smsBrut: string;
   recu: string | null;      // numéro du reçu PDF archivé, s'il existe
   sourceId: number | null;  // la ligne du journal du terminal (pour établir un reçu)
+  // Jamais ouvert sur la plateforme. Alimente la pastille du menu et le point
+  // des lignes ; s'éteint dès que la fiche du SMS s'ouvre.
+  nonLu: boolean;
 };
 
 export type EtatTerminal = {

@@ -109,3 +109,34 @@ body {
   background-repeat: repeat;
   background-size: 56px auto;
 }
+
+/* --- Le mouvement — sobre, jamais décoratif --------------------------------
+   Trois gestes seulement : une page qui ENTRE, un voile qui se POSE, une
+   fiche qui SURGIT. Courts (≈0,2 s), amortis, et coupés net pour qui préfère
+   les interfaces immobiles (réglage système « réduire les animations »). */
+
+/* La largeur du rail latéral — pilotée par la flèche de repli du menu. */
+:root { --rail: 15rem; }
+html[data-rail="replie"] { --rail: 4.5rem; }
+
+@keyframes entree {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.entree { animation: entree 0.22s ease-out both; }
+
+@keyframes voile {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.voile { animation: voile 0.18s ease-out both; }
+
+@keyframes surgit {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.surgit { animation: surgit 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .entree, .voile, .surgit { animation: none; }
+}

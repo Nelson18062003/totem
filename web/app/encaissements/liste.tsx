@@ -1,38 +1,18 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
-import { IconClose, IconCopy, IconDoc, IconSearch } from "../icons";
+// La fiche d'un SMS et ses pastilles vivent dans un module partagé : la même
+// fiche s'ouvre ici et depuis les derniers SMS de l'accueil.
+import { CAT, catDe, FicheSms } from "../fiche-sms";
+import { IconClose, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
-
-// Chaque catégorie de SMS a sa pastille et son libellé, comme une boîte de
-// réception. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
-const CAT: Record<Categorie, { emoji: string; label: string }> = {
-  encaissement: { emoji: "💰", label: "Encaissement" },
-  envoi: { emoji: "↗️", label: "Envoi" },
-  transfert: { emoji: "🔁", label: "Transfert" },
-  depot: { emoji: "📥", label: "Dépôt" },
-  retrait: { emoji: "📤", label: "Retrait" },
-  solde: { emoji: "📊", label: "Solde" },
-  code: { emoji: "🔑", label: "Code" },
-  publicite: { emoji: "📢", label: "Pub" },
-  message: { emoji: "💬", label: "Message" },
-  inconnu: { emoji: "✉️", label: "SMS" },
-};
 
 // L'ordre des filtres de catégorie : les mouvements d'argent d'abord.
 const ORDRE_CAT: Categorie[] = [
   "encaissement", "envoi", "transfert", "depot", "retrait",
   "solde", "code", "publicite", "message", "inconnu",
 ];
-
-// Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
-const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
-
-// La catégorie effective : la nature choisie par le propriétaire l'emporte sur
-// la catégorie devinée par le terminal.
-const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
 
 /**
  * Tous les SMS reçus par les cartes, tels quels — c'est par eux que tout
@@ -179,8 +159,13 @@ export function ListeEncaissements({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
-                        {/* Qui, quand — la source du SMS, brève. */}
-                        <span className="truncate text-small text-ink-soft">
+                        {/* Qui, quand — la source du SMS, brève. Le point plein
+                            devant = pas encore ouvert. */}
+                        <span className="flex min-w-0 items-center gap-1.5 truncate text-small text-ink-soft">
+                          {p.nonLu && (
+                            <span aria-label="non lu"
+                              className="size-1.5 shrink-0 rounded-full bg-ink" />
+                          )}
                           {p.sim} · {p.heure}
                         </span>
                         {/* Montant complet, jamais abrégé ; sans signe quand le
@@ -195,8 +180,11 @@ export function ListeEncaissements({
                       </span>
                       {/* Le SMS EN ENTIER : c'est lui qu'on vient lire. Jamais
                           tronqué, jamais reformulé — le message d'origine, tel
-                          que la carte l'a reçu. */}
-                      <span className="mt-1 block whitespace-pre-wrap break-words text-body text-ink">
+                          que la carte l'a reçu. Un non-lu se lit un cran plus
+                          appuyé, comme dans une boîte mail. */}
+                      <span className={`mt-1 block whitespace-pre-wrap break-words text-body text-ink ${
+                        p.nonLu ? "font-medium" : ""
+                      }`}>
                         {p.smsBrut}
                       </span>
                     </span>
@@ -216,157 +204,7 @@ export function ListeEncaissements({
         ))
       )}
 
-      {detail && <Detail p={detail} onFermer={() => setDetail(null)} />}
-    </div>
-  );
-}
-
-function Detail({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
-  const router = useRouter();
-  const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
-  const [mot, setMot] = useState("");
-  const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
-  const [classe, setClasse] = useState(false);
-
-  // Le propriétaire décide la nature d'un SMS (dépôt/retrait/transfert/solde) :
-  // elle s'affiche ainsi partout, et son reçu s'établit dans la foulée.
-  const classer = async (n: Categorie) => {
-    if (classe) return;
-    setClasse(true);
-    setNature(n);
-    try {
-      await fetch("/api/nature", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: Number(p.id), nature: n }),
-      });
-      if (p.sourceId != null && !p.recu) await etablirRecu();
-      router.refresh();
-    } catch {
-      /* l'échec reste visible via l'état du reçu */
-    }
-    setClasse(false);
-  };
-
-  // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
-  // qui fait foi — même numéro, même document, à la demande.
-  const etablirRecu = async () => {
-    if (etabli === "envoi" || p.sourceId == null) return;
-    setEtabli("envoi");
-    try {
-      const r = await fetch("/api/commande", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "recu", parametres: { source_id: p.sourceId } }),
-      });
-      if (!r.ok) throw new Error();
-      const { id } = (await r.json()) as { id: number };
-      for (let i = 0; i < 20; i++) {
-        await new Promise((res) => setTimeout(res, 1300));
-        const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
-          .then((x) => (x.ok ? x.json() : null))
-          .catch(() => null);
-        if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          setMot(c.resultat || "");
-          setEtabli(c.etat === "faite" ? "fait" : "refus");
-          if (c.etat === "faite") {
-            // Laisser au terminal le temps d'archiver, puis relire la base :
-            // l'icône de téléchargement apparaîtra sur la ligne.
-            setTimeout(() => router.refresh(), 8000);
-          }
-          return;
-        }
-      }
-      throw new Error();
-    } catch {
-      setMot("Le terminal n’a pas répondu — est-il allumé, et à jour ?");
-      setEtabli("refus");
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
-      <div className="w-full max-w-md rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-small text-ink-soft">
-              {p.montant == null
-                ? "SMS reçu"
-                : p.sens === "in" ? "Paiement reçu" : p.sens === "out" ? "Paiement envoyé" : "Mouvement — sens à confirmer"}
-            </p>
-            {p.montant != null && (
-              <p className="mt-1 text-display font-semibold tabnums tracking-tight">
-                {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant)}
-              </p>
-            )}
-            <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
-          </div>
-          <button onClick={onFermer} className="text-ink-faint transition hover:text-ink"><IconClose size={18} /></button>
-        </div>
-
-        <dl className="mt-6 divide-hair">
-          <L t="Catégorie" v={`${CAT[catDe(p)].emoji} ${CAT[catDe(p)].label}`} />
-          <L t="Opérateur" v={p.sim} />
-          {p.numero && <L t="Numéro" v={p.numero} />}
-          <L t="Date" v={`${p.date} à ${p.heure}`} />
-          {p.reference && <L t="Référence" v={p.reference} />}
-          {p.soldeApres != null && <L t="Solde après" v={fcfa(p.soldeApres)} />}
-        </dl>
-
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
-            Nature — pour le reçu
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {NATURES.map((n) => (
-              <button key={n} onClick={() => classer(n)} disabled={classe}
-                className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
-                  nature === n
-                    ? "border-ink bg-ink font-medium text-white"
-                    : "border-line text-ink-soft hover:border-ink-faint"
-                }`}>
-                {CAT[n].emoji} {CAT[n].label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
-            Choisir une nature l’affiche ainsi partout et établit son reçu.
-          </p>
-        </div>
-
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">Message reçu</p>
-          <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
-        </div>
-
-        <div className="mt-5 flex gap-2">
-          <button
-            onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-            <IconCopy size={15} /> Copier le SMS
-          </button>
-          {p.recu ? (
-            <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
-              className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-              <IconDoc size={15} /> Reçu PDF
-            </a>
-          ) : (
-            p.sourceId != null && etabli !== "fait" && (
-              <button onClick={etablirRecu} disabled={etabli === "envoi"}
-                className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
-                <IconDoc size={15} />
-                {etabli === "envoi" ? "Demande au terminal…" : "Établir le reçu"}
-              </button>
-            )
-          )}
-        </div>
-        {mot && (
-          <p className={`mt-3 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
-            {mot}
-          </p>
-        )}
-      </div>
+      {detail && <FicheSms p={detail} onFermer={() => setDetail(null)} />}
     </div>
   );
 }
@@ -394,11 +232,3 @@ function Chip({
   );
 }
 
-function L({ t, v }: { t: string; v: string }) {
-  return (
-    <div className="flex items-center justify-between py-2.5">
-      <dt className="text-small text-ink-soft">{t}</dt>
-      <dd className="text-small font-medium tabnums">{v}</dd>
-    </div>
-  );
-}
