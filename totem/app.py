@@ -39,6 +39,7 @@ from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
 from .pilotage import Pilotage
 from .sante import Sante, sauvegarder_journal
+from .textes import t
 from .version import version
 
 ARRET_PROPRE = "arrêt propre"
@@ -54,16 +55,18 @@ RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
 # On masque donc au moindre doute. « Entrez votre code », « Enter your Orange
 # Money code », « Veuillez entrer votre MDP » doivent tous déclencher le pavé.
 RE_DEMANDE_CODE = re.compile(
-    r"\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password",
+    r"\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password"
+    r"|passcode|passphrase",
     re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
 RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
 # Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
 # permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
-RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount", re.I)
+RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount|how\s+much|\bsum\b", re.I)
 RE_DEMANDE_DESTINATAIRE = re.compile(
-    r"num[ée]ro|b[ée]n[ée]ficiaire|destinataire|recipient", re.I)
+    r"num[ée]ro|b[ée]n[ée]ficiaire|destinataire|recipient|number|beneficiary"
+    r"|receiver|payee|phone", re.I)
 
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
@@ -79,23 +82,46 @@ DELAI_RECU = 10
 # Le nom commercial du service, tel qu'il apparaît en pied de reçu.
 SERVICES = {"Orange": "Orange Money", "MTN": "MTN MoMo"}
 
+# Les descriptions portent leurs deux langues côte à côte ; elles ne sont
+# résolues qu'au moment de publier, la langue étant fixée après l'import.
 COMMANDES_BOT = [
-    ("menu", "Écran d'accueil avec les boutons"),
-    ("statut", "État des modems, des SIM et du signal"),
-    ("comptes", "Choisir le compte piloté"),
-    ("sims", "Les cartes SIM connues et celle en place"),
-    ("raccourcis", "Vos boutons : en créer, en supprimer"),
-    ("sms", "Les derniers SMS reçus"),
-    ("rapport", "Bilan des dernières 24 h"),
-    ("export", "Journal des 7 derniers jours en CSV"),
-    ("reglages", "Le numéro et le nom de chaque puce"),
-    ("diagnostic", "État détaillé (version, mémoire SMS, cartes)"),
-    ("brut", "Voir le dernier menu tel que l'opérateur l'a envoyé"),
-    ("sauvegarde", "Envoyer une copie du journal dans la conversation"),
-    ("annuler", "Fermer la session USSD en cours"),
-    ("redemarrer_modem", "Relancer le modem du compte courant"),
-    ("aide", "Aide"),
+    ("menu", ("Home screen with the buttons",
+              "Écran d'accueil avec les boutons")),
+    ("statut", ("Modems, SIM cards and signal",
+                "État des modems, des SIM et du signal")),
+    ("comptes", ("Choose which account to drive",
+                 "Choisir le compte piloté")),
+    ("sims", ("The SIM cards we know, and the one inserted",
+              "Les cartes SIM connues et celle en place")),
+    ("raccourcis", ("Your buttons: create or remove one",
+                    "Vos boutons : en créer, en supprimer")),
+    ("sms", ("The latest text messages",
+             "Les derniers SMS reçus")),
+    ("rapport", ("The last 24 hours at a glance",
+                 "Bilan des dernières 24 h")),
+    ("export", ("CSV log of the last 7 days",
+                "Journal des 7 derniers jours en CSV")),
+    ("reglages", ("Each SIM's number and name",
+                  "Le numéro et le nom de chaque puce")),
+    ("diagnostic", ("Detailed status (version, SMS storage, cards)",
+                    "État détaillé (version, mémoire SMS, cartes)")),
+    ("brut", ("The last menu exactly as the operator sent it",
+              "Voir le dernier menu tel que l'opérateur l'a envoyé")),
+    ("sauvegarde", ("Send a copy of the records to the conversation",
+                    "Envoyer une copie du journal dans la conversation")),
+    ("annuler", ("Close the current USSD session",
+                 "Fermer la session USSD en cours")),
+    ("redemarrer_modem", ("Restart the modem of the active account",
+                          "Relancer le modem du compte courant")),
+    ("aide", ("Help", "Aide")),
 ]
+
+
+def _accord(nb, singulier_en, pluriel_en, singulier_fr, pluriel_fr):
+    """« 1 payment » / « 2 paiements » : le nombre et son mot, accordés
+    dans la langue active."""
+    return t(f"{nb} {singulier_en if nb == 1 else pluriel_en}",
+             f"{nb} {singulier_fr if nb == 1 else pluriel_fr}")
 
 
 class Robot:
@@ -196,40 +222,62 @@ class Robot:
     def _aide(self):
         lignes = [
             f"🗿 {gras(self.nom)}", "",
-            "Le plus simple : /menu, puis tout se fait au doigt.", "",
-            gras("Vos propres boutons"),
-            "Faites une opération une fois — consulter le solde, par exemple. "
-            "À la fin, appuyez sur " + gras("💾 En faire un bouton") + " : le "
-            "parcours devient un raccourci, et vous n'aurez plus jamais à "
-            "retaper les chiffres du menu. Les boutons suivent l'opérateur de "
-            "la carte : ceux d'Orange n'apparaissent pas avec une puce MTN.",
+            t("The easiest way: /menu, then everything works by tapping.",
+              "Le plus simple : /menu, puis tout se fait au doigt."), "",
+            gras(t("Your own buttons", "Vos propres boutons")),
+            t("Do an operation once — check the balance, for example. At the "
+              "end, tap " + gras("💾 Save as a button") + ": the whole journey "
+              "becomes a shortcut, and you will never have to retype the menu "
+              "numbers again. Buttons follow the card's network: Orange ones "
+              "do not show up with an MTN SIM.",
+              "Faites une opération une fois — consulter le solde, par exemple. "
+              "À la fin, appuyez sur " + gras("💾 En faire un bouton") + " : le "
+              "parcours devient un raccourci, et vous n'aurez plus jamais à "
+              "retaper les chiffres du menu. Les boutons suivent l'opérateur de "
+              "la carte : ceux d'Orange n'apparaissent pas avec une puce MTN."),
             "",
-            gras("Codes USSD"),
-            f"Envoyez {mono('*126#')} (ou tout autre code) : le menu s'ouvre "
-            "sous forme de boutons. Les questions libres (numéro, montant) se "
-            "répondent par un message normal. Le code PIN se tape sur le pavé "
-            "sécurisé : il n'apparaît jamais dans la conversation.",
+            gras(t("USSD codes", "Codes USSD")),
+            t(f"Send {mono('*126#')} (or any other code): the menu opens as "
+              "buttons. Free questions (a number, an amount) are answered "
+              "with a normal message. The PIN is typed on the secure pad: it "
+              "never appears in the conversation.",
+              f"Envoyez {mono('*126#')} (ou tout autre code) : le menu s'ouvre "
+              "sous forme de boutons. Les questions libres (numéro, montant) se "
+              "répondent par un message normal. Le code PIN se tape sur le pavé "
+              "sécurisé : il n'apparaît jamais dans la conversation."),
         ]
         if self.multi:
             lignes += [
-                "", gras("Plusieurs comptes"),
-                f"{mono('mtn *126#')} — viser un compte sans changer de compte courant",
-                "/comptes — liste des comptes et bascule",
-                "Chaque carte SIM garde son propre journal : en changer ne "
-                "mélange pas les caisses.",
+                "", gras(t("Several accounts", "Plusieurs comptes")),
+                t(f"{mono('mtn *126#')} — target an account without switching "
+                  "the active one",
+                  f"{mono('mtn *126#')} — viser un compte sans changer de compte courant"),
+                t("/comptes — list the accounts and switch",
+                  "/comptes — liste des comptes et bascule"),
+                t("Each SIM card keeps its own records: switching never mixes "
+                  "the money.",
+                  "Chaque carte SIM garde son propre journal : en changer ne "
+                  "mélange pas les caisses."),
             ]
         lignes += [
-            "", gras("Commandes"),
-            "/menu — écran d'accueil",
-            "/statut — signal, opérateur, SIM",
-            "/sims — les cartes SIM connues, et celle en place",
-            "/raccourcis — vos boutons, et comment en créer",
-            "/sms — les derniers SMS reçus",
-            "/rapport — bilan des dernières 24 h",
-            "/export — journal CSV des 7 derniers jours",
-            "/annuler — ferme la session USSD",
-            "/redemarrer_modem — relance le modem du compte courant",
-            "/aide — ce message",
+            "", gras(t("Commands", "Commandes")),
+            t("/menu — home screen", "/menu — écran d'accueil"),
+            t("/statut — signal, network, SIM", "/statut — signal, opérateur, SIM"),
+            t("/sims — the SIM cards we know, and the one inserted",
+              "/sims — les cartes SIM connues, et celle en place"),
+            t("/raccourcis — your buttons, and how to create one",
+              "/raccourcis — vos boutons, et comment en créer"),
+            t("/sms — the latest text messages",
+              "/sms — les derniers SMS reçus"),
+            t("/rapport — the last 24 hours at a glance",
+              "/rapport — bilan des dernières 24 h"),
+            t("/export — CSV log of the last 7 days",
+              "/export — journal CSV des 7 derniers jours"),
+            t("/annuler — close the USSD session",
+              "/annuler — ferme la session USSD"),
+            t("/redemarrer_modem — restart the active account's modem",
+              "/redemarrer_modem — relance le modem du compte courant"),
+            t("/aide — this message", "/aide — ce message"),
         ]
         return "\n".join(lignes)
 
@@ -237,7 +285,8 @@ class Robot:
     def demarrer(self, bloquant=True):
         if not self.comptes:
             self.transport.envoyer(
-                "⚠️ Aucun modem détecté. Vérifiez les branchements USB.")
+                t("⚠️ No modem detected. Check the USB connections.",
+                  "⚠️ Aucun modem détecté. Vérifiez les branchements USB."))
             return
         # Lu AVANT de journaliser ce démarrage : si le dernier événement connu
         # n'est pas un arrêt propre, la fois d'avant s'est mal terminée
@@ -247,16 +296,22 @@ class Robot:
 
         self._installer_arret_propre()
         self.transport.vider_backlog()      # ne jamais rejouer d'ancienne commande
-        self.transport.publier_commandes(COMMANDES_BOT)
+        self.transport.publier_commandes(
+            [(nom, t(en, fr)) for nom, (en, fr) in COMMANDES_BOT])
         self._recenser_cartes(silencieux=True)
         detail = "\n".join(f"· {echap(c.resume())}" for c in self.comptes)
-        pluriel = "comptes" if self.multi else "compte"
+        compte_accorde = _accord(len(self.comptes), "account", "accounts",
+                                 "compte", "comptes")
         avertissement = (
-            "\n⚡ <i>Redémarrage après coupure de courant ou plantage : "
-            "l'arrêt précédent n'était pas propre.</i>" if brutal else "")
+            t("\n⚡ <i>Restarted after a power cut or a crash: the previous "
+              "shutdown was not clean.</i>",
+              "\n⚡ <i>Redémarrage après coupure de courant ou plantage : "
+              "l'arrêt précédent n'était pas propre.</i>") if brutal else "")
         self.transport.envoyer(
-            f"✅ {gras(self.nom)} en ligne — {len(self.comptes)} {pluriel}\n"
-            f"{detail}\nVersion : {mono(version())}{avertissement}",
+            t(f"✅ {gras(self.nom)} online — {compte_accorde}\n"
+              f"{detail}\nVersion: {mono(version())}{avertissement}",
+              f"✅ {gras(self.nom)} en ligne — {compte_accorde}\n"
+              f"{detail}\nVersion : {mono(version())}{avertissement}"),
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
@@ -378,8 +433,9 @@ class Robot:
                     return
                 self.courant = self._compte_par_nom(commande)
                 self.transport.envoyer(
-                    f"Compte courant : {gras(self.courant.libelle)}.", canal=canal,
-                    boutons=[[("🏠 Menu", "c:menu")]])
+                    t(f"Active account: {gras(self.courant.libelle)}.",
+                      f"Compte courant : {gras(self.courant.libelle)}."),
+                    canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
             elif commande in ("annuler", "redemarrer_modem", "sauvegarde") \
                     or RE_CODE_USSD.match(texte) \
                     or RE_CIBLE_USSD.match(texte) or self.session_ussd:
@@ -388,8 +444,10 @@ class Robot:
                 self._action_admin(commande, texte, entrant, canal)
             else:
                 self.transport.envoyer(
-                    "Je n'ai pas compris. Ouvrez /menu ou envoyez un code USSD "
-                    f"tel que {mono('*126#')}.", canal=canal)
+                    t("I did not understand. Open /menu or send a USSD code "
+                      f"such as {mono('*126#')}.",
+                      "Je n'ai pas compris. Ouvrez /menu ou envoyez un code USSD "
+                      f"tel que {mono('*126#')}."), canal=canal)
 
     def _action_admin(self, commande, texte, entrant, canal):
         if commande == "sauvegarde":
@@ -492,9 +550,11 @@ class Robot:
             return
 
         if genre == "c" and valeur == "ussd":
-            cible = f" sur {gras(self.courant.libelle)}" if self.multi else ""
+            cible = (t(f" on {gras(self.courant.libelle)}",
+                       f" sur {gras(self.courant.libelle)}") if self.multi else "")
             self.transport.envoyer(
-                f"⌨️ Envoyez le code à composer{cible}, par exemple {mono('*126#')}.",
+                t(f"⌨️ Send the code to dial{cible}, for example {mono('*126#')}.",
+                  f"⌨️ Envoyez le code à composer{cible}, par exemple {mono('*126#')}."),
                 canal=canal)
         elif genre == "c" and valeur == "annuler":
             self._annuler(canal)
@@ -551,8 +611,10 @@ class Robot:
         self.journal.evenement(
             f"refus : {entrant.nom or entrant.utilisateur} a tenté « {entrant.texte} »")
         self.transport.envoyer(
-            "🔒 Vous suivez l'activité des SIM, mais leur pilotage est réservé "
-            "aux administrateurs.", canal=canal)
+            t("🔒 You can watch the SIM activity, but only administrators can "
+              "drive them.",
+              "🔒 Vous suivez l'activité des SIM, mais leur pilotage est réservé "
+              "aux administrateurs."), canal=canal)
         return False
 
     @staticmethod
@@ -576,23 +638,31 @@ class Robot:
             for i in range(0, len(noms), 2):
                 lignes.append([(raccourcis[n]["libelle"], f"m:{n}")
                                for n in noms[i:i + 2]])
-        lignes.append([("📥 SMS reçus", "c:sms"), ("📊 Rapport 24 h", "c:rapport")])
-        lignes.append([("📡 Statut", "c:statut"), ("📄 Export CSV", "c:export")])
+        lignes.append([(t("📥 SMS inbox", "📥 SMS reçus"), "c:sms"),
+                       (t("📊 24 h report", "📊 Rapport 24 h"), "c:rapport")])
+        lignes.append([(t("📡 Status", "📡 Statut"), "c:statut"),
+                       (t("📄 CSV export", "📄 Export CSV"), "c:export")])
         if role == ADMIN:
-            lignes.append([("⌨️ Code USSD", "c:ussd"),
-                           ("⚙️ Réglages", "c:reglages")])
-        lignes.append([("❓ Aide", "c:aide")])
+            lignes.append([(t("⌨️ USSD code", "⌨️ Code USSD"), "c:ussd"),
+                           (t("⚙️ Settings", "⚙️ Réglages"), "c:reglages")])
+        lignes.append([(t("❓ Help", "❓ Aide"), "c:aide")])
         return lignes
 
     def _accueil(self, canal, role):
         nb, total, _ = self.journal.rapport_du_jour(self._cartes_en_place())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
-        courant = (f"\nCompte piloté : {gras(self.courant.libelle)}"
+        courant = (t(f"\nActive account: {gras(self.courant.libelle)}",
+                     f"\nCompte piloté : {gras(self.courant.libelle)}")
                    if self.multi else "")
+        recettes = _accord(nb, "payment", "payments",
+                           "encaissement", "encaissements")
         self.transport.envoyer(
-            f"🗿 {gras(self.nom)}\n{etats}{courant}\n"
-            f"Dernières 24 h : {gras(f'{nb} encaissement(s)')} — "
-            f"{gras(self._fcfa(total))}\n\nQue faire ?",
+            t(f"🗿 {gras(self.nom)}\n{etats}{courant}\n"
+              f"Last 24 hours: {gras(recettes)} — "
+              f"{gras(self._fcfa(total))}\n\nWhat next?",
+              f"🗿 {gras(self.nom)}\n{etats}{courant}\n"
+              f"Dernières 24 h : {gras(recettes)} — "
+              f"{gras(self._fcfa(total))}\n\nQue faire ?"),
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
@@ -610,7 +680,8 @@ class Robot:
         except Exception as e:
             self.journal.evenement(f"erreur USSD {compte.libelle} : {e}")
             self._cloturer_session(
-                f"⚠️ [{echap(compte.libelle)}] Le modem n'a pas répondu.")
+                t(f"⚠️ [{echap(compte.libelle)}] The modem did not answer.",
+                  f"⚠️ [{echap(compte.libelle)}] Le modem n'a pas répondu."))
             return
         ussd_id = self.journal.ussd("reçu", reponse, compte.libelle,
                                     compte.carte.iccid)
@@ -674,7 +745,8 @@ class Robot:
             texte, boutons = self._carte_pin(etiquette)
         else:
             options = self._analyser_menu(self.dernier_menu)[1]
-            texte = f"🗿 {gras('Session USSD')}{etiquette}\n{bloc(self.dernier_menu)}"
+            texte = (f"🗿 {gras(t('USSD session', 'Session USSD'))}{etiquette}\n"
+                     f"{bloc(self.dernier_menu)}")
             if options:
                 boutons = [[(f"{num}. {lib[:28]}", f"u:{num}")
                             for num, lib in options[i:i + 2]]
@@ -686,7 +758,7 @@ class Robot:
                 # laisse donc toujours une porte de sortie sûre à portée de
                 # doigt, plutôt que de parier sur le vocabulaire.
                 return self._peindre(*self._carte_saisie(etiquette))
-            boutons = boutons + [[("❌ Annuler", "c:annuler")]]
+            boutons = boutons + [[(t("❌ Cancel", "❌ Annuler"), "c:annuler")]]
         self._peindre(texte, boutons)
 
     def _carte_saisie(self, etiquette=""):
@@ -703,18 +775,25 @@ class Robot:
         clair : il faut pouvoir relire un montant avant de l'envoyer. Le
         bouton « 🔐 Masquer » reste à portée si la demande s'avère sensible.
         """
-        titres = {"montant": "💰 Montant", "destinataire": "📱 Numéro"}
-        titre = titres.get(self.attente_saisie, "✍️ Saisie")
+        titres = {"montant": t("💰 Amount", "💰 Montant"),
+                  "destinataire": t("📱 Number", "📱 Numéro")}
+        titre = titres.get(self.attente_saisie, t("✍️ Your answer", "✍️ Saisie"))
         boutons = [[(c, f"s:{c}") for c in ligne] for ligne in PAVE_PIN]
         boutons.append([("*", "s:*"), ("0", "s:0"), ("#", "s:#")])
-        boutons.append([("⌫", "s:eff"), ("✅ Valider", "s:ok")])
-        boutons.append([("🔐 Masquer", "c:masquer"), ("❌ Annuler", "c:annuler")])
+        boutons.append([("⌫", "s:eff"), (t("✅ OK", "✅ Valider"), "s:ok")])
+        boutons.append([(t("🔐 Hide", "🔐 Masquer"), "c:masquer"),
+                        (t("❌ Cancel", "❌ Annuler"), "c:annuler")])
         return (
-            f"{titre}{etiquette}\n{bloc(self.dernier_menu)}\n"
-            f"Saisi : {mono(self.saisie_tampon or '—')}\n"
-            + italique("Composez sur les boutons : rien n'apparaît dans la "
-                       "conversation. Vous pouvez aussi répondre par un "
-                       "message — il sera effacé aussitôt."), boutons)
+            t(f"{titre}{etiquette}\n{bloc(self.dernier_menu)}\n"
+              f"Typed: {mono(self.saisie_tampon or '—')}\n"
+              + italique("Use the buttons: nothing shows up in the "
+                         "conversation. You can also reply with a message — "
+                         "it will be deleted right away."),
+              f"{titre}{etiquette}\n{bloc(self.dernier_menu)}\n"
+              f"Saisi : {mono(self.saisie_tampon or '—')}\n"
+              + italique("Composez sur les boutons : rien n'apparaît dans la "
+                         "conversation. Vous pouvez aussi répondre par un "
+                         "message — il sera effacé aussitôt.")), boutons)
 
     def _saisie(self, touche):
         """Une touche du pavé libre. Miroir de _pave, sans le masquage."""
@@ -735,8 +814,10 @@ class Robot:
             self._retenir_saisie(valeur)
             self.journal.ussd("envoyé", valeur, compte.libelle,
                               compte.carte.iccid)
-            self._peindre(f"{gras('Saisie')}{etiquette}\n⏳ Envoi de "
-                          f"{mono(valeur)}…", [])
+            self._peindre(t(f"{gras('Your answer')}{etiquette}\n⏳ Sending "
+                            f"{mono(valeur)}…",
+                            f"{gras('Saisie')}{etiquette}\n⏳ Envoi de "
+                            f"{mono(valeur)}…"), [])
             self._ussd(compte, valeur, nouveau=False)
             self._avancer_macro()
             return
@@ -749,13 +830,18 @@ class Robot:
 
     def _carte_pin(self, etiquette=""):
         boutons = [[(c, f"p:{c}") for c in ligne] for ligne in PAVE_PIN]
-        boutons.append([("⌫", "p:eff"), ("0", "p:0"), ("✅ Valider", "p:ok")])
-        boutons.append([("❌ Annuler", "c:annuler")])
+        boutons.append([("⌫", "p:eff"), ("0", "p:0"),
+                        (t("✅ OK", "✅ Valider"), "p:ok")])
+        boutons.append([(t("❌ Cancel", "❌ Annuler"), "c:annuler")])
         return (
-            f"🔐 {gras('Code PIN')}{etiquette}\n{bloc(self.dernier_menu)}\n"
-            f"Saisi : {mono('•' * len(self.pin_tampon) or '—')}\n"
-            + italique("Le code se compose sur les boutons : il n'apparaît "
-                       "jamais dans la conversation."), boutons)
+            t(f"🔐 {gras('PIN code')}{etiquette}\n{bloc(self.dernier_menu)}\n"
+              f"Typed: {mono('•' * len(self.pin_tampon) or '—')}\n"
+              + italique("The code is typed on the buttons: it never appears "
+                         "in the conversation."),
+              f"🔐 {gras('Code PIN')}{etiquette}\n{bloc(self.dernier_menu)}\n"
+              f"Saisi : {mono('•' * len(self.pin_tampon) or '—')}\n"
+              + italique("Le code se compose sur les boutons : il n'apparaît "
+                         "jamais dans la conversation.")), boutons)
 
     # ---- confirmation d'une sortie importante ------------------------------
     def _noter_attente(self, menu):
@@ -789,15 +875,22 @@ class Robot:
                 and not self.confirme)
 
     def _carte_confirmation(self, compte):
-        destinataire = (f"\nBénéficiaire : {mono(self.destinataire_session)}"
+        destinataire = (t(f"\nRecipient: {mono(self.destinataire_session)}",
+                          f"\nBénéficiaire : {mono(self.destinataire_session)}")
                         if self.destinataire_session else "")
         return (
-            f"⚠️ {gras('Confirmation demandée')}\n"
-            f"Montant : {gras(self._fcfa(self.montant_session))}{destinataire}\n"
-            f"Compte : {gras(compte.libelle)}\n\n"
-            + italique("Au-delà du seuil que vous avez fixé, le code secret ne "
-                       "s'affiche qu'après cette confirmation."),
-            [[("✅ Confirmer", "c:confirmer")], [("❌ Annuler", "c:annuler")]])
+            t(f"⚠️ {gras('Confirmation needed')}\n"
+              f"Amount: {gras(self._fcfa(self.montant_session))}{destinataire}\n"
+              f"Account: {gras(compte.libelle)}\n\n"
+              + italique("Above the limit you set, the PIN pad only opens "
+                         "after this confirmation."),
+              f"⚠️ {gras('Confirmation demandée')}\n"
+              f"Montant : {gras(self._fcfa(self.montant_session))}{destinataire}\n"
+              f"Compte : {gras(compte.libelle)}\n\n"
+              + italique("Au-delà du seuil que vous avez fixé, le code secret ne "
+                         "s'affiche qu'après cette confirmation.")),
+            [[(t("✅ Confirm", "✅ Confirmer"), "c:confirmer")],
+             [(t("❌ Cancel", "❌ Annuler"), "c:annuler")]])
 
     def _pave(self, touche):
         compte = self.session_compte
@@ -816,7 +909,9 @@ class Robot:
             self.journal.ussd("envoyé", "****", compte.libelle,
                               compte.carte.iccid)
             self._peindre(
-                f"🔐 {gras('Code PIN')}{etiquette}\n⏳ Validation en cours…", [])
+                t(f"🔐 {gras('PIN code')}{etiquette}\n⏳ Checking…",
+                  f"🔐 {gras('Code PIN')}{etiquette}\n⏳ Validation en cours…"),
+                [])
             self._ussd(compte, code, nouveau=False)
             self._avancer_macro()
             return
@@ -864,18 +959,26 @@ class Robot:
     def _demander_nom_raccourci(self, canal):
         if not self.trace_a_enregistrer:
             return self.transport.envoyer(
-                "Il n'y a plus rien à enregistrer : refaites l'opération, "
-                "puis appuyez sur 💾 à la fin.", canal=canal)
+                t("There is nothing left to save: do the operation again, "
+                  "then tap 💾 at the end.",
+                  "Il n'y a plus rien à enregistrer : refaites l'opération, "
+                  "puis appuyez sur 💾 à la fin."), canal=canal)
         self.attente_nom = True
         parcours = " → ".join(self.trace_a_enregistrer)
         self.transport.envoyer(
-            f"💾 {gras('Nom du bouton ?')}\n"
-            f"Parcours retenu : {mono(parcours)}\n\n"
-            "Répondez par un nom court — par exemple " + mono("Solde") + ", "
-            + mono("Dépôt") + " ou " + mono("Retrait") + ".\n"
-            + italique("Le code secret n'est jamais enregistré : le bouton "
-                       "s'arrête juste avant, et vous le taperez comme "
-                       "d'habitude."),
+            t(f"💾 {gras('A name for the button?')}\n"
+              f"Recorded steps: {mono(parcours)}\n\n"
+              "Reply with a short name — for example " + mono("Balance") + ", "
+              + mono("Deposit") + " or " + mono("Withdrawal") + ".\n"
+              + italique("The PIN is never saved: the button stops right "
+                         "before it, and you will type it as usual."),
+              f"💾 {gras('Nom du bouton ?')}\n"
+              f"Parcours retenu : {mono(parcours)}\n\n"
+              "Répondez par un nom court — par exemple " + mono("Solde") + ", "
+              + mono("Dépôt") + " ou " + mono("Retrait") + ".\n"
+              + italique("Le code secret n'est jamais enregistré : le bouton "
+                         "s'arrête juste avant, et vous le taperez comme "
+                         "d'habitude.")),
             canal=canal)
 
     def _enregistrer_raccourci(self, nom, canal):
@@ -890,62 +993,79 @@ class Robot:
         self.trace_a_enregistrer = []
         if not operateur or not etapes:
             return self.transport.envoyer(
-                "Enregistrement impossible : la carte n'est pas identifiée.",
+                t("Saving is not possible: the SIM card is not identified.",
+                  "Enregistrement impossible : la carte n'est pas identifiée."),
                 canal=canal)
         propre = re.sub(r"[^\w\s-]", "", nom).strip()[:24]
         identifiant = cle_code(propre)
         if not propre or identifiant == "raccourci":
             return self.transport.envoyer(
-                "Ce nom ne contient aucune lettre. Réessayez.", canal=canal)
+                t("That name has no letters in it. Try again.",
+                  "Ce nom ne contient aucune lettre. Réessayez."), canal=canal)
         self.journal.ajouter_raccourci(operateur, identifiant, propre, etapes)
         self.journal.evenement(
             f"raccourci « {propre} » appris pour {operateur} : {','.join(etapes)}")
         self.transport.envoyer(
-            f"✅ {gras(echap(propre))} est maintenant un bouton, sur toutes vos "
-            f"cartes {gras(echap(operateur))}.\n"
-            f"Parcours : {mono(' → '.join(etapes))}",
+            t(f"✅ {gras(echap(propre))} is now a button, on all your "
+              f"{gras(echap(operateur))} cards.\n"
+              f"Steps: {mono(' → '.join(etapes))}",
+              f"✅ {gras(echap(propre))} est maintenant un bouton, sur toutes vos "
+              f"cartes {gras(echap(operateur))}.\n"
+              f"Parcours : {mono(' → '.join(etapes))}"),
             canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
 
     def _lister_raccourcis(self, canal=None):
         operateur = self._operateur_courant()
         appris = self.journal.raccourcis(operateur) if operateur else {}
-        lignes = [gras("Vos boutons")]
+        lignes = [gras(t("Your buttons", "Vos boutons"))]
         if self.raccourcis:
             lignes.append("")
-            lignes.append(italique("Depuis le fichier de configuration :"))
+            lignes.append(italique(t("From the configuration file:",
+                                     "Depuis le fichier de configuration :")))
             for nom, r in self.raccourcis.items():
                 lignes.append(f"· {echap(r['libelle'])} — "
                               f"{mono(' → '.join(r['etapes']))}")
         if appris:
             lignes.append("")
-            lignes.append(italique(f"Appris sur le réseau {echap(operateur)} :"))
+            lignes.append(italique(
+                t(f"Learned on the {echap(operateur)} network:",
+                  f"Appris sur le réseau {echap(operateur)} :")))
             for nom, r in appris.items():
                 lignes.append(f"· {echap(r['libelle'])} — "
                               f"{mono(' → '.join(r['etapes']))}")
         if not self.raccourcis and not appris:
             lignes.append("")
             lignes.append(
-                "Aucun pour l'instant. Faites une opération une fois — le "
-                "solde, par exemple — puis appuyez sur 💾 à la fin : elle "
-                "deviendra un bouton.")
+                t("None yet. Do an operation once — the balance, for "
+                  "example — then tap 💾 at the end: it will become a button.",
+                  "Aucun pour l'instant. Faites une opération une fois — le "
+                  "solde, par exemple — puis appuyez sur 💾 à la fin : elle "
+                  "deviendra un bouton."))
         propose = [c for c in catalogue(operateur)
                    if cle_code(c[0]) not in appris]
         if propose:
             lignes.append("")
             lignes.append(italique(
-                f"Codes connus pour {echap(operateur)}, pas encore installés :"))
+                t(f"Known codes for {echap(operateur)}, not installed yet:",
+                  f"Codes connus pour {echap(operateur)}, pas encore installés :")))
             for libelle, code, suite in propose:
-                lignes.append(f"· {echap(libelle)} — {mono(code)}, "
-                              f"puis {echap(suite)}")
+                lignes.append(t(f"· {echap(libelle)} — {mono(code)}, "
+                                f"then {echap(suite)}",
+                                f"· {echap(libelle)} — {mono(code)}, "
+                                f"puis {echap(suite)}"))
             lignes.append("")
             lignes.append(
-                "Chacun ouvre le guichet et s'arrête à la question suivante : "
-                "aucun ne déplace d'argent tout seul. Vérifiez-les une fois.")
+                t("Each one opens the service and stops at the next question: "
+                  "none of them moves money on its own. Try each one once.",
+                  "Chacun ouvre le guichet et s'arrête à la question suivante : "
+                  "aucun ne déplace d'argent tout seul. Vérifiez-les une fois."))
 
         boutons = []
         if propose:
-            boutons.append([(f"➕ Installer les {len(propose)} boutons "
-                             f"{operateur}", "r:cat")])
+            boutons.append([(t(f"➕ Install the {len(propose)} {operateur} "
+                               "buttons",
+                               f"➕ Installer les {len(propose)} boutons "
+                               f"{operateur}"), "r:cat")])
         boutons += [[(f"🗑 {r['libelle']}", f"r:sup:{nom}")]
                     for nom, r in list(appris.items())[:6]]
         boutons.append([("🏠 Menu", "c:menu")])
@@ -957,8 +1077,10 @@ class Robot:
         propose = catalogue(operateur)
         if not propose:
             return self.transport.envoyer(
-                "Aucun code connu pour cet opérateur. Faites l'opération une "
-                "fois, puis appuyez sur 💾 : elle deviendra un bouton.",
+                t("No known codes for this network. Do the operation once, "
+                  "then tap 💾: it will become a button.",
+                  "Aucun code connu pour cet opérateur. Faites l'opération une "
+                  "fois, puis appuyez sur 💾 : elle deviendra un bouton."),
                 canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
         poses = 0
         for libelle, code, _suite in propose:
@@ -967,20 +1089,28 @@ class Robot:
                 poses += 1
         self.journal.evenement(
             f"catalogue {operateur} installé : {poses} raccourci(s)")
+        poses_accorde = gras(_accord(poses, "button installed",
+                                     "buttons installed",
+                                     "bouton installé", "boutons installés"))
         self.transport.envoyer(
-            f"✅ {gras(poses)} bouton(s) installé(s) pour "
-            f"{gras(echap(operateur))}.\n"
-            + italique("Essayez-en un : s'il répond « service indisponible », "
-                       "le code a changé — refaites l'opération par le menu "
-                       "et appuyez sur 💾 pour le corriger."),
+            t(f"✅ {poses_accorde} for {gras(echap(operateur))}.\n"
+              + italique("Try one: if it answers “service unavailable”, the "
+                         "code has changed — do the operation through the "
+                         "menu and tap 💾 to fix the button."),
+              f"✅ {poses_accorde} pour {gras(echap(operateur))}.\n"
+              + italique("Essayez-en un : s'il répond « service indisponible », "
+                         "le code a changé — refaites l'opération par le menu "
+                         "et appuyez sur 💾 pour le corriger.")),
             canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
 
     def _supprimer_raccourci(self, nom, canal):
         operateur = self._operateur_courant()
         if operateur and self.journal.supprimer_raccourci(operateur, nom):
-            self.transport.envoyer("🗑 Bouton supprimé.", canal=canal)
+            self.transport.envoyer(t("🗑 Button removed.", "🗑 Bouton supprimé."),
+                                   canal=canal)
         else:
-            self.transport.envoyer("Ce bouton n'existe plus.", canal=canal)
+            self.transport.envoyer(t("That button no longer exists.",
+                                     "Ce bouton n'existe plus."), canal=canal)
         self._lister_raccourcis(canal)
 
     def _noter_trace(self, etape):
@@ -1007,7 +1137,8 @@ class Robot:
         trace = [] if self.trace_rejouee else list(self.trace)
         boutons = []
         if trace and self._operateur_courant():
-            boutons.append([("💾 En faire un bouton", "r:enr")])
+            boutons.append([(t("💾 Save as a button", "💾 En faire un bouton"),
+                             "r:enr")])
         boutons.append([("🏠 Menu", "c:menu")])
         self._peindre(corps, boutons)
         canal = self.canal_session
@@ -1021,7 +1152,7 @@ class Robot:
         if self.msg_session:
             self.transport.retirer_boutons(self.msg_session, canal=self.canal_session)
         self._reinitialiser_session()
-        self.transport.envoyer("Session USSD fermée.",
+        self.transport.envoyer(t("USSD session closed.", "Session USSD fermée."),
                                boutons=[[("🏠 Menu", "c:menu")]], canal=canal)
 
     @staticmethod
@@ -1038,7 +1169,8 @@ class Robot:
     def _lancer_raccourci(self, nom, canal):
         raccourci = self._raccourcis_actifs().get(nom)
         if not raccourci:
-            self.transport.envoyer("Raccourci inconnu.", canal=canal)
+            self.transport.envoyer(t("Unknown button.", "Raccourci inconnu."),
+                                   canal=canal)
             return
         etapes = list(raccourci["etapes"])
         self.canal_session = canal
@@ -1079,11 +1211,13 @@ class Robot:
     def _lister_comptes(self, canal=None, role=ADMIN):
         if not self.multi:
             return self.transport.envoyer(
-                f"Un seul compte : {gras(self.courant.libelle)}.", canal=canal,
-                boutons=[[("🏠 Menu", "c:menu")]])
-        lignes = [gras("Comptes disponibles")]
+                t(f"Only one account: {gras(self.courant.libelle)}.",
+                  f"Un seul compte : {gras(self.courant.libelle)}."),
+                canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+        lignes = [gras(t("Available accounts", "Comptes disponibles"))]
         for i, c in enumerate(self.comptes, 1):
-            marque = "  ← piloté" if c is self.courant else ""
+            marque = (t("  ← active", "  ← piloté")
+                      if c is self.courant else "")
             lignes.append(f"{i}. {echap(c.resume())}{marque}")
         boutons = [[(("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
                     for i, c in enumerate(self.comptes[:4])],
@@ -1093,7 +1227,9 @@ class Robot:
     def _derniers_sms(self, canal=None):
         lignes = self.journal.derniers_sms(5, self._cartes_en_place())
         if not lignes:
-            self.transport.envoyer("Aucun SMS en mémoire pour l'instant.", canal=canal)
+            self.transport.envoyer(t("No text messages on record yet.",
+                                     "Aucun SMS en mémoire pour l'instant."),
+                                   canal=canal)
             return
         blocs = []
         for date, expediteur, texte, compte in lignes:
@@ -1107,18 +1243,26 @@ class Robot:
         nb, total, nb_sms = self.journal.rapport_du_jour(self._cartes_en_place())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
         self.transport.envoyer(
-            f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
-            f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
-            f"SMS reçus : {nb_sms}\n{etats}",
+            t(f"{'📊' if manuel else '🌙'} {gras('Last 24 hours')}\n"
+              f"Payments received: {gras(nb)}\nTotal: {gras(self._fcfa(total))}\n"
+              f"Text messages: {nb_sms}\n{etats}",
+              f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
+              f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
+              f"SMS reçus : {nb_sms}\n{etats}"),
             canal=canal if manuel else "encaissements",
-            boutons=[[("📄 Export CSV", "c:export")]] if manuel else None)
+            boutons=([[(t("📄 CSV export", "📄 Export CSV"), "c:export")]]
+                     if manuel else None))
 
     def _export(self, canal=None):
         contenu = self.journal.export_csv(7, self._cartes_en_place())
         nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
         if not self.transport.envoyer_fichier(
-                nom, contenu, legende="📄 Journal des 7 derniers jours.", canal=canal):
-            self.transport.envoyer("⚠️ L'export n'a pas pu être envoyé.", canal=canal)
+                nom, contenu,
+                legende=t("📄 Records of the last 7 days.",
+                          "📄 Journal des 7 derniers jours."), canal=canal):
+            self.transport.envoyer(t("⚠️ The export could not be sent.",
+                                     "⚠️ L'export n'a pas pu être envoyé."),
+                                   canal=canal)
 
     def _sauvegarde(self, canal=None, automatique=False):
         """Envoie le journal complet dans Telegram.
@@ -1137,39 +1281,56 @@ class Robot:
         except Exception as e:
             self.journal.evenement(f"échec de sauvegarde : {e}")
             if not automatique:
-                self.transport.envoyer(f"⚠️ Sauvegarde impossible : {echap(e)}",
-                                       canal=canal)
+                self.transport.envoyer(
+                    t(f"⚠️ The backup failed: {echap(e)}",
+                      f"⚠️ Sauvegarde impossible : {echap(e)}"), canal=canal)
             return
         finally:
             shutil.rmtree(dossier, ignore_errors=True)
 
-        legende = (f"💾 {gras('Sauvegarde du journal')} — {len(contenu) // 1024} Ko\n"
-                   + italique("Conservez ce fichier : c'est la seule copie hors "
-                              "du Pi. Pour restaurer, remplacez journal.db par "
-                              "celui-ci, robot arrêté."))
+        legende = t(
+            f"💾 {gras('Backup of the records')} — {len(contenu) // 1024} KB\n"
+            + italique("Keep this file: it is the only copy outside the "
+                       "terminal. To restore, replace journal.db with it "
+                       "while the robot is stopped."),
+            f"💾 {gras('Sauvegarde du journal')} — {len(contenu) // 1024} Ko\n"
+            + italique("Conservez ce fichier : c'est la seule copie hors "
+                       "du Pi. Pour restaurer, remplacez journal.db par "
+                       "celui-ci, robot arrêté."))
         if not self.transport.envoyer_fichier(
                 os.path.basename(chemin), contenu, legende=legende, canal=canal,
                 type_mime="application/x-sqlite3"):
             self.journal.evenement("sauvegarde non transmise")
             if not automatique:
-                self.transport.envoyer("⚠️ La sauvegarde n'a pas pu être envoyée.",
-                                       canal=canal)
+                self.transport.envoyer(
+                    t("⚠️ The backup could not be sent.",
+                      "⚠️ La sauvegarde n'a pas pu être envoyée."), canal=canal)
 
     def _diagnostic(self, canal=None):
         """Tout ce qu'on voudrait savoir avant d'appeler quelqu'un à Douala."""
-        lignes = [f"🩺 {gras('Diagnostic')}",
-                  f"Version : {mono(version())}",
-                  f"Robot en marche depuis {self._duree(time.time() - self.demarre_a)}"]
+        duree = self._duree(time.time() - self.demarre_a)
+        lignes = [f"🩺 {gras(t('Diagnostics', 'Diagnostic'))}",
+                  t(f"Version: {mono(version())}",
+                    f"Version : {mono(version())}"),
+                  t(f"Robot running for {duree}",
+                    f"Robot en marche depuis {duree}")]
         for compte in self.comptes:
             occupes, capacite = compte.memoire_sms()
             lignes.append(
-                f"\n{gras(compte.libelle)}\n"
-                f"Carte : {mono(self._sim_lisible(compte.iccid()))}\n"
-                f"Mémoire SMS : {occupes}/{capacite if capacite else '?'}\n"
-                f"Signal : {compte.signal()}/31")
+                t(f"\n{gras(compte.libelle)}\n"
+                  f"SIM card: {mono(self._sim_lisible(compte.iccid()))}\n"
+                  f"SMS storage: {occupes}/{capacite if capacite else '?'}\n"
+                  f"Signal: {compte.signal()}/31",
+                  f"\n{gras(compte.libelle)}\n"
+                  f"Carte : {mono(self._sim_lisible(compte.iccid()))}\n"
+                  f"Mémoire SMS : {occupes}/{capacite if capacite else '?'}\n"
+                  f"Signal : {compte.signal()}/31"))
         en_attente = self.facteur.en_attente()
-        lignes.append(f"\nCourrier en attente : {en_attente}"
-                      if en_attente else "\nCourrier : tout est parti")
+        lignes.append(t(f"\nMessages waiting to go out: {en_attente}",
+                        f"\nCourrier en attente : {en_attente}")
+                      if en_attente else
+                      t("\nOutgoing messages: all delivered",
+                        "\nCourrier : tout est parti"))
         lignes.append(self.sante.resume() if hasattr(self.sante, "resume") else "")
         self.transport.envoyer("\n".join(l for l in lignes if l), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
@@ -1183,23 +1344,33 @@ class Robot:
         exotiques. C'est pourtant là que se cachent ces défauts."""
         if not self.dernier_brut:
             self.transport.envoyer(
-                "Aucun menu reçu depuis le démarrage. Composez un code USSD, "
-                "puis relancez /brut.", canal=canal)
+                t("No menu received since startup. Dial a USSD code, then "
+                  "run /brut again.",
+                  "Aucun menu reçu depuis le démarrage. Composez un code USSD, "
+                  "puis relancez /brut."), canal=canal)
             return
         entete, options = self._analyser_menu(self.dernier_brut)
-        pave = "OUI ⚠️" if self._demande_un_code(self.dernier_brut) else "non"
+        pave = (t("YES ⚠️", "OUI ⚠️") if self._demande_un_code(self.dernier_brut)
+                else t("no", "non"))
         self.transport.envoyer(
-            f"🔬 {gras('Dernier menu reçu, tel quel')}\n"
-            f"{bloc(repr(self.dernier_brut))}\n"
-            f"Lignes d'en-tête : {len(entete)}\n"
-            f"Options reconnues : {gras(len(options))}\n"
-            f"Pavé du code déclenché : {gras(pave)}\n"
-            f"Version : {mono(version())}",
+            t(f"🔬 {gras('Last menu received, exactly as it came')}\n"
+              f"{bloc(repr(self.dernier_brut))}\n"
+              f"Header lines: {len(entete)}\n"
+              f"Options recognized: {gras(len(options))}\n"
+              f"PIN pad triggered: {gras(pave)}\n"
+              f"Version: {mono(version())}",
+              f"🔬 {gras('Dernier menu reçu, tel quel')}\n"
+              f"{bloc(repr(self.dernier_brut))}\n"
+              f"Lignes d'en-tête : {len(entete)}\n"
+              f"Options reconnues : {gras(len(options))}\n"
+              f"Pavé du code déclenché : {gras(pave)}\n"
+              f"Version : {mono(version())}"),
             canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
 
     @staticmethod
     def _sim_lisible(iccid):
-        return ("…" + iccid[-6:]) if iccid else "identifiant indisponible"
+        return ("…" + iccid[-6:]) if iccid else t("identifier unavailable",
+                                                  "identifiant indisponible")
 
     @staticmethod
     def _duree(secondes):
@@ -1208,7 +1379,7 @@ class Robot:
         heures, reste = divmod(reste, 3600)
         minutes = reste // 60
         if jours:
-            return f"{jours} j {heures} h"
+            return t(f"{jours} d {heures} h", f"{jours} j {heures} h")
         return f"{heures} h {minutes} min" if heures else f"{minutes} min"
 
     @staticmethod
@@ -1372,26 +1543,35 @@ class Robot:
         plus lourd de conséquences du quotidien : l'argent qui arrivera
         désormais n'est plus sur le même compte."""
         connue = etat == "connue"
-        titre = "💳 Carte SIM déjà connue remise en place" if connue \
-            else "💳 Nouvelle carte SIM détectée"
+        titre = (t("💳 A known SIM card is back in place",
+                   "💳 Carte SIM déjà connue remise en place") if connue
+                 else t("💳 New SIM card detected",
+                        "💳 Nouvelle carte SIM détectée"))
         self.journal.evenement(
             f"changement de carte : {ancienne.libelle} → {compte.carte.libelle}")
         if self.nuage:
             self.nuage.reveiller()
         lignes = [
             gras(titre),
-            f"Retirée : {echap(ancienne.libelle)}",
-            f"En place : {gras(echap(compte.carte.description))}",
+            t(f"Removed: {echap(ancienne.libelle)}",
+              f"Retirée : {echap(ancienne.libelle)}"),
+            t(f"Inserted: {gras(echap(compte.carte.description))}",
+              f"En place : {gras(echap(compte.carte.description))}"),
         ]
         if compte.carte.numero:
-            lignes.append(f"Numéro : {echap(compte.carte.numero)}")
+            lignes.append(t(f"Number: {echap(compte.carte.numero)}",
+                            f"Numéro : {echap(compte.carte.numero)}"))
         lignes.append("")
         lignes.append(
-            "Son historique et son solde lui sont propres : les encaissements "
-            "de la carte précédente ne s'y ajoutent pas." if not connue else
-            "Son journal ressort intact — rien n'a été perdu pendant son absence.")
+            t("It keeps its own records and its own balance: payments "
+              "received on the previous card are not added to it.",
+              "Son historique et son solde lui sont propres : les encaissements "
+              "de la carte précédente ne s'y ajoutent pas.") if not connue else
+            t("Its records come back untouched — nothing was lost while it "
+              "was away.",
+              "Son journal ressort intact — rien n'a été perdu pendant son absence."))
         self.transport.envoyer("\n".join(lignes), canal="alertes",
-                               boutons=[[("💳 Cartes", "c:sims"),
+                               boutons=[[(t("💳 SIM cards", "💳 Cartes"), "c:sims"),
                                          ("🏠 Menu", "c:menu")]])
 
     # ---- réglages : l'identité des puces -----------------------------------
@@ -1401,29 +1581,43 @@ class Robot:
 
     def _reglages(self, canal=None):
         """Ce que TOTEM sait de chaque puce, et ce qu'il attend de vous."""
-        lignes = [f"⚙️ {gras('Réglages')}", "",
-                  "Le numéro et le nom de chaque puce. Ils ne se lisent pas "
-                  "sur la carte : c'est vous qui les connaissez.", ""]
+        lignes = [f"⚙️ {gras(t('Settings', 'Réglages'))}", "",
+                  t("Each SIM's number and name. They cannot be read from "
+                    "the card: you are the one who knows them.",
+                    "Le numéro et le nom de chaque puce. Ils ne se lisent pas "
+                    "sur la carte : c'est vous qui les connaissez."), ""]
         boutons = []
         for compte in self.comptes:
             iccid = compte.carte.iccid
             if not iccid:
-                lignes.append(f"▫️ {gras(echap(compte.libelle))}\n"
-                              "    carte illisible — rien à régler ici")
+                lignes.append(t(f"▫️ {gras(echap(compte.libelle))}\n"
+                                "    card unreadable — nothing to set here",
+                                f"▫️ {gras(echap(compte.libelle))}\n"
+                                "    carte illisible — rien à régler ici"))
                 continue
             numero, nom = self.journal.identite(iccid)
+            ligne_numero = (echap(numero_lisible(numero)) if numero
+                            else italique(t("number to fill in",
+                                            "numéro à renseigner")))
+            ligne_nom = (echap(nom) if nom
+                         else italique(t("name to fill in", "nom à renseigner")))
             lignes.append(
                 f"▶️ {gras(echap(compte.libelle))}\n"
-                f"    📱 {echap(numero_lisible(numero)) if numero else italique('numéro à renseigner')}\n"
-                f"    🏷 {echap(nom) if nom else italique('nom à renseigner')}")
+                f"    📱 {ligne_numero}\n"
+                f"    🏷 {ligne_nom}")
             court = compte.libelle[:10]
-            boutons.append([(f"📱 Numéro · {court}", f"i:num:{iccid}"),
-                            (f"🏷 Nom · {court}", f"i:nom:{iccid}")])
+            boutons.append([(t(f"📱 Number · {court}", f"📱 Numéro · {court}"),
+                             f"i:num:{iccid}"),
+                            (t(f"🏷 Name · {court}", f"🏷 Nom · {court}"),
+                             f"i:nom:{iccid}")])
 
         lignes += ["", italique(
-            "Le numéro sert à dire de quel côté d'un transfert vous êtes : "
-            "sans lui, le reçu écrit « Montant net » au lieu de « Montant "
-            "reçu » ou « Montant envoyé ». Le nom paraît sur le reçu de solde.")]
+            t("The number tells which side of a transfer you are on: without "
+              "it, the receipt says “Net amount” instead of “Amount received” "
+              "or “Amount sent”. The name appears on the balance receipt.",
+              "Le numéro sert à dire de quel côté d'un transfert vous êtes : "
+              "sans lui, le reçu écrit « Montant net » au lieu de « Montant "
+              "reçu » ou « Montant envoyé ». Le nom paraît sur le reçu de solde."))]
         boutons.append([("🏠 Menu", "c:menu")])
         self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
 
@@ -1432,21 +1626,30 @@ class Robot:
         compte = self._compte_par_iccid(iccid)
         if compte is None or compte.carte.iccid != iccid:
             return self.transport.envoyer(
-                "Cette carte n'est plus en place.", canal=canal,
-                boutons=[[("⚙️ Réglages", "c:reglages")]])
+                t("That card is no longer inserted.",
+                  "Cette carte n'est plus en place."), canal=canal,
+                boutons=[[(t("⚙️ Settings", "⚙️ Réglages"), "c:reglages")]])
         self.attente_identite = (champ, iccid)
         self.canal_identite = canal
         if champ == "num":
-            question = (f"📱 Envoyez le numéro de la puce "
-                        f"{gras(echap(compte.libelle))}.\n"
-                        + italique("Neuf chiffres, par exemple 696103864."))
+            question = t(f"📱 Send the phone number of the "
+                         f"{gras(echap(compte.libelle))} SIM.\n"
+                         + italique("Nine digits, for example 696103864."),
+                         f"📱 Envoyez le numéro de la puce "
+                         f"{gras(echap(compte.libelle))}.\n"
+                         + italique("Neuf chiffres, par exemple 696103864."))
         else:
-            question = (f"🏷 Envoyez le nom du compte "
-                        f"{gras(echap(compte.libelle))}.\n"
-                        + italique("Celui qui paraîtra sur les reçus, par "
-                                   "exemple WONDER PHONE."))
+            question = t(f"🏷 Send the account name for "
+                         f"{gras(echap(compte.libelle))}.\n"
+                         + italique("The one that will appear on receipts, "
+                                    "for example WONDER PHONE."),
+                         f"🏷 Envoyez le nom du compte "
+                         f"{gras(echap(compte.libelle))}.\n"
+                         + italique("Celui qui paraîtra sur les reçus, par "
+                                    "exemple WONDER PHONE."))
         self.transport.envoyer(question, canal=canal,
-                               boutons=[[("❌ Annuler", "c:reglages")]])
+                               boutons=[[(t("❌ Cancel", "❌ Annuler"),
+                                          "c:reglages")]])
 
     def _enregistrer_identite(self, texte, canal=None):
         """Lit la réponse attendue, la contrôle, puis l'inscrit."""
@@ -1457,24 +1660,32 @@ class Robot:
             chiffres = re.sub(r"\D", "", texte)
             if not 8 <= len(chiffres) <= 15:
                 return self.transport.envoyer(
-                    "Ce n'est pas un numéro de téléphone. Rien n'a été "
-                    "enregistré.", canal=canal,
-                    boutons=[[("⚙️ Réglages", "c:reglages")]])
-            valeur, quoi = chiffres, f"Numéro : {gras(numero_lisible(chiffres))}"
+                    t("That is not a phone number. Nothing was saved.",
+                      "Ce n'est pas un numéro de téléphone. Rien n'a été "
+                      "enregistré."), canal=canal,
+                    boutons=[[(t("⚙️ Settings", "⚙️ Réglages"), "c:reglages")]])
+            valeur = chiffres
+            quoi = t(f"Number: {gras(numero_lisible(chiffres))}",
+                     f"Numéro : {gras(numero_lisible(chiffres))}")
             enregistre = self.journal.definir_identite(iccid, numero=valeur)
         else:
             valeur = re.sub(r"\s+", " ", texte).strip()[:40]
             if len(valeur) < 2:
                 return self.transport.envoyer(
-                    "Ce nom est trop court. Rien n'a été enregistré.",
-                    canal=canal, boutons=[[("⚙️ Réglages", "c:reglages")]])
-            quoi = f"Nom : {gras(echap(valeur))}"
+                    t("That name is too short. Nothing was saved.",
+                      "Ce nom est trop court. Rien n'a été enregistré."),
+                    canal=canal,
+                    boutons=[[(t("⚙️ Settings", "⚙️ Réglages"), "c:reglages")]])
+            quoi = t(f"Name: {gras(echap(valeur))}",
+                     f"Nom : {gras(echap(valeur))}")
             enregistre = self.journal.definir_identite(iccid, nom=valeur)
 
         if not enregistre:
             return self.transport.envoyer(
-                "Cette carte n'est pas au registre du terminal.", canal=canal,
-                boutons=[[("⚙️ Réglages", "c:reglages")]])
+                t("That card is not on the terminal's register.",
+                  "Cette carte n'est pas au registre du terminal."),
+                canal=canal,
+                boutons=[[(t("⚙️ Settings", "⚙️ Réglages"), "c:reglages")]])
         self.journal.evenement(f"identité de carte modifiée ({champ})")
         if self.nuage:
             self.nuage.reveiller()     # l'application web le verra tout de suite
@@ -1487,21 +1698,28 @@ class Robot:
         cartes = self.journal.cartes()
         if not cartes:
             return self.transport.envoyer(
-                "Aucune carte identifiée pour l'instant. Le modem n'a pas encore "
-                "réussi à lire l'ICCID de la puce insérée.", canal=canal,
+                t("No card identified yet. The modem has not managed to read "
+                  "the inserted SIM's serial number.",
+                  "Aucune carte identifiée pour l'instant. Le modem n'a pas encore "
+                  "réussi à lire l'ICCID de la puce insérée."), canal=canal,
                 boutons=[[("🏠 Menu", "c:menu")]])
         en_place = {c.carte.iccid for c in self.comptes if c.carte.identifiee}
-        lignes = [gras("Cartes SIM connues")]
+        lignes = [gras(t("Known SIM cards", "Cartes SIM connues"))]
         for iccid, libelle, _operateur, numero, premiere, derniere, nb, total in cartes:
             marque = "▶️ " if iccid in en_place else "▫️ "
             detail = f" · {numero}" if numero else ""
             lignes.append(
-                f"{marque}{gras(echap(libelle))}{echap(detail)}\n"
-                f"    {nb} SMS · {self._fcfa(total)} encaissés\n"
-                f"    vue du {echap(premiere[:10])} au {echap(derniere[:10])}")
+                t(f"{marque}{gras(echap(libelle))}{echap(detail)}\n"
+                  f"    {nb} SMS · {self._fcfa(total)} received\n"
+                  f"    seen from {echap(premiere[:10])} to {echap(derniere[:10])}",
+                  f"{marque}{gras(echap(libelle))}{echap(detail)}\n"
+                  f"    {nb} SMS · {self._fcfa(total)} encaissés\n"
+                  f"    vue du {echap(premiere[:10])} au {echap(derniere[:10])}"))
         lignes.append("")
-        lignes.append("▶️ en place · ▫️ retirée. Chaque carte garde son propre "
-                      "journal : la remettre le fait ressortir intact.")
+        lignes.append(t("▶️ inserted · ▫️ removed. Each card keeps its own "
+                        "records: put it back and they come back untouched.",
+                        "▶️ en place · ▫️ retirée. Chaque carte garde son propre "
+                        "journal : la remettre le fait ressortir intact."))
         self.transport.envoyer("\n".join(lignes), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
 
@@ -1690,15 +1908,15 @@ class Robot:
             # de dépôt », un retrait un « Reçu de retrait ». Le reste (envois,
             # encaissements, transferts entre comptes) reste « Reçu de
             # transfert » — le document, lui, est identique.
-            titre = {"depot": "Reçu de dépôt",
-                     "retrait": "Reçu de retrait"}.get(
+            titre = {"depot": t("Deposit receipt", "Reçu de dépôt"),
+                     "retrait": t("Withdrawal receipt", "Reçu de retrait")}.get(
                          categoriser(texte, numeros=self._nos_numeros()),
-                         "Reçu de transfert")
+                         t("Transfer receipt", "Reçu de transfert"))
             pdf = recu_transfert(motif.paiement, numero, quand, operateur,
                                  titre=titre)
             legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
-                       f"{italique('N° ' + numero)}")
+                       f"{italique(t('No. ', 'N° ') + numero)}")
         else:
             propre = self._compte_par_iccid(iccid)
             # `nom` porte déjà le nom du FICHIER : celui du compte a son
@@ -1707,9 +1925,9 @@ class Robot:
             pdf = recu_solde(motif.solde, nom_compte or compte or operateur,
                              self._numero_du_compte(propre) if propre else "",
                              numero, quand, operateur)
-            legende = (f"🧾 {gras('Reçu de solde')} — "
+            legende = (f"🧾 {gras(t('Balance receipt', 'Reçu de solde'))} — "
                        f"{gras(self._fcfa(motif.solde))}\n"
-                       f"{italique('N° ' + numero)}")
+                       f"{italique(t('No. ', 'N° ') + numero)}")
         return nom, pdf, legende
 
     def _fiche_recu(self, ligne):
@@ -1763,10 +1981,15 @@ class Robot:
         self.memoire_signalee = True
         self.journal.evenement("mémoire SMS presque pleine — " + " ; ".join(satures))
         self.facteur.poster(
-            f"⚠️ {gras('Mémoire SMS presque pleine')}\n"
-            + echap("\n".join(satures)) + "\n"
-            + italique("Au-delà, le réseau ne peut plus déposer de nouveaux SMS : "
-                       "des encaissements passeraient inaperçus."), canal="alertes")
+            t(f"⚠️ {gras('SMS storage almost full')}\n"
+              + echap("\n".join(satures)) + "\n"
+              + italique("Beyond that, the network cannot deliver new "
+                         "messages: payments would go unnoticed."),
+              f"⚠️ {gras('Mémoire SMS presque pleine')}\n"
+              + echap("\n".join(satures)) + "\n"
+              + italique("Au-delà, le réseau ne peut plus déposer de nouveaux SMS : "
+                         "des encaissements passeraient inaperçus.")),
+            canal="alertes")
 
     def _signaler_conflit(self):
         """Deux robots sur le même jeton se coupent mutuellement : les
@@ -1778,14 +2001,22 @@ class Robot:
         if conflit:
             self.journal.evenement("conflit : jeton Telegram utilisé ailleurs")
             self.facteur.poster(
-                f"⚠️ {gras('Telegram refuse de me répondre')}\n"
-                "Un second programme utilise la même clé de bot, "
-                "et nos commandes se perdent entre les deux.\n\n"
-                "Sur le Pi, pour vérifier :\n"
-                f"{mono('ps aux | grep totem')}\n"
-                f"{mono('sudo systemctl restart totem')}\n\n"
-                + italique("Si un seul robot tourne, l'alerte disparaîtra "
-                           "d'elle-même au prochain tour."), canal="alertes")
+                t(f"⚠️ {gras('Telegram has stopped answering me')}\n"
+                  "Another program is using the same bot key, "
+                  "and our commands get lost between the two.\n\n"
+                  "On the terminal, to check:\n"
+                  f"{mono('ps aux | grep totem')}\n"
+                  f"{mono('sudo systemctl restart totem')}\n\n"
+                  + italique("If only one robot is running, this alert will "
+                             "clear itself on the next check."),
+                  f"⚠️ {gras('Telegram refuse de me répondre')}\n"
+                  "Un second programme utilise la même clé de bot, "
+                  "et nos commandes se perdent entre les deux.\n\n"
+                  "Sur le Pi, pour vérifier :\n"
+                  f"{mono('ps aux | grep totem')}\n"
+                  f"{mono('sudo systemctl restart totem')}\n\n"
+                  + italique("Si un seul robot tourne, l'alerte disparaîtra "
+                             "d'elle-même au prochain tour.")), canal="alertes")
 
     def _rapport_quotidien(self):
         """Envoie le bilan une fois par jour, même si la boucle a sauté la
@@ -1811,13 +2042,19 @@ class Robot:
         paiement = analyser(texte, numeros=self._nos_numeros())
 
         if paiement and paiement.sens == "entree":
-            entete = (f"💰 {gras('Encaissement')}{etiquette} — "
-                      f"{gras(self._fcfa(paiement.montant))}\n"
-                      f"de {gras(paiement.tiers)}")
+            entete = t(f"💰 {gras('Payment received')}{etiquette} — "
+                       f"{gras(self._fcfa(paiement.montant))}\n"
+                       f"from {gras(paiement.tiers)}",
+                       f"💰 {gras('Encaissement')}{etiquette} — "
+                       f"{gras(self._fcfa(paiement.montant))}\n"
+                       f"de {gras(paiement.tiers)}")
         elif paiement and paiement.sens == "sortie":
-            entete = (f"↗️ {gras('Envoi')}{etiquette} — "
-                      f"{gras(self._fcfa(paiement.montant))}\n"
-                      f"vers {gras(paiement.tiers)}")
+            entete = t(f"↗️ {gras('Money sent')}{etiquette} — "
+                       f"{gras(self._fcfa(paiement.montant))}\n"
+                       f"to {gras(paiement.tiers)}",
+                       f"↗️ {gras('Envoi')}{etiquette} — "
+                       f"{gras(self._fcfa(paiement.montant))}\n"
+                       f"vers {gras(paiement.tiers)}")
         elif paiement:
             # Orange nomme les deux parties sans dire laquelle est la nôtre, et
             # la SIM ne déclare pas toujours son numéro. Plutôt qu'un
@@ -1830,10 +2067,13 @@ class Robot:
                 # Un seul tiers nommé (dépôt/retrait qui ne cite que l'autre
                 # partie) : on le montre, sans inventer de flèche.
                 corps = gras(echap(paiement.tiers))
-            entete = (f"🔁 {gras('Transfert')}{etiquette} — "
-                      f"{gras(self._fcfa(paiement.montant))}\n{corps}")
+            entete = t(f"🔁 {gras('Transfer')}{etiquette} — "
+                       f"{gras(self._fcfa(paiement.montant))}\n{corps}",
+                       f"🔁 {gras('Transfert')}{etiquette} — "
+                       f"{gras(self._fcfa(paiement.montant))}\n{corps}")
         else:
-            entete = f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}"
+            entete = t(f"📥 {gras('SMS')}{etiquette} from {gras(expediteur)}",
+                       f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}")
 
         self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
 
@@ -1849,19 +2089,28 @@ class Robot:
         if maintenant - self._dernier_avert_courrier < 900:
             return
         self._dernier_avert_courrier = maintenant
-        ou = {"encaissements": "les encaissements",
-              "alertes": "les alertes"}.get(canal, "les notifications")
+        ou = {"encaissements": t("payments", "les encaissements"),
+              "alertes": t("alerts", "les alertes")}.get(
+                  canal, t("notifications", "les notifications"))
         self.journal.evenement(f"courrier abandonné (canal {canal or 'privé'})")
         try:
             self.transport.envoyer(
-                f"⚠️ {gras('Une notification n’a pas pu être publiée')}\n"
-                f"Je n’arrive plus à écrire dans le fil réservé à {ou}. "
-                "Il a peut-être été fermé ou supprimé, ou je n’en suis plus "
-                "membre.\n\n"
-                + italique(
-                    "Vérifie ce fil dans le groupe Telegram. Le message a été "
-                    "mis de côté pour ne pas bloquer les suivants — l’USSD et "
-                    "les autres envois ne sont pas touchés."))
+                t(f"⚠️ {gras('A notification could not be posted')}\n"
+                  f"I can no longer write in the thread used for {ou}. "
+                  "It may have been closed or deleted, or I am no longer "
+                  "a member.\n\n"
+                  + italique(
+                      "Check that thread in the Telegram group. The message "
+                      "was set aside so the next ones are not blocked — USSD "
+                      "and everything else still works."),
+                  f"⚠️ {gras('Une notification n’a pas pu être publiée')}\n"
+                  f"Je n’arrive plus à écrire dans le fil réservé à {ou}. "
+                  "Il a peut-être été fermé ou supprimé, ou je n’en suis plus "
+                  "membre.\n\n"
+                  + italique(
+                      "Vérifie ce fil dans le groupe Telegram. Le message a été "
+                      "mis de côté pour ne pas bloquer les suivants — l’USSD et "
+                      "les autres envois ne sont pas touchés.")))
         except Exception:
             pass
 
@@ -1876,13 +2125,20 @@ class Robot:
         self._dernier_avert_cloud = maintenant
         try:
             self.transport.envoyer(
-                f"⚠️ {gras('Des SMS n’arrivent pas sur la plateforme')}\n"
-                "La base de données les refuse. Ils restent ici sur Telegram "
-                "et sur le terminal — rien n’est perdu — mais ils n’apparaissent "
-                "pas sur le site tant que ce n’est pas corrigé.\n\n"
-                f"Raison technique : {mono(echap(str(erreur))[:300])}\n\n"
-                + italique("Transmets-moi cette raison : elle dit exactement "
-                           "quoi corriger côté base."))
+                t(f"⚠️ {gras('Some SMS are not reaching the platform')}\n"
+                  "The database is refusing them. They stay here on Telegram "
+                  "and on the terminal — nothing is lost — but they will not "
+                  "show on the website until this is fixed.\n\n"
+                  f"Technical reason: {mono(echap(str(erreur))[:300])}\n\n"
+                  + italique("Pass this reason along: it says exactly what "
+                             "to fix on the database side."),
+                  f"⚠️ {gras('Des SMS n’arrivent pas sur la plateforme')}\n"
+                  "La base de données les refuse. Ils restent ici sur Telegram "
+                  "et sur le terminal — rien n’est perdu — mais ils n’apparaissent "
+                  "pas sur le site tant que ce n’est pas corrigé.\n\n"
+                  f"Raison technique : {mono(echap(str(erreur))[:300])}\n\n"
+                  + italique("Transmets-moi cette raison : elle dit exactement "
+                             "quoi corriger côté base.")))
         except Exception:
             pass
 
@@ -1896,8 +2152,10 @@ class Robot:
             compte.ussd_annuler()
             self.journal.evenement(f"session USSD expirée ({compte.libelle})")
             self._cloturer_session(
-                "⌛ Session USSD expirée (sans réponse trop longtemps). "
-                "L'opérateur l'aurait fermée de son côté.")
+                t("⌛ USSD session expired (no answer for too long). The "
+                  "operator would have closed it on their side anyway.",
+                  "⌛ Session USSD expirée (sans réponse trop longtemps). "
+                  "L'opérateur l'aurait fermée de son côté."))
 
     def _redemarrer_modem(self, compte, canal=None, automatique=False):
         """Relance le modem d'un compte.
@@ -1919,9 +2177,12 @@ class Robot:
 
         if not automatique or not compte.panne_signalee:
             self.transport.envoyer(
-                f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…"
+                t(f"⚠️ {etiquette}The modem has stopped answering, "
+                  "restarting it…",
+                  f"⚠️ {etiquette}Le modem ne répond plus, je le redémarre…")
                 if automatique
-                else f"{etiquette}Redémarrage du modem (≈30 s)…", canal=canal)
+                else t(f"{etiquette}Restarting the modem (≈30 s)…",
+                       f"{etiquette}Redémarrage du modem (≈30 s)…"), canal=canal)
 
         try:
             compte.redemarrer()
@@ -1930,20 +2191,31 @@ class Robot:
             if not compte.panne_signalee:
                 compte.panne_signalee = True
                 self.transport.envoyer(
-                    f"❌ {etiquette}{gras('Le modem ne répond plus')}\n"
-                    f"{echap(e)}\n\n"
-                    + italique(
-                        "Je continue d'essayer, de plus en plus espacé, et je "
-                        "préviens dès qu'il revient. Sur place : vérifier le "
-                        "câble USB entre le HAT et le Pi, puis l'alimentation "
-                        "— le modem réclame 3 A en pointe, et décroche du bus "
-                        "quand le bloc est trop juste."), canal=canal)
+                    t(f"❌ {etiquette}{gras('The modem has stopped answering')}\n"
+                      f"{echap(e)}\n\n"
+                      + italique(
+                          "I will keep trying, at longer and longer "
+                          "intervals, and I will say so as soon as it comes "
+                          "back. On site: check the USB cable between the "
+                          "HAT and the Pi, then the power supply — the modem "
+                          "draws 3 A at peak, and drops off the bus when the "
+                          "adapter is too weak."),
+                      f"❌ {etiquette}{gras('Le modem ne répond plus')}\n"
+                      f"{echap(e)}\n\n"
+                      + italique(
+                          "Je continue d'essayer, de plus en plus espacé, et je "
+                          "préviens dès qu'il revient. Sur place : vérifier le "
+                          "câble USB entre le HAT et le Pi, puis l'alimentation "
+                          "— le modem réclame 3 A en pointe, et décroche du bus "
+                          "quand le bloc est trop juste.")), canal=canal)
             return
 
         if not self._annoncer_retour(compte, canal):
             self.transport.envoyer(
-                f"✅ {etiquette}Modem revenu en ligne. "
-                f"Signal : {compte.signal()}/31", canal=canal)
+                t(f"✅ {etiquette}Modem back online. "
+                  f"Signal: {compte.signal()}/31",
+                  f"✅ {etiquette}Modem revenu en ligne. "
+                  f"Signal : {compte.signal()}/31"), canal=canal)
 
     def _annoncer_retour(self, compte, canal="alertes"):
         """Dit que le modem répond de nouveau, si on avait annoncé le contraire.
@@ -1960,6 +2232,8 @@ class Robot:
         etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
         self.journal.evenement(f"modem revenu ({compte.libelle})")
         self.transport.envoyer(
-            f"✅ {etiquette}{gras('Le modem répond de nouveau')}\n"
-            f"Signal : {compte.signal()}/31", canal=canal)
+            t(f"✅ {etiquette}{gras('The modem is answering again')}\n"
+              f"Signal: {compte.signal()}/31",
+              f"✅ {etiquette}{gras('Le modem répond de nouveau')}\n"
+              f"Signal : {compte.signal()}/31"), canal=canal)
         return True

@@ -217,7 +217,7 @@ class TestEnregistrementDepuisTelegram(unittest.TestCase):
         clic(r, "r:enr")
         tape(r, "***")
         self.assertEqual(r.journal.raccourcis("MTN"), {})
-        self.assertIn("Réessayez", dernier_envoi(t))
+        self.assertIn("Try again", dernier_envoi(t))
 
     def test_supprimer_depuis_telegram(self):
         r, t, _ = robot()
@@ -300,7 +300,41 @@ class TestCatalogueDeDepart(unittest.TestCase):
         s'arrête à une question, il ne conclut jamais une opération."""
         from totem.codes import CATALOGUE
         for operateur, entrees in CATALOGUE.items():
-            for libelle, code, suite in entrees:
-                self.assertTrue(suite.strip(),
-                                f"{libelle} doit dire ce qui est demandé ensuite")
+            for libelles, code, suites in entrees:
+                for suite in suites:    # l'aide existe dans les deux langues
+                    self.assertTrue(suite.strip(),
+                                    f"{libelles} doit dire ce qui est demandé ensuite")
                 self.assertTrue(code.endswith("#"), f"{code} mal formé")
+
+
+class TestClesStablesEntreLangues(unittest.TestCase):
+    """La clé d'un bouton ne dépend jamais de la langue affichée.
+
+    Un raccourci appris avant un changement de langue doit répondre après :
+    « 💰 Balance » comme « 💰 Solde » mènent à la même clé « solde ». Sans
+    quoi les boutons appris mourraient au premier passage d'une langue à
+    l'autre."""
+
+    def test_le_catalogue_installe_garde_ses_cles_francaises_en_anglais(self):
+        r, _, _ = robot(carte=ORANGE)
+        clic(r, "r:cat")          # installé avec les libellés anglais
+        appris = r.journal.raccourcis("Orange")
+        for cle in ("solde", "depot", "retrait", "transfert", "mon_numero"):
+            self.assertIn(cle, appris)
+
+    def test_les_boutons_survivent_au_changement_de_langue(self):
+        from totem import textes
+        r, t, _ = robot(carte=ORANGE)
+        clic(r, "r:cat")                       # posés en anglais
+        textes.definir_langue("fr")
+        self.addCleanup(textes.definir_langue, "en")
+        tape(r, "/menu")
+        self.assertIn("m:solde", donnees(boutons_envoi(t)))
+
+    def test_la_liste_parle_francais_sur_demande(self):
+        from totem import textes
+        textes.definir_langue("fr")
+        self.addCleanup(textes.definir_langue, "en")
+        r, t, _ = robot()
+        tape(r, "/raccourcis")
+        self.assertIn("Vos boutons", dernier_envoi(t))
