@@ -486,6 +486,82 @@ class TestLeRecuVoulu(unittest.TestCase):
         _distribuer(robot, journal)
         self.assertEqual(len(robot.transport.fichiers), 1)
 
+    def test_le_vieux_recu_de_solde_devient_un_transfert_de_bout_en_bout(self):
+        """Le cas vécu : le SMS anglais avait produit (avant correctif) un
+        reçu de SOLDE, envoyé et archivé. Le propriétaire rechoisit
+        « transfert » sur la plateforme : le MÊME numéro doit resservir, le
+        document repartir en transfert, et l'archive cloud être écrasée."""
+
+        class FauxNuage:
+            actif = True
+
+            def __init__(self):
+                self.archives = []
+
+            def archiver_recu(self, nom, contenu, fiche=None):
+                self.archives.append((nom, bytes(contenu[:5]), fiche))
+                return True
+
+        robot, compte, modem, journal = _robot()
+        nuage = FauxNuage()
+        robot.nuage = nuage
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        # L'état d'AVANT : la ligne du reçu forcée en solde, déjà envoyée et
+        # archivée — exactement ce que le vieux lecteur avait laissé.
+        with journal.verrou:
+            journal.conn.execute(
+                "UPDATE recus SET genre = 'solde', nature = NULL, "
+                "reference = NULL, numero = 'TM-2026-0805-0075', "
+                "envoye = 1, archive = 1")
+            journal.conn.commit()
+        robot.transport.fichiers.clear()
+
+        numero = robot._recu_apres_coup(1, nature="transfert")
+        # Le numéro EN VIGUEUR est celui de la vieille ligne, pas celui du jour
+        self.assertEqual(numero, "TM-2026-0805-0075")
+
+        _distribuer(robot, journal)
+        self.assertEqual(len(robot.transport.fichiers), 1)
+        nom, contenu, legende, _ = robot.transport.fichiers[0]
+        self.assertEqual(nom, "TM-2026-0805-0075.pdf")
+        self.assertIn("Transfer receipt", legende)
+        self.assertNotIn("Balance receipt", legende)
+        # Et l'archive cloud est écrasée avec la fiche du transfert
+        robot._distribuer_recus()
+        self.assertEqual(len(nuage.archives), 1)
+        nom_archive, entete, fiche = nuage.archives[0]
+        self.assertEqual(nom_archive, "TM-2026-0805-0075.pdf")
+        self.assertEqual(entete, b"%PDF-")
+        self.assertEqual(fiche["genre"], "transfert")
+        self.assertEqual(fiche["montant"], 1300000)
+        self.assertEqual(fiche["reference"], "PP260805.1402.C55918")
+
+    def test_redemander_a_l_identique_refait_l_archive(self):
+        """« Régénérer » sans rien changer refait quand même le document —
+        la lecture du robot a pu s'améliorer — mais en silence : l'archive
+        seule repart, Telegram garde ce qu'il a déjà reçu."""
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)
+        journal.recu_archive(journal.conn.execute(
+            "SELECT id FROM recus").fetchone()[0])
+        avant = journal.conn.execute(
+            "SELECT date FROM recus").fetchone()[0]
+
+        import time as _t
+        _t.sleep(1.1)          # la date est à la seconde : qu'elle avance
+        numero = robot._recu_apres_coup(1)   # régénérer tel quel, sans re-typer
+        self.assertIsNotNone(numero)
+        archive, envoye, apres = journal.conn.execute(
+            "SELECT archive, envoye, date FROM recus").fetchone()
+        self.assertEqual(archive, 0)      # l'archive se refera
+        self.assertEqual(envoye, 1)       # Telegram, lui, reste tranquille
+        self.assertNotEqual(apres, avant)  # la date dit la refabrication
+        _distribuer(robot, journal)
+        self.assertEqual(len(robot.transport.fichiers), 1)   # pas de doublon
+
     def test_la_variante_francaise_suit_aussi_la_nature(self):
         robot, compte, modem, journal = _robot()
         modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE))

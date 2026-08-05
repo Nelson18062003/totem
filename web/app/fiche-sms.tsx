@@ -86,9 +86,24 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   // qui fait foi — même numéro, à la demande. La nature choisie voyage avec
   // la demande : c'est ELLE qui décide du document (un transfert marqué
   // « transfert » ne peut pas revenir en reçu de solde).
+  // La date d'établissement du reçu, lue dans le cloud : elle avance quand le
+  // terminal a VRAIMENT remplacé le document — c'est elle qu'on guette.
+  const ficheRecu = async (): Promise<string | null> => {
+    if (!p.recu) return null;
+    try {
+      const r = await fetch(`/api/recu/${p.recu}/fiche`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const corps = (await r.json()) as { etabliLe: string | null };
+      return corps.etabliLe;
+    } catch {
+      return null;
+    }
+  };
+
   const etablirRecu = async () => {
     if (etabli === "envoi" || p.sourceId == null) return;
     setEtabli("envoi");
+    const etabliAvant = await ficheRecu();
     try {
       const r = await fetch("/api/commande", {
         method: "POST",
@@ -106,9 +121,44 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           .then((x) => (x.ok ? x.json() : null))
           .catch(() => null);
         if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          setMot(c.resultat || "");
           setEtabli(c.etat === "faite" ? "fait" : "refus");
-          if (c.etat === "faite") {
+          if (c.etat !== "faite") {
+            setMot(c.resultat || "");
+            return;
+          }
+          if (p.recu) {
+            // RÉGÉNÉRATION d'un document existant : le terminal fabrique
+            // (délai volontaire de dix secondes) puis remplace l'archive.
+            // On ne promet RIEN sur un minuteur : on guette la date
+            // d'établissement dans le cloud, et on ne dit « c'est le
+            // nouveau » que quand elle a vraiment avancé.
+            setMot(t.regenerationEnCours);
+            if (!etabliAvant) {
+              // Le repère d'avant n'a pas pu être lu : impossible de
+              // CONSTATER le remplacement — alors on ne le certifie pas.
+              // Message d'attente honnête, et la main revient.
+              await new Promise((res) => setTimeout(res, 15000));
+              setMot(t.regenerationEnRoute);
+              setEtabli("repos");
+              router.refresh();
+              return;
+            }
+            for (let attente = 0; attente < 30; attente++) {
+              await new Promise((res) => setTimeout(res, 3000));
+              const etabliApres = await ficheRecu();
+              if (etabliApres && etabliApres !== etabliAvant) {
+                setMot(t.regenerationFaite);
+                setEtabli("repos");
+                router.refresh();
+                return;
+              }
+            }
+            // Toujours rien après une minute et demie : on le dit sans
+            // prétendre que c'est fait.
+            setMot(t.regenerationLente);
+            setEtabli("repos");
+          } else {
+            setMot(c.resultat || "");
             // Laisser au terminal le temps d'archiver, puis relire la base :
             // l'icône de téléchargement apparaîtra sur la ligne.
             setTimeout(() => router.refresh(), 8000);
@@ -179,21 +229,34 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
         </div>
 
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
           <button
             onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
-            className="flex flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
+            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
             <IconCopy size={15} /> {t.copierSms}
           </button>
           {p.recu ? (
-            <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
-              className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-              <IconDoc size={15} /> {t.recuPdf}
-            </a>
+            // Le document existe : on peut l'ouvrir tel quel — ET le refaire
+            // à neuf avec la lecture et le type d'aujourd'hui. Avant, ce
+            // bouton n'était qu'un lien : impossible de régénérer un reçu
+            // depuis l'écran, l'ancien document était servi pour toujours.
+            <>
+              <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
+                className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+                <IconDoc size={15} /> {t.telechargerPdf}
+              </a>
+              {p.sourceId != null && (
+                <button onClick={etablirRecu} disabled={etabli === "envoi" || etabli === "fait"}
+                  className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint disabled:opacity-40">
+                  <IconDoc size={15} />
+                  {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
+                </button>
+              )}
+            </>
           ) : (
             p.sourceId != null && etabli !== "fait" && (
               <button onClick={etablirRecu} disabled={etabli === "envoi"}
-                className="flex flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
+                className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
                 <IconDoc size={15} />
                 {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
               </button>

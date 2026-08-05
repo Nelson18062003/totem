@@ -273,6 +273,21 @@ export async function chargerDonnees(
   return { relie, terminal, sims, paiements };
 }
 
+/** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque
+ *  refabrication — c'est elle qui dit à l'écran que le nouveau document est
+ *  vraiment en place. */
+export async function chargerFicheRecu(
+  numero: string,
+): Promise<{ etabliLe: string | null } | null> {
+  if (!relie) return null;
+  const propre = numero.replace(/[^A-Za-z0-9._-]/g, "");
+  const fiches = await lire<{ numero: string; etabli_le: string | null }>(
+    `recus?select=numero,etabli_le&numero=eq.${propre}&limit=1`,
+  );
+  const fiche = fiches.find((f) => f.numero === propre);
+  return fiche ? { etabliLe: fiche.etabli_le ?? null } : null;
+}
+
 export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
   if (!relie) return null;
   const propre = numero.replace(/[^A-Za-z0-9._-]/g, "");

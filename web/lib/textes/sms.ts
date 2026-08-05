@@ -48,6 +48,18 @@ const en = {
   messageRecu: "Original message",
   copierSms: "Copy the message",
   recuPdf: "PDF receipt",
+  telechargerPdf: "Download the PDF",
+  regenererPdf: "Rebuild the PDF",
+  regenerationEnCours:
+    "The terminal is rebuilding the document with today's reading — about "
+    + "twenty seconds, then open the PDF again.",
+  regenerationFaite: "Document rebuilt — open the PDF: it is the new one.",
+  regenerationLente:
+    "The terminal is taking longer than expected. The PDF will be replaced "
+    + "as soon as it finishes — try opening it again in a minute.",
+  regenerationEnRoute:
+    "The rebuild is on its way — open the PDF again in about a minute to "
+    + "see the new document.",
   demandeAuTerminal: "Asking the terminal…",
   etablirRecu: "Issue the receipt",
   terminalMuet: "The terminal did not answer — is it switched on, and up to date?",
@@ -110,6 +122,18 @@ const fr: typeof en = {
   messageRecu: "Message reçu",
   copierSms: "Copier le SMS",
   recuPdf: "Reçu PDF",
+  telechargerPdf: "Télécharger le PDF",
+  regenererPdf: "Régénérer le PDF",
+  regenerationEnCours:
+    "Le terminal refait le document avec la lecture du jour — une vingtaine "
+    + "de secondes, puis rouvrez le PDF.",
+  regenerationFaite: "Document refait — ouvrez le PDF : c'est le nouveau.",
+  regenerationLente:
+    "Le terminal prend plus de temps que prévu. Le PDF sera remplacé dès "
+    + "qu'il aura fini — réessayez de l'ouvrir dans une minute.",
+  regenerationEnRoute:
+    "La refabrication est en route — rouvrez le PDF dans une minute environ "
+    + "pour voir le nouveau document.",
   demandeAuTerminal: "Demande au terminal…",
   etablirRecu: "Établir le reçu",
   terminalMuet: "Le terminal n’a pas répondu — est-il allumé, et à jour ?",
