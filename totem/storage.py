@@ -576,25 +576,47 @@ class Journal:
             return numero
         except sqlite3.IntegrityError:
             with self.verrou:
-                try:
-                    # La référence suit le nouveau genre (un solde n'en a pas,
-                    # un transfert si) — sauf si un AUTRE document la tient
-                    # déjà : elle reste alors où elle est, sans rien casser.
-                    self.conn.execute(
-                        "UPDATE recus SET genre = ?, nature = ?, "
-                        "reference = ?, envoye = 0, archive = 0, essais = 0 "
-                        "WHERE source = ? AND source_id = ? "
-                        "AND (genre != ? OR COALESCE(nature, '') != COALESCE(?, ''))",
-                        (genre, nature or None, reference or None,
-                         source, source_id, genre, nature or None))
-                except sqlite3.IntegrityError:
-                    self.conn.execute(
-                        "UPDATE recus SET genre = ?, nature = ?, "
-                        "envoye = 0, archive = 0, essais = 0 "
-                        "WHERE source = ? AND source_id = ? "
-                        "AND (genre != ? OR COALESCE(nature, '') != COALESCE(?, ''))",
-                        (genre, nature or None, source, source_id,
-                         genre, nature or None))
+                quand = self._maintenant()
+                existante = self.conn.execute(
+                    "SELECT genre, nature FROM recus "
+                    "WHERE source = ? AND source_id = ?",
+                    (source, source_id)).fetchone()
+                if existante is not None:
+                    genre_avant, nature_avant = existante
+                    # Le document CHANGE (autre genre, ou autre nature — donc
+                    # un autre titre) : il repart entier, Telegram compris.
+                    # Sinon, « régénérer » refait le document en silence :
+                    # seule l'archive repart — la lecture du robot a pu
+                    # s'améliorer — et Telegram n'est pas re-spammé. Une
+                    # redemande sans nature n'efface jamais un choix posé.
+                    change = (genre_avant != genre
+                              or (nature is not None and nature != nature_avant))
+                    if change:
+                        # La référence suit le nouveau document (un solde
+                        # n'en a pas, un transfert si) — sauf si un AUTRE
+                        # document la tient déjà. La date avance : c'est elle
+                        # qui dira, jusqu'au cloud, que le document est refait.
+                        try:
+                            self.conn.execute(
+                                "UPDATE recus SET genre = ?, "
+                                "nature = COALESCE(?, nature), reference = ?, "
+                                "date = ?, envoye = 0, archive = 0, essais = 0 "
+                                "WHERE source = ? AND source_id = ?",
+                                (genre, nature or None, reference or None,
+                                 quand, source, source_id))
+                        except sqlite3.IntegrityError:
+                            self.conn.execute(
+                                "UPDATE recus SET genre = ?, "
+                                "nature = COALESCE(?, nature), date = ?, "
+                                "envoye = 0, archive = 0, essais = 0 "
+                                "WHERE source = ? AND source_id = ?",
+                                (genre, nature or None, quand,
+                                 source, source_id))
+                    else:
+                        self.conn.execute(
+                            "UPDATE recus SET archive = 0, essais = 0, "
+                            "date = ? WHERE source = ? AND source_id = ?",
+                            (quand, source, source_id))
                 self.conn.commit()
                 # Le numéro EN VIGUEUR : celui de la ligne de ce message —
                 # jamais celui recalculé du jour, qui peut différer si le

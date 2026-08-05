@@ -537,6 +537,31 @@ class TestLeRecuVoulu(unittest.TestCase):
         self.assertEqual(fiche["montant"], 1300000)
         self.assertEqual(fiche["reference"], "PP260805.1402.C55918")
 
+    def test_redemander_a_l_identique_refait_l_archive(self):
+        """« Régénérer » sans rien changer refait quand même le document —
+        la lecture du robot a pu s'améliorer — mais en silence : l'archive
+        seule repart, Telegram garde ce qu'il a déjà reçu."""
+        robot, compte, modem, journal = _robot()
+        modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE_EN))
+        robot._relever_sms(compte)
+        _distribuer(robot, journal)
+        journal.recu_archive(journal.conn.execute(
+            "SELECT id FROM recus").fetchone()[0])
+        avant = journal.conn.execute(
+            "SELECT date FROM recus").fetchone()[0]
+
+        import time as _t
+        _t.sleep(1.1)          # la date est à la seconde : qu'elle avance
+        numero = robot._recu_apres_coup(1)   # régénérer tel quel, sans re-typer
+        self.assertIsNotNone(numero)
+        archive, envoye, apres = journal.conn.execute(
+            "SELECT archive, envoye, date FROM recus").fetchone()
+        self.assertEqual(archive, 0)      # l'archive se refera
+        self.assertEqual(envoye, 1)       # Telegram, lui, reste tranquille
+        self.assertNotEqual(apres, avant)  # la date dit la refabrication
+        _distribuer(robot, journal)
+        self.assertEqual(len(robot.transport.fichiers), 1)   # pas de doublon
+
     def test_la_variante_francaise_suit_aussi_la_nature(self):
         robot, compte, modem, journal = _robot()
         modem.sms_en_attente.append((1, "OrangeMoney", TRANSFERT_ORANGE))

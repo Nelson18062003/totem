@@ -86,9 +86,24 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   // qui fait foi — même numéro, à la demande. La nature choisie voyage avec
   // la demande : c'est ELLE qui décide du document (un transfert marqué
   // « transfert » ne peut pas revenir en reçu de solde).
+  // La date d'établissement du reçu, lue dans le cloud : elle avance quand le
+  // terminal a VRAIMENT remplacé le document — c'est elle qu'on guette.
+  const ficheRecu = async (): Promise<string | null> => {
+    if (!p.recu) return null;
+    try {
+      const r = await fetch(`/api/recu/${p.recu}/fiche`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const corps = (await r.json()) as { etabliLe: string | null };
+      return corps.etabliLe;
+    } catch {
+      return null;
+    }
+  };
+
   const etablirRecu = async () => {
     if (etabli === "envoi" || p.sourceId == null) return;
     setEtabli("envoi");
+    const etabliAvant = await ficheRecu();
     try {
       const r = await fetch("/api/commande", {
         method: "POST",
@@ -113,15 +128,25 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           }
           if (p.recu) {
             // RÉGÉNÉRATION d'un document existant : le terminal fabrique
-            // (délai volontaire de dix secondes), envoie, puis remplace
-            // l'archive — le même lien sert alors le nouveau PDF. On le dit,
-            // et on rouvre la main une fois le remplacement passé.
+            // (délai volontaire de dix secondes) puis remplace l'archive.
+            // On ne promet RIEN sur un minuteur : on guette la date
+            // d'établissement dans le cloud, et on ne dit « c'est le
+            // nouveau » que quand elle a vraiment avancé.
             setMot(t.regenerationEnCours);
-            setTimeout(() => {
-              setMot(t.regenerationFaite);
-              setEtabli("repos");
-              router.refresh();
-            }, 22000);
+            for (let attente = 0; attente < 30; attente++) {
+              await new Promise((res) => setTimeout(res, 3000));
+              const etabliApres = await ficheRecu();
+              if (etabliApres && etabliApres !== etabliAvant) {
+                setMot(t.regenerationFaite);
+                setEtabli("repos");
+                router.refresh();
+                return;
+              }
+            }
+            // Toujours rien après une minute et demie : on le dit sans
+            // prétendre que c'est fait.
+            setMot(t.regenerationLente);
+            setEtabli("repos");
           } else {
             setMot(c.resultat || "");
             // Laisser au terminal le temps d'archiver, puis relire la base :
