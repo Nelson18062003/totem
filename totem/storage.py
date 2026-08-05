@@ -585,6 +585,46 @@ class Journal:
                 self.conn.commit()
             return False
 
+    def recus_a_relire(self):
+        """[(id, source_id, genre, numero, nature)] de tous les reçus nés
+        d'un SMS. Le contenu d'un document suit la lecture du robot ; la
+        nature posée à la main, elle, ne se discute pas — elle voyage ici
+        pour que l'appelant la respecte."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, source_id, genre, numero, nature FROM recus "
+                "WHERE source = 'sms'").fetchall()
+
+    def rearchiver_recu(self, identifiant):
+        """Marque un reçu à ré-archiver : même numéro, contenu refait.
+        Telegram n'est pas concerné — seul le document du cloud se refait."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE recus SET archive = 0, essais = 0 WHERE id = ?",
+                (identifiant,))
+            self.conn.commit()
+
+    def corriger_genre_recu(self, identifiant, genre, reference=None):
+        """Corrige le genre d'un reçu et le remet à archiver.
+
+        Le document déjà parti sur Telegram y reste — on ne re-spamme pas la
+        conversation — mais l'archive du cloud, celle que sert la plateforme,
+        sera refaite sous le même numéro avec le bon contenu.
+        """
+        with self.verrou:
+            try:
+                self.conn.execute(
+                    "UPDATE recus SET genre = ?, reference = ?, "
+                    "archive = 0, essais = 0 WHERE id = ?",
+                    (genre, reference or None, identifiant))
+            except sqlite3.IntegrityError:
+                # La référence est déjà tenue par un autre document : on
+                # corrige le genre sans elle.
+                self.conn.execute(
+                    "UPDATE recus SET genre = ?, archive = 0, essais = 0 "
+                    "WHERE id = ?", (genre, identifiant))
+            self.conn.commit()
+
     def recus_a_envoyer(self, apres_secondes=0, limite=5):
         """Les reçus mûrs, du plus ancien au plus récent.
 
