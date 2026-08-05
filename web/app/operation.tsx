@@ -168,8 +168,8 @@ export function OperationPopup({
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
+    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
+      <div className="surgit max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
         onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between">
           <div>

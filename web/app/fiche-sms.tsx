@@ -113,8 +113,8 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   };
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
-      <div className="w-full max-w-md rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
+    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
+      <div className="surgit w-full max-w-md rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
