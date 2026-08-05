@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
 import { IconClose, IconCopy, IconDoc } from "./icons";
+import { reveillerLaVeille } from "./veille";
 
 // Chaque catégorie de SMS a sa pastille et son libellé, comme une boîte de
 // réception. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
@@ -40,6 +41,20 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   const [mot, setMot] = useState("");
   const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
   const [classe, setClasse] = useState(false);
+
+  // Ouvrir la fiche, c'est lire le message : le point de la ligne s'éteint et
+  // la pastille du menu se met à jour dans la foulée. Si la base n'a pas
+  // encore la migration, l'appel échoue en silence — rien ne casse.
+  useEffect(() => {
+    if (!p.nonLu) return;
+    fetch("/api/lu", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: Number(p.id) }),
+    })
+      .then((r) => { if (r.ok) { reveillerLaVeille(); router.refresh(); } })
+      .catch(() => {});
+  }, [p.id, p.nonLu, router]);
 
   // Le propriétaire décide la nature d'un SMS (dépôt/retrait/transfert/solde) :
   // elle s'affiche ainsi partout, et son reçu s'établit dans la foulée.

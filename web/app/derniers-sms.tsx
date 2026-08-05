@@ -25,7 +25,14 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
                 {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-medium">{p.nom}</span>
+                <span className="flex items-center gap-1.5 text-body font-medium">
+                  {/* Le point plein = pas encore ouvert, comme dans la boîte. */}
+                  {p.nonLu && (
+                    <span aria-label="non lu"
+                      className="size-1.5 shrink-0 rounded-full bg-ink" />
+                  )}
+                  <span className="truncate">{p.nom}</span>
+                </span>
                 <span className="block truncate text-small text-ink-faint">{p.sim} · {p.heure} · {p.smsBrut}</span>
               </span>
               {p.montant != null && (

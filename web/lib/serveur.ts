@@ -69,6 +69,9 @@ type LignePaiement = {
   reference: string | null; solde_apres: number | null; texte: string;
   categorie?: string | null; nature?: string | null;
   emis_le?: string | null; recu_le: string;
+  // Quand le propriétaire a ouvert ce SMS sur la plateforme. `null` = pas
+  // encore lu ; `undefined` = base pas encore migrée (la notion n'existe pas).
+  lu_le?: string | null;
 };
 
 // --- Mise en forme des dates -------------------------------------------------
@@ -200,6 +203,10 @@ export async function chargerDonnees(): Promise<Donnees> {
       smsBrut: l.texte,
       recu: recuDe(l),
       sourceId: l.source_id ?? null,
+      // Non lu SEULEMENT si la base connaît la notion (colonne présente) et
+      // que la ligne n'a jamais été ouverte. Base pas migrée → tout est « lu » :
+      // la fonctionnalité dort, elle ne crie pas faux.
+      nonLu: l.lu_le === null,
     }));
 
   const sims: Sim[] = cartes.map((c) => {
@@ -309,6 +316,58 @@ export async function definirNature(
         "content-type": "application/json", prefer: "return=minimal",
       },
       body: JSON.stringify({ nature }),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// --- La veille : ce qui permet à l'écran de bouger tout seul -----------------
+// Deux chiffres légers, interrogés régulièrement par le navigateur : le dernier
+// SMS connu (s'il monte, l'écran se rafraîchit) et le nombre de non-lus (la
+// pastille du menu). Volontairement minuscule : la veille passe souvent.
+
+export async function chargerActualite(): Promise<{ dernier: number; nonLus: number }> {
+  if (!relie) return { dernier: 0, nonLus: 0 };
+  const entetes = { apikey: cle!, authorization: `Bearer ${cle}` };
+  let dernier = 0;
+  let nonLus = 0;
+  try {
+    const r = await fetch(`${url}/rest/v1/paiements?select=id&order=id.desc&limit=1`, {
+      headers: entetes, cache: "no-store",
+    });
+    if (r.ok) {
+      const lignes = (await r.json()) as { id: number }[];
+      dernier = lignes[0]?.id ?? 0;
+    }
+    // Le compte est lu dans l'en-tête « content-range » (« 0-0/42 » → 42).
+    // Base pas encore migrée (colonne absente) → réponse 400 → zéro, sans bruit.
+    const c = await fetch(`${url}/rest/v1/paiements?select=id&lu_le=is.null&limit=1`, {
+      headers: { ...entetes, prefer: "count=exact" }, cache: "no-store",
+    });
+    if (c.ok) {
+      const plage = c.headers.get("content-range");
+      nonLus = Number(plage?.split("/")[1] ?? 0) || 0;
+    }
+  } catch {
+    /* cloud injoignable : la prochaine veille réessaiera */
+  }
+  return { dernier, nonLus };
+}
+
+/** Marque un SMS comme lu : le propriétaire vient d'ouvrir sa fiche. */
+export async function marquerLu(id: number): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/paiements?id=eq.${id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=minimal",
+      },
+      body: JSON.stringify({ lu_le: new Date().toISOString() }),
       cache: "no-store",
     });
     return r.ok;

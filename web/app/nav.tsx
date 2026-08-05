@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { EtatTerminal } from "@/lib/types";
 import { IconCard, IconChart, IconGrid, IconHash, IconHome, IconInbox, IconSettings } from "./icons";
 import { Logo } from "./marque";
+import { Pastille, useActualite } from "./veille";
 
 const liens = [
   { href: "/", label: "Accueil", Icone: IconHome },
@@ -48,6 +49,9 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
   const path = usePathname();
   const cachee = useBarreEffacable();
   const actif = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  // La veille : rafraîchit l'écran dès qu'un SMS entre en base, et porte la
+  // pastille des non-lus. Elle vit ici parce que la barre est sur chaque page.
+  const nonLus = useActualite();
 
   return (
     <>
@@ -66,6 +70,7 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
               }`}>
               <Icone size={18} />
               {label}
+              {href === "/encaissements" && <Pastille n={nonLus} />}
             </Link>
           ))}
           <div className="mx-3 my-3 border-t border-line" />
@@ -128,7 +133,14 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
                     ? "bg-ink px-4 py-2.5 text-white"
                     : "size-11 text-ink-faint active:bg-surface-2"
                 }`}>
-                <Icone size={20} />
+                <span className="relative">
+                  <Icone size={20} />
+                  {/* Le point des nouveaux SMS, version mobile : discret sur
+                      l'icône de la boîte quand elle n'est pas la page active. */}
+                  {href === "/encaissements" && !on && nonLus > 0 && (
+                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ink" />
+                  )}
+                </span>
                 {on && <span className="text-small font-medium">{label}</span>}
               </Link>
             );

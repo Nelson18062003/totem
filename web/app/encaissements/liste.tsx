@@ -159,8 +159,13 @@ export function ListeEncaissements({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
-                        {/* Qui, quand — la source du SMS, brève. */}
-                        <span className="truncate text-small text-ink-soft">
+                        {/* Qui, quand — la source du SMS, brève. Le point plein
+                            devant = pas encore ouvert. */}
+                        <span className="flex min-w-0 items-center gap-1.5 truncate text-small text-ink-soft">
+                          {p.nonLu && (
+                            <span aria-label="non lu"
+                              className="size-1.5 shrink-0 rounded-full bg-ink" />
+                          )}
                           {p.sim} · {p.heure}
                         </span>
                         {/* Montant complet, jamais abrégé ; sans signe quand le
@@ -175,8 +180,11 @@ export function ListeEncaissements({
                       </span>
                       {/* Le SMS EN ENTIER : c'est lui qu'on vient lire. Jamais
                           tronqué, jamais reformulé — le message d'origine, tel
-                          que la carte l'a reçu. */}
-                      <span className="mt-1 block whitespace-pre-wrap break-words text-body text-ink">
+                          que la carte l'a reçu. Un non-lu se lit un cran plus
+                          appuyé, comme dans une boîte mail. */}
+                      <span className={`mt-1 block whitespace-pre-wrap break-words text-body text-ink ${
+                        p.nonLu ? "font-medium" : ""
+                      }`}>
                         {p.smsBrut}
                       </span>
                     </span>
