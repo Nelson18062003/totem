@@ -64,7 +64,15 @@ class TestOperateur(unittest.TestCase):
         self.assertEqual(c.operateur, "Vodacom")
 
     def test_carte_vide(self):
-        self.assertEqual(Carte().operateur, "SIM inconnue")
+        self.assertEqual(Carte().operateur, "unknown SIM")
+
+    def test_carte_vide_en_francais(self):
+        from totem import textes
+        textes.definir_langue("fr")
+        try:
+            self.assertEqual(Carte().operateur, "SIM inconnue")
+        finally:
+            textes.definir_langue("en")
 
 
 class TestLibelle(unittest.TestCase):
@@ -93,7 +101,18 @@ class TestDescription(unittest.TestCase):
     def test_itinerance_signalee(self):
         c = Carte(iccid="89237010000000000011", imsi="624010000000011",
                   reseau="Orange F", itinerance=True)
-        self.assertEqual(c.description, "MTN ·0011 (itinérance sur Orange F)")
+        self.assertEqual(c.description, "MTN ·0011 (roaming on Orange F)")
+
+    def test_itinerance_signalee_en_francais(self):
+        from totem import textes
+        c = Carte(iccid="89237010000000000011", imsi="624010000000011",
+                  reseau="Orange F", itinerance=True)
+        textes.definir_langue("fr")
+        try:
+            self.assertEqual(c.description,
+                             "MTN ·0011 (itinérance sur Orange F)")
+        finally:
+            textes.definir_langue("en")
 
     def test_reseau_domestique_sans_mention(self):
         c = Carte(iccid="89237010000000000011", imsi="624010000000011",

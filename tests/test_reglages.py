@@ -80,6 +80,17 @@ class TestLEcranReglages(unittest.TestCase):
     def test_il_dit_ce_qui_manque(self):
         robot, compte, journal = _robot()
         _dire(robot, "/reglages")
+        self.assertIn("number to fill in", robot.transport.dernier)
+        self.assertIn("name to fill in", robot.transport.dernier)
+
+    def test_il_le_dit_aussi_en_francais(self):
+        from totem import textes
+        robot, compte, journal = _robot()
+        textes.definir_langue("fr")
+        try:
+            _dire(robot, "/reglages")
+        finally:
+            textes.definir_langue("en")
         self.assertIn("numéro à renseigner", robot.transport.dernier)
         self.assertIn("nom à renseigner", robot.transport.dernier)
 
@@ -99,7 +110,7 @@ class TestSaisieDuNumero(unittest.TestCase):
     def test_le_numero_sinscrit(self):
         robot, compte, journal = _robot()
         robot._demander_identite("num", ICCID)
-        self.assertIn("Envoyez le numéro", robot.transport.dernier)
+        self.assertIn("Send the phone number", robot.transport.dernier)
 
         _dire(robot, "696103864")
         self.assertEqual(journal.identite(ICCID)[0], "696103864")
@@ -126,7 +137,7 @@ class TestSaisieDuNumero(unittest.TestCase):
         robot._demander_identite("num", ICCID)
         _dire(robot, "bonjour")
         self.assertEqual(journal.identite(ICCID)[0], "")
-        self.assertIn("Rien n'a été enregistré", robot.transport.dernier)
+        self.assertIn("Nothing was saved", robot.transport.dernier)
 
     def test_les_espaces_et_le_prefixe_sont_acceptes(self):
         robot, compte, journal = _robot()

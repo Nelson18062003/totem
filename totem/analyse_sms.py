@@ -257,9 +257,10 @@ class Partie:
                 and self.nom == autre.nom)
 
     def __str__(self):
+        from .textes import t
         if self.nom and self.numero:
             return f"{self.nom} ({self.numero})"
-        return self.nom or self.numero or "Inconnu"
+        return self.nom or self.numero or t("Unknown", "Inconnu")
 
     def __repr__(self):
         return f"<Partie {self}>"
@@ -303,7 +304,8 @@ class Paiement:
             return str(self.beneficiaire)
         if self.emetteur:
             return str(self.emetteur)
-        return "Inconnu"
+        from .textes import t
+        return t("Unknown", "Inconnu")
 
     @property
     def sens_connu(self):

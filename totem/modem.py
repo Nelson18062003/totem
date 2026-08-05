@@ -11,6 +11,7 @@ import time
 
 from .gsm import decode_auto, encode_ucs2
 from .pdu import ErreurPDU, decoder, recoller
+from .textes import t
 
 # +CUSD: <m>[,"<texte>",<dcs>]  — m=0 fin, m=1 réponse attendue, m=2 annulé par le réseau
 RE_CUSD = re.compile(r'\+CUSD:\s*(\d)(?:\s*,\s*"(.*?)"\s*(?:,\s*(\d+))?)?', re.S)
@@ -290,10 +291,14 @@ class ModemSerie:
                     return
                 except Exception as e:
                     derniere = e
-        raise ErreurModem(
+        raise ErreurModem(t(
+            f"the modem did not come back on the serial port after "
+            f"{patience} s ({derniere}). Check the USB cable and the power "
+            f"supply: the HAT draws 3 A, and a charger that falls short "
+            f"makes it drop off the bus.",
             f"le modem n'est pas revenu sur le port série après {patience} s "
             f"({derniere}). Vérifiez le câble USB et l'alimentation : le HAT "
-            f"réclame 3 A, un chargeur trop juste le fait décrocher du bus.")
+            f"réclame 3 A, un chargeur trop juste le fait décrocher du bus."))
 
     def _chemins_possibles(self):
         """Le port précédent d'abord — c'est le cas courant — puis ceux que la
@@ -348,7 +353,8 @@ class ModemSerie:
                     texte = decode_auto(m.group(2) or "", dcs)
                     return int(m.group(1)), texte.strip()
             time.sleep(pause)
-        raise ErreurModem("Pas de réponse USSD du réseau (délai dépassé).")
+        raise ErreurModem(t("No USSD reply from the network (timed out).",
+                            "Pas de réponse USSD du réseau (délai dépassé)."))
 
     def _cusd(self, charge):
         # Défense en profondeur contre l'injection AT : en mode GSM, un

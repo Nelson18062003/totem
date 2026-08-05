@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 
 from .analyse_sms import analyser, categoriser
+from .textes import t
 from .version import version
 
 DELAI = 15          # secondes avant d'abandonner une requête
@@ -166,10 +167,13 @@ class Nuage:
             return
         self._absentes_signalees |= nouvelles
         try:
-            self.journal.evenement(
+            self.journal.evenement(t(
+                f"{table}: the message is saved, but without "
+                f"{', '.join(sorted(nouvelles))} — column(s) missing from the "
+                f"database. Running the Supabase migration again restores them.",
                 f"{table} : le message est enregistré, mais sans "
                 f"{', '.join(sorted(nouvelles))} — colonne(s) absente(s) de la "
-                f"base. Rejouer la migration Supabase les rétablit.")
+                f"base. Rejouer la migration Supabase les rétablit."))
         except Exception:
             pass
 
@@ -203,9 +207,11 @@ class Nuage:
                     self._alerter(id_local)
                 break
             if e == "refuse":
-                self.journal.evenement(
+                self.journal.evenement(t(
+                    f"{sujet} {id_local} refused by the cloud, set aside: "
+                    f"{self.derniere_erreur}",
                     f"{sujet} {id_local} refusé par le cloud, mis de côté : "
-                    f"{self.derniere_erreur}")
+                    f"{self.derniere_erreur}"))
                 self._alerter(id_local)
             marquer([id_local])
             if e == "ok":
@@ -324,7 +330,7 @@ class Nuage:
         # « merge » : une carte déjà connue se met à jour (derniere_vue…).
         return self._pousser_lot(
             "cartes", "terminal,iccid", ids, charge,
-            self.journal.marquer_cartes_envoyees, "carte",
+            self.journal.marquer_cartes_envoyees, t("card", "carte"),
             resolution="merge-duplicates")
 
     def pousser_paiements(self):
@@ -346,7 +352,7 @@ class Nuage:
             ids.append(id_local)
         return self._pousser_lot(
             "paiements", "terminal,source_id", ids, charge,
-            self.journal.marquer_sms_envoyes, "paiement")
+            self.journal.marquer_sms_envoyes, t("payment", "paiement"))
 
     def _ligne_paiement(self, id_local, date, expediteur, texte, compte, iccid,
                         emis_le=None):
@@ -397,7 +403,7 @@ class Nuage:
         } for id_local, date, texte in lignes_locales]
         return self._pousser_lot(
             "evenements", "terminal,source_id", ids, charge,
-            self.journal.marquer_evenements_envoyes, "événement")
+            self.journal.marquer_evenements_envoyes, t("event", "événement"))
 
     # ---- reçus PDF ---------------------------------------------------------
     # La carte SD du Pi n'est pas grande, et un reçu n'a rien à y faire : il
@@ -542,8 +548,9 @@ class Nuage:
                 envoyes = (self.pousser_cartes() + self.pousser_paiements()
                            + self.pousser_evenements())
                 if premier and envoyes:
-                    self.journal.evenement(
-                        f"cloud : {envoyes} ligne(s) transmise(s) au démarrage")
+                    self.journal.evenement(t(
+                        f"cloud: {envoyes} line(s) sent at startup",
+                        f"cloud : {envoyes} ligne(s) transmise(s) au démarrage"))
                     premier = False
             except Exception as e:
                 # Un cloud injoignable est normal : on note, on continue.
@@ -560,11 +567,14 @@ class Nuage:
     def resume(self):
         """Ligne d'état pour /statut."""
         if not self.actif:
-            return "cloud désactivé"
+            return t("cloud disabled", "cloud désactivé")
         reste = self.journal.reste_a_envoyer()
         if self.derniere_erreur:
-            return f"cloud injoignable · {reste} ligne(s) en attente"
-        return "cloud à jour" if not reste else f"cloud · {reste} en attente"
+            return t(f"cloud unreachable · {reste} line(s) waiting",
+                     f"cloud injoignable · {reste} ligne(s) en attente")
+        if not reste:
+            return t("cloud up to date", "cloud à jour")
+        return t(f"cloud · {reste} waiting", f"cloud · {reste} en attente")
 
 
 def _horodatage(iso=None):

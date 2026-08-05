@@ -168,6 +168,38 @@ class TestGuichet(unittest.TestCase):
         p._traiter({"id": 7, "type": "ussd_fin", "parametres": {}})
         self.assertIsNone(p._session)
         self.assertFalse(compte.session_ouverte)
+        self.assertEqual(nuage.maj[-1][1]["resultat"], "Session closed.")
+
+
+class TestLaLangueDeLaDemande(unittest.TestCase):
+    """Chaque commande de la plateforme porte sa langue : la réponse repart
+    dans celle-là, quelle que soit la langue du robot."""
+
+    def test_le_refus_suit_la_langue_de_la_commande(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 30, "type": "ussd_reponse",
+                    "parametres": {"texte": "1", "langue": "fr"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertIn("Aucune session en cours", nuage.maj[-1][1]["resultat"])
+
+    def test_le_resultat_suit_la_langue_de_la_commande(self):
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 31, "type": "ussd_fin",
+                    "parametres": {"langue": "fr"}})
+        self.assertEqual(nuage.maj[-1][1]["resultat"], "Session refermée.")
+
+    def test_sans_langue_le_robot_parle_sa_langue(self):
+        from totem import textes
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        textes.definir_langue("fr")
+        try:
+            p._traiter({"id": 32, "type": "ussd_fin", "parametres": {}})
+        finally:
+            textes.definir_langue("en")
+        self.assertEqual(nuage.maj[-1][1]["resultat"], "Session refermée.")
 
 
 class TestIdentiteDepuisLaPlateforme(unittest.TestCase):
@@ -226,7 +258,7 @@ class TestRecuApresCoup(unittest.TestCase):
         p.programmeur = lambda source_id: None      # publicité, code, échec…
         p._traiter({"id": 10, "type": "recu", "parametres": {"source_id": 7}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
-        self.assertIn("ne donne pas droit", nuage.maj[-1][1]["resultat"])
+        self.assertIn("does not come with a receipt", nuage.maj[-1][1]["resultat"])
 
     def test_sans_fabrique_le_refus_est_poli(self):
         compte = FauxCompte([])

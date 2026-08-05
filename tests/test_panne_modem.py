@@ -125,9 +125,21 @@ class TestAlerteQuiSeRepete(unittest.TestCase):
         robot._relever_sms(compte)
 
         self.assertGreater(len(robot.transport.messages), pendant_la_panne)
-        self.assertIn("répond de nouveau", robot.transport.messages[-1])
+        self.assertIn("answering again", robot.transport.messages[-1])
         self.assertFalse(compte.panne_signalee)
         self.assertEqual(compte.attente_modem, 0)
+
+    def test_le_retour_sannonce_aussi_en_francais(self):
+        from totem import textes
+        robot, compte, modem = _robot()
+        textes.definir_langue("fr")
+        try:
+            _trois_echecs(robot, compte)
+            modem.tombe = False
+            robot._relever_sms(compte)
+        finally:
+            textes.definir_langue("en")
+        self.assertIn("répond de nouveau", robot.transport.messages[-1])
 
     def test_le_retour_ne_sannonce_quune_fois(self):
         robot, compte, modem = _robot()

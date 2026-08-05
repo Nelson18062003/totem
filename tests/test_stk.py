@@ -12,6 +12,7 @@ engager un travail important pour rien.
 
 import unittest
 
+from totem import textes
 from totem.stk import SONDES, rapport, sonder
 
 
@@ -55,18 +56,18 @@ class SondeSimToolkit(unittest.TestCase):
         self.assertTrue(resultat.supporte)
         self.assertTrue(resultat.applet_probable)
         self.assertIn("Orange Money", resultat.items)
-        self.assertIn("jouable", resultat.verdict())
+        self.assertIn("worth taking", resultat.verdict())
 
     def test_carte_sans_menu(self):
         resultat = sonder(FauxModem(CARTE_SANS_APPLET))
         self.assertTrue(resultat.supporte)
         self.assertFalse(resultat.applet_probable)
-        self.assertIn("USSD reste la voie", resultat.verdict())
+        self.assertIn("USSD remains the way", resultat.verdict())
 
     def test_firmware_qui_ignore_le_sim_toolkit(self):
         resultat = sonder(FauxModem())
         self.assertFalse(resultat.supporte)
-        self.assertIn("seule voie", resultat.verdict())
+        self.assertIn("only way", resultat.verdict())
 
     def test_menu_sans_rapport_avec_le_paiement(self):
         """Ne pas conclure trop vite : un menu d'opérateur n'est pas une
@@ -76,7 +77,7 @@ class SondeSimToolkit(unittest.TestCase):
             "AT+STGI=0": '\r\n+STGI: 0,1,"Actualites"\r\n+STGI: 0,2,"Meteo"\r\n\r\nOK\r\n',
         }))
         self.assertFalse(resultat.applet_probable)
-        self.assertIn("Vérifiez sur l'autre SIM", resultat.verdict())
+        self.assertIn("Check the other SIM", resultat.verdict())
 
     def test_un_modem_muet_ne_fait_pas_planter(self):
         class Muet(FauxModem):
@@ -84,7 +85,7 @@ class SondeSimToolkit(unittest.TestCase):
                 raise OSError("port fermé")
         resultat = sonder(Muet())
         self.assertFalse(resultat.supporte)
-        self.assertIn("échec", rapport(resultat))
+        self.assertIn("failed", rapport(resultat))
 
     def test_lecture_seule(self):
         """Aucune commande ne doit valider, saisir ou confirmer quoi que ce
@@ -106,7 +107,20 @@ class SondeSimToolkit(unittest.TestCase):
     def test_rapport_lisible(self):
         texte = rapport(sonder(FauxModem(CARTE_AVEC_APPLET)))
         self.assertIn("Orange Money", texte)
-        self.assertIn("lecture seule", texte)
+        self.assertIn("read-only", texte)
+
+    def test_le_rapport_parle_aussi_francais(self):
+        """La langue du robot vaut aussi pour la sonde — mais les intitulés
+        lus dans la carte restent tels que la carte les a donnés."""
+        textes.definir_langue("fr")
+        try:
+            resultat = sonder(FauxModem(CARTE_AVEC_APPLET))
+            texte = rapport(resultat)
+            self.assertIn("lecture seule", texte)
+            self.assertIn("jouable", resultat.verdict())
+            self.assertIn("Orange Money", texte)     # intact, quelle que soit la langue
+        finally:
+            textes.definir_langue("en")
 
 
 

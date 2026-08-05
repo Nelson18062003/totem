@@ -25,6 +25,8 @@ Le réseau visité n'est pas jeté pour autant : il devient une information
 d'itinérance, affichée telle quelle.
 """
 
+from .textes import t
+
 # MCC+MNC → nom court de l'opérateur d'origine de la carte.
 # Le Cameroun d'abord (c'est là que vivent les SIM), la France ensuite
 # (c'est là que se font les essais avant expédition).
@@ -88,7 +90,7 @@ class Carte:
         return (operateur_depuis_imsi(self.imsi)
                 or _depuis_nom_reseau(self.reseau)
                 or self.reseau
-                or "SIM inconnue")
+                or t("unknown SIM", "SIM inconnue"))
 
     @property
     def libelle(self):
@@ -107,7 +109,8 @@ class Carte:
     def description(self):
         """Ligne lisible pour le diagnostic, itinérance comprise."""
         if self.itinerance and self.reseau:
-            return f"{self.libelle} (itinérance sur {self.reseau})"
+            return t(f"{self.libelle} (roaming on {self.reseau})",
+                     f"{self.libelle} (itinérance sur {self.reseau})")
         return self.libelle
 
     # ---- comparaison ------------------------------------------------------
