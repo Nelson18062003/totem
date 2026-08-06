@@ -234,9 +234,15 @@ reste la surface sur laquelle ces deux couleurs-là viennent se poser.
 
 | Jeton | Hex | Rôle | Contraste |
 |---|---|---|---|
-| `accent` | `#1F3A8A` | Indigo. Liens, sélection, action principale. | 9,9:1 |
-| `accent-hover` | `#182D6B` | Survol | — |
+| `accent` | `#1F3A8A` | Indigo. Liens, sélection, action principale. | 9,2:1 au pire |
+| `accent-hover` | `#182D6B` | Survol | blanc dessus : 12,9:1 |
+| `accent-presse` | `#132250` | Sous le doigt | blanc dessus : 15,3:1 |
 | `accent-soft` | `#EEF1F8` | Fond d'état sélectionné | — |
+
+> **L'action principale est indigo, jamais noire.** Cette table le dit depuis
+> le début ; l'application peignait pourtant tous ses boutons primaires en
+> `ink`. La latérite dit qui l'on est, l'indigo dit ce qu'on peut faire — un
+> bouton noir ne dit ni l'un ni l'autre.
 
 ### Sémantique — désaturée
 
@@ -244,9 +250,16 @@ reste la surface sur laquelle ces deux couleurs-là viennent se poser.
 |---|---|---|---|
 | `positive` | `#17603F` | Crédit, encaissement | 7,2:1 |
 | `negative` | `#8A2020` | Débit, sortie | 8,7:1 |
+| `negative-hover` | `#701919` | Survol d'un geste destructif | blanc dessus : 11,4:1 |
+| `negative-presse` | `#571313` | Sous le doigt | blanc dessus : 13,9:1 |
 | `alert` | `#7D5410` | Attention, file d'attente | 6,4:1 |
 
 Sombres et mates, jamais vives. Un encaissement n'est pas une fête.
+
+> **Crédit et débit sont à 1,21:1 l'un de l'autre** : en niveaux de gris, ils
+> sont indiscernables. La couleur ne porte donc JAMAIS seule l'information
+> (WCAG 1.4.1) — le signe `+` / `−` et le libellé font partie de la chaîne du
+> montant, au même titre que les chiffres.
 
 ### Couleurs opérateur — ce sont des données
 

@@ -75,7 +75,8 @@
   /* Indigo — l'unique couleur d'action. Froide, elle ne dispute rien à la
      latérite : l'une dit qui l'on est, l'autre dit ce qu'on peut faire. */
   --color-accent: #1f3a8a;           /* 9,2:1 au pire (sur accent-soft) */
-  --color-accent-hover: #182d6b;
+  --color-accent-hover: #182d6b;     /* survol — blanc dessus : 12,9:1 */
+  --color-accent-presse: #132250;    /* sous le doigt — blanc dessus : 15,3:1 */
   --color-accent-soft: #eef1f8;
   --color-accent-ink: #1f3a8a;
 
@@ -86,6 +87,13 @@
   --color-positive: #17603f;         /* crédit — 7,2:1 */
   --color-negative: #8a2020;         /* débit — 8,7:1 */
   --color-alert: #7d5410;            /* attente — 6,4:1 */
+
+  /* Un geste qui détruit doit répondre sous la main comme les autres. Le débit
+     n'avait qu'un seul ton : le bouton destructif restait immobile au survol
+     comme sous le doigt. Même pas que l'indigo — chaque palier se détache du
+     précédent d'un rapport d'environ 1,25. */
+  --color-negative-hover: #701919;   /* blanc dessus : 11,4:1 */
+  --color-negative-presse: #571313;  /* blanc dessus : 13,9:1 */
 
   /* Ce qui est éteint reste lisible. On ne désactive JAMAIS par l'opacité :
      `opacity-40` sur du blanc donne 2,6:1, `opacity-30` donne 1,96:1 — du
@@ -173,6 +181,13 @@
   --spacing-rangee: 3.5rem;          /* 56 — une ligne */
   --spacing-rangee-2: 4.5rem;        /* 72 — deux lignes */
   --spacing-rangee-3: 5.5rem;        /* 88 — trois lignes */
+
+  /* Zone de texte : trois lignes de corps (3 × 24) plus la respiration haute
+     et basse (12 + 12). C'est la seule hauteur de saisie qui ne soit pas une
+     hauteur de contrôle — un champ d'une ligne se centre, une zone de texte
+     se remplit par le haut. Sans ce jeton, la fabrication avait dû poser un
+     padding vertical : la hauteur redevenait une conséquence. */
+  --spacing-zone-texte: 6rem;        /* 96 */
 
   /* Icônes — échelle discrète, convergence des systèmes : 16 / 20 / 24.
      Contrôle de 44–48 → icône 20. Navigation et rangées de liste → 24.

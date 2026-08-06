@@ -180,6 +180,18 @@ Communs à toutes les variantes :
 éteint**. Le focus est global (anneau indigo 2 px, décalage 2 px) — on ne le
 réécrit pas, et on ne pose jamais `outline-none` sans remplacement.
 
+Chaque état a son ton. La palette n'en avait que deux ; il en fallait quatre de
+plus, ajoutés après que la fabrication a buté dessus :
+
+| | repos | survol | pressé |
+|---|---|---|---|
+| primaire | `accent` | `accent-hover` | `accent-presse` |
+| danger | `negative` | `negative-hover` | `negative-presse` |
+
+Chaque palier se détache du précédent d'un rapport d'environ 1,25 — le pas que
+la charte s'était déjà donné entre `accent` et `accent-hover`. Le blanc reste
+au-dessus de 9:1 sur les six tons.
+
 ### 5.2 Champs et formulaires — `app/ui/champ.tsx`
 
 - Hauteur **`h-controle`** (44). Zone de texte : `min-h` de 3 rangées.
