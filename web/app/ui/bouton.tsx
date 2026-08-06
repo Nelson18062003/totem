@@ -53,13 +53,13 @@ const HAUTEUR: Record<VarianteBouton, string> = {
  * l'échelle des surfaces : `surface-raised` → `surface-2` → `surface-3`. */
 const HABITS: Record<VarianteBouton, string> = {
   primaire:
-    "bg-accent text-white hover:bg-accent-hover active:bg-accent-presse",
+    "bg-accent text-sur-couleur hover:bg-accent-hover active:bg-accent-presse",
   secondaire:
     "border border-contour bg-surface-raised text-ink " +
     "hover:bg-surface-2 active:bg-surface-3",
   discret: "bg-transparent text-ink hover:bg-surface-2 active:bg-surface-3",
   danger:
-    "bg-negative text-white hover:bg-negative-hover active:bg-negative-presse",
+    "bg-negative text-sur-couleur hover:bg-negative-hover active:bg-negative-presse",
 };
 
 /**
