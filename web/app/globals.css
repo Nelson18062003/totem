@@ -95,6 +95,12 @@
   --color-negative-hover: #701919;   /* blanc dessus : 11,4:1 */
   --color-negative-presse: #571313;  /* blanc dessus : 13,9:1 */
 
+  /* Le texte posé SUR un aplat de couleur. `white` est un défaut de Tailwind,
+     pas un jeton de TOTEM : tant qu'on l'écrivait en clair, une couleur du
+     système sortait du système. Et ce n'est pas `surface-raised` — celui-là
+     est un fond de carte, pas une couleur d'encre. */
+  --color-sur-couleur: #ffffff;
+
   /* Ce qui est éteint reste lisible. On ne désactive JAMAIS par l'opacité :
      `opacity-40` sur du blanc donne 2,6:1, `opacity-30` donne 1,96:1 — du
      texte que personne ne peut lire. Un contrôle éteint change de couleur, il
@@ -226,12 +232,27 @@
   --spacing-filet: 1px;
   --spacing-focus: 2px;
 
+  /* L'unique ombre du système. Elle ne décore pas : elle établit un plan —
+     la barre flottante mobile passe DEVANT la page qui défile dessous. Elle
+     était écrite en valeur libre dans la barre ; nommée, elle ne peut plus
+     être recopiée ailleurs « à peu près pareil ». Toute autre ombre est un
+     refus (voir docs/IDENTITE.md §9). */
+  --shadow-barre: 0 8px 28px -8px rgb(22 23 26 / 0.22);
+
   --font-sans: var(--font-dm-sans), -apple-system, system-ui, "Segoe UI",
     Roboto, sans-serif;
 
   /* Interlettrage du mot TOTEM — lapidaire, comme une inscription gravée.
      Ne s'applique qu'au nom de la marque, jamais au reste des capitales. */
   --tracking-marque: 0.18em;
+}
+
+/* La largeur du rail devient un jeton d'espacement, pour que `w-rail` existe
+   au lieu d'une valeur recopiée dans chaque écran qui doit lui laisser la
+   place. `inline` parce que la valeur CHANGE à l'exécution — le rail se
+   replie : Tailwind doit émettre la référence, pas en prendre une copie. */
+@theme inline {
+  --spacing-rail: var(--rail);
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
