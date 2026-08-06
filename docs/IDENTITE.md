@@ -201,16 +201,34 @@ reste la surface sur laquelle ces deux couleurs-là viennent se poser.
 | `surface` | `#FBFAF9` | Fond de page | — |
 | `surface-raised` | `#FFFFFF` | Cartes | — |
 | `surface-2` | `#F4F2F0` | Champs, survol, puces | — |
-| `surface-3` | `#EBE8E5` | Séparateurs pleins, barres | — |
-| `line` | `#E8E5E1` | Bordures fines | — |
+| `surface-3` | `#EBE8E5` | Barres, remplissages inertes | — |
+| `line` | `#E8E5E1` | Séparateur **décoratif** | 1,26:1 — assumé |
+| `contour` | `#8F8B84` | Contour **porteur** d'un contrôle | 3,04:1 au pire |
 | `ink` | `#16171A` | Texte principal | 17,2:1 |
-| `ink-soft` | `#62605C` | Texte secondaire | 6,0:1 |
-| `ink-faint` | `#77726B` | Texte tertiaire | **4,6:1 — passe AA** |
+| `ink-soft` | `#62605C` | Texte secondaire | 5,1:1 au pire |
+| `ink-faint` | `#6B665F` | Texte tertiaire | 4,66:1 au pire |
+| `ink-eteint` | `#6B665F` | Contrôle éteint | 4,66:1 au pire |
 
-> Le gris tertiaire de la version précédente (`#8E909A`) plafonnait à 3,07:1,
-> sous le seuil AA. Il est corrigé ici : le passage à des neutres tièdes a été
-> l'occasion de le remonter à 4,6:1. Plus aucune couleur de texte du système
-> n'est sous le seuil.
+> **Les contrastes de ce tableau sont donnés contre le fond le plus
+> défavorable** où la couleur a le droit d'être posée — pas contre le fond de
+> page, qui est toujours le plus flatteur.
+>
+> C'est ce qui a fait tomber la version précédente de `ink-faint` (`#77726B`),
+> annotée ici même « 4,6:1 — passe AA ». Le chiffre était juste sur `surface`
+> (4,57) et faux partout ailleurs : **4,27 sur un champ, 4,17 sur le sable,
+> 3,91 sur une barre**. Une couleur de texte ne « passe » pas dans l'absolu :
+> elle passe sur les fonds où on la pose. `#6B665F` passe sur tous.
+
+> **Deux filets, et il faut choisir le bon.** `line` sépare — il est décoratif,
+> presque invisible, et c'est très bien : personne n'a besoin de le voir pour
+> comprendre. `contour` affirme : « ceci est un champ », « ceci est un bouton ».
+> Dès qu'une bordure est le **seul** indice d'un contrôle, WCAG 1.4.11 lui
+> impose 3:1 — c'est `contour`, jamais `line`. L'application entière utilisait
+> `line` pour ce rôle : tous ses contours de contrôle étaient à 1,26:1.
+
+> **On n'éteint jamais par l'opacité.** `opacity-40` sur du blanc donne 2,6:1,
+> `opacity-30` donne 1,96:1 : du texte que personne ne peut lire. Un contrôle
+> éteint change de couleur, il ne s'efface pas.
 
 ### L'action
 
@@ -259,15 +277,32 @@ mise en page.
 
 ### Échelle
 
-| Jeton | Taille | Usage |
-|---|---|---|
-| `text-hero` | 2 → 2,75 rem | Le solde, et rien d'autre |
-| `text-display` | 1,625 → 2 rem | Montants de compte |
-| `text-title` | 1,375 rem | Titre de page |
-| `text-heading` | 1,0625 rem | Titre de section |
-| `text-body` | 0,9375 rem | Corps |
-| `text-small` | 0,8125 rem | Annexe |
-| `text-caption` | 0,75 rem | Étiquette |
+Sept crans, et **chacun porte son interligne**. C'est le point qui manquait :
+les jetons ne définissaient qu'une taille de police, aucun `line-height`. Toutes
+les hauteurs de l'interface reposaient donc sur la métrique par défaut de
+DM Sans — que personne n'avait choisie. On ne peut pas calculer la hauteur d'un
+bouton quand on ignore la hauteur de sa ligne.
+
+Tous les interlignes fixes sont des multiples de 4 : la grille survit jusque
+dans le texte.
+
+| Jeton | Taille | Interligne | Usage |
+|---|---|---|---|
+| `text-hero` | 2 → 2,75 rem | 1,1 | Le solde, et rien d'autre |
+| `text-display` | 1,625 → 2 rem | 1,15 | Montants de compte |
+| `text-title` | 1,375 rem (22) | 28 | Titre de page |
+| `text-heading` | 1,0625 rem (17) | 24 | Titre de section |
+| `text-body` | **1 rem (16)** | 24 | **Corps — le défaut** |
+| `text-small` | **0,875 rem (14)** | 20 | Annexe |
+| `text-caption` | 0,75 rem (12) | 16 | Étiquette |
+
+> **Deux crans ont été remontés** : le corps de 15 à 16, l'annexe de 13 à 14.
+> Cette table nommait déjà `text-small` « Annexe » — et l'interface s'en servait
+> **117 fois, contre 36 pour le corps**. Le texte de lecture de l'application
+> était donc son annexe, à 13 px : une valeur de densité bureau chez Material,
+> une note de bas de page chez Apple, et un cran que GOV.UK a purement supprimé
+> de son échelle pour cause d'illisibilité. La charte n'avait pas tort ; elle
+> n'était pas suivie.
 
 ### Deux règles fermes
 
@@ -287,6 +322,22 @@ mise en page.
 **24 × 24**, extrémités et jointures arrondies, jamais de remplissage. Le trait
 arrondi des icônes est le même que celui des brins : c'est ce qui les fait
 tenir ensemble.
+
+Elles s'affichent à **trois tailles, et trois seulement — 16, 20, 24** :
+
+| Taille | Où |
+|---|---|
+| 24 | Navigation, rangées de liste |
+| 20 | Dans un contrôle de 44 ou 48 px |
+| 16 | En ligne dans du texte |
+
+> Sept tailles circulaient dans l'application — 14, 15, 16, 18, 20, 22, 26 —
+> parce que la taille était un nombre libre passé à chaque appel. Une échelle
+> ouverte n'est pas une échelle.
+
+Le **symbole de la marque n'est pas une icône** : il a sa propre grille de
+32 × 32 et son propre trait de 4,8 (voir §2). Il n'a pas à rejoindre la famille
+— mais ses tailles d'affichage, elles, suivent l'échelle ci-dessus.
 
 **Aucun emoji dans l'interface.** Un emoji est rendu par le système : il change
 de dessin d'un téléphone à l'autre, et il fait basculer l'application du côté

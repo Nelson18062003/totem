@@ -40,6 +40,7 @@ autre branche sans autorisation explicite.
 ```sh
 python3 -m unittest discover -s tests     # la batterie complète
 cd web && npx next build                  # l'application web
+cd web && node scripts/verifier-le-systeme.mjs   # les dimensions de l'interface
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 ```
@@ -51,6 +52,12 @@ Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 
 - **Le symbole de la marque** est décrit une seule fois, dans
   `brand/generer.py`. Tout le reste en découle. Voir `docs/IDENTITE.md`.
+- **Les dimensions de l'interface** sont décrites une seule fois, dans
+  `web/app/globals.css`, et assemblées selon `docs/SYSTEME.md`. Aucune valeur
+  ne s'écrit dans un écran : grille de 4 px, échelle fermée à huit crans,
+  cible tactile de 44 px, hauteur de contrôle **déclarée** et jamais obtenue
+  par empilement de paddings. `verifier-le-systeme.mjs` le vérifie et refuse
+  le reste.
 - **Le code PIN** n'est jamais stocké, jamais écrit dans un message, jamais
   journalisé autrement que `****`.
 - **Un SMS mal compris** vaut mieux qu'un SMS mal interprété : `analyse_sms.py`
