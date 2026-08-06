@@ -203,7 +203,7 @@ reste la surface sur laquelle ces deux couleurs-là viennent se poser.
 | `surface-2` | `#F4F2F0` | Champs, survol, puces | — |
 | `surface-3` | `#EBE8E5` | Barres, remplissages inertes | — |
 | `line` | `#E8E5E1` | Séparateur **décoratif** | 1,26:1 — assumé |
-| `contour` | `#8F8B84` | Contour **porteur** d'un contrôle | 3,04:1 au pire |
+| `contour` | `#85817A` | Contour **porteur** d'un contrôle | 3,18:1 au pire |
 | `ink` | `#16171A` | Texte principal | 17,2:1 |
 | `ink-soft` | `#62605C` | Texte secondaire | 5,1:1 au pire |
 | `ink-faint` | `#6B665F` | Texte tertiaire | 4,66:1 au pire |

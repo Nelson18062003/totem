@@ -54,6 +54,14 @@ Ce qui coûte cher à rater mérite le cran au-dessus.
 **Écart entre deux cibles : 8 px minimum**, et jamais moins de 24 px de centre
 à centre (mécanisme de l'exception « espacement » de WCAG 2.5.8).
 
+Cette règle vise le **cas dangereux** : deux cibles voisines qui déclenchent des
+actions *différentes* et se touchent — viser une rangée et déclencher son bouton
+de téléchargement. Elle ne vise pas les rangées contiguës d'une même liste ni
+les éléments empilés d'un menu : là, chaque cible fait déjà 44 px, leurs centres
+sont à 44 ou 48 px l'un de l'autre, et l'absence de gouttière est la forme même
+d'une liste. Le contrôle adversarial a relevé ces cas-là ; ils sont conformes,
+c'était la règle qui était écrite trop large.
+
 ### R3 — Un contrôle déclare sa hauteur
 
 ```tsx
@@ -130,7 +138,16 @@ par un calcul, pas par un goût :
 | Jeton | Avant | Après | Pourquoi |
 |---|---|---|---|
 | `ink-faint` | `#77726B` | **`#6B665F`** | L'ancien était annoté « 4,6:1, passe AA » — vrai sur le fond de page seulement. Sur un champ : 4,27. Sur le sable : 4,17. Sur une barre : 3,91. Le nouveau donne 4,66 au pire. |
-| — | — | **`contour` `#8F8B84`** | Nouveau. `line` (`#E8E5E1`) vaut 1,26:1 : il ne peut pas porter le contour d'un champ ou d'un bouton, que WCAG 1.4.11 exige à 3:1. Le nouveau donne 3,04 au pire. |
+| — | — | **`contour` `#85817A`** | Nouveau. `line` (`#E8E5E1`) vaut 1,26:1 : il ne peut pas porter le contour d'un champ ou d'un bouton, que WCAG 1.4.11 exige à 3:1. Le nouveau donne 3,18 au pire. |
+
+> **Cette valeur a été calculée deux fois.** La première (`#8F8B84`) avait été
+> éprouvée contre le blanc, le fond de page et `surface-2` — mais pas contre
+> `surface-3`, qui est le fond d'un bouton secondaire **pressé**. Le contour y
+> tombait à 2,78:1 : sous le seuil, au moment précis où l'on appuie dessus.
+> C'est le contrôle adversarial qui l'a trouvé, en mesurant les couleurs
+> réellement rendues. Le « au pire » d'une couleur se mesure sur **tous** les
+> fonds où elle a le droit de se poser — y compris ceux qui n'existent que le
+> temps d'un appui.
 
 **Deux filets, et il faut choisir.** `border-line` sépare — décoratif, invisible,
 et c'est très bien. `border-contour` affirme : « ceci est un champ », « ceci est
@@ -156,10 +173,10 @@ Toutes les valeurs ci-dessous sont des jetons. Aucun nombre écrit à la main.
 
 | Variante | Fond | Texte | Bordure | Hauteur |
 |---|---|---|---|---|
-| `primaire` | `bg-accent` | `text-white` | aucune | `h-controle-fort` (48) |
+| `primaire` | `bg-accent` | `text-sur-couleur` | aucune | `h-controle-fort` (48) |
 | `secondaire` | `bg-surface-raised` | `text-ink` | `border-contour` 1 px | `h-controle` (44) |
 | `discret` | transparent | `text-ink` | aucune | `h-controle` (44) |
-| `danger` | `bg-negative` | `text-white` | aucune | `h-controle-fort` (48) |
+| `danger` | `bg-negative` | `text-sur-couleur` | aucune | `h-controle-fort` (48) |
 | `icone` | selon variante | — | selon variante | carré `size-controle` (44×44) |
 
 **L'action principale est indigo**, pas noire. La charte le dit depuis le
@@ -175,6 +192,10 @@ Communs à toutes les variantes :
 - Rayon **`rounded-btn`** (8 px).
 - Contenu centré : `flex items-center justify-center`.
 - Un bouton pleine largeur garde sa hauteur : `w-full` ne change rien à `h-`.
+- **Libellé : `text-small font-medium`** (14/20, graisse 500). Ce n'est pas un
+  emploi d'« annexe » : la table des graisses de `IDENTITE.md` §8 assigne
+  explicitement le 500 aux « libellés, éléments actifs ». Le libellé d'un
+  contrôle est un libellé, pas du corps de texte.
 
 États obligatoires, tous les cinq : **repos · survol · focus · pressé ·
 éteint**. Le focus est global (anneau indigo 2 px, décalage 2 px) — on ne le

@@ -63,8 +63,17 @@
      — `contour` est PORTEUR : c'est lui qui dit « ceci est un champ », « ceci
        est un bouton ». WCAG 1.4.11 lui impose 3:1. L'app entière utilisait
        `line` pour ce rôle : les contours de contrôle étaient à 1,26:1. */
+     Le « au pire » de `contour` a été calculé deux fois. La première valeur
+     (#8F8B84) avait été éprouvée contre le blanc, le fond de page et
+     `surface-2` — mais pas contre `surface-3`, qui est le fond d'un bouton
+     secondaire PRESSÉ : le contour y tombait à 2,78:1, sous le seuil, au
+     moment précis où l'on appuie dessus. C'est la faute même qu'on venait de
+     reprocher à la charte, refaite un étage plus bas. Le pire d'une couleur
+     se mesure sur TOUS les fonds où elle a le droit de se poser, y compris
+     ceux qui n'existent que le temps d'un appui. */
   --color-line: #e8e5e1;             /* séparateur décoratif — 1,26:1, assumé */
-  --color-contour: #8f8b84;          /* contour de contrôle — 3,04:1 au pire */
+  --color-contour: #85817a;          /* contour de contrôle — 3,18:1 au pire,
+                                        sur `surface-3` (le fond du pressé) */
 
   /* Latérite — LA couleur de la marque. Le symbole, les surfaces de marque.
      Dans l'app elle ne sert qu'à porter la marque, jamais un état. */
