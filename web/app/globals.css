@@ -206,12 +206,17 @@
   --spacing-rangee-2: 4.5rem;        /* 72 — deux lignes */
   --spacing-rangee-3: 5.5rem;        /* 88 — trois lignes */
 
-  /* Zone de texte : trois lignes de corps (3 × 24) plus la respiration haute
-     et basse (12 + 12). C'est la seule hauteur de saisie qui ne soit pas une
-     hauteur de contrôle — un champ d'une ligne se centre, une zone de texte
-     se remplit par le haut. Sans ce jeton, la fabrication avait dû poser un
-     padding vertical : la hauteur redevenait une conséquence. */
-  --spacing-zone-texte: 6rem;        /* 96 */
+  /* Zone de texte. C'est la seule hauteur de saisie qui ne soit pas une hauteur
+     de contrôle — un champ d'une ligne se centre, une zone de texte se remplit
+     par le haut. Sans ce jeton, la fabrication avait dû poser un padding
+     vertical : la hauteur redevenait une conséquence.
+
+     Le compte : 3 lignes de corps (3 × 24 = 72) + la respiration haute et
+     basse (12 + 12) + les deux filets (1 + 1) = 98. Le premier calcul disait
+     96 : il avait oublié les filets, et la zone rendait 98 à l'écran — hors
+     grille, et démentant son propre jeton. On monte au cran suivant de la
+     grille plutôt que de rogner la respiration ou le filet : 100. */
+  --spacing-zone-texte: 6.25rem;     /* 100 */
 
   /* Icônes — échelle discrète, convergence des systèmes : 16 / 20 / 24.
      Contrôle de 44–48 → icône 20. Navigation et rangées de liste → 24.
