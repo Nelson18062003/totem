@@ -194,8 +194,18 @@ au-dessus de 9:1 sur les six tons.
 
 ### 5.2 Champs et formulaires — `app/ui/champ.tsx`
 
-- Hauteur **`h-controle`** (44). Zone de texte : `min-h` de 3 rangées.
-- Padding horizontal **`px-4`**, jamais de padding vertical (la hauteur est posée).
+- Hauteur **`h-controle`** (44). Zone de texte : **`min-h-zone-texte`** (96).
+- Fond **`bg-surface-raised`**, jamais `surface-2`. Trois raisons mesurées : le
+  contour y gagne 3,39:1 au lieu de 3,04 ; le texte tertiaire y passe à 5,69:1
+  au lieu de 4,27 — c'est précisément la paire qui échouait ; et un bouton
+  discret posé DANS le champ peut y survoler en `surface-2` sans devenir
+  invisible.
+- Padding horizontal **`px-4`**.
+- **Padding vertical : interdit sur un champ d'une ligne** — il se centre dans
+  sa hauteur. **Obligatoire sur une zone de texte** (`py-3`) — elle se remplit
+  par le haut, et son jeton de 96 px compte déjà ces 12 + 12 autour de trois
+  lignes de 24. Ce n'est pas une entorse à la règle R3 : la hauteur reste
+  déclarée, le padding ne fait que placer le texte dedans.
 - Bordure **`border-contour`** 1 px au repos → `border-accent` au focus.
 - Libellé au-dessus, `text-small` 500, écart **`mb-2`** (8 px).
 - Message d'aide ou d'erreur en dessous, `text-small`, écart **`mt-2`** (8 px).
@@ -222,6 +232,22 @@ au-dessus de 9:1 sur les six tons.
 rendait le SMS entier en `whitespace-pre-wrap` : une rangée de 76 px minimum,
 non bornée, qui atteignait 142 px pour un SMS de quatre lignes. Le texte long
 se tronque et s'ouvre dans la fiche.
+
+**Une liste dans une carte va bord à bord.** La carte porte `p-4`, la rangée
+porte `px-4` : empilés, ils font 32 px de retrait et le séparateur ne tombe
+plus sur les 16 px annoncés. Donc une carte qui contient une liste **retire son
+padding horizontal** — c'est la rangée qui le porte, et elle seule. Un seul
+padding, jamais deux. La rangée doit pouvoir aller jusqu'au bord : c'est elle
+qu'on touche, et une zone de contact qui s'arrête à 16 px du bord perd du doigt
+sur toute sa longueur.
+
+**Le disque décoratif et le bouton d'action ne se ressemblent pas.** Disque
+`size-disque` (32), rond, filet `line`. Action de queue `size-controle` (44),
+carrée, filet `contour`. Dans l'ancienne liste, les deux faisaient 36 px : rien
+ne disait lequel répondait au doigt.
+
+**Chevron : `size-icone` (20).** Il appartient au contrôle, pas à la rangée —
+la taille 24 est réservée à l'icône de tête, qui appartient au contenu.
 
 ### 5.4 Navigation — `app/ui/nav-*.tsx`
 
@@ -276,6 +302,29 @@ Ce n'est pas une famille de plus, c'est une correction de défauts réels :
 - Sur mobile, marge basse sûre (`env(safe-area-inset-bottom)`).
 
 ---
+
+### 5.8 Les plans
+
+Quatre plans, pas davantage. Une interface qui empile plus de quatre niveaux ne
+sait plus lequel est devant.
+
+| Plan | Quoi |
+|---|---|
+| `z-10` | Ce qui colle en défilant : en-tête de liste, en-tête de fenêtre |
+| `z-20` | La barre flottante mobile — seule porteuse de `shadow-barre` |
+| `z-30` | Voile et fenêtre modale |
+| `z-40` | Rien, pour l'instant. Réservé à ce qui doit passer devant une fenêtre. |
+
+L'ombre n'est pas un plan. Elle **dit** qu'il y en a un, sur le seul élément qui
+flotte réellement au-dessus du contenu qui défile dessous. Toute autre ombre est
+un refus (`docs/IDENTITE.md` §9).
+
+### 5.9 Deux emplois de `contour`
+
+`contour` est décrit comme un filet, mais il a le droit d'être un **aplat** :
+la piste d'un interrupteur au repos doit tenir 3:1 contre le fond *et* contre sa
+pastille blanche, et une bordure y casserait la géométrie de la piste. C'est le
+seul cas. Partout ailleurs, `contour` est un trait de 1 px.
 
 ## 6. Vérifier
 

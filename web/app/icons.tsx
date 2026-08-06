@@ -82,3 +82,22 @@ export const IconHash = ({ size, className }: P) => (
 export const IconDoc = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h4" /></svg>
 );
+
+// Les quatre voix d'un message. Elles manquaient, et chaque écran qui avait
+// quelque chose à dire empruntait l'icône d'un autre : une flèche de
+// rafraîchissement pour une alerte, un cadenas pour une erreur. Un bandeau ne
+// peut pas s'appuyer sur la seule couleur (WCAG 1.4.1) — il lui faut son
+// dessin. Coche pour ce qui a abouti, croix cerclée pour ce qui a échoué,
+// triangle pour ce qui attend, « i » pour ce qui informe.
+export const IconCheck = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+);
+export const IconError = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><circle cx="12" cy="12" r="8.5" /><path d="m9 9 6 6M15 9l-6 6" /></svg>
+);
+export const IconAlert = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M12 4.2 21 19.8H3z" /><path d="M12 10v4M12 17h.01" /></svg>
+);
+export const IconInfo = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><circle cx="12" cy="12" r="8.5" /><path d="M12 11.5V16M12 8h.01" /></svg>
+);

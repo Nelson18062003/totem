@@ -88,6 +88,15 @@
   --color-negative: #8a2020;         /* débit — 8,7:1 */
   --color-alert: #7d5410;            /* attente — 6,4:1 */
 
+  /* Les fonds doux des trois tons. `accent-soft` existait seul : un bandeau
+     d'erreur ou de réussite ne pouvait donc qu'être blanc à filet coloré.
+     Chacun garde son ton au-dessus de 5,7:1, et reste à peine détaché du blanc
+     (≈1,15) — assez pour poser un bloc, pas assez pour crier. Un encaissement
+     n'est pas une fête, une alerte n'est pas une sirène. */
+  --color-positive-soft: #e9f1ec;    /* positive dessus : 6,6:1 */
+  --color-negative-soft: #f7ecea;    /* negative dessus : 7,9:1 */
+  --color-alert-soft: #f6efe0;       /* alert dessus : 5,8:1 */
+
   /* Un geste qui détruit doit répondre sous la main comme les autres. Le débit
      n'avait qu'un seul ton : le bouton destructif restait immobile au survol
      comme sous le doigt. Même pas que l'indigo — chaque palier se détache du
@@ -216,6 +225,14 @@
   --spacing-badge: 1.25rem;          /* 20 */
   --spacing-puce: 1.75rem;           /* 28 */
 
+  /* Le disque décoratif qui porte une icône en tête de rangée. Il ne se clique
+     pas, et il doit se distinguer au premier coup d'œil de ce qui se clique :
+     32, donc plus grand que l'icône de 24 qu'il contient, et franchement plus
+     petit que les 44 d'un contrôle. Dans l'ancienne liste, le disque décoratif
+     et le bouton de téléchargement faisaient tous deux 36 px : rien ne disait
+     lequel des deux répondait au doigt. */
+  --spacing-disque: 2rem;            /* 32 */
+
   /* ─────────────────────────────────────────────────────────────────────────
    * FORMES ET FILETS
    *
@@ -228,9 +245,30 @@
   --radius-sm: 0.375rem;    /* 6 */
 
   /* Le 2 px de l'optique. Bordure au repos : 1 px, unanime chez les six
-     systèmes qui la publient. Anneau de focus : 2 px, unanime aussi. */
+     systèmes qui la publient. Anneau de focus : 2 px, unanime aussi.
+     `optique` est le même 2 px, sous son autre emploi : le retrait d'une
+     pastille dans sa piste, le calage d'un glyphe. Deux noms parce que ce
+     sont deux intentions — la fabrication écrivait `p-focus` pour retirer une
+     pastille, et un retrait n'est pas un anneau de focus. */
   --spacing-filet: 1px;
   --spacing-focus: 2px;
+  --spacing-optique: 2px;
+
+  /* La course de la pastille d'un interrupteur : piste 48 − pastille 24 − deux
+     retraits optiques de 2 = 20. Elle se calcule, elle ne se choisit pas. */
+  --spacing-course: 1.25rem;         /* 20 */
+
+  /* La hauteur d'une LIGNE DE TEXTE — pour qu'un squelette d'attente puisse
+     prendre exactement la hauteur du texte qu'il remplace. Ces valeurs ne
+     viennent pas de l'échelle d'espacement, mais de l'échelle typographique :
+     20 est l'interligne de `text-small`, 28 celui de `text-title`. L'échelle
+     d'espacement ne sait exprimer ni l'un ni l'autre, et c'est normal — un
+     écart et une ligne de texte ne se mesurent pas au même mètre. Les
+     squelettes de `app/loading.tsx` annonçaient 48 là où le vrai contrôle
+     faisait 42, et 56 là où la vraie rangée faisait 68 : ils mentaient. */
+  --spacing-ligne-sm: 1.25rem;       /* 20 — une ligne de text-small */
+  --spacing-ligne: 1.5rem;           /* 24 — une ligne de text-body */
+  --spacing-ligne-lg: 1.75rem;       /* 28 — une ligne de text-title */
 
   /* L'unique ombre du système. Elle ne décore pas : elle établit un plan —
      la barre flottante mobile passe DEVANT la page qui défile dessous. Elle

@@ -23,7 +23,26 @@ const ECRANS = join(RACINE, "app");
 const CRANS = new Set(["0", "px", "1", "2", "3", "4", "6", "8", "12", "16"]);
 
 // Les noms du système (h-controle, size-icone, h-rangee…) sont toujours admis.
-const NOMS = /^(controle|controle-fort|controle-compact|rangee|rangee-2|rangee-3|icone|icone-sm|icone-lg|piste|piste-h|pastille|case|badge|puce|filet|focus|full|auto|dvh|screen|lecture|rail)$/;
+//
+// CETTE LISTE DOIT SUIVRE `@theme` DANS globals.css. Un jeton ajouté là et
+// oublié ici est signalé comme une infraction alors qu'il est parfaitement
+// légal : le gardien accuse à tort, et on finit par ne plus l'écouter. C'est
+// arrivé avec `zone-texte`.
+const NOMS = new RegExp(
+  "^(" +
+    [
+      "controle", "controle-fort", "controle-compact",
+      "rangee", "rangee-2", "rangee-3", "zone-texte",
+      "icone", "icone-sm", "icone-lg",
+      "piste", "piste-h", "pastille", "case", "course", "disque",
+      "badge", "puce",
+      "ligne", "ligne-sm", "ligne-lg",
+      "filet", "focus", "optique",
+      "rail", "lecture",
+      "full", "auto", "dvh", "screen",
+    ].join("|") +
+    ")$",
+);
 
 // Les propriétés soumises à la grille : espacement et position.
 const ESPACEMENT = "(?:p|m)[xytrbl]?|gap(?:-[xy])?|space-[xy]|inset|top|right|bottom|left|start|end";
