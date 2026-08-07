@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { IconGlobe } from "@/app/icons";
 import {
+  BarreFiltres,
+  DeclencheurFiltre,
+  FeuilleFiltres,
+  type OptionFiltre,
+} from "@/app/ui/filtre";
+import {
   Case,
   GroupeSegments,
   Interrupteur,
@@ -89,12 +95,55 @@ function Grille({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* ── Les données de la planche « Filtres » ────────────────────────────────────
+ * Ce sont exactement les sept choix qui débordaient sur l'écran des
+ * encaissements : trois opérateurs, quatre catégories. Ils ne tenaient pas sur
+ * une rangée en puces ; ils tiennent ici dans deux déclencheurs. */
+const OPERATEURS: OptionFiltre[] = [
+  { valeur: "mtn", libelle: "MTN MoMo" },
+  { valeur: "orange", libelle: "Orange Money" },
+  { valeur: "express", libelle: "Express Union" },
+];
+
+const CATEGORIES: OptionFiltre[] = [
+  { valeur: "encaissement", libelle: "Encaissement", description: "42 opérations" },
+  { valeur: "envoi", libelle: "Envoi", description: "18 opérations" },
+  { valeur: "depot", libelle: "Dépôt", description: "9 opérations" },
+  { valeur: "retrait", libelle: "Retrait", description: "6 opérations" },
+];
+
+/** Le cadre du téléphone : 384 px de carte, 352 utiles — plus étroit que les
+ *  358 px réellement disponibles sur un écran de 390. Ce qui tient ici tient
+ *  là-bas. */
+function Telephone({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="max-w-sm rounded-card border border-line bg-surface-raised p-4">
+      {children}
+    </div>
+  );
+}
+
 export function GalerieSelecteurs() {
   const [interrupteur, setInterrupteur] = useState(true);
   const [cochee, setCochee] = useState(true);
   const [radio, setRadio] = useState("orange");
   const [filtres, setFiltres] = useState<string[]>(["mtn"]);
   const [langue, setLangue] = useState("fr");
+
+  // La planche « Filtres ». L'état appartient à l'écran, jamais à la barre :
+  // une variable dit quelle feuille est ouverte, deux disent ce qui est retenu.
+  const [feuille, setFeuille] = useState<null | "operateur" | "categorie">(null);
+  const [operateur, setOperateur] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+
+  const nomDe = (options: OptionFiltre[], valeurs: string[]) =>
+    valeurs.length === 0
+      ? undefined
+      : valeurs.length === 1
+        ? options.find((o) => o.valeur === valeurs[0])?.libelle
+        : `${valeurs.length} choisis`;
+
+  const compteVivant = (operateur.length > 0 ? 1 : 0) + (categories.length > 0 ? 1 : 0);
 
   const basculerFiltre = (cle: string) =>
     setFiltres((f) => (f.includes(cle) ? f.filter((c) => c !== cle) : [...f, cle]));
@@ -377,7 +426,8 @@ export function GalerieSelecteurs() {
         <Note>
           La puce est elle-même sa propre cible : 44 de haut, écart de 8 entre
           deux. La bordure est là dans tous les états — sélectionner ne change
-          jamais la taille.
+          jamais la taille. Elle ne sert plus à FILTRER une liste : sept puces
+          demandaient 637 px pour 358. Voir la planche « Filtres » plus bas.
         </Note>
       </section>
 
@@ -438,6 +488,148 @@ export function GalerieSelecteurs() {
           Le groupe fait 44 et les segments l&apos;occupent : actif ou inactif,
           la hauteur ne bouge pas. C&apos;est la bordure portée par le seul
           segment inactif qui donnait 38 d&apos;un côté et 40 de l&apos;autre.
+        </Note>
+      </section>
+
+      {/* ── 6 · Filtres ──────────────────────────────────────────────────── */}
+      <section>
+        <Titre>Filtres — une rangée de 44, quel que soit le nombre de choix</Titre>
+        <Note>
+          Les sept puces de l&apos;écran des encaissements réclamaient 637 px
+          pour 358 disponibles : deux rangées, et « Retrait » seul sur la sienne
+          avec 261 px de vide. Les mêmes sept choix tiennent ici dans deux
+          déclencheurs, parce que leur largeur ne dépend plus de leur nombre.
+          Chaque cadre ci-dessous fait 384 px, soit 352 utiles — plus étroit que
+          les 358 d&apos;un téléphone de 390.
+        </Note>
+
+        <div className="mt-4 flex flex-col gap-6">
+          <Etat nom="Au repos">
+            <Telephone>
+              <BarreFiltres libelle="Filtres">
+                <DeclencheurFiltre libelle="Opérateur" surOuvrir={() => {}} />
+                <DeclencheurFiltre libelle="Catégorie" surOuvrir={() => {}} />
+              </BarreFiltres>
+            </Telephone>
+          </Etat>
+
+          <Etat nom="Un filtre actif">
+            <Telephone>
+              <BarreFiltres
+                libelle="Filtres"
+                compte={1}
+                libelleCompte={(n) => `${n} filtre actif`}
+              >
+                <DeclencheurFiltre
+                  libelle="Opérateur"
+                  valeur="MTN MoMo"
+                  surOuvrir={() => {}}
+                />
+                <DeclencheurFiltre libelle="Catégorie" surOuvrir={() => {}} />
+              </BarreFiltres>
+            </Telephone>
+          </Etat>
+
+          <Etat nom="Trois filtres actifs">
+            <Telephone>
+              <BarreFiltres
+                libelle="Filtres"
+                compte={3}
+                libelleCompte={(n) => `${n} filtres`}
+              >
+                <DeclencheurFiltre
+                  libelle="Opérateur"
+                  valeur="MTN"
+                  surOuvrir={() => {}}
+                />
+                <DeclencheurFiltre
+                  libelle="Catégorie"
+                  valeur="2 choisis"
+                  surOuvrir={() => {}}
+                />
+                <DeclencheurFiltre
+                  libelle="Période"
+                  valeur="7 jours"
+                  surOuvrir={() => {}}
+                />
+              </BarreFiltres>
+            </Telephone>
+          </Etat>
+
+          <Etat nom="Éteint et ouvert">
+            <Telephone>
+              <BarreFiltres libelle="Filtres">
+                <DeclencheurFiltre
+                  libelle="Opérateur"
+                  ouverte
+                  surOuvrir={() => {}}
+                />
+                <DeclencheurFiltre libelle="Catégorie" eteint surOuvrir={() => {}} />
+              </BarreFiltres>
+            </Telephone>
+          </Etat>
+
+          <Etat nom="La feuille — appuyez sur un déclencheur">
+            <Telephone>
+              <BarreFiltres
+                libelle="Filtres"
+                compte={compteVivant}
+                libelleCompte={(n) => (n > 1 ? `${n} filtres` : `${n} filtre`)}
+              >
+                <DeclencheurFiltre
+                  libelle="Opérateur"
+                  valeur={nomDe(OPERATEURS, operateur)}
+                  ouverte={feuille === "operateur"}
+                  surOuvrir={() => setFeuille("operateur")}
+                />
+                <DeclencheurFiltre
+                  libelle="Catégorie"
+                  valeur={nomDe(CATEGORIES, categories)}
+                  ouverte={feuille === "categorie"}
+                  surOuvrir={() => setFeuille("categorie")}
+                />
+              </BarreFiltres>
+            </Telephone>
+          </Etat>
+        </div>
+
+        {feuille === "operateur" && (
+          <FeuilleFiltres
+            titre="Opérateur"
+            description="Un seul à la fois."
+            options={OPERATEURS}
+            valeurs={operateur}
+            surChangement={setOperateur}
+            etiquetteFermer="Fermer les filtres d'opérateur"
+            libelleEffacer="Effacer"
+            libelleValider="Voir les résultats"
+            onFermer={() => setFeuille(null)}
+          />
+        )}
+        {feuille === "categorie" && (
+          <FeuilleFiltres
+            titre="Catégorie"
+            description="Plusieurs catégories peuvent se cumuler."
+            options={CATEGORIES}
+            valeurs={categories}
+            surChangement={setCategories}
+            multiple
+            etiquetteFermer="Fermer les filtres de catégorie"
+            libelleEffacer="Effacer"
+            libelleValider="Voir les résultats"
+            onFermer={() => setFeuille(null)}
+          />
+        )}
+
+        <Note>
+          Le déclencheur dessine 32 px et répond sur 44 (<code>.cible</code>) ;
+          la barre, elle, déclare 44. L&apos;état actif se lit sans la couleur :
+          le texte devient « Opérateur : MTN » et la graisse monte d&apos;un
+          cran. La gouttière vaut 12 (<code>gap-gouttiere-cible</code>) — à 8,
+          deux cibles de 44 se recouvrent de 4 et la norme retire l&apos;aire
+          commune, ramenant les deux à 40. La feuille est la{" "}
+          <code>Fenetre</code> du système : Échap la ferme, le focus y est
+          piégé, le focus revient au déclencheur.
         </Note>
       </section>
     </div>

@@ -265,12 +265,25 @@ export function Radio({
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * 4 · LA PUCE SÉLECTIONNABLE
+ * 4 · LA PUCE SÉLECTIONNABLE — EN FIN DE VIE POUR LE FILTRAGE
  *
- * Filtre par opérateur, filtre par nature : on clique dessus, donc elle prend
- * `h-controle` (44) — pas 28, pas 32, pas 40. Un seul rayon, `rounded-full`.
- * La bordure est présente dans TOUS les états : la largeur ne bouge pas quand
- * la sélection change.
+ * Elle reste ce qu'elle était : un objet qu'on clique, donc `h-controle` (44),
+ * un seul rayon, une bordure dans tous les états pour que la largeur ne bouge
+ * pas quand la sélection change.
+ *
+ * MAIS ELLE NE DOIT PLUS SERVIR À FILTRER UNE LISTE. Mesuré sur l'écran des
+ * encaissements et sur un téléphone de 390 px : sept puces réclamaient 637 px
+ * pour 358 disponibles. Elles passaient sur deux rangées, et la dernière
+ * restait seule avec 261 px de vide. Ce n'est pas une affaire de largeur de
+ * puce : le nombre de choix grandit avec les données, la largeur de l'écran
+ * non — AUCUNE FORME DE PUCE NE TIENDRA JAMAIS SUR UNE RANGÉE.
+ *
+ * Ce qui filtre désormais : `app/ui/filtre.tsx` — un déclencheur compact qui
+ * affiche son état (« Opérateur : MTN ») et une feuille basse qui déplie les
+ * choix. La largeur d'une barre de filtres ne dépend plus du nombre de choix.
+ *
+ * La puce garde donc UN emploi : un choix binaire, isolé, dont le libellé
+ * tient — jamais une série de sept.
  * ──────────────────────────────────────────────────────────────────────────── */
 export function PuceFiltre({
   libelle,

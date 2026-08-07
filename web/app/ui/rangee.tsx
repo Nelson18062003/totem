@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext } from "react";
+import { Children, createContext, isValidElement, useContext } from "react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { IconChevron } from "@/app/icons";
 
@@ -27,6 +27,38 @@ import { IconChevron } from "@/app/icons";
  *
  * Une rangée cliquable dépasse partout les 44 px du plancher : la plus basse
  * en fait 56.
+ *
+ * ─── v2 · LA RANGÉE DE PAIEMENT ─────────────────────────────────────────────
+ *
+ * Une rangée qui porte un montant n'est pas une rangée de réglage : c'est un
+ * ÉCRAN D'ARGENT, et le montant y est la donnée. Quatre choses changent, toutes
+ * mesurées (docs/REFONTE-V2.md §2 et §5) :
+ *
+ *   1. LE DISQUE DÉCORATIF TOMBE. Il faisait 32 px, plus 12 de gouttière : les
+ *      44 px qui manquaient exactement au titre pour ne pas se tronquer. En
+ *      390 px, « Orange · 23:06 » (94 px) devenait « Orange · … ». Il était
+ *      `aria-hidden` : il ne disait rien à personne, et il coûtait le seul
+ *      renseignement qui ne soit pas répété dans le SMS d'en dessous.
+ *   2. LE MONTANT VIENT EN PREMIER — dans l'ordre du DOM, donc dans l'ordre où
+ *      un lecteur d'écran l'annonce. Il reste à droite à l'œil (`order-last`) :
+ *      c'est là que se lit une colonne de chiffres. Il venait en troisième,
+ *      derrière une décoration.
+ *   3. LE POIDS SUIT LA DONNÉE. « MTN » en 16 px et « +150 000 FCFA » en 16 px :
+ *      l'étiquette pesait autant que le chiffre. Le montant passe à
+ *      `text-heading` (17), l'opérateur et l'heure à `text-small` (14) en
+ *      `ink-soft`.
+ *   4. LA COLONNE DE TEXTE EST PLAFONNÉE. En 1440 px, le titre finissait à
+ *      x=538 et le montant commençait à x=1130 : 592 px de vide entre deux
+ *      renseignements de la même ligne.
+ *
+ * ─── L'ALIGNEMENT NE VIENT PAS DE LA TYPOGRAPHIE ────────────────────────────
+ *
+ * DM Sans n'a AUCUNE fonction `tnum` — sa table GSUB contient `calt ccmp dnom
+ * frac kern liga locl mark mkmk numr`. `font-variant-numeric: tabular-nums`
+ * (et donc la classe `.tabnums` que portaient tous les montants) est INERTE :
+ * les chasses vont de 312 pour le « 1 » à 684 pour le « 0 », soit 5,95 px
+ * d'écart à 16 px. L'alignement vient de la MISE EN PAGE — une colonne de
+ * largeur fixe, texte calé à droite (`.colonne-montant`).
  */
 
 /**
@@ -112,10 +144,20 @@ const TEINTE_MONTANT: Record<SensMontant, string> = {
   neutre: "text-ink-soft",
 };
 
-/** Le signe fait partie du montant. Il n'est jamais facultatif. */
+/**
+ * Le signe fait partie du montant. Il n'est jamais facultatif — et ce n'est pas
+ * n'importe quel trait : U+2212, le MOINS MATHÉMATIQUE, a la même chasse que le
+ * plus (550) là où le trait d'union U+002D en fait 541. Neuf pixels de moins par
+ * montant débité, c'est une colonne qui bouge d'une ligne à l'autre.
+ *
+ * On l'écrit par son point de code et non par le glyphe : un éditeur, un
+ * copier-coller ou une normalisation Unicode remplace un « − » par un « - »
+ * sans rien dire. `−` ne peut pas être aplati en silence — c'est la même
+ * précaution que `lib/types.ts` prend pour l'espace insécable.
+ */
 const SIGNE: Record<SensMontant, string> = {
   credit: "+",
-  debit: "−",
+  debit: "\u2212",
   neutre: "",
 };
 
@@ -140,6 +182,17 @@ export function Rangee({
   className = "",
 }: ProprietesRangee) {
   const { hauteur, clampSousTitre } = GABARIT[lignes];
+
+  // LA LISTE D'ARGENT. C'est la liste qui le dit, pas la rangée : dans une
+  // liste d'encaissements, un SMS que le robot n'a pas su lire n'a PAS de
+  // montant (`analyse_sms.py` renvoie `None` dans le doute, et n'invente
+  // jamais un chiffre). Si chaque rangée décidait seule, cette rangée-là
+  // garderait son disque et sa pleine largeur : son titre commencerait 44 px
+  // plus loin que ceux d'au-dessus, et la colonne serait ébréchée par la seule
+  // ligne qui avoue son ignorance. La liste tranche pour toutes ses rangées —
+  // même mécanisme que la place de queue réservée, juste en dessous.
+  const colonneMontant = useContext(ContexteMontant);
+  const queueReservee = useContext(ContexteQueue);
 
   // Padding horizontal `px-4`, écart entre éléments `gap-3`.
   //
@@ -169,7 +222,10 @@ export function Rangee({
           {icone}
         </span>
       )}
-      {pastille && (
+      {/* LE DISQUE NE PARAÎT PAS SUR UN ÉCRAN D'ARGENT. Il est `aria-hidden` :
+          il ne dit rien, et il prend 32 px plus 12 de gouttière — exactement
+          les 44 px qui manquaient au titre pour ne pas se tronquer en 390. */}
+      {pastille && !colonneMontant && (
         <span
           aria-hidden
           className="grid size-disque shrink-0 place-items-center rounded-full border border-line text-body text-ink-soft [&>svg]:size-icone-sm"
@@ -187,25 +243,65 @@ export function Rangee({
           « +150 000 FCFA ». Or ces deux-là ne se disputent qu'une ligne, pas
           la rangée entière : le texte du SMS, lui, n'a personne à sa droite.
           C'est ainsi que l'écran était composé avant la refonte, et il avait
-          raison — le composant avait généralisé un peu trop vite. */}
-      <span className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <span className="flex items-baseline gap-3">
-          <span className="min-w-0 flex-1 truncate text-body">{titre}</span>
+          raison — le composant avait généralisé un peu trop vite.
 
-          {/* Les montants portent `.tabnums` : une colonne de montants
-              s'aligne à la virgule. Le signe est écrit ici, jamais laissé au
-              hasard de l'appelant. */}
+          LE PLAFOND DE LA COLONNE DE TEXTE (`max-w-sm`, 384). En 1440 px, le
+          titre finissait à x=538 et le montant commençait à x=1130 : 592 px de
+          vide entre deux renseignements de la même ligne. Deux données qui se
+          lisent ensemble se posent côte à côte ; ce n'est pas la largeur de la
+          fenêtre qui décide de l'écart entre elles. */}
+      <span
+        className={`flex min-w-0 flex-1 flex-col overflow-hidden ${
+          colonneMontant ? "max-w-sm" : ""
+        }`}
+      >
+        <span className="flex items-baseline gap-3">
+          {/* LE MONTANT VIENT EN PREMIER — dans le DOM, donc dans l'ordre où un
+              lecteur d'écran annonce la rangée : « +150 000 FCFA, Orange ·
+              23:06, … ». Sur un écran d'argent, c'est la donnée ; le reste la
+              qualifie. `order-last` le remet à droite à l'œil, parce qu'une
+              colonne de chiffres se lit par son bord droit.
+
+              LA COLONNE EST FIXE (`w-36`, 144) ET CALÉE À DROITE
+              (`.colonne-montant`). Pas `tabnums` : DM Sans n'a pas la fonction,
+              la classe ne faisait rien. Une largeur fixe aligne les bords
+              droits ET les bords gauches ; sans elle, chaque montant redécoupe
+              la place laissée au titre, et deux rangées voisines n'ont pas la
+              même colonne de texte. 144 px tient le plus long montant que
+              l'application sache produire — « −1 248 500 FCFA », 135 px à
+              17 px. */}
           {montant && (
             <span
-              className={`shrink-0 text-body font-medium tabnums ${TEINTE_MONTANT[montant.sens]}`}
+              className={`order-last w-36 shrink-0 colonne-montant text-heading ${TEINTE_MONTANT[montant.sens]}`}
             >
               {SIGNE[montant.sens]}
               {montant.texte}
             </span>
           )}
+          {/* La place de la colonne est tenue même quand le robot n'a pas lu de
+              montant : sinon le titre de CETTE rangée-là serait le seul à
+              courir jusqu'au bout, et la colonne aurait une brèche. */}
+          {!montant && colonneMontant && (
+            <span aria-hidden className="order-last w-36 shrink-0" />
+          )}
+
+          {/* LE POIDS SUIT LA DONNÉE. « MTN » et « +150 000 FCFA » étaient tous
+              deux en 16 px : l'étiquette pesait autant que le chiffre. Sur une
+              rangée d'argent, l'opérateur et l'heure passent au second rang. */}
+          <span
+            className={`min-w-0 flex-1 truncate ${
+              colonneMontant ? "text-small text-ink-soft" : "text-body"
+            }`}
+          >
+            {titre}
+          </span>
           {valeur && <span className="shrink-0 text-small text-ink-soft">{valeur}</span>}
         </span>
 
+        {/* S'IL FAUT COUPER, ON COUPE LE SMS — jamais l'heure. L'heure est le
+            seul renseignement de la rangée qui ne soit pas répété dans le texte
+            d'en dessous ; le SMS, lui, s'ouvre en entier dans la fiche. C'est
+            pourquoi la troncature vit ici, et que le titre a la place. */}
         {sousTitre && (
           <span className={`${clampSousTitre} break-words text-small text-ink-soft`}>
             {sousTitre}
@@ -213,8 +309,12 @@ export function Rangee({
         )}
       </span>
 
+      {/* Le chevron reste au bord de la rangée : c'est l'affordance de la
+          rangée entière, pas celle du texte. `ml-auto` absorbe le vide que
+          laisse la colonne de texte plafonnée — sans lui, il flotterait au
+          milieu de la ligne. */}
       {chevron && (
-        <span aria-hidden className="shrink-0 text-ink-faint">
+        <span aria-hidden className="ml-auto shrink-0 text-ink-faint">
           <IconChevron size={20} />
         </span>
       )}
@@ -245,8 +345,6 @@ export function Rangee({
   } else {
     interieur = <div className={corps}>{dedans}</div>;
   }
-
-  const queueReservee = useContext(ContexteQueue);
 
   // La place de l'action est tenue même quand il n'y a pas d'action : sinon la
   // colonne des montants se décale d'une rangée à l'autre.
@@ -311,6 +409,37 @@ function ActionDeQueue({ icone, libelle, onClick, href, externe }: ActionRangee)
 const ContexteQueue = createContext(false);
 
 /**
+ * LA COLONNE DE MONTANTS — décidée par la liste, elle aussi.
+ *
+ * Une rangée ne peut pas savoir seule qu'elle appartient à un écran d'argent :
+ * dans une liste d'encaissements, le SMS que le robot n'a pas su lire arrive
+ * SANS montant. S'il décidait seul, il garderait son disque décoratif et sa
+ * pleine largeur, et son titre commencerait 44 px plus loin que celui de la
+ * rangée du dessus. La liste tranche donc pour toutes ses rangées.
+ */
+const ContexteMontant = createContext(false);
+
+/**
+ * Une liste est une liste d'argent dès qu'UNE de ses rangées DÉCLARE un
+ * montant — la prop suffit, même si sa valeur est `undefined` : c'est
+ * précisément le cas de la rangée dont le montant n'a pas pu être lu, et c'est
+ * celle qu'il ne faut surtout pas traiter à part.
+ *
+ * On le lit dans les enfants plutôt que de le demander à l'appelant : les trois
+ * écrans qui consomment cette liste n'ont rien à réapprendre, et la liste ne
+ * peut pas se retrouver en désaccord avec ce qu'elle contient.
+ */
+function porteUnMontant(children: ReactNode): boolean {
+  return Children.toArray(children).some(
+    (enfant) =>
+      isValidElement(enfant) &&
+      typeof enfant.props === "object" &&
+      enfant.props !== null &&
+      "montant" in enfant.props,
+  );
+}
+
+/**
  * LA LISTE — le conteneur des rangées.
  *
  * Elle ne pose qu'une chose : le séparateur. 1 px du filet décoratif, EN
@@ -325,19 +454,29 @@ export function Liste({
   children,
   className = "",
   queue = false,
+  monnaie,
   ...reste
 }: ComponentPropsWithoutRef<"ul"> & {
   /** Vrai dès qu'UNE SEULE rangée peut porter une action de queue. */
   queue?: boolean;
+  /**
+   * Liste d'argent : colonne de montants fixe, disque décoratif retiré, colonne
+   * de texte plafonnée. Se DEVINE des rangées ; ne s'écrit que pour forcer la
+   * mise en page d'une liste qui parle d'argent sans afficher de montant.
+   */
+  monnaie?: boolean;
 }) {
+  const argent = monnaie ?? porteUnMontant(children);
   return (
     <ContexteQueue.Provider value={queue}>
+    <ContexteMontant.Provider value={argent}>
     <ul
       {...reste}
       className={`[&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-line [&>*+*]:before:content-[''] ${className}`}
     >
       {children}
     </ul>
+    </ContexteMontant.Provider>
     </ContexteQueue.Provider>
   );
 }

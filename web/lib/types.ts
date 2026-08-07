@@ -113,6 +113,42 @@ export function nombre(n: number, langue: Langue): string {
     : n.toLocaleString("fr-FR").replaceAll(FINE_INSECABLE, INSECABLE);
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * LA FORCE DU RÉSEAU, EN MOTS
+ *
+ * Le boîtier remonte ce que le modem répond à `AT+CSQ` : un entier de 0 à 31,
+ * et 99 quand il ne sait pas (voir `totem/modem.py`). Affiché nu — « 4/31 »,
+ * en gris, sans étiquette —, ce nombre ne dit rien à personne. Or 4, c'est
+ * −105 dBm : un réseau au bord du silence, sur une puce par où passe l'argent
+ * du commerce. C'est une information vitale, et elle était illisible.
+ *
+ * L'ÉCHELLE. 3GPP TS 27.007 § 8.5 fixe la correspondance de `AT+CSQ` : 0 vaut
+ * −113 dBm ou moins, 1 vaut −111 dBm, 2 à 30 couvrent −109 à −53 dBm par pas
+ * de 2 dBm, 31 vaut −51 dBm ou plus, et 99 signifie « inconnu ».
+ * Les paliers de qualité sont ceux du tableau publié pour cette même commande
+ * par M2MSupport — https://m2msupport.net/m2msupport/atcsq-signal-quality/ :
+ * 0–1 non détectable, 2–9 « marginal » (−109 à −95 dBm), 10–14 « OK » (−93 à
+ * −85), 15–19 « good » (−83 à −75), 20–31 « excellent » (−73 à −51).
+ *
+ * ON N'EN GARDE QUE TROIS CRANS. Cinq mots pour un chiffre qu'on ne peut pas
+ * régler ne servent à rien : ce qui change, c'est ce qu'on fait derrière —
+ * déplacer l'antenne, ou ne rien faire. « marginal » devient FAIBLE, « OK »
+ * devient MOYEN, « good » et « excellent » deviennent BON.
+ *
+ * La fonction ne rend PAS de texte : les mots vivent dans `lib/textes`, et
+ * l'application est bilingue.
+ * ──────────────────────────────────────────────────────────────────────────── */
+export type ForceReseau = "faible" | "moyen" | "bon";
+
+export function forceReseau(signal: number | null): ForceReseau | null {
+  // Hors de 0–31, on ne sait pas : 99 est le « inconnu » de la norme, et le
+  // robot le remonte tel quel quand le modem ne répond pas.
+  if (signal == null || signal < 0 || signal > 31) return null;
+  if (signal < 10) return "faible";
+  if (signal < 15) return "moyen";
+  return "bon";
+}
+
 /** Le jour d'un instant, vu de Douala, sous forme de clé « 2026-08-05 ». */
 export function jourDouala(d: Date): string {
   return new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" }).format(d);

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codeUssd } from "@/lib/codes";
-import { fcfa, type Sim } from "@/lib/types";
+import { fcfa, forceReseau, type Sim } from "@/lib/types";
 import { textesAccueil } from "@/lib/textes/accueil";
+import { textesCharpente } from "@/lib/textes/charpente";
 import { useLangue } from "@/app/langue";
 import { IconArrowDown, IconArrowUp, IconPhone, IconRefresh, IconWallet } from "./icons";
 import { OperationPopup, type Operation } from "./operation";
@@ -25,6 +26,10 @@ export function AccueilGuichet({
   const router = useRouter();
   const langue = useLangue();
   const t = textesAccueil[langue];
+  // Le chiffre brut de `AT+CSQ` — « 4/31 », en gris, sans étiquette — ne se
+  // lisait pas. Il devient un mot : voir `forceReseau()` dans lib/types.ts.
+  const force = forceReseau(carte.signal);
+  const motReseau = force && textesCharpente[langue].reseau[force];
   const [operation, setOperation] = useState<Operation | null>(null);
   const op = carte.operateur;
 
@@ -78,8 +83,10 @@ export function AccueilGuichet({
           <span className="text-caption uppercase tracking-wider text-white/60">
             {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
           </span>
-          {carte.signal != null && (
-            <span className="text-caption tabnums text-white/50">{carte.signal}/31</span>
+          {motReseau && (
+            // 50 % d'opacité pour une information vitale : c'était sous le
+            // seuil de WCAG 1.4.3. Le mot passe au 70 % du reste de la carte.
+            <span className="text-caption text-white/70">{motReseau}</span>
           )}
         </div>
         <div className="mt-4 flex items-center gap-3">

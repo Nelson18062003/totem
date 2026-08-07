@@ -7,9 +7,9 @@ const en = {
   // --- La page Opérations (serveur) ------------------------------------------
   titre: "Operations",
   sansCode: "No USSD codes to dial.",
-  aucuneCarte: "No card in the terminal",
+  aucuneCarte: "No SIM in the terminal",
   aucuneCarteDetail:
-    "Operations will open as soon as a SIM is in place — the card is what holds the counter.",
+    "Slide a SIM into the terminal: it is the SIM that holds the counter, and operations open by themselves once it is in place.",
 
   // --- Le guichet -------------------------------------------------------------
   sousTitre: (op: string) => `The real ${op} counter, right here on the platform.`,
@@ -37,17 +37,17 @@ const en = {
     `No ${op} codes have been collected in the field yet — a digit that moves ` +
     "money is not something to guess. Add them in Settings.",
   basDePage:
-    "Every action opens a session on the real card, in Douala. The network " +
+    "Every action opens an exchange on the real SIM, in Douala. The network " +
     "asks its questions, the platform answers with your details, and the " +
     "secret code is entered on its own keypad — never stored anywhere.",
 
   // --- Le pop-up d'une opération ----------------------------------------------
   preparation: "Getting ready",
-  sessionEnCours: "Session in progress",
-  session: "Session",
+  sessionEnCours: "Exchange in progress",
+  session: "Exchange",
   fermer: "Close",
   noteSaisie:
-    "The session opens on the card, in Douala. The platform answers the " +
+    "The exchange opens on the SIM, in Douala. The platform answers the " +
     "menu's questions with these details; the secret code then goes in on " +
     "its own keypad.",
   annuler: "Cancel",
@@ -55,7 +55,7 @@ const en = {
   terminalCompose: "the terminal is dialling…",
   reponseVide: "(empty reply)",
   echec: "Failed.",
-  demandePasPartie: "the request could not be sent",
+  demandePasPartie: "the request could not be sent — try again",
   terminalMuet: "the terminal did not answer — is it switched on, and up to date?",
   accroc: "small hitch — please try again",
   votreReponse: "Your reply",
@@ -64,7 +64,7 @@ const en = {
     "The operator's confirmation will arrive with the incoming SMS, along " +
     "with its receipt when there is one.",
   termine: "Done",
-  annulerSession: "Cancel the session",
+  annulerSession: "Hang up",
 
   // --- Le pavé du code secret ---------------------------------------------------
   paveTitre: "Mobile Money secret code",
@@ -73,16 +73,16 @@ const en = {
   effacerDernier: "Erase the last digit",
   valider: "Confirm",
   paveNote:
-    "The code goes to the terminal, which dials it on the card, then it " +
+    "The code goes to the terminal, which dials it on the SIM, then it " +
     "vanishes. It is stored nowhere — the log only ever keeps “••••”.",
 };
 
 const fr: typeof en = {
   titre: "Opérations",
   sansCode: "Sans composer de code USSD.",
-  aucuneCarte: "Aucune carte dans le terminal",
+  aucuneCarte: "Aucune puce dans le terminal",
   aucuneCarteDetail:
-    "Les opérations s'ouvriront dès qu'une SIM sera en place : c'est elle qui porte le guichet.",
+    "Glissez une puce dans le terminal : c’est elle qui porte le guichet, et les opérations s’ouvriront d’elles-mêmes dès qu’elle sera en place.",
 
   sousTitre: (op) => `Le vrai guichet ${op}, ouvert depuis la plateforme.`,
   depot: "Dépôt",
@@ -109,16 +109,16 @@ const fr: typeof en = {
     `Aucun code ${op} n’a encore été relevé sur le terrain — on ne devine ` +
     "pas un chiffre qui déplace de l’argent. Ajoutez-les dans les Réglages.",
   basDePage:
-    "Chaque geste ouvre la session sur la vraie carte, à Douala. Le réseau " +
+    "Chaque geste ouvre l’échange sur la vraie puce, à Douala. Le réseau " +
     "pose ses questions, la plateforme y répond avec vos informations, et le " +
     "code secret se compose sur son pavé — jamais enregistré nulle part.",
 
   preparation: "Préparation",
-  sessionEnCours: "Session en cours",
-  session: "Session",
+  sessionEnCours: "Échange en cours",
+  session: "Échange",
   fermer: "Fermer",
   noteSaisie:
-    "La session s’ouvre sur la carte, à Douala. La plateforme répond aux " +
+    "L’échange s’ouvre sur la puce, à Douala. La plateforme répond aux " +
     "questions du menu avec ces informations ; le code secret se compose " +
     "ensuite sur son pavé.",
   annuler: "Annuler",
@@ -126,7 +126,7 @@ const fr: typeof en = {
   terminalCompose: "le terminal compose…",
   reponseVide: "(réponse vide)",
   echec: "Échec.",
-  demandePasPartie: "la demande n’a pas pu partir",
+  demandePasPartie: "la demande n’a pas pu partir — réessayez",
   terminalMuet: "le terminal n’a pas répondu — est-il allumé, et à jour ?",
   accroc: "petit accroc — réessayez",
   votreReponse: "Votre réponse",
@@ -135,7 +135,7 @@ const fr: typeof en = {
     "La confirmation de l’opérateur arrivera dans les SMS reçus, avec son " +
     "reçu quand il y a lieu.",
   termine: "Terminé",
-  annulerSession: "Annuler la session",
+  annulerSession: "Raccrocher",
 
   paveTitre: "Code secret Mobile Money",
   chiffresComposes: (n) => (n > 1 ? `${n} chiffres composés` : `${n} chiffre composé`),
@@ -143,7 +143,7 @@ const fr: typeof en = {
   effacerDernier: "Effacer le dernier chiffre",
   valider: "Valider",
   paveNote:
-    "Le code part au terminal qui le compose sur la carte, puis disparaît. " +
+    "Le code part au terminal qui le compose sur la puce, puis disparaît. " +
     "Nulle part il n’est enregistré — le journal n’en garde que « •••• ».",
 };
 

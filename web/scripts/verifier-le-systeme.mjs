@@ -31,6 +31,9 @@ const CRANS = new Set(["0", "px", "1", "2", "3", "4", "6", "8", "12", "16"]);
 const NOMS = new RegExp(
   "^(" +
     [
+      // v2 — la boîte visuelle est plus petite que la cible : ces jetons
+      // dessinent, `cible` vise.
+      "visuel", "visuel-sm", "visuel-lg", "cible", "gouttiere-cible",
       "controle", "controle-fort", "controle-compact",
       "rangee", "rangee-2", "rangee-3", "zone-texte",
       "icone", "icone-sm", "icone-lg",

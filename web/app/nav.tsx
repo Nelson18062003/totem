@@ -31,18 +31,63 @@ const liensSecondaires = [
 /**
  * La barre mobile s'efface pendant qu'on descend dans la page — le contenu
  * reprend toute la hauteur — et revient dès qu'on remonte, ou en haut de page.
+ *
+ * Le seuil de départ était de 8 px, et il était compté d'un événement de
+ * défilement à l'autre : autant dire qu'il tombait au premier geste. Sur les
+ * réglages, qui font 3,12 écrans, la barre était donc invisible sur 96 % de la
+ * page — alors qu'une navigation masquée descend à 57 % d'usage contre 86 %
+ * quand elle reste là. Une barre qui se cache avant même qu'on ait fini de
+ * lire la première ligne n'est plus une navigation : c'est une surprise.
+ *
+ * Trois corrections :
+ *   — le seuil passe à 80 px pour s'effacer ;
+ *   — il se compte depuis le PIVOT, c'est-à-dire depuis l'endroit où le doigt
+ *     a changé de sens, et non depuis l'événement précédent — sinon 80 px ne
+ *     seraient jamais franchis d'un seul coup et la barre ne partirait jamais ;
+ *   — le retour est plus facile que le départ (40 px) : on rend toujours une
+ *     navigation plus vite qu'on ne la retire.
+ *
+ * Et dans les 80 premiers pixels de la page, elle est là, sans condition.
  */
+const SEUIL_EFFACEMENT = 80;
+const SEUIL_RETOUR = 40;
+
 function useBarreEffacable() {
   const [cachee, setCachee] = useState(false);
 
   useEffect(() => {
     let dernierY = window.scrollY;
+    let pivot = dernierY;
+    let sens = 0;
+
     const surDefilement = () => {
       const y = window.scrollY;
-      if (y < 24) setCachee(false);
-      else if (Math.abs(y - dernierY) > 8) setCachee(y > dernierY);
+
+      // Haut de page : la barre est là, on ne discute pas.
+      if (y <= SEUIL_EFFACEMENT) {
+        setCachee(false);
+        dernierY = pivot = y;
+        sens = 0;
+        return;
+      }
+
+      const pas = y - dernierY;
+      if (pas === 0) return;
+      const nouveauSens = pas > 0 ? 1 : -1;
+      // Le doigt a changé de sens : on recompte à partir d'ici.
+      if (nouveauSens !== sens) {
+        sens = nouveauSens;
+        pivot = dernierY;
+      }
+      const parcouru = Math.abs(y - pivot);
+      const seuil = nouveauSens > 0 ? SEUIL_EFFACEMENT : SEUIL_RETOUR;
+      if (parcouru > seuil) {
+        setCachee(nouveauSens > 0);
+        pivot = y;
+      }
       dernierY = y;
     };
+
     window.addEventListener("scroll", surDefilement, { passive: true });
     return () => window.removeEventListener("scroll", surDefilement);
   }, []);

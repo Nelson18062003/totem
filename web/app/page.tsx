@@ -81,12 +81,10 @@ export default async function Accueil() {
                   <dt className="text-small text-ink-soft">{t.emplacement}</dt>
                   <dd className="text-small font-medium">{terminal.nom}</dd>
                 </div>
-                {terminal.version && (
-                  <div className="flex items-center justify-between py-3">
-                    <dt className="text-small text-ink-soft">{t.version}</dt>
-                    <dd className="text-small font-medium tabnums">{terminal.version}</dd>
-                  </div>
-                )}
+                {/* « Version 1.8.2 » ne répond à aucune question que se pose
+                    le propriétaire d'un commerce, et l'accueil est l'écran
+                    qu'il regarde le plus. Le numéro reste dans les réglages,
+                    sous une étiquette qui dit de quoi il est le numéro. */}
                 {terminal.sante && (
                   <div className="py-3">
                     <dt className="text-small text-ink-soft">{t.sante}</dt>

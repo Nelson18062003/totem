@@ -10,20 +10,22 @@ const en = {
   enLigne: "Online",
   muet: "Silent",
   emplacement: "Location",
-  version: "Version",
-  sante: "Device health",
+  // « Device health » nommait le terminal une seconde fois, et d'un autre mot,
+  // à l'intérieur d'une carte déjà intitulée « Terminal ». Le mot seul suffit.
+  // (La ligne « Version » a été retirée : voir le rendu de ce chantier.)
+  sante: "Health",
   aucunTerminal: "No terminal has checked in yet.",
 
-  // La carte et son solde
-  aucuneCarte: "No card in the terminal",
+  // La puce et son solde
+  aucuneCarte: "No SIM in the terminal",
   aucuneCarteDetail:
-    "As soon as the terminal sees a SIM, its balance and the counter will appear here.",
+    "Slide a SIM into the terminal: its balance and the counter will appear here on their own.",
   actualiserAria: "Refresh the balance: ask the network",
   interrogerReseau: "Ask the network",
   aucunSoldeConnu: "No balance yet: press the arrow to ask the network.",
   soldeMaj: (h: string) => `From the network query at ${h}`,
   soldeSansHeure: "Last known balance.",
-  carteAnonyme: (fin: string) => `card ${fin}`,
+  carteAnonyme: (fin: string) => `SIM ${fin}`,
 
   // Les gestes du guichet
   depot: "Deposit",
@@ -46,7 +48,7 @@ const en = {
   derniersSms: "Latest SMS",
   toutVoir: "See all",
   aucunSms:
-    "No SMS so far. If the card should be receiving some, check the " +
+    "No SMS so far. If the SIM should be receiving some, check the " +
     "terminal — a long silence is not normal.",
 };
 
@@ -58,19 +60,18 @@ const fr: typeof en = {
   enLigne: "En ligne",
   muet: "Muet",
   emplacement: "Emplacement",
-  version: "Version",
-  sante: "Santé du boîtier",
+  sante: "Santé",
   aucunTerminal: "Aucun terminal ne s’est encore annoncé.",
 
-  aucuneCarte: "Aucune carte dans le terminal",
+  aucuneCarte: "Aucune puce dans le terminal",
   aucuneCarteDetail:
-    "Dès qu’une SIM sera vue par le terminal, son solde et le guichet apparaîtront ici.",
+    "Glissez une puce dans le terminal : son solde et le guichet apparaîtront ici tout seuls.",
   actualiserAria: "Actualiser le solde : interroger le réseau",
   interrogerReseau: "Interroger le réseau",
   aucunSoldeConnu: "Aucun solde connu : appuyez sur la flèche pour interroger le réseau.",
   soldeMaj: (h) => `D’après l’interrogation de ${h}`,
   soldeSansHeure: "Dernier solde connu.",
-  carteAnonyme: (fin) => `carte ${fin}`,
+  carteAnonyme: (fin) => `puce ${fin}`,
 
   depot: "Dépôt",
   depotTitre: "Dépôt d’argent",
@@ -91,7 +92,7 @@ const fr: typeof en = {
   derniersSms: "Derniers SMS",
   toutVoir: "Tout voir",
   aucunSms:
-    "Aucun SMS reçu pour l’instant. Si la carte devrait en recevoir, " +
+    "Aucun SMS reçu pour l’instant. Si la puce devrait en recevoir, " +
     "vérifiez le terminal — un silence prolongé n’est pas normal.",
 };
 

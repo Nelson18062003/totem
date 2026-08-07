@@ -1,6 +1,8 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesReglages } from "@/lib/textes/reglages";
+import { textesCharpente } from "@/lib/textes/charpente";
+import { forceReseau } from "@/lib/types";
 import { IconWallet } from "../icons";
 import { Bouton } from "../ui/bouton";
 import { Carte, EnTeteSection } from "../ui/carte";
@@ -20,6 +22,12 @@ export const dynamic = "force-dynamic";
 export default async function Reglages() {
   const langue = await langueServeur();
   const t = textesReglages[langue];
+  const tc = textesCharpente[langue];
+  // « 4/31 » ne se lit pas : le chiffre de `AT+CSQ` devient un mot.
+  const motReseau = (signal: number | null) => {
+    const force = forceReseau(signal);
+    return force ? tc.reseau[force] : "—";
+  };
   const { terminal, sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
   const carte = sims.find((s) => s.enPlace);
 
@@ -90,7 +98,7 @@ export default async function Reglages() {
               }
             />
             {sims.length === 0 ? (
-              <Vide titre={t.aucuneCarte} />
+              <Vide titre={t.aucuneCarte} detail={t.aucuneCarteDetail} />
             ) : (
               <div className="flex flex-col gap-2">
                 {sims.map((s) => (
@@ -105,11 +113,7 @@ export default async function Reglages() {
                             ? `${s.libelle} · ${t.carte(s.iccid.slice(-8))}`
                             : t.retireeJournal(s.derniereVue)
                         }
-                        valeur={
-                          <span className="tabnums">
-                            {s.enPlace && s.signal != null ? `${s.signal}/31` : "—"}
-                          </span>
-                        }
+                        valeur={s.enPlace ? motReseau(s.signal) : "—"}
                       />
                     </Liste>
                     {/* Le numéro se règle d'ici : au repos un bouton de 44, en
@@ -136,9 +140,13 @@ export default async function Reglages() {
                 ))}
               </div>
             )}
-            <p className="mt-2 max-w-lecture text-caption text-ink-faint">
-              {t.noteIccid}
-            </p>
+            {/* Le paragraphe « ICCID » de 48 mots vivait ici. Il n'expliquait
+                qu'une chose : la différence entre « carte », « SIM », « puce »
+                et « compte » — quatre mots que l'interface employait pour le
+                même objet. L'écran dit maintenant « puce » partout, et le
+                paragraphe n'a plus rien à expliquer. Ce qu'il portait d'utile
+                — le journal d'une puce retirée lui revient quand on la remet —
+                est écrit là où on le lit : `textesCartes.retireesDetail`. */}
             <p className="mt-2 max-w-lecture text-caption text-ink-faint">
               {t.noteNumeroAvant}
               <strong className="font-medium text-ink-soft">{t.noteNumeroMot}</strong>

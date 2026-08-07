@@ -5,7 +5,10 @@
 const en = {
   // Le menu
   accueil: "Home",
-  comptes: "Accounts",
+  // « SIM » et non « account », « card » ou « chip » : un seul mot pour un
+  // seul objet, celui qu'on tient dans la main et qu'on glisse dans le
+  // boîtier. Voir le commentaire en tête de `textes/cartes.ts`.
+  comptes: "SIMs",
   smsRecus: "Incoming SMS",
   analyse: "Analysis",
   operations: "Operations",
@@ -19,6 +22,17 @@ const en = {
   terminalActif: "Terminal active",
   terminalMuet: "Terminal silent",
   aucunTerminal: "No terminal connected",
+
+  // La force du réseau, en mots. Le chiffre brut de `AT+CSQ` — « 4/31 » — ne
+  // se lit pas ; les trois crans viennent de `forceReseau()` (lib/types.ts),
+  // qui porte l'échelle et sa source. Ces mots servent trois écrans : la carte
+  // du solde, la liste des puces et les réglages. Ils vivent donc ici, avec le
+  // reste de ce qui dit l'état du terminal.
+  reseau: {
+    faible: "Weak signal",
+    moyen: "Fair signal",
+    bon: "Good signal",
+  },
 
   // Le bandeau « Non relié » — le texte encadre les deux noms de variables,
   // qui restent tels quels dans les deux langues.
@@ -36,7 +50,7 @@ const en = {
 
 const fr: typeof en = {
   accueil: "Accueil",
-  comptes: "Comptes",
+  comptes: "Puces",
   smsRecus: "SMS reçus",
   analyse: "Analyse",
   operations: "Opérations",
@@ -49,6 +63,12 @@ const fr: typeof en = {
   terminalActif: "Terminal actif",
   terminalMuet: "Terminal muet",
   aucunTerminal: "Aucun terminal relié",
+
+  reseau: {
+    faible: "Réseau faible",
+    moyen: "Réseau moyen",
+    bon: "Bon réseau",
+  },
 
   nonRelie: "Non relié",
   nonRelieAvant:

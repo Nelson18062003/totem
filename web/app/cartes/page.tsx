@@ -1,7 +1,8 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesCartes } from "@/lib/textes/cartes";
-import { fcfa } from "@/lib/types";
+import { textesCharpente } from "@/lib/textes/charpente";
+import { fcfa, forceReseau } from "@/lib/types";
 import { IconArrowDown, IconArrowUp, IconList, IconLock, IconWallet } from "../icons";
 import { Bouton } from "../ui/bouton";
 import { Carte, EnTeteSection } from "../ui/carte";
@@ -10,9 +11,20 @@ import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
 
+// Le point qui accompagne le mot. Il ne porte rien tout seul, mais un point
+// vert à côté de « Réseau faible » serait un mensonge.
+const TON_RESEAU = { faible: "bg-negative", moyen: "bg-alert", bon: "bg-positive" } as const;
+
 export default async function Comptes() {
   const langue = await langueServeur();
   const t = textesCartes[langue];
+  const tc = textesCharpente[langue];
+  // « 23/31 » ne se lit pas : le chiffre de `AT+CSQ` devient un mot, et le
+  // point suit ce mot au lieu d'être vert quoi qu'il arrive.
+  const reseau = (signal: number | null) => {
+    const force = forceReseau(signal);
+    return force && { mot: tc.reseau[force], point: TON_RESEAU[force] };
+  };
   const { sims, paiements } = await chargerDonnees(langue);
   const enPlace = sims.filter((s) => s.enPlace);
   const retirees = sims.filter((s) => !s.enPlace);
@@ -62,15 +74,16 @@ export default async function Comptes() {
                     {s.itinerance && ` · ${t.itinerance(s.reseau)}`}
                   </p>
                 </div>
-                {/* La force du signal : une puce d'information, `h-puce` (28),
+                {/* La force du réseau : une puce d'information, `h-puce` (28),
                     qui déclare sa hauteur au lieu de l'obtenir par addition.
-                    Le point ne porte rien tout seul — c'est « 23/31 » qui le
-                    dit —, donc il reste décoratif et se tait. */}
-                {s.signal != null && (
-                  <span className={`inline-flex h-puce shrink-0 items-center gap-2 rounded-full px-3 text-caption tabnums ${
+                    Le point reste décoratif et se tait — c'est le MOT qui
+                    porte l'information (WCAG 1.4.1). */}
+                {reseau(s.signal) && (
+                  <span className={`inline-flex h-puce shrink-0 items-center gap-2 rounded-full px-3 text-caption ${
                     i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
                   }`}>
-                    <span aria-hidden className="size-2 rounded-full bg-positive" /> {s.signal}/31
+                    <span aria-hidden className={`size-2 rounded-full ${reseau(s.signal)!.point}`} />
+                    {reseau(s.signal)!.mot}
                   </span>
                 )}
               </div>

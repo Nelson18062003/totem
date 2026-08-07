@@ -8,7 +8,7 @@ const en = {
   // La boîte de réception
   titre: "Messages received",
   sousTitre:
-    "Everything the cards receive, exactly as it arrived. The original " +
+    "Everything the SIMs receive, exactly as it arrived. The original " +
     "message is what counts — and when a receipt exists, it is one tap away.",
   enCoursDeTransmission: (n: number) =>
     n === 1
@@ -25,7 +25,7 @@ const en = {
   toutAfficher: "Show everything",
   aucunSmsTitre: "No messages yet",
   aucunSmsDetail:
-    "Every message a card receives will appear here. If a card should be " +
+    "Every message a SIM receives will appear here. If a SIM should be " +
     "getting messages and nothing arrives, check the terminal: a long " +
     "silence is not normal.",
   nonLu: "unread",
@@ -83,7 +83,7 @@ const en = {
 const fr: typeof en = {
   titre: "SMS reçus",
   sousTitre:
-    "Tout ce que les cartes reçoivent, tel quel. C’est le message d’origine " +
+    "Tout ce que les puces reçoivent, tel quel. C’est le message d’origine " +
     "qui fait foi — et son reçu se télécharge quand il existe.",
   enCoursDeTransmission: (n) =>
     n === 1
@@ -100,7 +100,7 @@ const fr: typeof en = {
   toutAfficher: "Tout afficher",
   aucunSmsTitre: "Aucun SMS pour l’instant",
   aucunSmsDetail:
-    "Chaque message reçu par une carte apparaîtra ici. Si la carte devrait " +
+    "Chaque message reçu par une puce apparaîtra ici. Si la puce devrait " +
     "en recevoir et que rien n’arrive, vérifiez le terminal : un silence " +
     "prolongé n’est pas normal.",
   nonLu: "non lu",

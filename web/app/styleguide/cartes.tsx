@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconBank,
-  IconDoc,
-  IconPhone,
-  IconWallet,
-} from "@/app/icons";
+import { IconBank, IconDoc, IconPhone, IconWallet } from "@/app/icons";
 import { Carte, EnTeteSection } from "@/app/ui/carte";
 import { Liste, Rangee } from "@/app/ui/rangee";
 
@@ -21,11 +14,24 @@ const SMS_LONG =
   + "Merci d'utiliser notre service.";
 
 /**
+ * L'action de queue, la même partout : le reçu PDF. Elle n'existe que pour les
+ * paiements qui en ont un — c'est justement ce qui décalait la colonne des
+ * montants d'une rangée à l'autre avant que la liste ne réserve sa place.
+ */
+const RECU = {
+  icone: <IconDoc size={20} />,
+  libelle: "Télécharger le reçu",
+  href: "/api/recu/exemple",
+  externe: true,
+};
+
+/**
  * LA GALERIE DES CARTES ET DES LISTES — la preuve, pas la démonstration.
  *
  * Chaque bloc montre une chose qui se vérifie à la règle : les trois hauteurs
- * de rangée, le plafond qui tient sur un texte trop long, la pastille de 32
- * qui ne se confond pas avec le contrôle de 44, le séparateur en retrait de 16.
+ * de rangée, le plafond qui tient sur un texte trop long, le séparateur en
+ * retrait de 16 — et la colonne de montants, dont les bords droits se mesurent
+ * à la règle plutôt qu'ils ne se plaident.
  */
 export function GalerieCartes() {
   return (
@@ -108,6 +114,102 @@ export function GalerieCartes() {
         </div>
       </section>
 
+      {/* ── LA COLONNE DE MONTANTS ───────────────────────────────────────── */}
+      <section>
+        <EnTeteSection
+          titre="La colonne de montants"
+          detail="Six montants de 5 000 à 1 248 500, avec et sans action de queue. Les bords droits sont au même pixel — et ils ne le doivent à aucune police."
+        />
+        <Carte bordABord>
+          <Liste queue>
+            <Rangee
+              lignes={2}
+              titre="Orange · 23:06"
+              sousTitre="Vous avez recu 5 000 FCFA de PAUL BIYA (699 00 11 22)."
+              montant={{ texte: "5 000 FCFA", sens: "credit" }}
+              onClick={() => {}}
+              action={RECU}
+            />
+            <Rangee
+              lignes={2}
+              titre="MTN · 21:47"
+              sousTitre="Retrait de 12 500 FCFA. Nouveau solde: 135 800 FCFA."
+              montant={{ texte: "12 500 FCFA", sens: "debit" }}
+              onClick={() => {}}
+            />
+            <Rangee
+              lignes={2}
+              titre="Orange · 19:12"
+              sousTitre="Vous avez recu 150 000 FCFA de MARIE ATANGANA."
+              montant={{ texte: "150 000 FCFA", sens: "credit" }}
+              onClick={() => {}}
+              action={RECU}
+            />
+            <Rangee
+              lignes={2}
+              titre="MTN · 14:32"
+              sousTitre="Vous avez recu 1 248 500 FCFA de COOPERATIVE DU NKAM."
+              montant={{ texte: "1 248 500 FCFA", sens: "credit" }}
+              onClick={() => {}}
+            />
+            <Rangee
+              lignes={2}
+              titre="Orange · 11:05"
+              sousTitre="Paiement de 1 248 500 FCFA au fournisseur SODECOTON."
+              montant={{ texte: "1 248 500 FCFA", sens: "debit" }}
+              onClick={() => {}}
+              action={RECU}
+            />
+            <Rangee
+              lignes={2}
+              titre="MTN · 08:24"
+              sousTitre="Solde du compte marchand: 148 300 FCFA."
+              montant={{ texte: "148 300 FCFA", sens: "neutre" }}
+              onClick={() => {}}
+            />
+            {/* Le robot n'a pas su lire de montant — et il ne l'invente pas.
+                La colonne garde sa place : cette rangée-là ne repousse pas son
+                titre de 144 px vers la droite, et la colonne n'a pas de brèche. */}
+            <Rangee
+              lignes={2}
+              titre="Orange · 07:51"
+              sousTitre="Votre forfait internet a ete active. Bonne navigation."
+              montant={undefined}
+              onClick={() => {}}
+            />
+          </Liste>
+        </Carte>
+        <p className="mt-2 max-w-lecture text-small text-ink-faint">
+          DM Sans n&apos;a aucune fonction <code>tnum</code> : sa table GSUB
+          contient <code>calt ccmp dnom frac kern liga locl mark mkmk numr</code>.
+          <code> font-variant-numeric: tabular-nums</code> — donc la classe{" "}
+          <code>.tabnums</code> que portaient tous les montants — n&apos;a jamais
+          rien fait, et les chasses vont de 312 pour le « 1 » à 684 pour le
+          « 0 » : 5,95 px d&apos;écart à 16 px. L&apos;alignement vient de la mise
+          en page : colonne de largeur fixe, texte calé à droite. Le signe en fait
+          partie, et c&apos;est U+2212 (chasse 550, la même que le plus), jamais
+          le trait d&apos;union U+002D (541).
+        </p>
+      </section>
+
+      {/* ── Le disque décoratif, et ce qu'il en reste ────────────────────── */}
+      <section>
+        <EnTeteSection
+          titre="Le disque décoratif"
+          detail="Il survit sur une rangée qui ne porte pas d'argent. Sur une rangée de paiement, il prenait les 44 px qui manquaient au titre : il est retiré."
+        />
+        <Carte bordABord>
+          <Liste>
+            <Rangee lignes={2} pastille="N" titre="Nelson" sousTitre="Propriétaire" />
+            <Rangee
+              icone={<IconPhone size={24} />}
+              titre="Numéro du terminal"
+              valeur="+237 6 99 00 11 22"
+            />
+          </Liste>
+        </Carte>
+      </section>
+
       {/* ── Le plafond de hauteur ────────────────────────────────────────── */}
       <section>
         <EnTeteSection
@@ -117,7 +219,6 @@ export function GalerieCartes() {
         <Liste>
           <Rangee
             lignes={3}
-            pastille={<IconArrowDown size={16} />}
             titre="MTN · 14:32"
             sousTitre={SMS_LONG}
             montant={{ texte: "12 500 FCFA", sens: "credit" }}
@@ -142,21 +243,14 @@ export function GalerieCartes() {
           <Liste>
             <Rangee
               lignes={2}
-              pastille={<IconArrowDown size={16} />}
               titre="JEAN NKOMO"
               sousTitre="MTN · 14:32"
               montant={{ texte: "12 500 FCFA", sens: "credit" }}
-              action={{
-                icone: <IconDoc size={20} />,
-                libelle: "Télécharger le reçu",
-                href: "/api/recu/exemple",
-                externe: true,
-              }}
+              action={RECU}
               onClick={() => {}}
             />
             <Rangee
               lignes={2}
-              pastille={<IconArrowUp size={16} />}
               titre="MARIE ATANGANA"
               sousTitre="Orange · 13:04"
               montant={{ texte: "3 000 FCFA", sens: "debit" }}
@@ -165,7 +259,6 @@ export function GalerieCartes() {
             />
             <Rangee
               lignes={2}
-              pastille={<IconPhone size={16} />}
               titre="Rechargement de la carte"
               sousTitre="MTN · 11:47"
               montant={{ texte: "5 000 FCFA", sens: "neutre" }}

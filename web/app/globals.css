@@ -544,3 +544,184 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .entree, .voile, .surgit { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * v2 — LA DENSITÉ, ET LE TROU OÙ L'ON POSE LE COMPOSANT
+ *
+ * Deux problèmes distincts, deux mécanismes, et il ne faut pas les confondre.
+ *
+ *   1. LA DENSITÉ répond à « combien de respiration cette ZONE mérite-t-elle ».
+ *      C'est une décision de mise en page, prise par celui qui pose la zone.
+ *      Elle se déclare par un attribut hérité, `data-densite`, sur n'importe
+ *      quel nœud — jamais sur l'application, jamais sur l'appareil.
+ *
+ *   2. LA REQUÊTE DE CONTENEUR répond à « quelle largeur ai-je réellement ».
+ *      Ça, personne ne le décide : ça se mesure. Une media query mesure la
+ *      FENÊTRE, jamais le trou où l'on pose le composant — c'est pourquoi, en
+ *      834 px, les réglages tiennent dans une colonne de 530 px avec 304 px de
+ *      marge morte, et pourquoi c'est la pire des trois largeurs.
+ *
+ * DEUX DENSITÉS, JAMAIS CINQ. `confort` est le défaut et n'a pas besoin d'être
+ * écrit ; `dense` recule d'un cran de 4 px. Material a payé cher le cran par
+ * composant : cinq densités font cinq interfaces qu'il faut toutes tenir.
+ *
+ * CE QUI RECULE : le rembourrage vertical, les gouttières, la hauteur de
+ * rangée, l'interligne.
+ * CE QUI NE RECULE JAMAIS : la taille du corps de texte (16 px reste 16 px),
+ * les rayons, et la CIBLE DE 44. Un contrôle peut voir sa boîte visuelle
+ * reculer — jamais sa zone d'appui. Ce n'est pas une promesse écrite en
+ * commentaire : les hauteurs de rangée passent par `max(--spacing-cible, …)`,
+ * et le plancher de 44 est donc structurel.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Les deux jeux, nommés une fois. L'exclusion, plus bas, n'a ainsi aucune
+   valeur à recopier — elle ne peut pas dériver du jeu de confort. */
+:root {
+  --confort-respiration: 1rem;      /* 16 — rembourrage vertical d'une zone */
+  --confort-gouttiere: 1rem;        /* 16 — écart entre deux blocs voisins */
+  --confort-rangee: 3.5rem;         /* 56 — rangée d'une ligne */
+  --confort-rangee-2: 4.5rem;       /* 72 — rangée de deux lignes */
+  --confort-rangee-3: 5.5rem;       /* 88 — rangée de trois lignes */
+  --confort-interligne: 1.5rem;     /* 24 — l'interligne du corps */
+
+  /* Un cran de 4 px en moins, partout. La gouttière tombe de 16 à 12 : c'est
+     exactement `--spacing-gouttiere-cible`, le minimum entre deux cibles
+     voisines. La densité s'arrête donc pile là où la norme commence. */
+  --dense-respiration: 0.75rem;     /* 12 */
+  --dense-gouttiere: 0.75rem;       /* 12 */
+  --dense-rangee: 3.25rem;          /* 52 */
+  --dense-rangee-2: 4.25rem;        /* 68 */
+  --dense-rangee-3: 5.25rem;        /* 84 */
+  --dense-interligne: 1.25rem;      /* 20 — l'interligne de text-small */
+}
+
+/* Le jeu ACTIF. C'est lui que lisent les utilitaires ; il change de valeur
+   selon l'attribut porté par l'ancêtre le plus proche. */
+:root,
+[data-densite="confort"] {
+  --densite-respiration: var(--confort-respiration);
+  --densite-gouttiere: var(--confort-gouttiere);
+  --densite-rangee: var(--confort-rangee);
+  --densite-rangee-2: var(--confort-rangee-2);
+  --densite-rangee-3: var(--confort-rangee-3);
+  --densite-interligne: var(--confort-interligne);
+}
+
+[data-densite="dense"] {
+  --densite-respiration: var(--dense-respiration);
+  --densite-gouttiere: var(--dense-gouttiere);
+  --densite-rangee: var(--dense-rangee);
+  --densite-rangee-2: var(--dense-rangee-2);
+  --densite-rangee-3: var(--dense-rangee-3);
+  --densite-interligne: var(--dense-interligne);
+}
+
+/* CE QUI NE SE DENSIFIE JAMAIS — modèle Cloudscape, qui exclut explicitement
+   tout ce dont la cible est déjà contrainte. La règle est portée par le
+   SYSTÈME et non par chaque composant : un bandeau d'alerte posé dans une zone
+   dense y retrouve la respiration du confort sans avoir rien à déclarer, et
+   sans qu'aucun écran ait à s'en souvenir.
+
+   — alerte, aide, message d'erreur : on les lit au moment précis où l'on s'est
+     trompé, et c'est le pire moment pour resserrer ;
+   — champs et sélecteurs : leur cible est déjà au plancher ;
+   — une zone qui redéclare `confort` à l'intérieur d'une zone dense : c'est
+     l'imbrication, et c'est la plus proche qui gagne.
+
+   La spécificité (0,2,0) de cette règle passe devant celle de `[data-densite]`
+   (0,1,0) : l'exclusion l'emporte, toujours. */
+[data-densite="dense"] :is(
+  [role="alert"],
+  [role="status"],
+  [aria-live],
+  [data-densite="confort"],
+  input,
+  select,
+  textarea,
+  [role="switch"],
+  [role="radio"],
+  [role="checkbox"]
+) {
+  --densite-respiration: var(--confort-respiration);
+  --densite-gouttiere: var(--confort-gouttiere);
+  --densite-rangee: var(--confort-rangee);
+  --densite-rangee-2: var(--confort-rangee-2);
+  --densite-rangee-3: var(--confort-rangee-3);
+  --densite-interligne: var(--confort-interligne);
+}
+
+/* Les quatre utilitaires. Ils ne portent aucun nombre : ils lisent le jeu
+   actif. Poser `respiration` dans une zone dense donne 12, dans une zone de
+   confort 16, et l'écran n'a pas à savoir laquelle. */
+@utility respiration {
+  padding-block: var(--densite-respiration);
+}
+@utility gouttiere {
+  gap: var(--densite-gouttiere);
+}
+@utility interligne {
+  line-height: var(--densite-interligne);
+}
+
+/* Les hauteurs de rangée, avec le plancher de 44 écrit DANS la formule. Même
+   si quelqu'un densifiait plus loin qu'il ne faut, la rangée ne descendrait
+   pas sous la cible. */
+@utility hauteur-rangee {
+  height: max(var(--spacing-cible), var(--densite-rangee));
+}
+@utility hauteur-rangee-2 {
+  height: max(var(--spacing-cible), var(--densite-rangee-2));
+}
+@utility hauteur-rangee-3 {
+  height: max(var(--spacing-cible), var(--densite-rangee-3));
+}
+
+/* ─── LA GARDE BASSE ─────────────────────────────────────────────────────────
+   La barre flottante passe DEVANT la page. Sur les réglages, « Exporter le
+   bilan » se retrouvait dessous, à défilement 0 : le bouton était là, visible
+   nulle part. Une page ne doit pas deviner la hauteur de la barre — elle la
+   réserve, avec un jeton qui la connaît.
+
+   Le compte, MESURÉ dans le navigateur et non déduit : 8 de rembourrage + la
+   pilule de 44 + 8, plus les DEUX FILETS de 1 px de la barre = 62. Le premier
+   calcul disait 60 : il avait oublié les filets, exactement comme celui de
+   `--spacing-zone-texte`. On monte au cran suivant de la grille plutôt que de
+   laisser un jeton hors grille : 64.
+
+   La barre occupe donc 62 + son calage bas de max(16, encoche) = 78 px à
+   l'écran — la valeur relevée sur l'accueil. La garde y ajoute un cran de 16
+   pour que le dernier bouton ne RASE pas la barre : 96 px au minimum,
+   davantage sur un téléphone à encoche.
+
+   Au-dessus de `md`, la barre n'existe plus (`md:hidden`) : la garde tombe à
+   zéro. C'est la variable qui le sait, pas l'utilitaire. */
+:root {
+  --barre-flottante: 4rem;          /* 64 = 8 + 44 + 8 + deux filets, arrondi */
+  --garde-basse: calc(
+    var(--barre-flottante) + max(1rem, env(safe-area-inset-bottom)) + 1rem
+  );
+}
+@media (width >= 48rem) {
+  :root { --garde-basse: 0px; }
+}
+@utility garde-basse {
+  padding-bottom: var(--garde-basse);
+}
+
+/* ─── LES REQUÊTES DE CONTENEUR ──────────────────────────────────────────────
+   Baseline depuis février 2023, et Tailwind v4 les expose sans plugin. La
+   syntaxe, vérifiée en la compilant :
+
+     <div class="@container/fiche">            → container-type: inline-size
+                                                  container-name: fiche
+       <div class="@sm/fiche:flex-row">        → @container fiche (width >= 24rem)
+       <div class="@max-sm/fiche:hauteur-rangee-2">
+                                               → @container fiche (width < 24rem)
+
+   Les paliers sont ceux de `--container-*` : @3xs 256, @2xs 288, @xs 320,
+   @sm 384, @md 448, @lg 512, @xl 576. On NOMME toujours le conteneur : sans
+   nom, la requête s'adresse au conteneur le plus proche, qui n'est pas
+   forcément celui qu'on croit dès qu'un composant en contient un autre.
+
+   Densité et conteneur se composent sans se connaître : la requête choisit la
+   FORME (une ligne ou deux), l'attribut choisit la RESPIRATION. */
