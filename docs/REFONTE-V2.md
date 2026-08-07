@@ -183,3 +183,72 @@ composant.
 - Le code PIN : jamais stocké, jamais journalisé.
 - `analyse_sms.py` renvoie `None` dans le doute et n'invente jamais un montant.
 - Aucun texte affiché ne change sans sa traduction.
+
+---
+
+## 9. Ce que la refonte a réellement donné
+
+Toutes les mesures ci-dessous ont été prises **au navigateur**, à 390 × 844,
+avec les mêmes données avant et après. Aucune n'est déduite.
+
+### Le décor — la part de l'écran consommée avant le premier contenu
+
+| Écran | Avant | Après |
+|---|---|---|
+| Accueil, sans puce | **78,0 %** | **14,7 %** |
+| Accueil, puce en place | 24,2 % | 14,7 % |
+| Puces, sans puce | **65,6 %** | **20,5 %** |
+| Puces, puce en place | 19,4 % | 14,2 % |
+| Encaissements | **60,6 %** | **28,3 %** |
+
+### La hauteur des pages et le nombre d'objets
+
+| Écran | Avant | Après |
+|---|---|---|
+| Réglages, deux puces | 2581 px · 241 objets | **1672 px · 184 objets** |
+| Réglages, sans puce | 2275 px · 184 objets | **1366 px · 127 objets** |
+| Encaissements | 2356 px · 176 objets | **2036 px · 172 objets** |
+| Analyse | 895 px · 79 objets | **844 px · 46 objets** |
+| Puces, sans puce | 1278 px · 96 objets | **948 px · 72 objets** |
+
+L'écran d'analyse tient désormais **dans un écran**, sans défilement.
+
+### Les composants
+
+| | Avant | Après |
+|---|---|---|
+| Barre de filtres | **637 px demandés pour 358** (178 %) | **242,8 px** (68 %), une rangée |
+| Touche du pavé secret | 64 × 48, ratio 1,33 | **96,5 × 96,5**, carrée |
+| Grille du pavé dans sa carte | 208 / 322 = 64 % | **313,5 / 322 = 97 %** |
+| Colonne des montants | bords à 270 **et** 258 | **écart nul** aux trois largeurs |
+| Vide titre ↔ montant en 1440 | 592 px | **12 px** |
+| Colonne des SMS en 1440 | 594 px | **926 px** |
+
+### Ce que seule la mesure au doigt a pu trouver
+
+Aucun de ces défauts n'était détectable en relisant le code — tous les jetons
+étaient conformes, et le gardien n'a jamais rien signalé :
+
+1. **On ne pouvait pas télécharger un reçu sur un téléphone.** `.entree` fait
+   de `<main>` un contexte d'empilement : le voile en `z-30` passait sous la
+   barre en `z-20`. Corrigé par un portail.
+2. **Le pavé du code secret sortait de l'écran** dès huit échanges — le cas
+   normal d'un dépôt.
+3. **`cadre-optique` décapitait les accents français** : `text-box-edge: cap`
+   cale la boîte sur la hauteur des capitales, et les é vivent au-dessus.
+4. **Les pastilles du pavé n'avaient pas de `role="img"`** : l'étiquette de
+   longueur n'était annoncée par aucun lecteur d'écran.
+5. **Cinq contrôles ne faisaient rien** — les trois boutons de `/cartes`,
+   « Exporter le bilan », et « Ajouter un raccourci », dont l'état n'était
+   jamais écrit nulle part. Tous parfaitement dimensionnés.
+
+### Ce qui reste ouvert
+
+- **Des emojis dans la fiche d'un SMS** (`📥 Dépôt`, `📤 Retrait`) alors que
+  `IDENTITE.md` §9 les interdit : « il change de dessin d'un téléphone à
+  l'autre, et il fait basculer l'application du côté du jouet ».
+- **272 px de gouttières mortes en 1440**, dans `coquille.tsx`.
+- `BasculeLangue` n'a plus aucun appelant.
+- Un montant de **−1 248 500 FCFA** déborde encore la colonne en 390 px.
+- La barre reste absente sur ~90 % d'une descente ininterrompue : le seuil
+  règle le geste, pas la longueur de la page.
