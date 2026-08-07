@@ -5,7 +5,7 @@ import { useLangue } from "@/app/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
 import { fcfa, type Paiement } from "@/lib/types";
 import { FicheSms } from "./fiche-sms";
-import { IconArrowDown, IconArrowUp, IconDoc, IconInbox } from "./icons";
+import { IconDoc } from "./icons";
 import { Carte } from "./ui/carte";
 import { Pastille } from "./ui/etat";
 import { Liste, Rangee, type SensMontant } from "./ui/rangee";
@@ -16,16 +16,22 @@ import { Liste, Rangee, type SensMontant } from "./ui/rangee";
  * (qui établit le reçu), la copie du texte, le reçu PDF. Pas besoin de
  * passer par « Tout voir » pour agir sur un message qu'on a sous les yeux.
  *
- * La rangée vient du système (`app/ui/rangee.tsx`), et elle règle deux choses
- * que cet écran n'avait pas :
+ * ─── v2 · LE DISQUE DE TÊTE EST PARTI ───────────────────────────────────────
  *
- *   — LE DISQUE DÉCORATIF ET LE BOUTON DE REÇU FAISAIENT TOUS DEUX 36 px :
- *     rien ne disait lequel répondait au doigt. Le disque prend `size-disque`
- *     (32), rond, filet décoratif ; le reçu prend `size-controle` (44), carré,
- *     filet porteur. On les distingue avant même de les toucher.
- *   — LE SIGNE DU MONTANT est posé par la rangée, jamais par cet écran :
- *     crédit et débit sont à 1,21:1 l'un de l'autre, donc indiscernables en
- *     niveaux de gris. Le `+` / `−` ne peut plus être oublié.
+ * Cette liste DÉCLARE un montant : la `Liste` en déduit toute seule qu'elle
+ * est une liste d'argent, et une liste d'argent ne porte pas de disque
+ * décoratif — il valait 32 px plus 12 de gouttière, c'est-à-dire exactement
+ * les 44 px qui manquaient au titre pour ne pas se tronquer en 390. La rangée
+ * v2 l'ignorait déjà ; on le retire d'ici, avec ses trois icônes, plutôt que
+ * de laisser du code qui ne rend plus rien.
+ *
+ * Le sens du mouvement, lui, ne se perd pas : il n'a JAMAIS été porté par le
+ * disque (`aria-hidden` : il ne disait rien à personne). C'est le signe du
+ * montant qui le porte — `+`, `−`, ou rien quand le robot n'a pas tranché —
+ * et c'est la rangée qui le pose, sans qu'on puisse l'oublier.
+ *
+ * Reste le POINT DE NON-LU, qui n'est pas le disque : lui porte une
+ * information que rien d'autre ne dit, et son étiquette la donne à voix haute.
  */
 
 /** Le sens tel que la rangée l'attend. `neutre` quand le robot n'a pas tranché. */
@@ -47,20 +53,6 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
             <Rangee
               key={p.id}
               lignes={2}
-              pastille={
-                p.sens === "in" ? (
-                  <IconArrowDown size={16} />
-                ) : p.sens === "out" ? (
-                  <IconArrowUp size={16} />
-                ) : (
-                  // Sens inconnu : le robot n'a pas su trancher, et le dépôt
-                  // préfère l'avouer plutôt que d'inverser un montant. On le
-                  // dit avec l'icône du message brut, pas avec un point
-                  // médian — un glyphe de ponctuation dans un disque ne veut
-                  // rien dire à personne.
-                  <IconInbox size={16} />
-                )
-              }
               titre={
                 p.nonLu ? (
                   <>

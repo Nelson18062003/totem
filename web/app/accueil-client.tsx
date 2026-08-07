@@ -14,9 +14,14 @@ import { Bouton, BoutonIcone } from "./ui/bouton";
 import { Vide } from "./ui/etat";
 
 /**
- * Le guichet de l'accueil. Un seul solde — celui de la carte — et cinq
+ * Le guichet de l'accueil. Un seul solde — celui de la puce — et cinq
  * gestes : chacun ouvre son pop-up, la session se joue dedans, du formulaire
  * au code secret. Personne n'est renvoyé vers une autre page.
+ *
+ * v2 : les `lg:col-start-1` sont partis avec la deuxième colonne de l'accueil.
+ * Cette colonne n'existait que pour la carte du terminal ; la carte est
+ * partie, la grille avec elle, et le guichet prend toute la largeur de la
+ * page — 928 px en 1440 au lieu de 596.
  */
 export function AccueilGuichet({
   carte,
@@ -78,7 +83,7 @@ export function AccueilGuichet({
     <>
       {/* LE solde : un seul, sur la carte. Actualiser interroge le réseau —
           la fenêtre du code s'ouvre, jamais un rechargement de page. */}
-      <section className="acct rounded-card p-4 lg:col-start-1">
+      <section className="acct rounded-card p-4">
         <div className="flex items-center justify-between">
           <span className="text-caption uppercase tracking-wider text-white/60">
             {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
@@ -119,7 +124,7 @@ export function AccueilGuichet({
       {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même.
           Ils faisaient 42 px de haut, avec une icône de 18 : ce sont des
           boutons secondaires du système, 44 px et icône de 20. */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-start-1">
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {operations.map(({ label, Icone, fabrique }) => (
           <Bouton
             key={label}

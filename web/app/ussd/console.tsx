@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { codesUssd } from "@/lib/codes";
 import { textesUssd } from "@/lib/textes/ussd";
 import type { Sim } from "@/lib/types";
-import { IconClose, IconHash } from "../icons";
+import { IconHash } from "../icons";
 import { useLangue } from "../langue";
 import {
   BoutonAnnulerSession,
@@ -13,7 +13,7 @@ import {
   ReponseLibre,
   type Msg,
 } from "../operation";
-import { Bouton, BoutonIcone } from "../ui/bouton";
+import { Bouton } from "../ui/bouton";
 import { Champ } from "../ui/champ";
 import { Vide } from "../ui/etat";
 
@@ -52,30 +52,41 @@ function demandeUnCode(texte: string): boolean {
  * centaines de pixels du fil qu'on lisait. Le calcul a un nom :
  *
  *     hauteur du panneau = écran visible
+ *                        − la marge haute de la page
  *                        − l'en-tête de la page (un titre, sa ligne d'aide)
  *                        − l'écart qui l'en sépare
- *                        − la barre du pouce et sa marge basse sûre
+ *                        − la garde basse
  *
  * — L'EN-TÊTE DE PAGE se mesure en LIGNES DE TEXTE, pas en espacements : une
  *   ligne de `text-title` (28) et une de `text-small` (20). Ces deux jetons
  *   viennent de l'échelle typographique, la seule qui sache exprimer la
  *   hauteur d'une ligne.
- * — LA BARRE DU POUCE est la barre flottante du téléphone : une cible, donc
- *   `h-controle` (44).
- * — LA MARGE BASSE SÛRE est la barre système (`env(safe-area-inset-bottom)`),
- *   zéro partout ailleurs.
+ * — LA GARDE BASSE remplace le compte fait à la main « une cible + la marge
+ *   sûre ». Il valait 44 ; la barre flottante EN OCCUPE 78 (62 de barre et son
+ *   calage bas), et la garde y ajoute un cran pour que rien ne la rase : 96.
+ *   Le jeton `--garde-basse` porte ce calcul, encoche comprise, et tombe à
+ *   zéro au-dessus de `md` où la barre n'existe plus. Un panneau qui se
+ *   mesurait à 44 finissait 34 px sous la barre — donc le bas du pavé avec.
+ *
+ * MESURÉ AVANT, sur 390 × 844 : le panneau commençait à y = 352 (le cadran le
+ * précédait) et faisait 728 de haut, soit un bas à 1080 pour un écran de 844.
+ * « Valider » était à y = 905, « Raccrocher » à y = 1019 : LES DEUX HORS
+ * ÉCRAN. D'où la seconde décision, celle de l'ORDRE : au téléphone, la session
+ * passe DEVANT le cadran. On compose une fois, on répond dix ; c'est l'échange
+ * qui mérite l'écran, et le cadran attend en dessous. Sur grand écran rien ne
+ * change : les deux colonnes tiennent côte à côte, l'ordre y est celui de la
+ * grille.
  *
  * L'en-tête du panneau et son pied restent hors de la zone défilante : le
  * bouton pour raccrocher et le pavé ne partent jamais avec le fil.
  */
 const MESURES = {
+  "--marge-de-page": "calc(var(--spacing) * 4)",
   "--entete-de-page": "calc(var(--spacing-ligne-lg) + var(--spacing-ligne-sm))",
   "--ecart-de-page": "calc(var(--spacing) * 6)",
-  "--barre-du-pouce": "var(--spacing-controle)",
-  "--marge-basse-sure": "env(safe-area-inset-bottom, 0px)",
   "--hauteur-session":
-    "calc(100dvh - var(--entete-de-page) - var(--ecart-de-page)" +
-    " - var(--barre-du-pouce) - var(--marge-basse-sure))",
+    "calc(100dvh - var(--marge-de-page) - var(--entete-de-page)" +
+    " - var(--ecart-de-page) - var(--garde-basse))",
 } as React.CSSProperties;
 
 export function ConsoleUssd({
@@ -184,14 +195,20 @@ export function ConsoleUssd({
 
   return (
     // Grand écran : le cadran à gauche, l'écran de session à droite.
-    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-8">
+    //
+    // `garde-basse` : la barre flottante passe DEVANT la page, et la dernière
+    // ligne se lisait dessous. La page réserve donc sa hauteur — le jeton la
+    // connaît, et il tombe à zéro dès que la barre n'existe plus.
+    <div className="garde-basse flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-8">
       <header className="lg:col-span-3">
         <h1 className="text-title">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre(carte.libelle)}</p>
       </header>
 
-      {/* La colonne du cadran : composer, puis les raccourcis */}
-      <div className="flex flex-col gap-4 lg:col-start-1">
+      {/* La colonne du cadran : composer, puis les raccourcis. Au téléphone
+          elle passe DERRIÈRE la session (`order-2`) : on compose une fois, on
+          répond dix. Sur grand écran, la grille reprend la main. */}
+      <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-start-1">
         <form
           onSubmit={(e) => { e.preventDefault(); composer(saisie); }}
           className="flex items-end gap-2"
@@ -236,29 +253,35 @@ export function ConsoleUssd({
         </p>
       </div>
 
-      {/* L'écran de session */}
+      {/* L'écran de session. Vide, la carte se borne et se centre dans sa
+          colonne : à 1440 elle s'étalait sur toute la largeur pour 106 px de
+          haut — un bandeau, pas un état. */}
       {fil.length === 0 && !attente ? (
-        <div className="hidden lg:col-span-2 lg:col-start-2 lg:block">
-          <Vide titre={t.aucuneSession} />
+        <div className="hidden lg:col-span-2 lg:col-start-2 lg:flex lg:items-center lg:justify-center lg:self-stretch">
+          <div className="w-full max-w-md">
+            <Vide icone={<IconHash size={24} />} titre={t.aucuneSession} />
+          </div>
         </div>
       ) : (
         <section
           style={MESURES}
-          className="flex max-h-[var(--hauteur-session)] flex-col overflow-hidden rounded-card border border-line bg-surface-raised lg:col-span-2 lg:col-start-2"
+          className="order-1 flex max-h-[var(--hauteur-session)] flex-col overflow-hidden rounded-card border border-line bg-surface-raised lg:order-none lg:col-span-2 lg:col-start-2"
         >
-          {/* EN-TÊTE — FIXE. Le bouton pour raccrocher reste sous le pouce, quel
-              que soit le nombre d'échanges. Il faisait 16×16 ; il fait 44×44. */}
-          <div className="flex h-rangee shrink-0 items-center justify-between gap-4 border-b border-line px-4">
+          {/* EN-TÊTE — FIXE, et c'est LÀ que se raccroche. Le geste occupait le
+              bas du panneau, pleine largeur : la meilleure place du pouce pour
+              le geste le plus regretté. Il remonte ici, discret mais écrit en
+              toutes lettres — une sortie de secours ne se cache pas. */}
+          <div className="flex h-rangee shrink-0 items-center justify-between gap-3 border-b border-line px-4">
             <p className="min-w-0 truncate text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
-            <BoutonIcone
-              variante="discret"
-              icone={<IconClose size={20} />}
-              aria-label={t.raccrocher}
-              onClick={fermer}
-              desactive={attente}
-            />
+            <div className="shrink-0">
+              <BoutonAnnulerSession
+                libelle={t.raccrocher}
+                surAppui={fermer}
+                eteint={attente}
+              />
+            </div>
           </div>
 
           {/* LE FIL — LA SEULE ZONE QUI DÉFILE. `min-h-0` est indispensable :
@@ -274,8 +297,9 @@ export function ConsoleUssd({
             />
           </div>
 
-          {/* LE PIED — FIXE. Le pavé du code, la réponse libre et le geste de
-              sortie ne partent jamais avec le fil. */}
+          {/* LE PIED — FIXE, et il ne porte plus QUE ce qui fait avancer
+              l'échange : le pavé du code, ou la réponse libre. La place du
+              pouce revient à « Valider ». */}
           {enSession && (
             <div className="flex shrink-0 flex-col gap-2 border-t border-line p-4">
               {/* Le pavé, quand le réseau attend le code secret */}
@@ -292,18 +316,12 @@ export function ConsoleUssd({
                   autoFocus
                 />
               )}
-
-              <BoutonAnnulerSession
-                libelle={t.annulerSession}
-                surAppui={fermer}
-                eteint={attente}
-              />
             </div>
           )}
         </section>
       )}
 
-      <p className="max-w-lecture text-small text-ink-soft lg:hidden">
+      <p className="order-3 max-w-lecture text-small text-ink-soft lg:order-none lg:hidden">
         {t.noteSessionCourte}
       </p>
     </div>

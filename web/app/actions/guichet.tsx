@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codeUssd } from "@/lib/codes";
+import { textesCharpente } from "@/lib/textes/charpente";
 import { textesGuichet } from "@/lib/textes/guichet";
 import type { Sim } from "@/lib/types";
 import {
@@ -30,6 +31,9 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
   const router = useRouter();
   const langue = useLangue();
   const t = textesGuichet[langue];
+  // Le nom de l'écran des Réglages, pris là où il est déjà écrit dans les deux
+  // langues : l'état vide DIT d'y aller, il faut aussi pouvoir y aller.
+  const tc = textesCharpente[langue];
   const [operation, setOperation] = useState<Operation | null>(null);
   const op = carte.operateur;
 
@@ -79,7 +83,11 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
 
   return (
     // Grand écran : les trois opérations à gauche, la consultation à droite.
-    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-8">
+    //
+    // `garde-basse` : la barre flottante passe DEVANT la page. La phrase de bas
+    // de page se lisait sous elle dès que l'écran raccourcissait ; la page
+    // réserve maintenant la hauteur de la barre, avec le jeton qui la connaît.
+    <div className="garde-basse flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-8">
       <header className="flex items-end justify-between gap-4 lg:col-span-2">
         <div className="min-w-0">
           <h1 className="text-title">{t.titre}</h1>
@@ -90,8 +98,20 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
       </header>
 
       {operations.length === 0 ? (
+        // L'état vide DISAIT quoi faire — « ajoutez-les dans les Réglages » —
+        // sans donner le moyen de le faire. Il porte maintenant le chemin.
         <div className="lg:col-start-1">
-          <Vide titre={t.aucunCodeReleve(op)} />
+          <div className="mx-auto w-full max-w-md lg:mx-0">
+            <Vide
+              icone={<IconHash size={24} />}
+              titre={t.aucunCodeReleve(op)}
+              action={
+                <Bouton href="/reglages" variante="secondaire">
+                  {tc.reglages}
+                </Bouton>
+              }
+            />
+          </div>
         </div>
       ) : (
         <Carte bordABord className="lg:col-start-1">

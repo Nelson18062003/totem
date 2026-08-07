@@ -17,24 +17,39 @@ export const dynamic = "force-dynamic";
 // de rendu) — et la liste et le graphe montraient deux jours différents.
 const FUSEAU = "Africa/Douala";
 
-// L'ÉCHELLE DU GRAPHIQUE, en crans de 4 px.
-//
-// La hauteur d'une barre se calculait `Math.round(m / max * 118) + 6` : elle
-// pouvait valoir 6, 7, 41, 93, 124 — n'importe quoi entre deux crans, sur un
-// écran dont tout le reste est un multiple de 4. Une barre est une mesure ;
-// elle se lit d'autant mieux qu'elle se pose sur la même grille que le reste.
-//
-// 28 crans de 4 px font 112 px pour la plus haute. Avec l'étiquette du montant
-// (16), le nom du jour (16) et les deux écarts de 8, la colonne la plus haute
-// mesure exactement 160 px — la hauteur que le graphique s'imposait en dur,
-// désormais obtenue au lieu d'être écrite.
-const CRANS_GRAPHIQUE = 28;
-const CRAN = 4;
-
-/** Un jour sans encaissement garde un cran : la colonne existe, à zéro. */
-function hauteurBarre(montant: number, max: number) {
-  return Math.max(1, Math.round((montant / max) * CRANS_GRAPHIQUE)) * CRAN;
-}
+/* ────────────────────────────────────────────────────────────────────────────
+ * v2 · LE GRAPHIQUE EST MORT, ET IL NE REVIENT PAS SOUS UNE AUTRE FORME
+ *
+ * Il occupait 224 px mesurés — 25 % de la page — pour dire DEUX chiffres qui
+ * étaient déjà écrits vingt pixels plus haut : « Moyenne par jour · 134 072 »
+ * et « Meilleur jour · Jeu · 493 000 ». Trois défauts, tous mesurés sur les
+ * données réelles :
+ *
+ *   — CINQ COLONNES SUR SEPT ÉTAIENT UN TIRET DE 4 PX. L'échelle était
+ *     linéaire et rapportée au maximum : avec un jour à 493 000 et les autres
+ *     entre 1 et 17 000, six jours sur sept tombaient sous le premier cran et
+ *     recevaient donc le même trait. 1 FCFA et 17 000 FCFA se dessinaient
+ *     IDENTIQUES. Un graphique qui rend deux mesures indiscernables ne mesure
+ *     plus rien.
+ *   — L'ENCRE NE FAISAIT QUE 16 % DU RECTANGLE TRACÉ. Les 84 % restants
+ *     étaient du blanc qu'on faisait défiler.
+ *   — L'ÉTIQUETTE DU CHIFFRE LE PLUS IMPORTANT ÉTAIT TRONQUÉE en « 493 0… » :
+ *     sept colonnes dans 358 px laissent 47 px par étiquette, et « 493 000 »
+ *     en fait 52.
+ *
+ * ON A ENVISAGÉ DE LE REFAIRE, et on y a renoncé pour une raison qui n'est pas
+ * graphique. Un graphique honnête aurait demandé quatre choses : une règle à
+ * zéro, un repère de moyenne, une échelle qui sépare 1 de 17 000 — donc non
+ * linéaire, c'est-à-dire illisible pour qui n'est pas statisticien — et des
+ * COLONNES CLIQUABLES, qui ouvriraient le jour choisi. Or la liste des SMS ne
+ * se filtre pas par date : rendre les colonnes cliquables voulait dire
+ * inventer une route et un comportement. Un graphique qui ne mène nulle part
+ * n'a pas gagné sa place ; on ne le garde pas au prétexte qu'une page
+ * d'analyse « doit » avoir une courbe.
+ *
+ * Les sept jours restent CALCULÉS — ils donnent le total, la moyenne et le
+ * meilleur jour. C'est leur dessin qu'on a retiré, pas leur mesure.
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 // Les encaissements des 7 derniers jours, calculés sur les vrais paiements —
 // aucun chiffre n'est écrit à la main. Les noms de jours suivent la langue.
@@ -88,7 +103,6 @@ export default async function Analyse() {
   const total = septJours.reduce((s, d) => s + d.montant, 0);
   const moyenne = Math.round(total / 7);
   const meilleur = septJours.reduce((a, b) => (b.montant > a.montant ? b : a));
-  const max = Math.max(...septJours.map((d) => d.montant), 1);
 
   // La semaine précédente, pour situer celle-ci — calculée, pas décrétée.
   const precedente = semaine(paiements, 14, 7);
@@ -107,21 +121,27 @@ export default async function Analyse() {
     .slice(0, 5);
 
   return (
-    // Grand écran : les chiffres et le graphique à gauche, les clients à droite.
-    <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-8">
+    // DEUX COLONNES ÉGALES, ET C'EST UNE CORRECTION MESURÉE. La colonne de
+    // droite était figée à 300 px : la rangée d'un client y disposait de
+    // 268 px, dont 144 pris par la colonne des montants et 36 par le rang —
+    // il restait 76 px au nom, et « MTNMobileMoney » devenait « MTNMobi… ».
+    // En 1440, cette colonne s'arrêtait par ailleurs à y=280 quand la gauche
+    // descendait à 634 : 354 px de vide sous un nom tronqué. Le graphique
+    // parti, la gauche raccourcit et les deux colonnes se rejoignent.
+    <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-8">
       <header className="lg:col-span-2">
         <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
       </header>
 
       {/* Chiffre principal */}
-      <section className="lg:col-start-1">
+      <section className="lg:col-start-1 lg:row-start-2">
         <p className="text-small text-ink-soft">{t.encaissementsSemaine}</p>
-        <p className="mt-1 text-hero font-semibold tabnums tracking-tight">{fcfa(total, langue)}</p>
+        <p className="mt-1 text-hero font-semibold tracking-tight">{fcfa(total, langue)}</p>
         {evolution != null && (
           <p className="mt-1 text-small text-ink-soft">
             <span className={`font-medium ${evolution >= 0 ? "text-positive" : "text-negative"}`}>
-              {evolution >= 0 ? "+" : ""}{evolution} %
+              {evolution >= 0 ? "+" : "−"}{nombre(Math.abs(evolution), langue)} %
             </span>{" "}
             {t.parRapportSemainePrecedente}
           </p>
@@ -129,52 +149,39 @@ export default async function Analyse() {
       </section>
 
       {/* Repères. La carte porte le padding vertical, chaque colonne le sien à
-          l'horizontale : un seul padding par côté, jamais deux. */}
-      <section className="lg:col-start-1">
+          l'horizontale : un seul padding par côté, jamais deux.
+
+          LES DEUX REPÈRES PORTENT LEUR UNITÉ. « Jeu · 493 000 » s'écrivait
+          sans « FCFA » parce que la note du graphique la donnait pour tout le
+          bloc ; le graphique parti, un nombre nu à côté d'un montant complet
+          se lit comme autre chose qu'un montant. Le montant passe donc devant,
+          et le jour le qualifie — même ordre que sur une rangée d'argent. */}
+      <section className="lg:col-start-1 lg:row-start-3">
         <Carte bordABord className="grid grid-cols-2 divide-x divide-line">
           <div className="px-4">
             <p className="text-small text-ink-soft">{t.moyenneParJour}</p>
-            <p className="mt-1 text-heading font-semibold tabnums">{fcfa(moyenne, langue)}</p>
+            <p className="mt-1 text-heading font-semibold">{fcfa(moyenne, langue)}</p>
           </div>
           <div className="px-4">
             <p className="text-small text-ink-soft">{t.meilleurJour}</p>
-            <p className="mt-1 text-heading font-semibold tabnums">
-              {meilleur.jour} · {nombre(meilleur.montant, langue)}
+            <p className="mt-1 flex flex-wrap items-baseline gap-2 text-heading font-semibold">
+              {fcfa(meilleur.montant, langue)}
+              <span className="text-small font-normal text-ink-faint">{meilleur.jour}</span>
             </p>
           </div>
         </Carte>
       </section>
 
-      {/* Graphique — monochrome, montants complets */}
-      <section className="lg:col-start-1">
-        <EnTeteSection titre={t.encaissementsParJour} />
-        <div className="flex items-end justify-between gap-2 sm:gap-3">
-          {septJours.map((d, i) => {
-            const hauteur = hauteurBarre(d.montant, max);
-            const best = d.montant === meilleur.montant && d.montant > 0;
-            return (
-              <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                {/* Le montant se lit au-dessus de sa barre. Il était à 10 px —
-                    hors de l'échelle typographique, dont le plus petit cran est
-                    `text-caption` (12/16). C'est un montant : il se lit. */}
-                <span className={`max-w-full truncate text-caption tabnums ${best ? "font-medium text-ink" : "text-ink-faint"}`}>
-                  {d.montant > 0 ? nombre(d.montant, langue) : ""}
-                </span>
-                {/* La barre PORTE la donnée : WCAG 1.4.11 lui impose 3:1. En
-                    `surface-3` elle valait 1,22:1 sur le fond de page — la
-                    mesure elle-même était invisible. `contour` est le neutre
-                    du système garanti au-dessus du seuil : 3,8:1 ici. */}
-                <div
-                  className={`w-full rounded-sm ${best ? "bg-ink" : "bg-contour"}`}
-                  style={{ height: `${hauteur}px` }}
-                />
-                <span className="text-caption text-ink-faint">{d.jour}</span>
-              </div>
-            );
-          })}
-        </div>
-        <p className="mt-3 text-caption text-ink-faint">{t.montantsEnFcfa}</p>
-      </section>
+      {/* L'export du bilan faisait 44 px par accident, en empilant `py-3` et un
+          interligne. Le bouton du système les déclare. */}
+      <Bouton
+        variante="secondaire"
+        pleineLargeur
+        icone={<IconDoc size={20} />}
+        className="lg:col-start-1 lg:row-start-4"
+      >
+        {t.exporterBilan}
+      </Bouton>
 
       {/* Clients */}
       {topClients.length > 0 && (
@@ -185,7 +192,7 @@ export default async function Analyse() {
               <Rangee
                 key={c.nom}
                 lignes={2}
-                icone={<span className="text-small tabnums text-ink-faint">{i + 1}</span>}
+                icone={<span className="text-small text-ink-faint">{nombre(i + 1, langue)}</span>}
                 titre={c.nom}
                 sousTitre={t.nbPaiements(c.nb)}
                 montant={{ texte: fcfa(c.total, langue), sens: "neutre" }}
@@ -194,17 +201,6 @@ export default async function Analyse() {
           </Liste>
         </section>
       )}
-
-      {/* L'export du bilan faisait 44 px par accident, en empilant `py-3` et un
-          interligne. Le bouton du système les déclare. */}
-      <Bouton
-        variante="secondaire"
-        pleineLargeur
-        icone={<IconDoc size={20} />}
-        className="lg:col-start-1"
-      >
-        {t.exporterBilan}
-      </Bouton>
     </div>
   );
 }

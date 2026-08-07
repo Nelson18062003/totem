@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { textesGuichet } from "@/lib/textes/guichet";
-import { IconError } from "./icons";
+import { IconClose, IconError } from "./icons";
 import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";
 import { Bouton } from "./ui/bouton";
@@ -172,7 +172,24 @@ export function ReponseLibre({
   );
 }
 
-/** LE GESTE DE SORTIE, impossible à manquer : destructif, donc 48. */
+/**
+ * LE GESTE DE SORTIE — DISCRET, ET EN HAUT.
+ *
+ * Il occupait la meilleure place de l'écran : rouge, pleine largeur, tout en
+ * bas de la fenêtre — arc 200 du pouce, c'est-à-dire FACILE. Mesuré sur
+ * 390 × 844 pendant une session engagée : le bas de « Raccrocher » était à
+ * 17 px du bord de l'écran, quand « Valider » — la touche qui ENVOIE le code
+ * secret — commençait à 208 px. **La meilleure place allait à l'abandon.**
+ * Elle revient à « Valider ».
+ *
+ * Ce bouton-ci change donc d'habit et de place : `discret` (boîte 40, cible
+ * 44), la largeur de son libellé et rien de plus, plus d'aplat rouge. Il ne se
+ * cache pas pour autant — ON NE CACHE PAS UNE SORTIE DE SECOURS : il garde son
+ * MOT (« Raccrocher »), son icône de fermeture, et il reste visible du premier
+ * échange au dernier (épinglé en tête du fil dans la fenêtre d'opération, dans
+ * l'en-tête fixe du panneau dans la console). On cesse simplement de le mettre
+ * sous le doigt.
+ */
 export function BoutonAnnulerSession({
   libelle,
   surAppui,
@@ -183,9 +200,32 @@ export function BoutonAnnulerSession({
   eteint?: boolean;
 }) {
   return (
-    <Bouton variante="danger" pleineLargeur onClick={surAppui} desactive={eteint}>
+    <Bouton
+      variante="discret"
+      icone={<IconClose size={20} />}
+      onClick={surAppui}
+      desactive={eteint}
+    >
       {libelle}
     </Bouton>
+  );
+}
+
+/**
+ * LA TÊTE DE LA SESSION — ce qui reste en haut pendant que le fil défile.
+ *
+ * Le corps de la fenêtre est la seule zone qui défile : un bouton posé en
+ * tête du fil serait parti vers le haut au troisième échange, exactement comme
+ * le bouton de fermeture avant `Fenetre`. Il est donc COLLÉ EN HAUT de cette
+ * zone, sur la surface de la fenêtre pour que les bulles passent dessous et
+ * non au travers, et il déborde du rembourrage du corps (`-mx-4 -mt-4`) pour
+ * couvrir toute la largeur au lieu de laisser deux couloirs de 16 px.
+ */
+export function TeteDeSession({ children }: { children: ReactNode }) {
+  return (
+    <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-center bg-surface-raised px-4 pb-2 pt-4">
+      {children}
+    </div>
   );
 }
 
@@ -350,25 +390,36 @@ export function OperationPopup({
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
-  // Le PIED de la fenêtre : les actions qui terminent. Fixes — elles ne partent
-  // jamais avec le défilement du fil, si long qu'il devienne.
+  // Le PIED de la fenêtre : les actions qui TERMINENT, et elles seules. Fixes —
+  // elles ne partent jamais avec le défilement du fil, si long qu'il devienne.
+  //
+  // PENDANT LA SESSION, IL N'Y A PAS DE PIED. C'est la place du pouce, et elle
+  // revient à ce qui fait avancer l'échange : le pavé du code secret, épinglé
+  // en bas du corps, ou la réponse libre. Le geste de sortie est remonté en
+  // tête (voir `TeteDeSession`).
+  //
+  // À l'étape de saisie, les deux boutons passent par une rangée à eux : le
+  // pied de `Fenetre` sépare ses enfants de 8 px, et deux CIBLES voisines en
+  // demandent 12 — à 8, leurs zones d'appui se recouvrent de 4 px et la norme
+  // retire l'aire commune du calcul. Le pied n'a rien à savoir de cette règle :
+  // il ne reçoit qu'un enfant, qui porte lui-même la gouttière du système.
+  // Les deux boutons dessinent la même hauteur (44) : un 40 et un 44 côte à
+  // côte lisaient deux importances là où il n'y en a qu'une.
   const pied =
     etape === "saisie" ? (
-      <>
-        <Bouton variante="secondaire" onClick={onFermer}>
+      <div className="flex w-full items-center justify-end gap-3">
+        <Bouton variante="secondaire" taille="forte" onClick={onFermer}>
           {t.annuler}
         </Bouton>
         <Bouton variante="primaire" desactive={!complet} onClick={lancer}>
           {t.lancer}
         </Bouton>
-      </>
+      </div>
     ) : fini ? (
       <Bouton variante="primaire" pleineLargeur onClick={onFermer}>
         {t.termine}
       </Bouton>
-    ) : (
-      <BoutonAnnulerSession libelle={t.annulerSession} surAppui={annuler} eteint={attente} />
-    );
+    ) : undefined;
 
   return (
     // `Fenetre` remplace la feuille écrite à la main : l'en-tête ne défile plus
@@ -376,12 +427,36 @@ export function OperationPopup({
     // échange, et il faisait 18×18), la hauteur vient d'un calcul nommé au lieu
     // des 92dvh / 70dvh qui « rendaient bien » sur un téléphone donné, Échap
     // ferme, et la tabulation ne s'échappe plus derrière le voile.
+    //
+    // ── LE VOILE, ET POURQUOI IL RESTE UNE FERMETURE ──────────────────────
+    // Reproche reçu : « le voile ferme la session et couvre 45 % de l'écran —
+    // une surface d'annulation énorme pour un geste coûteux ». Mesuré sur
+    // 390 × 844, les deux cas sont opposés :
+    //
+    //   — À L'ÉTAPE DE SAISIE, la feuille fait 428 px et le voile 49 %. Mais
+    //     rien n'est engagé : `annuler` ne trouve pas de session ouverte
+    //     (`enSession` est faux), il n'envoie AUCUN `ussd_fin`, il referme un
+    //     formulaire. Un appui à côté coûte deux champs à retaper.
+    //   — DÈS QUE LA SESSION EST ENGAGÉE, la feuille grandit avec le fil et
+    //     atteint la hauteur maximale : 800 px sur 844. Le voile ne fait plus
+    //     que 5 % — les 44 px de la zone de fermeture, celle-là même que
+    //     `Fenetre` réserve exprès pour qu'on puisse sortir sans viser.
+    //
+    // Autrement dit, la grande surface d'annulation n'existe QUE quand elle ne
+    // coûte rien, et elle disparaît d'elle-même quand le geste devient cher.
+    // On n'y touche donc pas : ajouter une confirmation ferait payer un
+    // dialogue de plus à chaque sortie normale pour un risque qui, mesuré,
+    // vaut 5 % de l'écran. Ce qui coûtait vraiment cher — le bouton rouge
+    // pleine largeur sous le pouce — est parti en haut.
     <Fenetre
       titre={operation.titre}
       description={`${
         etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session
       } · ${operation.code}`}
-      etiquetteFermer={t.fermer}
+      // Le bouton de fermeture de la fenêtre RACCROCHE quand la session est
+      // engagée : il annonce donc « Raccrocher », et non « Fermer ». C'est le
+      // même geste que le bouton de tête, dit par le même mot.
+      etiquetteFermer={enSession && !fini ? t.annulerSession : t.fermer}
       onFermer={annuler}
       pied={pied}
     >
@@ -403,6 +478,17 @@ export function OperationPopup({
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          {/* LA SORTIE, EN HAUT ET DISCRÈTE — épinglée, donc jamais perdue. */}
+          {!fini && (
+            <TeteDeSession>
+              <BoutonAnnulerSession
+                libelle={t.annulerSession}
+                surAppui={annuler}
+                eteint={attente}
+              />
+            </TeteDeSession>
+          )}
+
           {/* Le fil de la session — chaque bulle grise vient de l'opérateur */}
           <FilSession
             fil={fil}
