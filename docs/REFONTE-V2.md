@@ -133,9 +133,20 @@ Trois faits mesurés dans le fichier de police, et non déduits :
 
 **Le cadrage optique.** Métriques mesurées : `upm 1000, ascendante 992,
 descendante −310, capitale 700, hauteur d'x 504`. Un libellé bas-de-casse
-paraît **1,42 px trop bas** dans un bouton à 16 px. `text-box: trim-both cap
-alphabetic` fait coïncider la boîte avec les lettres ; repli à `-0.045em` pour
-les 19 % du parc qui ne le supportent pas.
+paraît **1,42 px trop bas** dans un bouton à 16 px.
+
+La première correction employait `text-box: trim-both cap alphabetic` — la
+technique la plus récente, qui rogne le blanc de fonderie. **Elle est
+disqualifiée ici** : elle cale le haut de la boîte sur la hauteur des
+CAPITALES, et en français les accents vivent au-dessus. Combinée à la moindre
+troncature, elle décapite les é — mesuré sur un déclencheur de filtre, la boîte
+tombait à 10 px pour 20, et « Opérateur » et « Catégorie » perdaient leur
+accent.
+
+La correction se fait donc par **déplacement** (`translateY(-0.045em)`), qui
+obtient le même résultat optique sans jamais toucher à la géométrie de la
+boîte — donc sans rien pouvoir rogner. Une technique qui mutile la langue du
+produit est écartée, si moderne soit-elle.
 
 **L'interlettrage suit la taille.** Le `-0.011em` global n'était juste qu'à
 16 px. Sept paliers, le zéro tombant vers 12 px — en dessous, on **écarte**.
