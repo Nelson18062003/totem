@@ -62,7 +62,8 @@
        et c'est très bien : personne n'a besoin de le voir pour comprendre.
      — `contour` est PORTEUR : c'est lui qui dit « ceci est un champ », « ceci
        est un bouton ». WCAG 1.4.11 lui impose 3:1. L'app entière utilisait
-       `line` pour ce rôle : les contours de contrôle étaient à 1,26:1. */
+       `line` pour ce rôle : les contours de contrôle étaient à 1,26:1.
+
      Le « au pire » de `contour` a été calculé deux fois. La première valeur
      (#8F8B84) avait été éprouvée contre le blanc, le fond de page et
      `surface-2` — mais pas contre `surface-3`, qui est le fond d'un bouton
@@ -305,6 +306,21 @@
    replie : Tailwind doit émettre la référence, pas en prendre une copie. */
 @theme inline {
   --spacing-rail: var(--rail);
+}
+
+/* Les teintes changent en douceur — l'anneau de focus, JAMAIS.
+   Tailwind v4 a ajouté `outline-color` à sa liste de propriétés animées : avec
+   `transition-colors`, l'anneau de focus arrive à la couleur du texte et vire
+   à l'indigo pendant qu'on le regarde. Mesuré sur un bouton : #16171a à 0 ms,
+   #1a274d à 60 ms, indigo seulement à 600 ms. Un repère qui dit « vous êtes
+   ici » ne se met pas à changer de couleur en arrivant : il doit être juste
+   dès la première image. Cet utilitaire remplace `transition-colors` et
+   `transition` partout dans app/ui/. */
+@utility transition-teintes {
+  transition-property: color, background-color, border-color, fill, stroke,
+    box-shadow, opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }

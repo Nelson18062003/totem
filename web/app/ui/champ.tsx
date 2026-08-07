@@ -87,7 +87,11 @@ const classes = (...valeurs: Array<string | false | undefined>) =>
  * dedans peut encore survoler en `surface-2` sans s'y fondre.
  */
 const BOITE =
-  "w-full rounded-btn border border-contour bg-surface-raised text-body text-ink " +
+  /* `block` n'est pas décoratif : un champ laissé en ligne s'aligne sur la
+     ligne de base, et la place réservée aux jambages sous le texte s'ajoute
+     à la boîte. L'écart au message passait ainsi de 8 à 15 px — un espacement
+     que personne n'avait écrit. */
+  "block w-full rounded-btn border border-contour bg-surface-raised text-body text-ink " +
   "placeholder:text-ink-faint focus:border-accent " +
   "disabled:bg-surface-eteint disabled:text-ink-eteint";
 
@@ -302,10 +306,31 @@ export function Recherche({
     onChange?.(e);
   };
 
+  /**
+   * Effacer vide le champ POUR DE BON, qu'il soit tenu par l'appelant
+   * (`value`) ou laissé à lui-même (`defaultValue`).
+   *
+   * Sans les trois lignes du milieu, un champ non tenu devenait invidable : on
+   * remettait l'état interne à zéro, le bouton disparaissait — mais le texte,
+   * lui, restait dans la page, et plus rien ne permettait de l'enlever. Écrire
+   * `noeud.value = ""` ne suffit pas non plus : React surveille sa propre
+   * copie de la valeur et n'y verrait aucun changement. On passe donc par le
+   * poseur natif, puis on annonce l'événement — l'appelant apprend le vidage
+   * par son `onChange` habituel, comme si l'on avait effacé au clavier.
+   */
   const effacer = () => {
+    const noeud = interne.current;
+    if (noeud) {
+      const poseurNatif = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      poseurNatif?.call(noeud, "");
+      noeud.dispatchEvent(new Event("input", { bubbles: true }));
+    }
     setSaisi("");
     onEffacer();
-    interne.current?.focus();
+    noeud?.focus();
   };
 
   return (

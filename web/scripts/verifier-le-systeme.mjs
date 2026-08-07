@@ -124,6 +124,18 @@ for (const chemin of fichiers(ECRANS)) {
         "text-ink-eteint · bg-surface-eteint");
     }
 
+    // ── R12 · L'anneau de focus ne s'anime pas. Tailwind v4 a ajouté
+    // `outline-color` aux propriétés animées par `transition` et
+    // `transition-colors` : l'anneau arrive alors à la couleur du texte et
+    // vire à l'indigo pendant qu'on le regarde (mesuré : #16171a à 0 ms,
+    // indigo à 600 ms). Un repère qui dit « vous êtes ici » doit être juste
+    // dès la première image. `transition-teintes` fait la même chose sans
+    // toucher à l'anneau.
+    for (const [, classe] of texte.matchAll(/\b(transition-colors|transition)(?=["'\s`])/g)) {
+      signaler(fichier, n, classe, "anime outline-color", "R12 anneau de focus",
+        "transition-teintes");
+    }
+
     // ── R6 · Un contour de contrôle se voit. `border-line` vaut 1,26:1 : il
     // sépare, il n'affirme rien. Dès qu'une bordure DIT « ceci est un champ,
     // ceci est un bouton », WCAG 1.4.11 lui impose 3:1 — c'est `border-contour`.

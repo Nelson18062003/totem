@@ -136,7 +136,7 @@ export function Interrupteur({
         aria-describedby={description ? `${id}-description` : undefined}
         disabled={eteint}
         onClick={() => surChangement(!actif)}
-        className={`relative flex h-piste-h w-piste shrink-0 items-center rounded-full p-optique transition-colors before:absolute before:left-0 before:top-1/2 before:h-controle before:w-piste before:-translate-y-1/2 before:content-[''] ${
+        className={`relative flex h-piste-h w-piste shrink-0 items-center rounded-full p-optique transition-teintes before:absolute before:left-0 before:top-1/2 before:h-controle before:w-piste before:-translate-y-1/2 before:content-[''] ${
           eteint
             ? "bg-surface-eteint"
             : actif
@@ -188,7 +188,7 @@ export function Case({
             disabled={eteint}
             aria-describedby={description ? `${id}-description` : undefined}
             onChange={(e) => surChangement(e.target.checked)}
-            className="peer size-case appearance-none rounded-sm border border-contour bg-surface-raised transition-colors checked:border-accent checked:bg-accent disabled:border-contour disabled:bg-surface-eteint checked:disabled:border-ink-eteint checked:disabled:bg-ink-eteint"
+            className="peer size-case appearance-none rounded-sm border border-contour bg-surface-raised transition-teintes checked:border-accent checked:bg-accent disabled:border-contour disabled:bg-surface-eteint checked:disabled:border-ink-eteint checked:disabled:bg-ink-eteint"
           />
           <IconCheck className="pointer-events-none absolute left-1/2 top-1/2 size-icone-sm -translate-x-1/2 -translate-y-1/2 text-sur-couleur opacity-0 peer-checked:opacity-100" />
         </span>
@@ -245,7 +245,7 @@ export function Radio({
             disabled={eteint}
             aria-describedby={description ? `${id}-description` : undefined}
             onChange={() => surChangement(valeur)}
-            className="peer size-case appearance-none rounded-full border border-contour bg-surface-raised transition-colors checked:border-accent checked:bg-accent disabled:border-contour disabled:bg-surface-eteint checked:disabled:border-ink-eteint checked:disabled:bg-ink-eteint"
+            className="peer size-case appearance-none rounded-full border border-contour bg-surface-raised transition-teintes checked:border-accent checked:bg-accent disabled:border-contour disabled:bg-surface-eteint checked:disabled:border-ink-eteint checked:disabled:bg-ink-eteint"
           />
           <span
             aria-hidden="true"
@@ -294,7 +294,7 @@ export function PuceFiltre({
       aria-pressed={selectionnee}
       disabled={eteint}
       onClick={() => surChangement(!selectionnee)}
-      className={`inline-flex h-controle shrink-0 items-center justify-center gap-2 rounded-full border px-4 text-small font-medium transition-colors ${
+      className={`inline-flex h-controle shrink-0 items-center justify-center gap-2 rounded-full border px-4 text-small font-medium transition-teintes ${
         eteint
           ? "cursor-not-allowed border-contour bg-surface-eteint text-ink-eteint"
           : selectionnee
@@ -316,9 +316,15 @@ export function PuceFiltre({
  * n'ajoute ni ne retire de bordure extérieure : c'est ce qui faisait un actif
  * de 38 px à côté d'un inactif de 40.
  *
- * Un seul rayon pour tout le groupe : `rounded-btn` au cadre, repris par les
- * deux segments des extrémités. Pas de `overflow-hidden` — il rognerait
- * l'anneau de focus du segment.
+ * Le cadre du groupe est un ANNEAU INTÉRIEUR, pas une bordure. Une bordure de
+ * 1 px prend sa place DANS la boîte : le groupe restait à 44, mais les
+ * segments en `h-full` n'héritaient plus que de 42 — mesuré — et tombaient
+ * sous le plancher de R2. L'anneau ne prend aucune place : le groupe fait 44,
+ * chaque segment fait 44.
+ *
+ * Un seul rayon pour tout le groupe : `rounded-btn` au cadre, que l'anneau
+ * suit, et que reprennent les deux segments des extrémités. Pas de
+ * `overflow-hidden` — il rognerait l'anneau de focus du segment.
  * ──────────────────────────────────────────────────────────────────────────── */
 export type OptionSegment = {
   valeur: string;
@@ -349,7 +355,7 @@ export function GroupeSegments({
     <div
       role="group"
       aria-label={libelle}
-      className={`${pleineLargeur ? "flex w-full" : "inline-flex"} h-controle items-stretch rounded-btn border border-contour ${
+      className={`${pleineLargeur ? "flex w-full" : "inline-flex"} h-controle items-stretch rounded-btn ring-1 ring-inset ring-contour ${
         eteint ? "bg-surface-eteint" : "bg-surface-raised"
       } ${classe ?? ""}`}
     >
@@ -363,7 +369,7 @@ export function GroupeSegments({
             aria-pressed={choisi}
             disabled={inerte}
             onClick={() => surChangement(option.valeur)}
-            className={`flex h-full items-center justify-center gap-2 px-4 text-small font-medium transition-colors first:rounded-l-btn last:rounded-r-btn ${
+            className={`flex h-full items-center justify-center gap-2 px-4 text-small font-medium transition-teintes first:rounded-l-btn last:rounded-r-btn ${
               pleineLargeur ? "flex-1" : ""
             } ${rang > 0 ? "border-l border-contour" : ""} ${
               inerte

@@ -137,7 +137,7 @@ export function ElementMenu({
       aria-label={replie ? nomAccessible : undefined}
       title={replie ? nomAccessible : undefined}
       className={[
-        "flex h-controle items-center gap-3 rounded-btn px-3 text-body transition-colors",
+        "flex h-controle items-center gap-3 rounded-btn px-3 text-body transition-teintes",
         replie ? "justify-center" : "",
         actif
           ? "bg-accent-soft font-medium text-accent"
@@ -206,7 +206,7 @@ export function PiluleOnglet({
       aria-label={actif ? undefined : nomAccessible}
       title={actif ? undefined : nomAccessible}
       className={[
-        "flex items-center justify-center gap-2 rounded-btn transition-colors",
+        "flex items-center justify-center gap-2 rounded-btn transition-teintes",
         actif
           ? "h-controle bg-accent px-4 text-sur-couleur"
           : "size-controle text-ink-soft active:bg-surface-2",
@@ -263,7 +263,7 @@ export function BoutonRail({
       aria-expanded={!replie}
       title={nom}
       className={[
-        "flex h-controle w-full items-center gap-3 rounded-btn px-3 text-small text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink",
+        "flex h-controle w-full items-center gap-3 rounded-btn px-3 text-small text-ink-soft transition-teintes hover:bg-surface-2 hover:text-ink",
         replie ? "justify-center" : "",
         className,
       ].join(" ")}

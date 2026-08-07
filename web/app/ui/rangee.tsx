@@ -140,13 +140,22 @@ export function Rangee({
 }: ProprietesRangee) {
   const { hauteur, clampSousTitre } = GABARIT[lignes];
 
-  // Padding horizontal `px-4`, écart entre éléments `gap-3`. Quand une action
-  // de queue suit, l'écart avec elle vaut 12 et c'est la rangée qui garde ses
-  // 16 px jusqu'au bord.
+  // Padding horizontal `px-4`, écart entre éléments `gap-3`.
+  //
+  // LA GOUTTIÈRE. Quand une action de queue suit, les 12 px qui la séparent du
+  // contenu ne peuvent pas être pris DANS le corps cliquable : le padding
+  // appartient à la cible, les deux rectangles se touchent alors bord à bord,
+  // et le doigt qui vise la rangée pour l'ouvrir télécharge le reçu. R2 impose
+  // 8 px ENTRE deux cibles voisines qui font des choses différentes. On les
+  // pose donc en `gap-2` sur la rangée (hors des deux cibles), et le corps ne
+  // garde que `pr-1` : 4 + 8 = les 12 px du rythme, dont 8 de vide.
+  //
+  // À gauche, rien ne change : le corps va jusqu'au bord et garde toute la
+  // hauteur. La gouttière ne se prend qu'entre deux cibles, jamais sur elles.
   const corps = `flex h-full min-w-0 flex-1 items-center gap-3 pl-4 ${
-    action ? "pr-3" : "pr-4"
+    action ? "pr-1" : "pr-4"
   } text-left`;
-  const cliquable = "transition hover:bg-surface-2";
+  const cliquable = "transition-teintes hover:bg-surface-2";
 
   const dedans = (
     <>
@@ -224,7 +233,7 @@ export function Rangee({
   }
 
   return (
-    <li className={`relative flex ${hauteur} items-center ${action ? "pr-4" : ""} ${className}`}>
+    <li className={`relative flex ${hauteur} items-center ${action ? "gap-2 pr-4" : ""} ${className}`}>
       {interieur}
       {action && <ActionDeQueue {...action} />}
     </li>
@@ -239,7 +248,7 @@ export function Rangee({
  */
 function ActionDeQueue({ icone, libelle, onClick, href, externe }: ActionRangee) {
   const classes =
-    "grid size-controle shrink-0 place-items-center rounded-btn border border-contour text-ink-soft transition hover:text-ink [&>svg]:size-icone";
+    "grid size-controle shrink-0 place-items-center rounded-btn border border-contour text-ink-soft transition-teintes hover:text-ink [&>svg]:size-icone";
   if (href) {
     return externe ? (
       <a href={href} target="_blank" rel="noopener" title={libelle}

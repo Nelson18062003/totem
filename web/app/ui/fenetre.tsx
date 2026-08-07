@@ -195,7 +195,7 @@ export function Fenetre({
             type="button"
             onClick={onFermer}
             aria-label={etiquetteFermer}
-            className="flex size-controle shrink-0 items-center justify-center rounded-btn text-ink-soft transition hover:bg-surface-2 hover:text-ink"
+            className="flex size-controle shrink-0 items-center justify-center rounded-btn text-ink-soft transition-teintes hover:bg-surface-2 hover:text-ink"
           >
             <IconClose size={20} />
           </button>

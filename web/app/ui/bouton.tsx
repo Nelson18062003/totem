@@ -36,7 +36,7 @@ export type VarianteBouton = "primaire" | "secondaire" | "discret" | "danger";
  */
 const SOCLE =
   "relative inline-flex items-center justify-center gap-2 rounded-btn " +
-  "text-small font-medium transition-colors";
+  "text-small font-medium transition-teintes";
 
 /* La hauteur est une décision. 48 pour ce qui coûte cher à rater, 44 partout
  * ailleurs — jamais une conséquence du contenu. */

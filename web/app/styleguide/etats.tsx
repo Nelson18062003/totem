@@ -64,7 +64,7 @@ function BoutonPlanche({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center justify-center gap-2 rounded-btn px-4 text-body font-medium transition ${habit}`}
+      className={`flex items-center justify-center gap-2 rounded-btn px-4 text-body font-medium transition-teintes ${habit}`}
     >
       {children}
     </button>

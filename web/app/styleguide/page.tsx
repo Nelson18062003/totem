@@ -61,7 +61,7 @@ export default function Systeme() {
             <a
               key={f.id}
               href={`#${f.id}`}
-              className="flex h-controle items-center rounded-full border border-contour px-4 text-small font-medium text-ink transition hover:bg-surface-2 active:bg-surface-3"
+              className="flex h-controle items-center rounded-full border border-contour px-4 text-small font-medium text-ink transition-teintes hover:bg-surface-2 active:bg-surface-3"
             >
               {f.titre}
             </a>
