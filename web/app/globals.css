@@ -214,6 +214,34 @@
    * soit 0,9 mm sous les 9,2 mm mesurés par Parhi et al. pour une sélection
    * discrète ; ce qui coûte cher à rater mérite le cran au-dessus.
    * ───────────────────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════
+   * v2 — LA BOÎTE VISUELLE ET LA CIBLE SONT DEUX CHOSES DIFFÉRENTES.
+   *
+   * La v1 imposait 44 px à tout objet cliquable. C'était le seuil de WCAG
+   * 2.5.5, qui est de niveau **AAA** ; le seuil AA, 2.5.8, vaut **24**. Une
+   * puce de 28 px est donc conforme sans rien faire. En confondant la région
+   * qui accepte l'appui avec le rectangle qu'on dessine, la v1 a produit une
+   * interface épaisse : sur un téléphone de 390 px, sept puces de filtre
+   * réclamaient 637 px pour 358 disponibles, et l'écran des comptes
+   * consommait 67 % de sa hauteur avant le premier montant.
+   *
+   * La v2 sépare les deux. On DESSINE petit, on VISE grand — par un
+   * pseudo-élément débordant (utilitaire `.cible`), jamais par du padding :
+   * le padding déplace le survol, l'anneau de focus et la mise en page.
+   * C'est exactement ce que font Material 3 (puce 32 visuels, cible 48) et
+   * GitHub Primer (bouton 32, cible 44 en pointeur grossier).
+   * ═══════════════════════════════════════════════════════════════════════ */
+  --spacing-visuel-sm: 1.75rem;      /* 28 — puce, badge cliquable */
+  --spacing-visuel: 2rem;            /* 32 — bouton compact, bouton d'icône */
+  --spacing-visuel-lg: 2.5rem;       /* 40 — bouton courant */
+  --spacing-cible: 2.75rem;          /* 44 — la région qui accepte l'appui */
+
+  /* La gouttière minimale entre deux cibles VOISINES sur le même axe. Deux
+     objets de 32 px séparés de 8 px voient leurs cibles de 44 se recouvrir de
+     4 px — et la norme retire l'aire commune du calcul : les deux retombent à
+     40. Il faut donc un pas d'au moins 44, soit 12 px de gouttière. */
+  --spacing-gouttiere-cible: 0.75rem; /* 12 */
+
   --spacing-controle: 2.75rem;       /* 44 — le plancher, le défaut */
   --spacing-controle-fort: 3rem;     /* 48 — action primaire, action destructive */
   --spacing-controle-compact: 2.5rem; /* 40 — SEULEMENT dans une barre déjà
@@ -340,6 +368,95 @@
     box-shadow, opacity;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
+}
+
+/* ─── LA CIBLE ÉTENDUE ───────────────────────────────────────────────────────
+   On dessine petit, on vise grand. Le pseudo-élément déborde de la boîte sans
+   la déformer : le survol reste sur le dessin, l'anneau de focus aussi, la
+   mise en page ne bouge pas. Un `padding` aurait fait les trois erreurs.
+
+   `.cible` n'étend QUE sur la verticale : c'est l'axe libre pour des objets
+   alignés côte à côte, et c'est ce que font Material et Primer. Étendre aussi
+   en largeur ferait se recouvrir deux voisins, et la norme retire l'aire
+   commune du calcul — on perdrait ce qu'on croit gagner.
+
+   ATTENTION : aucun ancêtre ne doit porter `overflow: hidden`, il rognerait
+   la zone d'appui sans que rien ne le signale. */
+@utility cible {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: var(--spacing-cible);
+    transform: translateY(-50%);
+  }
+}
+
+/* Pour un objet ISOLÉ — un bouton d'icône seul dans un coin — l'extension se
+   fait sur les deux axes, puisqu'il n'a pas de voisin à recouvrir. */
+@utility cible-libre {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: max(var(--spacing-cible), 100%);
+    width: max(var(--spacing-cible), 100%);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* ─── LE CADRAGE OPTIQUE DU TEXTE ────────────────────────────────────────────
+   Une ligne de texte n'est jamais centrée optiquement dans sa boîte : la
+   hauteur de ligne se répartit également au-dessus et au-dessous, mais le bloc
+   de glyphes, lui, ne l'est pas. Mesuré sur DM Sans (upm 1000, ascendante 992,
+   descendante −310, hauteur de capitale 700, hauteur d'x 504) : un libellé
+   bas-de-casse paraît **1,42 px trop bas** dans un bouton, à 16 px.
+
+   `text-box` rogne le blanc de fonderie et fait coïncider la boîte avec les
+   lettres. Supporté par ~81 % du parc ; ailleurs, le repli remonte le texte de
+   la moitié du décalage — un compromis entre les capitales et la hauteur d'x,
+   qui ne demandent pas la même correction. */
+@utility cadre-optique {
+  text-box: trim-both cap alphabetic;
+}
+@supports not (text-box-trim: trim-both) {
+  .cadre-optique {
+    transform: translateY(-0.045em);
+  }
+}
+
+/* ─── L'INTERLETTRAGE SUIT LA TAILLE ─────────────────────────────────────────
+   La v1 posait `-0.011em` sur tout le corps de la page. Cette valeur n'est
+   juste qu'à 16 px : elle serre trop sous 13 px, où le texte se referme, et
+   pas assez au-dessus de 20 px, où les grands corps restent lâches. Les
+   paliers suivent la courbe des métriques dynamiques d'Inter, dont le zéro
+   tombe vers 12 px — en dessous, on ÉCARTE au lieu de resserrer. */
+.text-caption { letter-spacing: 0; }
+.text-small { letter-spacing: -0.006em; }
+.text-body { letter-spacing: -0.011em; }
+.text-heading { letter-spacing: -0.013em; }
+.text-title { letter-spacing: -0.019em; }
+.text-display,
+.text-hero { letter-spacing: -0.021em; }
+
+/* ─── LA COLONNE DE MONTANTS ─────────────────────────────────────────────────
+   DM Sans n'a AUCUNE fonction `tnum` : `font-variant-numeric: tabular-nums`
+   est inerte, et les chasses vont de 312 pour le « 1 » à 684 pour le « 0 »
+   (5,95 px d'écart à 16 px). L'alignement d'une colonne de montants ne peut
+   donc pas venir de la typographie — il vient de la mise en page : la colonne
+   est fixe, le texte est calé à droite.
+
+   Le signe fait partie du montant et doit avoir la même chasse que le plus :
+   c'est le cas de U+2212 (moins mathématique, 550) et non de U+002D (541). */
+@utility colonne-montant {
+  text-align: right;
+  font-variant-numeric: tabular-nums; /* inerte en DM Sans, utile en repli */
+  white-space: nowrap;
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
