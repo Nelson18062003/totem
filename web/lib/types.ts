@@ -91,10 +91,26 @@ export function fcfa(n: number, langue: Langue): string {
 
 // Le nombre seul, complet, sans abréviation : 287 000 — jamais « 287 k ».
 // En anglais, le séparateur de milliers est la virgule : 287,000.
+//
+// LE SÉPARATEUR FRANÇAIS. `toLocaleString("fr-FR")` produit une espace FINE
+// insécable (U+202F). Ce caractère est ABSENT de DM Sans — vérifié dans la
+// table cmap de totem/polices/dmsans-400.ttf : il est donc rendu par une
+// police de repli, avec une chasse imprévisible, au milieu de chaque montant.
+// On le remplace par l'espace insécable ordinaire (U+00A0), présente dans la
+// police (chasse 266).
+//
+// Le code précédent tentait déjà ce remplacement — mais ses deux caractères
+// avaient été aplatis en espaces ordinaires quelque part en chemin, et il
+// cherchait donc un caractère absent de la sortie pour le remplacer par
+// lui-même. Un correctif muet vaut moins que pas de correctif : celui-ci
+// nomme les points de code, qu'aucun éditeur ne peut normaliser en silence.
+const FINE_INSECABLE = "\u202F";
+const INSECABLE = "\u00A0";
+
 export function nombre(n: number, langue: Langue): string {
   return langue === "en"
     ? n.toLocaleString("en-US")
-    : n.toLocaleString("fr-FR").replace(/ /g, " ");
+    : n.toLocaleString("fr-FR").replaceAll(FINE_INSECABLE, INSECABLE);
 }
 
 /** Le jour d'un instant, vu de Douala, sous forme de clé « 2026-08-05 ». */
