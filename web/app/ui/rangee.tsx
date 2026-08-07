@@ -224,7 +224,15 @@ export function Rangee({
       {/* Objet de tête. L'icône nue prend la taille des rangées de liste (24) ;
           la pastille prend `size-disque` (32) et porte une icône de 16. Ni
           l'une ni l'autre ne fait 44 : ce qui a la taille d'un contrôle se
-          clique, et le disque décoratif ne se clique pas. */}
+          clique, et le disque décoratif ne se clique pas.
+
+          DANS UNE LISTE D'ARGENT, l'icône est sur TOUTES les rangées ou sur
+          AUCUNE. Elle décale la colonne de texte de 36 px (24 + 12), donc le
+          montant qui vit au bout : une seule rangée qui la porte, et la colonne
+          se brise à cet endroit-là. L'écran d'analyse est dans le premier cas —
+          l'icône y porte le rang du client, qui est une donnée. La liste des
+          encaissements est dans le second. Le disque, lui, ne se pose plus
+          jamais sur une rangée de paiement : voir juste en dessous. */}
       {icone && (
         <span className="grid size-icone-lg shrink-0 place-items-center text-ink-soft [&>svg]:size-icone-lg">
           {icone}
@@ -253,14 +261,14 @@ export function Rangee({
           C'est ainsi que l'écran était composé avant la refonte, et il avait
           raison — le composant avait généralisé un peu trop vite.
 
-          LE PLAFOND DE LA COLONNE DE TEXTE (`max-w-sm`, 384). En 1440 px, le
+          LE PLAFOND DE LA COLONNE DE TEXTE (`max-w-colonne-texte`, 384). En 1440 px, le
           titre finissait à x=538 et le montant commençait à x=1130 : 592 px de
           vide entre deux renseignements de la même ligne. Deux données qui se
           lisent ensemble se posent côte à côte ; ce n'est pas la largeur de la
           fenêtre qui décide de l'écart entre elles. */}
       <span
         className={`flex min-w-0 flex-1 flex-col overflow-hidden ${
-          colonneMontant ? "max-w-sm" : ""
+          colonneMontant ? "max-w-colonne-texte" : ""
         }`}
       >
         <span className="flex items-baseline gap-3">
@@ -276,21 +284,23 @@ export function Rangee({
               sans elle, chaque montant redécoupe la place laissée au titre, et
               deux rangées voisines n'ont pas la même colonne de texte.
 
-              DEUX LARGEURS, ET C'EST UN ARBITRAGE MESURÉ. 144 (`sm:w-36`) tient
+              DEUX LARGEURS, ET C'EST UN ARBITRAGE MESURÉ. 144
+              (`sm:w-colonne-montant-lg`) tient
               le plus long montant que l'application sache produire —
               « −1 248 500 FCFA », 131,8 px mesurés à 17 px. Mais en 390 px la
               colonne de texte ne fait que 221 : 144 + 12 de gouttière n'y
               laisseraient que 65 px au titre, et « Orange · 23:06 » (94 px)
               redeviendrait « Orange · … ». Or l'heure est le seul renseignement
               qui ne soit pas répété dans le SMS d'en dessous : c'est LUI qu'on
-              protège. Au téléphone la colonne vaut donc 112 (`w-28`), ce qui
+              protège. Au téléphone la colonne vaut donc 112
+              (`w-colonne-montant`), ce qui
               laisse 97 px au titre — et `min-w-fit` la laisse s'élargir pour le
               montant à sept chiffres, qui ne sera JAMAIS rogné. Ce jour-là,
               c'est ce titre-là qui se tronque, sur cette rangée-là seulement :
               le bord droit, lui, ne bouge pas d'un pixel. */}
           {montant && (
             <span
-              className={`order-last w-28 min-w-fit shrink-0 sm:w-36 colonne-montant text-heading ${TEINTE_MONTANT[montant.sens]}`}
+              className={`order-last w-colonne-montant min-w-fit shrink-0 colonne-montant text-heading sm:w-colonne-montant-lg ${TEINTE_MONTANT[montant.sens]}`}
             >
               {SIGNE[montant.sens]}
               {montant.texte}
@@ -300,7 +310,7 @@ export function Rangee({
               montant : sinon le titre de CETTE rangée-là serait le seul à
               courir jusqu'au bout, et la colonne aurait une brèche. */}
           {!montant && !valeur && colonneMontant && (
-            <span aria-hidden className="order-last w-28 shrink-0 sm:w-36" />
+            <span aria-hidden className="order-last w-colonne-montant shrink-0 sm:w-colonne-montant-lg" />
           )}
 
           {/* LE POIDS SUIT LA DONNÉE. « MTN » et « +150 000 FCFA » étaient tous
@@ -320,7 +330,7 @@ export function Rangee({
               se pose au bout de sa ligne. */}
           {valeur &&
             (colonneMontant ? (
-              <span className="order-last w-28 min-w-fit shrink-0 colonne-montant text-small text-ink-soft sm:w-36">
+              <span className="order-last w-colonne-montant min-w-fit shrink-0 colonne-montant text-small text-ink-soft sm:w-colonne-montant-lg">
                 {valeur}
               </span>
             ) : (

@@ -179,14 +179,21 @@ export function GalerieCartes() {
         </Carte>
         <p className="mt-2 max-w-lecture text-small text-ink-faint">
           DM Sans n&apos;a aucune fonction <code>tnum</code> : sa table GSUB
-          contient <code>calt ccmp dnom frac kern liga locl mark mkmk numr</code>.
-          <code> font-variant-numeric: tabular-nums</code> — donc la classe{" "}
-          <code>.tabnums</code> que portaient tous les montants — n&apos;a jamais
-          rien fait, et les chasses vont de 312 pour le « 1 » à 684 pour le
-          « 0 » : 5,95 px d&apos;écart à 16 px. L&apos;alignement vient de la mise
-          en page : colonne de largeur fixe, texte calé à droite. Le signe en fait
-          partie, et c&apos;est U+2212 (chasse 550, la même que le plus), jamais
-          le trait d&apos;union U+002D (541).
+          contient <code>calt ccmp dnom frac kern liga locl mark mkmk numr</code>,
+          et rien de plus. <code>tabular-nums</code> — donc la classe{" "}
+          <code>.tabnums</code> — n&apos;a jamais rien fait ici : les chasses vont
+          de 312 pour le « 1 » à 684 pour le « 0 », 5,95 px d&apos;écart à 16 px.
+          L&apos;alignement vient de la mise en page : colonne de largeur fixe,
+          texte calé à droite. Le signe en fait partie, et c&apos;est U+2212
+          (chasse 550, la même que le plus), jamais le trait d&apos;union U+002D
+          (541).
+        </p>
+        <p className="mt-2 max-w-lecture text-small text-ink-faint">
+          La dernière rangée n&apos;a pas de montant : le robot n&apos;a pas su
+          lire ce SMS, et il n&apos;invente pas un chiffre. Sa place est tenue
+          quand même — sinon son titre serait le seul à courir jusqu&apos;au bout
+          de la ligne, et la colonne aurait une brèche à l&apos;endroit exact où
+          l&apos;œil descend.
         </p>
       </section>
 

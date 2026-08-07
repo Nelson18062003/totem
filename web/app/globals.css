@@ -242,6 +242,18 @@
      40. Il faut donc un pas d'au moins 44, soit 12 px de gouttière. */
   --spacing-gouttiere-cible: 0.75rem; /* 12 */
 
+  /* La colonne des montants. Puisque DM Sans n'a pas de chiffres tabulaires,
+     l'alignement ne peut pas venir de la police : il vient d'une colonne de
+     LARGEUR FIXE, texte calé à droite. Elle tient « 1 248 500 FCFA » à 17 px,
+     et s'élargit d'un cran au-delà du téléphone. */
+  --spacing-colonne-montant: 7rem;     /* 112 */
+  --spacing-colonne-montant-lg: 9rem;  /* 144 */
+
+  /* Le plafond de la colonne de texte d'une rangée. Sans lui, en 1440 px, le
+     titre finissait à 538 et le montant commençait à 1130 : 592 px de vide
+     entre deux données de la MÊME ligne. L'œil ne fait plus le lien. */
+  --spacing-colonne-texte: 24rem;      /* 384 */
+
   --spacing-controle: 2.75rem;       /* 44 — le plancher, le défaut */
   --spacing-controle-fort: 3rem;     /* 48 — action primaire, action destructive */
   --spacing-controle-compact: 2.5rem; /* 40 — SEULEMENT dans une barre déjà
@@ -492,6 +504,14 @@ body {
   border: var(--spacing-filet) solid var(--color-line);
 }
 
+/* `.tabnums` NE FAIT RIEN dans cette application, et il faut le savoir.
+   DM Sans n'a aucune fonction `tnum` — vérifié dans sa table GSUB, qui
+   contient calt ccmp dnom frac kern liga locl mark mkmk numr. La déclaration
+   est conservée pour deux raisons : elle redeviendrait active le jour où l'on
+   changerait de police, et elle sert de repli aux polices système. Mais elle
+   n'aligne rien aujourd'hui : l'alignement d'une colonne de montants vient de
+   `.colonne-montant`, c'est-à-dire de la mise en page. Ne comptez jamais
+   dessus. */
 .tabnums { font-variant-numeric: tabular-nums; }
 
 /* Ligne de séparation interne des listes. Décorative : le filet clair suffit,

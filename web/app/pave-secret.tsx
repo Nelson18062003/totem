@@ -38,9 +38,16 @@ import { SoclePave } from "./ui/pave";
  *      coup d'œil à cette taille. Elles font 16, écartées de 12.
  *
  *   6. TITRE + NOTE FAISAIENT 60 px DE TEXTE AU-DESSUS D'UN CLAVIER. On ne lit
- *      pas une note en tapant un code : la note ne paraît qu'À L'OUVERTURE,
- *      tant qu'aucun chiffre n'est composé, et le titre partage sa ligne avec
- *      les pastilles qu'il annonce.
+ *      pas une note en tapant un code : elle est DITE UNE SEULE FOIS, À
+ *      L'OUVERTURE — c'est déjà le rôle de `noteSaisie`, juste avant que la
+ *      session ne parte, et de la phrase de bas de page des Opérations, qui
+ *      porte toutes deux la promesse (« jamais enregistré nulle part »). Il ne
+ *      reste ici qu'une ligne, le titre, et il partage même sa ligne avec les
+ *      pastilles qu'il annonce.
+ *
+ *      Ce n'est pas qu'une question de goût : mesuré, la note coûtait 72 px,
+ *      et sur un téléphone de 360 × 640 c'étaient les 21 px qui empêchaient le
+ *      pavé entier de tenir dans la zone qui le montre.
  *
  * CE QUI ÉTAIT BON ET QUI RESTE : la disposition téléphonique (1 en haut à
  * gauche, 0 en bas au centre), et « Valider » au bout de la dernière rangée —
@@ -134,13 +141,6 @@ export function PaveSecret({ onValider }: { onValider: (code: string) => void })
 
   return (
     <SoclePave mesures={MESURES}>
-      {/* LA NOTE, UNE SEULE FOIS : à l'ouverture du pavé, quand rien n'est
-          encore composé. Elle dit ce qu'il advient du code — cela se lit une
-          fois, pas à chaque chiffre. */}
-      {code.length === 0 && (
-        <p className="max-w-lecture text-small text-ink-soft">{t.paveNote}</p>
-      )}
-
       {/* Le titre annonce les pastilles : ils tiennent la même ligne. Ce qui
           s'affiche est tout ce qui sera jamais montré — des points. Le nom
           accessible ne transmet que la LONGUEUR, jamais un chiffre ; `role`

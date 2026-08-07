@@ -112,12 +112,21 @@ const CATEGORIES: OptionFiltre[] = [
   { valeur: "retrait", libelle: "Retrait", description: "6 opérations" },
 ];
 
-/** Le cadre du téléphone : 384 px de carte, 352 utiles — plus étroit que les
- *  358 px réellement disponibles sur un écran de 390. Ce qui tient ici tient
- *  là-bas. */
+/**
+ * Le cadre du téléphone. Il ne dépasse jamais 384 px, soit 352 utiles — moins
+ * que les 358 réellement disponibles sur un écran de 390. Ce qui tient ici
+ * tient là-bas.
+ *
+ * `w-full min-w-0` n'est pas décoratif : sans lui, le cadre est un ÉLÉMENT DE
+ * FLEX dimensionné par son contenu, et il grandit jusqu'à la largeur naturelle
+ * de la barre au lieu de la contraindre. Mesuré : 384 px de cadre pour 278 de
+ * colonne, et la page débordait à droite. Sur un vrai écran la barre est posée
+ * dans un bloc, qui prend la largeur de sa colonne — c'est ce que ces deux
+ * classes reproduisent.
+ */
 function Telephone({ children }: { children: React.ReactNode }) {
   return (
-    <div className="max-w-sm rounded-card border border-line bg-surface-raised p-4">
+    <div className="w-full min-w-0 max-w-sm rounded-card border border-line bg-surface-raised p-4">
       {children}
     </div>
   );
@@ -499,8 +508,8 @@ export function GalerieSelecteurs() {
           pour 358 disponibles : deux rangées, et « Retrait » seul sur la sienne
           avec 261 px de vide. Les mêmes sept choix tiennent ici dans deux
           déclencheurs, parce que leur largeur ne dépend plus de leur nombre.
-          Chaque cadre ci-dessous fait 384 px, soit 352 utiles — plus étroit que
-          les 358 d&apos;un téléphone de 390.
+          Chaque cadre ci-dessous ne dépasse jamais 384 px, soit 352 utiles —
+          plus étroit que les 358 d&apos;un téléphone de 390.
         </Note>
 
         <div className="mt-4 flex flex-col gap-6">
@@ -522,7 +531,7 @@ export function GalerieSelecteurs() {
               >
                 <DeclencheurFiltre
                   libelle="Opérateur"
-                  valeur="MTN MoMo"
+                  valeur="MTN"
                   surOuvrir={() => {}}
                 />
                 <DeclencheurFiltre libelle="Catégorie" surOuvrir={() => {}} />
@@ -633,11 +642,19 @@ export function GalerieSelecteurs() {
         <Note>
           L&apos;état actif se lit sans la couleur : le texte devient
           « Opérateur : MTN » et la graisse monte d&apos;un cran. Quand la
-          rangée se remplit, c&apos;est le déclencheur ACTIF qui rend des
-          pixels — celui au repos n&apos;a que son nom, il le garde entier — et
-          la coupure se fait par la fin, sur la valeur. Le compte, lui, tient
-          en une pastille de 20 : « 2 filtres actifs » écrit en toutes lettres
-          coûtait 70 px pris au nom des filtres ; la phrase reste annoncée.
+          rangée se remplit, la coupure se fait PAR LA FIN — le nom du filtre
+          reste en tête, c&apos;est la valeur qui perd ses dernières lettres, et
+          elle est toujours entière dans le nom accessible du bouton et dans la
+          feuille. Le compte, lui, tient en une pastille de 20 : « 2 filtres
+          actifs » écrit en toutes lettres coûtait 70 px pris au nom des
+          filtres ; la phrase, elle, reste annoncée.
+        </Note>
+        <Note>
+          Attention à ce que montre cette page sur un téléphone : la colonne de
+          la galerie ne laisse que 278 px utiles, contre 358 sur un écran de
+          390 — les coupures visibles ici sont donc plus sévères que sur
+          l&apos;écran réel. C&apos;est voulu : si la rangée tient ici, elle
+          tient là-bas.
         </Note>
         <Note>
           La feuille est la <code>Fenetre</code> du système : Échap la ferme, le
