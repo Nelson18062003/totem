@@ -108,6 +108,12 @@ export function DeclencheurFiltre({
       aria-expanded={ouverte}
       disabled={eteint}
       onClick={surOuvrir}
+      // Le nom accessible et l'infobulle gardent la phrase ENTIÈRE, même quand
+      // l'écran n'affiche plus que la valeur : « Opérateur : MTN ». L'œil se
+      // contente de la valeur parce que le voisinage la situe ; l'oreille, qui
+      // n'a pas ce voisinage, a besoin des deux.
+      aria-label={actif ? `${libelle}\u00A0: ${valeur}` : libelle}
+      title={actif ? `${libelle}\u00A0: ${valeur}` : libelle}
       // `h-visuel` : 32, la boîte visuelle d'un bouton compact (§1 de l'ordre
       // de mission). La cible de 44, elle, vient de `.cible`.
       // `min-w-0 shrink` : TOUS les déclencheurs rendent des pixels quand la

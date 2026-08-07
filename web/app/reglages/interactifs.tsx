@@ -315,12 +315,28 @@ export function BoutonDeconnexion() {
     );
   }
 
-  // Les deux cibles voisines gardent leurs 12 px de gouttière (`gap-3`) : sans
-  // eux, la norme retire l'aire commune et les deux retombent sous 44.
-  // `desactive` plutôt que `enCours` : le libellé change déjà de mot pendant
-  // l'envoi, et il doit rester lisible.
+  // LE DOIGT QUI REVIENT DOIT TOMBER SUR « ANNULER ».
+  //
+  // La première version posait les deux boutons calés à droite, « Annuler »
+  // d'abord dans le DOM : l'action destructive occupait donc exactement la
+  // place que le déclencheur venait de libérer. Mesuré : deux appuis au même
+  // point (310, 32) et l'on était déconnecté — `elementFromPoint` renvoyait
+  // « Se déconnecter » juste après le premier appui, « Annuler » étant posé à
+  // x=137, hors d'atteinte du doigt.
+  //
+  // Une confirmation qui met la sortie sous le doigt qui vient de se lever est
+  // pire que pas de confirmation du tout : elle donne l'illusion d'un garde-
+  // fou tout en réduisant le geste à deux appuis au même endroit.
+  //
+  // « Annuler » prend donc la place du déclencheur, au bord droit ; la sortie
+  // recule à gauche, hors du chemin de retour. Elle garde ses 44 px et ses
+  // 12 px de gouttière — sans eux, la norme retire l'aire commune de deux
+  // cibles voisines et les deux retombent sous le seuil.
   return (
     <div className="flex items-center justify-end gap-3">
+      <Bouton variante="danger" onClick={sortir} desactive={envoi}>
+        {envoi ? t.deconnexion : t.seDeconnecter}
+      </Bouton>
       <Bouton
         variante="discret"
         taille="compacte"
@@ -328,9 +344,6 @@ export function BoutonDeconnexion() {
         desactive={envoi}
       >
         {t.annuler}
-      </Bouton>
-      <Bouton variante="danger" onClick={sortir} desactive={envoi}>
-        {envoi ? t.deconnexion : t.seDeconnecter}
       </Bouton>
     </div>
   );
