@@ -250,7 +250,18 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
           cachee ? "translate-y-[130%]" : "translate-y-0"
         }`}
       >
-        <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-2 shadow-barre">
+        {/* LA BARRE DOIT POUVOIR RÉTRÉCIR.
+            Elle était en largeur intrinsèque : à 320 px elle mesurait 348 et
+            débordait de 14 px de CHAQUE CÔTÉ ; à 320 px avec un zoom de 200 %,
+            642 px — « Accueil » et « Opérations » sortaient entièrement du
+            cadre. Et rien ne le signalait : un élément `fixed` qui déborde
+            symétriquement ne crée aucun défilement, donc `scrollWidth` reste
+            propre. Le contrôle par débordement de document ne pouvait pas le
+            voir.
+            `max-w-full` la borne, `overflow-x-auto` rend les onglets extrêmes
+            atteignables quand la place manque vraiment, et `scrollbar-none`
+            évite qu'une barre de défilement mange la hauteur de la cible. */}
+        <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-line bg-surface-raised p-2 shadow-barre [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {liens.map(({ href, cle, Icone }) => (
             <PiluleOnglet
               key={href}

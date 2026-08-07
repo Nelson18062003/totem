@@ -117,12 +117,22 @@ export function Fenetre({
   // Le focus entre dans la fenêtre à l'ouverture, et REVIENT À SON POINT DE
   // DÉPART à la fermeture — sinon il repart du haut de la page, et l'on perd
   // la ligne sur laquelle on travaillait.
+  //
+  // L'effet DOIT attendre le montage. Le portail introduit un premier rendu où
+  // le composant renvoie `null` : la boîte n'existe pas encore, `boite.current`
+  // vaut `null`, et un effet qui ne dépendrait que de `ouverte` s'exécuterait
+  // dans ce vide — le focus n'entrerait jamais. Mesuré avant correction : il
+  // fallait 15 tabulations pour atteindre « Fermer », et les 14 arrêts
+  // traversés étaient masqués aux lecteurs d'écran par `aria-modal`.
+  //
+  // Réparer l'atteinte au doigt et casser l'atteinte au clavier dans le même
+  // geste : c'est exactement ce que le contrôle adversarial doit trouver.
   useEffect(() => {
-    if (!ouverte) return;
+    if (!ouverte || !monte) return;
     const declencheur = document.activeElement as HTMLElement | null;
     boite.current?.focus();
     return () => declencheur?.focus?.();
-  }, [ouverte]);
+  }, [ouverte, monte]);
 
   // Le fond ne défile pas pendant qu'une fenêtre est ouverte : sinon la page
   // glisse derrière le voile et l'on ne retrouve plus où l'on en était.
@@ -130,10 +140,24 @@ export function Fenetre({
     if (!ouverte) return;
     const avant = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+
+    // ET LE FOND DEVIENT INERTE. `aria-modal` dit aux lecteurs d'écran
+    // d'ignorer ce qu'il y a derrière — mais il ne retire rien du parcours de
+    // tabulation. Résultat mesuré : quatorze arrêts traversables derrière le
+    // voile, et masqués aux lecteurs d'écran. On tabulait dans un contenu que
+    // rien n'annonçait plus. `inert` ferme les deux à la fois.
+    const endormis: Element[] = [];
+    for (const enfant of Array.from(document.body.children)) {
+      if (enfant.contains(boite.current) || enfant.hasAttribute("inert")) continue;
+      enfant.setAttribute("inert", "");
+      endormis.push(enfant);
+    }
+
     return () => {
       document.body.style.overflow = avant;
+      for (const e of endormis) e.removeAttribute("inert");
     };
-  }, [ouverte]);
+  }, [ouverte, monte]);
 
   if (!ouverte) return null;
 

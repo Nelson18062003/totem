@@ -723,7 +723,13 @@ html[data-rail="replie"] { --rail: 4.5rem; }
    Au-dessus de `md`, la barre n'existe plus (`md:hidden`) : la garde tombe à
    zéro. C'est la variable qui le sait, pas l'utilitaire. */
 :root {
-  --barre-flottante: 4rem;          /* 64 = 8 + 44 + 8 + deux filets, arrondi */
+  /* La barre flottante, MESURÉE et non calculée : 8 de rembourrage + 44 de
+     cible + 8 + les deux filets = 62, et le calage la porte à 78. Le compte à
+     64 « arrondissait » vers le bas — et 14 px de contenu passaient sous elle
+     en permanence. C'est la troisième fois qu'un compte de ce type oublie les
+     filets (zone de texte, garde basse) : on monte au cran supérieur de la
+     grille plutôt que de rogner. */
+  --barre-flottante: 5rem;          /* 80 : 62 mesurés, arrondis au cran du dessus */
   --garde-basse: calc(
     var(--barre-flottante) + max(1rem, env(safe-area-inset-bottom)) + 1rem
   );
