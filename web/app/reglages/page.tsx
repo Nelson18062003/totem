@@ -115,7 +115,16 @@ export default async function Reglages() {
                     {/* Le numéro se règle d'ici : au repos un bouton de 44, en
                         saisie un champ de 44 et son « OK » de 44 — d'aplomb. */}
                     {s.enPlace && (
-                      <div className="mt-2 flex justify-end px-4">
+                      // Le numéro est une donnée de la carte, pas une note en
+                      // bas de rangée : il lui faut son étiquette et sa place
+                      // sur la grille des rangées. Sans elle, il flottait seul
+                      // et à droite, sans dire ce qu'il était. Le mot vient du
+                      // dictionnaire (`noteNumeroMot`) : la majuscule est
+                      // posée en CSS pour ne pas toucher à la chaîne traduite.
+                      <div className="flex min-h-rangee items-center justify-between gap-3 px-4">
+                        <span className="text-small text-ink-soft first-letter:uppercase">
+                          {t.noteNumeroMot}
+                        </span>
                         <ReglageNumero
                           iccid={s.iccid}
                           numeroInitial={s.numero}
