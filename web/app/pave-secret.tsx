@@ -19,9 +19,11 @@ import { SoclePave } from "./ui/pave";
  *
  *   1. LA GRILLE PRENAIT 208 px SUR 390. 91 px de vide de chaque côté, 46 % de
  *      l'écran perdu — et 74 px morts de chaque côté à l'intérieur même de sa
- *      carte de 356. La grille prend maintenant TOUTE la largeur de sa carte,
- *      en trois colonnes égales : c'est la carte qui donne la largeur de la
- *      touche, plus une largeur de pavé décidée à part.
+ *      carte de 356. La grille prend maintenant la largeur de sa carte, en
+ *      trois colonnes égales : plus aucune largeur de pavé n'est décidée à
+ *      part, c'est la carte qui donne la colonne. Mesuré sur 390 × 844 :
+ *      313,5 px de grille pour 322 de carte, soit 97 % — les 4 px qui restent
+ *      de chaque côté sont ce que la règle de hauteur ci-dessous concède.
  *
  *   2. LES TOUCHES FAISAIENT 64 × 48 — ratio 1,33, plus larges que hautes pour
  *      un doigt qui est rond. Elles sont CARRÉES, et jamais sous 64 px.
@@ -69,8 +71,9 @@ import { SoclePave } from "./ui/pave";
  * sur toute la largeur fait 89 px, les quatre rangées 393, et le pavé
  * redevient trop grand pour la zone qui le montre — on retomberait dans le
  * défaut qu'on corrige. Les QUATRE RANGÉES NE PRENNENT DONC JAMAIS PLUS DE LA
- * MOITIÉ DE L'ÉCRAN. Sur 844 px de haut la règle ne mord pas, sur 640 elle
- * ramène la touche à 71.
+ * MOITIÉ DE L'ÉCRAN. Mesuré : la touche vaut 96,5 sur un écran de 844 (la
+ * largeur en donnerait 99,3 — la règle ne rogne que 3 px), 74,4 sur 667,
+ * 71 sur 640, et 64 sur 568, où le plancher reprend la main.
  *
  * LE PLANCHER DE 64 est un cran de l'échelle, et il gagne toujours : mieux
  * vaut un pavé qu'on fait défiler d'un cheveu qu'une touche qu'on rate.
@@ -101,7 +104,7 @@ const TOUCHE =
 
 /* Le chiffre : contour PORTEUR (3,04:1) — c'est lui qui dit « ceci est une
    touche ». Le filet décoratif valait 1,26:1 et n'annonçait rien. Le glyphe
-   monte d'un cran : dans une touche de 100 px, un 16 px est une poussière. */
+   monte d'un cran : dans une touche de 96 px, un 16 px est une poussière. */
 const CHIFFRE =
   `${TOUCHE} border border-contour bg-surface-raised text-title text-ink ` +
   "tabnums hover:bg-surface-2 active:bg-surface-3";
