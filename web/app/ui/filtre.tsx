@@ -108,10 +108,8 @@ export function DeclencheurFiltre({
       aria-expanded={ouverte}
       disabled={eteint}
       onClick={surOuvrir}
-      // `h-(--spacing-visuel)` : 32, le jeton de la boîte visuelle d'un bouton
-      // compact. Écrit sous sa forme « variable » parce que le gardien
-      // (`scripts/verifier-le-systeme.mjs`) ne connaît pas encore le nom
-      // `visuel` dans sa liste NOMS — voir le compte rendu de fabrication.
+      // `h-visuel` : 32, la boîte visuelle d'un bouton compact (§1 de l'ordre
+      // de mission). La cible de 44, elle, vient de `.cible`.
       // `min-w-0 shrink` : TOUS les déclencheurs rendent des pixels quand la
       // rangée se remplit, et la rangée ne déborde donc jamais. On a essayé de
       // protéger le déclencheur au repos avec `shrink-0` — son texte est le
@@ -119,7 +117,7 @@ export function DeclencheurFiltre({
       // filtres au repos poussaient la barre à 382 px pour 358, et c'est la
       // PAGE qui débordait sur la droite. Mesuré. Une ellipse vaut mieux
       // qu'une barre qui sort de l'écran.
-      className={`cible inline-flex h-(--spacing-visuel) min-w-0 shrink items-center gap-2 rounded-full border px-3 text-small transition-teintes ${
+      className={`cible inline-flex h-visuel min-w-0 shrink items-center gap-2 rounded-full border px-3 text-small transition-teintes ${
         eteint
           ? "cursor-not-allowed border-contour bg-surface-eteint text-ink-eteint"
           : actif

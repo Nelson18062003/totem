@@ -113,13 +113,13 @@ const CATEGORIES: OptionFiltre[] = [
 ];
 
 /**
- * Le cadre du téléphone. Il ne dépasse jamais 384 px, soit 352 utiles — moins
+ * Le cadre du téléphone. Il ne dépasse jamais 384 px, soit 350 utiles — moins
  * que les 358 réellement disponibles sur un écran de 390. Ce qui tient ici
  * tient là-bas.
  *
  * `w-full min-w-0` n'est pas décoratif : sans lui, le cadre est un ÉLÉMENT DE
  * FLEX dimensionné par son contenu, et il grandit jusqu'à la largeur naturelle
- * de la barre au lieu de la contraindre. Mesuré : 384 px de cadre pour 278 de
+ * de la barre au lieu de la contraindre. Mesuré : 384 px de cadre pour 276 de
  * colonne, et la page débordait à droite. Sur un vrai écran la barre est posée
  * dans un bloc, qui prend la largeur de sa colonne — c'est ce que ces deux
  * classes reproduisent.
@@ -651,7 +651,7 @@ export function GalerieSelecteurs() {
         </Note>
         <Note>
           Attention à ce que montre cette page sur un téléphone : la colonne de
-          la galerie ne laisse que 278 px utiles, contre 358 sur un écran de
+          la galerie ne laisse que 244 px utiles, contre 358 sur un écran de
           390 — les coupures visibles ici sont donc plus sévères que sur
           l&apos;écran réel. C&apos;est voulu : si la rangée tient ici, elle
           tient là-bas.
