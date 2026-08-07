@@ -93,7 +93,19 @@ export function Badge({ nombre, forme = "compteur", libelle, className = "" }: P
 }
 
 export type ProprietesElementMenu = {
-  href: string;
+  /** Où l'on va. Absent quand l'élément agit sur place — voir `surAppui`. */
+  href?: string;
+  /**
+   * Ce qu'on fait quand on appuie, pour les éléments du rail qui ne mènent
+   * nulle part : la bascule de langue change la langue et reste sur la page.
+   * Un rail fait de liens contenait un bouton écrit à la main pour cette
+   * seule raison — donc à une autre hauteur que ses voisins.
+   */
+  surAppui?: () => void;
+  /** Le nom de la langue visée se lit dans CETTE langue, pas dans la nôtre. */
+  lang?: string;
+  /** Ce qu'on annonce quand le libellé écrit ne suffit pas à dire le geste. */
+  nom?: string;
   libelle: string;
   icone: ComposantIcone;
   /** La page en cours. Signalée par le fond, la graisse ET `aria-current`. */
@@ -119,6 +131,9 @@ export type ProprietesElementMenu = {
  */
 export function ElementMenu({
   href,
+  surAppui,
+  lang,
+  nom,
   libelle,
   icone: Icone,
   actif = false,
@@ -128,23 +143,22 @@ export function ElementMenu({
 }: ProprietesElementMenu) {
   const nonLus = badge && badge.nombre > 0 ? badge : undefined;
   // Replié : le nom accessible porte tout, puisque rien n'est écrit.
-  const nomAccessible = nonLus ? `${libelle} · ${nonLus.libelle}` : libelle;
+  const nomAccessible = nom ?? (nonLus ? `${libelle} · ${nonLus.libelle}` : libelle);
 
-  return (
-    <Link
-      href={href}
-      aria-current={actif ? "page" : undefined}
-      aria-label={replie ? nomAccessible : undefined}
-      title={replie ? nomAccessible : undefined}
-      className={[
-        "flex h-controle items-center gap-3 rounded-btn px-3 text-body transition-teintes",
-        replie ? "justify-center" : "",
-        actif
-          ? "bg-accent-soft font-medium text-accent"
-          : "text-ink-soft hover:bg-surface-2 hover:text-ink",
-        className,
-      ].join(" ")}
-    >
+  // Un lien mène ailleurs, un bouton agit ici. Le rail contient les deux, et
+  // ils doivent se ressembler à la ligne de pixel près — d'où une seule
+  // fabrique d'habillage pour les deux balises.
+  const habit = [
+    "flex h-controle items-center gap-3 rounded-btn px-3 text-body transition-teintes",
+    replie ? "justify-center" : "w-full",
+    actif
+      ? "bg-accent-soft font-medium text-accent"
+      : "text-ink-soft hover:bg-surface-2 hover:text-ink",
+    className,
+  ].join(" ");
+
+  const dedans = (
+    <>
       <span className="relative flex shrink-0">
         <Icone size={24} className="size-icone-lg" />
         {replie && nonLus ? (
@@ -159,6 +173,34 @@ export function ElementMenu({
           ) : null}
         </>
       )}
+    </>
+  );
+
+  if (href === undefined) {
+    return (
+      <button
+        type="button"
+        onClick={surAppui}
+        aria-label={nomAccessible}
+        title={nomAccessible}
+        lang={lang}
+        className={habit}
+      >
+        {dedans}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      aria-current={actif ? "page" : undefined}
+      aria-label={replie ? nomAccessible : undefined}
+      title={replie ? nomAccessible : undefined}
+      lang={lang}
+      className={habit}
+    >
+      {dedans}
     </Link>
   );
 }
