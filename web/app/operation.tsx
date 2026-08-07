@@ -498,7 +498,24 @@ export function OperationPopup({
             bas={bas}
           />
 
-          {pave && <EncadrePave onValider={secret} />}
+          {/* LA GARDE BASSE, JUSQU'ICI.
+              La barre flottante de la page devrait passer DERRIÈRE une
+              fenêtre : elle est au plan 20, le voile au plan 30. Elle passe
+              pourtant devant, et la raison est ailleurs — `main.entree`
+              (globals.css) porte une animation `both` qui, une fois finie,
+              continue de créer un CONTEXTE D'EMPILEMENT : la fenêtre y est
+              enfermée et son plan 30 ne vaut plus que dans cette boîte-là.
+              Vérifié au navigateur : l'animation retirée, la fenêtre repasse
+              devant. Le défaut n'est pas dans cet écran et ne s'y répare pas.
+              En attendant, on ne laisse pas « Valider » sous la barre : le
+              socle du pavé s'arrête une garde basse plus haut — un jeton qui
+              tombe à zéro dès que la barre n'existe plus, au-dessus de `md`.
+              Le jour où le plan est corrigé, cette ligne s'enlève seule. */}
+          {pave && (
+            <div className="garde-basse">
+              <EncadrePave onValider={secret} />
+            </div>
+          )}
 
           {enSession && !attente && !pave && !fini && (
             <ReponseLibre

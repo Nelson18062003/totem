@@ -26,7 +26,8 @@
  *   4. LE BOUTON DE FERMETURE FAISAIT 18×18. Il fait 44×44.
  */
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { IconClose } from "@/app/icons";
 
 /**
@@ -90,6 +91,11 @@ export function Fenetre({
   children: ReactNode;
   ouverte?: boolean;
 }) {
+  // Un portail vise `document.body`, qui n'existe pas au rendu serveur :
+  // on n'ouvre la fenêtre qu'une fois montée dans le navigateur.
+  const [monte, setMonte] = useState(false);
+  useEffect(() => setMonte(true), []);
+
   const idTitre = useId();
   const idDescription = useId();
   const boite = useRef<HTMLDivElement>(null);
@@ -154,7 +160,25 @@ export function Fenetre({
     }
   };
 
-  return (
+  // LA FENÊTRE SE POSE SUR LE CORPS DU DOCUMENT, PAS DANS LA PAGE.
+  //
+  // `z-30` ne suffisait pas, et le défaut était invisible à la lecture : la
+  // classe `.entree` de la coquille anime l'opacité de `<main>` avec un
+  // remplissage `both`, ce qui en fait un CONTEXTE D'EMPILEMENT. Tout ce qui
+  // vit dedans est alors prisonnier de ce contexte : le voile en `z-30`
+  // passait SOUS la barre flottante en `z-20`, qui est posée à la racine.
+  //
+  // Conséquence mesurée : sur un téléphone, le pied de la fiche d'un SMS —
+  // « Télécharger le PDF », « Établir le reçu » — était recouvert par la barre
+  // de navigation. `elementFromPoint` renvoyait l'icône de la barre. Le reçu
+  // était donc intouchable, et personne ne l'avait vu parce que le code, lui,
+  // était juste.
+  //
+  // Un portail replace la fenêtre à la racine du document : elle retrouve le
+  // plan que son `z-30` annonçait depuis le début.
+  if (!monte) return null;
+
+  return createPortal(
     <div
       // `z-30` est LE plan du voile et de la fenêtre (§5.8) : au-dessus de ce
       // qui colle en défilant (10) et de la barre flottante (20). Rien ici ne
@@ -215,5 +239,7 @@ export function Fenetre({
         )}
       </div>
     </div>
+    ,
+    document.body,
   );
 }

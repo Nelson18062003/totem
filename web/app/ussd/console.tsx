@@ -58,9 +58,12 @@ function demandeUnCode(texte: string): boolean {
  *                        − la garde basse
  *
  * — L'EN-TÊTE DE PAGE se mesure en LIGNES DE TEXTE, pas en espacements : une
- *   ligne de `text-title` (28) et une de `text-small` (20). Ces deux jetons
- *   viennent de l'échelle typographique, la seule qui sache exprimer la
- *   hauteur d'une ligne.
+ *   ligne de `text-title` (28), l'écart de 4 qui suit, et sa ligne d'aide.
+ *   Ces jetons viennent de l'échelle typographique, la seule qui sache
+ *   exprimer la hauteur d'une ligne. La ligne d'aide compte pour TROIS :
+ *   mesuré à 390, « Composez comme sur le téléphone… » en occupe trois, et le
+ *   calcul qui n'en prévoyait qu'une posait le bas du panneau 26 px sous la
+ *   barre flottante. Un en-tête qu'on sous-estime, c'est un pavé qu'on cache.
  * — LA GARDE BASSE remplace le compte fait à la main « une cible + la marge
  *   sûre ». Il valait 44 ; la barre flottante EN OCCUPE 78 (62 de barre et son
  *   calage bas), et la garde y ajoute un cran pour que rien ne la rase : 96.
@@ -82,7 +85,8 @@ function demandeUnCode(texte: string): boolean {
  */
 const MESURES = {
   "--marge-de-page": "calc(var(--spacing) * 4)",
-  "--entete-de-page": "calc(var(--spacing-ligne-lg) + var(--spacing-ligne-sm))",
+  "--entete-de-page":
+    "calc(var(--spacing-ligne-lg) + var(--spacing) + 3 * var(--spacing-ligne-sm))",
   "--ecart-de-page": "calc(var(--spacing) * 6)",
   "--hauteur-session":
     "calc(100dvh - var(--marge-de-page) - var(--entete-de-page)" +
