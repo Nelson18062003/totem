@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codeUssd } from "@/lib/codes";
@@ -124,15 +125,23 @@ export function AccueilGuichet({
           </Bouton>
         ))}
         {operations.length === 0 && (
-          // L'état vide du système : le chemin des réglages y devient un vrai
-          // contrôle au lieu d'un mot souligné au fil du texte.
+          // La phrase du dictionnaire est faite POUR porter le lien en son
+          // milieu : `aucunCode` s'arrête sur « dans les », `aucunCodeLien`
+          // dit « Réglages ». Séparés, l'écran affichait une phrase amputée
+          // suivie d'un bouton orphelin. On les recolle, et le chemin reste
+          // un vrai lien — atteignable au clavier, annoncé au lecteur.
           <div className="col-span-full">
             <Vide
-              titre={t.aucunCode(op)}
-              action={
-                <Bouton variante="secondaire" href="/reglages">
-                  {t.aucunCodeLien}
-                </Bouton>
+              titre={
+                <>
+                  {t.aucunCode(op)}{" "}
+                  <Link
+                    href="/reglages"
+                    className="text-accent underline underline-offset-2 transition-teintes hover:text-accent-hover"
+                  >
+                    {t.aucunCodeLien}
+                  </Link>
+                </>
               }
             />
           </div>

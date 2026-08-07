@@ -200,8 +200,16 @@ export function Vide({
   action,
   icone,
 }: {
-  titre: string;
-  detail?: string;
+  /**
+   * `ReactNode` et non `string` : certaines phrases du dictionnaire portent un
+   * LIEN EN LEUR MILIEU — « ajoutez-les dans les [Réglages] ». Contraint à une
+   * chaîne, le composant obligeait à sortir le lien de la phrase et à en faire
+   * un bouton à part : l'écran affichait alors « ajoutez-les dans les », point
+   * final, et un bouton en dessous. Une phrase amputée est pire qu'un mauvais
+   * alignement — surtout pour quelqu'un qui n'est pas informaticien.
+   */
+  titre: ReactNode;
+  detail?: ReactNode;
   /** Le bouton « et maintenant ? ». Optionnel : parfois il n'y a rien à faire. */
   action?: ReactNode;
   /** Une icône du jeu, en 24 : `<IconInbox size={24} />`. */
