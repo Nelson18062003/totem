@@ -112,6 +112,13 @@ export function DeclencheurFiltre({
       // compact. Écrit sous sa forme « variable » parce que le gardien
       // (`scripts/verifier-le-systeme.mjs`) ne connaît pas encore le nom
       // `visuel` dans sa liste NOMS — voir le compte rendu de fabrication.
+      // `min-w-0 shrink` : TOUS les déclencheurs rendent des pixels quand la
+      // rangée se remplit, et la rangée ne déborde donc jamais. On a essayé de
+      // protéger le déclencheur au repos avec `shrink-0` — son texte est le
+      // nom même du filtre, on aimerait le garder entier ; mais alors trois
+      // filtres au repos poussaient la barre à 382 px pour 358, et c'est la
+      // PAGE qui débordait sur la droite. Mesuré. Une ellipse vaut mieux
+      // qu'une barre qui sort de l'écran.
       className={`cible inline-flex h-(--spacing-visuel) min-w-0 shrink items-center gap-2 rounded-full border px-3 text-small transition-teintes ${
         eteint
           ? "cursor-not-allowed border-contour bg-surface-eteint text-ink-eteint"
@@ -326,12 +333,20 @@ export function BarreFiltres({
     <div
       role="group"
       aria-label={libelle}
-      className={`flex h-controle items-center gap-gouttiere-cible ${
+      className={`flex h-controle items-center ${
         position === "basse" ? "sticky bottom-0 z-10 bg-surface" : ""
       } ${classe ?? ""}`}
     >
-      {children}
-      <span className="ms-auto flex shrink-0 items-center">
+      {/* La gouttière de 12 vaut ENTRE DEUX CIBLES, et seulement là. Elle
+          appartient donc au groupe des déclencheurs, pas à la barre : la
+          pastille de compte ne se touche pas, elle se contente de 4. Ces
+          8 px-là ne sont pas une économie de comptable — mesuré, ce sont eux
+          qui font la différence entre « Catégorie » et « Catégor… » sur une
+          rangée de 358. */}
+      <div className="flex min-w-0 items-center gap-gouttiere-cible">
+        {children}
+      </div>
+      <span className="ms-auto flex shrink-0 items-center ps-1">
         {/* Toujours dans le DOM, même vide : une zone vivante qui n'apparaît
             qu'au moment où elle change n'est pas lue par tous les lecteurs
             d'écran. C'est ici que le compte s'écrit en toutes lettres. */}

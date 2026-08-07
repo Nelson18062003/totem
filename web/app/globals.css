@@ -707,6 +707,11 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 @utility garde-basse {
   padding-bottom: var(--garde-basse);
 }
+/* Le même espace, en hauteur — pour DESSINER la réserve (planche du système)
+   ou pour la pousser dans un flux qui ne peut pas prendre de rembourrage. */
+@utility reserve-basse {
+  height: var(--garde-basse);
+}
 
 /* ─── LES REQUÊTES DE CONTENEUR ──────────────────────────────────────────────
    Baseline depuis février 2023, et Tailwind v4 les expose sans plugin. La

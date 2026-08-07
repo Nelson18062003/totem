@@ -48,6 +48,34 @@ import { SoclePave } from "./ui/pave";
  */
 
 /**
+ * LA TAILLE D'UNE TOUCHE SE CALCULE — elle ne se choisit pas.
+ *
+ *     touche = min(la colonne de la carte, ce que la hauteur permet)
+ *              et jamais moins de 64
+ *
+ * LA COLONNE vient de la carte : la grille prend toute sa largeur, en trois
+ * parts égales. C'est le premier constat — 208 px de grille sur 390 d'écran
+ * n'étaient la mesure de rien.
+ *
+ * CE QUE LA HAUTEUR PERMET est l'autre bout de la même règle, et il a été
+ * mesuré lui aussi : sur un téléphone de 360 × 640, une touche carrée tirée
+ * sur toute la largeur fait 89 px, les quatre rangées 393, et le pavé
+ * redevient trop grand pour la zone qui le montre — on retomberait dans le
+ * défaut qu'on corrige. Les QUATRE RANGÉES NE PRENNENT DONC JAMAIS PLUS DE LA
+ * MOITIÉ DE L'ÉCRAN. Sur 844 px de haut la règle ne mord pas, sur 640 elle
+ * ramène la touche à 71.
+ *
+ * LE PLANCHER DE 64 est un cran de l'échelle, et il gagne toujours : mieux
+ * vaut un pavé qu'on fait défiler d'un cheveu qu'une touche qu'on rate.
+ */
+const MESURES = {
+  "--gouttiere": "var(--spacing-gouttiere-cible)", /* 12 */
+  "--touche-max":
+    "max(calc(var(--spacing) * 16), calc((50dvh - 3 * var(--gouttiere)) / 4))",
+  "--largeur-pave": "calc(3 * var(--touche-max) + 2 * var(--gouttiere))",
+} as React.CSSProperties;
+
+/**
  * LE SOCLE D'UNE TOUCHE — et sa hauteur est DÉCLARÉE.
  *
  * C'était le défaut de la v1 : aucune touche ne posait sa hauteur. « Effacer »
@@ -105,7 +133,7 @@ export function PaveSecret({ onValider }: { onValider: (code: string) => void })
   const pretAValider = code.length >= 4;
 
   return (
-    <SoclePave>
+    <SoclePave mesures={MESURES}>
       {/* LA NOTE, UNE SEULE FOIS : à l'ouverture du pavé, quand rien n'est
           encore composé. Elle dit ce qu'il advient du code — cela se lit une
           fois, pas à chaque chiffre. */}
@@ -139,7 +167,7 @@ export function PaveSecret({ onValider }: { onValider: (code: string) => void })
       {/* LA GRILLE — toute la largeur de sa carte, trois colonnes égales, et
           la gouttière du système entre deux cibles voisines : 12 px, sur les
           deux axes. « Valider » n'est donc plus à 8 px de « 0 ». */}
-      <div className="grid w-full grid-cols-3 gap-[var(--spacing-gouttiere-cible)]">
+      <div className="mx-auto grid w-full max-w-[var(--largeur-pave)] grid-cols-3 gap-[var(--gouttiere)]">
         {CHIFFRES.map((c) => (
           <button key={c} type="button" onClick={() => appuyer(c)} className={CHIFFRE}>
             {c}

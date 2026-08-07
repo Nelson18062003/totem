@@ -43,11 +43,18 @@ const MARQUE = "socle-pave";
    reprend toujours la main. */
 const REGLE = `:where(*):has(> .${MARQUE}){position:sticky;bottom:0}`;
 
-export function SoclePave({ children }: { children: ReactNode }) {
+export function SoclePave({
+  children,
+  /** Les mesures nommées du pavé — elles descendent d'ici à toute la grille. */
+  mesures,
+}: {
+  children: ReactNode;
+  mesures?: React.CSSProperties;
+}) {
   return (
     <>
       <style>{REGLE}</style>
-      <div className={`${MARQUE} flex flex-col gap-3 bg-surface-raised`}>
+      <div className={`${MARQUE} flex flex-col gap-3 bg-surface-raised`} style={mesures}>
         {children}
       </div>
     </>

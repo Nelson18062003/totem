@@ -85,13 +85,13 @@ export function GalerieCartes() {
           titre="Les trois hauteurs de rangée"
           detail="56 pour une ligne, 72 pour deux, 88 pour trois. Fermes : une rangée ne grandit pas avec son contenu."
         />
+        {/* Pas de montant ici : trois colonnes de 330 px et une colonne de
+            montants de 144 ne laisseraient que 53 px au titre, qui se
+            tronquerait — et ce bloc-là parle de hauteur, pas d'argent. La
+            colonne de montants a sa propre section, en pleine largeur. */}
         <div className="grid gap-4 sm:grid-cols-3">
           <Liste>
-            <Rangee
-              icone={<IconWallet size={24} />}
-              titre="Une ligne — 56"
-              montant={{ texte: "12 500 FCFA", sens: "credit" }}
-            />
+            <Rangee icone={<IconWallet size={24} />} titre="Une ligne — 56" />
           </Liste>
           <Liste>
             <Rangee
@@ -99,7 +99,6 @@ export function GalerieCartes() {
               icone={<IconPhone size={24} />}
               titre="Deux lignes — 72"
               sousTitre="MTN · 14:32 — le sous-titre tient sur une ligne, et une seule."
-              montant={{ texte: "3 000 FCFA", sens: "debit" }}
             />
           </Liste>
           <Liste>
@@ -108,7 +107,6 @@ export function GalerieCartes() {
               icone={<IconBank size={24} />}
               titre="Trois lignes — 88"
               sousTitre="Le sous-titre dispose de deux lignes, puis il s'arrête net."
-              montant={{ texte: "148 300 FCFA", sens: "neutre" }}
             />
           </Liste>
         </div>
@@ -204,7 +202,7 @@ export function GalerieCartes() {
             <Rangee
               icone={<IconPhone size={24} />}
               titre="Numéro du terminal"
-              valeur="+237 6 99 00 11 22"
+              valeur="6 99 00 11 22"
             />
           </Liste>
         </Carte>
@@ -239,6 +237,10 @@ export function GalerieCartes() {
           titre="Une liste dans une carte"
           detail="La carte passe en bord à bord : c'est la rangée qui porte le padding, et elle va jusqu'au bord parce que c'est elle qu'on touche."
         />
+        {/* Le chevron est le même sur les quatre rangées. Une liste qui en met
+            sur certaines seulement décale les autres de 32 px (20 d'icône et
+            12 d'écart) : le chevron se pose APRÈS la colonne de montants, et
+            une place qui n'est pas tenue est une colonne qui bouge. */}
         <Carte bordABord>
           <Liste>
             <Rangee
@@ -246,7 +248,7 @@ export function GalerieCartes() {
               titre="JEAN NKOMO"
               sousTitre="MTN · 14:32"
               montant={{ texte: "12 500 FCFA", sens: "credit" }}
-              action={RECU}
+              chevron
               onClick={() => {}}
             />
             <Rangee
@@ -259,20 +261,25 @@ export function GalerieCartes() {
             />
             <Rangee
               lignes={2}
-              titre="Rechargement de la carte"
+              titre="Rechargement"
               sousTitre="MTN · 11:47"
               montant={{ texte: "5 000 FCFA", sens: "neutre" }}
               chevron
               href="/encaissements"
             />
-            <Rangee
-              icone={<IconBank size={24} />}
-              titre="Virement bancaire"
-              valeur="hier"
-            />
+            {/* Pas de montant, mais une valeur : elle prend la même colonne, au
+                même bord droit. Une liste d'argent n'a pas deux colonnes de
+                droite.
+
+                ET PAS D'OBJET DE TÊTE. Dans une liste d'argent, une icône de
+                tête sur une seule rangée décale SA colonne de texte de 36 px
+                (24 d'icône, 12 d'écart) — donc son montant. L'objet de tête est
+                là sur toutes les rangées ou sur aucune ; c'est le cas de
+                l'écran d'analyse, où il porte le rang du client. */}
+            <Rangee titre="Virement" valeur="hier" chevron href="/cartes" />
           </Liste>
         </Carte>
-        <p className="mt-2 text-small text-ink-faint">
+        <p className="mt-2 max-w-lecture text-small text-ink-faint">
           Crédit et débit sont indiscernables en niveaux de gris : le signe est
           écrit par le composant, jamais laissé à l&apos;appelant.
         </p>

@@ -622,14 +622,28 @@ export function GalerieSelecteurs() {
         )}
 
         <Note>
+          Mesuré sur 390 px : la barre fait 44 de haut et tient sur UNE rangée
+          dans tous les cas. Au repos, les deux déclencheurs occupent 242,8 px
+          des 358 disponibles — 68 %, contre 178 % pour les sept puces.
           Le déclencheur dessine 32 px et répond sur 44 (<code>.cible</code>) ;
-          la barre, elle, déclare 44. L&apos;état actif se lit sans la couleur :
-          le texte devient « Opérateur : MTN » et la graisse monte d&apos;un
-          cran. La gouttière vaut 12 (<code>gap-gouttiere-cible</code>) — à 8,
-          deux cibles de 44 se recouvrent de 4 et la norme retire l&apos;aire
-          commune, ramenant les deux à 40. La feuille est la{" "}
-          <code>Fenetre</code> du système : Échap la ferme, le focus y est
-          piégé, le focus revient au déclencheur.
+          la gouttière vaut 12 (<code>gap-gouttiere-cible</code>) — à 8, deux
+          cibles de 44 se recouvrent de 4 et la norme retire l&apos;aire
+          commune, ramenant les deux à 40.
+        </Note>
+        <Note>
+          L&apos;état actif se lit sans la couleur : le texte devient
+          « Opérateur : MTN » et la graisse monte d&apos;un cran. Quand la
+          rangée se remplit, c&apos;est le déclencheur ACTIF qui rend des
+          pixels — celui au repos n&apos;a que son nom, il le garde entier — et
+          la coupure se fait par la fin, sur la valeur. Le compte, lui, tient
+          en une pastille de 20 : « 2 filtres actifs » écrit en toutes lettres
+          coûtait 70 px pris au nom des filtres ; la phrase reste annoncée.
+        </Note>
+        <Note>
+          La feuille est la <code>Fenetre</code> du système : Échap la ferme, le
+          focus y est piégé et revient au déclencheur, l&apos;en-tête et le pied
+          ne défilent pas. Chaque option est un vrai bouton radio ou une vraie
+          case à cocher, en rangées de 44.
         </Note>
       </section>
     </div>

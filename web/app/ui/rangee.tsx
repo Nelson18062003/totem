@@ -206,8 +206,16 @@ export function Rangee({
   //
   // À gauche, rien ne change : le corps va jusqu'au bord et garde toute la
   // hauteur. La gouttière ne se prend qu'entre deux cibles, jamais sur elles.
+  //
+  // ET LA PLACE RÉSERVÉE SE PAIE PAREIL. Le corps ne regardait que `action` :
+  // une rangée dont la place de queue est seulement TENUE gardait `pr-4`, et son
+  // montant se posait 12 px à gauche de celui de la rangée du dessus. Mesuré en
+  // 390 px : bords droits à 270 et à 258. La colonne réservée pour aligner
+  // désalignait. Ce qui compte n'est pas qu'il y ait une action, c'est que la
+  // place soit prise.
+  const placeTenue = queueReservee && !action;
   const corps = `flex h-full min-w-0 flex-1 items-center gap-3 pl-4 ${
-    action ? "pr-1" : "pr-4"
+    action || placeTenue ? "pr-1" : "pr-4"
   } text-left`;
   const cliquable = "transition-teintes hover:bg-surface-2";
 
@@ -262,17 +270,27 @@ export function Rangee({
               qualifie. `order-last` le remet à droite à l'œil, parce qu'une
               colonne de chiffres se lit par son bord droit.
 
-              LA COLONNE EST FIXE (`w-36`, 144) ET CALÉE À DROITE
-              (`.colonne-montant`). Pas `tabnums` : DM Sans n'a pas la fonction,
-              la classe ne faisait rien. Une largeur fixe aligne les bords
-              droits ET les bords gauches ; sans elle, chaque montant redécoupe
-              la place laissée au titre, et deux rangées voisines n'ont pas la
-              même colonne de texte. 144 px tient le plus long montant que
-              l'application sache produire — « −1 248 500 FCFA », 135 px à
-              17 px. */}
+              LA COLONNE EST FIXE ET CALÉE À DROITE (`.colonne-montant`). Pas
+              `tabnums` : DM Sans n'a pas la fonction, la classe ne faisait rien.
+              Une largeur fixe aligne les bords droits ET les bords gauches ;
+              sans elle, chaque montant redécoupe la place laissée au titre, et
+              deux rangées voisines n'ont pas la même colonne de texte.
+
+              DEUX LARGEURS, ET C'EST UN ARBITRAGE MESURÉ. 144 (`sm:w-36`) tient
+              le plus long montant que l'application sache produire —
+              « −1 248 500 FCFA », 131,8 px mesurés à 17 px. Mais en 390 px la
+              colonne de texte ne fait que 221 : 144 + 12 de gouttière n'y
+              laisseraient que 65 px au titre, et « Orange · 23:06 » (94 px)
+              redeviendrait « Orange · … ». Or l'heure est le seul renseignement
+              qui ne soit pas répété dans le SMS d'en dessous : c'est LUI qu'on
+              protège. Au téléphone la colonne vaut donc 112 (`w-28`), ce qui
+              laisse 97 px au titre — et `min-w-fit` la laisse s'élargir pour le
+              montant à sept chiffres, qui ne sera JAMAIS rogné. Ce jour-là,
+              c'est ce titre-là qui se tronque, sur cette rangée-là seulement :
+              le bord droit, lui, ne bouge pas d'un pixel. */}
           {montant && (
             <span
-              className={`order-last w-36 shrink-0 colonne-montant text-heading ${TEINTE_MONTANT[montant.sens]}`}
+              className={`order-last w-28 min-w-fit shrink-0 sm:w-36 colonne-montant text-heading ${TEINTE_MONTANT[montant.sens]}`}
             >
               {SIGNE[montant.sens]}
               {montant.texte}
@@ -281,8 +299,8 @@ export function Rangee({
           {/* La place de la colonne est tenue même quand le robot n'a pas lu de
               montant : sinon le titre de CETTE rangée-là serait le seul à
               courir jusqu'au bout, et la colonne aurait une brèche. */}
-          {!montant && colonneMontant && (
-            <span aria-hidden className="order-last w-36 shrink-0" />
+          {!montant && !valeur && colonneMontant && (
+            <span aria-hidden className="order-last w-28 shrink-0 sm:w-36" />
           )}
 
           {/* LE POIDS SUIT LA DONNÉE. « MTN » et « +150 000 FCFA » étaient tous
@@ -295,7 +313,19 @@ export function Rangee({
           >
             {titre}
           </span>
-          {valeur && <span className="shrink-0 text-small text-ink-soft">{valeur}</span>}
+          {/* Une valeur libre dans une liste d'argent prend la MÊME colonne que
+              les montants : sinon la rangée « Virement bancaire — hier » ouvre
+              une brèche à l'endroit précis où l'œil descend le long des
+              chiffres. Ailleurs, elle reste ce qu'elle était : une valeur qui
+              se pose au bout de sa ligne. */}
+          {valeur &&
+            (colonneMontant ? (
+              <span className="order-last w-28 min-w-fit shrink-0 colonne-montant text-small text-ink-soft sm:w-36">
+                {valeur}
+              </span>
+            ) : (
+              <span className="shrink-0 text-small text-ink-soft">{valeur}</span>
+            ))}
         </span>
 
         {/* S'IL FAUT COUPER, ON COUPE LE SMS — jamais l'heure. L'heure est le
@@ -345,10 +375,6 @@ export function Rangee({
   } else {
     interieur = <div className={corps}>{dedans}</div>;
   }
-
-  // La place de l'action est tenue même quand il n'y a pas d'action : sinon la
-  // colonne des montants se décale d'une rangée à l'autre.
-  const placeTenue = queueReservee && !action;
 
   return (
     <li

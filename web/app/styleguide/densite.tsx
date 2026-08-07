@@ -303,6 +303,50 @@ function Note({ children }: { children: React.ReactNode }) {
   return <p className="mt-2 max-w-lecture text-small text-ink-soft">{children}</p>;
 }
 
+/* ─── LA GARDE BASSE, DESSINÉE ───────────────────────────────────────────────
+   La réserve est tracée en pointillés, à la hauteur exacte que le jeton
+   annonce — et sa valeur est relue dans le navigateur. Au-dessus de `md`, la
+   barre flottante n'existe plus : la réserve tombe à 0 et disparaît d'
+   elle-même. Rétrécissez la fenêtre sous 768 px pour la voir apparaître. */
+
+function DemoGardeBasse() {
+  const boite = useRef<HTMLDivElement>(null);
+  const [reserve, setReserve] = useState<number | null>(null);
+
+  useEffect(() => {
+    const n = boite.current;
+    if (!n) return;
+    const mesurer = () => setReserve(px(getComputedStyle(n).paddingBottom));
+    mesurer();
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(document.documentElement);
+    return () => observateur.disconnect();
+  }, []);
+
+  return (
+    <>
+      <div className="mt-6 overflow-hidden rounded-card border border-line bg-surface-raised">
+        <div ref={boite} className="garde-basse relative px-4 pt-4">
+          <div className="flex hauteur-rangee items-center rounded-btn bg-accent px-4 text-sur-couleur">
+            Exporter le bilan
+          </div>
+          <span
+            aria-hidden
+            className="reserve-basse pointer-events-none absolute inset-x-4 bottom-0 flex items-center justify-center overflow-hidden rounded-btn border border-dashed border-contour text-caption uppercase text-ink-faint"
+          >
+            réservé à la barre
+          </span>
+        </div>
+      </div>
+      <p className="mt-2 text-small text-ink-faint">
+        Réserve mesurée à cette largeur de fenêtre :{" "}
+        <span className="font-medium text-ink">{reserve ?? "…"} px</span>
+        {reserve === 0 ? " — la barre flottante n’existe pas au-dessus de md." : null}
+      </p>
+    </>
+  );
+}
+
 /* ─── LA GALERIE ─────────────────────────────────────────────────────────── */
 
 export function GalerieDensite() {
@@ -426,19 +470,7 @@ export function GalerieDensite() {
           réserve en bas de page, et retombe à zéro au-dessus de{" "}
           <code>md</code>, où la barre n&apos;existe plus.
         </Note>
-        <div className="mt-6 overflow-hidden rounded-card border border-line bg-surface-raised">
-          <div className="garde-basse relative px-4 pt-4">
-            <div className="flex hauteur-rangee items-center rounded-btn bg-accent px-4 text-sur-couleur">
-              Exporter le bilan
-            </div>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center pb-4 text-caption uppercase text-ink-faint"
-            >
-              l&apos;emplacement réservé à la barre
-            </span>
-          </div>
-        </div>
+        <DemoGardeBasse />
       </section>
     </div>
   );

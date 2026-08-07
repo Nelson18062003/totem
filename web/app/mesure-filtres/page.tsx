@@ -66,6 +66,20 @@ export default function Mesure() {
         </BarreFiltres>
       </div>
 
+      <div id="cas-court" className="mb-8">
+        <BarreFiltres libelle="Filtres" compte={2} libelleCompte={(n) => n + " filtres actifs"}>
+          <DeclencheurFiltre libelle="Opérateur" valeur="MTN" surOuvrir={() => {}} />
+          <DeclencheurFiltre libelle="Catégorie" valeur="Envoi" surOuvrir={() => {}} />
+        </BarreFiltres>
+      </div>
+
+      <div id="cas-moyen" className="mb-8">
+        <BarreFiltres libelle="Filtres" compte={2} libelleCompte={(n) => n + " filtres actifs"}>
+          <DeclencheurFiltre libelle="Opérateur" valeur="Orange" surOuvrir={() => {}} />
+          <DeclencheurFiltre libelle="Catégorie" valeur="Retrait" surOuvrir={() => {}} />
+        </BarreFiltres>
+      </div>
+
       <div id="cas-vivant">
         <BarreFiltres
           libelle="Filtres"
