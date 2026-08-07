@@ -498,24 +498,14 @@ export function OperationPopup({
             bas={bas}
           />
 
-          {/* LA GARDE BASSE, JUSQU'ICI.
-              La barre flottante de la page devrait passer DERRIÈRE une
-              fenêtre : elle est au plan 20, le voile au plan 30. Elle passe
-              pourtant devant, et la raison est ailleurs — `main.entree`
-              (globals.css) porte une animation `both` qui, une fois finie,
-              continue de créer un CONTEXTE D'EMPILEMENT : la fenêtre y est
-              enfermée et son plan 30 ne vaut plus que dans cette boîte-là.
-              Vérifié au navigateur : l'animation retirée, la fenêtre repasse
-              devant. Le défaut n'est pas dans cet écran et ne s'y répare pas.
-              En attendant, on ne laisse pas « Valider » sous la barre : le
-              socle du pavé s'arrête une garde basse plus haut — un jeton qui
-              tombe à zéro dès que la barre n'existe plus, au-dessus de `md`.
-              Le jour où le plan est corrigé, cette ligne s'enlève seule. */}
-          {pave && (
-            <div className="garde-basse">
-              <EncadrePave onValider={secret} />
-            </div>
-          )}
+          {/* Le pavé n'a PAS de garde basse, et c'est une décision, pas un
+              oubli : la fenêtre se pose désormais sur le corps du document
+              (portail, `ui/fenetre.tsx`) et retrouve le plan 30 que son voile
+              annonçait — la barre flottante, au plan 20, passe derrière. Une
+              réserve ici ne protégerait plus de rien et coûterait 96 px de
+              hauteur au clavier. C'est la CONSOLE qui garde la sienne : son
+              panneau est du contenu de page, pas une fenêtre. */}
+          {pave && <EncadrePave onValider={secret} />}
 
           {enSession && !attente && !pave && !fini && (
             <ReponseLibre
