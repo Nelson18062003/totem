@@ -3,6 +3,9 @@ import { chargerDonnees } from "@/lib/serveur";
 import { textesCartes } from "@/lib/textes/cartes";
 import { fcfa } from "@/lib/types";
 import { IconArrowDown, IconArrowUp, IconList, IconLock, IconWallet } from "../icons";
+import { Bouton } from "../ui/bouton";
+import { Carte, EnTeteSection } from "../ui/carte";
+import { Liste, Rangee } from "../ui/rangee";
 import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +25,17 @@ export default async function Comptes() {
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
       </header>
 
-      {/* Cartes en place — côte à côte dès que la largeur le permet */}
+      {/* Cartes en place — côte à côte dès que la largeur le permet.
+          La carte de compte est une SURFACE DE MARQUE (`acct` / `acct-alt`),
+          pas une carte du système : son aplat sombre vient de globals.css. Elle
+          en reprend le rayon et le padding — `p-4`, jamais 20. */}
       {enPlace.length === 0 ? (
         <Vide titre={t.videTitre} detail={t.videDetail} />
       ) : (
         <section className="grid gap-3 sm:grid-cols-2">
           {enPlace.map((s, i) => (
-            <div key={s.iccid} className={`rounded-card p-5 ${i === 0 ? "acct" : "acct-alt"}`}>
-              <div className="flex items-start justify-between">
+            <div key={s.iccid} className={`rounded-card p-4 ${i === 0 ? "acct" : "acct-alt"}`}>
+              <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className={`text-caption uppercase tracking-wider ${i === 0 ? "text-white/60" : "text-ink-faint"}`}>
                     {s.operateur === "MTN" ? "MTN Mobile Money" : s.operateur === "Orange" ? "Orange Money" : s.libelle}
@@ -37,8 +43,13 @@ export default async function Comptes() {
                   <p className="mt-3 text-display font-semibold tabnums tracking-tight">
                     {s.solde == null ? "—" : fcfa(s.solde, langue)}
                   </p>
+                  {/* Sur l'aplat sombre, le texte secondaire descendait à 45 %
+                      d'opacité : 4,49:1, sous le seuil de 4,5 de WCAG 1.4.3 —
+                      et c'est de l'heure du relevé qu'il s'agit, pas d'un
+                      ornement. Les deux lignes remontent au même 55 % que le
+                      numéro voisin : 6,08:1. */}
                   {s.solde != null && s.soldeMaj && (
-                    <p className={`mt-0.5 text-caption tabnums ${i === 0 ? "text-white/45" : "text-ink-faint"}`}>
+                    <p className={`mt-1 text-caption tabnums ${i === 0 ? "text-white/55" : "text-ink-faint"}`}>
                       {t.soldeLe(s.soldeMaj)}
                     </p>
                   )}
@@ -46,16 +57,20 @@ export default async function Comptes() {
                     {s.numero || t.numeroAbsent}
                   </p>
                   {/* L'ICCID est ce qui distingue deux cartes du même opérateur. */}
-                  <p className={`mt-2 text-caption tabnums ${i === 0 ? "text-white/45" : "text-ink-faint"}`}>
+                  <p className={`mt-2 text-caption tabnums ${i === 0 ? "text-white/55" : "text-ink-faint"}`}>
                     {t.carte(s.iccid.slice(-8))}
                     {s.itinerance && ` · ${t.itinerance(s.reseau)}`}
                   </p>
                 </div>
+                {/* La force du signal : une puce d'information, `h-puce` (28),
+                    qui déclare sa hauteur au lieu de l'obtenir par addition.
+                    Le point ne porte rien tout seul — c'est « 23/31 » qui le
+                    dit —, donc il reste décoratif et se tait. */}
                 {s.signal != null && (
-                  <span className={`flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
+                  <span className={`inline-flex h-puce shrink-0 items-center gap-2 rounded-full px-3 text-caption tabnums ${
                     i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
                   }`}>
-                    <span className="size-1.5 rounded-full bg-positive" /> {s.signal}/31
+                    <span aria-hidden className="size-2 rounded-full bg-positive" /> {s.signal}/31
                   </span>
                 )}
               </div>
@@ -64,93 +79,97 @@ export default async function Comptes() {
         </section>
       )}
 
-      {/* Opérations sur comptes */}
-      <section className="grid grid-cols-3 gap-2">
+      {/* Opérations sur comptes — de vrais boutons du système : 44 px déclarés,
+          contour porteur, icône 20. Ils faisaient 76 px que personne n'avait
+          choisis. Sur téléphone ils s'empilent : un libellé entier tient sur
+          une ligne, on ne l'abrège pas. */}
+      <section className="grid gap-2 sm:grid-cols-3">
         {[
           { l: t.consulterSolde, Icone: IconWallet },
           { l: t.historique, Icone: IconList },
           { l: t.verrouiller, Icone: IconLock },
         ].map(({ l, Icone }) => (
-          <button key={l}
-            className="flex flex-col items-start gap-2.5 rounded-card border border-line bg-surface-raised p-3.5 text-left transition hover:border-ink-faint">
-            <Icone size={18} className="text-ink-soft" />
-            <span className="text-small font-medium leading-snug">{l}</span>
-          </button>
+          <Bouton key={l} variante="secondaire" pleineLargeur icone={<Icone size={20} />}>
+            {l}
+          </Bouton>
         ))}
       </section>
 
       {/* Répartition — n'a de sens qu'avec plusieurs cartes en place */}
       {enPlace.length > 1 && soldeTotal > 0 && (
       <section>
-        <h2 className="mb-3 text-heading font-semibold">{t.repartition}</h2>
-        <div className="rounded-card border border-line bg-surface-raised p-5">
-          <div className="mb-4 flex h-2 overflow-hidden rounded-sm">
-            {enPlace.map((s, i) => (
-              <div key={s.iccid} style={{ width: `${((s.solde ?? 0) / soldeTotal) * 100}%` }}
-                className={i === 0 ? "bg-ink" : "bg-surface-3"} />
-            ))}
+        <EnTeteSection titre={t.repartition} />
+        <Carte bordABord>
+          {/* La barre et les pastilles de la légende PORTENT la donnée : elles
+              disent quelle part du total revient à quelle carte. WCAG 1.4.11
+              leur impose donc 3:1. En `surface-3` elles valaient 1,22:1 sur le
+              blanc de la carte — invisibles. `contour` est le neutre du système
+              garanti au-dessus du seuil : 3,87:1 sur blanc. */}
+          <div className="mb-4 px-4">
+            <div className="flex h-2 overflow-hidden rounded-sm">
+              {enPlace.map((s, i) => (
+                <div key={s.iccid} style={{ width: `${((s.solde ?? 0) / soldeTotal) * 100}%` }}
+                  className={i === 0 ? "bg-ink" : "bg-contour"} />
+              ))}
+            </div>
           </div>
-          <ul className="divide-hair">
+          <Liste>
             {enPlace.map((s, i) => (
-              <li key={s.iccid} className="flex items-center justify-between py-2.5">
-                <span className="flex items-center gap-2.5 text-body">
-                  <span className={`size-2.5 rounded-sm ${i === 0 ? "bg-ink" : "bg-surface-3"}`} />
-                  {s.libelle}
-                </span>
-                <span className="text-body tabnums text-ink-soft">
-                  {fcfa(s.solde ?? 0, langue)} · {Math.round(((s.solde ?? 0) / soldeTotal) * 100)}%
-                </span>
-              </li>
+              <Rangee
+                key={s.iccid}
+                icone={<span aria-hidden className={`size-4 rounded-sm ${i === 0 ? "bg-ink" : "bg-contour"}`} />}
+                titre={s.libelle}
+                montant={{
+                  texte: `${fcfa(s.solde ?? 0, langue)} · ${Math.round(((s.solde ?? 0) / soldeTotal) * 100)}%`,
+                  sens: "neutre",
+                }}
+              />
             ))}
-          </ul>
-        </div>
+          </Liste>
+        </Carte>
       </section>
       )}
 
       {/* Cartes retirées — l'historique d'une puce absente reste consultable */}
       {retirees.length > 0 && (
         <section>
-          <h2 className="mb-1 text-heading font-semibold">{t.retireesTitre}</h2>
-          <p className="mb-3 text-small text-ink-soft">{t.retireesDetail}</p>
-          <ul className="divide-hair">
+          <EnTeteSection titre={t.retireesTitre} detail={t.retireesDetail} />
+          <Liste>
             {retirees.map((s) => (
-              <li key={s.iccid} className="flex items-center gap-3 py-3.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line border-dashed text-ink-faint">
-                  <IconWallet size={16} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium text-ink-soft">{s.libelle}</p>
-                  <p className="text-small text-ink-faint tabnums">
-                    {t.bilanRetiree(s.nbPaiements, s.derniereVue)}
-                  </p>
-                </div>
-                <span className="text-body tabnums text-ink-faint">{fcfa(s.totalRecu, langue)}</span>
-              </li>
+              <Rangee
+                key={s.iccid}
+                lignes={2}
+                pastille={<IconWallet size={16} />}
+                titre={s.libelle}
+                sousTitre={<span className="tabnums">{t.bilanRetiree(s.nbPaiements, s.derniereVue)}</span>}
+                montant={{ texte: fcfa(s.totalRecu, langue), sens: "neutre" }}
+              />
             ))}
-          </ul>
+          </Liste>
         </section>
       )}
 
-      {/* Mouvements */}
+      {/* Mouvements. Le signe est posé par la rangée, jamais par l'écran :
+          crédit et débit sont à 1,21:1 l'un de l'autre, donc indiscernables en
+          niveaux de gris — c'est le `+` ou le `−` qui porte le sens. */}
       {paiements.length > 0 && (
         <section>
-          <h2 className="mb-1 text-heading font-semibold">{t.mouvements}</h2>
-          <ul className="divide-hair">
+          <EnTeteSection titre={t.mouvements} />
+          <Liste>
             {paiements.filter((p) => p.montant != null).slice(0, 5).map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                  {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "?"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium">{p.nom}</p>
-                  <p className="text-small text-ink-faint">{p.sim} · {p.date} · {p.heure}</p>
-                </div>
-                <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
-                  {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant!, langue)}
-                </span>
-              </li>
+              <Rangee
+                key={p.id}
+                lignes={2}
+                pastille={p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "?"}
+                titre={p.nom}
+                sousTitre={`${p.sim} · ${p.date} · ${p.heure}`}
+                montant={{
+                  texte: fcfa(p.montant!, langue),
+                  sens: p.sens === "in" ? "credit" : p.sens === "out" ? "debit" : "neutre",
+                }}
+              />
             ))}
-          </ul>
+          </Liste>
         </section>
       )}
     </div>

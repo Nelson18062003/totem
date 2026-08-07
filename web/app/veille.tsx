@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
+import { Badge } from "./ui/navigation";
 
 // La veille interroge une route minuscule (/api/actualite). Cinq secondes :
 // assez vif pour qu'un encaissement « apparaisse tout seul », assez espacé
@@ -68,15 +69,18 @@ export function useActualite(): number {
   return nonLus;
 }
 
-/** La pastille « N nouveaux » — sobre, dans le ton de la maison. */
+/**
+ * La pastille « N nouveaux ».
+ *
+ * Elle ne se dessine plus ici. Le compteur de non-lus était écrit à la main
+ * TROIS fois, à trois tailles ; il n'existe désormais qu'une seule fois, dans
+ * `app/ui/navigation.tsx`, à la hauteur du système (`h-badge`, 20 px). Cette
+ * fonction ne fait plus que lui donner le compte et la phrase qui le dit — un
+ * composant ne traduit pas, c'est le dictionnaire qui parle.
+ */
 export function Pastille({ n }: { n: number }) {
   const langue = useLangue();
   const t = textesCharpente[langue];
   if (n <= 0) return null;
-  return (
-    <span aria-label={t.nonLus(n)}
-      className="ml-auto grid min-w-5 place-items-center rounded-full bg-ink px-1.5 py-0.5 text-caption font-medium leading-none text-white">
-      {n > 99 ? "99+" : n}
-    </span>
-  );
+  return <Badge nombre={n} libelle={t.nonLus(n)} className="ml-auto" />;
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codeUssd } from "@/lib/codes";
@@ -9,6 +8,8 @@ import { textesAccueil } from "@/lib/textes/accueil";
 import { useLangue } from "@/app/langue";
 import { IconArrowDown, IconArrowUp, IconPhone, IconRefresh, IconWallet } from "./icons";
 import { OperationPopup, type Operation } from "./operation";
+import { Bouton, BoutonIcone } from "./ui/bouton";
+import { Vide } from "./ui/etat";
 
 /**
  * Le guichet de l'accueil. Un seul solde — celui de la carte — et cinq
@@ -71,7 +72,7 @@ export function AccueilGuichet({
     <>
       {/* LE solde : un seul, sur la carte. Actualiser interroge le réseau —
           la fenêtre du code s'ouvre, jamais un rechargement de page. */}
-      <section className="acct rounded-card p-5 lg:col-start-1">
+      <section className="acct rounded-card p-4 lg:col-start-1">
         <div className="flex items-center justify-between">
           <span className="text-caption uppercase tracking-wider text-white/60">
             {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
@@ -84,16 +85,18 @@ export function AccueilGuichet({
           <p className="text-hero font-semibold tabnums tracking-tight">
             {carte.solde == null ? "—" : fcfa(carte.solde, langue)}
           </p>
-          <button
+          {/* Actualiser faisait 36 × 36 : sous le plancher des 44, et sur le
+              geste par lequel on va chercher le solde au réseau. C'est un
+              bouton d'icône du système, carré, 44 × 44. */}
+          <BoutonIcone
+            variante="secondaire"
             onClick={() => setOperation(solde())}
             aria-label={t.actualiserAria}
             title={t.interrogerReseau}
-            className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
-          >
-            <IconRefresh size={16} />
-          </button>
+            icone={<IconRefresh size={20} />}
+          />
         </div>
-        <p className="mt-1.5 text-small text-white/55">
+        <p className="mt-2 text-small text-white/55">
           {carte.solde == null
             ? t.aucunSoldeConnu
             : carte.soldeMaj
@@ -105,20 +108,34 @@ export function AccueilGuichet({
         </p>
       </section>
 
-      {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même */}
+      {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même.
+          Ils faisaient 42 px de haut, avec une icône de 18 : ce sont des
+          boutons secondaires du système, 44 px et icône de 20. */}
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-start-1">
         {operations.map(({ label, Icone, fabrique }) => (
-          <button key={label} onClick={() => setOperation(fabrique())}
-            className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
-            <Icone size={18} className="text-ink-soft" />
+          <Bouton
+            key={label}
+            variante="secondaire"
+            pleineLargeur
+            onClick={() => setOperation(fabrique())}
+            icone={<Icone size={20} className="text-ink-soft" />}
+          >
             {label}
-          </button>
+          </Bouton>
         ))}
         {operations.length === 0 && (
-          <p className="col-span-full rounded-card border border-dashed border-line px-4 py-5 text-center text-small leading-relaxed text-ink-faint">
-            {t.aucunCode(op)}{" "}
-            <Link href="/reglages" className="underline underline-offset-4">{t.aucunCodeLien}</Link>.
-          </p>
+          // L'état vide du système : le chemin des réglages y devient un vrai
+          // contrôle au lieu d'un mot souligné au fil du texte.
+          <div className="col-span-full">
+            <Vide
+              titre={t.aucunCode(op)}
+              action={
+                <Bouton variante="secondaire" href="/reglages">
+                  {t.aucunCodeLien}
+                </Bouton>
+              }
+            />
+          </div>
         )}
       </section>
 

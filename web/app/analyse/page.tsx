@@ -4,6 +4,9 @@ import type { Langue } from "@/lib/langue";
 import { textesAnalyse } from "@/lib/textes/analyse";
 import { fcfa, jourDouala, nombre, type Paiement } from "@/lib/types";
 import { IconDoc } from "../icons";
+import { Bouton } from "../ui/bouton";
+import { Carte, EnTeteSection } from "../ui/carte";
+import { Liste, Rangee } from "../ui/rangee";
 import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +16,25 @@ export const dynamic = "force-dynamic";
 // minuit à Douala tombait, ici, dans le jour de la veille (fuseau du serveur
 // de rendu) — et la liste et le graphe montraient deux jours différents.
 const FUSEAU = "Africa/Douala";
+
+// L'ÉCHELLE DU GRAPHIQUE, en crans de 4 px.
+//
+// La hauteur d'une barre se calculait `Math.round(m / max * 118) + 6` : elle
+// pouvait valoir 6, 7, 41, 93, 124 — n'importe quoi entre deux crans, sur un
+// écran dont tout le reste est un multiple de 4. Une barre est une mesure ;
+// elle se lit d'autant mieux qu'elle se pose sur la même grille que le reste.
+//
+// 28 crans de 4 px font 112 px pour la plus haute. Avec l'étiquette du montant
+// (16), le nom du jour (16) et les deux écarts de 8, la colonne la plus haute
+// mesure exactement 160 px — la hauteur que le graphique s'imposait en dur,
+// désormais obtenue au lieu d'être écrite.
+const CRANS_GRAPHIQUE = 28;
+const CRAN = 4;
+
+/** Un jour sans encaissement garde un cran : la colonne existe, à zéro. */
+function hauteurBarre(montant: number, max: number) {
+  return Math.max(1, Math.round((montant / max) * CRANS_GRAPHIQUE)) * CRAN;
+}
 
 // Les encaissements des 7 derniers jours, calculés sur les vrais paiements —
 // aucun chiffre n'est écrit à la main. Les noms de jours suivent la langue.
@@ -86,7 +108,7 @@ export default async function Analyse() {
 
   return (
     // Grand écran : les chiffres et le graphique à gauche, les clients à droite.
-    <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
+    <div className="flex flex-col gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-8">
       <header className="lg:col-span-2">
         <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
@@ -97,7 +119,7 @@ export default async function Analyse() {
         <p className="text-small text-ink-soft">{t.encaissementsSemaine}</p>
         <p className="mt-1 text-hero font-semibold tabnums tracking-tight">{fcfa(total, langue)}</p>
         {evolution != null && (
-          <p className="mt-1.5 text-small text-ink-soft">
+          <p className="mt-1 text-small text-ink-soft">
             <span className={`font-medium ${evolution >= 0 ? "text-positive" : "text-negative"}`}>
               {evolution >= 0 ? "+" : ""}{evolution} %
             </span>{" "}
@@ -106,33 +128,46 @@ export default async function Analyse() {
         )}
       </section>
 
-      {/* Repères */}
-      <section className="grid grid-cols-2 divide-x divide-line rounded-card border border-line bg-surface-raised lg:col-start-1">
-        <div className="px-5 py-4">
-          <p className="text-small text-ink-soft">{t.moyenneParJour}</p>
-          <p className="mt-1 text-heading font-semibold tabnums">{fcfa(moyenne, langue)}</p>
-        </div>
-        <div className="px-5 py-4">
-          <p className="text-small text-ink-soft">{t.meilleurJour}</p>
-          <p className="mt-1 text-heading font-semibold tabnums">
-            {meilleur.jour} · {nombre(meilleur.montant, langue)}
-          </p>
-        </div>
+      {/* Repères. La carte porte le padding vertical, chaque colonne le sien à
+          l'horizontale : un seul padding par côté, jamais deux. */}
+      <section className="lg:col-start-1">
+        <Carte bordABord className="grid grid-cols-2 divide-x divide-line">
+          <div className="px-4">
+            <p className="text-small text-ink-soft">{t.moyenneParJour}</p>
+            <p className="mt-1 text-heading font-semibold tabnums">{fcfa(moyenne, langue)}</p>
+          </div>
+          <div className="px-4">
+            <p className="text-small text-ink-soft">{t.meilleurJour}</p>
+            <p className="mt-1 text-heading font-semibold tabnums">
+              {meilleur.jour} · {nombre(meilleur.montant, langue)}
+            </p>
+          </div>
+        </Carte>
       </section>
 
       {/* Graphique — monochrome, montants complets */}
       <section className="lg:col-start-1">
-        <h2 className="mb-4 text-heading font-semibold">{t.encaissementsParJour}</h2>
-        <div className="flex items-end justify-between gap-1.5 sm:gap-2.5" style={{ height: 160 }}>
+        <EnTeteSection titre={t.encaissementsParJour} />
+        <div className="flex items-end justify-between gap-2 sm:gap-3">
           {septJours.map((d, i) => {
-            const h = Math.round((d.montant / max) * 118) + 6;
+            const hauteur = hauteurBarre(d.montant, max);
             const best = d.montant === meilleur.montant && d.montant > 0;
             return (
               <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                <span className={`max-w-full truncate text-[0.625rem] tabnums sm:text-caption ${best ? "font-medium text-ink" : "text-ink-faint"}`}>
+                {/* Le montant se lit au-dessus de sa barre. Il était à 10 px —
+                    hors de l'échelle typographique, dont le plus petit cran est
+                    `text-caption` (12/16). C'est un montant : il se lit. */}
+                <span className={`max-w-full truncate text-caption tabnums ${best ? "font-medium text-ink" : "text-ink-faint"}`}>
                   {d.montant > 0 ? nombre(d.montant, langue) : ""}
                 </span>
-                <div className={`w-full rounded-sm ${best ? "bg-ink" : "bg-surface-3"}`} style={{ height: h }} />
+                {/* La barre PORTE la donnée : WCAG 1.4.11 lui impose 3:1. En
+                    `surface-3` elle valait 1,22:1 sur le fond de page — la
+                    mesure elle-même était invisible. `contour` est le neutre
+                    du système garanti au-dessus du seuil : 3,8:1 ici. */}
+                <div
+                  className={`w-full rounded-sm ${best ? "bg-ink" : "bg-contour"}`}
+                  style={{ height: `${hauteur}px` }}
+                />
                 <span className="text-caption text-ink-faint">{d.jour}</span>
               </div>
             );
@@ -144,25 +179,32 @@ export default async function Analyse() {
       {/* Clients */}
       {topClients.length > 0 && (
         <section className="lg:col-start-2 lg:row-span-3 lg:row-start-2">
-          <h2 className="mb-1 text-heading font-semibold">{t.principauxClients}</h2>
-          <ul className="divide-hair">
+          <EnTeteSection titre={t.principauxClients} />
+          <Liste>
             {topClients.map((c, i) => (
-              <li key={c.nom} className="flex items-center gap-3.5 py-3.5">
-                <span className="w-4 text-small tabnums text-ink-faint">{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium">{c.nom}</p>
-                  <p className="text-small text-ink-faint">{t.nbPaiements(c.nb)}</p>
-                </div>
-                <span className="text-body font-medium tabnums">{fcfa(c.total, langue)}</span>
-              </li>
+              <Rangee
+                key={c.nom}
+                lignes={2}
+                icone={<span className="text-small tabnums text-ink-faint">{i + 1}</span>}
+                titre={c.nom}
+                sousTitre={t.nbPaiements(c.nb)}
+                montant={{ texte: fcfa(c.total, langue), sens: "neutre" }}
+              />
             ))}
-          </ul>
+          </Liste>
         </section>
       )}
 
-      <button className="flex items-center justify-center gap-2 rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink lg:col-start-1">
-        <IconDoc size={16} /> {t.exporterBilan}
-      </button>
+      {/* L'export du bilan faisait 44 px par accident, en empilant `py-3` et un
+          interligne. Le bouton du système les déclare. */}
+      <Bouton
+        variante="secondaire"
+        pleineLargeur
+        icone={<IconDoc size={20} />}
+        className="lg:col-start-1"
+      >
+        {t.exporterBilan}
+      </Bouton>
     </div>
   );
 }

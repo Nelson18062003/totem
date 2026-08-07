@@ -1,7 +1,8 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesGuichet } from "@/lib/textes/guichet";
-import { Vide } from "../vide";
+import { IconCard } from "../icons";
+import { Vide } from "../ui/etat";
 import { Guichet } from "./guichet";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +15,16 @@ export default async function Operations() {
 
   if (!carte) {
     return (
-      <div className="flex flex-col gap-7">
+      <div className="flex flex-col gap-6">
         <header>
-          <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+          <h1 className="text-title">{t.titre}</h1>
           <p className="mt-1 text-small text-ink-soft">{t.sansCode}</p>
         </header>
-        <Vide titre={t.aucuneCarte} detail={t.aucuneCarteDetail} />
+        <Vide
+          icone={<IconCard size={24} />}
+          titre={t.aucuneCarte}
+          detail={t.aucuneCarteDetail}
+        />
       </div>
     );
   }

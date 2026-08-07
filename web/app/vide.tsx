@@ -1,28 +1,13 @@
 /**
  * État vide — ce qu'on voit quand il n'y a rien à montrer.
  *
- * Une liste vide n'est pas une erreur : c'est souvent la situation normale
- * (un dimanche sans client, une recherche trop étroite). Le ton reste calme,
- * et on dit quoi faire ensuite plutôt que de laisser un blanc.
+ * IL N'Y EN A PLUS QU'UN. Cet état était réécrit à la main quatre fois, avec
+ * quatre retraits différents (48, 40, 32 et 20 px de haut en bas), alors que ce
+ * fichier existait déjà. Le seul état vide de l'application vit désormais dans
+ * `app/ui/etat.tsx`, avec son retrait unique de 24 px.
+ *
+ * Ce fichier ne fait plus que le passer aux écrans qui l'appellent ici depuis
+ * toujours : `titre`, `detail`, `action` — les mêmes propriétés, au même nom.
+ * Rien à changer chez eux, et rien de nouveau à écrire à la main.
  */
-export function Vide({
-  titre,
-  detail,
-  action,
-}: {
-  titre: string;
-  detail?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-card border border-line bg-surface-raised px-6 py-12 text-center">
-      <p className="text-body font-medium">{titre}</p>
-      {detail && (
-        <p className="mx-auto mt-1.5 max-w-xs text-small leading-relaxed text-ink-soft">
-          {detail}
-        </p>
-      )}
-      {action && <div className="mt-5">{action}</div>}
-    </div>
-  );
-}
+export { Vide } from "./ui/etat";

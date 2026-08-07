@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { textesGuichet } from "@/lib/textes/guichet";
-import { IconClose } from "./icons";
+import { IconError } from "./icons";
 import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";
+import { Bouton } from "./ui/bouton";
+import { Carte } from "./ui/carte";
+import { Champ } from "./ui/champ";
+import { Bandeau, Chargement } from "./ui/etat";
+import { Fenetre } from "./ui/fenetre";
 
 /**
  * Le pop-up d'une opération, du premier champ au code secret.
@@ -15,6 +20,178 @@ import { PaveSecret } from "./pave-secret";
  * Quand l'opérateur demande le code secret, le pavé s'ouvre. Si une question
  * n'est pas reconnue, elle vous est simplement posée : on ne devine pas.
  */
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * LES PIÈCES COMMUNES DE LA SESSION
+ *
+ * Cet écran et la console USSD (`app/ussd/console.tsx`) sont DEUX ÉCRITURES
+ * MANUSCRITES DU MÊME OBJET : le même fil, la même bulle, le même bloc
+ * d'erreur, le même encadré de pavé, le même « annuler la session », le même
+ * « le terminal compose ». Six duplications, aux mêmes classes, corrigées deux
+ * fois ou une seule selon les jours.
+ *
+ * Elles vivent ici, et la console les importe. Elles ne montent PAS dans
+ * `app/ui/` : ce ne sont pas des objets du système, ce sont des objets de la
+ * session USSD — une bulle de fil n'a de sens que pour qui parle à un réseau.
+ * Ce qu'elles empruntent au système, en revanche, elles l'empruntent sans le
+ * réécrire : `Bouton`, `Champ`, `Bandeau`, `Chargement`, `Carte`.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+export type Msg = { de: "reseau" | "vous"; texte: string };
+
+/**
+ * UNE BULLE DU FIL. Le réseau à gauche, vous à droite.
+ *
+ * Le texte de l'opérateur s'affiche MOT POUR MOT : `whitespace-pre-line` garde
+ * ses retours à la ligne, et rien ne le traduit. La largeur est bornée par
+ * `max-w-lecture` — la longueur de ligne du système, 68 caractères — et non
+ * plus par un pourcentage choisi à l'œil.
+ */
+export function Bulle({ de, children }: { de: Msg["de"]; children: ReactNode }) {
+  return (
+    <p
+      className={`max-w-lecture whitespace-pre-line rounded-card px-4 py-3 text-small ${
+        de === "reseau"
+          ? "self-start bg-surface-2 text-ink"
+          : "self-end bg-ink text-sur-couleur tabnums"
+      }`}
+    >
+      {children}
+    </p>
+  );
+}
+
+/** « Le terminal compose… » — une attente qui se dit, et qui s'annonce. */
+export function TerminalCompose({ texte }: { texte: string }) {
+  return (
+    <div className="self-start">
+      <Chargement texte={texte} visible />
+    </div>
+  );
+}
+
+/**
+ * LE BLOC D'ERREUR. Le message vient du réseau ou de la plateforme, dans la
+ * langue de l'écran : il s'affiche tel quel. L'icône est obligatoire — le ton
+ * seul ne dit rien à qui ne distingue pas les couleurs.
+ */
+export function BlocErreur({ children }: { children: ReactNode }) {
+  return (
+    <Bandeau ton="negative" icone={<IconError size={20} />}>
+      {children}
+    </Bandeau>
+  );
+}
+
+/**
+ * LE FIL — les échanges, l'attente, l'erreur. Le repère de bas de fil reste
+ * chez l'appelant : c'est lui qui sait où sa zone de défilement s'arrête.
+ */
+export function FilSession({
+  fil,
+  attente,
+  erreur,
+  texteAttente,
+  bas,
+}: {
+  fil: Msg[];
+  attente: boolean;
+  erreur: string | null;
+  texteAttente: string;
+  bas: RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {fil.map((m, i) => (
+        <Bulle key={i} de={m.de}>
+          {m.texte}
+        </Bulle>
+      ))}
+      {attente && <TerminalCompose texte={texteAttente} />}
+      {erreur && <BlocErreur>{erreur}</BlocErreur>}
+      <div ref={bas} />
+    </div>
+  );
+}
+
+/** L'ENCADRÉ DU PAVÉ. Une carte, et rien d'autre : le pavé fait le reste. */
+export function EncadrePave({ onValider }: { onValider: (code: string) => void }) {
+  return (
+    <Carte>
+      <PaveSecret onValider={onValider} />
+    </Carte>
+  );
+}
+
+/**
+ * LA RÉPONSE LIBRE — quand la question du réseau n'est pas reconnue, on la
+ * pose telle quelle et vous répondez.
+ *
+ * Le champ a un LIBELLÉ : il était anonyme des deux côtés, avec pour seule
+ * annonce un texte d'invite qui disparaît dès la première frappe. Le libellé
+ * est celui qui s'y trouvait déjà, simplement rendu au lecteur d'écran. Et le
+ * bouton du bout de rangée est un `secondaire` : 44, comme le champ.
+ */
+export function ReponseLibre({
+  libelle,
+  libelleEnvoi,
+  valeur,
+  surChangement,
+  surEnvoi,
+  autoFocus,
+}: {
+  libelle: string;
+  libelleEnvoi: string;
+  valeur: string;
+  surChangement: (valeur: string) => void;
+  surEnvoi: () => void;
+  autoFocus?: boolean;
+}) {
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        surEnvoi();
+      }}
+      className="flex items-end gap-2"
+    >
+      <Champ
+        libelle={libelle}
+        libelleMasque
+        value={valeur}
+        onChange={(e) => surChangement(e.target.value)}
+        inputMode="tel"
+        placeholder={libelle}
+        autoFocus={autoFocus}
+        className="flex-1"
+      />
+      <Bouton variante="secondaire" type="submit" desactive={!valeur.trim()}>
+        {libelleEnvoi}
+      </Bouton>
+    </form>
+  );
+}
+
+/** LE GESTE DE SORTIE, impossible à manquer : destructif, donc 48. */
+export function BoutonAnnulerSession({
+  libelle,
+  surAppui,
+  eteint,
+}: {
+  libelle: string;
+  surAppui: () => void;
+  eteint?: boolean;
+}) {
+  return (
+    <Bouton variante="danger" pleineLargeur onClick={surAppui} desactive={eteint}>
+      {libelle}
+    </Bouton>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * L'ÉCRAN
+ * ════════════════════════════════════════════════════════════════════════════ */
 
 export type ChampOperation = {
   cle: string;
@@ -28,8 +205,6 @@ export type Operation = {
   code: string;                 // le code USSD du catalogue, composé tel quel
   champs: ChampOperation[];     // vide : la session s'ouvre directement
 };
-
-type Msg = { de: "reseau" | "vous"; texte: string };
 
 // La question du réseau ↔ le champ qui peut y répondre tout seul. Les
 // opérateurs camerounais écrivent dans les deux langues : chaque motif porte
@@ -175,106 +350,87 @@ export function OperationPopup({
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
+  // Le PIED de la fenêtre : les actions qui terminent. Fixes — elles ne partent
+  // jamais avec le défilement du fil, si long qu'il devienne.
+  const pied =
+    etape === "saisie" ? (
+      <>
+        <Bouton variante="secondaire" onClick={onFermer}>
+          {t.annuler}
+        </Bouton>
+        <Bouton variante="primaire" desactive={!complet} onClick={lancer}>
+          {t.lancer}
+        </Bouton>
+      </>
+    ) : fini ? (
+      <Bouton variante="primaire" pleineLargeur onClick={onFermer}>
+        {t.termine}
+      </Bouton>
+    ) : (
+      <BoutonAnnulerSession libelle={t.annulerSession} surAppui={annuler} eteint={attente} />
+    );
+
   return (
-    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <p className="text-caption uppercase tracking-wider text-ink-faint">
-              {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
-              {" · "}<span className="tabnums">{operation.code}</span>
-            </p>
-            <h2 className="mt-1 text-heading font-semibold">{operation.titre}</h2>
-          </div>
-          <button onClick={annuler} aria-label={t.fermer} className="text-ink-faint transition hover:text-ink">
-            <IconClose size={18} />
-          </button>
+    // `Fenetre` remplace la feuille écrite à la main : l'en-tête ne défile plus
+    // avec le fil (le bouton de fermeture partait vers le haut au troisième
+    // échange, et il faisait 18×18), la hauteur vient d'un calcul nommé au lieu
+    // des 92dvh / 70dvh qui « rendaient bien » sur un téléphone donné, Échap
+    // ferme, et la tabulation ne s'échappe plus derrière le voile.
+    <Fenetre
+      titre={operation.titre}
+      description={`${
+        etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session
+      } · ${operation.code}`}
+      etiquetteFermer={t.fermer}
+      onFermer={annuler}
+      pied={pied}
+    >
+      {etape === "saisie" ? (
+        <div className="flex flex-col gap-4">
+          {operation.champs.map((c) => (
+            <Champ
+              key={c.cle}
+              libelle={c.label}
+              value={valeurs[c.cle] ?? ""}
+              onChange={(e) => set(c.cle, e.target.value)}
+              inputMode="numeric"
+              placeholder={c.aide}
+            />
+          ))}
+          <p className="max-w-lecture text-small text-ink-soft">
+            {t.noteSaisie}
+          </p>
         </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {/* Le fil de la session — chaque bulle grise vient de l'opérateur */}
+          <FilSession
+            fil={fil}
+            attente={attente}
+            erreur={erreur}
+            texteAttente={t.terminalCompose}
+            bas={bas}
+          />
 
-        {etape === "saisie" ? (
-          <div className="flex flex-col gap-4">
-            {operation.champs.map((c) => (
-              <label key={c.cle} className="flex flex-col gap-1.5">
-                <span className="text-small text-ink-soft">{c.label}</span>
-                <input value={valeurs[c.cle] ?? ""} onChange={(e) => set(c.cle, e.target.value)}
-                  inputMode="numeric" placeholder={c.aide}
-                  className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
-              </label>
-            ))}
-            <p className="text-caption leading-relaxed text-ink-faint">
-              {t.noteSaisie}
+          {pave && <EncadrePave onValider={secret} />}
+
+          {enSession && !attente && !pave && !fini && (
+            <ReponseLibre
+              libelle={t.votreReponse}
+              libelleEnvoi={t.envoyer}
+              valeur={reponseLibre}
+              surChangement={setReponseLibre}
+              surEnvoi={() => void repondre(reponseLibre)}
+            />
+          )}
+
+          {fini && (
+            <p className="max-w-lecture text-small text-ink-soft">
+              {t.confirmationSms}
             </p>
-            <div className="mt-1 flex gap-2">
-              <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
-                {t.annuler}
-              </button>
-              <button disabled={!complet} onClick={lancer}
-                className="flex-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                {t.lancer}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {/* Le fil de la session — chaque bulle grise vient de l'opérateur */}
-            <div className="flex flex-col gap-2">
-              {fil.map((m, i) => (
-                <p key={i}
-                  className={`max-w-[85%] whitespace-pre-line rounded-card px-3.5 py-2.5 text-small leading-relaxed ${
-                    m.de === "reseau" ? "self-start bg-surface-2 text-ink" : "self-end bg-ink text-white tabnums"
-                  }`}>
-                  {m.texte}
-                </p>
-              ))}
-              {attente && <p className="self-start px-1 text-caption text-ink-faint">{t.terminalCompose}</p>}
-              {erreur && (
-                <p className="self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-negative">
-                  {erreur}
-                </p>
-              )}
-              <div ref={bas} />
-            </div>
-
-            {pave && (
-              <div className="rounded-card border border-line p-4">
-                <PaveSecret onValider={secret} />
-              </div>
-            )}
-
-            {enSession && !attente && !pave && !fini && (
-              <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
-                className="flex items-center gap-2">
-                <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
-                  inputMode="tel" placeholder={t.votreReponse}
-                  className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
-                <button type="submit" disabled={!reponseLibre.trim()}
-                  className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  {t.envoyer}
-                </button>
-              </form>
-            )}
-
-            {fini ? (
-              <>
-                <p className="text-caption leading-relaxed text-ink-faint">
-                  {t.confirmationSms}
-                </p>
-                <button onClick={onFermer}
-                  className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                  {t.termine}
-                </button>
-              </>
-            ) : (
-              /* Le geste de sortie, impossible à manquer. */
-              <button onClick={annuler} disabled={attente}
-                className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                {t.annulerSession}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+          )}
+        </div>
+      )}
+    </Fenetre>
   );
 }

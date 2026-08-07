@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createContext, useContext } from "react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { IconChevron } from "@/app/icons";
 
@@ -177,27 +178,40 @@ export function Rangee({
         </span>
       )}
 
+      {/* LE CORPS. Le montant partage la PREMIÈRE LIGNE avec le titre ; le
+          sous-titre passe dessous et prend toute la largeur.
+
+          Trois colonnes rigides sur toute la hauteur — ce que faisait la
+          première version — étranglaient le titre sur un téléphone de 390 px :
+          « Orange · 23:31 » devenait « Orange · … » pour laisser passer
+          « +150 000 FCFA ». Or ces deux-là ne se disputent qu'une ligne, pas
+          la rangée entière : le texte du SMS, lui, n'a personne à sa droite.
+          C'est ainsi que l'écran était composé avant la refonte, et il avait
+          raison — le composant avait généralisé un peu trop vite. */}
       <span className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <span className="truncate text-body">{titre}</span>
+        <span className="flex items-baseline gap-3">
+          <span className="min-w-0 flex-1 truncate text-body">{titre}</span>
+
+          {/* Les montants portent `.tabnums` : une colonne de montants
+              s'aligne à la virgule. Le signe est écrit ici, jamais laissé au
+              hasard de l'appelant. */}
+          {montant && (
+            <span
+              className={`shrink-0 text-body font-medium tabnums ${TEINTE_MONTANT[montant.sens]}`}
+            >
+              {SIGNE[montant.sens]}
+              {montant.texte}
+            </span>
+          )}
+          {valeur && <span className="shrink-0 text-small text-ink-soft">{valeur}</span>}
+        </span>
+
         {sousTitre && (
           <span className={`${clampSousTitre} break-words text-small text-ink-soft`}>
             {sousTitre}
           </span>
         )}
       </span>
-
-      {/* Colonne de droite. Les montants portent `.tabnums` : une colonne de
-          montants s'aligne à la virgule. Le signe est écrit ici, jamais laissé
-          au hasard de l'appelant. */}
-      {montant && (
-        <span
-          className={`shrink-0 text-body font-medium tabnums ${TEINTE_MONTANT[montant.sens]}`}
-        >
-          {SIGNE[montant.sens]}
-          {montant.texte}
-        </span>
-      )}
-      {valeur && <span className="shrink-0 text-small text-ink-soft">{valeur}</span>}
 
       {chevron && (
         <span aria-hidden className="shrink-0 text-ink-faint">
@@ -232,10 +246,21 @@ export function Rangee({
     interieur = <div className={corps}>{dedans}</div>;
   }
 
+  const queueReservee = useContext(ContexteQueue);
+
+  // La place de l'action est tenue même quand il n'y a pas d'action : sinon la
+  // colonne des montants se décale d'une rangée à l'autre.
+  const placeTenue = queueReservee && !action;
+
   return (
-    <li className={`relative flex ${hauteur} items-center ${action ? "gap-2 pr-4" : ""} ${className}`}>
+    <li
+      className={`relative flex ${hauteur} items-center ${
+        action || placeTenue ? "gap-2 pr-4" : ""
+      } ${className}`}
+    >
       {interieur}
       {action && <ActionDeQueue {...action} />}
+      {placeTenue && <span aria-hidden className="size-controle shrink-0" />}
     </li>
   );
 }
@@ -270,6 +295,22 @@ function ActionDeQueue({ icone, libelle, onClick, href, externe }: ActionRangee)
 }
 
 /**
+ * LA COLONNE DE QUEUE, réservée ou non — décidée par la liste, pas par la
+ * rangée.
+ *
+ * Sans elle, une liste où seules CERTAINES rangées portent une action voit sa
+ * colonne de montants se décaler de 52 px d'une ligne à l'autre : les reçus
+ * n'existent que pour les paiements qui en ont un. La charte est pourtant
+ * formelle — « une colonne de montants doit s'aligner à la virgule »
+ * (docs/IDENTITE.md §8). C'est la première chose que l'œil vérifie sur un
+ * écran d'argent, et c'était juste AVANT la refonte.
+ *
+ * La liste réserve donc la place pour tout le monde dès qu'une seule de ses
+ * rangées peut porter une action.
+ */
+const ContexteQueue = createContext(false);
+
+/**
  * LA LISTE — le conteneur des rangées.
  *
  * Elle ne pose qu'une chose : le séparateur. 1 px du filet décoratif, EN
@@ -283,14 +324,20 @@ function ActionDeQueue({ icone, libelle, onClick, href, externe }: ActionRangee)
 export function Liste({
   children,
   className = "",
+  queue = false,
   ...reste
-}: ComponentPropsWithoutRef<"ul">) {
+}: ComponentPropsWithoutRef<"ul"> & {
+  /** Vrai dès qu'UNE SEULE rangée peut porter une action de queue. */
+  queue?: boolean;
+}) {
   return (
+    <ContexteQueue.Provider value={queue}>
     <ul
       {...reste}
       className={`[&>*+*]:before:absolute [&>*+*]:before:inset-x-4 [&>*+*]:before:top-0 [&>*+*]:before:h-px [&>*+*]:before:bg-line [&>*+*]:before:content-[''] ${className}`}
     >
       {children}
     </ul>
+    </ContexteQueue.Provider>
   );
 }

@@ -72,6 +72,14 @@
      reprocher à la charte, refaite un étage plus bas. Le pire d'une couleur
      se mesure sur TOUS les fonds où elle a le droit de se poser, y compris
      ceux qui n'existent que le temps d'un appui. */
+  /* La matière d'une donnée tracée : barre de graphique, segment de
+     répartition, jauge. `surface-3` servait à ça — mais il vaut 1,22:1, et il
+     est décrit comme « remplissage INERTE ». Or une barre de graphique n'est
+     pas inerte : elle EST la donnée, et WCAG 1.4.11 lui demande 3:1 au même
+     titre qu'à un contrôle. Un neutre, jamais une couleur : dans cette
+     application, une barre ne dit pas de quoi elle parle, elle dit combien. */
+  --color-donnee: #85817a;           /* 3,72:1 sur la page, 3,88:1 sur carte */
+
   --color-line: #e8e5e1;             /* séparateur décoratif — 1,26:1, assumé */
   --color-contour: #85817a;          /* contour de contrôle — 3,18:1 au pire,
                                         sur `surface-3` (le fond du pressé) */
@@ -106,6 +114,17 @@
   --color-positive-soft: #e9f1ec;    /* positive dessus : 6,6:1 */
   --color-negative-soft: #f7ecea;    /* negative dessus : 7,9:1 */
   --color-alert-soft: #f6efe0;       /* alert dessus : 5,8:1 */
+
+  /* Les mêmes, SUR FOND SOMBRE — la carte de compte (#17181c). Les trois tons
+     de base y échouaient tous : positif 2,35:1, négatif 1,95:1, attente
+     2,66:1. Un point de crédit posé sur la carte du compte était donc à peine
+     visible, alors que c'est précisément là qu'on le cherche. La charte avait
+     déjà prévu le cas pour la marque (`laterite-clair`, 6,33:1 sur sombre) ;
+     elle ne l'avait pas prévu pour la sémantique. Saturation calibrée sur
+     celle de `laterite-clair` : claires par nécessité, mates par principe. */
+  --color-positive-clair: #74a68c;   /* 6,40:1 sur l'aplat sombre */
+  --color-negative-clair: #cf918c;   /* 6,83:1 */
+  --color-alert-clair: #c6a066;      /* 7,28:1 */
 
   /* Un geste qui détruit doit répondre sous la main comme les autres. Le débit
      n'avait qu'un seul ton : le bouton destructif restait immobile au survol

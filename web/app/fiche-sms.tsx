@@ -3,9 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
+import { textesGuichet } from "@/lib/textes/guichet";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
-import { IconClose, IconCopy, IconDoc } from "./icons";
+import { IconCopy, IconDoc } from "./icons";
+import { Bouton } from "./ui/bouton";
+import { Fenetre } from "./ui/fenetre";
+import { PuceFiltre } from "./ui/selecteurs";
 import { reveillerLaVeille } from "./veille";
 
 // Chaque catégorie de SMS a sa pastille, comme une boîte de réception. Son
@@ -38,11 +42,30 @@ export const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
  *
  * C'est LA même fiche partout — boîte de réception ou accueil : un SMS
  * cliqué raconte la même chose et permet les mêmes gestes, où qu'il soit.
+ *
+ * Elle est posée sur `Fenetre` (`app/ui/fenetre.tsx`, § 5.7 du système), qui
+ * répare quatre défauts que cette fiche portait :
+ *
+ *   1. NI HAUTEUR MAXIMALE NI DÉFILEMENT. Un SMS de quatre lignes poussait les
+ *      boutons d'action sous le bord de l'écran, sans aucun moyen de les
+ *      atteindre. Désormais le CORPS SEUL défile, et les actions vivent dans
+ *      un PIED FIXE : elles ne partent jamais.
+ *   2. NI `role="dialog"`, NI `aria-modal`, NI FERMETURE À ÉCHAP, NI PIÈGE DE
+ *      FOCUS. La tabulation continuait tranquillement dans la page cachée
+ *      derrière le voile. Les quatre sont là, et le focus revient à la ligne
+ *      qui a ouvert la fiche.
+ *   3. UNE CROIX DE 18 × 18. Elle fait 44 × 44.
+ *   4. QUATRE BOUTONS D'ACTION SE PARTAGEANT LA MÊME CHAÎNE DE CLASSES
+ *      RECOPIÉE, sur une largeur `min-w-[45%]` que personne n'avait calculée.
+ *      Ce sont des `Bouton` : une seule fabrique, cinq états, deux hauteurs.
  */
 export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
   const router = useRouter();
   const langue = useLangue();
   const t = textesSms[langue];
+  // La fenêtre exige de nommer sa fermeture — un bouton muet n'existe pas.
+  // Le mot est celui du dictionnaire, déjà écrit pour la fenêtre d'opération.
+  const tf = textesGuichet[langue];
   const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
   const [mot, setMot] = useState("");
   const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
@@ -173,28 +196,92 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     }
   };
 
-  return (
-    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
-      <div className="surgit w-full max-w-md rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-small text-ink-soft">
-              {p.montant == null
-                ? t.smsRecu
-                : p.sens === "in" ? t.paiementRecu : p.sens === "out" ? t.paiementEnvoye : t.sensAConfirmer}
-            </p>
-            {p.montant != null && (
-              <p className="mt-1 text-display font-semibold tabnums tracking-tight">
-                {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
-              </p>
-            )}
-            <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
-          </div>
-          <button onClick={onFermer} className="text-ink-faint transition hover:text-ink"><IconClose size={18} /></button>
-        </div>
+  // Ce que la fiche annonce en une ligne : le sens du mouvement, ou son
+  // absence. C'est le titre de la fenêtre, donc son nom accessible.
+  const enTete =
+    p.montant == null
+      ? t.smsRecu
+      : p.sens === "in"
+        ? t.paiementRecu
+        : p.sens === "out"
+          ? t.paiementEnvoye
+          : t.sensAConfirmer;
 
-        <dl className="mt-6 divide-hair">
+  // LES ACTIONS — dans le pied FIXE de la fenêtre. Elles ne partent plus au
+  // défilement, et aucune ne réécrit ses habits : une seule fabrique.
+  const actions = (
+    <>
+      <Bouton
+        variante="secondaire"
+        icone={<IconCopy size={20} />}
+        onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
+      >
+        {t.copierSms}
+      </Bouton>
+      {p.recu ? (
+        // Le document existe : on peut l'ouvrir tel quel — ET le refaire
+        // à neuf avec la lecture et le type d'aujourd'hui. Avant, ce
+        // bouton n'était qu'un lien : impossible de régénérer un reçu
+        // depuis l'écran, l'ancien document était servi pour toujours.
+        <>
+          {p.sourceId != null && (
+            <Bouton
+              variante="secondaire"
+              icone={<IconDoc size={20} />}
+              onClick={etablirRecu}
+              desactive={etabli === "envoi" || etabli === "fait"}
+            >
+              {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
+            </Bouton>
+          )}
+          {/* L'action principale est indigo, pas noire : « l'indigo porte
+              l'action », depuis le premier jour de la charte. */}
+          <Bouton
+            variante="primaire"
+            href={`/api/recu/${p.recu}`}
+            target="_blank"
+            rel="noopener"
+            icone={<IconDoc size={20} />}
+          >
+            {t.telechargerPdf}
+          </Bouton>
+        </>
+      ) : (
+        p.sourceId != null && etabli !== "fait" && (
+          <Bouton
+            variante="primaire"
+            icone={<IconDoc size={20} />}
+            onClick={etablirRecu}
+            desactive={etabli === "envoi"}
+          >
+            {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
+          </Bouton>
+        )
+      )}
+    </>
+  );
+
+  return (
+    <Fenetre
+      titre={enTete}
+      description={p.nom}
+      etiquetteFermer={tf.fermer}
+      onFermer={onFermer}
+      pied={actions}
+    >
+      <div className="flex flex-col gap-6">
+        {/* Le montant, complet et jamais abrégé. Le signe fait partie de la
+            chaîne : crédit et débit sont à 1,21:1 l'un de l'autre, donc
+            indiscernables en niveaux de gris — et le titre de la fenêtre dit
+            le sens en toutes lettres. */}
+        {p.montant != null && (
+          <p className="text-display tabnums">
+            {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}
+            {fcfa(p.montant, langue)}
+          </p>
+        )}
+
+        <dl className="divide-hair">
           <L t={t.categorie} v={`${CAT[catDe(p)]} ${t.cat[catDe(p)]}`} />
           <L t={t.operateur} v={p.sim} />
           {p.numero && <L t={t.numero} v={p.numero} />}
@@ -203,79 +290,53 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
         </dl>
 
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
-            {t.natureTitre}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+        {/* LA NATURE — des puces sur lesquelles on clique, donc `h-controle`
+            (44). Elles faisaient 28, 32 et 40 px selon l'écran, avec deux
+            rayons ; et elles s'éteignaient par l'opacité, ce qui les rendait
+            illisibles au lieu de les rendre inertes. */}
+        <div>
+          <p className="mb-2 text-caption uppercase text-ink-faint">{t.natureTitre}</p>
+          <div className="flex flex-wrap gap-2">
             {NATURES.map((n) => (
-              <button key={n} onClick={() => classer(n)} disabled={classe}
-                className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
-                  nature === n
-                    ? "border-ink bg-ink font-medium text-white"
-                    : "border-line text-ink-soft hover:border-ink-faint"
-                }`}>
-                {CAT[n]} {t.cat[n]}
-              </button>
+              <PuceFiltre
+                key={n}
+                libelle={`${CAT[n]} ${t.cat[n]}`}
+                selectionnee={nature === n}
+                surChangement={() => classer(n)}
+                eteint={classe}
+              />
             ))}
           </div>
-          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
-            {t.natureAide}
+          <p className="mt-2 max-w-lecture text-small text-ink-soft">{t.natureAide}</p>
+        </div>
+
+        {/* LE MESSAGE EN ENTIER — c'est lui qu'on vient lire ici, puisque la
+            rangée de la liste le tronque. Jamais reformulé, jamais traduit. */}
+        <div>
+          <p className="mb-2 text-caption uppercase text-ink-faint">{t.messageRecu}</p>
+          <p className="max-w-lecture whitespace-pre-wrap break-words rounded-card bg-surface-2 p-4 text-small text-ink-soft">
+            {p.smsBrut}
           </p>
         </div>
 
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.messageRecu}</p>
-          <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          <button
-            onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
-            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-            <IconCopy size={15} /> {t.copierSms}
-          </button>
-          {p.recu ? (
-            // Le document existe : on peut l'ouvrir tel quel — ET le refaire
-            // à neuf avec la lecture et le type d'aujourd'hui. Avant, ce
-            // bouton n'était qu'un lien : impossible de régénérer un reçu
-            // depuis l'écran, l'ancien document était servi pour toujours.
-            <>
-              <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
-                className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                <IconDoc size={15} /> {t.telechargerPdf}
-              </a>
-              {p.sourceId != null && (
-                <button onClick={etablirRecu} disabled={etabli === "envoi" || etabli === "fait"}
-                  className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint disabled:opacity-40">
-                  <IconDoc size={15} />
-                  {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
-                </button>
-              )}
-            </>
-          ) : (
-            p.sourceId != null && etabli !== "fait" && (
-              <button onClick={etablirRecu} disabled={etabli === "envoi"}
-                className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
-                <IconDoc size={15} />
-                {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
-              </button>
-            )
-          )}
-        </div>
         {mot && (
-          <p className={`mt-3 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
+          <p
+            className={`max-w-lecture text-small ${
+              etabli === "refus" ? "text-negative" : "text-ink-soft"
+            }`}
+          >
             {mot}
           </p>
         )}
       </div>
-    </div>
+    </Fenetre>
   );
 }
 
+/** Une ligne de détail. Le libellé à gauche, la valeur à droite, en tabulaires. */
 function L({ t, v }: { t: string; v: string }) {
   return (
-    <div className="flex items-center justify-between py-2.5">
+    <div className="flex items-center justify-between gap-4 py-3">
       <dt className="text-small text-ink-soft">{t}</dt>
       <dd className="text-small font-medium tabnums">{v}</dd>
     </div>

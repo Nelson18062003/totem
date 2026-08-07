@@ -93,6 +93,19 @@ function sortDeLApplication(href: string) {
   return /^(https?:|mailto:|tel:|sms:|#)/.test(href);
 }
 
+/**
+ * Une adresse qui rend un FICHIER, pas une page : on ne la précharge jamais.
+ *
+ * Next précharge tout `<Link>` de même origine dès qu'il paraît à l'écran.
+ * Sur un reçu (`/api/recu/…`), cela veut dire fabriquer et télécharger le PDF
+ * à chaque ouverture d'une fiche — un appel réseau que personne n'a demandé,
+ * payé en données mobiles par le propriétaire. L'ancien `<a target="_blank">`
+ * ne le faisait pas ; le composant l'a introduit sans le vouloir.
+ */
+function estUnFichier(href: string) {
+  return href.startsWith("/api/") || /\.(pdf|png|jpe?g|csv|zip)(\?|$)/.test(href);
+}
+
 /* ── Les propriétés ──────────────────────────────────────────────────────── */
 
 type Commun = {
@@ -107,6 +120,12 @@ type Commun = {
   desactive?: boolean;
   /** Pleine largeur — la hauteur, elle, ne bouge pas. */
   pleineLargeur?: boolean;
+  /**
+   * Force un `<a>` nu au lieu du `<Link>` de Next : aucun préchargement,
+   * aucune navigation côté client. Déduit tout seul pour une adresse d'API ou
+   * un fichier ; à poser à la main dans les autres cas qui téléchargent.
+   */
+  externe?: boolean;
   className?: string;
 };
 
@@ -136,7 +155,7 @@ type Coque = {
   enCours: boolean;
   contenu: ReactNode;
 } & (
-  | { sorte: "lien"; href: string; restes: RestesLien }
+  | { sorte: "lien"; href: string; externe?: boolean; restes: RestesLien }
   | { sorte: "bouton"; restes: RestesBouton }
 );
 
@@ -171,7 +190,7 @@ function Coque(p: Coque) {
     );
   }
 
-  if (sortDeLApplication(p.href)) {
+  if (p.externe || sortDeLApplication(p.href) || estUnFichier(p.href)) {
     return (
       <a {...p.restes} href={p.href} className={p.habits}>
         {p.contenu}
@@ -263,12 +282,14 @@ export function Bouton(proprietes: ProprietesBouton | ProprietesLien) {
       className: _c,
       children: _enfants,
       href,
+      externe,
       ...restes
     } = proprietes;
     return (
       <Coque
         sorte="lien"
         href={href}
+        externe={externe}
         restes={restes}
         habits={habits}
         eteint={eteint}
@@ -288,6 +309,7 @@ export function Bouton(proprietes: ProprietesBouton | ProprietesLien) {
     className: _c,
     children: _enfants,
     href: _h,
+    externe: _x,
     ...restes
   } = proprietes;
   return (
@@ -363,12 +385,14 @@ export function BoutonIcone(
       desactive: _d,
       className: _c,
       href,
+      externe,
       ...restes
     } = proprietes;
     return (
       <Coque
         sorte="lien"
         href={href}
+        externe={externe}
         restes={restes}
         habits={habits}
         eteint={eteint}
@@ -385,6 +409,7 @@ export function BoutonIcone(
     desactive: _d,
     className: _c,
     href: _h,
+    externe: _x,
     ...restes
   } = proprietes;
   return (

@@ -4,9 +4,29 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
 import { codesUssd, type CodeUssd } from "@/lib/codes";
-import { LANGUES } from "@/lib/langue";
+import { LANGUES, type Langue } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
-import { IconClose, IconHash, IconPlus } from "../icons";
+import { IconClose, IconHash, IconLock, IconPhone, IconPlus } from "../icons";
+import { Bouton, BoutonIcone } from "../ui/bouton";
+import { Carte, EnTeteSection } from "../ui/carte";
+import { Champ } from "../ui/champ";
+import { Liste, Rangee } from "../ui/rangee";
+import { GroupeSegments, Interrupteur } from "../ui/selecteurs";
+
+/**
+ * LES RÉGLAGES INTERACTIFS — entièrement recomposés sur le système.
+ *
+ * C'était le pire écran du dépôt : onze boutons pour neuf hauteurs (24, 28,
+ * 30, 32, 34, 36, 38, 40, 44), quatre champs sans aucun nom accessible, un
+ * interrupteur de 40 × 24 sans zone d'appui, trois opacités de désactivation
+ * et sept traitements de survol. Plus une seule de ces valeurs n'est écrite
+ * ici : `Bouton`, `Champ`, `Interrupteur`, `GroupeSegments`, `Carte`,
+ * `Rangee` et `Liste` les portent, une fois pour toutes.
+ *
+ * Le désalignement le plus visible — le champ « numéro » à 32 px collé à son
+ * bouton « OK » à 30 — disparaît de lui-même : les deux prennent `h-controle`
+ * par leurs composants, et tombent d'aplomb.
+ */
 
 /**
  * Le numéro d'une puce, réglé depuis la plateforme. C'est lui qui dit de quel
@@ -92,27 +112,35 @@ export function ReglageNumero({
     }
   }
 
+  // Au repos : le numéro est un bouton discret de 44 — on peut le viser.
   if (!edition) {
     return (
-      <button
+      <Bouton
+        variante="discret"
+        className="tabnums text-ink-soft"
         onClick={() => {
           setBrouillon(numero);
           setEdition(true);
           setEtat("repos");
           setMessage("");
         }}
-        className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
         title={t.reglerNumero(libelle)}
       >
         {numero || t.numeroARenseigner}
-      </button>
+      </Bouton>
     );
   }
 
+  // En saisie : le champ et son bouton déclarent la MÊME hauteur (44). Le
+  // champ porte enfin un nom — masqué à l'œil, lu à voix haute.
   return (
-    <span className="flex flex-col items-end gap-1">
-      <span className="flex items-center gap-1.5">
-        <input
+    <div className="flex items-start gap-2">
+      {/* Le `w-full` du champ vit sur SON enveloppe : c'est celle-ci qui pose
+          la largeur, jamais une classe qui viendrait la contredire. */}
+      <div className="min-w-0 flex-1 tabnums sm:w-32 sm:flex-none">
+        <Champ
+          libelle={t.reglerNumero(libelle)}
+          libelleMasque
           value={brouillon}
           autoFocus
           inputMode="tel"
@@ -120,31 +148,25 @@ export function ReglageNumero({
           onChange={(e) => setBrouillon(e.target.value.replace(/[^\d\s]/g, ""))}
           onKeyDown={(e) => e.key === "Enter" && enregistrer()}
           placeholder="696103864"
-          className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-small tabnums outline-none disabled:opacity-50"
+          aide={etat === "envoi" ? t.enregistrement : undefined}
+          erreur={etat === "erreur" ? message : undefined}
         />
-        <button
-          onClick={enregistrer}
-          disabled={etat === "envoi"}
-          className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40"
-        >
-          {etat === "envoi" ? "…" : "OK"}
-        </button>
-        <button
-          onClick={() => setEdition(false)}
-          aria-label={t.annuler}
-          disabled={etat === "envoi"}
-          className="grid size-8 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink disabled:opacity-40"
-        >
-          <IconClose size={14} />
-        </button>
-      </span>
-      {etat === "envoi" && (
-        <span className="text-caption text-ink-faint">{t.enregistrement}</span>
-      )}
-      {etat === "erreur" && (
-        <span className="max-w-52 text-right text-caption text-negative">{message}</span>
-      )}
-    </span>
+      </div>
+      <Bouton
+        variante="secondaire"
+        onClick={enregistrer}
+        desactive={etat === "envoi"}
+      >
+        OK
+      </Bouton>
+      <BoutonIcone
+        variante="discret"
+        aria-label={t.annuler}
+        icone={<IconClose size={20} />}
+        onClick={() => setEdition(false)}
+        desactive={etat === "envoi"}
+      />
+    </div>
   );
 }
 
@@ -185,75 +207,111 @@ export function SectionCodes({ operateur }: { operateur: string }) {
 
   return (
     <section>
-      <h2 className="mb-3 text-heading font-semibold">{t.codesUssd}</h2>
-      <div className="rounded-card border border-line bg-surface-raised">
-        <p className="border-b border-line px-4 py-3 text-caption uppercase tracking-wider text-ink-faint">
+      <EnTeteSection titre={t.codesUssd} />
+      <Carte bordABord>
+        <p className="border-b border-line px-4 pb-4 text-caption uppercase text-ink-faint">
           {t.carteEnPlace(operateur)}
         </p>
+
         {codes.length === 0 && !ajout && (
-          <p className="px-4 py-4 text-small leading-relaxed text-ink-soft">
+          <p className="max-w-lecture px-4 pt-4 text-small text-ink-soft">
             {t.aucunCode(operateur)}
           </p>
         )}
-        <ul className="divide-hair px-4">
+
+        <Liste>
           {codes.map((c) => (
-            <li key={c.cle} className="flex items-center gap-3 py-3">
-              <IconHash size={16} className="shrink-0 text-ink-faint" />
-              <span className="flex-1 text-body">{t.libellesCodes[c.cle] ?? c.libelle}</span>
+            <li key={c.cle} className="relative flex min-h-rangee items-center gap-3 px-4">
+              <span className="grid size-icone-lg shrink-0 place-items-center text-ink-faint">
+                <IconHash size={20} />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-body">
+                {t.libellesCodes[c.cle] ?? c.libelle}
+              </span>
               {enEdition === c.cle ? (
-                <span className="flex items-center gap-1.5">
-                  <input
-                    value={brouillon} autoFocus
-                    onChange={(e) => setBrouillon(proprer(e.target.value))}
-                    onKeyDown={(e) => e.key === "Enter" && enregistrer(c.cle)}
-                    className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-small tabnums outline-none"
-                  />
-                  <button onClick={() => enregistrer(c.cle)}
-                    className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90">
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="w-32 tabnums">
+                    <Champ
+                      libelle={t.modifierCode}
+                      libelleMasque
+                      value={brouillon}
+                      autoFocus
+                      onChange={(e) => setBrouillon(proprer(e.target.value))}
+                      onKeyDown={(e) => e.key === "Enter" && enregistrer(c.cle)}
+                    />
+                  </div>
+                  <Bouton variante="secondaire" onClick={() => enregistrer(c.cle)}>
                     OK
-                  </button>
-                </span>
+                  </Bouton>
+                </div>
               ) : (
-                <button
+                <Bouton
+                  variante="discret"
+                  className="shrink-0 tabnums text-ink-soft"
                   onClick={() => { setEnEdition(c.cle); setBrouillon(c.code); }}
                   title={t.modifierCode}
-                  className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
                 >
                   {c.code}
-                </button>
+                </Bouton>
               )}
             </li>
           ))}
-        </ul>
-        <div className="border-t border-line p-3">
+        </Liste>
+
+        <div className="border-t border-line px-4 pt-4">
           {ajout ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
-                placeholder={t.nomExemple} autoFocus
-                className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-small outline-none transition focus:border-ink" />
-              <input value={nouveauCode} onChange={(e) => setNouveauCode(proprer(e.target.value))}
-                placeholder="#148*6#" inputMode="tel"
-                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-small tabnums outline-none transition focus:border-ink sm:w-32" />
-              <span className="flex gap-2">
-                <button onClick={ajouter} disabled={!nouveauNom.trim() || !nouveauCode.trim()}
-                  className="flex-1 rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              {/* Les deux champs de l'ajout n'avaient AUCUN nom accessible :
+                  ils portent maintenant le leur, masqué à l'œil. */}
+              <Champ
+                libelle={t.nomExemple}
+                libelleMasque
+                value={nouveauNom}
+                onChange={(e) => setNouveauNom(e.target.value)}
+                placeholder={t.nomExemple}
+                autoFocus
+                className="flex-1"
+              />
+              <div className="tabnums sm:w-32 sm:shrink-0">
+                <Champ
+                  libelle={t.codesUssd}
+                  libelleMasque
+                  value={nouveauCode}
+                  onChange={(e) => setNouveauCode(proprer(e.target.value))}
+                  placeholder="#148*6#"
+                  inputMode="tel"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Bouton
+                  variante="secondaire"
+                  onClick={ajouter}
+                  desactive={!nouveauNom.trim() || !nouveauCode.trim()}
+                  className="flex-1"
+                >
                   {t.ajouter}
-                </button>
-                <button onClick={() => setAjout(false)} aria-label={t.annulerAjout}
-                  className="grid size-9 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink">
-                  <IconClose size={15} />
-                </button>
-              </span>
+                </Bouton>
+                <BoutonIcone
+                  variante="discret"
+                  aria-label={t.annulerAjout}
+                  icone={<IconClose size={20} />}
+                  onClick={() => setAjout(false)}
+                />
+              </div>
             </div>
           ) : (
-            <button onClick={() => setAjout(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-              <IconPlus size={15} /> {t.ajouterRaccourci}
-            </button>
+            <Bouton
+              variante="secondaire"
+              pleineLargeur
+              icone={<IconPlus size={20} />}
+              onClick={() => setAjout(true)}
+            >
+              {t.ajouterRaccourci}
+            </Bouton>
           )}
         </div>
-      </div>
-      <p className="mt-2 text-caption leading-relaxed text-ink-faint">
+      </Carte>
+      <p className="mt-2 max-w-lecture text-caption text-ink-faint">
         {t.noteCodes}
       </p>
     </section>
@@ -265,6 +323,10 @@ export function SectionCodes({ operateur }: { operateur: string }) {
  * cookie et recharge : le serveur repeint tout dans la nouvelle langue.
  * Les noms des deux choix (« English », « Français ») ne se traduisent pas :
  * chacun se reconnaît dans sa propre écriture.
+ *
+ * Les deux boutons de 40 px, dont l'un seul portait une bordure, sont devenus
+ * un groupe de segments : la hauteur est posée par le groupe, les deux
+ * segments l'occupent — actif ou non, ils font le même 44.
  */
 export function SectionLangue() {
   const langue = useLangue();
@@ -273,32 +335,59 @@ export function SectionLangue() {
 
   return (
     <section>
-      <h2 className="mb-3 text-heading font-semibold">{t.langue}</h2>
-      <div className="rounded-card border border-line bg-surface-raised">
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <span className="text-small text-ink-soft">{t.langueActive}</span>
-          <span className="text-small font-medium">{active?.libelle}</span>
+      <EnTeteSection titre={t.langue} />
+      <Carte bordABord>
+        <Liste>
+          <Rangee titre={t.langueActive} valeur={active?.libelle} />
+        </Liste>
+        <div className="border-t border-line px-4 pt-4">
+          <GroupeSegments
+            libelle={t.langue}
+            options={LANGUES.map(({ code, libelle }) => ({ valeur: code, libelle }))}
+            valeur={langue}
+            pleineLargeur
+            surChangement={(v) => v !== langue && changerLangue(v as Langue)}
+          />
         </div>
-        <div className="grid grid-cols-2 gap-2 p-3">
-          {LANGUES.map(({ code, libelle }) => (
-            <button
-              key={code}
-              aria-pressed={code === langue}
-              onClick={() => code !== langue && changerLangue(code)}
-              className={`rounded-btn py-2.5 text-small font-medium transition ${
-                code === langue
-                  ? "bg-ink text-white"
-                  : "border border-line hover:border-ink-faint"
-              }`}
-            >
-              {libelle}
-            </button>
-          ))}
-        </div>
-      </div>
-      <p className="mt-2 text-caption leading-relaxed text-ink-faint">
+      </Carte>
+      <p className="mt-2 max-w-lecture text-caption text-ink-faint">
         {t.noteLangue}
       </p>
+    </section>
+  );
+}
+
+/**
+ * La sécurité. Les deux rangées n'ouvrent encore rien — elles étaient déjà des
+ * boutons sans suite, et le restent : même geste, même résultat. Ce qui change,
+ * c'est la cible : 56 px de haut au lieu de 34, chevron de 20 au lieu de 16, et
+ * plus aucun survol qui efface la rangée à l'opacité.
+ */
+export function SectionSecurite() {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+
+  return (
+    <section>
+      <EnTeteSection titre={t.securite} />
+      <Carte bordABord>
+        <Liste>
+          <Rangee
+            titre={t.motDePasse}
+            icone={<IconLock size={24} />}
+            chevron
+            onClick={() => {}}
+          />
+          <Rangee
+            titre={t.doubleAuth}
+            icone={<IconPhone size={24} />}
+            valeur={t.activee}
+            chevron
+            onClick={() => {}}
+          />
+        </Liste>
+      </Carte>
+      <p className="mt-2 max-w-lecture text-caption text-ink-faint">{t.notePin}</p>
     </section>
   );
 }
@@ -318,33 +407,31 @@ export function BoutonDeconnexion() {
     router.replace("/connexion");
     router.refresh();
   }
+  // `desactive` plutôt que `enCours` : le libellé change déjà de mot pendant
+  // l'envoi, et il doit rester lisible.
   return (
-    <button
-      onClick={sortir}
-      disabled={envoi}
-      className="rounded-btn border border-line bg-surface-raised py-3 text-center text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-50"
-    >
+    <Bouton variante="secondaire" onClick={sortir} desactive={envoi}>
       {envoi ? t.deconnexion : t.seDeconnecter}
-    </button>
+    </Bouton>
   );
 }
 
+/**
+ * Une bascule de notification : une rangée de liste, et l'interrupteur du
+ * système. Le précédent faisait 40 × 24 sans zone d'appui étendue — sous la
+ * cible sur les deux axes — et sa pastille sautait d'un bord à l'autre.
+ * Celui-ci fait 48 × 28 dans une région de 48 × 44, et la pastille glisse.
+ */
 export function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
   const [actif, setActif] = useState(Boolean(defaut));
   return (
-    <div className="flex items-center justify-between py-3">
-      <span className="pr-4 text-body">{t}</span>
-      <button
-        onClick={() => setActif((a) => !a)}
-        role="switch"
-        aria-checked={actif}
-        aria-label={t}
-        className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${
-          actif ? "justify-end bg-ink" : "justify-start bg-surface-3"
-        }`}
-      >
-        <span className="size-5 rounded-full bg-white shadow-sm" />
-      </button>
-    </div>
+    <li className="relative flex h-rangee items-center px-4">
+      <Interrupteur
+        libelle={t}
+        actif={actif}
+        surChangement={setActif}
+        classe="w-full justify-between"
+      />
+    </li>
   );
 }

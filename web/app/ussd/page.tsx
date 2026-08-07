@@ -21,9 +21,9 @@ export default async function CodeUssd({
 
   if (!carte) {
     return (
-      <div className="flex flex-col gap-7">
+      <div className="flex flex-col gap-6">
         <header>
-          <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+          <h1 className="text-title">{t.titre}</h1>
           <p className="mt-1 text-small text-ink-soft">{t.sansCarteSousTitre}</p>
         </header>
         <Vide titre={t.aucuneCarte} detail={t.aucuneCarteDetail} />

@@ -1,11 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useState } from "react";
-import { LANGUES } from "@/lib/langue";
+import { useState } from "react";
+import { LANGUES, type Langue } from "@/lib/langue";
 import { textesConnexion } from "@/lib/textes/connexion";
 import { changerLangue, useLangue } from "@/app/langue";
 import { Symbole } from "../marque";
+import { Bouton } from "../ui/bouton";
+import { Champ } from "../ui/champ";
+import { GroupeSegments } from "../ui/selecteurs";
 
 /**
  * L'écran de connexion — le verrou réel de la plateforme.
@@ -50,64 +53,62 @@ export default function Connexion() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70dvh] w-full max-w-sm flex-col justify-center py-10">
-      <div className="mb-9">
-        <Symbole size={34} className="text-laterite" />
-        <h1 className="mt-5 text-title font-semibold tracking-tight">{t.titre}</h1>
+    // Le centrage est écrit : la colonne occupe la hauteur de la fenêtre et
+    // pousse son contenu au milieu. Elle portait une hauteur minimale de
+    // 70 % de l'écran qui ne servait qu'à ça — une dimension inventée pour
+    // obtenir un alignement qu'on peut simplement demander.
+    <div className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center py-12">
+      <div className="mb-8">
+        <Symbole size={24} className="text-laterite" />
+        <h1 className="mt-6 text-title">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">
           {t.sousTitre}
         </p>
       </div>
 
       <form onSubmit={entrer} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-small text-ink-soft">{t.motDePasse}</span>
-          <input
-            type="password"
-            value={motDePasse}
-            onChange={(e) => setMotDePasse(e.target.value)}
-            autoComplete="current-password"
-            autoFocus
-            required
-            className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink"
-          />
-        </label>
+        {/* Le mot de passe passe par le champ du système : hauteur posée (44),
+            contour porteur, libellé associé. Il n'est ni affiché ni journalisé —
+            `type="password"` et rien d'autre ne le touche. */}
+        <Champ
+          libelle={t.motDePasse}
+          type="password"
+          value={motDePasse}
+          onChange={(e) => setMotDePasse(e.target.value)}
+          autoComplete="current-password"
+          autoFocus
+          required
+        />
 
-        <button
+        {/* L'action principale est indigo et fait 48 : c'est ce qui coûte cher
+            à rater. Éteinte, elle change de couleur — jamais d'opacité. */}
+        <Bouton
           type="submit"
-          disabled={!motDePasse || etat === "envoi"}
-          className="mt-2 rounded-btn bg-ink py-3 text-body font-medium text-white transition hover:opacity-90 disabled:opacity-35"
+          variante="primaire"
+          pleineLargeur
+          desactive={!motDePasse || etat === "envoi"}
         >
           {etat === "envoi" ? t.verification : t.seConnecter}
-        </button>
+        </Bouton>
 
         {etat === "erreur" && (
           <p className="text-small text-negative">{message}</p>
         )}
       </form>
 
-      {/* Le choix de la langue — chaque nom dans sa propre langue */}
-      <div className="mt-8 flex items-center justify-center gap-2 text-caption" aria-label={t.langue}>
-        {LANGUES.map(({ code, libelle }, i) => (
-          <Fragment key={code}>
-            {i > 0 && <span aria-hidden className="text-ink-faint">·</span>}
-            <button
-              type="button"
-              onClick={() => changerLangue(code)}
-              aria-current={code === langue || undefined}
-              className={
-                code === langue
-                  ? "font-medium text-ink"
-                  : "text-ink-faint transition hover:text-ink-soft"
-              }
-            >
-              {libelle}
-            </button>
-          </Fragment>
-        ))}
+      {/* Le choix de la langue — chaque nom dans sa propre langue. Les deux
+          boutons étaient du texte nu de 16 px de haut ; le groupe de segments
+          pose 44 px une fois, et les deux segments l'occupent. */}
+      <div className="mt-8 flex justify-center">
+        <GroupeSegments
+          libelle={t.langue}
+          options={LANGUES.map(({ code, libelle }) => ({ valeur: code, libelle }))}
+          valeur={langue}
+          surChangement={(code) => changerLangue(code as Langue)}
+        />
       </div>
 
-      <p className="mt-10 text-caption leading-relaxed text-ink-faint">
+      <p className="mt-12 text-caption text-ink-faint">
         {t.notePin}
       </p>
     </div>

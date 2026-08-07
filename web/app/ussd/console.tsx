@@ -6,16 +6,28 @@ import { textesUssd } from "@/lib/textes/ussd";
 import type { Sim } from "@/lib/types";
 import { IconClose, IconHash } from "../icons";
 import { useLangue } from "../langue";
-import { PaveSecret } from "../pave-secret";
+import {
+  BoutonAnnulerSession,
+  EncadrePave,
+  FilSession,
+  ReponseLibre,
+  type Msg,
+} from "../operation";
+import { Bouton, BoutonIcone } from "../ui/bouton";
+import { Champ } from "../ui/champ";
+import { Vide } from "../ui/etat";
 
 /**
  * La console USSD, branchée sur le vrai réseau. Chaque code composé part dans
  * la base ; le terminal de Douala le tape sur la carte ; la réponse de
  * l'opérateur revient ici, telle quelle. Rien n'est simulé : ce qui s'affiche
  * est ce que le réseau a répondu.
+ *
+ * Le fil, la bulle, le bloc d'erreur, l'encadré du pavé, la réponse libre et
+ * le geste de sortie ne sont plus écrits ici : cet écran et le pop-up d'une
+ * opération étaient deux écritures manuscrites du même objet. Ils vivent
+ * maintenant dans `app/operation.tsx`, en un seul exemplaire.
  */
-
-type Msg = { de: "reseau" | "vous"; texte: string };
 
 // « 1) Transfert » — une ligne d'option numérotée du menu de l'opérateur.
 const RE_OPTION = /^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$/;
@@ -30,6 +42,41 @@ function demandeUnCode(texte: string): boolean {
   return !porteOptions &&
     /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte);
 }
+
+/**
+ * LA HAUTEUR DU PANNEAU DE SESSION SE CALCULE — elle ne se choisit pas.
+ *
+ * Le panneau n'avait NI PLAFOND NI ZONE DE DÉFILEMENT : chaque réponse du
+ * réseau allongeait la page, et au dixième échange le pavé du code secret et
+ * le bouton « annuler la session » étaient sous le bord de l'écran, à des
+ * centaines de pixels du fil qu'on lisait. Le calcul a un nom :
+ *
+ *     hauteur du panneau = écran visible
+ *                        − l'en-tête de la page (un titre, sa ligne d'aide)
+ *                        − l'écart qui l'en sépare
+ *                        − la barre du pouce et sa marge basse sûre
+ *
+ * — L'EN-TÊTE DE PAGE se mesure en LIGNES DE TEXTE, pas en espacements : une
+ *   ligne de `text-title` (28) et une de `text-small` (20). Ces deux jetons
+ *   viennent de l'échelle typographique, la seule qui sache exprimer la
+ *   hauteur d'une ligne.
+ * — LA BARRE DU POUCE est la barre flottante du téléphone : une cible, donc
+ *   `h-controle` (44).
+ * — LA MARGE BASSE SÛRE est la barre système (`env(safe-area-inset-bottom)`),
+ *   zéro partout ailleurs.
+ *
+ * L'en-tête du panneau et son pied restent hors de la zone défilante : le
+ * bouton pour raccrocher et le pavé ne partent jamais avec le fil.
+ */
+const MESURES = {
+  "--entete-de-page": "calc(var(--spacing-ligne-lg) + var(--spacing-ligne-sm))",
+  "--ecart-de-page": "calc(var(--spacing) * 6)",
+  "--barre-du-pouce": "var(--spacing-controle)",
+  "--marge-basse-sure": "env(safe-area-inset-bottom, 0px)",
+  "--hauteur-session":
+    "calc(100dvh - var(--entete-de-page) - var(--ecart-de-page)" +
+    " - var(--barre-du-pouce) - var(--marge-basse-sure))",
+} as React.CSSProperties;
 
 export function ConsoleUssd({
   carte,
@@ -137,132 +184,126 @@ export function ConsoleUssd({
 
   return (
     // Grand écran : le cadran à gauche, l'écran de session à droite.
-    <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-x-10">
-      <header className="lg:col-span-2">
-        <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
+    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-8">
+      <header className="lg:col-span-3">
+        <h1 className="text-title">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre(carte.libelle)}</p>
       </header>
 
       {/* La colonne du cadran : composer, puis les raccourcis */}
-      <div className="flex flex-col gap-5 lg:col-start-1">
+      <div className="flex flex-col gap-4 lg:col-start-1">
         <form
           onSubmit={(e) => { e.preventDefault(); composer(saisie); }}
-          className="flex items-center gap-2"
+          className="flex items-end gap-2"
         >
-          <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
-            <IconHash size={16} className="text-ink-faint" />
-            <input
-              value={saisie}
-              onChange={(e) => setSaisie(e.target.value.replace(/[^0-9#*]/g, ""))}
-              inputMode="tel"
-              placeholder="#148#"
-              className="flex-1 bg-transparent py-2.5 text-body tabnums outline-none placeholder:text-ink-faint"
-            />
-          </div>
-          <button type="submit" disabled={!saisie.trim() || attente}
-            className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+          <Champ
+            libelle={t.titre}
+            libelleMasque
+            iconeAvant={<IconHash size={20} />}
+            value={saisie}
+            onChange={(e) => setSaisie(e.target.value.replace(/[^0-9#*]/g, ""))}
+            inputMode="tel"
+            placeholder="#148#"
+            className="flex-1 tabnums"
+          />
+          <Bouton
+            variante="secondaire"
+            type="submit"
+            desactive={!saisie.trim() || attente}
+          >
             {t.composer}
-          </button>
+          </Bouton>
         </form>
 
         {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages.
             Le libellé suit la langue par la clé du catalogue ; le code, jamais. */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {(codesUssd[carte.operateur] ?? []).map((c) => (
-            <button key={c.code} onClick={() => composer(c.code)} disabled={attente}
-              className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-40">
-              {t.libelleCode(c.cle, c.libelle)} <span className="tabnums text-ink-faint">{c.code}</span>
-            </button>
+            <Bouton
+              key={c.code}
+              variante="secondaire"
+              onClick={() => composer(c.code)}
+              desactive={attente}
+            >
+              {t.libelleCode(c.cle, c.libelle)}
+              <span className="tabnums text-ink-faint">{c.code}</span>
+            </Bouton>
           ))}
         </div>
 
-        <p className="hidden text-caption leading-relaxed text-ink-faint lg:block">
+        <p className="hidden max-w-lecture text-small text-ink-soft lg:block">
           {t.noteSession}
         </p>
       </div>
 
       {/* L'écran de session */}
       {fil.length === 0 && !attente ? (
-        <div className="hidden items-center justify-center rounded-card border border-dashed border-line px-6 py-16 text-center lg:col-start-2 lg:flex">
-          <p className="max-w-56 text-small leading-relaxed text-ink-faint">
-            {t.aucuneSession}
-          </p>
+        <div className="hidden lg:col-span-2 lg:col-start-2 lg:block">
+          <Vide titre={t.aucuneSession} />
         </div>
       ) : (
-        <section className="rounded-card border border-line bg-surface-raised lg:col-start-2">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <p className="text-small font-medium">
+        <section
+          style={MESURES}
+          className="flex max-h-[var(--hauteur-session)] flex-col overflow-hidden rounded-card border border-line bg-surface-raised lg:col-span-2 lg:col-start-2"
+        >
+          {/* EN-TÊTE — FIXE. Le bouton pour raccrocher reste sous le pouce, quel
+              que soit le nombre d'échanges. Il faisait 16×16 ; il fait 44×44. */}
+          <div className="flex h-rangee shrink-0 items-center justify-between gap-4 border-b border-line px-4">
+            <p className="min-w-0 truncate text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
-            <button onClick={fermer} aria-label={t.raccrocher} disabled={attente}
-              className="text-ink-faint transition hover:text-ink disabled:opacity-40">
-              <IconClose size={16} />
-            </button>
+            <BoutonIcone
+              variante="discret"
+              icone={<IconClose size={20} />}
+              aria-label={t.raccrocher}
+              onClick={fermer}
+              desactive={attente}
+            />
           </div>
 
-          <div className="flex flex-col gap-2 p-4">
-            {fil.map((m, i) => (
-              <p key={i}
-                className={`max-w-[85%] whitespace-pre-line rounded-card px-3.5 py-2.5 text-small leading-relaxed ${
-                  m.de === "reseau"
-                    ? "self-start bg-surface-2 text-ink"
-                    : "self-end bg-ink text-white tabnums"
-                }`}>
-                {m.texte}
-              </p>
-            ))}
-            {attente && (
-              <p className="self-start px-1 text-caption text-ink-faint">
-                {t.terminalCompose}
-              </p>
-            )}
-            {erreur && (
-              <p className="self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-negative">
-                {erreur}
-              </p>
-            )}
+          {/* LE FIL — LA SEULE ZONE QUI DÉFILE. `min-h-0` est indispensable :
+              sans lui, un enfant de flex refuse de rétrécir sous sa taille de
+              contenu et le défilement ne s'active jamais. */}
+          <div className="min-h-0 grow overflow-y-auto p-4">
+            <FilSession
+              fil={fil}
+              attente={attente}
+              erreur={erreur}
+              texteAttente={t.terminalCompose}
+              bas={bas}
+            />
+          </div>
 
-            {/* Le pavé, quand le réseau attend le code secret */}
-            {pave && (
-              <div className="mt-2 rounded-card border border-line p-4">
-                <PaveSecret onValider={secret} />
-              </div>
-            )}
+          {/* LE PIED — FIXE. Le pavé du code, la réponse libre et le geste de
+              sortie ne partent jamais avec le fil. */}
+          {enSession && (
+            <div className="flex shrink-0 flex-col gap-2 border-t border-line p-4">
+              {/* Le pavé, quand le réseau attend le code secret */}
+              {pave && <EncadrePave onValider={secret} />}
 
-            {/* Réponse libre : le chiffre du menu, un montant, un numéro */}
-            {enSession && !attente && !pave && (
-              <form
-                onSubmit={(e) => { e.preventDefault(); repondre(reponse); }}
-                className="mt-2 flex items-center gap-2"
-              >
-                <input
-                  value={reponse}
-                  onChange={(e) => setReponse(e.target.value)}
-                  inputMode="tel"
-                  placeholder={t.votreReponseDetail}
+              {/* Réponse libre : le chiffre du menu, un montant, un numéro */}
+              {!attente && !pave && (
+                <ReponseLibre
+                  libelle={t.votreReponseDetail}
+                  libelleEnvoi={t.envoyer}
+                  valeur={reponse}
+                  surChangement={setReponse}
+                  surEnvoi={() => repondre(reponse)}
                   autoFocus
-                  className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
                 />
-                <button type="submit" disabled={!reponse.trim()}
-                  className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  {t.envoyer}
-                </button>
-              </form>
-            )}
+              )}
 
-            {/* Le geste de sortie, impossible à manquer. */}
-            {enSession && (
-              <button onClick={fermer} disabled={attente}
-                className="mt-2 rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                {t.annulerSession}
-              </button>
-            )}
-            <div ref={bas} />
-          </div>
+              <BoutonAnnulerSession
+                libelle={t.annulerSession}
+                surAppui={fermer}
+                eteint={attente}
+              />
+            </div>
+          )}
         </section>
       )}
 
-      <p className="text-caption leading-relaxed text-ink-faint lg:hidden">
+      <p className="max-w-lecture text-small text-ink-soft lg:hidden">
         {t.noteSessionCourte}
       </p>
     </div>
