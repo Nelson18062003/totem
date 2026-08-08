@@ -20,13 +20,13 @@ from pathlib import Path
 
 SQL = Path(__file__).resolve().parent.parent / "sql"
 SCHEMA = SQL / "schema.sql"
-MIGRATION = SQL / "migration-identite.sql"
+MIGRATIONS = [SQL / "migration-identite.sql", SQL / "migration-code-entree.sql"]
 
 # Les objets que la migration d'identité introduit. Écrits à la main, parce
 # qu'une liste déduite des fichiers ne prouverait rien : elle serait juste par
 # construction, même si les deux fichiers oubliaient la même table.
 TABLES_IDENTITE = ["commerces", "personnes", "acces", "invitations",
-                   "sessions", "preuves", "entrees"]
+                   "sessions", "preuves", "entrees", "codes_entree"]
 
 
 def tables_declarees(texte):
@@ -55,7 +55,7 @@ def colonnes(corps):
 class SchemaEtMigration(unittest.TestCase):
     def setUp(self):
         self.schema = SCHEMA.read_text(encoding="utf-8")
-        self.migration = MIGRATION.read_text(encoding="utf-8")
+        self.migration = "\n".join(m.read_text(encoding="utf-8") for m in MIGRATIONS)
 
     def test_les_deux_fichiers_declarent_les_memes_tables(self):
         ds, dm = tables_declarees(self.schema), tables_declarees(self.migration)
@@ -102,9 +102,16 @@ class SchemaEtMigration(unittest.TestCase):
         """Sans politique, une clé publique ne lit rien. C'est le bon défaut
         pour des tables qui portent des empreintes et des numéros."""
         for table in TABLES_IDENTITE:
-            self.assertIn(f"'{table}'", self.migration,
-                          f"« {table} » n'est pas dans la liste des tables "
-                          "dont on active la sécurité par ligne")
+            # Deux façons d'activer la sécurité, et elles se valent : la table
+            # citée dans la boucle « foreach », ou son propre « alter table ».
+            # Le test vérifie l'EFFET, pas la syntaxe — sans quoi il refuserait
+            # un fichier parfaitement correct écrit dans l'autre style.
+            dans_la_boucle = f"'{table}'" in self.migration
+            en_direct = re.search(
+                rf"alter table {table} enable row level security", self.migration)
+            self.assertTrue(
+                dans_la_boucle or en_direct,
+                f"« {table} » n'a pas la sécurité par ligne activée")
         self.assertIn("enable row level security", self.migration)
 
     def test_retirer_un_acces_se_date_au_lieu_de_supprimer(self):

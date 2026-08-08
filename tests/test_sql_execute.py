@@ -150,7 +150,10 @@ class SqlExecutable(unittest.TestCase):
                  "insert into commandes(terminal,type) values('essai','solde');"],
                 base=BASE_SERVICE)
 
-        self._derouler(BASE_SERVICE, SQL / "migration-identite.sql", 2)
+        # Les deux migrations, dans l'ordre où on les déroulera vraiment,
+        # deux fois chacune : c'est la seule preuve qu'elles sont rejouables.
+        for nom in ("migration-identite.sql", "migration-code-entree.sql"):
+            self._derouler(BASE_SERVICE, SQL / nom, 2)
 
         self.assertEqual(self._valeur(BASE_SERVICE, "select count(*) from terminaux"), "1")
         self.assertEqual(self._valeur(BASE_SERVICE, "select count(*) from cartes"), "1")
