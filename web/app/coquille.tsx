@@ -6,8 +6,14 @@ import { textesCharpente } from "@/lib/textes/charpente";
 import type { EtatTerminal } from "@/lib/types";
 import { Nav } from "./nav";
 
-/** Pages qui s'affichent seules, sans navigation ni bandeau. */
-const PLEIN_ECRAN = ["/connexion"];
+/** Pages qui s'affichent seules, sans navigation ni bandeau.
+ *
+ * L'invitation en fait partie, et c'est important : la personne qui l'ouvre
+ * n'a pas de compte. Lui montrer le menu d'une application où elle ne peut
+ * pas entrer, avec des onglets qui la renverraient tous à la porte, serait
+ * lui promettre ce qu'elle n'a pas encore. Et le bandeau « non relié »
+ * s'adresse à qui installe la plateforme, pas à quelqu'un qu'on invite. */
+const PLEIN_ECRAN = ["/connexion", "/invitation"];
 
 export function Coquille({
   relie,

@@ -38,6 +38,15 @@ OUVERTES = {
         "fermer une porte n'a jamais nui à personne : ce geste n'exige aucune preuve, "
         "et l'exiger reviendrait à refuser le seul geste utile à qui vient de se faire "
         "arracher son téléphone",
+    # L'invitation : la personne qui l'ouvre n'a par définition pas de compte.
+    # Exiger une session pour accepter une invitation reviendrait à demander
+    # d'être déjà entré pour recevoir la clé. La page ne lit qu'une invitation,
+    # par une empreinte qu'il faut connaître, et ne crée RIEN — le compte naît
+    # après le code, à l'étape suivante.
+    "app/invitation/[jeton]/page.tsx":
+        "l'acceptation d'une invitation, ouverte par construction : elle ne "
+        "crée rien, et le lien seul n'ouvre aucun compte sans le code envoyé "
+        "sur le numéro",
     # Une redirection permanente, sans donnée.
     "app/sms/page.tsx":
         "ancienne adresse : elle ne fait que rediriger vers /encaissements, "

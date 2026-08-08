@@ -115,8 +115,23 @@ body {
 /* La claustra — le tressage répété, en fond de surface de marque.
    Un mur ajouré : c'est de la marque, pas de la donnée. Réservée aux écrans
    qui parlent de TOTEM (connexion, couverture), jamais derrière des montants. */
+/* Le motif passe par une COUCHE, jamais à même l'élément. À pleine opacité
+   il avale la phrase posée dessus — et un calcul de contraste ne sait rien
+   d'une image : la faute passerait toute vérification automatique et se
+   verrait seulement à l'œil, trop tard. Une seule façon de s'en servir, donc
+   une seule façon de se tromper : aucune. */
 .claustra {
   background-color: var(--color-sable);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.claustra::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.1;
   background-image: url("/motif.svg");
   background-repeat: repeat;
   background-size: 56px auto;
