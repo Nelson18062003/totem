@@ -144,13 +144,32 @@ besoin de deux variables d'environnement, **côté serveur uniquement** :
   redéployer.
 - **En local** : créer `web/.env.local` avec ces lignes, puis `npm run dev`.
 
-⚠️ **Le verrou.** Tant que `SESSION_SECRET` n'est pas défini, le site est
-**ouvert** (pratique en développement). **Dès qu'on le pose**, tout est
-protégé : plus rien ne se lit ni ne s'appelle sans se connecter avec
+⚠️ **Le verrou — ceci a changé en août 2026.** `SESSION_SECRET` était
+facultative : sans elle, le site s'ouvrait à tout le monde. C'était pratique en
+développement, et c'était une porte : un aperçu Vercel déployé sans cette
+variable servait la comptabilité complète à qui devinait l'adresse.
+
+**Désormais, sans `SESSION_SECRET`, le site ne sert rien du tout** — il répond
+503 avec le nom de la variable manquante. Un défaut qui s'ouvre n'est pas un
+défaut. Il faut donc la poser **sur chaque environnement**, y compris les
+aperçus, et avec une valeur **différente par environnement** : un secret
+partagé entre préproduction et production ferait qu'un jeton signé sur l'une
+ouvrirait l'autre.
+
+Une fois posée, plus rien ne se lit ni ne s'appelle sans se connecter avec
 `TOTEM_MOT_DE_PASSE`. Ce mot de passe **n'est pas** le code PIN Mobile Money —
 celui-là ne se saisit qu'au moment d'une opération et n'est enregistré nulle
-part. Avant toute mise en ligne publique, ces deux variables **doivent** être
-définies.
+part.
+
+**La session dure douze heures**, et non plus trente jours. Le niveau AAL2 du
+NIST (SP 800-63B-4 §5.2) demande une nouvelle preuve au moins une fois par
+jour ; trente jours plaçaient la plateforme en dessous. Concrètement : une
+connexion par jour de travail.
+
+**Une variable de plus, facultative** : `TOTEM_PROPRIETAIRE`, votre nom tel
+qu'il doit apparaître dans le journal (« Nelson »). Sans elle, le journal
+écrira « Le propriétaire », ce qui est vrai mais moins utile le jour où vous
+serez plusieurs.
 
 Sans elles, l'application l'affiche clairement (« Non relié ») et ne montre
 **aucune donnée** — jamais de chiffres inventés.

@@ -44,10 +44,21 @@ export async function accesDe(personne: number): Promise<LigneAcces | null> {
  * l'installation d'un TOTEM neuf ne doit pas demander de passer par l'éditeur
  * SQL de Supabase avant la première connexion.
  *
+ * SON RÔLE PAR DÉFAUT EST « proprietaire », ET C'EST IMPORTANT.
+ * J'avais d'abord écrit « admin », en me disant qu'un administrateur ne doit
+ * pas pouvoir déplacer d'argent. Le raisonnement est juste et la conclusion
+ * était fausse : `TOTEM_MOT_DE_PASSE` est le mot de passe DU PROPRIÉTAIRE —
+ * c'est écrit dans la route de connexion depuis le premier jour — et le
+ * commerçant qui entre par là tient son comptoir. Avec le repli « admin », le
+ * guichet, la console USSD et les six genres de commande lui étaient refusés :
+ * l'application entière devenait inutilisable.
+ *
+ * Le rôle « admin » reste ce qu'il est, pour la console de la plateforme. Il
+ * ne se donne pas ici, par défaut, à qui vient tenir sa boutique.
+ *
  * Elle n'obtient PAS d'accès à un commerce ici : un accès se donne, il ne se
- * devine pas. Tant qu'aucun commerce n'existe, elle entre en « admin », qui
- * voit et administre — et qui, par construction, ne peut faire sortir aucun
- * argent (voir `lib/roles.ts`).
+ * devine pas. Tant qu'aucun commerce n'existe en base, elle travaille sans
+ * commerce nommé — exactement comme aujourd'hui.
  */
 export async function personneDuMotDePasse(): Promise<Personne | null> {
   if (!relie) return null;
@@ -68,7 +79,7 @@ export async function personneDuMotDePasse(): Promise<Personne | null> {
   return {
     id: ligne.id,
     nom: ligne.nom,
-    role: acces?.role ?? "admin",
+    role: acces?.role ?? "proprietaire",
     commerce: acces?.commerce ?? null,
     langue: ligne.langue,
   };
