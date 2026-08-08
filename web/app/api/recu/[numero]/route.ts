@@ -1,6 +1,7 @@
 import { chargerRecu } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@/lib/textes/api";
+import { estRefus, garder } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,8 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
+  const g = await garder("lire");
+  if (estRefus(g)) return g.refus;
   const langue = await langueServeur();
   const { numero } = await params;
   const pdf = await chargerRecu(numero);

@@ -4,10 +4,12 @@ import { textesCartes } from "@/lib/textes/cartes";
 import { fcfa } from "@/lib/types";
 import { IconArrowDown, IconArrowUp, IconList, IconLock, IconWallet } from "../icons";
 import { Vide } from "../vide";
+import { exigerPouvoir } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
 export default async function Comptes() {
+  await exigerPouvoir("lire");
   const langue = await langueServeur();
   const t = textesCartes[langue];
   const { sims, paiements } = await chargerDonnees(langue);

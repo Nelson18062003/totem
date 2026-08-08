@@ -6,10 +6,12 @@ import { AccueilGuichet } from "./accueil-client";
 import { DerniersSms } from "./derniers-sms";
 import { BasculeLangue } from "./langue";
 import { IconChevron, IconSettings } from "./icons";
+import { exigerPouvoir } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
 export default async function Accueil() {
+  await exigerPouvoir("lire");
   const langue = await langueServeur();
   const t = textesAccueil[langue];
   const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: 30, recus: 60 });

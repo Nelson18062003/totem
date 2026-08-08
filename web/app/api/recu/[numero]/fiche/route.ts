@@ -1,4 +1,5 @@
 import { chargerFicheRecu } from "@/lib/serveur";
+import { estRefus, garder } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
+  const g = await garder("lire");
+  if (estRefus(g)) return g.refus;
   const { numero } = await params;
   const fiche = await chargerFicheRecu(numero);
   return Response.json(fiche ?? { etabliLe: null }, {

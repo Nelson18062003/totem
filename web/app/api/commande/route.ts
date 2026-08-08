@@ -1,6 +1,8 @@
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@/lib/textes/api";
+import { estRefus, garder } from "@/lib/garde";
+import { POUVOIR_PAR_COMMANDE } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,13 @@ export async function POST(req: Request) {
   if (!GENRES.has(genre)) {
     return Response.json({ erreur: erreurApi(langue, "demandeInconnue") }, { status: 400 });
   }
+
+  // Le pouvoir dépend du GENRE, pas de la route : consulter un solde est le
+  // travail du comptoir, composer un code est celui du propriétaire — même
+  // quand le code composé paraît innocent, c'est par là que l'argent sort.
+  // Le tableau vit dans lib/roles.ts, avec le reste des droits.
+  const g = await garder(POUVOIR_PAR_COMMANDE[genre] ?? "sortir_argent");
+  if (estRefus(g)) return g.refus;
 
   const brut = corps?.parametres ?? {};
   // On ne laisse passer que les champs attendus, bornés et nettoyés.
@@ -77,7 +86,9 @@ export async function POST(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
-  const id = await creerCommande(genre, parametres);
+  // « demandee_par » : la colonne sans laquelle le journal ne peut désigner
+  // personne. Elle voyage avec chaque demande, désormais.
+  const id = await creerCommande(genre, parametres, g.personne, g.commerce);
   if (id == null) {
     return Response.json({ erreur: erreurApi(langue, "depotImpossible") }, { status: 502 });
   }

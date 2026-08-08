@@ -6,5 +6,9 @@ totem.conf
 # App web
 web/node_modules/
 web/.next/
+# Et à la racine : « next build » lancé depuis le dossier du dépôt y dépose
+# un .next/ que rien n'ignorait. C'est ainsi que deux fichiers de trace se
+# sont retrouvés suivis, et se glissaient ensuite dans chaque commit.
+.next/
 web/next-env.d.ts
 *.tsbuildinfo

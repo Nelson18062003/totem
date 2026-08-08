@@ -3,6 +3,7 @@ import { chargerDonnees } from "@/lib/serveur";
 import { textesUssd } from "@/lib/textes/ussd";
 import { Vide } from "../vide";
 import { ConsoleUssd } from "./console";
+import { exigerPouvoir } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function CodeUssd({
 }: {
   searchParams: Promise<{ code?: string }>;
 }) {
+  await exigerPouvoir("sortir_argent");
   const langue = await langueServeur();
   const t = textesUssd[langue];
   const [{ sims }, { code }] = await Promise.all([

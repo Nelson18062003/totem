@@ -3,10 +3,12 @@ import { chargerDonnees } from "@/lib/serveur";
 import { textesGuichet } from "@/lib/textes/guichet";
 import { Vide } from "../vide";
 import { Guichet } from "./guichet";
+import { exigerPouvoir } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
 export default async function Operations() {
+  await exigerPouvoir("operer");
   const langue = await langueServeur();
   const t = textesGuichet[langue];
   const { sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });

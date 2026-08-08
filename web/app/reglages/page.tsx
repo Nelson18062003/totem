@@ -3,6 +3,7 @@ import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesReglages } from "@/lib/textes/reglages";
 import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
+import { exigerPouvoir } from "@/lib/garde";
 import {
   Bascule,
   BoutonDeconnexion,
@@ -14,6 +15,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Reglages() {
+  await exigerPouvoir("lire");
   const langue = await langueServeur();
   const t = textesReglages[langue];
   const { terminal, sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });

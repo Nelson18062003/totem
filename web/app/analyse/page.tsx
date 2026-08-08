@@ -5,6 +5,7 @@ import { textesAnalyse } from "@/lib/textes/analyse";
 import { fcfa, jourDouala, nombre, type Paiement } from "@/lib/types";
 import { IconDoc } from "../icons";
 import { Vide } from "../vide";
+import { exigerPouvoir } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ function semaine(paiements: Paiement[], debut: number, fin: number) {
 }
 
 export default async function Analyse() {
+  await exigerPouvoir("lire");
   const langue = await langueServeur();
   const t = textesAnalyse[langue];
   const { paiements } = await chargerDonnees(langue);

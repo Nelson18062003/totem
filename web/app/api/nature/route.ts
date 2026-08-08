@@ -1,6 +1,7 @@
 import { definirNature, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@/lib/textes/api";
+import { estRefus, garder } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ const NATURES = new Set(["depot", "retrait", "transfert", "solde"]);
 
 /** Classe un SMS : le propriétaire décide sa nature, pour l'affichage et le reçu. */
 export async function POST(req: Request) {
+  const g = await garder("operer");
+  if (estRefus(g)) return g.refus;
   const langue = await langueServeur();
   const corps = await req.json().catch(() => null);
   const id = Number(corps?.id);

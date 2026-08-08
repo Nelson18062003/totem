@@ -323,6 +323,10 @@ async function terminalVise(): Promise<string | null> {
 export async function creerCommande(
   genre: string,
   parametres: Record<string, unknown>,
+  // Qui a appuyé. La colonne qui manquait : sans elle, le jour où une somme
+  // disparaît, le journal ne peut ni confondre quelqu'un ni le disculper.
+  demandeePar?: number | null,
+  commerce?: string | null,
 ): Promise<number | null> {
   if (!relie) return null;
   const terminal = await terminalVise();
@@ -334,7 +338,10 @@ export async function creerCommande(
         apikey: cle!, authorization: `Bearer ${cle}`,
         "content-type": "application/json", prefer: "return=representation",
       },
-      body: JSON.stringify({ terminal, type: genre, parametres }),
+      body: JSON.stringify({
+        terminal, type: genre, parametres,
+        demandee_par: demandeePar ?? null, commerce: commerce ?? null,
+      }),
       cache: "no-store",
     });
     if (!r.ok) return null;
