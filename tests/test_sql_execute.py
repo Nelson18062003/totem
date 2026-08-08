@@ -166,6 +166,67 @@ class SqlExecutable(unittest.TestCase):
             "and column_name in ('demandee_par','commerce')")
         self.assertEqual(colonnes, "commerce,demandee_par")
 
+    def test_une_base_qui_visait_le_numero_bascule_sur_l_adresse(self):
+        """Le cas de la base déjà migrée une première fois.
+
+        La première version de « migration-identite.sql » posait un numéro de
+        téléphone sur les invitations ; on a basculé sur l'adresse mail. Une
+        base qui a déroulé l'ancienne version doit se retrouver avec UNE
+        colonne « courriel » portant les données de l'ancienne — pas avec deux
+        colonnes dont l'une est vide, ce qui est la façon la plus discrète de
+        perdre une invitation.
+        """
+        _recreer(BASE_SERVICE)
+        self._derouler(BASE_SERVICE, SQL / "schema.sql", 1)
+        # On remet la base dans l'état d'AVANT la bascule, tel qu'il existait :
+        # les colonnes s'appelaient « telephone », et « personnes » ne savait
+        # pas encore dater la preuve d'une adresse.
+        _lancer(["-c",
+                 "alter table invitations rename column courriel to telephone;"
+                 "alter table codes_entree rename column courriel to telephone;"
+                 "alter table personnes drop column courriel_prouve_le;"],
+                base=BASE_SERVICE)
+        _lancer(["-c",
+                 "insert into commerces(id,nom) values('essai','Essai');"
+                 "insert into invitations"
+                 "(jeton_empreinte,commerce,role,nom,telephone,expire_le) "
+                 "values('abc','essai','operateur','J. Eyenga',"
+                 "'+237699424218',now()+interval '7 days');"],
+                base=BASE_SERVICE)
+
+        for nom in ("migration-identite.sql", "migration-code-entree.sql"):
+            self._derouler(BASE_SERVICE, SQL / nom, 2)
+
+        for table in ("invitations", "codes_entree"):
+            colonnes = self._valeur(
+                BASE_SERVICE,
+                "select string_agg(column_name,',' order by column_name) "
+                f"from information_schema.columns where table_name='{table}' "
+                "and column_name in ('telephone','courriel')")
+            self.assertEqual(
+                colonnes, "courriel",
+                f"« {table} » n'a pas basculé proprement : la migration a "
+                "laissé les deux colonnes, ou n'a rien renommé du tout")
+
+        self.assertEqual(
+            self._valeur(BASE_SERVICE,
+                         "select courriel from invitations where jeton_empreinte='abc'"),
+            "+237699424218",
+            "le renommage a perdu ce que la colonne contenait")
+
+        # Et la colonne AJOUTÉE depuis doit être revenue. « create table if
+        # not exists » ne l'aurait pas posée : sur une table déjà là, il ne
+        # fait rien du tout.
+        self.assertEqual(
+            self._valeur(BASE_SERVICE,
+                         "select count(*) from information_schema.columns "
+                         "where table_name='personnes' "
+                         "and column_name='courriel_prouve_le'"),
+            "1",
+            "« personnes.courriel_prouve_le » manque après la migration : "
+            "une base déjà en service ne gagne pas les colonnes ajoutées "
+            "depuis, et chaque écriture y échouera sans rien dire")
+
     def test_un_acces_retire_ne_disparait_pas(self):
         """La promesse « rien ne s'efface », vérifiée sur la vraie base."""
         _recreer(BASE_NEUVE)

@@ -40,7 +40,8 @@ export async function lireObjet(): Promise<ArrayBuffer | null> { return null; }
 
 SCENARIO = r"""
 import {
-  attenteApres, ecrireCode, empreinteCode, memeEmpreinte, tirerCode, VIE_MS,
+  adresseNormalisee, attenteApres, ecrireCode, empreinteCode, memeEmpreinte,
+  tirerCode, VIE_MS,
 } from "./code-entree.js";
 
 const r: Record<string, unknown> = {};
@@ -56,16 +57,23 @@ const tranches = new Array(10).fill(0);
 for (const c of tirages) tranches[Math.floor(Number(c) / 100000)]++;
 r.tranches = tranches;
 
-// L'empreinte : stable, et salée par le numéro.
-const e1 = await empreinteCode("408913", "+237699424218");
-const e2 = await empreinteCode("408913", "+237699424218");
-const e3 = await empreinteCode("408913", "+237677000000");
+// L'empreinte : stable, et salée par l'adresse.
+const e1 = await empreinteCode("408913", "jeanne@boutique.cm");
+const e2 = await empreinteCode("408913", "jeanne@boutique.cm");
+const e3 = await empreinteCode("408913", "paul@boutique.cm");
 r.empreinteStable = e1 === e2;
 r.empreinteSalee = e1 !== e3;
 r.empreinteForme = /^[0-9a-f]{64}$/.test(e1);
-// Le format du numéro ne doit pas changer l'empreinte : « +237 69 94 24 218 »
-// et « 237699424218 » désignent la même ligne.
-r.numeroNormalise = e1 === await empreinteCode("408913", "+237 69 94 24 218");
+// La casse du domaine et les espaces du clavier ne changent pas la boîte :
+// « Jeanne@Boutique.CM » et « jeanne@boutique.cm » sont la même adresse.
+r.adresseNormalisee =
+  e1 === await empreinteCode("408913", "  jeanne@Boutique.CM ");
+// Mais la partie AVANT l'arobase n'est pas touchée : chez certains
+// hébergeurs elle distingue vraiment les majuscules, et « corriger »
+// enverrait le code dans une boîte qui n'existe pas.
+r.avantArobaseIntacte =
+  e1 !== await empreinteCode("408913", "Jeanne@boutique.cm");
+r.normalisationSansArobase = adresseNormalisee("  BIZARRE ") === "bizarre";
 // Et le code ne se retrouve pas dans l'empreinte.
 r.codeAbsent = !e1.includes("408913");
 
@@ -155,18 +163,25 @@ class CodeEntree(unittest.TestCase):
     def test_l_empreinte_est_stable_salee_et_ne_rend_pas_le_code(self):
         self.assertTrue(self.r["empreinteStable"])
         self.assertTrue(self.r["empreinteSalee"],
-                        "le même code pour deux numéros donne la même "
-                        "empreinte : qui lit la base sait qu'ils sont égaux")
+                        "le même code pour deux adresses donne la même "
+                        "empreinte : qui lit la base sait qu'elles sont égales")
         self.assertTrue(self.r["empreinteForme"])
         self.assertTrue(self.r["codeAbsent"])
 
-    def test_le_format_du_numero_ne_change_rien(self):
-        """« +237 69 94 24 218 » et « +237699424218 » sont la même ligne.
+    def test_la_casse_du_domaine_et_les_espaces_ne_changent_rien(self):
+        """« Jeanne@Boutique.CM » et « jeanne@boutique.cm » sont la même boîte.
 
-        Sans normalisation, un code envoyé depuis un écran qui met des espaces
-        ne serait jamais reconnu par un autre qui n'en met pas.
+        Sans normalisation, une adresse saisie avec la majuscule automatique
+        du clavier ne serait jamais reconnue le lendemain.
         """
-        self.assertTrue(self.r["numeroNormalise"])
+        self.assertTrue(self.r["adresseNormalisee"])
+        self.assertTrue(self.r["normalisationSansArobase"])
+
+    def test_ce_qui_precede_l_arobase_n_est_pas_touche(self):
+        """La norme laisse chaque hébergeur décider si « Jeanne » et
+        « jeanne » sont la même boîte. Certains disent non. « Corriger »
+        l'adresse enverrait alors le code là où personne ne le lira."""
+        self.assertTrue(self.r["avantArobaseIntacte"])
 
     def test_la_comparaison_ne_sort_pas_tot(self):
         self.assertTrue(self.r["comparaison"])
@@ -190,12 +205,12 @@ class CodeEntree(unittest.TestCase):
                          "l'attente continue de croître : elle doit plafonner")
 
     def test_le_code_vit_dix_minutes(self):
-        """Le plafond du NIST (SP 800-63B-4 §3.1.3.1), et déjà court pour un
-        SMS qui traverse un réseau chargé."""
+        """Assez pour changer d'application et revenir ; trop court pour qu'un
+        code resté dans une boîte ouverte serve encore le lendemain."""
         self.assertTrue(self.r["dixMinutes"])
 
     def test_le_code_s_ecrit_en_deux_groupes(self):
-        """Six chiffres d'affilée se perdent en route entre le SMS et le champ."""
+        """Six chiffres d'affilée se perdent entre la boîte mail et le champ."""
         self.assertTrue(self.r["ecriture"])
 
 

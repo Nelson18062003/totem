@@ -88,13 +88,17 @@ create index if not exists cartes_commerce_idx on cartes (commerce);
 create table if not exists personnes (
   id         bigint generated always as identity primary key,
   nom        text not null,              -- « J. Eyenga », tel qu'on l'appelle
-  -- Le numéro est un CANAL, jamais une preuve d'identité : au Cameroun une
-  -- ligne inutilisée est recyclée et réattribuée. Un compte ne peut donc pas
-  -- être « le numéro 6xx… » — sinon le recyclage d'un numéro donne un jour à
-  -- un inconnu l'accès aux encaissements d'un commerce.
+  -- L'ADRESSE est le point fixe d'un compte. Elle suit la personne quand elle
+  -- change de téléphone, de puce et d'opérateur, et c'est par elle qu'arrive
+  -- le code des six chiffres.
+  courriel   text,
+  courriel_prouve_le timestamptz,        -- quand un code y est arrivé et a marché
+  -- Le numéro reste, mais comme un CANAL : on appelle quelqu'un, on ne
+  -- l'identifie pas par sa ligne. Au Cameroun une ligne inutilisée est
+  -- recyclée et réattribuée — un compte qui serait « le numéro 6xx… »
+  -- donnerait un jour à un inconnu l'accès aux encaissements d'un commerce.
   telephone  text,
   telephone_lie_le timestamptz,          -- depuis quand ce numéro est le sien
-  courriel   text,                       -- le super-admin en a un ; pas les autres
   langue     text not null default 'fr' check (langue in ('fr', 'en')),
   -- « actif » | « suspendu » | « parti ». « parti » n'efface rien : la
   -- personne revient parfois six mois plus tard, et on la RÉACTIVE au lieu de
@@ -106,6 +110,16 @@ create table if not exists personnes (
   vue_le     timestamptz
 );
 
+-- « create table if not exists » ne fait RIEN sur une table déjà là : sur une
+-- base qui a déroulé une version antérieure de ce fichier, les colonnes
+-- ajoutées depuis manqueraient en silence, et chaque insertion échouerait sans
+-- que personne comprenne pourquoi. On les redemande donc explicitement.
+alter table personnes add column if not exists courriel text;
+alter table personnes add column if not exists courriel_prouve_le timestamptz;
+
+comment on column personnes.courriel is
+  'Le point fixe du compte : c''est par là qu''arrive le code des six chiffres, '
+  'et « courriel_prouve_le » dit le jour où l''adresse a répondu.';
 comment on column personnes.telephone is
   'Un canal de contact, pas une identité : les numéros inactifs sont recyclés.';
 
@@ -141,6 +155,16 @@ comment on table acces is
   'opératrice ici et lectrice ailleurs.';
 
 -- --- Les invitations : rien n'existe avant ---------------------------------
+-- L'invitation visait un numéro dans son premier jet ; elle vise une adresse.
+-- Sur une base où l'ancienne colonne existe, on la renomme plutôt que d'en
+-- ajouter une seconde.
+do $$ begin
+  if exists (select 1 from information_schema.columns
+             where table_name = 'invitations' and column_name = 'telephone') then
+    alter table invitations rename column telephone to courriel;
+  end if;
+end $$;
+
 create table if not exists invitations (
   id          bigint generated always as identity primary key,
   -- L'empreinte du jeton, jamais le jeton. Qui lit la base ne peut ouvrir
@@ -149,10 +173,10 @@ create table if not exists invitations (
   commerce    text not null references commerces(id) on delete restrict,
   role        text not null check (role in ('proprietaire', 'operateur', 'lecteur', 'admin')),
   nom         text not null,             -- le nom lisible que le propriétaire a saisi
-  -- L'invitation est LIÉE au numéro dès l'émission : le code part sur CE
-  -- numéro, pas sur celui qu'on tape. C'est ce qui la protège du lien qui
-  -- traîne dans un groupe WhatsApp de quarante personnes.
-  telephone   text not null,
+  -- L'invitation est LIÉE à l'adresse dès l'émission : le code part sur CETTE
+  -- adresse, pas sur celle qu'on tape à l'ouverture. C'est ce qui la protège
+  -- du lien qui traîne dans un groupe WhatsApp de quarante personnes.
+  courriel    text not null,
   langue      text not null default 'fr' check (langue in ('fr', 'en')),
   creee_par   bigint references personnes(id),
   creee_le    timestamptz not null default now(),
@@ -284,4 +308,4 @@ end $$;
 
 -- Aucune politique de lecture n'est posée ici, volontairement : sans
 -- politique, une clé publique ne lit RIEN. C'est le bon défaut pour des
--- tables qui portent des empreintes de secrets et des numéros de téléphone.
+-- tables qui portent des empreintes de secrets et des coordonnées privées.

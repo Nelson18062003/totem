@@ -62,8 +62,14 @@ const en = {
   },
 
   accepter: "Accept, and set up my way in",
-  apres: (numero: string) =>
-    `Next: six digits sent to ${numero}. Nothing exists until they work.`,
+  apres: (adresse: string) =>
+    `Next: six digits sent to ${adresse}. Nothing exists until they work.`,
+  // Dit AVANT d'accepter, parce que c'est la seule chose qui demande un geste
+  // plus tard : si la boîte n'est pas la bonne, mieux vaut le savoir ici.
+  pourquoiLAdresse:
+    "We use your email address, not your number: a number changes with the "
+    + "SIM, an address follows you. These first six digits also prove the "
+    + "address is really yours.",
 
   jamaisPinTitre: "TOTEM never asks for your Mobile Money PIN",
   jamaisPin:
@@ -98,7 +104,7 @@ const en = {
   },
   prevenir: (invitant: string) => `Tell ${invitant}`,
   pourquoiUnLienNeSuffitPas:
-    "This is why a link alone is never enough: a code goes to your number "
+    "This is why a link alone is never enough: a code goes to your inbox "
     + "too, and without it the link opens nothing.",
 };
 
@@ -154,8 +160,12 @@ const fr: typeof en = {
   },
 
   accepter: "Accepter, et choisir comment j'entre",
-  apres: (numero: string) =>
-    `Ensuite : six chiffres envoyés au ${numero}. Rien n'existe avant qu'ils marchent.`,
+  apres: (adresse: string) =>
+    `Ensuite : six chiffres envoyés à ${adresse}. Rien n'existe avant qu'ils marchent.`,
+  pourquoiLAdresse:
+    "On passe par votre adresse mail, pas par votre numéro : un numéro change "
+    + "avec la puce, une adresse vous suit. Ces six premiers chiffres prouvent "
+    + "aussi que l'adresse est bien la vôtre.",
 
   jamaisPinTitre: "TOTEM ne demande jamais votre code PIN Mobile Money",
   jamaisPin:
@@ -187,8 +197,8 @@ const fr: typeof en = {
   },
   prevenir: (invitant: string) => `Prévenir ${invitant}`,
   pourquoiUnLienNeSuffitPas:
-    "C'est pour cela qu'un lien seul ne suffit jamais : un code part aussi sur "
-    + "votre numéro, et sans lui le lien n'ouvre rien.",
+    "C'est pour cela qu'un lien seul ne suffit jamais : un code part aussi "
+    + "dans votre boîte mail, et sans lui le lien n'ouvre rien.",
 };
 
 export const textesInvitation = { en, fr } as const;

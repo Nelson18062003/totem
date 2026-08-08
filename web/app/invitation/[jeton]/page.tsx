@@ -20,7 +20,7 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { textesInvitation } from "@/lib/textes/invitation";
-import { numeroMasque, ouvrirInvitation, type LigneInvitation } from "@/lib/invitations";
+import { courrielMasque, ouvrirInvitation } from "@/lib/invitations";
 import { lireUne } from "@/lib/base";
 import { Logo } from "@/app/marque";
 import { BasculeLangue } from "@/app/langue";
@@ -104,7 +104,13 @@ export default async function PageInvitation({ params }: Params) {
           {t.accepter}
         </Link>
         <p className="mt-3 text-center text-caption text-ink-faint">
-          {t.apres(numeroMasque(inv.telephone))}
+          {t.apres(courrielMasque(inv.courriel))}
+        </p>
+        {/* Pourquoi l'adresse et pas le numéro : dit ici, avant d'accepter,
+            parce que si la boîte n'est pas la bonne il faut le savoir
+            maintenant et non devant un code qui n'arrive jamais. */}
+        <p className="mt-2 text-center text-caption leading-relaxed text-ink-faint">
+          {t.pourquoiLAdresse}
         </p>
       </section>
 

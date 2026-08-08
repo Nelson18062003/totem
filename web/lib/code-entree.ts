@@ -1,10 +1,23 @@
-// Le code à six chiffres : le fabriquer, l'envoyer, le vérifier.
+// Le code à six chiffres : le fabriquer, l'envoyer par courriel, le vérifier.
 //
-// C'est le seul mécanisme d'identité disponible sur le parc de téléphones
-// d'ici. Il resservira cinq fois — à l'acceptation d'une invitation, à chaque
-// nouvel appareil, après un changement de numéro, au retour d'un téléphone
-// perdu, et pour confirmer un geste qui engage. Donc écrit une fois,
-// entièrement, et jamais recopié.
+// Il resservira cinq fois — à l'acceptation d'une invitation, à chaque nouvel
+// appareil, après un changement d'adresse, au retour d'un téléphone perdu, et
+// pour confirmer un geste qui engage. Donc écrit une fois, entièrement, et
+// jamais recopié.
+//
+// POURQUOI L'ADRESSE, ET PAS LE NUMÉRO
+// L'adresse est le point fixe : elle suit la personne quand elle change de
+// téléphone, de puce et d'opérateur. Un numéro camerounais inutilisé est
+// recyclé et réattribué — un compte accroché à une ligne finirait un jour
+// entre les mains d'un inconnu. Et le tout premier code sert autant à ouvrir
+// la porte qu'à PROUVER que l'adresse existe et qu'elle est bien à cette
+// personne : c'est le seul moment où on peut le savoir sans le demander.
+//
+// CE N'EST PAS LA PORTE PRINCIPALE
+// La porte principale, c'est le verrouillage du téléphone lui-même (voir
+// « cles.ts »). Le code par courriel est le chemin de la PREMIÈRE fois, et
+// celui du jour où le doigt ne prend pas : un autre appareil, un téléphone
+// neuf, un capteur qui refuse. Les deux coexistent, exprès.
 //
 // QUATRE RÈGLES, ET CHACUNE VIENT D'UN CAS RÉEL
 //
@@ -22,28 +35,30 @@
 //    La base ne connaît jamais le code : elle vérifie ce qu'on lui présente
 //    sans pouvoir dire ce qu'elle attend.
 //
-// 4. LE MESSAGE COÛTE DE L'ARGENT À QUELQU'UN. On limite les demandes par
-//    numéro : sans cela, il suffit d'appuyer cent fois sur « renvoyer » pour
-//    vider le forfait d'un commerçant.
+// 4. CHAQUE MESSAGE COÛTE QUELQUE CHOSE. On limite les demandes par adresse :
+//    sans cela, il suffit d'appuyer cent fois sur « renvoyer » pour noyer la
+//    boîte de quelqu'un — et pour faire classer tous nos messages comme
+//    indésirables, y compris ceux des autres.
 
 import { inserer, lire, lireUne, modifier } from "./base";
 
-/** Dix minutes — le plafond du NIST (SP 800-63B-4 §3.1.3.1), et déjà court
- *  pour un SMS qui traverse un réseau chargé. */
+/** Dix minutes. Assez pour changer d'application, attendre que le message
+ *  arrive et revenir ; trop court pour qu'un code resté dans une boîte mail
+ *  ouverte serve encore le lendemain. */
 export const VIE_MS = 10 * 60 * 1000;
 
-/** Au-delà, on refuse d'en envoyer un de plus au même numéro. */
+/** Au-delà, on refuse d'en envoyer un de plus à la même adresse. */
 export const DEMANDES_MAX = 5;
 export const FENETRE_DEMANDES_MS = 30 * 60 * 1000;
 
-export type Motif = "invitation" | "entree" | "appareil" | "numero" | "geste";
+export type Motif = "invitation" | "entree" | "appareil" | "adresse" | "geste";
 
 export type LigneCode = {
   id: number;
   empreinte: string;
   personne: number | null;
   invitation: number | null;
-  telephone: string;
+  courriel: string;
   motif: Motif;
   expire_le: string;
   utilise_le: string | null;
@@ -75,16 +90,32 @@ export function tirerCode(): string {
 }
 
 /**
- * L'empreinte d'un code, salée par le numéro visé.
+ * L'adresse, ramenée à sa forme canonique.
+ *
+ * Une adresse se retape avec une majuscule, ou avec une espace collée par le
+ * clavier du téléphone. « Jeanne@Boutique.CM » et « jeanne@boutique.cm » sont
+ * la même boîte, et la casse du domaine n'a jamais rien signifié. On ne
+ * touche PAS au reste : chez certains hébergeurs, la partie avant l'arobase
+ * distingue vraiment les majuscules, et « corriger » y perdrait des gens.
+ */
+export function adresseNormalisee(courriel: string): string {
+  const propre = courriel.trim();
+  const arobase = propre.lastIndexOf("@");
+  if (arobase < 0) return propre.toLowerCase();
+  return propre.slice(0, arobase) + "@" + propre.slice(arobase + 1).toLowerCase();
+}
+
+/**
+ * L'empreinte d'un code, salée par l'adresse visée.
  *
  * Le sel n'est pas un détail : sans lui, deux personnes qui reçoivent le même
  * code le même jour auraient la même empreinte en base, et qui la lit saurait
  * qu'elles ont reçu les mêmes six chiffres. Avec, un million de codes ne
  * produit jamais deux fois la même ligne pour deux destinataires différents.
  */
-export async function empreinteCode(code: string, telephone: string): Promise<string> {
+export async function empreinteCode(code: string, courriel: string): Promise<string> {
   const octets = new TextEncoder().encode(
-    `totem:code:${telephone.replace(/\D/g, "")}:${code}`);
+    `totem:code:${adresseNormalisee(courriel)}:${code}`);
   const somme = await crypto.subtle.digest("SHA-256", octets as unknown as BufferSource);
   return Array.from(new Uint8Array(somme), (o) => o.toString(16).padStart(2, "0")).join("");
 }
@@ -97,17 +128,17 @@ export function memeEmpreinte(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Combien de codes ont été demandés récemment pour ce numéro. */
-export async function demandesRecentes(telephone: string): Promise<number> {
+/** Combien de codes ont été demandés récemment pour cette adresse. */
+export async function demandesRecentes(courriel: string): Promise<number> {
   const depuis = new Date(Date.now() - FENETRE_DEMANDES_MS).toISOString();
   const lignes = await lire<{ id: number }>(
-    `codes_entree?telephone=eq.${encodeURIComponent(telephone)}`
+    `codes_entree?courriel=eq.${encodeURIComponent(adresseNormalisee(courriel))}`
     + `&cree_le=gte.${depuis}&select=id`);
   return lignes.length;
 }
 
 export type Demande = {
-  telephone: string;
+  courriel: string;
   motif: Motif;
   personne?: number | null;
   invitation?: number | null;
@@ -117,7 +148,7 @@ export type Demande = {
 
 export type Emis =
   | { code: string; ligne: LigneCode }
-  /** Trop de demandes pour ce numéro : on protège son forfait, pas nous. */
+  /** Trop de demandes pour cette adresse : on protège sa boîte, pas nous. */
   | { trop: true; reessayerDans: number };
 
 /**
@@ -127,15 +158,15 @@ export type Emis =
  * relire : ni ici, ni en base, ni dans un journal.
  */
 export async function emettreCode(d: Demande): Promise<Emis | null> {
-  if (await demandesRecentes(d.telephone) >= DEMANDES_MAX) {
+  if (await demandesRecentes(d.courriel) >= DEMANDES_MAX) {
     return { trop: true, reessayerDans: FENETRE_DEMANDES_MS };
   }
   const code = tirerCode();
   const ligne = await inserer<LigneCode>("codes_entree", {
-    empreinte: await empreinteCode(code, d.telephone),
+    empreinte: await empreinteCode(code, d.courriel),
     personne: d.personne ?? null,
     invitation: d.invitation ?? null,
-    telephone: d.telephone,
+    courriel: adresseNormalisee(d.courriel),
     motif: d.motif,
     expire_le: new Date(Date.now() + VIE_MS).toISOString(),
     appareil: d.appareil ?? null,
@@ -173,12 +204,12 @@ export type Verdict =
  * durée de la réponse, si son code était bon malgré l'attente.
  */
 export async function verifierCode(
-  code: string, telephone: string,
+  code: string, courriel: string,
 ): Promise<Verdict> {
   const propre = code.replace(/\D/g, "");
   if (propre.length !== 6) return { ok: false, raison: "inconnu" };
 
-  const e = await empreinteCode(propre, telephone);
+  const e = await empreinteCode(propre, courriel);
   const ligne = await lireUne<LigneCode>(
     `codes_entree?empreinte=eq.${e}&utilise_le=is.null&limit=1`);
 
@@ -186,7 +217,7 @@ export async function verifierCode(
     // Aucune ligne : soit le code est faux, soit il a déjà servi. On ne
     // distingue pas — la porte ne dit jamais laquelle des deux, sinon elle
     // apprend à qui essaie.
-    await noterEssaiRate(telephone);
+    await noterEssaiRate(courriel);
     return { ok: false, raison: "inconnu" };
   }
 
@@ -219,15 +250,15 @@ export async function verifierCode(
 }
 
 /**
- * Noter un essai raté sur les codes vivants de ce numéro, et ralentir.
+ * Noter un essai raté sur les codes vivants de cette adresse, et ralentir.
  *
- * On compte par NUMÉRO et non par code : sinon il suffirait de redemander un
+ * On compte par ADRESSE et non par code : sinon il suffirait de redemander un
  * code neuf pour remettre le compteur à zéro, et le ralentissement ne
  * ralentirait rien.
  */
-async function noterEssaiRate(telephone: string): Promise<void> {
+async function noterEssaiRate(courriel: string): Promise<void> {
   const vivants = await lire<LigneCode>(
-    `codes_entree?telephone=eq.${encodeURIComponent(telephone)}`
+    `codes_entree?courriel=eq.${encodeURIComponent(adresseNormalisee(courriel))}`
     + `&utilise_le=is.null&order=cree_le.desc&limit=5`);
   for (const l of vivants) {
     const essais = l.essais + 1;
@@ -242,8 +273,8 @@ async function noterEssaiRate(telephone: string): Promise<void> {
 /**
  * Le code, écrit comme on le lit : « 408 913 ».
  *
- * Deux groupes de trois, parce qu'on les recopie de mémoire depuis un SMS
- * jusqu'à un champ, et que six chiffres d'affilée se perdent en route.
+ * Deux groupes de trois, parce qu'on les recopie de mémoire depuis la boîte
+ * mail jusqu'au champ, et que six chiffres d'affilée se perdent en route.
  */
 export function ecrireCode(code: string): string {
   return `${code.slice(0, 3)} ${code.slice(3)}`;

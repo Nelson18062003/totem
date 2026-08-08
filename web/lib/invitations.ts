@@ -8,8 +8,8 @@
 //
 // 1. LE LIEN NE SUFFIT JAMAIS. Il circule par WhatsApp — c'est là que se fait
 //    le commerce ici — donc il se fait suivre, et il finit dans un groupe de
-//    quarante personnes. Un code part en parallèle sur LE numéro que la
-//    propriétaire a saisi, pas sur celui qu'on tape à l'ouverture. Le lien
+//    quarante personnes. Un code part en parallèle sur L'ADRESSE que la
+//    propriétaire a saisie, pas sur celle qu'on tape à l'ouverture. Le lien
 //    sans le code n'ouvre rien.
 //
 // 2. LA BASE NE GARDE QUE L'EMPREINTE. Le jeton n'existe en clair que dans le
@@ -22,6 +22,7 @@
 //    rien, elle fait seulement recommencer la propriétaire.
 
 import { inserer, lire, lireUne, modifier } from "./base";
+import { adresseNormalisee } from "./code-entree";
 import type { Role } from "./session";
 
 /** Sept jours. Le temps qu'un lien traverse WhatsApp, une coupure, un week-end. */
@@ -33,7 +34,7 @@ export type LigneInvitation = {
   commerce: string;
   role: Role;
   nom: string;
-  telephone: string;
+  courriel: string;
   langue: "fr" | "en";
   creee_par: number | null;
   creee_le: string;
@@ -75,7 +76,7 @@ export type Creation = {
   commerce: string;
   role: Role;
   nom: string;
-  telephone: string;
+  courriel: string;
   langue: "fr" | "en";
   creeePar: number;
 };
@@ -95,7 +96,7 @@ export async function creerInvitation(
     commerce: c.commerce,
     role: c.role,
     nom: c.nom,
-    telephone: c.telephone,
+    courriel: adresseNormalisee(c.courriel),
     langue: c.langue,
     creee_par: c.creeePar,
     expire_le: new Date(Date.now() + VALIDITE_MS).toISOString(),
@@ -146,7 +147,7 @@ export async function consommerInvitation(
                   { consommee_le: new Date().toISOString(), consommee_par: personne });
 }
 
-/** Annuler. La propriétaire s'est trompée de numéro, ou le lien a circulé. */
+/** Annuler. La propriétaire s'est trompée d'adresse, ou le lien a circulé. */
 export async function annulerInvitation(id: number, commerce: string): Promise<boolean> {
   return modifier(
     `invitations?id=eq.${id}&commerce=eq.${commerce}&consommee_le=is.null&annulee_le=is.null`,
@@ -161,15 +162,23 @@ export async function invitationsEnAttente(commerce: string): Promise<LigneInvit
 }
 
 /**
- * Le numéro tel qu'on l'affiche : les quatre derniers chiffres, le reste
- * masqué.
+ * L'adresse telle qu'on l'affiche : « je·····@boutique.cm ».
  *
- * La page de l'invitation le montre pour que la personne vérifie que c'est
- * bien son numéro — et il est masqué parce que cette page s'ouvre parfois
- * dans un groupe où quarante personnes voient l'écran.
+ * La page de l'invitation la montre pour que la personne RECONNAISSE sa
+ * boîte, et elle est masquée parce que cette page s'ouvre parfois dans un
+ * groupe où quarante personnes voient l'écran. Le domaine reste entier :
+ * c'est lui qui permet de reconnaître, et il n'apprend rien à personne.
+ *
+ * Deux lettres suffisent à reconnaître et ne suffisent pas à deviner. Le
+ * nombre de points ne suit PAS la longueur réelle — sinon l'écran dirait à
+ * qui regarde combien de caractères il reste à trouver.
  */
-export function numeroMasque(numero: string): string {
-  const chiffres = numero.replace(/\D/g, "");
-  if (chiffres.length < 4) return "··";
-  return `·· ${chiffres.slice(-4, -2)} ${chiffres.slice(-2)}`;
+export function courrielMasque(courriel: string): string {
+  const propre = adresseNormalisee(courriel);
+  const arobase = propre.lastIndexOf("@");
+  if (arobase < 1) return "·····";
+  const debut = propre.slice(0, arobase);
+  const domaine = propre.slice(arobase);
+  const montre = debut.length <= 2 ? debut.slice(0, 1) : debut.slice(0, 2);
+  return `${montre}·····${domaine}`;
 }

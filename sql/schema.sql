@@ -399,13 +399,17 @@ create index if not exists cartes_commerce_idx on cartes (commerce);
 create table if not exists personnes (
   id         bigint generated always as identity primary key,
   nom        text not null,              -- « J. Eyenga », tel qu'on l'appelle
-  -- Le numéro est un CANAL, jamais une preuve d'identité : au Cameroun une
-  -- ligne inutilisée est recyclée et réattribuée. Un compte ne peut donc pas
-  -- être « le numéro 6xx… » — sinon le recyclage d'un numéro donne un jour à
-  -- un inconnu l'accès aux encaissements d'un commerce.
+  -- L'ADRESSE est le point fixe d'un compte. Elle suit la personne quand elle
+  -- change de téléphone, de puce et d'opérateur, et c'est par elle qu'arrive
+  -- le code des six chiffres.
+  courriel   text,
+  courriel_prouve_le timestamptz,        -- quand un code y est arrivé et a marché
+  -- Le numéro reste, mais comme un CANAL : on appelle quelqu'un, on ne
+  -- l'identifie pas par sa ligne. Au Cameroun une ligne inutilisée est
+  -- recyclée et réattribuée — un compte qui serait « le numéro 6xx… »
+  -- donnerait un jour à un inconnu l'accès aux encaissements d'un commerce.
   telephone  text,
   telephone_lie_le timestamptz,          -- depuis quand ce numéro est le sien
-  courriel   text,                       -- le super-admin en a un ; pas les autres
   langue     text not null default 'fr' check (langue in ('fr', 'en')),
   -- « actif » | « suspendu » | « parti ». « parti » n'efface rien : la
   -- personne revient parfois six mois plus tard, et on la RÉACTIVE au lieu de
@@ -417,6 +421,9 @@ create table if not exists personnes (
   vue_le     timestamptz
 );
 
+comment on column personnes.courriel is
+  'Le point fixe du compte : c''est par là qu''arrive le code des six chiffres, '
+  'et « courriel_prouve_le » dit le jour où l''adresse a répondu.';
 comment on column personnes.telephone is
   'Un canal de contact, pas une identité : les numéros inactifs sont recyclés.';
 
@@ -460,10 +467,10 @@ create table if not exists invitations (
   commerce    text not null references commerces(id) on delete restrict,
   role        text not null check (role in ('proprietaire', 'operateur', 'lecteur', 'admin')),
   nom         text not null,             -- le nom lisible que le propriétaire a saisi
-  -- L'invitation est LIÉE au numéro dès l'émission : le code part sur CE
-  -- numéro, pas sur celui qu'on tape. C'est ce qui la protège du lien qui
-  -- traîne dans un groupe WhatsApp de quarante personnes.
-  telephone   text not null,
+  -- L'invitation est LIÉE à l'adresse dès l'émission : le code part sur CETTE
+  -- adresse, pas sur celle qu'on tape à l'ouverture. C'est ce qui la protège
+  -- du lien qui traîne dans un groupe WhatsApp de quarante personnes.
+  courriel    text not null,
   langue      text not null default 'fr' check (langue in ('fr', 'en')),
   creee_par   bigint references personnes(id),
   creee_le    timestamptz not null default now(),
@@ -595,7 +602,7 @@ end $$;
 
 -- Aucune politique de lecture n'est posée ici, volontairement : sans
 -- politique, une clé publique ne lit RIEN. C'est le bon défaut pour des
--- tables qui portent des empreintes de secrets et des numéros de téléphone.
+-- tables qui portent des empreintes de secrets et des coordonnées privées.
 
 -- ===========================================================================
 -- LE CODE À SIX CHIFFRES
@@ -607,10 +614,10 @@ end $$;
 create table if not exists codes_entree (
   id          bigint generated always as identity primary key,
 
-  -- L'empreinte du code, jamais le code. Salée par l'identifiant de la
-  -- tentative, pour que deux codes identiques tirés le même jour n'aient pas
-  -- la même empreinte : sans cela, qui lit la base saurait que deux personnes
-  -- ont reçu les mêmes six chiffres.
+  -- L'empreinte du code, jamais le code. Salée par l'adresse visée, pour que
+  -- deux codes identiques tirés le même jour n'aient pas la même empreinte :
+  -- sans cela, qui lit la base saurait que deux personnes ont reçu les mêmes
+  -- six chiffres.
   empreinte   text not null,
 
   -- À qui il est destiné. « personne » est nul avant l'acceptation d'une
@@ -618,18 +625,17 @@ create table if not exists codes_entree (
   personne    bigint references personnes(id) on delete restrict,
   invitation  bigint references invitations(id) on delete restrict,
 
-  -- Le numéro visé, tel qu'il était AU MOMENT de l'envoi. On ne le relit pas
-  -- depuis « personnes » à la vérification : entre l'envoi et la saisie,
-  -- quelqu'un pourrait avoir changé le numéro de destination.
-  telephone   text not null,
+  -- L'adresse visée, telle qu'elle était AU MOMENT de l'envoi. On ne la relit
+  -- pas depuis « personnes » à la vérification : entre l'envoi et la saisie,
+  -- quelqu'un pourrait avoir changé l'adresse de destination.
+  courriel    text not null,
 
-  -- « invitation » | « entree » | « appareil » | « numero » | « geste »
+  -- « invitation » | « entree » | « appareil » | « adresse » | « geste »
   motif       text not null,
 
-  -- Dix minutes. C'est le plafond du NIST (SP 800-63B-4 §3.1.3.1) et c'est
-  -- déjà court pour un SMS qui traverse un réseau chargé à Douala. En dessous,
-  -- on ferait échouer des gens honnêtes plus souvent qu'on ne gênerait
-  -- quiconque.
+  -- Dix minutes. Assez pour aller chercher le message dans une autre
+  -- application, sur une connexion qui traîne ; trop court pour qu'un code
+  -- resté dans une boîte mail ouverte serve encore le lendemain.
   expire_le   timestamptz not null,
 
   -- Usage unique, et la date le prouve.
@@ -652,11 +658,12 @@ create table if not exists codes_entree (
 -- La recherche se fait toujours par empreinte, sur les codes encore vivants.
 create index if not exists codes_entree_vivants_idx
   on codes_entree (empreinte) where utilise_le is null;
--- Et par destinataire, pour compter les demandes récentes d'un même numéro :
--- c'est ce qui empêche d'user le forfait de quelqu'un en redemandant un code
--- cent fois.
-create index if not exists codes_entree_telephone_idx
-  on codes_entree (telephone, cree_le desc);
+-- Et par destinataire, pour compter les demandes récentes d'une même adresse :
+-- c'est ce qui empêche de noyer la boîte mail de quelqu'un en appuyant cent
+-- fois sur « renvoyer » — et, accessoirement, de faire classer nos messages
+-- comme indésirables pour tout le monde.
+create index if not exists codes_entree_courriel_idx
+  on codes_entree (courriel, cree_le desc);
 
 comment on table codes_entree is
   'Les codes à six chiffres, sous forme d''empreinte. Un code appartient à une '
@@ -666,4 +673,4 @@ alter table codes_entree enable row level security;
 
 -- Aucune politique de lecture, volontairement : sans politique, une clé
 -- publique ne lit RIEN. C'est le bon défaut pour une table d'empreintes de
--- secrets et de numéros de téléphone.
+-- secrets et d'adresses personnelles.
