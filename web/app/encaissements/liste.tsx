@@ -94,7 +94,7 @@ export function ListeEncaissements({
 
       {/* Recherche et filtres — une seule ligne dès que la largeur le permet */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
+        <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line-control bg-surface-raised px-3.5">
           <IconSearch size={16} className="text-ink-faint" />
           <input value={recherche} onChange={(e) => setRecherche(e.target.value)}
             placeholder={t.recherchePlaceholder}
@@ -112,7 +112,7 @@ export function ListeEncaissements({
               className={`rounded-btn border px-3.5 py-1.5 text-small transition sm:py-2.5 ${
                 filtre === f
                   ? "border-ink bg-ink font-medium text-white"
-                  : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+                  : "border-line-control bg-surface-raised text-ink-soft hover:border-ink-faint"
               }`}>{f === TOUS ? t.tousLesOperateurs : f}</button>
           ))}
         </div>
@@ -141,7 +141,7 @@ export function ListeEncaissements({
             action={
               <button
                 onClick={() => { setRecherche(""); setFiltre(TOUS); setCategorie(TOUTES); }}
-                className="rounded-btn border border-line px-4 py-2 text-small font-medium transition hover:border-ink-faint"
+                className="rounded-btn border border-line-control px-4 py-2 text-small font-medium transition hover:border-ink-faint"
               >
                 {t.toutAfficher}
               </button>
@@ -230,7 +230,7 @@ function Chip({
       className={`rounded-full border px-3 py-1 text-small transition ${
         actif
           ? "border-ink bg-ink font-medium text-white"
-          : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+          : "border-line-control bg-surface-raised text-ink-soft hover:border-ink-faint"
       }`}
     >
       {children}

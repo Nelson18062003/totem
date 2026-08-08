@@ -199,14 +199,14 @@ export function OperationPopup({
                 <span className="text-small text-ink-soft">{c.label}</span>
                 <input value={valeurs[c.cle] ?? ""} onChange={(e) => set(c.cle, e.target.value)}
                   inputMode="numeric" placeholder={c.aide}
-                  className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
+                  className="rounded-btn border border-line-control bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
               </label>
             ))}
             <p className="text-caption leading-relaxed text-ink-faint">
               {t.noteSaisie}
             </p>
             <div className="mt-1 flex gap-2">
-              <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
+              <button onClick={onFermer} className="flex-1 rounded-btn border border-line-control py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
                 {t.annuler}
               </button>
               <button disabled={!complet} onClick={lancer}
@@ -247,7 +247,7 @@ export function OperationPopup({
                 className="flex items-center gap-2">
                 <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
                   inputMode="tel" placeholder={t.votreReponse}
-                  className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
+                  className="flex-1 rounded-btn border border-line-control bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
                 <button type="submit" disabled={!reponseLibre.trim()}
                   className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
                   {t.envoyer}
@@ -268,7 +268,7 @@ export function OperationPopup({
             ) : (
               /* Le geste de sortie, impossible à manquer. */
               <button onClick={annuler} disabled={attente}
-                className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
+                className="rounded-btn border border-line-control py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
                 {t.annulerSession}
               </button>
             )}

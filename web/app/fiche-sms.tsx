@@ -213,7 +213,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
                 className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
                   nature === n
                     ? "border-ink bg-ink font-medium text-white"
-                    : "border-line text-ink-soft hover:border-ink-faint"
+                    : "border-line-control text-ink-soft hover:border-ink-faint"
                 }`}>
                 {CAT[n]} {t.cat[n]}
               </button>
@@ -232,7 +232,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
         <div className="mt-5 flex flex-wrap gap-2">
           <button
             onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
-            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
+            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line-control py-2.5 text-small font-medium transition hover:border-ink-faint">
             <IconCopy size={15} /> {t.copierSms}
           </button>
           {p.recu ? (
@@ -247,7 +247,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
               </a>
               {p.sourceId != null && (
                 <button onClick={etablirRecu} disabled={etabli === "envoi" || etabli === "fait"}
-                  className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint disabled:opacity-40">
+                  className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line-control py-2.5 text-small font-medium transition hover:border-ink-faint disabled:opacity-40">
                   <IconDoc size={15} />
                   {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
                 </button>

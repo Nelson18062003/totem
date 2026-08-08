@@ -69,7 +69,7 @@ export default function Connexion() {
             autoComplete="current-password"
             autoFocus
             required
-            className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink"
+            className="rounded-btn border border-line-control bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink"
           />
         </label>
 

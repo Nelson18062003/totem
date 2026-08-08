@@ -149,7 +149,7 @@ export function ConsoleUssd({
           onSubmit={(e) => { e.preventDefault(); composer(saisie); }}
           className="flex items-center gap-2"
         >
-          <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
+          <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line-control bg-surface-raised px-3.5">
             <IconHash size={16} className="text-ink-faint" />
             <input
               value={saisie}
@@ -170,7 +170,7 @@ export function ConsoleUssd({
         <div className="flex flex-wrap gap-1.5">
           {(codesUssd[carte.operateur] ?? []).map((c) => (
             <button key={c.code} onClick={() => composer(c.code)} disabled={attente}
-              className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-40">
+              className="rounded-btn border border-line-control bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-40">
               {t.libelleCode(c.cle, c.libelle)} <span className="tabnums text-ink-faint">{c.code}</span>
             </button>
           ))}
@@ -241,7 +241,7 @@ export function ConsoleUssd({
                   inputMode="tel"
                   placeholder={t.votreReponseDetail}
                   autoFocus
-                  className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
+                  className="flex-1 rounded-btn border border-line-control bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
                 />
                 <button type="submit" disabled={!reponse.trim()}
                   className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
@@ -253,7 +253,7 @@ export function ConsoleUssd({
             {/* Le geste de sortie, impossible à manquer. */}
             {enSession && (
               <button onClick={fermer} disabled={attente}
-                className="mt-2 rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
+                className="mt-2 rounded-btn border border-line-control py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
                 {t.annulerSession}
               </button>
             )}

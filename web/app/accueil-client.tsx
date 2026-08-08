@@ -109,7 +109,7 @@ export function AccueilGuichet({
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-start-1">
         {operations.map(({ label, Icone, fabrique }) => (
           <button key={label} onClick={() => setOperation(fabrique())}
-            className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
+            className="flex items-center gap-2.5 rounded-card border border-line-control bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
             <Icone size={18} className="text-ink-soft" />
             {label}
           </button>

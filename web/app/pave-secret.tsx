@@ -42,7 +42,7 @@ export function PaveSecret({ onValider }: { onValider: (code: string) => void })
       <div className="grid w-full max-w-56 grid-cols-3 gap-1.5">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((c) => (
           <button key={c} onClick={() => appuyer(c)}
-            className="rounded-btn border border-line bg-surface-raised py-3 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
+            className="rounded-btn border border-line-control bg-surface-raised py-3 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
             {c}
           </button>
         ))}
@@ -51,7 +51,7 @@ export function PaveSecret({ onValider }: { onValider: (code: string) => void })
           {t.effacer}
         </button>
         <button onClick={() => appuyer("0")}
-          className="rounded-btn border border-line bg-surface-raised py-3 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
+          className="rounded-btn border border-line-control bg-surface-raised py-3 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
           0
         </button>
         <button onClick={valider} disabled={code.length < 4}

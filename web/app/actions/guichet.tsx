@@ -115,7 +115,7 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
               {consultations.map(({ l, Icone, fabrique }) => (
                 <button key={l} onClick={() => setOperation(fabrique())}
-                  className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
+                  className="flex items-center gap-2.5 rounded-card border border-line-control bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">
                   <Icone size={18} className="text-ink-soft" />
                   <span className="text-left leading-snug">{l}</span>
                 </button>

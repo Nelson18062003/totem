@@ -101,7 +101,7 @@ export function ReglageNumero({
           setEtat("repos");
           setMessage("");
         }}
-        className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
+        className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line-control hover:text-ink"
         title={t.reglerNumero(libelle)}
       >
         {numero || t.numeroARenseigner}
@@ -133,7 +133,7 @@ export function ReglageNumero({
           onClick={() => setEdition(false)}
           aria-label={t.annuler}
           disabled={etat === "envoi"}
-          className="grid size-8 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink disabled:opacity-40"
+          className="grid size-8 place-items-center rounded-btn border border-line-control text-ink-faint transition hover:text-ink disabled:opacity-40"
         >
           <IconClose size={14} />
         </button>
@@ -217,7 +217,7 @@ export function SectionCodes({ operateur }: { operateur: string }) {
                 <button
                   onClick={() => { setEnEdition(c.cle); setBrouillon(c.code); }}
                   title={t.modifierCode}
-                  className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
+                  className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line-control hover:text-ink"
                 >
                   {c.code}
                 </button>
@@ -230,24 +230,24 @@ export function SectionCodes({ operateur }: { operateur: string }) {
             <div className="flex flex-col gap-2 sm:flex-row">
               <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                 placeholder={t.nomExemple} autoFocus
-                className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-small outline-none transition focus:border-ink" />
+                className="flex-1 rounded-btn border border-line-control bg-surface-raised px-3 py-2 text-small outline-none transition focus:border-ink" />
               <input value={nouveauCode} onChange={(e) => setNouveauCode(proprer(e.target.value))}
                 placeholder="#148*6#" inputMode="tel"
-                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-small tabnums outline-none transition focus:border-ink sm:w-32" />
+                className="w-full rounded-btn border border-line-control bg-surface-raised px-3 py-2 text-small tabnums outline-none transition focus:border-ink sm:w-32" />
               <span className="flex gap-2">
                 <button onClick={ajouter} disabled={!nouveauNom.trim() || !nouveauCode.trim()}
                   className="flex-1 rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
                   {t.ajouter}
                 </button>
                 <button onClick={() => setAjout(false)} aria-label={t.annulerAjout}
-                  className="grid size-9 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink">
+                  className="grid size-9 place-items-center rounded-btn border border-line-control text-ink-faint transition hover:text-ink">
                   <IconClose size={15} />
                 </button>
               </span>
             </div>
           ) : (
             <button onClick={() => setAjout(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
+              className="flex w-full items-center justify-center gap-2 rounded-btn border border-line-control py-2.5 text-small font-medium transition hover:border-ink-faint">
               <IconPlus size={15} /> {t.ajouterRaccourci}
             </button>
           )}
@@ -288,7 +288,7 @@ export function SectionLangue() {
               className={`rounded-btn py-2.5 text-small font-medium transition ${
                 code === langue
                   ? "bg-ink text-white"
-                  : "border border-line hover:border-ink-faint"
+                  : "border border-line-control hover:border-ink-faint"
               }`}
             >
               {libelle}
@@ -322,7 +322,7 @@ export function BoutonDeconnexion() {
     <button
       onClick={sortir}
       disabled={envoi}
-      className="rounded-btn border border-line bg-surface-raised py-3 text-center text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-50"
+      className="rounded-btn border border-line-control bg-surface-raised py-3 text-center text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-50"
     >
       {envoi ? t.deconnexion : t.seDeconnecter}
     </button>

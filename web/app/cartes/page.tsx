@@ -72,7 +72,7 @@ export default async function Comptes() {
           { l: t.verrouiller, Icone: IconLock },
         ].map(({ l, Icone }) => (
           <button key={l}
-            className="flex flex-col items-start gap-2.5 rounded-card border border-line bg-surface-raised p-3.5 text-left transition hover:border-ink-faint">
+            className="flex flex-col items-start gap-2.5 rounded-card border border-line-control bg-surface-raised p-3.5 text-left transition hover:border-ink-faint">
             <Icone size={18} className="text-ink-soft" />
             <span className="text-small font-medium leading-snug">{l}</span>
           </button>

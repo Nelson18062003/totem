@@ -20,8 +20,20 @@
   --color-surface-3: #ebe8e5;        /* séparateurs pleins, barres */
   --color-ink: #16171a;              /* texte principal — 17,2:1 */
   --color-ink-soft: #62605c;         /* texte secondaire — 6,0:1 */
-  --color-ink-faint: #77726b;        /* texte tertiaire — 4,6:1, passe AA */
-  --color-line: #e8e5e1;             /* bordures fines */
+  /* #77726b annonçait « 4,6:1 » — vrai sur le fond de page seulement. Posé sur
+     surface-3, là où cette encre sert réellement, il tombait à 3,91:1. Vérifié
+     par le calcul sur les cinq fonds : celui-ci tient 4,52:1 au pire. */
+  --color-ink-faint: #6d6861;        /* texte tertiaire — 4,5:1 sur le pire fond */
+
+  /* Deux traits, et la différence n'est pas décorative.
+     --color-line SÉPARE : filet de liste, bord de carte. Rien ne se perd s'il
+     s'efface, et à 1,26:1 il est fait pour être calme.
+     --color-line-control DÉLIMITE : c'est le bord d'un champ vide, d'un bouton
+     secondaire. Là, le trait EST le contrôle — s'il s'efface, le champ n'existe
+     plus. WCAG 2.2 §1.4.11 exige 3:1 ; celui-ci tient 3,01:1 au pire des quatre
+     fonds où un contrôle se pose. */
+  --color-line: #e8e5e1;             /* bordures fines — séparation */
+  --color-line-control: #8d8a86;     /* bord d'un contrôle — 3:1 minimum */
 
   /* Latérite — LA couleur de la marque. Le symbole, les surfaces de marque.
      Dans l'app elle ne sert qu'à porter la marque, jamais un état. */

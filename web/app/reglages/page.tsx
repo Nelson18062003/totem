@@ -66,7 +66,7 @@ export default async function Reglages() {
             </p>
           )}
           <div className="border-t border-line p-3">
-            <button className="w-full rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
+            <button className="w-full rounded-btn border border-line-control py-2.5 text-small font-medium transition hover:border-ink-faint">
               {t.redemarrer}
             </button>
           </div>
