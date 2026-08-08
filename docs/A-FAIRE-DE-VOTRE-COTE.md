@@ -9,18 +9,32 @@ projet Supabase, ni à vos variables Vercel.
 
 ---
 
-## 1 · Dérouler la migration dans Supabase — cinq minutes
+## 1 · Dérouler les migrations dans Supabase — dix minutes
 
-Sans elle, les tables `personnes`, `sessions`, `commerces`, `acces`,
+Sans elles, les tables `personnes`, `sessions`, `commerces`, `acces`,
 `invitations`, `preuves` et `entrees` n'existent pas, et **plus personne ne
 peut se connecter** : la garde cherche une session en base et n'en trouve
 aucune.
 
+**Trois fichiers, dans cet ordre.** Pour chacun :
+
 1. Supabase → votre projet → **SQL Editor** → **New query**.
-2. Coller **tout** le contenu de `sql/migration-identite.sql`.
+2. Coller **tout** le contenu du fichier.
 3. **Run**.
-4. Relancer une seconde fois : il ne doit y avoir aucune erreur. Le fichier est
-   rejouable, et cette seconde exécution est la façon de le vérifier.
+4. Relancer une seconde fois : il ne doit y avoir aucune erreur. Les fichiers
+   sont rejouables, et cette seconde exécution est la façon de le vérifier.
+
+| Ordre | Fichier | Ce qu'il apporte |
+|---|---|---|
+| 1 | `sql/migration-identite.sql` | les personnes, les accès, les invitations, les sessions |
+| 2 | `sql/migration-code-entree.sql` | les six chiffres envoyés par mail |
+| 3 | `sql/migration-cles.sql` | entrer avec le verrouillage du téléphone |
+
+> **Si vous aviez déjà lancé le premier fichier avant le 8 août**, il visait un
+> numéro de téléphone là où il vise maintenant une adresse mail. Le relancer
+> **renomme** la colonne au lieu d'en créer une seconde : rien à faire de
+> particulier, et rien ne se perd. C'est vérifié sur un vrai PostgreSQL —
+> `tests/test_sql_execute.py`.
 
 Ce que ça touche à vos données existantes : **rien**. Aucune table n'est
 modifiée, sauf `commandes` qui reçoit deux colonnes vides (`demandee_par`,
@@ -30,7 +44,7 @@ intactes après. C'est `tests/test_sql_execute.py`, il tourne à chaque batterie
 
 ---
 
-## 2 · Poser deux variables sur Vercel — deux minutes
+## 2 · Poser les variables sur Vercel — deux minutes
 
 Settings → **Environment Variables**, puis **redéployer**.
 
@@ -38,6 +52,12 @@ Settings → **Environment Variables**, puis **redéployer**.
 |---|---|---|
 | `SESSION_SECRET` | une longue phrase au hasard, différente par environnement | **oui, sinon 503** |
 | `TOTEM_PROPRIETAIRE` | votre nom dans le journal (« Nelson ») | non, mais utile |
+| `TOTEM_ORIGINE` | l'adresse exacte du site, `https://…` sans barre finale | non, mais recommandée |
+
+`TOTEM_ORIGINE` sert au verrouillage du téléphone : c'est l'adresse pour
+laquelle le téléphone accepte de signer, et c'est ce qui rend un faux site
+inopérant. Sans elle, TOTEM la déduit de l'adresse servie, ce qui marche —
+mais la figer coûte une ligne et ferme la question.
 
 **Le changement important, et il peut vous surprendre :** `SESSION_SECRET`
 était facultative. Sans elle, le site s'ouvrait à tout le monde — pratique en
@@ -91,8 +111,13 @@ reçus, les réglages : tout fonctionne comme avant, avec les mêmes gestes.
 
 La phase 0 pose les fondations. Rien de ce qui suit n'existe encore à l'écran :
 
-- **Inviter quelqu'un.** Les tables sont là, l'écran non. Vous ne pouvez pas
-  encore donner une clé à un opérateur — c'est la phase 1.
+- **Inviter quelqu'un.** L'écran qui MONTRE l'invitation existe désormais
+  (`/invitation/…`), mais celui qui vous permet d'en CRÉER une n'est pas
+  encore là. C'est la suite de la phase 1.
+- **Entrer avec votre doigt.** Le bouton est sur l'écran de connexion et il
+  marche ; mais tant que vous entrez par `TOTEM_MOT_DE_PASSE`, l'écran qui
+  vous propose de poser votre clé n'est pas encore accroché aux réglages.
+  Le mécanisme est là, le geste pour l'installer vient juste après.
 - **Voir vos appareils connectés, en fermer un.** Le registre existe et
   fonctionne ; l'écran qui le montre est en phase 2.
 - **Les rôles au comptoir.** Tant qu'aucun `acces` n'est posé en base, tout le

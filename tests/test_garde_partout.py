@@ -46,7 +46,18 @@ OUVERTES = {
     "app/invitation/[jeton]/page.tsx":
         "l'acceptation d'une invitation, ouverte par construction : elle ne "
         "crée rien, et le lien seul n'ouvre aucun compte sans le code envoyé "
-        "sur le numéro",
+        "sur l'adresse mail",
+    # L'autre porte : entrer avec le verrouillage de son téléphone. Elle ne
+    # peut pas exiger d'être entré, pour la même raison que /api/connexion.
+    # Ce qui la garde n'est pas une session mais une SIGNATURE que seul le
+    # téléphone de la personne sait produire, sur une phrase que nous venons
+    # d'inventer et qui ne resservira pas. Et la signature ne suffit pas : la
+    # route relit ensuite l'état de la personne et son accès EN BASE avant
+    # d'ouvrir quoi que ce soit — un téléphone parfaitement valable dont la
+    # clé a été reprise n'entre plus.
+    "app/api/cle/entrer/route.ts":
+        "la route qui ouvre la session par le téléphone ; son contrôle est la "
+        "signature, puis la relecture du droit d'entrer en base",
     # Une redirection permanente, sans donnée.
     "app/sms/page.tsx":
         "ancienne adresse : elle ne fait que rediriger vers /encaissements, "

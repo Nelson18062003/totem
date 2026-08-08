@@ -78,10 +78,10 @@ export async function inserer<T>(table: string, valeurs: unknown): Promise<T | n
 /**
  * Modifier. Le chemin porte le filtre — « sessions?id=eq.abc ».
  *
- * Il n'y a volontairement pas de fonction « supprimer » dans ce fichier.
  * Rien ne s'efface : on date. Retirer un accès pose « retire_le », fermer une
  * session pose « revoquee_le ». Un employé qui part fâché est exactement le
- * moment où l'historique doit rester entier.
+ * moment où l'historique doit rester entier. La seule exception vit dans
+ * « effacer », plus bas, et elle porte sa propre liste blanche.
  */
 export async function modifier(chemin: string, valeurs: unknown): Promise<boolean> {
   if (!relie) return false;
@@ -93,6 +93,39 @@ export async function modifier(chemin: string, valeurs: unknown): Promise<boolea
       cache: "no-store",
     });
     if (!r.ok) console.error(`Supabase : patch ${chemin} → ${r.status}`);
+    return r.ok;
+  } catch (e) {
+    console.error(`Supabase injoignable : ${String(e)}`);
+    return false;
+  }
+}
+
+/**
+ * Effacer — et la liste des tables où c'est permis tient en un mot.
+ *
+ * `defis` : la phrase à signer, valable cinq minutes. Une phrase expirée ne
+ * raconte rien sur personne, ne prouve rien et ne se relit jamais ; la garder
+ * n'aurait aucun sens et elle s'accumulerait sans fin.
+ *
+ * Le garde-fou est ici, dans le code, et pas seulement dans une consigne :
+ * cette fonction REFUSE toute autre table. Un jour quelqu'un — moi
+ * probablement — aura une bonne raison d'effacer ailleurs, et ce jour-là il
+ * faudra la modifier exprès plutôt que l'utiliser distraitement.
+ */
+const EFFACABLES = ["defis"];
+
+export async function effacer(chemin: string): Promise<boolean> {
+  const table = chemin.split("?")[0];
+  if (!EFFACABLES.includes(table)) {
+    console.error(`refus d'effacer « ${table} » : rien ne s'efface dans TOTEM, on date`);
+    return false;
+  }
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+      method: "DELETE", headers: entetes(), cache: "no-store",
+    });
+    if (!r.ok) console.error(`Supabase : delete ${chemin} → ${r.status}`);
     return r.ok;
   } catch (e) {
     console.error(`Supabase injoignable : ${String(e)}`);

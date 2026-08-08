@@ -5,15 +5,25 @@ import { Fragment, useState } from "react";
 import { LANGUES } from "@/lib/langue";
 import { textesConnexion } from "@/lib/textes/connexion";
 import { changerLangue, useLangue } from "@/app/langue";
+import { EntrerAvecLeTelephone } from "@/app/cle-boutons";
 import { Symbole } from "../marque";
 
 /**
  * L'écran de connexion — le verrou réel de la plateforme.
  *
- * Un seul mot de passe, celui du propriétaire (défini dans les variables
- * d'environnement du déploiement, jamais dans le code). Ce n'est PAS le code
- * PIN Mobile Money : celui-là ne se saisit qu'au moment d'une opération, et
- * n'est enregistré nulle part.
+ * DEUX CHEMINS, ET L'ORDRE EST UNE DÉCISION
+ * Le doigt est en haut parce que c'est le chemin de tous les jours : un geste,
+ * rien à retenir, et un faux site ne peut pas s'en servir. Le mot de passe est
+ * en dessous parce qu'il sert les jours d'exception — et parce qu'un chemin
+ * qu'on relègue en bas de page est un chemin qu'on n'ose plus prendre.
+ *
+ * Le bouton du haut ne s'affiche QUE si le navigateur sait faire : un bouton
+ * qui échoue toujours se lit comme une panne de TOTEM.
+ *
+ * Le mot de passe reste celui du propriétaire (variables d'environnement du
+ * déploiement, jamais dans le code). Ce n'est PAS le code PIN Mobile Money :
+ * celui-là ne se saisit qu'au moment d'une opération, et n'est enregistré
+ * nulle part.
  */
 export default function Connexion() {
   const router = useRouter();
@@ -57,6 +67,22 @@ export default function Connexion() {
         <p className="mt-1 text-small text-ink-soft">
           {t.sousTitre}
         </p>
+      </div>
+
+      {/* Le chemin de tous les jours, en premier. */}
+      <div className="mb-6">
+        <EntrerAvecLeTelephone
+          t={t}
+          apres={() => { router.replace("/"); router.refresh(); }}
+        />
+      </div>
+
+      {/* Un séparateur, pas un titre : les deux chemins se valent, celui du
+          bas n'est pas un rattrapage honteux. */}
+      <div className="mb-6 flex items-center gap-3" aria-hidden>
+        <span className="h-px flex-1 bg-line" />
+        <span className="text-caption text-ink-faint">{t.ouBien}</span>
+        <span className="h-px flex-1 bg-line" />
       </div>
 
       <form onSubmit={entrer} className="flex flex-col gap-4">

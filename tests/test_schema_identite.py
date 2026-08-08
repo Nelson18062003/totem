@@ -20,13 +20,15 @@ from pathlib import Path
 
 SQL = Path(__file__).resolve().parent.parent / "sql"
 SCHEMA = SQL / "schema.sql"
-MIGRATIONS = [SQL / "migration-identite.sql", SQL / "migration-code-entree.sql"]
+MIGRATIONS = [SQL / "migration-identite.sql", SQL / "migration-code-entree.sql",
+              SQL / "migration-cles.sql"]
 
 # Les objets que la migration d'identité introduit. Écrits à la main, parce
 # qu'une liste déduite des fichiers ne prouverait rien : elle serait juste par
 # construction, même si les deux fichiers oubliaient la même table.
 TABLES_IDENTITE = ["commerces", "personnes", "acces", "invitations",
-                   "sessions", "preuves", "entrees", "codes_entree"]
+                   "sessions", "preuves", "entrees", "codes_entree",
+                   "cles", "defis"]
 
 
 def tables_declarees(texte):

@@ -18,7 +18,19 @@ export type Issue =
   | "ralentie"     // trop d'essais : on ralentit, on n'enferme jamais
   | "invitation";  // une invitation vient d'être acceptée
 
-export type Moyen = "papier" | "appareil" | "sms" | "invitation" | "mot_de_passe";
+/**
+ * Par où c'est passé. Les cinq chemins d'entrée de TOTEM, et rien d'autre.
+ *
+ * · « cle »        : le verrouillage du téléphone — le chemin de tous les jours.
+ * · « courriel »   : les six chiffres reçus par mail.
+ * · « papier »     : un des dix codes imprimés, quand plus rien d'autre n'est là.
+ * · « invitation » : la toute première fois.
+ * · « mot_de_passe » : le compte fondateur, en attendant les comptes nominatifs.
+ *
+ * C'est cette colonne qui permettra de dire à quelqu'un « vous n'avez pas
+ * touché à votre papier depuis huit mois » — ou l'inverse, qui est un signal.
+ */
+export type Moyen = "cle" | "courriel" | "papier" | "invitation" | "mot_de_passe";
 
 export type Entree = {
   personne?: number | null;

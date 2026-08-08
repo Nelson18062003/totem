@@ -24,7 +24,18 @@ import { COOKIE_LANGUE, langueDe } from "@/lib/langue";
 //
 // Ce qui reste ouvert : la porte elle-même, et l'invitation — une personne
 // invitée n'a par définition pas encore de compte.
-const OUVERT = ["/connexion", "/api/connexion", "/api/deconnexion", "/invitation", "/api/invitation"];
+//
+// « /api/cle/entrer » en fait partie, forcément : c'est la porte. Elle n'est
+// pas moins gardée pour autant — elle n'ouvre rien sans une signature que
+// seul le téléphone de la personne sait produire, et elle relit le droit
+// d'entrer en base avant d'ouvrir quoi que ce soit. « /api/cle/enregistrer »,
+// en revanche, N'EST PAS ici : on ne pose une clé que sur un compte déjà
+// ouvert.
+const OUVERT = [
+  "/connexion", "/api/connexion", "/api/deconnexion",
+  "/invitation", "/api/invitation",
+  "/api/cle/entrer",
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
