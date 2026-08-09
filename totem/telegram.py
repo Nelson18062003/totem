@@ -82,7 +82,16 @@ class TransportTelegram:
                     {k: v for k, v in params.items() if v is not None}).encode()
                 req = urllib.request.Request(f"{self.base}/{methode}", data=donnees)
                 with urllib.request.urlopen(req, timeout=delai) as rep:
-                    self.conflit = False
+                    # Le conflit porte sur l'INTERROGATION : seule une
+                    # interrogation réussie peut le déclarer terminé.
+                    #
+                    # Le lever sur n'importe quel appel réussi était un piège
+                    # qui s'est refermé en production : le message d'alerte
+                    # partait par sendMessage, celui-ci réussissait, le
+                    # drapeau retombait — et l'alerte repartait au tour
+                    # suivant. Des centaines de fois.
+                    if methode == "getUpdates":
+                        self.conflit = False
                     return json.loads(rep.read().decode())
             except urllib.error.HTTPError as e:
                 if e.code == 409:

@@ -72,6 +72,10 @@ RE_DEMANDE_DESTINATAIRE = re.compile(
 ADMIN = "admin"
 PAVE_PIN = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
 VERIF_MEMOIRE_SECONDES = 300
+# Délai minimal entre deux alertes de conflit de jeton. Le problème se
+# règle à la main sur le Pi ; le répéter plus souvent ne ferait
+# qu'ensevelir les vraies notifications sous les avertissements.
+INTERVALLE_CONFLIT = 3600
 # Un échange de SIM demande d'ouvrir le boîtier : inutile de guetter à la
 # seconde. Une minute suffit pour que l'annonce paraisse immédiate.
 VERIF_CARTES_SECONDES = 60
@@ -166,6 +170,8 @@ class Robot:
         self.sante = Sante()
         self.memoire_signalee = False
         self.conflit_signale = False
+        # Assez ancien pour que la toute première alerte passe.
+        self.dernier_conflit = -INTERVALLE_CONFLIT
         self._dernier_avert_courrier = 0.0   # anti-répétition de l'alerte facteur
         self._dernier_avert_cloud = 0.0      # anti-répétition de l'alerte cloud
         # Échéanciers du tour de surveillance (cartes, santé, mémoire).
@@ -2097,25 +2103,40 @@ class Robot:
         if conflit == self.conflit_signale:
             return
         self.conflit_signale = conflit
-        if conflit:
-            self.journal.evenement("conflit : jeton Telegram utilisé ailleurs")
-            self.facteur.poster(
-                t(f"⚠️ {gras('Telegram has stopped answering me')}\n"
-                  "Another program is using the same bot key, "
-                  "and our commands get lost between the two.\n\n"
-                  "On the terminal, to check:\n"
-                  f"{mono('ps aux | grep totem')}\n"
-                  f"{mono('sudo systemctl restart totem')}\n\n"
-                  + italique("If only one robot is running, this alert will "
-                             "clear itself on the next check."),
-                  f"⚠️ {gras('Telegram refuse de me répondre')}\n"
-                  "Un second programme utilise la même clé de bot, "
-                  "et nos commandes se perdent entre les deux.\n\n"
-                  "Sur le Pi, pour vérifier :\n"
-                  f"{mono('ps aux | grep totem')}\n"
-                  f"{mono('sudo systemctl restart totem')}\n\n"
-                  + italique("Si un seul robot tourne, l'alerte disparaîtra "
-                             "d'elle-même au prochain tour.")), canal="alertes")
+        if not conflit:
+            return
+        # Second garde-fou, indépendant du drapeau. Une alerte qui prévient
+        # d'un problème ne doit jamais devenir le problème : quoi qu'il
+        # arrive à l'état, on n'écrit qu'une fois par heure.
+        maintenant = time.monotonic()
+        if maintenant - self.dernier_conflit < INTERVALLE_CONFLIT:
+            return
+        self.dernier_conflit = maintenant
+        self.journal.evenement("conflit : jeton Telegram utilisé ailleurs")
+        self.facteur.poster(
+            t(f"⚠️ {gras('Telegram has stopped answering me')}\n"
+              "Another program is using the same bot key. Our commands get "
+              "lost between the two, at random.\n\n"
+              + gras("To see what is running:") + "\n"
+              + mono('pgrep -af "python3 -m totem"') + "\n\n"
+              + gras("To keep only one:") + "\n"
+              + mono('sudo pkill -f "python3 -m totem"') + "\n"
+              + mono("sudo systemctl restart totem") + "\n\n"
+              + italique("The first line stops everything, the second brings "
+                         "back the one robot that should run. This alert will "
+                         "not repeat for an hour."),
+
+              f"⚠️ {gras('Telegram refuse de me répondre')}\n"
+              "Un second programme utilise la même clé de bot. Nos commandes "
+              "se perdent entre les deux, au hasard.\n\n"
+              + gras("Pour voir qui tourne :") + "\n"
+              + mono('pgrep -af "python3 -m totem"') + "\n\n"
+              + gras("Pour n'en garder qu'un :") + "\n"
+              + mono('sudo pkill -f "python3 -m totem"') + "\n"
+              + mono("sudo systemctl restart totem") + "\n\n"
+              + italique("La première ligne arrête tout, la seconde relance "
+                         "le seul robot qui doit tourner. Cette alerte ne se "
+                         "répétera pas avant une heure.")), canal="alertes")
 
     def _rapport_quotidien(self):
         """Envoie le bilan une fois par jour, même si la boucle a sauté la

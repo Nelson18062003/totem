@@ -608,3 +608,78 @@ class TestLaReference(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCashOutAnglais(unittest.TestCase):
+    """Le retrait d'agent en anglais — relevé sur une vraie capture.
+
+    Ce message échappait à TOUS les motifs et retombait en « message
+    quelconque » : ni montant, ni tiers, ni reçu possible. C'est le genre de
+    silence qui ne se voit pas — le SMS s'affiche, il a l'air normal, et il
+    n'est simplement compté nulle part.
+
+    Deux causes se cumulaient : « cashout » n'était dans aucune liste de
+    verbes d'opération, et le mot de réussite vient AVANT « to », alors que
+    tous les motifs existants l'attendaient après le bénéficiaire.
+    """
+
+    REEL = ("CashOut success to 693377266 MANGA from 696103864 WONDER PHONE. "
+            "The details are as follows: transaction amount: 500000 FCFA, "
+            "charges: 0 FCFA, commission: 0 FCFA, TXN id :CO260808.1609.D57821")
+
+    def test_le_message_est_enfin_compris(self):
+        self.assertIsNotNone(analyser(self.REEL),
+                             "ce SMS ne doit plus retomber en « message »")
+
+    def test_le_montant(self):
+        self.assertEqual(analyser(self.REEL).montant, 500000)
+
+    def test_les_deux_parties_dans_le_bon_sens(self):
+        """L'ordre est l'inverse du transfert anglais : le bénéficiaire suit
+        « to », l'émetteur suit « from »."""
+        p = analyser(self.REEL)
+        self.assertEqual(p.beneficiaire.numero, "693377266")
+        self.assertEqual(p.beneficiaire.nom, "MANGA")
+        self.assertEqual(p.emetteur.numero, "696103864")
+        self.assertEqual(p.emetteur.nom, "WONDER PHONE")
+
+    def test_la_reference(self):
+        self.assertEqual(analyser(self.REEL).reference, "CO260808.1609.D57821")
+
+    def test_frais_et_commission_nuls_sont_lus_comme_tels(self):
+        p = analyser(self.REEL)
+        self.assertEqual(p.frais, 0)
+        self.assertEqual(p.commission, 0)
+
+    def test_le_sens_reste_indetermine_sans_nos_numeros(self):
+        """Le SMS nomme les deux parties sans dire laquelle est la nôtre.
+        Deviner ici retournerait le libellé du reçu."""
+        self.assertIsNone(analyser(self.REEL).sens)
+
+    def test_le_sens_se_tranche_avec_nos_numeros(self):
+        p = analyser(self.REEL, numeros=["696103864"])
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.tiers, "MANGA")
+
+    def test_vu_de_l_autre_cote_c_est_une_entree(self):
+        p = analyser(self.REEL, numeros=["693377266"])
+        self.assertEqual(p.sens, "entree")
+        self.assertEqual(p.tiers, "WONDER PHONE")
+
+    def test_la_categorie_est_un_retrait(self):
+        self.assertEqual(categoriser(self.REEL), "retrait")
+
+    def test_le_depot_symetrique(self):
+        depot = self.REEL.replace("CashOut", "CashIn")
+        self.assertIsNotNone(analyser(depot))
+        self.assertEqual(categoriser(depot), "depot")
+
+    def test_un_cashout_echoue_n_est_pas_un_mouvement(self):
+        """Sans mot de réussite, rien ne doit être compté."""
+        echec = self.REEL.replace("CashOut success to", "CashOut failed to")
+        p = analyser(echec)
+        if p is not None:
+            self.assertIsNone(p.emetteur, "un échec ne nomme pas de parties")
+
+    def test_ce_n_est_pas_pris_pour_une_interrogation_de_solde(self):
+        self.assertIsNone(solde_annonce(self.REEL))
