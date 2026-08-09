@@ -10,7 +10,15 @@
 const en = {
   titre: "Settings",
   sousTitre: "The terminal, the accounts, security.",
-  proprietaire: "Terminal owner",
+  // Ce que la personne EST, dans les mots du comptoir. Ces quatre lignes
+  // remplacent un « propriétaire du terminal » écrit en dur, qui mentait à
+  // tout le monde sauf à une seule personne.
+  role: {
+    proprietaire: "Owner of this shop",
+    operateur: "At the counter",
+    lecteur: "Reads only",
+    admin: "TOTEM platform",
+  } as Record<string, string>,
 
   // --- Le terminal
   terminal: "Terminal",
@@ -104,7 +112,12 @@ const en = {
 const fr: typeof en = {
   titre: "Réglages",
   sousTitre: "Le terminal, les comptes, la sécurité.",
-  proprietaire: "Propriétaire du terminal",
+  role: {
+    proprietaire: "Propriétaire de ce commerce",
+    operateur: "Au comptoir",
+    lecteur: "Lecture seule",
+    admin: "Plateforme TOTEM",
+  },
 
   terminal: "Terminal",
   enLigne: "En ligne",

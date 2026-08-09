@@ -15,7 +15,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Reglages() {
-  await exigerPouvoir("lire");
+  const moi = await exigerPouvoir("lire");
   const langue = await langueServeur();
   const t = textesReglages[langue];
   const { terminal, sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
@@ -30,12 +30,16 @@ export default async function Reglages() {
 
       {/* Compte utilisateur */}
       <section className="flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 text-body font-medium">
-          N
+        {/* L'initiale du VRAI nom, et le VRAI rôle. Une pastille « N » et le
+            mot « propriétaire » écrits en dur mentiraient à une opératrice —
+            et c'est exactement la personne à qui il faut dire ce qu'elle est. */}
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 text-body font-medium"
+              aria-hidden>
+          {moi.nom.trim().charAt(0).toUpperCase() || "?"}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-body font-medium">Nelson</p>
-          <p className="truncate text-small text-ink-faint">{t.proprietaire}</p>
+          <p className="text-body font-medium">{moi.nom}</p>
+          <p className="truncate text-small text-ink-faint">{t.role[moi.role]}</p>
         </div>
       </section>
 

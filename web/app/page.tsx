@@ -11,7 +11,7 @@ import { exigerPouvoir } from "@/lib/garde";
 export const dynamic = "force-dynamic";
 
 export default async function Accueil() {
-  await exigerPouvoir("lire");
+  const moi = await exigerPouvoir("lire");
   const langue = await langueServeur();
   const t = textesAccueil[langue];
   const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: 30, recus: 60 });
@@ -26,7 +26,7 @@ export default async function Accueil() {
           serrer « Vue d'ensemble ». */}
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:col-span-2">
         <div>
-          <p className="text-small text-ink-soft">{t.bonjour}</p>
+          <p className="text-small text-ink-soft">{t.bonjour(moi.nom)}</p>
           <h1 className="mt-0.5 text-title font-semibold tracking-tight">{t.titre}</h1>
         </div>
         {/* La langue, en évidence dès l'accueil — quelle que soit la taille

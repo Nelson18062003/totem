@@ -60,8 +60,15 @@ type TextesEntree = {
   telephoneImpossible: string;
 };
 
+/**
+ * @param separateur ce qui sépare ce chemin du suivant — le « ou ». Il est
+ *   passé ICI et non laissé à la page, parce qu'un séparateur qui reste quand
+ *   le bouton disparaît produit « ce navigateur ne sait pas faire · ou ·
+ *   mot de passe », une phrase qui ne veut rien dire.
+ */
 export function EntrerAvecLeTelephone(
-  { t, apres }: { t: TextesEntree; apres: () => void },
+  { t, apres, separateur }:
+  { t: TextesEntree; apres: () => void; separateur?: React.ReactNode },
 ) {
   const sait = useSaitFaire();
   const [etat, etablir] = useState<"repos" | "attente" | "rate">("repos");
@@ -70,9 +77,10 @@ export function EntrerAvecLeTelephone(
   // Tant qu'on ne sait pas, on ne montre rien : un bouton qui apparaît puis
   // disparaît est plus déroutant qu'un demi-instant d'attente.
   if (sait === null) return null;
-  if (sait === false) {
-    return <p className="text-caption leading-relaxed text-ink-faint">{t.telephoneImpossible}</p>;
-  }
+  // Un navigateur qui ne sait pas faire ne mérite ni bouton ni explication :
+  // la personne n'a rien fait de mal, et le mot de passe juste en dessous est
+  // une porte parfaitement normale. On se tait.
+  if (sait === false) return null;
 
   async function entrer() {
     etablir("attente");
@@ -114,6 +122,7 @@ export function EntrerAvecLeTelephone(
       {etat === "rate" && (
         <p role="alert" className="text-small text-negative">{message}</p>
       )}
+      {separateur}
     </div>
   );
 }

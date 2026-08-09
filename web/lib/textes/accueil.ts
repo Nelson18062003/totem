@@ -3,7 +3,11 @@
 
 const en = {
   // L'en-tête et le terminal
-  bonjour: "Hello, Nelson",
+  // Le nom vient de la personne qui vient d'entrer, jamais d'ici. Il y a été
+  // écrit en dur pendant des mois, et c'était sans conséquence tant que TOTEM
+  // ne savait pas qui appuyait ; maintenant qu'il le sait, un nom figé dans le
+  // code saluerait l'opératrice par le nom de la propriétaire.
+  bonjour: (nom: string) => `Hello, ${nom}`,
   titre: "Overview",
   reglages: "Settings",
   terminal: "Terminal",
@@ -51,7 +55,7 @@ const en = {
 };
 
 const fr: typeof en = {
-  bonjour: "Bonjour, Nelson",
+  bonjour: (nom: string) => `Bonjour, ${nom}`,
   titre: "Vue d’ensemble",
   reglages: "Réglages",
   terminal: "Terminal",

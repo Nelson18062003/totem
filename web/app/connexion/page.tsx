@@ -69,20 +69,23 @@ export default function Connexion() {
         </p>
       </div>
 
-      {/* Le chemin de tous les jours, en premier. */}
-      <div className="mb-6">
+      {/* Le chemin de tous les jours, en premier — et son séparateur avec
+          lui : là où le bouton ne s'affiche pas, le « ou » ne sépare plus
+          rien et n'a rien à faire là. */}
+      <div className="mb-6 empty:mb-0">
         <EntrerAvecLeTelephone
           t={t}
           apres={() => { router.replace("/"); router.refresh(); }}
+          separateur={
+            /* Un séparateur, pas un titre : les deux chemins se valent, celui
+               du bas n'est pas un rattrapage honteux. */
+            <div className="mt-6 flex items-center gap-3" aria-hidden>
+              <span className="h-px flex-1 bg-line" />
+              <span className="text-caption text-ink-faint">{t.ouBien}</span>
+              <span className="h-px flex-1 bg-line" />
+            </div>
+          }
         />
-      </div>
-
-      {/* Un séparateur, pas un titre : les deux chemins se valent, celui du
-          bas n'est pas un rattrapage honteux. */}
-      <div className="mb-6 flex items-center gap-3" aria-hidden>
-        <span className="h-px flex-1 bg-line" />
-        <span className="text-caption text-ink-faint">{t.ouBien}</span>
-        <span className="h-px flex-1 bg-line" />
       </div>
 
       <form onSubmit={entrer} className="flex flex-col gap-4">
