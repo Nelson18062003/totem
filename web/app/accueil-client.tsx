@@ -4,25 +4,37 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { codeUssd } from "@/lib/codes";
-import { fcfa, type Sim } from "@/lib/types";
+import { fcfa, type Paiement, type Sim } from "@/lib/types";
 import { textesAccueil } from "@/lib/textes/accueil";
+import { textesGens } from "@/lib/textes/gens";
+import { textesCharpente } from "@/lib/textes/charpente";
 import { useLangue } from "@/app/langue";
-import { IconArrowDown, IconArrowUp, IconPhone, IconRefresh, IconWallet } from "./icons";
+import { IconArrowDown, IconArrowUp, IconDoc, IconPhone, IconRefresh, IconWallet } from "./icons";
 import { OperationPopup, type Operation } from "./operation";
 
 /**
  * Le guichet de l'accueil. Un seul solde — celui de la carte — et cinq
  * gestes : chacun ouvre son pop-up, la session se joue dedans, du formulaire
  * au code secret. Personne n'est renvoyé vers une autre page.
+ *
+ * `peutComposer` COMMANDE TOUS LES GESTES, Y COMPRIS LA FLÈCHE DU SOLDE.
+ * Chacun d'eux compose un code sur la puce — c'est le genre « ussd », et
+ * `lib/roles.ts` le réserve au propriétaire : « même quand le code composé
+ * paraît innocent, c'est par là que l'argent sort ». Montrer ces boutons à qui
+ * tient le comptoir reviendrait à lui promettre six refus. La carte du solde,
+ * elle, reste : lire n'est refusé à personne.
  */
 export function AccueilGuichet({
   carte,
+  peutComposer,
 }: {
   carte: Pick<Sim, "libelle" | "operateur" | "numero" | "solde" | "soldeMaj" | "signal" | "iccid">;
+  peutComposer: boolean;
 }) {
   const router = useRouter();
   const langue = useLangue();
   const t = textesAccueil[langue];
+  const tg = textesGens[langue];
   const [operation, setOperation] = useState<Operation | null>(null);
   const op = carte.operateur;
 
@@ -65,7 +77,7 @@ export function AccueilGuichet({
       label: t.monNumero, Icone: IconPhone,
       fabrique: (): Operation => ({ titre: t.monNumero, code: codeUssd(op, "mon_numero"), champs: [] }),
     },
-  ].filter((o) => o.fabrique().code);
+  ].filter((o) => peutComposer && o.fabrique().code);
 
   return (
     <>
@@ -84,18 +96,20 @@ export function AccueilGuichet({
           <p className="text-hero font-semibold tabnums tracking-tight">
             {carte.solde == null ? "—" : fcfa(carte.solde, langue)}
           </p>
-          <button
-            onClick={() => setOperation(solde())}
-            aria-label={t.actualiserAria}
-            title={t.interrogerReseau}
-            className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
-          >
-            <IconRefresh size={16} />
-          </button>
+          {peutComposer && (
+            <button
+              onClick={() => setOperation(solde())}
+              aria-label={t.actualiserAria}
+              title={t.interrogerReseau}
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+            >
+              <IconRefresh size={16} />
+            </button>
+          )}
         </div>
         <p className="mt-1.5 text-small text-white/55">
           {carte.solde == null
-            ? t.aucunSoldeConnu
+            ? peutComposer ? t.aucunSoldeConnu : tg.soldeInconnu
             : carte.soldeMaj
               ? t.soldeMaj(carte.soldeMaj)
               : t.soldeSansHeure}
@@ -105,7 +119,10 @@ export function AccueilGuichet({
         </p>
       </section>
 
-      {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même */}
+      {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même.
+          Absents entièrement pour qui ne compose pas : la carte qui explique
+          à qui appartient ce geste prend leur place, sur la page. */}
+      {peutComposer && (
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-start-1">
         {operations.map(({ label, Icone, fabrique }) => (
           <button key={label} onClick={() => setOperation(fabrique())}
@@ -121,6 +138,7 @@ export function AccueilGuichet({
           </p>
         )}
       </section>
+      )}
 
       {operation && (
         <OperationPopup
@@ -130,5 +148,57 @@ export function AccueilGuichet({
         />
       )}
     </>
+  );
+}
+
+/**
+ * Les derniers SMS, pour qui n'a que le droit de lire.
+ *
+ * POURQUOI UNE SECONDE LISTE PLUTÔT QUE LA MÊME
+ * `DerniersSms` ouvre la fiche du message, et cette fiche est un plan de
+ * travail : elle choisit la nature du SMS, établit le reçu, marque comme lu.
+ * Ces trois gestes demandent le comptoir, et ils refuseraient. Un lecteur
+ * verrait donc un écran qui l'invite à faire trois choses interdites — la
+ * définition même d'une panne déguisée.
+ *
+ * Ici, la même information et un seul geste : télécharger le reçu, qui lui
+ * est parfaitement permis. Une liste, pas un établi.
+ */
+export function ListeLecture({ paiements }: { paiements: Paiement[] }) {
+  const langue = useLangue();
+  const t = textesCharpente[langue];
+
+  return (
+    <ul className="divide-hair">
+      {paiements.map((p) => (
+        <li key={p.id} className="flex items-center gap-3 py-3.5">
+          <span aria-hidden
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+            {p.sens === "in" ? <IconArrowDown size={16} />
+              : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body font-medium">{p.nom}</span>
+            <span className="block truncate text-small text-ink-faint">
+              {p.sim} · {p.heure} · {p.smsBrut}
+            </span>
+          </span>
+          {p.montant != null && (
+            <span className={`shrink-0 text-body font-medium tabnums ${
+              p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"
+            }`}>
+              {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
+            </span>
+          )}
+          {p.recu && (
+            <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
+              title={t.telechargerRecu} aria-label={`${t.telechargerRecu} ${p.recu}`}
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft transition hover:border-ink hover:text-ink">
+              <IconDoc size={16} />
+            </a>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

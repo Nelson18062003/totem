@@ -778,3 +778,380 @@ alter table defis enable row level security;
 
 -- Aucune politique de lecture sur ni l'une ni l'autre, volontairement : sans
 -- politique, une clé publique ne lit RIEN.
+
+-- ===========================================================================
+-- LE PAPIER DE DIX CODES — le chemin qui ne demande rien
+-- ===========================================================================
+-- Détaillé dans « sql/migration-papier.sql » et « docs/COMMENT-ON-ENTRE.md ».
+-- C'est le seul chemin qui reste le jour où la boîte mail ET le téléphone sont
+-- hors de portée en même temps. Ni réseau, ni batterie, ni électricité.
+--
+-- La table ne contient PAS les codes : une empreinte salée par la personne
+-- permet de reconnaître celui qu'on nous présente, jamais de le dire. Les dix
+-- codes sont montrés une seule fois, à la fabrication.
+
+-- --- Les codes du papier : dix par série, chacun bon une fois ---------------
+create table if not exists codes_papier (
+  id          bigint generated always as identity primary key,
+
+  -- À qui est ce papier. « on delete restrict » : supprimer une personne
+  -- emporterait ses codes, et avec eux l'explication de ses entrées passées.
+  personne    bigint not null references personnes(id) on delete restrict,
+
+  -- L'EMPREINTE, jamais le code. SHA-256 de « totem:papier:<personne>:<code> ».
+  -- Le sel par personne n'est pas un ornement : sans lui, deux commerçants qui
+  -- tirent le même code auraient la même ligne en base, et qui la lit saurait
+  -- qu'ils partagent un secret.
+  empreinte   text not null unique,
+
+  -- Le numéro imprimé en face du code, de 1 à 10. Il ne sert qu'à une chose,
+  -- et elle compte : pouvoir dire « le quatrième » au téléphone, et cocher au
+  -- crayon celui qu'on vient d'utiliser sans avoir à écrire le code à côté.
+  rang        int not null check (rang between 1 and 10),
+
+  -- Le numéro du papier. La première série est la 1. Il permet de dire « votre
+  -- deuxième papier, fabriqué en mars » plutôt que de confondre deux feuilles
+  -- qui se ressemblent.
+  serie       int not null default 1,
+
+  -- Le jour où la feuille est sortie de l'imprimante. C'est la date écrite en
+  -- haut du papier : c'est elle qui permet de reconnaître la bonne feuille
+  -- quand deux traînent dans le même tiroir.
+  cree_le     timestamptz not null default now(),
+
+  -- Usage unique, et la date le prouve. Un code servi ne resert jamais : c'est
+  -- la base qui l'arbitre, par un filtre « pas encore utilisé » au moment de
+  -- le consommer — deux onglets qui valident au même instant ne peuvent pas
+  -- ouvrir deux fois.
+  utilise_le  timestamptz,
+
+  -- Ce que le journal doit pouvoir dire trois mois plus tard : où et depuis
+  -- quel appareil ce code de secours a servi.
+  appareil    text,
+  lieu        text,
+
+  -- Une nouvelle série remplace l'ancienne : on date, on n'efface pas. Une
+  -- ligne annulée reste — c'est elle qui explique, plus tard, pourquoi un code
+  -- recopié de la vieille feuille n'ouvre plus rien.
+  annulee_le  timestamptz
+);
+
+create index if not exists codes_papier_vivants_idx
+  on codes_papier (empreinte) where utilise_le is null and annulee_le is null;
+create index if not exists codes_papier_personne_idx
+  on codes_papier (personne, serie desc);
+
+comment on table codes_papier is
+  'Les dix codes d''un papier de secours, sous forme d''empreinte. La table ne '
+  'sait pas les dire : elle sait seulement reconnaître celui qu''on lui '
+  'présente. Une nouvelle série annule la précédente, en la datant.';
+
+comment on column codes_papier.empreinte is
+  'SHA-256 de « totem:papier:<personne>:<code> ». Le code en clair n''existe '
+  'qu''une fois, sur l''écran de fabrication, et jamais ici.';
+comment on column codes_papier.annulee_le is
+  'Le jour où une nouvelle série a remplacé celle-ci. Deux papiers valables en '
+  'circulation, c''est une feuille oubliée qui ouvre encore le commerce '
+  'trois ans plus tard.';
+
+alter table codes_papier enable row level security;
+
+-- Aucune politique de lecture, volontairement : sans politique, une clé
+-- publique ne lit RIEN.
+
+-- --- Les courriels : ce qui est parti, et ce qui n'est pas parti ------------
+-- Ce journal n'existe que pour répondre à une phrase qu'on entend tous les
+-- mois : « mon opérateur dit qu'il n'a rien reçu ». Sans lui, elle n'a pas de
+-- réponse — on ne sait pas si le message est parti, s'il a été refusé, ou si
+-- TOTEM n'était pas configuré ce jour-là, et ces trois situations appellent
+-- trois gestes différents.
+--
+-- IL NE CONTIENT PAS LE CONTENU, ET N'AURA JAMAIS DE COLONNE POUR LE METTRE.
+-- Ni les six chiffres, ni le jeton d'une invitation, ni l'objet, ni le corps.
+-- Une colonne « message » finirait remplie « pour déboguer », et une copie de
+-- la base ouvrirait alors des boutiques.
+--
+-- L'adresse, elle, est en clair : la base la connaît déjà (« personnes.
+-- courriel », « codes_entree.courriel »), donc la hacher ici ne protégerait
+-- rien et rendrait le journal muet sur la seule question qu'on lui pose.
+create table if not exists courriels (
+  id          bigint generated always as identity primary key,
+
+  -- L'adresse visée AU MOMENT de l'envoi, normalisée. On ne la relit pas
+  -- depuis « personnes » : entre l'envoi et la question posée trois semaines
+  -- plus tard, l'adresse du compte a pu changer.
+  destinataire text not null,
+
+  -- Nul avant l'acceptation d'une invitation : le compte n'existe pas encore
+  -- au moment où part le tout premier message.
+  personne    bigint references personnes(id) on delete restrict,
+
+  -- Le genre, jamais le contenu. C'est lui qui permet de dire « trois codes
+  -- sont partis vers cette boîte hier soir » sans savoir lesquels.
+  genre       text not null
+                check (genre in ('code', 'invitation', 'bienvenue',
+                                 'alerte_appareil', 'cle_retiree')),
+
+  -- « partie »         : le fournisseur l'a accepté — accepté n'est pas lu.
+  -- « refusee »        : il a dit non. Réessayer ne sert à rien en l'état.
+  -- « injoignable »    : le réseau a coupé. Réessayer a du sens.
+  -- « sans_cle »       : TOTEM n'était pas configuré. Cette ligne est la seule
+  --                      façon de s'en apercevoir avant un coup de téléphone.
+  -- « sans_expediteur »: l'autre moitié de la configuration.
+  -- « adresse »        : l'adresse n'avait pas la forme d'une adresse.
+  issue       text not null
+                check (issue in ('partie', 'refusee', 'injoignable',
+                                 'sans_cle', 'sans_expediteur', 'adresse')),
+
+  -- Le motif technique d'un refus : « 422 validation_error ». Court, borné, et
+  -- jamais le corps de la réponse du fournisseur.
+  detail      text,
+
+  -- L'identifiant donné par le fournisseur, pour retrouver CE message-là chez
+  -- lui le jour où quelqu'un dit qu'il n'a rien reçu.
+  reference   text,
+
+  cree_le     timestamptz not null default now()
+);
+
+create index if not exists courriels_destinataire_idx
+  on courriels (destinataire, cree_le desc);
+create index if not exists courriels_personne_idx
+  on courriels (personne, cree_le desc) where personne is not null;
+-- Les échecs se lisent seuls : c'est la liste qu'on regarde quand quelque
+-- chose cloche, et elle doit rester rapide même quand tout va bien.
+create index if not exists courriels_rates_idx
+  on courriels (cree_le desc) where issue <> 'partie';
+
+comment on table courriels is
+  'Ce qui est parti par courriel, et ce qui n''est pas parti. Le genre, le '
+  'destinataire, le moment, l''issue — jamais le contenu : ni code, ni jeton, '
+  'ni objet, ni corps. Il n''y a aucune colonne pour cela, exprès.';
+
+comment on column courriels.destinataire is
+  'L''adresse visée au moment de l''envoi, normalisée. En clair, parce que la '
+  'base la connaît déjà ailleurs et qu''une empreinte ne répondrait pas à la '
+  'seule question posée : vers quelle boîte ?';
+
+comment on column courriels.detail is
+  'Le motif technique d''un refus, borné. Jamais un morceau du message.';
+
+alter table courriels enable row level security;
+
+-- Aucune politique de lecture, volontairement : sans politique, une clé
+-- publique ne lit RIEN. C'est le bon défaut pour une table qui aligne les
+-- adresses personnelles de tout le monde.
+
+-- ===========================================================================
+-- CE QUI ARRIVE SUR VOTRE TÉLÉPHONE, ET LE RETOUR
+--
+-- Ajouté en août 2026, avec les écrans C8 (« je n'arrive plus à entrer ») et
+-- C10 (« ce qui arrive sur votre téléphone »). Le chemin depuis une base déjà
+-- en service est décrit dans « sql/migration-preferences.sql ». Les deux
+-- fichiers disent la même chose, et « tests/test_retour_messages.py » vérifie
+-- qu'ils ne divergent pas.
+--
+-- LA RÈGLE QUE CES TABLES GRAVENT DANS LA BASE
+-- Ce qui protège ne se débraye pas, et le défaut est « on reçoit ».
+-- ===========================================================================
+
+-- --- Ce qu'on accepte de recevoir ------------------------------------------
+create table if not exists preferences_messages (
+  id        bigint generated always as identity primary key,
+  personne  bigint not null references personnes(id) on delete restrict,
+
+  -- Les huit genres, et rien d'autre. Un genre inconnu écrit ici serait une
+  -- préférence que personne ne relit jamais — donc un réglage qui ment.
+  genre     text not null check (genre in (
+              'code', 'invitation', 'bienvenue', 'alerte_appareil',
+              'cle_retiree', 'encaissement', 'rapport', 'terminal')),
+
+  -- Vrai par défaut, et l'ABSENCE de ligne vaut vrai elle aussi. Les deux
+  -- chemins mènent à « on reçoit » : c'est le seul défaut qui ne prive
+  -- personne d'une nouvelle par accident.
+  recevoir  boolean not null default true,
+
+  change_le timestamptz not null default now(),
+  unique (personne, genre)
+);
+
+create index if not exists preferences_messages_personne_idx
+  on preferences_messages (personne);
+
+-- La règle, tenue par la base et pas seulement par l'écran. Quatre genres
+-- protègent : les six chiffres sont la porte elle-même, l'invitation ouvre un
+-- compte, l'entrée depuis un appareil jamais vu est ce qui prévient d'une
+-- intrusion, et le retrait d'un téléphone est ce qui la confirme. Aucun ne
+-- s'éteint. Un écran mal écrit, une route oubliée, une main dans l'éditeur
+-- SQL : la ligne est refusée dans les trois cas.
+do $$
+begin
+  if not exists (select 1 from pg_constraint
+                  where conname = 'preferences_messages_protege_chk') then
+    alter table preferences_messages
+      add constraint preferences_messages_protege_chk
+      check (recevoir or genre not in
+             ('code', 'invitation', 'alerte_appareil', 'cle_retiree'));
+  end if;
+end $$;
+
+comment on table preferences_messages is
+  'Ce que la personne accepte de recevoir. L''absence de ligne vaut « on '
+  'reçoit », et ce qui protège ne s''éteint pas : la contrainte le refuse.';
+
+alter table preferences_messages enable row level security;
+
+-- --- Le lien qui ferme tout ------------------------------------------------
+-- Il part sur l'adresse mail, il vaut une heure, et il ne sert qu'une fois.
+-- Une heure : le temps d'emprunter un téléphone, d'ouvrir sa boîte et de
+-- revenir. Au-delà, la personne en redemandera un — cela ne coûte qu'un geste,
+-- alors qu'un lien qui traîne une semaine dans une boîte ouverte sur un
+-- téléphone volé est exactement ce qu'on cherche à éviter.
+create table if not exists demandes_fermeture (
+  id        bigint generated always as identity primary key,
+
+  -- L'empreinte du jeton, JAMAIS le jeton. Il n'existe en clair que dans le
+  -- courriel envoyé. Qui lit cette table ne peut fermer aucun compte ; il peut
+  -- seulement vérifier le lien qu'on lui présente.
+  jeton_empreinte text not null unique,
+
+  personne  bigint not null references personnes(id) on delete restrict,
+
+  -- Ce qu'on savait de celui qui a demandé. Approximatif par construction : il
+  -- sert à raconter « la demande est partie d'un téléphone à Douala », pas à
+  -- faire une preuve.
+  appareil  text,
+  lieu      text,
+
+  demande_le timestamptz not null default now(),
+  expire_le  timestamptz not null,
+
+  -- Usage unique : c'est cette colonne, et le filtre « is null » qui va avec,
+  -- qui empêche de rejouer un lien retrouvé dans une boîte mail.
+  utilise_le timestamptz
+);
+
+create index if not exists demandes_fermeture_personne_idx
+  on demandes_fermeture (personne);
+create index if not exists demandes_fermeture_vivantes_idx
+  on demandes_fermeture (expire_le) where utilise_le is null;
+
+comment on table demandes_fermeture is
+  'Le lien à usage unique qui ferme toutes les sessions d''une personne. La '
+  'table ne contient que l''empreinte : elle vérifie un lien, elle n''en '
+  'fabrique aucun.';
+
+alter table demandes_fermeture enable row level security;
+
+-- Aucune politique de lecture sur ni l'une ni l'autre, volontairement : sans
+-- politique, une clé publique ne lit RIEN.
+
+-- ===========================================================================
+-- LA CONSOLE DE LA PLATEFORME — à qui, où, et ce qui va mal
+--
+-- Ajoutée en août 2026. Le chemin depuis une base déjà en service est décrit
+-- dans « sql/migration-console.sql ». Les deux fichiers disent la même chose.
+--
+-- Ce que la base ne savait pas dire, et que l'écran de flotte exige :
+--  · à QUI appartient un boîtier — le cloisonnement de l'argent passe par
+--    « cartes.commerce », mais un terminal sans carte n'appartenait alors à
+--    personne, et la console ne pouvait pas nommer le commerce qu'il dessert ;
+--  · OÙ il est posé — « douala-akwa-01 » est un identifiant, pas une adresse ;
+--  · s'il est ENCORE EN SERVICE — un boîtier débranché pour de bon serait muet
+--    pour l'éternité et squatterait la tête d'un écran trié par ce qui va mal ;
+--  · CE QUI VA MAL, et qui est encore ouvert.
+--
+-- Ce qu'elle n'ajoute pas, volontairement : aucune colonne de mesure physique.
+-- Le robot ne publie qu'un résumé en toutes lettres dans « terminaux.sante » ;
+-- des colonnes que personne ne remplit donneraient des zéros qui ressemblent à
+-- des mesures. Et aucune colonne « carte retirée » : l'absence d'une puce se
+-- déduit de « cartes.derniere_vue », mais seulement quand le terminal parle
+-- encore — « on ne sait pas » n'a pas le droit de ressembler à « retirée ».
+-- ===========================================================================
+
+-- Le commerce qui HÉBERGE le boîtier. À ne pas confondre avec
+-- « cartes.commerce », qui dit à qui appartient l'ARGENT : un terminal peut
+-- porter les puces de deux commerçants, et c'est le cloisonnement par carte
+-- qui fait foi pour les soldes.
+alter table terminaux add column if not exists commerce text references commerces(id);
+
+-- L'endroit tel qu'on le nomme au téléphone : « Douala · Akwa ». Celui qui
+-- doit envoyer quelqu'un sur place a besoin d'un lieu, pas d'un identifiant.
+alter table terminaux add column if not exists lieu text;
+
+-- Retiré du service, et la date le prouve. Un terminal retiré garde tout son
+-- journal : on le sort de la surveillance, jamais de l'histoire.
+alter table terminaux add column if not exists retire_le timestamptz;
+alter table terminaux add column if not exists retire_motif text;
+
+comment on column terminaux.commerce is
+  'Le commerce chez qui le boîtier est posé. Le cloisonnement de l''argent, '
+  'lui, passe par « cartes.commerce » : un terminal peut porter deux caisses.';
+comment on column terminaux.retire_le is
+  'Sorti du service. La ligne descend de l''écran de surveillance ; son '
+  'journal, ses reçus et ses paiements restent entiers.';
+
+create index if not exists terminaux_commerce_idx on terminaux (commerce);
+create index if not exists terminaux_en_service_idx
+  on terminaux (vu_le asc nulls first) where retire_le is null;
+
+-- --- Les alertes : ce qui est ENCORE ouvert --------------------------------
+-- Une alerte n'est pas un message. Un message défile ; une alerte reste tant
+-- que personne ne l'a levée, et c'est cette persistance qui permet de dire
+-- « trois choses vont mal en ce moment » plutôt que « trois choses sont allées
+-- mal un jour ».
+create table if not exists alertes (
+  id         bigint generated always as identity primary key,
+
+  -- Nul pour une alerte qui vise la plateforme entière (le cloud injoignable) :
+  -- elle n'appartient à aucune machine.
+  terminal   text references terminaux(id) on delete cascade,
+
+  -- Le commerce touché, quand il est connu. C'est ce qui permet à l'écran de
+  -- NOMMER à qui appartient ce qu'il montre.
+  commerce   text references commerces(id),
+
+  -- Nommé par l'objet : « silence », « tension », « temperature », « disque »,
+  -- « itinerance », « carte_retiree », « retard_synchro ». Pas de contrainte
+  -- fermée : une alerte inconnue doit pouvoir REMONTER quitte à s'afficher
+  -- telle quelle, plutôt que d'être rejetée en silence.
+  genre      text not null,
+
+  -- « grave » est réservé à ce qui fait perdre de l'argent ou détruit du
+  -- matériel.
+  gravite    text not null default 'attention'
+               check (gravite in ('information', 'attention', 'grave')),
+
+  -- Écrits pour quelqu'un qui n'est pas informaticien : « Le boîtier de
+  -- Bafoussam ne parle plus depuis six heures », pas « heartbeat timeout ».
+  titre      text not null,
+  detail     text,
+
+  ouverte_le timestamptz not null default now(),
+  -- Voir n'est pas résoudre : confondre les deux ferait disparaître de l'écran
+  -- des choses que personne n'a réparées.
+  vue_le     timestamptz,
+
+  close_le   timestamptz,
+  close_par  bigint references personnes(id),
+  close_motif text
+);
+
+comment on table alertes is
+  'Ce qui va mal en ce moment sur la flotte. Une alerte reste ouverte tant '
+  'que personne ne la lève ; c''est ce qui la distingue d''un message.';
+
+-- Une seule alerte ouverte par boîtier et par genre : un terminal qui bascule
+-- vingt fois en sous-tension pendant un délestage ne produit pas vingt lignes.
+create unique index if not exists alertes_ouverte_unique
+  on alertes (terminal, genre) where close_le is null;
+
+create index if not exists alertes_ouvertes_idx
+  on alertes (ouverte_le desc) where close_le is null;
+create index if not exists alertes_commerce_idx on alertes (commerce);
+
+-- Aucune politique de lecture, volontairement : sans politique, une clé
+-- publique ne lit RIEN. Une alerte nomme un commerce et raconte ce qui se
+-- passe chez lui ; c'est le bon défaut. La console lit avec la clé de service,
+-- depuis le serveur, après « exigerPouvoir("administrer") ».
+alter table alertes enable row level security;
