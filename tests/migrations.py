@@ -39,6 +39,9 @@ MIGRATIONS = (
     "migration-papier.sql",       # les dix codes imprimés
     "migration-preferences.sql",  # ce que la personne veut recevoir
     "migration-console.sql",      # la supervision de la flotte
+    # Elle prolonge la précédente : elle ajoute une colonne à « alertes ».
+    # Inversées, l'ajout tomberait sur une table qui n'existe pas encore.
+    "migration-journal.sql",      # le registre des versions, et qui a vu une alerte
     "migration-plateforme.sql",   # le super-administrateur
 )
 

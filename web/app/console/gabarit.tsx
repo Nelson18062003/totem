@@ -125,7 +125,9 @@ export function CadreConsole({
                 key={cle}
                 href={href}
                 aria-current={ici ? "page" : undefined}
-                className={`flex shrink-0 items-center gap-2.5 rounded-btn px-3 py-2.5 text-small transition md:w-full ${
+                // « min-h-11 » — 44 px. L'onglet faisait 39 px : sous le minimum
+                // tactile, et c'est la barre qu'on vise le plus souvent.
+                className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-btn px-3 py-2.5 text-small transition md:w-full ${
                   ici
                     ? "bg-surface-2 font-medium text-ink"
                     : "text-ink-soft hover:bg-surface-2 hover:text-ink"
@@ -209,7 +211,13 @@ export function Panneau({
 export function TableauQuiDefile({ children }: { children: React.ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[46rem] border-collapse text-left">{children}</table>
+      {/* 46 rem = 736 px. Sur un téléphone de 390 px, plus de la moitié du
+          tableau est hors champ et c'est la PREMIÈRE colonne — le nom — qui
+          sort dès qu'on glisse. Le minimum ne s'applique donc qu'à partir de
+          « sm: » ; en dessous, le tableau se resserre au lieu de déborder.
+          Les écrans qui portent plus de quatre colonnes doivent offrir une
+          liste de cartes en dessous de « md: » plutôt que ce tableau. */}
+      <table className="w-full border-collapse text-left sm:min-w-[46rem]">{children}</table>
     </div>
   );
 }
@@ -449,7 +457,9 @@ export function VersLaFiche({ href, libelle }: { href: string; libelle: string }
     <Link
       href={href}
       aria-label={libelle}
-      className="inline-flex size-8 items-center justify-center rounded-btn text-ink-faint transition hover:bg-surface-2 hover:text-ink"
+      // La flèche vers la fiche faisait 32 px. Elle est rendue à toutes
+      // les largeurs, y compris sur téléphone où c'est le doigt qui vise.
+      className="inline-flex size-11 items-center justify-center rounded-btn text-ink-faint transition hover:bg-surface-2 hover:text-ink"
     >
       <IconChevron size={16} />
     </Link>

@@ -54,9 +54,26 @@ ECRITURES = [
     ("definirNature", "classer un SMS appartient au comptoir"),
     ("marquerLu", "lire un SMS appartient au commerce"),
     ('"use server"', "une action serveur est une écriture qui ne dit pas son nom"),
-    ("method:", "aucune requête d'écriture ne part de la console"),
     ("<form", "un formulaire est un geste, et la console n'en a aucun"),
 ]
+
+# « method: » figurait dans la liste ci-dessus, et il a fallu l'en retirer.
+#
+# La règle qu'il portait — « aucune requête d'écriture ne part de la console »
+# — était vraie tant que la console ne faisait que regarder. Elle a cessé de
+# l'être le jour où l'écran des alertes a dû permettre deux gestes : accuser
+# réception, et clore. Ce ne sont pas des mouvements d'argent ; ce sont des
+# marques posées sur le registre de supervision lui-même, et une supervision
+# où l'on ne peut rien cocher n'est pas relue deux fois.
+#
+# Interdire « method: » aurait obligé à contourner le test plutôt qu'à
+# l'écouter — la pire issue possible. La règle est donc réécrite telle qu'elle
+# est vraie aujourd'hui : les seules écritures de la console visent ces deux
+# adresses-là, et rien d'autre.
+ECRITURES_PERMISES = (
+    "/api/console/alertes/vue",
+    "/api/console/alertes/clore",
+)
 
 
 def pages_de_la_console():
@@ -197,6 +214,33 @@ class AucunMouvementDArgent(unittest.TestCase):
     même indirect. Un fichier qui n'écrit nulle part se vérifie ; une bonne
     intention ne se vérifie pas.
     """
+
+    def test_les_seules_ecritures_visent_les_deux_alertes(self):
+        """Deux gestes, et deux seulement : « je l'ai vue » et « c'est réglé ».
+
+        Le test regarde chaque requête d'écriture partant de la console et
+        vérifie l'adresse qu'elle vise. Une troisième adresse qui apparaîtrait
+        un jour — redémarrer un boîtier, envoyer une version à la flotte —
+        échouerait ici, et c'est exactement ce qu'on veut : sept comptoirs en
+        un appui n'ont pas de deuxième chance.
+        """
+        fautes = []
+        for f in fichiers_de_la_console():
+            texte = f.read_text(encoding="utf-8")
+            for i, ligne in enumerate(texte.split("\n"), 1):
+                nue = re.sub(r"^\s*(//|\*|/\*).*", "", ligne)
+                if "method:" not in nue:
+                    continue
+                # L'adresse est cherchée dans tout le fichier : le « fetch »
+                # et son adresse tiennent rarement sur la même ligne.
+                if not any(a in texte for a in ECRITURES_PERMISES):
+                    fautes.append(
+                        f"{_relatif(f)}:{i} — une écriture part d'ici vers une "
+                        "adresse qui n'est ni « vue » ni « clore »")
+        self.assertEqual(
+            fautes, [],
+            "la console écrit ailleurs que sur ses deux alertes :\n  "
+            + "\n  ".join(fautes))
 
     def test_aucun_ecran_de_la_console_n_ecrit_quoi_que_ce_soit(self):
         fautes = []

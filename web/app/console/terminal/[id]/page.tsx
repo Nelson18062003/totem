@@ -145,7 +145,11 @@ export default async function UnTerminal({
       )}
 
       <Panneau titre={t.terminal.machineTitre} note={t.terminal.machineNote}>
-        <p className="px-4 py-4 text-small leading-relaxed tabnums">
+        {/* « break-words » : un ICCID ou une adresse est un mot insécable, et
+            le « overflow-hidden » du panneau le COUPE NET au lieu de le passer
+            à la ligne. L'information disparaît sur l'écran même où on va la
+            chercher. */}
+        <p className="px-4 py-4 text-small leading-relaxed break-words tabnums">
           {b.sante || (
             <span className="text-ink-faint">{t.terminal.santeAbsente}</span>
           )}
@@ -237,7 +241,7 @@ export default async function UnTerminal({
                   <span className="w-24 shrink-0 text-caption tabnums text-ink-faint">
                     {e.quand}
                   </span>
-                  <span className="min-w-0 flex-1 text-small leading-relaxed">
+                  <span className="min-w-0 flex-1 text-small leading-relaxed break-words">
                     {e.texte}
                   </span>
                 </li>

@@ -43,7 +43,17 @@ export function Coquille({
   const nu = PLEIN_ECRAN.some((p) => path.startsWith(p));
 
   if (nu) {
-    return <div className="mx-auto w-full max-w-4xl px-4">{children}</div>;
+    // « py-5 » : sans marge verticale, le titre est collé au bord haut du
+    // téléphone, et le rail collant de la console (« md:top-6 ») suppose une
+    // marge qui n'existait pas. La console va plus large que le reste : ses
+    // tableaux ont besoin de la place, la porte n'en a pas besoin.
+    return (
+      <div className={`mx-auto w-full px-4 py-5 md:px-8 ${
+        path.startsWith("/console") || path.startsWith("/admin")
+          ? "max-w-7xl" : "max-w-4xl"}`}>
+        {children}
+      </div>
+    );
   }
 
   return (

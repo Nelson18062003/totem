@@ -1239,3 +1239,74 @@ comment on column acces_plateforme.retire_motif is
 -- que l'on ouvrirait. La console la lit avec la clé de service, depuis le
 -- serveur, après « exigerPouvoir("administrer") ».
 alter table acces_plateforme enable row level security;
+
+-- ===========================================================================
+-- LES VERSIONS, ET QUI A VU UNE ALERTE
+--
+-- Ajoutée en août 2026. Le chemin depuis une base déjà en service est décrit
+-- dans « sql/migration-journal.sql ». Les deux fichiers disent la même chose.
+--
+-- Deux manques, tous deux découverts en construisant la seconde moitié de la
+-- console :
+--  · « terminaux.version » dit ce qu'un boîtier PORTE, et rien ne disait ce
+--    qu'il DEVRAIT porter. Le retard ne se déduit pas des retardataires : une
+--    flotte entière restée deux mois en arrière paraît parfaitement homogène.
+--  · « alertes » savait qui avait CLOS et pas qui avait VU. Or ce sont deux
+--    gestes différents, et c'est tout l'intérêt de la table.
+--
+-- Ce qu'elle n'ajoute pas, volontairement : aucune date « prise le » sur
+-- « terminaux » — le robot ne la publie pas, et une colonne que personne ne
+-- remplit donne une date vide qui ressemble à une mesure.
+-- ===========================================================================
+
+-- Le nom EXACT que le boîtier annonce dans « terminaux.version ». Une version
+-- écrite ici autrement que là-bas ne rapproche rien, et l'écran dira
+-- « logiciel inconnu du registre » — ce qui est la vérité.
+create table if not exists versions (
+  version    text primary key,
+  publiee_le timestamptz not null default now(),
+  -- Nul tant que la version n'est qu'à l'essai : une version qu'on essaie sur
+  -- un seul boîtier ne met personne en retard.
+  envoyee_le timestamptz,
+  -- Ce qu'elle change, écrit pour quelqu'un qui n'est pas informaticien.
+  resume     text,
+  -- Vraie quand elle bouche un trou. Le boîtier qui ne l'a pas reçue n'est
+  -- pas en retard, il est exposé — et sa ligne ne se range plus avec les
+  -- autres.
+  correctif_securite boolean not null default false,
+  -- Rien ne s'efface : une version retirée explique, six mois plus tard,
+  -- pourquoi un boîtier porte ce qu'il porte.
+  retiree_le timestamptz,
+  retiree_motif text
+);
+
+comment on table versions is
+  'Ce qui a été publié, et ce qui a été envoyé à la flotte. Sans elle, le '
+  'retard d''un boîtier ne se mesure qu''aux autres boîtiers — et une flotte '
+  'entière restée en arrière paraît à jour.';
+
+comment on column versions.envoyee_le is
+  'Nul tant que la version n''est qu''à l''essai. Une version publiée ne met '
+  'personne en retard ; une version envoyée, oui.';
+
+comment on column versions.correctif_securite is
+  'Vraie quand la version bouche un trou. Le boîtier qui ne l''a pas reçue '
+  'n''est pas en retard, il est exposé.';
+
+create index if not exists versions_envoyees_idx
+  on versions (envoyee_le desc) where envoyee_le is not null and retiree_le is null;
+
+-- « close_par » existait, « vue_par » manquait. Voir n'est pas résoudre, et un
+-- accusé de réception anonyme ne répond pas à la seule question qui se pose
+-- ensuite : qui devait y aller.
+alter table alertes add column if not exists vue_par bigint references personnes(id);
+
+comment on column alertes.vue_par is
+  'Qui a accusé réception. Distinct de « close_par » : « je l''ai vue » n''est '
+  'pas « c''est réglé », et confondre les deux fait disparaître de l''écran '
+  'des choses que personne n''a réparées.';
+
+-- Aucune politique de lecture, volontairement : sans politique, une clé
+-- publique ne lit RIEN. La console lit avec la clé de service, depuis le
+-- serveur, après « exigerPouvoir("administrer") ».
+alter table versions enable row level security;
