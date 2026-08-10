@@ -127,7 +127,7 @@ export function normaliserCodePapier(saisi: string): string {
  * la même ligne en base — et qui la lit saurait qu'elles partagent un secret.
  */
 export async function empreintePapier(code: string, personne: number): Promise<string> {
-  const octets = new TextEncoder().encode(`totem:papier:${code}`);
+  const octets = new TextEncoder().encode(`totem:papier:${personne}:${code}`);
   const somme = await crypto.subtle.digest("SHA-256", octets as unknown as BufferSource);
   return Array.from(new Uint8Array(somme), (o) => o.toString(16).padStart(2, "0")).join("");
 }

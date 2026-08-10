@@ -33,9 +33,15 @@ export type LigneSession = {
 export type Motif =
   | "sortie"          // la personne est partie d'elle-même
   | "retrait_acces"   // le propriétaire a repris la clé
+  | "appareil_ferme"  // le propriétaire a fermé UN téléphone, pas la clé
   | "tout_fermer"     // « fermez tout », depuis n'importe où
   | "expiree"
   | "sms_stop";       // un mot envoyé depuis un combiné emprunté
+
+// « appareil_ferme » n'est pas un détail de vocabulaire : trois mois plus
+// tard, en relisant le registre, « retrait_acces » sur une seule ligne
+// laisserait croire que la personne a perdu sa clé ce jour-là. Elle avait
+// simplement oublié son téléphone quelque part.
 
 export type Ouverture = {
   personne: number;

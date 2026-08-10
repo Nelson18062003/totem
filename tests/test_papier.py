@@ -110,6 +110,12 @@ export async function inserer<T>(table: string, valeurs: unknown): Promise<T | n
   return (posees[0] ?? null) as T | null;
 }
 export async function modifier(chemin: string, valeurs: unknown): Promise<boolean> {
+  // Un temps d'arrêt AVANT de choisir les lignes. Ce n'est pas une lenteur
+  // simulée pour le plaisir : c'est ce qui reproduit deux requêtes qui ont lu
+  // la même ligne avant que l'une des deux n'écrive. Sans lui, un scénario à
+  // un seul fil enchaîne lecture et écriture sans jamais laisser l'autre
+  // passer, et le filtre « pas encore utilisé » ne serait jamais exercé.
+  await new Promise((suite) => setTimeout(suite, 5));
   const touchees = choisir(chemin);
   for (const ligne of touchees) Object.assign(ligne, valeurs as Ligne);
   return touchees.length > 0;

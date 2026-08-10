@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import { chargerTerminal, relie } from "@/lib/serveur";
+import { qui } from "@/lib/garde";
 import { langueServeur } from "@/lib/langue-serveur";
 import { Coquille } from "./coquille";
 import { FournisseurLangue } from "./langue";
@@ -42,11 +43,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Le terminal seul : la coquille n'affiche que lui. Recharger les 1000 SMS
   // et les 1000 reçus ici doublait le coût de CHAQUE page.
   const terminal = relie ? await chargerTerminal(langue) : null;
+  // `qui()` et non `exigerPresence()` : la coquille enveloppe aussi la porte
+  // et l'invitation, où il n'y a personne — et rediriger depuis ici mettrait
+  // l'écran de connexion en boucle sur lui-même.
+  const moi = await qui();
   return (
     <html lang={langue} className={dmSans.variable}>
       <body className="min-h-dvh">
         <FournisseurLangue langue={langue}>
-          <Coquille relie={relie} terminal={terminal}>{children}</Coquille>
+          <Coquille relie={relie} terminal={terminal} role={moi?.role ?? null}>{children}</Coquille>
         </FournisseurLangue>
       </body>
     </html>

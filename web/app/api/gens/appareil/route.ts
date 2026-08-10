@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   // « retrait_acces » : c'est bien le propriétaire qui reprend quelque chose,
   // même s'il ne reprend ici qu'un appareil. Voir la note du rapport : un
   // motif « appareil_ferme » dirait la nuance, et il manque à `lib/sessions.ts`.
-  const fait = await fermerSession(id, "retrait_acces");
+  const fait = await fermerSession(id, "appareil_ferme");
   if (!fait) return Response.json({ erreur: t.rate }, { status: 503 });
   return Response.json({ ok: true });
 }

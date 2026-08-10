@@ -6,27 +6,36 @@ import { useEffect, useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
 import { autreLangue } from "@/lib/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
+import { peut, type Pouvoir } from "@/lib/roles";
+import type { Role } from "@/lib/session";
 import type { EtatTerminal } from "@/lib/types";
-import { IconCard, IconChart, IconChevron, IconGlobe, IconGrid, IconHash, IconHome, IconInbox, IconSettings } from "./icons";
+import { IconCard, IconChart, IconChevron, IconGlobe, IconGrid, IconHash, IconHome, IconInbox, IconLock, IconSettings } from "./icons";
 import { Logo, Symbole } from "./marque";
 import { Pastille, useActualite } from "./veille";
 
 // Les libellés vivent dans le dictionnaire (lib/textes/charpente.ts) : ici,
-// seulement leur clé.
+// seulement leur clé — et le POUVOIR qu'il faut pour que le lien existe.
+//
+// POURQUOI UN LIEN QU'ON NE PEUT PAS SUIVRE EST PIRE QUE PAS DE LIEN
+// Un lecteur qui voit « Opérations » l'ouvre, se fait renvoyer à l'accueil, et
+// n'apprend rien : pour lui, TOTEM vient de tomber en panne. Un opérateur qui
+// voit « Code USSD » vit la même chose. Le menu doit dire ce que la personne
+// peut faire — pas ce que la plateforme sait faire.
 const liens = [
-  { href: "/", cle: "accueil", Icone: IconHome },
-  { href: "/cartes", cle: "comptes", Icone: IconCard },
-  { href: "/encaissements", cle: "smsRecus", Icone: IconInbox },
-  { href: "/analyse", cle: "analyse", Icone: IconChart },
-  { href: "/actions", cle: "operations", Icone: IconGrid },
-] as const;
+  { href: "/", cle: "accueil", Icone: IconHome, pouvoir: "lire" },
+  { href: "/cartes", cle: "comptes", Icone: IconCard, pouvoir: "lire" },
+  { href: "/encaissements", cle: "smsRecus", Icone: IconInbox, pouvoir: "lire" },
+  { href: "/analyse", cle: "analyse", Icone: IconChart, pouvoir: "lire" },
+  { href: "/actions", cle: "operations", Icone: IconGrid, pouvoir: "operer" },
+] as const satisfies readonly { href: string; cle: string; Icone: unknown; pouvoir: Pouvoir }[];
 
 // Sur grand écran, la place ne manque pas : le guichet complet est à un clic.
 // Sur téléphone, ces deux pages se rejoignent depuis l'accueil et Opérations —
 // la barre flottante reste à cinq boutons pour rester lisible.
 const liensSecondaires = [
-  { href: "/ussd", cle: "codeUssd", Icone: IconHash },
-] as const;
+  { href: "/ussd", cle: "codeUssd", Icone: IconHash, pouvoir: "sortir_argent" },
+  { href: "/gens", cle: "lesGens", Icone: IconLock, pouvoir: "gerer_les_gens" },
+] as const satisfies readonly { href: string; cle: string; Icone: unknown; pouvoir: Pouvoir }[];
 
 /**
  * La barre mobile s'efface pendant qu'on descend dans la page — le contenu
@@ -50,7 +59,13 @@ function useBarreEffacable() {
   return cachee;
 }
 
-export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
+export function Nav({ terminal, role }:
+                    { terminal: EtatTerminal | null; role: Role | null }) {
+  // Hors session, `role` est nul : la coquille sert encore /connexion et
+  // /invitation, où il n'y a rien à proposer.
+  const visibles = liens.filter((l) => role !== null && peut(role, l.pouvoir));
+  const visiblesSecondaires =
+    liensSecondaires.filter((l) => role !== null && peut(role, l.pouvoir));
   const path = usePathname();
   const langue = useLangue();
   const t = textesCharpente[langue];
@@ -100,7 +115,7 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
           {replie ? <Symbole size={22} className="text-laterite" /> : <Logo />}
         </div>
         <nav className="flex flex-col gap-0.5">
-          {liens.map(({ href, cle, Icone }) => (
+          {visibles.map(({ href, cle, Icone }) => (
             <Link key={href} href={href} title={replie ? t[cle] : undefined}
               className={classeLien(actif(href))}>
               <Icone size={18} className="shrink-0" />
@@ -110,7 +125,7 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
             </Link>
           ))}
           <div className="mx-3 my-3 border-t border-line" />
-          {liensSecondaires.map(({ href, cle, Icone }) => (
+          {visiblesSecondaires.map(({ href, cle, Icone }) => (
             <Link key={href} href={href} title={replie ? t[cle] : undefined}
               className={classeLien(actif(href))}>
               <Icone size={18} className="shrink-0" />
@@ -179,7 +194,7 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
           cachee ? "translate-y-[130%]" : "translate-y-0"
         }`}>
         <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-1.5 shadow-[0_8px_28px_-8px_rgba(22,23,26,0.22)]">
-          {liens.map(({ href, cle, Icone }) => {
+          {visibles.map(({ href, cle, Icone }) => {
             const on = actif(href);
             return (
               <Link key={href} href={href} aria-label={t[cle]} aria-current={on ? "page" : undefined}

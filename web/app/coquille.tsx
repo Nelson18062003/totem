@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useLangue } from "@/app/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
 import type { EtatTerminal } from "@/lib/types";
+import type { Role } from "@/lib/session";
 import { Nav } from "./nav";
 
 /** Pages qui s'affichent seules, sans navigation ni bandeau.
@@ -18,10 +19,12 @@ const PLEIN_ECRAN = ["/connexion", "/invitation"];
 export function Coquille({
   relie,
   terminal,
+  role,
   children,
 }: {
   relie: boolean;
   terminal: EtatTerminal | null;
+  role: Role | null;
   children: React.ReactNode;
 }) {
   const path = usePathname();
@@ -37,7 +40,7 @@ export function Coquille({
     // La marge gauche suit la largeur du rail (déplié ou replié) : c'est la
     // même variable --rail que le menu pilote, et la page glisse avec lui.
     <div className="pb-28 transition-[padding] duration-300 md:pb-0 md:pl-[var(--rail)]">
-      <Nav terminal={terminal} />
+      <Nav terminal={terminal} role={role} />
       {/* Sur grand écran, la page respire : colonne plus large, marges plus
           franches. Les pages y déploient leurs deux colonnes. */}
       <div className="mx-auto w-full max-w-4xl px-4 py-5 md:px-8 md:py-9 lg:max-w-5xl lg:px-10">
