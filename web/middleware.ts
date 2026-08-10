@@ -63,6 +63,11 @@ const OUVERT = [
   // réponse est la même que le compte existe ou non.
   "/retour",
   "/api/retour",
+  // La porte de la console de la plateforme. Ouverte pour la même raison que
+  // toutes les autres, et plus exigeante que celles-ci : le doigt y est la
+  // règle, et le code de secours attend une minute avant d'ouvrir — le temps
+  // que la lettre d'avertissement arrive AVANT lui, plutôt qu'après.
+  "/admin/entree",
 ];
 
 export async function middleware(req: NextRequest) {

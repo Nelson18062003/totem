@@ -103,6 +103,20 @@ OUVERTES = {
         "la demande du lien de fermeture ; elle ne ferme rien, elle expédie un "
         "lien sur l'adresse elle-même, et sa réponse est identique que le "
         "compte existe ou non",
+    # --- La porte de la console de la plateforme ----------------------------
+    "app/admin/entree/page.tsx":
+        "la porte du super-administrateur : on ne peut pas exiger d'être entré "
+        "pour entrer. Elle est plus stricte que celle du client — le "
+        "verrouillage du téléphone y est la règle, le code de secours est "
+        "replié et n'ouvre rien pendant une minute, le temps que la lettre "
+        "d'avertissement arrive avant lui",
+    "app/api/admin/code/demander/route.ts":
+        "le code de secours de la console ; il n'ouvre rien pendant une "
+        "minute, et une lettre d'avertissement part en même temps que lui",
+    "app/api/admin/code/verifier/route.ts":
+        "la vérification du code de secours ; gardée par la courbe d'attente "
+        "et l'usage unique arbitré par la base, comme celle du client",
+
     "app/api/retour/fermeture/[jeton]/route.ts":
         "l'exécution de la fermeture ; son contrôle est le jeton à usage "
         "unique arrivé sur l'adresse du compte, et fermer une porte n'a jamais "
