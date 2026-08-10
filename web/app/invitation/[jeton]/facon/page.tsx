@@ -39,6 +39,14 @@
 // du tout : la réponse est connue, la redemander donnerait le sentiment qu'on
 // peut la changer d'un clic. `proposerUneCle(partage)` tranche, dans
 // « lib/cles.ts », et ce refus n'est pas une option de réglage.
+//
+// AUJOURD'HUI, PERSONNE NE LA POSE À LA PORTE. « /api/code/verifier » ouvre la
+// session avec « partage: false » écrit en dur, et « /api/connexion » attend un
+// champ qu'aucun écran ne lui envoie. Tant que cela dure, cet écran est le SEUL
+// endroit où la question existe — et une clé ne se pose pas sur un combiné dont
+// personne n'a demandé à qui il est. Le jour où la porte la posera, il suffira
+// de remplacer « ChoixDuTelephone » par le bouton « PoserUneCle » seul, plus
+// bas : une ligne, et l'écran ne garde que le refus.
 // ---------------------------------------------------------------------------
 
 import Link from "next/link";

@@ -246,4 +246,3 @@ export default async function Flotte() {
     </CadreConsole>
   );
 }
-</content>

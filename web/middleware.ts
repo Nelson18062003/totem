@@ -31,10 +31,38 @@ import { COOKIE_LANGUE, langueDe } from "@/lib/langue";
 // d'entrer en base avant d'ouvrir quoi que ce soit. « /api/cle/enregistrer »,
 // en revanche, N'EST PAS ici : on ne pose une clé que sur un compte déjà
 // ouvert.
+//
+// LA LISTE, ET LA RAISON DE CHAQUE LIGNE
+// Aucune de ces adresses n'est « non gardée » : chacune porte son propre
+// contrôle, qui n'est simplement pas une session — puisqu'il s'agit
+// précisément d'en obtenir une. Ce qui les garde est écrit en face.
 const OUVERT = [
-  "/connexion", "/api/connexion", "/api/deconnexion",
-  "/invitation", "/api/invitation",
+  // La porte, et le geste de sortir.
+  "/connexion",           // on ne peut pas exiger d'être entré pour entrer
+  "/api/connexion",       // gardée par le mot de passe du propriétaire
+  "/api/deconnexion",     // fermer n'a jamais nui à personne
+  // L'invitation : la personne n'a par définition pas encore de compte.
+  "/invitation",          // couvre aussi /invitation/[jeton]/code et /facon
+  "/api/invitation",
+  // Le verrouillage du téléphone : gardé par une signature que seul
+  // l'appareil de la personne sait produire, puis par la relecture du droit
+  // d'entrer en base. Seule « entrer » est ouverte — on ne POSE une clé que
+  // sur un compte déjà ouvert.
   "/api/cle/entrer",
+  // Les six chiffres. Gardés par le jeton d'invitation ou l'adresse visée,
+  // la limite de demandes, et une courbe d'attente consultée avant toute
+  // comparaison.
+  "/entrer",
+  "/api/code",
+  // Le papier de dix codes. Gardé par un code imprimé à usage unique, puis
+  // la relecture de l'état de la personne et de son accès.
+  "/api/entrer/papier",
+  // « Je n'arrive plus à entrer ». Ouverte par construction : celui qui la
+  // demande n'a pas de session, c'est tout son problème. Fermer n'exige
+  // aucune preuve ; le lien de fermeture part sur l'adresse du compte, et la
+  // réponse est la même que le compte existe ou non.
+  "/retour",
+  "/api/retour",
 ];
 
 export async function middleware(req: NextRequest) {

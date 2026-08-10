@@ -60,6 +60,11 @@ def pouvoirs_par_commande():
     return dict(re.findall(r"^\s*(\w+): \"(\w+)\"", bloc.group(1), re.M))
 
 
+# Ce qui n'appartient pas à la boutique : la console de la plateforme et sa
+# porte. Un commerçant n'a rien à y faire, et c'est délibéré.
+HORS_BOUTIQUE = ("console/", "admin/")
+
+
 class AccesReel(unittest.TestCase):
     def setUp(self):
         self.roles = pouvoirs_par_role()
@@ -67,14 +72,51 @@ class AccesReel(unittest.TestCase):
 
     def test_le_compte_fondateur_atteint_chaque_ecran(self):
         """Celui qui entre avec le mot de passe tient son comptoir : aucun
-        écran ne doit lui être fermé tant qu'il est seul sur la plateforme."""
+        écran de la BOUTIQUE ne doit lui être fermé.
+
+        La nuance « de la boutique » est arrivée le jour où la console de la
+        plateforme a existé, et elle est le cœur du sujet. Le mot de passe
+        fondateur ouvre un commerce, pas la flotte. Celui qui l'utilise est un
+        commerçant : il tient sa caisse, il invite ses gens, il ne supervise
+        pas les boîtiers des autres.
+
+        Que Nelson soit les deux personnes à la fois ne change rien — il entre
+        dans la console par SA porte (« /admin/entree »), avec un compte de
+        rôle « admin » qui, lui, ne peut déclencher aucun mouvement d'argent.
+        Rabattre les deux sur un seul compte donnerait au commerçant la flotte
+        entière, ou à l'administrateur la caisse : c'est exactement la
+        séparation que « roles.ts » existe pour tenir.
+        """
         siens = self.roles[self.repli]
-        fermes = {p: v for p, v in pouvoirs_exiges_par_page().items() if v not in siens}
+        fermes = {p: v for p, v in pouvoirs_exiges_par_page().items()
+                  if v not in siens and not p.startswith(HORS_BOUTIQUE)}
         self.assertEqual(
             fermes, {},
             f"le compte fondateur (« {self.repli} ») n'atteint pas ces écrans : "
             f"{fermes} — l'application serait verrouillée pour la seule personne "
             "qui s'en sert")
+
+    def test_la_console_reste_hors_de_portee_du_commercant(self):
+        """L'envers du test précédent, et il compte autant.
+
+        Si un jour un écran de la console cessait d'exiger « administrer », le
+        test ci-dessus ne dirait rien — il ne regarde plus par là. Celui-ci
+        vérifie que chaque écran hors boutique exige BIEN ce pouvoir, et que
+        le commerçant ne l'a pas.
+        """
+        exiges = pouvoirs_exiges_par_page()
+        hors = {p: v for p, v in exiges.items() if p.startswith(HORS_BOUTIQUE)}
+        self.assertTrue(hors, "plus aucun écran hors boutique : ce test ne "
+                              "garde plus rien, il faut le retirer ou le refaire")
+        mous = {p: v for p, v in hors.items() if v != "administrer"}
+        self.assertEqual(
+            mous, {},
+            f"ces écrans de la plateforme n'exigent pas « administrer » : {mous} — "
+            "un commerçant y verrait la flotte entière")
+        self.assertNotIn(
+            "administrer", self.roles[self.repli],
+            "le compte fondateur a gagné « administrer » : le commerçant et "
+            "l'administrateur de plateforme sont redevenus la même personne")
 
     def test_le_compte_fondateur_peut_demander_chaque_commande(self):
         siens = self.roles[self.repli]

@@ -30,7 +30,7 @@
 
 import { inserer, lireUne, modifier } from "./base";
 import { adresseNormalisee } from "./code-entree";
-import { envoyerCourriel, type Courrier } from "./courrier";
+import { adresseCredible, envoyerCourriel, type Courrier } from "./courrier";
 import { fermerToutesLesSessions } from "./sessions";
 import { textesRetour } from "./textes/retour";
 import type { Langue } from "./langue";
@@ -144,10 +144,15 @@ async function remettre(
 
 // --- Demander la fermeture -------------------------------------------------
 
+/**
+ * Pas de langue ici, volontairement : le message part dans celle de la
+ * PERSONNE, pas dans celle du navigateur qui a fait la demande. L'écran d'où
+ * part la demande est souvent le téléphone d'un proche, et rien ne dit qu'il
+ * lit la même langue.
+ */
 export type Demande = {
   courriel: string;
   origine: string | null;
-  langue: Langue;
   appareil?: string | null;
   lieu?: string | null;
 };
@@ -172,7 +177,7 @@ type LignePersonne = { id: number; langue: Langue };
  */
 export async function demanderLaFermeture(d: Demande): Promise<void> {
   const adresse = adresseNormalisee(d.courriel);
-  if (!adresse.includes("@")) return;
+  if (!adresseCredible(adresse)) return;
 
   // Le jeton se tire dans tous les cas : c'est le seul travail de cette
   // fonction qui ne dépend pas de l'existence du compte, et il ne coûte rien
@@ -193,9 +198,6 @@ export async function demanderLaFermeture(d: Demande): Promise<void> {
   });
   if (!ligne) return;
 
-  // La langue de la PERSONNE, pas celle du navigateur qui a fait la demande :
-  // l'écran d'où part la demande est souvent le téléphone d'un proche, et rien
-  // ne dit qu'il lit la même langue.
   await remettre(adresse, personne.id, personne.langue,
                  lienDeFermeture(d.origine, jeton));
 }

@@ -171,7 +171,10 @@ class LeJetonDeFermeture(unittest.TestCase):
             lu(LIB_RETOUR), re.S)
         self.assertIsNotNone(
             bloc, "l'écriture de la demande de fermeture a changé de forme")
-        champs = re.findall(r"^\s*(\w+):", bloc.group(1), re.M)
+        # « [,:] » et pas « : » seul : en JavaScript, « jeton, » écrit tout
+        # court est un champ comme un autre. C'est même la façon la plus
+        # discrète de l'ajouter.
+        champs = re.findall(r"^\s*(\w+)\s*[,:]", bloc.group(1), re.M)
         self.assertIn("jeton_empreinte", champs)
         self.assertNotIn(
             "jeton", champs,
@@ -237,21 +240,25 @@ class C8NommeLesQuatreIssues(unittest.TestCase):
         return m.group(1)
 
     def test_les_trois_chemins_sont_nommes_dans_les_deux_langues(self):
+        """Nommés dans leur TITRE, pas cités quelque part dans un paragraphe :
+        c'est le titre qu'on lit quand on cherche le sien en panique."""
         blocs = blocs_langue(lu(TEXTES_RETOUR))
         attendu = {
-            "en": ("lock", "email", "paper"),
-            "fr": ("verrouillage", "mail", "papier"),
+            "en": {"telephone": "lock", "courriel": "email", "papier": "paper"},
+            "fr": {"telephone": "verrouillage", "courriel": "mail",
+                   "papier": "papier"},
         }
         for langue, mots in attendu.items():
-            voies = self.voies(blocs[langue]).lower()
-            for cle in ("telephone:", "courriel:", "papier:"):
-                self.assertIn(cle, voies,
-                              f"le chemin « {cle} » manque en {langue}")
-            for mot in mots:
+            voies = self.voies(blocs[langue])
+            noms = {m.group(1): m.group(2) for m in re.finditer(
+                r"(\w+):\s*\{\s*nom:\s*\"([^\"]*)\"", voies)}
+            for chemin, mot in mots.items():
+                self.assertIn(chemin, noms,
+                              f"le chemin « {chemin} » manque en {langue}")
                 self.assertIn(
-                    mot, voies,
-                    f"le chemin n'est pas NOMMÉ en {langue} : « {mot} » "
-                    "n'apparaît nulle part")
+                    mot, noms[chemin].lower(),
+                    f"en {langue}, le chemin « {chemin} » s'appelle "
+                    f"« {noms[chemin]} » : il ne se nomme plus")
 
     def test_le_recours_humain_est_dit_franchement(self):
         """Un « appelez quelqu'un » sans nom, sans phrase à dire et sans délai
@@ -268,7 +275,7 @@ class C8NommeLesQuatreIssues(unittest.TestCase):
     def test_l_ecran_montre_les_quatre(self):
         page = lu(RETOUR / "page.tsx")
         for morceau in ("t.voies.telephone", "t.voies.courriel",
-                        "t.voies.papier", "t.humainDit", "t.humainQuoiDire"):
+                        "t.voies.papier", "{t.humainDit}", "{t.humainQuoiDire}"):
             self.assertIn(
                 morceau, page,
                 f"l'écran C8 n'affiche pas {morceau} : le chemin existe dans "

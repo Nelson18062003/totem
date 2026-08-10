@@ -35,6 +35,9 @@ const liens = [
 const liensSecondaires = [
   { href: "/ussd", cle: "codeUssd", Icone: IconHash, pouvoir: "sortir_argent" },
   { href: "/gens", cle: "lesGens", Icone: IconLock, pouvoir: "gerer_les_gens" },
+  // Ce que TOTEM envoie, et ce qu'on veut recevoir. Tout le monde y a droit :
+  // c'est sa propre boîte qu'on y règle, pas celle du commerce.
+  { href: "/messages", cle: "lesMessages", Icone: IconInbox, pouvoir: "lire" },
 ] as const satisfies readonly { href: string; cle: string; Icone: unknown; pouvoir: Pouvoir }[];
 
 /**

@@ -15,7 +15,6 @@
 // qui ils appartiennent (CAS-LIMITES B7).
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { exigerPouvoir } from "@/lib/garde";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerFicheTerminal, dateLisible } from "@/lib/console";
@@ -304,4 +303,3 @@ export default async function UnTerminal({
     </CadreConsole>
   );
 }
-</content>

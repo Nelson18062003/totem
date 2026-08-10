@@ -41,7 +41,10 @@ const IMPRESSION = `
     background: #fff !important; color: #000 !important; box-shadow: none !important;
   }
   #feuille-papier .hors-papier { display: none !important; }
-  #feuille-papier li { break-inside: avoid; border-color: #000 !important; }
+  /* Noir sur blanc, sans exception : une imprimante de quartier rend les gris
+     en gris sale, et un code qu'on ne relit pas est un code perdu. */
+  #feuille-papier * { color: #000 !important; background: #fff !important; }
+  #feuille-papier li { break-inside: avoid; border: 1px solid #000 !important; }
   @page { size: A4; margin: 18mm; }
 }
 `;

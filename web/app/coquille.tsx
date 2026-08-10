@@ -14,7 +14,17 @@ import { Nav } from "./nav";
  * pas entrer, avec des onglets qui la renverraient tous à la porte, serait
  * lui promettre ce qu'elle n'a pas encore. Et le bandeau « non relié »
  * s'adresse à qui installe la plateforme, pas à quelqu'un qu'on invite. */
-const PLEIN_ECRAN = ["/connexion", "/invitation"];
+// Les écrans qui se passent de la coquille : montrer le menu d'une
+// application à quelqu'un qui n'y est pas encore, c'est lui promettre ce
+// qu'il n'a pas. « /papier » y est aussi, mais pour une autre raison : il
+// s'imprime, et une barre de navigation sur une feuille A4 n'a aucun sens.
+const PLEIN_ECRAN = [
+  "/connexion", "/invitation", "/entrer", "/retour", "/papier",
+  // La console de la plateforme et sa porte portent leur PROPRE charpente :
+  // superposer le menu du commerçant à celui de la flotte donnerait deux
+  // barres de navigation qui ne parlent pas de la même chose.
+  "/console", "/admin",
+];
 
 export function Coquille({
   relie,

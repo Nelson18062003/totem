@@ -1155,3 +1155,87 @@ create index if not exists alertes_commerce_idx on alertes (commerce);
 -- passe chez lui ; c'est le bon défaut. La console lit avec la clé de service,
 -- depuis le serveur, après « exigerPouvoir("administrer") ».
 alter table alertes enable row level security;
+
+-- ===========================================================================
+-- QUI A LE DROIT D'ÊTRE ADMINISTRATEUR DE LA PLATEFORME
+--
+-- Ajouté en août 2026, avec la porte du super-administrateur (planches A1 à
+-- A7). Le chemin depuis une base déjà en service est décrit dans
+-- « sql/migration-plateforme.sql » ; les deux fichiers disent la même chose.
+--
+-- POURQUOI UNE TABLE DE PLUS, ALORS QU'« acces » EXISTE DÉJÀ
+-- « acces » attache une personne à UN commerce : sa colonne « commerce » est
+-- « not null », et c'est juste — un rôle sans commerce ne veut rien dire pour
+-- une propriétaire, une opératrice ou une lectrice. Le super-administrateur,
+-- lui, n'a pas de commerce : il les regarde tous et n'en possède aucun. Rendre
+-- la colonne facultative aurait ouvert dans TOUTE l'application la possibilité
+-- d'un accès qui ne nomme aucune boutique — une ligne oubliée quelque part, et
+-- une opératrice se retrouve avec un droit qui vaut partout.
+-- ===========================================================================
+
+-- --- Qui a le droit d'être administrateur de la plateforme ------------------
+create table if not exists acces_plateforme (
+  id            bigint generated always as identity primary key,
+
+  -- « on delete restrict » : supprimer une personne emporterait la trace de ce
+  -- qu'elle a eu le droit de voir, et c'est précisément ce à quoi un journal
+  -- doit survivre.
+  personne      bigint not null references personnes(id) on delete restrict,
+
+  -- La demande. Elle existe AVANT le droit : quelqu'un demande, quelqu'un
+  -- accorde, et les deux moments sont datés séparément. Une table où le droit
+  -- apparaît d'un coup ne sait pas dire qui l'a voulu.
+  demande_le    timestamptz not null default now(),
+
+  -- Ce que la personne a écrit pour justifier sa demande, dans ses mots. Six
+  -- mois plus tard, c'est la seule phrase qui explique pourquoi on a dit oui.
+  demande_motif text,
+
+  accorde_le    timestamptz,
+  accorde_par   bigint references personnes(id),
+
+  -- Un refus n'efface pas la demande : la même personne peut redemander plus
+  -- tard, et celui qui décide doit voir qu'on a déjà dit non une fois.
+  refuse_le     timestamptz,
+  refuse_par    bigint references personnes(id),
+
+  -- Le motif est écrit pour être relu par quelqu'un qui n'était pas là :
+  -- « a quitté la société », pas « révocation ».
+  retire_le     timestamptz,
+  retire_par    bigint references personnes(id),
+  retire_motif  text
+);
+
+-- Un seul dossier vivant par personne. Sans cet index, deux demandes en
+-- attente pour la même personne se retrouvent dans la liste de celui qui
+-- décide, il en accorde une, et l'autre reste ouverte pour toujours.
+create unique index if not exists acces_plateforme_vivant_idx
+  on acces_plateforme (personne)
+  where retire_le is null and refuse_le is null;
+
+create index if not exists acces_plateforme_a_examiner_idx
+  on acces_plateforme (demande_le)
+  where accorde_le is null and refuse_le is null and retire_le is null;
+
+create index if not exists acces_plateforme_accordes_idx
+  on acces_plateforme (accorde_le desc)
+  where accorde_le is not null and retire_le is null;
+
+comment on table acces_plateforme is
+  'Qui a le droit d''entrer dans la console de la plateforme. Séparée de '
+  '« acces », qui attache toujours un rôle à UN commerce : un administrateur '
+  'de plateforme n''en possède aucun, il les regarde tous.';
+
+comment on column acces_plateforme.demande_motif is
+  'Ce que la personne a écrit pour demander, dans ses mots. C''est la seule '
+  'phrase qui explique, plus tard, pourquoi on a dit oui.';
+
+comment on column acces_plateforme.retire_motif is
+  'Écrit pour quelqu''un qui n''était pas là : « a quitté la société », pas '
+  '« révocation ».';
+
+-- Aucune politique de lecture, volontairement : sans politique, une clé
+-- publique ne lit RIEN. Cette table dit qui peut tout voir — c'est la dernière
+-- que l'on ouvrirait. La console la lit avec la clé de service, depuis le
+-- serveur, après « exigerPouvoir("administrer") ».
+alter table acces_plateforme enable row level security;

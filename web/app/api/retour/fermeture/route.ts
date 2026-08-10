@@ -18,25 +18,22 @@
 // entrer par mail ne le serait pas — est en tête de « lib/retour.ts ».
 
 import { headers } from "next/headers";
-import { langueServeur } from "@/lib/langue-serveur";
 import { contexteAppareil } from "@/lib/garde";
 import { demanderLaFermeture, origineDepuis } from "@/lib/retour";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const langue = await langueServeur();
   const corps = (await req.json().catch(() => null)) as { courriel?: unknown } | null;
   const courriel = typeof corps?.courriel === "string" ? corps.courriel : "";
 
-  if (courriel.includes("@")) {
+  if (courriel) {
     const h = await headers();
     const { appareil, lieu } = await contexteAppareil();
     await demanderLaFermeture({
       courriel,
       origine: origineDepuis(
         h.get("x-forwarded-host") ?? h.get("host"), h.get("x-forwarded-proto")),
-      langue,
       appareil,
       lieu,
     });

@@ -26,12 +26,17 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 SQL = Path(__file__).resolve().parent.parent / "sql"
 BASE_NEUVE = "totem_test_neuve"
 BASE_SERVICE = "totem_test_service"
+
+from migrations import MIGRATIONS, presentes  # noqa: E402
 
 
 def _env():
@@ -108,6 +113,26 @@ class SqlExecutable(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout.strip()
 
+    def test_aucune_migration_n_est_oubliee(self):
+        """Une migration non inscrite n'est jouée nulle part, et rien ne le dit.
+
+        C'est le pire des silences : le fichier existe, il a l'air appliqué,
+        et la base de production ne l'a jamais vu. Le test compare la liste
+        au dossier — dans les deux sens.
+        """
+        sur_le_disque = sorted(f.name for f in SQL.glob("migration-*.sql"))
+        oubliees = [n for n in sur_le_disque if n not in MIGRATIONS]
+        self.assertEqual(
+            oubliees, [],
+            "ces migrations existent mais ne sont jouées par aucun test : "
+            f"{oubliees}. Inscrivez-les dans MIGRATIONS, en tête de ce "
+            "fichier, À LA BONNE PLACE — l'ordre compte, une table ne peut "
+            "pas référencer ce qui n'existe pas encore.")
+        fantomes = [n for n in MIGRATIONS if n not in sur_le_disque]
+        self.assertEqual(
+            fantomes, [],
+            f"MIGRATIONS cite des fichiers qui n'existent pas : {fantomes}")
+
     def test_une_base_neuve_supporte_trois_deroulements(self):
         """« Le script est rejouable : le relancer ne casse rien. »
         C'est écrit en tête de schema.sql ; ici on le prouve."""
@@ -152,8 +177,7 @@ class SqlExecutable(unittest.TestCase):
 
         # Les deux migrations, dans l'ordre où on les déroulera vraiment,
         # deux fois chacune : c'est la seule preuve qu'elles sont rejouables.
-        for nom in ("migration-identite.sql", "migration-code-entree.sql",
-                    "migration-cles.sql"):
+        for nom in presentes():
             self._derouler(BASE_SERVICE, SQL / nom, 2)
 
         self.assertEqual(self._valeur(BASE_SERVICE, "select count(*) from terminaux"), "1")
@@ -195,8 +219,7 @@ class SqlExecutable(unittest.TestCase):
                  "'+237699424218',now()+interval '7 days');"],
                 base=BASE_SERVICE)
 
-        for nom in ("migration-identite.sql", "migration-code-entree.sql",
-                    "migration-cles.sql"):
+        for nom in presentes():
             self._derouler(BASE_SERVICE, SQL / nom, 2)
 
         for table in ("invitations", "codes_entree"):

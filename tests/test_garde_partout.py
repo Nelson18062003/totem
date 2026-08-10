@@ -58,6 +58,55 @@ OUVERTES = {
     "app/api/cle/entrer/route.ts":
         "la route qui ouvre la session par le téléphone ; son contrôle est la "
         "signature, puis la relecture du droit d'entrer en base",
+
+    # --- Les six chiffres ---------------------------------------------------
+    # On ne peut pas exiger d'être entré pour recevoir la clé. Ce qui garde ces
+    # trois-là n'est pas une session : c'est le jeton d'invitation (l'adresse
+    # est relue EN BASE, jamais reçue du navigateur), la limite de cinq
+    # demandes par demi-heure, et une courbe d'attente consultée AVANT toute
+    # comparaison — sinon le chronomètre répondrait à la place de la porte.
+    "app/invitation/[jeton]/code/page.tsx":
+        "la suite directe de l'invitation : la personne n'a pas de compte, "
+        "elle est précisément en train d'en obtenir un. La page ne montre que "
+        "ce qu'on savait déjà en arrivant — une adresse masquée",
+    "app/api/code/demander/route.ts":
+        "l'émission des six chiffres ; gardée par le jeton d'invitation ou "
+        "l'adresse visée, la limite de demandes, et le délai entre deux envois",
+    "app/api/code/verifier/route.ts":
+        "la vérification des six chiffres ; gardée par la courbe d'attente "
+        "consultée avant la comparaison, et l'usage unique arbitré par la base",
+    "app/entrer/page.tsx":
+        "l'écran des six chiffres de l'entrée quotidienne : la personne n'a "
+        "pas encore de session, c'est ce qu'elle vient chercher. Il n'affiche "
+        "aucune donnée et ne crée rien",
+
+    # --- Le papier de dix codes ---------------------------------------------
+    "app/api/entrer/papier/route.ts":
+        "la porte du papier ; son contrôle est un code imprimé à usage unique, "
+        "puis la relecture de l'état de la personne et de son accès en base",
+
+    # --- « Je n'arrive plus à entrer » --------------------------------------
+    # Fermer vient avant rentrer, et fermer n'exige aucune preuve : celui dont
+    # le téléphone vient d'être arraché n'a plus rien à présenter. Une
+    # fermeture abusive coûte une reconnexion ; une entrée abusive coûte une
+    # caisse. Deux gestes de prix différents n'ont pas à demander la même
+    # preuve.
+    "app/retour/page.tsx":
+        "l'écran qu'on ouvre quand on n'arrive plus à entrer : exiger une "
+        "session reviendrait à demander d'être déjà entré. Il ne lit aucune "
+        "donnée, ne montre aucun nom, et ne ferme rien lui-même",
+    "app/retour/fermer/[jeton]/page.tsx":
+        "la page du lien de fermeture ; elle ne lit rien et ne consomme rien — "
+        "sinon le premier antivirus de messagerie qui suit les liens brûlerait "
+        "le jeton avant la personne. C'est la route qui ferme",
+    "app/api/retour/fermeture/route.ts":
+        "la demande du lien de fermeture ; elle ne ferme rien, elle expédie un "
+        "lien sur l'adresse elle-même, et sa réponse est identique que le "
+        "compte existe ou non",
+    "app/api/retour/fermeture/[jeton]/route.ts":
+        "l'exécution de la fermeture ; son contrôle est le jeton à usage "
+        "unique arrivé sur l'adresse du compte, et fermer une porte n'a jamais "
+        "nui à personne",
     # Une redirection permanente, sans donnée.
     "app/sms/page.tsx":
         "ancienne adresse : elle ne fait que rediriger vers /encaissements, "

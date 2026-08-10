@@ -179,4 +179,3 @@ export default async function Cartes() {
     </CadreConsole>
   );
 }
-</content>

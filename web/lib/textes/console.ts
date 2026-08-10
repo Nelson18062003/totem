@@ -75,7 +75,7 @@ const en = {
     mesureAlertesCalme: "no alert on record",
     mesureCartes: "SIM cards in place",
     mesureVersions: "Software carried",
-    versionUnique: (v: string) => `all on ${v}`,
+    versionUnique: (part: string) => `${part} of the fleet carries it`,
     versionMelange: (n: number) => `${n} different versions in the field`,
     versionAucune: "no box has said which software it carries",
     colonneTerminal: "Terminal",
@@ -276,7 +276,7 @@ const fr: typeof en = {
   flotte: {
     titre: "La flotte",
     ariane: (n, villes) =>
-      `${n} terminal${n > 1 ? "x" : ""} · ${villes} commerce${villes > 1 ? "s" : ""}`,
+      `${n} ${n > 1 ? "terminaux" : "terminal"} · ${villes} commerce${villes > 1 ? "s" : ""}`,
     videTitre: "Aucun terminal au registre",
     videDetail:
       "La base ne contient aucun boîtier. Un terminal apparaît ici tout seul, la première fois qu'il parle — il n'y a rien à créer à la main.",
@@ -287,7 +287,7 @@ const fr: typeof en = {
     mesureAlertesCalme: "aucune alerte au registre",
     mesureCartes: "Cartes SIM en place",
     mesureVersions: "Logiciel porté",
-    versionUnique: (v) => `tous en ${v}`,
+    versionUnique: (part) => `${part} de la flotte le porte`,
     versionMelange: (n) => `${n} versions différentes sur le terrain`,
     versionAucune: "aucun boîtier n'a dit quel logiciel il porte",
     colonneTerminal: "Terminal",

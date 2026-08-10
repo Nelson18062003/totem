@@ -15,13 +15,18 @@ en clair, et rien qui s'efface.
 """
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from migrations import chemins  # noqa: E402
+
 SQL = Path(__file__).resolve().parent.parent / "sql"
 SCHEMA = SQL / "schema.sql"
-MIGRATIONS = [SQL / "migration-identite.sql", SQL / "migration-code-entree.sql",
-              SQL / "migration-cles.sql"]
+# La liste vit dans « tests/migrations.py » : deux tests en avaient chacun une
+# copie, et les deux ont divergé.
+MIGRATIONS = chemins()
 
 # Les objets que la migration d'identité introduit. Écrits à la main, parce
 # qu'une liste déduite des fichiers ne prouverait rien : elle serait juste par
