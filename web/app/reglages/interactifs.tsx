@@ -329,16 +329,20 @@ export function BoutonDeconnexion() {
   );
 }
 
-export function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
+/** @param libelle une PHRASE, pas l'objet des textes. Le nom compte : appelée
+ *  « t », cette propriété laissait croire qu'on peut lui passer les textes
+ *  entiers — ce qui ferait planter l'écran si l'un d'eux devenait une
+ *  fonction (voir « tests/test_frontiere_serveur.py »). */
+export function Bascule({ libelle, defaut }: { libelle: string; defaut?: boolean }) {
   const [actif, setActif] = useState(Boolean(defaut));
   return (
     <div className="flex items-center justify-between py-3">
-      <span className="pr-4 text-body">{t}</span>
+      <span className="pr-4 text-body">{libelle}</span>
       <button
         onClick={() => setActif((a) => !a)}
         role="switch"
         aria-checked={actif}
-        aria-label={t}
+        aria-label={libelle}
         className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${
           actif ? "justify-end bg-ink" : "justify-start bg-surface-3"
         }`}

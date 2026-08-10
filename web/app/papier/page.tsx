@@ -56,7 +56,6 @@ export default async function PagePapier() {
       </section>
 
       <Feuille
-        t={t}
         nom={moi.nom}
         aujourdhui={jour(new Date().toISOString())}
         total={PAR_SERIE}

@@ -19,7 +19,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { fabriquerMesCodes } from "./actions";
-import type { textesPapier } from "@/lib/textes/papier";
+import { textesPapier } from "@/lib/textes/papier";
+import { useLangue } from "@/app/langue";
 import { IconCopy, IconDoc, IconDownload, IconLock } from "@/app/icons";
 
 type Textes = (typeof textesPapier)["en"];
@@ -49,11 +50,28 @@ const IMPRESSION = `
 }
 `;
 
+/**
+ * LES TEXTES NE TRAVERSENT PAS LA FRONTIÈRE, ILS SONT LUS ICI.
+ *
+ * Ils descendaient de la page serveur par une propriété. L'objet contient des
+ * fonctions — « entete(nom) », « serie(n) », « deja(n) » — et React REFUSE de
+ * les faire passer du serveur au navigateur : elles ne se sérialisent pas.
+ * L'écran entier plantait, en production seulement, avec un bouton
+ * « Reload » pour tout contenu.
+ *
+ * Rien ne le disait : le fichier compilait, et les contrôles passaient tous.
+ * Seul un essai dans un vrai navigateur pouvait le voir.
+ *
+ * Un composant de navigateur lit donc ses textes lui-même, comme partout
+ * ailleurs dans le dépôt. « useLangue » suit le choix de la personne sans
+ * qu'aucune donnée n'ait à descendre.
+ */
 export function Feuille({
-  t, nom, aujourdhui, total, etat,
+  nom, aujourdhui, total, etat,
 }: {
-  t: Textes; nom: string; aujourdhui: string; total: number; etat: Etat | null;
+  nom: string; aujourdhui: string; total: number; etat: Etat | null;
 }) {
+  const t: Textes = textesPapier[useLangue()];
   const [codes, poser] = useState<string[] | null>(null);
   const [serie, numeroter] = useState<number | null>(null);
   const [geste, etablir] = useState<"repos" | "attente" | "rate">("repos");

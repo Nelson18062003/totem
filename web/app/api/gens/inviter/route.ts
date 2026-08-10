@@ -1,9 +1,23 @@
 // Donner une clé : fabriquer l'invitation, et rendre le lien UNE fois.
 //
-// Le jeton n'existe en clair que dans la réponse de cette route. La base n'en
-// garde que l'empreinte, et rien — ni un écran, ni un journal, ni une
-// sauvegarde qui traîne — ne pourra le relire ensuite. C'est pour cela que la
-// page l'affiche en grand et prévient qu'il ne reviendra pas.
+// LE MESSAGE PART D'ICI, ET LE LIEN AUSSI. Les deux, pas l'un ou l'autre.
+// Cette route appelait « creerInvitation », qui fabrique la ligne en base et
+// rend le jeton — sans rien envoyer. La propriétaire voyait donc « c'est
+// fait », et la personne invitée n'a jamais rien reçu. Le défaut passait tous
+// les contrôles : la ligne existait, le jeton était bon, la réponse valide.
+// Seul un essai de bout en bout pouvait le voir.
+//
+// « envoyerInvitation » fait les deux, et le jeton en clair ne quitte jamais
+// cette fonction — c'est elle qui l'insère dans le message.
+//
+// ET SI LE MESSAGE NE PART PAS ? On ANNULE l'invitation, et on le dit.
+// C'est le seul choix honnête : le jeton en clair ne quitte jamais
+// « envoyerInvitation » — la base n'en garde que l'empreinte — donc personne,
+// pas même la propriétaire, ne peut plus le transmettre. Une invitation dont
+// le lien n'existe nulle part n'invite personne ; la laisser dans la liste
+// ferait attendre une réponse qui ne viendra jamais.
+//
+// Elle recommencera, et le second essai partira si la panne était passagère.
 //
 // CE QUE CETTE ROUTE REFUSE, ET POURQUOI
 // Le rôle « la plateforme » ne se donne pas d'ici. Une propriétaire distribue
@@ -12,7 +26,9 @@
 // Le refus est écrit, pas silencieux.
 
 import { estRefus, garder } from "@/lib/garde";
-import { creerInvitation } from "@/lib/invitations";
+import { envoyerInvitation } from "@/lib/envois";
+import { annulerInvitation } from "@/lib/invitations";
+import { lireUne } from "@/lib/base";
 import { langueServeur } from "@/lib/langue-serveur";
 import { textesGens } from "@/lib/textes/gens";
 import type { Role } from "@/lib/session";
@@ -52,24 +68,43 @@ export async function POST(req: Request) {
     return Response.json({ erreur: t.rate }, { status: 400 });
   }
 
-  const fait = await creerInvitation({
+  // Le NOM du commerce, pas son identifiant : il part dans le message, et
+  // quelqu'un qui reçoit une clé doit reconnaître la boutique dont on parle.
+  const boutique = await lireUne<{ nom: string }>(
+    `commerces?id=eq.${encodeURIComponent(g.commerce)}&select=nom&limit=1`);
+
+  const fait = await envoyerInvitation({
     commerce: g.commerce,
+    commerceNom: boutique?.nom ?? g.commerce,
     role,
     nom,
     courriel,
     // La langue du lien est celle où la propriétaire travaille : c'est la
     // seule qu'on connaisse avant que la personne n'arrive.
     langue,
+    invitant: g.nom,
     creeePar: g.personne,
   });
-  if (!fait) return Response.json({ erreur: t.rate }, { status: 503 });
 
-  // Le jeton part ici, et nulle part ailleurs. Rien ne le journalise.
+  if (!fait.envoyee) {
+    // « courrier » est le seul échec où l'invitation EXISTE quand même : la
+    // ligne est en base, le lien est valable, seul le message n'est pas
+    // parti. On le dit, et on rend le lien — la propriétaire le transmettra
+    // elle-même plutôt que de tout recommencer.
+    if (fait.raison === "courrier") {
+      // La ligne existe mais son lien est perdu : on la date comme annulée
+      // plutôt que de la laisser encombrer la liste d'attente.
+      await annulerInvitation(fait.ligne.id, g.commerce);
+      return Response.json({ erreur: fait.dit }, { status: 503 });
+    }
+    return Response.json({ erreur: t.rate }, { status: 503 });
+  }
+
   return Response.json({
     ok: true,
     nom,
     role,
-    chemin: `/invitation/${fait.jeton}`,
+    messageParti: true,
     invitation: fait.ligne.id,
   });
 }

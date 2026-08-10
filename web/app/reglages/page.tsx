@@ -139,10 +139,10 @@ export default async function Reglages() {
       <section>
         <h2 className="mb-3 text-heading font-semibold">{t.notifications}</h2>
         <div className="divide-hair rounded-card border border-line bg-surface-raised px-4">
-          <Bascule t={t.notifPaiement} defaut />
-          <Bascule t={t.notifRapport} defaut />
-          <Bascule t={t.notifCourant} defaut />
-          <Bascule t={t.notifTelegram} defaut />
+          <Bascule libelle={t.notifPaiement} defaut />
+          <Bascule libelle={t.notifRapport} defaut />
+          <Bascule libelle={t.notifCourant} defaut />
+          <Bascule libelle={t.notifTelegram} defaut />
         </div>
       </section>
       </div>

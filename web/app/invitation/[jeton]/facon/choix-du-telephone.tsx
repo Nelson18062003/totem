@@ -1,5 +1,7 @@
 "use client";
 
+import { useLangue } from "@/app/langue";
+
 // La question du comptoir, et ce qu'elle retire.
 //
 // Deux réponses, aucune cochée d'avance. Ce n'est pas de la neutralité de
@@ -15,8 +17,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { PoserUneCle } from "@/app/cle-boutons";
-import type { textesFacon } from "@/lib/textes/facon";
-import type { textesCles } from "@/lib/textes/cles";
+import { textesFacon } from "@/lib/textes/facon";
+import { textesCles } from "@/lib/textes/cles";
 import { IconPhone } from "@/app/icons";
 
 type Textes = (typeof textesFacon)["en"];
@@ -24,7 +26,22 @@ type TextesCles = (typeof textesCles)["en"];
 
 type Reponse = "moi" | "boutique";
 
-export function ChoixDuTelephone({ t, tCles }: { t: Textes; tCles: TextesCles }) {
+/**
+ * Les textes sont LUS ICI, jamais reçus de la page serveur.
+ *
+ * L'écran du papier l'a appris de la pire façon : il recevait les siens par
+ * une propriété, ils contenaient des fonctions, et React refuse de faire
+ * passer une fonction du serveur au navigateur. La page ne s'affichait pas du
+ * tout — en production seulement, et sans qu'aucun contrôle ne le dise.
+ *
+ * Ici les textes n'avaient pas encore de fonction. Il aurait suffi d'en
+ * ajouter une, un jour, pour casser cet écran de la même façon et pour la
+ * même raison invisible.
+ */
+export function ChoixDuTelephone() {
+  const langue = useLangue();
+  const t: Textes = textesFacon[langue];
+  const tCles: TextesCles = textesCles[langue];
   const [aQui, repondre] = useState<Reponse | null>(null);
 
   return (
@@ -69,7 +86,7 @@ export function ChoixDuTelephone({ t, tCles }: { t: Textes; tCles: TextesCles })
         </div>
       )}
 
-      {aQui === "boutique" && <SurLeComptoir t={t} />}
+      {aQui === "boutique" && <SurLeComptoir />}
 
       {/* « Pas maintenant » est un chemin, pas un renoncement : il est visible
           avant même qu'on ait répondu, il mène quelque part, et il ne
@@ -102,7 +119,8 @@ export function ChoixDuTelephone({ t, tCles }: { t: Textes; tCles: TextesCles })
  * texte est le même dans les deux cas, et il le doit — il n'y a pas une bonne
  * et une mauvaise façon d'apprendre la même chose.
  */
-export function SurLeComptoir({ t }: { t: Textes }) {
+export function SurLeComptoir() {
+  const t: Textes = textesFacon[useLangue()];
   return (
     <section className="rounded-card border border-line bg-surface-2 px-4 py-4">
       <h3 className="text-body font-semibold">{t.comptoirTitre}</h3>

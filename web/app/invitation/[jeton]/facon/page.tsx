@@ -54,7 +54,6 @@ import { exigerPresence } from "@/lib/garde";
 import { langueServeur } from "@/lib/langue-serveur";
 import { proposerUneCle } from "@/lib/cles";
 import { textesFacon } from "@/lib/textes/facon";
-import { textesCles } from "@/lib/textes/cles";
 import { Logo } from "@/app/marque";
 import { BasculeLangue } from "@/app/langue";
 import { IconDoc, IconLock } from "@/app/icons";
@@ -86,9 +85,9 @@ export default async function PageFacon() {
       </section>
 
       {surLeComptoir ? (
-        <SurLeComptoir t={t} />
+        <SurLeComptoir />
       ) : (
-        <ChoixDuTelephone t={t} tCles={textesCles[langue]} />
+        <ChoixDuTelephone />
       )}
 
       {/* Le papier. Bouton de second niveau : l'écran n'a qu'un seul bouton
