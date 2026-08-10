@@ -140,7 +140,23 @@ besoin de deux variables d'environnement, **côté serveur uniquement** :
 | `SESSION_SECRET` | une longue phrase secrète au hasard — elle signe les sessions et **active le verrou** de la plateforme |
 | `TOTEM_MOT_DE_PASSE` | le mot de passe du propriétaire pour se connecter au site |
 
-- **Sur Vercel** : Settings → Environment Variables, ajouter les quatre, puis
+Et, depuis que la porte s'ouvre par courriel et par le verrouillage du
+téléphone (`docs/COMMENT-ON-ENTRE.md`) :
+
+| Variable | Valeur | Sans elle |
+|---|---|---|
+| `COURRIER_CLE` | la clé du service d'envoi (Resend) | aucun code ne part : personne ne peut créer de compte ni entrer par mail |
+| `COURRIER_EXPEDITEUR` | `TOTEM <bonjour@votre-domaine>` — l'adresse doit être vérifiée chez le service | même chose : l'envoi est refusé |
+| `TOTEM_ORIGINE` | l'adresse exacte du site, `https://…` sans barre finale | le lien d'invitation ne se fabrique pas, et le verrouillage du téléphone déduit son domaine de la requête au lieu d'être figé |
+
+**Ce qui se passe sans `COURRIER_CLE` :** rien n'est inventé. La fonction
+d'envoi ne prétend PAS avoir envoyé — elle renvoie un échec nommé, et l'écran
+le dit. En développement seulement, et seulement si la clé manque, le message
+s'écrit dans la console pour que le travail continue. En production, jamais :
+un code des six chiffres dans un journal serveur est un code lisible par qui
+lit les journaux.
+
+- **Sur Vercel** : Settings → Environment Variables, ajouter les sept, puis
   redéployer.
 - **En local** : créer `web/.env.local` avec ces lignes, puis `npm run dev`.
 
