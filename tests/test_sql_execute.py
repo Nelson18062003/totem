@@ -22,6 +22,7 @@ de PostgreSQL. Les politiques de sécurité du schéma le visent. On le crée do
 avant de dérouler les fichiers, exactement comme Supabase le fournit.
 """
 
+import importlib
 import os
 import shlex
 import shutil
@@ -113,6 +114,25 @@ class SqlExecutable(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout.strip()
 
+    def _ancien_schema(self):
+        """La base telle qu'elle était AVANT l'identité, reconstituée.
+
+        On coupe « schema.sql » là où la section d'identité commence : c'est
+        la seule façon d'obtenir une base « déjà en service » fidèle sans
+        garder une copie figée qui vieillirait de son côté.
+        """
+        entier = (SQL / "schema.sql").read_text(encoding="utf-8")
+        marque = "-- L'IDENTITÉ — commerces, personnes"
+        self.assertIn(marque, entier,
+                      "la section d'identité n'est plus repérable dans "
+                      "schema.sql — ce test ne sait plus reconstituer l'avant")
+        entiere = "-- " + "=" * 75 + "\n" + marque
+        avant = entier[:entier.index(entiere)] if entiere in entier \
+            else entier[:entier.index(marque)].rsplit("-- =", 1)[0]
+        ancien = Path("/tmp/totem-schema-avant.sql")
+        ancien.write_text(avant, encoding="utf-8")
+        return ancien
+
     def test_aucune_migration_n_est_oubliee(self):
         """Une migration non inscrite n'est jouée nulle part, et rien ne le dit.
 
@@ -132,6 +152,62 @@ class SqlExecutable(unittest.TestCase):
         self.assertEqual(
             fantomes, [],
             f"MIGRATIONS cite des fichiers qui n'existent pas : {fantomes}")
+
+    def test_le_fichier_unique_est_a_jour(self):
+        """« sql/tout.sql » est assemblé ; s'il a dérivé, il ment.
+
+        C'est le seul fichier que le propriétaire colle dans Supabase. S'il ne
+        contient plus ce que contiennent ses sources, l'installation qu'il
+        produit n'est celle de personne — et rien ne le dirait, puisqu'il
+        s'exécuterait sans erreur.
+        """
+        # On assemble EN MÉMOIRE et on compare. Relancer l'assembleur avant
+        # de comparer aurait réparé le défaut qu'on cherche : le test aurait
+        # passé quoi qu'il arrive. C'est ce qu'a fait sa première version.
+        sys.path.insert(0, str(SQL))
+        import assembler
+        importlib.reload(assembler)
+        attendu = assembler.assembler()
+        self.assertTrue((SQL / "tout.sql").exists(),
+                        "« sql/tout.sql » n'existe pas : lancez "
+                        "« python3 sql/assembler.py »")
+        self.assertEqual(
+            (SQL / "tout.sql").read_text(encoding="utf-8"), attendu,
+            "« sql/tout.sql » n'est plus à jour avec ses sources — c'est "
+            "pourtant le seul fichier collé dans Supabase. Relancez "
+            "« python3 sql/assembler.py » et commitez le résultat.")
+
+    def test_le_fichier_unique_s_execute_sur_une_base_neuve(self):
+        """Le geste réel du propriétaire : coller, lancer, relancer."""
+        _recreer(BASE_NEUVE)
+        self._derouler(BASE_NEUVE, SQL / "tout.sql", 2)
+        tables = self._valeur(
+            BASE_NEUVE,
+            "select count(*) from information_schema.tables "
+            "where table_schema='public'")
+        self.assertGreaterEqual(int(tables), 16)
+
+    def test_le_fichier_unique_ne_perd_rien_sur_une_base_en_service(self):
+        """Le cas qui compte vraiment : sa base à lui, avec de l'argent tracé.
+
+        On reconstitue l'ancien schéma, on y met un terminal, une carte et une
+        commande, puis on colle le fichier unique deux fois. Les trois lignes
+        doivent être là au bout.
+        """
+        _recreer(BASE_SERVICE)
+        ancien = self._ancien_schema()
+        self._derouler(BASE_SERVICE, ancien, 1)
+        _lancer(["-c",
+                 "insert into terminaux(id,nom) values('essai','Essai');"
+                 "insert into cartes(terminal,iccid,libelle) "
+                 "values('essai','8923701234567890123','Orange ··7715');"
+                 "insert into commandes(terminal,type) values('essai','solde');"],
+                base=BASE_SERVICE)
+        self._derouler(BASE_SERVICE, SQL / "tout.sql", 2)
+        for table in ("terminaux", "cartes", "commandes"):
+            self.assertEqual(
+                self._valeur(BASE_SERVICE, f"select count(*) from {table}"), "1",
+                f"le fichier unique a perdu une ligne de « {table} »")
 
     def test_une_base_neuve_supporte_trois_deroulements(self):
         """« Le script est rejouable : le relancer ne casse rien. »
@@ -154,19 +230,7 @@ class SqlExecutable(unittest.TestCase):
         appuyé.
         """
         _recreer(BASE_SERVICE)
-        # L'ancien schéma, sans les tables d'identité : on le reconstitue en
-        # coupant schema.sql à l'endroit où cette section commence.
-        entier = (SQL / "schema.sql").read_text(encoding="utf-8")
-        marque = "-- L'IDENTITÉ — commerces, personnes"
-        self.assertIn(marque, entier,
-                      "la section d'identité n'est plus repérable dans "
-                      "schema.sql — ce test ne sait plus reconstituer l'avant")
-        avant = entier[:entier.index("-- " + "=" * 75 + "\n" + marque)] \
-            if ("-- " + "=" * 75 + "\n" + marque) in entier \
-            else entier[:entier.index(marque)].rsplit("-- =", 1)[0]
-        ancien = Path("/tmp/totem-schema-avant.sql")
-        ancien.write_text(avant, encoding="utf-8")
-        self._derouler(BASE_SERVICE, ancien, 1)
+        self._derouler(BASE_SERVICE, self._ancien_schema(), 1)
 
         _lancer(["-c",
                  "insert into terminaux(id,nom) values('essai','Essai');"
