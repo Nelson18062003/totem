@@ -1,0 +1,151 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Your devices</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .tbl td,.tbl th{white-space:nowrap}
+  .machine{display:flex;align-items:center;gap:12px}
+  .machine .ic{width:32px;height:32px;border-radius:8px;background:var(--fond2);
+    display:grid;place-items:center;flex:none}
+  .machine .ic svg{stroke:var(--secondaire)}
+  .machine .n{font-size:13px;line-height:18px;font-weight:700}
+  .machine .m{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  /* la fenêtre de session finie : elle se pose PAR-DESSUS le travail, jamais à sa place */
+  .voile{position:absolute;inset:0;background:rgba(251,250,249,.55);backdrop-filter:blur(1px);
+    display:grid;place-items:center;z-index:20}
+  .fenetre{width:440px;background:var(--carte);border-radius:12px;box-shadow:var(--ombre-flottante);
+    padding:24px}
+  .fenetre h2{font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.01em}
+  .fenetre .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+  .fenetre input.code{width:100%;height:48px;margin-top:16px;padding:0 12px;border:none;
+    border-radius:6px;background:var(--carte);box-shadow:inset 0 0 0 1px var(--trait-controle);
+    text-align:center;font:700 20px/24px 'DM Sans';letter-spacing:.34em;
+    font-variant-numeric:tabular-nums;color:var(--encre)}
+  .fenetre .gestes{display:flex;gap:8px;margin-top:16px}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="settings">
+<div class="app" style="position:relative">
+  <!--RAIL-->
+  <main inert>
+    <header class="barre">
+      <h1>Your devices</h1>
+      <span class="ariane">Everywhere this account is open</span>
+      <div class="action-page">
+        <button class="btn btn--danger"><svg><use href="#i-fermer"/></svg>Sign out everywhere</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+      <div class="duo">
+        <div class="colonne principal">
+          <section class="carte">
+            <div class="carte-tete"><h2>Open right now</h2>
+              <div class="a-droite">a device you forget asks for a code again</div></div>
+            <table class="tbl">
+              <thead><tr><th>Device</th><th>Where</th><th>How it got in</th><th class="num">Last used</th></tr></thead>
+              <tbody>
+                <tr class="choisie">
+                  <td><div class="machine"><span class="ic"><svg class="ic16"><use href="#i-console"/></svg></span>
+                    <div><div class="n">Chrome on macOS</div><div class="m">Remembered until 5 September</div></div></div></td>
+                  <td class="pale">Paris, France</td>
+                  <td><span class="chip">authenticator app</span></td>
+                  <td class="num"><span class="etat ok"><i class="pastille ok"></i>This one</span></td>
+                </tr>
+                <tr>
+                  <td><div class="machine"><span class="ic"><svg class="ic16"><use href="#i-telephone"/></svg></span>
+                    <div><div class="n">Safari on iPhone</div><div class="m">Remembered until 22 August</div></div></div></td>
+                  <td class="pale">Paris, France</td>
+                  <td><span class="chip">authenticator app</span></td>
+                  <td class="num pale">yesterday, 21:04</td>
+                </tr>
+                <tr>
+                  <td><div class="machine"><span class="ic"><svg class="ic16"><use href="#i-console"/></svg></span>
+                    <div><div class="n">Firefox on Windows</div><div class="m">Not remembered</div></div></div></td>
+                  <td class="pale">Douala, Cameroon</td>
+                  <td><span class="chip">code by email</span></td>
+                  <td class="num pale">12 July, 09:12</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="carte-pied">3 devices open · none in a place you have never used
+              <span class="a-droite">signing out a device takes effect at its next click</span></div>
+          </section>
+
+          <section class="carte">
+            <div class="carte-tete"><h2>Sign-ins we told you about</h2>
+              <div class="a-droite">every email carries a “this wasn’t me” link</div></div>
+            <div class="carte-corps">
+              <div class="fil">
+                <div class="ev"><span class="h">12:31</span>
+                  <span class="ic ok"><svg><use href="#i-bouclier"/></svg></span>
+                  <div class="c"><div class="t">Signed in with the app</div>
+                    <div class="d">Chrome on macOS, Paris — the device you were already using.</div></div></div>
+                <div class="ev"><span class="h">12 Jul</span>
+                  <span class="ic accent"><svg><use href="#i-lieu"/></svg></span>
+                  <div class="c"><div class="t">A new place: Douala<span class="chip accent">emailed you</span></div>
+                    <div class="d">Firefox on Windows, code by email. You read that email at 09:14 and did nothing — which was the right answer.</div></div></div>
+                <div class="ev"><span class="h">3 Jul</span>
+                  <span class="ic attention"><svg><use href="#i-attention"/></svg></span>
+                  <div class="c"><div class="t">Sign-in paused for 15 minutes</div>
+                    <div class="d">Three wrong codes from an address in Lagos. Nothing was opened.</div></div></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside class="panneau">
+          <div class="panneau-tete"><div class="titre">How you get in</div>
+            <div class="sous">two ways, one paper</div></div>
+          <div class="bloc">
+            <div class="dl">
+              <div class="r"><span class="l">Address</span><span class="v">n.•••@totem.app</span></div>
+              <div class="r"><span class="l">Authenticator</span><span class="v fort">on, since 2 February</span></div>
+              <div class="r"><span class="l">Backup codes</span><span class="v">6 of 10 left</span></div>
+              <div class="r"><span class="l">Email codes</span><span class="v">still allowed</span></div>
+            </div>
+          </div>
+          <div class="bloc">
+            <h3>Change something</h3>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn btn--secondaire" style="width:100%"><svg><use href="#i-bouclier"/></svg>Replace the authenticator app</button>
+              <button class="btn btn--secondaire" style="width:100%"><svg><use href="#i-cadenas"/></svg>Make new backup codes</button>
+              <button class="btn btn--secondaire" style="width:100%"><svg><use href="#i-envoi"/></svg>Change my email address</button>
+            </div>
+            <p class="t12 pale" style="margin-top:12px">Each of these asks for a fresh code first —
+              an open session is not proof that you are still the one at the keyboard.</p>
+          </div>
+          <div class="bloc">
+            <h3>The last line</h3>
+            <p class="t12 pale">You are the only super admin. If you lose the app, the paper and
+              the mailbox, nobody can let you back in. Inviting a second super admin is the only
+              real fix.</p>
+            <button class="btn btn--primaire" style="width:100%;margin-top:12px">
+              <svg><use href="#i-clients"/></svg>Invite a second super admin</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ la session s'est terminée pendant le travail ============ -->
+  <div class="voile">
+    <div class="fenetre" role="dialog" aria-modal="true" aria-labelledby="fin-titre">
+      <h2 id="fin-titre">Your session ended</h2>
+      <p class="d">Nothing you were doing is lost, and nothing was sent. Type a code and you land
+        back exactly where you were.</p>
+      <input class="code" type="text" inputmode="numeric" autocomplete="one-time-code" value="731 508">
+      <div class="gestes">
+        <button class="btn btn--secondaire" style="flex:1">Email me a code</button>
+        <button class="btn btn--primaire" style="flex:1">Continue</button>
+      </div>
+      <div class="avis avis--calme" style="margin-top:16px">
+        <svg class="ic"><use href="#i-cadenas"/></svg>
+        <span>If your session had ended in the middle of a money operation, we would say so plainly:
+          <b>nothing was done</b> — and we would never send it again for you.</span>
+      </div>
+    </div>
+  </div>
+</div>

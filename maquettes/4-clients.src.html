@@ -1,0 +1,233 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Clients</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .tbl td,.tbl th{white-space:nowrap}
+  .personne{display:flex;align-items:center;gap:12px}
+  .jeton{width:32px;height:32px;border-radius:999px;background:var(--sable);color:var(--laterite);
+    display:grid;place-items:center;font-size:11px;line-height:16px;font-weight:700;flex:none}
+  .personne .n{display:flex;align-items:center;gap:8px;font-size:13px;line-height:18px;font-weight:700}
+  .personne .m{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .sims-cell{display:flex;align-items:center;gap:6px}
+  .bot{display:flex;align-items:center;gap:8px;font-size:13px;line-height:20px;color:var(--secondaire)}
+  .bot svg{stroke:var(--tertiaire);flex:none}
+  .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .role .haut{display:flex;align-items:center;gap:8px}
+  .role .d{font-size:12px;line-height:18px;color:var(--tertiaire);margin-top:8px}
+  .duo-bas{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .sim-ligne{display:flex;align-items:center;gap:12px;width:100%}
+  .sim-ligne .m{margin-left:auto;text-align:right}
+  .sim-ligne .m b{font-size:13px;line-height:20px}
+  .sim-ligne .m .q{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .invite{display:flex;align-items:center;gap:12px}
+  .invite .t{font-size:13px;line-height:20px;font-weight:700}
+  .invite .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="clients">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>Clients</h1>
+      <span class="ariane">6 people · 4 businesses</span>
+      <div class="action-page">
+        <button class="btn btn--primaire"><svg><use href="#i-plus"/></svg>Add a client</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <div class="duo">
+        <div class="colonne principal">
+
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>Who sees what</h2>
+              <div class="a-droite">
+                enforced by the database, not by the screen
+              </div>
+            </div>
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Person</th><th>SIMs</th><th>Telegram robot</th><th class="num">Last sign-in</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="choisie" data-vers="MK">
+                  <td><div class="personne"><span class="jeton">MK</span>
+                    <div><div class="n">M. Kamga <span class="chip">owner</span></div>
+                      <div class="m">Wonder Phone · Douala</div></div></div></td>
+                  <td><div class="sims-cell"><span class="chip orange">Orange ··4177</span><span class="t12 pale">+3</span></div></td>
+                  <td><span class="bot"><svg class="ic16"><use href="#i-envoi"/></svg>@KamgaCaisseBot</span></td>
+                  <td class="num pale">today, 12:31</td>
+                </tr>
+                <tr data-vers="MF">
+                  <td><div class="personne"><span class="jeton">MF</span>
+                    <div><div class="n">Mme Fotso <span class="chip">owner</span></div>
+                      <div class="m">Marché · Bafoussam</div></div></div></td>
+                  <td><div class="sims-cell"><span class="chip orange">Orange ··8812</span><span class="t12 pale">+2</span></div></td>
+                  <td><span class="bot"><svg class="ic16"><use href="#i-envoi"/></svg>@FotsoCaisseBot</span></td>
+                  <td class="num pale">yesterday, 18:47</td>
+                </tr>
+                <tr data-vers="MT">
+                  <td><div class="personne"><span class="jeton">MT</span>
+                    <div><div class="n">M. Talla <span class="chip">owner</span></div>
+                      <div class="m">Quincaillerie · Deïdo</div></div></div></td>
+                  <td><div class="sims-cell"><span class="chip orange">Orange ··2258</span><span class="t12 pale">+2</span></div></td>
+                  <td><span class="bot"><svg class="ic16"><use href="#i-envoi"/></svg>@TallaCaisseBot</span></td>
+                  <td class="num pale">today, 10:05</td>
+                </tr>
+                <tr data-vers="MN">
+                  <td><div class="personne"><span class="jeton">MN</span>
+                    <div><div class="n">Mme Ngo <span class="chip">owner</span></div>
+                      <div class="m">Pharmacie · Yaoundé</div></div></div></td>
+                  <td><div class="sims-cell"><span class="chip orange">Orange ··6640</span><span class="t12 pale">+1</span></div></td>
+                  <td><span class="bot"><svg class="ic16"><use href="#i-envoi"/></svg>@NgoCaisseBot</span></td>
+                  <td class="num pale">yesterday, 09:12</td>
+                </tr>
+                <tr data-vers="JE">
+                  <td><div class="personne"><span class="jeton">JE</span>
+                    <div><div class="n">J. Eyenga <span class="chip carree">operator</span></div>
+                      <div class="m">At the counter for M. Kamga</div></div></div></td>
+                  <td><div class="sims-cell"><span class="chip orange">Orange ··4177</span></div></td>
+                  <td><span class="bot pale">his employer’s robot</span></td>
+                  <td class="num pale">today, 09:40</td>
+                </tr>
+                <tr data-vers="CF">
+                  <td><div class="personne"><span class="jeton">CF</span>
+                    <div><div class="n">C. Fotso <span class="chip carree">viewer</span></div>
+                      <div class="m">Bookkeeper for Mme Fotso</div></div></div></td>
+                  <td><div class="sims-cell"><span class="chip orange">Orange ··8812</span></div></td>
+                  <td><span class="bot pale">not linked yet</span></td>
+                  <td class="num"><span class="chip attention">invited</span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="carte-pied">
+              Every change of attribution lands in the journal — who did it, when, and from where
+              <span class="a-droite">6 people · 1 waiting to accept</span>
+            </div>
+          </section>
+
+          <!-- ============ les trois rôles ============ -->
+          <div class="roles">
+            <section class="carte"><div class="carte-corps serre"><div class="role">
+              <div class="haut"><span class="chip">owner</span><span class="t13"><b>The shopkeeper</b></span></div>
+              <div class="d">Sees and operates their own SIMs, invites their own staff, and is the only one who ever types the money PIN.</div>
+            </div></div></section>
+            <section class="carte"><div class="carte-corps serre"><div class="role">
+              <div class="haut"><span class="chip carree">operator</span><span class="t13"><b>The counter</b></span></div>
+              <div class="d">Runs the day to day on the SIMs they were given. The money PIN stays the owner’s barrier — never shared.</div>
+            </div></div></section>
+            <section class="carte"><div class="carte-corps serre"><div class="role">
+              <div class="haut"><span class="chip carree">viewer</span><span class="t13"><b>The bookkeeper</b></span></div>
+              <div class="d">Reads balances and downloads receipts. Changes nothing, sends nothing, and cannot see other shops.</div>
+            </div></div></section>
+          </div>
+
+          <!-- ============ connexion et invitations ============ -->
+          <div class="duo-bas">
+            <section class="carte">
+              <div class="carte-tete"><h2>How they get in</h2></div>
+              <div class="carte-corps">
+                <div class="dl">
+                  <div class="r"><span class="l">Authenticator</span><span class="v fort">4 of 6 people</span></div>
+                  <div class="r"><span class="l">Email code</span><span class="v">1 person</span></div>
+                  <div class="r"><span class="l">Never signed in</span><span class="v">1 person · invited</span></div>
+                </div>
+              </div>
+              <div class="carte-pied">A password is never asked for, and the money PIN is never part of signing in</div>
+            </section>
+            <section class="carte">
+              <div class="carte-tete"><h2>Waiting on someone</h2></div>
+              <div class="carte-corps">
+                <div class="invite">
+                  <span class="jeton">CF</span>
+                  <div><div class="t">C. Fotso · viewer</div>
+                    <div class="d">Invited 2 days ago by Mme Fotso · link valid for 5 more days</div></div>
+                  <button class="btn btn--secondaire" style="margin-left:auto"><svg><use href="#i-envoi"/></svg>Send again</button>
+                </div>
+              </div>
+              <div class="carte-pied">An invitation that is never accepted simply expires — nothing is created</div>
+            </section>
+          </div>
+        </div>
+
+        <!-- ============ la fiche d’une personne ============ -->
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div class="jeton" style="width:40px;height:40px;font-size:13px">MK</div>
+            <div>
+              <div class="titre">M. Kamga</div>
+              <div class="sous">Wonder Phone · Douala, Akwa</div>
+            </div>
+            <button class="btn btn--icone" style="margin-left:auto"><svg><use href="#i-fermer"/></svg></button>
+          </div>
+
+          <div class="bloc">
+            <h3>How this person signs in</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Email</span><span class="v">m.kam•••@gmail.com</span></div>
+              <div class="r"><span class="l">Second step</span><span class="v fort">authenticator app ✓</span></div>
+              <div class="r"><span class="l">Backup codes</span><span class="v">6 of 8 left</span></div>
+              <div class="r"><span class="l">Robot</span><span class="v fort">@KamgaCaisseBot</span></div>
+              <div class="r"><span class="l">Linked</span><span class="v">14 March 2026 · 2 members</span></div>
+              <div class="r"><span class="l">Staff</span><span class="v">J. Eyenga, as operator</span></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>The four SIMs this person may touch</h3>
+            <div class="dl">
+              <div class="r"><div class="sim-ligne">
+                <span class="chip orange">Orange ··4177</span>
+                <span class="m"><b>6,335,788.6</b><div class="q">douala-akwa-01</div></span></div></div>
+              <div class="r"><div class="sim-ligne">
+                <span class="chip mtn">MTN ··9021</span>
+                <span class="m"><b>912,400</b><div class="q">douala-akwa-01</div></span></div></div>
+              <div class="r"><div class="sim-ligne">
+                <span class="chip orange">Orange ··5310</span>
+                <span class="m"><b>1,204,300</b><div class="q">douala-bonaberi-01</div></span></div></div>
+              <div class="r"><div class="sim-ligne">
+                <span class="chip mtn">MTN ··7742</span>
+                <span class="m"><b>486,150</b><div class="q">douala-bonaberi-01</div></span></div></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>Lately</h3>
+            <div class="fil">
+              <div class="ev">
+                <span class="h">14:02</span>
+                <span class="ic accent"><svg><use href="#i-doc"/></svg></span>
+                <div class="c">
+                  <div class="t">Receipt issued again</div>
+                  <div class="d">TM-2026-0805-0075, rebuilt as a transfer — 18 s.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">12:31</span>
+                <span class="ic ok"><svg><use href="#i-bouclier"/></svg></span>
+                <div class="c">
+                  <div class="t">Signed in</div>
+                  <div class="d">Authenticator app, from Douala.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bloc" style="display:flex;gap:8px">
+            <button class="btn btn--secondaire" style="flex:1"><svg><use href="#i-sim"/></svg>Change which SIMs this person may touch</button>
+            <button class="btn btn--icone" aria-label="More actions for this person"><svg><use href="#i-menu"/></svg></button>
+          </div>
+        </aside>
+      </div>
+
+    </div>
+  </main>
+</div>

@@ -1,0 +1,132 @@
+<meta charset="utf-8"><title>TOTEM — The people of the shop</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Les gens du commerce, vus par la propriétaire. =====
+     C'est l'écran qui boucle la chaîne sur l'invitation : c'est ici qu'elles
+     naissent, et c'est le seul endroit où Mme Fotso reprend, seule et sans
+     appeler personne, le contrôle de qui voit son argent.
+     La différence qui compte : RETIRER coupe les sessions EN COURS, pas
+     seulement les prochaines entrées. Un employé qui part à 18 h ne voit plus
+     rien à 18 h 01. C'est tout l'écart entre une case cochée et une sécurité.
+     Aujourd'hui, dans le code, retirer quelqu'un veut dire changer le mot de
+     passe de tout le monde : voilà le trou que cet écran comble. */
+  body{background:var(--fond);min-height:844px;position:relative;padding-bottom:24px}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .qui{display:flex;align-items:center;gap:12px;padding:8px 16px 12px}
+  .qui .rond{width:44px;height:44px;border-radius:999px;background:var(--sable);
+    display:grid;place-items:center;flex:none;font-size:15px;font-weight:700;color:var(--laterite)}
+  .qui .n{font-size:15px;line-height:20px;font-weight:700}
+  .qui .r{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .titre-p{padding:4px 16px 16px}
+  .titre-p h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .titre-p .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  .gens{margin:0 16px 16px;background:var(--carte);border-radius:12px;
+    box-shadow:var(--ombre);overflow:hidden}
+  .gens .p{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:56px}
+  .gens .p+.p{border-top:1px solid var(--hairline)}
+  .gens .av{width:40px;height:40px;border-radius:999px;background:var(--fond2);
+    display:grid;place-items:center;flex:none;font-size:13px;font-weight:700;color:var(--secondaire)}
+  .gens .n{font-size:13px;line-height:20px;font-weight:700}
+  .gens .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .gens .btn{margin-left:auto;flex:none;height:44px}
+  .gens .attente .av{background:var(--alerte-fond);color:#6d5616}
+
+  .geste{padding:0 16px 24px}
+  .geste .btn{width:100%;height:48px;font-size:15px}
+
+  /* Le retrait, montré ouvert : c'est le geste dont la conséquence doit être
+     lue AVANT d'être faite, jamais découverte après. */
+  .retirer{margin:0 16px 16px;background:var(--carte);border-radius:12px;
+    box-shadow:var(--ombre-flottante);padding:16px}
+  .retirer .haut{display:flex;gap:12px;align-items:flex-start}
+  .retirer .rond{width:40px;height:40px;border-radius:12px;background:var(--negatif-fond);
+    display:grid;place-items:center;flex:none}
+  .retirer .rond svg{stroke:var(--negatif)}
+  .retirer .t{font-size:15px;line-height:20px;font-weight:700}
+  .retirer .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:4px}
+  .retirer .suite{margin-top:16px;padding-top:16px;border-top:1px solid var(--hairline)}
+  .retirer .suite .l{display:flex;gap:12px;align-items:flex-start;min-height:44px;padding:4px 0}
+  .retirer .suite .l svg{width:20px;height:20px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+  .retirer .suite .x{font-size:13px;line-height:20px}
+  .retirer .suite .x b{font-weight:700}
+  .retirer .gestes{display:flex;gap:8px;margin-top:16px}
+  .retirer .gestes .btn{flex:1;height:44px}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>18:01</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="qui">
+  <span class="rond">MF</span>
+  <div><div class="n">Mme Fotso</div><div class="r">owner · Marché · Bafoussam</div></div>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="titre-p">
+  <h1>Who has a key to your shop</h1>
+  <p class="sous">Three people, and one who has not answered yet. You can take a key back at
+    any moment, and it stops working the same second.</p>
+</div>
+
+<div class="gens">
+  <div class="p">
+    <span class="av">MF</span>
+    <div><div class="n">Mme Fotso — you</div><div class="d">owner · here now</div></div>
+    <button class="btn btn--fantome btn--sm">Your account</button>
+  </div>
+  <div class="p">
+    <span class="av">JE</span>
+    <div><div class="n">J. Eyenga</div><div class="d">operator · in this morning, 09:41</div></div>
+    <button class="btn btn--secondaire btn--sm">Change</button>
+  </div>
+  <div class="p">
+    <span class="av">CF</span>
+    <div><div class="n">C. Fotso</div><div class="d">viewer · in yesterday, 19:20</div></div>
+    <button class="btn btn--secondaire btn--sm">Change</button>
+  </div>
+  <div class="p attente">
+    <span class="av">PT</span>
+    <div><div class="n">P. Tchoumi</div><div class="d">viewer · invited 2 days ago, not answered</div></div>
+    <button class="btn btn--secondaire btn--sm">Cancel</button>
+  </div>
+</div>
+
+<div class="geste">
+  <button class="btn btn--primaire"><svg><use href="#i-cle"/></svg>Give someone a key</button>
+</div>
+
+<!-- Le retrait, en cours -->
+<div class="retirer">
+  <div class="haut">
+    <span class="rond"><svg class="ic20"><use href="#i-interdit"/></svg></span>
+    <div>
+      <div class="t">Take J. Eyenga's key back?</div>
+      <div class="d">He is at the counter right now, with the shop open on his phone.</div>
+    </div>
+  </div>
+  <div class="suite">
+    <div class="l"><svg><use href="#i-fermer"/></svg>
+      <span class="x">His phone <b>closes within the second</b> — not at his next sign-in, now.</span></div>
+    <div class="l"><svg><use href="#i-doc"/></svg>
+      <span class="x">The receipts he handed out <b>stay in the journal</b>, with his name on them.</span></div>
+    <div class="l"><svg><use href="#i-cle"/></svg>
+      <span class="x">Nothing changes for your money, your SIMs, or your PIN.</span></div>
+  </div>
+  <div class="gestes">
+    <button class="btn btn--secondaire">Keep the key</button>
+    <button class="btn btn--danger">Take it back now</button>
+  </div>
+</div>

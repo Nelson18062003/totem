@@ -1,0 +1,168 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — The emails</title>
+<!--SYSTEME-->
+<style>
+  .planche{padding:32px;display:flex;flex-direction:column;gap:24px;min-height:940px}
+  .planche-tete{display:flex;align-items:center;gap:16px}
+  .planche-tete .logo{height:28px;width:148px;display:block}
+  .planche-tete .badge{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.14em;
+    color:var(--laterite);box-shadow:inset 0 0 0 1px var(--laterite);border-radius:6px;padding:2px 6px}
+  .planche-tete h1{font-size:20px;line-height:28px;font-weight:700;letter-spacing:-.015em;margin-left:16px}
+  .planche-tete .ariane{font-size:13px;line-height:20px;color:var(--tertiaire);margin-right:auto}
+  .marque-porte{display:flex;align-items:center;gap:10px}
+
+  .lettres{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  .lettre{background:var(--carte);border-radius:10px;box-shadow:var(--ombre);
+    display:flex;flex-direction:column;overflow:hidden}
+  .lettre .entete{padding:16px 20px;border-bottom:1px solid var(--hairline)}
+  .lettre .quand{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .lettre .objet{font-size:14px;line-height:20px;font-weight:700;margin-top:8px}
+  .lettre .de{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:4px}
+  .lettre .avant{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:8px;font-style:italic}
+  .lettre .corps{padding:20px;display:flex;flex-direction:column;gap:12px;flex:1}
+  .lettre .corps p{font-size:13px;line-height:20px;color:var(--secondaire)}
+  .lettre .grand-code{font-family:ui-monospace,Menlo,monospace;font-size:28px;line-height:32px;
+    font-weight:700;letter-spacing:.16em;text-align:center;background:var(--fond2);
+    border-radius:10px;padding:16px;font-variant-numeric:tabular-nums}
+  .lettre .fait{display:flex;gap:10px;font-size:12px;line-height:16px;color:var(--secondaire)}
+  .lettre .fait .l{color:var(--tertiaire);width:76px;flex:none}
+  .lettre .bouton{display:block;text-align:center;height:40px;line-height:40px;border-radius:6px;
+    background:var(--encre);color:#fff;font-size:13px;font-weight:700}
+  .lettre .bouton.sobre{background:var(--carte);color:var(--encre);box-shadow:inset 0 0 0 1px var(--trait-controle)}
+  .lettre .fr{border-top:1px dashed var(--trait);padding-top:12px;margin-top:4px}
+  .lettre .fr .q{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:8px}
+  .lettre .pied{margin-top:auto;padding:12px 20px;border-top:1px solid var(--hairline);
+    font-size:11px;line-height:16px;color:var(--tertiaire)}
+  .regles-mail{background:var(--carte);border-radius:10px;box-shadow:var(--ombre);padding:20px 24px}
+  .regles-mail h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:16px}
+  .regles-mail .grille{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  .regles-mail .l{display:flex;gap:12px}
+  .regles-mail .l svg{width:20px;height:20px;stroke:var(--laterite);flex:none;margin-top:1px}
+  .regles-mail .t{font-size:13px;line-height:20px;font-weight:700}
+  .regles-mail .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body>
+<div class="planche">
+  <div class="planche-tete">
+    <div class="marque-porte">
+      <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+      <span class="badge">ADMIN</span>
+    </div>
+    <h1>What lands in the mailbox</h1>
+    <span class="ariane">Four of the twenty letters TOTEM can send · plain text, one link, never a code in a subject line</span>
+    <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+  </div>
+
+  <div class="lettres">
+    <!-- E4 -->
+    <div class="lettre">
+      <div class="entete">
+        <div class="quand">Every sign-in</div>
+        <div class="objet">Your sign-in code — Chrome on macOS, Paris</div>
+        <div class="de">TOTEM &lt;hello@totem.app&gt; · to n.•••@totem.app</div>
+        <div class="avant">The code itself is inside. The subject says who asked, so you can tell
+          before you open it.</div>
+      </div>
+      <div class="corps">
+        <p>Type this in the page you left open. It lasts ten minutes and works once.</p>
+        <div class="grand-code">408 913</div>
+        <div class="fait"><span class="l">Asked from</span><span>Chrome on macOS, Paris</span></div>
+        <div class="fait"><span class="l">At</span><span>14:02 Paris · 13:02 Douala</span></div>
+        <p>If you didn’t ask for it, someone typed your address. Nothing has happened, and you can
+          ignore this — but tell us if it keeps coming.</p>
+      </div>
+      <div class="pied">Nobody from TOTEM will ever ask you for this code, and we never ask for
+        your Mobile Money PIN.</div>
+    </div>
+
+    <!-- E5 -->
+    <div class="lettre">
+      <div class="entete">
+        <div class="quand">A device we had not seen</div>
+        <div class="objet">New sign-in to TOTEM</div>
+        <div class="de">TOTEM &lt;hello@totem.app&gt; · to n.•••@totem.app</div>
+        <div class="avant">Firefox on Windows, Douala — 12 July, 09:12 there, 10:12 in Paris.</div>
+      </div>
+      <div class="corps">
+        <p>Your account was opened from a device we had never seen before.</p>
+        <div class="fait"><span class="l">Device</span><span>Firefox on Windows</span></div>
+        <div class="fait"><span class="l">Where</span><span>Douala, Cameroon</span></div>
+        <div class="fait"><span class="l">When</span><span>10:12 Paris · 09:12 Douala</span></div>
+        <div class="fait"><span class="l">How</span><span>a code sent to this mailbox</span></div>
+        <p>If that was you, there is nothing to do.</p>
+        <span class="bouton">That wasn’t me</span>
+        <p>That button signs out every device, forgets them all, and pauses new sign-ins —
+          before asking you anything.</p>
+      </div>
+      <div class="pied">We tell you about every new device, always, even when everything is fine.</div>
+    </div>
+
+    <!-- E1 -->
+    <div class="lettre">
+      <div class="entete">
+        <div class="quand">An invitation</div>
+        <div class="objet">You’re invited to TOTEM</div>
+        <div class="de">TOTEM &lt;hello@totem.app&gt; · to c.fotso@•••.cm</div>
+        <div class="avant">Mme Fotso has added you to Marché · Bafoussam as a viewer.</div>
+      </div>
+      <div class="corps">
+        <p>You can read the balances and download the receipts of that shop. You cannot send money,
+          and you will never be asked for a PIN.</p>
+        <span class="bouton">Open my invitation</span>
+        <p>This link alone isn’t enough: you will also need a code sent to this mailbox. It expires
+          in seven days.</p>
+        <div class="fr" lang="fr">
+          <div class="q">Français</div>
+          <p>Mme Fotso vous a ajoutée à Marché · Bafoussam comme lectrice. Vous pourrez lire les
+            soldes et télécharger les reçus. Ce lien seul ne suffit pas : un code arrivera aussi
+            dans cette boîte.</p>
+        </div>
+      </div>
+      <div class="pied">An invitation goes out in both languages: the person has not yet chosen one.</div>
+    </div>
+
+    <!-- E11 -->
+    <div class="lettre">
+      <div class="entete">
+        <div class="quand">When the paper runs out</div>
+        <div class="objet">You have one backup code left</div>
+        <div class="de">TOTEM &lt;hello@totem.app&gt; · to n.•••@totem.app</div>
+        <div class="avant">Make ten new ones before the last one is gone.</div>
+      </div>
+      <div class="corps">
+        <p>You have used nine of your ten backup codes. The last one still works, once.</p>
+        <p>You are the super admin: there is nobody above you who can let you back in. Make new
+          codes, print them, and keep the paper somewhere that is not your phone.</p>
+        <span class="bouton sobre">Make new backup codes</span>
+        <p>Making new ones kills the old ten immediately.</p>
+      </div>
+      <div class="pied">We never send backup codes by email — only the news that you are running out.</div>
+    </div>
+  </div>
+
+  <div class="regles-mail">
+    <h2>What every one of these letters obeys</h2>
+    <div class="grille">
+      <div class="l"><svg><use href="#i-doc"/></svg>
+        <div><div class="t">One link, and only one</div>
+          <div class="d">No unsubscribe, no tracking pixel, no image. A letter that carries a code
+            must survive a slow line in Douala.</div></div></div>
+      <div class="l"><svg><use href="#i-globe"/></svg>
+        <div><div class="t">The language of the person</div>
+          <div class="d">Each letter goes out in the language the account chose — except the
+            invitation, which goes out in both because nothing has been chosen yet.</div></div></div>
+      <div class="l"><svg><use href="#i-horloge"/></svg>
+        <div><div class="t">Two clocks, always</div>
+          <div class="d">Paris and Douala, side by side. A shopkeeper should never have to do
+            arithmetic to know whether that sign-in was theirs.</div></div></div>
+      <div class="l"><svg><use href="#i-cadenas"/></svg>
+        <div><div class="t">The same footer, every time</div>
+          <div class="d">Nobody from TOTEM asks for a code, and nobody ever asks for a Mobile Money
+            PIN. Repeated in every letter, so the exception is loud.</div></div></div>
+    </div>
+  </div>
+</div>

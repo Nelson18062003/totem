@@ -1,0 +1,288 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — douala-akwa-01</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .entete{display:flex;align-items:center;gap:16px;padding:16px 20px}
+  .entete .id{display:flex;align-items:center;gap:12px}
+  .entete .actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .sante{display:grid;grid-template-columns:1fr 1fr;gap:12px 32px}
+  .modem-tete{display:flex;align-items:flex-start;gap:24px}
+  .modem-tete .nom{font-size:14px;line-height:20px;font-weight:700}
+  .modem-tete .qui{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .modem-tete .solde{margin-left:auto;text-align:right}
+  .modem-tete .solde .m{font-size:20px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .modem-tete .solde .m .cur{font-size:13px;line-height:20px;font-weight:400;color:var(--tertiaire)}
+  .modem-tete .solde .q{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .modem-lignes{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px 32px}
+  .paire{display:flex;align-items:center;gap:12px;font-size:13px;line-height:20px}
+  .paire .l{color:var(--tertiaire);width:96px;flex:none}
+  .paire .v{margin-left:auto;text-align:right}
+  .mesure .fait{display:flex;align-items:center;gap:8px;width:168px;flex:none;
+    font-size:12px;line-height:16px;color:var(--secondaire);white-space:nowrap}
+  .mesure .fait svg{stroke:var(--tertiaire);flex:none}
+  .semaine{display:flex;align-items:flex-end;gap:12px;height:96px}
+  .semaine .j{display:flex;flex-direction:column;align-items:center;gap:8px;width:24px}
+  .semaine .j .c{font-size:11px;line-height:16px;color:var(--tertiaire)}
+  .semaine .j .b{width:24px;border-radius:6px 6px 0 0;background:var(--plein)}
+  .semaine .j .b.fort{background:var(--laterite)}
+  .semaine .j .n{font-size:11px;line-height:16px;color:var(--tertiaire)}
+  .menu-hote{position:relative}
+  .menu{position:absolute;top:40px;right:0;width:296px;z-index:9;padding:8px;
+    background:var(--carte);border-radius:10px;box-shadow:var(--ombre-flottante);text-align:left}
+  .menu .titre-menu{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);padding:8px 8px 4px}
+  .menu button{display:flex;align-items:center;gap:10px;width:100%;height:32px;padding:0 8px;
+    border:none;background:transparent;border-radius:6px;
+    font:400 13px/20px 'DM Sans';color:var(--encre);cursor:pointer;text-align:left}
+  .menu button svg{stroke:var(--tertiaire);flex:none}
+  .menu button.grave{color:var(--negatif)} .menu button.grave svg{stroke:var(--negatif)}
+  .secret{display:flex;align-items:center;gap:8px;padding:12px 20px;
+    font-size:12px;line-height:16px;color:var(--tertiaire)}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="terminals">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>douala-akwa-01</h1>
+      <span class="ariane">Terminals / Douala · Akwa</span>
+      <div class="action-page">
+        <button class="btn btn--primaire"><svg><use href="#i-refresh"/></svg>Re-check both balances</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <!-- ============ identité et gestes ============ -->
+      <section class="carte">
+        <div class="entete">
+          <div class="id">
+            <span class="etat ok"><i class="pastille ok"></i>Active</span>
+            <span class="pale">·</span>
+            <span class="t13 doux">heard from 12s ago</span>
+            <span class="chip version">stable-2.4.2</span>
+            <span class="chip">in service since 12 March 2026</span>
+          </div>
+          <div class="actions">
+            <div class="menu-hote">
+              <button class="btn btn--icone" aria-label="More actions for this terminal" aria-expanded="true">
+                <svg><use href="#i-menu"/></svg></button>
+              <!-- le menu est montré ouvert : c’est là que vivent les gestes rares
+                   et les gestes irréversibles, jamais dans la bande d’actions. -->
+              <div class="menu" role="menu">
+                <div class="titre-menu">Rare</div>
+                <button role="menuitem"><svg class="ic16"><use href="#i-releases"/></svg>Send stable-2.4.2 to this terminal</button>
+                <button role="menuitem"><svg class="ic16"><use href="#i-console"/></svg>Open a shell · logged, 15m</button>
+                <button role="menuitem"><svg class="ic16"><use href="#i-refresh"/></svg>Restart this terminal</button>
+                <div class="titre-menu">Irreversible · asks for your code</div>
+                <button role="menuitem" class="grave"><svg class="ic16"><use href="#i-attention"/></svg>Pause this terminal</button>
+                <button role="menuitem" class="grave"><svg class="ic16"><use href="#i-cadenas"/></svg>Disconnect this terminal forever</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="duo">
+        <div class="colonne principal">
+
+          <!-- ============ constantes de la machine ============ -->
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>The machine</h2>
+              <div class="a-droite">Raspberry Pi 4 · 4 GB · read every 30s</div>
+            </div>
+            <div class="carte-corps">
+              <div class="sante">
+                <div class="mesure"><span class="l">Processor</span>
+                  <span class="jauge"><span style="width:12%"></span></span><span class="v">12%</span></div>
+                <div class="mesure"><span class="l">Temperature</span>
+                  <span class="jauge"><span style="width:47%"></span></span><span class="v">48°C</span></div>
+                <div class="mesure"><span class="l">Memory</span>
+                  <span class="jauge"><span style="width:34%"></span></span><span class="v">1.4 GB</span></div>
+                <div class="mesure"><span class="l">Storage</span>
+                  <span class="jauge"><span style="width:31%"></span></span><span class="v">9.1 GB</span></div>
+                <div class="mesure"><span class="l">Power</span>
+                  <span class="fait"><svg class="ic16"><use href="#i-prise"/></svg>Mains · no cut today</span>
+                  <span class="v">Stable</span></div>
+                <div class="mesure"><span class="l">Running for</span>
+                  <span class="fait"><svg class="ic16"><use href="#i-horloge"/></svg>No reboot since 6 July</span>
+                  <span class="v">31 days</span></div>
+              </div>
+            </div>
+            <div class="carte-pied">
+              Storage card written 41 times today — a terminal that writes little is a terminal that lasts
+              <span class="a-droite">next reading in 18s</span>
+            </div>
+          </section>
+
+          <!-- ============ modem A ============ -->
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>Modem A · slot 1</h2>
+              <div class="a-droite"><span class="chip orange">Orange ··4177</span></div>
+            </div>
+            <div class="carte-corps">
+              <div class="modem-tete">
+                <div>
+                  <div class="nom">WONDER PHONE</div>
+                  <div class="qui">M. Kamga · +237 696 103 864</div>
+                  <a class="btn btn--sm btn--secondaire" href="tel:+237696103864" style="margin-top:8px">
+                    <svg><use href="#i-telephone"/></svg>Call M. Kamga</a>
+                </div>
+                <div class="solde">
+                  <div class="m">6,335,788.6 <span class="cur">FCFA</span></div>
+                  <div class="q">balance confirmed at 14:02</div>
+                </div>
+              </div>
+              <div class="modem-lignes">
+                <div class="paire"><span class="l">Signal</span>
+                  <span class="v"><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>26 of 31</em></span></span></div>
+                <div class="paire"><span class="l">Network</span><span class="v">Orange CM · 4G</span></div>
+                <div class="paire"><span class="l">Last message</span><span class="v">13:58 — payment received</span></div>
+                <div class="paire"><span class="l">Today</span><span class="v">63 messages · 9 receipts</span></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ modem B ============ -->
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>Modem B · slot 2</h2>
+              <div class="a-droite"><span class="chip mtn">MTN ··9021</span></div>
+            </div>
+            <div class="carte-corps">
+              <div class="modem-tete">
+                <div>
+                  <div class="nom">KAMGA SARL</div>
+                  <div class="qui">M. Kamga · +237 675 402 118</div>
+                </div>
+                <div class="solde">
+                  <div class="m">912,400 <span class="cur">FCFA</span></div>
+                  <div class="q">balance confirmed at 13:47</div>
+                </div>
+              </div>
+              <div class="modem-lignes">
+                <div class="paire"><span class="l">Signal</span>
+                  <span class="v"><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>23 of 31</em></span></span></div>
+                <div class="paire"><span class="l">Network</span><span class="v">MTN CM · 4G</span></div>
+                <div class="paire"><span class="l">Last message</span><span class="v">12:11 — balance</span></div>
+                <div class="paire"><span class="l">Today</span><span class="v">18 messages · 2 receipts</span></div>
+              </div>
+            </div>
+          </section>
+
+
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>This week</h2>
+              <div class="a-droite">messages understood, day by day</div>
+            </div>
+            <div class="carte-corps">
+              <div class="semaine">
+                <div class="j"><span class="c">86</span><span class="b" style="height:44px"></span><span class="n">Mon</span></div>
+                <div class="j"><span class="c">124</span><span class="b" style="height:64px"></span><span class="n">Tue</span></div>
+                <div class="j"><span class="c">71</span><span class="b" style="height:36px"></span><span class="n">Wed</span></div>
+                <div class="j"><span class="c">98</span><span class="b" style="height:50px"></span><span class="n">Thu</span></div>
+                <div class="j"><span class="c">62</span><span class="b" style="height:32px"></span><span class="n">Fri</span></div>
+                <div class="j"><span class="c">44</span><span class="b" style="height:22px"></span><span class="n">Sat</span></div>
+                <div class="j"><span class="c">81</span><span class="b fort" style="height:42px"></span><span class="n">Today</span></div>
+              </div>
+            </div>
+            <div class="carte-pied">
+              614 messages this week · 71 receipts
+              <span class="a-droite">busiest hour: Tuesday, 11:00 — 34 messages</span>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============ le panneau de droite ============ -->
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div>
+              <div class="titre">Today on this terminal</div>
+              <div class="sous">81 messages understood · 11 receipts</div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <div class="fil">
+              <div class="ev">
+                <span class="h">14:02</span>
+                <span class="ic accent"><svg><use href="#i-doc"/></svg></span>
+                <div class="c">
+                  <div class="t">Receipt issued again<span class="chip accent">18 s</span></div>
+                  <div class="d">TM-2026-0805-0075 rebuilt as a transfer, at Nelson’s request from this console.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">13:58</span>
+                <span class="ic ok"><svg><use href="#i-check-cercle"/></svg></span>
+                <div class="c">
+                  <div class="t">Payment received · 25,000 FCFA</div>
+                  <div class="d">Understood from an Orange message, receipt sent to the shop in 4s.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">13:47</span>
+                <span class="ic"><svg><use href="#i-sim"/></svg></span>
+                <div class="c">
+                  <div class="t">Both balances re-checked</div>
+                  <div class="d">Asked by the shop from the Telegram robot — no PIN involved.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">Tue 09:12</span>
+                <span class="ic ok"><svg><use href="#i-releases"/></svg></span>
+                <div class="c">
+                  <div class="t">Moved to stable-2.4.2</div>
+                  <div class="d">Took 3m 40s, between two customers. Nothing was interrupted.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>Where it lives</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Private address</span><span class="v mono">100.84.19.7</span></div>
+              <div class="r"><span class="l">Reaches out</span><span class="v">outbound only · no open port</span></div>
+              <div class="r"><span class="l">Time zone</span><span class="v">Africa/Douala · UTC+1</span></div>
+              <div class="r"><span class="l">Serial</span><span class="v mono">10000000e4f21c9b</span></div>
+              <div class="r"><span class="l">Enrolled</span><span class="v">12 March 2026 · by Nelson</span></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>What is kept</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Receipts</span><span class="v">forever · in the cloud and here</span></div>
+              <div class="r"><span class="l">Journal</span><span class="v">90 days on the terminal</span></div>
+              <div class="r"><span class="l">Raw messages</span><span class="v">30 days, then only the reading</span></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>What an admin cannot do</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Read a PIN</span><span class="v">typed at the moment, stored nowhere</span></div>
+              <div class="r"><span class="l">Move money</span><span class="v">never — that belongs to the owner</span></div>
+              <div class="r"><span class="l">Erase a line</span><span class="v">the journal only grows</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+    </div>
+  </main>
+</div>

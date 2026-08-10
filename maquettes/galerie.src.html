@@ -1,0 +1,234 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — galerie des composants</title>
+<!--SYSTEME-->
+<style>
+  .galerie{padding:24px 32px;display:flex;flex-direction:column;gap:24px}
+  .demo{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+  .reglet{display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid var(--hairline)}
+  .reglet .cote{width:104px;flex:none;font-size:11px;line-height:16px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--tertiaire)}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="fleet">
+<div class="app">
+  <!-- ======================= rail ======================= -->
+  <!--RAIL-->
+
+  <main>
+    <!-- ======================= barre haute ======================= -->
+    <header class="barre">
+      <h1>Component gallery</h1>
+      <span class="ariane">Design system · v2</span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="galerie">
+      <!-- échelle typographique -->
+      <section class="carte">
+        <div class="carte-tete"><h2>Type scale — seven sizes, two weights</h2>
+          <div class="a-droite">DM Sans 400 / 700 · tabular numerals</div></div>
+        <div class="carte-corps">
+          <div class="reglet"><span class="cote">11 · overline</span><span class="surtitre">Sync backlog</span></div>
+          <div class="reglet"><span class="cote">12 · meta</span><span class="t12 doux">10 in place · 1 roaming · checked 14:02</span></div>
+          <div class="reglet"><span class="cote">13 · body</span><span class="t13">The terminal writes its own journal — the same one you would read over SSH.</span></div>
+          <div class="reglet"><span class="cote">14 · emphasis</span><span class="t14"><b>douala-akwa-01</b> · Douala, Akwa</span></div>
+          <div class="reglet"><span class="cote">16 · section</span><span class="t16"><b>6,335,788.6 FCFA</b></span></div>
+          <div class="reglet"><span class="cote">20 · page</span><span class="t20">Fleet overview</span></div>
+          <div class="reglet" style="border-bottom:none"><span class="cote">28 · figure</span><span class="t28">1,412</span></div>
+        </div>
+      </section>
+
+      <!-- boutons -->
+      <section class="carte">
+        <div class="carte-tete"><h2>Actions — one filled button per screen</h2>
+          <div class="a-droite">28 · 32 · 40 px</div></div>
+        <div class="carte-corps">
+          <div class="demo">
+            <button class="btn btn--primaire"><svg><use href="#i-plus"/></svg>New client</button>
+            <button class="btn btn--secondaire"><svg><use href="#i-refresh"/></svg>Re-check balance</button>
+            <button class="btn btn--fantome">Export ledger</button>
+            <button class="btn btn--danger"><svg><use href="#i-attention"/></svg>Revoke access</button>
+            <button class="btn btn--accent"><svg><use href="#i-etincelle"/></svg>Promote to stable</button>
+            <button class="btn btn--icone"><svg><use href="#i-menu"/></svg></button>
+            <button class="btn" disabled>Re-send invite</button>
+          </div>
+          <div class="demo" style="margin-top:16px">
+            <button class="btn btn--sm btn--secondaire">Small · 28</button>
+            <button class="btn btn--secondaire">Default · 32</button>
+            <button class="btn btn--lg btn--primaire">Large · 40</button>
+            <span style="width:16px"></span>
+            <a class="onglet on" href="#">All <span class="compte">12</span></a>
+            <a class="onglet" href="#">Orange <span class="compte">8</span></a>
+            <a class="onglet" href="#">MTN <span class="compte">4</span></a>
+          </div>
+        </div>
+      </section>
+
+      <!-- états, pilules, instruments -->
+      <div class="colonnes c2">
+        <section class="carte">
+          <div class="carte-tete"><h2>States &amp; pills</h2></div>
+          <div class="carte-corps">
+            <div class="demo">
+              <span class="etat ok"><i class="pastille ok"></i>Active</span>
+              <span class="etat attention"><i class="pastille attention"></i>Roaming SIM</span>
+              <span class="etat danger"><i class="pastille danger"></i>Offline</span>
+              <span class="etat muet"><i class="pastille muet"></i>Removed</span>
+            </div>
+            <div class="demo" style="margin-top:16px">
+              <span class="chip orange">Orange ··4177</span>
+              <span class="chip mtn">MTN ··9021</span>
+              <span class="chip version">stable-2.4.2</span>
+              <span class="chip ok">resolved · 14m</span>
+              <span class="chip attention">on battery</span>
+              <span class="chip danger">2 retries</span>
+              <span class="chip accent">canary</span>
+              <span class="chip">owner</span>
+            </div>
+          </div>
+        </section>
+        <section class="carte">
+          <div class="carte-tete"><h2>Instruments</h2><div class="a-droite">drawn by hand</div></div>
+          <div class="carte-corps">
+            <div class="demo" style="gap:24px">
+              <span class="signal">
+                <svg viewBox="0 0 20 13"><g fill="currentColor" stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/>
+                  <rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/>
+                  <rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg>
+                <em>4/5</em></span>
+              <span class="signal">
+                <svg viewBox="0 0 20 13"><g fill="currentColor" stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#8a6d1f"/>
+                  <rect x="4.2" y="6" width="3" height="7" rx="1" fill="#8a6d1f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#e0dcd7"/>
+                  <rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg>
+                <em>2/5</em></span>
+              <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none">
+                <path d="M0 24 L14 21 L28 25 L42 14 L56 18 L70 9 L84 12 L98 5 L98 32 L0 32Z" fill="#9a4b2e" opacity=".10" stroke="none"/>
+                <path d="M0 24 L14 21 L28 25 L42 14 L56 18 L70 9 L84 12 L98 5" stroke="#9a4b2e" stroke-width="1.5" fill="none"/>
+                <circle cx="98" cy="5" r="2.4" fill="#9a4b2e" stroke="none"/></svg>
+              <span class="interrupteur on"></span>
+              <span class="interrupteur"></span>
+            </div>
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
+              <div class="mesure"><span class="l">Battery</span>
+                <span class="jauge attention"><span style="width:76%"></span></span><span class="v">76%</span></div>
+              <div class="mesure"><span class="l">Disk</span>
+                <span class="jauge"><span style="width:31%"></span></span><span class="v">31%</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpis k4">
+        <div class="kpi"><div class="haut"><div><div class="l">SMS this week</div>
+          <div class="v">1,412</div><div class="s">96 receipts issued</div></div>
+          <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none">
+            <path d="M0 26 L16 22 L32 24 L48 15 L64 17 L80 8 L98 6 L98 32 L0 32Z" fill="#9a4b2e" opacity=".10" stroke="none"/>
+            <path d="M0 26 L16 22 L32 24 L48 15 L64 17 L80 8 L98 6" stroke="#9a4b2e" stroke-width="1.5"/>
+            <circle cx="98" cy="6" r="2.4" fill="#9a4b2e" stroke="none"/></svg></div></div>
+        <div class="kpi"><div class="l">Terminals</div>
+          <div class="v">7<span class="unite">/ 7 online</span></div><div class="s">all reporting</div></div>
+        <div class="kpi"><div class="l">Sync backlog</div>
+          <div class="v">0</div><div class="s" style="color:var(--positif)">everything delivered</div></div>
+        <div class="kpi"><div class="l">Release</div>
+          <div class="v petite">stable-2.4.2</div><div class="s">7/7 up to date</div></div>
+      </div>
+
+      <!-- table + panneau -->
+      <div class="duo">
+        <section class="carte principal">
+          <div class="carte-tete"><h2>Table — 44px rows, numbers right</h2>
+            <div class="a-droite"><span class="pastille ok"></span>auto-refresh · 5s</div></div>
+          <table class="tbl">
+            <thead><tr><th>Terminal</th><th>Status</th><th>Version</th><th>Signal</th>
+              <th class="num">Balance</th><th class="num">Last seen</th></tr></thead>
+            <tbody>
+              <tr><td><div class="cellule-double"><span class="p">douala-akwa-01</span><span class="s">Douala · Akwa</span></div></td>
+                <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                <td><span class="chip version">stable-2.4.2</span></td>
+                <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                <td class="num"><b>6,335,788.6</b> <span class="t12 pale">FCFA</span></td>
+                <td class="num pale">12s ago</td></tr>
+              <tr class="survol"><td><div class="cellule-double"><span class="p">yaounde-mvan-01</span><span class="s">Yaoundé · Mvan</span></div></td>
+                <td><span class="etat attention"><i class="pastille attention"></i>Roaming SIM</span></td>
+                <td><span class="chip version">stable-2.4.2</span></td>
+                <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#8a6d1f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#8a6d1f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#e0dcd7"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>2/5</em></span></td>
+                <td class="num pale">—</td>
+                <td class="num pale">19s ago</td></tr>
+              <tr class="choisie"><td><div class="cellule-double"><span class="p">bafoussam-01</span><span class="s">Bafoussam</span></div></td>
+                <td><span class="etat attention"><i class="pastille attention"></i>On battery</span></td>
+                <td><span class="chip version">stable-2.4.2</span></td>
+                <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                <td class="num pale">—</td>
+                <td class="num pale">26s ago</td></tr>
+            </tbody>
+          </table>
+          <div class="carte-pied">7 terminals · sorted by last seen<span class="a-droite">1 warning · 0 offline</span></div>
+        </section>
+
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div class="avatar">MK</div>
+            <div><div class="titre">M. Kamga</div><div class="sous">Wonder Phone · Douala, Akwa</div></div>
+            <button class="btn btn--icone" style="margin-left:auto"><svg><use href="#i-fermer"/></svg></button>
+          </div>
+          <div class="bloc"><h3>Attributed SIMs · 2</h3>
+            <div class="dl">
+              <div class="r"><span class="l"><span class="chip orange">Orange ··4177</span></span>
+                <span class="v fort">6,335,788.6 FCFA</span></div>
+              <div class="r"><span class="l"><span class="chip mtn">MTN ··9021</span></span>
+                <span class="v fort">912,400 FCFA</span></div>
+            </div>
+          </div>
+          <div class="bloc"><h3>Recent activity</h3>
+            <div class="fil">
+              <div class="ev"><span class="h">14:02</span>
+                <span class="ic accent"><svg><use href="#i-doc"/></svg></span>
+                <div class="c"><div class="t">Receipt re-issued</div>
+                  <div class="d">TM-2026-0805-0075 rebuilt as “transfer” · 18s</div></div></div>
+              <div class="ev"><span class="h">12:31</span>
+                <span class="ic ok"><svg><use href="#i-bouclier"/></svg></span>
+                <div class="c"><div class="t">Signed in</div>
+                  <div class="d">Authenticator app · Douala</div></div></div>
+            </div>
+          </div>
+          <div class="bloc" style="display:flex;gap:8px">
+            <button class="btn btn--secondaire" style="flex:1">Suspend</button>
+            <button class="btn btn--lg btn--primaire" style="flex:1">Edit attributions</button>
+          </div>
+        </aside>
+      </div>
+
+      <!-- bandeau, vide, infobulle -->
+      <div class="colonnes c2">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="bandeau"><svg class="ic20" style="color:var(--laterite)"><use href="#i-etincelle"/></svg>
+            <span><b>Canary is ahead</b> — main @ e4f21c9 has been running in Paris for 3 h 12m.</span>
+            <span class="a-droite"><button class="btn btn--sm btn--secondaire">Compare</button></span></div>
+          <div style="position:relative;height:60px">
+            <span class="infobulle" style="left:0;top:0">Last heartbeat 14:02:31 · 12s ago</span>
+          </div>
+        </div>
+        <section class="carte"><div class="carte-tete"><h2>Empty state — says the cause, offers one action</h2></div>
+          <div class="vide"><div class="t">No command is running</div>
+            <div class="d">Every gesture you send from this console lands here, with who and when.</div>
+            <button class="btn btn--secondaire">See the last 30 days</button></div></section>
+      </div>
+    </div>
+  </main>
+</div>

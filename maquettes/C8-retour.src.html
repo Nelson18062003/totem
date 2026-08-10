@@ -1,0 +1,161 @@
+<meta charset="utf-8"><title>TOTEM — I can't get in</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Le chemin de retour. =====
+     Deux besoins distincts, qu'on confond toujours et qu'il faut séparer :
+       COUPER — le téléphone est entre d'autres mains, il faut fermer, tout de
+       suite, et ça n'exige aucune preuve d'identité forte : fermer une porte
+       n'a jamais fait de mal à personne.
+       RENTRER — depuis un autre appareil, et là il faut une preuve.
+     L'ordre à l'écran suit l'urgence : on coupe d'abord, on rentre ensuite.
+     Et il y a TOUJOURS quelqu'un au bout : la propriétaire pour l'opérateur et
+     le lecteur, le super-admin pour la propriétaire. Personne ne reste dehors
+     de son propre argent avec personne à appeler. */
+  body{background:var(--fond);min-height:844px;position:relative;padding-bottom:24px}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .titre-p{padding:4px 16px 16px}
+  .titre-p h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .titre-p .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  /* D'abord fermer. Rouge, en haut, sans rien demander. */
+  .urgent{margin:0 16px 24px;padding:16px;border-radius:12px;background:var(--carte);
+    box-shadow:inset 0 0 0 2px #bc4e4e}
+  .urgent .haut{display:flex;gap:12px;align-items:flex-start}
+  .urgent .rond{width:40px;height:40px;border-radius:12px;background:var(--negatif-fond);
+    display:grid;place-items:center;flex:none}
+  .urgent .rond svg{stroke:var(--negatif)}
+  .urgent .t{font-size:15px;line-height:20px;font-weight:700}
+  .urgent .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:4px}
+  .urgent .btn{width:100%;height:48px;margin-top:16px;font-size:15px}
+  .urgent .note{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:12px}
+  /* Le chemin qui n'exige aucun appareil. Quelqu'un dont le téléphone vient
+     d'être arraché ne peut pas ouvrir un écran : il peut emprunter un combiné
+     et envoyer un mot. Un secours qui suppose l'objet perdu n'est pas un
+     secours. */
+  .urgent .sans-rien{margin-top:16px;padding:12px;border-radius:8px;background:var(--fond2)}
+  .urgent .sans-rien .t{font-size:13px;line-height:20px;font-weight:700}
+  .urgent .sans-rien .d{font-size:12px;line-height:16px;color:var(--secondaire);margin-top:4px}
+
+  .section{padding:0 16px 12px}
+  .section h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+
+  .voies{margin:0 16px 16px;background:var(--carte);border-radius:12px;
+    box-shadow:var(--ombre);overflow:hidden}
+  .voies .v{display:flex;gap:12px;align-items:flex-start;padding:16px;min-height:56px}
+  .voies .v+.v{border-top:1px solid var(--hairline)}
+  .voies .ic{width:32px;height:32px;border-radius:8px;background:var(--fond2);
+    display:grid;place-items:center;flex:none}
+  .voies .ic svg{stroke:var(--secondaire)}
+  .voies .t{font-size:13px;line-height:20px;font-weight:700}
+  .voies .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .voies .v.eteinte{cursor:default}
+  .voies .v.eteinte .ic{background:var(--fond2)}
+  .voies .v.eteinte .t{color:var(--tertiaire)}
+  .voies .chev{margin-left:auto;width:20px;height:20px;stroke:var(--tertiaire);flex:none;
+    align-self:center}
+
+  /* Le dernier recours : un humain, nommé, joignable. */
+  .humain{margin:0 16px 16px;padding:16px;border-radius:12px;background:var(--sable)}
+  .humain .haut{display:flex;gap:12px;align-items:center}
+  .humain .av{width:44px;height:44px;border-radius:999px;background:var(--carte);
+    display:grid;place-items:center;flex:none;font-size:15px;font-weight:700;color:var(--laterite)}
+  .humain .t{font-size:15px;line-height:20px;font-weight:700}
+  .humain .r{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .humain .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:12px}
+  .humain .btn{width:100%;height:44px;margin-top:16px}
+
+  .pendant{margin:0 16px 32px;display:flex;gap:12px;padding:16px;border-radius:12px;
+    background:var(--fond2)}
+  .pendant svg{width:20px;height:20px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+  .pendant .t{font-size:12px;line-height:16px;color:var(--secondaire)}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>21:14</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="titre-p">
+  <h1>You can't get in</h1>
+  <p class="sous">Two different problems, and they are not solved in the same order. Close
+    first, then come back.</p>
+</div>
+
+<!-- 1 · fermer — ne demande aucune preuve, parce que fermer ne nuit à personne -->
+<div class="urgent">
+  <div class="haut">
+    <span class="rond"><svg class="ic20"><use href="#i-fermer"/></svg></span>
+    <div>
+      <div class="t">Is your phone in someone else's hands?</div>
+      <div class="d">Close everything first. It takes one tap and we ask you nothing — closing
+        a door has never hurt anyone.</div>
+    </div>
+  </div>
+  <button class="btn btn--danger"><svg><use href="#i-fermer"/></svg>Close every session, now</button>
+  <div class="sans-rien">
+    <div class="t">No phone at all in your hands?</div>
+    <div class="d">From any handset you can borrow, send <b>STOP</b> to <b>8 12 40</b>. It closes
+      everything the same way this button does, and it costs nothing.</div>
+  </div>
+  <p class="note">Mme Fotso is told, and so is TOTEM. Your receipts and your balances are
+    untouched — and your Mobile Money PIN was never here to take.</p>
+</div>
+
+<!-- 2 · rentrer -->
+<div class="section"><h2>Now, getting back in</h2></div>
+<div class="voies">
+  <button class="v rangee" type="button">
+    <span class="ic"><svg class="ic16"><use href="#i-doc"/></svg></span>
+    <div><div class="t">A code from the paper in your drawer</div>
+      <div class="d">6 of your 10 are still good · works with no phone and no network</div></div>
+    <svg class="chev"><use href="#i-chevron"/></svg>
+  </button>
+  <button class="v rangee" type="button">
+    <span class="ic"><svg class="ic16"><use href="#i-empreinte"/></svg></span>
+    <div><div class="t">Set up your new phone's lock</div>
+      <div class="d">Needs one code from the paper first, to prove the phone is yours</div></div>
+    <svg class="chev"><use href="#i-chevron"/></svg>
+  </button>
+  <div class="v eteinte">
+    <span class="ic"><svg class="ic16"><use href="#i-envoi"/></svg></span>
+    <div><div class="t">A code by SMS to ·· 42 18</div>
+      <div class="d">Unavailable — that number is on the phone you just lost</div></div>
+  </div>
+</div>
+
+<!-- 3 · l'humain au bout -->
+<div class="humain">
+  <div class="haut">
+    <span class="av">MF</span>
+    <div><div class="t">Mme Fotso</div><div class="r">owner of Marché · Bafoussam</div></div>
+  </div>
+  <p class="d">If the paper is gone too, she can let you back in. She sees your name, what you
+    are asking, and from where — then she says yes or no from her own phone.</p>
+  <button class="btn btn--secondaire"><svg><use href="#i-clients"/></svg>Ask Mme Fotso to let me back in</button>
+</div>
+
+<div class="pendant">
+  <svg><use href="#i-boutique"/></svg>
+  <span class="t">The shop keeps working while you sort this out. The terminal reads its
+    messages and issues its receipts on its own — it has never needed you signed in.</span>
+</div>
