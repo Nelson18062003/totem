@@ -20,7 +20,7 @@ import { entrerParCle, lieuDepuis, optionsEntree } from "@/lib/cles";
 import { ouvrirSession } from "@/lib/sessions";
 import { contexteAppareil } from "@/lib/garde";
 import { noterEntree } from "@/lib/entrees";
-import { accesDe } from "@/lib/comptes";
+import { accesDeOuPlateforme } from "@/lib/plateforme";
 import { langueServeur } from "@/lib/langue-serveur";
 import { lireUne } from "@/lib/base";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
@@ -82,7 +82,11 @@ export async function POST(req: Request) {
   // fois.
   const personne = await lireUne<{ id: number; nom: string; etat: string }>(
     `personnes?id=eq.${r.personne}&select=id,nom,etat&limit=1`);
-  const acces = await accesDe(r.personne);
+  // « accesDe » ne connaît que les commerces : un administrateur de
+  // plateforme n'en a aucun, et se ferait refuser ici. Sans cette ligne, le
+  // super-administrateur n'entre QUE par le courriel — l'exact inverse de la
+  // règle de sa propre porte, où le doigt passe avant tout.
+  const acces = await accesDeOuPlateforme(r.personne);
   if (!personne || personne.etat !== "actif" || !acces) {
     await noterEntree({
       personne: r.personne, issue: "refusee", moyen: "cle", appareil, lieu: endroit,

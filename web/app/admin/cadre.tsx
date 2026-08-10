@@ -87,6 +87,10 @@ export function CadreDuCompte({
   titre,
   sous,
   action,
+  /** Faux quand la personne n'est pas administratrice : elle voit la page des
+   *  demandes, et rien d'autre. Un menu dont deux entrées sur trois renvoient
+   *  ailleurs sans rien dire se lit comme une panne. */
+  nav = true,
   children,
 }: {
   langue: Langue;
@@ -95,6 +99,7 @@ export function CadreDuCompte({
   sous?: string;
   /** Un geste propre à l'écran, posé à droite du titre. */
   action?: React.ReactNode;
+  nav?: boolean;
   children: React.ReactNode;
 }) {
   const t = textesAdminPorte[langue];
@@ -115,7 +120,7 @@ export function CadreDuCompte({
             premier écran. */}
         <nav
           aria-label={t.console}
-          className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1"
+          className={`-mx-1 gap-1 overflow-x-auto px-1 pb-1 ${nav ? "flex" : "hidden"}`}
         >
           {PAGES.map(({ href, cle }) => {
             const actif = cle === ici;

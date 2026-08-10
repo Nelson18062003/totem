@@ -68,6 +68,11 @@ const OUVERT = [
   // règle, et le code de secours attend une minute avant d'ouvrir — le temps
   // que la lettre d'avertissement arrive AVANT lui, plutôt qu'après.
   "/admin/entree",
+  // Le code de secours de la console. « /api/code » ne le couvre PAS —
+  // l'adresse est « /api/admin/code/… » — et sans cette ligne le seul chemin
+  // de secours du super-administrateur répond 401 à qui n'est pas entré,
+  // c'est-à-dire à la seule personne qui en a besoin.
+  "/api/admin/code",
 ];
 
 export async function middleware(req: NextRequest) {

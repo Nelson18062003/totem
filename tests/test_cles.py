@@ -228,9 +228,19 @@ class ClesDecisions(unittest.TestCase):
 
     def test_la_signature_ne_suffit_pas_a_entrer(self):
         """Une personne partie, suspendue, ou dont la clé a été reprise garde
-        un téléphone qui signe parfaitement. Le droit se relit en base."""
+        un téléphone qui signe parfaitement. Le droit se relit en base.
+
+        Le test accepte les DEUX lectures d'accès — celle qui ne connaît que
+        les commerces et celle qui connaît aussi la plateforme. Ce qu'il garde
+        n'est pas un nom de fonction, c'est le fait qu'on interroge la base
+        avant d'ouvrir. Exiger le nom exact avait déjà fait échouer ce test
+        pour une raison qui n'était pas la sienne.
+        """
         self.assertIn('etat !== "actif"', self.entrer)
-        self.assertIn("accesDe(", self.entrer)
+        self.assertRegex(
+            self.entrer, r"\bacces(?:De|DeOuPlateforme)\(",
+            "la route n'interroge plus la base sur le droit d'entrer : une "
+            "clé reprise ce matin rouvrirait la porte cet après-midi")
 
     def test_on_ne_pose_pas_de_cle_sur_un_appareil_partage(self):
         """Le contrôle doit être sur les DEUX temps : demander la phrase, et

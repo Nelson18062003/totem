@@ -148,6 +148,14 @@ téléphone (`docs/COMMENT-ON-ENTRE.md`) :
 | `COURRIER_CLE` | la clé du service d'envoi (Resend) | aucun code ne part : personne ne peut créer de compte ni entrer par mail |
 | `COURRIER_EXPEDITEUR` | `TOTEM <bonjour@votre-domaine>` — l'adresse doit être vérifiée chez le service | même chose : l'envoi est refusé |
 | `TOTEM_ORIGINE` | l'adresse exacte du site, `https://…` sans barre finale | le lien d'invitation ne se fabrique pas, et le verrouillage du téléphone déduit son domaine de la requête au lieu d'être figé |
+| `TOTEM_ADMIN` | l'adresse mail du fondateur de la plateforme | la console n'a aucun administrateur, et sa porte ne s'ouvre pour personne |
+
+`TOTEM_ADMIN` n'est pas `TOTEM_MOT_DE_PASSE` : ce sont **deux comptes
+différents pour la même personne**, et c'est délibéré. Le mot de passe ouvre
+un commerce et sa caisse ; `TOTEM_ADMIN` ouvre la console qui surveille tous
+les commerces et **ne peut déclencher aucun mouvement d'argent**. Rabattre les
+deux sur un seul compte donnerait au commerçant la flotte entière, ou à
+l'administrateur les caisses qu'il surveille.
 
 **Ce qui se passe sans `COURRIER_CLE` :** rien n'est inventé. La fonction
 d'envoi ne prétend PAS avoir envoyé — elle renvoie un échec nommé, et l'écran

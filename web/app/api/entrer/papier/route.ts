@@ -32,7 +32,7 @@ import { COOKIE_SESSION, signerSession } from "@/lib/session";
 import { ouvrirSession } from "@/lib/sessions";
 import { contexteAppareil } from "@/lib/garde";
 import { noterEntree } from "@/lib/entrees";
-import { accesDe } from "@/lib/comptes";
+import { accesDeOuPlateforme } from "@/lib/plateforme";
 import { langueServeur } from "@/lib/langue-serveur";
 import { lireUne } from "@/lib/base";
 import { adresseNormalisee } from "@/lib/code-entree";
@@ -113,7 +113,9 @@ export async function POST(req: Request) {
   // Le code, lui, est DÉJÀ brûlé à cet instant, et c'est volontaire : un code
   // qu'on rendrait à qui n'a plus le droit d'entrer serait un code qu'on peut
   // essayer autant de fois qu'on veut.
-  const acces = await accesDe(personne.id);
+  // Voir « /api/cle/entrer » : un administrateur de plateforme n'a pas de
+  // commerce, et « accesDe » le refuserait.
+  const acces = await accesDeOuPlateforme(personne.id);
   if (personne.etat !== "actif" || !acces) {
     await noterEntree({
       personne: personne.id, issue: "refusee", moyen: "papier", appareil, lieu,
