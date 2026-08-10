@@ -231,3 +231,67 @@ class EcranEntree(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EntreeQuotidienneRaccordee(unittest.TestCase):
+    """Le chemin « code par mail » de tous les jours existe-t-il vraiment ?
+
+    Il a manqué pendant tout un chantier sans que rien ne le dise. L'écran
+    était construit, les textes écrits, les routes en face existaient — mais
+    elles n'acceptaient QU'UN JETON D'INVITATION. Une personne qui entrait son
+    adresse voyait « six chiffres viennent de partir » et n'en recevait
+    aucun ; et comme l'écran n'a pas le droit de lire la réponse du serveur
+    (sinon il dirait qui a un compte), rien à l'écran ne pouvait le trahir.
+
+    Ce silence-là est exactement ce que ces contrôles gardent.
+    """
+
+    def setUp(self):
+        self.demander = (WEB / "app/api/code/demander/route.ts").read_text(encoding="utf-8")
+        self.verifier = (WEB / "app/api/code/verifier/route.ts").read_text(encoding="utf-8")
+
+    def test_demander_accepte_une_adresse_sans_jeton(self):
+        """Sans cette branche, l'entrée de tous les jours est un décor."""
+        self.assertRegex(
+            self.demander, r"if \(!jeton\)",
+            "la route de demande n'a plus de branche « sans jeton » : "
+            "l'entrée quotidienne par mail ne fonctionne plus")
+        self.assertIn(
+            "courriel", self.demander,
+            "la route de demande ne lit plus d'adresse dans le corps")
+
+    def test_verifier_accepte_une_adresse_sans_jeton(self):
+        self.assertRegex(
+            self.verifier, r"if \(!jeton\)",
+            "la route de vérification n'a plus de branche « sans jeton » : "
+            "les six chiffres de l'entrée quotidienne n'ouvrent plus rien")
+
+    def test_la_demande_repond_pareil_dans_tous_les_cas(self):
+        """Une adresse inconnue et une adresse cliente doivent produire le
+        MÊME mot. Sinon l'écran d'entrée devient un annuaire des clients."""
+        bloc = self.demander[self.demander.index("demanderPourUneEntree(brut"):]
+        # Une seule forme de réponse dans toute la fonction, et elle ne
+        # dépend d'aucun état du compte.
+        self.assertIn("const memeReponse =", bloc)
+        retours = re.findall(r"return (?!memeReponse\(\))\w+", bloc)
+        self.assertEqual(
+            retours, [],
+            f"cette fonction a une sortie qui n'est pas la réponse commune : "
+            f"{retours} — elle dirait alors si le compte existe")
+
+    def test_le_droit_d_entrer_se_relit_apres_le_code(self):
+        """Le code prouve l'adresse. Il ne dit rien du droit d'entrer : une
+        personne partie ou suspendue reçoit et recopie parfaitement ses six
+        chiffres."""
+        bloc = self.verifier[self.verifier.index("async function entrerAvecUnCode"):]
+        self.assertIn('etat !== "actif"', bloc)
+        self.assertRegex(bloc, r"\bacces(?:De|DeOuPlateforme)\(")
+
+    def test_la_porte_est_consultee_avant_la_comparaison(self):
+        """Sinon le chronomètre répond à la place de la porte : un attaquant
+        patient apprendrait, à la durée de la réponse, si son code était bon
+        malgré l'attente."""
+        bloc = self.verifier[self.verifier.index("async function entrerAvecUnCode"):]
+        self.assertLess(
+            bloc.index("attenteDeLaPorte("), bloc.index("verifierCode("),
+            "la comparaison a lieu avant la garde de lenteur")

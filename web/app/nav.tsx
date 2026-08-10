@@ -38,6 +38,11 @@ const liensSecondaires = [
   // Ce que TOTEM envoie, et ce qu'on veut recevoir. Tout le monde y a droit :
   // c'est sa propre boîte qu'on y règle, pas celle du commerce.
   { href: "/messages", cle: "lesMessages", Icone: IconInbox, pouvoir: "lire" },
+  // La console de la plateforme. Elle existait sans qu'aucun lien n'y mène :
+  // il fallait taper l'adresse pour l'atteindre, ce qui n'est pas un accès,
+  // c'est un secret. Le filtre par pouvoir fait le reste — un commerçant n'a
+  // pas « administrer », la ligne n'apparaît donc jamais chez lui.
+  { href: "/console", cle: "laConsole", Icone: IconGrid, pouvoir: "administrer" },
 ] as const satisfies readonly { href: string; cle: string; Icone: unknown; pouvoir: Pouvoir }[];
 
 /**

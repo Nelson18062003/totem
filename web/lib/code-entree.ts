@@ -59,6 +59,7 @@ export type LigneCode = {
   personne: number | null;
   invitation: number | null;
   courriel: string;
+  envoye_le: string | null;
   motif: Motif;
   expire_le: string;
   utilise_le: string | null;
@@ -131,10 +132,29 @@ export function memeEmpreinte(a: string, b: string): boolean {
 /** Combien de codes ont été demandés récemment pour cette adresse. */
 export async function demandesRecentes(courriel: string): Promise<number> {
   const depuis = new Date(Date.now() - FENETRE_DEMANDES_MS).toISOString();
+  // « envoye_le=not.is.null » : SEULS les codes réellement partis comptent.
+  //
+  // La limite existe pour protéger une boîte mail. Un code qui n'a jamais
+  // quitté nos murs — service de courrier en panne, clé absente, domaine pas
+  // encore vérifié — n'a dérangé personne : le faire compter punirait la
+  // personne pour une avarie qui n'est pas la sienne. Cinq envois ratés
+  // d'affilée l'auraient enfermée dehors une demi-heure.
   const lignes = await lire<{ id: number }>(
     `codes_entree?courriel=eq.${encodeURIComponent(adresseNormalisee(courriel))}`
-    + `&cree_le=gte.${depuis}&select=id`);
+    + `&cree_le=gte.${depuis}&envoye_le=not.is.null&select=id`);
   return lignes.length;
+}
+
+/**
+ * Noter qu'un code est bien parti.
+ *
+ * Appelée par « envois.ts » APRÈS que le service de courrier a accepté le
+ * message, jamais avant. C'est cette date qui fait entrer la demande dans le
+ * compte, et rien d'autre.
+ */
+export async function noterCodeEnvoye(id: number): Promise<boolean> {
+  return modifier(`codes_entree?id=eq.${id}&envoye_le=is.null`,
+                  { envoye_le: new Date().toISOString() });
 }
 
 export type Demande = {

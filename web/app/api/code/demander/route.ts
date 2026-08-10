@@ -32,6 +32,8 @@ import { ouvrirInvitation } from "@/lib/invitations";
 import { contexteAppareil } from "@/lib/garde";
 import { noterEntree } from "@/lib/entrees";
 import { lireUne } from "@/lib/base";
+import { adresseNormalisee } from "@/lib/code-entree";
+import { accesDeOuPlateforme } from "@/lib/plateforme";
 import { textesCode, attenteEnMots } from "@/lib/textes/code";
 import { envoyerCode } from "@/lib/envois";
 
@@ -46,11 +48,24 @@ export async function POST(req: Request) {
   const langue = await langueServeur();
   const t = textesCode[langue];
 
-  const corps = (await req.json().catch(() => null)) as { jeton?: unknown } | null;
+  const corps = (await req.json().catch(() => null)) as
+    { jeton?: unknown; courriel?: unknown } | null;
   const jeton = typeof corps?.jeton === "string" ? corps.jeton : "";
+
+  // DEUX CHEMINS ARRIVENT ICI, ET ILS NE SE GARDENT PAS PAREIL.
+  //
+  // Avec un jeton, c'est la PREMIÈRE fois : l'adresse est relue depuis
+  // l'invitation, jamais reçue du navigateur — c'est ce qui protège le lien
+  // qui traîne dans un groupe WhatsApp.
+  //
+  // Sans jeton, c'est l'entrée de TOUS LES JOURS : il n'y a pas d'invitation,
+  // seulement une adresse. On ne peut donc pas la relire ailleurs — mais on
+  // ne l'envoie qu'à elle-même, et rien de ce que la route répond ne dit si
+  // un compte existe. Une adresse inventée et une adresse cliente reçoivent
+  // exactement la même réponse.
   if (!jeton) {
-    return Response.json(
-      { refus: "indisponible", erreur: t.refus.indisponible.titre }, { status: 400 });
+    return demanderPourUneEntree(
+      typeof corps?.courriel === "string" ? corps.courriel : "", langue);
   }
 
   const inv = await ouvrirInvitation(jeton);
@@ -102,4 +117,58 @@ export async function POST(req: Request) {
   }
 
   return Response.json({ ok: true, avantRenvoi: RENVOI_MS });
+}
+
+/**
+ * L'entrée de tous les jours : une adresse, et rien d'autre.
+ *
+ * LA RÈGLE QUI GOUVERNE CETTE FONCTION : ELLE RÉPOND TOUJOURS PAREIL.
+ * Une adresse inconnue, une personne suspendue, une personne sans accès, une
+ * limite atteinte, un service de courrier en panne — tout produit le même
+ * « ok ». Si la réponse variait, il suffirait de taper des adresses et de
+ * lire le résultat pour dresser la liste des clients de TOTEM.
+ *
+ * Le prix est réel et assumé : la personne dont le compte est suspendu voit
+ * « six chiffres viennent de partir » et n'en reçoit aucun. Elle appellera.
+ * C'est moins grave que de livrer un annuaire à qui essaie.
+ *
+ * Le temps de réponse, lui, trahit un peu — une adresse connue déclenche un
+ * envoi, l'autre non. Ça se corrigerait en attendant artificiellement ; on ne
+ * le fait pas, parce qu'une porte lente pour tout le monde a un coût
+ * quotidien, et que ce qui fuit ici est infiniment moins précis que la
+ * réponse elle-même.
+ */
+async function demanderPourUneEntree(brut: string, langue: "fr" | "en") {
+  const memeReponse = () => Response.json({ ok: true, avantRenvoi: RENVOI_MS });
+  const courriel = brut.trim();
+  if (!courriel.includes("@")) return memeReponse();
+
+  const personne = await lireUne<{ id: number; nom: string; etat: string; langue: "fr" | "en" }>(
+    `personnes?courriel=eq.${encodeURIComponent(adresseNormalisee(courriel))}`
+    + `&select=id,nom,etat,langue&limit=1`);
+  if (!personne || personne.etat !== "actif") return memeReponse();
+
+  // Un compte sans accès n'entre nulle part : lui envoyer un code serait lui
+  // faire traverser tout le parcours pour être refusé à la fin.
+  const acces = await accesDeOuPlateforme(personne.id);
+  if (!acces) return memeReponse();
+
+  const { appareil, lieu } = await contexteAppareil();
+  const choisie = (await cookies()).get(COOKIE_LANGUE)?.value;
+  const commerce = acces.commerce
+    ? await lireUne<{ nom: string }>(
+        `commerces?id=eq.${encodeURIComponent(acces.commerce)}&select=nom&limit=1`)
+    : null;
+
+  await envoyerCode({
+    courriel,
+    motif: "entree",
+    commerce: commerce?.nom ?? "TOTEM",
+    personne: personne.id,
+    appareil, lieu,
+    langue: choisie === "en" || choisie === "fr" ? choisie : personne.langue,
+  });
+  // On ne regarde PAS le résultat : voir l'en-tête de cette fonction.
+  void langue;
+  return memeReponse();
 }

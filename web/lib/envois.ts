@@ -26,7 +26,7 @@
 // faut réessayer, attendre, ou prévenir quelqu'un.
 
 import {
-  ecrireCode, emettreCode, VIE_MS,
+  ecrireCode, emettreCode, noterCodeEnvoye, VIE_MS,
   type Emis, type LigneCode, type Motif,
 } from "./code-entree";
 import { envoyerCourriel, type Issue } from "./courrier";
@@ -109,8 +109,14 @@ export async function envoyerCode(d: DemandeCode): Promise<ResultatCode> {
     personne: d.personne,
   });
   if (!envoi.partie) {
+    // La ligne reste — rien ne s'efface — mais elle n'est PAS marquée
+    // partie, donc elle ne compte pas dans la limite des cinq demandes. Une
+    // panne de notre côté ne doit pas enfermer quelqu'un dehors.
     return { envoye: false, raison: "courrier", issue: envoi.issue, dit: envoi.dit };
   }
+  // C'est cette date, et elle seule, qui fait entrer la demande dans le
+  // compte des cinq par demi-heure.
+  await noterCodeEnvoye(ligne.id);
   return { envoye: true, ligne };
 }
 

@@ -276,3 +276,47 @@ class GardePartout(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AtteignableParUnLien(unittest.TestCase):
+    """Un écran sans lien n'est pas un accès, c'est un secret.
+
+    La console de la plateforme a existé une journée entière sans qu'aucun
+    lien n'y mène : il fallait connaître l'adresse et la taper. Elle passait
+    tous les autres contrôles — la garde était là, les rôles tenaient — et
+    elle était introuvable.
+    """
+
+    # Ce qui n'a délibérément pas de lien dans la navigation, et pourquoi.
+    SANS_LIEN = {
+        "/connexion": "la porte : on n'y va pas depuis l'intérieur",
+        "/entrer": "l'étape des six chiffres, atteinte depuis la porte",
+        "/retour": "atteint depuis la porte, par « je n'arrive plus à entrer »",
+        "/invitation": "atteint par un lien reçu, jamais depuis l'application",
+        "/papier": "atteint après l'invitation, et depuis les réglages",
+        "/admin": "la porte de la console, atteinte par son adresse propre",
+        "/sms": "ancienne adresse : elle ne fait que rediriger",
+    }
+
+    def test_chaque_ecran_est_atteignable_ou_justifie(self):
+        nav = (WEB / "app" / "nav.tsx").read_text(encoding="utf-8")
+        racines = set()
+        for f in (APP).rglob("page.tsx"):
+            rel = "/" + str(f.parent.relative_to(APP))
+            if rel == "/.":
+                continue
+            racine = "/" + rel.strip("/").split("/")[0]
+            racines.add(racine)
+        # Deux formes de lien coexistent dans « nav.tsx » : les listes
+        # déclarées (« href: "/gens" ») et les liens écrits à la main dans le
+        # pied de la barre (« href="/reglages" »). Les deux comptent — ce que
+        # ce test cherche, c'est un chemin, pas une syntaxe.
+        orphelins = [r for r in sorted(racines)
+                     if f'href: "{r}"' not in nav
+                     and f'href="{r}"' not in nav
+                     and r not in self.SANS_LIEN]
+        self.assertEqual(
+            orphelins, [],
+            f"ces écrans existent sans qu'aucun lien n'y mène : {orphelins}. "
+            "Ajoutez-les à « nav.tsx », ou inscrivez-les dans SANS_LIEN avec "
+            "la raison — un écran qu'il faut deviner n'est pas livré.")

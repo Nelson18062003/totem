@@ -21,6 +21,8 @@
 //
 //   COURRIER_CLE         la clé du fournisseur — server-only, jamais de
 //                        NEXT_PUBLIC_, jamais dans un fichier suivi par git
+//   COURRIER_POSTE       facultative — l'adresse du service. Sans elle,
+//                        Resend. Sert aux essais de bout en bout.
 //   COURRIER_EXPEDITEUR  « TOTEM <bonjour@totem.example> ». Le domaine doit
 //                        être vérifié chez le fournisseur, sinon tout est
 //                        refusé — et c'est aussi ce qui évite le dossier
@@ -46,7 +48,20 @@ import { inserer } from "./base";
 import { adresseNormalisee } from "./code-entree";
 import type { Genre, Message } from "./textes/courrier";
 
-const POSTE = "https://api.resend.com/emails";
+/**
+ * Où l'on dépose le message.
+ *
+ * Réglable, et ce n'est pas du zèle : écrite en dur, cette adresse rendait la
+ * plateforme INESSAYABLE de bout en bout. Impossible de la pointer vers un
+ * serveur d'essai, donc impossible de vérifier qu'une personne reçoit
+ * vraiment ses six chiffres et entre — la seule question qui compte, et la
+ * seule à laquelle aucun test unitaire ne répond.
+ *
+ * Elle sert accessoirement à changer de fournisseur : plusieurs parlent le
+ * même dialecte que Resend. Mais c'est la première raison qui l'a fait
+ * naître.
+ */
+const POSTE = process.env.COURRIER_POSTE || "https://api.resend.com/emails";
 
 export type Courrier = {
   destinataire: string;

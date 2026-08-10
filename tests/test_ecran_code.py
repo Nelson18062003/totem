@@ -222,16 +222,46 @@ class LesRoutes(unittest.TestCase):
             self.assertIn('moyen: "courriel"', code,
                           f"{fichier.parent.name} ne dit pas par où c'est passé")
 
-    def test_l_adresse_ne_vient_jamais_du_navigateur(self):
+    def test_sur_le_chemin_de_l_invitation_l_adresse_ne_vient_jamais_du_navigateur(self):
         """Le code part sur l'adresse que la propriétaire a saisie, pas sur
         celle qu'on tape ici. C'est ce qui protège le lien qui a circulé dans
-        un groupe WhatsApp de quarante personnes."""
+        un groupe WhatsApp de quarante personnes.
+
+        LA RÈGLE A DÛ ÊTRE PRÉCISÉE, ET NON AFFAIBLIE. Elle interdisait toute
+        adresse venue du navigateur, dans tout le fichier. C'était juste tant
+        que ces routes ne servaient qu'à l'invitation ; l'entrée de tous les
+        jours, elle, n'a AUCUNE invitation d'où relire une adresse — elle n'a
+        que celle qu'on lui donne.
+
+        Ce qui protège chaque chemin n'est donc pas le même, et le test le
+        dit maintenant :
+          · invitation — l'adresse est relue en base, jamais reçue ;
+          · entrée quotidienne — l'adresse reçue ne sert qu'à s'écrire à
+            elle-même, et la réponse est identique que le compte existe ou
+            non (voir « tests/test_ecran_entree.py »).
+
+        LA COUPE EST À « ouvrirInvitation », et pas ailleurs. Avant cette
+        ligne il n'y a que l'aiguillage — lire le corps pour savoir de quel
+        chemin il s'agit n'est pas s'en servir. Après, on est SUR le chemin de
+        l'invitation, et là l'adresse ne peut venir que de la base.
+        """
         for fichier in (VERIFIER, DEMANDER):
             code = sans_commentaires(lu(fichier))
+            debut = code.find("ouvrirInvitation(jeton)")
+            self.assertGreater(
+                debut, -1,
+                f"{fichier.parent.name} n'ouvre plus d'invitation : ce test ne "
+                "sait plus où commence le chemin qu'il garde")
+            code = code[debut:]
+            for marque in ("async function demanderPourUneEntree",
+                           "async function entrerAvecUnCode"):
+                if marque in code:
+                    code = code[:code.index(marque)]
             self.assertNotRegex(
                 code, r"corps\??\.courriel",
-                f"{fichier.parent.name} accepte une adresse envoyée par le "
-                "navigateur : le code partirait où l'on veut")
+                f"{fichier.parent.name} accepte, SUR LE CHEMIN DE "
+                "L'INVITATION, une adresse envoyée par le navigateur : le "
+                "code partirait où l'on veut")
             self.assertIn("inv.courriel", code)
 
 

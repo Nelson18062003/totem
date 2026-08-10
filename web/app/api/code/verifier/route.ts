@@ -38,6 +38,9 @@ import { langueServeur } from "@/lib/langue-serveur";
 import { attenteEnMots, textesCode } from "@/lib/textes/code";
 import { attenteDeLaPorte } from "../lenteur";
 import { donnerLAcces, personneDeLInvitation } from "../compte";
+import { lireUne } from "@/lib/base";
+import { adresseNormalisee } from "@/lib/code-entree";
+import { accesDeOuPlateforme } from "@/lib/plateforme";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +50,22 @@ export async function POST(req: Request) {
   const secret = process.env.SESSION_SECRET || "";
 
   const corps = (await req.json().catch(() => null)) as
-    { jeton?: unknown; code?: unknown } | null;
+    { jeton?: unknown; code?: unknown; courriel?: unknown } | null;
   const jeton = typeof corps?.jeton === "string" ? corps.jeton : "";
   const code = typeof corps?.code === "string" ? corps.code : "";
 
-  if (!jeton || !secret) {
+  if (!secret) {
     return Response.json(
       { refus: "indisponible", erreur: t.refus.indisponible.titre }, { status: 503 });
+  }
+
+  // Sans jeton, c'est l'entrée de tous les jours : le compte existe déjà, il
+  // n'y a ni invitation à consommer ni accès à donner. Tout le reste — la
+  // lenteur consultée avant la comparaison, l'usage unique, les refus
+  // indistinguables — est le même, et vit dans la fonction du bas.
+  if (!jeton) {
+    return entrerAvecUnCode(
+      typeof corps?.courriel === "string" ? corps.courriel : "", code, secret, langue);
   }
 
   const inv = await ouvrirInvitation(jeton);
@@ -158,4 +170,87 @@ export async function POST(req: Request) {
   });
 
   return Response.json({ ok: true, vers: `/invitation/${jeton}/facon` });
+}
+
+/**
+ * Les six chiffres de l'entrée quotidienne.
+ *
+ * L'ORDRE EST LE MÊME QUE PLUS HAUT, ET IL N'EST PAS INDIFFÉRENT : la porte
+ * est-elle lente ? — AVANT de comparer quoi que ce soit. Sinon un attaquant
+ * patient apprendrait, à la durée de la réponse, si son code était bon malgré
+ * l'attente.
+ *
+ * Aucun refus ne distingue « code faux », « code déjà servi », « adresse
+ * inconnue » ni « compte fermé » : même phrase, même code de réponse. Une
+ * porte qui explique pourquoi elle refuse apprend à qui insiste.
+ */
+async function entrerAvecUnCode(
+  brut: string, code: string, secret: string, langue: "fr" | "en",
+) {
+  const t = textesCode[langue];
+  const { appareil, lieu } = await contexteAppareil();
+  const rate = () =>
+    Response.json({ refus: "faux", erreur: t.refus.faux.titre }, { status: 401 });
+
+  const courriel = brut.trim();
+  if (!courriel.includes("@") || !code) return rate();
+
+  const attente = await attenteDeLaPorte(courriel);
+  if (attente > 0) {
+    await noterEntree({ issue: "ralentie", moyen: "courriel", appareil, lieu });
+    return Response.json({
+      refus: "lent", attente,
+      erreur: t.refus.lent.titre(attenteEnMots(attente, langue)),
+    }, { status: 429 });
+  }
+
+  const verdict = await verifierCode(code, courriel);
+  if (!verdict.ok) {
+    if (verdict.raison === "expire") {
+      await noterEntree({ issue: "expiree", moyen: "courriel", appareil, lieu });
+      return Response.json(
+        { refus: "expire", erreur: t.refus.expire.titre }, { status: 410 });
+    }
+    await noterEntree({ issue: "refusee", moyen: "courriel", appareil, lieu });
+    return rate();
+  }
+
+  // Le code était bon. Il ne dit RIEN du droit d'entrer : une personne partie
+  // ou suspendue reçoit et recopie parfaitement ses six chiffres. Le droit se
+  // relit en base, ici, à chaque fois.
+  const personne = await lireUne<{ id: number; nom: string; etat: string }>(
+    `personnes?courriel=eq.${encodeURIComponent(adresseNormalisee(courriel))}`
+    + `&select=id,nom,etat&limit=1`);
+  const acces = personne ? await accesDeOuPlateforme(personne.id) : null;
+  if (!personne || personne.etat !== "actif" || !acces) {
+    await noterEntree({
+      personne: personne?.id, issue: "refusee", moyen: "courriel", appareil, lieu,
+    });
+    return Response.json(
+      { refus: "ferme", erreur: t.refus.ferme.titre }, { status: 403 });
+  }
+
+  const session = await ouvrirSession({
+    personne: personne.id, commerce: acces.commerce, role: acces.role,
+    appareil, lieu, partage: false,
+  });
+  if (!session) {
+    return Response.json(
+      { refus: "indisponible", erreur: t.refus.indisponible.titre }, { status: 503 });
+  }
+
+  await noterEntree({
+    personne: personne.id, commerce: acces.commerce,
+    issue: "ouverte", moyen: "courriel", appareil, lieu,
+  });
+
+  const reste = new Date(session.expire_le).getTime() - Date.now();
+  const signe = await signerSession(
+    secret, { session: session.id, personne: personne.id, role: acces.role }, reste);
+  (await cookies()).set(COOKIE_SESSION, signe, {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/",
+    maxAge: Math.floor(reste / 1000),
+  });
+
+  return Response.json({ ok: true, vers: "/" });
 }

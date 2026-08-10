@@ -712,6 +712,17 @@ create index if not exists codes_entree_vivants_idx
 create index if not exists codes_entree_courriel_idx
   on codes_entree (courriel, cree_le desc);
 
+-- Le code est-il VRAIMENT parti ? Nul tant que le service de courrier ne l'a
+-- pas accepté. C'est cette date qui fait entrer la demande dans le compte des
+-- cinq par demi-heure — et pas la création de la ligne.
+--
+-- La nuance vient d'un cas réel : la ligne était créée avant l'envoi, donc
+-- cinq pannes de notre côté enfermaient la personne dehors une demi-heure,
+-- pour une avarie qui n'était pas la sienne. Un code qui n'a jamais quitté
+-- nos murs n'a dérangé aucune boîte mail.
+alter table codes_entree add column if not exists envoye_le timestamptz;
+
+
 comment on table codes_entree is
   'Les codes à six chiffres, sous forme d''empreinte. Un code appartient à une '
   'TENTATIVE, pas à une personne : deux demandes concurrentes ne s''écrasent pas.';
@@ -2081,6 +2092,17 @@ create index if not exists codes_entree_vivants_idx
 create index if not exists codes_entree_courriel_idx
   on codes_entree (courriel, cree_le desc);
 drop index if exists codes_entree_telephone_idx;
+
+-- Le code est-il VRAIMENT parti ? Nul tant que le service de courrier ne l'a
+-- pas accepté. C'est cette date qui fait entrer la demande dans le compte des
+-- cinq par demi-heure — et pas la création de la ligne.
+--
+-- La nuance vient d'un cas réel : la ligne était créée avant l'envoi, donc
+-- cinq pannes de notre côté enfermaient la personne dehors une demi-heure,
+-- pour une avarie qui n'était pas la sienne. Un code qui n'a jamais quitté
+-- nos murs n'a dérangé aucune boîte mail.
+alter table codes_entree add column if not exists envoye_le timestamptz;
+
 
 comment on table codes_entree is
   'Les codes à six chiffres, sous forme d''empreinte. Un code appartient à une '
