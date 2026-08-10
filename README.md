@@ -263,5 +263,6 @@ web/              l'application web (Next.js) — maquette sur données de démo
 1. **App web** (cloud, même stack que `apps/web`) : tableau de bord, boutons
    d'action qui pilotent le robot, historique/export — le journal SQLite est
    déjà la source de données.
-2. **Pont vogtravel.com** : rapprochement automatique des SMS « Vous avez reçu… »
-   avec les réservations → billets marqués payés sans intervention.
+2. **Rapprochement automatique** : un encaissement reconnu peut être rapproché
+   d'une facture ou d'une réservation par le système qui les gère.
+   TOTEM expose ses paiements ; c'est à l'autre bout de venir les lire.

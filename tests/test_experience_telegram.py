@@ -478,10 +478,30 @@ class MemoireEtConflits(unittest.TestCase):
         t.conflit = True
         r._signaler_conflit()
         self.assertIn("stopped answering", t.envois[-1][0])
-        self.assertIn("ps aux", t.envois[-1][0])   # la commande de diagnostic
+        # Le message doit dire comment s'en sortir, pas seulement constater.
+        self.assertIn("pgrep", t.envois[-1][0])
+        self.assertIn("pkill", t.envois[-1][0])
         avant = len(t.envois)
         r._signaler_conflit()
         self.assertEqual(len(t.envois), avant)     # signalé une seule fois
+
+    def test_l_alerte_de_conflit_ne_se_repete_pas_si_l_etat_oscille(self):
+        """Le défaut constaté en production : des centaines de messages
+        identiques à la même minute.
+
+        Le drapeau retombait à chaque appel réussi — y compris le sendMessage
+        de l'alerte elle-même. L'alerte effaçait donc sa propre cause et
+        repartait au tour suivant. Ici on force l'oscillation à la main :
+        une seule alerte doit sortir.
+        """
+        r, t, _ = robot()
+        for _ in range(20):
+            t.conflit = True
+            r._signaler_conflit()
+            t.conflit = False
+            r._signaler_conflit()
+        alertes = [e for e in t.envois if "pgrep" in e[0]]
+        self.assertEqual(len(alertes), 1, "une alerte, pas vingt")
 
     def test_alerte_disparait_quand_le_conflit_cesse(self):
         r, t, _ = robot()
@@ -788,6 +808,32 @@ class LimitesDeTelegram(unittest.TestCase):
         urllib.request.urlopen = urlopen_500
         try:
             self.assertEqual(TransportTelegram("J", 111).acheminer("x"), "reseau")
+        finally:
+            urllib.request.urlopen = vrai
+
+    def test_seule_une_interrogation_reussie_leve_le_conflit(self):
+        """La cause racine du flot d'alertes.
+
+        Un envoi réussi ne prouve rien sur l'interrogation : deux robots
+        peuvent parfaitement écrire tous les deux tout en se coupant la
+        parole. Seul un getUpdates qui aboutit démontre qu'on est seul.
+        """
+        class FausseReponse:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"ok":true,"result":{"message_id":1}}'
+
+        vrai = urllib.request.urlopen
+        urllib.request.urlopen = lambda req, timeout=None: FausseReponse()
+        try:
+            tg = TransportTelegram("J", 111)
+            tg.conflit = True
+            tg._appel("sendMessage", chat_id=111, text="coucou")
+            self.assertTrue(tg.conflit,
+                            "un envoi réussi ne doit pas effacer le conflit")
+            tg._appel("getUpdates", offset=0)
+            self.assertFalse(tg.conflit,
+                             "une interrogation réussie, elle, le termine")
         finally:
             urllib.request.urlopen = vrai
 

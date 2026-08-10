@@ -174,6 +174,39 @@ RE_TRANSFERT_EN_FIN = re.compile(
     r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
     r"\b(?:successful(?:ly)?|completed|confirmed)\b")
 
+# Le dépôt et le retrait d'agent, côté anglophone — relevé sur une vraie
+# capture (Orange, ligne réglée en anglais) :
+#   « CashOut success to 693377266 MANGA from 696103864 WONDER PHONE.
+#     The details are as follows: transaction amount: 500000 FCFA, … »
+#
+# Cette phrase échappait à TOUS les motifs, et le SMS retombait en « message
+# quelconque » — ni montant, ni tiers, ni reçu possible. Deux raisons, et il
+# fallait les deux pour comprendre :
+#
+#   1. « cashout » n'était nulle part dans les verbes d'opération. RE_ENVOYE
+#      le connaissait bien, mais il exige le montant dans les vingt caractères
+#      qui suivent le verbe — ici il en est séparé par les deux parties et
+#      toute une phrase d'introduction.
+#   2. Le mot de réussite vient AVANT « to », alors que tous les motifs
+#      existants l'attendent après le bénéficiaire.
+#
+# L'ordre des parties est l'inverse du transfert anglais : le bénéficiaire
+# suit « to », l'émetteur suit « from ». Le sens n'est pas tranché ici — c'est
+# preciser_sens() qui dira, numéros de cartes en main, de quel côté nous
+# sommes. Seule la forme « CashOut » a été observée ; « CashIn » est acceptée
+# parce qu'elle est la symétrique exacte du même opérateur, et que le sens ne
+# dépend de toute façon pas du verbe.
+RE_CASH_EN = re.compile(
+    r"\bcash\s*(?:in|out)\b[^\n]{0,20}?"
+    r"\b(?:success(?:ful(?:ly)?)?|completed|confirmed)\b"
+    r"[^\n]{0,15}?\bto\s+"
+    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
+    r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
+    r"\bfrom\s+"
+    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
+    r"(?P<nom_emetteur>[^\d\n]{0,40}?)"
+    r"(?:[.,;:\n]|$)")
+
 # Les opérations d'agent (dépôt, retrait) nomment le bénéficiaire APRÈS
 # « vers », le numéro D'ABORD puis la raison sociale — l'ordre inverse d'un
 # reçu classique. L'émetteur, lui, apparaît parfois en fin de message :
@@ -554,7 +587,8 @@ def analyser(texte, numeros=()):
         return None     # publicité, code de vérification : pas un paiement
 
     transfert = (RE_TRANSFERT.search(norme) or RE_TRANSFERT_EN.search(norme)
-                 or RE_TRANSFERT_EN_FIN.search(norme))
+                 or RE_TRANSFERT_EN_FIN.search(norme)
+                 or RE_CASH_EN.search(norme))
     if transfert:
         paiement = _transfert_orange(transfert, norme, propre, texte)
         if paiement is not None:
@@ -611,7 +645,8 @@ def solde_annonce(texte):
     if RE_BRUIT.search(norme) or RE_CODE_UNIQUE.search(norme):
         return None
     if (RE_TRANSFERT.search(norme) or RE_TRANSFERT_EN.search(norme)
-            or RE_TRANSFERT_EN_FIN.search(norme) or RE_OPERATION.search(norme)
+            or RE_TRANSFERT_EN_FIN.search(norme) or RE_CASH_EN.search(norme)
+            or RE_OPERATION.search(norme)
             or RE_RECU.search(norme) or RE_ENVOYE.search(norme)):
         return None
     m = RE_SOLDE.search(norme) or RE_SOLDE_SEUL.search(norme)
@@ -640,7 +675,7 @@ def categoriser(texte, numeros=()):
     # peut jamais requalifier un vrai paiement (« 2 millions », « gagné »…).
     paiement = analyser(texte, numeros=numeros)
     if paiement is not None:
-        if re.search(r"\bdepot\b|\bdeposit\b", norme):
+        if re.search(r"\bdepot\b|\bdeposit\b|\bcash\s*in\b", norme):
             return "depot"
         if re.search(r"\bretrait\b|\bretire\b|\bwithdraw(?:al|n)?\b"
                      r"|\bcash\s*out\b", norme):
