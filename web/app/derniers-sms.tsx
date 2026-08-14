@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
 import { fcfa, type Paiement } from "@/lib/types";
-import { FicheSms } from "./fiche-sms";
-import { IconArrowDown, IconArrowUp, IconDoc } from "./icons";
+import { catDe, CatIcone, classeCat, FicheSms } from "./fiche-sms";
+import { IconDoc } from "./icons";
 
 /**
  * Les derniers SMS de l'accueil — cliquables, comme dans la boîte de
@@ -25,12 +25,10 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
           <li key={p.id} className="flex items-center gap-3 py-3.5">
             <button onClick={() => setDetail(p)}
               className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-70">
-              {/* L'étiquette du système : rayon de 8, vert positif quand
-                  l'argent entre, neutre sinon. */}
-              <span className={`grid size-9 shrink-0 place-items-center rounded-btn ${
-                p.sens === "in" ? "bg-[#cff7d3] text-[#02542d]" : "border border-line text-ink-soft"
-              }`}>
-                {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
+              {/* L'étiquette de la catégorie, comme dans la boîte : plus
+                  jamais de point orphelin quand le sens est inconnu. */}
+              <span className={`grid size-9 shrink-0 place-items-center rounded-btn ${classeCat(catDe(p))}`}>
+                <CatIcone c={catDe(p)} size={16} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5 text-body font-medium">

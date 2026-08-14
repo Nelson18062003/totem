@@ -2,7 +2,7 @@ import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesCartes } from "@/lib/textes/cartes";
 import { fcfa } from "@/lib/types";
-import { IconArrowDown, IconArrowUp, IconList, IconLock, IconWallet } from "../icons";
+import { IconWallet } from "../icons";
 import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
@@ -10,16 +10,17 @@ export const dynamic = "force-dynamic";
 export default async function Comptes() {
   const langue = await langueServeur();
   const t = textesCartes[langue];
-  const { sims, paiements } = await chargerDonnees(langue);
+  // Les SMS restent chargés : le bilan des cartes retirées se compte dessus.
+  const { sims } = await chargerDonnees(langue);
   const enPlace = sims.filter((s) => s.enPlace);
   const retirees = sims.filter((s) => !s.enPlace);
   const soldeTotal = enPlace.reduce((s, x) => s + (x.solde ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Le titre seul : la page se comprend en la regardant. */}
       <header>
         <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
-        <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
       </header>
 
       {/* Cartes en place — côte à côte dès que la largeur le permet */}
@@ -63,21 +64,6 @@ export default async function Comptes() {
           ))}
         </section>
       )}
-
-      {/* Opérations sur comptes */}
-      <section className="grid grid-cols-3 gap-2">
-        {[
-          { l: t.consulterSolde, Icone: IconWallet },
-          { l: t.historique, Icone: IconList },
-          { l: t.verrouiller, Icone: IconLock },
-        ].map(({ l, Icone }) => (
-          <button key={l}
-            className="flex flex-col items-start gap-2.5 rounded-card border border-line bg-surface-raised p-3.5 text-left transition hover:border-ink-faint">
-            <Icone size={18} className="text-ink-soft" />
-            <span className="text-small font-medium leading-snug">{l}</span>
-          </button>
-        ))}
-      </section>
 
       {/* Répartition — n'a de sens qu'avec plusieurs cartes en place */}
       {enPlace.length > 1 && soldeTotal > 0 && (
@@ -131,28 +117,6 @@ export default async function Comptes() {
         </section>
       )}
 
-      {/* Mouvements */}
-      {paiements.length > 0 && (
-        <section>
-          <h2 className="mb-1 text-heading font-semibold">{t.mouvements}</h2>
-          <ul className="divide-hair">
-            {paiements.filter((p) => p.montant != null).slice(0, 5).map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-3.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
-                  {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "?"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium">{p.nom}</p>
-                  <p className="text-small text-ink-faint">{p.sim} · {p.date} · {p.heure}</p>
-                </div>
-                <span className={`text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
-                  {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant!, langue)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }

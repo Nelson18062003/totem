@@ -12,7 +12,6 @@ const en = {
     "Operations will open as soon as a SIM is in place — the card is what holds the counter.",
 
   // --- Le guichet -------------------------------------------------------------
-  sousTitre: (op: string) => `The real ${op} counter, right here on the platform.`,
   depot: "Deposit",
   depotSous: "Top up a Mobile Money account",
   depotTitre: "Money deposit",
@@ -32,14 +31,11 @@ const en = {
   monNumero: "My number",
   consultation: "Enquiries",
   smsRecus: "Incoming SMS",
+  analyse: "Analysis",
   codeUssd: "USSD code",
   aucunCodeReleve: (op: string) =>
     `No ${op} codes have been collected in the field yet — a digit that moves ` +
     "money is not something to guess. Add them in Settings.",
-  basDePage:
-    "Every action opens a session on the real card, in Douala. The network " +
-    "asks its questions, the platform answers with your details, and the " +
-    "secret code is entered on its own keypad — never stored anywhere.",
 
   // --- Le pop-up d'une opération ----------------------------------------------
   preparation: "Getting ready",
@@ -84,7 +80,6 @@ const fr: typeof en = {
   aucuneCarteDetail:
     "Les opérations s'ouvriront dès qu'une SIM sera en place : c'est elle qui porte le guichet.",
 
-  sousTitre: (op) => `Le vrai guichet ${op}, ouvert depuis la plateforme.`,
   depot: "Dépôt",
   depotSous: "Créditer un compte Mobile Money",
   depotTitre: "Dépôt d’argent",
@@ -104,14 +99,11 @@ const fr: typeof en = {
   monNumero: "Mon numéro",
   consultation: "Consultation",
   smsRecus: "SMS reçus",
+  analyse: "Analyse",
   codeUssd: "Code USSD",
   aucunCodeReleve: (op) =>
     `Aucun code ${op} n’a encore été relevé sur le terrain — on ne devine ` +
     "pas un chiffre qui déplace de l’argent. Ajoutez-les dans les Réglages.",
-  basDePage:
-    "Chaque geste ouvre la session sur la vraie carte, à Douala. Le réseau " +
-    "pose ses questions, la plateforme y répond avec vos informations, et le " +
-    "code secret se compose sur son pavé — jamais enregistré nulle part.",
 
   preparation: "Préparation",
   sessionEnCours: "Session en cours",

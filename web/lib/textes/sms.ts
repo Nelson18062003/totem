@@ -7,15 +7,10 @@ import type { Categorie } from "../types";
 const en = {
   // La boîte de réception
   titre: "Messages received",
-  sousTitre:
-    "Everything the cards receive, exactly as it arrived. The original " +
-    "message is what counts — and when a receipt exists, it is one tap away.",
   enCoursDeTransmission: (n: number) =>
     n === 1
       ? "The terminal has 1 message still on its way — this list may not be complete yet. It updates by itself."
       : `The terminal has ${n} messages still on their way — this list may not be complete yet. It updates by itself.`,
-  recuAujourdhui: "Received today",
-  nbPaiements: (n: number) => (n === 1 ? "1 payment" : `${n} payments`),
   recherchePlaceholder: "Name, number, amount, message text",
   effacerRecherche: "Clear the search",
   tousLesOperateurs: "All",
@@ -82,15 +77,10 @@ const en = {
 
 const fr: typeof en = {
   titre: "SMS reçus",
-  sousTitre:
-    "Tout ce que les cartes reçoivent, tel quel. C’est le message d’origine " +
-    "qui fait foi — et son reçu se télécharge quand il existe.",
   enCoursDeTransmission: (n) =>
     n === 1
       ? "Le terminal a 1 message en cours de transmission — cette liste n’est peut-être pas encore complète. Elle se met à jour toute seule."
       : `Le terminal a ${n} messages en cours de transmission — cette liste n’est peut-être pas encore complète. Elle se met à jour toute seule.`,
-  recuAujourdhui: "Reçu aujourd’hui",
-  nbPaiements: (n) => (n > 1 ? `${n} paiements` : `${n} paiement`),
   recherchePlaceholder: "Nom, numéro, montant, texte du SMS",
   effacerRecherche: "Effacer la recherche",
   tousLesOperateurs: "Tous",
