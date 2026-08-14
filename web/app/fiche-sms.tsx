@@ -5,25 +5,36 @@ import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
-import { IconClose, IconCopy, IconDoc } from "./icons";
+import {
+  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
+  IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
+} from "./icons";
 import { reveillerLaVeille } from "./veille";
 
-// Chaque catégorie de SMS a sa pastille, comme une boîte de réception. Son
-// libellé, lui, vit dans le dictionnaire bilingue (lib/textes/sms.ts) — les
-// clés ("encaissement", "depot"…) sont des données et ne se traduisent pas.
-// La catégorie n'est qu'une aide : le SMS reste lisible en entier.
-export const CAT: Record<Categorie, string> = {
-  encaissement: "💰",
-  envoi: "↗️",
-  transfert: "🔁",
-  depot: "📥",
-  retrait: "📤",
-  solde: "📊",
-  code: "🔑",
-  publicite: "📢",
-  message: "💬",
-  inconnu: "✉️",
+// Chaque catégorie de SMS a son icône au trait, comme une boîte de réception.
+// Son libellé, lui, vit dans le dictionnaire bilingue (lib/textes/sms.ts) —
+// les clés ("encaissement", "depot"…) sont des données et ne se traduisent
+// pas. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
+export const CAT: Record<Categorie, typeof IconArrowDown> = {
+  encaissement: IconArrowDown,
+  envoi: IconArrowUp,
+  transfert: IconTransfer,
+  depot: IconPlus,
+  retrait: IconBank,
+  solde: IconChart,
+  code: IconLock,
+  publicite: IconMegaphone,
+  message: IconBubble,
+  inconnu: IconMail,
 };
+
+/** L'icône d'une catégorie, prête à poser dans une pastille ou une puce. */
+export function CatIcone({
+  c, size = 16, className,
+}: { c: Categorie; size?: number; className?: string }) {
+  const Icone = CAT[c];
+  return <Icone size={size} className={className} />;
+}
 
 // Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
 const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
@@ -195,7 +206,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
         </div>
 
         <dl className="mt-6 divide-hair">
-          <L t={t.categorie} v={`${CAT[catDe(p)]} ${t.cat[catDe(p)]}`} />
+          <L t={t.categorie} v={t.cat[catDe(p)]} />
           <L t={t.operateur} v={p.sim} />
           {p.numero && <L t={t.numero} v={p.numero} />}
           <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
@@ -210,12 +221,12 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           <div className="flex flex-wrap gap-1.5">
             {NATURES.map((n) => (
               <button key={n} onClick={() => classer(n)} disabled={classe}
-                className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
+                className={`flex items-center gap-1.5 rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
                   nature === n
                     ? "border-ink bg-ink font-medium text-white"
                     : "border-line text-ink-soft hover:border-ink-faint"
                 }`}>
-                {CAT[n]} {t.cat[n]}
+                <CatIcone c={n} size={14} /> {t.cat[n]}
               </button>
             ))}
           </div>

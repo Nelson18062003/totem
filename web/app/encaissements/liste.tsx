@@ -6,7 +6,7 @@ import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, jourDouala, type Paiement } from "@/lib/types";
 // La fiche d'un SMS et ses pastilles vivent dans un module partagé : la même
 // fiche s'ouvre ici et depuis les derniers SMS de l'accueil.
-import { CAT, catDe, FicheSms } from "../fiche-sms";
+import { catDe, CatIcone, FicheSms } from "../fiche-sms";
 import { IconClose, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
 
@@ -94,7 +94,7 @@ export function ListeEncaissements({
 
       {enAttente > 0 && (
         <p className="rounded-card border border-line bg-surface-2 px-4 py-2.5 text-small text-ink-soft">
-          ⏳ {t.enCoursDeTransmission(enAttente)}
+          {t.enCoursDeTransmission(enAttente)}
         </p>
       )}
 
@@ -138,7 +138,7 @@ export function ListeEncaissements({
           </Chip>
           {categories.map((c) => (
             <Chip key={c} actif={categorie === c} onClick={() => setCategorie(c)}>
-              {CAT[c]} {t.cat[c]}
+              <CatIcone c={c} size={13} /> {t.cat[c]}
             </Chip>
           ))}
         </div>
@@ -172,8 +172,8 @@ export function ListeEncaissements({
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
                     <span title={t.cat[catDe(p)]}
-                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-body">
-                      {CAT[catDe(p)]}
+                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+                      <CatIcone c={catDe(p)} size={16} />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
@@ -239,7 +239,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-small transition ${
+      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-small transition ${
         actif
           ? "border-ink bg-ink font-medium text-white"
           : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
