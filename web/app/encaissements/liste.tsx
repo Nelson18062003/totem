@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
-import { type Categorie, fcfa, jourDouala, type Paiement } from "@/lib/types";
+import { type Categorie, fcfa, type Paiement } from "@/lib/types";
 // La fiche d'un SMS et ses pastilles vivent dans un module partagé : la même
 // fiche s'ouvre ici et depuis les derniers SMS de l'accueil.
 import { catDe, CatIcone, classeCat, FicheSms } from "../fiche-sms";
@@ -73,12 +73,6 @@ export function ListeEncaissements({
     });
   }, [paiements, filtre, categorie, recherche]);
 
-  // « Aujourd'hui » se décide sur la clé stable du jour (`p.jour`, fuseau de
-  // Douala) — jamais sur le libellé `p.date`, qui change avec la langue.
-  const aujourdhui = jourDouala(new Date());
-  const entrees = liste.filter((p) => p.sens === "in" && p.montant != null && p.jour === aujourdhui);
-  const totalIn = entrees.reduce((s, p) => s + (p.montant ?? 0), 0);
-
   // Regroupement par la clé stable du jour ; le libellé traduit (`p.date`)
   // ne sert qu'à écrire l'en-tête du groupe.
   const parJour = liste.reduce<Record<string, Paiement[]>>((acc, p) => {
@@ -87,9 +81,9 @@ export function ListeEncaissements({
 
   return (
     <div className="flex flex-col gap-7">
+      {/* Le titre seul — la liste parle d'elle-même. */}
       <header>
         <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
-        <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
       </header>
 
       {enAttente > 0 && (
@@ -97,12 +91,6 @@ export function ListeEncaissements({
           {t.enCoursDeTransmission(enAttente)}
         </p>
       )}
-
-      <section>
-        <p className="text-small text-ink-soft">{t.recuAujourdhui}</p>
-        <p className="mt-1 text-display font-semibold tabnums tracking-tight">{fcfa(totalIn, langue)}</p>
-        <p className="mt-1 text-small text-ink-faint">{t.nbPaiements(entrees.length)}</p>
-      </section>
 
       {/* Recherche et filtres — une seule ligne dès que la largeur le permet */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

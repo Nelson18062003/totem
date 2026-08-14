@@ -7,7 +7,7 @@ import { codeUssd } from "@/lib/codes";
 import { textesGuichet } from "@/lib/textes/guichet";
 import type { Sim } from "@/lib/types";
 import {
-  IconArrowDown, IconArrowUp, IconChevron, IconHash,
+  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash,
   IconInbox, IconPhone, IconRefresh, IconWallet,
 } from "../icons";
 import { useLangue } from "../langue";
@@ -72,11 +72,9 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
   return (
     // Grand écran : les trois opérations à gauche, la consultation à droite.
     <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
+      {/* Le titre et la carte visée : rien d'autre à expliquer. */}
       <header className="flex items-end justify-between lg:col-span-2">
-        <div>
-          <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
-          <p className="mt-1 text-small text-ink-soft">{t.sousTitre(op)}</p>
-        </div>
+        <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
         <span className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft">
           {carte.libelle}
         </span>
@@ -127,6 +125,7 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
         <section className="grid grid-cols-2 gap-2 lg:grid-cols-1">
           {[
             { href: "/encaissements", l: t.smsRecus, Icone: IconInbox },
+            { href: "/analyse", l: t.analyse, Icone: IconChart },
             { href: "/ussd", l: t.codeUssd, Icone: IconHash },
           ].map(({ href, l, Icone }) => (
             <Link key={l} href={href}
@@ -137,10 +136,6 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
           ))}
         </section>
       </aside>
-
-      <p className="text-caption leading-relaxed text-ink-faint lg:col-start-1">
-        {t.basDePage}
-      </p>
 
       {operation && (
         <OperationPopup
