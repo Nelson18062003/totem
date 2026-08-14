@@ -63,12 +63,9 @@
   --radius-btn: 0.5rem;     /* 8px */
   --radius-sm: 0.25rem;     /* 4px */
 
-  /* Ombres SDS — relevées du fichier, du souffle discret au grand voile */
-  --shadow-pose: 0 1px 4px rgba(12, 12, 13, 0.05);
-  --shadow-leve: 0 4px 4px -1px rgba(12, 12, 13, 0.05),
-    0 1px 4px rgba(12, 12, 13, 0.05);
-  --shadow-fenetre: 0 16px 32px -4px rgba(12, 12, 13, 0.1),
-    0 4px 4px -4px rgba(12, 12, 13, 0.05);
+  /* PAS d'ombre. La plateforme est mate : les plans se séparent par les
+     bordures et les fonds, jamais par une ombre portée. Décision du
+     propriétaire — ne pas en réintroduire. */
 
   --font-sans: var(--font-inter), -apple-system, system-ui, "Segoe UI",
     Roboto, sans-serif;

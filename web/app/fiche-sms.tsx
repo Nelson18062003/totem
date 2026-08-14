@@ -202,7 +202,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
       {/* La fiche peut être longue (un SMS entier, les détails, les gestes) :
           elle défile dans sa propre hauteur, jamais coupée sans recours. */}
-      <div className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-fenetre md:max-h-[85dvh] md:rounded-card md:pb-6"
+      <div className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:max-h-[85dvh] md:rounded-card md:pb-6"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
