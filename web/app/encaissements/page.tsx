@@ -4,16 +4,30 @@ import { ListeEncaissements } from "./liste";
 
 export const dynamic = "force-dynamic";
 
-export default async function Encaissements() {
+export default async function Encaissements({
+  searchParams,
+}: {
+  searchParams: Promise<{ recherche?: string | string[] }>;
+}) {
   const langue = await langueServeur();
-  const { paiements, terminal } = await chargerDonnees(langue);
+  const [{ paiements, terminal }, { recherche }] = await Promise.all([
+    chargerDonnees(langue),
+    searchParams,
+  ]);
   // Les filtres proposés sont les opérateurs réellement vus dans les données.
   const operateurs = [...new Set(paiements.map((p) => p.sim))].filter((o) => o !== "—");
   return (
     <ListeEncaissements
+      // La clé fait repartir l'écran à neuf quand on arrive avec une AUTRE
+      // recherche (client A puis client B) ; taper ou effacer ne la change
+      // pas, l'écran garde alors son état.
+      key={typeof recherche === "string" ? recherche : ""}
       paiements={paiements}
       operateurs={operateurs}
       enAttente={terminal?.enAttente ?? 0}
+      // La page peut s'ouvrir sur une recherche déjà posée — c'est ainsi que
+      // l'Analyse envoie vers les paiements d'un client précis.
+      rechercheInitiale={typeof recherche === "string" ? recherche : ""}
     />
   );
 }
