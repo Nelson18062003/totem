@@ -160,9 +160,15 @@ export default async function Analyse() {
         </section>
       )}
 
-      <button className="flex items-center justify-center gap-2 rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink lg:col-start-1">
+      {/* Le bilan de la semaine en CSV, prêt pour Excel ou la comptabilité —
+          les mêmes colonnes que l'export Telegram du robot. */}
+      <a
+        href="/api/bilan"
+        download
+        className="flex items-center justify-center gap-2 rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink lg:col-start-1"
+      >
         <IconDoc size={16} /> {t.exporterBilan}
-      </button>
+      </a>
     </div>
   );
 }
