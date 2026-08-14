@@ -343,7 +343,7 @@ export function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
           actif ? "justify-end bg-ink" : "justify-start bg-surface-3"
         }`}
       >
-        <span className="size-5 rounded-full bg-white shadow-sm" />
+        <span className="size-5 rounded-full bg-white" />
       </button>
     </div>
   );

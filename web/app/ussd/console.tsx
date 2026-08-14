@@ -120,7 +120,16 @@ export function ConsoleUssd({
     void envoyer("ussd_reponse", { texte: code, secret: true }, { de: "vous", texte: "••••" });
   };
 
-  const fermer = () => void envoyer("ussd_fin", {});
+  const fermer = () => {
+    // Une session déjà terminée n'a rien à raccrocher : l'écran se ferme
+    // sur-le-champ, sans aller-retour inutile jusqu'au terminal.
+    if (!enSession) {
+      setFil([]);
+      setErreur(null);
+      return;
+    }
+    void envoyer("ussd_fin", {});
+  };
 
   // Arrivée depuis un bouton du guichet : le code se compose tout seul.
   const lance = useRef(false);
@@ -166,12 +175,15 @@ export function ConsoleUssd({
         </form>
 
         {/* Les codes déjà relevés sur le terrain — modifiables dans les réglages.
-            Le libellé suit la langue par la clé du catalogue ; le code, jamais. */}
-        <div className="flex flex-wrap gap-1.5">
+            Le libellé suit la langue par la clé du catalogue ; le code, jamais.
+            Une ligne par code, taillée pour le pouce : le nuage de puces
+            serrées se visait mal sur téléphone. */}
+        <div className="flex flex-col gap-1.5">
           {(codesUssd[carte.operateur] ?? []).map((c) => (
             <button key={c.code} onClick={() => composer(c.code)} disabled={attente}
-              className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft transition hover:border-ink-faint hover:text-ink disabled:opacity-40">
-              {t.libelleCode(c.cle, c.libelle)} <span className="tabnums text-ink-faint">{c.code}</span>
+              className="flex items-center justify-between gap-3 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-left text-small font-medium text-ink transition hover:border-ink-faint disabled:opacity-40">
+              {t.libelleCode(c.cle, c.libelle)}
+              <span className="tabnums font-normal text-ink-faint">{c.code}</span>
             </button>
           ))}
         </div>
@@ -189,8 +201,12 @@ export function ConsoleUssd({
           </p>
         </div>
       ) : (
-        <section className="rounded-card border border-line bg-surface-raised lg:col-start-2">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        // Sur téléphone, la session prend TOUT l'écran, comme un appel : rien
+        // d'autre à voir, rien à faire défiler pour trouver la réponse ou les
+        // boutons. Seul le fil défile, à l'intérieur ; les gestes restent
+        // ancrés en bas. Sur grand écran, elle reste la carte de droite.
+        <section className="fixed inset-0 z-30 flex flex-col bg-surface lg:static lg:z-auto lg:col-start-2 lg:rounded-card lg:border lg:border-line lg:bg-surface-raised">
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-3">
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
@@ -200,7 +216,8 @@ export function ConsoleUssd({
             </button>
           </div>
 
-          <div className="flex flex-col gap-2 p-4">
+          {/* Le fil de la session — la seule zone qui défile */}
+          <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4 lg:max-h-96 lg:flex-none">
             {fil.map((m, i) => (
               <p key={i}
                 className={`max-w-[85%] whitespace-pre-line rounded-card px-3.5 py-2.5 text-small leading-relaxed ${
@@ -221,10 +238,17 @@ export function ConsoleUssd({
                 {erreur}
               </p>
             )}
+            <div ref={bas} />
+          </div>
 
+          {/* Les gestes — toujours visibles, jamais à aller chercher.
+              (Pendant la toute première composition, il n'y a encore aucun
+              geste à offrir : pas de pied vide.) */}
+          {(enSession || !attente) && (
+          <div className="flex shrink-0 flex-col gap-2 border-t border-line p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:border-t-0 lg:pt-0">
             {/* Le pavé, quand le réseau attend le code secret */}
             {pave && (
-              <div className="mt-2 rounded-card border border-line p-4">
+              <div className="rounded-card border border-line p-4">
                 <PaveSecret onValider={secret} />
               </div>
             )}
@@ -233,7 +257,7 @@ export function ConsoleUssd({
             {enSession && !attente && !pave && (
               <form
                 onSubmit={(e) => { e.preventDefault(); repondre(reponse); }}
-                className="mt-2 flex items-center gap-2"
+                className="flex items-center gap-2"
               >
                 <input
                   value={reponse}
@@ -250,15 +274,23 @@ export function ConsoleUssd({
               </form>
             )}
 
-            {/* Le geste de sortie, impossible à manquer. */}
-            {enSession && (
+            {/* Le geste de sortie, impossible à manquer. Session finie :
+                « Fermer », immédiat ; session en cours : « Annuler ». */}
+            {enSession ? (
               <button onClick={fermer} disabled={attente}
-                className="mt-2 rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
+                className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
                 {t.annulerSession}
               </button>
+            ) : (
+              !attente && (
+                <button onClick={fermer}
+                  className="rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
+                  {t.fermerEcran}
+                </button>
+              )
             )}
-            <div ref={bas} />
           </div>
+          )}
         </section>
       )}
 

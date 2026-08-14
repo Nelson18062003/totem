@@ -2,7 +2,12 @@
 
 const en = {
   titre: "Sign in",
-  sousTitre: "For the terminal's owner only.",
+  // Ce que fait la plateforme, dit en une phrase : la plupart des visiteurs
+  // ne verront que cet écran, il doit se présenter tout seul.
+  sousTitre:
+    "Your Mobile Money SIMs stay in the country; from here you watch the " +
+    "money come in, run the cards and keep every receipt — wherever you are.",
+  reserve: "For the terminal's owner only.",
   motDePasse: "Password",
   verification: "Checking…",
   seConnecter: "Sign in",
@@ -16,7 +21,10 @@ const en = {
 
 const fr: typeof en = {
   titre: "Connexion",
-  sousTitre: "Accès réservé au propriétaire du terminal.",
+  sousTitre:
+    "Vos SIM Mobile Money restent au pays ; d’ici, vous suivez l’argent qui " +
+    "arrive, pilotez les cartes et gardez chaque reçu — d’où que vous soyez.",
+  reserve: "Accès réservé au propriétaire du terminal.",
   motDePasse: "Mot de passe",
   verification: "Vérification…",
   seConnecter: "Se connecter",

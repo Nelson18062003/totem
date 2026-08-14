@@ -82,3 +82,15 @@ export const IconHash = ({ size, className }: P) => (
 export const IconDoc = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4" /><path d="M9 13h6M9 17h4" /></svg>
 );
+export const IconTransfer = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M4 8.5h13.5" /><path d="M14 5l3.5 3.5L14 12" /><path d="M20 15.5H6.5" /><path d="M10 12l-3.5 3.5L10 19" /></svg>
+);
+export const IconMegaphone = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M14 5.5 7 9H4.5v6H7l7 3.5z" /><path d="M17.5 9.5a4.5 4.5 0 0 1 0 5" /></svg>
+);
+export const IconBubble = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M12 4.5a7.5 7.5 0 0 1 0 15c-1.2 0-2.3-.28-3.3-.78L4.5 19.5l.8-4.2A7.5 7.5 0 0 1 12 4.5Z" /></svg>
+);
+export const IconMail = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 7.5 7.5 5.5 7.5-5.5" /></svg>
+);

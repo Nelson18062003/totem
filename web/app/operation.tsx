@@ -176,10 +176,13 @@ export function OperationPopup({
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
   return (
-    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
+    // Sur téléphone, l'opération occupe TOUT l'écran : l'en-tête et les
+    // gestes restent en place, seul le fil des échanges défile. Fini le
+    // pop-up qu'il fallait faire défiler pour retrouver ses boutons.
+    <div className="voile fixed inset-0 z-30 flex items-stretch justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
+      <div className="surgit flex w-full max-w-md flex-col bg-surface-raised md:max-h-[85dvh] md:rounded-card md:border md:border-line"
         onClick={(e) => e.stopPropagation()}>
-        <div className="mb-5 flex items-start justify-between">
+        <div className="flex shrink-0 items-start justify-between p-6 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))] md:pt-6">
           <div>
             <p className="text-caption uppercase tracking-wider text-ink-faint">
               {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
@@ -193,19 +196,22 @@ export function OperationPopup({
         </div>
 
         {etape === "saisie" ? (
-          <div className="flex flex-col gap-4">
-            {operation.champs.map((c) => (
-              <label key={c.cle} className="flex flex-col gap-1.5">
-                <span className="text-small text-ink-soft">{c.label}</span>
-                <input value={valeurs[c.cle] ?? ""} onChange={(e) => set(c.cle, e.target.value)}
-                  inputMode="numeric" placeholder={c.aide}
-                  className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
-              </label>
-            ))}
-            <p className="text-caption leading-relaxed text-ink-faint">
-              {t.noteSaisie}
-            </p>
-            <div className="mt-1 flex gap-2">
+          <>
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6">
+              {operation.champs.map((c) => (
+                <label key={c.cle} className="flex flex-col gap-1.5">
+                  <span className="text-small text-ink-soft">{c.label}</span>
+                  <input value={valeurs[c.cle] ?? ""} onChange={(e) => set(c.cle, e.target.value)}
+                    inputMode="numeric" placeholder={c.aide}
+                    className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
+                </label>
+              ))}
+              <p className="text-caption leading-relaxed text-ink-faint">
+                {t.noteSaisie}
+              </p>
+            </div>
+            {/* Les deux gestes, ancrés en bas — jamais à aller chercher */}
+            <div className="flex shrink-0 gap-2 p-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-6">
               <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
                 {t.annuler}
               </button>
@@ -214,11 +220,12 @@ export function OperationPopup({
                 {t.lancer}
               </button>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="flex flex-col gap-3">
-            {/* Le fil de la session — chaque bulle grise vient de l'opérateur */}
-            <div className="flex flex-col gap-2">
+          <>
+            {/* Le fil de la session — chaque bulle grise vient de
+                l'opérateur. La seule zone qui défile. */}
+            <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-6">
               {fil.map((m, i) => (
                 <p key={i}
                   className={`max-w-[85%] whitespace-pre-line rounded-card px-3.5 py-2.5 text-small leading-relaxed ${
@@ -236,43 +243,46 @@ export function OperationPopup({
               <div ref={bas} />
             </div>
 
-            {pave && (
-              <div className="rounded-card border border-line p-4">
-                <PaveSecret onValider={secret} />
-              </div>
-            )}
+            {/* Le pavé, la réponse et la sortie — toujours visibles en bas */}
+            <div className="flex shrink-0 flex-col gap-3 p-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-6">
+              {pave && (
+                <div className="rounded-card border border-line p-4">
+                  <PaveSecret onValider={secret} />
+                </div>
+              )}
 
-            {enSession && !attente && !pave && !fini && (
-              <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
-                className="flex items-center gap-2">
-                <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
-                  inputMode="tel" placeholder={t.votreReponse}
-                  className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
-                <button type="submit" disabled={!reponseLibre.trim()}
-                  className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  {t.envoyer}
-                </button>
-              </form>
-            )}
+              {enSession && !attente && !pave && !fini && (
+                <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
+                  className="flex items-center gap-2">
+                  <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
+                    inputMode="tel" placeholder={t.votreReponse}
+                    className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
+                  <button type="submit" disabled={!reponseLibre.trim()}
+                    className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+                    {t.envoyer}
+                  </button>
+                </form>
+              )}
 
-            {fini ? (
-              <>
-                <p className="text-caption leading-relaxed text-ink-faint">
-                  {t.confirmationSms}
-                </p>
-                <button onClick={onFermer}
-                  className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                  {t.termine}
+              {fini ? (
+                <>
+                  <p className="text-caption leading-relaxed text-ink-faint">
+                    {t.confirmationSms}
+                  </p>
+                  <button onClick={onFermer}
+                    className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+                    {t.termine}
+                  </button>
+                </>
+              ) : (
+                /* Le geste de sortie, impossible à manquer. */
+                <button onClick={annuler} disabled={attente}
+                  className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
+                  {t.annulerSession}
                 </button>
-              </>
-            ) : (
-              /* Le geste de sortie, impossible à manquer. */
-              <button onClick={annuler} disabled={attente}
-                className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                {t.annulerSession}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

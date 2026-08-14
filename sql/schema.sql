@@ -206,6 +206,22 @@ alter table paiements add column if not exists emis_le      timestamptz;
 alter table paiements add column if not exists moment       timestamptz
   generated always as (coalesce(emis_le, recu_le)) stored;
 
+-- Lu / non-lu : quand le propriétaire a OUVERT ce SMS sur la plateforme.
+-- Vide = pas encore regardé ; c'est la pastille « N nouveaux » du menu.
+-- La colonne s'ajoute UNE fois, et l'existant est alors marqué vu — sinon la
+-- plateforme s'ouvrirait sur des centaines de « nouveaux » qui n'en sont pas.
+-- Le remplissage ne se rejoue jamais : relancer ce fichier ne touche pas au
+-- compteur de non-lus.
+do $$
+begin
+  if not exists (select 1 from pg_attribute
+                 where attrelid = 'paiements'::regclass
+                   and attname = 'lu_le' and not attisdropped) then
+    alter table paiements add column lu_le timestamptz;
+    update paiements set lu_le = coalesce(recu_le, now());
+  end if;
+end $$;
+
 -- Les montants étaient des entiers. Orange annonce ses soldes à la décimale
 -- (« Nouveau Solde: 2784137.6 FCFA ») : en bigint, PostgreSQL les ARRONDIT
 -- sans rien signaler, et la plateforme afficherait un solde que l'opérateur
@@ -275,6 +291,10 @@ create index if not exists paiements_moment_idx on paiements (terminal, moment d
 create index if not exists paiements_compte_idx  on paiements (terminal, compte);
 create index if not exists paiements_carte_idx   on paiements (terminal, carte);
 create index if not exists paiements_tiers_idx   on paiements (tiers);
+-- La pastille des non-lus compte « lu_le is null » à chaque veille du
+-- navigateur : l'index partiel rend ce compte immédiat.
+create index if not exists paiements_non_lus_idx
+  on paiements (terminal) where lu_le is null;
 create index if not exists cartes_derniere_vue_idx on cartes (terminal, derniere_vue desc);
 -- Le web trie les reçus par date d'établissement (recus?order=etabli_le.desc) :
 -- sans index, c'est un tri complet de la table à chaque page.

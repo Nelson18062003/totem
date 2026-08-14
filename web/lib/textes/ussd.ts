@@ -50,6 +50,7 @@ const en = {
   votreReponseDetail: "Your reply (menu digit, amount, number…)",
   envoyer: "Send",
   annulerSession: "Cancel the session",
+  fermerEcran: "Close",
 };
 
 const fr: typeof en = {
@@ -96,6 +97,7 @@ const fr: typeof en = {
   votreReponseDetail: "Votre réponse (chiffre du menu, montant, numéro…)",
   envoyer: "Envoyer",
   annulerSession: "Annuler la session",
+  fermerEcran: "Fermer",
 };
 
 export const textesUssd = { en, fr } as const;

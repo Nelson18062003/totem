@@ -1,27 +1,28 @@
 @import "tailwindcss";
 
 /*
- * TOTEM — jetons de la charte. Voir docs/IDENTITE.md.
+ * TOTEM — jetons de l'interface. Voir docs/IDENTITE.md.
  *
- * Deux matières, toutes deux du pays : la LATÉRITE, terre rouge sur laquelle
- * le totem est planté, et l'INDIGO, teinture des tissus. L'une porte la
- * marque, l'autre porte l'action. Autour, des neutres tièdes — pas des gris
- * bleutés de tableau de bord.
+ * L'interface suit les FONDATIONS du « Simple Design System » (Figma) :
+ * neutres francs du blanc au presque-noir, typographie Inter, rayon de
+ * 8 px partout, ombres calibrées, sémantique verte/rouge/ambre. Les valeurs
+ * ci-dessous sont relevées DANS le fichier Figma, pas approchées.
  *
- * Aucune des deux ne peut être confondue avec un opérateur : MTN est jaune vif,
- * Orange est orange vif. La latérite est sombre et rabattue, l'indigo est froid.
- * TOTEM reste la surface sur laquelle ces deux couleurs-là viennent se poser.
+ * La MARQUE, elle, ne change pas : la latérite et le sable ne portent que le
+ * symbole et les surfaces de marque (connexion, couverture) — jamais un état,
+ * jamais un bouton. Le symbole reste décrit une seule fois, dans
+ * brand/generer.py.
  */
 @theme {
-  /* Neutres tièdes — la base de tout */
-  --color-surface: #fbfaf9;          /* fond de page */
+  /* Neutres SDS — la base de tout */
+  --color-surface: #f5f5f5;          /* fond de page */
   --color-surface-raised: #ffffff;   /* cartes */
-  --color-surface-2: #f4f2f0;        /* champs, hover, chips */
-  --color-surface-3: #ebe8e5;        /* séparateurs pleins, barres */
-  --color-ink: #16171a;              /* texte principal — 17,2:1 */
-  --color-ink-soft: #62605c;         /* texte secondaire — 6,0:1 */
-  --color-ink-faint: #77726b;        /* texte tertiaire — 4,6:1, passe AA */
-  --color-line: #e8e5e1;             /* bordures fines */
+  --color-surface-2: #e6e6e6;        /* champs, hover, chips */
+  --color-surface-3: #d9d9d9;        /* séparateurs pleins, barres */
+  --color-ink: #1e1e1e;              /* texte principal */
+  --color-ink-soft: #444444;         /* texte secondaire — 9,7:1 */
+  --color-ink-faint: #767676;        /* texte tertiaire — 4,5:1, passe AA */
+  --color-line: #d9d9d9;             /* bordures fines */
 
   /* Latérite — LA couleur de la marque. Le symbole, les surfaces de marque.
      Dans l'app elle ne sert qu'à porter la marque, jamais un état. */
@@ -29,38 +30,47 @@
   --color-laterite-clair: #d08a63;   /* sur fond sombre — 6,4:1 sur encre */
   --color-sable: #f4efe9;            /* le fond des surfaces de marque */
 
-  /* Indigo — l'unique couleur d'action. Froide, elle ne dispute rien à la
-     latérite : l'une dit qui l'on est, l'autre dit ce qu'on peut faire. */
-  --color-accent: #1f3a8a;           /* 9,9:1 */
-  --color-accent-hover: #182d6b;
-  --color-accent-soft: #eef1f8;
-  --color-accent-ink: #1f3a8a;
+  /* L'action est NEUTRE, comme dans le SDS : le bouton premier est sombre
+     (#2c2c2c, survol #1e1e1e), le focus se dessine à l'encre. */
+  --color-accent: #2c2c2c;
+  --color-accent-hover: #1e1e1e;
+  --color-accent-soft: #e6e6e6;
+  --color-accent-ink: #2c2c2c;
 
-  /* Sémantique — désaturée, discrète */
-  --color-positive: #17603f;         /* crédit — 7,2:1 */
-  --color-negative: #8a2020;         /* débit — 8,7:1 */
-  --color-alert: #7d5410;            /* attente — 6,4:1 */
+  /* Sémantique SDS — verte, rouge, ambre (textes lisibles sur blanc) */
+  --color-positive: #02542d;         /* crédit — 8,1:1 */
+  --color-positive-vif: #14ae5c;     /* pastilles, points d'état */
+  --color-negative: #c00f0c;         /* débit — 5,9:1 */
+  --color-alert: #975102;            /* attente — 4,6:1 */
 
   /* Couleurs opérateur — ce sont des données, pas la marque. Autorisées en
      liseré, pastille ou point (≤ 4 px), jamais en aplat de fond ni en texte. */
   --color-op-mtn: #ffcc00;
   --color-op-orange: #ff7900;
 
-  --text-hero: clamp(2rem, 1.6rem + 2vw, 2.75rem);
-  --text-display: clamp(1.625rem, 1.4rem + 1vw, 2rem);
-  --text-title: 1.375rem;
-  --text-heading: 1.0625rem;
-  --text-body: 0.9375rem;
-  --text-small: 0.8125rem;
+  /* Échelle SDS ramenée à l'application : 16 le corps, 14 le petit,
+     20 l'intertitre, 24 le titre, 32 et au-delà les grands chiffres. */
+  --text-hero: clamp(2rem, 1.6rem + 2vw, 3rem);
+  --text-display: 2rem;
+  --text-title: 1.5rem;
+  --text-heading: 1.25rem;
+  --text-body: 1rem;
+  --text-small: 0.875rem;
   --text-caption: 0.75rem;
 
-  /* Rayons sobres — pas de pilules partout */
-  --radius-card: 0.75rem;   /* 12px */
+  /* Rayons SDS : 8 partout (Base), 4 pour le détail (Small) */
+  --radius-card: 0.5rem;    /* 8px */
   --radius-btn: 0.5rem;     /* 8px */
-  --radius-sm: 0.375rem;    /* 6px */
+  --radius-sm: 0.25rem;     /* 4px */
 
-  --font-sans: var(--font-dm-sans), -apple-system, system-ui, "Segoe UI",
+  /* PAS d'ombre. La plateforme est mate : les plans se séparent par les
+     bordures et les fonds, jamais par une ombre portée. Décision du
+     propriétaire — ne pas en réintroduire. */
+
+  --font-sans: var(--font-inter), -apple-system, system-ui, "Segoe UI",
     Roboto, sans-serif;
+  /* Le mot TOTEM, et lui seul : le logotype reste en DM Sans. */
+  --font-marque: var(--font-dm-sans), var(--font-inter), sans-serif;
 
   /* Interlettrage du mot TOTEM — lapidaire, comme une inscription gravée.
      Ne s'applique qu'au nom de la marque, jamais au reste des capitales. */
@@ -80,14 +90,13 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.011em;
 }
 
-/* Carte de compte : aplat mat, aucune brillance. La distinction entre
-   opérateurs se fait par un liseré, pas par un dégradé criard. */
+/* Carte de compte : aplat mat, aucune brillance — le sombre de la gamme SDS.
+   La distinction entre opérateurs se fait par un liseré, pas par un dégradé. */
 .acct {
-  background: #17181c;
-  color: #f4f4f6;
+  background: #2c2c2c;
+  color: #f5f5f5;
 }
 .acct-alt {
   background: var(--color-surface-raised);
@@ -124,12 +133,18 @@ html[data-rail="replie"] { --rail: 4.5rem; }
    contient : la session USSD et la fiche d'un SMS se retrouvaient
    enfermées, rétrécies, dans la colonne de la page au lieu de couvrir
    l'écran. Le glissement reste permis sur la fenêtre elle-même (.surgit),
-   qui ne contient personne. */
+   qui ne contient personne.
+
+   Et JAMAIS « both » ici : une animation qui reste appliquée après sa fin
+   maintient un contexte d'empilement sur la page entière — la barre
+   flottante passait alors PAR-DESSUS la session USSD, le pop-up d'une
+   opération et la fiche d'un SMS, en recouvrant leurs boutons. Avec
+   « backwards », l'animation lâche la page sitôt jouée. */
 @keyframes entree {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.entree { animation: entree 0.22s ease-out both; }
+.entree { animation: entree 0.22s ease-out backwards; }
 
 @keyframes voile {
   from { opacity: 0; }

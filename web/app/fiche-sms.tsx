@@ -5,25 +5,50 @@ import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
-import { IconClose, IconCopy, IconDoc } from "./icons";
+import {
+  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
+  IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
+} from "./icons";
 import { reveillerLaVeille } from "./veille";
 
-// Chaque catégorie de SMS a sa pastille, comme une boîte de réception. Son
-// libellé, lui, vit dans le dictionnaire bilingue (lib/textes/sms.ts) — les
-// clés ("encaissement", "depot"…) sont des données et ne se traduisent pas.
-// La catégorie n'est qu'une aide : le SMS reste lisible en entier.
-export const CAT: Record<Categorie, string> = {
-  encaissement: "💰",
-  envoi: "↗️",
-  transfert: "🔁",
-  depot: "📥",
-  retrait: "📤",
-  solde: "📊",
-  code: "🔑",
-  publicite: "📢",
-  message: "💬",
-  inconnu: "✉️",
+// Chaque catégorie de SMS a son icône au trait, comme une boîte de réception.
+// Son libellé, lui, vit dans le dictionnaire bilingue (lib/textes/sms.ts) —
+// les clés ("encaissement", "depot"…) sont des données et ne se traduisent
+// pas. La catégorie n'est qu'une aide : le SMS reste lisible en entier.
+export const CAT: Record<Categorie, typeof IconArrowDown> = {
+  encaissement: IconArrowDown,
+  envoi: IconArrowUp,
+  transfert: IconTransfer,
+  depot: IconPlus,
+  retrait: IconBank,
+  solde: IconChart,
+  code: IconLock,
+  publicite: IconMegaphone,
+  message: IconBubble,
+  inconnu: IconMail,
 };
+
+/** L'icône d'une catégorie, prête à poser dans une pastille ou une puce. */
+export function CatIcone({
+  c, size = 16, className,
+}: { c: Categorie; size?: number; className?: string }) {
+  const Icone = CAT[c];
+  return <Icone size={size} className={className} />;
+}
+
+// Les schémas de couleur des étiquettes du Simple Design System, relevés du
+// fichier : vert « positif » pour l'argent qui entre, ambre « attention »
+// pour la publicité. Le reste demeure neutre — une sortie d'argent n'est pas
+// un danger, c'est le métier.
+const SCHEMA_CAT: Partial<Record<Categorie, string>> = {
+  encaissement: "bg-[#cff7d3] text-[#02542d]",
+  depot: "bg-[#cff7d3] text-[#02542d]",
+  publicite: "bg-[#fff1c2] text-[#522504]",
+};
+
+/** Les couleurs de la pastille d'une catégorie — schéma SDS, neutre sinon. */
+export const classeCat = (c: Categorie): string =>
+  SCHEMA_CAT[c] ?? "border border-line text-ink-soft";
 
 // Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
 const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
@@ -175,7 +200,9 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
 
   return (
     <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
-      <div className="surgit w-full max-w-md rounded-t-card border border-line bg-surface-raised p-6 md:rounded-card"
+      {/* La fiche peut être longue (un SMS entier, les détails, les gestes) :
+          elle défile dans sa propre hauteur, jamais coupée sans recours. */}
+      <div className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:max-h-[85dvh] md:rounded-card md:pb-6"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
@@ -195,7 +222,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
         </div>
 
         <dl className="mt-6 divide-hair">
-          <L t={t.categorie} v={`${CAT[catDe(p)]} ${t.cat[catDe(p)]}`} />
+          <L t={t.categorie} v={t.cat[catDe(p)]} />
           <L t={t.operateur} v={p.sim} />
           {p.numero && <L t={t.numero} v={p.numero} />}
           <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
@@ -210,12 +237,12 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           <div className="flex flex-wrap gap-1.5">
             {NATURES.map((n) => (
               <button key={n} onClick={() => classer(n)} disabled={classe}
-                className={`rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
+                className={`flex items-center gap-1.5 rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
                   nature === n
                     ? "border-ink bg-ink font-medium text-white"
                     : "border-line text-ink-soft hover:border-ink-faint"
                 }`}>
-                {CAT[n]} {t.cat[n]}
+                <CatIcone c={n} size={14} /> {t.cat[n]}
               </button>
             ))}
           </div>

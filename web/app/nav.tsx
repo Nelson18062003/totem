@@ -12,21 +12,30 @@ import { Logo, Symbole } from "./marque";
 import { Pastille, useActualite } from "./veille";
 
 // Les libellés vivent dans le dictionnaire (lib/textes/charpente.ts) : ici,
-// seulement leur clé.
-const liens = [
+// seulement leur clé. QUATRE entrées, pas une de plus : l'accueil, les
+// comptes, les SMS et les opérations — ce qu'un propriétaire vient faire.
+// `court` : le libellé de l'onglet mobile quand le nom entier serait long.
+type Lien = {
+  href: string;
+  cle: "accueil" | "comptes" | "smsRecus" | "analyse" | "operations" | "codeUssd";
+  court?: "smsCourt";
+  Icone: typeof IconHome;
+};
+
+const liens: Lien[] = [
   { href: "/", cle: "accueil", Icone: IconHome },
   { href: "/cartes", cle: "comptes", Icone: IconCard },
-  { href: "/encaissements", cle: "smsRecus", Icone: IconInbox },
-  { href: "/analyse", cle: "analyse", Icone: IconChart },
+  { href: "/encaissements", cle: "smsRecus", court: "smsCourt", Icone: IconInbox },
   { href: "/actions", cle: "operations", Icone: IconGrid },
-] as const;
+];
 
-// Sur grand écran, la place ne manque pas : le guichet complet est à un clic.
-// Sur téléphone, ces deux pages se rejoignent depuis l'accueil et Opérations —
-// la barre flottante reste à cinq boutons pour rester lisible.
-const liensSecondaires = [
+// Le second rang, sur grand écran seulement. Sur téléphone, ces pages se
+// rejoignent sans la barre : l'Analyse depuis la carte « Encaissé
+// aujourd'hui » de l'accueil, le code USSD depuis les Opérations.
+const liensSecondaires: Lien[] = [
+  { href: "/analyse", cle: "analyse", Icone: IconChart },
   { href: "/ussd", cle: "codeUssd", Icone: IconHash },
-] as const;
+];
 
 /**
  * La barre mobile s'efface pendant qu'on descend dans la page — le contenu
@@ -139,11 +148,11 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
                 // Replié : l'état du terminal tient dans son point — le
                 // survol dit le reste.
                 <span title={`${terminal.enLigne ? t.terminalActif : t.terminalMuet} · ${terminal.nom} · ${terminal.majTexte}`}
-                  className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                  className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive-vif" : "bg-negative"}`} />
               ) : (
                 <>
                   <p className="flex items-center gap-2 text-small text-ink-soft">
-                    <span className={`size-1.5 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                    <span className={`size-1.5 rounded-full ${terminal.enLigne ? "bg-positive-vif" : "bg-negative"}`} />
                     {terminal.enLigne ? t.terminalActif : t.terminalMuet}
                   </p>
                   <p className="mt-1 text-caption text-ink-faint">
@@ -172,13 +181,14 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
         </div>
       </aside>
 
-      {/* Barre flottante — mobile.
-          Repos : icône seule. Actif : pilule pleine avec libellé. */}
+      {/* Barre flottante — mobile. La pilule d'origine, au goût du
+          propriétaire : repos = icône seule, actif = pilule pleine avec son
+          nom. Quatre entrées seulement, et AUCUNE ombre — bordure seule. */}
       <nav
         className={`fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-transform duration-300 md:hidden ${
           cachee ? "translate-y-[130%]" : "translate-y-0"
         }`}>
-        <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-1.5 shadow-[0_8px_28px_-8px_rgba(22,23,26,0.22)]">
+        <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-1.5">
           {liens.map(({ href, cle, Icone }) => {
             const on = actif(href);
             return (

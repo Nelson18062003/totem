@@ -6,7 +6,7 @@ import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, jourDouala, type Paiement } from "@/lib/types";
 // La fiche d'un SMS et ses pastilles vivent dans un module partagé : la même
 // fiche s'ouvre ici et depuis les derniers SMS de l'accueil.
-import { CAT, catDe, FicheSms } from "../fiche-sms";
+import { catDe, CatIcone, classeCat, FicheSms } from "../fiche-sms";
 import { IconClose, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
 
@@ -30,16 +30,20 @@ export function ListeEncaissements({
   paiements,
   operateurs,
   enAttente = 0,
+  rechercheInitiale = "",
 }: {
   paiements: Paiement[];
   operateurs: string[];
   enAttente?: number;
+  // La recherche posée d'avance quand on arrive d'ailleurs (un client de
+  // l'Analyse) — effaçable d'un geste, comme une recherche tapée.
+  rechercheInitiale?: string;
 }) {
   const langue = useLangue();
   const t = textesSms[langue];
   const [filtre, setFiltre] = useState(TOUS);
   const [categorie, setCategorie] = useState<Categorie | typeof TOUTES>(TOUTES);
-  const [recherche, setRecherche] = useState("");
+  const [recherche, setRecherche] = useState(rechercheInitiale);
   const [detail, setDetail] = useState<Paiement | null>(null);
 
   // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
@@ -50,14 +54,22 @@ export function ListeEncaissements({
   }, [paiements]);
 
   const liste = useMemo(() => {
-    const q = recherche.trim().toLowerCase().replace(/\s/g, "");
+    // Deux formes de la requête : telle quelle, et sans espaces. Un espace ne
+    // doit jamais faire échouer : « PRIX MONO » trouve « PRIX MONO SARL »,
+    // « 20 000 » trouve le montant 20000, « 699 12 34 » trouve le numéro.
+    const brute = recherche.trim().toLowerCase();
+    const serree = brute.replace(/\s/g, "");
+    const compacte = (s: string) => s.toLowerCase().replace(/\s/g, "");
     return paiements.filter((p) => {
       if (filtre !== TOUS && p.sim !== filtre) return false;
       if (categorie !== TOUTES && catDe(p) !== categorie) return false;
-      if (!q) return true;
-      return p.nom.toLowerCase().includes(q) || p.numero.replace(/\s/g, "").includes(q)
-        || String(p.montant ?? "").includes(q) || p.reference.toLowerCase().includes(q)
-        || p.smsBrut.toLowerCase().includes(q);
+      if (!brute) return true;
+      return compacte(p.nom).includes(serree)
+        || compacte(p.numero).includes(serree)
+        || String(p.montant ?? "").includes(serree)
+        || compacte(p.reference).includes(serree)
+        || p.smsBrut.toLowerCase().includes(brute)
+        || compacte(p.smsBrut).includes(serree);
     });
   }, [paiements, filtre, categorie, recherche]);
 
@@ -82,7 +94,7 @@ export function ListeEncaissements({
 
       {enAttente > 0 && (
         <p className="rounded-card border border-line bg-surface-2 px-4 py-2.5 text-small text-ink-soft">
-          ⏳ {t.enCoursDeTransmission(enAttente)}
+          {t.enCoursDeTransmission(enAttente)}
         </p>
       )}
 
@@ -94,7 +106,8 @@ export function ListeEncaissements({
 
       {/* Recherche et filtres — une seule ligne dès que la largeur le permet */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
+        {/* Le champ de recherche du système : une pilule pleine largeur. */}
+        <div className="flex flex-1 items-center gap-2.5 rounded-full border border-line bg-surface-raised px-4">
           <IconSearch size={16} className="text-ink-faint" />
           <input value={recherche} onChange={(e) => setRecherche(e.target.value)}
             placeholder={t.recherchePlaceholder}
@@ -126,7 +139,7 @@ export function ListeEncaissements({
           </Chip>
           {categories.map((c) => (
             <Chip key={c} actif={categorie === c} onClick={() => setCategorie(c)}>
-              {CAT[c]} {t.cat[c]}
+              <CatIcone c={c} size={13} /> {t.cat[c]}
             </Chip>
           ))}
         </div>
@@ -159,9 +172,11 @@ export function ListeEncaissements({
                 <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
+                    {/* La pastille prend l'étiquette du système : rayon de 8,
+                        schéma de couleur selon la catégorie. */}
                     <span title={t.cat[catDe(p)]}
-                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-body">
-                      {CAT[catDe(p)]}
+                      className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-btn ${classeCat(catDe(p))}`}>
+                      <CatIcone c={catDe(p)} size={16} />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
@@ -227,7 +242,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-small transition ${
+      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-small transition ${
         actif
           ? "border-ink bg-ink font-medium text-white"
           : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"

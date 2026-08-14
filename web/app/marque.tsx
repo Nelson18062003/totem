@@ -110,7 +110,9 @@ export function Logo({ className }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className ?? ""}`}>
       <Symbole size={22} className="text-laterite" />
-      <span className="text-body font-bold uppercase tracking-marque">Totem</span>
+      {/* DM Sans Bold : le logotype ne se recompose pas dans la police de
+          l'interface (docs/IDENTITE.md). */}
+      <span className="font-marque text-body font-bold uppercase tracking-marque">Totem</span>
     </span>
   );
 }

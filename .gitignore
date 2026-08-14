@@ -6,5 +6,6 @@ totem.conf
 # App web
 web/node_modules/
 web/.next/
+.next/
 web/next-env.d.ts
 *.tsbuildinfo
