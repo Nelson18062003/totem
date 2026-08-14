@@ -2,6 +2,7 @@ import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesAccueil } from "@/lib/textes/accueil";
+import { fcfa, jourDouala } from "@/lib/types";
 import { AccueilGuichet } from "./accueil-client";
 import { DerniersSms } from "./derniers-sms";
 import { BasculeLangue } from "./langue";
@@ -9,11 +10,26 @@ import { IconChevron, IconSettings } from "./icons";
 
 export const dynamic = "force-dynamic";
 
+// Assez pour couvrir la journée la plus chargée ; la garde `journeeTronquee`
+// prend le relais si un jour la dépasse quand même.
+const BORNE_SMS = 200;
+
 export default async function Accueil() {
   const langue = await langueServeur();
   const t = textesAccueil[langue];
-  const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: 30, recus: 60 });
+  const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: BORNE_SMS, recus: 60 });
   const carte = sims.find((s) => s.enPlace) ?? null;
+
+  // La journée, calculée sur les vrais paiements — jamais un chiffre décrété.
+  const jour = jourDouala(new Date());
+  const encaissementsDuJour = paiements.filter(
+    (p) => p.jour === jour && p.sens === "in" && p.montant != null,
+  );
+  const totalDuJour = encaissementsDuJour.reduce((s, p) => s + (p.montant ?? 0), 0);
+  // Si les lignes chargées sont toutes d'aujourd'hui, la borne a pu couper la
+  // journée : le total est alors un plancher, et on le dit.
+  const journeeTronquee =
+    paiements.length >= BORNE_SMS && paiements[paiements.length - 1]?.jour === jour;
 
   return (
     // Grand écran : le guichet à gauche, le terminal et ses détails à droite.
@@ -56,8 +72,34 @@ export default async function Accueil() {
         </section>
       )}
 
+      {/* La journée en un coup d'œil : ce qui est entré aujourd'hui, dès la
+          première page — le détail des sept jours vit dans l'Analyse. */}
+      {carte && (
+        <section className="lg:col-start-1">
+          <Link
+            href="/analyse"
+            className="flex items-center gap-4 rounded-card border border-line bg-surface-raised px-4 py-3.5 transition hover:border-ink-faint"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-small text-ink-soft">{t.encaisseAujourdHui}</p>
+              <p className="mt-0.5 text-heading font-semibold tabnums">
+                {journeeTronquee
+                  ? t.auMoins(fcfa(totalDuJour, langue))
+                  : fcfa(totalDuJour, langue)}
+              </p>
+            </div>
+            {encaissementsDuJour.length > 0 && (
+              <span className="text-small tabnums text-ink-soft">
+                {t.nbEncaissementsJour(encaissementsDuJour.length)}
+              </span>
+            )}
+            <IconChevron size={16} className="shrink-0 text-ink-faint" />
+          </Link>
+        </section>
+      )}
+
       {/* Le terminal, avec ses détails techniques */}
-      <aside className="lg:col-start-2 lg:row-span-3 lg:row-start-2">
+      <aside className="lg:col-start-2 lg:row-span-4 lg:row-start-2">
         <h2 className="mb-3 text-heading font-semibold">{t.terminal}</h2>
         <Link href="/reglages"
           className="block rounded-card border border-line bg-surface-raised transition hover:border-ink-faint">

@@ -42,6 +42,12 @@ const en = {
   aucunCode: (op: string) => `No ${op} codes recorded yet: add them in`,
   aucunCodeLien: "Settings",
 
+  // La journée en un coup d'œil
+  encaisseAujourdHui: "Money in today",
+  nbEncaissementsJour: (n: number) =>
+    n === 1 ? "1 payment received" : `${n} payments received`,
+  auMoins: (montant: string) => `at least ${montant}`,
+
   // Les derniers SMS
   derniersSms: "Latest SMS",
   toutVoir: "See all",
@@ -87,6 +93,10 @@ const fr: typeof en = {
   montantFcfa: "Montant (FCFA)",
   aucunCode: (op) => `Aucun code ${op} relevé sur le terrain : ajoutez-les dans les`,
   aucunCodeLien: "Réglages",
+
+  encaisseAujourdHui: "Encaissé aujourd’hui",
+  nbEncaissementsJour: (n) => (n > 1 ? `${n} paiements reçus` : `${n} paiement reçu`),
+  auMoins: (montant) => `au moins ${montant}`,
 
   derniersSms: "Derniers SMS",
   toutVoir: "Tout voir",
