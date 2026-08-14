@@ -55,7 +55,7 @@ export default async function Comptes() {
                   <span className={`flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
                     i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
                   }`}>
-                    <span className="size-1.5 rounded-full bg-positive" /> {s.signal}/31
+                    <span className="size-1.5 rounded-full bg-positive-vif" /> {s.signal}/31
                   </span>
                 )}
               </div>

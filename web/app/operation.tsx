@@ -180,7 +180,7 @@ export function OperationPopup({
     // gestes restent en place, seul le fil des échanges défile. Fini le
     // pop-up qu'il fallait faire défiler pour retrouver ses boutons.
     <div className="voile fixed inset-0 z-30 flex items-stretch justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit flex w-full max-w-md flex-col bg-surface-raised md:max-h-[85dvh] md:rounded-card md:border md:border-line"
+      <div className="surgit flex w-full max-w-md flex-col bg-surface-raised md:max-h-[85dvh] md:rounded-card md:border md:border-line md:shadow-fenetre"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 items-start justify-between p-6 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))] md:pt-6">
           <div>

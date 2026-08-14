@@ -48,7 +48,7 @@ export default async function Reglages() {
             <>
               <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <span className="flex items-center gap-2.5 text-body">
-                  <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                  <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive-vif" : "bg-negative"}`} />
                   {terminal.enLigne ? t.enLigne : t.muet}
                 </span>
                 <span className="text-small tabnums text-ink-faint">

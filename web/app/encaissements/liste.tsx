@@ -106,7 +106,8 @@ export function ListeEncaissements({
 
       {/* Recherche et filtres — une seule ligne dès que la largeur le permet */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex flex-1 items-center gap-2.5 rounded-btn border border-line bg-surface-raised px-3.5">
+        {/* Le champ de recherche du système : une pilule pleine largeur. */}
+        <div className="flex flex-1 items-center gap-2.5 rounded-full border border-line bg-surface-raised px-4">
           <IconSearch size={16} className="text-ink-faint" />
           <input value={recherche} onChange={(e) => setRecherche(e.target.value)}
             placeholder={t.recherchePlaceholder}

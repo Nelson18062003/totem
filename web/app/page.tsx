@@ -106,7 +106,7 @@ export default async function Accueil() {
           {terminal ? (
             <>
               <p className="flex items-center gap-2.5 border-b border-line px-4 py-3 text-body">
-                <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                <span className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive-vif" : "bg-negative"}`} />
                 {terminal.enLigne ? t.enLigne : t.muet}
                 <span className="ml-auto text-small tabnums text-ink-faint">{terminal.majTexte}</span>
               </p>

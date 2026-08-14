@@ -177,14 +177,16 @@ elle empêche la tresse d'être lue comme une texture de fond.
 
 ## 7. Couleurs
 
-Deux matières, toutes deux du pays. **La latérite** — la terre rouge sur
-laquelle le totem est planté — porte la marque. **L'indigo** — la teinture des
-tissus — porte l'action. L'une dit qui l'on est, l'autre dit ce qu'on peut
-faire. Autour, des neutres **tièdes**, pas des gris bleutés de tableau de bord.
+Depuis l'adoption des fondations du **Simple Design System** (Figma) pour
+l'interface, la répartition est simple : **la latérite** — la terre rouge sur
+laquelle le totem est planté — porte la marque, et elle seule ; l'interface,
+elle, est **neutre**, du blanc au presque-noir, et l'action principale est
+sombre, jamais colorée. Les valeurs ci-dessous sont relevées dans le fichier
+Figma du système, pas approchées.
 
-Aucune des deux ne se confond avec un opérateur : MTN est un jaune vif, Orange
-un orange vif ; la latérite est sombre et rabattue, l'indigo est froid. TOTEM
-reste la surface sur laquelle ces deux couleurs-là viennent se poser.
+La latérite ne se confond avec aucun opérateur : MTN est un jaune vif, Orange
+un orange vif ; la latérite est sombre et rabattue. TOTEM reste la surface
+neutre sur laquelle la marque vient se poser.
 
 ### La marque
 
@@ -194,41 +196,41 @@ reste la surface sur laquelle ces deux couleurs-là viennent se poser.
 | `laterite-clair` | `#D08A63` | La même, sur fond sombre. | 6,4:1 sur `ink` |
 | `sable` | `#F4EFE9` | Le fond des surfaces de marque. | — |
 
-### Neutres tièdes
+### Neutres — la gamme du système
 
 | Jeton | Hex | Rôle | Contraste |
 |---|---|---|---|
-| `surface` | `#FBFAF9` | Fond de page | — |
+| `surface` | `#F5F5F5` | Fond de page | — |
 | `surface-raised` | `#FFFFFF` | Cartes | — |
-| `surface-2` | `#F4F2F0` | Champs, survol, puces | — |
-| `surface-3` | `#EBE8E5` | Séparateurs pleins, barres | — |
-| `line` | `#E8E5E1` | Bordures fines | — |
-| `ink` | `#16171A` | Texte principal | 17,2:1 |
-| `ink-soft` | `#62605C` | Texte secondaire | 6,0:1 |
-| `ink-faint` | `#77726B` | Texte tertiaire | **4,6:1 — passe AA** |
+| `surface-2` | `#E6E6E6` | Champs, survol, puces | — |
+| `surface-3` | `#D9D9D9` | Séparateurs pleins, barres | — |
+| `line` | `#D9D9D9` | Bordures fines | — |
+| `ink` | `#1E1E1E` | Texte principal | 16,1:1 |
+| `ink-soft` | `#444444` | Texte secondaire | 9,7:1 |
+| `ink-faint` | `#767676` | Texte tertiaire | **4,5:1 — passe AA** |
 
-> Le gris tertiaire de la version précédente (`#8E909A`) plafonnait à 3,07:1,
-> sous le seuil AA. Il est corrigé ici : le passage à des neutres tièdes a été
-> l'occasion de le remonter à 4,6:1. Plus aucune couleur de texte du système
-> n'est sous le seuil.
+> Le système propose `#B3B3B3` en tertiaire ; il plafonne à 2,4:1, sous le
+> seuil AA. On lui préfère `#767676`, pris dans la même gamme : aucune couleur
+> de texte de l'interface n'est sous le seuil.
 
 ### L'action
 
 | Jeton | Hex | Rôle | Contraste |
 |---|---|---|---|
-| `accent` | `#1F3A8A` | Indigo. Liens, sélection, action principale. | 9,9:1 |
-| `accent-hover` | `#182D6B` | Survol | — |
-| `accent-soft` | `#EEF1F8` | Fond d'état sélectionné | — |
+| `accent` | `#2C2C2C` | Bouton premier, sélection, focus. | 13,4:1 |
+| `accent-hover` | `#1E1E1E` | Survol | — |
+| `accent-soft` | `#E6E6E6` | Fond d'état sélectionné | — |
 
-### Sémantique — désaturée
+### Sémantique — celle du système
 
 | Jeton | Hex | Rôle | Contraste |
 |---|---|---|---|
-| `positive` | `#17603F` | Crédit, encaissement | 7,2:1 |
-| `negative` | `#8A2020` | Débit, sortie | 8,7:1 |
-| `alert` | `#7D5410` | Attention, file d'attente | 6,4:1 |
+| `positive` | `#02542D` | Crédit, encaissement (texte) | 8,1:1 |
+| `positive-vif` | `#14AE5C` | Points et pastilles d'état | — |
+| `negative` | `#C00F0C` | Débit, sortie | 5,9:1 |
+| `alert` | `#975102` | Attention, file d'attente | 4,6:1 |
 
-Sombres et mates, jamais vives. Un encaissement n'est pas une fête.
+Le texte reste sombre et lisible ; le vif est réservé aux points d'état.
 
 ### Couleurs opérateur — ce sont des données
 
@@ -245,43 +247,43 @@ jamais en texte, jamais dans le logo.
 
 ## 8. Typographie
 
-**Une seule famille : DM Sans.** Pas de police d'accompagnement — les rôles se
-distinguent par la graisse, la casse et l'interlettrage, pas par un second
-dessin. Chargée par `next/font` : aucun appel réseau au rendu, aucun saut de
-mise en page.
+**L'interface parle Inter** — la famille du Simple Design System, chargée par
+`next/font` : aucun appel réseau au rendu, aucun saut de mise en page.
+**DM Sans ne subsiste qu'à deux endroits** : le mot TOTEM du logotype (le
+logotype ne se recompose pas), et les reçus PDF, où elle est embarquée côté
+terminal (`totem/polices/`).
 
 | Graisse | Usage |
 |---|---|
 | 400 Regular | Corps de texte |
 | 500 Medium | Libellés, éléments actifs |
 | 600 SemiBold | Titres |
-| 700 Bold | Le mot TOTEM, et lui seul |
+| 700 Bold | Le mot TOTEM (DM Sans), et lui seul |
 
-### Échelle
+### Échelle — celle du système, ramenée à l'application
 
 | Jeton | Taille | Usage |
 |---|---|---|
-| `text-hero` | 2 → 2,75 rem | Le solde, et rien d'autre |
-| `text-display` | 1,625 → 2 rem | Montants de compte |
-| `text-title` | 1,375 rem | Titre de page |
-| `text-heading` | 1,0625 rem | Titre de section |
-| `text-body` | 0,9375 rem | Corps |
-| `text-small` | 0,8125 rem | Annexe |
+| `text-hero` | 2 → 3 rem | Le solde, et rien d'autre |
+| `text-display` | 2 rem | Montants de compte |
+| `text-title` | 1,5 rem | Titre de page |
+| `text-heading` | 1,25 rem | Titre de section |
+| `text-body` | 1 rem | Corps |
+| `text-small` | 0,875 rem | Annexe |
 | `text-caption` | 0,75 rem | Étiquette |
 
-### Deux règles fermes
+### Une règle ferme
 
 1. **Les chiffres sont tabulaires.** Classe `.tabnums` sur tout montant, tout
    solde, tout numéro. Une colonne de montants doit s'aligner à la virgule.
-2. **`letter-spacing: -0.011em` sur le corps.** DM Sans est un peu lâche par
-   défaut ; ce resserrage lui donne sa densité. Ne pas le retirer.
 
 ---
 
 ## 9. Formes et icônes
 
-**Rayons** — trois valeurs, pas quatre :
-`--radius-card` 12 px · `--radius-btn` 8 px · `--radius-sm` 6 px.
+**Rayons** — ceux du système : `--radius-card` 8 px · `--radius-btn` 8 px ·
+`--radius-sm` 4 px. La pilule (`rounded-full`) est réservée à la recherche et
+à la barre flottante.
 
 **Icônes** — jeu maison dans `web/app/icons.tsx` : trait de **1,5 px**, grille
 **24 × 24**, extrémités et jointures arrondies, jamais de remplissage. Le trait

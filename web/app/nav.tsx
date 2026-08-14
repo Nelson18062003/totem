@@ -139,11 +139,11 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
                 // Replié : l'état du terminal tient dans son point — le
                 // survol dit le reste.
                 <span title={`${terminal.enLigne ? t.terminalActif : t.terminalMuet} · ${terminal.nom} · ${terminal.majTexte}`}
-                  className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                  className={`size-2 rounded-full ${terminal.enLigne ? "bg-positive-vif" : "bg-negative"}`} />
               ) : (
                 <>
                   <p className="flex items-center gap-2 text-small text-ink-soft">
-                    <span className={`size-1.5 rounded-full ${terminal.enLigne ? "bg-positive" : "bg-negative"}`} />
+                    <span className={`size-1.5 rounded-full ${terminal.enLigne ? "bg-positive-vif" : "bg-negative"}`} />
                     {terminal.enLigne ? t.terminalActif : t.terminalMuet}
                   </p>
                   <p className="mt-1 text-caption text-ink-faint">
@@ -178,7 +178,7 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
         className={`fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-transform duration-300 md:hidden ${
           cachee ? "translate-y-[130%]" : "translate-y-0"
         }`}>
-        <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-1.5 shadow-[0_8px_28px_-8px_rgba(22,23,26,0.22)]">
+        <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-1.5 shadow-fenetre">
           {liens.map(({ href, cle, Icone }) => {
             const on = actif(href);
             return (
