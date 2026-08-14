@@ -124,12 +124,18 @@ html[data-rail="replie"] { --rail: 4.5rem; }
    contient : la session USSD et la fiche d'un SMS se retrouvaient
    enfermées, rétrécies, dans la colonne de la page au lieu de couvrir
    l'écran. Le glissement reste permis sur la fenêtre elle-même (.surgit),
-   qui ne contient personne. */
+   qui ne contient personne.
+
+   Et JAMAIS « both » ici : une animation qui reste appliquée après sa fin
+   maintient un contexte d'empilement sur la page entière — la barre
+   flottante passait alors PAR-DESSUS la session USSD, le pop-up d'une
+   opération et la fiche d'un SMS, en recouvrant leurs boutons. Avec
+   « backwards », l'animation lâche la page sitôt jouée. */
 @keyframes entree {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-.entree { animation: entree 0.22s ease-out both; }
+.entree { animation: entree 0.22s ease-out backwards; }
 
 @keyframes voile {
   from { opacity: 0; }
