@@ -175,7 +175,7 @@ export function OperationPopup({
     // voile — on sait toujours où l'on est. L'en-tête et les gestes restent
     // en place ; seule la réponse du réseau, au centre, peut défiler.
     <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:rounded-card md:border"
+      <div className="surgit flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:rounded-card md:border"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 items-start justify-between p-6 pb-4">
           <div>
@@ -219,9 +219,10 @@ export function OperationPopup({
         ) : (
           <>
             {/* UNE seule carte, qui se réécrit à chaque réponse du réseau —
-                comme sur Telegram. Jamais l'historique de ce qui a été tapé :
-                il encombrait l'écran sans rien apprendre. */}
-            <div className="flex-1 overflow-y-auto px-6">
+                comme sur Telegram. Le message de l'opérateur dit ce qu'on
+                s'apprête à confirmer : il a un MINIMUM de place garanti, le
+                pavé n'a pas le droit de l'écraser. */}
+            <div className="min-h-28 flex-1 overflow-y-auto px-6">
               {dernier && (
                 <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
                   {dernier}
@@ -235,13 +236,10 @@ export function OperationPopup({
               )}
             </div>
 
-            {/* Le pavé, la réponse et la sortie — toujours visibles en bas */}
-            <div className="flex shrink-0 flex-col gap-3 p-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-6">
-              {pave && (
-                <div className="rounded-card border border-line p-4">
-                  <PaveSecret onValider={secret} />
-                </div>
-              )}
+            {/* Le pavé, la réponse et la sortie — toujours visibles en bas,
+                et compacts : la place est au message, pas aux contrôles. */}
+            <div className="flex shrink-0 flex-col gap-2.5 px-6 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-5">
+              {pave && <PaveSecret onValider={secret} />}
 
               {enSession && !attente && !pave && !fini && (
                 <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}

@@ -26,43 +26,44 @@ export function PaveSecret({ onValider }: { onValider: (code: string) => void })
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-small text-ink-soft">{t.paveTitre}</p>
+    // Compact à dessein : sur téléphone, chaque centimètre pris par le pavé
+    // est volé au message de l'opérateur — qui dit ce qu'on s'apprête à
+    // confirmer. Pas de note d'explication ici : la promesse sur le code
+    // (jamais enregistré) vit sur l'écran de connexion.
+    <div className="flex flex-col items-center gap-2.5">
+      <p className="flex items-center gap-3 text-small text-ink-soft">
+        {t.paveTitre}
+        {/* Ce qui s'affiche est tout ce qui sera jamais montré : des points. */}
+        <span className="flex items-center gap-1.5" aria-label={t.chiffresComposes(code.length)}>
+          {Array.from({ length: Math.max(4, code.length) }).map((_, i) => (
+            <span key={i}
+              className={`rounded-full transition-all ${
+                i < code.length ? "size-2.5 bg-ink" : "size-2 border border-ink-faint"
+              }`} />
+          ))}
+        </span>
+      </p>
 
-      {/* Ce qui s'affiche est tout ce qui sera jamais montré : des points. */}
-      <div className="flex h-6 items-center gap-2.5" aria-label={t.chiffresComposes(code.length)}>
-        {Array.from({ length: Math.max(4, code.length) }).map((_, i) => (
-          <span key={i}
-            className={`rounded-full transition-all ${
-              i < code.length ? "size-3 bg-ink" : "size-2.5 border border-ink-faint"
-            }`} />
-        ))}
-      </div>
-
-      <div className="grid w-full max-w-56 grid-cols-3 gap-1.5">
+      <div className="grid w-full max-w-64 grid-cols-3 gap-1.5">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((c) => (
           <button key={c} onClick={() => appuyer(c)}
-            className="rounded-btn border border-line bg-surface-raised py-3 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
+            className="rounded-btn border border-line bg-surface-raised py-2 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
             {c}
           </button>
         ))}
         <button onClick={effacer} aria-label={t.effacerDernier}
-          className="rounded-btn py-3 text-small text-ink-soft transition hover:text-ink">
+          className="rounded-btn py-2 text-small text-ink-soft transition hover:text-ink">
           {t.effacer}
         </button>
         <button onClick={() => appuyer("0")}
-          className="rounded-btn border border-line bg-surface-raised py-3 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
+          className="rounded-btn border border-line bg-surface-raised py-2 text-body font-medium tabnums transition hover:border-ink-faint active:bg-surface-2">
           0
         </button>
         <button onClick={valider} disabled={code.length < 4}
-          className="rounded-btn bg-ink py-3 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+          className="rounded-btn bg-ink py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
           {t.valider}
         </button>
       </div>
-
-      <p className="text-center text-caption leading-relaxed text-ink-faint">
-        {t.paveNote}
-      </p>
     </div>
   );
 }
