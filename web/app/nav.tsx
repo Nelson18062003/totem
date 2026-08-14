@@ -12,49 +12,35 @@ import { Logo, Symbole } from "./marque";
 import { Pastille, useActualite } from "./veille";
 
 // Les libellés vivent dans le dictionnaire (lib/textes/charpente.ts) : ici,
-// seulement leur clé.
-const liens = [
+// seulement leur clé. QUATRE entrées, pas une de plus : l'accueil, les
+// comptes, les SMS et les opérations — ce qu'un propriétaire vient faire.
+// `court` : le libellé de l'onglet mobile quand le nom entier serait long.
+type Lien = {
+  href: string;
+  cle: "accueil" | "comptes" | "smsRecus" | "analyse" | "operations" | "codeUssd";
+  court?: "smsCourt";
+  Icone: typeof IconHome;
+};
+
+const liens: Lien[] = [
   { href: "/", cle: "accueil", Icone: IconHome },
   { href: "/cartes", cle: "comptes", Icone: IconCard },
-  { href: "/encaissements", cle: "smsRecus", Icone: IconInbox },
-  { href: "/analyse", cle: "analyse", Icone: IconChart },
+  { href: "/encaissements", cle: "smsRecus", court: "smsCourt", Icone: IconInbox },
   { href: "/actions", cle: "operations", Icone: IconGrid },
-] as const;
+];
 
-// Sur grand écran, la place ne manque pas : le guichet complet est à un clic.
-// Sur téléphone, ces deux pages se rejoignent depuis l'accueil et Opérations —
-// la barre flottante reste à cinq boutons pour rester lisible.
-const liensSecondaires = [
+// Le second rang, sur grand écran seulement. Sur téléphone, ces pages se
+// rejoignent sans la barre : l'Analyse depuis la carte « Encaissé
+// aujourd'hui » de l'accueil, le code USSD depuis les Opérations.
+const liensSecondaires: Lien[] = [
+  { href: "/analyse", cle: "analyse", Icone: IconChart },
   { href: "/ussd", cle: "codeUssd", Icone: IconHash },
-] as const;
-
-/**
- * La barre mobile s'efface pendant qu'on descend dans la page — le contenu
- * reprend toute la hauteur — et revient dès qu'on remonte, ou en haut de page.
- */
-function useBarreEffacable() {
-  const [cachee, setCachee] = useState(false);
-
-  useEffect(() => {
-    let dernierY = window.scrollY;
-    const surDefilement = () => {
-      const y = window.scrollY;
-      if (y < 24) setCachee(false);
-      else if (Math.abs(y - dernierY) > 8) setCachee(y > dernierY);
-      dernierY = y;
-    };
-    window.addEventListener("scroll", surDefilement, { passive: true });
-    return () => window.removeEventListener("scroll", surDefilement);
-  }, []);
-
-  return cachee;
-}
+];
 
 export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
   const path = usePathname();
   const langue = useLangue();
   const t = textesCharpente[langue];
-  const cachee = useBarreEffacable();
   // La bascule de langue du rail : le bouton porte le nom de l'AUTRE langue,
   // en toutes lettres, dans cette langue — celle qui la cherche peut la lire.
   // Sur téléphone, elle vit en évidence sur l'accueil et dans les réglages :
@@ -172,31 +158,26 @@ export function Nav({ terminal }: { terminal: EtatTerminal | null }) {
         </div>
       </aside>
 
-      {/* Barre flottante — mobile.
-          Repos : icône seule. Actif : pilule pleine avec libellé. */}
-      <nav
-        className={`fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-transform duration-300 md:hidden ${
-          cachee ? "translate-y-[130%]" : "translate-y-0"
-        }`}>
-        <div className="flex items-center gap-1 rounded-full border border-line bg-surface-raised p-1.5 shadow-fenetre">
-          {liens.map(({ href, cle, Icone }) => {
+      {/* Barre d'onglets — mobile. Quatre entrées, chacune avec son nom
+          TOUJOURS écrit : rien à deviner, rien qui se cache. Elle ne bouge
+          pas, ne s'efface pas — le repère le plus simple qui soit. */}
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface-raised pb-[env(safe-area-inset-bottom)] md:hidden">
+        <div className="mx-auto flex max-w-md">
+          {liens.map(({ href, cle, court, Icone }) => {
             const on = actif(href);
             return (
-              <Link key={href} href={href} aria-label={t[cle]} aria-current={on ? "page" : undefined}
-                className={`flex items-center justify-center gap-2 rounded-full transition-all duration-200 ${
-                  on
-                    ? "bg-ink px-4 py-2.5 text-white"
-                    : "size-11 text-ink-faint active:bg-surface-2"
+              <Link key={href} href={href} aria-current={on ? "page" : undefined}
+                className={`flex flex-1 flex-col items-center gap-1 pb-2 pt-2.5 text-caption transition ${
+                  on ? "font-medium text-ink" : "text-ink-faint active:text-ink-soft"
                 }`}>
                 <span className="relative">
-                  <Icone size={20} />
-                  {/* Le point des nouveaux SMS, version mobile : discret sur
-                      l'icône de la boîte quand elle n'est pas la page active. */}
-                  {href === "/encaissements" && !on && nonLus > 0 && (
-                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-ink" />
+                  <Icone size={22} />
+                  {/* Le point des nouveaux SMS, discret sur l'icône. */}
+                  {href === "/encaissements" && nonLus > 0 && (
+                    <span className="absolute -right-1 -top-0.5 size-2 rounded-full bg-ink" />
                   )}
                 </span>
-                {on && <span className="text-small font-medium">{t[cle]}</span>}
+                {t[court ?? cle]}
               </Link>
             );
           })}

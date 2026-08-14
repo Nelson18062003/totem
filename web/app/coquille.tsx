@@ -30,7 +30,7 @@ export function Coquille({
   return (
     // La marge gauche suit la largeur du rail (déplié ou replié) : c'est la
     // même variable --rail que le menu pilote, et la page glisse avec lui.
-    <div className="pb-28 transition-[padding] duration-300 md:pb-0 md:pl-[var(--rail)]">
+    <div className="pb-20 transition-[padding] duration-300 md:pb-0 md:pl-[var(--rail)]">
       <Nav terminal={terminal} />
       {/* Sur grand écran, la page respire : colonne plus large, marges plus
           franches. Les pages y déploient leurs deux colonnes. */}
