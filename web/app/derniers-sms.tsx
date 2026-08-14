@@ -25,7 +25,11 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
           <li key={p.id} className="flex items-center gap-3 py-3.5">
             <button onClick={() => setDetail(p)}
               className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-70">
-              <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+              {/* L'étiquette du système : rayon de 8, vert positif quand
+                  l'argent entre, neutre sinon. */}
+              <span className={`grid size-9 shrink-0 place-items-center rounded-btn ${
+                p.sens === "in" ? "bg-[#cff7d3] text-[#02542d]" : "border border-line text-ink-soft"
+              }`}>
                 {p.sens === "in" ? <IconArrowDown size={16} /> : p.sens === "out" ? <IconArrowUp size={16} /> : "·"}
               </span>
               <span className="min-w-0 flex-1">

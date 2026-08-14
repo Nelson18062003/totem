@@ -36,6 +36,20 @@ export function CatIcone({
   return <Icone size={size} className={className} />;
 }
 
+// Les schémas de couleur des étiquettes du Simple Design System, relevés du
+// fichier : vert « positif » pour l'argent qui entre, ambre « attention »
+// pour la publicité. Le reste demeure neutre — une sortie d'argent n'est pas
+// un danger, c'est le métier.
+const SCHEMA_CAT: Partial<Record<Categorie, string>> = {
+  encaissement: "bg-[#cff7d3] text-[#02542d]",
+  depot: "bg-[#cff7d3] text-[#02542d]",
+  publicite: "bg-[#fff1c2] text-[#522504]",
+};
+
+/** Les couleurs de la pastille d'une catégorie — schéma SDS, neutre sinon. */
+export const classeCat = (c: Categorie): string =>
+  SCHEMA_CAT[c] ?? "border border-line text-ink-soft";
+
 // Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
 const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
 

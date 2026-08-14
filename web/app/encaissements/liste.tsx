@@ -6,7 +6,7 @@ import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, jourDouala, type Paiement } from "@/lib/types";
 // La fiche d'un SMS et ses pastilles vivent dans un module partagé : la même
 // fiche s'ouvre ici et depuis les derniers SMS de l'accueil.
-import { catDe, CatIcone, FicheSms } from "../fiche-sms";
+import { catDe, CatIcone, classeCat, FicheSms } from "../fiche-sms";
 import { IconClose, IconDoc, IconSearch } from "../icons";
 import { Vide } from "../vide";
 
@@ -172,8 +172,10 @@ export function ListeEncaissements({
                 <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
+                    {/* La pastille prend l'étiquette du système : rayon de 8,
+                        schéma de couleur selon la catégorie. */}
                     <span title={t.cat[catDe(p)]}
-                      className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-soft">
+                      className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-btn ${classeCat(catDe(p))}`}>
                       <CatIcone c={catDe(p)} size={16} />
                     </span>
                     <span className="min-w-0 flex-1">
