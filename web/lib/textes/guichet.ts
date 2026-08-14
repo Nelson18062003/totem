@@ -68,9 +68,6 @@ const en = {
   effacer: "Erase",
   effacerDernier: "Erase the last digit",
   valider: "Confirm",
-  paveNote:
-    "The code goes to the terminal, which dials it on the card, then it " +
-    "vanishes. It is stored nowhere — the log only ever keeps “••••”.",
 };
 
 const fr: typeof en = {
@@ -134,9 +131,6 @@ const fr: typeof en = {
   effacer: "Effacer",
   effacerDernier: "Effacer le dernier chiffre",
   valider: "Valider",
-  paveNote:
-    "Le code part au terminal qui le compose sur la carte, puis disparaît. " +
-    "Nulle part il n’est enregistré — le journal n’en garde que « •••• ».",
 };
 
 export const textesGuichet = { en, fr } as const;

@@ -202,7 +202,7 @@ export function ConsoleUssd({
         <>
         <div className="voile fixed inset-0 z-20 bg-ink/25 lg:hidden"
           onClick={() => { if (!attente) fermer(); }} />
-        <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[80dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:col-start-2 lg:max-h-none lg:rounded-card lg:border">
+        <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[92dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:max-h-none lg:rounded-card lg:border lg:col-start-2">
           <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
@@ -213,9 +213,10 @@ export function ConsoleUssd({
             </button>
           </div>
 
-          {/* UNE seule carte, réécrite à chaque réponse du réseau — jamais
-              l'historique de frappe, qui encombrait sans rien apprendre. */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* UNE seule carte, réécrite à chaque réponse du réseau. Le message
+              de l'opérateur a un minimum de place GARANTI : le pavé n'a pas
+              le droit de l'écraser. */}
+          <div className="min-h-28 flex-1 overflow-y-auto p-4">
             {dernier && (
               <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
                 {dernier}
@@ -237,13 +238,10 @@ export function ConsoleUssd({
               (Pendant la toute première composition, il n'y a encore aucun
               geste à offrir : pas de pied vide.) */}
           {(enSession || !attente) && (
-          <div className="flex shrink-0 flex-col gap-2 border-t border-line p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:border-t-0 lg:pt-0">
-            {/* Le pavé, quand le réseau attend le code secret */}
-            {pave && (
-              <div className="rounded-card border border-line p-4">
-                <PaveSecret onValider={secret} />
-              </div>
-            )}
+          <div className="flex shrink-0 flex-col gap-2 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] lg:border-t-0 lg:pt-0 lg:pb-4">
+            {/* Le pavé, quand le réseau attend le code secret — à même la
+                feuille, sans boîte autour : la place est au message. */}
+            {pave && <PaveSecret onValider={secret} />}
 
             {/* Réponse libre : le chiffre du menu, un montant, un numéro */}
             {enSession && !attente && !pave && (
