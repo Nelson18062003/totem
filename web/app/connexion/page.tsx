@@ -54,9 +54,13 @@ export default function Connexion() {
       <div className="mb-9">
         <Symbole size={34} className="text-laterite" />
         <h1 className="mt-5 text-title font-semibold tracking-tight">{t.titre}</h1>
-        <p className="mt-1 text-small text-ink-soft">
+        {/* La présentation en une phrase : c'est le seul écran qu'un visiteur
+            verra jamais — il doit dire ce qu'est TOTEM, pas seulement
+            demander un mot de passe. */}
+        <p className="mt-2 text-small leading-relaxed text-ink-soft">
           {t.sousTitre}
         </p>
+        <p className="mt-2 text-caption text-ink-faint">{t.reserve}</p>
       </div>
 
       <form onSubmit={entrer} className="flex flex-col gap-4">
