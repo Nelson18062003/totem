@@ -46,11 +46,6 @@ export function ConsoleUssd({
   const [enSession, setEnSession] = useState(false);
   const [attente, setAttente] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const bas = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bas.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [fil, attente]);
 
   const envoyer = async (
     genre: "ussd" | "ussd_reponse" | "ussd_fin",
@@ -201,12 +196,14 @@ export function ConsoleUssd({
           </p>
         </div>
       ) : (
-        // Sur téléphone, la session prend TOUT l'écran, comme un appel : rien
-        // d'autre à voir, rien à faire défiler pour trouver la réponse ou les
-        // boutons. Seul le fil défile, à l'intérieur ; les gestes restent
-        // ancrés en bas. Sur grand écran, elle reste la carte de droite.
-        <section className="fixed inset-0 z-30 flex flex-col bg-surface lg:static lg:z-auto lg:col-start-2 lg:rounded-card lg:border lg:border-line lg:bg-surface-raised">
-          <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-3">
+        // Une FEUILLE posée en bas de l'écran : le cadran reste visible
+        // derrière le voile. Sur grand écran, la carte de droite, comme
+        // toujours.
+        <>
+        <div className="voile fixed inset-0 z-20 bg-ink/25 lg:hidden"
+          onClick={() => { if (!attente) fermer(); }} />
+        <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[80dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:col-start-2 lg:max-h-none lg:rounded-card lg:border">
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
@@ -216,29 +213,24 @@ export function ConsoleUssd({
             </button>
           </div>
 
-          {/* Le fil de la session — la seule zone qui défile */}
-          <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4 lg:max-h-96 lg:flex-none">
-            {fil.map((m, i) => (
-              <p key={i}
-                className={`max-w-[85%] whitespace-pre-line rounded-card px-3.5 py-2.5 text-small leading-relaxed ${
-                  m.de === "reseau"
-                    ? "self-start bg-surface-2 text-ink"
-                    : "self-end bg-ink text-white tabnums"
-                }`}>
-                {m.texte}
+          {/* UNE seule carte, réécrite à chaque réponse du réseau — jamais
+              l'historique de frappe, qui encombrait sans rien apprendre. */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {dernier && (
+              <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
+                {dernier}
               </p>
-            ))}
+            )}
             {attente && (
-              <p className="self-start px-1 text-caption text-ink-faint">
+              <p className="mt-2 px-1 text-caption text-ink-faint">
                 {t.terminalCompose}
               </p>
             )}
             {erreur && (
-              <p className="self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-negative">
+              <p className="mt-2 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-negative">
                 {erreur}
               </p>
             )}
-            <div ref={bas} />
           </div>
 
           {/* Les gestes — toujours visibles, jamais à aller chercher.
@@ -292,6 +284,7 @@ export function ConsoleUssd({
           </div>
           )}
         </section>
+        </>
       )}
 
       <p className="text-caption leading-relaxed text-ink-faint lg:hidden">

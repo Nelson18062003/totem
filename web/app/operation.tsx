@@ -70,11 +70,6 @@ export function OperationPopup({
   const [reponseLibre, setReponseLibre] = useState("");
   // Les champs pas encore consommés par les questions du réseau.
   const restants = useRef<ChampOperation[]>([...operation.champs]);
-  const bas = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bas.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [fil, attente]);
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
   const complet = operation.champs.every((c) => (valeurs[c.cle] ?? "").trim());
@@ -176,13 +171,13 @@ export function OperationPopup({
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
   return (
-    // Sur téléphone, l'opération occupe TOUT l'écran : l'en-tête et les
-    // gestes restent en place, seul le fil des échanges défile. Fini le
-    // pop-up qu'il fallait faire défiler pour retrouver ses boutons.
-    <div className="voile fixed inset-0 z-30 flex items-stretch justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit flex w-full max-w-md flex-col bg-surface-raised md:max-h-[85dvh] md:rounded-card md:border md:border-line"
+    // Une FEUILLE posée en bas de l'écran : le fond reste visible derrière le
+    // voile — on sait toujours où l'on est. L'en-tête et les gestes restent
+    // en place ; seule la réponse du réseau, au centre, peut défiler.
+    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
+      <div className="surgit flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:rounded-card md:border"
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex shrink-0 items-start justify-between p-6 pb-4 pt-[max(1.5rem,env(safe-area-inset-top))] md:pt-6">
+        <div className="flex shrink-0 items-start justify-between p-6 pb-4">
           <div>
             <p className="text-caption uppercase tracking-wider text-ink-faint">
               {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
@@ -223,24 +218,21 @@ export function OperationPopup({
           </>
         ) : (
           <>
-            {/* Le fil de la session — chaque bulle grise vient de
-                l'opérateur. La seule zone qui défile. */}
-            <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-6">
-              {fil.map((m, i) => (
-                <p key={i}
-                  className={`max-w-[85%] whitespace-pre-line rounded-card px-3.5 py-2.5 text-small leading-relaxed ${
-                    m.de === "reseau" ? "self-start bg-surface-2 text-ink" : "self-end bg-ink text-white tabnums"
-                  }`}>
-                  {m.texte}
+            {/* UNE seule carte, qui se réécrit à chaque réponse du réseau —
+                comme sur Telegram. Jamais l'historique de ce qui a été tapé :
+                il encombrait l'écran sans rien apprendre. */}
+            <div className="flex-1 overflow-y-auto px-6">
+              {dernier && (
+                <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
+                  {dernier}
                 </p>
-              ))}
-              {attente && <p className="self-start px-1 text-caption text-ink-faint">{t.terminalCompose}</p>}
+              )}
+              {attente && <p className="mt-2 px-1 text-caption text-ink-faint">{t.terminalCompose}</p>}
               {erreur && (
-                <p className="self-start rounded-card bg-surface-2 px-3.5 py-2.5 text-small leading-relaxed text-negative">
+                <p className="mt-2 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-negative">
                   {erreur}
                 </p>
               )}
-              <div ref={bas} />
             </div>
 
             {/* Le pavé, la réponse et la sortie — toujours visibles en bas */}
