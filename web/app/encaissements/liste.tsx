@@ -30,16 +30,20 @@ export function ListeEncaissements({
   paiements,
   operateurs,
   enAttente = 0,
+  rechercheInitiale = "",
 }: {
   paiements: Paiement[];
   operateurs: string[];
   enAttente?: number;
+  // La recherche posée d'avance quand on arrive d'ailleurs (un client de
+  // l'Analyse) — effaçable d'un geste, comme une recherche tapée.
+  rechercheInitiale?: string;
 }) {
   const langue = useLangue();
   const t = textesSms[langue];
   const [filtre, setFiltre] = useState(TOUS);
   const [categorie, setCategorie] = useState<Categorie | typeof TOUTES>(TOUTES);
-  const [recherche, setRecherche] = useState("");
+  const [recherche, setRecherche] = useState(rechercheInitiale);
   const [detail, setDetail] = useState<Paiement | null>(null);
 
   // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
@@ -50,14 +54,22 @@ export function ListeEncaissements({
   }, [paiements]);
 
   const liste = useMemo(() => {
-    const q = recherche.trim().toLowerCase().replace(/\s/g, "");
+    // Deux formes de la requête : telle quelle, et sans espaces. Un espace ne
+    // doit jamais faire échouer : « PRIX MONO » trouve « PRIX MONO SARL »,
+    // « 20 000 » trouve le montant 20000, « 699 12 34 » trouve le numéro.
+    const brute = recherche.trim().toLowerCase();
+    const serree = brute.replace(/\s/g, "");
+    const compacte = (s: string) => s.toLowerCase().replace(/\s/g, "");
     return paiements.filter((p) => {
       if (filtre !== TOUS && p.sim !== filtre) return false;
       if (categorie !== TOUTES && catDe(p) !== categorie) return false;
-      if (!q) return true;
-      return p.nom.toLowerCase().includes(q) || p.numero.replace(/\s/g, "").includes(q)
-        || String(p.montant ?? "").includes(q) || p.reference.toLowerCase().includes(q)
-        || p.smsBrut.toLowerCase().includes(q);
+      if (!brute) return true;
+      return compacte(p.nom).includes(serree)
+        || compacte(p.numero).includes(serree)
+        || String(p.montant ?? "").includes(serree)
+        || compacte(p.reference).includes(serree)
+        || p.smsBrut.toLowerCase().includes(brute)
+        || compacte(p.smsBrut).includes(serree);
     });
   }, [paiements, filtre, categorie, recherche]);
 
