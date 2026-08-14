@@ -17,6 +17,9 @@ const en = {
   principauxClients: "Top customers",
   nbPaiements: (n: number) => (n === 1 ? "1 payment" : `${n} payments`),
   exporterBilan: "Export the report",
+  exportSemaine: "The week",
+  exportJours: (n: number) => `${n} days`,
+  exportNote: "CSV file, ready for Excel or the accountant.",
 };
 
 const fr: typeof en = {
@@ -35,6 +38,9 @@ const fr: typeof en = {
   principauxClients: "Principaux clients",
   nbPaiements: (n) => (n > 1 ? `${n} paiements` : `${n} paiement`),
   exporterBilan: "Exporter le bilan",
+  exportSemaine: "La semaine",
+  exportJours: (n) => `${n} jours`,
+  exportNote: "Fichier CSV, prêt pour Excel ou la comptabilité.",
 };
 
 export const textesAnalyse = { en, fr } as const;

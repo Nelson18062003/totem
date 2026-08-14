@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import type { Langue } from "@/lib/langue";
@@ -147,28 +148,51 @@ export default async function Analyse() {
           <h2 className="mb-1 text-heading font-semibold">{t.principauxClients}</h2>
           <ul className="divide-hair">
             {topClients.map((c, i) => (
-              <li key={c.nom} className="flex items-center gap-3.5 py-3.5">
-                <span className="w-4 text-small tabnums text-ink-faint">{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium">{c.nom}</p>
-                  <p className="text-small text-ink-faint">{t.nbPaiements(c.nb)}</p>
-                </div>
-                <span className="text-body font-medium tabnums">{fcfa(c.total, langue)}</span>
+              <li key={c.nom}>
+                {/* Chaque client mène à ses paiements : la recherche des
+                    encaissements s'ouvre déjà remplie de son nom. */}
+                <Link
+                  href={`/encaissements?recherche=${encodeURIComponent(c.nom)}`}
+                  className="flex items-center gap-3.5 py-3.5 transition hover:opacity-70"
+                >
+                  <span className="w-4 text-small tabnums text-ink-faint">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-body font-medium">{c.nom}</p>
+                    <p className="text-small text-ink-faint">{t.nbPaiements(c.nb)}</p>
+                  </div>
+                  <span className="text-body font-medium tabnums">{fcfa(c.total, langue)}</span>
+                </Link>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      {/* Le bilan de la semaine en CSV, prêt pour Excel ou la comptabilité —
-          les mêmes colonnes que l'export Telegram du robot. */}
-      <a
-        href="/api/bilan"
-        download
-        className="flex items-center justify-center gap-2 rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink lg:col-start-1"
-      >
-        <IconDoc size={16} /> {t.exporterBilan}
-      </a>
+      {/* Le bilan en CSV, prêt pour Excel ou la comptabilité — les mêmes
+          colonnes que l'export Telegram du robot. La semaine pour le quotidien,
+          30 et 90 jours pour le bilan du mois ou du trimestre. */}
+      <section className="lg:col-start-1">
+        <h2 className="mb-3 flex items-center gap-2 text-heading font-semibold">
+          <IconDoc size={16} /> {t.exporterBilan}
+        </h2>
+        <div className="flex gap-2">
+          {[
+            { jours: 7, libelle: t.exportSemaine },
+            { jours: 30, libelle: t.exportJours(30) },
+            { jours: 90, libelle: t.exportJours(90) },
+          ].map(({ jours, libelle }) => (
+            <a
+              key={jours}
+              href={`/api/bilan?jours=${jours}`}
+              download
+              className="flex flex-1 items-center justify-center rounded-btn border border-line bg-surface-raised px-3 py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink"
+            >
+              {libelle}
+            </a>
+          ))}
+        </div>
+        <p className="mt-2 text-caption text-ink-faint">{t.exportNote}</p>
+      </section>
     </div>
   );
 }
