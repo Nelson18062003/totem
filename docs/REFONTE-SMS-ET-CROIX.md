@@ -668,10 +668,11 @@ Prouvé au banc : « 1 234 567 890,5 FCFA » sur une ligne à 390 px ET à
 320 px, sans déborder de la carte ; le cas exact du propriétaire
 (5 130 577,6) sur une ligne.
 
-**La carte porte la marque de sa caisse** (`logos-operateurs.tsx`,
-nouveau) : le carré d'Orange, l'ovale jaune de MTN — dessinés en SVG au
-trait sûr, jamais téléchargés (nets à 18 px, sans dépendre du réseau), et
-une puce neutre quand l'opérateur n'est pas reconnu. Le logo suit tout seul
-l'opérateur de la carte en place — accueil et page des comptes. C'est de la
-donnée (« quelle caisse »), pas de la marque TOTEM : il ne décore que sa
-carte.
+**La carte porte la marque OFFICIELLE de sa caisse** (`logos-operateurs.tsx`,
+nouveau) : le vrai logo d'Orange (le carré au mot blanc, tracés du fichier
+publié) et le vrai logo MTN de 2022 (l'ovale au sigle noir sur jaune, trait
+pour trait) — incorporés en SVG dans le code, jamais téléchargés à
+l'affichage. Le logo dit la caisse TOUT SEUL : aucun nom d'opérateur ne se
+répète à côté (le nom reste dit aux lecteurs d'écran, et un opérateur sans
+marque garde son libellé écrit + une puce neutre). Il suit tout seul
+l'opérateur de la carte en place — accueil et page des comptes.

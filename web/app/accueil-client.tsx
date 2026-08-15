@@ -11,7 +11,7 @@ import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconRefresh,
   IconWallet,
 } from "./icons";
-import { LogoOperateur } from "./logos-operateurs";
+import { LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { OperationPopup, type Operation } from "./operation";
 
 // Le solde peut se cacher d'un geste — un écran ouvert devant quelqu'un ne
@@ -108,11 +108,19 @@ export function AccueilGuichet({
             l'opérateur de la carte en place), et les deux commandes — l'œil
             et l'actualisation — hors du chemin du chiffre. */}
         <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-2.5">
-            <LogoOperateur operateur={op} size={18} className="shrink-0" />
-            <span className="truncate text-caption uppercase tracking-wider text-white/60">
+          {/* Le logo dit la caisse — et il le dit TOUT SEUL : le nom ne se
+              répète pas à côté. Un opérateur sans marque garde son libellé. */}
+          <span className="flex min-w-0 items-center gap-2.5"
+            title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
+            <LogoOperateur operateur={op} size={26} className="shrink-0" />
+            <span className="sr-only">
               {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
             </span>
+            {!operateurReconnu(op) && (
+              <span className="truncate text-caption uppercase tracking-wider text-white/60">
+                {carte.libelle}
+              </span>
+            )}
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             {/* L'œil : cacher le solde d'un geste — un écran ouvert devant

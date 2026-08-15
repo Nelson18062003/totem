@@ -3,7 +3,7 @@ import { chargerDonnees } from "@/lib/serveur";
 import { textesCartes } from "@/lib/textes/cartes";
 import { fcfa, nombre } from "@/lib/types";
 import { IconWallet } from "../icons";
-import { LogoOperateur } from "../logos-operateurs";
+import { LogoOperateur, operateurReconnu } from "../logos-operateurs";
 import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
@@ -33,11 +33,13 @@ export default async function Comptes() {
             <div key={s.iccid} className={`rounded-card p-5 ${i === 0 ? "acct" : "acct-alt"}`}>
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className={`flex items-center gap-2 text-caption uppercase tracking-wider ${i === 0 ? "text-white/60" : "text-ink-faint"}`}>
-                    <LogoOperateur operateur={s.operateur} size={16} className="shrink-0" />
-                    <span className="truncate">
+                  <p className={`flex items-center gap-2 text-caption uppercase tracking-wider ${i === 0 ? "text-white/60" : "text-ink-faint"}`}
+                    title={s.operateur === "MTN" ? "MTN Mobile Money" : s.operateur === "Orange" ? "Orange Money" : s.libelle}>
+                    <LogoOperateur operateur={s.operateur} size={22} className="shrink-0" />
+                    <span className="sr-only">
                       {s.operateur === "MTN" ? "MTN Mobile Money" : s.operateur === "Orange" ? "Orange Money" : s.libelle}
                     </span>
+                    {!operateurReconnu(s.operateur) && <span className="truncate">{s.libelle}</span>}
                   </p>
                   <p className={`mt-3 whitespace-nowrap font-semibold tabnums tracking-tight ${
                     s.solde != null && nombre(s.solde, langue).length > 12 ? "text-heading sm:text-title" : "text-display"
