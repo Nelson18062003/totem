@@ -67,6 +67,9 @@ const en = {
   chiffresComposes: (n: number) => (n === 1 ? "1 digit entered" : `${n} digits entered`),
   effacer: "Erase",
   effacerDernier: "Erase the last digit",
+  arreterQuestion: "Stop this operation?",
+  continuer: "Keep going",
+  arreter: "Stop",
   valider: "Confirm",
 };
 
@@ -130,6 +133,9 @@ const fr: typeof en = {
   chiffresComposes: (n) => (n > 1 ? `${n} chiffres composés` : `${n} chiffre composé`),
   effacer: "Effacer",
   effacerDernier: "Effacer le dernier chiffre",
+  arreterQuestion: "Arrêter cette opération ?",
+  continuer: "Continuer",
+  arreter: "Arrêter",
   valider: "Valider",
 };
 

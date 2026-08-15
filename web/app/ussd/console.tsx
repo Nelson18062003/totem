@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { codesUssd } from "@/lib/codes";
 import { textesUssd } from "@/lib/textes/ussd";
 import type { Sim } from "@/lib/types";
-import { BoutonFermer } from "../fermer";
+import { BoutonFermer, ConfirmationArret, useEchap } from "../fermer";
 import { IconHash } from "../icons";
 import { useLangue } from "../langue";
 import { PaveSecret } from "../pave-secret";
@@ -127,6 +127,17 @@ export function ConsoleUssd({
     void envoyer("ussd_fin", {});
   };
 
+  // --- L'arrêt SÛR : trouvable, jamais accidentel ---------------------------
+  // Session en cours = quelque chose à perdre : la pastille et Échap posent
+  // d'abord la question ; le voile est inerte. Session finie : tout ferme.
+  const [confirmeArret, setConfirmeArret] = useState(false);
+  const sortir = () => {
+    if (attente || confirmeArret) return;
+    if (enSession) setConfirmeArret(true);
+    else fermer();
+  };
+  useEchap(sortir);
+
   // Arrivée depuis un bouton du guichet : le code se compose tout seul.
   const lance = useRef(false);
   useEffect(() => {
@@ -201,14 +212,16 @@ export function ConsoleUssd({
         // derrière le voile. Sur grand écran, la carte de droite, comme
         // toujours.
         <>
+        {/* Le voile ne raccroche JAMAIS une session en cours : un pouce qui
+            dépasse la feuille ne doit pas couper un dialogue d'argent. */}
         <div className="voile fixed inset-0 z-20 bg-ink/25 lg:hidden"
-          onClick={() => { if (!attente) fermer(); }} />
+          onClick={() => { if (!attente && !enSession) fermer(); }} />
         <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[92dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:max-h-none lg:rounded-card lg:border lg:col-start-2">
           <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
-            <BoutonFermer onClick={fermer} label={t.raccrocher} disabled={attente} />
+            <BoutonFermer onClick={sortir} label={t.raccrocher} disabled={attente} />
           </div>
 
           {/* UNE seule carte, réécrite à chaque réponse du réseau. Le message
@@ -235,7 +248,11 @@ export function ConsoleUssd({
           {/* Les gestes — toujours visibles, jamais à aller chercher.
               (Pendant la toute première composition, il n'y a encore aucun
               geste à offrir : pas de pied vide.) */}
-          {(enSession || !attente) && (
+          {confirmeArret ? (
+            <ConfirmationArret question={t.arreterQuestion} continuer={t.continuer} arreter={t.arreter}
+              onContinuer={() => setConfirmeArret(false)}
+              onArreter={() => { setConfirmeArret(false); fermer(); }} />
+          ) : (enSession || !attente) && (
           <div className="flex shrink-0 flex-col gap-2 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] lg:border-t-0 lg:pt-0 lg:pb-4">
             {/* Le pavé, quand le réseau attend le code secret — à même la
                 feuille, sans boîte autour : la place est au message. */}

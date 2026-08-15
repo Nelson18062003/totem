@@ -51,6 +51,9 @@ const en = {
   envoyer: "Send",
   annulerSession: "Cancel the session",
   fermerEcran: "Close",
+  arreterQuestion: "Stop this session?",
+  continuer: "Keep going",
+  arreter: "Stop",
 };
 
 const fr: typeof en = {
@@ -98,6 +101,9 @@ const fr: typeof en = {
   envoyer: "Envoyer",
   annulerSession: "Annuler la session",
   fermerEcran: "Fermer",
+  arreterQuestion: "Arrêter cette session ?",
+  continuer: "Continuer",
+  arreter: "Arrêter",
 };
 
 export const textesUssd = { en, fr } as const;

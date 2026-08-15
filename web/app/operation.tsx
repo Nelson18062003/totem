@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { textesGuichet } from "@/lib/textes/guichet";
-import { BoutonFermer } from "./fermer";
+import { BoutonFermer, ConfirmationArret, useEchap } from "./fermer";
 import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";
 
@@ -170,12 +170,31 @@ export function OperationPopup({
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
+  // --- L'arrêt SÛR : trouvable, jamais accidentel -----------------------------
+  // Y a-t-il quelque chose à perdre ? Une saisie commencée, une session ou une
+  // composition en cours. Tant que oui : le fond est INERTE, et la pastille
+  // (comme Échap) demande d'abord « Arrêter ? ». Le bouton rouge explicite,
+  // lui, reste direct — on sait ce qu'on fait quand on le vise.
+  const [confirmeArret, setConfirmeArret] = useState(false);
+  const saisieVierge =
+    etape === "saisie" && operation.champs.every((c) => !(valeurs[c.cle] ?? "").trim());
+  const aProteger = !fini && (enSession || attente || (etape === "saisie" && !saisieVierge));
+
+  const sortir = () => {
+    if (confirmeArret) return;                 // la question est déjà posée
+    if (aProteger) setConfirmeArret(true);
+    else annuler();
+  };
+  useEchap(sortir);
+
   return (
     // Une FEUILLE posée en bas de l'écran : le fond reste visible derrière le
     // voile — on sait toujours où l'on est. L'en-tête et les gestes restent
     // en place ; seule la réponse du réseau, au centre, peut défiler.
-    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:rounded-card md:border"
+    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4"
+      onClick={() => { if (!aProteger) annuler(); }}>
+      <div role="dialog" aria-modal="true" aria-label={operation.titre}
+        className="surgit flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:rounded-card md:border"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 items-start justify-between p-6 pb-4">
           <div>
@@ -185,7 +204,7 @@ export function OperationPopup({
             </p>
             <h2 className="mt-1 text-heading font-semibold">{operation.titre}</h2>
           </div>
-          <BoutonFermer onClick={annuler} label={t.fermer} />
+          <BoutonFermer onClick={sortir} label={t.fermer} />
         </div>
 
         {etape === "saisie" ? (
@@ -204,8 +223,13 @@ export function OperationPopup({
               </p>
             </div>
             {/* Les deux gestes, ancrés en bas — jamais à aller chercher */}
+            {confirmeArret ? (
+              <ConfirmationArret question={t.arreterQuestion} continuer={t.continuer} arreter={t.arreter}
+                onContinuer={() => setConfirmeArret(false)}
+                onArreter={() => { setConfirmeArret(false); annuler(); }} />
+            ) : (
             <div className="flex shrink-0 gap-2 p-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-6">
-              <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
+              <button onClick={sortir} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
                 {t.annuler}
               </button>
               <button disabled={!complet} onClick={lancer}
@@ -213,6 +237,7 @@ export function OperationPopup({
                 {t.lancer}
               </button>
             </div>
+            )}
           </>
         ) : (
           <>
@@ -236,6 +261,11 @@ export function OperationPopup({
 
             {/* Le pavé, la réponse et la sortie — toujours visibles en bas,
                 et compacts : la place est au message, pas aux contrôles. */}
+            {confirmeArret ? (
+              <ConfirmationArret question={t.arreterQuestion} continuer={t.continuer} arreter={t.arreter}
+                onContinuer={() => setConfirmeArret(false)}
+                onArreter={() => { setConfirmeArret(false); annuler(); }} />
+            ) : (
             <div className="flex shrink-0 flex-col gap-2.5 px-6 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-5">
               {pave && <PaveSecret onValider={secret} />}
 
@@ -263,13 +293,15 @@ export function OperationPopup({
                   </button>
                 </>
               ) : (
-                /* Le geste de sortie, impossible à manquer. */
+                /* Le geste de sortie explicite — direct, lui : on sait ce
+                   qu'on fait quand on le vise. */
                 <button onClick={annuler} disabled={attente}
                   className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
                   {t.annulerSession}
                 </button>
               )}
             </div>
+            )}
           </>
         )}
       </div>

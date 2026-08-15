@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
-import { BoutonFermer } from "./fermer";
+import { BoutonFermer, useEchap } from "./fermer";
 import {
   IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart,
   IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
@@ -81,6 +81,9 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   const [mot, setMot] = useState("");
   const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
   const [classe, setClasse] = useState(false);
+
+  // Échap ferme la fiche — une lecture n'a rien à protéger.
+  useEchap(onFermer);
 
   // Ouvrir la fiche, c'est lire le message : le point de la ligne s'éteint et
   // la pastille du menu se met à jour dans la foulée. Si la base n'a pas
@@ -211,7 +214,8 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
       {/* La fiche peut être longue (un SMS entier, les détails, les gestes) :
           elle défile dans sa propre hauteur, jamais coupée sans recours. */}
-      <div className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:max-h-[85dvh] md:rounded-card md:pb-6"
+      <div role="dialog" aria-modal="true" aria-label={p.nom}
+        className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:max-h-[85dvh] md:rounded-card md:pb-6"
         onClick={(e) => e.stopPropagation()}>
         {/* L'ESSENTIEL d'abord : qui, combien, quand — et une fermeture
             qu'on ne cherche pas. Les détails techniques attendent sous un
