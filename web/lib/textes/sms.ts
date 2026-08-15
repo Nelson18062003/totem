@@ -38,6 +38,10 @@ const en = {
   natureTitre: "Type — for the receipt",
   natureAide: "Choosing a type shows it that way everywhere and issues its receipt.",
   fermerFiche: "Close",
+  rechercheEnCours: "Searching the whole history…",
+  rechercheHistorique: (n: number) =>
+    n === 1 ? "1 result across the whole history" : `${n} results across the whole history`,
+  repetitions: (n: number) => `Received ${n} times in a row — tap to unfold`,
   afficherPlus: (n: number) =>
     n === 1 ? "Show 1 more message" : `Show more (${n} remaining)`,
   voirDetails: "Details",
@@ -107,6 +111,10 @@ const fr: typeof en = {
   natureTitre: "Nature — pour le reçu",
   natureAide: "Choisir une nature l’affiche ainsi partout et établit son reçu.",
   fermerFiche: "Fermer",
+  rechercheEnCours: "Recherche sur tout l’historique…",
+  rechercheHistorique: (n) =>
+    n === 1 ? "1 résultat sur tout l’historique" : `${n} résultats sur tout l’historique`,
+  repetitions: (n) => `Reçu ${n} fois d’affilée — toucher pour déplier`,
   afficherPlus: (n) =>
     n === 1 ? "Afficher 1 message de plus" : `Afficher plus (${n} restants)`,
   voirDetails: "Détails",

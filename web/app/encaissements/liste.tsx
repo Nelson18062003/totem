@@ -51,7 +51,40 @@ export function ListeEncaissements({
   // La liste s'affiche par pages : mille lignes d'un coup mettent un
   // téléphone à genoux. « Afficher plus » déroule la suite.
   const [visibles, setVisibles] = useState(PAGE);
-  useEffect(() => setVisibles(PAGE), [recherche, filtre, categorie]);
+  // Les répétitions dépliées à la main (relevés de solde en rafale…).
+  const [deplies, setDeplies] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setVisibles(PAGE);
+    setDeplies(new Set());
+  }, [recherche, filtre, categorie]);
+
+  // La recherche fouille TOUT l'historique, pas seulement les lignes
+  // chargées : dès deux caractères, la base répond (350 ms de calme après la
+  // dernière frappe). En attendant, le filtre local donne l'instantané.
+  const [historique, setHistorique] = useState<Paiement[] | null>(null);
+  const [chercheAuLoin, setChercheAuLoin] = useState(false);
+  useEffect(() => {
+    const q = recherche.trim();
+    if (q.length < 2) {
+      setHistorique(null);
+      setChercheAuLoin(false);
+      return;
+    }
+    setChercheAuLoin(true);
+    const minuterie = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/recherche?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+        if (r.ok) {
+          const { paiements: trouves } = (await r.json()) as { paiements: Paiement[] };
+          setHistorique(trouves);
+        }
+      } catch {
+        /* réseau absent : le filtre local reste en place */
+      }
+      setChercheAuLoin(false);
+    }, 350);
+    return () => clearTimeout(minuterie);
+  }, [recherche]);
 
   // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
   // pas un filtre pour une catégorie qu'on n'a jamais reçue.
@@ -67,7 +100,10 @@ export function ListeEncaissements({
     const brute = recherche.trim().toLowerCase();
     const serree = brute.replace(/\s/g, "");
     const compacte = (s: string) => s.toLowerCase().replace(/\s/g, "");
-    return paiements.filter((p) => {
+    // La source : les trouvailles de l'historique complet quand la base a
+    // répondu, sinon les lignes déjà chargées.
+    const source = historique ?? paiements;
+    return source.filter((p) => {
       if (filtre !== TOUS && p.sim !== filtre) return false;
       if (categorie !== TOUTES && catDe(p) !== categorie) return false;
       if (!brute) return true;
@@ -78,13 +114,31 @@ export function ListeEncaissements({
         || p.smsBrut.toLowerCase().includes(brute)
         || compacte(p.smsBrut).includes(serree);
     });
-  }, [paiements, filtre, categorie, recherche]);
+  }, [paiements, historique, filtre, categorie, recherche]);
+
+  // Les répétitions consécutives d'un même message SANS montant (relevés de
+  // solde en rafale, publicités) se replient en une ligne « ×N », dépliable.
+  // Seule la présentation se replie : chaque SMS reste au journal, et un
+  // message qui porte un montant ne se regroupe jamais.
+  type Entree = { p: Paiement; groupe: Paiement[] };
+  const entrees: Entree[] = [];
+  for (const p of liste) {
+    const d = entrees[entrees.length - 1];
+    if (
+      d && d.p.montant == null && p.montant == null &&
+      d.p.nom === p.nom && d.p.smsBrut === p.smsBrut && d.p.jour === p.jour
+    ) {
+      d.groupe.push(p);
+    } else {
+      entrees.push({ p, groupe: [p] });
+    }
+  }
 
   // Regroupement par la clé stable du jour ; le libellé traduit (`p.date`)
   // ne sert qu'à écrire l'en-tête du groupe. Seule la page visible se rend.
-  const restants = Math.max(0, liste.length - visibles);
-  const parJour = liste.slice(0, visibles).reduce<Record<string, Paiement[]>>((acc, p) => {
-    (acc[p.jour] ||= []).push(p); return acc;
+  const restants = Math.max(0, entrees.length - visibles);
+  const parJour = entrees.slice(0, visibles).reduce<Record<string, Entree[]>>((acc, e) => {
+    (acc[e.p.jour] ||= []).push(e); return acc;
   }, {});
 
   return (
@@ -131,6 +185,17 @@ export function ListeEncaissements({
         )}
       </div>
 
+      {/* Le fil de la recherche : elle fouille TOUT l'historique, et le dit. */}
+      {recherche.trim().length >= 2 && (
+        <p className="-mt-4 text-caption text-ink-faint" aria-live="polite">
+          {chercheAuLoin
+            ? t.rechercheEnCours
+            : historique !== null
+              ? t.rechercheHistorique(liste.length)
+              : null}
+        </p>
+      )}
+
       {/* Filtre par catégorie — seulement celles réellement reçues, sur UNE
           ligne qui glisse du doigt : fini les trois rangs de puces. */}
       {categories.length > 1 && (
@@ -167,9 +232,12 @@ export function ListeEncaissements({
       ) : (
         Object.entries(parJour).map(([jour, items]) => (
           <section key={jour}>
-            <p className="mb-1 text-caption uppercase tracking-wider text-ink-faint">{items[0].date}</p>
+            <p className="mb-1 text-caption uppercase tracking-wider text-ink-faint">{items[0].p.date}</p>
             <ul className="divide-hair">
-              {items.map((p) => (
+              {items.flatMap(({ p: premier, groupe }) => {
+                const deplie = deplies.has(premier.id);
+                const affiches = deplie ? groupe : [premier];
+                return affiches.map((p) => (
                 <li key={p.id} className="flex items-start gap-3 py-3.5">
                   <button onClick={() => setDetail(p)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left transition hover:opacity-70">
@@ -213,6 +281,16 @@ export function ListeEncaissements({
                       </span>
                     </span>
                   </button>
+                  {/* Les répétitions repliées : « ×5 » les déplie. */}
+                  {!deplie && groupe.length > 1 && (
+                    <button
+                      onClick={() => setDeplies((s) => new Set(s).add(premier.id))}
+                      aria-label={t.repetitions(groupe.length)}
+                      title={t.repetitions(groupe.length)}
+                      className="mt-0.5 grid h-9 min-w-9 shrink-0 place-items-center rounded-full bg-surface-2 px-1.5 text-small font-medium tabnums text-ink-soft transition hover:bg-surface-3">
+                      ×{groupe.length}
+                    </button>
+                  )}
                   {/* Le reçu PDF, à portée de main quand il existe. */}
                   {p.recu && (
                     <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
@@ -222,7 +300,8 @@ export function ListeEncaissements({
                     </a>
                   )}
                 </li>
-              ))}
+                ));
+              })}
             </ul>
           </section>
         ))

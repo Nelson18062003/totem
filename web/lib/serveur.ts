@@ -139,6 +139,106 @@ function versTerminal(t: LigneTerminal | undefined, langue: Langue): EtatTermina
     : null;
 }
 
+// --- La mise en forme d'une ligne de paiement --------------------------------
+// Partagée entre le chargement des pages et la recherche : un SMS s'affiche
+// de la même façon, d'où qu'il vienne.
+function versPaiements(
+  lignes: LignePaiement[],
+  recus: LigneRecu[],
+  langue: Langue,
+): Paiement[] {
+  // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
+  // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
+  // pour les transferts comme pour les soldes — aucune devinette.
+  const ligneDuRecu = (numero: string): number | null => {
+    const m = /-(\d+)$/.exec(numero);
+    return m ? Number(m[1]) : null;
+  };
+  const recuDe = (l: LignePaiement): string | null => {
+    const parReference = l.reference
+      ? recus.find((r) => r.reference && r.reference === l.reference)
+      : undefined;
+    if (parReference) return parReference.numero;
+    if (l.source_id == null) return null;
+    return recus.find((r) => ligneDuRecu(r.numero) === l.source_id)?.numero ?? null;
+  };
+
+  // Chaque SMS affiche QUI l'a envoyé, comme la messagerie du téléphone :
+  // « OrangeMoney », « Orange », « MTN »… Les lignes d'avant cette colonne
+  // n'ont pas l'expéditeur : on affiche alors l'opérateur de la carte.
+  const nomDe = (l: LignePaiement): string => {
+    if (l.expediteur) return l.expediteur;
+    const operateur = (l.compte ?? "").split(" ")[0];
+    return operateur || l.tiers || l.numero || "SMS";
+  };
+
+  // L'heure retenue pour l'ordre et l'affichage : l'heure RÉSEAU du SMS quand
+  // on la connaît (elle diverge de l'heure de relève après une coupure), sinon
+  // l'heure de relève. On trie ici, côté serveur, indépendamment de l'ordre
+  // renvoyé par la base (qui peut être en retard sur une migration).
+  const moment = (l: LignePaiement): string => l.emis_le || l.recu_le;
+  const parNature = (v: string | null | undefined): Paiement["nature"] =>
+    (v as Paiement["nature"]) || null;
+
+  // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
+  // portent un montant, les autres restent lisibles tels quels.
+  return [...lignes]
+    .sort((a, b) => (moment(a) < moment(b) ? 1 : moment(a) > moment(b) ? -1 : 0))
+    .map((l) => ({
+      id: String(l.id),
+      sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
+      // Le robot laisse le sens vide quand le SMS ne permet pas de trancher :
+      // on l'affiche comme inconnu, jamais comme une sortie par défaut.
+      sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
+      nom: nomDe(l),
+      numero: l.numero ?? "",
+      montant: l.montant == null ? null : Number(l.montant),
+      heure: heure(moment(l)),
+      date: libelleJour(moment(l), langue),
+      jour: jourDouala(new Date(moment(l))),
+      recuLe: moment(l),
+      // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne).
+      categorie: (l.categorie as Paiement["categorie"]) || "message",
+      nature: parNature(l.nature),
+      reference: l.reference ?? "",
+      soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
+      smsBrut: l.texte,
+      recu: recuDe(l),
+      sourceId: l.source_id ?? null,
+      // Non lu SEULEMENT si la base connaît la notion (colonne présente) et
+      // que la ligne n'a jamais été ouverte. Base pas migrée → tout est « lu » :
+      // la fonctionnalité dort, elle ne crie pas faux.
+      nonLu: l.lu_le === null,
+    }));
+}
+
+/**
+ * La recherche sur TOUT l'historique — pas seulement les lignes chargées.
+ * C'est la base qui fouille (texte, tiers, numéro, référence) ; l'écran ne
+ * reçoit que les trouvailles, mises en forme comme n'importe quel SMS.
+ */
+export async function rechercherPaiements(
+  question: string,
+  langue: Langue,
+): Promise<Paiement[]> {
+  // La question est bornée et purgée des caractères qui structurent la
+  // syntaxe PostgREST (virgules, parenthèses, jokers) : elle ne peut pas
+  // réécrire la requête, seulement s'y insérer comme motif.
+  const propre = question.trim().slice(0, 80).replace(/[,()*\\%"']/g, " ").trim();
+  if (propre.length < 2) return [];
+  // Les espaces deviennent des jokers : « prix mono » trouve « PRIX MONO ».
+  const motif = `*${propre.replace(/\s+/g, "*")}*`;
+  const ou = ["texte", "tiers", "numero", "reference"]
+    .map((c) => `${c}.ilike.${motif}`)
+    .join(",");
+  const [lignes, recus] = await Promise.all([
+    lire<LignePaiement>(
+      `paiements?select=*&or=(${encodeURIComponent(ou)})&order=recu_le.desc&limit=300`),
+    lire<LigneRecu>("recus?select=*&order=etabli_le.desc&limit=1000"),
+  ]);
+  return versPaiements(lignes, recus, langue);
+}
+
 /** Le terminal seul — pour la coquille, qui n'a pas besoin du reste.
  *  Avant, elle rechargeait TOUT (SMS et reçus compris) à chaque page :
  *  chaque clic payait deux fois le plein tarif. */
@@ -176,70 +276,7 @@ export async function chargerDonnees(
   ]);
 
   const terminal = versTerminal(terminaux[0], langue);
-
-  // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
-  // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
-  // pour les transferts comme pour les soldes — aucune devinette.
-  const ligneDuRecu = (numero: string): number | null => {
-    const m = /-(\d+)$/.exec(numero);
-    return m ? Number(m[1]) : null;
-  };
-  const recuDe = (l: LignePaiement): string | null => {
-    const parReference = l.reference
-      ? recus.find((r) => r.reference && r.reference === l.reference)
-      : undefined;
-    if (parReference) return parReference.numero;
-    if (l.source_id == null) return null;
-    return recus.find((r) => ligneDuRecu(r.numero) === l.source_id)?.numero ?? null;
-  };
-
-  // Chaque SMS affiche QUI l'a envoyé, comme la messagerie du téléphone :
-  // « OrangeMoney », « Orange », « MTN »… Les lignes d'avant cette colonne
-  // n'ont pas l'expéditeur : on affiche alors l'opérateur de la carte.
-  const nomDe = (l: LignePaiement): string => {
-    if (l.expediteur) return l.expediteur;
-    const operateur = (l.compte ?? "").split(" ")[0];
-    return operateur || l.tiers || l.numero || "SMS";
-  };
-
-  // L'heure retenue pour l'ordre et l'affichage : l'heure RÉSEAU du SMS quand
-  // on la connaît (elle diverge de l'heure de relève après une coupure), sinon
-  // l'heure de relève. On trie ici, côté serveur, indépendamment de l'ordre
-  // renvoyé par la base (qui peut être en retard sur une migration).
-  const moment = (l: LignePaiement): string => l.emis_le || l.recu_le;
-  const parNature = (v: string | null | undefined): Paiement["nature"] =>
-    (v as Paiement["nature"]) || null;
-
-  // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
-  // portent un montant, les autres restent lisibles tels quels.
-  const paiements: Paiement[] = [...lignes]
-    .sort((a, b) => (moment(a) < moment(b) ? 1 : moment(a) > moment(b) ? -1 : 0))
-    .map((l) => ({
-      id: String(l.id),
-      sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
-      // Le robot laisse le sens vide quand le SMS ne permet pas de trancher :
-      // on l'affiche comme inconnu, jamais comme une sortie par défaut.
-      sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
-      nom: nomDe(l),
-      numero: l.numero ?? "",
-      montant: l.montant == null ? null : Number(l.montant),
-      heure: heure(moment(l)),
-      date: libelleJour(moment(l), langue),
-      jour: jourDouala(new Date(moment(l))),
-      recuLe: moment(l),
-      // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne).
-      categorie: (l.categorie as Paiement["categorie"]) || "message",
-      nature: parNature(l.nature),
-      reference: l.reference ?? "",
-      soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
-      smsBrut: l.texte,
-      recu: recuDe(l),
-      sourceId: l.source_id ?? null,
-      // Non lu SEULEMENT si la base connaît la notion (colonne présente) et
-      // que la ligne n'a jamais été ouverte. Base pas migrée → tout est « lu » :
-      // la fonctionnalité dort, elle ne crie pas faux.
-      nonLu: l.lu_le === null,
-    }));
+  const paiements = versPaiements(lignes, recus, langue);
 
   const sims: Sim[] = cartes.map((c) => {
     const compte = comptes.find((x) => x.iccid === c.iccid);
