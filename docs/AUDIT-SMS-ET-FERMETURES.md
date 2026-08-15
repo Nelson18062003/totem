@@ -150,3 +150,41 @@ n'est PAS encore différenciée : c'est l'objet de la Phase 4a.
 - **Phase 4** : refonte — motif d'arrêt/fermeture unique et sûr,
   puis le module SMS. Captures à l'appui.
 - **Phase 5** : plan d'implémentation ordonné, `fichier:ligne`.
+
+---
+
+## 8. Phase 1 — verdicts du casse-test (preuves au harnais Playwright)
+
+| Épreuve | Avant correctifs | Après correctifs |
+|---|---|---|
+| Échap, fiche ouverte | inopérant (défaut prouvé) | ferme ✔ |
+| Fond cliqué, saisie remplie | feuille fermée, saisie PERDUE | feuille protégée ✔ |
+| Échap, saisie remplie | perte sèche | question « Arrêter ? » ✔ |
+| « Continuer » après la question | — | saisie intacte ✔ |
+| 5 relevés de solde identiques | 5 lignes | 1 ligne « ×5 », dépliable ✔ |
+| Émojis, RTL (arabe), 390 px | rendus sans casse | idem ✔ |
+| 320 px de large | aucun débordement | idem ✔ |
+
+## 9. Phases 4–5 — décisions appliquées (validées par le propriétaire)
+
+- **Arrêt sûr (plateforme)** — règle unique, `web/app/fermer.tsx` :
+  tant qu'il y a quelque chose à perdre (saisie commencée, session ou
+  composition en cours), le FOND est inerte et la pastille comme ÉCHAP
+  posent la question « Arrêter ? » (`ConfirmationArret`) ; le bouton
+  rouge explicite reste direct. Une lecture (fiche SMS) ferme sans
+  question. `role="dialog"` + `aria-modal` posés sur les fenêtres.
+- **Recherche sur TOUT l'historique** — `rechercherPaiements`
+  (`web/lib/serveur.ts`), route `/api/recherche`, branchée à la boîte
+  avec 350 ms de calme après la frappe ; le fil dit « N résultats sur
+  tout l'historique ». La question est purgée des caractères qui
+  structurent la syntaxe PostgREST : elle ne peut que s'insérer comme
+  motif, jamais réécrire la requête.
+- **Répétitions repliées** — les messages identiques consécutifs SANS
+  montant (soldes en rafale, publicités) tiennent en une ligne « ×N »
+  dépliable ; un message qui porte un montant ne se regroupe jamais ;
+  le journal garde tout.
+
+Reste ouvert, assumé : le piège de focus complet des dialogues (le
+clavier peut encore tabuler derrière la fenêtre) — noté pour une
+prochaine fournée ; et la liaison reçu↔SMS des résultats de recherche
+s'appuie sur les 1000 derniers reçus chargés.
