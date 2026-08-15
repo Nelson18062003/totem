@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
@@ -20,6 +20,9 @@ const ORDRE_CAT: Categorie[] = [
 // affichés tels quels : leur libellé vient du dictionnaire.
 const TOUS = "Tous";
 const TOUTES = "Toutes";
+
+// Combien de SMS se montrent d'un coup — le reste attend « Afficher plus ».
+const PAGE = 60;
 
 /**
  * Tous les SMS reçus par les cartes, tels quels — c'est par eux que tout
@@ -45,6 +48,10 @@ export function ListeEncaissements({
   const [categorie, setCategorie] = useState<Categorie | typeof TOUTES>(TOUTES);
   const [recherche, setRecherche] = useState(rechercheInitiale);
   const [detail, setDetail] = useState<Paiement | null>(null);
+  // La liste s'affiche par pages : mille lignes d'un coup mettent un
+  // téléphone à genoux. « Afficher plus » déroule la suite.
+  const [visibles, setVisibles] = useState(PAGE);
+  useEffect(() => setVisibles(PAGE), [recherche, filtre, categorie]);
 
   // Les catégories réellement présentes, dans l'ordre voulu — on ne propose
   // pas un filtre pour une catégorie qu'on n'a jamais reçue.
@@ -74,8 +81,9 @@ export function ListeEncaissements({
   }, [paiements, filtre, categorie, recherche]);
 
   // Regroupement par la clé stable du jour ; le libellé traduit (`p.date`)
-  // ne sert qu'à écrire l'en-tête du groupe.
-  const parJour = liste.reduce<Record<string, Paiement[]>>((acc, p) => {
+  // ne sert qu'à écrire l'en-tête du groupe. Seule la page visible se rend.
+  const restants = Math.max(0, liste.length - visibles);
+  const parJour = liste.slice(0, visibles).reduce<Record<string, Paiement[]>>((acc, p) => {
     (acc[p.jour] ||= []).push(p); return acc;
   }, {});
 
@@ -107,21 +115,26 @@ export function ListeEncaissements({
             </button>
           )}
         </div>
-        <div className="flex gap-1.5">
-          {[TOUS, ...operateurs].map((f) => (
-            <button key={f} onClick={() => setFiltre(f)}
-              className={`rounded-btn border px-3.5 py-1.5 text-small transition sm:py-2.5 ${
-                filtre === f
-                  ? "border-ink bg-ink font-medium text-white"
-                  : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
-              }`}>{f === TOUS ? t.tousLesOperateurs : f}</button>
-          ))}
-        </div>
+        {/* Le filtre d'opérateur ne se montre que s'il y a un choix à faire :
+            avec une seule carte, il n'était que du bruit. */}
+        {operateurs.length > 1 && (
+          <div className="flex gap-1.5">
+            {[TOUS, ...operateurs].map((f) => (
+              <button key={f} onClick={() => setFiltre(f)}
+                className={`rounded-btn border px-3.5 py-1.5 text-small transition sm:py-2.5 ${
+                  filtre === f
+                    ? "border-ink bg-ink font-medium text-white"
+                    : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+                }`}>{f === TOUS ? t.tousLesOperateurs : f}</button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Filtre par catégorie — seulement celles réellement reçues */}
+      {/* Filtre par catégorie — seulement celles réellement reçues, sur UNE
+          ligne qui glisse du doigt : fini les trois rangs de puces. */}
       {categories.length > 1 && (
-        <div className="-mt-3 flex flex-wrap gap-1.5">
+        <div className="-mt-3 -mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
           <Chip actif={categorie === TOUTES} onClick={() => setCategorie(TOUTES)}>
             {t.toutesLesCategories}
           </Chip>
@@ -168,14 +181,14 @@ export function ListeEncaissements({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-3">
-                        {/* Qui, quand — la source du SMS, brève. Le point plein
-                            devant = pas encore ouvert. */}
-                        <span className="flex min-w-0 items-center gap-1.5 truncate text-small text-ink-soft">
+                        {/* QUI d'abord, en évidence. Le point plein devant =
+                            pas encore ouvert. */}
+                        <span className="flex min-w-0 items-center gap-1.5 text-body font-medium">
                           {p.nonLu && (
                             <span aria-label={t.nonLu}
                               className="size-1.5 shrink-0 rounded-full bg-ink" />
                           )}
-                          {p.sim} · {p.heure}
+                          <span className="truncate">{p.nom}</span>
                         </span>
                         {/* Montant complet, jamais abrégé ; sans signe quand le
                             sens n'est pas établi. */}
@@ -187,12 +200,14 @@ export function ListeEncaissements({
                           </span>
                         )}
                       </span>
-                      {/* Le SMS EN ENTIER : c'est lui qu'on vient lire. Jamais
-                          tronqué, jamais reformulé, jamais traduit — le message
-                          d'origine, tel que la carte l'a reçu. Un non-lu se lit
-                          un cran plus appuyé, comme dans une boîte mail. */}
-                      <span className={`mt-1 block whitespace-pre-wrap break-words text-body text-ink ${
-                        p.nonLu ? "font-medium" : ""
+                      <span className="mt-0.5 block text-caption tabnums text-ink-faint">
+                        {p.sim} · {p.heure}
+                      </span>
+                      {/* Le début du message suffit à la liste — DEUX lignes au
+                          plus, jamais reformulées. Le texte entier vit sur la
+                          fiche : une liste n'est pas une lecture. */}
+                      <span className={`mt-1 line-clamp-2 break-words text-small leading-relaxed ${
+                        p.nonLu ? "font-medium text-ink" : "text-ink-soft"
                       }`}>
                         {p.smsBrut}
                       </span>
@@ -213,6 +228,16 @@ export function ListeEncaissements({
         ))
       )}
 
+      {/* La suite, à la demande — le compte dit ce qui reste. */}
+      {restants > 0 && (
+        <button
+          onClick={() => setVisibles((v) => v + PAGE)}
+          className="rounded-btn border border-line bg-surface-raised py-3 text-small font-medium text-ink-soft transition hover:border-ink-faint hover:text-ink"
+        >
+          {t.afficherPlus(restants)}
+        </button>
+      )}
+
       {detail && <FicheSms p={detail} onFermer={() => setDetail(null)} />}
     </div>
   );
@@ -230,7 +255,7 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-small transition ${
+      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-small transition ${
         actif
           ? "border-ink bg-ink font-medium text-white"
           : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"

@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { BoutonFermer } from "./fermer";
 import {
-  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
+  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart,
   IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
 } from "./icons";
 import { reveillerLaVeille } from "./veille";
@@ -32,7 +33,10 @@ export const CAT: Record<Categorie, typeof IconArrowDown> = {
 export function CatIcone({
   c, size = 16, className,
 }: { c: Categorie; size?: number; className?: string }) {
-  const Icone = CAT[c];
+  // Filet de sécurité : la colonne « categorie » est du texte libre en base.
+  // Une valeur inconnue (robot plus récent que la plateforme) ne doit jamais
+  // faire planter la liste entière — elle s'affiche en simple message.
+  const Icone = CAT[c] ?? IconBubble;
   return <Icone size={size} className={className} />;
 }
 
@@ -54,8 +58,13 @@ export const classeCat = (c: Categorie): string =>
 const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
 
 // La catégorie effective : la nature choisie par le propriétaire l'emporte sur
-// la catégorie devinée par le terminal.
-export const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
+// la catégorie devinée par le terminal. Une valeur qui n'est pas du référentiel
+// (colonne libre en base, robot plus récent) retombe sur « message » : mieux
+// vaut une pastille neutre qu'un écran qui plante.
+export const catDe = (p: Paiement): Categorie => {
+  const brute = p.nature ?? p.categorie;
+  return brute in CAT ? brute : "message";
+};
 
 /**
  * La fiche d'un SMS : le message en entier, ses détails, sa nature (qui
@@ -204,8 +213,11 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           elle défile dans sa propre hauteur, jamais coupée sans recours. */}
       <div className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:max-h-[85dvh] md:rounded-card md:pb-6"
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div>
+        {/* L'ESSENTIEL d'abord : qui, combien, quand — et une fermeture
+            qu'on ne cherche pas. Les détails techniques attendent sous un
+            pli, ils n'ont pas à se faire lire. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <p className="text-small text-ink-soft">
               {p.montant == null
                 ? t.smsRecu
@@ -216,47 +228,21 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
                 {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
               </p>
             )}
-            <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
+            <p className="mt-1 truncate text-body font-medium">{p.nom}</p>
+            <p className="mt-0.5 text-small tabnums text-ink-faint">
+              {p.sim} · {t.dateEtHeure(p.date, p.heure)}
+            </p>
           </div>
-          <button onClick={onFermer} className="text-ink-faint transition hover:text-ink"><IconClose size={18} /></button>
+          <BoutonFermer onClick={onFermer} label={t.fermerFiche} />
         </div>
 
-        <dl className="mt-6 divide-hair">
-          <L t={t.categorie} v={t.cat[catDe(p)]} />
-          <L t={t.operateur} v={p.sim} />
-          {p.numero && <L t={t.numero} v={p.numero} />}
-          <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
-          {p.reference && <L t={t.reference} v={p.reference} />}
-          {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
-        </dl>
+        {/* Le message en entier — c'est lui qu'on vient lire. `break-words` :
+            une référence ou une adresse sans espace ne déborde jamais. */}
+        <p className="mt-5 whitespace-pre-line break-words rounded-card bg-surface-2 p-4 text-body leading-relaxed">
+          {p.smsBrut}
+        </p>
 
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
-            {t.natureTitre}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {NATURES.map((n) => (
-              <button key={n} onClick={() => classer(n)} disabled={classe}
-                className={`flex items-center gap-1.5 rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
-                  nature === n
-                    ? "border-ink bg-ink font-medium text-white"
-                    : "border-line text-ink-soft hover:border-ink-faint"
-                }`}>
-                <CatIcone c={n} size={14} /> {t.cat[n]}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
-            {t.natureAide}
-          </p>
-        </div>
-
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.messageRecu}</p>
-          <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
             className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
@@ -294,6 +280,42 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           <p className={`mt-3 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
             {mot}
           </p>
+        )}
+
+        {/* La nature — le geste qui établit le reçu */}
+        <div className="mt-5">
+          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
+            {t.natureTitre}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {NATURES.map((n) => (
+              <button key={n} onClick={() => classer(n)} disabled={classe}
+                className={`flex items-center gap-1.5 rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
+                  nature === n
+                    ? "border-ink bg-ink font-medium text-white"
+                    : "border-line text-ink-soft hover:border-ink-faint"
+                }`}>
+                <CatIcone c={n} size={14} /> {t.cat[n]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
+            {t.natureAide}
+          </p>
+        </div>
+
+        {/* Les détails techniques, sous un pli — pour qui les cherche */}
+        {(p.numero || p.reference || p.soldeApres != null) && (
+          <details className="mt-5">
+            <summary className="cursor-pointer text-small font-medium text-ink-soft transition hover:text-ink">
+              {t.voirDetails}
+            </summary>
+            <dl className="mt-1 divide-hair">
+              {p.numero && <L t={t.numero} v={p.numero} />}
+              {p.reference && <L t={t.reference} v={p.reference} />}
+              {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
+            </dl>
+          </details>
         )}
       </div>
     </div>
