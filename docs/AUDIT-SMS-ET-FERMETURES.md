@@ -1,139 +1,152 @@
 # Audit — la boîte des SMS reçus, et le geste de fermeture
 
-> Document de travail. Phase 0 : comprendre, cadrer, questionner.
-> Il s'enrichit à chaque phase (audit, casse-test, refonte, plan).
+> Phase 0 : cartographie, cadrage, questions. Document repris de zéro,
+> sur pièces — chaque affirmation porte son fichier et sa ligne.
+> Il s'enrichira à chaque phase (casse-test, inventaire, refonte, plan).
 
 ---
 
-## 1. Le système, en bref
+## 0. Méthode
 
-TOTEM fait recevoir sur la plateforme web les SMS que les cartes SIM
-reçoivent à Douala. Le chemin d'un SMS, de l'antenne à l'écran :
+Lecture intégrale du code de la plateforme web et des maillons du robot
+qui la nourrissent ; relevé systématique de tout ce qui ferme, annule ou
+interrompt ; liste des points durs décelables à froid, chacun devant
+être PROUVÉ ou infirmé par le casse-test de Phase 1 — rien ne sera
+affirmé sans avoir été exécuté.
 
-| Étape | Où | Fichier |
-|---|---|---|
-| Le modem relève le SMS (PDU, SMS longs recomposés) | Raspberry Pi | `totem/modem.py`, `totem/pdu.py` |
-| Lecture : montant, tiers, référence, solde | Pi | `totem/analyse_sms.py` |
-| Journal local (source de vérité) | Pi | `totem/storage.py` |
-| Poussée vers le cloud (hors-ligne d'abord, file d'attente) | Pi | `totem/nuage.py` |
-| Table `paiements` (texte d'origine + champs compris) | Supabase | `sql/schema.sql` |
-| Lecture côté serveur, mise en forme | Web | `web/lib/serveur.ts` |
-| La boîte : liste, filtres, recherche | Web | `web/app/encaissements/liste.tsx` |
-| La fiche d'un SMS (lecture, nature, reçu PDF) | Web | `web/app/fiche-sms.tsx` |
-| La veille : rafraîchissement + pastille des non-lus | Web | `web/app/veille.tsx` |
+## 1. Le terrain
 
-Deux principes du dépôt gouvernent tout : **le message d'origine fait
-foi** (jamais reformulé, jamais traduit), et **aucune donnée n'est
-inventée** (dans le doute, le robot s'abstient).
+- **Pile web** : Next.js 16 (App Router, rendu serveur dynamique),
+  React 19, Tailwind v4 à jetons (`web/app/globals.css`), textes
+  bilingues par dictionnaires (`web/lib/textes/`). Pas de bibliothèque
+  de composants : tout est maison.
+- **Données** : le Raspberry Pi est la source de vérité ; Supabase n'est
+  qu'un relais lu par le serveur Next (`web/lib/serveur.ts`) — la clé ne
+  quitte jamais le serveur. Le canal descendant (boutons → terminal)
+  passe par la table `commandes` (`web/app/api/commande/route.ts`, qui
+  borne et nettoie chaque champ — une réponse USSD est même purgée des
+  caractères qui injecteraient des ordres AT au modem).
+- **Temps réel** : une veille de 5 s (`web/app/veille.tsx:12`) interroge
+  `/api/actualite` ; un SMS nouveau déclenche `router.refresh()`
+  (`veille.tsx:49`) — l'écran entier se re-rend, où qu'on soit.
+- **Verrou** : un mot de passe unique, session signée, middleware qui
+  protège tout (`web/middleware.ts`).
 
-## 2. Deux problèmes, deux portées — à ne pas confondre
+## 2. Le chemin d'un SMS, de l'antenne à l'écran
 
-### Problème A — le module « SMS reçus » (portée : module)
+| Étape | Fichier |
+|---|---|
+| Relève au modem, PDU recomposés | `totem/modem.py`, `totem/pdu.py` |
+| Lecture (montant, tiers, référence) — `None` dans le doute | `totem/analyse_sms.py` |
+| Journal local, source de vérité | `totem/storage.py` |
+| Poussée cloud, hors-ligne d'abord | `totem/nuage.py` |
+| Table `paiements` — le texte d'origine fait foi | `sql/schema.sql` |
+| Mise en forme serveur (1000 SMS + 1000 reçus chargés) | `web/lib/serveur.ts:151` |
+| La boîte : recherche, filtres, pages de 60 | `web/app/encaissements/liste.tsx` |
+| La fiche : lecture, nature → reçu PDF | `web/app/fiche-sms.tsx` |
+| Non-lus : marquage à l'ouverture | `web/app/api/lu/route.ts` |
 
-Le module noyait l'utilisateur : chaque SMS s'étalait en entier dans la
-liste (huit lignes pour un transfert Orange), deux rangs de filtres
-avant le contenu, un en-tête chiffré en doublon de l'accueil, et une
-fiche qui s'ouvrait sur un tableau de détails avant le message.
+Deux lois du dépôt encadrent toute refonte : **le message d'origine fait
+foi** (jamais reformulé) et **rien ne s'invente** (dans le doute, on
+s'abstient).
 
-### Problème B — la fermeture invisible (portée : plateforme)
+## 3. Les deux problèmes — portées distinctes
 
-La croix de fermeture était un trait nu dans un coin, presque
-invisible — sur la fiche d'un SMS, mais aussi sur le pop-up d'une
-opération (solde, transfert) et sur la session USSD. Trois sémantiques
-distinctes se cachaient derrière le même dessin :
+**A. Le module « SMS reçus »** (portée : module). Recevoir et lire un
+SMS doit être sans effort. L'état courant du code structure la liste en
+qui / combien / quand / deux lignes d'aperçu, pages de 60, filtres sur
+une ligne ; la fiche ouvre sur qui-combien, le message entier, les
+gestes, les détails sous un pli. C'est CET état qui passe au casse-test
+de Phase 1 — il n'est pas présumé bon.
 
-- **fermer** une lecture (fiche d'un SMS) — sans conséquence ;
-- **annuler** une opération en cours (pop-up) — interrompt une session ;
-- **raccrocher** une session USSD — interrompt un dialogue avec le réseau.
+**B. Le geste de fermeture** (portée : plateforme). Trois sémantiques
+sous un même dessin : *fermer* une lecture (anodin), *annuler* une
+préparation (perd une saisie), *raccrocher* une session USSD en cours
+(interrompt un dialogue d'argent avec le réseau). Un motif partagé
+existe (`web/app/fermer.tsx` — pastille pleine) ; sa sémantique, elle,
+n'est PAS encore différenciée : c'est l'objet de la Phase 4a.
 
-Une interruption invisible est un danger fonctionnel, pas un défaut
-cosmétique : ne pas trouver comment arrêter une session d'argent est
-aussi grave que l'arrêter par mégarde.
+## 4. Inventaire exhaustif de ce qui ferme, annule ou interrompt
 
-## 3. État des lieux — ce qui est déjà traité (PR #45), ce qui reste
-
-### Déjà livré, vérifié sous données hostiles
-
-- **Liste compacte** : qui (nom en évidence) · combien (à droite) ·
-  quand (opérateur · heure) · deux lignes de message au plus. Le texte
-  entier vit sur la fiche.
-- **Filtres calmés** : catégories sur une seule ligne qui glisse du
-  doigt ; filtre d'opérateur masqué s'il n'offre aucun choix.
-- **Pages de 60** avec « Afficher plus (N restants) » — mille lignes ne
-  se rendent plus d'un coup.
-- **Fiche hiérarchisée** : qui/combien en tête, le message entier,
-  les gestes (reçu PDF, copie), la nature, les détails sous un pli.
-- **Robustesse** : une catégorie hors référentiel (colonne libre en
-  base) ne plante plus la liste entière ; une référence sans espace ne
-  déborde plus (`break-words`), vérifié programmatiquement.
-- **Fermeture visible** : pastille pleine `BoutonFermer`
-  (`web/app/fermer.tsx`), posée sur les trois fenêtres.
-
-### Encore ouvert (au programme des phases suivantes)
-
-- Casse-test complet (Phase 1) : RTL/arabe, émojis, réseau lent,
-  ouverture/fermeture rapides, SMS arrivant PENDANT une fiche ouverte
-  (la veille rafraîchit la page : la fiche survit-elle ?), 320 px de
-  large, navigation clavier, lecteur d'écran, focus enfermé ou pas.
-- Sémantique fine du geste d'arrêt (Phase 4a) : la croix doit-elle
-  pouvoir INTERROMPRE une opération d'argent, ou seulement le bouton
-  rouge explicite ? Confirmation ou pas ? → question ouverte n° 2.
-- Regroupement des doublons (cinq « solde consulté » d'affilée) →
-  question ouverte n° 3.
-- Les deux croix restantes des Réglages (annulation d'un formulaire,
-  `web/app/reglages/interactifs.tsx:138` et `:244`) : sémantique
-  « annuler la saisie », risque faible — à aligner sur le motif commun
-  ou à laisser en boutons bordés ?
-
-## 4. Inventaire des fermetures (après PR #45)
-
-| Écran | Sémantique | Où | Risque si invisible |
+| Où | Geste réel | Référence | Risque |
 |---|---|---|---|
-| Fiche d'un SMS | fermer (lecture) | `web/app/fiche-sms.tsx:236` | faible — frustration |
-| Pop-up d'opération | annuler / raccrocher si session ouverte | `web/app/operation.tsx:188` (→ `annuler()` → `ussd_fin`) | élevé — interrompt une opération d'argent |
-| Session USSD | raccrocher (désactivée pendant la composition) | `web/app/ussd/console.tsx:211` | élevé |
-| Recherche de la boîte | effacer la saisie | `web/app/encaissements/liste.tsx:114` | faible — autre sémantique, ne pas confondre |
-| Réglages (édition, ajout) | annuler la saisie | `web/app/reglages/interactifs.tsx:138`, `:244` | faible |
+| Fiche SMS — pastille | fermer (lecture) | `web/app/fiche-sms.tsx:236` | faible |
+| Fiche SMS — clic sur le fond | fermer | `fiche-sms.tsx:210` | faible |
+| Pop-up opération — pastille | **annuler → `ussd_fin` si session ouverte** | `web/app/operation.tsx:188` → `:170` | **élevé** |
+| Pop-up opération — clic sur le fond | **même interruption, sans confirmation** | `operation.tsx:182` | **élevé — arrêt accidentel possible** |
+| Pop-up opération — bouton rouge | annuler la session (explicite) | `operation.tsx:~270` | voulu |
+| Session USSD — pastille | raccrocher (inerte pendant la composition) | `web/app/ussd/console.tsx:211` | élevé |
+| Session USSD — clic sur le voile | **raccrocher sans confirmation** | `console.tsx:203` | **élevé — arrêt accidentel** |
+| Session USSD — bouton rouge / « Fermer » | annuler / fermer session finie | `console.tsx` pied | voulu |
+| Recherche de la boîte — croix | effacer la saisie (autre sémantique) | `encaissements/liste.tsx:114` | faible |
+| Réglages — deux croix bordées | annuler une saisie | `reglages/interactifs.tsx:138`, `:244` | faible |
+| **Touche Échap** | **absente partout** | — | clavier sans issue |
 
-Le motif commun est défini UNE fois : `web/app/fermer.tsx`. Les trois
-fenêtres l'utilisent ; les sorties textuelles (« Annuler la session »,
-« Fermer », en rouge ou bordé, en bas de feuille) doublent la pastille —
-deux chemins de sortie, l'un au pouce, l'autre à l'œil.
+## 5. Points durs relevés à froid — à prouver en Phase 1
 
-## 5. Protocole de casse — Phase 1 (déjà exécuté / à venir)
+1. **Arrêt accidentel d'une session d'argent** : le fond cliquable
+   interrompt sans confirmation (`operation.tsx:182`,
+   `console.tsx:203`). Un pouce qui dépasse la feuille suffit.
+2. **Aucune grammaire de dialogue accessible** : pas de
+   `role="dialog"`, pas d'`aria-modal`, pas de piège de focus, pas
+   d'Échap — au clavier comme au lecteur d'écran, les fenêtres n'ont
+   ni entrée ni sortie annoncées.
+3. **Course veille ↔ fenêtres ouvertes** : `router.refresh()` part à
+   chaque SMS entrant (`veille.tsx:49`) pendant qu'une fiche ou une
+   session est ouverte. La fiche garde alors une copie FIGÉE du SMS
+   (`liste.tsx` passe l'objet en l'état) : reçu établi entre-temps,
+   position de défilement, feuille de session — que survit-il ?
+4. **La recherche ment par omission** : elle ne fouille que les 1000
+   derniers SMS chargés (`serveur.ts:159`) sans jamais le dire. Sur un
+   an d'activité, un paiement ancien devient introuvable en silence —
+   contraire à la loi « un silence vaut mieux qu'un mensonge » ?
+5. **Poids par visite** : 1000 SMS + 1000 reçus re-mis en forme à
+   CHAQUE rendu de la boîte, et re-téléchargés à chaque SMS entrant
+   (veille). À mesurer sur téléphone réel.
+6. **Non-lu qui échoue en silence** : si `/api/lu` répond 502, le point
+   « non lu » reste malgré la lecture, sans nouvelle tentative
+   (`fiche-sms.tsx:79`).
+7. **Doublons à la chaîne** : cinq relevés de solde identiques
+   d'affilée occupent cinq lignes — bruit réel constaté sur captures
+   du propriétaire.
+8. **Pagination et jours coupés** : les pages de 60 tranchent au
+   milieu d'un jour ; l'en-tête du jour ne se répète pas après
+   « Afficher plus ». À vérifier visuellement.
+9. Corps hostiles jamais éprouvés : émojis, écritures droite-à-gauche,
+   320 px de large, double-clic frénétique, réseau à 2G.
 
-Déjà exécuté (harnais Playwright + page d'essai aux données hostiles,
-jamais committée) :
+## 6. Questions critiques — réponses attendues avant la Phase 1
 
-- catégorie inconnue du référentiel → avant : plantage total ; après :
-  pastille neutre ✔
-- référence de 80 caractères sans espace → aucun débordement
-  horizontal (vérifié par mesure du `scrollWidth`) ✔
-- 183 lignes → 60 rendues, pagination ✔
-- puces de filtre qui se repliaient → une ligne défilante ✔
+1. **Terrain premier.** Les captures sont un iPhone/Safari. Confirmez :
+   mobile d'abord (Safari iOS ? Chrome Android aussi ?), l'ordinateur
+   en second.
+2. **Le geste d'arrêt — LA décision de fond.** Pendant une opération
+   d'argent en cours : (a) la pastille et le fond interrompent
+   immédiatement (état actuel) ; (b) seul le bouton rouge explicite
+   interrompt, pastille et fond deviennent inertes en session ;
+   (c) pastille et fond demandent confirmation (« Arrêter la
+   session ? ») dès qu'une saisie a commencé. **Recommandation : (c)
+   pour la pastille, et fond inerte en session** — un arrêt trouvable,
+   jamais accidentel.
+3. **Les doublons.** Droit de regrouper à l'affichage cinq relevés de
+   solde identiques (« Solde consulté 5 fois », dépliable) — le journal
+   gardant tout ?
+4. **La profondeur d'historique.** 1000 SMS suffisent-ils, ou la
+   recherche doit-elle fouiller tout l'historique (recherche côté
+   serveur) ? A minima : la boîte doit-elle DIRE quand elle ne montre
+   pas tout ?
+5. **Captures attendues** (état déployé actuel, votre téléphone) : la
+   boîte, une fiche ouverte, un transfert au moment du pavé.
 
-À venir (après réponses de Phase 0) : émojis et RTL dans le corps d'un
-SMS ; arrivée d'un SMS pendant une fiche ouverte (course entre
-`router.refresh()` de la veille et l'état local) ; réseau lent (fiche
-« marquer lu » qui échoue) ; 320 px ; double-clic frénétique sur une
-ligne ; clavier et lecteur d'écran ; session USSD ouverte pendant
-qu'on lit un SMS.
+## 7. Suite du protocole
 
-## 6. Questions ouvertes — Phase 0 (réponses attendues)
-
-1. **Terrain d'usage** : le mobile (Safari iPhone d'après les captures)
-   est-il l'écran premier, l'ordinateur restant secondaire ? Le casse-
-   test priorisera dans cet ordre.
-2. **Le geste d'arrêt d'une session d'argent** : la pastille de
-   fermeture doit-elle pouvoir interrompre une opération en cours, ou
-   faut-il réserver l'interruption au seul bouton rouge explicite
-   (« Annuler la session ») — la pastille ne faisant alors que fermer
-   une session déjà terminée ? Une confirmation (« Arrêter la
-   session ? ») est-elle souhaitée quand un montant a déjà été saisi ?
-3. **Les doublons de solde** : cinq « The balance of your account… »
-   identiques d'affilée — a-t-on le droit de les regrouper à
-   l'affichage (« Solde consulté 5 fois », dépliable), sachant que le
-   journal, lui, garde tout ?
-4. **Captures utiles** : après fusion de la PR #45 — la boîte sur votre
-   téléphone réel, une fiche ouverte, et un transfert au moment du pavé.
-   C'est sur CET état qu'il faut poursuivre l'audit, pas sur l'ancien.
+- **Phase 1** : casse-test outillé (Playwright, données hostiles,
+  réseau bridé, viewports 320→1440, clavier, course veille/fenêtres) —
+  chaque défaut avec son déclencheur exact.
+- **Phase 2** : verdict sur chaque ligne du tableau §4, avec preuve.
+- **Phase 3** : règles de conception (dialogues, feuilles, arrêt sûr),
+  tirées des principes de Paul Graham et des usages établis — en règles
+  actionnables, pas en citations.
+- **Phase 4** : refonte — motif d'arrêt/fermeture unique et sûr,
+  puis le module SMS. Captures à l'appui.
+- **Phase 5** : plan d'implémentation ordonné, `fichier:ligne`.
