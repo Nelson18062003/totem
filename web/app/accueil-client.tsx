@@ -12,6 +12,7 @@ import {
   IconRefresh, IconWallet,
 } from "./icons";
 import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
+import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
 
 /** Le signal en quatre barres — rempli au niveau, lisible sans chiffres. */
@@ -117,7 +118,12 @@ export function AccueilGuichet({
     <>
       {/* LE solde : un seul, sur la carte. Actualiser interroge le réseau —
           la fenêtre du code s'ouvre, jamais un rechargement de page. */}
-      <section className="acct relative overflow-hidden rounded-card p-5 sm:p-6 lg:col-start-1">
+      <section className="acct-marque relative overflow-hidden rounded-card p-5 sm:p-6 lg:col-start-1">
+        {/* La Tresse, en filigrane sur la tranche droite — la carte est
+            signée TOTEM comme une carte bancaire est frappée de sa banque.
+            Jamais sous le chiffre : le filigrane vit au bord, le nombre à
+            gauche. */}
+        <Symbole size={210} className="pointer-events-none absolute -right-10 -top-8 text-white/[0.10]" />
         {/* Le liseré de l'opérateur — sa couleur comme DONNÉE (≤ 4 px, jamais
             un aplat) : la carte se reconnaît du coin de l'œil, comme la
             tranche d'un carnet. */}
@@ -143,7 +149,8 @@ export function AccueilGuichet({
               </span>
             )}
           </span>
-          <span className="flex shrink-0 items-center gap-1.5">
+          <span className="flex shrink-0 items-center gap-3">
+            {carte.signal != null && <BarresSignal niveau={carte.signal} />}
             {/* L'œil : cacher le solde d'un geste — un écran ouvert devant
                 quelqu'un ne dit pas ce que contient la caisse. Le choix est
                 retenu sur cet appareil. */}
@@ -161,7 +168,7 @@ export function AccueilGuichet({
               onClick={() => setOperation(solde())}
               aria-label={t.actualiserAria}
               title={t.interrogerReseau}
-              className="grid size-9 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+              className="-ml-1.5 grid size-9 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
             >
               <IconRefresh size={16} />
             </button>
@@ -188,13 +195,17 @@ export function AccueilGuichet({
             EST la carte posée dans le berceau, à Douala — et le signal en
             barres, qui se lit sans se déchiffrer. */}
         <div className="mt-6 flex items-end justify-between gap-3">
-          <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/55">
-            <IconPuceSim size={20} className="shrink-0 text-white/35" />
+          <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/60">
+            <IconPuceSim size={20} className="shrink-0 text-white/40" />
             <span className="truncate">
               {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
             </span>
           </p>
-          {carte.signal != null && <BarresSignal niveau={carte.signal} />}
+          {/* La signature de la maison — le logotype, comme la frappe d'une
+              banque au coin de sa carte. */}
+          <span className="shrink-0 font-marque text-caption font-bold uppercase tracking-marque text-white/60">
+            Totem
+          </span>
         </div>
       </section>
 

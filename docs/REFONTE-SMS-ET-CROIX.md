@@ -701,3 +701,25 @@ Fichiers : `accueil-client.tsx` (carte + `BarresSignal`), `icons.tsx`
 (`IconPuceSim`), `logos-operateurs.tsx` (`couleurOperateur`). Vérifié au
 banc : Orange et MTN (liseré et logo suivent la SIM), état masqué, une seule
 ligne de chiffre — rien de la phase précédente n'a bougé.
+
+**Deuxième passe (même soir) — la carte en HABIT DE MARQUE.** Le propriétaire
+voulait plus audacieux, et le symbole TOTEM dessus. Décision du propriétaire,
+consignée : la carte de LA caisse devient une **surface de marque** —
+l'interdit « jamais la latérite sur une donnée » est levé pour elle seule.
+
+- **Le fond passe à la latérite** (`.acct-marque`, `globals.css`) — la terre
+  de la marque porte l'argent ; texte blanc (contraste 5,9:1).
+- **La Tresse en filigrane** : le symbole (le composant `Symbole` de
+  `marque.tsx`, tracés de `brand/generer.py` qui fait autorité), grand,
+  fuyant la tranche droite à 10 % — la carte est frappée TOTEM comme une
+  carte bancaire est frappée de sa banque. Jamais sous le chiffre.
+- **Le logotype en signature** : « TOTEM » (DM Sans, interlettrage lapidaire)
+  au coin bas droit.
+- **Le signal remonte** près des commandes ; le pied respire : puce + numéro
+  à gauche, la signature à droite.
+- Le liseré et le logo de l'opérateur ne bougent pas : la caisse reste
+  identifiée d'un coup d'œil.
+
+Une variante « encre » (fond sombre d'origine, Tresse cuivrée) a été
+maquettée au banc — un changement d'une ligne si le propriétaire la préfère.
+
