@@ -23,7 +23,7 @@ function BarresSignal({ niveau }: { niveau: number }) {
       aria-label={`Signal ${niveau}/31`} title={`Signal ${niveau}/31`}>
       {[5, 8, 11, 14].map((h, i) => (
         <span key={h} style={{ height: h }}
-          className={`w-[3px] rounded-full ${i < pleines ? "bg-white/75" : "bg-white/20"}`} />
+          className={`w-[3px] rounded-full ${i < pleines ? "bg-white/90" : "bg-white/30"}`} />
       ))}
     </span>
   );
@@ -156,7 +156,7 @@ export function AccueilGuichet({
                 onClick={basculerSolde}
                 aria-label={soldeCache ? t.montrerSolde : t.masquerSolde}
                 title={soldeCache ? t.montrerSolde : t.masquerSolde}
-                className="grid size-9 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+                className="grid size-9 place-items-center rounded-full border border-white/40 text-white transition hover:border-white hover:text-white"
               >
                 {soldeCache ? <IconEye size={16} /> : <IconEyeOff size={16} />}
               </button>
@@ -165,7 +165,7 @@ export function AccueilGuichet({
               onClick={() => setOperation(solde())}
               aria-label={t.actualiserAria}
               title={t.interrogerReseau}
-              className="-ml-1.5 grid size-9 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+              className="-ml-1.5 grid size-9 place-items-center rounded-full border border-white/40 text-white transition hover:border-white hover:text-white"
             >
               <IconRefresh size={16} />
             </button>
@@ -178,10 +178,10 @@ export function AccueilGuichet({
         <p className={`mt-5 whitespace-nowrap font-semibold tabnums tracking-tight ${classeMontant}`}>
           {affiche}
           {carte.solde != null && (
-            <span className="ml-2 text-heading font-medium text-white/60">FCFA</span>
+            <span className="ml-2 text-heading font-medium text-white/80">FCFA</span>
           )}
         </p>
-        <p className="mt-1.5 text-small text-white/55">
+        <p className="mt-1.5 text-small text-white/75">
           {carte.solde == null
             ? t.aucunSoldeConnu
             : carte.soldeMaj
@@ -192,8 +192,8 @@ export function AccueilGuichet({
             EST la carte posée dans le berceau, à Douala — et le signal en
             barres, qui se lit sans se déchiffrer. */}
         <div className="mt-6 flex items-end justify-between gap-3">
-          <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/60">
-            <IconPuceSim size={20} className="shrink-0 text-white/40" />
+          <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/80">
+            <IconPuceSim size={20} className="shrink-0 text-white/60" />
             <span className="truncate">
               {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
             </span>
