@@ -676,3 +676,55 @@ l'affichage. Le logo dit la caisse TOUT SEUL : aucun nom d'opérateur ne se
 répète à côté (le nom reste dit aux lecteurs d'écran, et un opérateur sans
 marque garde son libellé écrit + une puce neutre). Il suit tout seul
 l'opérateur de la carte en place — accueil et page des comptes.
+
+---
+
+## Phase 6 ter — La carte du solde, redessinée (demande du 15 août au soir)
+
+Le propriétaire voulait une carte plus belle et plus créative. La refonte
+reste DANS l'identité (mate, sans ombre, rayon 8) et joue avec ce que les
+règles permettent — la composition, le trait, le sens :
+
+- **Le liseré de l'opérateur** : 3 px de sa couleur sur la tranche gauche —
+  la couleur comme donnée (le liseré est explicitement permis, jamais
+  l'aplat). La carte se reconnaît du coin de l'œil, et change avec la SIM.
+- **La puce SIM au trait**, posée près du numéro : la carte à l'écran EST la
+  carte physique dans le berceau de Douala — un ornement qui dit quelque
+  chose de vrai.
+- **Le signal en quatre barres** remplies au niveau, à la place du « 24/31 »
+  à déchiffrer (le chiffre exact reste dit au survol et aux lecteurs
+  d'écran).
+- **Le rythme** : plus d'air (p-6 dès sm), le chiffre en centre de gravité,
+  le pied ancré — numéro et puce à gauche, signal à droite.
+
+Fichiers : `accueil-client.tsx` (carte + `BarresSignal`), `icons.tsx`
+(`IconPuceSim`), `logos-operateurs.tsx` (`couleurOperateur`). Vérifié au
+banc : Orange et MTN (liseré et logo suivent la SIM), état masqué, une seule
+ligne de chiffre — rien de la phase précédente n'a bougé.
+
+**Deuxième passe (même soir) — la carte en HABIT DE MARQUE.** Le propriétaire
+voulait plus audacieux, et le symbole TOTEM dessus. Décision du propriétaire,
+consignée : la carte de LA caisse devient une **surface de marque** —
+l'interdit « jamais la latérite sur une donnée » est levé pour elle seule.
+
+- **Le fond passe à la latérite** (`.acct-marque`, `globals.css`) — la terre
+  de la marque porte l'argent ; texte blanc (contraste 5,9:1).
+- **La Tresse en filigrane** : le symbole (le composant `Symbole` de
+  `marque.tsx`, tracés de `brand/generer.py` qui fait autorité), grand,
+  fuyant la tranche droite à 10 % — la carte est frappée TOTEM comme une
+  carte bancaire est frappée de sa banque. Jamais sous le chiffre.
+- **Le logotype en signature** : « TOTEM » (DM Sans, interlettrage lapidaire)
+  au coin bas droit.
+- **Le signal remonte** près des commandes ; le pied respire : puce + numéro
+  à gauche, la signature à droite.
+- Le liseré et le logo de l'opérateur ne bougent pas : la caisse reste
+  identifiée d'un coup d'œil.
+
+Une variante « encre » (fond sombre, Tresse cuivrée) a été maquettée au
+banc. **Choix final du propriétaire (15 août au soir)** : la variante
+noire — fond `#141414`, plus profond que l'encre des autres cartes, La
+Tresse au cuivre (`laterite-clair` à 20 %), et SANS la signature écrite :
+le filigrane suffit, le symbole parle seul. Dernier réglage : le liseré
+gauche devient un **cadre entier** — la carte est sertie dans la couleur de
+son opérateur (jaune MTN, orange Orange), 2 px sur les quatre bords.
+

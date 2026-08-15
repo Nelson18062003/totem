@@ -109,6 +109,14 @@ body {
   background: #2c2c2c;
   color: #f5f5f5;
 }
+/* La carte du solde, en habit de marque — décision du propriétaire (15 août) :
+   la carte de LA caisse est une surface de marque. La latérite la porte, et
+   La Tresse la signe en filigrane. Les montants restent à l'écart du motif :
+   le filigrane vit sur la tranche droite, jamais sous le chiffre. */
+.acct-marque {
+  background: #141414;   /* plus noir que l'encre des autres cartes : LA caisse */
+  color: #ffffff;
+}
 .acct-alt {
   background: var(--color-surface-raised);
   color: var(--color-ink);
