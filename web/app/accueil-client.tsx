@@ -122,7 +122,7 @@ export function AccueilGuichet({
           sertie dans SA couleur, comme une pièce dans son chaton. Un
           opérateur sans couleur reste sans cadre. */}
       <section className="acct-marque relative overflow-hidden rounded-card p-5 sm:p-6 lg:col-start-1"
-        style={couleurOperateur(op) ? { border: `2px solid ${couleurOperateur(op)}` } : undefined}>
+        style={{ border: `2px solid ${couleurOperateur(op) ?? "rgba(255,255,255,0.3)"}` }}>
         {/* La Tresse, en filigrane sur la tranche droite — la carte est
             signée TOTEM comme une carte bancaire est frappée de sa banque.
             Jamais sous le chiffre : le filigrane vit au bord, le nombre à
@@ -141,7 +141,7 @@ export function AccueilGuichet({
               {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
             </span>
             {!operateurReconnu(op) && (
-              <span className="truncate text-caption uppercase tracking-wider text-white/60">
+              <span className="truncate text-caption uppercase tracking-wider text-white/85">
                 {carte.libelle}
               </span>
             )}
