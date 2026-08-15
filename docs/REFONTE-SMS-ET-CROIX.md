@@ -728,3 +728,19 @@ le filigrane suffit, le symbole parle seul. Dernier réglage : le liseré
 gauche devient un **cadre entier** — la carte est sertie dans la couleur de
 son opérateur (jaune MTN, orange Orange), 2 px sur les quatre bords.
 
+
+### Le chiffre, enfin à sa taille (16 août)
+
+Le propriétaire le trouvait trop petit et confus — il avait raison : les
+paliers de corps étaient timides et le montant se lisait d'un bloc. Refonte
+(`accueil-client.tsx`) :
+
+- **Le plus grand corps qui tienne, toujours** : la carte devient un
+  conteneur mesurable (`container-type: inline-size`) et le corps du chiffre
+  se calcule depuis sa largeur RÉELLE et la longueur du montant — fini
+  l'échelle à trois marches. Cinq millions s'affiche à ~43 px sur un
+  téléphone (contre 27 avant), un milliard tient encore à ~33 px, sans
+  jamais déborder ni casser la ligne (prouvé au banc à 390 et 320 px).
+- **L'entier domine, les décimales s'effacent** : « 5 130 577 » en pleine
+  force, « ,6 » à 55 % — on lit « cinq millions » d'un coup d'œil, comme
+  sur une application bancaire. « FCFA » reste en retrait.
