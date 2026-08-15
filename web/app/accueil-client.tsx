@@ -148,7 +148,7 @@ export function AccueilGuichet({
         {/* L'en-tête de la carte : LA marque de la caisse (le logo suit
             l'opérateur de la carte en place), et les deux commandes — l'œil
             et l'actualisation — hors du chemin du chiffre. */}
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-start gap-3">
           <span className="flex shrink-0 items-center gap-3">
             {carte.signal != null && <BarresSignal niveau={carte.signal} />}
             {/* L'œil : cacher le solde d'un geste — un écran ouvert devant
