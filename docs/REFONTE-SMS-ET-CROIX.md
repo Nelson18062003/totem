@@ -646,3 +646,33 @@ vérifiées par inspection directe (taille calculée de chaque champ).
 **Prouvé au banc :** 6 champs inspectés sur tous les écrans (accueil, boîte,
 USSD en session, réglages, formulaire d'opération) → **zéro champ sous
 16 px** ; `touch-action: manipulation` calculé sur les boutons partout.
+
+---
+
+## Phase 6 bis — Le chiffre qui casse, et la marque de la caisse (16 août)
+
+**Le chiffre du solde ne casse plus jamais sa ligne.** Constat du
+propriétaire sur le vrai déploiement : « 5 130 577,6 FCFA » se pliait en
+deux lignes — et un solde de cent millions ou d'un milliard aurait fait
+pire. Réparation (`accueil-client.tsx`, `cartes/page.tsx`) :
+
+- le chiffre occupe **toute la largeur de la carte, sur UNE ligne**
+  (`whitespace-nowrap`) — l'œil et l'actualisation montent dans l'en-tête,
+  hors de son chemin ; la force du signal rejoint la ligne du numéro ;
+- son corps **rétrécit à mesure que le solde grandit** (trois paliers selon
+  la longueur du nombre) : de cent mille à un milliard, la ligne tient ;
+- la devise « FCFA » passe en retrait (plus petite, adoucie) : c'est le
+  nombre qu'on vient lire.
+
+Prouvé au banc : « 1 234 567 890,5 FCFA » sur une ligne à 390 px ET à
+320 px, sans déborder de la carte ; le cas exact du propriétaire
+(5 130 577,6) sur une ligne.
+
+**La carte porte la marque OFFICIELLE de sa caisse** (`logos-operateurs.tsx`,
+nouveau) : le vrai logo d'Orange (le carré au mot blanc, tracés du fichier
+publié) et le vrai logo MTN de 2022 (l'ovale au sigle noir sur jaune, trait
+pour trait) — incorporés en SVG dans le code, jamais téléchargés à
+l'affichage. Le logo dit la caisse TOUT SEUL : aucun nom d'opérateur ne se
+répète à côté (le nom reste dit aux lecteurs d'écran, et un opérateur sans
+marque garde son libellé écrit + une puce neutre). Il suit tout seul
+l'opérateur de la carte en place — accueil et page des comptes.
