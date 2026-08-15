@@ -744,3 +744,13 @@ paliers de corps étaient timides et le montant se lisait d'un bloc. Refonte
 - **L'entier domine, les décimales s'effacent** : « 5 130 577 » en pleine
   force, « ,6 » à 55 % — on lit « cinq millions » d'un coup d'œil, comme
   sur une application bancaire. « FCFA » reste en retrait.
+
+### La carte, composition finale (16 août, demande du propriétaire)
+
+- **Le logo de l'opérateur descend en bas à droite**, dans la colonne de La
+  Tresse — comme la marque du réseau au coin d'une carte bancaire. En haut ne
+  restent que les commandes (signal, œil, actualisation).
+- **Le chiffre monte et grandit encore** : la devise rejoint la ligne
+  d'information (« FCFA · D'après l'interrogation de… ») — toute la largeur
+  de la carte appartient au nombre. Cinq millions : ~53 px (le double du
+  point de départ) ; un milliard : ~38 px, une ligne, sans déborder.

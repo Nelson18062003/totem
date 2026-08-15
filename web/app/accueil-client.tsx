@@ -79,16 +79,16 @@ export function AccueilGuichet({
       : ([montantTexte.slice(0, i), montantTexte.slice(i + 1)] as const);
   })();
   // Largeur estimée, en em : chiffre tabulaire ≈ 0,62 ; séparateur ≈ 0,26 ;
-  // décimales à 55 % ; « FCFA » en retrait ≈ 1,35 ; 7 % de marge.
+  // décimales à 55 % ; 7 % de marge. La devise vit sur la ligne d'info :
+  // toute la largeur de la carte appartient au nombre.
   const largeurEm = (() => {
     const chiffres = entier.replace(/[^0-9•—]/g, "").length;
     const seps = entier.length - chiffres;
     let em = chiffres * 0.62 + seps * 0.26;
     if (decimales) em += (decimales.length + 1) * 0.62 * 0.55;
-    if (carte.solde != null) em += 1.35;
     return em * 1.07;
   })();
-  const corpsMontant = `min(3.75rem, ${(100 / largeurEm).toFixed(2)}cqw)`;
+  const corpsMontant = `min(4.25rem, ${(100 / largeurEm).toFixed(2)}cqw)`;
 
   const solde = (): Operation =>
     ({ titre: t.consulterSolde, code: codeUssd(op, "solde"), champs: [] });
@@ -148,21 +148,7 @@ export function AccueilGuichet({
         {/* L'en-tête de la carte : LA marque de la caisse (le logo suit
             l'opérateur de la carte en place), et les deux commandes — l'œil
             et l'actualisation — hors du chemin du chiffre. */}
-        <div className="flex items-center justify-between gap-3">
-          {/* Le logo dit la caisse — et il le dit TOUT SEUL : le nom ne se
-              répète pas à côté. Un opérateur sans marque garde son libellé. */}
-          <span className="flex min-w-0 items-center gap-2.5"
-            title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
-            <LogoOperateur operateur={op} size={26} className="shrink-0" />
-            <span className="sr-only">
-              {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
-            </span>
-            {!operateurReconnu(op) && (
-              <span className="truncate text-caption uppercase tracking-wider text-white/85">
-                {carte.libelle}
-              </span>
-            )}
-          </span>
+        <div className="flex items-center justify-end gap-3">
           <span className="flex shrink-0 items-center gap-3">
             {carte.signal != null && <BarresSignal niveau={carte.signal} />}
             {/* L'œil : cacher le solde d'un geste — un écran ouvert devant
@@ -192,22 +178,23 @@ export function AccueilGuichet({
             cassée. Le corps rétrécit à mesure que le solde grandit : un
             milliard tient aussi bien que cent mille. La devise reste plus
             discrète : c'est le nombre qu'on vient lire. */}
-        <p className="mt-5 whitespace-nowrap text-[2rem] font-semibold leading-none tabnums tracking-tight"
+        <p className="mt-3 whitespace-nowrap text-[2rem] font-semibold leading-none tabnums tracking-tight"
           style={{ fontSize: corpsMontant }}>
           {entier}
           {decimales != null && (
             <span className="text-[0.55em] text-white/80">{separateur}{decimales}</span>
           )}
-          {carte.solde != null && (
-            <span className="ml-[0.3em] text-[0.34em] font-medium tracking-normal text-white/75">FCFA</span>
-          )}
         </p>
-        <p className="mt-1.5 text-small text-white/75">
-          {carte.solde == null
-            ? t.aucunSoldeConnu
-            : carte.soldeMaj
-              ? t.soldeMaj(carte.soldeMaj)
-              : t.soldeSansHeure}
+        <p className="mt-2 text-small text-white/75">
+          {carte.solde == null ? (
+            t.aucunSoldeConnu
+          ) : (
+            <>
+              <span className="font-semibold text-white/90">FCFA</span>
+              {" · "}
+              {carte.soldeMaj ? t.soldeMaj(carte.soldeMaj) : t.soldeSansHeure}
+            </>
+          )}
         </p>
         {/* Le pied de la carte : la puce SIM au trait — la carte à l'écran
             EST la carte posée dans le berceau, à Douala — et le signal en
@@ -219,6 +206,21 @@ export function AccueilGuichet({
               {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
             </span>
           </p>
+          {/* Le logo dit la caisse — en bas à droite, dans la colonne de La
+              Tresse, comme la marque du réseau au coin d'une carte bancaire.
+              Un opérateur sans marque garde son libellé écrit. */}
+          <span className="flex shrink-0 items-center gap-2"
+            title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
+            <span className="sr-only">
+              {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
+            </span>
+            {!operateurReconnu(op) && (
+              <span className="text-caption uppercase tracking-wider text-white/85">
+                {carte.libelle}
+              </span>
+            )}
+            <LogoOperateur operateur={op} size={30} />
+          </span>
         </div>
       </section>
 
