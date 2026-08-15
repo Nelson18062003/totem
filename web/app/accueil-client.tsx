@@ -179,7 +179,7 @@ export function AccueilGuichet({
             cassée. Le corps rétrécit à mesure que le solde grandit : un
             milliard tient aussi bien que cent mille. La devise reste plus
             discrète : c'est le nombre qu'on vient lire. */}
-        <p className="mt-3 whitespace-nowrap text-[2rem] font-semibold leading-none tabnums tracking-tight"
+        <p className="mt-5 whitespace-nowrap text-[2rem] font-semibold leading-none tabnums tracking-tight"
           style={{ fontSize: corpsMontant }}>
           {entier}
           {decimales != null && (
@@ -199,7 +199,7 @@ export function AccueilGuichet({
         {/* Le pied de la carte : la puce SIM au trait — la carte à l'écran
             EST la carte posée dans le berceau, à Douala — et le signal en
             barres, qui se lit sans se déchiffrer. */}
-        <div className="mt-6 flex items-end justify-between gap-3">
+        <div className="mt-3 flex items-end justify-between gap-3">
           <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/80">
             <IconPuceSim size={20} className="shrink-0 text-white/60" />
             <span className="truncate">
