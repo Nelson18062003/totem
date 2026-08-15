@@ -720,6 +720,9 @@ l'interdit « jamais la latérite sur une donnée » est levé pour elle seule.
 - Le liseré et le logo de l'opérateur ne bougent pas : la caisse reste
   identifiée d'un coup d'œil.
 
-Une variante « encre » (fond sombre d'origine, Tresse cuivrée) a été
-maquettée au banc — un changement d'une ligne si le propriétaire la préfère.
+Une variante « encre » (fond sombre, Tresse cuivrée) a été maquettée au
+banc. **Choix final du propriétaire (15 août au soir)** : la variante
+noire — fond `#141414`, plus profond que l'encre des autres cartes, La
+Tresse au cuivre (`laterite-clair` à 20 %), et SANS la signature écrite :
+le filigrane suffit, le symbole parle seul.
 

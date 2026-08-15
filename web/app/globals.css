@@ -114,7 +114,7 @@ body {
    La Tresse la signe en filigrane. Les montants restent à l'écart du motif :
    le filigrane vit sur la tranche droite, jamais sous le chiffre. */
 .acct-marque {
-  background: var(--color-laterite);
+  background: #141414;   /* plus noir que l'encre des autres cartes : LA caisse */
   color: #ffffff;
 }
 .acct-alt {

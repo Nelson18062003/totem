@@ -123,7 +123,7 @@ export function AccueilGuichet({
             signée TOTEM comme une carte bancaire est frappée de sa banque.
             Jamais sous le chiffre : le filigrane vit au bord, le nombre à
             gauche. */}
-        <Symbole size={210} className="pointer-events-none absolute -right-10 -top-8 text-white/[0.10]" />
+        <Symbole size={210} className="pointer-events-none absolute -right-10 -top-8 text-laterite-clair/20" />
         {/* Le liseré de l'opérateur — sa couleur comme DONNÉE (≤ 4 px, jamais
             un aplat) : la carte se reconnaît du coin de l'œil, comme la
             tranche d'un carnet. */}
@@ -201,11 +201,6 @@ export function AccueilGuichet({
               {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
             </span>
           </p>
-          {/* La signature de la maison — le logotype, comme la frappe d'une
-              banque au coin de sa carte. */}
-          <span className="shrink-0 font-marque text-caption font-bold uppercase tracking-marque text-white/60">
-            Totem
-          </span>
         </div>
       </section>
 
