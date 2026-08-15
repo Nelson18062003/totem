@@ -724,5 +724,7 @@ Une variante « encre » (fond sombre, Tresse cuivrée) a été maquettée au
 banc. **Choix final du propriétaire (15 août au soir)** : la variante
 noire — fond `#141414`, plus profond que l'encre des autres cartes, La
 Tresse au cuivre (`laterite-clair` à 20 %), et SANS la signature écrite :
-le filigrane suffit, le symbole parle seul.
+le filigrane suffit, le symbole parle seul. Dernier réglage : le liseré
+gauche devient un **cadre entier** — la carte est sertie dans la couleur de
+son opérateur (jaune MTN, orange Orange), 2 px sur les quatre bords.
 

@@ -118,19 +118,16 @@ export function AccueilGuichet({
     <>
       {/* LE solde : un seul, sur la carte. Actualiser interroge le réseau —
           la fenêtre du code s'ouvre, jamais un rechargement de page. */}
-      <section className="acct-marque relative overflow-hidden rounded-card p-5 sm:p-6 lg:col-start-1">
+      {/* Le CADRE ENTIER porte la couleur de l'opérateur — la carte est
+          sertie dans SA couleur, comme une pièce dans son chaton. Un
+          opérateur sans couleur reste sans cadre. */}
+      <section className="acct-marque relative overflow-hidden rounded-card p-5 sm:p-6 lg:col-start-1"
+        style={couleurOperateur(op) ? { border: `2px solid ${couleurOperateur(op)}` } : undefined}>
         {/* La Tresse, en filigrane sur la tranche droite — la carte est
             signée TOTEM comme une carte bancaire est frappée de sa banque.
             Jamais sous le chiffre : le filigrane vit au bord, le nombre à
             gauche. */}
         <Symbole size={210} className="pointer-events-none absolute -right-10 -top-8 text-laterite-clair/20" />
-        {/* Le liseré de l'opérateur — sa couleur comme DONNÉE (≤ 4 px, jamais
-            un aplat) : la carte se reconnaît du coin de l'œil, comme la
-            tranche d'un carnet. */}
-        {couleurOperateur(op) && (
-          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px]"
-            style={{ backgroundColor: couleurOperateur(op)! }} />
-        )}
         {/* L'en-tête de la carte : LA marque de la caisse (le logo suit
             l'opérateur de la carte en place), et les deux commandes — l'œil
             et l'actualisation — hors du chemin du chiffre. */}
