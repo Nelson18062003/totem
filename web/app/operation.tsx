@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { textesGuichet } from "@/lib/textes/guichet";
-import { IconClose } from "./icons";
+import { Feuille } from "./feuille";
 import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";
 
@@ -14,6 +14,10 @@ import { PaveSecret } from "./pave-secret";
  * questions du menu avec vos informations — chaque échange reste affiché.
  * Quand l'opérateur demande le code secret, le pavé s'ouvre. Si une question
  * n'est pas reconnue, elle vous est simplement posée : on ne devine pas.
+ *
+ * La sortie suit le motif de la plateforme (feuille.tsx) : tant que la
+ * session est VIVANTE, la croix, le voile et Échap mènent tous à la même
+ * confirmation — raccrocher ne se fait jamais d'un frôlement.
  */
 
 export type ChampOperation = {
@@ -77,7 +81,7 @@ export function OperationPopup({
   const chiffres = (v: string) => v.replace(/\D/g, "");
 
   const envoyer = async (
-    genre: "ussd" | "ussd_reponse" | "ussd_fin",
+    genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
   ): Promise<string | null> => {
@@ -103,7 +107,6 @@ export function OperationPopup({
           .catch(() => null);
         if (c && (c.etat === "faite" || c.etat === "echouee")) {
           setAttente(false);
-          if (genre === "ussd_fin") return null;
           const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
           setFil((f) => [...f, { de: "reseau", texte }]);
           if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
@@ -162,119 +165,135 @@ export function OperationPopup({
     await derouler(await envoyer("ussd_reponse", { texte: t }, { de: "vous", texte: t }));
   };
 
-  const annuler = () => {
-    if (enSession) void envoyer("ussd_fin", {});
+  // RACCROCHER, l'arrêt effectif : l'ordre part au terminal sans faire
+  // attendre l'écran — la fenêtre se ferme sur-le-champ.
+  const raccrocher = () => {
+    fetch("/api/commande", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+    }).catch(() => {});
     onFermer();
   };
 
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
-  return (
-    // Une FEUILLE posée en bas de l'écran : le fond reste visible derrière le
-    // voile — on sait toujours où l'on est. L'en-tête et les gestes restent
-    // en place ; seule la réponse du réseau, au centre, peut défiler.
-    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={annuler}>
-      <div className="surgit flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:rounded-card md:border"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex shrink-0 items-start justify-between p-6 pb-4">
-          <div>
-            <p className="text-caption uppercase tracking-wider text-ink-faint">
-              {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
-              {" · "}<span className="tabnums">{operation.code}</span>
-            </p>
-            <h2 className="mt-1 text-heading font-semibold">{operation.titre}</h2>
-          </div>
-          <button onClick={annuler} aria-label={t.fermer} className="text-ink-faint transition hover:text-ink">
-            <IconClose size={18} />
-          </button>
-        </div>
+  // Tant que la session est vivante, toute sortie passe par la confirmation.
+  const retenue = etape === "session" && enSession && !fini
+    ? {
+        question: t.raccrocherQuestion,
+        arreter: t.raccrocherCourt,
+        garder: t.garderSession,
+        onArreter: raccrocher,
+      }
+    : null;
 
-        {etape === "saisie" ? (
+  const entete = (
+    <>
+      <p className="text-caption uppercase tracking-wider text-ink-faint">
+        {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
+        {" · "}<span className="tabnums">{operation.code}</span>
+      </p>
+      <h2 className="mt-0.5 truncate text-heading font-semibold">{operation.titre}</h2>
+    </>
+  );
+
+  const pied = etape === "saisie"
+    ? (
+      // Les deux gestes de la préparation — l'annulation est un MOT, pas
+      // une croix : on sait ce qu'on abandonne.
+      <div className="flex gap-2">
+        <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
+          {t.annuler}
+        </button>
+        <button disabled={!complet} onClick={lancer}
+          className="flex-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+          {t.lancer}
+        </button>
+      </div>
+    )
+    : (sortir: () => void) => (
+      <div className="flex flex-col gap-2.5">
+        {/* Le pavé, la réponse et la sortie — toujours visibles en bas, et
+            compacts : la place est au message, pas aux contrôles. */}
+        {pave && <PaveSecret onValider={secret} />}
+
+        {enSession && !attente && !pave && !fini && (
+          <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
+            className="flex items-center gap-2">
+            <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
+              inputMode="tel" placeholder={t.votreReponse}
+              className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
+            <button type="submit" disabled={!reponseLibre.trim()}
+              className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+              {t.envoyer}
+            </button>
+          </form>
+        )}
+
+        {fini ? (
           <>
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6">
-              {operation.champs.map((c) => (
-                <label key={c.cle} className="flex flex-col gap-1.5">
-                  <span className="text-small text-ink-soft">{c.label}</span>
-                  <input value={valeurs[c.cle] ?? ""} onChange={(e) => set(c.cle, e.target.value)}
-                    inputMode="numeric" placeholder={c.aide}
-                    className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
-                </label>
-              ))}
-              <p className="text-caption leading-relaxed text-ink-faint">
-                {t.noteSaisie}
-              </p>
-            </div>
-            {/* Les deux gestes, ancrés en bas — jamais à aller chercher */}
-            <div className="flex shrink-0 gap-2 p-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-6">
-              <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
-                {t.annuler}
-              </button>
-              <button disabled={!complet} onClick={lancer}
-                className="flex-1 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                {t.lancer}
-              </button>
-            </div>
+            <p className="text-caption leading-relaxed text-ink-faint">
+              {t.confirmationSms}
+            </p>
+            <button onClick={onFermer}
+              className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+              {t.termine}
+            </button>
           </>
         ) : (
-          <>
-            {/* UNE seule carte, qui se réécrit à chaque réponse du réseau —
-                comme sur Telegram. Le message de l'opérateur dit ce qu'on
-                s'apprête à confirmer : il a un MINIMUM de place garanti, le
-                pavé n'a pas le droit de l'écraser. */}
-            <div className="min-h-28 flex-1 overflow-y-auto px-6">
-              {dernier && (
-                <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
-                  {dernier}
-                </p>
-              )}
-              {attente && <p className="mt-2 px-1 text-caption text-ink-faint">{t.terminalCompose}</p>}
-              {erreur && (
-                <p className="mt-2 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-negative">
-                  {erreur}
-                </p>
-              )}
-            </div>
-
-            {/* Le pavé, la réponse et la sortie — toujours visibles en bas,
-                et compacts : la place est au message, pas aux contrôles. */}
-            <div className="flex shrink-0 flex-col gap-2.5 px-6 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-5">
-              {pave && <PaveSecret onValider={secret} />}
-
-              {enSession && !attente && !pave && !fini && (
-                <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
-                  className="flex items-center gap-2">
-                  <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)}
-                    inputMode="tel" placeholder={t.votreReponse}
-                    className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink" />
-                  <button type="submit" disabled={!reponseLibre.trim()}
-                    className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                    {t.envoyer}
-                  </button>
-                </form>
-              )}
-
-              {fini ? (
-                <>
-                  <p className="text-caption leading-relaxed text-ink-faint">
-                    {t.confirmationSms}
-                  </p>
-                  <button onClick={onFermer}
-                    className="rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                    {t.termine}
-                  </button>
-                </>
-              ) : (
-                /* Le geste de sortie, impossible à manquer. */
-                <button onClick={annuler} disabled={attente}
-                  className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                  {t.annulerSession}
-                </button>
-              )}
-            </div>
-          </>
+          /* Le geste de sortie, impossible à manquer — un mot rouge, et la
+             même porte que la croix : la confirmation avant de raccrocher.
+             Jamais désactivé : une attente n'est pas un verrou. */
+          <button onClick={sortir}
+            className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative">
+            {enSession ? t.annulerSession : t.fermer}
+          </button>
         )}
       </div>
-    </div>
+    );
+
+  return (
+    <Feuille
+      entete={entete}
+      libelleFermer={etape === "saisie" ? t.annuler : t.fermer}
+      onFermer={onFermer}
+      retenue={retenue}
+      pied={pied}
+    >
+      {etape === "saisie" ? (
+        <div className="flex flex-col gap-4">
+          {operation.champs.map((c) => (
+            <label key={c.cle} className="flex flex-col gap-1.5">
+              <span className="text-small text-ink-soft">{c.label}</span>
+              <input value={valeurs[c.cle] ?? ""} onChange={(e) => set(c.cle, e.target.value)}
+                inputMode="numeric" placeholder={c.aide}
+                className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink" />
+            </label>
+          ))}
+          <p className="text-caption leading-relaxed text-ink-faint">
+            {t.noteSaisie}
+          </p>
+        </div>
+      ) : (
+        // UNE seule carte, qui se réécrit à chaque réponse du réseau — comme
+        // sur Telegram. Le message de l'opérateur dit ce qu'on s'apprête à
+        // confirmer : il garde toute la place du corps de la feuille.
+        <>
+          {dernier && (
+            <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
+              {dernier}
+            </p>
+          )}
+          {attente && <p className="mt-2 px-1 text-caption text-ink-faint">{t.terminalCompose}</p>}
+          {erreur && (
+            <p className="mt-2 rounded-card bg-surface-2 px-4 py-3 text-small leading-relaxed text-negative">
+              {erreur}
+            </p>
+          )}
+        </>
+      )}
+    </Feuille>
   );
 }

@@ -61,6 +61,9 @@ const en = {
     "with its receipt when there is one.",
   termine: "Done",
   annulerSession: "Cancel the session",
+  raccrocherQuestion: "Hang up the session?",
+  raccrocherCourt: "Hang up",
+  garderSession: "Keep it open",
 
   // --- Le pavé du code secret ---------------------------------------------------
   paveTitre: "Mobile Money secret code",
@@ -125,6 +128,9 @@ const fr: typeof en = {
     "reçu quand il y a lieu.",
   termine: "Terminé",
   annulerSession: "Annuler la session",
+  raccrocherQuestion: "Raccrocher la session ?",
+  raccrocherCourt: "Raccrocher",
+  garderSession: "La garder ouverte",
 
   paveTitre: "Code secret Mobile Money",
   chiffresComposes: (n) => (n > 1 ? `${n} chiffres composés` : `${n} chiffre composé`),

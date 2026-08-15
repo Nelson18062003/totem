@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { codesUssd } from "@/lib/codes";
 import { textesUssd } from "@/lib/textes/ussd";
 import type { Sim } from "@/lib/types";
-import { IconClose, IconHash } from "../icons";
+import { BarreArret, BoutonFermer } from "../feuille";
+import { IconHash } from "../icons";
 import { useLangue } from "../langue";
 import { PaveSecret } from "../pave-secret";
 
@@ -13,6 +14,14 @@ import { PaveSecret } from "../pave-secret";
  * la base ; le terminal de Douala le tape sur la carte ; la réponse de
  * l'opérateur revient ici, telle quelle. Rien n'est simulé : ce qui s'affiche
  * est ce que le réseau a répondu.
+ *
+ * La sortie suit le motif de la plateforme (feuille.tsx) : croix de 44 px,
+ * Échap, voile — et tant que la session est VIVANTE, ces trois chemins mènent
+ * à la même confirmation avant de raccrocher. Une attente n'est jamais un
+ * verrou : l'écran se quitte à tout moment, l'ordre au terminal suit.
+ * (Sur grand écran la session est une carte de la page, pas une fenêtre :
+ * la console garde donc sa propre coquille et n'emprunte à la feuille que
+ * ses pièces — le bouton, la barre d'arrêt, les règles.)
  */
 
 type Msg = { de: "reseau" | "vous"; texte: string };
@@ -46,13 +55,19 @@ export function ConsoleUssd({
   const [enSession, setEnSession] = useState(false);
   const [attente, setAttente] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [confirme, setConfirme] = useState(false);
+  // Le numéro de génération : fermer l'écran le fait avancer, et toute
+  // réponse d'une génération passée est jetée — un écran refermé ne se
+  // rouvre pas tout seul sur une réponse tardive.
+  const generation = useRef(0);
 
   const envoyer = async (
-    genre: "ussd" | "ussd_reponse" | "ussd_fin",
+    genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
   ) => {
     if (attente) return;
+    const gen = generation.current;
     setAttente(true);
     setErreur(null);
     if (bulle) setFil((f) => [...f, bulle]);
@@ -72,25 +87,24 @@ export function ConsoleUssd({
       // attend sa réponse, sans jamais prétendre l'avoir avant lui.
       for (let i = 0; i < 25; i++) {
         await new Promise((res) => setTimeout(res, 1200));
+        if (generation.current !== gen) return;   // écran refermé entre-temps
         const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
           .then((x) => (x.ok ? x.json() : null))
           .catch(() => null);
         if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          if (genre === "ussd_fin") {
-            setFil([]); setEnSession(false);
-          } else {
-            setFil((f) => [...f, {
-              de: "reseau",
-              texte: c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec),
-            }]);
-            setEnSession(c.etat === "faite");
-          }
+          if (generation.current !== gen) return;
+          setFil((f) => [...f, {
+            de: "reseau",
+            texte: c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec),
+          }]);
+          setEnSession(c.etat === "faite");
           setAttente(false);
           return;
         }
       }
       throw new Error(t.terminalMuet);
     } catch (e) {
+      if (generation.current !== gen) return;
       setErreur(e instanceof Error ? e.message : t.accroc);
       setAttente(false);
     }
@@ -115,16 +129,48 @@ export function ConsoleUssd({
     void envoyer("ussd_reponse", { texte: code, secret: true }, { de: "vous", texte: "••••" });
   };
 
-  const fermer = () => {
-    // Une session déjà terminée n'a rien à raccrocher : l'écran se ferme
-    // sur-le-champ, sans aller-retour inutile jusqu'au terminal.
-    if (!enSession) {
-      setFil([]);
-      setErreur(null);
-      return;
-    }
-    void envoyer("ussd_fin", {});
-  };
+  // RACCROCHER, l'arrêt effectif : l'ordre part au terminal sans faire
+  // attendre l'écran — la carte se replie sur-le-champ.
+  const raccrocher = useCallback(() => {
+    generation.current++;
+    fetch("/api/commande", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+    }).catch(() => {});
+    setFil([]); setEnSession(false); setErreur(null);
+    setAttente(false); setConfirme(false);
+  }, []);
+
+  // Fermer l'écran quand rien ne vit : immédiat, sans aller-retour.
+  const fermerEcran = useCallback(() => {
+    generation.current++;
+    setFil([]); setErreur(null); setAttente(false); setConfirme(false);
+  }, []);
+
+  // LA porte de sortie : libre quand la session est finie, retenue par la
+  // confirmation quand elle est vivante — croix, voile et Échap, même porte.
+  const sortir = useCallback(() => {
+    if (enSession) setConfirme(true);
+    else fermerEcran();
+  }, [enSession, fermerEcran]);
+
+  const visible = fil.length > 0 || attente;
+
+  // Échap sort — la même porte qu'au doigt.
+  useEffect(() => {
+    if (!visible) return;
+    const clavier = (e: KeyboardEvent) => {
+      if (e.key === "Escape") sortir();
+    };
+    window.addEventListener("keydown", clavier);
+    return () => window.removeEventListener("keydown", clavier);
+  }, [visible, sortir]);
+
+  // La session peut se terminer pendant que la question est posée.
+  useEffect(() => {
+    if (!enSession) setConfirme(false);
+  }, [enSession]);
 
   // Arrivée depuis un bouton du guichet : le code se compose tout seul.
   const lance = useRef(false);
@@ -189,7 +235,7 @@ export function ConsoleUssd({
       </div>
 
       {/* L'écran de session */}
-      {fil.length === 0 && !attente ? (
+      {!visible ? (
         <div className="hidden items-center justify-center rounded-card border border-dashed border-line px-6 py-16 text-center lg:col-start-2 lg:flex">
           <p className="max-w-56 text-small leading-relaxed text-ink-faint">
             {t.aucuneSession}
@@ -201,16 +247,16 @@ export function ConsoleUssd({
         // toujours.
         <>
         <div className="voile fixed inset-0 z-20 bg-ink/25 lg:hidden"
-          onClick={() => { if (!attente) fermer(); }} />
-        <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[92dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:max-h-none lg:rounded-card lg:border lg:col-start-2">
-          <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
+          onClick={sortir} />
+        <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[88dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:max-h-none lg:rounded-card lg:border lg:col-start-2">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line py-2.5 pl-4 pr-2.5">
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
-            <button onClick={fermer} aria-label={t.raccrocher} disabled={attente}
-              className="text-ink-faint transition hover:text-ink disabled:opacity-40">
-              <IconClose size={16} />
-            </button>
+            {/* La croix de la plateforme : 44 px, bordée, jamais désactivée —
+                et jamais un raccrochage en silence. */}
+            <BoutonFermer onClick={sortir}
+              libelle={enSession ? t.raccrocher : t.fermerEcran} />
           </div>
 
           {/* UNE seule carte, réécrite à chaque réponse du réseau. Le message
@@ -218,7 +264,7 @@ export function ConsoleUssd({
               le droit de l'écraser. */}
           <div className="min-h-28 flex-1 overflow-y-auto p-4">
             {dernier && (
-              <p className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
+              <p dir="auto" className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
                 {dernier}
               </p>
             )}
@@ -234,53 +280,62 @@ export function ConsoleUssd({
             )}
           </div>
 
-          {/* Les gestes — toujours visibles, jamais à aller chercher.
-              (Pendant la toute première composition, il n'y a encore aucun
-              geste à offrir : pas de pied vide.) */}
-          {(enSession || !attente) && (
-          <div className="flex shrink-0 flex-col gap-2 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] lg:border-t-0 lg:pt-0 lg:pb-4">
-            {/* Le pavé, quand le réseau attend le code secret — à même la
-                feuille, sans boîte autour : la place est au message. */}
-            {pave && <PaveSecret onValider={secret} />}
-
-            {/* Réponse libre : le chiffre du menu, un montant, un numéro */}
-            {enSession && !attente && !pave && (
-              <form
-                onSubmit={(e) => { e.preventDefault(); repondre(reponse); }}
-                className="flex items-center gap-2"
-              >
-                <input
-                  value={reponse}
-                  onChange={(e) => setReponse(e.target.value)}
-                  inputMode="tel"
-                  placeholder={t.votreReponseDetail}
-                  autoFocus
-                  className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
-                />
-                <button type="submit" disabled={!reponse.trim()}
-                  className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  {t.envoyer}
-                </button>
-              </form>
-            )}
-
-            {/* Le geste de sortie, impossible à manquer. Session finie :
-                « Fermer », immédiat ; session en cours : « Annuler ». */}
-            {enSession ? (
-              <button onClick={fermer} disabled={attente}
-                className="rounded-btn border border-line py-2.5 text-small font-medium text-negative transition hover:border-negative disabled:opacity-40">
-                {t.annulerSession}
-              </button>
+          {/* Les gestes — toujours visibles, jamais à aller chercher. */}
+          <div className="flex shrink-0 flex-col gap-2 border-t border-line px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] lg:pb-4">
+            {confirme && enSession ? (
+              // La confirmation d'arrêt, à même le pied — jamais une
+              // deuxième fenêtre par-dessus la première.
+              <BarreArret
+                retenue={{
+                  question: t.raccrocherQuestion,
+                  arreter: t.raccrocherCourt,
+                  garder: t.garderSession,
+                  onArreter: raccrocher,
+                }}
+                onGarder={() => setConfirme(false)}
+              />
             ) : (
-              !attente && (
-                <button onClick={fermer}
-                  className="rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
-                  {t.fermerEcran}
+              <>
+                {/* Le pavé, quand le réseau attend le code secret — à même la
+                    feuille, sans boîte autour : la place est au message. */}
+                {pave && <PaveSecret onValider={secret} />}
+
+                {/* Réponse libre : le chiffre du menu, un montant, un numéro */}
+                {enSession && !attente && !pave && (
+                  <form
+                    onSubmit={(e) => { e.preventDefault(); repondre(reponse); }}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      value={reponse}
+                      onChange={(e) => setReponse(e.target.value)}
+                      inputMode="tel"
+                      placeholder={t.votreReponseDetail}
+                      autoFocus
+                      className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
+                    />
+                    <button type="submit" disabled={!reponse.trim()}
+                      className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
+                      {t.envoyer}
+                    </button>
+                  </form>
+                )}
+
+                {/* Le geste de sortie, impossible à manquer — un mot, jamais
+                    désactivé : une attente n'est pas un verrou. Session
+                    vivante : la même porte que la croix (confirmation) ;
+                    sinon, fermer est immédiat. */}
+                <button onClick={sortir}
+                  className={`rounded-btn border border-line py-2.5 text-small font-medium transition ${
+                    enSession
+                      ? "text-negative hover:border-negative"
+                      : "text-ink-soft hover:border-ink-faint"
+                  }`}>
+                  {enSession ? t.annulerSession : t.fermerEcran}
                 </button>
-              )
+              </>
             )}
           </div>
-          )}
         </section>
         </>
       )}

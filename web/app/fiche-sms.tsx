@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { Feuille } from "./feuille";
 import {
-  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
-  IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
+  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconCopy,
+  IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
 } from "./icons";
 import { reveillerLaVeille } from "./veille";
 
@@ -57,12 +58,27 @@ const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
 // la catégorie devinée par le terminal.
 export const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
 
+// Un SMS d'argent : il porte un montant, ou sa catégorie est un mouvement.
+// C'est LUI seul qui a droit à un reçu — jamais une publicité, jamais un code.
+const ARGENT: Categorie[] = [...NATURES, "encaissement", "envoi"];
+export const estArgent = (p: Paiement): boolean =>
+  p.montant != null || ARGENT.includes(catDe(p));
+
+// Seconde ligne de défense : le robot masque les codes à usage unique avant
+// de les transmettre, mais l'écran ne fait pas aveuglément confiance à la
+// base — une ligne d'avant le masquage remasque ses chiffres à l'affichage.
+export const texteSurEcran = (p: Paiement): string =>
+  catDe(p) === "code" ? p.smsBrut.replace(/\d{3,8}/g, "••••••") : p.smsBrut;
+
+// Au-delà de cette taille, la fiche replie le message : la preuve reste à un
+// geste, mais elle ne chasse plus les détails de l'écran.
+const LONG_MESSAGE = 380;
+
 /**
- * La fiche d'un SMS : le message en entier, ses détails, sa nature (qui
- * établit le reçu), la copie du texte et le reçu PDF.
- *
- * C'est LA même fiche partout — boîte de réception ou accueil : un SMS
- * cliqué raconte la même chose et permet les mêmes gestes, où qu'il soit.
+ * La fiche d'un SMS — une feuille (jamais un écran entier) : l'essentiel en
+ * en-tête épinglé, les détails, le message d'origine, et UN geste principal
+ * choisi par la catégorie. Le reçu ne se propose que pour un mouvement
+ * d'argent. C'est LA même fiche partout — boîte de réception ou accueil.
  */
 export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void }) {
   const router = useRouter();
@@ -72,6 +88,12 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   const [mot, setMot] = useState("");
   const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
   const [classe, setClasse] = useState(false);
+  const [choisirType, setChoisirType] = useState(false);
+  const [messageDeplie, setMessageDeplie] = useState(false);
+
+  const argent = estArgent(p);
+  const texte = texteSurEcran(p);
+  const long = texte.length > LONG_MESSAGE;
 
   // Ouvrir la fiche, c'est lire le message : le point de la ligne s'éteint et
   // la pastille du menu se met à jour dans la foulée. Si la base n'a pas
@@ -93,6 +115,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     if (classe) return;
     setClasse(true);
     setNature(n);
+    setChoisirType(false);
     try {
       await fetch("/api/nature", {
         method: "POST",
@@ -198,105 +221,145 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     }
   };
 
+  const copier = () => navigator.clipboard?.writeText(p.smsBrut);
+
+  // L'en-tête épinglé : ce qui décide, rien d'autre. Le montant quand il
+  // existe, sinon la nature du message — et qui l'a envoyé.
+  const entete = (
+    <>
+      <p className="text-small text-ink-soft">
+        {p.montant == null
+          ? t.smsRecu
+          : p.sens === "in" ? t.paiementRecu : p.sens === "out" ? t.paiementEnvoye : t.sensAConfirmer}
+      </p>
+      {p.montant != null && (
+        <p className="mt-0.5 text-display font-semibold tabnums tracking-tight">
+          {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
+        </p>
+      )}
+      <p className="mt-0.5 truncate text-body text-ink-soft">{p.tiers || p.nom}</p>
+    </>
+  );
+
+  // UN geste principal, choisi par la catégorie : le reçu pour l'argent, la
+  // copie pour le reste. Jamais de reçu pour une pub, un code, un message.
+  const pied = (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={copier}
+          className={`flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn py-2.5 text-small font-medium transition ${
+            argent
+              ? "border border-line hover:border-ink-faint"
+              : "bg-ink text-white hover:opacity-90"
+          }`}>
+          <IconCopy size={15} /> {t.copierSms}
+        </button>
+        {argent && (p.recu ? (
+          <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
+            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
+            <IconDoc size={15} /> {t.telechargerPdf}
+          </a>
+        ) : (
+          p.sourceId != null && etabli !== "fait" && (
+            <button onClick={etablirRecu} disabled={etabli === "envoi"}
+              className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
+              <IconDoc size={15} />
+              {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
+            </button>
+          )
+        ))}
+      </div>
+      {/* Refaire un document existant : un geste discret, pas un troisième
+          bouton — le cas est rare, il ne mérite pas la première ligne. */}
+      {argent && p.recu && p.sourceId != null && (
+        <button onClick={etablirRecu} disabled={etabli === "envoi" || etabli === "fait"}
+          className="mt-2 text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink disabled:opacity-40">
+          {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
+        </button>
+      )}
+      {mot && (
+        <p className={`mt-2 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
+          {mot}
+        </p>
+      )}
+    </>
+  );
+
   return (
-    <div className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4" onClick={onFermer}>
-      {/* La fiche peut être longue (un SMS entier, les détails, les gestes) :
-          elle défile dans sa propre hauteur, jamais coupée sans recours. */}
-      <div className="surgit max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-card border border-line bg-surface-raised p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:max-h-[85dvh] md:rounded-card md:pb-6"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-small text-ink-soft">
-              {p.montant == null
-                ? t.smsRecu
-                : p.sens === "in" ? t.paiementRecu : p.sens === "out" ? t.paiementEnvoye : t.sensAConfirmer}
-            </p>
-            {p.montant != null && (
-              <p className="mt-1 text-display font-semibold tabnums tracking-tight">
-                {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
-              </p>
+    <Feuille entete={entete} libelleFermer={t.fermerFiche} onFermer={onFermer} pied={pied}>
+      {/* Les détails — seulement les lignes qui existent. La catégorie vit
+          dans la ligne « nature », pas en doublon. */}
+      <dl className="divide-hair">
+        <L t={t.operateur} v={p.sim} />
+        {p.numero && <L t={t.numero} v={p.numero} />}
+        <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
+        {p.reference && <L t={t.reference} v={p.reference} />}
+        {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
+
+        {/* La nature : une ligne comme les autres — le choix ne se déploie
+            qu'à la demande. Réservée à l'argent (et aux SMS incompris, qui
+            peuvent en cacher) : une publicité n'a pas de nature. */}
+        {(argent || catDe(p) === "inconnu") && (
+          <div className="py-2.5">
+            {choisirType ? (
+              <>
+                <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
+                  {t.natureTitre}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {NATURES.map((n) => (
+                    <button key={n} onClick={() => classer(n)} disabled={classe}
+                      className={`flex items-center gap-1.5 rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
+                        nature === n
+                          ? "border-ink bg-ink font-medium text-white"
+                          : "border-line text-ink-soft hover:border-ink-faint"
+                      }`}>
+                      <CatIcone c={n} size={14} /> {t.cat[n]}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
+                  {t.natureAide}
+                </p>
+              </>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-small text-ink-soft">{t.typeTitre}</dt>
+                <dd className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-small font-medium">
+                    <CatIcone c={catDe(p)} size={14} /> {t.cat[catDe(p)]}
+                  </span>
+                  <button onClick={() => setChoisirType(true)}
+                    className="text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink">
+                    {argent ? t.modifierType : t.classerMessage}
+                  </button>
+                </dd>
+              </div>
             )}
-            <p className="mt-1 text-body text-ink-soft">{p.nom}</p>
           </div>
-          <button onClick={onFermer} className="text-ink-faint transition hover:text-ink"><IconClose size={18} /></button>
-        </div>
+        )}
+      </dl>
 
-        <dl className="mt-6 divide-hair">
-          <L t={t.categorie} v={t.cat[catDe(p)]} />
-          <L t={t.operateur} v={p.sim} />
-          {p.numero && <L t={t.numero} v={p.numero} />}
-          <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
-          {p.reference && <L t={t.reference} v={p.reference} />}
-          {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
-        </dl>
-
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
-            {t.natureTitre}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {NATURES.map((n) => (
-              <button key={n} onClick={() => classer(n)} disabled={classe}
-                className={`flex items-center gap-1.5 rounded-btn border px-3 py-1.5 text-small transition disabled:opacity-40 ${
-                  nature === n
-                    ? "border-ink bg-ink font-medium text-white"
-                    : "border-line text-ink-soft hover:border-ink-faint"
-                }`}>
-                <CatIcone c={n} size={14} /> {t.cat[n]}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-caption leading-relaxed text-ink-faint">
-            {t.natureAide}
-          </p>
-        </div>
-
-        <div className="mt-5">
-          <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.messageRecu}</p>
-          <p className="rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft">{p.smsBrut}</p>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          <button
-            onClick={() => navigator.clipboard?.writeText(p.smsBrut)}
-            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-            <IconCopy size={15} /> {t.copierSms}
+      {/* Le message d'origine — la preuve. En entier d'un geste, mais un long
+          SMS ne chasse pas les détails de l'écran : il se replie. dir=auto :
+          un texte arabe se lit de droite à gauche, proprement. */}
+      <div className="mt-4">
+        <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.messageRecu}</p>
+        <p dir="auto"
+          className={`whitespace-pre-wrap break-words rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft ${
+            long && !messageDeplie ? "line-clamp-6" : ""
+          }`}>
+          {texte}
+        </p>
+        {long && !messageDeplie && (
+          <button onClick={() => setMessageDeplie(true)}
+            className="mt-1.5 text-caption text-ink-soft underline underline-offset-4 transition hover:text-ink">
+            {t.toutLeMessage}
           </button>
-          {p.recu ? (
-            // Le document existe : on peut l'ouvrir tel quel — ET le refaire
-            // à neuf avec la lecture et le type d'aujourd'hui. Avant, ce
-            // bouton n'était qu'un lien : impossible de régénérer un reçu
-            // depuis l'écran, l'ancien document était servi pour toujours.
-            <>
-              <a href={`/api/recu/${p.recu}`} target="_blank" rel="noopener"
-                className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-                <IconDoc size={15} /> {t.telechargerPdf}
-              </a>
-              {p.sourceId != null && (
-                <button onClick={etablirRecu} disabled={etabli === "envoi" || etabli === "fait"}
-                  className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint disabled:opacity-40">
-                  <IconDoc size={15} />
-                  {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
-                </button>
-              )}
-            </>
-          ) : (
-            p.sourceId != null && etabli !== "fait" && (
-              <button onClick={etablirRecu} disabled={etabli === "envoi"}
-                className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
-                <IconDoc size={15} />
-                {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
-              </button>
-            )
-          )}
-        </div>
-        {mot && (
-          <p className={`mt-3 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
-            {mot}
-          </p>
         )}
       </div>
-    </div>
+    </Feuille>
   );
 }
 

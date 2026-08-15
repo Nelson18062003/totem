@@ -42,6 +42,9 @@ export type Paiement = {
   // (forme d'Orange). Mieux vaut un sens inconnu qu'un sens inversé.
   sens: "in" | "out" | "?";
   nom: string;
+  // La partie humaine du mouvement (« NKENGAFAC M. »), quand le robot l'a
+  // lue : c'est ELLE que la liste montre pour un mouvement d'argent.
+  tiers: string;
   numero: string;
   // Null pour un SMS qui n'est pas un paiement (information, publicité…).
   montant: number | null;

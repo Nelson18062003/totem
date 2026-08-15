@@ -25,6 +25,10 @@ const en = {
     "silence is not normal.",
   nonLu: "unread",
   telechargerRecu: "Download the PDF receipt",
+  toutesLesCartes: "All SIMs",
+  soldesRepetes: (n: number) =>
+    n === 1 ? "1 earlier identical check" : `${n} earlier identical checks`,
+  replierSoldes: "Hide them",
 
   // La fiche d'un SMS
   smsRecu: "Message received",
@@ -58,6 +62,11 @@ const en = {
   demandeAuTerminal: "Asking the terminal…",
   etablirRecu: "Issue the receipt",
   terminalMuet: "The terminal did not answer — is it switched on, and up to date?",
+  fermerFiche: "Close",
+  toutLeMessage: "Show the whole message",
+  typeTitre: "Type",
+  modifierType: "Change",
+  classerMessage: "Classify this message — for its receipt",
 
   // Les libellés d'affichage des catégories. Les clés ("encaissement",
   // "depot"…) sont des données : elles ne se traduisent pas.
@@ -95,6 +104,10 @@ const fr: typeof en = {
     "prolongé n’est pas normal.",
   nonLu: "non lu",
   telechargerRecu: "Télécharger le reçu PDF",
+  toutesLesCartes: "Toutes les cartes",
+  soldesRepetes: (n) =>
+    n === 1 ? "1 consultation identique plus tôt" : `${n} consultations identiques plus tôt`,
+  replierSoldes: "Les replier",
 
   smsRecu: "SMS reçu",
   paiementRecu: "Paiement reçu",
@@ -127,6 +140,11 @@ const fr: typeof en = {
   demandeAuTerminal: "Demande au terminal…",
   etablirRecu: "Établir le reçu",
   terminalMuet: "Le terminal n’a pas répondu — est-il allumé, et à jour ?",
+  fermerFiche: "Fermer",
+  toutLeMessage: "Voir tout le message",
+  typeTitre: "Nature",
+  modifierType: "Modifier",
+  classerMessage: "Classer ce message — pour son reçu",
 
   cat: {
     encaissement: "Encaissement",

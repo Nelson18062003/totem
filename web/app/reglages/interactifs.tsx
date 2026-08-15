@@ -6,7 +6,8 @@ import { changerLangue, useLangue } from "@/app/langue";
 import { codesUssd, type CodeUssd } from "@/lib/codes";
 import { LANGUES } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
-import { IconClose, IconHash, IconPlus } from "../icons";
+import { IconHash, IconPlus } from "../icons";
+import { BoutonFermer } from "../feuille";
 
 /**
  * Le numéro d'une puce, réglé depuis la plateforme. C'est lui qui dit de quel
@@ -129,14 +130,7 @@ export function ReglageNumero({
         >
           {etat === "envoi" ? "…" : "OK"}
         </button>
-        <button
-          onClick={() => setEdition(false)}
-          aria-label={t.annuler}
-          disabled={etat === "envoi"}
-          className="grid size-8 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink disabled:opacity-40"
-        >
-          <IconClose size={14} />
-        </button>
+        <BoutonFermer onClick={() => setEdition(false)} libelle={t.annuler} />
       </span>
       {etat === "envoi" && (
         <span className="text-caption text-ink-faint">{t.enregistrement}</span>
@@ -239,10 +233,7 @@ export function SectionCodes({ operateur }: { operateur: string }) {
                   className="flex-1 rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
                   {t.ajouter}
                 </button>
-                <button onClick={() => setAjout(false)} aria-label={t.annulerAjout}
-                  className="grid size-9 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink">
-                  <IconClose size={15} />
-                </button>
+                <BoutonFermer onClick={() => setAjout(false)} libelle={t.annulerAjout} />
               </span>
             </div>
           ) : (

@@ -357,5 +357,100 @@ Chaque règle est testable sur le banc de la phase 1 — c'est lui qui jugera.
 - **R12 — Seconde ligne de défense** : un SMS de catégorie `code` remasque
   ses chiffres à l'affichage, même si la base a laissé passer.
 
-*Phase 4 (la refonte elle-même, maquettes et spécification) : après
-validation.*
+---
+
+## Phase 4 — La refonte, construite et jugée sur le banc
+
+Pas de maquettes : la refonte est **écrite dans le code**, lancée sur le banc
+de la phase 1 (mêmes données hostiles), et mesurée règle par règle. Captures
+« avant/après » transmises au propriétaire.
+
+### a. Le motif de sortie — `web/app/feuille.tsx`
+
+Un seul fichier définit désormais la sortie de tous les écrans :
+
+- **`BoutonFermer`** — LA croix de la plateforme : cible ronde de **44×44 px**,
+  bord visible, fond de carte, étiquette d'accessibilité obligatoire et
+  exacte. Plus personne ne dessine sa croix à la main.
+- **`Feuille`** — LA fenêtre : feuille basse sur téléphone (88 dvh au plus —
+  le voile reste tapotable), carte centrée dès les écrans moyens. En-tête
+  **épinglé** (la sortie ne défile jamais), pied épinglé (les gestes restent
+  sous le pouce), **Échap** partout, voile cliquable.
+- **`SortieRetenue` + `BarreArret`** — l'arrêt d'une session réseau : croix,
+  voile et Échap mènent tous à la **même confirmation légère**, posée dans le
+  pied de la fenêtre (jamais une fenêtre sur la fenêtre) : « Raccrocher la
+  session ? — La garder ouverte / Raccrocher (rouge) ». Le bouton rouge
+  visible passe par la même porte. Une session déjà finie ferme sans question.
+
+Adopté par : la fiche SMS (`fiche-sms.tsx`), le pop-up d'opération
+(`operation.tsx` — accueil, guichet, solde), la console USSD
+(`ussd/console.tsx` — qui garde sa coquille de page sur grand écran mais
+emprunte toutes les pièces), les réglages (`reglages/interactifs.tsx`).
+La recherche garde sa petite croix « effacer » (geste bénin) avec une zone
+tactile élargie à la marge négative.
+
+Deux réparations de fond au passage :
+
+- **Une attente n'est plus un verrou** : la croix ne se désactive jamais ;
+  fermer pendant une attente abandonne l'écran (un compteur de génération
+  jette les réponses tardives — l'écran refermé ne se rouvre pas tout seul).
+- **Raccrocher est immédiat** : l'ordre `ussd_fin` part au terminal sans
+  faire patienter l'écran ; la fenêtre se replie sur-le-champ.
+
+### b. Le module SMS
+
+**La liste montre la lecture, la fiche montre la preuve.**
+
+- Une ligne de mouvement d'argent : pastille · numéro · heure · **montant**
+  en première ligne, **la partie humaine** (le tiers, désormais transmis par
+  `lib/serveur.ts` → `tiers`) en seconde — plus jamais neuf lignes de texte
+  opérateur. Le texte intégral vit dans la fiche.
+- **Les consultations de solde répétées se replient** derrière la plus
+  récente (« n consultations identiques plus tôt » — dépliables, jamais
+  supprimées).
+- **Les publicités parlent à voix basse** (gris, deux lignes au plus) ; les
+  messages sans montant s'écourtent à deux lignes ; un mot de 360 caractères
+  sans espace casse proprement.
+- **Un code à usage unique remasque ses chiffres à l'affichage**
+  (`texteSurEcran`), même si la base a laissé passer une ligne d'avant le
+  masquage du robot.
+- **La liste se dévoile par pages de 60** au fil du défilement
+  (IntersectionObserver) : mille SMS ne font plus mille lignes.
+- Le bandeau tient en deux rangées : recherche, puis UNE rangée de
+  catégories qui **glisse** horizontalement ; le filtre par carte n'apparaît
+  que s'il y a plusieurs cartes (plus de double « Tous »).
+- `dir="auto"` sur tout texte opérateur : l'arabe se lit de droite à gauche.
+
+**La fiche** (feuille, jamais un écran) : en-tête épinglé (sens + montant +
+tiers + croix), détails seulement s'ils existent, la **nature en une ligne**
+(le choix ne se déploie qu'à « Modifier »), le message d'origine en entier —
+replié au-delà de 380 caractères (« Voir tout le message »). **Un seul geste
+principal, choisi par la catégorie** : le reçu pour l'argent, la copie pour
+le reste — une publicité ne propose plus jamais d'établir un reçu ; la
+régénération d'un document devient un lien discret.
+
+### Le contre-audit — le banc rejoue tout (production, `next build`)
+
+| Mesure | Avant (phase 1) | Après (prouvé sur banc) |
+|---|---|---|
+| Fiche d'un transfert @390 | 100 % de l'écran, défile | **84 %, sans défilement interne** |
+| Long SMS ouvert @390 | 100 %, croix partie au défilement, aucune sortie | **58 %, replié, croix épinglée toujours visible** |
+| Croix | 15–18 px, nues, étiquettes absentes/mensongères | **44×44 px, bordées, étiquettes exactes** |
+| Voile pendant une session | **raccroche en silence** (prouvé au journal) | **confirmation — 0 `ussd_fin` accidentel** (prouvé) |
+| Arrêt confirmé | — | **exactement 1 `ussd_fin`** (prouvé au journal) |
+| Échap | inexistant partout | ferme / demande, partout |
+| Attente réseau | écran verrouillé jusqu'à 30 s | sortie toujours vivante |
+| Boîte, 713 SMS | 7 898 nœuds, page de 104 478 px | **818 nœuds, 73 lignes**, pages de 60 |
+| Premier SMS @320 | 68 % de chrome, 1 SMS visible | **38 %, 3 SMS visibles** |
+| Filtres | 4 rangées empilées, deux « Tous » | 1 rangée glissante, un seul « Tous » |
+| Publicité | « Établir le reçu » en geste principal | copie seule — **aucun reçu proposé** |
+| Code à usage unique | affiché tel que la base le donne | **remasqué à l'écran** (liste et fiche) |
+| Injection HTML | inerte (React) | inerte, vérifié à nouveau |
+| SMS pendant une session | la session tient | la session tient, vérifié à nouveau |
+| Hydratation React | — | propre, zéro erreur JS |
+
+Vérifications du dépôt : `python3 -m unittest discover -s tests` → **451
+tests, OK** ; `cd web && npx next build` → **compile**.
+
+*Phase 5 (le plan d'implémentation et ce qui reste au propriétaire) : après
+validation de la phase 4.*
