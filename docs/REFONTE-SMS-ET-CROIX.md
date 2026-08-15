@@ -452,5 +452,70 @@ régénération d'un document devient un lien discret.
 Vérifications du dépôt : `python3 -m unittest discover -s tests` → **451
 tests, OK** ; `cd web && npx next build` → **compile**.
 
-*Phase 5 (le plan d'implémentation et ce qui reste au propriétaire) : après
-validation de la phase 4.*
+### Phase 4 bis — Le contre-audit de la refonte (à charge, contre soi-même)
+
+La refonte a été attaquée comme l'original : sondes sur le banc, relecture
+froide du code. Constats, du plus grave au plus bénin.
+
+**Prouvé sur banc :**
+
+1. **(P0) La session orpheline.** Fermer l'écran PENDANT la composition
+   initiale (Échap, croix ou voile — pop-up comme console) n'envoie aucun
+   `ussd_fin` (sonde : 0 au journal). Si l'opérateur ouvre la session après
+   la fermeture, elle reste pendue sur la SIM sans écran, jusqu'au délai
+   opérateur — et peut bloquer la composition suivante. (L'écran, lui, ne
+   ressuscite pas : le compteur de génération tient.) → À réparer : toute
+   sortie pendant une commande en vol raccroche défensivement.
+2. **(P1) Échap jette un formulaire rempli sans un mot.** Numéro et montant
+   saisis, Échap → tout disparaît, aucune question (sonde). Le contrat dit
+   « ANNULER : une saisie se perd → visible ». → Confirmation légère quand
+   un champ est rempli.
+3. **(P1) Le cadran reste armé pendant une session ouverte.** Les raccourcis
+   et le champ de composition ne se désactivent que pendant l'attente — pas
+   pendant la session (sonde : actif). Composer un second code empile deux
+   sessions côté opérateur. → Désarmer le cadran tant que la session vit.
+4. **(P1, accessibilité) Le clavier s'échappe de la fenêtre.** Douze
+   tabulations et le focus est SORTI du dialogue (sonde), malgré
+   `aria-modal` ; pas de focus initial, pas de retour du focus à la
+   fermeture. → Piège à focus dans `Feuille`.
+5. **(P2) Un pli de soldes peut cacher des non-lus** : la pastille du menu
+   reste allumée alors que la liste semble lue. → Un point sur le lien du
+   pli quand il couvre des non-lus.
+
+**Constaté à la relecture du code :**
+
+6. **(P1) « Copier le SMS » copie le texte BRUT** (`fiche-sms.tsx`) : pour
+   un code dont l'écran masque les chiffres, la copie les exfiltre si la
+   base n'était pas masquée. → Copier `texteSurEcran(p)`.
+7. **(P2) Le libellé du pli ment** : « consultations identiques » — deux
+   soldes consécutifs peuvent différer (un dépôt au guichet change le solde
+   sans SMS de mouvement). → « n consultations de solde plus tôt ».
+8. **(P2) L'annulation des réglages a perdu son état désactivé** pendant
+   l'enregistrement (le `BoutonFermer` n'a pas de `disabled`). → Le lui
+   rendre.
+9. **(P2) Le défilement s'enchaîne derrière la feuille** (pas
+   d'`overscroll-contain` sur le corps ; la page derrière peut bouger sur
+   iOS). → Contenir le défilement.
+10. **(P3) Le dialogue n'a pas de nom accessible** (`aria-labelledby`
+    absent). 11. **(P3)** Le masque `\d{3,8}` rate « 51 42 08 » (le robot
+    reste la première défense). 12. **(P3)** La recherche retrouve les
+    chiffres masqués (elle lit le brut). 13. **(P3)** Validité HTML : un
+    `div` de choix sans `dt/dd` dans le `dl`. 14. **(P3)** Un glisser
+    commencé dans la feuille et lâché sur le voile ferme/demande (classique
+    mousedown-dedans/mouseup-dehors). 15. **(P3)** « Voir tout le message »
+    ne se replie plus.
+
+**Arbitrages assumés (pas des défauts, à trancher en connaissance) :**
+
+- Un SMS de solde propose toujours son reçu (légitime : le reçu de solde
+  existe, `docs/SMS.md`).
+- Choisir une nature établit le reçu dans la foulée (comportement hérité,
+  désormais derrière « Modifier » — moins d'accidents ; scinder « étiqueter »
+  d'« établir » reste possible plus tard).
+- La barre flottante passe au-dessus des dernières lignes en cours de
+  défilement (motif standard ; le bas de page est dégagé).
+- Le serveur charge toujours jusqu'à 1 000 lignes (l'écran n'en rend que 60) :
+  la vraie pagination serveur est LE chantier structurel suivant.
+
+*Phase 5 (réparations du contre-audit, plan d'implémentation, et ce qui
+reste au propriétaire) : après validation.*
