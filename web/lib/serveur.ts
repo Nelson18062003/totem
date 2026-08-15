@@ -221,6 +221,7 @@ export async function chargerDonnees(
       // on l'affiche comme inconnu, jamais comme une sortie par défaut.
       sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
       nom: nomDe(l),
+      tiers: l.tiers ?? "",
       numero: l.numero ?? "",
       montant: l.montant == null ? null : Number(l.montant),
       heure: heure(moment(l)),

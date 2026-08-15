@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { codeUssd } from "@/lib/codes";
 import { fcfa, type Sim } from "@/lib/types";
 import { textesAccueil } from "@/lib/textes/accueil";
 import { useLangue } from "@/app/langue";
-import { IconArrowDown, IconArrowUp, IconPhone, IconRefresh, IconWallet } from "./icons";
+import {
+  IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconRefresh,
+  IconWallet,
+} from "./icons";
 import { OperationPopup, type Operation } from "./operation";
+
+// Le solde peut se cacher d'un geste — un écran ouvert devant quelqu'un ne
+// dit pas ce que contient la caisse. Le choix tient à l'appareil (et non au
+// compte) : c'est un réglage d'écran, il se garde dans le navigateur.
+const CLE_SOLDE_CACHE = "totem_solde_cache";
 
 /**
  * Le guichet de l'accueil. Un seul solde — celui de la carte — et cinq
@@ -24,6 +32,18 @@ export function AccueilGuichet({
   const langue = useLangue();
   const t = textesAccueil[langue];
   const [operation, setOperation] = useState<Operation | null>(null);
+  // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
+  // jamais APPARAÎTRE puis se cacher — dans ce sens-là, c'est trop tard.
+  const [soldeCache, setSoldeCache] = useState(true);
+  useEffect(() => {
+    setSoldeCache(localStorage.getItem(CLE_SOLDE_CACHE) === "1");
+  }, []);
+  const basculerSolde = () => {
+    setSoldeCache((c) => {
+      localStorage.setItem(CLE_SOLDE_CACHE, c ? "0" : "1");
+      return !c;
+    });
+  };
   const op = carte.operateur;
 
   const solde = (): Operation =>
@@ -82,8 +102,21 @@ export function AccueilGuichet({
         </div>
         <div className="mt-4 flex items-center gap-3">
           <p className="text-hero font-semibold tabnums tracking-tight">
-            {carte.solde == null ? "—" : fcfa(carte.solde, langue)}
+            {carte.solde == null ? "—" : soldeCache ? "••••••" : fcfa(carte.solde, langue)}
           </p>
+          {/* L'œil : cacher le solde d'un geste — un écran ouvert devant
+              quelqu'un ne dit pas ce que contient la caisse. Le choix est
+              retenu sur cet appareil. */}
+          {carte.solde != null && (
+            <button
+              onClick={basculerSolde}
+              aria-label={soldeCache ? t.montrerSolde : t.masquerSolde}
+              title={soldeCache ? t.montrerSolde : t.masquerSolde}
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+            >
+              {soldeCache ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+            </button>
+          )}
           <button
             onClick={() => setOperation(solde())}
             aria-label={t.actualiserAria}

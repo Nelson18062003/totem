@@ -6,7 +6,8 @@ import { changerLangue, useLangue } from "@/app/langue";
 import { codesUssd, type CodeUssd } from "@/lib/codes";
 import { LANGUES } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
-import { IconClose, IconHash, IconPlus } from "../icons";
+import { IconHash, IconPlus } from "../icons";
+import { BoutonFermer } from "../feuille";
 
 /**
  * Le numéro d'une puce, réglé depuis la plateforme. C'est lui qui dit de quel
@@ -120,7 +121,7 @@ export function ReglageNumero({
           onChange={(e) => setBrouillon(e.target.value.replace(/[^\d\s]/g, ""))}
           onKeyDown={(e) => e.key === "Enter" && enregistrer()}
           placeholder="696103864"
-          className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-small tabnums outline-none disabled:opacity-50"
+          className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-body tabnums outline-none disabled:opacity-50"
         />
         <button
           onClick={enregistrer}
@@ -129,14 +130,7 @@ export function ReglageNumero({
         >
           {etat === "envoi" ? "…" : "OK"}
         </button>
-        <button
-          onClick={() => setEdition(false)}
-          aria-label={t.annuler}
-          disabled={etat === "envoi"}
-          className="grid size-8 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink disabled:opacity-40"
-        >
-          <IconClose size={14} />
-        </button>
+        <BoutonFermer onClick={() => setEdition(false)} libelle={t.annuler} disabled={etat === "envoi"} />
       </span>
       {etat === "envoi" && (
         <span className="text-caption text-ink-faint">{t.enregistrement}</span>
@@ -206,7 +200,7 @@ export function SectionCodes({ operateur }: { operateur: string }) {
                     value={brouillon} autoFocus
                     onChange={(e) => setBrouillon(proprer(e.target.value))}
                     onKeyDown={(e) => e.key === "Enter" && enregistrer(c.cle)}
-                    className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-small tabnums outline-none"
+                    className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-body tabnums outline-none"
                   />
                   <button onClick={() => enregistrer(c.cle)}
                     className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90">
@@ -230,19 +224,16 @@ export function SectionCodes({ operateur }: { operateur: string }) {
             <div className="flex flex-col gap-2 sm:flex-row">
               <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                 placeholder={t.nomExemple} autoFocus
-                className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-small outline-none transition focus:border-ink" />
+                className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-body outline-none transition focus:border-ink" />
               <input value={nouveauCode} onChange={(e) => setNouveauCode(proprer(e.target.value))}
                 placeholder="#148*6#" inputMode="tel"
-                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-small tabnums outline-none transition focus:border-ink sm:w-32" />
+                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tabnums outline-none transition focus:border-ink sm:w-32" />
               <span className="flex gap-2">
                 <button onClick={ajouter} disabled={!nouveauNom.trim() || !nouveauCode.trim()}
                   className="flex-1 rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
                   {t.ajouter}
                 </button>
-                <button onClick={() => setAjout(false)} aria-label={t.annulerAjout}
-                  className="grid size-9 place-items-center rounded-btn border border-line text-ink-faint transition hover:text-ink">
-                  <IconClose size={15} />
-                </button>
+                <BoutonFermer onClick={() => setAjout(false)} libelle={t.annulerAjout} />
               </span>
             </div>
           ) : (

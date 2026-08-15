@@ -51,6 +51,9 @@ const en = {
   envoyer: "Send",
   annulerSession: "Cancel the session",
   fermerEcran: "Close",
+  raccrocherQuestion: "Hang up the session?",
+  raccrocherCourt: "Hang up",
+  garderSession: "Keep it open",
 };
 
 const fr: typeof en = {
@@ -98,6 +101,9 @@ const fr: typeof en = {
   envoyer: "Envoyer",
   annulerSession: "Annuler la session",
   fermerEcran: "Fermer",
+  raccrocherQuestion: "Raccrocher la session ?",
+  raccrocherCourt: "Raccrocher",
+  garderSession: "La garder ouverte",
 };
 
 export const textesUssd = { en, fr } as const;

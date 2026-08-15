@@ -77,7 +77,18 @@
   --tracking-marque: 0.18em;
 }
 
-* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+/* Un appui est un CLIC, jamais un geste de zoom : sans cette ligne, deux
+   appuis rapides sur un bouton (le pavé du code secret, les puces de
+   catégorie…) sont pris pour un « double-tap » et le téléphone zoome.
+   Le pincement à deux doigts, lui, reste permis — c'est de l'accessibilité. */
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; touch-action: manipulation; }
+
+/* Un champ de saisie ne descend JAMAIS sous 16 px : en dessous, Safari sur
+   iPhone juge le texte trop petit pour être tapé et zoome la page entière au
+   moment où le champ prend le focus — sans jamais revenir en arrière.
+   (:where — poids nul : une classe posée sur le champ garde le dernier mot,
+   mais un champ oublié sans classe est protégé par défaut.) */
+:where(input, select, textarea) { font-size: 1rem; }
 
 /* Au clavier (desktop surtout), le focus se voit — à la souris, il se tait. */
 :focus-visible {

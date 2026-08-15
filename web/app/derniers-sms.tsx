@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesCharpente } from "@/lib/textes/charpente";
 import { fcfa, type Paiement } from "@/lib/types";
-import { catDe, CatIcone, classeCat, FicheSms } from "./fiche-sms";
+import { catDe, CatIcone, classeCat, FicheSms, texteSurEcran } from "./fiche-sms";
 import { IconDoc } from "./icons";
 
 /**
@@ -37,9 +37,9 @@ export function DerniersSms({ paiements }: { paiements: Paiement[] }) {
                     <span aria-label={t.nonLu}
                       className="size-1.5 shrink-0 rounded-full bg-ink" />
                   )}
-                  <span className="truncate">{p.nom}</span>
+                  <span className="truncate">{p.montant != null ? (p.tiers || p.nom) : p.nom}</span>
                 </span>
-                <span className="block truncate text-small text-ink-faint">{p.sim} · {p.heure} · {p.smsBrut}</span>
+                <span dir="auto" className="block truncate text-small text-ink-faint">{p.sim} · {p.heure} · {texteSurEcran(p)}</span>
               </span>
               {p.montant != null && (
                 <span className={`shrink-0 text-body font-medium tabnums ${p.sens === "in" ? "text-positive" : p.sens === "out" ? "text-ink" : "text-ink-soft"}`}>
