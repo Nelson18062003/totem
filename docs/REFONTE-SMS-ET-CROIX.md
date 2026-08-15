@@ -191,5 +191,75 @@ la session ; captures d'écran transmises au propriétaire).
 - Le regroupement par jour, la recherche qui ignore les espaces, le reçu à
   même la ligne : des acquis.
 
-*Phase 2 (inventaire complet des croix) : les mesures sont déjà collectées
-par le banc ; rédaction après validation de la phase 1.*
+---
+
+## Phase 2 — L'inventaire des croix (validé sur banc, preuves photographiées)
+
+### La parade
+
+Chaque croix de la plateforme a été photographiée en gros plan dans son
+contexte (390×844, zoom ×3) et mesurée au pixel : cible, contraste, étiquette
+d'accessibilité, état pendant l'attente. Image « parade des croix » transmise
+au propriétaire.
+
+| # | Écran | Fichier | Le geste réel | Cible | Étiquette (aria) | Risque |
+|---|-------|---------|---------------|-------|------------------|--------|
+| 1 | Fiche d'un SMS | `web/app/fiche-sms.tsx:221` | FERMER (rien ne se perd) | 18×18 px | **aucune** | piège (voir plus bas) |
+| 2 | Recherche de la boîte | `web/app/encaissements/liste.tsx:106` | EFFACER la saisie | 15×15 px | « Clear the search » | bénin |
+| 3 | Pop-up d'opération, formulaire | `web/app/operation.tsx:189` | ANNULER (champs perdus) | 18×18 px | « Close » | gênant |
+| 4 | Pop-up d'opération, **session en cours** | `web/app/operation.tsx:189` | **ARRÊTER la session USSD** | 18×18 px | « Close » — **mensongère** | **danger** |
+| 5 | Session USSD (console) | `web/app/ussd/console.tsx:212` | **RACCROCHER** | 16×16 px | « Hang up the session » | **danger** |
+| 6 | Réglages (numéro, ajout de code) | `web/app/reglages/interactifs.tsx:138, 244` | ANNULER l'édition | 32–36 px, bordé | « Cancel » | bénin |
+
+Constantes mesurées : trait `#767676` (contraste 4,54:1 — au-dessus du
+minimum de 3:1 pour un composant, mais sans fond, sans bord, sans zone
+tactile : **le problème est la taille et l'affordance, pas la couleur**),
+aucun rembourrage (la cible EST le dessin), tracé de 1,5 px qui, rendu à
+16 px, fait à l'écran un cheveu d'un pixel. La seule croix correcte de la
+plateforme est celle des réglages (n° 6) — bordée, 36 px — et c'est la moins
+risquée des six.
+
+### Trois mensonges structurels
+
+1. **Un même dessin, trois gestes.** Les n° 3 et 4 sont *le même bouton du
+   même fichier* : avant le lancement il jette un formulaire, pendant la
+   session il **coupe une session réseau réelle** — rien ne change à l'écran,
+   pas même l'étiquette (« Close » dans les deux cas). L'utilisateur ne peut
+   pas savoir ce qu'il s'apprête à faire.
+2. **Les gardes sont inversées pendant l'attente** (`operation.tsx`) : le
+   bouton rouge « Annuler la session » — le geste sûr et visible — est
+   désactivé (`disabled={attente}`, ligne 269), mais la croix (ligne 188) et
+   le voile (ligne 177) restent actifs et raccrochent sans confirmation.
+   Le chemin le plus visible est fermé, les deux chemins invisibles restent
+   ouverts.
+3. **Pendant l'attente de la console USSD, aucune sortie n'existe** :
+   croix désactivée (`console.tsx:210`), voile inerte (`:204`), pied masqué
+   (`:240`). Terminal muet = écran verrouillé jusqu'à 30 secondes.
+
+### Les sorties qui ne sont pas des croix (le motif complet)
+
+- **Le voile** ferme trois fenêtres : fiche SMS (`fiche-sms.tsx:202`,
+  fermeture sans perte — acceptable), pop-up d'opération
+  (`operation.tsx:177`, **raccroche une session en cours** — prouvé au
+  journal du banc, phase 1), console mobile (`console.tsx:203`, raccroche
+  aussi, gardé par `!attente`).
+- **Échap n'existe nulle part** : aucun `keydown` d'échappement dans toute
+  l'application (vérifié par recherche exhaustive). Au bureau, la fiche
+  reste ouverte devant un clavier muet.
+- **Sorties absentes** : la fiche d'un long SMS défilée (en-tête non épinglé
+  → plus aucune commande à l'écran) ; la régénération d'un reçu (jusqu'à
+  90 s de guet, aucun bouton pour y renoncer).
+- **Trois entrées, un même pop-up** : accueil (`accueil-client.tsx:126`),
+  guichet des opérations (`actions/guichet.tsx:143`), console USSD — le
+  motif défaillant est déjà *de facto* partagé ; il n'attend qu'un composant.
+
+### Verdict
+
+La croix n'est pas un composant : six copies manuelles, tailles 15 à 36 px,
+étiquettes tantôt absentes, tantôt mensongères, gardes incohérentes. Le
+danger est concentré là où la croix ARRÊTE (n° 4 et 5) : c'est précisément là
+que la refonte doit séparer les familles — FERMER (discret, sans perte),
+ANNULER (visible, saisie perdue), ARRÊTER (franc, rouge, confirmé si la
+session est en cours).
+
+*Phase 3 (références et principes de conception) : après validation.*
