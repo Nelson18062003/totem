@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { codesUssd } from "@/lib/codes";
 import { textesUssd } from "@/lib/textes/ussd";
 import type { Sim } from "@/lib/types";
-import { IconClose, IconHash } from "../icons";
+import { BoutonFermer } from "../fermer";
+import { IconHash } from "../icons";
 import { useLangue } from "../langue";
 import { PaveSecret } from "../pave-secret";
 
@@ -207,10 +208,7 @@ export function ConsoleUssd({
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
             </p>
-            <button onClick={fermer} aria-label={t.raccrocher} disabled={attente}
-              className="text-ink-faint transition hover:text-ink disabled:opacity-40">
-              <IconClose size={16} />
-            </button>
+            <BoutonFermer onClick={fermer} label={t.raccrocher} disabled={attente} />
           </div>
 
           {/* UNE seule carte, réécrite à chaque réponse du réseau. Le message

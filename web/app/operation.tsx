@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { textesGuichet } from "@/lib/textes/guichet";
-import { IconClose } from "./icons";
+import { BoutonFermer } from "./fermer";
 import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";
 
@@ -185,9 +185,7 @@ export function OperationPopup({
             </p>
             <h2 className="mt-1 text-heading font-semibold">{operation.titre}</h2>
           </div>
-          <button onClick={annuler} aria-label={t.fermer} className="text-ink-faint transition hover:text-ink">
-            <IconClose size={18} />
-          </button>
+          <BoutonFermer onClick={annuler} label={t.fermer} />
         </div>
 
         {etape === "saisie" ? (
