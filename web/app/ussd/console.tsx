@@ -321,7 +321,7 @@ export function ConsoleUssd({
                       inputMode="tel"
                       placeholder={t.votreReponseDetail}
                       autoFocus
-                      className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-small outline-none transition placeholder:text-ink-faint focus:border-ink"
+                      className="flex-1 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition placeholder:text-ink-faint focus:border-ink"
                     />
                     <button type="submit" disabled={!reponse.trim()}
                       className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">

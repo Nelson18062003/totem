@@ -600,3 +600,45 @@ banc : caché → rechargé → toujours caché → remontré.
   nature établit le document dans la foulée (comportement hérité, désormais
   derrière « Modifier »).
 - **« Tout marquer comme lu »** pour les plis de soldes anciens.
+
+---
+
+## Phase 6 — Le zoom sauvage (signalement du propriétaire, 15 août)
+
+**Le symptôme.** Sur téléphone, l'écran zoome tout seul : en touchant des
+boutons, en touchant des champs — l'usage devient pénible sur toute l'app.
+
+**Pourquoi ça arrive — deux mécanismes du navigateur, pas un bug de TOTEM :**
+
+1. **La loupe « serviable » de Safari.** Sur iPhone, quand on touche un champ
+   de saisie dont le texte fait MOINS de 16 px, Safari juge le texte trop
+   petit pour être tapé et zoome toute la page — et ne revient jamais en
+   arrière tout seul. Six champs de la plateforme étaient à 14 px (la réponse
+   d'une session USSD, les champs des réglages) : chaque appui dessus zoomait
+   l'écran.
+2. **Le double-tap de zoom.** Les navigateurs mobiles réservent le double
+   appui au zoom. Deux appuis rapides sur un bouton — le pavé du code secret,
+   les puces de catégorie, une liste qu'on parcourt vite — sont pris pour ce
+   geste : l'écran zoome, puis dézoome. Il faut déclarer explicitement
+   « ici, un appui est un clic » (`touch-action: manipulation`), et la
+   plateforme ne le déclarait nulle part.
+
+**Pourquoi l'audit ne l'avait pas vu :** le banc pilote un moteur de bureau
+qui IMITE les tailles d'écran du téléphone — mais ces deux comportements
+appartiennent aux vrais navigateurs mobiles (Safari surtout) et n'existent
+pas dans l'imitation. Leçon retenue : les règles anti-zoom sont désormais
+vérifiées par inspection directe (taille calculée de chaque champ).
+
+**La réparation** (`globals.css`, + six champs) :
+
+- `touch-action: manipulation` sur tout : un appui est un clic, jamais un
+  geste de zoom. Le pincement à deux doigts reste permis — l'accessibilité
+  ne se négocie pas (le réglage `maximumScale: 5` du viewport ne bouge pas ;
+  pas de `user-scalable=no`, le remède brutal qui punit les malvoyants).
+- Plus aucun champ sous 16 px : les six champs à 14 px passent à 16 px, et
+  une règle de fond (`:where(input…) { font-size: 1rem }`, poids nul) protège
+  tout champ futur qu'on oublierait d'habiller.
+
+**Prouvé au banc :** 6 champs inspectés sur tous les écrans (accueil, boîte,
+USSD en session, réglages, formulaire d'opération) → **zéro champ sous
+16 px** ; `touch-action: manipulation` calculé sur les boutons partout.
