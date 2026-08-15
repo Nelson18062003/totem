@@ -646,3 +646,32 @@ vérifiées par inspection directe (taille calculée de chaque champ).
 **Prouvé au banc :** 6 champs inspectés sur tous les écrans (accueil, boîte,
 USSD en session, réglages, formulaire d'opération) → **zéro champ sous
 16 px** ; `touch-action: manipulation` calculé sur les boutons partout.
+
+---
+
+## Phase 6 bis — Le chiffre qui casse, et la marque de la caisse (16 août)
+
+**Le chiffre du solde ne casse plus jamais sa ligne.** Constat du
+propriétaire sur le vrai déploiement : « 5 130 577,6 FCFA » se pliait en
+deux lignes — et un solde de cent millions ou d'un milliard aurait fait
+pire. Réparation (`accueil-client.tsx`, `cartes/page.tsx`) :
+
+- le chiffre occupe **toute la largeur de la carte, sur UNE ligne**
+  (`whitespace-nowrap`) — l'œil et l'actualisation montent dans l'en-tête,
+  hors de son chemin ; la force du signal rejoint la ligne du numéro ;
+- son corps **rétrécit à mesure que le solde grandit** (trois paliers selon
+  la longueur du nombre) : de cent mille à un milliard, la ligne tient ;
+- la devise « FCFA » passe en retrait (plus petite, adoucie) : c'est le
+  nombre qu'on vient lire.
+
+Prouvé au banc : « 1 234 567 890,5 FCFA » sur une ligne à 390 px ET à
+320 px, sans déborder de la carte ; le cas exact du propriétaire
+(5 130 577,6) sur une ligne.
+
+**La carte porte la marque de sa caisse** (`logos-operateurs.tsx`,
+nouveau) : le carré d'Orange, l'ovale jaune de MTN — dessinés en SVG au
+trait sûr, jamais téléchargés (nets à 18 px, sans dépendre du réseau), et
+une puce neutre quand l'opérateur n'est pas reconnu. Le logo suit tout seul
+l'opérateur de la carte en place — accueil et page des comptes. C'est de la
+donnée (« quelle caisse »), pas de la marque TOTEM : il ne décore que sa
+carte.

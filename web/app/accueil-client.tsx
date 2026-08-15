@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { codeUssd } from "@/lib/codes";
-import { fcfa, type Sim } from "@/lib/types";
+import { nombre, type Sim } from "@/lib/types";
 import { textesAccueil } from "@/lib/textes/accueil";
 import { useLangue } from "@/app/langue";
 import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconRefresh,
   IconWallet,
 } from "./icons";
+import { LogoOperateur } from "./logos-operateurs";
 import { OperationPopup, type Operation } from "./operation";
 
 // Le solde peut se cacher d'un geste — un écran ouvert devant quelqu'un ne
@@ -45,6 +46,17 @@ export function AccueilGuichet({
     });
   };
   const op = carte.operateur;
+
+  // Le chiffre affiché, et son corps : plus le solde est long, plus le corps
+  // se resserre — la ligne ne casse JAMAIS, de cent mille à un milliard.
+  const montantTexte = carte.solde == null ? "—" : nombre(carte.solde, langue);
+  const affiche = carte.solde == null ? "—" : soldeCache ? "••••••" : montantTexte;
+  const classeMontant =
+    affiche.length <= 10
+      ? "text-hero"
+      : affiche.length <= 13
+        ? "text-[1.7rem] sm:text-[2.25rem]"
+        : "text-[1.35rem] sm:text-[1.9rem]";
 
   const solde = (): Operation =>
     ({ titre: t.consulterSolde, code: codeUssd(op, "solde"), champs: [] });
@@ -92,40 +104,50 @@ export function AccueilGuichet({
       {/* LE solde : un seul, sur la carte. Actualiser interroge le réseau —
           la fenêtre du code s'ouvre, jamais un rechargement de page. */}
       <section className="acct rounded-card p-5 lg:col-start-1">
-        <div className="flex items-center justify-between">
-          <span className="text-caption uppercase tracking-wider text-white/60">
-            {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
+        {/* L'en-tête de la carte : LA marque de la caisse (le logo suit
+            l'opérateur de la carte en place), et les deux commandes — l'œil
+            et l'actualisation — hors du chemin du chiffre. */}
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2.5">
+            <LogoOperateur operateur={op} size={18} className="shrink-0" />
+            <span className="truncate text-caption uppercase tracking-wider text-white/60">
+              {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
+            </span>
           </span>
-          {carte.signal != null && (
-            <span className="text-caption tabnums text-white/50">{carte.signal}/31</span>
-          )}
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <p className="text-hero font-semibold tabnums tracking-tight">
-            {carte.solde == null ? "—" : soldeCache ? "••••••" : fcfa(carte.solde, langue)}
-          </p>
-          {/* L'œil : cacher le solde d'un geste — un écran ouvert devant
-              quelqu'un ne dit pas ce que contient la caisse. Le choix est
-              retenu sur cet appareil. */}
-          {carte.solde != null && (
+          <span className="flex shrink-0 items-center gap-1.5">
+            {/* L'œil : cacher le solde d'un geste — un écran ouvert devant
+                quelqu'un ne dit pas ce que contient la caisse. Le choix est
+                retenu sur cet appareil. */}
+            {carte.solde != null && (
+              <button
+                onClick={basculerSolde}
+                aria-label={soldeCache ? t.montrerSolde : t.masquerSolde}
+                title={soldeCache ? t.montrerSolde : t.masquerSolde}
+                className="grid size-9 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+              >
+                {soldeCache ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+              </button>
+            )}
             <button
-              onClick={basculerSolde}
-              aria-label={soldeCache ? t.montrerSolde : t.masquerSolde}
-              title={soldeCache ? t.montrerSolde : t.masquerSolde}
-              className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
+              onClick={() => setOperation(solde())}
+              aria-label={t.actualiserAria}
+              title={t.interrogerReseau}
+              className="grid size-9 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
             >
-              {soldeCache ? <IconEye size={16} /> : <IconEyeOff size={16} />}
+              <IconRefresh size={16} />
             </button>
-          )}
-          <button
-            onClick={() => setOperation(solde())}
-            aria-label={t.actualiserAria}
-            title={t.interrogerReseau}
-            className="grid size-9 shrink-0 place-items-center rounded-full border border-white/25 text-white/80 transition hover:border-white/60 hover:text-white"
-          >
-            <IconRefresh size={16} />
-          </button>
+          </span>
         </div>
+        {/* LE chiffre : toute la largeur de la carte, sur UNE ligne — jamais
+            cassée. Le corps rétrécit à mesure que le solde grandit : un
+            milliard tient aussi bien que cent mille. La devise reste plus
+            discrète : c'est le nombre qu'on vient lire. */}
+        <p className={`mt-4 whitespace-nowrap font-semibold tabnums tracking-tight ${classeMontant}`}>
+          {affiche}
+          {carte.solde != null && (
+            <span className="ml-2 text-heading font-medium text-white/60">FCFA</span>
+          )}
+        </p>
         <p className="mt-1.5 text-small text-white/55">
           {carte.solde == null
             ? t.aucunSoldeConnu
@@ -135,6 +157,7 @@ export function AccueilGuichet({
         </p>
         <p className="mt-3 text-small tabnums text-white/55">
           {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
+          {carte.signal != null && <> · {carte.signal}/31</>}
         </p>
       </section>
 
