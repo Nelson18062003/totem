@@ -676,3 +676,28 @@ l'affichage. Le logo dit la caisse TOUT SEUL : aucun nom d'opérateur ne se
 répète à côté (le nom reste dit aux lecteurs d'écran, et un opérateur sans
 marque garde son libellé écrit + une puce neutre). Il suit tout seul
 l'opérateur de la carte en place — accueil et page des comptes.
+
+---
+
+## Phase 6 ter — La carte du solde, redessinée (demande du 15 août au soir)
+
+Le propriétaire voulait une carte plus belle et plus créative. La refonte
+reste DANS l'identité (mate, sans ombre, rayon 8) et joue avec ce que les
+règles permettent — la composition, le trait, le sens :
+
+- **Le liseré de l'opérateur** : 3 px de sa couleur sur la tranche gauche —
+  la couleur comme donnée (le liseré est explicitement permis, jamais
+  l'aplat). La carte se reconnaît du coin de l'œil, et change avec la SIM.
+- **La puce SIM au trait**, posée près du numéro : la carte à l'écran EST la
+  carte physique dans le berceau de Douala — un ornement qui dit quelque
+  chose de vrai.
+- **Le signal en quatre barres** remplies au niveau, à la place du « 24/31 »
+  à déchiffrer (le chiffre exact reste dit au survol et aux lecteurs
+  d'écran).
+- **Le rythme** : plus d'air (p-6 dès sm), le chiffre en centre de gravité,
+  le pied ancré — numéro et puce à gauche, signal à droite.
+
+Fichiers : `accueil-client.tsx` (carte + `BarresSignal`), `icons.tsx`
+(`IconPuceSim`), `logos-operateurs.tsx` (`couleurOperateur`). Vérifié au
+banc : Orange et MTN (liseré et logo suivent la SIM), état masqué, une seule
+ligne de chiffre — rien de la phase précédente n'a bougé.

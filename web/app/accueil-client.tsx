@@ -8,11 +8,25 @@ import { nombre, type Sim } from "@/lib/types";
 import { textesAccueil } from "@/lib/textes/accueil";
 import { useLangue } from "@/app/langue";
 import {
-  IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconRefresh,
-  IconWallet,
+  IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconPuceSim,
+  IconRefresh, IconWallet,
 } from "./icons";
-import { LogoOperateur, operateurReconnu } from "./logos-operateurs";
+import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { OperationPopup, type Operation } from "./operation";
+
+/** Le signal en quatre barres — rempli au niveau, lisible sans chiffres. */
+function BarresSignal({ niveau }: { niveau: number }) {
+  const pleines = Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+  return (
+    <span className="flex shrink-0 items-end gap-[3px] pb-1" role="img"
+      aria-label={`Signal ${niveau}/31`} title={`Signal ${niveau}/31`}>
+      {[5, 8, 11, 14].map((h, i) => (
+        <span key={h} style={{ height: h }}
+          className={`w-[3px] rounded-full ${i < pleines ? "bg-white/75" : "bg-white/20"}`} />
+      ))}
+    </span>
+  );
+}
 
 // Le solde peut se cacher d'un geste — un écran ouvert devant quelqu'un ne
 // dit pas ce que contient la caisse. Le choix tient à l'appareil (et non au
@@ -103,7 +117,14 @@ export function AccueilGuichet({
     <>
       {/* LE solde : un seul, sur la carte. Actualiser interroge le réseau —
           la fenêtre du code s'ouvre, jamais un rechargement de page. */}
-      <section className="acct rounded-card p-5 lg:col-start-1">
+      <section className="acct relative overflow-hidden rounded-card p-5 sm:p-6 lg:col-start-1">
+        {/* Le liseré de l'opérateur — sa couleur comme DONNÉE (≤ 4 px, jamais
+            un aplat) : la carte se reconnaît du coin de l'œil, comme la
+            tranche d'un carnet. */}
+        {couleurOperateur(op) && (
+          <span aria-hidden className="absolute inset-y-0 left-0 w-[3px]"
+            style={{ backgroundColor: couleurOperateur(op)! }} />
+        )}
         {/* L'en-tête de la carte : LA marque de la caisse (le logo suit
             l'opérateur de la carte en place), et les deux commandes — l'œil
             et l'actualisation — hors du chemin du chiffre. */}
@@ -150,7 +171,7 @@ export function AccueilGuichet({
             cassée. Le corps rétrécit à mesure que le solde grandit : un
             milliard tient aussi bien que cent mille. La devise reste plus
             discrète : c'est le nombre qu'on vient lire. */}
-        <p className={`mt-4 whitespace-nowrap font-semibold tabnums tracking-tight ${classeMontant}`}>
+        <p className={`mt-5 whitespace-nowrap font-semibold tabnums tracking-tight ${classeMontant}`}>
           {affiche}
           {carte.solde != null && (
             <span className="ml-2 text-heading font-medium text-white/60">FCFA</span>
@@ -163,10 +184,18 @@ export function AccueilGuichet({
               ? t.soldeMaj(carte.soldeMaj)
               : t.soldeSansHeure}
         </p>
-        <p className="mt-3 text-small tabnums text-white/55">
-          {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
-          {carte.signal != null && <> · {carte.signal}/31</>}
-        </p>
+        {/* Le pied de la carte : la puce SIM au trait — la carte à l'écran
+            EST la carte posée dans le berceau, à Douala — et le signal en
+            barres, qui se lit sans se déchiffrer. */}
+        <div className="mt-6 flex items-end justify-between gap-3">
+          <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/55">
+            <IconPuceSim size={20} className="shrink-0 text-white/35" />
+            <span className="truncate">
+              {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
+            </span>
+          </p>
+          {carte.signal != null && <BarresSignal niveau={carte.signal} />}
+        </div>
       </section>
 
       {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même */}

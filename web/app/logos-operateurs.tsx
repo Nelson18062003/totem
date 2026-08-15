@@ -65,6 +65,14 @@ export function LogoInconnu({ size = 24, className }: P) {
   );
 }
 
+/** La couleur de l'opérateur — pour un liseré (≤ 4 px), jamais un aplat. */
+export const couleurOperateur = (operateur: string): string | null => {
+  const nom = (operateur || "").trim().toLowerCase();
+  if (nom.startsWith("orange")) return "#FF7900";
+  if (nom.startsWith("mtn")) return "#FFCC00";
+  return null;
+};
+
 /** L'opérateur a-t-il sa marque ? (sinon, l'écran garde son libellé écrit) */
 export const operateurReconnu = (operateur: string): boolean =>
   /^(orange|mtn)/i.test((operateur || "").trim());
