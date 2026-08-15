@@ -262,4 +262,100 @@ que la refonte doit séparer les familles — FERMER (discret, sans perte),
 ANNULER (visible, saisie perdue), ARRÊTER (franc, rouge, confirmé si la
 session est en cours).
 
-*Phase 3 (références et principes de conception) : après validation.*
+---
+
+## Phase 3 — Références extérieures et règles de conception
+
+### Ce que disent les références (URL + date)
+
+**Fenêtres et feuilles.**
+- Une fenêtre modale est une *interruption* : elle se réserve aux décisions
+  qui l'exigent, jamais aux tâches longues ou à la lecture — un contenu
+  complexe forcé dans une modale prive l'utilisateur de tout contexte.
+  (NN/g, « Modal & Nonmodal Dialogs », nngroup.com/articles/modal-nonmodal-dialog/, 23 avril 2021.)
+- La feuille basse (bottom sheet) est le bon véhicule mobile pour un détail
+  consulté depuis une liste : elle garde la liste visible, se tire vers le
+  haut pour en voir plus, se balaie vers le bas pour sortir. Sa poignée fait
+  au minimum 48 dp — la cible, pas le dessin.
+  (Material Design 3, « Bottom sheets », m3.material.io/components/bottom-sheets, consulté le 15 août 2026 ;
+  Apple HIG, « Sheets » — détentes et glisser-pour-fermer, developer.apple.com/design, consulté le 15 août 2026.)
+
+**Fermer, annuler, arrêter.**
+- « Distinguer *cancel* de *close* est critique pour ne pas perdre le travail
+  de l'utilisateur » : étiquettes de texte plutôt qu'une croix ; confirmation
+  avant toute fermeture destructrice ; par défaut, sauver plutôt que jeter.
+  (NN/g, « Cancel vs Close », nngroup.com/articles/cancel-vs-close/, 1er septembre 2019.)
+- Confirmation pour le destructif — mais l'« annuler après coup » (undo) vaut
+  mieux qu'une pluie de confirmations ; la confirmation se réserve aux actes
+  irréversibles. (NN/g, « Confirmation Dialogs Can Prevent User Errors »,
+  nngroup.com/articles/confirmation-dialog/, 24 juin 2018.)
+- Un geste lourd de conséquences ne doit jamais habiter à côté d'un geste
+  bénin sous la même apparence. (NN/g, « Dangerous UX: Consequential Options
+  Close to Benign Options », nngroup.com/articles/proximity-consequential-options/, 2 août 2020.)
+
+**Cibles.**
+- WCAG 2.2, critère 2.5.8 (AA) : 24×24 px minimum ; critère 2.5.5 (AAA) :
+  44×44 px. Plateforme d'argent pilotée au pouce → on vise 44.
+  (w3.org/TR/WCAG22/, décembre 2024.)
+
+**Densité.**
+- La divulgation progressive : montrer d'abord ce qui décide, révéler le
+  détail à la demande — la densité se gère par étages, pas par entassement.
+  (NN/g, « Progressive Disclosure », nngroup.com/articles/progressive-disclosure/, J. Nielsen.)
+
+**Paul Graham** (principes, pas citations — traduits en règles d'action) :
+- *Taste for Makers* (paulgraham.com/taste.html, février 2002) : le bon
+  design est simple, résout le bon problème, a l'air facile, et **est un
+  re-design** — on a le droit de jeter ce qui ne marche pas.
+- *Design and Research* (paulgraham.com/desres.html, janvier 2003) : on
+  dessine pour l'utilisateur réel — ici, un commerçant qui vérifie de
+  l'argent sur un téléphone, pas un informaticien devant un tableau de bord.
+- *Startups in 13 Sentences* (paulgraham.com/13sentences.html, février 2009) :
+  mieux vaut faire une chose qui rend un utilisateur vraiment heureux —
+  le module SMS n'a qu'un métier : **lire l'argent qui arrive**.
+
+### Le contrat de conception (les règles que la phase 4 devra prouver)
+
+Chaque règle est testable sur le banc de la phase 1 — c'est lui qui jugera.
+
+**Famille des sorties (le motif transversal) :**
+- **R1 — Trois familles, trois visages.** FERMER (sans perte) : bouton
+  bordé, discret. ANNULER (saisie perdue) : étiquette de texte, jamais une
+  croix seule. ARRÊTER (session réseau) : bouton rouge à texte explicite
+  (« Raccrocher »), **jamais** une croix, **jamais** le voile.
+- **R2 — 44×44 px minimum** pour toute commande de sortie, fond ou bord
+  visible, étiquette d'accessibilité exacte (jamais « Fermer » sur un
+  bouton qui arrête).
+- **R3 — Toute fenêtre a trois sorties** : la commande visible, le voile ou
+  le balayage (seulement si la sortie est sans perte), la touche Échap.
+  L'en-tête qui porte la sortie est **épinglé** — il ne défile jamais.
+- **R4 — Pendant une attente réseau, la sortie reste vivante.** On peut
+  toujours réduire ou quitter l'écran d'attente sans tuer la commande ;
+  jamais d'écran verrouillé.
+- **R5 — Arrêter une session en cours se confirme** (un geste de plus,
+  léger), sauf si la session est déjà finie — alors fermer est immédiat.
+  Un composant unique porte ces règles ; aucun écran ne redessine sa croix.
+
+**Module SMS :**
+- **R6 — La liste montre la lecture, la fiche montre la preuve.** Une ligne
+  = qui, quand, combien (l'interprétation) ; le texte brut vit dans la
+  fiche, en entier, jamais tronqué dans son rôle de pièce à conviction.
+- **R7 — Le signal avant le bruit.** Les mouvements d'argent dominent ;
+  les consultations de solde répétées se replient (la dernière fait foi) ;
+  les publicités s'assourdissent. Rien ne se supprime : tout reste
+  accessible d'un geste.
+- **R8 — Un seul geste principal par vue**, décidé par la catégorie : le
+  reçu ne se propose que pour un mouvement d'argent ; jamais pour une
+  publicité, un code, un message.
+- **R9 — Budget d'écran : le premier SMS au-dessus du pli à 320 px.**
+  Le bandeau (titre, recherche, filtres) tient en deux rangées au plus.
+- **R10 — La fiche est une feuille, pas un écran.** Détail en feuille basse
+  (téléphone) / panneau ou carte (bureau), la liste reste visible derrière ;
+  tirée vers le haut pour le texte intégral — divulgation progressive.
+- **R11 — La liste pagine.** L'écran charge une page raisonnable et va
+  chercher la suite au défilement ; 10 000 SMS ne font pas 10 000 nœuds.
+- **R12 — Seconde ligne de défense** : un SMS de catégorie `code` remasque
+  ses chiffres à l'affichage, même si la base a laissé passer.
+
+*Phase 4 (la refonte elle-même, maquettes et spécification) : après
+validation.*
