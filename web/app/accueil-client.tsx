@@ -86,6 +86,7 @@ export function AccueilGuichet({
     const seps = entier.length - chiffres;
     let em = chiffres * 0.62 + seps * 0.26;
     if (decimales) em += (decimales.length + 1) * 0.62 * 0.55;
+    if (carte.solde != null) em += 1.35;
     return em * 1.07;
   })();
   const corpsMontant = `min(4.25rem, ${(100 / largeurEm).toFixed(2)}cqw)`;
@@ -184,17 +185,16 @@ export function AccueilGuichet({
           {decimales != null && (
             <span className="text-[0.55em] text-white/80">{separateur}{decimales}</span>
           )}
+          {carte.solde != null && (
+            <span className="ml-[0.3em] text-[0.34em] font-medium tracking-normal text-white/80">FCFA</span>
+          )}
         </p>
         <p className="mt-2 text-small text-white/75">
-          {carte.solde == null ? (
-            t.aucunSoldeConnu
-          ) : (
-            <>
-              <span className="font-semibold text-white/90">FCFA</span>
-              {" · "}
-              {carte.soldeMaj ? t.soldeMaj(carte.soldeMaj) : t.soldeSansHeure}
-            </>
-          )}
+          {carte.solde == null
+            ? t.aucunSoldeConnu
+            : carte.soldeMaj
+              ? t.soldeMaj(carte.soldeMaj)
+              : t.soldeSansHeure}
         </p>
         {/* Le pied de la carte : la puce SIM au trait — la carte à l'écran
             EST la carte posée dans le berceau, à Douala — et le signal en
