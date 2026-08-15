@@ -594,14 +594,18 @@ banc : caché → rechargé → toujours caché → remontré.
 - **La pagination serveur** : l'écran ne rend que 60 lignes, mais le serveur
   charge encore jusqu'à 1 000 SMS par visite — le vrai remède est une API
   paginée (chargement à la demande depuis Supabase).
-- **Le piège à focus de la feuille USSD sur téléphone** (la console garde sa
-  coquille propre — le piège de `Feuille` ne s'y applique pas encore).
 - **Scinder « étiqueter » et « établir le reçu »** : aujourd'hui choisir une
   nature établit le document dans la foulée (comportement hérité, désormais
   derrière « Modifier »).
 - **« Tout marquer comme lu »** pour les plis de soldes anciens.
 
 ---
+
+### Complément (16 août) — le dernier trou connu est bouché
+
+La feuille de session USSD sur téléphone a désormais son **piège à focus**
+(sur grand écran, la session est une carte de la page : le clavier y circule
+librement entre le cadran et elle — vérifié au banc dans les deux formats).
 
 ## Phase 6 — Le zoom sauvage (signalement du propriétaire, 15 août)
 

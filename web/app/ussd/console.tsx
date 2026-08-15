@@ -181,6 +181,35 @@ export function ConsoleUssd({
     if (!enSession) setConfirme(false);
   }, [enSession]);
 
+  // Le piège à focus de la feuille — sur téléphone seulement : sur grand
+  // écran la session est une carte DE la page, le clavier doit pouvoir
+  // circuler librement entre le cadran et elle.
+  const feuille = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!visible) return;
+    const telephone = window.matchMedia("(max-width: 1023px)");
+    if (!telephone.matches) return;
+    const avant = document.activeElement as HTMLElement | null;
+    const focusables = (): HTMLElement[] =>
+      [...(feuille.current?.querySelectorAll<HTMLElement>(
+        'button, a[href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+      ) ?? [])].filter((e) => !e.hasAttribute("disabled") && e.offsetParent !== null);
+    const piege = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const els = focusables();
+      if (els.length === 0) return;
+      const actif = document.activeElement;
+      if (!feuille.current?.contains(actif as Node)) { e.preventDefault(); els[0].focus(); return; }
+      if (e.shiftKey && actif === els[0]) { e.preventDefault(); els[els.length - 1].focus(); }
+      else if (!e.shiftKey && actif === els[els.length - 1]) { e.preventDefault(); els[0].focus(); }
+    };
+    window.addEventListener("keydown", piege, true);
+    return () => {
+      window.removeEventListener("keydown", piege, true);
+      avant?.focus?.();
+    };
+  }, [visible]);
+
   // Arrivée depuis un bouton du guichet : le code se compose tout seul.
   const lance = useRef(false);
   useEffect(() => {
@@ -257,7 +286,7 @@ export function ConsoleUssd({
         <>
         <div className="voile fixed inset-0 z-20 bg-ink/25 lg:hidden"
           onClick={sortir} />
-        <section className="fixed inset-x-0 bottom-0 z-30 flex max-h-[88dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:max-h-none lg:rounded-card lg:border lg:col-start-2">
+        <section ref={feuille} className="fixed inset-x-0 bottom-0 z-30 flex max-h-[88dvh] flex-col rounded-t-card border-t border-line bg-surface-raised lg:static lg:z-auto lg:max-h-none lg:rounded-card lg:border lg:col-start-2">
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line py-2.5 pl-4 pr-2.5">
             <p className="text-small font-medium">
               {enSession ? t.sessionEnCours : t.sessionTerminee} · {carte.libelle}
