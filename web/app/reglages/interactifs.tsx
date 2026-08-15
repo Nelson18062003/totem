@@ -130,7 +130,7 @@ export function ReglageNumero({
         >
           {etat === "envoi" ? "…" : "OK"}
         </button>
-        <BoutonFermer onClick={() => setEdition(false)} libelle={t.annuler} />
+        <BoutonFermer onClick={() => setEdition(false)} libelle={t.annuler} disabled={etat === "envoi"} />
       </span>
       {etat === "envoi" && (
         <span className="text-caption text-ink-faint">{t.enregistrement}</span>

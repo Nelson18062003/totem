@@ -94,3 +94,9 @@ export const IconBubble = ({ size, className }: P) => (
 export const IconMail = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 7.5 7.5 5.5 7.5-5.5" /></svg>
 );
+export const IconEye = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+);
+export const IconEyeOff = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><path d="M4 4l16 16" /><path d="M10.6 6c.46-.07.93-.1 1.4-.1 6 0 9.5 6.1 9.5 6.1a17.6 17.6 0 0 1-2.4 3.2M6.4 6.9A17 17 0 0 0 2.5 12S6 18.1 12 18.1c1.4 0 2.7-.33 3.8-.84" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
+);

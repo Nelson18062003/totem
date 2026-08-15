@@ -517,5 +517,86 @@ froide du code. Constats, du plus grave au plus bénin.
 - Le serveur charge toujours jusqu'à 1 000 lignes (l'écran n'en rend que 60) :
   la vraie pagination serveur est LE chantier structurel suivant.
 
-*Phase 5 (réparations du contre-audit, plan d'implémentation, et ce qui
-reste au propriétaire) : après validation.*
+### Phase 4 ter — Les réparations, prouvées une à une
+
+Les quinze défauts du contre-audit sont réparés, et chaque réparation a été
+rejouée sur le banc (production, données hostiles) :
+
+| Défaut | Réparation | Preuve au banc |
+|---|---|---|
+| 1. Session orpheline | Toute sortie pendant une commande en vol raccroche défensivement (`operation.tsx`, `console.tsx`) | fermer pendant la composition → **1 `ussd_fin`** au journal |
+| 2. Saisie jetée sans un mot | Formulaire entamé → même confirmation que le reste (« Jeter la saisie ? ») ; vide → sortie directe | question posée, champ conservé par « Continuer la saisie », sortie directe à vide |
+| 3. Cadran armé en session | Composeur et raccourcis désactivés tant que la session vit (+ garde dans `composer`) | raccourci inerte pendant la session |
+| 4. Focus fugueur | Piège à focus dans `Feuille` : entre à l'ouverture, circule en boucle, revient à la fermeture | 20 tabulations, le focus reste dans la fenêtre |
+| 5. Non-lus sous un pli | Le lien du pli porte le point des non-lus qu'il couvre | visuel |
+| 6. Copie qui exfiltre | « Copier le SMS » copie CE QUE L'ÉCRAN MONTRE (`texteSurEcran`) | presse-papiers : « Your one-time code is •••••• » |
+| 7. Libellé menteur | « n consultations de solde plus tôt » | à l'écran |
+| 8. Annulation des réglages | `BoutonFermer` retrouve `disabled` pendant l'envoi | code |
+| 9. Défilement fuyant | `overscroll-contain` sur les corps de feuille | code |
+| 10. Dialogue sans nom | `aria-labelledby` relié à l'en-tête (`useId`) | code |
+| 11. Masque troué | Le motif attrape aussi « 51 42 08 » (chiffres espacés/tirets) | code |
+| 12. Recherche indiscrète | Elle lit le texte AFFICHÉ : chercher « 514208 » → 0 ligne | 0 résultat |
+| 13. HTML invalide | La nature sort du `dl` (bloc frère, même dessin) | hydratation propre |
+| 14. Glisser-fermer | Seule une pression NÉE sur le voile ferme | code |
+| 15. Message sans retour | « Replier le message » après dépliage | à l'écran |
+
+Régressions rejouées : voile-en-session → confirmation puis exactement
+1 `ussd_fin` ; Échap ; zéro erreur JS ; 451 tests Python OK ; `next build` OK.
+
+### L'œil du solde (demande du propriétaire, 15 août)
+
+Sur la carte de l'accueil, un œil à côté du chiffre : un appui **cache le
+solde** (`••••••`), un appui le remontre. Le choix est **retenu sur
+l'appareil** (réglage d'écran, pas de compte — `localStorage`) et survit au
+rechargement. Tant que le choix n'est pas lu, le solde reste caché : il ne
+doit jamais apparaître PUIS se cacher. Étiquettes bilingues (« Masquer le
+solde » / « Hide the balance »). Fichiers : `accueil-client.tsx`,
+`icons.tsx` (`IconEye`, `IconEyeOff`), `lib/textes/accueil.ts`. Prouvé au
+banc : caché → rechargé → toujours caché → remontré.
+
+---
+
+## Phase 5 — Ce qui est fait, ce qui reste, à qui la main
+
+### Sur la branche `claude/sms-redesign-close-button-cn924f`, dans l'ordre
+
+1. **Le motif de sortie** — `web/app/feuille.tsx` (nouveau) : `Feuille`,
+   `BoutonFermer`, `BarreArret`, `SortieRetenue`. Piège à focus, Échap,
+   voile, en-tête épinglé, confirmation d'arrêt.
+2. **La fiche SMS** — `web/app/fiche-sms.tsx` : feuille, geste principal par
+   catégorie, remasquage, repli du long message, nature en une ligne.
+3. **La boîte** — `web/app/encaissements/liste.tsx` : lecture d'abord, plis
+   de soldes, pages de 60, bandeau en deux rangées, `dir="auto"`.
+4. **Les sessions** — `web/app/operation.tsx`, `web/app/ussd/console.tsx` :
+   confirmation d'arrêt, raccrochage défensif, cadran désarmé en session,
+   compteur de génération.
+5. **Les données** — `web/lib/types.ts`, `web/lib/serveur.ts` : le `tiers`
+   voyage jusqu'à l'écran.
+6. **Les textes** — `lib/textes/{sms,ussd,guichet,accueil}.ts` : tout en
+   double, anglais d'abord.
+7. **L'œil du solde** — `web/app/accueil-client.tsx`, `web/app/icons.tsx`.
+8. **Les réglages** — `web/app/reglages/interactifs.tsx` : boutons du motif.
+
+### Ce que le propriétaire fait lui-même
+
+1. **Relire ce journal**, et dire ce qui ne lui va pas (phase 6).
+2. **Demander la pull request** quand il est satisfait — elle suivra le
+   rituel du dépôt (`CLAUDE.md`) : relire `main`, rebaser, rejouer les
+   vérifications, puis ouvrir.
+3. **Après la mise en ligne, vérifier sur le vrai totemlabs.app** avec le
+   vrai terminal : ouvrir un SMS, cacher le solde, lancer une session USSD
+   et l'ANNULER — le vrai réseau doit bien recevoir le raccrochage.
+4. Sur téléphone : vérifier que la feuille se ferme au doigt (voile, croix)
+   et que rien ne dépasse sur son écran à lui.
+
+### Les chantiers d'après (assumés hors de cette passe)
+
+- **La pagination serveur** : l'écran ne rend que 60 lignes, mais le serveur
+  charge encore jusqu'à 1 000 SMS par visite — le vrai remède est une API
+  paginée (chargement à la demande depuis Supabase).
+- **Le piège à focus de la feuille USSD sur téléphone** (la console garde sa
+  coquille propre — le piège de `Feuille` ne s'y applique pas encore).
+- **Scinder « étiqueter » et « établir le reçu »** : aujourd'hui choisir une
+  nature établit le document dans la foulée (comportement hérité, désormais
+  derrière « Modifier »).
+- **« Tout marquer comme lu »** pour les plis de soldes anciens.

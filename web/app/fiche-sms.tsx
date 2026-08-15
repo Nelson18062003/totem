@@ -68,7 +68,9 @@ export const estArgent = (p: Paiement): boolean =>
 // de les transmettre, mais l'écran ne fait pas aveuglément confiance à la
 // base — une ligne d'avant le masquage remasque ses chiffres à l'affichage.
 export const texteSurEcran = (p: Paiement): string =>
-  catDe(p) === "code" ? p.smsBrut.replace(/\d{3,8}/g, "••••••") : p.smsBrut;
+  catDe(p) === "code"
+    ? p.smsBrut.replace(/\d(?:[\s.-]?\d){2,9}/g, "••••••")
+    : p.smsBrut;
 
 // Au-delà de cette taille, la fiche replie le message : la preuve reste à un
 // geste, mais elle ne chasse plus les détails de l'écran.
@@ -221,7 +223,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     }
   };
 
-  const copier = () => navigator.clipboard?.writeText(p.smsBrut);
+  const copier = () => navigator.clipboard?.writeText(texteSurEcran(p));
 
   // L'en-tête épinglé : ce qui décide, rien d'autre. Le montant quand il
   // existe, sinon la nature du message — et qui l'a envoyé.
@@ -296,12 +298,14 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
         <L t={t.date} v={t.dateEtHeure(p.date, p.heure)} />
         {p.reference && <L t={t.reference} v={p.reference} />}
         {p.soldeApres != null && <L t={t.soldeApres} v={fcfa(p.soldeApres, langue)} />}
+      </dl>
 
-        {/* La nature : une ligne comme les autres — le choix ne se déploie
-            qu'à la demande. Réservée à l'argent (et aux SMS incompris, qui
-            peuvent en cacher) : une publicité n'a pas de nature. */}
-        {(argent || catDe(p) === "inconnu") && (
-          <div className="py-2.5">
+      {/* La nature : une ligne comme les autres — le choix ne se déploie
+          qu'à la demande. Réservée à l'argent (et aux SMS incompris, qui
+          peuvent en cacher) : une publicité n'a pas de nature. Hors du dl :
+          ses boutons n'ont rien d'une définition. */}
+      {(argent || catDe(p) === "inconnu") && (
+          <div className="border-t border-line py-2.5">
             {choisirType ? (
               <>
                 <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">
@@ -325,8 +329,8 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
               </>
             ) : (
               <div className="flex items-center justify-between gap-3">
-                <dt className="text-small text-ink-soft">{t.typeTitre}</dt>
-                <dd className="flex items-center gap-2">
+                <span className="text-small text-ink-soft">{t.typeTitre}</span>
+                <span className="flex items-center gap-2">
                   <span className="flex items-center gap-1.5 text-small font-medium">
                     <CatIcone c={catDe(p)} size={14} /> {t.cat[catDe(p)]}
                   </span>
@@ -334,12 +338,11 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
                     className="text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink">
                     {argent ? t.modifierType : t.classerMessage}
                   </button>
-                </dd>
+                </span>
               </div>
             )}
           </div>
-        )}
-      </dl>
+      )}
 
       {/* Le message d'origine — la preuve. En entier d'un geste, mais un long
           SMS ne chasse pas les détails de l'écran : il se replie. dir=auto :
@@ -352,10 +355,10 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           }`}>
           {texte}
         </p>
-        {long && !messageDeplie && (
-          <button onClick={() => setMessageDeplie(true)}
+        {long && (
+          <button onClick={() => setMessageDeplie((d) => !d)}
             className="mt-1.5 text-caption text-ink-soft underline underline-offset-4 transition hover:text-ink">
-            {t.toutLeMessage}
+            {messageDeplie ? t.replierMessage : t.toutLeMessage}
           </button>
         )}
       </div>

@@ -27,7 +27,7 @@ const en = {
   telechargerRecu: "Download the PDF receipt",
   toutesLesCartes: "All SIMs",
   soldesRepetes: (n: number) =>
-    n === 1 ? "1 earlier identical check" : `${n} earlier identical checks`,
+    n === 1 ? "1 earlier balance check" : `${n} earlier balance checks`,
   replierSoldes: "Hide them",
 
   // La fiche d'un SMS
@@ -64,6 +64,7 @@ const en = {
   terminalMuet: "The terminal did not answer — is it switched on, and up to date?",
   fermerFiche: "Close",
   toutLeMessage: "Show the whole message",
+  replierMessage: "Collapse the message",
   typeTitre: "Type",
   modifierType: "Change",
   classerMessage: "Classify this message — for its receipt",
@@ -106,7 +107,7 @@ const fr: typeof en = {
   telechargerRecu: "Télécharger le reçu PDF",
   toutesLesCartes: "Toutes les cartes",
   soldesRepetes: (n) =>
-    n === 1 ? "1 consultation identique plus tôt" : `${n} consultations identiques plus tôt`,
+    n === 1 ? "1 consultation de solde plus tôt" : `${n} consultations de solde plus tôt`,
   replierSoldes: "Les replier",
 
   smsRecu: "SMS reçu",
@@ -142,6 +143,7 @@ const fr: typeof en = {
   terminalMuet: "Le terminal n’a pas répondu — est-il allumé, et à jour ?",
   fermerFiche: "Fermer",
   toutLeMessage: "Voir tout le message",
+  replierMessage: "Replier le message",
   typeTitre: "Nature",
   modifierType: "Modifier",
   classerMessage: "Classer ce message — pour son reçu",

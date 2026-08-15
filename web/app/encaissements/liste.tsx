@@ -96,12 +96,13 @@ export function ListeEncaissements({
       if (filtre !== TOUS && p.sim !== filtre) return false;
       if (categorie !== TOUTES && catDe(p) !== categorie) return false;
       if (!brute) return true;
+      const texte = texteSurEcran(p);
       return compacte(p.nom).includes(serree)
         || compacte(p.numero).includes(serree)
         || String(p.montant ?? "").includes(serree)
         || compacte(p.reference).includes(serree)
-        || p.smsBrut.toLowerCase().includes(brute)
-        || compacte(p.smsBrut).includes(serree);
+        || texte.toLowerCase().includes(brute)
+        || compacte(texte).includes(serree);
     });
   }, [paiements, filtre, categorie, recherche]);
 
@@ -227,7 +228,10 @@ export function ListeEncaissements({
                     {r.anciens.length > 0 && (
                       <div className="pb-3 pl-12">
                         <button onClick={() => basculer(r.recent.id)}
-                          className="text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink">
+                          className="flex items-center gap-1.5 text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink">
+                          {!deplies.has(r.recent.id) && r.anciens.some((p) => p.nonLu) && (
+                            <span aria-label={t.nonLu} className="size-2 shrink-0 rounded-full bg-ink" />
+                          )}
                           {deplies.has(r.recent.id) ? t.replierSoldes : t.soldesRepetes(r.anciens.length)}
                         </button>
                         {deplies.has(r.recent.id) && (

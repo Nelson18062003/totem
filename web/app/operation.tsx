@@ -165,14 +165,26 @@ export function OperationPopup({
     await derouler(await envoyer("ussd_reponse", { texte: t }, { de: "vous", texte: t }));
   };
 
-  // RACCROCHER, l'arrêt effectif : l'ordre part au terminal sans faire
-  // attendre l'écran — la fenêtre se ferme sur-le-champ.
-  const raccrocher = () => {
+  // L'ordre de raccrochage, sans faire attendre l'écran.
+  const posterFin = () => {
     fetch("/api/commande", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
     }).catch(() => {});
+  };
+
+  // RACCROCHER, l'arrêt effectif : l'ordre part, la fenêtre se ferme.
+  const raccrocher = () => {
+    posterFin();
+    onFermer();
+  };
+
+  // Fermer l'écran de session : si une commande est encore EN VOL (le réseau
+  // n'a pas répondu), on raccroche défensivement — une session qui s'ouvre
+  // après la fermeture ne doit jamais rester pendue sur la carte, sans écran.
+  const fermerSession = () => {
+    if (attente && !fini) posterFin();
     onFermer();
   };
 
@@ -180,6 +192,9 @@ export function OperationPopup({
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
 
   // Tant que la session est vivante, toute sortie passe par la confirmation.
+  // Et un formulaire entamé ne se jette pas sans question : la saisie perdue
+  // se nomme avant de disparaître.
+  const saisieEntamee = operation.champs.some((c) => (valeurs[c.cle] ?? "").trim());
   const retenue = etape === "session" && enSession && !fini
     ? {
         question: t.raccrocherQuestion,
@@ -187,7 +202,14 @@ export function OperationPopup({
         garder: t.garderSession,
         onArreter: raccrocher,
       }
-    : null;
+    : etape === "saisie" && saisieEntamee
+      ? {
+          question: t.jeterQuestion,
+          arreter: t.jeter,
+          garder: t.continuerSaisie,
+          onArreter: onFermer,
+        }
+      : null;
 
   const entete = (
     <>
@@ -200,11 +222,12 @@ export function OperationPopup({
   );
 
   const pied = etape === "saisie"
-    ? (
+    ? (sortir: () => void) => (
       // Les deux gestes de la préparation — l'annulation est un MOT, pas
-      // une croix : on sait ce qu'on abandonne.
+      // une croix, et passe par la même porte : une saisie entamée pose
+      // sa question avant d'être jetée.
       <div className="flex gap-2">
-        <button onClick={onFermer} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
+        <button onClick={sortir} className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint">
           {t.annuler}
         </button>
         <button disabled={!complet} onClick={lancer}
@@ -258,7 +281,7 @@ export function OperationPopup({
     <Feuille
       entete={entete}
       libelleFermer={etape === "saisie" ? t.annuler : t.fermer}
-      onFermer={onFermer}
+      onFermer={etape === "saisie" ? onFermer : fermerSession}
       retenue={retenue}
       pied={pied}
     >

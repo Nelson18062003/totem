@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { IconClose } from "./icons";
 
 /**
@@ -13,23 +13,27 @@ import { IconClose } from "./icons";
  *              et une confirmation légère quand la session est en cours.
  *
  * Aucun écran ne redessine sa croix : il pose une <Feuille> et lui dit si la
- * sortie est libre (sans perte) ou retenue (une session vivante à raccrocher).
+ * sortie est libre (sans perte) ou retenue (une session vivante à raccrocher,
+ * une saisie à ne pas jeter par mégarde).
  */
 
 /** Le bouton de fermeture : cible de 44 px, bord visible, étiquette exacte. */
 export function BoutonFermer({
   onClick,
   libelle,
+  disabled = false,
 }: {
   onClick: () => void;
   libelle: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       aria-label={libelle}
       title={libelle}
-      className="grid size-11 shrink-0 place-items-center rounded-full border border-line bg-surface-raised text-ink-soft transition hover:border-ink hover:text-ink"
+      disabled={disabled}
+      className="grid size-11 shrink-0 place-items-center rounded-full border border-line bg-surface-raised text-ink-soft transition hover:border-ink hover:text-ink disabled:opacity-40"
     >
       <IconClose size={18} />
     </button>
@@ -38,9 +42,9 @@ export function BoutonFermer({
 
 /** La sortie retenue : ce qu'il faut dire, et quoi faire si on arrête. */
 export type SortieRetenue = {
-  question: string;   // « Raccrocher la session ? »
-  arreter: string;    // « Raccrocher »
-  garder: string;     // « La garder ouverte »
+  question: string;   // « Raccrocher la session ? », « Jeter la saisie ? »
+  arreter: string;    // « Raccrocher », « Jeter »
+  garder: string;     // « La garder ouverte », « Continuer la saisie »
   onArreter: () => void;
 };
 
@@ -86,6 +90,9 @@ export function BarreArret({
  * Échap, le voile et le bouton sortent — et si `retenue` est fournie (une
  * session réseau en cours), ces trois chemins mènent à la même confirmation
  * légère au lieu de couper quoi que ce soit en silence.
+ *
+ * Le clavier reste DANS la fenêtre : le focus est piégé tant qu'elle est
+ * ouverte, et rendu à son propriétaire à la fermeture.
  */
 export function Feuille({
   entete,
@@ -106,6 +113,11 @@ export function Feuille({
   children: React.ReactNode;
 }) {
   const [confirme, setConfirme] = useState(false);
+  const boite = useRef<HTMLDivElement>(null);
+  // Un glisser commencé DANS la feuille et lâché sur le voile n'est pas un
+  // appui sur le voile : seule une pression née sur le voile compte.
+  const pressionNeeSurVoile = useRef(false);
+  const idTitre = useId();
 
   // Une seule porte de sortie : libre, elle ferme ; retenue, elle demande.
   const sortir = useCallback(() => {
@@ -128,23 +140,57 @@ export function Feuille({
     return () => window.removeEventListener("keydown", clavier);
   }, [sortir]);
 
+  // Le piège à focus : le clavier entre dans la fenêtre à l'ouverture, y
+  // circule en boucle, et revient d'où il venait à la fermeture.
+  useEffect(() => {
+    const avant = document.activeElement as HTMLElement | null;
+    boite.current?.focus();
+    const focusables = (): HTMLElement[] =>
+      [...(boite.current?.querySelectorAll<HTMLElement>(
+        'button, a[href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+      ) ?? [])].filter((e) => !e.hasAttribute("disabled") && e.offsetParent !== null);
+    const piege = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const els = focusables();
+      if (els.length === 0) return;
+      const actif = document.activeElement;
+      const dedans = boite.current?.contains(actif as Node);
+      if (!dedans) { e.preventDefault(); els[0].focus(); return; }
+      if (e.shiftKey && (actif === els[0] || actif === boite.current)) {
+        e.preventDefault(); els[els.length - 1].focus();
+      } else if (!e.shiftKey && actif === els[els.length - 1]) {
+        e.preventDefault(); els[0].focus();
+      }
+    };
+    window.addEventListener("keydown", piege, true);
+    return () => {
+      window.removeEventListener("keydown", piege, true);
+      avant?.focus?.();
+    };
+  }, []);
+
   return (
     <div
       className="voile fixed inset-0 z-30 flex items-end justify-center bg-ink/25 md:items-center md:p-4"
-      onClick={sortir}
+      onMouseDown={(e) => { pressionNeeSurVoile.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && pressionNeeSurVoile.current) sortir();
+      }}
     >
       <div
+        ref={boite}
         role="dialog"
         aria-modal="true"
-        className="surgit flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised md:max-h-[85dvh] md:rounded-card md:border"
-        onClick={(e) => e.stopPropagation()}
+        aria-labelledby={idTitre}
+        tabIndex={-1}
+        className="surgit flex max-h-[88dvh] w-full max-w-md flex-col rounded-t-card border-t border-line bg-surface-raised outline-none md:max-h-[85dvh] md:rounded-card md:border"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line py-3.5 pl-5 pr-3.5">
-          <div className="min-w-0 flex-1">{entete}</div>
+          <div id={idTitre} className="min-w-0 flex-1">{entete}</div>
           <BoutonFermer onClick={sortir} libelle={libelleFermer} />
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
 
         {(pied || confirme) && (
           <footer className="shrink-0 border-t border-line px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4">

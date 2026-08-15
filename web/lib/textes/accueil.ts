@@ -19,6 +19,8 @@ const en = {
   aucuneCarteDetail:
     "As soon as the terminal sees a SIM, its balance and the counter will appear here.",
   actualiserAria: "Refresh the balance: ask the network",
+  masquerSolde: "Hide the balance",
+  montrerSolde: "Show the balance",
   interrogerReseau: "Ask the network",
   aucunSoldeConnu: "No balance yet: press the arrow to ask the network.",
   soldeMaj: (h: string) => `From the network query at ${h}`,
@@ -66,6 +68,8 @@ const fr: typeof en = {
   aucuneCarteDetail:
     "Dès qu’une SIM sera vue par le terminal, son solde et le guichet apparaîtront ici.",
   actualiserAria: "Actualiser le solde : interroger le réseau",
+  masquerSolde: "Masquer le solde",
+  montrerSolde: "Afficher le solde",
   interrogerReseau: "Interroger le réseau",
   aucunSoldeConnu: "Aucun solde connu : appuyez sur la flèche pour interroger le réseau.",
   soldeMaj: (h) => `D’après l’interrogation de ${h}`,

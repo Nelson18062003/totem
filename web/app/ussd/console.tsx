@@ -112,7 +112,7 @@ export function ConsoleUssd({
 
   const composer = (code: string) => {
     const c = code.trim();
-    if (!c) return;
+    if (!c || enSession) return;
     setFil([]);
     setSaisie("");
     void envoyer("ussd", { code: c }, { de: "vous", texte: c });
@@ -142,11 +142,20 @@ export function ConsoleUssd({
     setAttente(false); setConfirme(false);
   }, []);
 
-  // Fermer l'écran quand rien ne vit : immédiat, sans aller-retour.
+  // Fermer l'écran quand rien ne vit : immédiat, sans aller-retour. Si une
+  // commande est encore EN VOL, on raccroche défensivement — une session qui
+  // s'ouvrirait après la fermeture ne doit jamais rester pendue sur la carte.
   const fermerEcran = useCallback(() => {
+    if (attente) {
+      fetch("/api/commande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+      }).catch(() => {});
+    }
     generation.current++;
     setFil([]); setErreur(null); setAttente(false); setConfirme(false);
-  }, []);
+  }, [attente]);
 
   // LA porte de sortie : libre quand la session est finie, retenue par la
   // confirmation quand elle est vivante — croix, voile et Échap, même porte.
@@ -209,7 +218,7 @@ export function ConsoleUssd({
               className="flex-1 bg-transparent py-2.5 text-body tabnums outline-none placeholder:text-ink-faint"
             />
           </div>
-          <button type="submit" disabled={!saisie.trim() || attente}
+          <button type="submit" disabled={!saisie.trim() || attente || enSession}
             className="rounded-btn bg-ink px-4 py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
             {t.composer}
           </button>
@@ -221,7 +230,7 @@ export function ConsoleUssd({
             serrées se visait mal sur téléphone. */}
         <div className="flex flex-col gap-1.5">
           {(codesUssd[carte.operateur] ?? []).map((c) => (
-            <button key={c.code} onClick={() => composer(c.code)} disabled={attente}
+            <button key={c.code} onClick={() => composer(c.code)} disabled={attente || enSession}
               className="flex items-center justify-between gap-3 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-left text-small font-medium text-ink transition hover:border-ink-faint disabled:opacity-40">
               {t.libelleCode(c.cle, c.libelle)}
               <span className="tabnums font-normal text-ink-faint">{c.code}</span>
@@ -262,7 +271,7 @@ export function ConsoleUssd({
           {/* UNE seule carte, réécrite à chaque réponse du réseau. Le message
               de l'opérateur a un minimum de place GARANTI : le pavé n'a pas
               le droit de l'écraser. */}
-          <div className="min-h-28 flex-1 overflow-y-auto p-4">
+          <div className="min-h-28 flex-1 overflow-y-auto overscroll-contain p-4">
             {dernier && (
               <p dir="auto" className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
                 {dernier}

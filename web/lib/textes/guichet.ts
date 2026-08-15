@@ -64,6 +64,9 @@ const en = {
   raccrocherQuestion: "Hang up the session?",
   raccrocherCourt: "Hang up",
   garderSession: "Keep it open",
+  jeterQuestion: "Discard what you typed?",
+  jeter: "Discard",
+  continuerSaisie: "Keep editing",
 
   // --- Le pavé du code secret ---------------------------------------------------
   paveTitre: "Mobile Money secret code",
@@ -131,6 +134,9 @@ const fr: typeof en = {
   raccrocherQuestion: "Raccrocher la session ?",
   raccrocherCourt: "Raccrocher",
   garderSession: "La garder ouverte",
+  jeterQuestion: "Jeter la saisie ?",
+  jeter: "Jeter",
+  continuerSaisie: "Continuer la saisie",
 
   paveTitre: "Code secret Mobile Money",
   chiffresComposes: (n) => (n > 1 ? `${n} chiffres composés` : `${n} chiffre composé`),
