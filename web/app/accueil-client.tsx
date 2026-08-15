@@ -200,28 +200,29 @@ export function AccueilGuichet({
             EST la carte posée dans le berceau, à Douala — et le signal en
             barres, qui se lit sans se déchiffrer. */}
         <div className="mt-3 flex items-end justify-between gap-3">
-          <p className="flex min-w-0 items-center gap-2.5 text-small tabnums text-white/80">
+          <p className="flex min-w-0 items-center gap-2.5 pr-20 text-small tabnums text-white/80">
             <IconPuceSim size={20} className="shrink-0 text-white/60" />
             <span className="truncate">
               {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
             </span>
           </p>
-          {/* Le logo dit la caisse — en bas à droite, dans la colonne de La
-              Tresse, comme la marque du réseau au coin d'une carte bancaire.
-              Un opérateur sans marque garde son libellé écrit. */}
-          <span className="flex shrink-0 items-center gap-2"
-            title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
-            <span className="sr-only">
-              {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
-            </span>
-            {!operateurReconnu(op) && (
-              <span className="text-caption uppercase tracking-wider text-white/85">
-                {carte.libelle}
-              </span>
-            )}
-            <LogoOperateur operateur={op} size={30} />
-          </span>
         </div>
+
+        {/* Le logo dit la caisse — POSÉ DANS L'ANGLE bas droit, hors du flux,
+            comme la marque du réseau frappée au coin d'une carte bancaire.
+            Un opérateur sans marque y garde son libellé écrit. */}
+        <span className="absolute bottom-2.5 right-2.5 flex items-center gap-2"
+          title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
+          <span className="sr-only">
+            {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
+          </span>
+          {!operateurReconnu(op) && (
+            <span className="text-caption uppercase tracking-wider text-white/85">
+              {carte.libelle}
+            </span>
+          )}
+          <LogoOperateur operateur={op} size={34} />
+        </span>
       </section>
 
       {/* Les gestes du guichet — chaque bouton ouvre son pop-up, ici même */}
