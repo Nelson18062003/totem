@@ -37,7 +37,7 @@ import threading
 import time
 
 from .analyse_sms import solde_annonce
-from .declencheur import NATURES
+from .declencheur import NATURES, RefusRecu
 from .nuage import _horodatage
 from .textes import t
 
@@ -189,7 +189,15 @@ class Pilotage:
         nature = parametres.get("nature")
         if nature not in NATURES:
             nature = None
-        numero = self.programmeur(source_id, nature=nature)
+        try:
+            numero = self.programmeur(source_id, nature=nature)
+        except RefusRecu as refus:
+            # Le robot dit ce qu'il a LU, pas seulement ce qui manque : une
+            # opération annulée, un code, un message illisible et une nature
+            # qui ne colle pas aux faits sont quatre situations différentes —
+            # une seule phrase pour les quatre faisait chercher le
+            # propriétaire au mauvais endroit pendant des heures.
+            raise RefusPoli(self._expliquer_refus(refus.raison, langue))
         if not numero:
             raise RefusPoli(t(
                 "This message does not carry what that receipt needs — a "
@@ -205,6 +213,53 @@ class Pilotage:
                  "ready to download in a moment.",
                  f"Reçu {numero} en fabrication : il sera archivé et "
                  "téléchargeable dans un instant.", langue=langue)
+
+    @staticmethod
+    def _expliquer_refus(raison, langue=None):
+        """La phrase qui explique un reçu refusé — ce que le robot a lu,
+        dans la langue du demandeur."""
+        phrases = {
+            "echec": t(
+                "The robot read this message as a failed or cancelled "
+                "operation — no receipt for a movement that never happened.",
+                "Le robot lit ce message comme une opération échouée ou "
+                "annulée — pas de reçu pour un mouvement qui n'a pas eu "
+                "lieu.", langue=langue),
+            "code": t(
+                "This message carries a one-time code — never a receipt.",
+                "Ce message porte un code à usage unique — jamais de reçu.",
+                langue=langue),
+            "publicite": t(
+                "The robot read this message as an advert from the operator "
+                "— no receipt without a real movement.",
+                "Le robot lit ce message comme une réclame de l'opérateur — "
+                "pas de reçu sans mouvement réel.", langue=langue),
+            "illisible": t(
+                "This message speaks of money but the robot could not read "
+                "it fully — no amount was invented. The original text "
+                "remains available in full.",
+                "Ce message parle d'argent mais le robot n'a pas réussi à le "
+                "lire en entier — aucun montant n'a été inventé. Le texte "
+                "d'origine reste consultable en entier.", langue=langue),
+            "solde_pas_mouvement": t(
+                "The robot reads this message as a balance announcement, not "
+                "a movement — a transfer receipt needs a readable amount.",
+                "Le robot lit ce message comme une annonce de solde, pas "
+                "comme un mouvement — un reçu de transfert exige un montant "
+                "lisible.", langue=langue),
+            "mouvement_sans_solde": t(
+                "This movement announces no balance — a balance receipt "
+                "needs one.",
+                "Ce mouvement n'annonce aucun solde — un reçu de solde en "
+                "exige un.", langue=langue),
+        }
+        return phrases.get(raison, t(
+            "This message does not carry what that receipt needs — a "
+            "readable amount for a transfer, an announced balance for a "
+            "balance receipt.",
+            "Ce message ne porte pas de quoi remplir ce reçu — un montant "
+            "lisible pour un transfert, un solde annoncé pour un reçu de "
+            "solde.", langue=langue))
 
     def _definir_identite(self, parametres, langue=None):
         """Inscrit le numéro et/ou le nom d'une carte depuis la plateforme,

@@ -60,14 +60,31 @@ catégories, détectées à partir du texte (`analyse_sms.py`) :
 | `depot` | « Dépôt vers … réussi » | oui |
 | `retrait` | « Retrait de … » | oui |
 | `solde` | « Le solde de votre compte est de … » | oui |
+| `echec` | « Transfert … échoué », « Opération annulée » | non — rien ne s'est passé |
 | `code` | « Le code de … est : 515318 » | non (masqué) |
 | `publicite` | « 2 millions à gagner avec Orange Money ! » | non |
+| `illisible` | parle d'argent, mais le robot n'a pas tout compris | non — à classer à la main |
 | `message` | un SMS de n'importe qui, sans rapport | non |
 | `inconnu` | compris à moitié : on l'affiche tel quel | non |
 
 La catégorie n'est qu'une **aide** : le SMS reste toujours lisible en entier,
 quelle que soit sa catégorie. Un code à usage unique est la seule exception —
 son chiffre est masqué (`••••••`) partout, dès la lecture.
+
+Deux catégories disent une lecture qui n'a pas abouti, et c'est voulu :
+
+- **`echec`** — l'opération n'a pas eu lieu (échouée, annulée, remboursée).
+  Elle n'est comptée nulle part : ni alerte d'encaissement, ni bilan, ni
+  reçu. Avant, un paiement annulé passait pour un encaissement partout sauf
+  au moment du reçu, qui le refusait sans dire pourquoi.
+- **`illisible`** — le message porte les marques d'une opération (un geste,
+  des montants, des parties numérotées) mais le robot n'a pas su le lire en
+  entier. Il le **dit**, plutôt que de se déguiser en solde ou en message
+  quelconque : c'est la leçon du transfert vers « GARANTIE EXCHANGE SARL 3 »
+  (août 2026), qu'un chiffre dans le nom du client faisait passer pour une
+  interrogation de solde. Le robot le signale aussi sur Telegram, pour que
+  le propriétaire l'apprenne le jour même — et le SMS peut être **classé à
+  la main** sur la plateforme pour obtenir son reçu.
 
 ## Choisir la nature d'un SMS, et en tirer un reçu
 
@@ -92,7 +109,8 @@ Une **boîte de réception**, comme la messagerie d'un téléphone :
 - tous les SMS, du plus récent au plus ancien, groupés par jour (heure réseau) ;
 - pour chacun : l'**expéditeur**, l'heure, une **pastille de catégorie**
   (💰 encaissement, ↗️ envoi, 🔁 transfert, 📥 dépôt, 📤 retrait, 📊 solde,
-  🔑 code, 📢 pub, 💬 message) et, s'il y a lieu, le montant ;
+  ✖️ échec, 🔑 code, 📢 pub, ✉️ illisible, 💬 message) et, s'il y a lieu,
+  le montant ;
 - une **recherche** (nom, numéro, montant, texte) et un **filtre par
   catégorie** et par SIM ;
 - en ouvrant un SMS : son texte complet, le choix de sa **nature**, et le

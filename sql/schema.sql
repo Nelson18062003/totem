@@ -110,7 +110,10 @@ create table if not exists paiements (
   -- « Orange », « MTN »… C'est le nom que la liste des SMS met en avant.
   expediteur   text,
   -- La catégorie devinée du SMS, pour la boîte de réception : encaissement,
-  -- envoi, transfert, depot, retrait, solde, code, publicite, message.
+  -- envoi, transfert, depot, retrait, solde, echec, code, publicite,
+  -- illisible, message. « echec » : une opération annulée ou échouée — rien
+  -- ne s'est passé. « illisible » : le message parle d'argent mais le robot
+  -- n'a pas su le lire en entier — il le dit, plutôt que de se déguiser.
   categorie    text,
   -- La nature CHOISIE par le propriétaire (depot/retrait/transfert/solde),
   -- qui l'emporte sur la catégorie devinée et déclenche le reçu.

@@ -30,8 +30,8 @@ from datetime import datetime
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
                           masquer_secrets)
-from .declencheur import (SOLDE, TRANSFERT, motif_du_menu,
-                          motif_du_sms, motif_selon_nature)
+from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
+                          motif_du_sms, motif_selon_nature, raison_du_refus)
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
                    recu_transfert)
 from .codes import catalogue, cle as cle_code
@@ -1909,7 +1909,8 @@ class Robot:
     # l'annonce d'un encaissement. Le SMS est donc seulement inscrit, et la
     # boucle de surveillance s'en occupe une dizaine de secondes plus tard.
 
-    def _programmer_recu(self, source_id, texte, source="sms", nature=None):
+    def _programmer_recu(self, source_id, texte, source="sms", nature=None,
+                         expliquer=False):
         """Inscrit ce message pour un reçu, s'il en mérite un.
 
         `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
@@ -1919,15 +1920,27 @@ class Robot:
         `nature` : le choix du propriétaire quand la demande vient de la
         plateforme. C'est lui qui décide du document — et sans les faits pour
         le remplir honnêtement, on refuse plutôt que de replier sur un autre.
+
+        `expliquer` : à True (demande de la plateforme), un refus lève
+        `RefusRecu` avec sa raison, et une panne LÈVE au lieu d'être avalée.
+        Avant, un disque plein répondait « ce message ne porte pas de quoi
+        remplir ce reçu » — le propriétaire accusait le SMS quand il fallait
+        regarder le terminal.
         """
         if not self.recus or not source_id:
             return None
+        # La lecture ne lève jamais (c'est la promesse d'analyse_sms) : elle
+        # peut vivre hors du parapluie, pour que le refus et la panne restent
+        # deux histoires distinctes.
+        motif = (motif_du_menu(texte) if source == "ussd"
+                 else motif_du_sms(texte, numeros=self._nos_numeros()))
+        motif = motif_selon_nature(motif, nature)
+        if motif is None:
+            if expliquer:
+                raise RefusRecu(raison_du_refus(
+                    texte, nature=nature, numeros=self._nos_numeros()))
+            return None
         try:
-            motif = (motif_du_menu(texte) if source == "ussd"
-                     else motif_du_sms(texte, numeros=self._nos_numeros()))
-            motif = motif_selon_nature(motif, nature)
-            if motif is None:
-                return None
             numero = numero_de_recu(datetime.now(), source_id, source)
             # Le numéro EN VIGUEUR peut être celui d'un document déjà inscrit
             # (même message redemandé un autre jour, même référence) : c'est
@@ -1936,6 +1949,8 @@ class Robot:
                 source_id, motif.genre, numero, motif.reference,
                 source=source, nature=nature)
         except Exception as e:
+            if expliquer:
+                raise           # une panne se raconte comme une panne
             # Un reçu manqué est un désagrément ; une relève de SMS
             # interrompue est une perte d'argent. On note, et on continue.
             self.journal.evenement(f"reçu non programmé : {e}")
@@ -1949,7 +1964,8 @@ class Robot:
         texte = self.journal.texte_sms(source_id)
         if not texte:
             return None
-        return self._programmer_recu(source_id, texte, nature=nature)
+        return self._programmer_recu(source_id, texte, nature=nature,
+                                     expliquer=True)
 
     def _distribuer_recus(self):
         """Fabrique, envoie, puis archive les reçus mûrs."""
@@ -2194,6 +2210,21 @@ class Robot:
         else:
             entete = t(f"📥 {gras('SMS')}{etiquette} from {gras(expediteur)}",
                        f"📥 {gras('SMS')}{etiquette} de {gras(expediteur)}")
+            # Le silence qui coûte cher : un SMS d'argent que le lecteur n'a
+            # pas su lire s'affichait comme n'importe quel message, et
+            # l'opération n'était comptée nulle part. Quand Orange ou MTN
+            # changent une tournure, le propriétaire doit l'apprendre le jour
+            # même — pas des semaines plus tard devant un bilan trop maigre.
+            if categoriser(texte, numeros=self._nos_numeros()) == "illisible":
+                entete += "\n" + t(
+                    "⚠️ This message speaks of money but I could not read it "
+                    "fully — it is counted nowhere. You can classify it on "
+                    "the platform for its receipt.",
+                    "⚠️ Ce message parle d'argent mais je n'ai pas réussi à "
+                    "le lire en entier — il n'est compté nulle part. Tu peux "
+                    "le classer sur la plateforme pour son reçu.")
+                self._noter(f"SMS d'argent illisible ({expediteur}) : "
+                            "lecture incomplète, opération comptée nulle part")
 
         self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
 

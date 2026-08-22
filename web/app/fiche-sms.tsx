@@ -7,8 +7,9 @@ import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
 import { Feuille } from "./feuille";
 import {
-  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconCopy,
-  IconDoc, IconLock, IconMail, IconMegaphone, IconPlus, IconTransfer,
+  IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
+  IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus,
+  IconTransfer,
 } from "./icons";
 import { reveillerLaVeille } from "./veille";
 
@@ -23,8 +24,10 @@ export const CAT: Record<Categorie, typeof IconArrowDown> = {
   depot: IconPlus,
   retrait: IconBank,
   solde: IconChart,
+  echec: IconClose,
   code: IconLock,
   publicite: IconMegaphone,
+  illisible: IconMail,
   message: IconBubble,
   inconnu: IconMail,
 };
@@ -45,6 +48,10 @@ const SCHEMA_CAT: Partial<Record<Categorie, string>> = {
   encaissement: "bg-[#cff7d3] text-[#02542d]",
   depot: "bg-[#cff7d3] text-[#02542d]",
   publicite: "bg-[#fff1c2] text-[#522504]",
+  // Ambre « attention » : un échec et un message illisible méritent un
+  // coup d'œil — pas une alarme rouge, rien n'est perdu.
+  echec: "bg-[#fff1c2] text-[#522504]",
+  illisible: "bg-[#fff1c2] text-[#522504]",
 };
 
 /** Les couleurs de la pastille d'une catégorie — schéma SDS, neutre sinon. */
@@ -303,8 +310,13 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
       {/* La nature : une ligne comme les autres — le choix ne se déploie
           qu'à la demande. Réservée à l'argent (et aux SMS incompris, qui
           peuvent en cacher) : une publicité n'a pas de nature. Hors du dl :
-          ses boutons n'ont rien d'une définition. */}
-      {(argent || catDe(p) === "inconnu") && (
+          ses boutons n'ont rien d'une définition.
+
+          « illisible » et « message » y ont droit aussi : c'est LA porte de
+          sortie quand le robot n'a pas su lire un SMS d'argent. Elle était
+          réservée à « inconnu » — une valeur que le robot n'émet jamais —
+          et le propriétaire restait sans recours devant son propre argent. */}
+      {(argent || ["inconnu", "illisible", "echec", "message"].includes(catDe(p))) && (
           <div className="border-t border-line py-2.5">
             {choisirType ? (
               <>

@@ -31,9 +31,13 @@ export type Sim = {
 };
 
 // La catégorie d'un SMS reçu, comme une boîte de réception les range.
+// « echec » : une opération échouée ou annulée — rien ne s'est passé.
+// « illisible » : le message parle d'argent, le robot n'a pas tout compris —
+// il le dit, plutôt que de se déguiser en solde ou en message quelconque.
 export type Categorie =
   | "encaissement" | "envoi" | "transfert" | "depot" | "retrait"
-  | "solde" | "code" | "publicite" | "message" | "inconnu";
+  | "solde" | "echec" | "code" | "publicite" | "illisible"
+  | "message" | "inconnu";
 
 export type Paiement = {
   id: string;
