@@ -1,3 +1,4 @@
+import { estNature } from "@/lib/natures";
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@/lib/textes/api";
@@ -40,15 +41,19 @@ export async function POST(req: Request) {
   }
   if (brut.secret === true) parametres.secret = true;
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
-  // La nature choisie pour un reçu : une des quatre valeurs connues, rien
-  // d'autre ne passe.
-  if (typeof brut.nature === "string" &&
-      ["depot", "retrait", "transfert", "solde"].includes(brut.nature)) {
+  // La nature choisie pour un reçu : une nature connue, rien d'autre ne passe.
+  if (estNature(brut.nature)) {
     parametres.nature = brut.nature;
   }
   if (Number.isInteger(brut.source_id) && brut.source_id > 0) {
     parametres.source_id = brut.source_id;
   }
+  // Le terminal visé, quand la demande concerne un SMS précis : celui qui l'a
+  // reçu. Sans lui, la demande part au dernier terminal qui a donné signe de
+  // vie — juste avec deux boîtiers, `source_id` viserait le mauvais journal.
+  const terminalCible = typeof corps?.terminal === "string"
+    ? corps.terminal.replace(/[^\w.-]/g, "").slice(0, 64)
+    : null;
   // Réglage de l'identité d'une carte : l'ICCID vise la puce, le numéro et le
   // nom sont nettoyés ici puis revérifiés par le terminal, qui reste juge.
   if (typeof brut.iccid === "string") {
@@ -77,7 +82,7 @@ export async function POST(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
-  const id = await creerCommande(genre, parametres);
+  const id = await creerCommande(genre, parametres, terminalCible);
   if (id == null) {
     return Response.json({ erreur: erreurApi(langue, "depotImpossible") }, { status: 502 });
   }

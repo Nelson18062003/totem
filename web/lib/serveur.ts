@@ -18,7 +18,7 @@
 // sont vides et le disent.
 
 import type { Donnees, EtatTerminal, Paiement, Sim } from "./types";
-import { jourDouala } from "./types";
+import { estCategorie, jourDouala } from "./types";
 import type { Langue } from "./langue";
 
 const url = process.env.SUPABASE_URL;
@@ -62,10 +62,14 @@ type LigneCompte = {
   reseau: string | null; itinerance: boolean; numero: string | null;
   solde: number | null; signal: number | null; maj: string;
 };
-type LigneRecu = { numero: string; reference: string | null; chemin: string };
+type LigneRecu = {
+  numero: string; reference: string | null; chemin: string;
+  terminal?: string | null;
+};
 
 type LignePaiement = {
   id: number; source_id?: number | null; expediteur?: string | null;
+  terminal?: string | null;
   compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
@@ -178,19 +182,28 @@ export async function chargerDonnees(
   const terminal = versTerminal(terminaux[0], langue);
 
   // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
-  // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS, valable
-  // pour les transferts comme pour les soldes — aucune devinette.
+  // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS — mais
+  // seulement dans SA famille et sur SON terminal. Le préfixe compte : les
+  // reçus de solde USSD (« TS-… ») numérotent leur propre journal, qui
+  // démarre lui aussi à 1 — sans le préfixe, un relevé de solde s'accrochait
+  // au SMS n° 42 et le client téléchargeait le mauvais document.
   const ligneDuRecu = (numero: string): number | null => {
     const m = /-(\d+)$/.exec(numero);
     return m ? Number(m[1]) : null;
   };
+  const memeTerminal = (r: LigneRecu, l: LignePaiement): boolean =>
+    r.terminal == null || l.terminal == null || r.terminal === l.terminal;
   const recuDe = (l: LignePaiement): string | null => {
     const parReference = l.reference
-      ? recus.find((r) => r.reference && r.reference === l.reference)
+      ? recus.find((r) => r.reference && r.reference === l.reference
+                          && memeTerminal(r, l))
       : undefined;
     if (parReference) return parReference.numero;
     if (l.source_id == null) return null;
-    return recus.find((r) => ligneDuRecu(r.numero) === l.source_id)?.numero ?? null;
+    return recus.find((r) => r.numero.startsWith("TM-")
+                             && memeTerminal(r, l)
+                             && ligneDuRecu(r.numero) === l.source_id)
+      ?.numero ?? null;
   };
 
   // Chaque SMS affiche QUI l'a envoyé, comme la messagerie du téléphone :
@@ -207,8 +220,12 @@ export async function chargerDonnees(
   // l'heure de relève. On trie ici, côté serveur, indépendamment de l'ordre
   // renvoyé par la base (qui peut être en retard sur une migration).
   const moment = (l: LignePaiement): string => l.emis_le || l.recu_le;
+  // Les valeurs venues de la base repassent par la liste connue : un
+  // terminal plus récent que l'écran ne doit jamais casser l'affichage —
+  // une catégorie inconnue se montre « message », une nature inconnue
+  // s'ignore, et le SMS reste lisible en entier.
   const parNature = (v: string | null | undefined): Paiement["nature"] =>
-    (v as Paiement["nature"]) || null;
+    (v && estCategorie(v) ? v : null);
 
   // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
   // portent un montant, les autres restent lisibles tels quels.
@@ -228,14 +245,17 @@ export async function chargerDonnees(
       date: libelleJour(moment(l), langue),
       jour: jourDouala(new Date(moment(l))),
       recuLe: moment(l),
-      // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne).
-      categorie: (l.categorie as Paiement["categorie"]) || "message",
+      // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne,
+      // ou valeur d'un terminal plus récent que cet écran).
+      categorie: (l.categorie && estCategorie(l.categorie)
+        ? l.categorie : "message") as Paiement["categorie"],
       nature: parNature(l.nature),
       reference: l.reference ?? "",
       soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
       smsBrut: l.texte,
       recu: recuDe(l),
       sourceId: l.source_id ?? null,
+      terminal: l.terminal ?? null,
       // Non lu SEULEMENT si la base connaît la notion (colonne présente) et
       // que la ligne n'a jamais été ouverte. Base pas migrée → tout est « lu » :
       // la fonctionnalité dort, elle ne crie pas faux.
@@ -324,9 +344,14 @@ async function terminalVise(): Promise<string | null> {
 export async function creerCommande(
   genre: string,
   parametres: Record<string, unknown>,
+  // Le terminal à qui la demande s'adresse. Quand la demande concerne un SMS
+  // précis (un reçu), c'est le terminal qui a REÇU ce SMS — jamais « le
+  // dernier qui a donné signe de vie », qui, avec deux boîtiers, chercherait
+  // le message dans le mauvais journal et fabriquerait le reçu d'un autre.
+  terminalCible?: string | null,
 ): Promise<number | null> {
   if (!relie) return null;
-  const terminal = await terminalVise();
+  const terminal = terminalCible || (await terminalVise());
   if (!terminal) return null;
   try {
     const r = await fetch(`${url}/rest/v1/commandes`, {

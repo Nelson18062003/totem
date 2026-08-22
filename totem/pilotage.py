@@ -190,7 +190,9 @@ class Pilotage:
         if nature not in NATURES:
             nature = None
         try:
-            numero = self.programmeur(source_id, nature=nature)
+            # La langue voyage avec la demande : la fabrication est différée,
+            # et le PDF doit sortir dans la langue de l'écran qui l'a demandé.
+            numero = self.programmeur(source_id, nature=nature, langue=langue)
         except RefusRecu as refus:
             # Le robot dit ce qu'il a LU, pas seulement ce qui manque : une
             # opération annulée, un code, un message illisible et une nature

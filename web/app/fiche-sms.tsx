@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
+import { NATURES as NATURES_CHOISIES } from "@/lib/natures";
 import { textesSms } from "@/lib/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@/lib/types";
 import { Feuille } from "./feuille";
@@ -58,8 +59,9 @@ const SCHEMA_CAT: Partial<Record<Categorie, string>> = {
 export const classeCat = (c: Categorie): string =>
   SCHEMA_CAT[c] ?? "border border-line text-ink-soft";
 
-// Les natures que le propriétaire peut choisir à la main (elles donnent un reçu).
-const NATURES: Categorie[] = ["depot", "retrait", "transfert", "solde"];
+// Les natures que le propriétaire peut choisir à la main (elles donnent un
+// reçu) — la liste partagée avec les guichets d'API, miroir du terminal.
+const NATURES: readonly Categorie[] = NATURES_CHOISIES;
 
 // La catégorie effective : la nature choisie par le propriétaire l'emporte sur
 // la catégorie devinée par le terminal.
@@ -74,8 +76,10 @@ export const estArgent = (p: Paiement): boolean =>
 // Seconde ligne de défense : le robot masque les codes à usage unique avant
 // de les transmettre, mais l'écran ne fait pas aveuglément confiance à la
 // base — une ligne d'avant le masquage remasque ses chiffres à l'affichage.
+// La catégorie DEVINÉE suffit à déclencher le masque : une nature posée à la
+// main ne doit jamais déshabiller un code — c'est une défense, pas un habit.
 export const texteSurEcran = (p: Paiement): string =>
-  catDe(p) === "code"
+  p.categorie === "code" || catDe(p) === "code"
     ? p.smsBrut.replace(/\d(?:[\s.-]?\d){2,9}/g, "••••••")
     : p.smsBrut;
 
@@ -119,22 +123,34 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   }, [p.id, p.nonLu, router]);
 
   // Le propriétaire décide la nature d'un SMS (dépôt/retrait/transfert/solde) :
-  // elle s'affiche ainsi partout, et son reçu s'établit dans la foulée.
+  // elle s'affiche ainsi partout, et son reçu suit dans la foulée — établi
+  // s'il n'existe pas, REFABRIQUÉ s'il existe sous une autre nature. Avant,
+  // un reçu déjà émis restait sous son ancien titre : la liste disait
+  // « Retrait » et le PDF téléchargé disait encore « Reçu de dépôt ».
   const classer = async (n: Categorie) => {
     if (classe) return;
     setClasse(true);
+    const avant = nature;
     setNature(n);
     setChoisirType(false);
     try {
-      await fetch("/api/nature", {
+      const r = await fetch("/api/nature", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: Number(p.id), nature: n }),
       });
-      if (p.sourceId != null && !p.recu) await etablirRecu();
+      if (!r.ok) throw new Error();
+      // La nature CHOISIE voyage explicitement : l'état React de ce rendu
+      // porte encore l'ancienne valeur, et une demande partie sans elle
+      // laissait le terminal décider seul — le classement d'un SMS illisible
+      // n'aurait jamais donné son reçu.
+      if (p.sourceId != null && (!p.recu || n !== (avant ?? p.categorie))) {
+        await etablirRecu(n);
+      }
       router.refresh();
     } catch {
-      /* l'échec reste visible via l'état du reçu */
+      // L'écran ne montre jamais une nature que la base n'a pas retenue.
+      setNature(avant);
     }
     setClasse(false);
   };
@@ -157,8 +173,9 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     }
   };
 
-  const etablirRecu = async () => {
+  const etablirRecu = async (natureVoulue?: Categorie) => {
     if (etabli === "envoi" || p.sourceId == null) return;
+    const natureDemandee = natureVoulue ?? nature;
     setEtabli("envoi");
     const etabliAvant = await ficheRecu();
     try {
@@ -167,7 +184,13 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           type: "recu",
-          parametres: { source_id: p.sourceId, ...(nature ? { nature } : {}) },
+          // Le terminal qui a REÇU ce SMS : `source_id` ne veut rien dire
+          // dans le journal d'un autre boîtier.
+          ...(p.terminal ? { terminal: p.terminal } : {}),
+          parametres: {
+            source_id: p.sourceId,
+            ...(natureDemandee ? { nature: natureDemandee } : {}),
+          },
         }),
       });
       if (!r.ok) throw new Error();
@@ -271,7 +294,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           </a>
         ) : (
           p.sourceId != null && etabli !== "fait" && (
-            <button onClick={etablirRecu} disabled={etabli === "envoi"}
+            <button onClick={() => etablirRecu()} disabled={etabli === "envoi"}
               className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
               <IconDoc size={15} />
               {etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
@@ -282,7 +305,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
       {/* Refaire un document existant : un geste discret, pas un troisième
           bouton — le cas est rare, il ne mérite pas la première ligne. */}
       {argent && p.recu && p.sourceId != null && (
-        <button onClick={etablirRecu} disabled={etabli === "envoi" || etabli === "fait"}
+        <button onClick={() => etablirRecu()} disabled={etabli === "envoi" || etabli === "fait"}
           className="mt-2 text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink disabled:opacity-40">
           {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
         </button>

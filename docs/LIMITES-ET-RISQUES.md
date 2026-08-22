@@ -70,6 +70,48 @@ Si l'opérateur n'envoie pas de SMS pour une opération, elle n'existe pas pour
 TOTEM. Il n'y a pas d'API Mobile Money derrière : c'est de la lecture de SMS.
 Le journal est un **reflet**, jamais la source de vérité comptable.
 
+### ✅ Un SMS d'argent mal lu se déguisait en autre chose
+Le cas vécu (août 2026) : un chiffre dans la raison sociale d'un client
+(« GARANTIE EXCHANGE SARL 3 ») cassait la lecture du transfert anglais, et
+le lecteur retombait sur le « New balance » du même SMS — un transfert d'un
+million devenait une « interrogation de solde », sans reçu possible. Un
+paiement **annulé** passait de même pour un encaissement partout sauf au
+moment du reçu.
+
+*En place* : la lecture ancre les parties sur leurs numéros (le nom d'un
+client — chiffres, apostrophes, longueur — ne casse plus rien) ; un message
+d'argent incompris est dit **« illisible »**, signalé sur Telegram le jour
+même et classable à la main sur la plateforme ; une opération échouée est
+**« échec »** partout (alerte, bilan, plateforme, reçu). Les refus de reçu
+disent ce qui a été lu. Voir `docs/SMS.md` et `tests/test_lecture_robuste.py`.
+
+### 🟡 Une ligne refusée par le cloud ne réessaie jamais
+Quand la base refuse un paiement (migration en retard, type inattendu), la
+ligne est mise de côté **définitivement** : une alerte Telegram part (au plus
+une par quart d'heure), l'événement est journalisé, mais rien ne la
+représentera après réparation. Le SMS reste sur Telegram et dans le journal
+du Pi — rien n'est perdu — mais la plateforme ne l'aura jamais.
+
+*Reste à faire* : une file de quarantaine avec re-tentative après réparation
+du schéma, et un compteur visible dans la santé du terminal.
+
+### 🔴 Un journal reconstruit réutilise les mêmes identifiants
+La clé du cloud est (terminal, n° de ligne du journal). Après une carte SD
+morte ou une restauration, le journal repart de la ligne 1 : chaque nouveau
+SMS **écrase** dans le cloud le paiement historique qui portait ce numéro.
+Rien ne le détecte aujourd'hui.
+
+*Reste à faire* : une empreinte d'instance du journal (créée à la première
+ouverture, jointe à chaque envoi) dans la clé d'unicité du cloud — à poser
+en même temps côté base et côté robot, jamais l'un sans l'autre.
+
+### 🟡 Deux paiements identiques à un quart d'heure d'écart
+Le garde-fou anti-doublon (même expéditeur, même texte, même compte, 15 min)
+protège contre les relectures du modem — mais deux paiements **réellement
+identiques** (même montant rond, même numéro, SMS sans référence) dans la
+fenêtre n'en laissent qu'un. Avec une référence d'opérateur dans le texte,
+les deux passent (les textes diffèrent).
+
 ---
 
 ## 2. Le robot devient muet ou injoignable
@@ -295,6 +337,17 @@ Avec deux opérateurs dont les menus diffèrent, une seule liste de raccourcis
 ne peut pas convenir aux deux : le code du second se compose à la main.
 
 *À faire* : rattacher chaque raccourci à un opérateur.
+
+### 🟡 Un deuxième boîtier n'est pas encore un citoyen complet
+La plateforme n'affiche qu'un terminal (le dernier vu), et le téléchargement
+d'un reçu cherche son numéro **sans** préciser le terminal : deux boîtiers
+peuvent frapper le même numéro le même jour, et le mauvais document sortirait.
+
+*En place* : une demande de reçu part désormais au terminal qui a REÇU le
+SMS (plus jamais « le dernier qui a donné signe de vie »), et un reçu ne se
+rattache à un paiement que dans sa famille (préfixe TM/TS) et sur son
+terminal. *Reste à faire* avant un vrai deuxième boîtier : le terminal dans
+l'adresse de téléchargement des reçus, et un écran multi-terminaux.
 
 ---
 

@@ -216,6 +216,11 @@ class Robot:
             for module in (analyse_sms, declencheur):
                 with open(module.__file__, "rb") as source:
                     h.update(source.read())
+            # Nos numéros font aussi partie de la lecture : déclarer celui
+            # d'une carte tranche le sens des transferts à deux parties —
+            # sans lui dans l'empreinte, l'historique gardait pour toujours
+            # ses « sens à confirmer » alors que les nouveaux SMS savaient.
+            h.update("|".join(sorted(self._nos_numeros())).encode("utf-8"))
             empreinte = h.hexdigest()
             if self.journal.lire_memo("empreinte_lecteur") == empreinte:
                 return
@@ -739,7 +744,8 @@ class Robot:
         return lignes
 
     def _accueil(self, canal, role):
-        nb, total, _ = self.journal.rapport_du_jour(self._cartes_en_place())
+        nb, total, _ = self.journal.rapport_du_jour(
+            self._cartes_en_place(), numeros=self._nos_numeros())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
         courant = (t(f"\nActive account: {gras(self.courant.libelle)}",
                      f"\nCompte piloté : {gras(self.courant.libelle)}")
@@ -1330,7 +1336,11 @@ class Robot:
                                boutons=[[("🏠 Menu", "c:menu")]])
 
     def _rapport(self, canal=None, manuel=False):
-        nb, total, nb_sms = self.journal.rapport_du_jour(self._cartes_en_place())
+        # Les mêmes numéros que la plateforme : le bilan Telegram et le site
+        # doivent compter les MÊMES encaissements — surtout les transferts à
+        # deux parties, dont le sens dépend de nos numéros.
+        nb, total, nb_sms = self.journal.rapport_du_jour(
+            self._cartes_en_place(), numeros=self._nos_numeros())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
         self.transport.envoyer(
             t(f"{'📊' if manuel else '🌙'} {gras('Last 24 hours')}\n"
@@ -1344,7 +1354,8 @@ class Robot:
                      if manuel else None))
 
     def _export(self, canal=None):
-        contenu = self.journal.export_csv(7, self._cartes_en_place())
+        contenu = self.journal.export_csv(7, self._cartes_en_place(),
+                                          numeros=self._nos_numeros())
         nom = f"totem-{datetime.now():%Y-%m-%d}.csv"
         if not self.transport.envoyer_fichier(
                 nom, contenu,
@@ -1910,7 +1921,7 @@ class Robot:
     # boucle de surveillance s'en occupe une dizaine de secondes plus tard.
 
     def _programmer_recu(self, source_id, texte, source="sms", nature=None,
-                         expliquer=False):
+                         langue=None, expliquer=False):
         """Inscrit ce message pour un reçu, s'il en mérite un.
 
         `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
@@ -1947,7 +1958,7 @@ class Robot:
             # lui qu'on annonce, jamais un numéro qui n'existe pas.
             return self.journal.programmer_recu(
                 source_id, motif.genre, numero, motif.reference,
-                source=source, nature=nature)
+                source=source, nature=nature, langue=langue)
         except Exception as e:
             if expliquer:
                 raise           # une panne se raconte comme une panne
@@ -1956,16 +1967,20 @@ class Robot:
             self.journal.evenement(f"reçu non programmé : {e}")
             return None
 
-    def _recu_apres_coup(self, source_id, nature=None):
+    def _recu_apres_coup(self, source_id, nature=None, langue=None):
         """Établit (ou ré-établit) le reçu d'un SMS passé, à la demande de
         la plateforme. Le numéro ne dépend que de la ligne du journal : un
         reçu redemandé reprend exactement le même — mais une autre nature
-        refabrique le document sous son nouveau titre."""
+        refabrique le document sous son nouveau titre.
+
+        `langue` : celle de l'écran qui demande. Elle voyage jusqu'au PDF —
+        la fabrication est différée, sans elle un écran en français recevait
+        un document dans la langue du robot."""
         texte = self.journal.texte_sms(source_id)
         if not texte:
             return None
         return self._programmer_recu(source_id, texte, nature=nature,
-                                     expliquer=True)
+                                     langue=langue, expliquer=True)
 
     def _distribuer_recus(self):
         """Fabrique, envoie, puis archive les reçus mûrs."""
@@ -1980,6 +1995,11 @@ class Robot:
                 self.journal.recu_echoue(identifiant)
                 continue
             if pdf is None:
+                # Le message ne se lit plus sous le genre inscrit. Un abandon
+                # SILENCIEUX laissait la plateforme promettre un document qui
+                # n'arriverait jamais — l'événement, lui, remonte au cloud.
+                self._noter(f"reçu {ligne[2]} abandonné : le message ne se "
+                            "lit plus sous ce genre")
                 self.journal.recu_echoue(identifiant, essais_max=1)
                 continue
             if self.transport.envoyer_fichier(nom, pdf, legende,
@@ -1997,11 +2017,18 @@ class Robot:
         for ligne in self.journal.recus_a_archiver():
             try:
                 nom, pdf, _ = self._fabriquer_recu(ligne)
-            except Exception:
-                self.journal.recu_archive(ligne[0])   # inutile d'insister
+            except Exception as e:
+                # Inutile d'insister — mais pas en silence : le PDF est bien
+                # parti sur Telegram, il manquera au cloud, et il faut
+                # pouvoir comprendre pourquoi l'icône n'apparaît jamais.
+                self._noter(f"reçu {ligne[2]} non archivé : {e}")
+                self.journal.recu_archive(ligne[0])
                 continue
-            if pdf is None or self.nuage.archiver_recu(
-                    nom, pdf, self._fiche_recu(ligne)):
+            if pdf is None:
+                self._noter(f"reçu {ligne[2]} non archivé : le message ne "
+                            "se lit plus sous ce genre")
+                self.journal.recu_archive(ligne[0])
+            elif self.nuage.archiver_recu(nom, pdf, self._fiche_recu(ligne)):
                 self.journal.recu_archive(ligne[0])
             else:
                 break
@@ -2009,8 +2036,12 @@ class Robot:
     def _fabriquer_recu(self, ligne):
         """(nom de fichier, PDF, légende) — ou (nom, None, «») si le SMS n'est
         plus compris. Le document se refait à l'identique depuis le message :
-        rien n'est conservé sur la carte SD."""
-        _, genre, numero, date, texte, compte, iccid, nature = ligne
+        rien n'est conservé sur la carte SD.
+
+        `langue` : celle inscrite avec la demande (l'écran qui a demandé le
+        reçu). Vide — reçu né d'un SMS entrant — le document suit la langue
+        du robot, comme avant."""
+        _, genre, numero, date, texte, compte, iccid, nature, langue = ligne
         quand = datetime.fromisoformat(date)
         # Le genre INSCRIT fait foi : un solde demandé sur un SMS de transfert
         # se remplit avec le « nouveau solde » que ce transfert annonce.
@@ -2027,13 +2058,16 @@ class Robot:
             # « Reçu de dépôt », un retrait un « Reçu de retrait ». Le reste
             # (envois, encaissements, transferts entre comptes) reste « Reçu
             # de transfert » — le document, lui, est identique.
-            titre = {"depot": t("Deposit receipt", "Reçu de dépôt"),
-                     "retrait": t("Withdrawal receipt", "Reçu de retrait")}.get(
+            titre = {"depot": t("Deposit receipt", "Reçu de dépôt",
+                                langue=langue),
+                     "retrait": t("Withdrawal receipt", "Reçu de retrait",
+                                  langue=langue)}.get(
                          nature or categoriser(texte,
                                                numeros=self._nos_numeros()),
-                         t("Transfer receipt", "Reçu de transfert"))
+                         t("Transfer receipt", "Reçu de transfert",
+                           langue=langue))
             pdf = recu_transfert(motif.paiement, numero, quand, operateur,
-                                 titre=titre)
+                                 titre=titre, langue=langue)
             legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
                        f"{italique(t('No. ', 'N° ') + numero)}")
@@ -2044,7 +2078,7 @@ class Robot:
             _, nom_compte = self.journal.identite(iccid)
             pdf = recu_solde(motif.solde, nom_compte or compte or operateur,
                              self._numero_du_compte(propre) if propre else "",
-                             numero, quand, operateur)
+                             numero, quand, operateur, langue=langue)
             legende = (f"🧾 {gras(t('Balance receipt', 'Reçu de solde'))} — "
                        f"{gras(self._fcfa(motif.solde))}\n"
                        f"{italique(t('No. ', 'N° ') + numero)}")
@@ -2052,7 +2086,7 @@ class Robot:
 
     def _fiche_recu(self, ligne):
         """Ce qu'on inscrit dans le cloud à côté du fichier."""
-        _, genre, numero, date, texte, _, _, _ = ligne
+        _, genre, numero, date, texte, _, _, _, _ = ligne
         motif = motif_selon_nature(
             self._motif(texte), "solde" if genre == SOLDE else "transfert")
         montant = None

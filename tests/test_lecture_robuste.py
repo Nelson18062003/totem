@@ -365,5 +365,64 @@ class TestLesFauxAmis(unittest.TestCase):
         self.assertTrue(code_a_usage_unique("Votre code OTP: 483920"))
 
 
+class TestLeBilanEtLaPlateformeComptentPareil(unittest.TestCase):
+    """Le bilan Telegram et la plateforme lisent les MÊMES SMS avec les MÊMES
+    numéros : un transfert à deux parties reçu sur notre carte est un
+    encaissement des deux côtés — avant, la plateforme le comptait et le
+    bilan quotidien l'ignorait (sens inconnu, faute de numéros)."""
+
+    ENTRANT = ("Successful transfer from 696413104 IBRAHIM DAHIROU to "
+               "696103864 WONDER PHONE. Transaction amount: 1300000 FCFA, "
+               "New balance: 6335788.6 FCFA.")
+
+    def test_montant_recu_tranche_avec_nos_numeros(self):
+        from totem.storage import montant_recu
+        self.assertIsNone(montant_recu(self.ENTRANT))     # sens inconnu : rien
+        self.assertEqual(montant_recu(self.ENTRANT, numeros=("696103864",)),
+                         1300000)
+        # Vu de l'autre côté, c'est un envoi : toujours rien au bilan.
+        self.assertIsNone(montant_recu(self.ENTRANT, numeros=("696413104",)))
+
+    def test_le_rapport_du_jour_compte_le_transfert_entrant(self):
+        from totem.storage import Journal
+        journal = Journal(":memory:")
+        journal.sms("OrangeMoney", self.ENTRANT, "Orange", "8923700000000000000")
+        nb, total, nb_sms = journal.rapport_du_jour(numeros=("696103864",))
+        self.assertEqual((nb, total, nb_sms), (1, 1300000, 1))
+        # Sans les numéros, le sens reste inconnu — on ne compte pas au
+        # hasard, et le SMS reste visible dans le compte de messages.
+        nb, total, nb_sms = journal.rapport_du_jour()
+        self.assertEqual((nb, total, nb_sms), (0, 0, 1))
+
+
+class TestLaLangueDuRecu(unittest.TestCase):
+    """La langue de l'écran qui demande voyage jusqu'au document : la
+    fabrication est différée d'une dizaine de secondes, et sans elle un
+    écran en français recevait un PDF dans la langue du robot."""
+
+    def test_la_langue_est_inscrite_et_ressort(self):
+        from totem.storage import Journal
+        journal = Journal(":memory:")
+        sms_id = journal.sms("OrangeMoney", SMS_DU_BUG, "Orange",
+                             "8923700000000000000")
+        journal.programmer_recu(sms_id, "transfert", "TM-2026-0822-0001",
+                                nature="transfert", langue="fr")
+        (_, genre, _, _, _, _, _, nature, langue), = (
+            journal.recus_a_envoyer(-60))
+        self.assertEqual((genre, nature, langue), ("transfert", "transfert", "fr"))
+
+    def test_redemander_dans_une_autre_langue_la_retient(self):
+        from totem.storage import Journal
+        journal = Journal(":memory:")
+        sms_id = journal.sms("OrangeMoney", SMS_DU_BUG, "Orange",
+                             "8923700000000000000")
+        journal.programmer_recu(sms_id, "transfert", "TM-2026-0822-0001",
+                                langue="en")
+        journal.programmer_recu(sms_id, "transfert", "TM-2026-0822-0001",
+                                nature="depot", langue="fr")
+        ligne, = journal.recus_a_envoyer(-60)
+        self.assertEqual(ligne[-1], "fr")
+
+
 if __name__ == "__main__":
     unittest.main()
