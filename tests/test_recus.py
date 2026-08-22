@@ -470,12 +470,16 @@ class TestLeRecuVoulu(unittest.TestCase):
         self.assertIn("Deposit receipt", legende)
 
     def test_un_solde_pur_refuse_la_nature_transfert(self):
-        """Pas de montant lisible : pas de document de transfert — refus,
-        jamais un repli silencieux sur un autre document."""
+        """Pas de montant lisible : pas de document de transfert — un refus
+        qui DIT ce qui a été lu, jamais un repli silencieux sur un autre
+        document."""
+        from totem.declencheur import RefusRecu
         robot, compte, modem, journal = _robot()
         modem.sms_en_attente.append((1, "OrangeMoney", SOLDE_ORANGE_EN))
         robot._relever_sms(compte)
-        self.assertIsNone(robot._recu_apres_coup(1, nature="transfert"))
+        with self.assertRaises(RefusRecu) as refus:
+            robot._recu_apres_coup(1, nature="transfert")
+        self.assertEqual(refus.exception.raison, "solde_pas_mouvement")
 
     def test_redemander_sans_changer_ne_refabrique_pas(self):
         robot, compte, modem, journal = _robot()

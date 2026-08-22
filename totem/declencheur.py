@@ -20,7 +20,8 @@ Telegram, comme aujourd'hui. Un reçu faux vaut moins que pas de reçu du tout.
 
 import re
 
-from .analyse_sms import _normaliser, analyser, code_a_usage_unique, solde_annonce
+from .analyse_sms import (_normaliser, analyser, categoriser,
+                          code_a_usage_unique, est_echec, solde_annonce)
 
 TRANSFERT = "transfert"
 SOLDE = "solde"
@@ -30,14 +31,30 @@ SOLDE = "solde"
 # un solde annoncé.
 NATURES = ("depot", "retrait", "transfert", "solde")
 
-# Les mots qui disent qu'il ne s'est rien passé. L'analyseur écarte déjà la
-# forme d'Orange, qui exige « reussi » ; ceci couvre les autres tournures, et
-# rend le refus visible plutôt qu'implicite.
+# Les mots qui disent qu'il ne s'est rien passé. Pour les SMS, le verdict vit
+# désormais dans `analyse_sms.est_echec()` — phrase par phrase, pour qu'un
+# pied de message (« Pour toute annulation, composez le #150# ») ne tue pas
+# un dépôt réussi. Ce motif-ci ne sert plus qu'aux réponses USSD, courtes et
+# sans pied de message.
 RE_ECHEC = re.compile(
     r"\b(?:echec|echoue|echouee|annul(?:e|ee|ation)|rejet(?:e|ee)|refus(?:e|ee)"
     r"|insuffisant|insuffisante|impossible|non\s+abouti[e]?|failed|declined"
     r"|unsuccessful|cancell?ed|rejected|denied|insufficient"
     r"|could\s+not\b|unable\b)\b")
+
+
+class RefusRecu(Exception):
+    """Un reçu refusé, avec sa raison — pour que la plateforme dise au
+    propriétaire ce que le robot a LU, pas seulement ce qui manque.
+
+    `raison` est un mot-clé (« echec », « code », « publicite », « illisible »,
+    « solde_pas_mouvement », « mouvement_sans_solde », « incompris ») que le
+    guichet traduit en une phrase dans la langue du demandeur.
+    """
+
+    def __init__(self, raison):
+        super().__init__(raison)
+        self.raison = raison
 
 
 class Motif:
@@ -120,7 +137,7 @@ def motif_du_sms(texte, numeros=()):
         return None
 
     norme = _normaliser(texte)
-    if RE_ECHEC.search(norme):
+    if est_echec(norme):
         return None
 
     paiement = analyser(texte, numeros=numeros)
@@ -161,5 +178,30 @@ def motif_selon_nature(motif, nature):
     return motif if motif.genre == TRANSFERT else None
 
 
-__all__ = ["Motif", "NATURES", "SOLDE", "TRANSFERT", "motif_du_menu",
-           "motif_du_sms", "motif_selon_nature"]
+def raison_du_refus(texte, nature=None, numeros=()):
+    """Le mot-clé qui dit POURQUOI ce SMS n'a pas donné le reçu demandé.
+
+    Quatre situations très différentes se cachaient derrière une seule phrase
+    (« ce message ne porte pas de quoi… ») : une opération échouée, un code à
+    usage unique, un message illisible, une nature qui ne colle pas aux
+    faits. Le propriétaire perdait des heures à chercher au mauvais endroit.
+    Le refus dit désormais ce que le robot a lu.
+    """
+    motif = motif_du_sms(texte, numeros=numeros)
+    if motif is not None and nature is not None:
+        # Les faits existent — ce sont ceux du document demandé qui manquent.
+        if nature == SOLDE:
+            return "mouvement_sans_solde"
+        if motif.genre == SOLDE:
+            return "solde_pas_mouvement"
+    categorie = categoriser(texte, numeros=numeros)
+    if categorie in ("code", "echec", "publicite", "illisible"):
+        return categorie
+    if categorie == "solde":
+        return "solde_pas_mouvement"
+    return "incompris"
+
+
+__all__ = ["Motif", "NATURES", "RefusRecu", "SOLDE", "TRANSFERT",
+           "motif_du_menu", "motif_du_sms", "motif_selon_nature",
+           "raison_du_refus"]

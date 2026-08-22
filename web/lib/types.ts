@@ -31,9 +31,24 @@ export type Sim = {
 };
 
 // La catégorie d'un SMS reçu, comme une boîte de réception les range.
+// « echec » : une opération échouée ou annulée — rien ne s'est passé.
+// « illisible » : le message parle d'argent, le robot n'a pas tout compris —
+// il le dit, plutôt que de se déguiser en solde ou en message quelconque.
 export type Categorie =
   | "encaissement" | "envoi" | "transfert" | "depot" | "retrait"
-  | "solde" | "code" | "publicite" | "message" | "inconnu";
+  | "solde" | "echec" | "code" | "publicite" | "illisible"
+  | "message" | "inconnu";
+
+// La même liste, comme VALEURS : c'est elle qui filtre ce qui vient de la
+// base. Un terminal plus récent que l'écran peut envoyer une catégorie
+// inconnue — elle s'affiche alors « message », jamais un écran cassé.
+export const CATEGORIES: readonly Categorie[] = [
+  "encaissement", "envoi", "transfert", "depot", "retrait",
+  "solde", "echec", "code", "publicite", "illisible", "message", "inconnu",
+];
+
+export const estCategorie = (v: unknown): v is Categorie =>
+  typeof v === "string" && (CATEGORIES as readonly string[]).includes(v);
 
 export type Paiement = {
   id: string;
@@ -62,6 +77,9 @@ export type Paiement = {
   smsBrut: string;
   recu: string | null;      // numéro du reçu PDF archivé, s'il existe
   sourceId: number | null;  // la ligne du journal du terminal (pour établir un reçu)
+  // Le terminal qui a reçu ce SMS : c'est à LUI qu'une demande de reçu
+  // s'adresse — `sourceId` ne veut rien dire dans le journal d'un autre.
+  terminal: string | null;
   // Jamais ouvert sur la plateforme. Alimente la pastille du menu et le point
   // des lignes ; s'éteint dès que la fiche du SMS s'ouvre.
   nonLu: boolean;

@@ -22,6 +22,23 @@ Principes de ce fichier :
     sans dire laquelle est la nôtre. Tant qu'on ne connaît pas le numéro de la
     carte, le sens reste `None` : « Montant reçu » est un mensonge si
     l'opération était un envoi.
+
+  - **La structure d'abord, pas la phrase.** Un SMS d'opération est un
+    document : un en-tête (« Successful transfer from X to Y »), puis des
+    champs étiquetés (« Transaction amount: … », « New balance: … »). On lit
+    les champs comme un dictionnaire — peu importe leur ordre — et les
+    parties par leurs NUMÉROS, qui sont fiables, jamais par la forme de
+    leurs noms, qui ne l'est pas. « GARANTIE EXCHANGE SARL 3 » est un nom de
+    client parfaitement légal : un chiffre dans une raison sociale ne doit
+    jamais faire perdre un transfert. C'est arrivé — voir le troisième
+    principe de `categoriser()`.
+
+  - **Un échec de lecture est un échec, jamais une autre réponse.** L'ancien
+    lecteur, quand un transfert lui échappait, retombait sur le « Nouveau
+    solde » du même SMS et répondait « interrogation de solde » avec aplomb.
+    Un transfert d'un million devenait un relevé. Désormais un message qui
+    parle d'argent sans être compris est dit « illisible » — visible, jamais
+    déguisé en autre chose.
 """
 
 import re
@@ -41,7 +58,7 @@ def _propre(texte):
     C'est dans cette version qu'on va rechercher les noms : « PRIX MONO SARL »
     doit ressortir tel quel, pas en minuscules.
     """
-    t = texte.replace(" ", " ").replace(" ", " ")   # espaces insécables
+    t = texte.replace(" ", " ").replace(" ", " ")   # espaces insécables
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -133,109 +150,120 @@ RE_ENVOYE = re.compile(
     r"|transferred|paid|withdrawn|debited"
     r"|payment de|paiement de)\b.{0,20}?" + MONTANT, re.S)
 
-# La forme d'Orange Money, relevée sur de vraies captures :
-#   « Transfert de 656483918 PRIX MONO SARL vers 696103864 WONDER PHONE reussi. »
-# Elle nomme les DEUX parties, avec numéro et raison sociale. Le mot de
-# réussite est exigé : un transfert échoué ne doit jamais devenir un reçu.
-RE_TRANSFERT = re.compile(
-    r"\btransfert\s+(?:de\s+)?"
-    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_emetteur>[^\d\n]{0,40}?)\s*"
-    r"\bvers\s+"
-    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
-    r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes|success)\b")
-
-# La même forme, côté anglophone — relevée sur une vraie capture (Orange,
-# ligne réglée en anglais) :
-#   « Successful transfer from 696413104 IBRAHIM DAHIROU to 696103864
-#     WONDER PHONE. Details: Transaction ID: PP260805.1402.C55918, ... »
-# Le mot de réussite vient AVANT le verbe, les parties après « from » et
-# « to ». Même exigence : sans lui, pas de transfert.
-RE_TRANSFERT_EN = re.compile(
-    r"\b(?:successful|completed)\s+transfer\b[^\n]{0,30}?"
-    r"\bfrom\s+"
-    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_emetteur>[^\d\n]{0,40}?)\s*"
-    r"\bto\s+"
-    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_benef>[^\d\n]{0,40}?)"
-    r"(?:[.,;:\n]|$)")
-
-# Et la variante où la réussite se dit à la fin :
-#   « Transfer of 50000 FCFA from 6xx to 6yy NAME successful. »
-RE_TRANSFERT_EN_FIN = re.compile(
-    r"\btransfer\b[^\n]{0,40}?"
-    r"\bfrom\s+"
-    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_emetteur>[^\d\n]{0,40}?)\s*"
-    r"\bto\s+"
-    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
-    r"\b(?:successful(?:ly)?|completed|confirmed)\b")
-
-# Le dépôt et le retrait d'agent, côté anglophone — relevé sur une vraie
-# capture (Orange, ligne réglée en anglais) :
-#   « CashOut success to 693377266 MANGA from 696103864 WONDER PHONE.
-#     The details are as follows: transaction amount: 500000 FCFA, … »
+# --- L'en-tête d'une opération : le geste, la réussite, les parties -------
 #
-# Cette phrase échappait à TOUS les motifs, et le SMS retombait en « message
-# quelconque » — ni montant, ni tiers, ni reçu possible. Deux raisons, et il
-# fallait les deux pour comprendre :
-#
-#   1. « cashout » n'était nulle part dans les verbes d'opération. RE_ENVOYE
-#      le connaissait bien, mais il exige le montant dans les vingt caractères
-#      qui suivent le verbe — ici il en est séparé par les deux parties et
-#      toute une phrase d'introduction.
-#   2. Le mot de réussite vient AVANT « to », alors que tous les motifs
-#      existants l'attendent après le bénéficiaire.
-#
-# L'ordre des parties est l'inverse du transfert anglais : le bénéficiaire
-# suit « to », l'émetteur suit « from ». Le sens n'est pas tranché ici — c'est
-# preciser_sens() qui dira, numéros de cartes en main, de quel côté nous
-# sommes. Seule la forme « CashOut » a été observée ; « CashIn » est acceptée
-# parce qu'elle est la symétrique exacte du même opérateur, et que le sens ne
-# dépend de toute façon pas du verbe.
-RE_CASH_EN = re.compile(
-    r"\bcash\s*(?:in|out)\b[^\n]{0,20}?"
-    r"\b(?:success(?:ful(?:ly)?)?|completed|confirmed)\b"
-    r"[^\n]{0,15}?\bto\s+"
-    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_benef>[^\d\n]{0,40}?)\s*"
-    r"\bfrom\s+"
-    r"(?P<num_emetteur>[+\d][\d\s]{6,20}?)\s*"
-    r"(?P<nom_emetteur>[^\d\n]{0,40}?)"
-    r"(?:[.,;:\n]|$)")
+# L'ancienne lecture décrivait chaque tournure d'Orange par un motif qui
+# épousait la phrase ENTIÈRE — et le nom des parties y était « tout sauf des
+# chiffres » ([^\d]{0,40}). Le jour où un client s'est appelé « GARANTIE
+# EXCHANGE SARL 3 », le motif a cassé sur le « 3 », le transfert est retombé
+# sur « New balance », et un vrai transfert d'un million est devenu une
+# interrogation de solde. Le nom d'une entreprise ne se décrit pas ; son
+# NUMÉRO, si. On ancre donc les parties sur les numéros, et le nom est
+# simplement « ce qui suit le numéro », chiffres compris.
 
-# Les opérations d'agent (dépôt, retrait) nomment le bénéficiaire APRÈS
-# « vers », le numéro D'ABORD puis la raison sociale — l'ordre inverse d'un
-# reçu classique. L'émetteur, lui, apparaît parfois en fin de message :
-#   « Depot de 50000 FCFA vers 690933686 NGANGOM NOUBEWE reussi from 80684177 »
-#   « Retrait vers 690933686 NGANGOM NOUBEWE effectue »
-# Le mot de réussite est exigé — une opération échouée n'est pas un mouvement.
-# Le sens n'est pas tranché ici : preciser_sens() dira, une fois les cartes
-# connues, laquelle des deux lignes est la nôtre.
-RE_OPERATION = re.compile(
-    r"\b(?:depot|deposit|retrait|withdrawal|transfert|transfer"
-    r"|paiement|payment|envoi)\b"
-    r"(?P<avant>[^\n]*?)"
-    r"\b(?:vers|to)\s+"
-    r"(?P<num_benef>[+\d][\d\s]{6,20}?)\s+"
-    r"(?P<nom_benef>[A-Za-z][^\d\n]{0,40}?)?\s*"
-    r"\b(?:reussi|reussie|effectue|effectuee|confirme|confirmee|succes"
-    r"|success(?:ful(?:ly)?)?|completed)\b"
-    r"(?P<apres>[^\n]*)")
+RE_GESTE = re.compile(
+    r"\b(?:transfert|transfer|depot|deposit|retrait|withdraw(?:al|n)?"
+    r"|cash\s*in|cash\s*out|paiement|payment|envoi)\b")
 
-# L'émetteur nommé en fin de message : « ... reussi from 80684177 ».
-RE_EMETTEUR_FIN = re.compile(
-    r"\b(?:from|de|par)\s+(?P<num>[+\d][\d\s]{6,20})"
-    r"\s*(?P<nom>[A-Za-z][^\d\n]{0,40}?)?(?:[.,;\n]|$)")
+# La réussite, exigée pour toute opération à deux parties : un transfert
+# échoué ne doit jamais devenir un reçu. « sera effectué » n'est pas
+# « effectué » — une opération annoncée n'a pas encore eu lieu.
+RE_REUSSITE = re.compile(
+    r"(?<!sera )(?<!seront )(?<!will be )(?<!to be )"
+    r"\b(?:reussi[e]?s?|effectue[e]?s?|confirme[e]?s?|succes"
+    r"|success(?:ful(?:ly)?)?|completed|valide[e]?s?)\b")
 
-# « de NGONO Marie (677123456) » / « de 677123456 » / « from Marie »
+# Les mots qui disent qu'il ne s'est RIEN passé. Ils vivaient dans le
+# déclencheur de reçus ; les voici à la source, pour que la boîte de
+# réception, l'alerte Telegram, le cloud et les reçus tiennent le même
+# discours — un paiement annulé comptait comme un encaissement partout
+# sauf au moment du reçu, qui le refusait sans dire pourquoi.
+RE_MOT_ECHEC = re.compile(
+    r"\b(?:echec|echoue[e]?s?|annul(?:e|ee|es|ees|ation)s?|rejet(?:e|ee)s?"
+    r"|refus(?:e|ee)s?|insuffisant[e]?s?|impossible|non\s+abouti[e]?s?"
+    r"|failed|failure|declined|unsuccessful|cancell?ed|rejected|denied"
+    r"|insufficient|reversed|reversal"
+    r"|could\s+not\b|unable\b"
+    r"|n\W{0,2}avez\s+pas\s+recu|pas\s+ete\s+recu|not\s+(?:been\s+)?received?)\b")
+
+# L'annulation d'une opération : la seule famille d'échec qui reste un échec
+# même « effectuée avec succès » — c'est l'ANNULATION qui a réussi, pas le
+# mouvement. « Remboursement » n'y est pas : un remboursement reçu est un
+# vrai encaissement, et c'est un mot qu'on trouve dans les motifs de
+# paiement (« Motif: remboursement pret ») comme dans les raisons sociales.
+RE_ANNULATION = re.compile(
+    r"\b(?:annul\w*|cancell?\w*|revers(?:al|ed))\b")
+
+# Ce qui nomme l'opération sans la conjuguer : « Opération annulée »,
+# « Transaction annulée » — la phrase ne porte ni verbe ni montant, mais
+# elle parle bien du mouvement d'à côté.
+RE_NOMME_OPERATION = re.compile(r"\b(?:operation|transaction)\b")
+
+# « Pour toute annulation, composez le #150# » : le mot d'échec y est
+# conditionnel, pas constaté. Un pied de message ne doit pas tuer un dépôt
+# réussi — c'est arrivé sur de vrais SMS de production.
+RE_CONDITIONNEL = re.compile(
+    r"\b(?:pour\s+tout[e]?|en\s+cas\s+d|si\s+(?:vous|le|la|l)\b"
+    r"|to\s+cancel|if\s+(?:you|the)\b|for\s+any)\b")
+
+# Une phrase-prospectus : elle INVITE à une opération, elle n'en rapporte
+# pas une. « Pour un retrait, composez le #150# » au pied d'un relevé de
+# solde ne fait pas du relevé une opération de retrait.
+RE_PROSPECTUS = re.compile(
+    r"\b(?:composez|tapez|appelez|envoyez\s+\w{1,12}\s+au|faites\s+le"
+    r"|dial|call|send\s+\w{1,12}\s+to)\b|#\d|\*\d")
+
+
+def _parle_dune_operation(norme):
+    """Un geste d'opération CONSTATÉ quelque part — pas une invitation
+    (« Pour un retrait, composez… »), pas une condition."""
+    for phrase in re.split(r"[.!?\n]+", norme):
+        if not RE_GESTE.search(phrase):
+            continue
+        if RE_CONDITIONNEL.search(phrase) or RE_PROSPECTUS.search(phrase):
+            continue
+        return True
+    return False
+
+
+def _echec_constate(norme):
+    """Un mot d'échec hors phrase conditionnelle, où qu'il soit. Plus large
+    que `est_echec()` — réservé aux messages qui ne parlent QUE d'un solde,
+    où aucun nom de client ne peut le porter par accident."""
+    return any(RE_MOT_ECHEC.search(ph) and not RE_CONDITIONNEL.search(ph)
+               for ph in re.split(r"[.!?\n]+", norme))
+
+# Une partie : un mot-charnière, puis un NUMÉRO — jamais un montant (la
+# devise ou une décimale qui suivent le trahissent), jamais une suite de
+# chiffres démesurée. Le nom viendra après, sans contrainte de forme.
+RE_PARTIE = re.compile(
+    r"\b(?P<role>from|de|par|to|vers)\s+"
+    r"(?P<numero>\+?\d{7,14})(?!\d)"
+    r"(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)|[.,]\d)")
+
+# Où s'arrête un nom : à la ponctuation, au prochain mot-charnière, au mot de
+# réussite ou d'échec. Entre ces bornes, TOUT est permis — chiffres,
+# apostrophes, esperluettes : c'est le client qui choisit sa raison sociale.
+RE_FIN_NOM = re.compile(
+    r"[.;,:\n]"
+    r"|\b(?:from|de|par|to|vers|reussi\w*|effectue\w*|confirme\w*"
+    r"|succes\b|success\w*|completed|valide\w*|failed|echoue\w*)\b")
+
+# Un champ étiqueté d'argent (« Montant Net : », « New balance: »…). Deux ou
+# plus, c'est le détail d'une opération — même quand l'en-tête s'est perdu
+# (SMS multipart amputé de sa première moitié).
+RE_CHAMP_ARGENT = re.compile(
+    r"\b(?:montant|amount|solde|balance|frais|fee[s]?|charge[s]?|commission)\b"
+    r"[^:\n,]{0,30}:")
+
+# « de NGONO Marie (677123456) » / « de 677123456 » / « from Marie ».
+# Le numéro nu ne doit jamais être un montant : « s'élève à 12345678 FCFA »
+# donnait le SOLDE comme numéro du tiers — la devise qui suit l'écarte.
 RE_TIERS = re.compile(
     r"\b(?:de|from|a|to|vers|chez)\s+"
     r"(?P<nom>[^().,;:\n]{2,40}?)?\s*"
-    r"(?:\(\s*(?P<num1>[+\d][\d\s]{6,20})\s*\)|(?P<num2>\b[+\d][\d\s]{7,20}\b))")
+    r"(?:\(\s*(?P<num1>[+\d][\d\s]{6,20})\s*\)"
+    r"|(?P<num2>\b[+\d][\d\s]{7,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
 
 # Les libellés les plus longs d'abord : « ID transaction » avant « id ».
 #
@@ -245,6 +273,10 @@ RE_TIERS = re.compile(
 # reçoivent alors la MÊME référence — or elle est unique en base : le second
 # n'obtient aucun reçu, sans que rien ne le signale.
 #
+# Même famille de piège : « Reference disponible auprès du service client »
+# capturait le mot « disponible ». Une référence d'opérateur porte toujours
+# au moins un chiffre — on l'exige.
+#
 # Mieux vaut aucune référence qu'une fausse : le garde-fou anti-doublon
 # retombe alors sur la ligne du journal, qui, elle, ne se répète jamais.
 RE_REFERENCE = re.compile(
@@ -252,12 +284,13 @@ RE_REFERENCE = re.compile(
     r"|transaction\s*id|reference|ref|txn|id)\b"
     r"\s*[:.\-]?\s*"
     r"(?!transaction\b|reference\b|ref\b|id\b|txn\b)"
-    r"([A-Za-z0-9][A-Za-z0-9._\-]{3,40})")
+    r"(?=[A-Za-z._/\-]*\d)"
+    r"([A-Za-z0-9][A-Za-z0-9._/\-]{3,40})")
 
 RE_SOLDE = re.compile(
     r"\b(?:nouveau\s+solde|solde(?:\s+(?:actuel|disponible))?"
     r"|new\s+balance|balance)\b"
-    r"[^\d]{0,20}?" + MONTANT, re.S)
+    r"[^\d]{0,40}?" + MONTANT, re.S)
 
 # « Le solde de votre compte est de 2784137.6FCFA. » — la phrase d'Orange
 # après une interrogation USSD. Elle place vingt-cinq caractères entre le mot
@@ -272,9 +305,11 @@ RE_FRAIS = re.compile(
 RE_COMMISSION = re.compile(r"\bcommission\b[^\d]{0,20}?" + MONTANT, re.S)
 
 # Orange détaille lui-même le brut et le net. On ne recalcule ni l'un ni
-# l'autre : ce que l'opérateur annonce fait foi.
+# l'autre : ce que l'opérateur annonce fait foi. « Net debit amount » est la
+# variante anglaise du « Montant Net Débité » français — même champ.
 RE_MONTANT_NET = re.compile(
-    r"\b(?:montant\s+net|net\s+amount)\b[^\d]{0,20}?" + MONTANT, re.S)
+    r"\b(?:montant\s+net|net\s+(?:debit\s+|credit\s+)?amount)\b"
+    r"[^\d]{0,20}?" + MONTANT, re.S)
 RE_MONTANT_BRUT = re.compile(
     r"\b(?:montant\s+(?:de\s+la\s+)?transaction"
     r"|transaction\s+amount)\b[^\d]{0,20}?" + MONTANT, re.S)
@@ -282,12 +317,15 @@ RE_MONTANT_BRUT = re.compile(
 # et retraits qui ne détaillent ni « net » ni « transaction ».
 RE_MONTANT_SIMPLE = re.compile(
     r"\b(?:montant|amount)\b[^\d]{0,20}?" + MONTANT, re.S)
-# Un montant nu, sans mot-clé, cherché dans le seul fragment « depot de 50000
-# FCFA vers … » : trop court pour contenir des frais ou un solde.
+# Un montant nu, sans mot-clé, cherché dans la seule tête de phrase — « depot
+# de 50000 FCFA vers … » : trop court pour contenir des frais ou un solde.
 RE_MONTANT_SEUL = re.compile(MONTANT, re.S)
 
 # Mots qui trahissent un message publicitaire ou un code de connexion : on ne
-# veut surtout pas les compter comme des encaissements.
+# veut surtout pas les compter comme des encaissements. Ils ne s'appliquent
+# qu'à la lecture SIMPLE (un verbe, un montant) : une opération complète —
+# geste, réussite, parties numérotées — n'est jamais une réclame, même
+# quand le client s'appelle « BONUS SARL ».
 RE_BRUIT = re.compile(
     r"\b(?:promo|promotion|bonus|gagnez|felicitations|offre|forfait|"
     r"mot de passe|code de verification|otp|ne partagez|"
@@ -310,11 +348,52 @@ RE_PUB = re.compile(
 
 # Un code à usage unique : « Le code de 696103864 est: 515318. » Ce n'est pas
 # un paiement, mais surtout ce n'est pas un texte à conserver ni à relayer.
+# Le « code marchand », lui, est une donnée de commerce, pas un secret : on
+# ne masque pas l'outil de travail du propriétaire.
 RE_CODE_UNIQUE = re.compile(
-    r"\b(?:code|otp|mot\s+de\s+passe|password|pin)\b"
+    r"\b(?:code|otp|mot\s+de\s+passe|password|pin)\b(?!\s*marchand)"
     r"[^\n.]{0,40}?"
     r"(?:\best\b|\bis\b|:)\s*:?\s*"
     r"(\d{4,10})\b")
+
+
+RE_PHRASE_OPERANTE = re.compile(
+    RE_GESTE.pattern + "|" + MONTANT +
+    r"|\b(?:recu|receive[sd]?|credite[d]?|envoye|transfere|debite|paye"
+    r"|retire|sent|transferred|paid|withdrawn|debited)\b")
+
+
+def est_echec(norme):
+    """Ce message annonce-t-il une opération qui n'a PAS eu lieu ?
+
+    Phrase par phrase, pas mot par mot — et jamais sur un simple mot vu
+    quelque part : un client peut s'appeler « STE SANS ECHEC », un motif de
+    paiement peut dire « remboursement pret ». Trois règles, dans l'ordre :
+
+      - « Pour toute annulation, composez le #150# » : le mot est
+        conditionnel, la phrase ne compte pas ;
+      - une ANNULATION dans la phrase de l'opération vaut échec même
+        « effectuée avec succès » — c'est l'annulation qui a réussi, pas le
+        mouvement ; de même « Opération annulée » dans sa propre phrase ;
+      - sinon, un mot d'échec ne vaut échec que si sa phrase parle de
+        l'opération (verbe, geste ou montant) ET n'annonce pas de réussite —
+        un mot d'échec logé dans un NOM (« ETS REMBOURSEMENT PLUS ») partage
+        toujours sa phrase avec le mot de réussite du transfert, et ne doit
+        jamais confisquer l'argent d'un client.
+    """
+    for phrase in re.split(r"[.!?\n]+", norme):
+        m = RE_MOT_ECHEC.search(phrase)
+        if not m or RE_CONDITIONNEL.search(phrase):
+            continue
+        nomme = RE_NOMME_OPERATION.search(phrase)
+        if RE_ANNULATION.search(phrase) and (
+                RE_PHRASE_OPERANTE.search(phrase) or nomme):
+            return True
+        if RE_REUSSITE.search(phrase):
+            continue
+        if RE_PHRASE_OPERANTE.search(phrase) or nomme:
+            return True
+    return False
 
 
 class Partie:
@@ -461,6 +540,14 @@ def _tel_quel(m, groupe, norme, propre):
     return m.group(groupe)
 
 
+def _morceau(norme, propre, debut, fin):
+    """La tranche [debut:fin), avec accents et majuscules quand l'alignement
+    le permet — même prudence que `_tel_quel`."""
+    if len(norme) == len(propre):
+        return propre[debut:fin]
+    return norme[debut:fin]
+
+
 def _extraire_tiers(norme, propre):
     """Retrouve le nom et le numéro de l'autre partie. On cherche dans le
     texte normalisé pour la robustesse, mais on récupère le nom dans le texte
@@ -478,77 +565,76 @@ def _montant_nomme(motif, norme):
     return _nombre(m.group(1)) if m else None
 
 
-def _transfert_orange(m, norme, propre, texte):
-    """Le transfert d'Orange Money : deux parties nommées, un détail complet.
+def _parties_de_loperation(norme, propre):
+    """Les deux parties d'une opération, ancrées sur leurs numéros.
+
+    « from »/« de »/« par » désignent l'émetteur, « to »/« vers » le
+    bénéficiaire. Le nom est tout ce qui suit le numéro jusqu'à la prochaine
+    borne — chiffres compris : « GARANTIE EXCHANGE SARL 3 » ou « 3 FRERES »
+    sont des noms, pas des morceaux de numéro de téléphone.
+
+    Renvoie (emetteur, beneficiaire, position de la première partie).
+    """
+    emetteur = beneficiaire = None
+    premiere = None
+    for m in RE_PARTIE.finditer(norme):
+        debut_nom = m.end("numero")
+        fenetre = norme[debut_nom:debut_nom + 80]
+        borne = RE_FIN_NOM.search(fenetre)
+        fin_nom = debut_nom + (borne.start() if borne else len(fenetre))
+        nom = _nettoyer_nom(_morceau(norme, propre, debut_nom, fin_nom))
+        partie = Partie(re.sub(r"\s+", "", m.group("numero")), nom)
+        if m.group("role") in ("from", "de", "par"):
+            if emetteur is None:
+                emetteur, premiere = partie, premiere if premiere is not None else m.start()
+        elif beneficiaire is None:
+            beneficiaire, premiere = partie, premiere if premiere is not None else m.start()
+    return emetteur, beneficiaire, premiere
+
+
+def _operation_structuree(norme, propre, texte):
+    """L'opération à deux parties — transfert, dépôt, retrait, CashIn/Out —
+    lue comme un document : geste + réussite + parties numérotées + champs.
+
+    Renvoie (paiement, definitif). `definitif` à True quand l'opération est
+    avérée : soit elle est comprise (paiement), soit son montant est
+    illisible et il n'y a rien d'autre à tenter — on n'invente jamais.
+    À False, la lecture simple (un verbe, un montant) garde sa chance.
 
     Le sens n'est pas déterminé ici. Le SMS dit qui envoie et qui reçoit, pas
     laquelle des deux lignes est la nôtre : `preciser_sens()` s'en charge une
     fois les cartes connues.
     """
-    emetteur = Partie(
-        re.sub(r"\s+", "", m.group("num_emetteur")),
-        _nettoyer_nom(_tel_quel(m, "nom_emetteur", norme, propre)))
-    beneficiaire = Partie(
-        re.sub(r"\s+", "", m.group("num_benef")),
-        _nettoyer_nom(_tel_quel(m, "nom_benef", norme, propre)))
+    geste = RE_GESTE.search(norme)
+    if not geste:
+        return None, False
+    if not RE_REUSSITE.search(norme):
+        # Sans mot de réussite, pas d'opération à deux parties : « Cash In of
+        # 40000 FCFA. » se lira plus bas, par son verbe.
+        return None, False
 
+    emetteur, beneficiaire, premiere = _parties_de_loperation(norme, propre)
+    if not (emetteur or beneficiaire):
+        return None, False
+
+    # Le montant : les champs étiquetés d'abord (le net d'Orange fait foi),
+    # la tête de phrase ensuite (« Depot de 50000 FCFA vers … » — jamais plus
+    # loin, pour ne pas confondre avec les frais ou le solde qui suivent),
+    # un champ « Montant » isolé en dernier recours.
     net = _montant_nomme(RE_MONTANT_NET, norme)
     brut = _montant_nomme(RE_MONTANT_BRUT, norme)
     montant = net if net is not None else brut
-    if montant is None:
-        # « Transfer of 50000 FCFA from … » : le montant vit dans la tête de
-        # phrase, avant la première partie — jamais plus loin, pour ne pas
-        # confondre avec les frais ou le solde qui suivent.
-        tete = RE_MONTANT_SEUL.search(norme, m.start(), m.start("num_emetteur"))
+    if montant is None and premiere is not None:
+        tete = RE_MONTANT_SEUL.search(norme, geste.end(), premiere)
         if tete:
             montant = _nombre(tete.group(1))
-    if not montant:
-        return None     # un transfert sans montant lisible n'est pas exploitable
-
-    reference = _reference(norme, propre)
-    solde = _montant_nomme(RE_SOLDE, norme)
-    return Paiement(
-        sens=None, montant=montant, texte=texte,
-        reference=reference, solde_apres=solde,
-        frais=_montant_nomme(RE_FRAIS, norme),
-        commission=_montant_nomme(RE_COMMISSION, norme),
-        montant_brut=brut,
-        emetteur=emetteur, beneficiaire=beneficiaire)
-
-
-def _operation_agent(m, norme, propre, texte):
-    """Un dépôt ou un retrait d'agent : le bénéficiaire est nommé après
-    « vers » (numéro puis nom), l'émetteur parfois en fin de message.
-
-    Comme pour un transfert, le sens n'est pas décidé ici : le SMS dit qui
-    envoie et qui reçoit, pas laquelle des deux lignes est la nôtre.
-    """
-    beneficiaire = Partie(
-        re.sub(r"\s+", "", m.group("num_benef")),
-        _nettoyer_nom(_tel_quel(m, "nom_benef", norme, propre)))
-
-    # L'émetteur, s'il est nommé après le mot de réussite (« ... from 806…
-    # WONDER PHONE »). On cherche sur le texte normalisé complet, à partir de
-    # la fin du motif, pour retrouver le nom avec ses majuscules d'origine.
-    emetteur = None
-    fin = RE_EMETTEUR_FIN.search(norme, m.start("apres"))
-    if fin:
-        emetteur = Partie(re.sub(r"\s+", "", fin.group("num")),
-                          _nettoyer_nom(_tel_quel(fin, "nom", norme, propre)))
-
-    # Le montant, entre le verbe et « vers » (« depot de 50000 FCFA vers … »),
-    # sinon dans un champ « Montant ». Jamais deviné : sans montant lisible,
-    # on renonce et le SMS reste affiché tel quel.
-    montant = None
-    tete = RE_MONTANT_SEUL.search(m.group("avant") or "")
-    if tete:
-        montant = _nombre(tete.group(1))
     if montant is None:
-        montant = (_montant_nomme(RE_MONTANT_NET, norme)
-                   or _montant_nomme(RE_MONTANT_BRUT, norme)
-                   or _montant_nomme(RE_MONTANT_SIMPLE, norme))
+        montant = _montant_nomme(RE_MONTANT_SIMPLE, norme)
     if not montant:
-        return None
+        # Illisible OU nul : un mouvement de 0 FCFA n'existe pas — même
+        # règle que la lecture simple, on renonce plutôt que d'annoncer
+        # « Encaissement — 0 FCFA » et d'en tirer un document.
+        return None, True
 
     return Paiement(
         sens=None, montant=montant, texte=texte,
@@ -556,8 +642,8 @@ def _operation_agent(m, norme, propre, texte):
         solde_apres=_montant_nomme(RE_SOLDE, norme),
         frais=_montant_nomme(RE_FRAIS, norme),
         commission=_montant_nomme(RE_COMMISSION, norme),
-        emetteur=emetteur if emetteur else None,
-        beneficiaire=beneficiaire)
+        montant_brut=brut,
+        emetteur=emetteur, beneficiaire=beneficiaire), True
 
 
 def _reference(norme, propre):
@@ -583,26 +669,25 @@ def analyser(texte, numeros=()):
     propre = _propre(texte)
     norme = _normaliser(texte)
 
-    if RE_BRUIT.search(norme):
-        return None     # publicité, code de vérification : pas un paiement
+    # Une opération échouée ou annulée n'est pas un mouvement — pour la boîte
+    # de réception et le bilan autant que pour les reçus. Le verdict est ici,
+    # à la source, pour que tous en héritent.
+    if est_echec(norme):
+        return None
 
-    transfert = (RE_TRANSFERT.search(norme) or RE_TRANSFERT_EN.search(norme)
-                 or RE_TRANSFERT_EN_FIN.search(norme)
-                 or RE_CASH_EN.search(norme))
-    if transfert:
-        paiement = _transfert_orange(transfert, norme, propre, texte)
-        if paiement is not None:
-            paiement.preciser_sens(numeros)
+    paiement, definitif = _operation_structuree(norme, propre, texte)
+    if paiement is not None:
+        paiement.preciser_sens(numeros)
         return paiement
+    if definitif:
+        return None
 
-    operation = RE_OPERATION.search(norme)
-    if operation:
-        paiement = _operation_agent(operation, norme, propre, texte)
-        if paiement is not None:
-            paiement.preciser_sens(numeros)
-            return paiement
-        # Sans montant lisible, ce n'était pas exploitable comme opération :
-        # on laisse la suite tenter une lecture plus simple.
+    # La lecture simple : un verbe, un montant tout près. C'est elle — et
+    # elle seule — que la réclame peut imiter (« gagnez 1000 FCFA ») : le
+    # rejet du bruit ne s'applique donc qu'ici, jamais à une opération
+    # complète dont le client s'appellerait « BONUS SARL ».
+    if RE_BRUIT.search(norme):
+        return None
 
     entree = RE_RECU.search(norme)
     sortie = None if entree else RE_ENVOYE.search(norme)
@@ -631,23 +716,54 @@ def analyser(texte, numeros=()):
     )
 
 
+def _marqueurs_dargent(norme):
+    """Ce message parle-t-il d'une opération d'argent, même mal lu ?
+
+    Deux indices, chacun suffisant : un geste d'opération accompagné d'un
+    montant en devise ou d'une partie numérotée (un transfert amputé de sa
+    seconde moitié garde ses parties), ou au moins deux champs étiquetés
+    d'argent — la signature du détail d'Orange, même quand l'en-tête s'est
+    perdu (SMS multipart amputé de sa première moitié).
+    """
+    if len(RE_CHAMP_ARGENT.findall(norme)) >= 2:
+        return True
+    return bool(_parle_dune_operation(norme)
+                and (RE_MONTANT_SEUL.search(norme)
+                     or RE_PARTIE.search(norme)))
+
+
 def solde_annonce(texte):
     """Le solde d'un SMS qui ne parle que de ça : « Le solde de votre compte
     est de 2784137.6FCFA. »
 
     Renvoie None dès qu'il s'agit d'autre chose — un paiement, une publicité,
-    un code. Le solde d'un SMS de transfert se lit dans `Paiement.solde_apres` ;
-    ici on ne veut que l'interrogation pure, celle qui suit un `#150#`.
+    un code, une opération échouée. Le solde d'un SMS de transfert se lit dans
+    `Paiement.solde_apres` ; ici on ne veut que l'interrogation pure, celle
+    qui suit un `#150#`.
+
+    Le refus des marqueurs d'argent n'est pas une redite : un transfert que
+    le lecteur n'a pas su lire — ou dont il ne reste que la seconde moitié —
+    porte souvent un « Nouveau solde ». En faire une interrogation de solde,
+    c'était fabriquer un document de solde sur un transfert. C'est le bug
+    vécu d'août 2026 : plus jamais.
     """
     if not texte or not texte.strip():
         return None
     norme = _normaliser(texte)
     if RE_BRUIT.search(norme) or RE_CODE_UNIQUE.search(norme):
         return None
-    if (RE_TRANSFERT.search(norme) or RE_TRANSFERT_EN.search(norme)
-            or RE_TRANSFERT_EN_FIN.search(norme) or RE_CASH_EN.search(norme)
-            or RE_OPERATION.search(norme)
-            or RE_RECU.search(norme) or RE_ENVOYE.search(norme)):
+    # « Solde insuffisant », « échec » : ce solde-là raconte un raté, pas un
+    # relevé. Ici le mot suffit (hors phrase conditionnelle) : un message qui
+    # ne parle que d'un solde ne porte aucun nom de client pour le déguiser.
+    if _echec_constate(norme):
+        return None
+    # Un geste d'opération CONSTATÉ — « Pour un retrait, composez le #150# »
+    # au pied du relevé est une réclame de l'opérateur, pas une opération.
+    if _parle_dune_operation(norme):
+        return None
+    if RE_RECU.search(norme) or RE_ENVOYE.search(norme):
+        return None
+    if len(RE_CHAMP_ARGENT.findall(norme)) >= 2:
         return None
     m = RE_SOLDE.search(norme) or RE_SOLDE_SEUL.search(norme)
     return _nombre(m.group(1)) if m else None
@@ -661,36 +777,66 @@ def categoriser(texte, numeros=()):
 
     Les valeurs possibles :
       encaissement · envoi · transfert · depot · retrait  — des mouvements
-      solde   — une interrogation de solde (« #150# »)
-      code    — un code à usage unique (masqué)
+      solde     — une interrogation de solde (« #150# »)
+      echec     — une opération échouée ou annulée : rien ne s'est passé
+      code      — un code à usage unique (masqué)
       publicite — une réclame de l'opérateur
-      message — un SMS quelconque (de n'importe qui)
+      illisible — le message parle d'argent, le lecteur n'a pas tout compris
+      message   — un SMS quelconque (de n'importe qui)
+
+    Trois principes d'ordre :
+      - l'argent se tranche d'ABORD : un motif publicitaire ne peut jamais
+        requalifier un vrai paiement (« 2 millions », « gagné »…) ;
+      - l'échec avant le solde : « CashOut failed … Your balance is 1200 »
+        est un retrait raté, pas un relevé ;
+      - l'illisible avant tout repli : un message qui parle d'argent sans
+        être compris le DIT, plutôt que de se déguiser en solde, en réclame
+        ou en message quelconque. C'est la leçon du transfert vers
+        « GARANTIE EXCHANGE SARL 3 » — un chiffre dans le nom du client, et
+        un million de FCFA devenait une interrogation de solde.
     """
     if not texte or not texte.strip():
         return "message"
     if code_a_usage_unique(texte):
         return "code"
     norme = _normaliser(texte)
-    # On tranche d'ABORD si c'est de l'argent : ainsi un motif publicitaire ne
-    # peut jamais requalifier un vrai paiement (« 2 millions », « gagné »…).
     paiement = analyser(texte, numeros=numeros)
     if paiement is not None:
-        if re.search(r"\bdepot\b|\bdeposit\b|\bcash\s*in\b", norme):
+        # Le PREMIER geste du message dit l'opération : dans un SMS
+        # d'opérateur, le verbe précède toujours les noms. Chercher les
+        # mots-clés n'importe où faisait d'un transfert vers « L'OREAL 237
+        # DEPOT 5 » un dépôt — le nom du client n'a pas voix au chapitre.
+        geste = RE_GESTE.search(norme)
+        mot = re.sub(r"\s+", "", geste.group(0)) if geste else ""
+        if mot in ("depot", "deposit", "cashin"):
             return "depot"
-        if re.search(r"\bretrait\b|\bretire\b|\bwithdraw(?:al|n)?\b"
-                     r"|\bcash\s*out\b", norme):
+        if mot == "cashout" or mot.startswith(("retrait", "withdraw")):
             return "retrait"
-        if re.search(r"\btransfert\b|\btransfer\b", norme):
+        if mot in ("transfert", "transfer"):
             return "transfert"
+        if re.search(r"\bretire\b", norme):     # « Vous avez retiré … »
+            return "retrait"
         if paiement.sens == "entree":
             return "encaissement"
         if paiement.sens == "sortie":
             return "envoi"
         return "transfert"      # deux parties nommées, sens encore indéterminé
+    if est_echec(norme) and (RE_GESTE.search(norme) or RE_RECU.search(norme)
+                             or RE_ENVOYE.search(norme)
+                             or RE_MONTANT_SEUL.search(norme)):
+        return "echec"
     if solde_annonce(texte) is not None:
         return "solde"
+    # La réclame AVANT l'illisible : les opérateurs vantent leurs transferts
+    # à longueur de SMS (« Le transfert à 0 FCFA de frais ce weekend ! »), et
+    # chacun aurait sonné l'alerte du message d'argent illisible — des
+    # fausses alarmes qui auraient appris au propriétaire à ignorer la vraie.
+    # Un VRAI mouvement ne passe jamais par ici : compris, il est déjà rendu
+    # plus haut, réclame ou pas (« BONUS SARL » paie comme tout le monde).
     if RE_BRUIT.search(norme) or RE_PUB.search(norme):
         return "publicite"
+    if _marqueurs_dargent(norme):
+        return "illisible"
     return "message"
 
 
@@ -729,4 +875,5 @@ def masquer_secrets(texte):
 
 
 __all__ = ["Paiement", "Partie", "analyser", "solde_annonce", "categoriser",
-           "code_a_usage_unique", "masquer_secrets", "formater_montant"]
+           "code_a_usage_unique", "est_echec", "masquer_secrets",
+           "formater_montant"]

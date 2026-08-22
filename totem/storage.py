@@ -202,6 +202,11 @@ class Journal:
             # habille le titre du document, jamais les données stockées.
             # Après _reprendre_recus : la reconstruction repartirait sans elle.
             self._ajouter_colonne_si_absente("recus", "nature")
+            # La langue du demandeur, quand le reçu vient de la plateforme :
+            # la fabrication est différée d'une dizaine de secondes, et sans
+            # cette colonne un écran en français recevait un PDF dans la
+            # langue du robot. Vide : la langue du robot, comme avant.
+            self._ajouter_colonne_si_absente("recus", "langue")
             self.conn.commit()
 
     def _reprendre_recus(self):
@@ -551,7 +556,7 @@ class Journal:
             return None
 
     def programmer_recu(self, source_id, genre, numero, reference=None,
-                        source="sms", nature=None):
+                        source="sms", nature=None, langue=None):
         """Inscrit un reçu à fabriquer. Renvoie le numéro EN VIGUEUR pour ce
         message (celui inscrit, qui peut différer du numéro proposé si le
         document existait déjà), ou None si rien ne le désigne.
@@ -569,9 +574,9 @@ class Journal:
             with self.verrou:
                 self.conn.execute(
                     "INSERT INTO recus(source, source_id, genre, numero, "
-                    "reference, date, nature) VALUES(?,?,?,?,?,?,?)",
+                    "reference, date, nature, langue) VALUES(?,?,?,?,?,?,?,?)",
                     (source, source_id, genre, numero, reference or None,
-                     self._maintenant(), nature or None))
+                     self._maintenant(), nature or None, langue or None))
                 self.conn.commit()
             return numero
         except sqlite3.IntegrityError:
@@ -599,24 +604,27 @@ class Journal:
                         try:
                             self.conn.execute(
                                 "UPDATE recus SET genre = ?, "
-                                "nature = COALESCE(?, nature), reference = ?, "
+                                "nature = COALESCE(?, nature), "
+                                "langue = COALESCE(?, langue), reference = ?, "
                                 "date = ?, envoye = 0, archive = 0, essais = 0 "
                                 "WHERE source = ? AND source_id = ?",
-                                (genre, nature or None, reference or None,
-                                 quand, source, source_id))
+                                (genre, nature or None, langue or None,
+                                 reference or None, quand, source, source_id))
                         except sqlite3.IntegrityError:
                             self.conn.execute(
                                 "UPDATE recus SET genre = ?, "
-                                "nature = COALESCE(?, nature), date = ?, "
+                                "nature = COALESCE(?, nature), "
+                                "langue = COALESCE(?, langue), date = ?, "
                                 "envoye = 0, archive = 0, essais = 0 "
                                 "WHERE source = ? AND source_id = ?",
-                                (genre, nature or None, quand,
-                                 source, source_id))
+                                (genre, nature or None, langue or None,
+                                 quand, source, source_id))
                     else:
                         self.conn.execute(
                             "UPDATE recus SET archive = 0, essais = 0, "
+                            "langue = COALESCE(?, langue), "
                             "date = ? WHERE source = ? AND source_id = ?",
-                            (quand, source, source_id))
+                            (langue or None, quand, source, source_id))
                 self.conn.commit()
                 # Le numéro EN VIGUEUR : celui de la ligne de ce message —
                 # jamais celui recalculé du jour, qui peut différer si le
@@ -677,7 +685,7 @@ class Journal:
 
         `apres_secondes` laisse au message texte le temps de partir en premier :
         l'alerte doit arriver tout de suite, le document quelques secondes
-        après. [(id, genre, numero, date, texte, compte, iccid, nature)]
+        après. [(id, genre, numero, date, texte, compte, iccid, nature, langue)]
         """
         avant = (datetime.now() - timedelta(seconds=apres_secondes)).isoformat(
             timespec="seconds")
@@ -686,7 +694,7 @@ class Journal:
                 "SELECT r.id, r.genre, r.numero, r.date, "
                 "       COALESCE(s.texte, u.texte, ''), "
                 "       COALESCE(s.compte, u.compte, ''), "
-                "       COALESCE(s.iccid, u.iccid, ''), r.nature "
+                "       COALESCE(s.iccid, u.iccid, ''), r.nature, r.langue "
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
@@ -700,7 +708,7 @@ class Journal:
                 "SELECT r.id, r.genre, r.numero, r.date, "
                 "       COALESCE(s.texte, u.texte, ''), "
                 "       COALESCE(s.compte, u.compte, ''), "
-                "       COALESCE(s.iccid, u.iccid, ''), r.nature "
+                "       COALESCE(s.iccid, u.iccid, ''), r.nature, r.langue "
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
@@ -852,13 +860,18 @@ class Journal:
             ).fetchone()
         return n
 
-    def rapport_du_jour(self, iccids=()):
+    def rapport_du_jour(self, iccids=(), numeros=()):
         """(nb d'encaissements, total FCFA, nb de SMS) sur les dernières 24 h,
         limité aux cartes indiquées si `iccids` est fourni.
 
         Le cloisonnement compte ici plus qu'ailleurs : additionner les recettes
         de deux cartes différentes donnerait un total qui ne correspond à aucun
         solde réel.
+
+        `numeros` : les numéros de nos cartes, pour trancher le sens des
+        transferts qui nomment leurs deux parties. Sans eux, le bilan et la
+        plateforme se contredisaient : elle comptait un encaissement, lui
+        rien — même SMS, deux lectures.
         """
         depuis = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
         clause, params = self._filtre_cartes(iccids)
@@ -866,20 +879,22 @@ class Journal:
             lignes = self.conn.execute(
                 f"SELECT texte FROM sms WHERE date >= ?{clause}",
                 (depuis,) + params).fetchall()
+        nums = tuple(numeros) or tuple(self.numeros_declares())
         nb, total = 0, 0
         for (texte,) in lignes:
-            montant = montant_recu(texte)
+            montant = montant_recu(texte, numeros=nums)
             if montant is not None:
                 nb += 1
                 total += montant
         return nb, total, len(lignes)
 
-    def export_csv(self, jours=7, iccids=()):
+    def export_csv(self, jours=7, iccids=(), numeros=()):
         """Journal en CSV (octets), prêt pour Excel ou la comptabilité.
 
         Chaque SMS compris devient une ligne exploitable : qui a payé, combien,
         sous quelle référence. Le message d'origine reste en dernière colonne,
-        c'est lui qui fait foi."""
+        c'est lui qui fait foi. `numeros` : voir `rapport_du_jour` — le sens
+        des transferts à deux parties en dépend."""
         depuis = (datetime.now() - timedelta(days=jours)).isoformat(timespec="seconds")
         clause, params = self._filtre_cartes(iccids)
         with self.verrou:
@@ -899,8 +914,9 @@ class Journal:
              "tiers", "numero", "reference", "solde_apres", "message"]))
         sens_dits = {"entree": t("received", "reçu"),
                      "sortie": t("sent", "envoyé")}
+        nums = tuple(numeros) or tuple(self.numeros_declares())
         for date, expediteur, texte, compte, ligne_iccid in lignes:
-            p = analyser(texte)
+            p = analyser(texte, numeros=nums)
             plume.writerow([
                 date.replace("T", " "), compte or expediteur, ligne_iccid,
                 sens_dits.get(p.sens if p else "", ""),
@@ -915,11 +931,14 @@ class Journal:
         return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
 
 
-def montant_recu(texte):
+def montant_recu(texte, numeros=()):
     """Montant en FCFA d'un encaissement, sinon None.
 
     Délègue à l'analyseur de SMS, qui sait distinguer un vrai paiement d'une
     publicité (« gagnez 1000 FCFA de bonus ») ou d'un code de vérification —
-    lesquels étaient auparavant comptés comme des recettes."""
-    p = analyser(texte)
+    lesquels étaient auparavant comptés comme des recettes.
+
+    `numeros` : nos numéros, pour trancher le sens d'un transfert à deux
+    parties — sans eux, ces encaissements-là restaient hors du bilan."""
+    p = analyser(texte, numeros=numeros)
     return p.montant if p and p.sens == "entree" else None

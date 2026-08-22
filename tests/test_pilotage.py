@@ -247,7 +247,7 @@ class TestRecuApresCoup(unittest.TestCase):
     def test_un_recu_est_programme(self):
         compte = FauxCompte([])
         p, nuage = pilote(compte)
-        p.programmeur = lambda source_id, nature=None: f"TM-2026-0801-{source_id:04d}"
+        p.programmeur = lambda source_id, nature=None, langue=None: f"TM-2026-0801-{source_id:04d}"
         p._traiter({"id": 9, "type": "recu", "parametres": {"source_id": 42}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
         self.assertIn("TM-2026-0801-0042", nuage.maj[-1][1]["resultat"])
@@ -257,7 +257,7 @@ class TestRecuApresCoup(unittest.TestCase):
         p, nuage = pilote(compte)
         recues = []
 
-        def programmeur(source_id, nature=None):
+        def programmeur(source_id, nature=None, langue=None):
             recues.append((source_id, nature))
             return "TM-2026-0805-0042"
 
@@ -272,7 +272,7 @@ class TestRecuApresCoup(unittest.TestCase):
         p, nuage = pilote(compte)
         recues = []
 
-        def programmeur(source_id, nature=None):
+        def programmeur(source_id, nature=None, langue=None):
             recues.append((source_id, nature))
             return "TM-2026-0805-0042"
 
@@ -284,7 +284,7 @@ class TestRecuApresCoup(unittest.TestCase):
     def test_un_message_sans_droit_est_refuse(self):
         compte = FauxCompte([])
         p, nuage = pilote(compte)
-        p.programmeur = lambda source_id, nature=None: None   # publicité, code, échec…
+        p.programmeur = lambda source_id, nature=None, langue=None: None   # publicité, code, échec…
         p._traiter({"id": 10, "type": "recu", "parametres": {"source_id": 7}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
         self.assertIn("does not carry what that receipt needs", nuage.maj[-1][1]["resultat"])
