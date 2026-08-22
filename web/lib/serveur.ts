@@ -18,6 +18,7 @@
 // sont vides et le disent.
 
 import type { Donnees, EtatTerminal, Paiement, Sim } from "./types";
+import { estNature } from "./natures";
 import { estCategorie, jourDouala } from "./types";
 import type { Langue } from "./langue";
 
@@ -222,10 +223,11 @@ export async function chargerDonnees(
   const moment = (l: LignePaiement): string => l.emis_le || l.recu_le;
   // Les valeurs venues de la base repassent par la liste connue : un
   // terminal plus récent que l'écran ne doit jamais casser l'affichage —
-  // une catégorie inconnue se montre « message », une nature inconnue
-  // s'ignore, et le SMS reste lisible en entier.
+  // une catégorie inconnue se montre « message », une nature impossible
+  // s'ignore (seules les quatre natures choisissables existent), et le SMS
+  // reste lisible en entier.
   const parNature = (v: string | null | undefined): Paiement["nature"] =>
-    (v && estCategorie(v) ? v : null);
+    (estNature(v) ? v : null);
 
   // Chaque ligne est un SMS reçu par une carte ; ceux que le robot a compris
   // portent un montant, les autres restent lisibles tels quels.

@@ -2070,7 +2070,7 @@ class Robot:
                                  titre=titre, langue=langue)
             legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
-                       f"{italique(t('No. ', 'N° ') + numero)}")
+                       f"{italique(t('No. ', 'N° ', langue=langue) + numero)}")
         else:
             propre = self._compte_par_iccid(iccid)
             # `nom` porte déjà le nom du FICHIER : celui du compte a son
@@ -2079,9 +2079,11 @@ class Robot:
             pdf = recu_solde(motif.solde, nom_compte or compte or operateur,
                              self._numero_du_compte(propre) if propre else "",
                              numero, quand, operateur, langue=langue)
-            legende = (f"🧾 {gras(t('Balance receipt', 'Reçu de solde'))} — "
+            # La légende suit la langue du document : moitié-moitié, elle
+            # ferait douter de la pièce jointe elle-même.
+            legende = (f"🧾 {gras(t('Balance receipt', 'Reçu de solde', langue=langue))} — "
                        f"{gras(self._fcfa(motif.solde))}\n"
-                       f"{italique(t('No. ', 'N° ') + numero)}")
+                       f"{italique(t('No. ', 'N° ', langue=langue) + numero)}")
         return nom, pdf, legende
 
     def _fiche_recu(self, ligne):

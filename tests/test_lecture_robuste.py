@@ -365,6 +365,78 @@ class TestLesFauxAmis(unittest.TestCase):
         self.assertTrue(code_a_usage_unique("Votre code OTP: 483920"))
 
 
+class TestLesMotsDechecNeConfisquentRien(unittest.TestCase):
+    """Un mot de la famille de l'échec logé dans un NOM ou un MOTIF ne doit
+    jamais confisquer l'argent d'un client — la relecture adversaire du
+    correctif avait trouvé exactement ça."""
+
+    def test_un_client_nomme_remboursement_est_paye(self):
+        texte = ("Successful transfer from 696103864 WONDER PHONE to "
+                 "697028711 ETS REMBOURSEMENT PLUS. Transaction amount: "
+                 "5000 FCFA, New balance: 100000 FCFA.")
+        p = analyser(texte)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+        self.assertEqual(categoriser(texte), "transfert")
+
+    def test_un_motif_de_remboursement_reste_un_encaissement(self):
+        texte = ("Vous avez recu 25000 FCFA de NGONO Marie (677123456). "
+                 "Motif: remboursement pret. Nouveau solde: 872500 FCFA.")
+        p = analyser(texte)
+        self.assertIsNotNone(p)
+        self.assertEqual((p.sens, p.montant), ("entree", 25000))
+        self.assertEqual(categoriser(texte), "encaissement")
+
+    def test_un_client_nomme_sans_echec_est_paye(self):
+        texte = ("Transfert de 656483918 STE SANS ECHEC vers 696103864 "
+                 "WONDER PHONE reussi. Montant Net: 40000 FCFA.")
+        self.assertEqual(analyser(texte).montant, 40000)
+        self.assertEqual(categoriser(texte), "transfert")
+
+
+class TestLeReleveGardeSonSolde(unittest.TestCase):
+    """Le pied publicitaire d'un relevé (« Pour un retrait, composez le
+    #150# ») est une invitation, pas une opération : le solde reste lisible
+    et son reçu reste possible."""
+
+    RELEVE = ("Le solde de votre compte est de 2784137.6FCFA. "
+              "Pour un retrait, composez le #150#.")
+
+    def test_le_solde_est_lu(self):
+        self.assertEqual(solde_annonce(self.RELEVE), 2784137.6)
+        self.assertEqual(categoriser(self.RELEVE), "solde")
+
+    def test_le_recu_de_solde_reste_possible(self):
+        motif = motif_du_sms(self.RELEVE)
+        self.assertIsNotNone(motif)
+        self.assertEqual(motif.genre, SOLDE)
+
+
+class TestLaReclameNeSonnePasLalarme(unittest.TestCase):
+    """Les opérateurs vantent leurs transferts à longueur de SMS : une
+    réclame qui parle d'argent reste une réclame — jamais un « message
+    d'argent illisible » qui déclencherait l'alerte à chaque promotion."""
+
+    def test_la_promo_du_transfert_reste_une_pub(self):
+        texte = ("PROMO Orange Money ! Le transfert d'argent a 0 FCFA de "
+                 "frais tout le weekend. Envoyez plus, gagnez plus !")
+        self.assertIsNone(analyser(texte))
+        self.assertEqual(categoriser(texte), "publicite")
+
+
+class TestLeMouvementNulNexistePas(unittest.TestCase):
+    """Un « Montant Net: 0 FCFA » n'est pas un mouvement : ni annonce
+    « Encaissement — 0 FCFA », ni reçu de rien — même règle que la lecture
+    simple, les deux chemins ne doivent plus se contredire."""
+
+    def test_zero_franc_nest_pas_un_paiement(self):
+        texte = ("Transfert de 656483918 PRIX MONO SARL vers 696103864 "
+                 "WONDER PHONE reussi. Montant Net: 0 FCFA, "
+                 "Nouveau Solde: 2784137.6 FCFA")
+        self.assertIsNone(analyser(texte))
+        self.assertIsNone(motif_du_sms(texte))
+
+
 class TestLeBilanEtLaPlateformeComptentPareil(unittest.TestCase):
     """Le bilan Telegram et la plateforme lisent les MÊMES SMS avec les MÊMES
     numéros : un transfert à deux parties reçu sur notre carte est un

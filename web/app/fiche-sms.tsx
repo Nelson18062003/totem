@@ -133,25 +133,34 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     const avant = nature;
     setNature(n);
     setChoisirType(false);
+    // Deux temps, deux échecs distincts : si la NATURE n'est pas retenue,
+    // l'écran la rend — jamais une pastille que la base n'a pas. Si c'est
+    // le REÇU qui échoue ensuite, la nature, elle, est bien enregistrée :
+    // on ne la reprend pas, l'état du reçu raconte déjà son propre échec.
+    let retenue = false;
     try {
       const r = await fetch("/api/nature", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: Number(p.id), nature: n }),
       });
-      if (!r.ok) throw new Error();
-      // La nature CHOISIE voyage explicitement : l'état React de ce rendu
-      // porte encore l'ancienne valeur, et une demande partie sans elle
-      // laissait le terminal décider seul — le classement d'un SMS illisible
-      // n'aurait jamais donné son reçu.
-      if (p.sourceId != null && (!p.recu || n !== (avant ?? p.categorie))) {
-        await etablirRecu(n);
-      }
-      router.refresh();
+      retenue = r.ok;
     } catch {
-      // L'écran ne montre jamais une nature que la base n'a pas retenue.
-      setNature(avant);
+      retenue = false;
     }
+    if (!retenue) {
+      setNature(avant);
+      setClasse(false);
+      return;
+    }
+    // La nature CHOISIE voyage explicitement : l'état React de ce rendu
+    // porte encore l'ancienne valeur, et une demande partie sans elle
+    // laissait le terminal décider seul — le classement d'un SMS illisible
+    // n'aurait jamais donné son reçu.
+    if (p.sourceId != null && (!p.recu || n !== (avant ?? p.categorie))) {
+      await etablirRecu(n);
+    }
+    router.refresh();
     setClasse(false);
   };
 

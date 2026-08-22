@@ -182,9 +182,22 @@ RE_MOT_ECHEC = re.compile(
     r"\b(?:echec|echoue[e]?s?|annul(?:e|ee|es|ees|ation)s?|rejet(?:e|ee)s?"
     r"|refus(?:e|ee)s?|insuffisant[e]?s?|impossible|non\s+abouti[e]?s?"
     r"|failed|failure|declined|unsuccessful|cancell?ed|rejected|denied"
-    r"|insufficient|reversed|reversal|rembours(?:e|ee|ement)s?"
+    r"|insufficient|reversed|reversal"
     r"|could\s+not\b|unable\b"
     r"|n\W{0,2}avez\s+pas\s+recu|pas\s+ete\s+recu|not\s+(?:been\s+)?received?)\b")
+
+# L'annulation d'une opération : la seule famille d'échec qui reste un échec
+# même « effectuée avec succès » — c'est l'ANNULATION qui a réussi, pas le
+# mouvement. « Remboursement » n'y est pas : un remboursement reçu est un
+# vrai encaissement, et c'est un mot qu'on trouve dans les motifs de
+# paiement (« Motif: remboursement pret ») comme dans les raisons sociales.
+RE_ANNULATION = re.compile(
+    r"\b(?:annul\w*|cancell?\w*|revers(?:al|ed))\b")
+
+# Ce qui nomme l'opération sans la conjuguer : « Opération annulée »,
+# « Transaction annulée » — la phrase ne porte ni verbe ni montant, mais
+# elle parle bien du mouvement d'à côté.
+RE_NOMME_OPERATION = re.compile(r"\b(?:operation|transaction)\b")
 
 # « Pour toute annulation, composez le #150# » : le mot d'échec y est
 # conditionnel, pas constaté. Un pied de message ne doit pas tuer un dépôt
@@ -192,6 +205,33 @@ RE_MOT_ECHEC = re.compile(
 RE_CONDITIONNEL = re.compile(
     r"\b(?:pour\s+tout[e]?|en\s+cas\s+d|si\s+(?:vous|le|la|l)\b"
     r"|to\s+cancel|if\s+(?:you|the)\b|for\s+any)\b")
+
+# Une phrase-prospectus : elle INVITE à une opération, elle n'en rapporte
+# pas une. « Pour un retrait, composez le #150# » au pied d'un relevé de
+# solde ne fait pas du relevé une opération de retrait.
+RE_PROSPECTUS = re.compile(
+    r"\b(?:composez|tapez|appelez|envoyez\s+\w{1,12}\s+au|faites\s+le"
+    r"|dial|call|send\s+\w{1,12}\s+to)\b|#\d|\*\d")
+
+
+def _parle_dune_operation(norme):
+    """Un geste d'opération CONSTATÉ quelque part — pas une invitation
+    (« Pour un retrait, composez… »), pas une condition."""
+    for phrase in re.split(r"[.!?\n]+", norme):
+        if not RE_GESTE.search(phrase):
+            continue
+        if RE_CONDITIONNEL.search(phrase) or RE_PROSPECTUS.search(phrase):
+            continue
+        return True
+    return False
+
+
+def _echec_constate(norme):
+    """Un mot d'échec hors phrase conditionnelle, où qu'il soit. Plus large
+    que `est_echec()` — réservé aux messages qui ne parlent QUE d'un solde,
+    où aucun nom de client ne peut le porter par accident."""
+    return any(RE_MOT_ECHEC.search(ph) and not RE_CONDITIONNEL.search(ph)
+               for ph in re.split(r"[.!?\n]+", norme))
 
 # Une partie : un mot-charnière, puis un NUMÉRO — jamais un montant (la
 # devise ou une décimale qui suivent le trahissent), jamais une suite de
@@ -317,31 +357,41 @@ RE_CODE_UNIQUE = re.compile(
     r"(\d{4,10})\b")
 
 
+RE_PHRASE_OPERANTE = re.compile(
+    RE_GESTE.pattern + "|" + MONTANT +
+    r"|\b(?:recu|receive[sd]?|credite[d]?|envoye|transfere|debite|paye"
+    r"|retire|sent|transferred|paid|withdrawn|debited)\b")
+
+
 def est_echec(norme):
     """Ce message annonce-t-il une opération qui n'a PAS eu lieu ?
 
-    Phrase par phrase, pas mot par mot. « Pour toute annulation, composez le
-    #150# » en pied d'un dépôt réussi n'annule rien — le mot y est
-    conditionnel. À l'inverse, « Opération annulée » après un encaissement
-    l'annule bel et bien, même si le mot d'échec vit dans sa propre phrase.
+    Phrase par phrase, pas mot par mot — et jamais sur un simple mot vu
+    quelque part : un client peut s'appeler « STE SANS ECHEC », un motif de
+    paiement peut dire « remboursement pret ». Trois règles, dans l'ordre :
 
-    La règle : un mot d'échec constaté (non conditionnel) vaut échec s'il
-    partage sa phrase avec l'opération — ou si aucune réussite n'est
-    annoncée nulle part dans le message.
+      - « Pour toute annulation, composez le #150# » : le mot est
+        conditionnel, la phrase ne compte pas ;
+      - une ANNULATION dans la phrase de l'opération vaut échec même
+        « effectuée avec succès » — c'est l'annulation qui a réussi, pas le
+        mouvement ; de même « Opération annulée » dans sa propre phrase ;
+      - sinon, un mot d'échec ne vaut échec que si sa phrase parle de
+        l'opération (verbe, geste ou montant) ET n'annonce pas de réussite —
+        un mot d'échec logé dans un NOM (« ETS REMBOURSEMENT PLUS ») partage
+        toujours sa phrase avec le mot de réussite du transfert, et ne doit
+        jamais confisquer l'argent d'un client.
     """
-    reussite = RE_REUSSITE.search(norme)
-    operante = re.compile(
-        RE_GESTE.pattern + "|" + MONTANT +
-        r"|\b(?:recu|receive[sd]?|credite[d]?|envoye|transfere|debite|paye"
-        r"|retire|sent|transferred|paid|withdrawn|debited"
-        r"|transaction|operation)\b")
     for phrase in re.split(r"[.!?\n]+", norme):
         m = RE_MOT_ECHEC.search(phrase)
         if not m or RE_CONDITIONNEL.search(phrase):
             continue
-        if operante.search(phrase):
+        nomme = RE_NOMME_OPERATION.search(phrase)
+        if RE_ANNULATION.search(phrase) and (
+                RE_PHRASE_OPERANTE.search(phrase) or nomme):
             return True
-        if not reussite:
+        if RE_REUSSITE.search(phrase):
+            continue
+        if RE_PHRASE_OPERANTE.search(phrase) or nomme:
             return True
     return False
 
@@ -580,8 +630,11 @@ def _operation_structuree(norme, propre, texte):
             montant = _nombre(tete.group(1))
     if montant is None:
         montant = _montant_nomme(RE_MONTANT_SIMPLE, norme)
-    if montant is None:
-        return None, True   # opération avérée, montant illisible : on renonce
+    if not montant:
+        # Illisible OU nul : un mouvement de 0 FCFA n'existe pas — même
+        # règle que la lecture simple, on renonce plutôt que d'annoncer
+        # « Encaissement — 0 FCFA » et d'en tirer un document.
+        return None, True
 
     return Paiement(
         sens=None, montant=montant, texte=texte,
@@ -674,7 +727,7 @@ def _marqueurs_dargent(norme):
     """
     if len(RE_CHAMP_ARGENT.findall(norme)) >= 2:
         return True
-    return bool(RE_GESTE.search(norme)
+    return bool(_parle_dune_operation(norme)
                 and (RE_MONTANT_SEUL.search(norme)
                      or RE_PARTIE.search(norme)))
 
@@ -699,9 +752,14 @@ def solde_annonce(texte):
     norme = _normaliser(texte)
     if RE_BRUIT.search(norme) or RE_CODE_UNIQUE.search(norme):
         return None
-    if est_echec(norme):
+    # « Solde insuffisant », « échec » : ce solde-là raconte un raté, pas un
+    # relevé. Ici le mot suffit (hors phrase conditionnelle) : un message qui
+    # ne parle que d'un solde ne porte aucun nom de client pour le déguiser.
+    if _echec_constate(norme):
         return None
-    if RE_GESTE.search(norme):
+    # Un geste d'opération CONSTATÉ — « Pour un retrait, composez le #150# »
+    # au pied du relevé est une réclame de l'opérateur, pas une opération.
+    if _parle_dune_operation(norme):
         return None
     if RE_RECU.search(norme) or RE_ENVOYE.search(norme):
         return None
@@ -769,10 +827,16 @@ def categoriser(texte, numeros=()):
         return "echec"
     if solde_annonce(texte) is not None:
         return "solde"
-    if _marqueurs_dargent(norme):
-        return "illisible"
+    # La réclame AVANT l'illisible : les opérateurs vantent leurs transferts
+    # à longueur de SMS (« Le transfert à 0 FCFA de frais ce weekend ! »), et
+    # chacun aurait sonné l'alerte du message d'argent illisible — des
+    # fausses alarmes qui auraient appris au propriétaire à ignorer la vraie.
+    # Un VRAI mouvement ne passe jamais par ici : compris, il est déjà rendu
+    # plus haut, réclame ou pas (« BONUS SARL » paie comme tout le monde).
     if RE_BRUIT.search(norme) or RE_PUB.search(norme):
         return "publicite"
+    if _marqueurs_dargent(norme):
+        return "illisible"
     return "message"
 
 
