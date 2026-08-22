@@ -496,5 +496,39 @@ class TestLaLangueDuRecu(unittest.TestCase):
         self.assertEqual(ligne[-1], "fr")
 
 
+class TestLeDocumentDemandePasseAvantLeMenage(unittest.TestCase):
+    """La file d'archivage sert d'abord le document le plus récemment
+    demandé. Le cas vécu (22 août) : la mise à jour du lecteur remet 143
+    vieux reçus à archiver, le propriétaire redemande au même moment LE
+    document qu'il attend — et patiente quatre minutes derrière le ménage,
+    pendant lesquelles la plateforme sert encore l'ancien PDF."""
+
+    def test_le_plus_recemment_demande_sort_en_premier(self):
+        from totem.storage import Journal
+        journal = Journal(":memory:")
+        menage = journal.sms("OrangeMoney", SMS_DU_BUG, "Orange",
+                             "8923700000000000001")
+        demande = journal.sms(
+            "OrangeMoney",
+            "Transfert de 656483918 PRIX MONO SARL vers 696103864 WONDER "
+            "PHONE reussi. Montant Net: 25000 FCFA", "Orange",
+            "8923700000000000001")
+        journal.programmer_recu(menage, "transfert", "TM-2026-0801-0001")
+        journal.programmer_recu(demande, "transfert", "TM-2026-0822-0002")
+        for ligne in journal.recus_a_envoyer(-60):
+            journal.recu_envoye(ligne[0])
+        # Le reçu d'entretien est ANCIEN (inscrit il y a trois semaines) ;
+        # celui du propriétaire vient d'être redemandé. Avant le correctif,
+        # l'ordre d'inscription (id) faisait passer l'entretien d'abord.
+        journal.conn.execute("UPDATE recus SET date = '2026-08-01T10:00:00' "
+                             "WHERE numero = 'TM-2026-0801-0001'")
+        journal.conn.execute("UPDATE recus SET date = '2026-08-22T12:00:00' "
+                             "WHERE numero = 'TM-2026-0822-0002'")
+        premiers = journal.recus_a_archiver()
+        self.assertEqual(premiers[0][2], "TM-2026-0822-0002",
+                         "le document attendu doit passer avant le ménage")
+        self.assertEqual(premiers[1][2], "TM-2026-0801-0001")
+
+
 if __name__ == "__main__":
     unittest.main()

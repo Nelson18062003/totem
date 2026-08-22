@@ -702,7 +702,17 @@ class Journal:
                 (avant, limite)).fetchall()
 
     def recus_a_archiver(self, limite=5):
-        """Les reçus partis sur Telegram mais pas encore déposés dans le cloud."""
+        """Les reçus partis sur Telegram mais pas encore déposés dans le cloud.
+
+        Les plus récemment DEMANDÉS d'abord. Le cas vécu : une mise à jour du
+        lecteur remet 143 vieux reçus à archiver, et le propriétaire, au même
+        moment, redemande LE document qu'il attend — inscrit en dernier, il
+        patientait derrière toute la file d'entretien, quatre minutes durant
+        lesquelles la plateforme servait encore l'ancien PDF. Un document
+        qu'une personne attend passe avant le ménage ; le ménage se fait
+        quand même, juste après. `date` avance à chaque redemande — c'est
+        elle qui porte l'urgence, pas l'ordre d'inscription.
+        """
         with self.verrou:
             return self.conn.execute(
                 "SELECT r.id, r.genre, r.numero, r.date, "
@@ -712,7 +722,8 @@ class Journal:
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
-                "WHERE r.envoye = 1 AND r.archive = 0 ORDER BY r.id LIMIT ?",
+                "WHERE r.envoye = 1 AND r.archive = 0 "
+                "ORDER BY r.date DESC, r.id DESC LIMIT ?",
                 (limite,)).fetchall()
 
     def recu_envoye(self, identifiant):
