@@ -31,6 +31,10 @@ export type Operation = {
   titre: string;
   code: string;                 // le code USSD du catalogue, composé tel quel
   champs: ChampOperation[];     // vide : la session s'ouvre directement
+  // L'ICCID de la carte visée. C'est lui qui dit au robot SUR QUELLE puce
+  // composer : avec deux SIM en place, une opération sans carte partirait
+  // sur la première venue.
+  carte?: string;
 };
 
 type Msg = { de: "reseau" | "vous"; texte: string };
@@ -139,7 +143,12 @@ export function OperationPopup({
   const lancer = async () => {
     setEtape("session");
     restants.current = [...operation.champs];
-    const premiere = await envoyer("ussd", { code: operation.code }, { de: "vous", texte: operation.code });
+    const premiere = await envoyer(
+      "ussd",
+      operation.carte
+        ? { code: operation.code, carte: operation.carte }
+        : { code: operation.code },
+      { de: "vous", texte: operation.code });
     await derouler(premiere);
   };
 

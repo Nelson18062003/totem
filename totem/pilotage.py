@@ -319,6 +319,23 @@ class Pilotage:
                  "État du terminal republié.", langue=langue)
 
     def _compte_vise(self, parametres, langue=None):
+        """La carte sur laquelle composer.
+
+        Par ICCID d'abord (« carte ») : c'est lui qui identifie une puce sans
+        ambiguïté — deux SIM du même opérateur portent le même début de
+        libellé, jamais le même ICCID. Le libellé (« compte ») reste accepté :
+        c'est le geste historique de Telegram (« mtn *126# »). Sans ciblage,
+        la première carte — le terminal à une seule SIM n'a rien à préciser.
+        """
+        iccid = re.sub(r"\D", "", str(parametres.get("carte") or ""))
+        if iccid:
+            for c in self.comptes:
+                if c.carte.identifiee and c.carte.iccid == iccid:
+                    return c
+            raise RefusPoli(t(
+                "That card is not in the terminal — was it moved or removed?",
+                "Cette carte n'est pas dans le terminal — déplacée, retirée ?",
+                langue=langue))
         nom = (parametres.get("compte") or "").strip().lower()
         if nom:
             for c in self.comptes:

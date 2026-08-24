@@ -41,6 +41,13 @@ export async function POST(req: Request) {
   }
   if (brut.secret === true) parametres.secret = true;
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
+  // La carte visée par une session USSD : l'ICCID, seul nom sans ambiguïté
+  // d'une puce. Sans lui, le robot compose sur sa première carte — et avec
+  // deux SIM, une opération Orange partirait sur la MTN.
+  if (typeof brut.carte === "string") {
+    const carte = brut.carte.replace(/\D/g, "").slice(0, 22);
+    if (carte) parametres.carte = carte;
+  }
   // La nature choisie pour un reçu : une nature connue, rien d'autre ne passe.
   if (estNature(brut.nature)) {
     parametres.nature = brut.nature;
