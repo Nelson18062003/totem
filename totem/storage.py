@@ -486,6 +486,17 @@ class Journal:
                       "etapes": [e for e in etapes.split(",") if e]}
                 for nom, libelle, etapes in lignes}
 
+    def tous_raccourcis(self):
+        """[(operateur, nom, libelle, etapes), …] — le carnet entier, tel quel.
+
+        C'est le pont cloud qui le demande : la plateforme doit connaître les
+        boutons de TOUS les opérateurs, pas seulement celui de la carte
+        pilotée. `etapes` reste la chaîne rangée en base (« *126#,5,1 »)."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT operateur, nom, libelle, etapes FROM raccourcis"
+                " ORDER BY id").fetchall()
+
     def supprimer_raccourci(self, operateur, nom):
         with self.verrou:
             curseur = self.conn.execute(

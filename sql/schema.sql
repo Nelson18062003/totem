@@ -178,6 +178,33 @@ create table if not exists commandes (
   traitee_le  timestamptz
 );
 
+-- --- Raccourcis : les boutons USSD appris, par opérateur --------------------
+-- Les codes USSD appartiennent au réseau, pas à une carte : « *126# puis 5 »
+-- vaut pour toute puce MTN. Le robot apprend un parcours en regardant le
+-- propriétaire le faire une fois (💾 sur Telegram), le range dans son journal
+-- local, et pousse ici une copie du carnet entier — c'est ce qui permet à la
+-- plateforme d'afficher les mêmes boutons que Telegram, y compris pour un
+-- opérateur dont aucun code n'est écrit dans le code source.
+-- Le code secret n'apparaît JAMAIS dans un parcours : l'apprentissage
+-- s'arrête juste avant.
+create table if not exists raccourcis (
+  id          bigint generated always as identity primary key,
+  terminal    text not null references terminaux(id) on delete cascade,
+  operateur   text not null,             -- « MTN », « Orange »
+  nom         text not null,             -- clé stable (« solde », « depot »)
+  libelle     text not null,             -- ce que le bouton affiche
+  -- Le parcours, tel que le journal local le range : le code d'entrée puis
+  -- les réponses, séparés par des virgules (« *126#,5,1 »).
+  etapes      text not null,
+  maj         timestamptz not null default now(),
+  cree_le     timestamptz not null default now(),
+  unique (terminal, operateur, nom)
+);
+
+comment on table raccourcis is
+  'Les boutons USSD appris par le robot, par opérateur. Copie du journal '
+  'local du terminal : c''est lui qui écrit, la plateforme ne fait que lire.';
+
 -- ---------------------------------------------------------------------------
 -- Mise à niveau des bases créées avant le cloisonnement par carte
 --
@@ -319,11 +346,12 @@ alter table paiements  enable row level security;
 alter table evenements enable row level security;
 alter table commandes  enable row level security;
 alter table recus      enable row level security;
+alter table raccourcis enable row level security;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus']
+  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus','raccourcis']
   loop
     execute format(
       'drop policy if exists "lecture connectee" on %I; '
