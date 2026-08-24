@@ -43,6 +43,12 @@ const en = {
   montantFcfa: "Amount (FCFA)",
   aucunCode: (op: string) => `No ${op} codes recorded yet: add them in`,
   aucunCodeLien: "Settings",
+  // Plusieurs cartes : le guichet suit la carte choisie
+  choisirCarte: (l: string) => `Select the ${l} card`,
+  gestesSur: (l: string) => `Operations on the ${l} card`,
+  carteMuette: (d: string) =>
+    `Not seen by the terminal since ${d} — check the box in Douala. ` +
+    "The balance shown is the last one known.",
 
   // Les derniers SMS
   derniersSms: "Latest SMS",
@@ -91,6 +97,11 @@ const fr: typeof en = {
   montantFcfa: "Montant (FCFA)",
   aucunCode: (op) => `Aucun code ${op} relevé sur le terrain : ajoutez-les dans les`,
   aucunCodeLien: "Réglages",
+  choisirCarte: (l) => `Choisir la carte ${l}`,
+  gestesSur: (l) => `Gestes sur la carte ${l}`,
+  carteMuette: (d) =>
+    `Plus vue par le terminal depuis le ${d} — vérifiez le boîtier, à Douala. ` +
+    "Le solde affiché est le dernier connu.",
 
   derniersSms: "Derniers SMS",
   toutVoir: "Tout voir",

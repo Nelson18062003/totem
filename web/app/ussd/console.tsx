@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { codesUssd } from "@/lib/codes";
 import { textesUssd } from "@/lib/textes/ussd";
-import type { Sim } from "@/lib/types";
+import type { RaccourciAppris, Sim } from "@/lib/types";
 import { BarreArret, BoutonFermer } from "../feuille";
 import { IconHash } from "../icons";
 import { useLangue } from "../langue";
@@ -40,15 +40,24 @@ function demandeUnCode(texte: string): boolean {
     /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte);
 }
 
+type CarteConsole = Pick<Sim, "libelle" | "operateur" | "iccid">;
+
 export function ConsoleUssd({
-  carte,
+  cartes,
+  raccourcis,
   codeInitial,
 }: {
-  carte: Pick<Sim, "libelle" | "operateur">;
+  cartes: CarteConsole[];
+  // Les boutons appris par le robot (💾 sur Telegram), par opérateur.
+  raccourcis: Record<string, RaccourciAppris[]>;
   codeInitial?: string;
 }) {
   const langue = useLangue();
   const t = textesUssd[langue];
+  // La carte sur laquelle le cadran compose. Le choix se fige pendant une
+  // session : un menu ouvert appartient à SA carte.
+  const [choisie, setChoisie] = useState(cartes[0]?.iccid ?? "");
+  const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const [saisie, setSaisie] = useState("");
   const [reponse, setReponse] = useState("");
   const [fil, setFil] = useState<Msg[]>([]);
@@ -61,12 +70,15 @@ export function ConsoleUssd({
   // rouvre pas tout seul sur une réponse tardive.
   const generation = useRef(0);
 
+  // Rend la réponse du réseau quand la demande aboutit, null sinon : c'est
+  // ce qui permet de rejouer un bouton appris étape par étape, en s'arrêtant
+  // net dès que le réseau ne suit pas.
   const envoyer = async (
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
-  ) => {
-    if (attente) return;
+  ): Promise<string | null> => {
+    if (attente) return null;
     const gen = generation.current;
     setAttente(true);
     setErreur(null);
@@ -87,26 +99,25 @@ export function ConsoleUssd({
       // attend sa réponse, sans jamais prétendre l'avoir avant lui.
       for (let i = 0; i < 25; i++) {
         await new Promise((res) => setTimeout(res, 1200));
-        if (generation.current !== gen) return;   // écran refermé entre-temps
+        if (generation.current !== gen) return null;   // écran refermé entre-temps
         const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
           .then((x) => (x.ok ? x.json() : null))
           .catch(() => null);
         if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          if (generation.current !== gen) return;
-          setFil((f) => [...f, {
-            de: "reseau",
-            texte: c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec),
-          }]);
+          if (generation.current !== gen) return null;
+          const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
+          setFil((f) => [...f, { de: "reseau", texte }]);
           setEnSession(c.etat === "faite");
           setAttente(false);
-          return;
+          return c.etat === "faite" ? texte : null;
         }
       }
       throw new Error(t.terminalMuet);
     } catch (e) {
-      if (generation.current !== gen) return;
+      if (generation.current !== gen) return null;
       setErreur(e instanceof Error ? e.message : t.accroc);
       setAttente(false);
+      return null;
     }
   };
 
@@ -115,7 +126,24 @@ export function ConsoleUssd({
     if (!c || enSession) return;
     setFil([]);
     setSaisie("");
-    void envoyer("ussd", { code: c }, { de: "vous", texte: c });
+    // L'ICCID voyage avec le code : le robot compose sur CETTE carte,
+    // jamais sur « la première venue ».
+    void envoyer("ussd", { code: c, carte: carte.iccid }, { de: "vous", texte: c });
+  };
+
+  // Rejouer un bouton appris : le code d'entrée, puis chaque réponse retenue,
+  // dans l'ordre. Le code secret n'est jamais dans un parcours —
+  // l'apprentissage s'arrête juste avant, et le pavé prend la main ici aussi.
+  const jouer = async (etapes: string[]) => {
+    if (!etapes.length || enSession || attente) return;
+    setFil([]);
+    setSaisie("");
+    let texte = await envoyer("ussd", { code: etapes[0], carte: carte.iccid },
+      { de: "vous", texte: etapes[0] });
+    for (const etape of etapes.slice(1)) {
+      if (texte == null) return;   // le réseau n'a pas suivi : on s'arrête là
+      texte = await envoyer("ussd_reponse", { texte: etape }, { de: "vous", texte: etape });
+    }
   };
 
   const repondre = (texte: string) => {
@@ -229,6 +257,28 @@ export function ConsoleUssd({
       <header className="lg:col-span-2">
         <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre(carte.libelle)}</p>
+        {/* Deux cartes en place : le cadran dit sur laquelle il compose.
+            Le choix se fige pendant une session — un menu ouvert appartient
+            à SA carte. */}
+        {cartes.length > 1 && (
+          <span className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={t.carteDuCadran}>
+            {cartes.map((c) => (
+              <button
+                key={c.iccid}
+                onClick={() => setChoisie(c.iccid)}
+                disabled={attente || enSession}
+                aria-pressed={c.iccid === carte.iccid}
+                className={`rounded-btn px-3 py-1.5 text-small font-medium transition disabled:opacity-40 ${
+                  c.iccid === carte.iccid
+                    ? "bg-ink text-white"
+                    : "border border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+                }`}
+              >
+                {c.libelle}
+              </button>
+            ))}
+          </span>
+        )}
       </header>
 
       {/* La colonne du cadran : composer, puis les raccourcis */}
@@ -243,7 +293,7 @@ export function ConsoleUssd({
               value={saisie}
               onChange={(e) => setSaisie(e.target.value.replace(/[^0-9#*]/g, ""))}
               inputMode="tel"
-              placeholder="#148#"
+              placeholder={codesUssd[carte.operateur]?.[0]?.code ?? "#148#"}
               className="flex-1 bg-transparent py-2.5 text-body tabnums outline-none placeholder:text-ink-faint"
             />
           </div>
@@ -266,6 +316,25 @@ export function ConsoleUssd({
             </button>
           ))}
         </div>
+
+        {/* Les boutons APPRIS par le robot (💾 sur Telegram), pour cet
+            opérateur : le même carnet que Telegram, lu depuis la base. Un
+            bouton rejoue son parcours étape par étape — jamais le code
+            secret, l'apprentissage s'arrête juste avant. */}
+        {(raccourcis[carte.operateur] ?? []).length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-caption uppercase tracking-wider text-ink-faint">
+              {t.boutonsAppris}
+            </p>
+            {(raccourcis[carte.operateur] ?? []).map((r) => (
+              <button key={r.nom} onClick={() => void jouer(r.etapes)} disabled={attente || enSession}
+                className="flex items-center justify-between gap-3 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-left text-small font-medium text-ink transition hover:border-ink-faint disabled:opacity-40">
+                {r.libelle}
+                <span className="tabnums font-normal text-ink-faint">{r.etapes.join(" → ")}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <p className="hidden text-caption leading-relaxed text-ink-faint lg:block">
           {t.noteSession}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { codeUssd } from "@/lib/codes";
+import { codeGeste } from "@/lib/codes";
 import { textesGuichet } from "@/lib/textes/guichet";
 import type { Sim } from "@/lib/types";
 import {
@@ -13,23 +13,29 @@ import {
 import { useLangue } from "../langue";
 import { OperationPopup, type Operation } from "../operation";
 
+type CarteGuichet = Pick<Sim, "libelle" | "operateur" | "iccid">;
+
 /**
  * Le guichet. Chaque geste ouvre son pop-up ici même : le formulaire, puis la
  * vraie session USSD sur la carte de Douala, jusqu'au pavé du code secret.
- * Les codes viennent du catalogue relevé sur le terrain (codes.py).
+ * Les codes viennent du catalogue relevé sur le terrain (codes.py) ; un geste
+ * sans code direct passe par la porte du menu de l'opérateur. Avec plusieurs
+ * cartes en place, le sélecteur en tête dit sur laquelle on compose.
  */
-export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }) {
+export function Guichet({ cartes }: { cartes: CarteGuichet[] }) {
   const router = useRouter();
   const langue = useLangue();
   const t = textesGuichet[langue];
   const [operation, setOperation] = useState<Operation | null>(null);
+  const [choisie, setChoisie] = useState(cartes[0]?.iccid ?? "");
+  const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const op = carte.operateur;
 
   const operations = [
     {
       titre: t.depot, sous: t.depotSous, Icone: IconArrowDown,
       fabrique: (): Operation => ({
-        titre: t.depotTitre, code: codeUssd(op, "depot"),
+        titre: t.depotTitre, code: codeGeste(op, "depot"), carte: carte.iccid,
         champs: [
           { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
           { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
@@ -39,7 +45,7 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
     {
       titre: t.retrait, sous: t.retraitSous, Icone: IconWallet,
       fabrique: (): Operation => ({
-        titre: t.retraitTitre, code: codeUssd(op, "retrait"),
+        titre: t.retraitTitre, code: codeGeste(op, "retrait"), carte: carte.iccid,
         champs: [
           { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
           { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
@@ -49,7 +55,7 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
     {
       titre: t.transfert, sous: t.transfertSous, Icone: IconArrowUp,
       fabrique: (): Operation => ({
-        titre: t.transfertTitre, code: codeUssd(op, "transfert"),
+        titre: t.transfertTitre, code: codeGeste(op, "transfert"), carte: carte.iccid,
         champs: [
           { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
           { cle: "montant", label: t.montantFcfa, aide: t.exempleCinquanteMille, type: "montant" },
@@ -61,23 +67,49 @@ export function Guichet({ carte }: { carte: Pick<Sim, "libelle" | "operateur"> }
   const consultations = [
     {
       l: t.consulterSolde, Icone: IconRefresh,
-      fabrique: (): Operation => ({ titre: t.consulterSolde, code: codeUssd(op, "solde"), champs: [] }),
+      fabrique: (): Operation => ({
+        titre: t.consulterSolde, code: codeGeste(op, "solde"),
+        champs: [], carte: carte.iccid,
+      }),
     },
     {
       l: t.monNumero, Icone: IconPhone,
-      fabrique: (): Operation => ({ titre: t.monNumero, code: codeUssd(op, "mon_numero"), champs: [] }),
+      fabrique: (): Operation => ({
+        titre: t.monNumero, code: codeGeste(op, "mon_numero"),
+        champs: [], carte: carte.iccid,
+      }),
     },
   ].filter((c) => c.fabrique().code);
 
   return (
     // Grand écran : les trois opérations à gauche, la consultation à droite.
     <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-x-10">
-      {/* Le titre et la carte visée : rien d'autre à expliquer. */}
-      <header className="flex items-end justify-between lg:col-span-2">
+      {/* Le titre et la carte visée. Deux cartes en place : le choix se fait
+          ici, et tout l'écran suit. */}
+      <header className="flex flex-wrap items-end justify-between gap-3 lg:col-span-2">
         <h1 className="text-title font-semibold tracking-tight">{t.titre}</h1>
-        <span className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft">
-          {carte.libelle}
-        </span>
+        {cartes.length > 1 ? (
+          <span className="flex flex-wrap gap-1.5" role="group" aria-label={t.carteVisee}>
+            {cartes.map((c) => (
+              <button
+                key={c.iccid}
+                onClick={() => setChoisie(c.iccid)}
+                aria-pressed={c.iccid === carte.iccid}
+                className={`rounded-btn px-3 py-1.5 text-small font-medium transition ${
+                  c.iccid === carte.iccid
+                    ? "bg-ink text-white"
+                    : "border border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+                }`}
+              >
+                {c.libelle}
+              </button>
+            ))}
+          </span>
+        ) : (
+          <span className="rounded-btn border border-line bg-surface-raised px-3 py-1.5 text-small text-ink-soft">
+            {carte.libelle}
+          </span>
+        )}
       </header>
 
       {operations.length === 0 ? (

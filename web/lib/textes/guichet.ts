@@ -36,6 +36,7 @@ const en = {
   aucunCodeReleve: (op: string) =>
     `No ${op} codes have been collected in the field yet — a digit that moves ` +
     "money is not something to guess. Add them in Settings.",
+  carteVisee: "Card the operations run on",
 
   // --- Le pop-up d'une opération ----------------------------------------------
   preparation: "Getting ready",
@@ -107,6 +108,7 @@ const fr: typeof en = {
   aucunCodeReleve: (op) =>
     `Aucun code ${op} n’a encore été relevé sur le terrain — on ne devine ` +
     "pas un chiffre qui déplace de l’argent. Ajoutez-les dans les Réglages.",
+  carteVisee: "Carte des opérations",
 
   preparation: "Préparation",
   sessionEnCours: "Session en cours",

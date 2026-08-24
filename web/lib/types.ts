@@ -85,6 +85,16 @@ export type Paiement = {
   nonLu: boolean;
 };
 
+// Un bouton USSD appris par le robot (💾 sur Telegram) et poussé dans la
+// base. Il appartient à un OPÉRATEUR, pas à une carte : « *126# puis 5 »
+// vaut pour toute puce MTN. `etapes` : le code d'entrée puis les réponses,
+// dans l'ordre — jamais le code secret, l'apprentissage s'arrête avant.
+export type RaccourciAppris = {
+  nom: string;
+  libelle: string;
+  etapes: string[];
+};
+
 export type EtatTerminal = {
   id: string;
   nom: string;
@@ -104,6 +114,10 @@ export type Donnees = {
   terminal: EtatTerminal | null;
   sims: Sim[];
   paiements: Paiement[];
+  // Les boutons appris, rangés par opérateur (« MTN » → [solde, …]).
+  // Vide tant que le terminal n'a rien appris — ou que la base n'a pas
+  // encore la table (migration en retard) : jamais un écran cassé.
+  raccourcis: Record<string, RaccourciAppris[]>;
 };
 
 export function fcfa(n: number, langue: Langue): string {

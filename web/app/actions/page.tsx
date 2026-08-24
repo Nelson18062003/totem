@@ -10,9 +10,12 @@ export default async function Operations() {
   const langue = await langueServeur();
   const t = textesGuichet[langue];
   const { sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
-  const carte = sims.find((s) => s.enPlace);
+  // TOUTES les cartes en place : le guichet montre un sélecteur dès qu'il y
+  // en a deux — chaque opération part sur la carte choisie, jamais sur « la
+  // première venue ».
+  const cartes = sims.filter((s) => s.enPlace);
 
-  if (!carte) {
+  if (cartes.length === 0) {
     return (
       <div className="flex flex-col gap-7">
         <header>
@@ -24,5 +27,11 @@ export default async function Operations() {
     );
   }
 
-  return <Guichet carte={{ libelle: carte.libelle, operateur: carte.operateur }} />;
+  return (
+    <Guichet
+      cartes={cartes.map((c) => ({
+        libelle: c.libelle, operateur: c.operateur, iccid: c.iccid,
+      }))}
+    />
+  );
 }

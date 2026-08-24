@@ -13,13 +13,16 @@ export default async function CodeUssd({
 }) {
   const langue = await langueServeur();
   const t = textesUssd[langue];
-  const [{ sims }, { code }] = await Promise.all([
+  const [{ sims, raccourcis }, { code }] = await Promise.all([
     chargerDonnees(langue, { sms: 0, recus: 0 }),
     searchParams,
   ]);
-  const carte = sims.find((s) => s.enPlace);
+  // TOUTES les cartes en place : le cadran compose sur la carte choisie —
+  // avec Orange et MTN côte à côte, « composer » ne veut rien dire sans dire
+  // sur quelle puce.
+  const cartes = sims.filter((s) => s.enPlace);
 
-  if (!carte) {
+  if (cartes.length === 0) {
     return (
       <div className="flex flex-col gap-7">
         <header>
@@ -33,7 +36,10 @@ export default async function CodeUssd({
 
   return (
     <ConsoleUssd
-      carte={{ libelle: carte.libelle, operateur: carte.operateur }}
+      cartes={cartes.map((c) => ({
+        libelle: c.libelle, operateur: c.operateur, iccid: c.iccid,
+      }))}
+      raccourcis={raccourcis}
       codeInitial={typeof code === "string" ? code.replace(/[^0-9#*]/g, "").slice(0, 32) : undefined}
     />
   );
