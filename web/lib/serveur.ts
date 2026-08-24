@@ -241,7 +241,11 @@ export async function chargerDonnees(
     .sort((a, b) => (moment(a) < moment(b) ? 1 : moment(a) > moment(b) ? -1 : 0))
     .map((l) => ({
       id: String(l.id),
-      sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
+      // Le libellé COMPLET du compte (« MTN ·8901 »), plus le premier mot :
+      // deux cartes du même opérateur doivent rester deux caisses dans les
+      // filtres — « MTN » tout court les fondait en une seule.
+      sim: l.compte || l.carte || "—",
+      carte: l.carte ?? "",
       // Le robot laisse le sens vide quand le SMS ne permet pas de trancher :
       // on l'affiche comme inconnu, jamais comme une sortie par défaut.
       sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",

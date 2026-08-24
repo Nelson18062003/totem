@@ -52,7 +52,13 @@ export const estCategorie = (v: unknown): v is Categorie =>
 
 export type Paiement = {
   id: string;
-  sim: string;              // libellé court de l'opérateur (« Orange »)
+  // Le libellé du compte qui a reçu ce SMS (« MTN ·8901 ») : c'est lui qui
+  // filtre la boîte de réception — par carte, jamais par opérateur, pour que
+  // deux SIM du même réseau restent deux caisses distinctes.
+  sim: string;
+  // L'ICCID de la carte, quand le terminal l'a transmis. Le CSV le porte,
+  // comme l'export du robot : c'est le seul nom qui ne change jamais.
+  carte: string;
   // « ? » : le SMS nomme les deux parties sans dire laquelle est la nôtre
   // (forme d'Orange). Mieux vaut un sens inconnu qu'un sens inversé.
   sens: "in" | "out" | "?";
