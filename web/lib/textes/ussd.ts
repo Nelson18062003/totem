@@ -29,6 +29,8 @@ const en = {
         mon_numero: "My number",
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
+  carteDuCadran: "Card the dialler uses",
+  boutonsAppris: "Learned by the robot (💾 on Telegram)",
   noteSession:
     "The session goes through the terminal in Douala: every reply shown " +
     "here is the operator's, word for word. The secret code is dialled on " +
@@ -79,6 +81,8 @@ const fr: typeof en = {
         mon_numero: "Mon numéro",
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
+  carteDuCadran: "Carte du cadran",
+  boutonsAppris: "Appris par le robot (💾 sur Telegram)",
   noteSession:
     "La session traverse le terminal de Douala : chaque réponse affichée " +
     "ici est celle de l’opérateur, mot pour mot. Le code secret, lui, se " +

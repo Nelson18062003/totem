@@ -319,11 +319,37 @@ class Pilotage:
                  "État du terminal republié.", langue=langue)
 
     def _compte_vise(self, parametres, langue=None):
+        """La carte sur laquelle composer.
+
+        Par ICCID d'abord (« carte ») : c'est lui qui identifie une puce sans
+        ambiguïté — deux SIM du même opérateur portent le même début de
+        libellé, jamais le même ICCID. Le libellé (« compte ») reste accepté :
+        c'est le geste historique de Telegram (« mtn *126# »). Sans ciblage,
+        la première carte — le terminal à une seule SIM n'a rien à préciser.
+        """
+        iccid = re.sub(r"\D", "", str(parametres.get("carte") or ""))
+        if iccid:
+            for c in self.comptes:
+                if c.carte.identifiee and c.carte.iccid == iccid:
+                    return c
+            raise RefusPoli(t(
+                "That card is not in the terminal — was it moved or removed?",
+                "Cette carte n'est pas dans le terminal — déplacée, retirée ?",
+                langue=langue))
         nom = (parametres.get("compte") or "").strip().lower()
         if nom:
-            for c in self.comptes:
-                if c.libelle.lower().startswith(nom):
-                    return c
+            trouves = [c for c in self.comptes
+                       if c.libelle.lower().startswith(nom)]
+            if len(trouves) > 1:
+                # Deux cartes MTN : ce préfixe visait la première en
+                # silence. On refuse — l'ICCID, lui, ne se trompe jamais.
+                raise RefusPoli(t(
+                    f"Several cards answer to “{nom}” — name the card "
+                    "itself (its ICCID).",
+                    f"Plusieurs cartes répondent à « {nom} » — désignez la "
+                    "carte elle-même (son ICCID).", langue=langue))
+            if trouves:
+                return trouves[0]
             raise RefusPoli(t(f"No account “{nom}” on this terminal.",
                               f"Aucun compte « {nom} » sur ce terminal.",
                               langue=langue))

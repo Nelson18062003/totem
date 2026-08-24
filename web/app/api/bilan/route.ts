@@ -23,10 +23,13 @@ function champ(v: string | number | null): string {
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// La colonne « carte » porte l'ICCID, comme l'export du robot : c'est le
+// seul nom d'une puce qui ne change jamais — le libellé « MTN ·8901 » est
+// pour les yeux, l'ICCID pour la comptabilité.
 const ENTETES: Record<Langue, string[]> = {
-  en: ["date", "time", "account", "direction", "amount_fcfa",
+  en: ["date", "time", "account", "card", "direction", "amount_fcfa",
     "party", "number", "reference", "balance_after", "receipt", "message"],
-  fr: ["date", "heure", "compte", "sens", "montant_fcfa",
+  fr: ["date", "heure", "compte", "carte", "sens", "montant_fcfa",
     "tiers", "numero", "reference", "solde_apres", "recu", "message"],
 };
 
@@ -56,7 +59,7 @@ export async function GET(req: Request) {
   const rangs = [
     ENTETES[langue],
     ...lignes.map((p) => [
-      p.jour, p.heure, p.sim, SENS[langue][p.sens],
+      p.jour, p.heure, p.sim, p.carte, SENS[langue][p.sens],
       p.montant == null ? "" : String(p.montant),
       p.nom, p.numero, p.reference,
       p.soldeApres == null ? "" : String(p.soldeApres),

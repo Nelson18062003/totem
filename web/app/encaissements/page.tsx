@@ -14,7 +14,9 @@ export default async function Encaissements({
     chargerDonnees(langue),
     searchParams,
   ]);
-  // Les filtres proposés sont les opérateurs réellement vus dans les données.
+  // Les filtres proposés sont les CARTES réellement vues dans les données —
+  // par libellé complet (« MTN ·8901 ») : deux SIM du même opérateur sont
+  // deux caisses, elles ne se fondent plus en un seul filtre « MTN ».
   const operateurs = [...new Set(paiements.map((p) => p.sim))].filter((o) => o !== "—");
   return (
     <ListeEncaissements

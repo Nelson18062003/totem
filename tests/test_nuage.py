@@ -21,6 +21,7 @@ class FauxSupabase(BaseHTTPRequestHandler):
     et sait aussi tomber en panne sur commande."""
 
     recu = []           # toutes les lignes reçues, par table
+    supprimes = []      # les chemins des DELETE reçus (ménage des raccourcis)
     en_panne = False
     refuser_texte = None  # sous-chaîne : tout lot la contenant est rejeté (400)
     colonnes_absentes = set()  # colonnes que la base n'a pas (défaut PGRST204)
@@ -53,6 +54,14 @@ class FauxSupabase(BaseHTTPRequestHandler):
         table = self.path.lstrip("/").split("?")[0].replace("rest/v1/", "")
         FauxSupabase.recu.append((table, corps))
         self.send_response(201)
+        self.end_headers()
+
+    def do_DELETE(self):
+        if FauxSupabase.en_panne:
+            self.send_error(503)
+            return
+        FauxSupabase.supprimes.append(self.path)
+        self.send_response(204)
         self.end_headers()
 
     def log_message(self, *args):
@@ -413,3 +422,79 @@ class TestReveilImmediat(unittest.TestCase):
         self.nuage.arreter()
         fil.join(timeout=10)
         self.assertFalse(fil.is_alive())
+
+
+class TestRaccourcisVersLeCloud(unittest.TestCase):
+    """Le carnet des boutons appris, poussé jusqu'à la plateforme.
+
+    Ce qui s'apprend une fois sur Telegram (💾) doit devenir un bouton
+    partout : c'est le chemin prévu pour équiper un nouvel opérateur —
+    MTN aujourd'hui, un autre demain — sans toucher au code source.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.serveur = HTTPServer(("127.0.0.1", 0), FauxSupabase)
+        cls.port = cls.serveur.server_address[1]
+        threading.Thread(target=cls.serveur.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.serveur.shutdown()
+
+    def setUp(self):
+        FauxSupabase.recu = []
+        FauxSupabase.supprimes = []
+        FauxSupabase.en_panne = False
+        FauxSupabase.refuser_texte = None
+        FauxSupabase.colonnes_absentes = set()
+        self.journal = Journal(":memory:")
+        self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
+                           "douala", self.journal)
+
+    def lots(self, table):
+        return [l for t, corps in FauxSupabase.recu if t == table for l in corps]
+
+    def test_le_carnet_part_entier_puis_le_menage(self):
+        self.journal.ajouter_raccourci("MTN", "solde", "Solde", ["*126#", "5", "1"])
+        self.journal.ajouter_raccourci("Orange", "depot", "Dépôt", ["#148*2#"])
+        self.assertTrue(self.nuage.publier_raccourcis())
+        lignes = self.lots("raccourcis")
+        self.assertEqual(len(lignes), 2)
+        par_nom = {l["nom"]: l for l in lignes}
+        self.assertEqual(par_nom["solde"]["operateur"], "MTN")
+        self.assertEqual(par_nom["solde"]["etapes"], "*126#,5,1")
+        self.assertEqual(par_nom["depot"]["terminal"], "douala")
+        # Le ménage suit la poussée : ce qui n'a pas été rafraîchi disparaît.
+        self.assertEqual(len(FauxSupabase.supprimes), 1)
+        self.assertIn("terminal=eq.douala", FauxSupabase.supprimes[0])
+        self.assertIn("maj=lt.", FauxSupabase.supprimes[0])
+
+    def test_rien_ne_repart_tant_que_le_carnet_ne_change_pas(self):
+        self.journal.ajouter_raccourci("MTN", "solde", "Solde", ["*126#", "5"])
+        self.assertTrue(self.nuage.publier_raccourcis())
+        avant = len(FauxSupabase.recu)
+        self.assertTrue(self.nuage.publier_raccourcis())
+        self.assertEqual(len(FauxSupabase.recu), avant,
+                         "un carnet inchangé n'a rien à repousser")
+
+    def test_une_suppression_locale_repousse_le_carnet(self):
+        self.journal.ajouter_raccourci("MTN", "solde", "Solde", ["*126#", "5"])
+        self.journal.ajouter_raccourci("MTN", "depot", "Dépôt", ["*126#", "1"])
+        self.assertTrue(self.nuage.publier_raccourcis())
+        self.journal.supprimer_raccourci("MTN", "depot")
+        self.assertTrue(self.nuage.publier_raccourcis())
+        # La seconde poussée ne porte plus que « solde » ; le DELETE qui la
+        # suit efface « depot » du cloud (sa date n'a pas été rafraîchie).
+        derniers = FauxSupabase.recu[-1][1]
+        self.assertEqual([l["nom"] for l in derniers], ["solde"])
+        self.assertEqual(len(FauxSupabase.supprimes), 2)
+
+    def test_une_panne_ne_fige_pas_le_carnet(self):
+        self.journal.ajouter_raccourci("MTN", "solde", "Solde", ["*126#", "5"])
+        FauxSupabase.en_panne = True
+        self.assertFalse(self.nuage.publier_raccourcis())
+        FauxSupabase.en_panne = False
+        self.assertTrue(self.nuage.publier_raccourcis(),
+                        "le retour du réseau doit relancer la poussée")
+        self.assertEqual(len(self.lots("raccourcis")), 1)

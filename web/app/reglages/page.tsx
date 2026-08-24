@@ -16,8 +16,13 @@ export const dynamic = "force-dynamic";
 export default async function Reglages() {
   const langue = await langueServeur();
   const t = textesReglages[langue];
-  const { terminal, sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
-  const carte = sims.find((s) => s.enPlace);
+  const { terminal, sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });
+  // Une section de codes PAR OPÉRATEUR présent — les cartes en place
+  // d'abord. Le repli « Orange » d'autrefois mentait dès qu'une MTN était
+  // dans le berceau.
+  const enPlaceOps = sims.filter((s) => s.enPlace).map((s) => s.operateur);
+  const operateurs = [...new Set([...enPlaceOps, ...sims.map((s) => s.operateur)])]
+    .filter((op) => op && op !== "?");
 
   return (
     <div className="flex flex-col gap-8">
@@ -147,8 +152,16 @@ export default async function Reglages() {
           navigation, sur chaque écran. */}
       <SectionLangue />
 
-      {/* Codes USSD — ceux de l'opérateur de la carte en place */}
-      <SectionCodes operateur={carte?.operateur ?? "Orange"} />
+      {/* Codes USSD — une section par opérateur vu par le terminal, avec les
+          boutons appris par le robot (💾 sur Telegram) en regard */}
+      {operateurs.map((op) => (
+        <SectionCodes
+          key={op}
+          operateur={op}
+          enPlace={enPlaceOps.includes(op)}
+          appris={raccourcis[op] ?? []}
+        />
+      ))}
 
       {/* Sécurité */}
       <section>

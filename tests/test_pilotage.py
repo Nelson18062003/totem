@@ -355,3 +355,80 @@ class TestLaMainRepriseDepuisTelegram(unittest.TestCase):
         robot._ouvrir_session(compte, "#150#", None)
         self.assertIsNone(robot.pilotage._session,
                           "le guichet garde une session devenue fausse")
+
+
+class TestDeuxCartesUneOperation(unittest.TestCase):
+    """Deux SIM en place — Orange ET MTN. Chaque demande de la plateforme dit
+    sur QUELLE carte composer, par ICCID : le seul nom sans ambiguïté d'une
+    puce. Sans ce ciblage, une opération MTN partait sur la première carte
+    venue — c'est-à-dire l'Orange."""
+
+    def deux_comptes(self):
+        orange = FauxCompte([("ouverte", "Orange Money\n1) Transfert")])
+        mtn = FauxCompte([("ouverte", "MTN MoMo\n1. Transfert d'argent")],
+                         libelle="MTN ·0011")
+        mtn.carte = FausseCarte()
+        mtn.carte.iccid = "89237010000000000011"
+        mtn.carte.operateur = "MTN"
+        return orange, mtn
+
+    def test_l_iccid_choisit_la_carte(self):
+        orange, mtn = self.deux_comptes()
+        p = Pilotage(FauxNuage(), [orange, mtn], FauxJournal())
+        p._traiter({"id": 40, "type": "ussd",
+                    "parametres": {"code": "*126#", "carte": mtn.carte.iccid}})
+        self.assertEqual(mtn.recu, ["*126#"])
+        self.assertEqual(orange.recu, [], "l'Orange ne doit pas être touchée")
+
+    def test_sans_ciblage_la_premiere_carte_repond(self):
+        """Le terminal à une seule habitude : rien ne casse pour lui."""
+        orange, mtn = self.deux_comptes()
+        p = Pilotage(FauxNuage(), [orange, mtn], FauxJournal())
+        p._traiter({"id": 41, "type": "ussd", "parametres": {"code": "#148#"}})
+        self.assertEqual(orange.recu, ["#148#"])
+        self.assertEqual(mtn.recu, [])
+
+    def test_un_iccid_inconnu_est_refuse_sans_composer(self):
+        orange, mtn = self.deux_comptes()
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [orange, mtn], FauxJournal())
+        p._traiter({"id": 42, "type": "ussd",
+                    "parametres": {"code": "*126#",
+                                   "carte": "00000000000000000000"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(orange.recu, [])
+        self.assertEqual(mtn.recu, [])
+
+    def test_le_libelle_reste_accepte(self):
+        """Le geste historique de Telegram (« mtn *126# ») ne casse pas."""
+        orange, mtn = self.deux_comptes()
+        p = Pilotage(FauxNuage(), [orange, mtn], FauxJournal())
+        p._traiter({"id": 43, "type": "ussd",
+                    "parametres": {"code": "*126#", "compte": "mtn"}})
+        self.assertEqual(mtn.recu, ["*126#"])
+
+
+class TestLibelleAmbiguRefusePoliment(unittest.TestCase):
+    """Deux cartes MTN et une demande « compte: mtn » : le préfixe visait la
+    première en silence. On refuse — l'ICCID, lui, ne se trompe jamais."""
+
+    def test_deux_cartes_du_meme_prefixe(self):
+        mtn_a = FauxCompte([], libelle="MTN ·0011")
+        mtn_b = FauxCompte([], libelle="MTN ·0099")
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [mtn_a, mtn_b], FauxJournal())
+        p._traiter({"id": 50, "type": "ussd",
+                    "parametres": {"code": "*126#", "compte": "mtn"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertIn("Several cards", nuage.maj[-1][1]["resultat"])
+        self.assertEqual(mtn_a.recu, [])
+        self.assertEqual(mtn_b.recu, [])
+
+    def test_le_prefixe_complet_reste_precis(self):
+        mtn_a = FauxCompte([("ouverte", "MoMo")], libelle="MTN ·0011")
+        mtn_b = FauxCompte([], libelle="MTN ·0099")
+        p = Pilotage(FauxNuage(), [mtn_a, mtn_b], FauxJournal())
+        p._traiter({"id": 51, "type": "ussd",
+                    "parametres": {"code": "*126#", "compte": "mtn ·0011"}})
+        self.assertEqual(mtn_a.recu, ["*126#"])
+        self.assertEqual(mtn_b.recu, [])

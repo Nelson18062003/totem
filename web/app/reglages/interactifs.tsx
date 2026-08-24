@@ -6,6 +6,7 @@ import { changerLangue, useLangue } from "@/app/langue";
 import { codesUssd, type CodeUssd } from "@/lib/codes";
 import { LANGUES } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
+import type { RaccourciAppris } from "@/lib/types";
 import { IconHash, IconPlus } from "../icons";
 import { BoutonFermer } from "../feuille";
 
@@ -150,7 +151,18 @@ export function ReglageNumero({
  * Les codes eux-mêmes (#148#…) ne se traduisent jamais : seuls les libellés
  * autour changent de langue. Un raccourci ajouté à la main garde son nom.
  */
-export function SectionCodes({ operateur }: { operateur: string }) {
+export function SectionCodes({
+  operateur,
+  enPlace,
+  appris,
+}: {
+  operateur: string;
+  // Une carte de cet opérateur est-elle dans le terminal en ce moment ?
+  enPlace?: boolean;
+  // Les boutons appris par le robot (💾 sur Telegram), lus depuis la base :
+  // le même carnet que Telegram, montré ici en regard du catalogue.
+  appris?: RaccourciAppris[];
+}) {
   const langue = useLangue();
   const t = textesReglages[langue];
   const [codes, setCodes] = useState<CodeUssd[]>(codesUssd[operateur] ?? []);
@@ -182,7 +194,7 @@ export function SectionCodes({ operateur }: { operateur: string }) {
       <h2 className="mb-3 text-heading font-semibold">{t.codesUssd}</h2>
       <div className="rounded-card border border-line bg-surface-raised">
         <p className="border-b border-line px-4 py-3 text-caption uppercase tracking-wider text-ink-faint">
-          {t.carteEnPlace(operateur)}
+          {enPlace ? t.carteEnPlace(operateur) : operateur}
         </p>
         {codes.length === 0 && !ajout && (
           <p className="px-4 py-4 text-small leading-relaxed text-ink-soft">
@@ -219,6 +231,27 @@ export function SectionCodes({ operateur }: { operateur: string }) {
             </li>
           ))}
         </ul>
+        {/* Les boutons appris sur le terrain, en lecture : ils se créent et
+            se corrigent là où on les apprend — en refaisant l'opération sur
+            Telegram, puis 💾. La plateforme les rejoue depuis l'écran USSD. */}
+        {(appris ?? []).length > 0 && (
+          <>
+            <p className="border-t border-line px-4 py-3 text-caption uppercase tracking-wider text-ink-faint">
+              {t.apprisTitre}
+            </p>
+            <ul className="divide-hair px-4">
+              {(appris ?? []).map((r) => (
+                <li key={r.nom} className="flex items-center gap-3 py-3">
+                  <IconHash size={16} className="shrink-0 text-ink-faint" />
+                  <span className="flex-1 text-body">{r.libelle}</span>
+                  <span className="text-small tabnums text-ink-soft">
+                    {r.etapes.join(" → ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <div className="border-t border-line p-3">
           {ajout ? (
             <div className="flex flex-col gap-2 sm:flex-row">

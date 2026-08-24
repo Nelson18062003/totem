@@ -13,7 +13,13 @@ export default async function Accueil() {
   const langue = await langueServeur();
   const t = textesAccueil[langue];
   const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: 30, recus: 60 });
-  const carte = sims.find((s) => s.enPlace) ?? null;
+  // TOUTES les cartes en place — Orange ET MTN, chacune avec son solde. Si
+  // plus aucune n'est « en place » (terminal muet, cloud en retard), on
+  // montre quand même les cartes connues, avec leur état dit franchement :
+  // un accueil vide alors que la page Comptes les liste faisait chercher le
+  // propriétaire au mauvais endroit.
+  const enPlace = sims.filter((s) => s.enPlace);
+  const cartes = enPlace.length ? enPlace : sims;
 
   return (
     // Grand écran : le guichet à gauche, le terminal et ses détails à droite.
@@ -37,15 +43,16 @@ export default async function Accueil() {
         </div>
       </header>
 
-      {/* Le guichet : la carte (seul solde) et les cinq gestes */}
-      {carte ? (
+      {/* Le guichet : une carte par SIM, et les cinq gestes sur la carte
+          choisie */}
+      {cartes.length ? (
         <AccueilGuichet
-          carte={{
-            libelle: carte.libelle, operateur: carte.operateur,
-            numero: carte.numero, solde: carte.solde,
-            soldeMaj: carte.soldeMaj, signal: carte.signal,
-            iccid: carte.iccid,
-          }}
+          cartes={cartes.map((c) => ({
+            libelle: c.libelle, operateur: c.operateur,
+            numero: c.numero, solde: c.solde,
+            soldeMaj: c.soldeMaj, signal: c.signal,
+            iccid: c.iccid, enPlace: c.enPlace, derniereVue: c.derniereVue,
+          }))}
         />
       ) : (
         <section className="rounded-card border border-dashed border-line px-4 py-10 text-center lg:col-start-1">

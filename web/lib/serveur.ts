@@ -17,7 +17,7 @@
 // qu'il a poussé. Aucune donnée n'est inventée : sans variables, les écrans
 // sont vides et le disent.
 
-import type { Donnees, EtatTerminal, Paiement, Sim } from "./types";
+import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "./types";
 import { estNature } from "./natures";
 import { estCategorie, jourDouala } from "./types";
 import type { Langue } from "./langue";
@@ -66,6 +66,9 @@ type LigneCompte = {
 type LigneRecu = {
   numero: string; reference: string | null; chemin: string;
   terminal?: string | null;
+};
+type LigneRaccourci = {
+  operateur: string; nom: string; libelle: string | null; etapes: string | null;
 };
 
 type LignePaiement = {
@@ -168,7 +171,7 @@ export async function chargerDonnees(
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
   // moins riche — jamais une liste vide. Les champs du type non présents
   // arrivent à undefined, que chaque lecture traite déjà comme null.
-  const [terminaux, cartes, comptes, lignes, recus] = await Promise.all([
+  const [terminaux, cartes, comptes, lignes, recus, boutons] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=*"),
@@ -178,6 +181,9 @@ export async function chargerDonnees(
     nRecus > 0
       ? lire<LigneRecu>(`recus?select=*&order=etabli_le.desc&limit=${nRecus}`)
       : Promise.resolve([] as LigneRecu[]),
+    // Les boutons appris par le robot. Table absente (base pas migrée) :
+    // `lire` rend [] sans bruit — les écrans montrent juste moins de boutons.
+    lire<LigneRaccourci>("raccourcis?select=*&order=id"),
   ]);
 
   const terminal = versTerminal(terminaux[0], langue);
@@ -235,7 +241,11 @@ export async function chargerDonnees(
     .sort((a, b) => (moment(a) < moment(b) ? 1 : moment(a) > moment(b) ? -1 : 0))
     .map((l) => ({
       id: String(l.id),
-      sim: (l.compte ?? "").split(" ")[0] || l.carte || "—",
+      // Le libellé COMPLET du compte (« MTN ·8901 »), plus le premier mot :
+      // deux cartes du même opérateur doivent rester deux caisses dans les
+      // filtres — « MTN » tout court les fondait en une seule.
+      sim: l.compte || l.carte || "—",
+      carte: l.carte ?? "",
       // Le robot laisse le sens vide quand le SMS ne permet pas de trancher :
       // on l'affiche comme inconnu, jamais comme une sortie par défaut.
       sens: (l.sens === "entree" ? "in" : l.sens === "sortie" ? "out" : "?") as "in" | "out" | "?",
@@ -293,7 +303,17 @@ export async function chargerDonnees(
     };
   });
 
-  return { relie, terminal, sims, paiements };
+  // Les boutons appris, par opérateur — le pendant web du carnet du robot.
+  const raccourcis: Record<string, RaccourciAppris[]> = {};
+  for (const b of boutons) {
+    const etapes = (b.etapes ?? "").split(",").filter(Boolean);
+    if (!b.operateur || !etapes.length) continue;
+    (raccourcis[b.operateur] ??= []).push({
+      nom: b.nom, libelle: b.libelle || b.nom, etapes,
+    });
+  }
+
+  return { relie, terminal, sims, paiements, raccourcis };
 }
 
 /** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque

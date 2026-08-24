@@ -25,6 +25,7 @@ import re
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .analyse_sms import analyser, categoriser
@@ -79,6 +80,9 @@ class Nuage:
         # Colonnes qu'on a déjà découvertes absentes de la base et signalées une
         # fois : on ne réécrit pas le même avis à chaque envoi.
         self._absentes_signalees = set()
+        # Le carnet de raccourcis tel qu'il a été poussé la dernière fois :
+        # tant qu'il n'a pas bougé, on ne le repousse pas.
+        self._raccourcis_publies = None
         self._marche = True
         # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
         # prochain battement pour transmettre ce qu'il sait déjà.
@@ -301,6 +305,53 @@ class Nuage:
             except Exception:
                 continue    # un modem qui ne répond pas ne doit rien bloquer
         return self._inserer_ou_mettre_a_jour("comptes", lignes, "terminal,iccid")
+
+    def publier_raccourcis(self):
+        """Les boutons appris, poussés jusqu'à la plateforme.
+
+        Les codes USSD appartiennent au réseau, pas à une carte : le carnet
+        part entier, opérateur par opérateur. Ce qu'on apprend une fois sur
+        Telegram (💾) devient ainsi un bouton partout — c'est le chemin prévu
+        pour équiper un nouvel opérateur sans toucher au code.
+
+        Un bouton supprimé sur Telegram disparaît aussi du cloud : après la
+        poussée, tout ce qui n'a pas été rafraîchi à cette heure-ci est effacé
+        — le robot est le seul écrivain de cette table. Et rien ne part deux
+        fois : on ne repousse que si le carnet a changé depuis la dernière
+        poussée réussie.
+        """
+        if not self.actif:
+            return False
+        try:
+            lignes = tuple(self.journal.tous_raccourcis())
+        except Exception:
+            return False
+        if self._raccourcis_publies == lignes:
+            return True
+        a_jour = _horodatage()
+        charge = [{
+            "terminal": self.terminal,
+            "operateur": operateur,
+            "nom": nom,
+            "libelle": libelle or nom,
+            "etapes": etapes,
+            "maj": a_jour,
+        } for operateur, nom, libelle, etapes in lignes]
+        if charge and not self._inserer_ou_mettre_a_jour(
+                "raccourcis", charge, "terminal,operateur,nom"):
+            return False    # table absente ou cloud en panne : on réessaiera
+        try:
+            # Le grand ménage : ce que la poussée n'a pas rafraîchi n'existe
+            # plus localement. L'heure porte son fuseau (« +01:00 ») — dans
+            # une URL, le « + » doit voyager encodé.
+            self._requete(
+                "DELETE", f"raccourcis?terminal=eq.{self.terminal}"
+                          f"&maj=lt.{urllib.parse.quote(a_jour)}")
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return False
+        self._raccourcis_publies = lignes
+        return True
 
     def pousser_cartes(self):
         """Envoie le registre des cartes vues, y compris celles retirées.
@@ -558,6 +609,7 @@ class Nuage:
                         info["resume"] = etat
                     self.enregistrer_terminal(info)
                     self.publier_comptes(comptes)
+                    self.publier_raccourcis()
                 envoyes = self._pousser_tout()
                 if premier and envoyes:
                     self.journal.evenement(t(

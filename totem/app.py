@@ -454,16 +454,36 @@ class Robot:
                 self.journal.evenement(f"erreur boucle messages : {e}")
                 time.sleep(2)
 
-    def _compte_par_nom(self, nom):
-        """Retrouve un compte par libellé (« mtn ») ou par rang (« 2 »)."""
+    def _comptes_par_nom(self, nom):
+        """TOUS les comptes dont le libellé commence par ce nom (« mtn »),
+        ou le compte au rang donné (« 2 »).
+
+        L'appelant décide quoi faire s'il y en a plusieurs : avec deux
+        cartes MTN, « /mtn » visait la première en silence — on demande,
+        on ne devine pas."""
         n = nom.strip().lower().lstrip("/")
+        if not n:
+            return []
         if n.isdigit():
             i = int(n) - 1
-            return self.comptes[i] if 0 <= i < len(self.comptes) else None
-        for c in self.comptes:
-            if c.libelle.lower().startswith(n):
-                return c
-        return None
+            return [self.comptes[i]] if 0 <= i < len(self.comptes) else []
+        return [c for c in self.comptes if c.libelle.lower().startswith(n)]
+
+    def _compte_par_nom(self, nom):
+        """Le compte visé quand l'ambiguïté est impossible (rang, clic de
+        bouton) — la première carte trouvée sinon."""
+        trouves = self._comptes_par_nom(nom)
+        return trouves[0] if trouves else None
+
+    def _demander_quelle_carte(self, trouves, nom, canal):
+        """Plusieurs cartes répondent au même nom : la question, en boutons."""
+        boutons = [[(c.libelle, f"a:{self.comptes.index(c) + 1}")]
+                   for c in trouves]
+        boutons.append([("🏠 Menu", "c:menu")])
+        self.transport.envoyer(
+            t(f"Several cards answer to “{echap(nom)}” — which one?",
+              f"Plusieurs cartes répondent à « {echap(nom)} » — laquelle ?"),
+            canal=canal, boutons=boutons)
 
     def _traiter(self, entrant):
         with self.verrou:
@@ -522,11 +542,17 @@ class Robot:
                 self._brut(canal)
             elif commande == "export":
                 self._export(canal)
-            elif commande and self._compte_par_nom(commande):
+            elif commande and self._comptes_par_nom(commande):
                 # /mtn, /orange, /1, /2 — bascule de compte courant
                 if not self._verifier_admin(role, entrant, canal):
                     return
-                self.courant = self._compte_par_nom(commande)
+                trouves = self._comptes_par_nom(commande)
+                if len(trouves) > 1:
+                    # Deux cartes MTN : on demande laquelle, jamais la
+                    # première en silence — c'est une caisse qu'on vise.
+                    self._demander_quelle_carte(trouves, commande, canal)
+                    return
+                self.courant = trouves[0]
                 self.transport.envoyer(
                     t(f"Active account: {gras(self.courant.libelle)}.",
                       f"Compte courant : {gras(self.courant.libelle)}."),
@@ -557,9 +583,19 @@ class Robot:
         # « mtn *126# » : exécution ciblée, sans changer le compte courant
         cible = RE_CIBLE_USSD.match(texte)
         if cible:
-            compte = self._compte_par_nom(cible.group(1))
-            if compte:
-                return self._ouvrir_session(compte, cible.group(2), canal)
+            trouves = self._comptes_par_nom(cible.group(1))
+            if len(trouves) > 1:
+                # Deux cartes du même réseau : le rang lève l'ambiguïté.
+                return self.transport.envoyer(
+                    t(f"Several cards answer to “{echap(cible.group(1))}”. "
+                      f"Aim by rank — for example "
+                      f"{mono(f'2 {cible.group(2)}')}.",
+                      f"Plusieurs cartes répondent à « {echap(cible.group(1))} ». "
+                      f"Visez par rang — par exemple "
+                      f"{mono(f'2 {cible.group(2)}')}."),
+                    canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
+            if trouves:
+                return self._ouvrir_session(trouves[0], cible.group(2), canal)
 
         if RE_CODE_USSD.match(texte):
             return self._ouvrir_session(self.courant, texte, canal)
@@ -720,13 +756,47 @@ class Robot:
         return texte[1:].split()[0].split("@")[0].lower()
 
     # ---- écran d'accueil ---------------------------------------------------
+    def _rangees_comptes(self):
+        """Les boutons de compte, par rangées de quatre — le plafond de
+        quatre cartes n'était qu'une rangée jamais repliée : huit cartes
+        tiennent maintenant sur deux rangées."""
+        boutons = [(("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
+                   for i, c in enumerate(self.comptes)]
+        return [boutons[i:i + 4] for i in range(0, len(boutons), 4)]
+
+    def _bilan_par_caisse(self):
+        """Le bilan des 24 h, une ligne par caisse — jamais additionnées.
+
+        Un total fusionné ne correspond à aucun solde réel dès qu'il y a
+        deux cartes : chaque caisse a droit à sa ligne, y compris à zéro."""
+        detail = self.journal.rapport_par_carte(
+            self._cartes_en_place(), numeros=self._nos_numeros())
+        par_iccid = {iccid: (nb, total) for iccid, _lib, nb, total in detail}
+        lignes = []
+        for c in self.comptes:
+            iccid = c.carte.iccid if c.carte.identifiee else ""
+            nb, total = par_iccid.pop(iccid, (0, 0))
+            recettes = _accord(nb, "payment", "payments",
+                               "encaissement", "encaissements")
+            lignes.append(f"· {echap(c.libelle)} : {recettes} — "
+                          f"{gras(self._fcfa(total))}")
+        # Les SMS d'avant le cloisonnement, ou d'une carte depuis retirée :
+        # ils comptent, mais pas dans la caisse d'une carte en place.
+        restes_nb = sum(nb for nb, _ in par_iccid.values())
+        restes_total = sum(total for _, total in par_iccid.values())
+        if restes_nb:
+            recettes = _accord(restes_nb, "payment", "payments",
+                               "encaissement", "encaissements")
+            lignes.append(t(f"· other cards: {recettes} — "
+                            f"{gras(self._fcfa(restes_total))}",
+                            f"· autres cartes : {recettes} — "
+                            f"{gras(self._fcfa(restes_total))}"))
+        return lignes
+
     def _boutons_accueil(self, role):
         lignes = []
         if self.multi:
-            lignes.append([
-                (("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
-                for i, c in enumerate(self.comptes[:4])
-            ])
+            lignes.extend(self._rangees_comptes())
         raccourcis = self._raccourcis_actifs() if role == ADMIN else {}
         if raccourcis:
             noms = list(raccourcis)
@@ -744,21 +814,27 @@ class Robot:
         return lignes
 
     def _accueil(self, canal, role):
-        nb, total, _ = self.journal.rapport_du_jour(
-            self._cartes_en_place(), numeros=self._nos_numeros())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
         courant = (t(f"\nActive account: {gras(self.courant.libelle)}",
                      f"\nCompte piloté : {gras(self.courant.libelle)}")
                    if self.multi else "")
-        recettes = _accord(nb, "payment", "payments",
-                           "encaissement", "encaissements")
+        if self.multi:
+            # Une ligne par caisse : le total fusionné d'avant ne
+            # correspondait à aucun solde réel dès la deuxième carte.
+            bilan = (t("Last 24 hours:", "Dernières 24 h :")
+                     + "\n" + "\n".join(self._bilan_par_caisse()))
+        else:
+            nb, total, _ = self.journal.rapport_du_jour(
+                self._cartes_en_place(), numeros=self._nos_numeros())
+            recettes = _accord(nb, "payment", "payments",
+                               "encaissement", "encaissements")
+            bilan = t(f"Last 24 hours: {gras(recettes)} — "
+                      f"{gras(self._fcfa(total))}",
+                      f"Dernières 24 h : {gras(recettes)} — "
+                      f"{gras(self._fcfa(total))}")
         self.transport.envoyer(
-            t(f"🗿 {gras(self.nom)}\n{etats}{courant}\n"
-              f"Last 24 hours: {gras(recettes)} — "
-              f"{gras(self._fcfa(total))}\n\nWhat next?",
-              f"🗿 {gras(self.nom)}\n{etats}{courant}\n"
-              f"Dernières 24 h : {gras(recettes)} — "
-              f"{gras(self._fcfa(total))}\n\nQue faire ?"),
+            f"🗿 {gras(self.nom)}\n{etats}{courant}\n{bilan}\n\n"
+            + t("What next?", "Que faire ?"),
             boutons=self._boutons_accueil(role), canal=canal)
 
     # ---- session USSD ------------------------------------------------------
@@ -1315,9 +1391,7 @@ class Robot:
             marque = (t("  ← active", "  ← piloté")
                       if c is self.courant else "")
             lignes.append(f"{i}. {echap(c.resume())}{marque}")
-        boutons = [[(("● " if c is self.courant else "") + c.libelle, f"a:{i + 1}")
-                    for i, c in enumerate(self.comptes[:4])],
-                   [("🏠 Menu", "c:menu")]]
+        boutons = self._rangees_comptes() + [[("🏠 Menu", "c:menu")]]
         self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
 
     def _derniers_sms(self, canal=None):
@@ -1342,13 +1416,29 @@ class Robot:
         nb, total, nb_sms = self.journal.rapport_du_jour(
             self._cartes_en_place(), numeros=self._nos_numeros())
         etats = " · ".join(f"{echap(c.libelle)} {c.signal()}/31" for c in self.comptes)
+        if self.multi:
+            # Chaque caisse a sa ligne ; l'ensemble reste indiqué, mais
+            # nommé pour ce qu'il est — il ne correspond à aucun solde.
+            corps = "\n".join(self._bilan_par_caisse())
+            texte_rapport = t(
+                f"{'📊' if manuel else '🌙'} {gras('Last 24 hours')}\n"
+                f"{corps}\n"
+                f"All boxes together: {gras(self._fcfa(total))}\n"
+                f"Text messages: {nb_sms}\n{etats}",
+                f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
+                f"{corps}\n"
+                f"Toutes caisses confondues : {gras(self._fcfa(total))}\n"
+                f"SMS reçus : {nb_sms}\n{etats}")
+        else:
+            texte_rapport = t(
+                f"{'📊' if manuel else '🌙'} {gras('Last 24 hours')}\n"
+                f"Payments received: {gras(nb)}\nTotal: {gras(self._fcfa(total))}\n"
+                f"Text messages: {nb_sms}\n{etats}",
+                f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
+                f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
+                f"SMS reçus : {nb_sms}\n{etats}")
         self.transport.envoyer(
-            t(f"{'📊' if manuel else '🌙'} {gras('Last 24 hours')}\n"
-              f"Payments received: {gras(nb)}\nTotal: {gras(self._fcfa(total))}\n"
-              f"Text messages: {nb_sms}\n{etats}",
-              f"{'📊' if manuel else '🌙'} {gras('Dernières 24 h')}\n"
-              f"Encaissements : {gras(nb)}\nTotal : {gras(self._fcfa(total))}\n"
-              f"SMS reçus : {nb_sms}\n{etats}"),
+            texte_rapport,
             canal=canal if manuel else "encaissements",
             boutons=([[(t("📄 CSV export", "📄 Export CSV"), "c:export")]]
                      if manuel else None))
