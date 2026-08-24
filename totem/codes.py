@@ -49,6 +49,15 @@ CATALOGUE = {
         (("🪪 My number", "🪪 Mon numéro"), "#148*7*6#",
          ("your secret code", "le code secret")),
     ],
+    # MTN : seule la porte d'entrée MoMo est relevée pour l'instant — c'est
+    # elle que le fichier de configuration cite en exemple depuis le début.
+    # Les codes profonds (dépôt direct, solde direct…) se relèvent sur le
+    # vrai téléphone puis s'apprennent (💾) : on ne les devine pas.
+    "MTN": [
+        (("🧭 MoMo menu", "🧭 Menu MoMo"), "*126#",
+         ("the menu guides you, step by step",
+          "le menu vous guide, étape par étape")),
+    ],
 }
 
 

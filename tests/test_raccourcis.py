@@ -290,10 +290,25 @@ class TestCatalogueDeDepart(unittest.TestCase):
         self.assertNotIn("r:cat", donnees(boutons_envoi(t)))
 
     def test_un_operateur_sans_catalogue_ne_propose_rien(self):
-        """MTN n'a pas encore été relevé : on ne va pas inventer ses codes."""
+        """Un opérateur jamais relevé : on ne va pas inventer ses codes."""
+        from unittest.mock import patch
+        from totem import codes
+        sans_mtn = {op: v for op, v in codes.CATALOGUE.items() if op != "MTN"}
+        with patch.dict(codes.CATALOGUE, sans_mtn, clear=True):
+            r, t, _ = robot(carte=MTN)
+            tape(r, "/raccourcis")
+            self.assertNotIn("r:cat", donnees(boutons_envoi(t)))
+
+    def test_mtn_propose_sa_porte_d_entree(self):
+        """MTN a désormais SA porte relevée — *126#, celle que le fichier de
+        configuration cite en exemple — et rien de plus : les codes profonds
+        restent à apprendre sur le terrain."""
+        from totem.codes import catalogue
+        entrees = catalogue("MTN")
+        self.assertEqual([code for _l, code, _a in entrees], ["*126#"])
         r, t, _ = robot(carte=MTN)
         tape(r, "/raccourcis")
-        self.assertNotIn("r:cat", donnees(boutons_envoi(t)))
+        self.assertIn("r:cat", donnees(boutons_envoi(t)))
 
     def test_aucun_code_du_catalogue_ne_va_jusqu_au_bout(self):
         """La propriété qui rend l'installation sans danger : chaque code
