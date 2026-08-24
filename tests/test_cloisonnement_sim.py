@@ -177,3 +177,35 @@ class TestChangementDeCarte(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLeBilanVentileParCarte(unittest.TestCase):
+    """Le bilan par caisse : additionner deux cartes donnait un chiffre qui
+    ne correspond à aucun solde réel. Chaque caisse a sa ligne."""
+
+    def setUp(self):
+        self.journal = Journal(":memory:")
+
+    def test_chaque_caisse_a_sa_ligne(self):
+        self.journal.sms("MobileMoney", RECU_25K, "MTN ·0011", iccid=MTN_A)
+        self.journal.sms("MobileMoney", RECU_5K, "MTN ·0099", iccid=MTN_B)
+        detail = self.journal.rapport_par_carte([MTN_A, MTN_B])
+        par_iccid = {iccid: (libelle, nb, total)
+                     for iccid, libelle, nb, total in detail}
+        self.assertEqual(par_iccid[MTN_A], ("MTN ·0011", 1, 25000))
+        self.assertEqual(par_iccid[MTN_B], ("MTN ·0099", 1, 5000))
+
+    def test_le_filtre_des_cartes_tient_aussi_ici(self):
+        self.journal.sms("MobileMoney", RECU_25K, "MTN ·0011", iccid=MTN_A)
+        self.journal.sms("MobileMoney", RECU_5K, "MTN ·0099", iccid=MTN_B)
+        detail = self.journal.rapport_par_carte([MTN_A])
+        self.assertEqual([iccid for iccid, *_ in detail], [MTN_A])
+
+    def test_les_sms_d_avant_le_cloisonnement_sortent_a_part(self):
+        """Une ligne sans ICCID compte sous '' : visible, jamais attribuée
+        à la caisse d'une carte en place."""
+        self.journal.sms("MobileMoney", RECU_25K, "MTN")   # sans iccid
+        detail = self.journal.rapport_par_carte()
+        self.assertEqual([(iccid, nb, total)
+                          for iccid, _l, nb, total in detail],
+                         [("", 1, 25000)])

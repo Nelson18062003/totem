@@ -910,6 +910,36 @@ class Journal:
                 total += montant
         return nb, total, len(lignes)
 
+    def rapport_par_carte(self, iccids=(), numeros=()):
+        """[(iccid, libelle, nb, total)] sur les dernières 24 h — une ligne
+        par caisse, dans l'ordre d'arrivée des SMS.
+
+        Additionner deux caisses donne un chiffre qui ne correspond à aucun
+        solde réel : dès qu'il y a deux cartes, c'est cette ventilation qui
+        fait foi — le total fusionné de `rapport_du_jour` n'est plus qu'une
+        commodité. Les SMS d'avant le cloisonnement (sans ICCID) sortent
+        sous la clé ''.
+        """
+        depuis = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
+        clause, params = self._filtre_cartes(iccids)
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT texte, COALESCE(iccid, ''), COALESCE(compte, '') "
+                f"FROM sms WHERE date >= ?{clause} ORDER BY id",
+                (depuis,) + params).fetchall()
+        nums = tuple(numeros) or tuple(self.numeros_declares())
+        caisses = {}
+        for texte, iccid, compte in lignes:
+            caisse = caisses.setdefault(iccid, ["", 0, 0])
+            if compte:
+                caisse[0] = compte      # le dernier libellé connu de la carte
+            montant = montant_recu(texte, numeros=nums)
+            if montant is not None:
+                caisse[1] += 1
+                caisse[2] += montant
+        return [(iccid, libelle, nb, total)
+                for iccid, (libelle, nb, total) in caisses.items()]
+
     def export_csv(self, jours=7, iccids=(), numeros=()):
         """Journal en CSV (octets), prêt pour Excel ou la comptabilité.
 
