@@ -338,9 +338,18 @@ class Pilotage:
                 langue=langue))
         nom = (parametres.get("compte") or "").strip().lower()
         if nom:
-            for c in self.comptes:
-                if c.libelle.lower().startswith(nom):
-                    return c
+            trouves = [c for c in self.comptes
+                       if c.libelle.lower().startswith(nom)]
+            if len(trouves) > 1:
+                # Deux cartes MTN : ce préfixe visait la première en
+                # silence. On refuse — l'ICCID, lui, ne se trompe jamais.
+                raise RefusPoli(t(
+                    f"Several cards answer to “{nom}” — name the card "
+                    "itself (its ICCID).",
+                    f"Plusieurs cartes répondent à « {nom} » — désignez la "
+                    "carte elle-même (son ICCID).", langue=langue))
+            if trouves:
+                return trouves[0]
             raise RefusPoli(t(f"No account “{nom}” on this terminal.",
                               f"Aucun compte « {nom} » sur ce terminal.",
                               langue=langue))

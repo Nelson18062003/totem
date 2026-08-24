@@ -406,3 +406,29 @@ class TestDeuxCartesUneOperation(unittest.TestCase):
         p._traiter({"id": 43, "type": "ussd",
                     "parametres": {"code": "*126#", "compte": "mtn"}})
         self.assertEqual(mtn.recu, ["*126#"])
+
+
+class TestLibelleAmbiguRefusePoliment(unittest.TestCase):
+    """Deux cartes MTN et une demande « compte: mtn » : le préfixe visait la
+    première en silence. On refuse — l'ICCID, lui, ne se trompe jamais."""
+
+    def test_deux_cartes_du_meme_prefixe(self):
+        mtn_a = FauxCompte([], libelle="MTN ·0011")
+        mtn_b = FauxCompte([], libelle="MTN ·0099")
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [mtn_a, mtn_b], FauxJournal())
+        p._traiter({"id": 50, "type": "ussd",
+                    "parametres": {"code": "*126#", "compte": "mtn"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertIn("Several cards", nuage.maj[-1][1]["resultat"])
+        self.assertEqual(mtn_a.recu, [])
+        self.assertEqual(mtn_b.recu, [])
+
+    def test_le_prefixe_complet_reste_precis(self):
+        mtn_a = FauxCompte([("ouverte", "MoMo")], libelle="MTN ·0011")
+        mtn_b = FauxCompte([], libelle="MTN ·0099")
+        p = Pilotage(FauxNuage(), [mtn_a, mtn_b], FauxJournal())
+        p._traiter({"id": 51, "type": "ussd",
+                    "parametres": {"code": "*126#", "compte": "mtn ·0011"}})
+        self.assertEqual(mtn_a.recu, ["*126#"])
+        self.assertEqual(mtn_b.recu, [])
