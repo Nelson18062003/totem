@@ -249,6 +249,7 @@ docs/
   GUIDE-TELEGRAM.md       l'expérience Telegram : boutons, pavé PIN, groupe, sujets
   MEMENTO.md              les commandes du quotidien (allumer, éteindre, diagnostic)
   MISE-EN-LIGNE.md        déployer l’application web sur Vercel
+  MOBILE.md               l'application du téléphone : choix, partage, publication
   CLOUD.md                brancher le terminal sur Supabase (facultatif)
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
