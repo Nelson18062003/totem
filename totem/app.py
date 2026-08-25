@@ -2193,8 +2193,18 @@ class Robot:
                                                numeros=self._nos_numeros()),
                          t("Transfer receipt", "Reçu de transfert",
                            langue=langue))
-            pdf = recu_transfert(motif.paiement, numero, quand, operateur,
-                                 titre=titre, langue=langue)
+            # NOTRE côté de l'opération : le nom et le numéro inscrits aux
+            # Réglages pour cette carte. Un SMS MTN ne nomme qu'un tiers —
+            # « to PAYSELA … from your mobile money account » — et c'est ici
+            # qu'on retrouve qui est en face de lui.
+            num_nous, nom_nous = self.journal.identite(iccid)
+            # L'heure du RÉSEAU quand le message la porte : MTN l'écrit, et
+            # c'est elle qui figurera sur son relevé. Sans elle, l'heure de
+            # réception reste la seule honnête.
+            pdf = recu_transfert(motif.paiement, numero,
+                                 motif.paiement.quand or quand, operateur,
+                                 titre=titre, langue=langue,
+                                 compte=(nom_nous, num_nous))
             legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
                        f"{italique(t('No. ', 'N° ', langue=langue) + numero)}")

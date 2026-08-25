@@ -21,7 +21,8 @@ from totem.app import Robot
 from totem.compte import Compte
 from totem.declencheur import SOLDE, TRANSFERT, motif_du_menu, motif_du_sms
 from totem.recu import (date_en_lettres, etiquette_somme, heure_en_lettres,
-                        numero_de_recu, recu_solde, recu_transfert)
+                        numero_de_recu, numero_lisible, recu_solde,
+                        recu_transfert)
 from totem.simulator import ModemSimule
 from totem.storage import Journal
 
@@ -760,3 +761,303 @@ class TestRienNeDeborde(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --- Le reçu MTN ------------------------------------------------------------
+#
+# Les SMS ci-dessous sont de VRAIS messages, relevés sur le terrain. Ils ne
+# ressemblent pas à ceux d'Orange, et c'est tout le sujet : MTN ne nomme
+# qu'UN tiers, met notre côté au pluriel des non-dits (« your mobile money
+# account »), écrit son propre horodatage, et donne des frais mais jamais de
+# commission.
+
+MTN_SORTANT = (
+    "You have transferred 200000 XAF to PAYSELA TECHNOLOGIES SARL "
+    "(237681026861) from your mobile money account 93368555 at "
+    "2026-08-25 13:55:27 FEES 0 FCFA. Your new balance: 1308910 XAF. "
+    "Message from sender: . Message to receiver: . Financial Transaction "
+    "Id: 18496208804. Back-to-School is Here... MoMo Got You! Dial *126*6#.")
+
+MTN_ENTRANT = (
+    "You have received 10000 XAF from BABY FRANCIS NOUBI TCHASSEM "
+    "(237678352223) on your mobile money account at 2026-07-08 11:30:58. "
+    "Message from sender: . Your new balance:89255 XAF. Financial "
+    "Transaction Id: 17848350682.")
+
+MOI = ("NGANGOM JONAS", "237652236856")
+
+
+class TestLeSensDuRecu(unittest.TestCase):
+    """De qui vers qui — la question à laquelle un reçu doit répondre.
+
+    Un SMS MTN ne nomme qu'un tiers : l'autre côté, c'est nous, et le message
+    n'a pas à le dire. L'ancienne règle posait ce tiers unique en « De » quel
+    que soit le sens : sur un envoi, le reçu annonçait donc que le
+    bénéficiaire était l'émetteur, et laissait « À » vide. Un document qui dit
+    le contraire de l'opération n'est pas un reçu, c'est un faux.
+    """
+
+    QUAND = datetime.datetime(2026, 8, 25, 13, 56)
+
+    def _poses(self, texte, compte=MOI, langue="en"):
+        from totem.analyse_sms import analyser
+        paiement = analyser(texte, numeros=[MOI[1]])
+        self.assertIsNotNone(paiement, "le message doit se lire")
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand or self.QUAND, "MTN MoMo",
+            langue=langue, compte=compte))
+        return paiement, [contenu for _, _, contenu in gabarit.page.empreintes]
+
+    def _rang(self, poses, texte):
+        """Où se trouve un texte parmi les empreintes — l'ordre de pose suit
+        l'ordre des colonnes, « De » avant « À »."""
+        for i, contenu in enumerate(poses):
+            if texte in contenu:
+                return i
+        self.fail(f"« {texte} » manque au reçu")
+
+    def test_un_envoi_met_le_beneficiaire_du_cote_a(self):
+        """LA correction. « to PAYSELA … » est le DESTINATAIRE."""
+        _, poses = self._poses(MTN_SORTANT)
+        self.assertIn("AMOUNT SENT", poses)
+        # Notre nom est posé sous « FROM », celui du tiers sous « TO » : les
+        # colonnes se posent dans l'ordre, la position tranche.
+        self.assertLess(self._rang(poses, "NGANGOM JONAS"),
+                        self._rang(poses, "PAYSELA"),
+                        "le bénéficiaire ne doit jamais passer avant nous "
+                        "sur un envoi")
+
+    def test_un_encaissement_met_le_tiers_du_cote_de(self):
+        _, poses = self._poses(MTN_ENTRANT)
+        self.assertIn("AMOUNT RECEIVED", poses)
+        self.assertLess(self._rang(poses, "BABY FRANCIS"),
+                        self._rang(poses, "NGANGOM JONAS"),
+                        "l'expéditeur passe avant nous sur un encaissement")
+
+    def test_sans_notre_identite_le_tiers_reste_du_bon_cote(self):
+        """Les Réglages peuvent être vides : on ne sait alors pas qui nous
+        sommes. Ce n'est pas une raison pour mettre le destinataire en « De »
+        — on laisse notre colonne vide, à sa place."""
+        _, poses = self._poses(MTN_SORTANT, compte=None)
+        # Les étiquettes se comparent à l'identique : « TO » en sous-chaîne
+        # tomberait sur TOTEM, posé tout en haut.
+        rang_tiers = self._rang(poses, "PAYSELA")
+        rang_a = poses.index("TO")
+        rang_de = poses.index("FROM")
+        self.assertLess(rang_de, rang_a)
+        self.assertGreater(rang_tiers, rang_a,
+                           "le tiers doit être posé après l'étiquette « TO »")
+
+    def test_les_deux_numeros_figurent_au_bon_format(self):
+        _, poses = self._poses(MTN_SORTANT)
+        for attendu in ("+237 652 236 856", "+237 681 026 861"):
+            self.assertTrue(any(attendu in p for p in poses),
+                            f"« {attendu} » manque au reçu")
+
+    def test_le_solde_ne_figure_JAMAIS_au_recu(self):
+        """Un reçu se tend à un client : il n'a pas à y lire la caisse.
+
+        MTN écrit son solde à chaque message — « Your new balance: 1308910
+        XAF » — et il serait facile de le reprendre. Le document le laisse
+        où il est. Le solde se lit sur l'accueil et sur le reçu de solde,
+        là où c'est le propriétaire qui regarde.
+        """
+        paiement, poses = self._poses(MTN_SORTANT)
+        self.assertEqual(paiement.solde_apres, 1308910,
+                         "le solde est bien lu, il n'est simplement pas posé")
+        self.assertNotIn("BALANCE AFTER", poses)
+        self.assertNotIn("308", poses, "une tranche du solde a fuité")
+
+    def test_l_identifiant_et_les_frais_sont_la(self):
+        _, poses = self._poses(MTN_SORTANT)
+        self.assertIn("TRANSACTION ID", poses)
+        self.assertIn("FEES", poses)
+        self.assertTrue(any("18496208804" in p for p in poses))
+        # MTN ne verse jamais de commission sur un transfert : la colonne ne
+        # doit pas apparaître vide pour autant.
+        self.assertNotIn("COMMISSION", poses)
+
+    def test_rien_ne_deborde(self):
+        for texte in (MTN_SORTANT, MTN_ENTRANT):
+            for langue in ("en", "fr"):
+                from totem.analyse_sms import analyser
+                paiement = analyser(texte, numeros=[MOI[1]])
+                gabarit = _gabarit_espionne(lambda: recu_transfert(
+                    paiement, "TM-1", paiement.quand, "MTN MoMo",
+                    langue=langue, compte=MOI))
+                self.assertEqual(gabarit.debordements(), [],
+                                 f"un texte sort de la page ({langue})")
+
+
+class TestLHeureDuReseau(unittest.TestCase):
+    """MTN date ses messages ; Orange non.
+
+    Quand le réseau écrit son heure, c'est elle qui figurera sur son relevé —
+    et c'est donc elle que le reçu doit porter. Le terminal peut avoir reçu le
+    SMS une minute plus tard, ou l'avoir relu après une coupure.
+    """
+
+    def test_mtn_donne_son_heure(self):
+        from totem.analyse_sms import analyser
+        paiement = analyser(MTN_SORTANT)
+        self.assertEqual(paiement.quand,
+                         datetime.datetime(2026, 8, 25, 13, 55, 27))
+
+    def test_orange_n_en_donne_pas(self):
+        from totem.analyse_sms import analyser
+        paiement = analyser(
+            "Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+            "Nouveau solde: 184137 FCFA.")
+        self.assertIsNone(paiement.quand,
+                          "rien ne doit être inventé quand le SMS se tait")
+
+    def test_une_date_impossible_ne_casse_rien(self):
+        from totem.analyse_sms import analyser
+        paiement = analyser(
+            "You have received 1000 XAF from X (237678352223) on your mobile "
+            "money account at 2026-13-45 99:99:99.")
+        self.assertIsNotNone(paiement)
+        self.assertIsNone(paiement.quand)
+
+
+class TestLHeureALaSeconde(unittest.TestCase):
+    """L'heure du réseau se recopie telle qu'il l'a écrite.
+
+    MTN date ses messages à la seconde — « at 2026-08-25 13:55:27 ». C'est
+    l'instant qui figurera sur son relevé : le reçu le porte entier. L'heure
+    de RÉCEPTION du SMS, elle, n'a pas cette précision — la seconde où le
+    message est arrivé ne prouve rien, et l'afficher ferait croire à une
+    exactitude qu'on n'a pas.
+    """
+
+    QUAND = datetime.datetime(2026, 8, 25, 13, 55, 27)
+
+    def test_le_format_a_la_seconde(self):
+        self.assertEqual(heure_en_lettres(self.QUAND, "en", secondes=True),
+                         "13:55:27")
+        self.assertEqual(heure_en_lettres(self.QUAND, "fr", secondes=True),
+                         "13 h 55 min 27 s")
+
+    def test_sans_secondes_rien_ne_change(self):
+        self.assertEqual(heure_en_lettres(self.QUAND, "en"), "13:55")
+        self.assertEqual(heure_en_lettres(self.QUAND, "fr"), "13 h 55")
+
+    def test_un_recu_mtn_porte_la_seconde(self):
+        from totem.analyse_sms import analyser
+        paiement = analyser(MTN_SORTANT, numeros=[MOI[1]])
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand, "MTN MoMo", langue="en",
+            compte=MOI))
+        poses = [c for _, _, c in gabarit.page.empreintes]
+        self.assertIn("13:55:27", poses)
+
+    def test_un_recu_orange_s_arrete_a_la_minute(self):
+        """Orange ne date pas ses SMS : l'heure vient de la réception, et
+        elle ne se donne pas à la seconde."""
+        from totem.analyse_sms import analyser
+        paiement = analyser(
+            "Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+            "Nouveau solde: 184137 FCFA.", numeros=["696103864"])
+        self.assertIsNone(paiement.quand)
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", self.QUAND, "Orange Money", langue="en",
+            compte=("NGANGOM JONAS", "696103864")))
+        poses = [c for _, _, c in gabarit.page.empreintes]
+        self.assertIn("13:55", poses)
+        self.assertNotIn("13:55:27", poses)
+
+
+class TestUnNumeroSeLit(unittest.TestCase):
+    """Douze chiffres d'affilée ne se relisent pas sur un reçu."""
+
+    def test_le_format_international_se_decoupe(self):
+        self.assertEqual(numero_lisible("237681026861"), "+237 681 026 861")
+
+    def test_le_format_local_ne_change_pas(self):
+        self.assertEqual(numero_lisible("696103864"), "696 103 864")
+
+    def test_ce_qui_n_est_pas_un_numero_reste_tel_quel(self):
+        self.assertEqual(numero_lisible("93368555"), "93368555")
+        self.assertEqual(numero_lisible(""), "")
+        self.assertEqual(numero_lisible(None), "")
+
+
+class TestLesMarquesNeDerivent_pas(unittest.TestCase):
+    """Un logo vit à un seul endroit.
+
+    `brand/marques-operateurs.json` porte les tracés officiels ; le robot les
+    lit pour le reçu, la maquette pour ses aperçus, et la plateforme en garde
+    une copie dans son composant React (le bundler ne peut pas remonter hors
+    de `web/`). Cette copie DOIT rester identique : deux logos qui divergent,
+    c'est un reçu qui ne ressemble plus à l'écran.
+    """
+
+    def _racine(self):
+        import os
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_le_fichier_des_marques_est_lisible(self):
+        from totem.marques import marques
+        connues = marques()
+        self.assertIn("orange", connues)
+        self.assertIn("mtn", connues)
+        for cle, marque in connues.items():
+            self.assertTrue(marque["traces"], f"{cle} n'a aucun tracé")
+            self.assertEqual(len(marque["voir"]), 4)
+
+    def test_la_plateforme_porte_les_MEMES_traces(self):
+        import os
+        import re
+        chemin = os.path.join(self._racine(), "web", "app",
+                              "logos-operateurs.tsx")
+        source = open(chemin, encoding="utf-8").read()
+        # Tout ce que le composant dessine, à l'espacement près.
+        du_web = {re.sub(r"\s+", " ", d).strip()
+                  for d in re.findall(r'\sd="([^"]+)"', source)}
+        from totem.marques import marques
+        for cle, marque in marques().items():
+            for trace in marque["traces"]:
+                self.assertIn(trace, du_web,
+                              f"un tracé de « {cle} » manque à la plateforme "
+                              "— les deux copies ont divergé")
+
+    def test_un_operateur_inconnu_n_emprunte_pas_un_logo(self):
+        from totem.marques import marque_de
+        self.assertIsNone(marque_de("Camtel"))
+        self.assertIsNone(marque_de(""))
+        self.assertIsNone(marque_de(None))
+
+    def test_le_prefixe_suffit_a_reconnaitre_le_reseau(self):
+        from totem.marques import marque_de
+        for nom in ("MTN MoMo", "MTN Cameroon", "mtn"):
+            self.assertEqual(marque_de(nom)["nom"], "MTN")
+        for nom in ("Orange Money", "orange"):
+            self.assertEqual(marque_de(nom)["nom"], "Orange")
+
+    def test_le_recu_pose_le_VRAI_trace(self):
+        """Le tracé officiel doit se retrouver dans le PDF, tel quel.
+
+        Sans lui, le rectangle jaune passerait pour un logo alors qu'il serait
+        vide : c'est l'ovale et le sigle qui font la marque, pas le fond.
+        """
+        from totem.analyse_sms import analyser
+        from totem.marques import marque_de
+        from totem.pdf import chemin_svg
+        paiement = analyser(MTN_SORTANT, numeros=[MOI[1]])
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand, "MTN MoMo", langue="en",
+            compte=MOI))
+        flux = "\n".join(gabarit.page._flux)
+        attendu = chemin_svg(marque_de("MTN MoMo")["traces"][0])
+        self.assertIn(attendu, flux,
+                      "l'ovale de MTN n'est pas dessiné sur la page")
+
+    def test_un_operateur_sans_marque_ne_dessine_rien(self):
+        """Et le reçu écrit alors son nom : mieux vaut un mot qu'un blanc."""
+        from totem.analyse_sms import analyser
+        paiement = analyser(MTN_SORTANT, numeros=[MOI[1]])
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand, "Camtel Money", langue="en",
+            compte=MOI))
+        poses = [c for _, _, c in gabarit.page.empreintes]
+        self.assertIn("Camtel Money", poses)

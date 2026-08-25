@@ -41,6 +41,7 @@ Principes de ce fichier :
     déguisé en autre chose.
 """
 
+from datetime import datetime
 import re
 import unicodedata
 
@@ -279,6 +280,30 @@ RE_TIERS = re.compile(
 #
 # Mieux vaut aucune référence qu'une fausse : le garde-fou anti-doublon
 # retombe alors sur la ligne du journal, qui, elle, ne se répète jamais.
+# L'HEURE QUE LE MESSAGE PORTE LUI-MÊME.
+#
+# Orange ne date pas ses SMS : l'heure de réception par le terminal est alors
+# la seule honnête. MTN, lui, écrit la sienne — « at 2026-08-25 13:55:27 » —
+# et c'est l'heure du RÉSEAU, celle qui figurera sur son relevé. Entre les
+# deux, c'est elle qui fait foi : le terminal peut avoir reçu le SMS une
+# minute plus tard, ou l'avoir relu bien après une coupure.
+RE_HORODATAGE = re.compile(
+    r"\b(?:at|le|du)\s+(\d{4})-(\d{2})-(\d{2})[ t](\d{2}):(\d{2})(?::(\d{2}))?")
+
+
+def _horodatage(norme):
+    """L'instant écrit dans le message, ou None. Jamais d'exception : une
+    date impossible (« 2026-13-45 ») vaut une date absente."""
+    m = RE_HORODATAGE.search(norme)
+    if not m:
+        return None
+    try:
+        return datetime(*(int(g) for g in m.groups()[:5]),
+                        int(m.group(6) or 0))
+    except ValueError:
+        return None
+
+
 RE_REFERENCE = re.compile(
     r"\b(?:id\s*(?:de\s*)?(?:la\s*)?transaction|financial\s*transaction\s*id"
     r"|transaction\s*id|reference|ref|txn|id)\b"
@@ -461,12 +486,12 @@ class Paiement:
 
     __slots__ = ("sens", "montant", "nom", "numero", "reference",
                  "solde_apres", "frais", "commission", "montant_brut",
-                 "emetteur", "beneficiaire", "texte")
+                 "emetteur", "beneficiaire", "quand", "texte")
 
     def __init__(self, sens, montant, texte, nom=None, numero=None,
                  reference=None, solde_apres=None, frais=None,
                  commission=None, montant_brut=None,
-                 emetteur=None, beneficiaire=None):
+                 emetteur=None, beneficiaire=None, quand=None):
         self.sens = sens                  # « entree », « sortie », ou None
         self.montant = montant            # en FCFA — le montant NET
         self.nom = nom                    # « NGONO Marie », si le SMS le donne
@@ -478,6 +503,7 @@ class Paiement:
         self.montant_brut = montant_brut  # « Montant Transaction », avant frais
         self.emetteur = emetteur          # Partie, quand le SMS nomme les deux
         self.beneficiaire = beneficiaire  # Partie
+        self.quand = quand                # l'instant écrit dans le message
         self.texte = texte                # le SMS d'origine, intact
 
     @property
@@ -673,7 +699,7 @@ def _operation_structuree(norme, propre, texte):
         solde_apres=_montant_nomme(RE_SOLDE, norme),
         frais=_montant_nomme(RE_FRAIS, norme),
         commission=_montant_nomme(RE_COMMISSION, norme),
-        montant_brut=brut,
+        montant_brut=brut, quand=_horodatage(norme),
         emetteur=emetteur, beneficiaire=beneficiaire), True
 
 
@@ -732,6 +758,7 @@ def analyser(texte, numeros=()):
                 nom=nom, numero=numero,
                 reference=_reference(norme, propre),
                 solde_apres=_montant_nomme(RE_SOLDE, norme),
+                quand=_horodatage(norme),
                 commission=_montant_nomme(RE_COMMISSION, norme))
     cash_in = RE_CASH_IN_SORTANT.search(norme)
     if (cash_in and RE_REUSSITE.search(norme)
@@ -744,6 +771,7 @@ def analyser(texte, numeros=()):
                 nom=nom, numero=numero,
                 reference=_reference(norme, propre),
                 solde_apres=_montant_nomme(RE_SOLDE, norme),
+                quand=_horodatage(norme),
                 commission=_montant_nomme(RE_COMMISSION, norme))
 
     entree = RE_RECU.search(norme)
@@ -781,6 +809,7 @@ def analyser(texte, numeros=()):
         solde_apres=_nombre(solde.group(1)) if solde else None,
         frais=_nombre(frais.group(1)) if frais else None,
         commission=_montant_nomme(RE_COMMISSION, norme),
+        quand=_horodatage(norme),
     )
 
 
