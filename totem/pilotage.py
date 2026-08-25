@@ -460,12 +460,16 @@ class Pilotage:
         return reponse
 
     def _repondre(self, identifiant, parametres, langue=None):
-        if not self._session:
+        # On fige la session dans une variable locale : le fil Telegram peut
+        # la remettre à None (ceder) entre le test et la lecture. Sans ce
+        # cliché, « self._session["compte"] » lèverait par intermittence.
+        session = self._session
+        if not session:
             raise RefusPoli(t(
                 "No session in progress: dial a code first.",
                 "Aucune session en cours : composez d'abord un code.",
                 langue=langue))
-        compte = self._session["compte"]
+        compte = session["compte"]
         texte = str(parametres.get("texte") or "")
         if parametres.get("secret"):
             # Le code confidentiel : effacé de la base AVANT d'être composé.

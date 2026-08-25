@@ -345,8 +345,9 @@ class Nuage:
             # plus localement. L'heure porte son fuseau (« +01:00 ») — dans
             # une URL, le « + » doit voyager encodé.
             self._requete(
-                "DELETE", f"raccourcis?terminal=eq.{self.terminal}"
-                          f"&maj=lt.{urllib.parse.quote(a_jour)}")
+                "DELETE",
+                f"raccourcis?terminal=eq.{urllib.parse.quote(self.terminal, safe='')}"
+                f"&maj=lt.{urllib.parse.quote(a_jour, safe='')}")
         except Exception as e:
             self.derniere_erreur = str(e)
             return False
@@ -542,18 +543,30 @@ class Nuage:
             self.derniere_erreur = str(e)
             return False
 
-    def publier_solde(self, iccid, solde):
-        """Un solde lu à l'instant sur le réseau : la base le reflète.
+    def publier_solde(self, iccid, solde, moment=None):
+        """Un solde annoncé par l'opérateur : la base le reflète.
 
         C'est la seule écriture de solde côté nuage — il vient toujours de
-        l'opérateur (réponse USSD), jamais d'un calcul à nous.
+        l'opérateur (réponse USSD, ou SMS de relevé en itinérance), jamais
+        d'un calcul à nous.
+
+        `moment` : l'heure RÉSEAU de l'annonce, quand un SMS la porte. Un
+        relevé ancien rejoué dans le désordre (backlog après une coupure) ne
+        doit pas écraser un solde déjà plus récent : avec un moment, on ne
+        remplace que si ce qu'on écrit lui est postérieur. Sans moment — une
+        réponse USSD, toujours actuelle — on écrit sans condition.
         """
         if not (self.actif and iccid):
             return False
+        quand = _horodatage(moment) if moment else _horodatage()
+        # terminal et iccid ancrent la ligne visée : encodés, un nom de
+        # terminal ou un ICCID malformé ne peut pas déborder le filtre.
+        chemin = (f"comptes?terminal=eq.{urllib.parse.quote(self.terminal, safe='')}"
+                  f"&iccid=eq.{urllib.parse.quote(str(iccid), safe='')}")
+        if moment:
+            chemin += f"&maj=lt.{urllib.parse.quote(quand, safe='')}"
         try:
-            self._requete(
-                "PATCH", f"comptes?terminal=eq.{self.terminal}&iccid=eq.{iccid}",
-                {"solde": solde, "maj": _horodatage()})
+            self._requete("PATCH", chemin, {"solde": solde, "maj": quand})
             self.derniere_erreur = None
             return True
         except Exception as e:

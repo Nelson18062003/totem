@@ -150,7 +150,7 @@ class NuageEspion:
     def reveiller(self):
         pass
 
-    def publier_solde(self, iccid, solde):
+    def publier_solde(self, iccid, solde, moment=None):
         self.soldes.append((iccid, solde))
         return True
 
