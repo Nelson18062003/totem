@@ -25,10 +25,32 @@ export const codesUssd: Record<string, CodeUssd[]> = {
 export const codeUssd = (op: string, cle: string) =>
   (codesUssd[op] ?? []).find((c) => c.cle === cle)?.code ?? "";
 
-// Le code d'un GESTE du guichet : le code profond quand il est relevé, sinon
-// la porte du menu de l'opérateur. Un geste sans code direct n'est pas un
-// geste impossible : la session s'ouvre sur le menu, le propriétaire choisit
-// l'option, et la plateforme répond seule aux questions qu'elle reconnaît
-// (numéro, montant). Rien n'est deviné : chaque étape est celle du réseau.
-export const codeGeste = (op: string, cle: string) =>
-  codeUssd(op, cle) || codeUssd(op, "menu");
+// Les clés des boutons STANDARDS du guichet — les mêmes pour tout opérateur.
+// C'est cette liste que les Réglages proposent de remplir, opérateur par
+// opérateur : chaque bouton s'attribue son code, sans toucher au code source.
+export const CLES_GUICHET = [
+  "menu", "depot", "retrait", "transfert", "solde", "mon_numero",
+] as const;
+
+// Les ÉTAPES d'un geste du guichet, par ordre de confiance :
+//   1. le bouton défini ou appris par le propriétaire (base « raccourcis »),
+//      qui l'emporte toujours — c'est lui qui vient du terrain ;
+//   2. le code du catalogue de départ (relevé sur un vrai téléphone) ;
+//   3. la porte du menu de l'opérateur : la session s'ouvre sur le menu, le
+//      propriétaire choisit l'option, la plateforme répond seule aux
+//      questions qu'elle reconnaît (numéro, montant).
+// Rien n'est deviné : chaque étape vient du propriétaire ou de l'opérateur.
+export const etapesGeste = (
+  op: string,
+  cle: string,
+  appris: { nom: string; etapes: string[] }[] = [],
+): string[] => {
+  const propre = appris.find((r) => r.nom === cle && r.etapes.length);
+  if (propre) return propre.etapes;
+  const direct = codeUssd(op, cle);
+  if (direct) return [direct];
+  const menuAppris = appris.find((r) => r.nom === "menu" && r.etapes.length);
+  if (menuAppris) return menuAppris.etapes;
+  const menu = codeUssd(op, "menu");
+  return menu ? [menu] : [];
+};

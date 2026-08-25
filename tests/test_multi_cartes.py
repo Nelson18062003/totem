@@ -138,3 +138,51 @@ class TestLeBilanParCaisse(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NuageEspion:
+    """Retient les soldes publiés, rien d'autre — pas de réseau."""
+    actif = True
+
+    def __init__(self):
+        self.soldes = []
+
+    def reveiller(self):
+        pass
+
+    def publier_solde(self, iccid, solde):
+        self.soldes.append((iccid, solde))
+        return True
+
+
+class TestLeSoldeArriveAussiParSms(unittest.TestCase):
+    """En itinérance, MTN répond au relevé PAR SMS : ce solde-là doit mettre
+    la carte à jour, exactement comme une réponse USSD l'aurait fait.
+    C'est toujours l'opérateur qui parle — jamais un calcul à nous."""
+
+    def robot_espionne(self):
+        modem = ModemSimule(operateur="MTN")
+        compte = Compte(modem, carte=MTN_A)
+        nuage = NuageEspion()
+        r = Robot([compte], TransportEspion((1,)), Journal(":memory:"),
+                  nom="T", pause_sms=1, nuage=nuage)
+        return r, compte, modem, nuage
+
+    def test_un_sms_de_releve_publie_le_solde(self):
+        r, compte, modem, nuage = self.robot_espionne()
+        modem.sms_en_attente.append(
+            (7, "MobileMoney",
+             "Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA."))
+        r._relever_sms(compte)
+        self.assertEqual(nuage.soldes, [(MTN_A.iccid, 0)])
+
+    def test_un_encaissement_ne_touche_pas_le_solde(self):
+        """Le solde d'un transfert se lit dans solde_apres — jamais ici :
+        publier le solde d'un paiement referait le bug d'août 2026."""
+        r, compte, modem, nuage = self.robot_espionne()
+        modem.sms_en_attente.append(
+            (8, "MobileMoney",
+             "Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+             "Nouveau solde : 100 000 FCFA."))
+        r._relever_sms(compte)
+        self.assertEqual(nuage.soldes, [])

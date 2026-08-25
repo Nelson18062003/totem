@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
-                          masquer_secrets)
+                          masquer_secrets, solde_annonce)
 from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
                           motif_du_sms, motif_selon_nature, raison_du_refus)
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
@@ -1991,6 +1991,17 @@ class Robot:
                     # d'un encaissement. Il est seulement inscrit ; la boucle
                     # de surveillance le fabriquera dans la foulée.
                     self._programmer_recu(sms_id, texte)
+                    # Un SMS qui ANNONCE un solde met la carte à jour : c'est
+                    # l'opérateur qui parle, comme sur une réponse USSD — et
+                    # en itinérance, MTN répond justement par SMS quand
+                    # l'USSD ne passe pas. Jamais un calcul à nous.
+                    try:
+                        solde = solde_annonce(texte)
+                        if (solde is not None and self.nuage
+                                and compte.carte.identifiee):
+                            self.nuage.publier_solde(compte.carte.iccid, solde)
+                    except Exception:
+                        pass    # un solde non relevé n'empêche rien
                     # Le cloud est prévenu tout de suite : inutile de lui faire
                     # attendre son battement pour un paiement déjà connu.
                     if self.nuage:

@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 // Les seules demandes que le guichet accepte — tout le reste est refusé.
 const GENRES = new Set([
   "solde", "ussd", "ussd_reponse", "ussd_fin", "recu", "identite",
+  "raccourci",
 ]);
 
 /**
@@ -80,6 +81,40 @@ export async function POST(req: Request) {
       (!parametres.iccid || (!parametres.numero && !parametres.nom))) {
     return Response.json(
       { erreur: erreurApi(langue, "carteOuValeurManquante") }, { status: 400 });
+  }
+
+  // Un raccourci USSD, créé ou retiré depuis les Réglages : le robot le
+  // range dans SON carnet (même chemin que l'apprentissage), puis la base
+  // le renvoie à tous les écrans. Le robot revérifie tout — la première
+  // étape doit être un code, les suivantes des choix de menu : jamais un
+  // montant, un numéro ou le code secret.
+  if (genre === "raccourci") {
+    if (typeof brut.operateur === "string") {
+      const op = brut.operateur.replace(/[^\w .\-]/g, "").trim().slice(0, 24);
+      if (op) parametres.operateur = op;
+    }
+    if (typeof brut.cle === "string") {
+      const cle = brut.cle.toLowerCase().replace(/[^a-z0-9_\-]/g, "").slice(0, 24);
+      if (cle) parametres.cle = cle;
+    }
+    if (typeof brut.libelle === "string") {
+      const libelle = brut.libelle.trim().slice(0, 32);
+      if (libelle) parametres.libelle = libelle;
+    }
+    parametres.action = brut.action === "supprimer" ? "supprimer" : "definir";
+    if (Array.isArray(brut.etapes)) {
+      const etapes = brut.etapes
+        .filter((e: unknown): e is string => typeof e === "string")
+        .map((e: string) => e.replace(/[^0-9#*]/g, "").slice(0, 32))
+        .filter(Boolean)
+        .slice(0, 8);
+      if (etapes.length) parametres.etapes = etapes;
+    }
+    if (!parametres.operateur || !parametres.cle ||
+        (parametres.action === "definir" && !parametres.etapes)) {
+      return Response.json(
+        { erreur: erreurApi(langue, "raccourciIncomplet") }, { status: 400 });
+    }
   }
 
   // La langue voyage avec la demande : le terminal répond dans la langue de

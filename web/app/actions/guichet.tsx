@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { codeGeste } from "@/lib/codes";
+import { etapesGeste } from "@/lib/codes";
 import { textesGuichet } from "@/lib/textes/guichet";
-import type { Sim } from "@/lib/types";
+import type { RaccourciAppris, Sim } from "@/lib/types";
 import {
   IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash,
   IconInbox, IconPhone, IconRefresh, IconWallet,
@@ -22,7 +22,13 @@ type CarteGuichet = Pick<Sim, "libelle" | "operateur" | "iccid">;
  * sans code direct passe par la porte du menu de l'opérateur. Avec plusieurs
  * cartes en place, le sélecteur en tête dit sur laquelle on compose.
  */
-export function Guichet({ cartes }: { cartes: CarteGuichet[] }) {
+export function Guichet({
+  cartes,
+  raccourcis,
+}: {
+  cartes: CarteGuichet[];
+  raccourcis: Record<string, RaccourciAppris[]>;
+}) {
   const router = useRouter();
   const langue = useLangue();
   const t = textesGuichet[langue];
@@ -31,53 +37,46 @@ export function Guichet({ cartes }: { cartes: CarteGuichet[] }) {
   const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const op = carte.operateur;
 
+  // Le bouton défini par le propriétaire d'abord, sinon le catalogue,
+  // sinon la porte du menu de l'opérateur.
+  const operationDe = (cle: string, titre: string,
+                       champs: Operation["champs"]): Operation => {
+    const et = etapesGeste(op, cle, raccourcis[op] ?? []);
+    return { titre, code: et[0] ?? "", etapes: et, champs, carte: carte.iccid };
+  };
+
   const operations = [
     {
       titre: t.depot, sous: t.depotSous, Icone: IconArrowDown,
-      fabrique: (): Operation => ({
-        titre: t.depotTitre, code: codeGeste(op, "depot"), carte: carte.iccid,
-        champs: [
-          { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
-          { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
-        ],
-      }),
+      fabrique: (): Operation => operationDe("depot", t.depotTitre, [
+        { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
+      ]),
     },
     {
       titre: t.retrait, sous: t.retraitSous, Icone: IconWallet,
-      fabrique: (): Operation => ({
-        titre: t.retraitTitre, code: codeGeste(op, "retrait"), carte: carte.iccid,
-        champs: [
-          { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
-          { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
-        ],
-      }),
+      fabrique: (): Operation => operationDe("retrait", t.retraitTitre, [
+        { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
+      ]),
     },
     {
       titre: t.transfert, sous: t.transfertSous, Icone: IconArrowUp,
-      fabrique: (): Operation => ({
-        titre: t.transfertTitre, code: codeGeste(op, "transfert"), carte: carte.iccid,
-        champs: [
-          { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
-          { cle: "montant", label: t.montantFcfa, aide: t.exempleCinquanteMille, type: "montant" },
-        ],
-      }),
+      fabrique: (): Operation => operationDe("transfert", t.transfertTitre, [
+        { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: t.exempleCinquanteMille, type: "montant" },
+      ]),
     },
   ].filter((o) => o.fabrique().code);
 
   const consultations = [
     {
       l: t.consulterSolde, Icone: IconRefresh,
-      fabrique: (): Operation => ({
-        titre: t.consulterSolde, code: codeGeste(op, "solde"),
-        champs: [], carte: carte.iccid,
-      }),
+      fabrique: (): Operation => operationDe("solde", t.consulterSolde, []),
     },
     {
       l: t.monNumero, Icone: IconPhone,
-      fabrique: (): Operation => ({
-        titre: t.monNumero, code: codeGeste(op, "mon_numero"),
-        champs: [], carte: carte.iccid,
-      }),
+      fabrique: (): Operation => operationDe("mon_numero", t.monNumero, []),
     },
   ].filter((c) => c.fabrique().code);
 

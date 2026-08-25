@@ -277,8 +277,9 @@ export async function chargerDonnees(
   const sims: Sim[] = cartes.map((c) => {
     const compte = comptes.find((x) => x.iccid === c.iccid);
     const entrees = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
-    // Le solde vient du terminal, point : c'est l'interrogation réseau
-    // (déclenchée depuis la plateforme) qui le met à jour — jamais un SMS.
+    // Le solde vient du terminal, point : une réponse USSD, ou un SMS de
+    // relevé envoyé par l'opérateur (MTN répond ainsi en itinérance).
+    // Toujours l'annonce de l'opérateur — jamais un calcul à nous.
     const solde = compte?.solde == null ? null : Number(compte.solde);
     const soldeMaj = solde != null && compte ? heure(compte.maj) : null;
     const enPlace = Boolean(

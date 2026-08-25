@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
-import { codesUssd, type CodeUssd } from "@/lib/codes";
+import { CLES_GUICHET, codesUssd, type CodeUssd } from "@/lib/codes";
 import { LANGUES } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
 import type { RaccourciAppris } from "@/lib/types";
@@ -143,13 +143,38 @@ export function ReglageNumero({
   );
 }
 
+/** Attend l'issue d'une demande déposée pour le robot (≈40 s au plus). */
+async function attendreCommande(id: number) {
+  for (let i = 0; i < 26; i++) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const rep = await fetch(`/api/commande/${id}`, { cache: "no-store" });
+    if (!rep.ok) continue;
+    const c = await rep.json();
+    if (c.etat === "faite" || c.etat === "echouee") return c;
+  }
+  return null;
+}
+
+// « Mon numéro » → « mon_numero » : la clé d'un bouton créé à la main.
+const deriverCle = (nom: string) =>
+  nom.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24);
+
+// La saisie d'un parcours : le code, puis d'éventuels choix de menu séparés
+// par des virgules — « *126#, 1, 1 ». Rien d'autre ne passe.
+const proprerEtapes = (v: string) => v.replace(/[^0-9#*,\s]/g, "");
+const decouperEtapes = (v: string) =>
+  v.split(",").map((p) => p.replace(/[^0-9#*]/g, "")).filter(Boolean);
+
 /**
- * Les codes du guichet, par opérateur. Rien n'est deviné : le catalogue de
- * départ a été composé sur un vrai téléphone, et chaque code se corrige ou
- * s'ajoute ici — un opérateur qui change son menu ne casse rien.
+ * Les codes du guichet, par opérateur — TOUS les boutons standards, chacun
+ * attribuable ici même. Rien n'est deviné : c'est le propriétaire qui dicte,
+ * et le robot revérifie (un code d'abord, des choix de menu ensuite — jamais
+ * un montant, un numéro ou le code secret).
  *
- * Les codes eux-mêmes (#148#…) ne se traduisent jamais : seuls les libellés
- * autour changent de langue. Un raccourci ajouté à la main garde son nom.
+ * Ce qui s'enregistre part dans le CARNET DU ROBOT (la même place que
+ * l'apprentissage) puis revient par la base : l'accueil, le guichet et la
+ * console USSD l'utilisent aussitôt, pour toute carte de cet opérateur.
  */
 export function SectionCodes({
   operateur,
@@ -159,34 +184,94 @@ export function SectionCodes({
   operateur: string;
   // Une carte de cet opérateur est-elle dans le terminal en ce moment ?
   enPlace?: boolean;
-  // Les boutons appris par le robot (💾 sur Telegram), lus depuis la base :
-  // le même carnet que Telegram, montré ici en regard du catalogue.
+  // Les boutons définis ou appris, lus depuis la base : ils l'emportent
+  // sur le catalogue — c'est le terrain qui commande.
   appris?: RaccourciAppris[];
 }) {
+  const router = useRouter();
   const langue = useLangue();
   const t = textesReglages[langue];
-  const [codes, setCodes] = useState<CodeUssd[]>(codesUssd[operateur] ?? []);
   const [enEdition, setEnEdition] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState("");
   const [ajout, setAjout] = useState(false);
   const [nouveauNom, setNouveauNom] = useState("");
   const [nouveauCode, setNouveauCode] = useState("");
+  const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
+  const [message, setMessage] = useState("");
 
-  const proprer = (v: string) => v.replace(/[^0-9#*]/g, "");
+  const parNom = new Map((appris ?? []).map((r) => [r.nom, r]));
+  const statiques = new Map(
+    (codesUssd[operateur] ?? []).map((c: CodeUssd) => [c.cle, c.code]));
 
-  const enregistrer = (cle: string) => {
-    if (brouillon.trim()) {
-      setCodes((cs) => cs.map((c) => (c.cle === cle ? { ...c, code: brouillon.trim() } : c)));
+  // Chaque bouton standard a sa ligne — remplie ou À REMPLIR : c'est ici
+  // qu'un opérateur tout neuf reçoit ses codes, bouton par bouton.
+  const rangs = [
+    ...CLES_GUICHET.map((cle) => ({
+      cle,
+      libelle: t.libellesCodes[cle] ?? cle,
+      etapes: parNom.get(cle)?.etapes
+        ?? (statiques.get(cle) ? [statiques.get(cle)!] : []),
+      defini: parNom.has(cle),
+    })),
+    ...(appris ?? [])
+      .filter((r) => !(CLES_GUICHET as readonly string[]).includes(r.nom))
+      .map((r) => ({ cle: r.nom, libelle: r.libelle, etapes: r.etapes,
+                     defini: true })),
+  ];
+
+  const poser = async (
+    cle: string, libelle: string,
+    etapes: string[], action: "definir" | "supprimer",
+  ) => {
+    setEtat("envoi");
+    setMessage("");
+    try {
+      const rep = await fetch("/api/commande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "raccourci",
+          parametres: { operateur, cle, libelle, etapes, action },
+        }),
+      });
+      const { id, erreur } = await rep.json();
+      if (!rep.ok || !id) throw new Error(erreur || t.pasPartie);
+      const resultat = await attendreCommande(id);
+      if (!resultat) {
+        setEtat("erreur");
+        setMessage(t.pasRepondu);
+        return false;
+      }
+      if (resultat.etat !== "faite") {
+        setEtat("erreur");
+        setMessage(/inconnue/i.test(resultat.resultat || "")
+          ? t.majRequise
+          : (resultat.resultat || t.aRefuse));
+        return false;
+      }
+      setEtat("repos");
+      router.refresh();    // la base renvoie le carnet, tous les écrans suivent
+      return true;
+    } catch (e) {
+      setEtat("erreur");
+      setMessage(e instanceof Error ? e.message : t.pasPartie);
+      return false;
     }
-    setEnEdition(null);
   };
 
-  const ajouter = () => {
-    if (!nouveauNom.trim() || !nouveauCode.trim()) return;
-    setCodes((cs) => [...cs, {
-      cle: `perso-${cs.length}`, libelle: nouveauNom.trim(), code: nouveauCode.trim(),
-    }]);
-    setNouveauNom(""); setNouveauCode(""); setAjout(false);
+  const enregistrer = async (cle: string, libelle: string) => {
+    const etapes = decouperEtapes(brouillon);
+    if (!etapes.length) return;
+    if (await poser(cle, libelle, etapes, "definir")) setEnEdition(null);
+  };
+
+  const ajouter = async () => {
+    const cle = deriverCle(nouveauNom);
+    const etapes = decouperEtapes(nouveauCode);
+    if (!cle || !etapes.length) return;
+    if (await poser(cle, nouveauNom.trim(), etapes, "definir")) {
+      setNouveauNom(""); setNouveauCode(""); setAjout(false);
+    }
   };
 
   return (
@@ -196,75 +281,76 @@ export function SectionCodes({
         <p className="border-b border-line px-4 py-3 text-caption uppercase tracking-wider text-ink-faint">
           {enPlace ? t.carteEnPlace(operateur) : operateur}
         </p>
-        {codes.length === 0 && !ajout && (
-          <p className="px-4 py-4 text-small leading-relaxed text-ink-soft">
-            {t.aucunCode(operateur)}
-          </p>
-        )}
         <ul className="divide-hair px-4">
-          {codes.map((c) => (
-            <li key={c.cle} className="flex items-center gap-3 py-3">
+          {rangs.map((r) => (
+            <li key={r.cle} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
               <IconHash size={16} className="shrink-0 text-ink-faint" />
-              <span className="flex-1 text-body">{t.libellesCodes[c.cle] ?? c.libelle}</span>
-              {enEdition === c.cle ? (
+              <span className="flex-1 text-body">{r.libelle}</span>
+              {enEdition === r.cle ? (
                 <span className="flex items-center gap-1.5">
                   <input
-                    value={brouillon} autoFocus
-                    onChange={(e) => setBrouillon(proprer(e.target.value))}
-                    onKeyDown={(e) => e.key === "Enter" && enregistrer(c.cle)}
-                    className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-body tabnums outline-none"
+                    value={brouillon} autoFocus inputMode="tel"
+                    disabled={etat === "envoi"}
+                    onChange={(e) => setBrouillon(proprerEtapes(e.target.value))}
+                    onKeyDown={(e) => e.key === "Enter" && enregistrer(r.cle, r.libelle)}
+                    placeholder={t.exempleEtapes}
+                    className="w-40 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-body tabnums outline-none disabled:opacity-50"
                   />
-                  <button onClick={() => enregistrer(c.cle)}
-                    className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90">
-                    OK
+                  <button onClick={() => enregistrer(r.cle, r.libelle)}
+                    disabled={etat === "envoi"}
+                    className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
+                    {etat === "envoi" ? "…" : "OK"}
                   </button>
+                  <BoutonFermer onClick={() => setEnEdition(null)}
+                    libelle={t.annuler} disabled={etat === "envoi"} />
                 </span>
               ) : (
-                <button
-                  onClick={() => { setEnEdition(c.cle); setBrouillon(c.code); }}
-                  title={t.modifierCode}
-                  className="rounded-btn border border-transparent px-2 py-1 text-small tabnums text-ink-soft transition hover:border-line hover:text-ink"
-                >
-                  {c.code}
-                </button>
+                <span className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      setEnEdition(r.cle);
+                      setBrouillon(r.etapes.join(", "));
+                      setEtat("repos");
+                      setMessage("");
+                    }}
+                    title={t.modifierCode}
+                    className={`rounded-btn border px-2 py-1 text-small tabnums transition hover:border-line hover:text-ink ${
+                      r.etapes.length
+                        ? "border-transparent text-ink-soft"
+                        : "border-line font-medium text-ink"
+                    }`}
+                  >
+                    {r.etapes.length ? r.etapes.join(" → ") : t.attribuer}
+                  </button>
+                  {r.defini && (
+                    <button
+                      onClick={() => void poser(r.cle, r.libelle, [], "supprimer")}
+                      disabled={etat === "envoi"}
+                      title={t.retirerBouton}
+                      className="rounded-btn border border-transparent px-1.5 py-1 text-small text-ink-faint transition hover:border-line hover:text-negative disabled:opacity-40"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
               )}
             </li>
           ))}
         </ul>
-        {/* Les boutons appris sur le terrain, en lecture : ils se créent et
-            se corrigent là où on les apprend — en refaisant l'opération sur
-            Telegram, puis 💾. La plateforme les rejoue depuis l'écran USSD. */}
-        {(appris ?? []).length > 0 && (
-          <>
-            <p className="border-t border-line px-4 py-3 text-caption uppercase tracking-wider text-ink-faint">
-              {t.apprisTitre}
-            </p>
-            <ul className="divide-hair px-4">
-              {(appris ?? []).map((r) => (
-                <li key={r.nom} className="flex items-center gap-3 py-3">
-                  <IconHash size={16} className="shrink-0 text-ink-faint" />
-                  <span className="flex-1 text-body">{r.libelle}</span>
-                  <span className="text-small tabnums text-ink-soft">
-                    {r.etapes.join(" → ")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
         <div className="border-t border-line p-3">
           {ajout ? (
             <div className="flex flex-col gap-2 sm:flex-row">
               <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                 placeholder={t.nomExemple} autoFocus
                 className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-body outline-none transition focus:border-ink" />
-              <input value={nouveauCode} onChange={(e) => setNouveauCode(proprer(e.target.value))}
-                placeholder="#148*6#" inputMode="tel"
-                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tabnums outline-none transition focus:border-ink sm:w-32" />
+              <input value={nouveauCode} onChange={(e) => setNouveauCode(proprerEtapes(e.target.value))}
+                placeholder={t.exempleEtapes} inputMode="tel"
+                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tabnums outline-none transition focus:border-ink sm:w-44" />
               <span className="flex gap-2">
-                <button onClick={ajouter} disabled={!nouveauNom.trim() || !nouveauCode.trim()}
+                <button onClick={() => void ajouter()}
+                  disabled={etat === "envoi" || !nouveauNom.trim() || !nouveauCode.trim()}
                   className="flex-1 rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-30">
-                  {t.ajouter}
+                  {etat === "envoi" ? "…" : t.ajouter}
                 </button>
                 <BoutonFermer onClick={() => setAjout(false)} libelle={t.annulerAjout} />
               </span>
@@ -277,6 +363,12 @@ export function SectionCodes({
           )}
         </div>
       </div>
+      {etat === "envoi" && (
+        <p className="mt-2 text-caption text-ink-faint">{t.enregistrement}</p>
+      )}
+      {etat === "erreur" && (
+        <p className="mt-2 text-caption leading-relaxed text-negative">{message}</p>
+      )}
       <p className="mt-2 text-caption leading-relaxed text-ink-faint">
         {t.noteCodes}
       </p>

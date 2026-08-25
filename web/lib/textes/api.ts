@@ -18,6 +18,7 @@ const en = {
   natureNonEnregistree: "the type could not be saved",
   nonEnregistre: "not saved",
   recuIntrouvable: "Receipt not found",
+  raccourciIncomplet: "incomplete shortcut: operator, button and code are needed",
 };
 
 const fr: typeof en = {
@@ -35,6 +36,7 @@ const fr: typeof en = {
   natureNonEnregistree: "la nature n’a pas pu être enregistrée",
   nonEnregistre: "non enregistré",
   recuIntrouvable: "Reçu introuvable",
+  raccourciIncomplet: "raccourci incomplet : il faut l’opérateur, le bouton et le code",
 };
 
 export const textesApi = { en, fr } as const;

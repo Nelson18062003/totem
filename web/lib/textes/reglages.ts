@@ -36,7 +36,7 @@ const en = {
   noteNumeroAvant: "The ",
   noteNumeroMot: "number",
   noteNumeroMilieu:
-    " cannot be read from the chip or the network: most prepaid SIMs never declare it. Tap it above to set it from here — or from Telegram, ",
+    " cannot be read from the chip or the network: most prepaid SIMs never declare it. Tap it above to set it",
   noteNumeroFin:
     ". Without it, a deposit or a transfer shows up with no way to tell whether the money came in or went out: the receipt says “Net amount” instead of “Amount received” or “Amount sent”.",
 
@@ -44,7 +44,7 @@ const en = {
   neufChiffres: "Nine digits, for example 696103864.",
   pasRepondu: "The terminal didn’t answer. Is it online?",
   majRequise:
-    "Your terminal needs an update before the number can be set from here. Until then, do it on Telegram with /reglages.",
+    "Your terminal needs an update before this can be set from here.",
   aRefuse: "The terminal said no.",
   pasPartie: "The request could not be sent. Try again.",
   reglerNumero: (libelle: string) => `Set the number of ${libelle}`,
@@ -57,7 +57,6 @@ const en = {
   notifPaiement: "Every payment received",
   notifRapport: "Daily report (9 pm)",
   notifCourant: "Power cuts and low voltage",
-  notifTelegram: "Alerts on Telegram too",
 
   // --- Les codes USSD
   codesUssd: "USSD codes",
@@ -74,14 +73,16 @@ const en = {
     solde: "Balance",
     mon_numero: "My number",
   } as Record<string, string | undefined>,
-  apprisTitre: "Learned by the robot (💾 on Telegram)",
   modifierCode: "Edit this code",
+  attribuer: "Set the code",
+  retirerBouton: "Remove this button (back to the built-in code, if any)",
+  exempleEtapes: "*126*1#  or  *126#, 1, 1",
   nomExemple: "Name (“Bills”)",
   ajouter: "Add",
   annulerAjout: "Cancel adding",
   ajouterRaccourci: "Add a shortcut",
   noteCodes:
-    "Each operator has its own codes: they belong to the network, and work with any card from that operator. A code only opens the menu — the secret code is typed on its keypad when the moment comes, and is never stored.",
+    "Each operator has its own codes: they belong to the network, and work with any card from that operator. What you save here goes into the robot's notebook and every screen uses it. A code only opens the counter and stops at the first question — the secret code is typed on its keypad when the moment comes, and is never stored.",
 
   // --- La sécurité
   securite: "Security",
@@ -127,14 +128,14 @@ const fr: typeof en = {
   noteNumeroAvant: "Le ",
   noteNumeroMot: "numéro",
   noteNumeroMilieu:
-    " ne se lit ni sur la puce ni sur le réseau : la plupart des SIM prépayées ne le déclarent pas. Touchez-le ci-dessus pour l’inscrire d’ici — ou depuis Telegram, ",
+    " ne se lit ni sur la puce ni sur le réseau : la plupart des SIM prépayées ne le déclarent pas. Touchez-le ci-dessus pour l’inscrire",
   noteNumeroFin:
     ". Sans lui, un dépôt ou un transfert s’affiche sans qu’on sache s’il sort ou entre : le reçu écrit « Montant net » au lieu de « Montant reçu » ou « Montant envoyé ».",
 
   neufChiffres: "Neuf chiffres, par exemple 696103864.",
   pasRepondu: "Le terminal n’a pas répondu. Est-il en ligne ?",
   majRequise:
-    "Ton terminal doit être mis à jour pour régler le numéro d’ici. En attendant, fais-le sur Telegram avec /reglages.",
+    "Ton terminal doit être mis à jour pour régler cela d’ici.",
   aRefuse: "Le terminal a refusé.",
   pasPartie: "La demande n’a pas pu partir. Réessayez.",
   reglerNumero: (libelle) => `Régler le numéro de ${libelle}`,
@@ -146,7 +147,6 @@ const fr: typeof en = {
   notifPaiement: "Chaque paiement reçu",
   notifRapport: "Rapport quotidien (21 h)",
   notifCourant: "Coupure de courant et sous-tension",
-  notifTelegram: "Doubler les alertes sur Telegram",
 
   codesUssd: "Codes USSD",
   carteEnPlace: (op) => `${op} · carte en place`,
@@ -160,14 +160,16 @@ const fr: typeof en = {
     solde: "Solde",
     mon_numero: "Mon numéro",
   } as Record<string, string | undefined>,
-  apprisTitre: "Appris par le robot (💾 sur Telegram)",
   modifierCode: "Modifier ce code",
+  attribuer: "Attribuer le code",
+  retirerBouton: "Retirer ce bouton (retour au code d’origine, s’il existe)",
+  exempleEtapes: "*126*1#  ou  *126#, 1, 1",
   nomExemple: "Nom (« Factures »)",
   ajouter: "Ajouter",
   annulerAjout: "Annuler l’ajout",
   ajouterRaccourci: "Ajouter un raccourci",
   noteCodes:
-    "Chaque opérateur a ses propres codes ; ceux-ci appartiennent au réseau et suivront toute carte du même opérateur. Un code n’ouvre que le guichet ; le code secret se compose sur son pavé au moment voulu, et n’est jamais enregistré.",
+    "Chaque opérateur a ses propres codes ; ils appartiennent au réseau et suivront toute carte du même opérateur. Ce qui s’enregistre ici entre au carnet du robot, et tous les écrans s’en servent. Un code n’ouvre que le guichet et s’arrête à la première question ; le code secret se compose sur son pavé au moment voulu, et n’est jamais enregistré.",
 
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",

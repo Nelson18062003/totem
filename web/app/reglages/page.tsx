@@ -129,7 +129,6 @@ export default async function Reglages() {
           {t.noteNumeroAvant}
           <strong className="font-medium text-ink-soft">{t.noteNumeroMot}</strong>
           {t.noteNumeroMilieu}
-          <code className="tabnums">/reglages</code>
           {t.noteNumeroFin}
         </p>
       </section>
@@ -141,7 +140,6 @@ export default async function Reglages() {
           <Bascule t={t.notifPaiement} defaut />
           <Bascule t={t.notifRapport} defaut />
           <Bascule t={t.notifCourant} defaut />
-          <Bascule t={t.notifTelegram} defaut />
         </div>
       </section>
       </div>

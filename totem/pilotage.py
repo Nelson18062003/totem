@@ -151,6 +151,8 @@ class Pilotage:
                 resultat = self._etablir_recu(parametres, langue)
             elif genre == "identite":
                 resultat = self._definir_identite(parametres, langue)
+            elif genre == "raccourci":
+                resultat = self._definir_raccourci(parametres, langue)
             else:
                 raise ValueError(t(f"unknown request: {genre}",
                                    f"demande inconnue : {genre}",
@@ -310,6 +312,83 @@ class Pilotage:
                          f"nom « {champs['nom']} »", langue=langue))
         lien = t(" and ", " et ", langue=langue)
         return t("Saved: ", "Enregistré : ", langue=langue) + lien.join(dit) + "."
+
+    def _definir_raccourci(self, parametres, langue=None):
+        """Créer, corriger ou retirer un bouton USSD depuis la plateforme.
+
+        Même carnet que l'apprentissage 💾 : rangé par opérateur dans le
+        journal du robot, poussé vers la base, affiché partout. Et les mêmes
+        garde-fous que l'apprentissage :
+
+          - la première étape est un CODE (« *126*1# »), les suivantes des
+            choix de menu à un ou deux chiffres — jamais un montant, un
+            numéro ou le code secret : un bouton mène jusqu'à la question,
+            et c'est l'utilisateur qui répond ;
+          - rien n'est deviné : c'est le propriétaire qui dicte.
+        """
+        operateur = str(parametres.get("operateur") or "").strip()[:24]
+        cle = re.sub(r"[^a-z0-9_\-]", "",
+                     str(parametres.get("cle") or "").lower())[:24]
+        if not operateur or not cle:
+            raise RefusPoli(t(
+                "Which operator, which button? The request is incomplete.",
+                "Quel opérateur, quel bouton ? La demande est incomplète.",
+                langue=langue))
+        if str(parametres.get("action") or "definir") == "supprimer":
+            if self.journal.supprimer_raccourci(operateur, cle):
+                self.journal.evenement(t(
+                    f"remote desk: button “{cle}” removed for {operateur}",
+                    f"guichet à distance : bouton « {cle} » retiré "
+                    f"pour {operateur}"))
+                self._republier_raccourcis()
+                return t("Button removed.", "Bouton retiré.", langue=langue)
+            raise RefusPoli(t("That button no longer exists.",
+                              "Ce bouton n'existe plus.", langue=langue))
+        etapes = [str(e).strip() for e in (parametres.get("etapes") or [])
+                  if str(e).strip()]
+        if not etapes:
+            raise RefusPoli(t("No code to save.", "Aucun code à enregistrer.",
+                              langue=langue))
+        if not re.fullmatch(r"[\*#][\d\*#]{0,30}#", etapes[0]):
+            raise RefusPoli(t(
+                "The first step must be a USSD code — it starts with * or # "
+                "and ends with #.",
+                "La première étape doit être un code USSD — il commence par "
+                "* ou # et finit par #.", langue=langue))
+        for e in etapes[1:]:
+            if not re.fullmatch(r"\d{1,2}", e):
+                raise RefusPoli(t(
+                    "After the code, only menu choices (one or two digits): "
+                    "a button stops at the question — never an amount, a "
+                    "number or the secret code.",
+                    "Après le code, seulement des choix de menu (un ou deux "
+                    "chiffres) : un bouton s'arrête à la question — jamais "
+                    "un montant, un numéro ou le code secret.", langue=langue))
+        libelle = re.sub(r"\s+", " ",
+                         str(parametres.get("libelle") or "")).strip()[:32] or cle
+        if not self.journal.ajouter_raccourci(operateur, cle, libelle, etapes):
+            raise RefusPoli(t("The button could not be saved.",
+                              "Le bouton n'a pas pu être enregistré.",
+                              langue=langue))
+        self.journal.evenement(t(
+            f"remote desk: button “{libelle}” saved for {operateur}",
+            f"guichet à distance : bouton « {libelle} » enregistré "
+            f"pour {operateur}"))
+        self._republier_raccourcis()
+        return t(f"Button “{libelle}” saved for {operateur}: "
+                 f"{' → '.join(etapes)}",
+                 f"Bouton « {libelle} » enregistré pour {operateur} : "
+                 f"{' → '.join(etapes)}", langue=langue)
+
+    def _republier_raccourcis(self):
+        """Le carnet repart tout de suite vers la base : l'écran qui vient
+        d'enregistrer un bouton doit le voir au rafraîchissement suivant."""
+        try:
+            if hasattr(self.nuage, "publier_raccourcis"):
+                self.nuage.publier_raccourcis()
+            self.nuage.reveiller()
+        except Exception:
+            pass    # la boucle de fond repassera
 
     def _republier(self, langue=None):
         """« Actualiser » : l'état des comptes, repoussé à l'instant."""
