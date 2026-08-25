@@ -11,7 +11,7 @@ import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconPuceSim,
   IconRefresh, IconWallet,
 } from "./icons";
-import { Coordonnees } from "./coordonnees";
+import { BoutonCopier, Coordonnees, formaterNumero } from "./coordonnees";
 import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
@@ -107,11 +107,15 @@ function CarteSim({
         ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChoisir(); } }
         : undefined}
       className={`acct-marque relative overflow-hidden rounded-card p-5 [container-type:inline-size] sm:p-6 ${
-        plusieurs && !choisie
-          ? "cursor-pointer opacity-60 transition hover:opacity-90"
-          : plusieurs ? "cursor-pointer" : ""
+        plusieurs ? "cursor-pointer transition" : ""
       }`}
-      style={{ border: `2px solid ${couleurOperateur(op) ?? "rgba(255,255,255,0.3)"}` }}
+      style={{
+        border: `2px solid ${
+          plusieurs && !choisie
+            ? "rgba(255,255,255,0.16)"
+            : couleurOperateur(op) ?? "rgba(255,255,255,0.3)"
+        }`,
+      }}
     >
       {/* La Tresse, en filigrane sur la tranche droite — la carte est
           signée TOTEM comme une carte bancaire est frappée de sa banque. */}
@@ -169,29 +173,32 @@ function CarteSim({
       </p>
       {/* Le pied : la puce SIM au trait — la carte à l'écran EST la carte
           posée dans le berceau, à Douala — puis le numéro et le libellé. */}
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <p className="flex min-w-0 items-center gap-2.5 pr-20 text-small tabnums text-white/80">
-          <IconPuceSim size={20} className="shrink-0 text-white/60" />
-          <span className="truncate">
-            {carte.numero || t.carteAnonyme(carte.iccid.slice(-8))} · {carte.libelle}
+      <div className="mt-3 flex min-w-0 items-center gap-2">
+        <IconPuceSim size={18} className="shrink-0 text-white/60" />
+        <span className="truncate text-small tabnums text-white/85">
+          {carte.numero ? formaterNumero(carte.numero) : t.carteAnonyme(carte.iccid.slice(-8))}
+        </span>
+        {/* Le numéro se copie d'un geste, contre lui : c'est ce qu'on donne
+            le plus souvent, et le chercher à la main était pénible. */}
+        {carte.numero && (
+          <BoutonCopier clair valeur={formaterNumero(carte.numero)}
+            libelle={t.copierNumero} libelleFait={t.numeroCopie} />
+        )}
+      </div>
+      {/* Le libellé et la marque partagent le pied : la marque était posée
+          en absolu dans l'angle et mordait sur le numéro — côte à côte, elles
+          tiennent chacune leur place, même à mi-largeur. */}
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <p className="min-w-0 truncate text-caption text-white/55">{carte.libelle}</p>
+        <span className="flex shrink-0 items-center gap-2"
+          title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
+          <span className="sr-only">
+            {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
           </span>
-        </p>
+          <LogoOperateur operateur={op} size={30} />
+        </span>
       </div>
 
-      {/* Le logo dit la caisse — POSÉ DANS L'ANGLE bas droit, hors du flux,
-          comme la marque du réseau frappée au coin d'une carte bancaire. */}
-      <span className="absolute bottom-2.5 right-2.5 flex items-center gap-2"
-        title={op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}>
-        <span className="sr-only">
-          {op === "MTN" ? "MTN Mobile Money" : op === "Orange" ? "Orange Money" : carte.libelle}
-        </span>
-        {!operateurReconnu(op) && (
-          <span className="text-caption uppercase tracking-wider text-white/85">
-            {carte.libelle}
-          </span>
-        )}
-        <LogoOperateur operateur={op} size={34} />
-      </span>
     </section>
   );
 }
@@ -285,10 +292,10 @@ export function AccueilGuichet({
 
   return (
     <>
-      {/* LES cartes : une par SIM, chacune avec SON solde — chacune en
-          PLEINE largeur, l'une sous l'autre. Serrées côte à côte, le numéro
-          se tronquait et l'écran gâchait sa place. */}
-      <div className="flex flex-col gap-4 lg:col-start-1">
+      {/* LES cartes : une par SIM, chacune avec SON solde — côte à côte dès
+          que la largeur le permet, comme sur l'écran Comptes ; l'une sous
+          l'autre sur téléphone, où la pleine largeur revient au chiffre. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:col-start-1">
         {cartes.map((c) => (
           <CarteSim
             key={c.iccid}

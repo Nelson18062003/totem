@@ -461,11 +461,51 @@ class Gabarit:
             lignes.append(courante)
         return lignes or [""]
 
+    # -- la marque du réseau -------------------------------------------------
+    # Le nom du service ne suffit pas : sur un reçu qu'on montre, la marque se
+    # RECONNAÎT avant de se lire. On la dessine — jamais une image
+    # téléchargée : le carré d'Orange, l'ovale de MTN, aux couleurs publiées.
+    # Un opérateur sans marque garde son nom écrit, comme partout ailleurs.
+    MARQUES = {
+        "orange": ("#ff7900", "#ffffff", "orange", 1.0, 2.0),
+        "mtn": ("#ffcb00", "#16171a", "MTN", 1.9, None),
+    }
+
+    def _marque_reseau(self, x, haut, cote=12):
+        """Dépose la marque, coin haut gauche en (x, haut). Renvoie la largeur
+        occupée — zéro quand l'opérateur n'a pas de marque connue."""
+        nom = (self.operateur or "").strip().lower()
+        for prefixe, (fond, encre, mot, ratio, rayon) in self.MARQUES.items():
+            if not nom.startswith(prefixe):
+                continue
+            largeur = cote * ratio
+            arrondi = cote / 2 if rayon is None else rayon
+            self.page.rectangle(x, haut, largeur, cote, fond, rayon=arrondi)
+            # Le mot tient TOUJOURS dans sa boîte : on rétrécit s'il le faut,
+            # plutôt que de le laisser mordre sur le bord.
+            corps = cote * 0.62 if ratio > 1 else cote * 0.34
+            place = largeur - cote * 0.22
+            mesure = self.grasse.largeur(mot, corps, SUIVI)
+            if mesure > place:
+                corps *= place / mesure
+                mesure = self.grasse.largeur(mot, corps, SUIVI)
+            self.page.texte(x + (largeur - mesure) / 2,
+                            self._base(haut + (cote - self._hauteur(corps)) / 2,
+                                       corps),
+                            mot, self.grasse, corps, encre, SUIVI)
+            return largeur
+        return 0
+
     def pied(self):
-        base = self._base(HAUTEUR - MARGE_V - self._hauteur(CORPS_PIED),
-                          CORPS_PIED)
+        haut = HAUTEUR - MARGE_V - self._hauteur(CORPS_PIED)
+        base = self._base(haut, CORPS_PIED)
         lieu = t("Douala, Cameroon", "Douala, Cameroun", self.langue)
-        self.page.texte(GAUCHE, base, f"{self.operateur} · {lieu}",
+        # La marque d'abord, le nom du service ensuite : l'œil reconnaît le
+        # réseau avant même de lire la ligne.
+        cote = self._hauteur(CORPS_PIED)
+        largeur = self._marque_reseau(GAUCHE, haut, cote)
+        decalage = largeur + cote * 0.45 if largeur else 0
+        self.page.texte(GAUCHE + decalage, base, f"{self.operateur} · {lieu}",
                         self.normale, CORPS_PIED, ETIQUETTE, SUIVI)
 
     def debordements(self, tolerance=0.5):

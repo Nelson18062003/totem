@@ -58,7 +58,10 @@ const en = {
   coordSansNom: "No name yet — add it in Settings so it appears here.",
   coordCopier: "Copy",
   coordCopie: "Copied",
+  coordVoir: "View",
   coordTelecharger: "Download",
+  copierNumero: "Copy the number",
+  numeroCopie: "Number copied",
   coordFermer: "Close",
   coordPied:
     "Give these details to anyone who wants to send you money on this card.",
@@ -123,7 +126,10 @@ const fr: typeof en = {
   coordSansNom: "Aucun nom pour l’instant — ajoutez-le dans les Réglages pour qu’il apparaisse ici.",
   coordCopier: "Copier",
   coordCopie: "Copié",
+  coordVoir: "Voir",
   coordTelecharger: "Télécharger",
+  copierNumero: "Copier le numéro",
+  numeroCopie: "Numéro copié",
   coordFermer: "Fermer",
   coordPied:
     "Donnez ces coordonnées à qui veut vous envoyer de l’argent sur cette carte.",
