@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { codeGeste } from "@/lib/codes";
-import { nombre, type Sim } from "@/lib/types";
+import { etapesGeste } from "@/lib/codes";
+import { nombre, type RaccourciAppris, type Sim } from "@/lib/types";
 import { textesAccueil } from "@/lib/textes/accueil";
 import { useLangue } from "@/app/langue";
 import {
@@ -196,7 +196,15 @@ function CarteSim({
  * la carte choisie : chacun ouvre son pop-up, la session se joue dedans, du
  * formulaire au code secret. Personne n'est renvoyé vers une autre page.
  */
-export function AccueilGuichet({ cartes }: { cartes: CarteGuichet[] }) {
+export function AccueilGuichet({
+  cartes,
+  raccourcis,
+}: {
+  cartes: CarteGuichet[];
+  // Les boutons définis ou appris par le propriétaire, par opérateur : ils
+  // l'emportent sur le catalogue — c'est le terrain qui commande.
+  raccourcis: Record<string, RaccourciAppris[]>;
+}) {
   const router = useRouter();
   const langue = useLangue();
   const t = textesAccueil[langue];
@@ -220,65 +228,61 @@ export function AccueilGuichet({ cartes }: { cartes: CarteGuichet[] }) {
   };
   const plusieurs = cartes.length > 1;
 
-  // Le code d'un geste suit l'opérateur de la carte : le code profond quand
-  // il est relevé (#148*2#), sinon la porte du menu (*126#) — la session
-  // s'ouvre et le menu de l'opérateur guide, la plateforme répondant seule
-  // aux questions qu'elle reconnaît (numéro, montant).
-  const solde = (c: CarteGuichet): Operation => ({
-    titre: t.consulterSolde, code: codeGeste(c.operateur, "solde"),
-    champs: [], carte: c.iccid,
-  });
+  // Le parcours d'un geste suit l'opérateur de la carte : le bouton défini
+  // par le propriétaire d'abord, sinon le code du catalogue, sinon la porte
+  // du menu — la session s'ouvre et le menu de l'opérateur guide, la
+  // plateforme répondant seule aux questions qu'elle reconnaît.
+  const geste = (c: CarteGuichet, cle: string): string[] =>
+    etapesGeste(c.operateur, cle, raccourcis[c.operateur] ?? []);
+  const solde = (c: CarteGuichet): Operation => {
+    const et = geste(c, "solde");
+    return { titre: t.consulterSolde, code: et[0] ?? "", etapes: et,
+             champs: [], carte: c.iccid };
+  };
+
+  const operationDe = (cle: string, titre: string,
+                       champs: Operation["champs"]): Operation => {
+    const et = active ? geste(active, cle) : [];
+    return { titre, code: et[0] ?? "", etapes: et, champs,
+             carte: active?.iccid };
+  };
 
   const operations: { label: string; Icone: typeof IconWallet; fabrique: () => Operation }[] =
     active == null ? [] : [
     {
       label: t.depot, Icone: IconArrowDown,
-      fabrique: (): Operation => ({
-        titre: t.depotTitre, code: codeGeste(active.operateur, "depot"),
-        carte: active.iccid,
-        champs: [
-          { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
-          { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" },
-        ],
-      }),
+      fabrique: (): Operation => operationDe("depot", t.depotTitre, [
+        { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" },
+      ]),
     },
     {
       label: t.retrait, Icone: IconWallet,
-      fabrique: (): Operation => ({
-        titre: t.retraitTitre, code: codeGeste(active.operateur, "retrait"),
-        carte: active.iccid,
-        champs: [
-          { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
-          { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" },
-        ],
-      }),
+      fabrique: (): Operation => operationDe("retrait", t.retraitTitre, [
+        { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" },
+      ]),
     },
     {
       label: t.transfert, Icone: IconArrowUp,
-      fabrique: (): Operation => ({
-        titre: t.transfertTitre, code: codeGeste(active.operateur, "transfert"),
-        carte: active.iccid,
-        champs: [
-          { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
-          { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" },
-        ],
-      }),
+      fabrique: (): Operation => operationDe("transfert", t.transfertTitre, [
+        { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" },
+      ]),
     },
     { label: t.solde, Icone: IconRefresh, fabrique: (): Operation => solde(active) },
     {
       label: t.monNumero, Icone: IconPhone,
-      fabrique: (): Operation => ({
-        titre: t.monNumero, code: codeGeste(active.operateur, "mon_numero"),
-        champs: [], carte: active.iccid,
-      }),
+      fabrique: (): Operation => operationDe("mon_numero", t.monNumero, []),
     },
   ].filter((o) => o.fabrique().code);
 
   return (
     <>
-      {/* LES cartes : une par SIM, chacune avec SON solde. Côte à côte dès
-          que l'écran le permet — Orange et MTN se lisent d'un seul regard. */}
-      <div className={`grid gap-3 lg:col-start-1 ${plusieurs ? "sm:grid-cols-2" : ""}`}>
+      {/* LES cartes : une par SIM, chacune avec SON solde — chacune en
+          PLEINE largeur, l'une sous l'autre. Serrées côte à côte, le numéro
+          se tronquait et l'écran gâchait sa place. */}
+      <div className="flex flex-col gap-4 lg:col-start-1">
         {cartes.map((c) => (
           <CarteSim
             key={c.iccid}

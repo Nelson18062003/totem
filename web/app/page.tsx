@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function Accueil() {
   const langue = await langueServeur();
   const t = textesAccueil[langue];
-  const { terminal, sims, paiements } = await chargerDonnees(langue, { sms: 30, recus: 60 });
+  const { terminal, sims, paiements, raccourcis } = await chargerDonnees(langue, { sms: 30, recus: 60 });
   // TOUTES les cartes en place — Orange ET MTN, chacune avec son solde. Si
   // plus aucune n'est « en place » (terminal muet, cloud en retard), on
   // montre quand même les cartes connues, avec leur état dit franchement :
@@ -53,6 +53,7 @@ export default async function Accueil() {
             soldeMaj: c.soldeMaj, signal: c.signal,
             iccid: c.iccid, enPlace: c.enPlace, derniereVue: c.derniereVue,
           }))}
+          raccourcis={raccourcis}
         />
       ) : (
         <section className="rounded-card border border-dashed border-line px-4 py-10 text-center lg:col-start-1">
