@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { codesUssd } from "@/lib/codes";
+import { aDesVariables, codesUssd } from "@/lib/codes";
 import { textesUssd } from "@/lib/textes/ussd";
 import type { RaccourciAppris, Sim } from "@/lib/types";
 import { BarreArret, BoutonFermer } from "../feuille";
@@ -136,6 +136,11 @@ export function ConsoleUssd({
   // l'apprentissage s'arrête juste avant, et le pavé prend la main ici aussi.
   const jouer = async (etapes: string[]) => {
     if (!etapes.length || enSession || attente) return;
+    // Un bouton à trous (« *126*1*{numero}*{montant}# ») n'a pas sa place
+    // ici : ce cadran ne demande rien avant de composer, et « {numero} »
+    // parti tel quel au réseau est un code faux. Il se lance depuis
+    // Opérations, qui pose les questions d'abord.
+    if (aDesVariables(etapes)) return;
     setFil([]);
     setSaisie("");
     let texte = await envoyer("ussd", { code: etapes[0], carte: carte.iccid },
@@ -326,13 +331,25 @@ export function ConsoleUssd({
             <p className="text-caption uppercase tracking-wider text-ink-faint">
               {t.boutonsAppris}
             </p>
-            {(raccourcis[carte.operateur] ?? []).map((r) => (
-              <button key={r.nom} onClick={() => void jouer(r.etapes)} disabled={attente || enSession}
-                className="flex items-center justify-between gap-3 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-left text-small font-medium text-ink transition hover:border-ink-faint disabled:opacity-40">
-                {r.libelle}
-                <span className="tabnums font-normal text-ink-faint">{r.etapes.join(" → ")}</span>
+            {(raccourcis[carte.operateur] ?? []).map((r) => {
+              const aTrous = aDesVariables(r.etapes);
+              return (
+              <button key={r.nom} onClick={() => void jouer(r.etapes)}
+                disabled={attente || enSession || aTrous}
+                title={aTrous ? t.boutonAVariables : undefined}
+                className="flex flex-col gap-0.5 rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-left text-small font-medium text-ink transition hover:border-ink-faint disabled:opacity-40">
+                <span className="flex items-center justify-between gap-3">
+                  {r.libelle}
+                  <span className="tabnums font-normal text-ink-faint">{r.etapes.join(" → ")}</span>
+                </span>
+                {aTrous && (
+                  <span className="text-caption font-normal text-ink-faint">
+                    {t.boutonAVariables}
+                  </span>
+                )}
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
 

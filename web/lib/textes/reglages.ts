@@ -80,13 +80,21 @@ const en = {
   modifierCode: "Edit this code",
   attribuer: "Set the code",
   retirerBouton: "Remove this button (back to the built-in code, if any)",
-  exempleEtapes: "*126*1#  or  *126#, 1, 1",
+  exempleEtapes: "*126*1*{numero}*{montant}#",
+  insererVariable: "Insert:",
+  variableAide: {
+    numero: "The recipient's or agent's number, as typed in the form",
+    montant: "The amount, as typed in the form",
+    point: "The agent's number (withdrawal)",
+  } as Record<string, string>,
+  modeDirect: "direct",
+  modeGuide: "menu",
   nomExemple: "Name (“Bills”)",
   ajouter: "Add",
   annulerAjout: "Cancel adding",
   ajouterRaccourci: "Add a shortcut",
   noteCodes:
-    "Each operator has its own codes: they belong to the network, and work with any card from that operator. What you save here goes into the robot's notebook and every screen uses it. A code only opens the counter and stops at the first question — the secret code is typed on its keypad when the moment comes, and is never stored.",
+    "Each operator has its own codes: they belong to the network, and work with any card from that operator. What you save here goes into the robot's notebook and every screen uses it. Two ways to write one: put {numero} and {montant} in the code and it goes out complete in one shot — the network then only asks for your secret code; leave them out and the code opens the menu, and the platform answers its questions one by one. Never write your secret code here: it is typed on its keypad when the moment comes, and is stored nowhere.",
 
   // --- La sécurité
   securite: "Security",
@@ -171,13 +179,21 @@ const fr: typeof en = {
   modifierCode: "Modifier ce code",
   attribuer: "Attribuer le code",
   retirerBouton: "Retirer ce bouton (retour au code d’origine, s’il existe)",
-  exempleEtapes: "*126*1#  ou  *126#, 1, 1",
+  exempleEtapes: "*126*1*{numero}*{montant}#",
+  insererVariable: "Insérer :",
+  variableAide: {
+    numero: "Le numéro du bénéficiaire ou de l’agent, tel que saisi au formulaire",
+    montant: "Le montant, tel que saisi au formulaire",
+    point: "Le numéro de l’agent (retrait)",
+  } as Record<string, string>,
+  modeDirect: "direct",
+  modeGuide: "menu",
   nomExemple: "Nom (« Factures »)",
   ajouter: "Ajouter",
   annulerAjout: "Annuler l’ajout",
   ajouterRaccourci: "Ajouter un raccourci",
   noteCodes:
-    "Chaque opérateur a ses propres codes ; ils appartiennent au réseau et suivront toute carte du même opérateur. Ce qui s’enregistre ici entre au carnet du robot, et tous les écrans s’en servent. Un code n’ouvre que le guichet et s’arrête à la première question ; le code secret se compose sur son pavé au moment voulu, et n’est jamais enregistré.",
+    "Chaque opérateur a ses propres codes ; ils appartiennent au réseau et suivront toute carte du même opérateur. Ce qui s’enregistre ici entre au carnet du robot, et tous les écrans s’en servent. Deux façons d’écrire un code : glissez-y {numero} et {montant} et il part COMPLET, d’un seul coup — le réseau ne demande plus que le code secret ; sans eux, le code ouvre le menu et la plateforme répond à ses questions une à une. N’écrivez jamais votre code secret ici : il se compose sur son pavé au moment voulu, et n’est enregistré nulle part.",
 
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",

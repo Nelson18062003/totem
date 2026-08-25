@@ -45,6 +45,13 @@ from .textes import t
 # USSD abandonné bloquerait le combiné pour Telegram comme pour le web.
 SESSION_MUETTE = 120
 
+# Les TROUS qu'un raccourci peut porter : « *126*1*{numero}*{montant}# ».
+# La plateforme les remplit avec ce que le propriétaire vient de saisir, puis
+# compose le code entier d'un coup. Le robot connaît la même liste — c'est lui
+# qui juge ce qui entre au carnet, jamais l'écran seul.
+VARIABLES_RACCOURCI = ("numero", "montant", "point")
+RE_VARIABLE = re.compile(r"\{([A-Za-z_]+)\}")
+
 # Le pas de relève. Court pendant une session (le réseau attend une réponse),
 # plus posé au repos — la base n'a pas besoin d'être frappée à la porte.
 PAS_REPOS = 3
@@ -325,6 +332,13 @@ class Pilotage:
             numéro ou le code secret : un bouton mène jusqu'à la question,
             et c'est l'utilisateur qui répond ;
           - rien n'est deviné : c'est le propriétaire qui dicte.
+
+        Un code peut porter des TROUS à remplir — « *126*1*{numero}*
+        {montant}# ». La plateforme les remplace par ce que le propriétaire
+        vient de saisir, et compose alors le code ENTIER d'un coup : le
+        réseau ne pose plus qu'une question, celle du code secret. Sans
+        trou, le code ouvre le menu et la plateforme répond aux questions
+        une à une. Le code lui-même dit laquelle des deux façons s'applique.
         """
         operateur = str(parametres.get("operateur") or "").strip()[:24]
         cle = re.sub(r"[^a-z0-9_\-]", "",
@@ -349,21 +363,43 @@ class Pilotage:
         if not etapes:
             raise RefusPoli(t("No code to save.", "Aucun code à enregistrer.",
                               langue=langue))
-        if not re.fullmatch(r"[\*#][\d\*#]{0,30}#", etapes[0]):
+        # Chaque trou doit porter un nom connu : un « {montan} » mal tapé
+        # partirait tel quel au réseau, et le code échouerait sans qu'on
+        # sache pourquoi.
+        for etape in etapes:
+            for trouve in RE_VARIABLE.finditer(etape):
+                if trouve.group(1) not in VARIABLES_RACCOURCI:
+                    raise RefusPoli(t(
+                        f"Unknown variable “{trouve.group(1)}”: only "
+                        "{numero}, {montant} and {point} exist.",
+                        f"Variable inconnue « {trouve.group(1)} » : seuls "
+                        "{numero}, {montant} et {point} existent.",
+                        langue=langue))
+        # Le code se juge une fois ses trous bouchés : « *126*1*{numero}# »
+        # a la forme d'un code, et c'est cette forme-là qui compte.
+        temoin = RE_VARIABLE.sub("0", etapes[0])
+        if not re.fullmatch(r"[\*#][\d\*#]{0,60}#", temoin):
             raise RefusPoli(t(
                 "The first step must be a USSD code — it starts with * or # "
                 "and ends with #.",
                 "La première étape doit être un code USSD — il commence par "
                 "* ou # et finit par #.", langue=langue))
         for e in etapes[1:]:
+            # Une étape est soit un choix de menu, soit UN trou à remplir
+            # (« le montant, à cette question-là »). Jamais un nombre long :
+            # un bouton s'arrête à la question, il ne rejoue pas un code
+            # secret.
+            if RE_VARIABLE.fullmatch(e):
+                continue
             if not re.fullmatch(r"\d{1,2}", e):
                 raise RefusPoli(t(
-                    "After the code, only menu choices (one or two digits): "
-                    "a button stops at the question — never an amount, a "
-                    "number or the secret code.",
+                    "After the code, only menu choices (one or two digits) "
+                    "or one variable: a button stops at the question — never "
+                    "an amount, a number or the secret code.",
                     "Après le code, seulement des choix de menu (un ou deux "
-                    "chiffres) : un bouton s'arrête à la question — jamais "
-                    "un montant, un numéro ou le code secret.", langue=langue))
+                    "chiffres) ou une variable : un bouton s'arrête à la "
+                    "question — jamais un montant, un numéro ou le code "
+                    "secret.", langue=langue))
         libelle = re.sub(r"\s+", " ",
                          str(parametres.get("libelle") or "")).strip()[:32] or cle
         if not self.journal.ajouter_raccourci(operateur, cle, libelle, etapes):

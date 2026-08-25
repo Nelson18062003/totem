@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
-import { CLES_GUICHET, codesUssd, type CodeUssd } from "@/lib/codes";
+import { aDesVariables, CLES_GUICHET, codesUssd, VARIABLES, type CodeUssd } from "@/lib/codes";
 import { LANGUES } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
 import type { RaccourciAppris } from "@/lib/types";
@@ -269,10 +269,35 @@ const deriverCle = (nom: string) =>
     .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 24);
 
 // La saisie d'un parcours : le code, puis d'éventuels choix de menu séparés
-// par des virgules — « *126#, 1, 1 ». Rien d'autre ne passe.
-const proprerEtapes = (v: string) => v.replace(/[^0-9#*,\s]/g, "");
+// par des virgules — « *126#, 1, 1 ». Les ACCOLADES passent aussi : un code
+// peut porter des trous à remplir, « *126*1*{numero}*{montant}# ». Elles
+// n'atteignent jamais le modem — le guichet les remplace par des chiffres
+// avant de composer.
+const proprerEtapes = (v: string) => v.replace(/[^0-9#*,\s{}a-zA-Z_]/g, "");
 const decouperEtapes = (v: string) =>
-  v.split(",").map((p) => p.replace(/[^0-9#*]/g, "")).filter(Boolean);
+  v.split(",").map((p) => p.replace(/[^0-9#*{}a-zA-Z_]/g, "")).filter(Boolean);
+
+/** Les trous qu'on peut glisser dans un code, d'un appui. */
+function ChipsVariables({ onInserer }: { onInserer: (trou: string) => void }) {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span className="text-caption text-ink-faint">{t.insererVariable}</span>
+      {VARIABLES.map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onInserer(`{${v}}`)}
+          title={t.variableAide[v]}
+          className="rounded-btn border border-line px-2 py-0.5 text-caption tabnums text-ink-soft transition hover:border-ink hover:text-ink"
+        >
+          {`{${v}}`}
+        </button>
+      ))}
+    </span>
+  );
+}
 
 /**
  * Les codes du guichet, par opérateur — TOUS les boutons standards, chacun
@@ -393,8 +418,22 @@ export function SectionCodes({
           {rangs.map((r) => (
             <li key={r.cle} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
               <IconHash size={16} className="shrink-0 text-ink-faint" />
-              <span className="flex-1 text-body">{r.libelle}</span>
+              <span className="flex flex-1 flex-wrap items-center gap-2">
+                <span className="text-body">{r.libelle}</span>
+                {/* Le code dit lui-même sa façon de faire : avec des trous il
+                    part complet d'un coup, sans trous il ouvre le menu. */}
+                {r.etapes.length > 0 && (
+                  <span className={`rounded-btn px-1.5 py-0.5 text-caption ${
+                    aDesVariables(r.etapes)
+                      ? "bg-ink text-white"
+                      : "border border-line text-ink-faint"
+                  }`}>
+                    {aDesVariables(r.etapes) ? t.modeDirect : t.modeGuide}
+                  </span>
+                )}
+              </span>
               {enEdition === r.cle ? (
+                <span className="flex flex-col items-end gap-1.5">
                 <span className="flex items-center gap-1.5">
                   <input
                     value={brouillon} autoFocus inputMode="tel"
@@ -411,6 +450,8 @@ export function SectionCodes({
                   </button>
                   <BoutonFermer onClick={() => setEnEdition(null)}
                     libelle={t.annuler} disabled={etat === "envoi"} />
+                </span>
+                <ChipsVariables onInserer={(trou) => setBrouillon((b) => b + trou)} />
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
@@ -451,9 +492,13 @@ export function SectionCodes({
               <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                 placeholder={t.nomExemple} autoFocus
                 className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-body outline-none transition focus:border-ink" />
-              <input value={nouveauCode} onChange={(e) => setNouveauCode(proprerEtapes(e.target.value))}
-                placeholder={t.exempleEtapes} inputMode="tel"
-                className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tabnums outline-none transition focus:border-ink sm:w-44" />
+              <span className="flex flex-col gap-1.5">
+                <input value={nouveauCode} onChange={(e) => setNouveauCode(proprerEtapes(e.target.value))}
+                  placeholder={t.exempleEtapes}
+                  className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tabnums outline-none transition focus:border-ink sm:w-56" />
+                <ChipsVariables onInserer={(trou) => setNouveauCode((c) => c + trou)} />
+              </span>
+              <span className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <span className="flex gap-2">
                 <button onClick={() => void ajouter()}
                   disabled={etat === "envoi" || !nouveauNom.trim() || !nouveauCode.trim()}
@@ -461,6 +506,7 @@ export function SectionCodes({
                   {etat === "envoi" ? "…" : t.ajouter}
                 </button>
                 <BoutonFermer onClick={() => setAjout(false)} libelle={t.annulerAjout} />
+              </span>
               </span>
             </div>
           ) : (

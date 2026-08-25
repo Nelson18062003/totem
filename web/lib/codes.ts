@@ -54,3 +54,81 @@ export const etapesGeste = (
   const menu = codeUssd(op, "menu");
   return menu ? [menu] : [];
 };
+
+// --- Les variables d'un raccourci --------------------------------------------
+//
+// Un code peut porter des TROUS à remplir : « *126*1*{numero}*{montant}# ».
+// Le guichet les remplit avec ce que le propriétaire vient de saisir, puis
+// compose le code ENTIER d'un coup — le réseau ne pose plus qu'une question,
+// celle du code secret.
+//
+// Deux façons de faire, au choix de qui écrit le raccourci :
+//   · AVEC variables — le code part complet, direct, en une fois ;
+//   · SANS variables — le code ouvre le menu, et la plateforme répond aux
+//     questions une à une, comme avant.
+// Le code lui-même dit laquelle : aucun réglage à côté.
+export const VARIABLES = ["numero", "montant", "point"] as const;
+
+const RE_VARIABLE = /\{([a-zA-Z_]+)\}/g;
+
+/** Les variables citées par un parcours, dans l'ordre d'apparition. */
+export function variablesDe(etapes: string[]): string[] {
+  const vues: string[] = [];
+  for (const e of etapes) {
+    for (const m of e.matchAll(RE_VARIABLE)) {
+      if (!vues.includes(m[1])) vues.push(m[1]);
+    }
+  }
+  return vues;
+}
+
+/** Ce parcours part-il complet, d'un seul coup ? */
+export const aDesVariables = (etapes: string[]) => variablesDe(etapes).length > 0;
+
+/** Une variable inconnue rend le raccourci inutilisable : autant le dire. */
+export const variablesInconnues = (etapes: string[]) =>
+  variablesDe(etapes).filter(
+    (v) => !(VARIABLES as readonly string[]).includes(v));
+
+// Le champ qui répond à une variable. « {numero} » et « {point} » désignent
+// tous deux un numéro de téléphone : selon le geste, le formulaire l'appelle
+// l'un ou l'autre — on accepte les deux plutôt que d'exiger le bon mot.
+function sourcePour(nom: string, valeurs: Record<string, string>) {
+  const candidats = nom === "numero" ? ["numero", "point"]
+    : nom === "point" ? ["point", "numero"]
+    : [nom];
+  for (const cle of candidats) {
+    const v = valeurs[cle];
+    if (v != null && String(v).trim()) return { cle, valeur: String(v) };
+  }
+  return null;
+}
+
+/**
+ * Remplit les trous d'un parcours. Renvoie le parcours prêt à composer et
+ * les champs CONSOMMÉS — ceux-là ne doivent plus être resaisis quand le
+ * réseau posera ses questions, puisqu'ils voyagent déjà dans le code.
+ *
+ * Un trou sans valeur reste tel quel : on ne compose jamais un code amputé
+ * en silence — l'appelant le voit et s'arrête.
+ */
+export function remplirVariables(
+  etapes: string[],
+  valeurs: Record<string, string>,
+): { etapes: string[]; consommees: string[]; manquantes: string[] } {
+  const consommees: string[] = [];
+  const manquantes: string[] = [];
+  const remplies = etapes.map((e) =>
+    e.replace(RE_VARIABLE, (tout, nom: string) => {
+      const source = sourcePour(nom, valeurs);
+      if (!source) {
+        if (!manquantes.includes(nom)) manquantes.push(nom);
+        return tout;
+      }
+      if (!consommees.includes(source.cle)) consommees.push(source.cle);
+      // Seuls les chiffres entrent dans un code : un espace ou un « + »
+      // couperait la chaîne AT côté modem.
+      return source.valeur.replace(/\D/g, "");
+    }));
+  return { etapes: remplies, consommees, manquantes };
+}

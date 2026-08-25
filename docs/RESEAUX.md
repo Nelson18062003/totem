@@ -56,6 +56,32 @@ chiffre envoie de l'argent ailleurs. Trois sources, dans cet ordre :
    MTN n'est donc jamais vide — il est juste moins direct tant que les codes
    profonds ne sont pas appris.
 
+#### Deux façons d'écrire un code, au choix du propriétaire
+
+Un code peut porter des **trous** : `*126*1*{numero}*{montant}#`. Les
+Réglages les proposent d'un clic, et trois noms seulement existent —
+`{numero}`, `{montant}`, `{point}` (l'agent, pour un retrait).
+
+- **Avec des trous** — le geste ouvre son formulaire, le propriétaire saisit
+  le numéro et le montant, et le guichet bouche les trous *avant* de
+  composer. Le code part **entier, d'un seul coup** : le réseau ne pose plus
+  qu'une question, celle du code secret. Les champs déjà partis dans le code
+  ne sont pas redemandés ensuite.
+- **Sans trous** — le code ouvre le menu, et la plateforme répond aux
+  questions du réseau une à une, comme avant.
+
+C'est le code lui-même qui dit laquelle des deux façons s'applique ; les
+Réglages l'affichent en clair sur chaque ligne (« direct » ou « menu »).
+
+Trois barrières, parce qu'un code faux coûte de l'argent : les Réglages ne
+proposent que les trois noms connus ; l'API refuse un trou mal écrit
+(`{montan`, `numero}`) et un nom inconnu ; le robot revérifie tout, et juge
+la forme du code **une fois les trous bouchés** — `*126*1*{numero}` sans
+dièse final reste refusé. Un trou resté vide au moment de composer arrête le
+geste : jamais un code amputé n'est envoyé au réseau. Enfin, un bouton à
+trous ne se lance ni depuis le cadran USSD ni depuis Telegram — ces deux-là
+ne demandent rien avant de composer : ils renvoient vers Opérations.
+
 ### La lecture des SMS
 
 `totem/analyse_sms.py` ne se branche **pas** par opérateur : il lit des
