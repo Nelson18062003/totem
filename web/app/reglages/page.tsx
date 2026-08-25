@@ -6,6 +6,7 @@ import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
 import {
   Bascule,
   BoutonDeconnexion,
+  ReglageNom,
   ReglageNumero,
   SectionCodes,
   SectionLangue,
@@ -97,9 +98,17 @@ export default async function Reglages() {
                 <IconWallet size={18}
                   className={`shrink-0 ${s.enPlace ? "text-ink-soft" : "text-ink-faint"}`} />
                 <div className="min-w-0 flex-1">
-                  <p className={`text-body font-medium ${s.enPlace ? "" : "text-ink-soft"}`}>
-                    {s.nom || s.libelle}
-                  </p>
+                  {s.enPlace ? (
+                    <ReglageNom
+                      iccid={s.iccid}
+                      nomInitial={s.nom}
+                      libelle={s.libelle}
+                    />
+                  ) : (
+                    <p className="text-body font-medium text-ink-soft">
+                      {s.nom || s.libelle}
+                    </p>
+                  )}
                   {s.enPlace ? (
                     <p className="flex flex-wrap items-center gap-x-1.5 text-small tabnums text-ink-faint">
                       <ReglageNumero

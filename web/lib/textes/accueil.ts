@@ -49,6 +49,19 @@ const en = {
   carteMuette: (d: string) =>
     `Not seen by the terminal since ${d} — check the box in Douala. ` +
     "The balance shown is the last one known.",
+  // Les coordonnées de la carte — le « RIB » à donner pour être payé
+  coordonneesTitre: "Account details",
+  coordonneesAria: "Show the account details to share them",
+  coordNom: "Name",
+  coordNumero: "Number",
+  coordReseau: "Network",
+  coordSansNom: "No name yet — add it in Settings so it appears here.",
+  coordCopier: "Copy",
+  coordCopie: "Copied",
+  coordTelecharger: "Download",
+  coordFermer: "Close",
+  coordPied:
+    "Give these details to anyone who wants to send you money on this card.",
 
   // Les derniers SMS
   derniersSms: "Latest SMS",
@@ -102,6 +115,18 @@ const fr: typeof en = {
   carteMuette: (d) =>
     `Plus vue par le terminal depuis le ${d} — vérifiez le boîtier, à Douala. ` +
     "Le solde affiché est le dernier connu.",
+  coordonneesTitre: "Mes coordonnées",
+  coordonneesAria: "Afficher les coordonnées de la carte pour les partager",
+  coordNom: "Nom",
+  coordNumero: "Numéro",
+  coordReseau: "Réseau",
+  coordSansNom: "Aucun nom pour l’instant — ajoutez-le dans les Réglages pour qu’il apparaisse ici.",
+  coordCopier: "Copier",
+  coordCopie: "Copié",
+  coordTelecharger: "Télécharger",
+  coordFermer: "Fermer",
+  coordPied:
+    "Donnez ces coordonnées à qui veut vous envoyer de l’argent sur cette carte.",
 
   derniersSms: "Derniers SMS",
   toutVoir: "Tout voir",

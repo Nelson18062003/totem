@@ -67,6 +67,9 @@ export const IconPhone = ({ size, className }: P) => (
 export const IconBank = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="M4 10h16M5 10v8m4.7-8v8m4.6-8v8M19 10v8M3.5 18h17M12 4l8 6H4z" /></svg>
 );
+export const IconIdentite = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M6 16c.5-1.4 1.5-2 2.5-2s2 .6 2.5 2M14 9.5h4M14 13h4M14 15.5h2.5" /></svg>
+);
 export const IconChevron = ({ size, className }: P) => (
   <svg {...base(size)} className={className}><path d="m9 6 6 6-6 6" /></svg>
 );

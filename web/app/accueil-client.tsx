@@ -11,6 +11,7 @@ import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconPuceSim,
   IconRefresh, IconWallet,
 } from "./icons";
+import { Coordonnees } from "./coordonnees";
 import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
@@ -37,7 +38,7 @@ const CLE_SOLDE_CACHE = "totem_solde_cache";
 // Ce que l'accueil doit savoir d'une carte pour la montrer et la piloter.
 export type CarteGuichet = Pick<
   Sim,
-  "libelle" | "operateur" | "numero" | "solde" | "soldeMaj" | "signal"
+  "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "signal"
   | "iccid" | "enPlace" | "derniereVue"
 >;
 
@@ -138,6 +139,11 @@ function CarteSim({
           >
             <IconRefresh size={16} />
           </button>
+          {/* Les coordonnées à partager pour être payé : nom, numéro, réseau. */}
+          <Coordonnees carte={{
+            nom: carte.nom, numero: carte.numero,
+            operateur: carte.operateur, libelle: carte.libelle,
+          }} />
         </span>
       </div>
       {/* LE chiffre : toute la largeur de la carte, sur UNE ligne — jamais

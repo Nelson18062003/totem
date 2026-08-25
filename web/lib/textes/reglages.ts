@@ -49,6 +49,10 @@ const en = {
   pasPartie: "The request could not be sent. Try again.",
   reglerNumero: (libelle: string) => `Set the number of ${libelle}`,
   numeroARenseigner: "no number yet",
+  reglerNom: (libelle: string) => `Set the name of ${libelle}`,
+  nomARenseigner: "Add a name",
+  nomPlaceholder: "e.g. NGANGOM JONAS",
+  nomTropCourt: "That name is too short.",
   enregistrement: "The terminal is saving…",
   annuler: "Cancel",
 
@@ -140,6 +144,10 @@ const fr: typeof en = {
   pasPartie: "La demande n’a pas pu partir. Réessayez.",
   reglerNumero: (libelle) => `Régler le numéro de ${libelle}`,
   numeroARenseigner: "numéro à renseigner",
+  reglerNom: (libelle) => `Régler le nom de ${libelle}`,
+  nomARenseigner: "Ajouter un nom",
+  nomPlaceholder: "ex. NGANGOM JONAS",
+  nomTropCourt: "Ce nom est trop court.",
   enregistrement: "Le terminal enregistre…",
   annuler: "Annuler",
 
