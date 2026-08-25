@@ -55,10 +55,21 @@ export async function verifierSession(secret: string, jeton?: string): Promise<b
 }
 
 // Comparaison à temps constant : un mot de passe ne se devine pas à la durée.
-export function egaliteConstante(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+//
+// On empreinte d'abord les deux chaînes en SHA-256 (32 octets, TOUJOURS la
+// même longueur) puis on compare les empreintes octet par octet. Ainsi la
+// durée ne dépend NI du contenu NI de la longueur : le retour anticipé
+// « a.length !== b.length » d'avant révélait à lui seul la longueur du vrai
+// mot de passe, ce qui réduisait l'espace à deviner.
+export async function egaliteConstante(a: string, b: string): Promise<boolean> {
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest("SHA-256", src(enc.encode(a))),
+    crypto.subtle.digest("SHA-256", src(enc.encode(b))),
+  ]);
+  const ua = new Uint8Array(ha);
+  const ub = new Uint8Array(hb);
   let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < ua.length; i++) diff |= ua[i] ^ ub[i];
   return diff === 0;
 }
 
