@@ -292,6 +292,17 @@ RE_SOLDE = re.compile(
     r"|new\s+balance|balance)\b"
     r"[^\d]{0,40}?" + MONTANT, re.S)
 
+# Le relevé MoMo que MTN envoie PAR SMS quand l'USSD ne passe pas (vécu en
+# itinérance) : « Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA. »
+# Deux montants, mais AUCUNE ambiguïté : chacun porte son étiquette, et seule
+# celle du porte-monnaie nous concerne — le crédit d'appel n'est pas de
+# l'argent Mobile Money. C'est la seule exception admise à la règle « deux
+# champs d'argent = refus » : elle ne joue que sur une étiquette explicite.
+RE_SOLDE_MOMO = re.compile(
+    r"\b(?:(?:mobile\s*money|momo)\s*balance"
+    r"|solde\s*(?:mobile\s*money|momo))\b"
+    r"[^\d]{0,40}?" + MONTANT, re.S)
+
 # « Le solde de votre compte est de 2784137.6FCFA. » — la phrase d'Orange
 # après une interrogation USSD. Elle place vingt-cinq caractères entre le mot
 # et le chiffre, bien plus que le motif ci-dessus n'en tolère. On l'accepte
@@ -763,6 +774,13 @@ def solde_annonce(texte):
         return None
     if RE_RECU.search(norme) or RE_ENVOYE.search(norme):
         return None
+    # Le relevé MoMo étiqueté passe AVANT le refus des deux champs d'argent :
+    # « Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA. » porte bien
+    # deux montants, mais l'étiquette lève toute ambiguïté — c'est le
+    # porte-monnaie qui fait foi, jamais le crédit d'appel.
+    momo = RE_SOLDE_MOMO.search(norme)
+    if momo:
+        return _nombre(momo.group(1))
     if len(RE_CHAMP_ARGENT.findall(norme)) >= 2:
         return None
     m = RE_SOLDE.search(norme) or RE_SOLDE_SEUL.search(norme)

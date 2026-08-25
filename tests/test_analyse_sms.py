@@ -683,3 +683,37 @@ class TestCashOutAnglais(unittest.TestCase):
 
     def test_ce_n_est_pas_pris_pour_une_interrogation_de_solde(self):
         self.assertIsNone(solde_annonce(self.REEL))
+
+
+class TestReleveMoMoParSms(unittest.TestCase):
+    """MTN, en itinérance, répond au relevé PAR SMS — l'USSD ne passe pas.
+
+    Le message porte deux montants, mais chacun est étiqueté : le
+    porte-monnaie fait foi, jamais le crédit d'appel. C'est la seule
+    exception admise à « deux champs d'argent = refus », et elle ne joue
+    que sur l'étiquette explicite « Mobile Money »."""
+
+    RELEVE = "Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA."
+
+    def test_le_solde_momo_etiquete_fait_foi(self):
+        self.assertEqual(solde_annonce(self.RELEVE), 0)
+
+    def test_un_solde_non_nul_se_lit_aussi(self):
+        self.assertEqual(
+            solde_annonce("Mobile Money Balance: 12,500 FCFA. "
+                          "Airtime balance: 500FCFA."),
+            12500)
+
+    def test_la_categorie_est_un_solde_pas_une_reclame(self):
+        # « airtime » sent la réclame (RE_PUB) ; l'étiquette MoMo tranche
+        # avant — ce SMS finissait rangé « publicité », sans reçu possible.
+        self.assertEqual(categoriser(self.RELEVE), "solde")
+
+    def test_un_transfert_qui_cite_le_solde_momo_reste_un_transfert(self):
+        self.assertIsNone(solde_annonce(
+            "Transfert reussi de 5000 FCFA vers 677123456. "
+            "Mobile Money balance: 12,000 FCFA."))
+
+    def test_un_echec_qui_cite_le_solde_momo_reste_un_echec(self):
+        self.assertIsNone(solde_annonce(
+            "Transaction failed. Mobile Money balance: 12,000 FCFA."))
