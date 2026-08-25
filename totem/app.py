@@ -1994,12 +1994,25 @@ class Robot:
                     # Un SMS qui ANNONCE un solde met la carte à jour : c'est
                     # l'opérateur qui parle, comme sur une réponse USSD — et
                     # en itinérance, MTN répond justement par SMS quand
-                    # l'USSD ne passe pas. Jamais un calcul à nous.
+                    # l'USSD ne passe pas. Le « nouveau solde » d'un
+                    # MOUVEMENT adressé à notre carte vaut pareil : c'est le
+                    # solde de la caisse après l'opération, annoncé par
+                    # l'opérateur. La carte reste ainsi à jour toute seule,
+                    # encaissement après encaissement. Jamais un calcul à
+                    # nous.
                     try:
                         solde = solde_annonce(texte)
+                        if solde is None:
+                            p = analyser(texte, numeros=self._nos_numeros())
+                            if p is not None:
+                                solde = p.solde_apres
                         if (solde is not None and self.nuage
                                 and compte.carte.identifiee):
-                            self.nuage.publier_solde(compte.carte.iccid, solde)
+                            # L'heure réseau du SMS accompagne le solde : un
+                            # relevé ancien rejoué dans le désordre ne doit
+                            # pas écraser un solde déjà plus récent.
+                            self.nuage.publier_solde(
+                                compte.carte.iccid, solde, moment=heure_reseau)
                     except Exception:
                         pass    # un solde non relevé n'empêche rien
                     # Le cloud est prévenu tout de suite : inutile de lui faire

@@ -103,11 +103,14 @@ export async function POST(req: Request) {
     }
     parametres.action = brut.action === "supprimer" ? "supprimer" : "definir";
     if (Array.isArray(brut.etapes)) {
+      // On BORNE avant de nettoyer : un tableau démesuré ne doit pas faire
+      // tourner la regex des centaines de milliers de fois (un parcours
+      // n'a jamais plus de huit étapes). On tranche donc d'abord.
       const etapes = brut.etapes
+        .slice(0, 8)
         .filter((e: unknown): e is string => typeof e === "string")
         .map((e: string) => e.replace(/[^0-9#*]/g, "").slice(0, 32))
-        .filter(Boolean)
-        .slice(0, 8);
+        .filter(Boolean);
       if (etapes.length) parametres.etapes = etapes;
     }
     if (!parametres.operateur || !parametres.cle ||

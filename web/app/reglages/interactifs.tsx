@@ -143,6 +143,114 @@ export function ReglageNumero({
   );
 }
 
+/**
+ * Le nom d'une carte, réglé depuis la plateforme. Le propriétaire voit le
+ * numéro (que la puce déclare parfois) et lui associe un nom — celui qui
+ * paraîtra sur ses coordonnées à partager et sur ses reçus. Ni la puce ni le
+ * réseau ne connaissent ce nom : seul le propriétaire le sait.
+ *
+ * Comme le numéro, la saisie ne touche jamais un modem : elle dépose une
+ * demande que le robot relève, contrôle et applique — puis republie.
+ */
+export function ReglageNom({
+  iccid,
+  nomInitial,
+  libelle,
+}: {
+  iccid: string;
+  nomInitial: string;
+  libelle: string;
+}) {
+  const router = useRouter();
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  const [nom, setNom] = useState(nomInitial);
+  const [edition, setEdition] = useState(false);
+  const [brouillon, setBrouillon] = useState(nomInitial);
+  const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
+  const [message, setMessage] = useState("");
+
+  async function enregistrer() {
+    const propre = brouillon.trim().replace(/\s+/g, " ");
+    if (propre.length < 2) {
+      setEtat("erreur");
+      setMessage(t.nomTropCourt);
+      return;
+    }
+    setEtat("envoi");
+    setMessage("");
+    try {
+      const rep = await fetch("/api/commande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "identite", parametres: { iccid, nom: propre } }),
+      });
+      const { id, erreur } = await rep.json();
+      if (!rep.ok || !id) throw new Error(erreur || "demande refusée");
+      const resultat = await attendreCommande(id);
+      if (!resultat) {
+        setEtat("erreur");
+        setMessage(t.pasRepondu);
+        return;
+      }
+      if (resultat.etat === "faite") {
+        setNom(propre);
+        setEdition(false);
+        setEtat("repos");
+        router.refresh();
+      } else if (/inconnue/i.test(resultat.resultat || "")) {
+        setEtat("erreur");
+        setMessage(t.majRequise);
+      } else {
+        setEtat("erreur");
+        setMessage(resultat.resultat || t.aRefuse);
+      }
+    } catch {
+      setEtat("erreur");
+      setMessage(t.pasPartie);
+    }
+  }
+
+  if (!edition) {
+    return (
+      <button
+        onClick={() => { setBrouillon(nom); setEdition(true); setEtat("repos"); setMessage(""); }}
+        className="rounded-btn border border-transparent px-1.5 py-0.5 text-left text-body font-medium transition hover:border-line"
+        title={t.reglerNom(libelle)}
+      >
+        {nom || t.nomARenseigner}
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex flex-col gap-1">
+      <span className="flex items-center gap-1.5">
+        <input
+          value={brouillon}
+          autoFocus
+          disabled={etat === "envoi"}
+          onChange={(e) => setBrouillon(e.target.value.slice(0, 40))}
+          onKeyDown={(e) => e.key === "Enter" && enregistrer()}
+          placeholder={t.nomPlaceholder}
+          className="w-48 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-body outline-none disabled:opacity-50"
+        />
+        <button
+          onClick={enregistrer}
+          disabled={etat === "envoi"}
+          className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40"
+        >
+          {etat === "envoi" ? "…" : "OK"}
+        </button>
+        <BoutonFermer onClick={() => setEdition(false)} libelle={t.annuler} disabled={etat === "envoi"} />
+      </span>
+      {etat === "erreur" && (
+        <span className="max-w-52 text-caption text-negative">{message}</span>
+      )}
+    </span>
+  );
+}
+
 /** Attend l'issue d'une demande déposée pour le robot (≈40 s au plus). */
 async function attendreCommande(id: number) {
   for (let i = 0; i < 26; i++) {

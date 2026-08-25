@@ -532,3 +532,50 @@ class TestLeDocumentDemandePasseAvantLeMenage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLeVerbeDeTeteDonneLeSens(unittest.TestCase):
+    """Un envoi qui cite le bénéficiaire (« … le bénéficiaire a reçu … »)
+    restait lu comme un encaissement : le bilan gonflait, le reçu affichait
+    « Montant reçu » sur un débit. Le verbe de TÊTE tranche."""
+
+    def test_un_envoi_qui_cite_recu_reste_un_envoi(self):
+        from totem.analyse_sms import analyser, categoriser
+        t = ("Vous avez envoye 20000 FCFA au 677123456. "
+             "Le beneficiaire NGONO a recu 20000 FCFA.")
+        p = analyser(t, numeros=["696103864"])
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(categoriser(t, numeros=["696103864"]), "envoi")
+
+    def test_un_debit_qui_cite_credite_reste_une_sortie(self):
+        from totem.analyse_sms import analyser
+        t = ("Debit de 15000 FCFA vers 690000000. "
+             "Compte du beneficiaire credite de 15000 FCFA.")
+        self.assertEqual(analyser(t).sens, "sortie")
+
+    def test_un_vrai_encaissement_reste_une_entree(self):
+        from totem.analyse_sms import analyser
+        t = "Vous avez recu 10000 FCFA de NGONO (677123456)."
+        self.assertEqual(analyser(t).sens, "entree")
+
+
+class TestExportCsvSansFormule(unittest.TestCase):
+    """Un SMS piégé « =HYPERLINK(...) » ne doit pas devenir une formule
+    exécutable à l'ouverture du CSV dans un tableur."""
+
+    def test_une_cellule_formule_est_desamorcee(self):
+        from totem.storage import Journal
+        j = Journal(":memory:")
+        j.sms("MoMo", '=HYPERLINK("http://vol.example","clic")', "MTN")
+        csv = j.export_csv(7).decode("utf-8")
+        # La cellule du SMS ne commence jamais nue par « = » : préfixée '.
+        self.assertNotIn(';=HYPERLINK', csv)
+        self.assertIn("HYPERLINK", csv)     # la valeur reste lisible
+
+    def test_les_autres_amorces_aussi(self):
+        from totem.storage import Journal
+        for piege in ("+1+1", "-2-2", "@SUM(A1)"):
+            j = Journal(":memory:")
+            j.sms("MoMo", piege, "MTN")
+            csv = j.export_csv(7).decode("utf-8")
+            self.assertNotIn(f";{piege}", csv)

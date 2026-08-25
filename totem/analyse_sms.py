@@ -146,7 +146,7 @@ MONTANT = r"([\d][\d\s.,]*)\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)"
 RE_RECU = re.compile(
     r"\b(?:recu|receive[sd]?|credite[d]?|cash\s*in)\b.{0,20}?" + MONTANT, re.S)
 RE_ENVOYE = re.compile(
-    r"\b(?:envoye|transfere|debite|paye|retire|sent|cash\s*out"
+    r"\b(?:envoye|transfere|debit(?:e[es]?)?|paye|retire|sent|cash\s*out"
     r"|transferred|paid|withdrawn|debited"
     r"|payment de|paiement de)\b.{0,20}?" + MONTANT, re.S)
 
@@ -237,7 +237,7 @@ def _echec_constate(norme):
 # devise ou une décimale qui suivent le trahissent), jamais une suite de
 # chiffres démesurée. Le nom viendra après, sans contrainte de forme.
 RE_PARTIE = re.compile(
-    r"\b(?P<role>from|de|par|to|vers)\s+"
+    r"\b(?P<role>from|de|par|by|to|vers)\s+"
     r"(?P<numero>\+?\d{7,14})(?!\d)"
     r"(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)|[.,]\d)")
 
@@ -260,7 +260,7 @@ RE_CHAMP_ARGENT = re.compile(
 # Le numéro nu ne doit jamais être un montant : « s'élève à 12345678 FCFA »
 # donnait le SOLDE comme numéro du tiers — la devise qui suit l'écarte.
 RE_TIERS = re.compile(
-    r"\b(?:de|from|a|to|vers|chez)\s+"
+    r"\b(?:de|from|by|a|to|vers|chez)\s+"
     r"(?P<nom>[^().,;:\n]{2,40}?)?\s*"
     r"(?:\(\s*(?P<num1>[+\d][\d\s]{6,20})\s*\)"
     r"|(?P<num2>\b[+\d][\d\s]{7,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
@@ -292,16 +292,26 @@ RE_SOLDE = re.compile(
     r"|new\s+balance|balance)\b"
     r"[^\d]{0,40}?" + MONTANT, re.S)
 
-# Le relevé MoMo que MTN envoie PAR SMS quand l'USSD ne passe pas (vécu en
-# itinérance) : « Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA. »
-# Deux montants, mais AUCUNE ambiguïté : chacun porte son étiquette, et seule
-# celle du porte-monnaie nous concerne — le crédit d'appel n'est pas de
-# l'argent Mobile Money. C'est la seule exception admise à la règle « deux
-# champs d'argent = refus » : elle ne joue que sur une étiquette explicite.
-RE_SOLDE_MOMO = re.compile(
-    r"\b(?:(?:mobile\s*money|momo)\s*balance"
-    r"|solde\s*(?:mobile\s*money|momo))\b"
-    r"[^\d]{0,40}?" + MONTANT, re.S)
+# Les relevés MTN à PLUSIEURS soldes étiquetés — reçus par SMS quand l'USSD
+# ne passe pas (itinérance), et sur les comptes d'agent :
+#   « Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA. »
+#   « Current balance: 8910 FCFA ; Available balance: 8910 FCFA ;
+#     Airtime balance: 7,943 FCFA ; MTN MoMo Gift Balance: 0. »
+# Plusieurs montants, mais AUCUNE ambiguïté : chacun porte son étiquette.
+# Le porte-monnaie d'abord ; le solde « courant » ensuite (celui que le
+# propriétaire suit) ; le « disponible » en dernier recours. Jamais le
+# crédit d'appel, la commission ni les cadeaux. C'est la seule exception
+# admise à la règle « deux champs d'argent = refus » : elle ne joue que sur
+# une étiquette explicite.
+RE_SOLDES_ETIQUETES = (
+    re.compile(r"\b(?:(?:mobile\s*money|momo)\s*balance"
+               r"|solde\s*(?:mobile\s*money|momo))\b"
+               r"[^\d]{0,40}?" + MONTANT, re.S),
+    re.compile(r"\b(?:current\s*balance|solde\s*courant)\b"
+               r"[^\d]{0,40}?" + MONTANT, re.S),
+    re.compile(r"\b(?:available\s*balance|solde\s*disponible)\b"
+               r"[^\d]{0,40}?" + MONTANT, re.S),
+)
 
 # « Le solde de votre compte est de 2784137.6FCFA. » — la phrase d'Orange
 # après une interrogation USSD. Elle place vingt-cinq caractères entre le mot
@@ -355,7 +365,7 @@ RE_PUB = re.compile(
     r"\b(?:gagner|jackpot|tente\s+ta\s+chance|max\s*it|illimite|abonne|"
     r"data|reseau\s+social|whatsapp|recharge|rechargez|cadeau|"
     r"win|won|gift|reward|offer|bundle|unlimited|subscribe|"
-    r"top\s*up|airtime)\b")
+    r"earn|qr\s*code|top\s*up|airtime)\b")
 
 # Un code à usage unique : « Le code de 696103864 est: 515318. » Ce n'est pas
 # un paiement, mais surtout ce n'est pas un texte à conserver ni à relayer.
@@ -367,6 +377,16 @@ RE_CODE_UNIQUE = re.compile(
     r"(?:\best\b|\bis\b|:)\s*:?\s*"
     r"(\d{4,10})\b")
 
+
+# --- Les guichets de l'AGENT MTN, relevés sur le terrain ------------------
+# Sur une ligne d'agent, le mot seul ment : « Cash in of 500000 XAF … to
+# GAELLE … » CRÉDITE un client — la caisse de l'agent BAISSE (les soldes
+# annoncés le prouvent : 506 330 − 125 000 = 381 330). « Cash out initiated
+# by EDGARD … » : le client retire chez l'agent — sa caisse MONTE. C'est la
+# tournure complète qui donne le sens, vérifiée sur les vrais SMS.
+RE_CASH_IN_SORTANT = re.compile(
+    r"\bcash\s*in\s+of\b[^\d]{0,10}" + MONTANT, re.S)
+RE_CASH_OUT_ENTRANT = re.compile(r"\bcash\s*out\s+initiated\s+by\b")
 
 RE_PHRASE_OPERANTE = re.compile(
     RE_GESTE.pattern + "|" + MONTANT +
@@ -595,7 +615,7 @@ def _parties_de_loperation(norme, propre):
         fin_nom = debut_nom + (borne.start() if borne else len(fenetre))
         nom = _nettoyer_nom(_morceau(norme, propre, debut_nom, fin_nom))
         partie = Partie(re.sub(r"\s+", "", m.group("numero")), nom)
-        if m.group("role") in ("from", "de", "par"):
+        if m.group("role") in ("from", "de", "par", "by"):
             if emetteur is None:
                 emetteur, premiere = partie, premiere if premiere is not None else m.start()
         elif beneficiaire is None:
@@ -700,8 +720,45 @@ def analyser(texte, numeros=()):
     if RE_BRUIT.search(norme):
         return None
 
+    # Les guichets de l'agent MTN : la tournure complète donne le sens —
+    # le verbe seul (« cash in » = entrée ?) mentirait sur une ligne
+    # d'agent. « Added commission » est un gain de l'agent, pas des frais.
+    if RE_CASH_OUT_ENTRANT.search(norme) and RE_REUSSITE.search(norme):
+        montant = _montant_nomme(RE_MONTANT_SIMPLE, norme)
+        if montant:
+            nom, numero = _extraire_tiers(norme, propre)
+            return Paiement(
+                sens="entree", montant=montant, texte=texte,
+                nom=nom, numero=numero,
+                reference=_reference(norme, propre),
+                solde_apres=_montant_nomme(RE_SOLDE, norme),
+                commission=_montant_nomme(RE_COMMISSION, norme))
+    cash_in = RE_CASH_IN_SORTANT.search(norme)
+    if (cash_in and RE_REUSSITE.search(norme)
+            and not re.search(r"\b(?:recu|receive[sd]?|credite[d]?)\b", norme)):
+        montant = _nombre(cash_in.group(1))
+        if montant:
+            nom, numero = _extraire_tiers(norme, propre)
+            return Paiement(
+                sens="sortie", montant=montant, texte=texte,
+                nom=nom, numero=numero,
+                reference=_reference(norme, propre),
+                solde_apres=_montant_nomme(RE_SOLDE, norme),
+                commission=_montant_nomme(RE_COMMISSION, norme))
+
     entree = RE_RECU.search(norme)
-    sortie = None if entree else RE_ENVOYE.search(norme)
+    sortie = RE_ENVOYE.search(norme)
+    # Quand les DEUX tournures sont présentes — « Vous avez envoyé 20000 FCFA…
+    # le bénéficiaire a reçu 20000 FCFA » — c'est le verbe de TÊTE qui dit
+    # l'opération, jamais celui du bénéficiaire cité ensuite. Sans cette règle,
+    # un envoi passait pour un encaissement : le bilan gonflait et le reçu
+    # affichait « Montant reçu » sur un débit. (Même principe que le premier
+    # geste dans categoriser().)
+    if entree and sortie:
+        if sortie.start() < entree.start():
+            entree = None
+        else:
+            sortie = None
     trouve = entree or sortie
     if not trouve:
         return None
@@ -774,13 +831,14 @@ def solde_annonce(texte):
         return None
     if RE_RECU.search(norme) or RE_ENVOYE.search(norme):
         return None
-    # Le relevé MoMo étiqueté passe AVANT le refus des deux champs d'argent :
-    # « Mobile Money Balance: 0 FCFA. Airtime balance: 7,943FCFA. » porte bien
-    # deux montants, mais l'étiquette lève toute ambiguïté — c'est le
-    # porte-monnaie qui fait foi, jamais le crédit d'appel.
-    momo = RE_SOLDE_MOMO.search(norme)
-    if momo:
-        return _nombre(momo.group(1))
+    # Le relevé étiqueté passe AVANT le refus des deux champs d'argent :
+    # « Current balance: 8910 FCFA ; Airtime balance: 7,943 FCFA ; … » porte
+    # bien plusieurs montants, mais chaque étiquette lève l'ambiguïté — le
+    # porte-monnaie fait foi, jamais le crédit d'appel ni la commission.
+    for motif in RE_SOLDES_ETIQUETES:
+        m = motif.search(norme)
+        if m:
+            return _nombre(m.group(1))
     if len(RE_CHAMP_ARGENT.findall(norme)) >= 2:
         return None
     m = RE_SOLDE.search(norme) or RE_SOLDE_SEUL.search(norme)

@@ -717,3 +717,104 @@ class TestReleveMoMoParSms(unittest.TestCase):
     def test_un_echec_qui_cite_le_solde_momo_reste_un_echec(self):
         self.assertIsNone(solde_annonce(
             "Transaction failed. Mobile Money balance: 12,000 FCFA."))
+
+
+class TestCarnetAgentMtn(unittest.TestCase):
+    """Le carnet COMPLET d'une ligne d'agent MTN, dicté par le terrain —
+    chaque message ici est un vrai SMS reçu sur la carte du propriétaire.
+
+    Sur une ligne d'agent, le mot seul ment : un « Cash in » CRÉDITE le
+    client et VIDE la caisse de l'agent (les soldes annoncés le prouvent :
+    506 330 − 125 000 = 381 330) ; un « Cash out » la REMPLIT. C'est la
+    tournure complète qui donne le sens."""
+
+    SOLDE_AGENT = ("Current balance: 8910 FCFA ; Available balance: 8910 "
+                   "FCFA ; Airtime  balance: 7,943 FCFA ; MTN MoMo Gift "
+                   "Balance: 0.")
+    RECU_FLOAT = ("You have received 10000 XAF from BABY FRANCIS NOUBI "
+                  "TCHASSEM (23767835223) on your mobile money account at "
+                  "2026-07-08 11:30:58. Message from sender: . Your new "
+                  "balance:89255 XAF. Financial Transaction Id: 17848350682.")
+    TRANSFERT = ("You have transferred 50000 XAF to LUCY LIZETTE JEME "
+                 "LIMUNGA (237677453011) from your mobile money account "
+                 "93368555 at 2026-08-02 21:22:17 FEES 0 FCFA. Your new "
+                 "balance: 6330 XAF. Message from sender: . Message to "
+                 "receiver: . Financial Transaction Id: 18191577531.  "
+                 "Borrow up to 100,000 FCFA in advance in just seconds for "
+                 "your transactions. Dial *126*6# or access the new MoMo "
+                 "App here:link.mtn.cm/NewMoMoAppRef.")
+    CASH_IN = ("Cash in of 500000 XAF on 2026-08-08 17:36:26 to GAELLE "
+               "MICHELE NGASSAM NYA (237674419489) has been successfully "
+               "completed. Transaction ID:18269064283. Message:. Your new "
+               "balance: 506330 XAF. Added commission: 890 XAF.")
+    CASH_OUT = ("Cash out initiated by EDGARD MANGA (237676684303) on "
+                "DATETIME} is successfully completed. You can payout the "
+                "amount: 500000 XAF in cash to the customer. Transaction "
+                "ID: 18292698523| Message: Your new balance: 1831330 XAF. "
+                "Added commission: 1300 XAF.")
+    PUB_QR = ("Earn +25 XAF on every Cash Out made via your QR Code with "
+              "MoMo App. 10 QR Cash Outs/day = +250 XAF daily. Faster, "
+              "safer, fraud free. Switch to QR today!.")
+    DEBRIS = "AMOUNT10,000 MSISDN_SENDER237678738594 REASON-"
+
+    def test_le_releve_d_agent_donne_le_solde_courant(self):
+        """« Current balance » fait foi — jamais le crédit d'appel ni le
+        « Gift », qui rangeait ce relevé en réclame."""
+        self.assertEqual(solde_annonce(self.SOLDE_AGENT), 8910)
+        self.assertEqual(categoriser(self.SOLDE_AGENT), "solde")
+
+    def test_le_float_recu_est_un_encaissement_complet(self):
+        p = analyser(self.RECU_FLOAT)
+        self.assertEqual(p.sens, "entree")
+        self.assertEqual(p.montant, 10000)
+        self.assertEqual(p.tiers, "BABY FRANCIS NOUBI TCHASSEM")
+        self.assertEqual(p.solde_apres, 89255)
+        self.assertEqual(p.reference, "17848350682")
+        self.assertEqual(categoriser(self.RECU_FLOAT), "encaissement")
+
+    def test_le_transfert_sortant_se_lit_malgre_la_reclame_en_queue(self):
+        p = analyser(self.TRANSFERT)
+        self.assertEqual(p.sens, "sortie")
+        self.assertEqual(p.montant, 50000)
+        self.assertEqual(p.tiers, "LUCY LIZETTE JEME LIMUNGA")
+        self.assertEqual(p.frais, 0)
+        self.assertEqual(p.solde_apres, 6330)
+        self.assertEqual(p.reference, "18191577531")
+
+    def test_le_cash_in_vide_la_caisse_de_l_agent(self):
+        p = analyser(self.CASH_IN)
+        self.assertEqual(p.sens, "sortie",
+                         "l'agent crédite le client : sa caisse baisse")
+        self.assertEqual(p.montant, 500000)
+        self.assertEqual(p.tiers, "GAELLE MICHELE NGASSAM NYA")
+        self.assertEqual(p.solde_apres, 506330)
+        self.assertEqual(p.commission, 890)
+        self.assertIsNone(p.frais, "la commission est un gain, pas des frais")
+        self.assertEqual(p.reference, "18269064283")
+        self.assertEqual(categoriser(self.CASH_IN), "depot")
+
+    def test_le_cash_out_remplit_la_caisse_de_l_agent(self):
+        p = analyser(self.CASH_OUT)
+        self.assertIsNotNone(p, "ce message était illisible avant")
+        self.assertEqual(p.sens, "entree",
+                         "le client retire chez l'agent : sa caisse monte")
+        self.assertEqual(p.montant, 500000)
+        self.assertEqual(p.tiers, "EDGARD MANGA")
+        self.assertEqual(p.solde_apres, 1831330)
+        self.assertEqual(p.commission, 1300)
+        self.assertEqual(p.reference, "18292698523")
+        self.assertEqual(categoriser(self.CASH_OUT), "retrait")
+
+    def test_la_reclame_qr_est_une_reclame(self):
+        self.assertIsNone(analyser(self.PUB_QR))
+        self.assertEqual(categoriser(self.PUB_QR), "publicite")
+
+    def test_les_debris_techniques_restent_des_messages(self):
+        """Les fragments de gabarit de MTN (« AMOUNT10,000 MSISDN_… ») ne
+        deviennent jamais des paiements : pas de devise, pas de lecture."""
+        self.assertIsNone(analyser(self.DEBRIS))
+        self.assertEqual(categoriser(self.DEBRIS), "message")
+
+    def test_un_echec_avec_solde_courant_reste_un_echec(self):
+        self.assertIsNone(solde_annonce(
+            "Transaction failed. Current balance: 8910 FCFA."))

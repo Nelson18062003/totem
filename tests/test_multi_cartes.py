@@ -150,7 +150,7 @@ class NuageEspion:
     def reveiller(self):
         pass
 
-    def publier_solde(self, iccid, solde):
+    def publier_solde(self, iccid, solde, moment=None):
         self.soldes.append((iccid, solde))
         return True
 
@@ -176,13 +176,21 @@ class TestLeSoldeArriveAussiParSms(unittest.TestCase):
         r._relever_sms(compte)
         self.assertEqual(nuage.soldes, [(MTN_A.iccid, 0)])
 
-    def test_un_encaissement_ne_touche_pas_le_solde(self):
-        """Le solde d'un transfert se lit dans solde_apres — jamais ici :
-        publier le solde d'un paiement referait le bug d'août 2026."""
+    def test_le_nouveau_solde_d_un_encaissement_suit_aussi(self):
+        """Le « nouveau solde » d'un mouvement adressé à NOTRE carte est le
+        solde de la caisse après l'opération : la carte reste à jour toute
+        seule, encaissement après encaissement. C'est toujours l'annonce de
+        l'opérateur — le montant, lui, n'est jamais additionné par nous."""
         r, compte, modem, nuage = self.robot_espionne()
         modem.sms_en_attente.append(
             (8, "MobileMoney",
              "Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
              "Nouveau solde : 100 000 FCFA."))
+        r._relever_sms(compte)
+        self.assertEqual(nuage.soldes, [(MTN_A.iccid, 100000)])
+
+    def test_un_sms_sans_argent_ne_touche_pas_le_solde(self):
+        r, compte, modem, nuage = self.robot_espionne()
+        modem.sms_en_attente.append((9, "Papa", "Rappelle-moi ce soir."))
         r._relever_sms(compte)
         self.assertEqual(nuage.soldes, [])

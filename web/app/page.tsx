@@ -49,7 +49,7 @@ export default async function Accueil() {
         <AccueilGuichet
           cartes={cartes.map((c) => ({
             libelle: c.libelle, operateur: c.operateur,
-            numero: c.numero, solde: c.solde,
+            numero: c.numero, nom: c.nom, solde: c.solde,
             soldeMaj: c.soldeMaj, signal: c.signal,
             iccid: c.iccid, enPlace: c.enPlace, derniereVue: c.derniereVue,
           }))}

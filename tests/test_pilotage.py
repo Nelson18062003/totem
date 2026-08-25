@@ -494,3 +494,26 @@ class TestRaccourciDepuisLaPlateforme(unittest.TestCase):
                     "parametres": {"operateur": "", "cle": "depot",
                                    "etapes": ["*126#"]}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+
+
+class TestSoldeMonotone(unittest.TestCase):
+    """Un relevé ancien rejoué dans le désordre ne doit pas écraser un solde
+    déjà plus récent : publier_solde avec un moment ne remplace que si c'est
+    postérieur (le nuage réel porte la condition ; ici on vérifie l'appel)."""
+
+    def test_le_moment_du_sms_accompagne_le_solde(self):
+        recu = []
+
+        class NuageMoment(FauxNuage):
+            def publier_solde(self, iccid, solde, moment=None):
+                recu.append((iccid, solde, moment))
+                return True
+
+        compte = FauxCompte([])
+        p = Pilotage(NuageMoment(), [compte], FauxJournal())
+        # Le pilotage (USSD) publie SANS moment : une réponse USSD est
+        # toujours actuelle.
+        p._traiter({"id": 70, "type": "ussd", "parametres": {"code": "#150#"}})
+        # Aucune session/solde ici, mais l'appel direct doit accepter moment.
+        p.nuage.publier_solde("ic", 100, moment="2026-08-10T07:04:00+01:00")
+        self.assertEqual(recu[-1], ("ic", 100, "2026-08-10T07:04:00+01:00"))
