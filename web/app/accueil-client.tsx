@@ -49,16 +49,12 @@ export type CarteGuichet = Pick<
  */
 function CarteSim({
   carte, langue, soldeCache, basculerSolde, onSolde,
-  choisie, plusieurs, onChoisir,
 }: {
   carte: CarteGuichet;
   langue: ReturnType<typeof useLangue>;
   soldeCache: boolean;
   basculerSolde: () => void;
   onSolde: () => void;
-  choisie: boolean;
-  plusieurs: boolean;
-  onChoisir: () => void;
 }) {
   const t = textesAccueil[langue];
   const op = carte.operateur;
@@ -90,32 +86,16 @@ function CarteSim({
     if (carte.solde != null) em += 1.35;
     return em * 1.07;
   })();
-  const corpsMontant = `min(4.25rem, ${(100 / largeurEm).toFixed(2)}cqw)`;
+  const corpsMontant = `min(5.5rem, ${(100 / largeurEm).toFixed(2)}cqw)`;
 
   return (
     // Le CADRE ENTIER porte la couleur de l'opérateur — la carte est sertie
     // dans SA couleur, comme une pièce dans son chaton. Un opérateur sans
-    // couleur reste sans cadre. Avec plusieurs cartes, celle qui n'a pas la
-    // main s'estompe : le doigt la réveille.
+    // couleur reste sans cadre. UNE seule carte est montrée à la fois : elle
+    // prend toute la largeur, et le chiffre avec elle.
     <section
-      role={plusieurs ? "button" : undefined}
-      tabIndex={plusieurs ? 0 : undefined}
-      aria-pressed={plusieurs ? choisie : undefined}
-      aria-label={plusieurs ? t.choisirCarte(carte.libelle) : undefined}
-      onClick={plusieurs ? onChoisir : undefined}
-      onKeyDown={plusieurs
-        ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChoisir(); } }
-        : undefined}
-      className={`acct-marque relative overflow-hidden rounded-card p-5 [container-type:inline-size] sm:p-6 ${
-        plusieurs ? "cursor-pointer transition" : ""
-      }`}
-      style={{
-        border: `2px solid ${
-          plusieurs && !choisie
-            ? "rgba(255,255,255,0.16)"
-            : couleurOperateur(op) ?? "rgba(255,255,255,0.3)"
-        }`,
-      }}
+      className="acct-marque relative overflow-hidden rounded-card p-6 [container-type:inline-size] sm:p-8"
+      style={{ border: `2px solid ${couleurOperateur(op) ?? "rgba(255,255,255,0.3)"}` }}
     >
       {/* La Tresse, en filigrane sur la tranche droite — la carte est
           signée TOTEM comme une carte bancaire est frappée de sa banque. */}
@@ -292,24 +272,46 @@ export function AccueilGuichet({
 
   return (
     <>
-      {/* LES cartes : une par SIM, chacune avec SON solde — côte à côte dès
-          que la largeur le permet, comme sur l'écran Comptes ; l'une sous
-          l'autre sur téléphone, où la pleine largeur revient au chiffre. */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:col-start-1">
-        {cartes.map((c) => (
+      {/* LE sélecteur : avec deux SIM, on CHOISIT sa caisse au lieu de
+          serrer deux cartes dans une demi-largeur. La carte choisie garde
+          alors l'écran entier — c'est là que le chiffre se lit. */}
+      {plusieurs && active && (
+        <div role="tablist" aria-label={t.choisirCarte(active.libelle)}
+          className="flex flex-wrap gap-2 lg:col-start-1">
+          {cartes.map((c) => {
+            const actif = c.iccid === active.iccid;
+            return (
+              <button
+                key={c.iccid}
+                role="tab"
+                aria-selected={actif}
+                onClick={() => setChoisie(c.iccid)}
+                className={`flex items-center gap-2.5 rounded-btn border px-3.5 py-2.5 text-small font-medium transition ${
+                  actif
+                    ? "border-transparent bg-ink text-white"
+                    : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"
+                }`}
+              >
+                <LogoOperateur operateur={c.operateur} size={20} />
+                {c.libelle}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* LA carte : celle qui a la main, sur toute la largeur. */}
+      {active && (
+        <div className="lg:col-start-1">
           <CarteSim
-            key={c.iccid}
-            carte={c}
+            carte={active}
             langue={langue}
             soldeCache={soldeCache}
             basculerSolde={basculerSolde}
-            onSolde={() => { setChoisie(c.iccid); setOperation(solde(c)); }}
-            choisie={c.iccid === active?.iccid}
-            plusieurs={plusieurs}
-            onChoisir={() => setChoisie(c.iccid)}
+            onSolde={() => setOperation(solde(active))}
           />
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Les gestes du guichet — sur la carte choisie. Chaque bouton ouvre
           son pop-up, ici même. */}
