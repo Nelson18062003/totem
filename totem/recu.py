@@ -52,21 +52,25 @@ UTILE = DROITE - GAUCHE
 POLICES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "polices")
 
 # Corps, interlignes et interlettrages, repris de la feuille de style.
-CORPS_ETIQUETTE, ECART_ETIQUETTE = 12, 0.20
+CORPS_ETIQUETTE, ECART_ETIQUETTE = 13, 0.20
 CORPS_MOT, ECART_MOT = 30, 0.18
-CORPS_TYPE = 17
-CORPS_NUMERO = 12
-CORPS_SOMME, ECART_SOMME = 74, -0.04
+CORPS_TYPE = 20
+CORPS_NUMERO = 13
+CORPS_SOMME, ECART_SOMME = 88, -0.04
 CORPS_NOM, ECART_NOM = 27, -0.025
-CORPS_NUM = 17
-CORPS_PREUVE = 17
-CORPS_PIED = 11
+CORPS_NUM = 21
+# L'identifiant de transaction est ce qu'on QUOTE au guichet quand une
+# opération est contestée. Composé au corps d'une mention de bas de page, il
+# obligeait à plisser les yeux : il se lit maintenant d'un coup d'œil.
+CORPS_PREUVE = 26
+CORPS_PIED = 13
 SUIVI = -0.011                 # l'interlettrage général du document
 
 TRANCHE = 0.22                 # écart entre tranches de trois chiffres, en em
 PART_DEVISE, ECART_DEVISE = 0.42, 0.34
 
 COTE_SYMBOLE = 78 * 0.75       # les 78 px de la maquette, en points
+COTE_MARQUE = 24               # la hauteur de la marque du réseau, en tête
 # Un nom de deux mots tient sur une ligne, trois se replient. Au-delà, on
 # rétrécit plutôt que d'empiler : le bloc doit rester centré sur la page.
 LIGNES_NOM = 2
@@ -120,8 +124,16 @@ def numero_de_recu(quand, source_id, source="sms"):
 
 
 def numero_lisible(numero):
-    """« 696103864 » → « 696 103 864 » : un numéro se lit par tranches."""
+    """« 696103864 » → « 696 103 864 » : un numéro se lit par tranches.
+
+    MTN écrit les siens au format international, indicatif compris —
+    « 237681026861 ». Douze chiffres d'affilée sur un reçu ne se relisent
+    pas : l'indicatif se détache, le reste se découpe comme un numéro local.
+    """
     chiffres = "".join(c for c in (numero or "") if c.isdigit())
+    if len(chiffres) == 12 and chiffres.startswith("237"):
+        reste = chiffres[3:]
+        return f"+237 {reste[:3]} {reste[3:6]} {reste[6:]}"
     return (f"{chiffres[:3]} {chiffres[3:6]} {chiffres[6:]}"
             if len(chiffres) == 9 else (numero or ""))
 
@@ -232,6 +244,16 @@ class Gabarit:
 
     # -- zone 1 : qui émet le reçu ------------------------------------------
     def _entete(self, type_document, numero):
+        """Deux signatures, une de chaque côté.
+
+        À gauche, QUI fabrique le document : le symbole et le mot TOTEM.
+        À droite, POUR QUEL RÉSEAU, puis quel document et sous quel numéro.
+
+        La marque du réseau était reléguée en bas de page, haute de onze
+        points, à côté d'une mention de lieu. Sur un reçu qu'on tend à un
+        client, le réseau est la première chose qu'on cherche : elle monte
+        donc en tête, à une taille où elle se reconnaît sans se lire.
+        """
         haut = MARGE_V
         poser(self.page, GAUCHE, haut, COTE_SYMBOLE, LATERITE)
 
@@ -242,7 +264,9 @@ class Gabarit:
                         self._base(boite_mot, CORPS_MOT, 1.0), "TOTEM",
                         self.grasse, CORPS_MOT, ENCRE, ECART_MOT)
 
-        # À droite, le type de document et son numéro, calés sur le bas.
+        # À droite, la pile : le réseau, le type de document, son numéro —
+        # calée sur le bas du symbole, pour que les deux côtés s'assoient sur
+        # la même ligne.
         bas = haut + COTE_SYMBOLE
         haut_numero = bas - self._hauteur(CORPS_NUMERO)
         self._a_droite(f"N° {numero}", self._base(haut_numero, CORPS_NUMERO),
@@ -250,9 +274,31 @@ class Gabarit:
         haut_type = haut_numero - 2.5 * MM - self._hauteur(CORPS_TYPE, 1.1)
         self._a_droite(type_document, self._base(haut_type, CORPS_TYPE, 1.1),
                        self.grasse, CORPS_TYPE, ENCRE, -0.02)
+        haut_reseau = haut_type - 4 * MM - COTE_MARQUE
+        self._reseau_a_droite(haut_reseau, COTE_MARQUE)
 
         self.page.filet(GAUCHE, bas + 9 * MM, UTILE, FILET)
         return bas + 9 * MM
+
+    def _reseau_a_droite(self, haut, cote):
+        """La marque du réseau et son nom, alignés sur la marge droite.
+
+        On mesure d'abord, on pose ensuite : la marque a une largeur propre
+        (le carré d'Orange, l'ovale de MTN), et le bloc entier doit finir
+        exactement sur la marge.
+        """
+        nom = self.operateur or ""
+        corps = cote * 0.52
+        largeur_nom = self.grasse.largeur(nom, corps, SUIVI)
+        largeur_marque = self._largeur_marque(cote)
+        ecart = cote * 0.45 if largeur_marque else 0
+        x = DROITE - (largeur_marque + ecart + largeur_nom)
+        if largeur_marque:
+            self._marque_reseau(x, haut, cote)
+        self.page.texte(x + largeur_marque + ecart,
+                        self._base(haut + (cote - self._hauteur(corps)) / 2,
+                                   corps),
+                        nom, self.grasse, corps, ENCRE, SUIVI)
 
     def _a_droite(self, texte, ligne_de_base, police, corps, teinte,
                   interlettrage=SUIVI, largeur_max=None):
@@ -409,7 +455,13 @@ class Gabarit:
         tienne sur une ligne ou sur deux.
         """
         interieur_h, interieur_v, ecart = 13 * MM, 11 * MM, 12 * MM
-        disponible = UTILE - 2 * interieur_h - ecart * (len(colonnes) - 1)
+        # Les colonnes ne s'étirent pas sur toute la largeur quand elles sont
+        # peu nombreuses : deux preuves écartées d'un demi-mètre ne se lisent
+        # plus ensemble. Elles se serrent à gauche, et le bandeau garde sa
+        # pleine largeur — c'est un aplat, pas un tableau.
+        largeur_max = UTILE - 2 * interieur_h
+        disponible = (largeur_max - ecart * (len(colonnes) - 1)) * min(
+            1.0, (len(colonnes) + 1) / 5)
         poids_total = sum(poids for _, _, poids in colonnes)
         largeurs = [poids / poids_total * disponible for _, _, poids in colonnes]
 
@@ -471,6 +523,15 @@ class Gabarit:
         "mtn": ("#ffcb00", "#16171a", "MTN", 1.9, None),
     }
 
+    def _largeur_marque(self, cote):
+        """Ce que la marque occupera, sans rien dessiner — zéro si le réseau
+        n'a pas de marque connue."""
+        nom = (self.operateur or "").strip().lower()
+        for prefixe, (_f, _e, _m, ratio, _r) in self.MARQUES.items():
+            if nom.startswith(prefixe):
+                return cote * ratio
+        return 0
+
     def _marque_reseau(self, x, haut, cote=12):
         """Dépose la marque, coin haut gauche en (x, haut). Renvoie la largeur
         occupée — zéro quand l'opérateur n'a pas de marque connue."""
@@ -497,15 +558,14 @@ class Gabarit:
         return 0
 
     def pied(self):
+        """Le lieu, et rien d'autre.
+
+        Le réseau signait ici, tout petit. Il signe désormais en tête : le
+        répéter en bas de page ferait deux fois la même chose, moins bien.
+        """
         haut = HAUTEUR - MARGE_V - self._hauteur(CORPS_PIED)
-        base = self._base(haut, CORPS_PIED)
-        lieu = t("Douala, Cameroon", "Douala, Cameroun", self.langue)
-        # La marque d'abord, le nom du service ensuite : l'œil reconnaît le
-        # réseau avant même de lire la ligne.
-        cote = self._hauteur(CORPS_PIED)
-        largeur = self._marque_reseau(GAUCHE, haut, cote)
-        decalage = largeur + cote * 0.45 if largeur else 0
-        self.page.texte(GAUCHE + decalage, base, f"{self.operateur} · {lieu}",
+        self.page.texte(GAUCHE, self._base(haut, CORPS_PIED),
+                        t("Douala, Cameroon", "Douala, Cameroun", self.langue),
                         self.normale, CORPS_PIED, ETIQUETTE, SUIVI)
 
     def debordements(self, tolerance=0.5):
@@ -537,7 +597,7 @@ def etiquette_somme(sens, langue=None):
 
 
 def recu_transfert(paiement, numero, quand, operateur="Orange Money",
-                   titre=None, langue=None):
+                   titre=None, langue=None, compte=None):
     """Le reçu d'une opération réussie.
 
     `quand` : la date de l'opération. Le SMS d'Orange ne l'écrit pas en toutes
@@ -549,6 +609,10 @@ def recu_transfert(paiement, numero, quand, operateur="Orange Money",
     l'autre — le document nomme alors l'opération telle qu'elle est.
 
     `langue` : « en » ou « fr » ; sans elle, la langue active du robot.
+
+    `compte` : (nom, numéro) de NOTRE côté — le nom et le numéro inscrits aux
+    Réglages pour la carte qui a reçu le SMS. Sans lui, notre colonne reste
+    vide, mais elle reste à sa place.
 
     Quand le sens n'est pas connu — le SMS nomme les deux parties sans dire
     laquelle est la nôtre — l'étiquette devient « Net amount / Montant net »,
@@ -576,21 +640,48 @@ def recu_transfert(paiement, numero, quand, operateur="Orange Money",
     haut = gabarit.preuves(preuves)
 
     de, a = t("From", "De", langue), t("To", "À", langue)
-    emetteur = paiement.emetteur
-    beneficiaire = paiement.beneficiaire
-    if emetteur is None or beneficiaire is None:
-        # Les formes plus anciennes ne nomment qu'un seul tiers : on met le
-        # compte en face, sans inventer l'autre côté.
-        connu = (de, paiement.nom, paiement.numero)
-        parties = [connu, (a, None, None)]
-    else:
-        parties = [(de, emetteur.nom, emetteur.numero),
-                   (a, beneficiaire.nom, beneficiaire.numero)]
+    parties = _de_et_a(paiement, compte, de, a)
 
+    # LE SOLDE N'EST PAS SUR LE REÇU, et ce n'est pas un oubli.
+    #
+    # MTN l'écrit à chaque message, et il serait facile de l'ajouter. Mais un
+    # reçu se tend à un client : il n'a pas à y lire la caisse de l'agent.
+    # Le solde se lit sur l'accueil, sur le reçu de solde, dans le bilan —
+    # partout où c'est le propriétaire qui regarde.
     gabarit.centre(haut, etiquette_somme(paiement.sens, langue),
                    paiement.montant, parties)
     gabarit.pied()
     return gabarit.octets()
+
+
+def _de_et_a(paiement, compte, de, a):
+    """Qui envoie, qui reçoit — dans le bon sens, toujours.
+
+    Un SMS MTN ne nomme qu'UN tiers : « to PAYSELA (…) from your mobile money
+    account », « from BABY FRANCIS (…) on your mobile money account ». L'autre
+    côté, c'est nous — le message ne le nomme pas, il n'a pas à le faire.
+
+    L'ancienne règle mettait ce tiers unique en « De », quel que soit le sens.
+    Sur un envoi, le reçu annonçait donc que le bénéficiaire était l'émetteur,
+    et laissait « À » vide : le document disait le contraire de l'opération.
+
+    Le sens décide, et lui seul. Notre identité vient des Réglages ; si elle
+    manque, notre colonne reste vide — mais du bon côté.
+    """
+    emetteur, beneficiaire = paiement.emetteur, paiement.beneficiaire
+    if emetteur is not None and beneficiaire is not None:
+        return [(de, emetteur.nom, emetteur.numero),
+                (a, beneficiaire.nom, beneficiaire.numero)]
+
+    tiers = (paiement.nom, paiement.numero)
+    nous = compte if compte and (compte[0] or compte[1]) else (None, None)
+    if paiement.sens == "sortie":
+        return [(de, *nous), (a, *tiers)]
+    if paiement.sens == "entree":
+        return [(de, *tiers), (a, *nous)]
+    # Sens inconnu : on ne choisit pas de camp. Le tiers est nommé, notre
+    # côté reste vide — comme avant, et pour la même raison.
+    return [(de, *tiers), (a, None, None)]
 
 
 def recu_solde(solde, compte, numero_ligne, numero, quand,
@@ -619,5 +710,5 @@ def recu_solde(solde, compte, numero_ligne, numero, quand,
     return gabarit.octets()
 
 
-__all__ = ["etiquette_somme", "numero_de_recu", "recu_solde",
-           "recu_transfert"]
+__all__ = ["etiquette_somme", "numero_de_recu", "numero_lisible",
+           "recu_solde", "recu_transfert"]

@@ -13,7 +13,9 @@ PDF** au message — un document propre, présentable à un client, qui reprend 
 que dit le SMS.
 
 Ce dossier contient la maquette de ces documents. Elle a été dessinée sur de
-**vrais SMS Orange Money**, pas sur des exemples inventés.
+**vrais SMS** — Orange Money d'abord, MTN MoMo ensuite —, jamais sur des
+exemples inventés. Les deux réseaux ne disent pas les mêmes choses, et le
+document s'adapte à ce que chacun donne.
 
 ```sh
 node recus/maquette.mjs      # la maquette de référence (Chromium)
@@ -39,7 +41,8 @@ celle qui clôt le parcours, pas les menus qui y mènent. Un écran d'options
 numérotées ou une question (« Entrez le montant ») ne produit rien : il ne
 s'est encore rien passé.
 
-Aperçus dans [`apercus/`](apercus/). Format actuel : **A3 paysage**.
+Aperçus dans [`apercus/`](apercus/) — un jeu par réseau, dans les deux
+langues. Format actuel : **A3 paysage**.
 
 ---
 
@@ -91,6 +94,65 @@ SMS** par le terminal.
 ```
 Le code de 696103864 est: 515318.Orange Money vous remercie.
 ```
+
+---
+
+## Le format réel des SMS MTN MoMo
+
+Relevé sur les captures du propriétaire, août 2026. **MTN ne parle pas comme
+Orange**, et c'est ce qui a cassé les premiers reçus.
+
+### Transfert sortant
+
+```
+You have transferred 200000 XAF to PAYSELA TECHNOLOGIES SARL (237681026861)
+from your mobile money account 93368555 at 2026-08-25 13:55:27 FEES 0 FCFA.
+Your new balance: 1308910 XAF. Message from sender: . Message to receiver: .
+Financial Transaction Id: 18496208804. Back-to-School is Here...
+```
+
+### Encaissement
+
+```
+You have received 10000 XAF from BABY FRANCIS NOUBI TCHASSEM (237678352223)
+on your mobile money account at 2026-07-08 11:30:58. Message from sender: .
+Your new balance:89255 XAF. Financial Transaction Id: 17848350682.
+```
+
+Quatre différences avec Orange, toutes structurantes :
+
+| | Orange | MTN |
+|---|---|---|
+| Parties nommées | **les deux** | **une seule** — l'autre, c'est nous |
+| Horodatage | absent | **écrit par le réseau** |
+| Frais | Frais *et* Commission | **FEES seul**, jamais de commission |
+| Numéros | locaux (`696103864`) | internationaux (`237681026861`) |
+
+**Une seule partie nommée : le sens décide de son côté.** MTN écrit « to
+PAYSELA… from your mobile money account » ou « from BABY FRANCIS… on your
+mobile money account ». Le tiers cité est le destinataire dans un cas,
+l'expéditeur dans l'autre. La règle qui mettait ce tiers unique en « De » quel
+que soit le sens produisait, sur un envoi, un reçu qui **disait le contraire
+de l'opération** : le bénéficiaire en émetteur, et « À » vide. Notre côté
+vient des Réglages (le nom et le numéro inscrits pour la carte) ; s'il manque,
+la colonne reste vide — mais du bon côté.
+
+**L'horodatage du réseau prime.** C'est l'heure qui figurera sur le relevé de
+MTN. Le terminal peut avoir reçu le SMS une minute plus tard, ou l'avoir relu
+après une coupure. Quand le SMS se tait — Orange — l'heure de réception reste
+la seule honnête.
+
+**Les colonnes suivent l'opérateur.** Le bandeau des preuves ne montre que ce
+que le réseau a dit : trois colonnes pour un transfert MTN, cinq pour un
+Orange détaillé. Une colonne « Commission » vide vaudrait moins que pas de
+colonne.
+
+### Réclame en fin de message
+
+MTN accroche sa publicité à la fin des SMS d'opération (« Back-to-School is
+Here… », « Dial \*126\*6# »). Elle est ignorée : le rejet du bruit ne
+s'applique qu'à la lecture simple d'un verbe et d'un montant, jamais aux
+champs étiquetés d'une opération complète.
 
 ---
 
@@ -186,11 +248,16 @@ jamais deux fois en grand.
 ### Ce qu'on n'a pas mis, et pourquoi
 
 - **Le nouveau solde.** Un reçu part chez un tiers : il n'a pas à y lire la
-  caisse.
-- **Le logo d'Orange.** Le document est établi par TOTEM *à partir* du SMS ; il
-  n'émane pas d'Orange. Y mettre leur logo le ferait passer pour une pièce
-  officielle de l'opérateur, ce qu'il n'est pas. « Orange Money » apparaît
-  uniquement comme mention factuelle du réseau.
+  caisse. MTN l'écrit pourtant à chaque message (« Your new balance: 1308910
+  XAF »), et il serait facile de le reprendre — raison de plus pour que la
+  règle soit écrite ici et gardée par un test.
+- **Le logo téléchargé de l'opérateur.** Le document est établi par TOTEM *à
+  partir* du SMS ; il n'émane pas du réseau. Ce qui figure en tête est une
+  **marque dessinée** — le carré d'Orange, l'ovale de MTN, aux couleurs
+  publiées — à côté du nom du service : la mention factuelle du réseau, à une
+  taille où on la reconnaît. Elle était en bas de page, haute de onze points :
+  sur un reçu qu'on tend à un client, le réseau est la première chose qu'on
+  cherche. L'émetteur du document reste TOTEM, seul, à gauche.
 - **Le SMS reproduit, les mentions légales, les pastilles de sens.** Testés,
   puis retirés : trop de bruit pour un reçu.
 
@@ -215,9 +282,6 @@ Le mot **« Maquette »** en pied de page saute en production.
 
 ## Ce qui reste ouvert
 
-- **MTN.** Format inconnu à ce jour. On ignore même si l'expéditeur y figure.
-  Rien n'a été codé à l'aveugle : le jour où un SMS MTN sera relevé, il
-  s'ajoutera comme la forme d'Orange s'est ajoutée.
 - **Un transfert sortant Orange.** Jamais observé. Le format est probablement
   le même, ce n'est toujours pas vérifié.
 - **Le code USSD du solde.** `#150*1#` reste au jugé.
