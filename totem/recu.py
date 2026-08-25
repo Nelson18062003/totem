@@ -32,6 +32,7 @@ import os
 
 from .analyse_sms import formater_montant
 from .logo import poser
+from .marques import marque_de, poser as poser_marque, rapport
 from .pdf import MM, Document, Page, Police
 from .textes import langue_active, normaliser, t
 
@@ -526,53 +527,28 @@ class Gabarit:
         return lignes or [""]
 
     # -- la marque du réseau -------------------------------------------------
-    # Le nom du service ne suffit pas : sur un reçu qu'on montre, la marque se
-    # RECONNAÎT avant de se lire. On la dessine — jamais une image
-    # téléchargée : le carré d'Orange, l'ovale de MTN, aux couleurs publiées.
-    # Un opérateur sans marque garde son nom écrit, comme partout ailleurs.
-    # (fond, encre, mot, largeur/hauteur, rayon des coins — None : pilule)
+    # LE VRAI LOGO, pas une approximation. Le carré au mot blanc d'Orange et
+    # l'ovale au sigle de MTN sont décrits une seule fois, dans
+    # `brand/marques-operateurs.json` — les tracés des fichiers publiés par
+    # les opérateurs, les mêmes que ceux qu'affiche la plateforme. Le reçu ne
+    # redessine rien de son côté : il va les chercher là où ils vivent.
     #
-    # Les proportions sont celles des marques publiées : le carré plein
-    # d'Orange, aux coins à peine cassés ; le rectangle très arrondi de MTN,
-    # une fois et demie plus large que haut.
-    MARQUES = {
-        "orange": ("#ff7900", "#ffffff", "orange", 1.0, 2.0),
-        "mtn": ("#ffcb05", "#000000", "MTN", 1.55, None),
-    }
+    # Un opérateur sans marque connue garde son nom écrit, comme partout
+    # ailleurs : on ne lui prête pas le logo d'un autre.
 
     def _largeur_marque(self, cote):
         """Ce que la marque occupera, sans rien dessiner — zéro si le réseau
         n'a pas de marque connue."""
-        nom = (self.operateur or "").strip().lower()
-        for prefixe, (_f, _e, _m, ratio, _r) in self.MARQUES.items():
-            if nom.startswith(prefixe):
-                return cote * ratio
-        return 0
+        marque = marque_de(self.operateur)
+        return cote * rapport(marque) if marque else 0
 
     def _marque_reseau(self, x, haut, cote=12):
         """Dépose la marque, coin haut gauche en (x, haut). Renvoie la largeur
         occupée — zéro quand l'opérateur n'a pas de marque connue."""
-        nom = (self.operateur or "").strip().lower()
-        for prefixe, (fond, encre, mot, ratio, rayon) in self.MARQUES.items():
-            if not nom.startswith(prefixe):
-                continue
-            largeur = cote * ratio
-            arrondi = cote / 2 if rayon is None else rayon
-            self.page.rectangle(x, haut, largeur, cote, fond, rayon=arrondi)
-            # Le mot tient TOUJOURS dans sa boîte : on rétrécit s'il le faut,
-            # plutôt que de le laisser mordre sur le bord.
-            corps = cote * 0.56 if ratio > 1 else cote * 0.34
-            place = largeur - cote * 0.30
-            mesure = self.grasse.largeur(mot, corps, SUIVI)
-            if mesure > place:
-                corps *= place / mesure
-                mesure = self.grasse.largeur(mot, corps, SUIVI)
-            self.page.texte(x + (largeur - mesure) / 2,
-                            self._base(haut + (cote - self._hauteur(corps)) / 2,
-                                       corps),
-                            mot, self.grasse, corps, encre, SUIVI)
-            return largeur
-        return 0
+        marque = marque_de(self.operateur)
+        if not marque:
+            return 0
+        return poser_marque(self.page, marque, x, haut, cote)
 
     def pied(self):
         """Le lieu, et rien d'autre.

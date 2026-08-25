@@ -254,16 +254,24 @@ jamais deux fois en grand.
   caisse. MTN l'écrit pourtant à chaque message (« Your new balance: 1308910
   XAF »), et il serait facile de le reprendre — raison de plus pour que la
   règle soit écrite ici et gardée par un test.
-- **Le logo téléchargé de l'opérateur.** Le document est établi par TOTEM *à
-  partir* du SMS ; il n'émane pas du réseau. Ce qui figure en tête est une
-  **marque dessinée** — le carré d'Orange, le rectangle arrondi de MTN, aux
-  couleurs publiées. Elle est **seule** : écrire « MTN MoMo » à côté du logo
-  de MTN revenait à légender un logo. Un réseau se reconnaît, il ne se lit
-  pas. Elle était en bas de page, haute de onze points ; elle monte en tête à
-  trente-quatre, parce que sur un reçu qu'on tend à un client, le réseau est
-  la première chose qu'on cherche. Un opérateur dont la marque n'est pas
-  connue garde son nom écrit — mieux vaut un mot qu'un blanc. L'émetteur du
-  document reste TOTEM, seul, à gauche.
+- **Une approximation du logo.** Ce qui figure en tête est le **vrai logo**
+  de l'opérateur — le carré au mot blanc d'Orange, l'ovale au sigle de MTN
+  (charte 2022) — décrit une seule fois dans
+  `brand/marques-operateurs.json`, en tracés relevés des fichiers publiés.
+  Le robot les lit (`totem/marques.py`), la maquette aussi, et la plateforme
+  en garde une copie que garde un test : deux logos qui divergent, c'est un
+  reçu qui ne ressemble plus à l'écran. Rien n'est téléchargé à l'affichage.
+
+  Le logo est **seul** : écrire « MTN MoMo » à côté du logo de MTN revenait à
+  légender un logo. Un réseau se reconnaît, il ne se lit pas. Il était en bas
+  de page, haut de onze points ; il monte en tête à trente-quatre, parce que
+  sur un reçu qu'on tend à un client, le réseau est la première chose qu'on
+  cherche. Un opérateur dont la marque n'est pas connue garde son nom écrit —
+  mieux vaut un mot qu'un blanc, et on ne lui prête pas le logo d'un autre.
+
+  C'est une marque de TIERS : elle dit factuellement de quel réseau vient
+  l'opération, jamais que le document émane de l'opérateur. L'émetteur reste
+  TOTEM, seul, à gauche.
 - **Le SMS reproduit, les mentions légales, les pastilles de sens.** Testés,
   puis retirés : trop de bruit pour un reçu.
 

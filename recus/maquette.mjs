@@ -152,12 +152,7 @@ body{
    tend à un client, le réseau est la première chose qu'on cherche. */
 .reseau{display:flex;align-items:center;justify-content:flex-end;
   margin-bottom:4mm}
-.reseau .marque{display:inline-flex;align-items:center;justify-content:center;
-  height:34pt;font-weight:700;letter-spacing:-.011em}
-.reseau .orange{width:34pt;background:#ff7900;color:#fff;border-radius:2pt;
-  font-size:11.6pt}
-.reseau .mtn{width:52.7pt;background:#ffcb05;color:#000;border-radius:17pt;
-  font-size:19pt}
+.reseau .nom{font-size:13pt;font-weight:700;color:#16171a}
 
 /* ZONE 2 — ce qui s'est passé */
 .centre{flex:1;display:flex;align-items:center;gap:24mm;padding:14mm 0}
@@ -197,23 +192,43 @@ body{
   font-size:13pt;color:#8a8279}
 `;
 
-// La marque du réseau se DESSINE — jamais une image téléchargée : le carré
-// d'Orange, le rectangle arrondi de MTN, aux couleurs publiées.
+// La marque du réseau vient de `brand/marques-operateurs.json` — le MÊME
+// fichier que lit le robot (`totem/marques.py`). Les tracés y sont ceux des
+// fichiers publiés par les opérateurs : le carré au mot blanc d'Orange,
+// l'ovale au sigle de MTN. Aucun logo n'est redessiné ici, et aucun n'est
+// téléchargé à l'affichage.
 //
 // Elle est SEULE en tête. Écrire « MTN MoMo » à côté du logo de MTN revient à
 // légender un logo : un réseau se reconnaît, il ne se lit pas. Un opérateur
 // dont la marque n'est pas connue garde son nom écrit — mieux vaut un mot
 // qu'un blanc.
-const MARQUES = {
-  "Orange Money": '<span class="marque orange">orange</span>',
-  "MTN MoMo": '<span class="marque mtn">MTN</span>',
-};
+const MARQUES_FICHIER = JSON.parse(
+  readFileSync(join(ICI, "..", "brand", "marques-operateurs.json"), "utf8"));
+
+// La marque, à la hauteur voulue. La zone de dessin du fichier officiel peut
+// commencer ailleurs qu'à l'origine — celle de MTN part de (−128, −64) —,
+// d'où le « viewBox » recopié tel quel.
+function marqueReseau(operateur, hauteur = 34) {
+  const nom = (operateur || "").trim().toLowerCase();
+  const cle = Object.keys(MARQUES_FICHIER).find((k) => nom.startsWith(k));
+  if (!cle) return `<span class="nom">${operateur}</span>`;
+  const m = MARQUES_FICHIER[cle];
+  const [vx, vy, vl, vh] = m.voir;
+  const traces = m.traces
+    .map((d) => `<path d="${d}" fill="${m.encre}"/>`).join("");
+  return (
+    `<svg width="${(hauteur * vl) / vh}" height="${hauteur}" ` +
+    `viewBox="${vx} ${vy} ${vl} ${vh}">` +
+    `<rect x="${vx}" y="${vy}" width="${vl}" height="${vh}" ` +
+    `rx="${m.rayon}" fill="${m.fond}"/>${traces}</svg>`
+  );
+}
 
 const haut = (type, recu, reseau = "Orange Money") => `
   <div class="haut">
     <div class="logo">${symbole(78, "#9a4b2e")}<span>Totem</span></div>
     <div class="doc">
-      <div class="reseau">${MARQUES[reseau] ?? `<span class="nom">${reseau}</span>`}</div>
+      <div class="reseau">${marqueReseau(reseau)}</div>
       <div class="t">${type}</div><div class="n">N° ${recu}</div>
     </div>
   </div>`;

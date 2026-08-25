@@ -980,3 +980,84 @@ class TestUnNumeroSeLit(unittest.TestCase):
         self.assertEqual(numero_lisible("93368555"), "93368555")
         self.assertEqual(numero_lisible(""), "")
         self.assertEqual(numero_lisible(None), "")
+
+
+class TestLesMarquesNeDerivent_pas(unittest.TestCase):
+    """Un logo vit à un seul endroit.
+
+    `brand/marques-operateurs.json` porte les tracés officiels ; le robot les
+    lit pour le reçu, la maquette pour ses aperçus, et la plateforme en garde
+    une copie dans son composant React (le bundler ne peut pas remonter hors
+    de `web/`). Cette copie DOIT rester identique : deux logos qui divergent,
+    c'est un reçu qui ne ressemble plus à l'écran.
+    """
+
+    def _racine(self):
+        import os
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def test_le_fichier_des_marques_est_lisible(self):
+        from totem.marques import marques
+        connues = marques()
+        self.assertIn("orange", connues)
+        self.assertIn("mtn", connues)
+        for cle, marque in connues.items():
+            self.assertTrue(marque["traces"], f"{cle} n'a aucun tracé")
+            self.assertEqual(len(marque["voir"]), 4)
+
+    def test_la_plateforme_porte_les_MEMES_traces(self):
+        import os
+        import re
+        chemin = os.path.join(self._racine(), "web", "app",
+                              "logos-operateurs.tsx")
+        source = open(chemin, encoding="utf-8").read()
+        # Tout ce que le composant dessine, à l'espacement près.
+        du_web = {re.sub(r"\s+", " ", d).strip()
+                  for d in re.findall(r'\sd="([^"]+)"', source)}
+        from totem.marques import marques
+        for cle, marque in marques().items():
+            for trace in marque["traces"]:
+                self.assertIn(trace, du_web,
+                              f"un tracé de « {cle} » manque à la plateforme "
+                              "— les deux copies ont divergé")
+
+    def test_un_operateur_inconnu_n_emprunte_pas_un_logo(self):
+        from totem.marques import marque_de
+        self.assertIsNone(marque_de("Camtel"))
+        self.assertIsNone(marque_de(""))
+        self.assertIsNone(marque_de(None))
+
+    def test_le_prefixe_suffit_a_reconnaitre_le_reseau(self):
+        from totem.marques import marque_de
+        for nom in ("MTN MoMo", "MTN Cameroon", "mtn"):
+            self.assertEqual(marque_de(nom)["nom"], "MTN")
+        for nom in ("Orange Money", "orange"):
+            self.assertEqual(marque_de(nom)["nom"], "Orange")
+
+    def test_le_recu_pose_le_VRAI_trace(self):
+        """Le tracé officiel doit se retrouver dans le PDF, tel quel.
+
+        Sans lui, le rectangle jaune passerait pour un logo alors qu'il serait
+        vide : c'est l'ovale et le sigle qui font la marque, pas le fond.
+        """
+        from totem.analyse_sms import analyser
+        from totem.marques import marque_de
+        from totem.pdf import chemin_svg
+        paiement = analyser(MTN_SORTANT, numeros=[MOI[1]])
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand, "MTN MoMo", langue="en",
+            compte=MOI))
+        flux = "\n".join(gabarit.page._flux)
+        attendu = chemin_svg(marque_de("MTN MoMo")["traces"][0])
+        self.assertIn(attendu, flux,
+                      "l'ovale de MTN n'est pas dessiné sur la page")
+
+    def test_un_operateur_sans_marque_ne_dessine_rien(self):
+        """Et le reçu écrit alors son nom : mieux vaut un mot qu'un blanc."""
+        from totem.analyse_sms import analyser
+        paiement = analyser(MTN_SORTANT, numeros=[MOI[1]])
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand, "Camtel Money", langue="en",
+            compte=MOI))
+        poses = [c for _, _, c in gabarit.page.empreintes]
+        self.assertIn("Camtel Money", poses)
