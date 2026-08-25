@@ -432,3 +432,65 @@ class TestLibelleAmbiguRefusePoliment(unittest.TestCase):
                     "parametres": {"code": "*126#", "compte": "mtn ·0011"}})
         self.assertEqual(mtn_a.recu, ["*126#"])
         self.assertEqual(mtn_b.recu, [])
+
+
+class TestRaccourciDepuisLaPlateforme(unittest.TestCase):
+    """Un bouton USSD créé, corrigé ou retiré depuis les Réglages du web.
+
+    Même carnet que l'apprentissage 💾, mêmes garde-fous : la première
+    étape est un code, les suivantes des choix de menu — jamais un montant,
+    un numéro ou le code secret. C'est le robot qui revérifie, pas l'écran.
+    """
+
+    def pilote_reel(self):
+        from totem.storage import Journal
+        journal = Journal(":memory:")
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [FauxCompte([])], journal)
+        return p, journal, nuage
+
+    def test_definir_un_bouton_entre_au_carnet(self):
+        p, journal, nuage = self.pilote_reel()
+        p._traiter({"id": 60, "type": "raccourci",
+                    "parametres": {"operateur": "MTN", "cle": "depot",
+                                   "libelle": "Dépôt",
+                                   "etapes": ["*126#", "1", "1"]}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        appris = journal.raccourcis("MTN")
+        self.assertEqual(appris["depot"]["etapes"], ["*126#", "1", "1"])
+        self.assertGreaterEqual(nuage.reveils, 1,
+                                "l'écran doit le voir au rafraîchissement")
+
+    def test_la_premiere_etape_doit_etre_un_code(self):
+        p, journal, nuage = self.pilote_reel()
+        p._traiter({"id": 61, "type": "raccourci",
+                    "parametres": {"operateur": "MTN", "cle": "depot",
+                                   "etapes": ["1234"]}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(journal.raccourcis("MTN"), {})
+
+    def test_un_code_secret_ne_peut_pas_devenir_une_etape(self):
+        """Quatre chiffres après le code : la forme d'un PIN. Refusé —
+        un bouton s'arrête à la question, l'utilisateur répond."""
+        p, journal, nuage = self.pilote_reel()
+        p._traiter({"id": 62, "type": "raccourci",
+                    "parametres": {"operateur": "MTN", "cle": "solde",
+                                   "etapes": ["*126#", "5", "1234"]}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(journal.raccourcis("MTN"), {})
+
+    def test_supprimer_retire_le_bouton(self):
+        p, journal, nuage = self.pilote_reel()
+        journal.ajouter_raccourci("MTN", "solde", "Solde", ["*126#", "5"])
+        p._traiter({"id": 63, "type": "raccourci",
+                    "parametres": {"operateur": "MTN", "cle": "solde",
+                                   "action": "supprimer"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertEqual(journal.raccourcis("MTN"), {})
+
+    def test_une_demande_incomplete_est_refusee(self):
+        p, journal, nuage = self.pilote_reel()
+        p._traiter({"id": 64, "type": "raccourci",
+                    "parametres": {"operateur": "", "cle": "depot",
+                                   "etapes": ["*126#"]}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")

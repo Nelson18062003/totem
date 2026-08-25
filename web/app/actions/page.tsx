@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function Operations() {
   const langue = await langueServeur();
   const t = textesGuichet[langue];
-  const { sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
+  const { sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });
   // TOUTES les cartes en place : le guichet montre un sélecteur dès qu'il y
   // en a deux — chaque opération part sur la carte choisie, jamais sur « la
   // première venue ».
@@ -32,6 +32,7 @@ export default async function Operations() {
       cartes={cartes.map((c) => ({
         libelle: c.libelle, operateur: c.operateur, iccid: c.iccid,
       }))}
+      raccourcis={raccourcis}
     />
   );
 }

@@ -29,12 +29,16 @@ export type ChampOperation = {
 
 export type Operation = {
   titre: string;
-  code: string;                 // le code USSD du catalogue, composé tel quel
+  code: string;                 // le code USSD composé en premier, tel quel
   champs: ChampOperation[];     // vide : la session s'ouvre directement
   // L'ICCID de la carte visée. C'est lui qui dit au robot SUR QUELLE puce
   // composer : avec deux SIM en place, une opération sans carte partirait
   // sur la première venue.
   carte?: string;
+  // Le parcours complet quand le bouton vient du carnet appris : le code
+  // d'entrée puis les choix de menu, rejoués dans l'ordre. Jamais le code
+  // secret — l'apprentissage s'arrête juste avant, le pavé prend la main.
+  etapes?: string[];
 };
 
 type Msg = { de: "reseau" | "vous"; texte: string };
@@ -143,13 +147,21 @@ export function OperationPopup({
   const lancer = async () => {
     setEtape("session");
     restants.current = [...operation.champs];
-    const premiere = await envoyer(
+    // Le parcours du bouton : le code d'entrée, puis chaque choix de menu
+    // retenu — en s'arrêtant net si le réseau ne suit pas. Ensuite
+    // seulement, les questions du réseau se déroulent avec les champs.
+    const etapes = operation.etapes?.length ? operation.etapes : [operation.code];
+    let texte = await envoyer(
       "ussd",
       operation.carte
-        ? { code: operation.code, carte: operation.carte }
-        : { code: operation.code },
-      { de: "vous", texte: operation.code });
-    await derouler(premiere);
+        ? { code: etapes[0], carte: operation.carte }
+        : { code: etapes[0] },
+      { de: "vous", texte: etapes[0] });
+    for (const e of etapes.slice(1)) {
+      if (texte == null) return;
+      texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });
+    }
+    await derouler(texte);
   };
 
   // Sans formulaire, la session part toute seule à l'ouverture.
