@@ -132,3 +132,95 @@ export function remplirVariables(
     }));
   return { etapes: remplies, consommees, manquantes };
 }
+
+// ---------------------------------------------------------------------------
+// Les blocs : un code qui se construit à la main, morceau par morceau
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce que chaque trou ATTEND. Un trou n'est pas un mot posé au hasard dans un
+ * code : c'est une case qui réclame une nature précise — un numéro de
+ * téléphone, une somme. L'écran s'en sert pour dire au propriétaire ce qu'il
+ * pose, et pour lui montrer à quoi ça ressemblera une fois rempli.
+ */
+export const NATURES_VARIABLE = {
+  numero: "telephone",
+  point: "telephone",
+  montant: "montant",
+} as const;
+
+/** Un aperçu plausible, pour montrer le code tel que le réseau le recevra. */
+export const EXEMPLES_VARIABLE: Record<string, string> = {
+  numero: "677123456",
+  point: "690000001",
+  montant: "50000",
+};
+
+export type Bloc =
+  | { sorte: "texte"; valeur: string }
+  | { sorte: "trou"; nom: string };
+
+/**
+ * Découpe un code en blocs — « *126*1*{numero}# » devient trois morceaux :
+ * les chiffres, le trou, les chiffres. C'est cette liste que l'écran affiche
+ * et que l'on réordonne ; le code reste la seule vérité, on la recompose à
+ * chaque fois.
+ */
+export function decouperEnBlocs(code: string): Bloc[] {
+  const blocs: Bloc[] = [];
+  let reste = code;
+  const motif = /\{([A-Za-z_]+)\}/;
+  for (let m = reste.match(motif); m; m = reste.match(motif)) {
+    const avant = reste.slice(0, m.index);
+    if (avant) blocs.push({ sorte: "texte", valeur: avant });
+    blocs.push({ sorte: "trou", nom: m[1] });
+    reste = reste.slice((m.index ?? 0) + m[0].length);
+  }
+  if (reste) blocs.push({ sorte: "texte", valeur: reste });
+  return blocs;
+}
+
+/** Le chemin inverse : des blocs au code. */
+export const recomposer = (blocs: Bloc[]) =>
+  blocs.map((b) => (b.sorte === "texte" ? b.valeur : `{${b.nom}}`)).join("");
+
+export type VerdictCode =
+  | { ok: true }
+  | { ok: false; motif: "vide" | "malformee" | "inconnue" | "code" | "etape";
+      detail?: string };
+
+/**
+ * Le même jugement que le robot, rendu ici tout de suite.
+ *
+ * Le robot reste l'autorité — il revérifie tout à la réception. Mais lui
+ * répondre « non » après un aller-retour au terminal est une mauvaise façon
+ * d'apprendre : autant dire ce qui cloche pendant qu'on écrit.
+ */
+export function verdictCode(etapes: string[]): VerdictCode {
+  if (!etapes.length) return { ok: false, motif: "vide" };
+  for (const e of etapes) {
+    // Une lettre ou une accolade qui SURVIT au bouchage des trous, c'est un
+    // trou mal écrit : « {montan » sans fermeture, « numero} » sans ouverture.
+    if (/[A-Za-z_{}]/.test(e.replace(/\{[A-Za-z_]+\}/g, "0"))) {
+      return { ok: false, motif: "malformee" };
+    }
+  }
+  const inconnues = variablesInconnues(etapes);
+  if (inconnues.length) {
+    return { ok: false, motif: "inconnue", detail: `{${inconnues[0]}}` };
+  }
+  // Le code se juge une fois ses trous bouchés : « *126*1*{numero}# » a bien
+  // la forme d'un code, et c'est cette forme-là qui compte.
+  if (!/^[*#][\d*#]{0,60}#$/.test(etapes[0].replace(/\{[A-Za-z_]+\}/g, "0"))) {
+    return { ok: false, motif: "code" };
+  }
+  for (const e of etapes.slice(1)) {
+    if (/^\{[A-Za-z_]+\}$/.test(e)) continue;      // un trou à lui seul
+    if (!/^\d{1,2}$/.test(e)) return { ok: false, motif: "etape", detail: e };
+  }
+  return { ok: true };
+}
+
+/** Le code tel que le réseau le recevra, avec des valeurs d'exemple. */
+export const apercuRempli = (etapes: string[]) =>
+  remplirVariables(etapes, EXEMPLES_VARIABLE).etapes;

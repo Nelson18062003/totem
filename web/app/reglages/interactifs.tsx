@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
-import { aDesVariables, CLES_GUICHET, codesUssd, VARIABLES, type CodeUssd } from "@/lib/codes";
+import { aDesVariables, CLES_GUICHET, codesUssd, type CodeUssd } from "@/lib/codes";
 import { LANGUES } from "@/lib/langue";
 import { textesReglages } from "@/lib/textes/reglages";
+import { ApercuCode, Composeur } from "./composeur";
 import type { RaccourciAppris } from "@/lib/types";
 import { IconHash, IconPlus } from "../icons";
 import { BoutonFermer } from "../feuille";
@@ -277,28 +278,6 @@ const proprerEtapes = (v: string) => v.replace(/[^0-9#*,\s{}a-zA-Z_]/g, "");
 const decouperEtapes = (v: string) =>
   v.split(",").map((p) => p.replace(/[^0-9#*{}a-zA-Z_]/g, "")).filter(Boolean);
 
-/** Les trous qu'on peut glisser dans un code, d'un appui. */
-function ChipsVariables({ onInserer }: { onInserer: (trou: string) => void }) {
-  const langue = useLangue();
-  const t = textesReglages[langue];
-  return (
-    <span className="flex flex-wrap items-center gap-1.5">
-      <span className="text-caption text-ink-faint">{t.insererVariable}</span>
-      {VARIABLES.map((v) => (
-        <button
-          key={v}
-          type="button"
-          onClick={() => onInserer(`{${v}}`)}
-          title={t.variableAide[v]}
-          className="rounded-btn border border-line px-2 py-0.5 text-caption tabnums text-ink-soft transition hover:border-ink hover:text-ink"
-        >
-          {`{${v}}`}
-        </button>
-      ))}
-    </span>
-  );
-}
-
 /**
  * Les codes du guichet, par opérateur — TOUS les boutons standards, chacun
  * attribuable ici même. Rien n'est deviné : c'est le propriétaire qui dicte,
@@ -433,25 +412,25 @@ export function SectionCodes({
                 )}
               </span>
               {enEdition === r.cle ? (
-                <span className="flex flex-col items-end gap-1.5">
-                <span className="flex items-center gap-1.5">
-                  <input
-                    value={brouillon} autoFocus inputMode="tel"
-                    disabled={etat === "envoi"}
-                    onChange={(e) => setBrouillon(proprerEtapes(e.target.value))}
-                    onKeyDown={(e) => e.key === "Enter" && enregistrer(r.cle, r.libelle)}
+                // Le composeur prend la ligne entière : un code se construit
+                // à plat, pas dans une case de quarante pixels.
+                <span className="flex w-full basis-full flex-col gap-2">
+                  <Composeur
+                    valeur={brouillon}
+                    onChanger={(v) => setBrouillon(proprerEtapes(v))}
+                    onValider={() => enregistrer(r.cle, r.libelle)}
+                    desactive={etat === "envoi"}
                     placeholder={t.exempleEtapes}
-                    className="w-40 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-body tabnums outline-none disabled:opacity-50"
                   />
-                  <button onClick={() => enregistrer(r.cle, r.libelle)}
-                    disabled={etat === "envoi"}
-                    className="rounded-btn bg-ink px-2.5 py-1.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
-                    {etat === "envoi" ? "…" : "OK"}
-                  </button>
-                  <BoutonFermer onClick={() => setEnEdition(null)}
-                    libelle={t.annuler} disabled={etat === "envoi"} />
-                </span>
-                <ChipsVariables onInserer={(trou) => setBrouillon((b) => b + trou)} />
+                  <span className="flex items-center gap-1.5">
+                    <button onClick={() => enregistrer(r.cle, r.libelle)}
+                      disabled={etat === "envoi"}
+                      className="rounded-btn bg-ink px-3.5 py-1.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
+                      {etat === "envoi" ? "…" : "OK"}
+                    </button>
+                    <BoutonFermer onClick={() => setEnEdition(null)}
+                      libelle={t.annuler} disabled={etat === "envoi"} />
+                  </span>
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
@@ -469,7 +448,9 @@ export function SectionCodes({
                         : "border-line font-medium text-ink"
                     }`}
                   >
-                    {r.etapes.length ? r.etapes.join(" → ") : t.attribuer}
+                    {r.etapes.length
+                      ? <ApercuCode etapes={r.etapes} />
+                      : t.attribuer}
                   </button>
                   {r.defini && (
                     <button
@@ -488,17 +469,17 @@ export function SectionCodes({
         </ul>
         <div className="border-t border-line p-3">
           {ajout ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-2">
               <input value={nouveauNom} onChange={(e) => setNouveauNom(e.target.value)}
                 placeholder={t.nomExemple} autoFocus
-                className="flex-1 rounded-btn border border-line bg-surface-raised px-3 py-2 text-body outline-none transition focus:border-ink" />
-              <span className="flex flex-col gap-1.5">
-                <input value={nouveauCode} onChange={(e) => setNouveauCode(proprerEtapes(e.target.value))}
-                  placeholder={t.exempleEtapes}
-                  className="w-full rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tabnums outline-none transition focus:border-ink sm:w-56" />
-                <ChipsVariables onInserer={(trou) => setNouveauCode((c) => c + trou)} />
-              </span>
-              <span className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                className="rounded-btn border border-line bg-surface-raised px-3 py-2 text-body outline-none transition focus:border-ink" />
+              <Composeur
+                valeur={nouveauCode}
+                onChanger={(v) => setNouveauCode(proprerEtapes(v))}
+                onValider={() => void ajouter()}
+                desactive={etat === "envoi"}
+                placeholder={t.exempleEtapes}
+              />
               <span className="flex gap-2">
                 <button onClick={() => void ajouter()}
                   disabled={etat === "envoi" || !nouveauNom.trim() || !nouveauCode.trim()}
@@ -506,7 +487,6 @@ export function SectionCodes({
                   {etat === "envoi" ? "…" : t.ajouter}
                 </button>
                 <BoutonFermer onClick={() => setAjout(false)} libelle={t.annulerAjout} />
-              </span>
               </span>
             </div>
           ) : (

@@ -58,9 +58,18 @@ chiffre envoie de l'argent ailleurs. Trois sources, dans cet ordre :
 
 #### Deux façons d'écrire un code, au choix du propriétaire
 
-Un code peut porter des **trous** : `*126*1*{numero}*{montant}#`. Les
-Réglages les proposent d'un clic, et trois noms seulement existent —
-`{numero}`, `{montant}`, `{point}` (l'agent, pour un retrait).
+Un code peut porter des **trous** : `*126*1*{numero}*{montant}#`. Trois
+noms seulement existent — `{numero}`, `{montant}`, `{point}` (l'agent, pour
+un retrait).
+
+Aux Réglages, on ne les écrit pas : on les **pose**. Le code s'y affiche en
+morceaux — les chiffres qu'on tape, les blocs qu'on ajoute — et chaque bloc
+dit sa nature (« Numéro du bénéficiaire · numéro de téléphone », « Montant ·
+montant »). Un appui le pose là où est le curseur ; un glisser le lâche à
+l'endroit voulu, au caractère près, et déplace ceux qui sont déjà en place.
+Le composeur affiche aussi, pendant qu'on construit, le code tel que le
+réseau le recevra une fois les cases remplies. Les accolades restent
+l'écriture du code — jamais ce qu'on montre au propriétaire.
 
 - **Avec des trous** — le geste ouvre son formulaire, le propriétaire saisit
   le numéro et le montant, et le guichet bouche les trous *avant* de
