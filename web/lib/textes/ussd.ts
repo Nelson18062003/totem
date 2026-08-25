@@ -30,7 +30,7 @@ const en = {
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
   carteDuCadran: "Card the dialler uses",
-  boutonsAppris: "Learned by the robot (💾 on Telegram)",
+  boutonsAppris: "Your buttons",
   noteSession:
     "The session goes through the terminal in Douala: every reply shown " +
     "here is the operator's, word for word. The secret code is dialled on " +
@@ -82,7 +82,7 @@ const fr: typeof en = {
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
   carteDuCadran: "Carte du cadran",
-  boutonsAppris: "Appris par le robot (💾 sur Telegram)",
+  boutonsAppris: "Vos boutons",
   noteSession:
     "La session traverse le terminal de Douala : chaque réponse affichée " +
     "ici est celle de l’opérateur, mot pour mot. Le code secret, lui, se " +
