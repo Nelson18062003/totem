@@ -920,6 +920,53 @@ class TestLHeureDuReseau(unittest.TestCase):
         self.assertIsNone(paiement.quand)
 
 
+class TestLHeureALaSeconde(unittest.TestCase):
+    """L'heure du réseau se recopie telle qu'il l'a écrite.
+
+    MTN date ses messages à la seconde — « at 2026-08-25 13:55:27 ». C'est
+    l'instant qui figurera sur son relevé : le reçu le porte entier. L'heure
+    de RÉCEPTION du SMS, elle, n'a pas cette précision — la seconde où le
+    message est arrivé ne prouve rien, et l'afficher ferait croire à une
+    exactitude qu'on n'a pas.
+    """
+
+    QUAND = datetime.datetime(2026, 8, 25, 13, 55, 27)
+
+    def test_le_format_a_la_seconde(self):
+        self.assertEqual(heure_en_lettres(self.QUAND, "en", secondes=True),
+                         "13:55:27")
+        self.assertEqual(heure_en_lettres(self.QUAND, "fr", secondes=True),
+                         "13 h 55 min 27 s")
+
+    def test_sans_secondes_rien_ne_change(self):
+        self.assertEqual(heure_en_lettres(self.QUAND, "en"), "13:55")
+        self.assertEqual(heure_en_lettres(self.QUAND, "fr"), "13 h 55")
+
+    def test_un_recu_mtn_porte_la_seconde(self):
+        from totem.analyse_sms import analyser
+        paiement = analyser(MTN_SORTANT, numeros=[MOI[1]])
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", paiement.quand, "MTN MoMo", langue="en",
+            compte=MOI))
+        poses = [c for _, _, c in gabarit.page.empreintes]
+        self.assertIn("13:55:27", poses)
+
+    def test_un_recu_orange_s_arrete_a_la_minute(self):
+        """Orange ne date pas ses SMS : l'heure vient de la réception, et
+        elle ne se donne pas à la seconde."""
+        from totem.analyse_sms import analyser
+        paiement = analyser(
+            "Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
+            "Nouveau solde: 184137 FCFA.", numeros=["696103864"])
+        self.assertIsNone(paiement.quand)
+        gabarit = _gabarit_espionne(lambda: recu_transfert(
+            paiement, "TM-1", self.QUAND, "Orange Money", langue="en",
+            compte=("NGANGOM JONAS", "696103864")))
+        poses = [c for _, _, c in gabarit.page.empreintes]
+        self.assertIn("13:55", poses)
+        self.assertNotIn("13:55:27", poses)
+
+
 class TestUnNumeroSeLit(unittest.TestCase):
     """Douze chiffres d'affilée ne se relisent pas sur un reçu."""
 

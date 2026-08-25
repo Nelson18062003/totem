@@ -137,10 +137,13 @@ de l'opération** : le bénéficiaire en émetteur, et « À » vide. Notre côt
 vient des Réglages (le nom et le numéro inscrits pour la carte) ; s'il manque,
 la colonne reste vide — mais du bon côté.
 
-**L'horodatage du réseau prime.** C'est l'heure qui figurera sur le relevé de
-MTN. Le terminal peut avoir reçu le SMS une minute plus tard, ou l'avoir relu
-après une coupure. Quand le SMS se tait — Orange — l'heure de réception reste
-la seule honnête.
+**L'horodatage du réseau prime, et se recopie À LA SECONDE.** C'est l'instant
+qui figurera sur le relevé de MTN : le reçu le porte entier — « 13:55:27 »,
+« 13 h 55 min 27 s ». Le terminal peut avoir reçu le SMS une minute plus tard,
+ou l'avoir relu après une coupure. Quand le SMS se tait — Orange — l'heure de
+réception reste la seule honnête, et elle s'arrête à la minute : la seconde où
+un message est arrivé ne prouve rien, et l'afficher ferait croire à une
+exactitude qu'on n'a pas.
 
 **Les colonnes suivent l'opérateur.** Le bandeau des preuves ne montre que ce
 que le réseau a dit : trois colonnes pour un transfert MTN, cinq pour un
@@ -253,11 +256,14 @@ jamais deux fois en grand.
   règle soit écrite ici et gardée par un test.
 - **Le logo téléchargé de l'opérateur.** Le document est établi par TOTEM *à
   partir* du SMS ; il n'émane pas du réseau. Ce qui figure en tête est une
-  **marque dessinée** — le carré d'Orange, l'ovale de MTN, aux couleurs
-  publiées — à côté du nom du service : la mention factuelle du réseau, à une
-  taille où on la reconnaît. Elle était en bas de page, haute de onze points :
-  sur un reçu qu'on tend à un client, le réseau est la première chose qu'on
-  cherche. L'émetteur du document reste TOTEM, seul, à gauche.
+  **marque dessinée** — le carré d'Orange, le rectangle arrondi de MTN, aux
+  couleurs publiées. Elle est **seule** : écrire « MTN MoMo » à côté du logo
+  de MTN revenait à légender un logo. Un réseau se reconnaît, il ne se lit
+  pas. Elle était en bas de page, haute de onze points ; elle monte en tête à
+  trente-quatre, parce que sur un reçu qu'on tend à un client, le réseau est
+  la première chose qu'on cherche. Un opérateur dont la marque n'est pas
+  connue garde son nom écrit — mieux vaut un mot qu'un blanc. L'émetteur du
+  document reste TOTEM, seul, à gauche.
 - **Le SMS reproduit, les mentions légales, les pastilles de sens.** Testés,
   puis retirés : trop de bruit pour un reçu.
 

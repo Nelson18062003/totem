@@ -150,15 +150,14 @@ body{
 /* La marque du réseau, en tête et à une taille où elle se RECONNAÎT. Elle
    était reléguée en bas de page, haute de onze points : sur un reçu qu'on
    tend à un client, le réseau est la première chose qu'on cherche. */
-.reseau{display:flex;align-items:center;justify-content:flex-end;gap:11pt;
+.reseau{display:flex;align-items:center;justify-content:flex-end;
   margin-bottom:4mm}
-.reseau .nom{font-size:12.5pt;font-weight:700}
 .reseau .marque{display:inline-flex;align-items:center;justify-content:center;
-  height:24pt;font-weight:700;letter-spacing:-.011em}
-.reseau .orange{width:24pt;background:#ff7900;color:#fff;border-radius:2pt;
-  font-size:8.2pt}
-.reseau .mtn{width:45.6pt;background:#ffcb00;color:#16171a;border-radius:12pt;
-  font-size:14.9pt}
+  height:34pt;font-weight:700;letter-spacing:-.011em}
+.reseau .orange{width:34pt;background:#ff7900;color:#fff;border-radius:2pt;
+  font-size:11.6pt}
+.reseau .mtn{width:52.7pt;background:#ffcb05;color:#000;border-radius:17pt;
+  font-size:19pt}
 
 /* ZONE 2 — ce qui s'est passé */
 .centre{flex:1;display:flex;align-items:center;gap:24mm;padding:14mm 0}
@@ -199,7 +198,12 @@ body{
 `;
 
 // La marque du réseau se DESSINE — jamais une image téléchargée : le carré
-// d'Orange, l'ovale de MTN, aux couleurs publiées.
+// d'Orange, le rectangle arrondi de MTN, aux couleurs publiées.
+//
+// Elle est SEULE en tête. Écrire « MTN MoMo » à côté du logo de MTN revient à
+// légender un logo : un réseau se reconnaît, il ne se lit pas. Un opérateur
+// dont la marque n'est pas connue garde son nom écrit — mieux vaut un mot
+// qu'un blanc.
 const MARQUES = {
   "Orange Money": '<span class="marque orange">orange</span>',
   "MTN MoMo": '<span class="marque mtn">MTN</span>',
@@ -209,7 +213,7 @@ const haut = (type, recu, reseau = "Orange Money") => `
   <div class="haut">
     <div class="logo">${symbole(78, "#9a4b2e")}<span>Totem</span></div>
     <div class="doc">
-      <div class="reseau">${MARQUES[reseau] ?? ""}<span class="nom">${reseau}</span></div>
+      <div class="reseau">${MARQUES[reseau] ?? `<span class="nom">${reseau}</span>`}</div>
       <div class="t">${type}</div><div class="n">N° ${recu}</div>
     </div>
   </div>`;
@@ -318,7 +322,8 @@ const tm = {
   aNom: "PAYSELA TECHNOLOGIES SARL",
   aNum: "+237 681 026 861",
   dateEnLettres: { en: "25 August 2026", fr: "25 août 2026" },
-  heure: { en: "13:55", fr: "13 h 55" },
+  // L'heure du réseau se recopie à la seconde : c'est celle du relevé MTN.
+  heure: { en: "13:55:27", fr: "13 h 55 min 27 s" },
 };
 
 const transfert = (langue, d = t) => {

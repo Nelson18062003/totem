@@ -70,7 +70,7 @@ TRANCHE = 0.22                 # écart entre tranches de trois chiffres, en em
 PART_DEVISE, ECART_DEVISE = 0.42, 0.34
 
 COTE_SYMBOLE = 78 * 0.75       # les 78 px de la maquette, en points
-COTE_MARQUE = 24               # la hauteur de la marque du réseau, en tête
+COTE_MARQUE = 34               # la hauteur de la marque du réseau, en tête
 # Un nom de deux mots tient sur une ligne, trois se replient. Au-delà, on
 # rétrécit plutôt que d'empiler : le bloc doit rester centré sur la page.
 LIGNES_NOM = 2
@@ -96,12 +96,22 @@ def date_en_lettres(quand, langue=None):
     return f"{quand.day} {MOIS[choisie][quand.month - 1]} {quand.year}"
 
 
-def heure_en_lettres(quand, langue=None):
-    """« 13:19 » en anglais, « 13 h 19 » en français."""
+def heure_en_lettres(quand, langue=None, secondes=False):
+    """« 13:19 » en anglais, « 13 h 19 » en français.
+
+    `secondes` : l'heure À LA SECONDE — « 13:55:27 », « 13 h 55 min 27 s ».
+    Elle ne se donne que lorsque le RÉSEAU l'a écrite : c'est l'instant qui
+    figurera sur son relevé, et on le recopie tel qu'il l'a donné. L'heure de
+    réception du SMS, elle, n'a pas cette précision — la seconde où le
+    message est arrivé ne prouve rien et ferait croire à une exactitude
+    qu'on n'a pas.
+    """
     choisie = _langue_choisie(langue)
     if choisie == "en":
-        return f"{quand.hour}:{quand.minute:02d}"
-    return f"{quand.hour} h {quand.minute:02d}"
+        court = f"{quand.hour}:{quand.minute:02d}"
+        return f"{court}:{quand.second:02d}" if secondes else court
+    court = f"{quand.hour} h {quand.minute:02d}"
+    return f"{court} min {quand.second:02d} s" if secondes else court
 
 
 # La deuxième lettre dit d'où vient le document : d'un Message, ou d'une
@@ -281,21 +291,23 @@ class Gabarit:
         return bas + 9 * MM
 
     def _reseau_a_droite(self, haut, cote):
-        """La marque du réseau et son nom, alignés sur la marge droite.
+        """La marque du réseau, alignée sur la marge droite.
 
-        On mesure d'abord, on pose ensuite : la marque a une largeur propre
-        (le carré d'Orange, l'ovale de MTN), et le bloc entier doit finir
-        exactement sur la marge.
+        LA MARQUE SEULE. Elle portait son nom écrit à côté — « MTN MoMo »,
+        « Orange Money » — ce qui revenait à légender un logo : on ne met pas
+        « MTN » sous le logo de MTN. Un réseau se reconnaît, il ne se lit pas.
+
+        Un opérateur dont la marque n'est pas connue garde son nom écrit :
+        mieux vaut un mot qu'un blanc, et le document doit toujours dire de
+        quel réseau il parle.
         """
+        largeur = self._largeur_marque(cote)
+        if largeur:
+            self._marque_reseau(DROITE - largeur, haut, cote)
+            return
         nom = self.operateur or ""
         corps = cote * 0.52
-        largeur_nom = self.grasse.largeur(nom, corps, SUIVI)
-        largeur_marque = self._largeur_marque(cote)
-        ecart = cote * 0.45 if largeur_marque else 0
-        x = DROITE - (largeur_marque + ecart + largeur_nom)
-        if largeur_marque:
-            self._marque_reseau(x, haut, cote)
-        self.page.texte(x + largeur_marque + ecart,
+        self.page.texte(DROITE - self.grasse.largeur(nom, corps, SUIVI),
                         self._base(haut + (cote - self._hauteur(corps)) / 2,
                                    corps),
                         nom, self.grasse, corps, ENCRE, SUIVI)
@@ -518,9 +530,14 @@ class Gabarit:
     # RECONNAÎT avant de se lire. On la dessine — jamais une image
     # téléchargée : le carré d'Orange, l'ovale de MTN, aux couleurs publiées.
     # Un opérateur sans marque garde son nom écrit, comme partout ailleurs.
+    # (fond, encre, mot, largeur/hauteur, rayon des coins — None : pilule)
+    #
+    # Les proportions sont celles des marques publiées : le carré plein
+    # d'Orange, aux coins à peine cassés ; le rectangle très arrondi de MTN,
+    # une fois et demie plus large que haut.
     MARQUES = {
         "orange": ("#ff7900", "#ffffff", "orange", 1.0, 2.0),
-        "mtn": ("#ffcb00", "#16171a", "MTN", 1.9, None),
+        "mtn": ("#ffcb05", "#000000", "MTN", 1.55, None),
     }
 
     def _largeur_marque(self, cote):
@@ -544,8 +561,8 @@ class Gabarit:
             self.page.rectangle(x, haut, largeur, cote, fond, rayon=arrondi)
             # Le mot tient TOUJOURS dans sa boîte : on rétrécit s'il le faut,
             # plutôt que de le laisser mordre sur le bord.
-            corps = cote * 0.62 if ratio > 1 else cote * 0.34
-            place = largeur - cote * 0.22
+            corps = cote * 0.56 if ratio > 1 else cote * 0.34
+            place = largeur - cote * 0.30
             mesure = self.grasse.largeur(mot, corps, SUIVI)
             if mesure > place:
                 corps *= place / mesure
@@ -624,11 +641,14 @@ def recu_transfert(paiement, numero, quand, operateur="Orange Money",
                                  langue),
                       numero, operateur, langue)
 
+    # L'heure à la seconde quand c'est le RÉSEAU qui l'a écrite — MTN la
+    # donne — et à la minute quand elle vient de la réception du SMS.
     preuves = [(t("Transaction ID", "ID transaction", langue),
                 [paiement.reference or "—"], 2.2),
                (t("Date", "Date", langue),
                 [date_en_lettres(quand, langue),
-                 heure_en_lettres(quand, langue)], 1.3)]
+                 heure_en_lettres(quand, langue,
+                                  secondes=paiement.quand is not None)], 1.3)]
     if paiement.montant_brut is not None:
         preuves.append((t("Transaction amount", "Montant transaction", langue),
                         [paiement.montant_brut], 1.5))
