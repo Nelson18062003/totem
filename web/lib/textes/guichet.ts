@@ -55,6 +55,9 @@ const en = {
   demandePasPartie: "the request could not be sent",
   terminalMuet: "the terminal did not answer — is it switched on, and up to date?",
   accroc: "small hitch — please try again",
+  trouSansReponse: (noms: string) =>
+    `This code carries ${noms}, and the form gives no value for it. ` +
+    "Nothing has been dialled: fix the code in Settings.",
   votreReponse: "Your reply",
   envoyer: "Send",
   confirmationSms:
@@ -126,6 +129,9 @@ const fr: typeof en = {
   demandePasPartie: "la demande n’a pas pu partir",
   terminalMuet: "le terminal n’a pas répondu — est-il allumé, et à jour ?",
   accroc: "petit accroc — réessayez",
+  trouSansReponse: (noms) =>
+    `Ce code porte ${noms}, et le formulaire ne donne rien pour ` +
+    "le remplir. Rien n'a été composé : corrigez le code aux Réglages.",
   votreReponse: "Votre réponse",
   envoyer: "Envoyer",
   confirmationSms:

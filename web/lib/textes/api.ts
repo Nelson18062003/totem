@@ -19,6 +19,8 @@ const en = {
   nonEnregistre: "not saved",
   recuIntrouvable: "Receipt not found",
   raccourciIncomplet: "incomplete shortcut: operator, button and code are needed",
+  variableInconnue: "unknown variable in the code: only {numero}, {montant} and {point} exist",
+  variableMalFormee: "a variable is misspelt: write it whole, braces included — {numero}",
 };
 
 const fr: typeof en = {
@@ -37,6 +39,8 @@ const fr: typeof en = {
   nonEnregistre: "non enregistré",
   recuIntrouvable: "Reçu introuvable",
   raccourciIncomplet: "raccourci incomplet : il faut l’opérateur, le bouton et le code",
+  variableInconnue: "variable inconnue dans le code : seuls {numero}, {montant} et {point} existent",
+  variableMalFormee: "une variable est mal écrite : écrivez-la en entier, accolades comprises — {numero}",
 };
 
 export const textesApi = { en, fr } as const;

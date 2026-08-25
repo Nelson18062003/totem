@@ -31,6 +31,8 @@ const en = {
     )[cle] ?? defaut,
   carteDuCadran: "Card the dialler uses",
   boutonsAppris: "Your buttons",
+  boutonAVariables:
+    "asks for a number or an amount — run it from Operations",
   noteSession:
     "The session goes through the terminal in Douala: every reply shown " +
     "here is the operator's, word for word. The secret code is dialled on " +
@@ -83,6 +85,8 @@ const fr: typeof en = {
     )[cle] ?? defaut,
   carteDuCadran: "Carte du cadran",
   boutonsAppris: "Vos boutons",
+  boutonAVariables:
+    "demande un numéro ou un montant — lancez-le depuis Opérations",
   noteSession:
     "La session traverse le terminal de Douala : chaque réponse affichée " +
     "ici est celle de l’opérateur, mot pour mot. Le code secret, lui, se " +

@@ -496,6 +496,87 @@ class TestRaccourciDepuisLaPlateforme(unittest.TestCase):
         self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
 
 
+class TestUnCodeATrous(unittest.TestCase):
+    """Un code qui porte des TROUS — « *126*1*{numero}*{montant}# ».
+
+    Deux façons d'écrire un bouton, et c'est le propriétaire qui choisit :
+
+      - **avec des trous** : la plateforme les bouche avec ce qui vient
+        d'être saisi, et le code part ENTIER d'un seul coup. Le réseau ne
+        pose plus qu'une question, celle du code secret ;
+      - **sans trous** : le code ouvre le menu, et l'on répond aux questions
+        une à une, comme avant.
+
+    Le robot revérifie les deux — un trou mal nommé partirait tel quel au
+    réseau, et le code échouerait sans qu'on sache pourquoi.
+    """
+
+    def pilote_reel(self):
+        from totem.storage import Journal
+        journal = Journal(":memory:")
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [FauxCompte([])], journal)
+        return p, journal, nuage
+
+    def definir(self, p, etapes, identifiant=70, cle="transfert"):
+        p._traiter({"id": identifiant, "type": "raccourci",
+                    "parametres": {"operateur": "MTN", "cle": cle,
+                                   "libelle": "Transfert", "etapes": etapes}})
+
+    def test_un_code_a_trous_est_accepte(self):
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["*126*1*{numero}*{montant}#"])
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertEqual(journal.raccourcis("MTN")["transfert"]["etapes"],
+                         ["*126*1*{numero}*{montant}#"])
+
+    def test_les_trois_trous_connus_passent(self):
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["*126*4*{point}*{montant}#"], cle="retrait")
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.definir(p, ["*126*1*{numero}#"], identifiant=71)
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+
+    def test_un_trou_mal_tape_est_refuse(self):
+        """« {montan} » partirait tel quel au réseau : autant le dire tout
+        de suite, plutôt que de laisser un bouton mort au carnet."""
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["*126*1*{numero}*{montan}#"])
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertIn("montan", nuage.maj[-1][1]["resultat"])
+        self.assertEqual(journal.raccourcis("MTN"), {})
+
+    def test_un_trou_peut_etre_une_reponse_a_lui_seul(self):
+        """Le code ouvre le menu, puis le montant répond à SA question."""
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["*126#", "1", "{montant}"])
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertEqual(journal.raccourcis("MTN")["transfert"]["etapes"],
+                         ["*126#", "1", "{montant}"])
+
+    def test_la_forme_du_code_est_jugee_trous_bouches(self):
+        """« *126*1*{numero} » sans dièse final n'est pas un code, trou ou
+        pas : la vérification ne se laisse pas endormir par les accolades."""
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["*126*1*{numero}"])
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(journal.raccourcis("MTN"), {})
+
+    def test_le_code_secret_reste_interdit_meme_a_cote_d_un_trou(self):
+        """La garantie du module ne cède pas : quatre chiffres après le
+        code, c'est la forme d'un PIN — refusé, trous ou non."""
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["*126*1*{numero}#", "1234"])
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(journal.raccourcis("MTN"), {})
+
+    def test_un_code_sans_trou_marche_toujours(self):
+        """L'autre façon reste intacte : c'est un choix, pas un remplacement."""
+        p, journal, nuage = self.pilote_reel()
+        self.definir(p, ["#148*4#"], cle="transfert")
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+
+
 class TestSoldeMonotone(unittest.TestCase):
     """Un relevé ancien rejoué dans le désordre ne doit pas écraser un solde
     déjà plus récent : publier_solde avec un moment ne remplace que si c'est

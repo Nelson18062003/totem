@@ -346,6 +346,29 @@ class TestClesStablesEntreLangues(unittest.TestCase):
         tape(r, "/menu")
         self.assertIn("m:solde", donnees(boutons_envoi(t)))
 
+    def test_un_bouton_a_trous_ne_se_compose_pas_ici(self):
+        """Un code à trous (« *126*1*{numero}*{montant}# ») attend des valeurs
+        que ce canal ne demande pas. Plutôt que de composer un code amputé —
+        qui partirait au réseau avec les accolades — le robot dit où le
+        lancer : la plateforme, elle, ouvre un formulaire d'abord."""
+        r, t, _ = robot()
+        r.journal.ajouter_raccourci("MTN", "transfert", "Transfert",
+                                    ["*126*1*{numero}*{montant}#"])
+        tape(r, "/menu")
+        clic(r, "m:transfert")
+        message = dernier_envoi(t)
+        self.assertIn("numero", message)
+        self.assertIn("montant", message)
+        self.assertIsNone(r.session_compte,
+                          "aucune session ne doit s'ouvrir sur un code amputé")
+
+    def test_un_bouton_sans_trou_se_compose_toujours(self):
+        """L'autre façon reste entière : c'est un choix, pas un remplacement."""
+        r, t, _ = robot()
+        r.journal.ajouter_raccourci("MTN", "solde", "Solde", ["*126#", "5", "1"])
+        clic(r, "m:solde")
+        self.assertIn("solde est de", t.dernier_texte())
+
     def test_la_liste_parle_francais_sur_demande(self):
         from totem import textes
         textes.definir_langue("fr")

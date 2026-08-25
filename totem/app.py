@@ -38,7 +38,7 @@ from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
-from .pilotage import Pilotage
+from .pilotage import Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import t
 from .version import version
@@ -1345,6 +1345,19 @@ class Robot:
                                    canal=canal)
             return
         etapes = list(raccourci["etapes"])
+        # Un bouton à TROUS (« *126*1*{numero}*{montant}# ») attend des
+        # valeurs que Telegram ne demande pas : la plateforme, elle, ouvre un
+        # formulaire avant de composer. On le dit plutôt que de composer un
+        # code amputé — qui échouerait sans qu'on sache pourquoi.
+        trous = sorted({m.group(1) for e in etapes
+                        for m in RE_VARIABLE.finditer(e)})
+        if trous:
+            return self.transport.envoyer(
+                t(f"This button expects {', '.join(trous)}: run it from the "
+                  "platform, which asks for the values before dialling.",
+                  f"Ce bouton attend {', '.join(trous)} : lancez-le depuis la "
+                  "plateforme, qui demande les valeurs avant de composer."),
+                canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
         self.canal_session = canal
         self.trace_rejouee = True
         self.msg_session = None
