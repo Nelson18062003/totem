@@ -270,6 +270,30 @@ L'image de présentation **sera rognée** par Google selon les emplacements :
 la marque et la phrase tiennent donc dans le tiers central, et les bords ne
 portent que le motif.
 
+## Le numéro de version, et le piège qui attendait
+
+Le Play Store refuse un paquet dont le `versionCode` a **déjà servi**, sur
+n'importe quelle piste. Le message est sec — « Version code 1 has already
+been used » — et ne dit pas où le corriger.
+
+`eas.json` porte `appVersionSource: "remote"` : le compteur vit chez EAS, et
+il ne monte QUE pour les profils marqués `autoIncrement`. Le profil `essai`
+ne l'était pas. La première mise en ligne serait passée ; la deuxième aurait
+été refusée, sans qu'on sache pourquoi.
+
+Les deux profils qui vont au magasin — `essai` et `production` — l'ont
+maintenant, et partagent le même compteur : un paquet d'essai ne peut donc
+pas entrer en collision avec un paquet public.
+
+`apercu` ne l'a pas, et n'en a pas besoin : c'est un APK qu'on s'installe
+soi-même, il ne passe jamais par le magasin.
+
+> `eas.json` **refuse les commentaires**. C'est pour cela que cette
+> explication est ici et pas dans le fichier — une compilation entière a
+> déjà échoué sur une clé `"//"` ajoutée par habitude.
+
+---
+
 ## Classification du contenu
 
 Questionnaire à remplir. Toutes les réponses sont **Non** : pas de violence,
