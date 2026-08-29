@@ -464,17 +464,48 @@ Obligatoire dès qu'une brique **native** bouge :
 - le fichier `google-services.json` de Firebase ;
 - la version d'Android visée.
 
-### On ne peut pas se tromper de chemin
+### La règle à tenir soi-même
 
-`app.json` porte `runtimeVersion: { policy: "fingerprint" }`. Expo calcule une
-empreinte de tout ce qui est natif dans le projet, et **une mise à jour ne
-rejoint que les applications qui portent la même empreinte**.
+`app.json` porte `runtimeVersion: { policy: "appVersion" }` : **une mise à
+jour ne rejoint que les applications qui portent le même numéro de
+`version`.**
 
-Si vous poussez par le chemin court du code qui réclame une brique native
-absente du téléphone, il ne la recevra tout simplement pas. C'est très
-volontaire : la recevoir la ferait planter au démarrage, et une application
-qui plante au démarrage **ne peut plus recevoir la correction**. Le téléphone
-serait mort pour de bon.
+> **Dès qu'une brique native change, montez `version` dans `app.json` et
+> recompilez** — avant de publier quoi que ce soit par le chemin court.
+
+Sans cela, une mise à jour écrite pour une bibliothèque absente de
+l'application installée la ferait planter au démarrage. Et une application qui
+plante au démarrage **ne peut plus recevoir la correction** : il faudrait
+désinstaller et réinstaller à la main, sur chaque téléphone.
+
+### Pourquoi pas l'empreinte automatique
+
+On avait d'abord réglé `runtimeVersion` sur `fingerprint` : Expo calcule alors
+une empreinte de tout ce qui est natif, et refuse tout seul les mises à jour
+incompatibles. C'est mieux — quand ça marche.
+
+Ici, ça ne marchait pas, et la compilation le disait :
+
+```
+Runtime version mismatch:
+- Runtime version calculated on local machine: 9479e01c...
+- Runtime version calculated on EAS:           a6b1e178...
+```
+
+L'empreinte est calculée à **deux endroits**, et les deux ne voient pas le
+même projet :
+
+| | machine GitHub | serveur Expo |
+|---|---|---|
+| `google-services.json` | absent | présent (écrit depuis le secret) |
+| dossier `android/` | absent | présent (généré par le prebuild) |
+
+Deux mondes qui ne peuvent pas se ressembler, donc deux empreintes, donc un
+refus — à chaque compilation. Le fingerprint est un bon garde-fou quand on
+compile à un seul endroit ; il ne l'est pas ici.
+
+C'est la première compilation avec Firebase qui l'a révélé : celle d'avant,
+sans le fichier, passait — les deux côtés étaient également démunis.
 
 ### Le premier paquet ne reçoit rien
 

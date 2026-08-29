@@ -73,9 +73,10 @@
     "updates": {
       "url": "https://u.expo.dev/66fbf865-c824-40f0-97f7-b4ecb83ab50f"
     },
-    "//runtimeVersion": "LE GARDE-FOU des mises a jour a distance. << fingerprint >> : Expo calcule une empreinte de tout ce qui est NATIF dans le projet, et une mise a jour ne rejoint que les applications qui portent la meme. Sans ce garde-fou, une mise a jour ecrite pour une bibliotheque native absente de l'application installee la ferait planter au demarrage — et une application qui plante au demarrage ne peut plus recevoir la correction. Le telephone serait mort pour de bon.",
+    "//runtimeVersion": "<< appVersion >>, et non << fingerprint >>. LE FINGERPRINT A ETE ESSAYE, ET IL A FAIT ECHOUER LA COMPILATION. Expo calculait l'empreinte du projet a DEUX endroits : sur la machine de GitHub qui lance la compilation, et sur le serveur d'Expo qui la fait. Ces deux machines ne voient pas le meme projet — le serveur d'Expo, lui, a le fichier Firebase (ecrit depuis un secret) et le dossier android/ (genere par le prebuild), que la machine de GitHub n'a ni l'un ni l'autre. Deux empreintes differentes, donc, et un refus : << Runtime version mismatch >>. Le fingerprint est un bon garde-fou quand on compile a un seul endroit ; ici il comparait deux mondes qui ne peuvent pas se ressembler.",
+    "//runtimeVersion2": "Avec << appVersion >>, la version de compatibilite est simplement le champ << version >> ci-dessus. Une mise a jour a distance ne rejoint que les applications qui portent la meme. LA REGLE QUI REMPLACE LE GARDE-FOU AUTOMATIQUE, et elle se tient a la main : DES QU'UNE BRIQUE NATIVE CHANGE — une permission, une bibliotheque, le fichier Firebase, la version d'Android visee — il faut MONTER << version >> et recompiler. Sans cela, une mise a jour ecrite pour une bibliotheque absente de l'application installee la ferait planter au demarrage, et une application qui plante au demarrage ne peut plus recevoir la correction. Voir docs/MOBILE.md.",
     "runtimeVersion": {
-      "policy": "fingerprint"
+      "policy": "appVersion"
     },
     "extra": {
       "//eas": "L'identifiant du projet chez Expo, cree une seule fois par la compilation du 29 aout. Il est ECRIT ICI a dessein : tant qu'il manquait, l'etape de rattachement se rejouait a chaque compilation. Ne jamais le changer — il relie l'application a son projet, a ses cles de signature et a ses mises a jour.",

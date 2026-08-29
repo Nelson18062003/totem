@@ -13,14 +13,21 @@
 # permission Android, une bibliothèque nouvelle, le fichier de Firebase, la
 # version d'Android visée. Là, il faut une vraie compilation.
 #
-# ON NE PEUT PAS SE TROMPER, et c'est voulu : app.json porte
-# `runtimeVersion: fingerprint`. Expo calcule une empreinte de tout ce qui
-# est natif dans le projet ; une mise à jour ne rejoint QUE les applications
-# qui portent la même empreinte. Si vous poussez du code qui réclame une
-# brique absente de l'application installée, elle ne la recevra tout
-# simplement pas — au lieu de la recevoir et de planter au démarrage. Or une
-# application qui plante au démarrage ne peut plus recevoir la correction :
-# le téléphone serait mort pour de bon.
+# LA RÈGLE À TENIR À LA MAIN. `app.json` porte
+# `runtimeVersion: { policy: "appVersion" }` : une mise à jour ne rejoint que
+# les applications qui portent le même numéro de `version`.
+#
+# Donc : DÈS QU'UNE BRIQUE NATIVE CHANGE, il faut MONTER `version` dans
+# app.json et recompiler, avant de publier quoi que ce soit ici. Sans cela,
+# une mise à jour écrite pour une bibliothèque absente de l'application
+# installée la ferait planter au démarrage — et une application qui plante au
+# démarrage ne peut plus recevoir la correction. Le téléphone serait mort
+# pour de bon.
+#
+# L'empreinte automatique (« fingerprint ») a été essayée et retirée : elle
+# était calculée à deux endroits qui ne voient pas le même projet — la
+# machine de GitHub et le serveur d'Expo — et faisait échouer toute
+# compilation sur « Runtime version mismatch ». Voir app.json.
 #
 # COMMENT S'EN SERVIR : onglet Actions → « Mise à jour » → Run workflow →
 # choisir le canal. Le canal doit être celui du paquet installé sur le
@@ -133,6 +140,11 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Les téléphones la prendront **au prochain démarrage** de" >> $GITHUB_STEP_SUMMARY
           echo "l'application. Rien à réinstaller." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          V=$(node -e "console.log(require('./app.json').expo.version)")
+          echo "Elle ne rejoint que les applications en version **$V**." >> $GITHUB_STEP_SUMMARY
+          echo "Une brique native a changé depuis la dernière compilation ?" >> $GITHUB_STEP_SUMMARY
+          echo "Alors il fallait monter ce numéro et recompiler d'abord." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           eas update:list --branch "${{ inputs.canal }}" --limit 1 --json --non-interactive \
             | node -e "
