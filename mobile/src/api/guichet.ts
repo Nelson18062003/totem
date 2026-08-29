@@ -113,6 +113,14 @@ export type EtatPlateforme =
   | "absente"           // quelque chose répond, mais ce n'est pas un TOTEM
   | "injoignable";      // rien ne répond : réseau coupé, ou adresse morte
 
+/** Peut-on encore créer un compte sur cette plateforme ?
+ *
+ *  Non dès qu'il y en a un : l'inscription ne sert qu'à poser le tout premier
+ *  compte, celui du propriétaire. L'écran s'en sert pour ne pas proposer un
+ *  bouton qui ne mènerait qu'à un refus. */
+let inscriptionOuverte = false;
+export const peutSInscrire = (): boolean => inscriptionOuverte;
+
 /**
  * « Y a-t-il un TOTEM au bout de cette adresse ? »
  *
@@ -133,6 +141,7 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
     // Le drapeau doit être là. Un serveur quelconque qui rendrait 200 sur
     // n'importe quel chemin ne passe pas cette porte.
     if (corps?.totem !== true) return "absente";
+    inscriptionOuverte = corps.inscription === true;
     return corps.configuree === true ? "trouvee" : "non-configuree";
   } catch {
     return "injoignable";

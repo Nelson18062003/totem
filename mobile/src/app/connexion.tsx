@@ -42,8 +42,8 @@ import { Icone } from "@/icones";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
 import {
-  adressePlateforme, adresseValable, definirAdresse, verifierPlateforme,
-  type EtatPlateforme,
+  adressePlateforme, adresseValable, definirAdresse, peutSInscrire,
+  verifierPlateforme, type EtatPlateforme,
 } from "@/api/guichet";
 import { textesConnexion } from "@noyau/textes/connexion";
 import { autreLangue } from "@noyau/langue";
@@ -60,6 +60,10 @@ export default function Connexion() {
   const [courriel, setCourriel] = useState("");
   const [motdepasse, setMotdepasse] = useState("");
   const [attente, setAttente] = useState(false);   // compte créé, en attente
+  // Peut-on encore créer un compte ? La plateforme l'a dit en répondant à
+  // « y a-t-il un TOTEM ici ». Un bouton qui mène toujours à un refus est un
+  // bouton de trop.
+  const [inscriptionOuverte, setInscriptionOuverte] = useState(false);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
@@ -88,6 +92,7 @@ export default function Connexion() {
       return;
     }
     setEtat(await verifierPlateforme(a));
+    setInscriptionOuverte(peutSInscrire());
   }, []);
 
   useEffect(() => { void sonder(); }, [sonder]);
@@ -421,12 +426,14 @@ export default function Connexion() {
             {/* Passer de « je me connecte » à « je crée un compte ». Ce sont
                 les mêmes deux champs : deux écrans auraient été deux fois le
                 même écran. */}
-            <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}>
-              <Texte taille={textes.petit} poids="moyen" ton="doux"
-                     style={{ textDecorationLine: "underline" }}>
-                {mode === "creer" ? t.jAiDejaUnCompte : t.creerUnCompte}
-              </Texte>
-            </Pressable>
+            {(inscriptionOuverte || mode === "creer") && (
+              <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}>
+                <Texte taille={textes.petit} poids="moyen" ton="doux"
+                       style={{ textDecorationLine: "underline" }}>
+                  {mode === "creer" ? t.jAiDejaUnCompte : t.creerUnCompte}
+                </Texte>
+              </Pressable>
+            )}
 
             {/* La promesse sur le code secret. Elle vit ici, sur l'écran que
                 tout le monde voit, et pas enfouie dans les réglages. */}

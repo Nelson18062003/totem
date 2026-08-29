@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { LANGUES } from "@noyau/langue";
 import { textesConnexion } from "@noyau/textes/connexion";
 import { changerLangue, useLangue } from "@/app/langue";
@@ -36,6 +36,16 @@ export default function Connexion() {
   const [secours, setSecours] = useState(false);
   const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
   const [message, setMessage] = useState("");
+  // Peut-on encore créer un compte ? Non dès qu'il y en a un. On ne montre
+  // donc pas un lien qui ne mènerait qu'à un refus.
+  const [inscriptionOuverte, setInscriptionOuverte] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/plateforme", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((p) => setInscriptionOuverte(p?.inscription === true))
+      .catch(() => setInscriptionOuverte(false));
+  }, []);
 
   async function entrer(e: React.FormEvent) {
     e.preventDefault();
@@ -130,9 +140,11 @@ export default function Connexion() {
       </form>
 
       <div className="mt-6 flex flex-col items-center gap-3 text-small">
-        <a href="/inscription" className="font-medium text-ink underline underline-offset-4">
-          {t.creerUnCompte}
-        </a>
+        {inscriptionOuverte && (
+          <a href="/inscription" className="font-medium text-ink underline underline-offset-4">
+            {t.creerUnCompte}
+          </a>
+        )}
         {/* La clé de secours ne s'annonce pas plus fort que cela : ce n'est
             pas le chemin de tous les jours. */}
         <button

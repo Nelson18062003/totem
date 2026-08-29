@@ -27,17 +27,33 @@ du propriétaire**, et il entre immédiatement. C'est logique : personne n'est
 là pour l'approuver, et l'attente serait sans fin. C'est celui qui installe
 la maison.
 
-### Les suivants attendent
+### Puis la porte se referme
 
-N'importe qui peut créer un compte. **Personne n'entre pour autant.**
+**Dès que ce compte existe, plus aucune inscription n'est possible.** Ni pour
+un inconnu, ni pour le propriétaire lui-même. `/api/inscription` refuse, et le
+lien « Créer un compte » disparaît des deux écrans — un bouton qui ne mène
+qu'à un refus est un bouton de trop.
 
-Un compte neuf est créé, et il attend. Il n'ouvre rien — ni les caisses, ni
-les SMS, ni le guichet. C'est le propriétaire qui décide, depuis
-**Réglages → Qui peut se connecter**.
+Pourquoi fermé plutôt qu'« ouvert mais en attente d'approbation » : une
+plateforme qui suit l'argent d'une seule personne n'a aucune raison
+d'accepter des inconnus. Un compte de plus, même en attente, c'est une ligne
+de plus dans une base, un courriel de plus à surveiller, et une case de plus
+où cliquer par erreur. Le défaut le plus sûr est celui qui ne demande rien à
+personne.
 
-Ce n'est pas une négligence d'avoir laissé l'inscription libre : ce qui
-protège la plateforme n'est pas l'impossibilité de s'inscrire, c'est ce qu'un
-compte neuf peut faire — c'est-à-dire rien.
+Le refus ne distingue pas « ce courriel est déjà pris » de « inscriptions
+fermées » : les distinguer dirait à un inconnu quelles adresses ont un compte
+ici.
+
+### Faire entrer quelqu'un, plus tard
+
+Les rouages existent déjà : rôles, approbation, écran
+**Réglages → Qui peut se connecter**, et tout est éprouvé par
+`verifier-les-comptes.mjs`. Seule la porte d'entrée est condamnée.
+
+Le jour où il y aura de vraies personnes à faire entrer, ce sera au
+propriétaire d'ouvrir — depuis ses Réglages, pas en rouvrant l'inscription à
+tout le monde.
 
 ### La clé de secours
 

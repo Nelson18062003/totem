@@ -120,15 +120,42 @@ export async function ouvrirLaPorte(
 }
 
 /**
- * Crée un compte.
+ * Y a-t-il encore une inscription possible sur cette plateforme ?
  *
- * LE PREMIER COMPTE EST CELUI DU PROPRIÉTAIRE. Il n'y a personne pour
- * l'approuver, et c'est celui qui installe la plateforme : il est approuvé
- * d'office. Tous les suivants attendent que le propriétaire ouvre.
+ * NON, dès qu'un compte existe. L'inscription ne sert qu'à UNE chose : poser
+ * le tout premier compte, celui du propriétaire, sur une plateforme neuve.
+ * Cela fait, la porte se referme d'elle-même.
+ *
+ * Pourquoi ce choix plutôt qu'un réglage à cocher : une plateforme qui suit
+ * l'argent d'une seule personne n'a aucune raison d'accepter des inconnus.
+ * Un compte de plus, même en attente d'approbation, c'est une ligne de plus
+ * dans une base, un courriel de plus à surveiller, et une case de plus où
+ * cliquer par erreur. Le défaut le plus sûr est celui qui ne demande rien à
+ * personne.
+ *
+ * Rouvrir se fera le jour où il y aura de vraies personnes à faire entrer —
+ * et ce jour-là, ce sera le propriétaire qui ouvrira, depuis ses Réglages.
+ *
+ * Rend `null` si la base ne répond pas : « je ne sais pas » n'est ni oui ni
+ * non, et l'écran doit pouvoir le dire ainsi.
+ */
+export async function inscriptionPossible(): Promise<boolean | null> {
+  const combien = await compterUtilisateurs();
+  return combien === null ? null : combien === 0;
+}
+
+/**
+ * Crée le compte du propriétaire — le PREMIER, et pour l'instant le seul.
+ *
+ * Il n'y a personne pour l'approuver, et c'est celui qui installe la
+ * plateforme : il est approuvé d'office et entre immédiatement.
+ *
+ * Dès qu'il existe, cette porte est fermée : plus aucune inscription. Voir
+ * `inscriptionPossible` pour le pourquoi.
  *
  * On ne se fie PAS à un compte de zéro obtenu d'une base muette : « je ne
- * sais pas » n'est pas « il n'y a personne ». Confondre les deux ferait du
- * prochain inscrit un propriétaire parce que Supabase a hoqueté.
+ * sais pas » n'est pas « il n'y a personne ». Confondre les deux rouvrirait
+ * les inscriptions parce que Supabase a hoqueté.
  */
 export async function inscrire(
   courrielBrut: unknown, motdepasse: unknown, langue: Langue,
@@ -142,22 +169,18 @@ export async function inscrire(
   const combien = await compterUtilisateurs();
   if (combien === null) return refus(langue, "nonRelieeBase", 503);
 
-  if (await utilisateurAVerifier(courriel)) {
-    return refus(langue, "courrielDejaPris", 409);
-  }
+  // LA PORTE EST FERMÉE dès qu'un compte existe. On refuse AVANT de regarder
+  // le courriel : répondre « ce courriel est déjà pris » à l'un et
+  // « inscriptions fermées » à l'autre dirait qui a un compte ici.
+  if (combien > 0) return refus(langue, "inscriptionsFermees", 403);
 
-  const premier = combien === 0;
   const compte = await creerUtilisateur(
-    courriel, await empreinter(motdepasse),
-    premier ? "proprietaire" : "invite", premier);
+    courriel, await empreinter(motdepasse), "proprietaire", true);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
 
   const secret = process.env.SESSION_SECRET || "";
+  if (!secret) return refus(langue, "connexionNonConfiguree", 503);
   // Le propriétaire entre tout de suite : il vient de créer la maison.
-  // Un invité repart avec un compte et sans session — il attend.
-  if (premier && secret) {
-    const sujet = sujetDuCompte(compte.id);
-    return { ok: true, jeton: await signerSession(secret, sujet), sujet };
-  }
-  return refus(langue, "compteEnAttente", 202);
+  const sujet = sujetDuCompte(compte.id);
+  return { ok: true, jeton: await signerSession(secret, sujet), sujet };
 }

@@ -84,8 +84,8 @@ try {
   const dit = JSON.stringify(plate);
   verifier("elle ne donne pas le mot de passe", dit.includes(MOTDEPASSE), false);
   verifier("elle ne donne pas le secret", dit.includes(SECRET), false);
-  verifier("elle ne donne que trois clés", Object.keys(plate).sort().join(","),
-           "configuree,relie,totem");
+  verifier("elle ne donne que quatre clés", Object.keys(plate).sort().join(","),
+           "configuree,inscription,relie,totem");
 
   console.log("\nPorte de l'application");
   const json = (corps) => ({
