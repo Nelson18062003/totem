@@ -1,4 +1,5 @@
 import { relie } from "@/lib/serveur";
+import { inscriptionPossible } from "@/lib/porte";
 
 export const dynamic = "force-dynamic";
 
@@ -41,5 +42,15 @@ export async function GET() {
   // parfaitement utilisable.
   const configuree = Boolean(process.env.SESSION_SECRET)
     && (relie || Boolean(process.env.TOTEM_MOT_DE_PASSE));
-  return Response.json({ totem: true, configuree, relie });
+
+  // Peut-on encore créer un compte ici ? Non, dès qu'il y en a un. L'écran
+  // s'en sert pour ne PAS proposer une inscription qui serait refusée : un
+  // bouton qui mène toujours à un refus est un bouton de trop.
+  //
+  // Cela ne révèle rien qu'on ne sache déjà : « cette plateforme a un
+  // propriétaire » est vrai de toutes les plateformes en service, et
+  // n'apprend à personne qui il est.
+  const inscription = (await inscriptionPossible()) === true;
+
+  return Response.json({ totem: true, configuree, relie, inscription });
 }

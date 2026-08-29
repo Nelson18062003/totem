@@ -45,6 +45,10 @@ on:
         description: "Ce que cette mise à jour change (visible dans Expo)"
         required: false
         default: ""
+      adresse:
+        description: "Adresse de la plateforme (vide = celle des réglages du dépôt)"
+        required: false
+        default: ""
 
 jobs:
   publier:
@@ -84,6 +88,32 @@ jobs:
       - name: Vérifier les règles partagées
         working-directory: web
         run: npm ci && npm test
+
+      # L'ADRESSE DE LA PLATEFORME, reposée dans la mise à jour.
+      #
+      # INDISPENSABLE ICI AUSSI, et c'est le piège : une mise à jour
+      # remplace le code JavaScript de l'application. Publiée sans
+      # l'adresse, elle EFFACERAIT celle que la compilation avait posée,
+      # et l'écran de connexion la redemanderait — sur tous les
+      # téléphones à la fois, sans que personne comprenne pourquoi.
+      #
+      # Le propriétaire ne doit pas avoir à taper l'adresse de son serveur
+      # dans l'application : on ouvre, on met son courriel et son mot de
+      # passe, on entre. C'est ici que ça se règle, une fois pour toutes.
+      #
+      # Elle vient d'une VARIABLE de dépôt (Settings → Secrets and variables
+      # → Actions → onglet « Variables » → ADRESSE_PLATEFORME), ou du champ
+      # rempli au lancement, qui l'emporte quand il est là.
+      #
+      # Une variable, pas un secret : une adresse web est publique par nature
+      # — elle est dans la barre du navigateur de qui ouvre la plateforme. La
+      # ranger comme un secret laisserait croire qu'elle en est un.
+      #
+      # Rien n'échoue si elle n'est pas posée : l'application demandera
+      # l'adresse à l'écran, comme avant. Moins bien, pas cassé.
+      - name: Poser l'adresse de la plateforme
+        working-directory: mobile
+        run: node scripts/poser-l-adresse.mjs "${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}"
 
       - name: Publier la mise à jour
         working-directory: mobile

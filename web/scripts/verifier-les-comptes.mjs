@@ -99,17 +99,24 @@ try {
   const rMaj = await poste("/api/session", { courriel: "NELSON@exemple.cm", motdepasse: MDP });
   verifier("les majuscules ne font pas un autre compte", rMaj.status, 200);
 
-  console.log("\nLa deuxième inscription : elle attend");
-  const r2 = await poste("/api/inscription", { courriel: "ami@exemple.cm", motdepasse: MDP });
+  console.log("\nLA PORTE EST FERMÉE : plus aucune inscription");
+  // C'est la vérification qui compte le plus de ce fichier. L'inscription ne
+  // sert qu'à poser le PREMIER compte ; dès qu'il existe, plus personne ne
+  // s'inscrit. Un inconnu ne doit pas pouvoir déposer un compte ici, même un
+  // compte qui attendrait sagement une approbation.
+  const r2 = await poste("/api/inscription", { courriel: "inconnu@exemple.cm", motdepasse: MDP });
   const c2 = await r2.json();
-  verifier("le compte est bien créé", r2.status, 202);
-  verifier("mais il n'est PAS propriétaire", c2.proprietaire, undefined);
-  verifier("et il ne repart avec AUCUNE session", c2.jeton, undefined);
+  verifier("une deuxième inscription est refusée", r2.status, 403);
+  verifier("aucun compte n'est créé", c2.proprietaire, undefined);
+  verifier("aucune session n'est rendue", c2.jeton, undefined);
 
-  console.log("\nUn compte en attente n'entre pas");
-  const rAtt = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
-  verifier("le bon mot de passe ne suffit pas", rAtt.status, 403);
-  verifier("aucun jeton n'est rendu", (await rAtt.json()).jeton, undefined);
+  const rEntreInconnu = await poste("/api/session", { courriel: "inconnu@exemple.cm", motdepasse: MDP });
+  verifier("et ce compte n'existe donc pas", rEntreInconnu.status, 401);
+
+  console.log("\nLa plateforme le dit d'elle-même");
+  // L'écran s'en sert pour ne pas afficher un bouton qui mène à un refus.
+  const plate = await (await fetch(B + "/api/plateforme")).json();
+  verifier("elle annonce l'inscription fermée", plate.inscription, false);
 
   console.log("\nCe qu'on ne dit pas à un inconnu");
   const rInconnu = await poste("/api/session", { courriel: "personne@exemple.cm", motdepasse: "x" });
@@ -120,6 +127,12 @@ try {
   verifier("mot de passe faux : refusé", rMauvais.status, 401);
   // Deux messages différents diraient quelles adresses ont un compte ici.
   verifier("le MÊME message dans les deux cas", mInconnu === mMauvais, true);
+
+  // L'empreinte réelle du propriétaire, lue dans le faux nuage : elle
+  // servira à poser un invité qui puisse vraiment se connecter.
+  const empreinteConnue = (await (await fetch(
+    "http://127.0.0.1:4999/rest/v1/utilisateurs?courriel=eq.nelson@exemple.cm"
+  )).json())[0].empreinte;
 
   console.log("\nLe mot de passe ne se retrouve nulle part");
   const rMoi = await fetch(B + "/api/comptes", {
@@ -132,7 +145,24 @@ try {
   verifier("le jeton ne porte pas le mot de passe", jetonProprio.includes(MDP), false);
 
   console.log("\nL'administration est réservée au propriétaire");
-  const idAmi = JSON.parse(liste).comptes.find((c) => c.courriel === "ami@exemple.cm").id;
+  // Un invité n'existe plus par inscription : on en pose un directement en
+  // base, comme le fera l'écran du propriétaire le jour où il pourra inviter
+  // quelqu'un. Le reste du scénario — approuver, fermer — vaut toujours.
+  await fetch("http://127.0.0.1:4999/rest/v1/utilisateurs", {
+    method: "POST",
+    headers: { "content-type": "application/json", prefer: "return=representation" },
+    body: JSON.stringify([{
+      courriel: "ami@exemple.cm",
+      // L'empreinte du même mot de passe que le propriétaire : ce qui est
+      // éprouvé ici est l'approbation, pas le hachage (il a ses tests).
+      empreinte: empreinteConnue,
+      role: "invite", approuve: false,
+    }]),
+  });
+  const liste2 = await (await fetch(B + "/api/comptes", {
+    headers: { authorization: `Bearer ${jetonProprio}` },
+  })).text();
+  const idAmi = JSON.parse(liste2).comptes.find((c) => c.courriel === "ami@exemple.cm").id;
   const rAnon = await fetch(B + "/api/comptes");
   verifier("sans session : refusé", rAnon.status, 401);
 
@@ -179,12 +209,17 @@ try {
   verifier("une fausse clé ne passe pas", rSecFaux.status, 401);
 
   console.log("\nCe qu'on refuse d'enregistrer");
+  // La forme est vérifiée AVANT la porte : un mot de passe trop court est
+  // refusé pour ce qu'il est, sur une plateforme neuve comme sur celle-ci.
   const rCourt = await poste("/api/inscription", { courriel: "x@y.cm", motdepasse: "court" });
   verifier("un mot de passe trop court", rCourt.status, 400);
   const rPasCourriel = await poste("/api/inscription", { courriel: "pas-un-courriel", motdepasse: MDP });
   verifier("un courriel qui n'en est pas un", rPasCourriel.status, 400);
+  // On ne distingue PAS « ce courriel est pris » de « inscriptions
+  // fermées » : la porte se referme avant de regarder le courriel. Les
+  // distinguer dirait à un inconnu quelles adresses ont un compte ici.
   const rDeja = await poste("/api/inscription", { courriel: "nelson@exemple.cm", motdepasse: MDP });
-  verifier("un courriel déjà pris", rDeja.status, 409);
+  verifier("le courriel du propriétaire : même refus", rDeja.status, 403);
 
   console.log(echecs
     ? `\n✗ ${echecs} vérification(s) en échec.`

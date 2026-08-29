@@ -33,6 +33,11 @@ const en = {
   courrielInvalide: "that does not look like an email address",
   motDePasseTropCourt: "the password must be at least 12 characters long",
   courrielDejaPris: "an account already exists with this email",
+  // Fermé, et non « réservé » : il n'y a rien à demander à personne. La
+  // plateforme suit l'argent d'une seule personne ; elle n'attend pas de
+  // visiteurs.
+  inscriptionsFermees:
+    "This platform already has its owner. No new account can be created.",
   inscriptionImpossible: "the account could not be created",
   reserveAuProprietaire: "only the owner can do this",
   pasSoiMeme: "you cannot do this to your own account",
@@ -63,6 +68,9 @@ const fr: typeof en = {
   courrielInvalide: "cela ne ressemble pas à une adresse de courriel",
   motDePasseTropCourt: "le mot de passe doit faire au moins 12 caractères",
   courrielDejaPris: "un compte existe déjà avec ce courriel",
+  inscriptionsFermees:
+    "Cette plateforme a déjà son propriétaire. Aucun nouveau compte ne peut " +
+    "être créé.",
   inscriptionImpossible: "le compte n’a pas pu être créé",
   reserveAuProprietaire: "seul le propriétaire peut faire cela",
   pasSoiMeme: "vous ne pouvez pas faire cela à votre propre compte",

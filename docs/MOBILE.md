@@ -356,6 +356,57 @@ secret).
 
 ---
 
+## 5 ter. Ne plus jamais taper l'adresse
+
+Le propriétaire ne devrait **jamais** avoir à taper l'adresse de son serveur.
+On ouvre l'application, on met son courriel et son mot de passe, on entre.
+C'est tout.
+
+Le champ « Changer l'adresse » existe parce que l'adresse livrée était fausse
+(§ 5 bis), et qu'on l'a retirée plutôt que d'en deviner une seconde. Mais un
+champ vide reporte le travail sur la personne, à chaque installation. C'était
+la mauvaise réponse.
+
+### Le réglage, posé une fois
+
+**GitHub → le dépôt → Settings → Secrets and variables → Actions → onglet
+« Variables » → New repository variable**
+
+| Champ | Valeur |
+|---|---|
+| Name | `ADRESSE_PLATEFORME` |
+| Value | l'adresse que Vercel a donnée, par ex. `https://totem-abc.vercel.app` |
+
+Toutes les compilations suivantes portent l'adresse dans le paquet. Le champ
+ne s'affiche plus, sur aucun téléphone.
+
+### Une variable, pas un secret
+
+Une adresse web est publique par nature — elle est dans la barre du
+navigateur de quiconque ouvre la plateforme. La ranger parmi les secrets
+laisserait croire qu'elle en est un, et un jour quelqu'un traiterait un vrai
+secret avec la même désinvolture.
+
+### Les deux workflows la posent
+
+`scripts/poser-l-adresse.mjs` est appelé par **les deux** :
+
+- **Application Android**, avant de compiler ;
+- **Mise à jour**, avant de publier — et c'est le piège. Une mise à jour
+  remplace le code JavaScript de l'application. Publiée sans l'adresse, elle
+  **effacerait** celle que la compilation avait posée, et l'écran la
+  redemanderait sur tous les téléphones à la fois, sans que personne
+  comprenne pourquoi.
+
+Le script exige `https`. Le mot de passe du propriétaire passe par cette
+adresse ; en clair, il voyagerait à la vue de tout le réseau traversé. Mieux
+vaut refuser une compilation que livrer une application qui fuit.
+
+Sans réglage posé, rien n'échoue : l'application demande l'adresse à l'écran,
+comme avant. Moins bien, pas cassé.
+
+---
+
 ## 6 bis. Mettre à jour, ensuite
 
 Deux chemins, et ils ne servent pas à la même chose.
