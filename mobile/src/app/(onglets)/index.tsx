@@ -29,6 +29,7 @@ import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { fcfa, type Paiement, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { salutation } from "@noyau/salutation";
 
 const CLE_SOLDE_CACHE = "totem.solde.cache";
 
@@ -217,7 +218,9 @@ export default function Accueil() {
         <Entree montee={6}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <View style={{ flex: 1 }}>
-              <Texte taille={textes.petit} ton="pale">{t.bonjour}</Texte>
+              <Texte taille={textes.petit} ton="pale">
+                {salutation(langue, donnees?.courriel)}
+              </Texte>
               <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
             </View>
             <Pressable onPress={() => router.push("/reglages")} hitSlop={12}

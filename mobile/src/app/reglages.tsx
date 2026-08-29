@@ -7,8 +7,10 @@
 // règle pas, ne se garde pas, ne s'oublie pas — il n'existe qu'au moment
 // d'une opération.
 
-import { useState } from "react";
-import { ActivityIndicator, ScrollView, View, Pressable, Alert } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator, Linking, ScrollView, View, Pressable, Alert,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -19,6 +21,10 @@ import { useDonnees } from "@/donnees";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
 import { essaiNotification } from "@/api/guichet";
+import {
+  inscrireLAppareil, peutEncoreDemander, souciDeLaSonnerie,
+  type EtatSonnerie,
+} from "@/sonnerie";
 import { textesReglages } from "@noyau/textes/reglages";
 import { textesCharpente } from "@noyau/textes/charpente";
 import { LANGUES } from "@noyau/langue";
@@ -182,8 +188,55 @@ function EssaiNotification() {
   const langue = useLangue();
   const t = textesReglages[langue];
   const [envoi, setEnvoi] = useState(false);
+  const [inscription, setInscription] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [rate, setRate] = useState(false);
+  // Ce qui a empêché ce téléphone de s'inscrire, s'il y a quelque chose.
+  const [etat, setEtat] = useState<EtatSonnerie | null>(null);
+  const [reglagesUtiles, setReglagesUtiles] = useState(false);
+  // Le message du système, mot pour mot. Souvent le seul qui mène quelque
+  // part — « Default FirebaseApp is not initialized » désigne la panne d'un
+  // mot, là où « sans jeton » ne désigne rien.
+  const [souci, setSouci] = useState<string | null>(null);
+
+  // POURQUOI ON REGARDE À L'OUVERTURE DE L'ÉCRAN. C'est ici qu'on vient
+  // quand on se demande « pourquoi ça ne sonne pas ». Attendre un appui sur
+  // un bouton pour dire « les notifications sont refusées » ferait chercher
+  // ailleurs entre-temps.
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const r = await inscrireLAppareil().catch((): EtatSonnerie => "echec");
+      if (!vivant) return;
+      setEtat(r);
+      setSouci(souciDeLaSonnerie());
+      if (r === "refusee") setReglagesUtiles(!(await peutEncoreDemander()));
+    })();
+    return () => { vivant = false; };
+  }, []);
+
+  const explication: Record<EtatSonnerie, string> = {
+    inscrit: t.sonnerieInscrit,
+    refusee: t.sonnerieRefusee,
+    simulateur: t.sonnerieSimulateur,
+    sansProjet: t.sonnerieSansProjet,
+    sansJeton: t.sonnerieSansJeton,
+    echec: t.sonnerieEchec,
+  };
+
+  const reinscrire = async () => {
+    if (inscription) return;
+    setInscription(true);
+    setMessage(null);
+    try {
+      const r = await inscrireLAppareil();
+      setEtat(r);
+      setSouci(souciDeLaSonnerie());
+      if (r === "refusee") setReglagesUtiles(!(await peutEncoreDemander()));
+    } finally {
+      setInscription(false);
+    }
+  };
 
   const essayer = async () => {
     if (envoi) return;
@@ -214,6 +267,12 @@ function EssaiNotification() {
     }
   };
 
+  const pret = etat === "inscrit";
+  // Recompiler n'est pas un geste qu'on fait depuis un téléphone : inutile
+  // de proposer un bouton qui ne mènerait à rien.
+  const peutReessayer = etat !== null && etat !== "inscrit"
+    && etat !== "simulateur" && etat !== "sansProjet";
+
   return (
     <View style={{ gap: espaces.sm }}>
       <Texte taille={textes.intertitre} poids="demi">{t.essai}</Texte>
@@ -221,16 +280,77 @@ function EssaiNotification() {
         <Texte taille={textes.petit} ton="pale" style={{ lineHeight: 18 }}>
           {t.essaiAide}
         </Texte>
+
+        {/* L'ÉTAT DE CE TÉLÉPHONE, avant tout le reste. C'est la première
+            chose à savoir quand ça ne sonne pas. */}
+        {etat === null ? (
+          <ActivityIndicator size="small" color={couleurs.encrePale} />
+        ) : (
+          <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "flex-start" }}>
+            <View style={{ paddingTop: 5 }}>
+              <Pastille vif={pret} />
+            </View>
+            <Texte
+              taille={textes.petit}
+              ton={pret ? "doux" : "negatif"}
+              style={{ flex: 1, lineHeight: 18 }}
+            >
+              {explication[etat]}
+            </Texte>
+          </View>
+        )}
+
+        {/* Le message du système, tel quel. Il est en anglais et technique —
+            on le montre quand même : c'est lui qui permet de dire ce qui
+            manque, à nous comme à qui viendrait aider. */}
+        {souci ? (
+          <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 16 }}>
+            {souci}
+          </Texte>
+        ) : null}
+
+        {/* Une permission refusée pour de bon ne se redemande pas : Android
+            ignore l'appel. Le seul chemin passe par ses propres réglages. */}
+        {reglagesUtiles ? (
+          <Pressable onPress={() => { void Linking.openSettings(); }}>
+            <Texte taille={textes.petit} poids="moyen" ton="doux"
+                   style={{ textDecorationLine: "underline" }}>
+              {t.sonnerieOuvrirReglages}
+            </Texte>
+          </Pressable>
+        ) : null}
+
+        {peutReessayer ? (
+          <Pressable
+            onPress={reinscrire}
+            disabled={inscription}
+            style={({ pressed }) => ({
+              borderWidth: 1, borderColor: couleurs.trait,
+              borderRadius: 10, paddingVertical: espaces.md,
+              alignItems: "center", flexDirection: "row",
+              justifyContent: "center", gap: espaces.sm,
+              backgroundColor: pressed ? couleurs.surface2 : "transparent",
+              opacity: inscription ? 0.5 : 1,
+            })}
+          >
+            {inscription ? <ActivityIndicator size="small" color={couleurs.encrePale} /> : null}
+            <Texte poids="demi" ton="doux">
+              {inscription ? t.sonnerieEnCours : t.sonnerieInscrire}
+            </Texte>
+          </Pressable>
+        ) : null}
+
+        {/* L'essai n'a de sens que si ce téléphone est inscrit. */}
         <Pressable
           onPress={essayer}
-          disabled={envoi}
+          disabled={envoi || !pret}
           style={({ pressed }) => ({
             borderWidth: 1, borderColor: couleurs.trait,
             borderRadius: 10, paddingVertical: espaces.md,
             alignItems: "center", flexDirection: "row",
             justifyContent: "center", gap: espaces.sm,
             backgroundColor: pressed ? couleurs.surface2 : "transparent",
-            opacity: envoi ? 0.5 : 1,
+            opacity: envoi || !pret ? 0.4 : 1,
           })}
         >
           {envoi ? <ActivityIndicator size="small" color={couleurs.encrePale} /> : null}
@@ -238,6 +358,7 @@ function EssaiNotification() {
             {envoi ? t.essaiEnCours : t.essaiBouton}
           </Texte>
         </Pressable>
+
         {message ? (
           <Texte
             taille={textes.petit}

@@ -9,7 +9,8 @@
     "essai": {
       "distribution": "store",
       "android": { "buildType": "app-bundle" },
-      "channel": "essai"
+      "channel": "essai",
+      "autoIncrement": true
     },
     "production": {
       "distribution": "store",

@@ -3,7 +3,13 @@
 
 const en = {
   // L'en-tête et le terminal
-  bonjour: "Hello, Nelson",
+  // Le prénom du propriétaire était ÉCRIT EN DUR ici. Tant que TOTEM
+  // n'appartenait qu'à une personne, cela passait ; dès qu'un deuxième
+  // compte existe, tout le monde est accueilli sous le prénom du premier.
+  // Le nom vient donc du compte connecté, et « bonjourSeul » sert quand il
+  // n'y en a pas — une session ouverte par la clé de secours, par exemple.
+  bonjour: "Hello, {nom}",
+  bonjourSeul: "Hello",
   titre: "Overview",
   reglages: "Settings",
   terminal: "Terminal",
@@ -75,7 +81,8 @@ const en = {
 };
 
 const fr: typeof en = {
-  bonjour: "Bonjour, Nelson",
+  bonjour: "Bonjour, {nom}",
+  bonjourSeul: "Bonjour",
   titre: "Vue d’ensemble",
   reglages: "Réglages",
   terminal: "Terminal",

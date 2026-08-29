@@ -116,6 +116,10 @@ export type EtatTerminal = {
 };
 
 export type Donnees = {
+  // Le courriel du compte connecté, quand il y en a un. Sert à saluer la
+  // personne par son prénom — et rien d'autre. `null` pour une session
+  // ouverte par la clé de secours, qui ne désigne personne.
+  courriel?: string | null;
   relie: boolean;           // les variables d'accès à la base sont-elles là ?
   terminal: EtatTerminal | null;
   sims: Sim[];

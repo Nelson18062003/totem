@@ -239,15 +239,58 @@ En français et en anglais, entièrement.
 
 ## Les images
 
-| Élément | Exigence | D'où il sort |
-|---|---|---|
-| Icône | 512 × 512, PNG 32 bits | `brand/png/totem-icone-app.png` |
-| Image de présentation | 1024 × 500 | à fabriquer |
-| Captures téléphone | 2 à 8, min. 320 px de côté | l'aperçu web, aux tailles du harnais |
+**Tout est fabriqué et rangé dans `boutique/`.** Il n'y a plus qu'à
+téléverser.
 
-Les captures se prennent avec la plateforme d'essai (le faux nuage), **jamais
-avec de vraies données** : un montant réel ou un nom de client n'a rien à
-faire dans une fiche publique.
+| Élément | Fichier | Taille |
+|---|---|---|
+| Icône | `brand/png/totem-icone-app.png` | 1024 × 1024 |
+| Image de présentation | `boutique/presentation-1024x500.png` | 1024 × 500 |
+| Captures téléphone | `boutique/captures/1-caisses.png` … `4-cartes.png` | 1080 × 1920 |
+
+Les captures se refabriquent d'une commande, jamais à la main :
+
+```sh
+node web/scripts/faux-nuage.mjs &
+cd web && SUPABASE_URL=http://127.0.0.1:4999 SUPABASE_CLE=x \
+  SESSION_SECRET=essai npx next start -p 3180 &
+cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3180 EXPO_PUBLIC_APERCU=1 \
+  npx expo export --platform web --output-dir /tmp/apercu
+node scripts/captures-boutique.mjs /tmp/apercu
+```
+
+**Avec le faux nuage, jamais avec de vraies données.** Une capture part sur
+une fiche publique, visible de la terre entière et archivée par des gens
+qu'on ne connaît pas. Un montant réel, un nom de client, un numéro de
+téléphone n'ont rien à y faire — et une fois publiés, ils ne se reprennent
+pas. Le script s'arrête d'ailleurs s'il retombe sur l'écran de connexion :
+une capture de l'écran de connexion sur une fiche de magasin serait ridicule.
+
+L'image de présentation **sera rognée** par Google selon les emplacements :
+la marque et la phrase tiennent donc dans le tiers central, et les bords ne
+portent que le motif.
+
+## Le numéro de version, et le piège qui attendait
+
+Le Play Store refuse un paquet dont le `versionCode` a **déjà servi**, sur
+n'importe quelle piste. Le message est sec — « Version code 1 has already
+been used » — et ne dit pas où le corriger.
+
+`eas.json` porte `appVersionSource: "remote"` : le compteur vit chez EAS, et
+il ne monte QUE pour les profils marqués `autoIncrement`. Le profil `essai`
+ne l'était pas. La première mise en ligne serait passée ; la deuxième aurait
+été refusée, sans qu'on sache pourquoi.
+
+Les deux profils qui vont au magasin — `essai` et `production` — l'ont
+maintenant, et partagent le même compteur : un paquet d'essai ne peut donc
+pas entrer en collision avec un paquet public.
+
+`apercu` ne l'a pas, et n'en a pas besoin : c'est un APK qu'on s'installe
+soi-même, il ne passe jamais par le magasin.
+
+> `eas.json` **refuse les commentaires**. C'est pour cela que cette
+> explication est ici et pas dans le fichier — une compilation entière a
+> déjà échoué sur une clé `"//"` ajoutée par habitude.
 
 ---
 

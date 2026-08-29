@@ -153,10 +153,45 @@ const en = {
   essaiEnCours: "Sending…",
   essaiTexte: "This is a test. Notifications are working.",
   essaiReussi: "Sent. Your phone should ring within a few seconds.",
+  // « Aucun téléphone connecté » était un CONTRESENS. Le propriétaire EST
+  // connecté — il vient de taper son courriel et son mot de passe — et le
+  // message lui disait le contraire. Ce qui manque n'est pas une session,
+  // c'est un APPAREIL INSCRIT pour recevoir les notifications. Deux choses
+  // sans rapport, sous un même mot.
   essaiAucunAppareil:
-    "No phone signed in yet. Open the app, sign in, and accept notifications.",
+    "No phone is registered for notifications. This is not about your " +
+    "sign-in — you are signed in. It means no phone has yet told the " +
+    "platform where to ring.",
+  // Sur le navigateur, la précision qui manquait le plus : un navigateur
+  // n'est pas un téléphone, et ne recevra jamais de notification. Sans
+  // cela, on appuie sur « envoyer un essai » depuis un ordinateur en
+  // attendant qu'il sonne.
+  essaiDepuisNavigateur:
+    "A browser never receives these notifications — only the TOTEM app on " +
+    "a phone does. Open the app on your phone, then come back here.",
   essaiEchec: "Nothing could be sent.",
   essaiOublies: "phone(s) removed: the app is no longer installed on them.",
+
+  // --- Ce qui a empêché ce téléphone de s'inscrire -----------------------
+  // Cinq raisons, cinq gestes différents. Les confondre sous un « ça ne
+  // marche pas » laisse chercher au hasard.
+  sonnerieInscrit: "This phone will ring.",
+  sonnerieRefusee:
+    "Notifications are turned off for TOTEM. Android will not ask again — " +
+    "turn them on in the phone's own settings.",
+  sonnerieOuvrirReglages: "Open phone settings",
+  sonnerieSimulateur:
+    "This device cannot receive notifications (no Google services).",
+  sonnerieSansProjet:
+    "This build is not linked to its notification project. It needs " +
+    "rebuilding — nothing you can fix from here.",
+  sonnerieSansJeton:
+    "The notification service gave nothing back. Check the connection, then " +
+    "try again.",
+  sonnerieEchec:
+    "The phone could not be registered. Check the connection, then try again.",
+  sonnerieInscrire: "Register this phone",
+  sonnerieEnCours: "Registering…",
   securite: "Security",
   motDePasse: "Change the password",
   doubleAuth: "Two-step sign-in",
@@ -305,10 +340,34 @@ const fr: typeof en = {
   essaiTexte: "Ceci est un essai. Les notifications fonctionnent.",
   essaiReussi: "Envoyé. Votre téléphone devrait sonner dans quelques secondes.",
   essaiAucunAppareil:
-    "Aucun téléphone connecté pour l’instant. Ouvrez l’application, " +
-    "connectez-vous, et acceptez les notifications.",
+    "Aucun téléphone n’est inscrit pour les notifications. Cela ne concerne " +
+    "pas votre connexion — vous êtes bien connecté. Cela veut dire qu’aucun " +
+    "téléphone n’a encore dit à la plateforme où sonner.",
+  essaiDepuisNavigateur:
+    "Un navigateur ne reçoit jamais ces notifications — seule l’application " +
+    "TOTEM sur un téléphone les reçoit. Ouvrez l’application sur votre " +
+    "téléphone, puis revenez ici.",
   essaiEchec: "Rien n’a pu être envoyé.",
   essaiOublies: "téléphone(s) retiré(s) : l’application n’y est plus installée.",
+
+  sonnerieInscrit: "Ce téléphone sonnera.",
+  sonnerieRefusee:
+    "Les notifications sont désactivées pour TOTEM. Android ne le redemandera " +
+    "pas — activez-les dans les réglages du téléphone.",
+  sonnerieOuvrirReglages: "Ouvrir les réglages du téléphone",
+  sonnerieSimulateur:
+    "Cet appareil ne peut pas recevoir de notifications (pas de services Google).",
+  sonnerieSansProjet:
+    "Cette version n’est pas rattachée à son projet de notification. Il faut " +
+    "la recompiler — rien à corriger d’ici.",
+  sonnerieSansJeton:
+    "Le service de notification n’a rien rendu. Vérifiez la connexion, puis " +
+    "réessayez.",
+  sonnerieEchec:
+    "Le téléphone n’a pas pu être inscrit. Vérifiez la connexion, puis " +
+    "réessayez.",
+  sonnerieInscrire: "Inscrire ce téléphone",
+  sonnerieEnCours: "Inscription…",
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",
   doubleAuth: "Double authentification",
