@@ -23,6 +23,7 @@ méthodes de `Page` prennent donc un `y` mesuré **depuis le haut**, et la
 conversion se fait au dernier moment.
 """
 
+import re
 import struct
 import zlib
 
@@ -290,11 +291,129 @@ class Page:
         self._ajouter(_svg_en_pdf(chemin) + " S")
         self._ajouter("Q")
 
+    def remplir(self, traces, teinte, echelle, dx, dy):
+        """Un ou plusieurs tracés SVG, PLEINS, déposés à l'échelle.
+
+        Le remplissage suit la règle « non nulle » : deux sous-tracés tournés
+        en sens contraires font un trou. C'est ce qui creuse l'anneau du logo
+        MTN et les contre-formes des lettres — le fichier officiel est dessiné
+        pour cette règle-là, on ne la change pas.
+        """
+        if isinstance(traces, str):
+            traces = [traces]
+        morceaux = [chemin_svg(t) for t in traces]
+        morceaux = [m for m in morceaux if m]
+        if not morceaux:
+            return
+        r, v, b = couleur(teinte)
+        self._ajouter("q")
+        # SVG descend, le PDF monte : on retourne l'axe une fois pour toutes.
+        self._ajouter(f"{echelle:.5f} 0 0 {-echelle:.5f} {dx:.3f} "
+                      f"{self._y(dy):.3f} cm")
+        self._ajouter(f"{r:.4f} {v:.4f} {b:.4f} rg")
+        self._ajouter(" ".join(morceaux) + " f")
+        self._ajouter("Q")
+
     @staticmethod
     def _quadrilatere(sommets):
         x0, y0 = sommets[0]
         corps = " ".join(f"{x:.3f} {y:.3f} l" for x, y in sommets[1:])
         return f"{x0:.3f} {y0:.3f} m {corps} h"
+
+
+# Les jetons d'un tracé SVG : une lettre de commande, ou un nombre. Le format
+# autorise des nombres collés (« c-4,2.6-8.4,3.9 ») et des signes en guise de
+# séparateur : c'est l'expression qui découpe, pas les espaces.
+_JETONS = re.compile(r"([MmLlHhVvCcSsZz])|([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)")
+
+# Combien de nombres consomme chaque commande.
+_ARGUMENTS = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4}
+
+
+def chemin_svg(trace):
+    """Traduit un tracé SVG COMPLET en opérateurs PDF.
+
+    Contrairement à `_svg_en_pdf`, qui ne lit que le sous-ensemble produit par
+    `brand/generer.py`, cette lecture-ci accepte ce qu'écrivent les vrais
+    fichiers de marque : commandes relatives, raccourcis `H`/`V`, courbes
+    lissées `S`, fermeture `Z`, et la répétition implicite (une commande suivie
+    de plusieurs jeux de nombres se rejoue autant de fois).
+
+    Le point de contrôle d'une courbe lissée est le MIROIR du précédent — sans
+    ce reflet, l'ovale de MTN se casserait en quatre arcs plats.
+    """
+    elements = []
+    for lettre, nombre in _JETONS.findall(trace or ""):
+        elements.append(lettre if lettre else float(nombre))
+
+    sortie = []
+    x = y = ouverture_x = ouverture_y = 0.0
+    # Le dernier point de contrôle, pour le miroir de « S ».
+    controle_x = controle_y = 0.0
+    commande = ""
+    i = 0
+    while i < len(elements):
+        jeton = elements[i]
+        if isinstance(jeton, str):
+            commande = jeton
+            i += 1
+            if commande in "Zz":
+                sortie.append("h")
+                x, y = ouverture_x, ouverture_y
+                continue
+        elif not commande:
+            break                       # des nombres sans commande : on s'arrête
+        elif commande == "M":
+            commande = "L"              # « M x y x y » trace des lignes
+        elif commande == "m":
+            commande = "l"
+
+        majuscule = commande.upper()
+        besoin = _ARGUMENTS.get(majuscule)
+        if besoin is None or i + besoin > len(elements):
+            break
+        valeurs = elements[i:i + besoin]
+        if any(isinstance(v, str) for v in valeurs):
+            break                       # tracé mal formé : on ne devine pas
+        i += besoin
+        relatif = commande.islower()
+
+        if majuscule == "M":
+            x = valeurs[0] + (x if relatif else 0)
+            y = valeurs[1] + (y if relatif else 0)
+            ouverture_x, ouverture_y = x, y
+            sortie.append(f"{x:.3f} {y:.3f} m")
+            controle_x, controle_y = x, y
+        elif majuscule in ("L", "H", "V"):
+            if majuscule == "L":
+                x = valeurs[0] + (x if relatif else 0)
+                y = valeurs[1] + (y if relatif else 0)
+            elif majuscule == "H":
+                x = valeurs[0] + (x if relatif else 0)
+            else:
+                y = valeurs[0] + (y if relatif else 0)
+            sortie.append(f"{x:.3f} {y:.3f} l")
+            controle_x, controle_y = x, y
+        else:                           # C et S : deux contrôles, une arrivée
+            if majuscule == "C":
+                p1x, p1y, p2x, p2y, fx, fy = valeurs
+                if relatif:
+                    p1x, p1y = p1x + x, p1y + y
+                    p2x, p2y = p2x + x, p2y + y
+                    fx, fy = fx + x, fy + y
+            else:
+                # Le premier contrôle est le reflet du dernier, par le point
+                # courant : c'est ce qui rend la courbe « lisse ».
+                p1x, p1y = 2 * x - controle_x, 2 * y - controle_y
+                p2x, p2y, fx, fy = valeurs
+                if relatif:
+                    p2x, p2y = p2x + x, p2y + y
+                    fx, fy = fx + x, fy + y
+            sortie.append(f"{p1x:.3f} {p1y:.3f} {p2x:.3f} {p2y:.3f} "
+                          f"{fx:.3f} {fy:.3f} c")
+            controle_x, controle_y = p2x, p2y
+            x, y = fx, fy
+    return " ".join(sortie)
 
 
 def _svg_en_pdf(chemin):

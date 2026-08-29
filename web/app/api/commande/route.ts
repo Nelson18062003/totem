@@ -1,3 +1,4 @@
+import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
@@ -106,12 +107,33 @@ export async function POST(req: Request) {
       // On BORNE avant de nettoyer : un tableau démesuré ne doit pas faire
       // tourner la regex des centaines de milliers de fois (un parcours
       // n'a jamais plus de huit étapes). On tranche donc d'abord.
+      //
+      // Les accolades passent : un code peut porter des trous à remplir
+      // (« *126*1*{numero}*{montant}# »). Elles n'atteignent jamais le modem
+      // — le guichet les remplace par des chiffres avant de composer — et le
+      // robot revérifie que chaque trou porte un nom qu'il connaît.
       const etapes = brut.etapes
         .slice(0, 8)
         .filter((e: unknown): e is string => typeof e === "string")
-        .map((e: string) => e.replace(/[^0-9#*]/g, "").slice(0, 32))
+        .map((e: string) => e.replace(/[^0-9#*{}a-zA-Z_]/g, "").slice(0, 64))
         .filter(Boolean);
-      if (etapes.length) parametres.etapes = etapes;
+      if (etapes.length) {
+        // Une lettre ou une accolade qui SURVIT au bouchage des trous, c'est
+        // un trou mal écrit — « {montan » sans fermeture, « numero} » sans
+        // ouverture. Sans ce contrôle, le nettoyage l'avalerait en silence
+        // et le carnet garderait un code faux, d'apparence valable.
+        if (etapes.some((e: string) => /[A-Za-z_{}]/.test(
+              e.replace(/\{[A-Za-z_]+\}/g, "0")))) {
+          return Response.json(
+            { erreur: erreurApi(langue, "variableMalFormee") }, { status: 400 });
+        }
+        const inconnues = variablesInconnues(etapes);
+        if (inconnues.length) {
+          return Response.json(
+            { erreur: erreurApi(langue, "variableInconnue") }, { status: 400 });
+        }
+        parametres.etapes = etapes;
+      }
     }
     if (!parametres.operateur || !parametres.cle ||
         (parametres.action === "definir" && !parametres.etapes)) {

@@ -80,13 +80,48 @@ const en = {
   modifierCode: "Edit this code",
   attribuer: "Set the code",
   retirerBouton: "Remove this button (back to the built-in code, if any)",
-  exempleEtapes: "*126*1#  or  *126#, 1, 1",
+  exempleEtapes: "*126*1*{numero}*{montant}#",
+  variableAide: {
+    numero: "The recipient's or agent's number, as typed in the form",
+    montant: "The amount, as typed in the form",
+    point: "The agent's number (withdrawal)",
+  } as Record<string, string>,
+  modeDirect: "direct",
+  modeGuide: "menu",
+
+  // --- Le composeur : un code qui se construit bloc par bloc
+  blocNom: {
+    numero: "Recipient's number",
+    montant: "Amount",
+    point: "Agent's number",
+  } as Record<string, string>,
+  blocNature: {
+    telephone: "phone number",
+    montant: "amount",
+  } as Record<string, string>,
+  aideComposeur:
+    "Tap a block to drop it where the cursor sits — or drag it into the code.",
+  retirerBloc: "Remove this block",
+  reseauRecevra: "The network will receive",
+  codePret: "Ready to save",
+  verdict: {
+    vide: "Nothing to save yet.",
+    malformee:
+      "A block is half-written. Remove it and drop a whole one back in.",
+    inconnue: (nom: string) =>
+      `${nom} is not one of the three blocks — the network would get it as is.`,
+    code: "A USSD code starts with * or # and ends with #.",
+    etape: (e: string) =>
+      `“${e}” is neither a menu choice (one or two digits) nor a block. ` +
+      "A button stops at the question — never an amount, a number or the " +
+      "secret code.",
+  },
   nomExemple: "Name (“Bills”)",
   ajouter: "Add",
   annulerAjout: "Cancel adding",
   ajouterRaccourci: "Add a shortcut",
   noteCodes:
-    "Each operator has its own codes: they belong to the network, and work with any card from that operator. What you save here goes into the robot's notebook and every screen uses it. A code only opens the counter and stops at the first question — the secret code is typed on its keypad when the moment comes, and is never stored.",
+    "Each operator has its own codes: they belong to the network, and work with any card from that operator. What you save here goes into the robot's notebook and every screen uses it. Two ways to build one: drop the blocks into the code — the recipient's number, the amount — and it goes out complete in one shot, the network then only asking for your secret code; leave the blocks out and the code opens the menu, and the platform answers its questions one by one. Never type your secret code here: it is entered on its keypad when the moment comes, and is stored nowhere.",
 
   // --- La sécurité
   securite: "Security",
@@ -171,13 +206,47 @@ const fr: typeof en = {
   modifierCode: "Modifier ce code",
   attribuer: "Attribuer le code",
   retirerBouton: "Retirer ce bouton (retour au code d’origine, s’il existe)",
-  exempleEtapes: "*126*1#  ou  *126#, 1, 1",
+  exempleEtapes: "*126*1*{numero}*{montant}#",
+  variableAide: {
+    numero: "Le numéro du bénéficiaire ou de l’agent, tel que saisi au formulaire",
+    montant: "Le montant, tel que saisi au formulaire",
+    point: "Le numéro de l’agent (retrait)",
+  } as Record<string, string>,
+  modeDirect: "direct",
+  modeGuide: "menu",
+
+  blocNom: {
+    numero: "Numéro du bénéficiaire",
+    montant: "Montant",
+    point: "Numéro de l’agent",
+  } as Record<string, string>,
+  blocNature: {
+    telephone: "numéro de téléphone",
+    montant: "montant",
+  } as Record<string, string>,
+  aideComposeur:
+    "Touchez un bloc pour le poser là où est le curseur — ou glissez-le dans le code.",
+  retirerBloc: "Retirer ce bloc",
+  reseauRecevra: "Le réseau recevra",
+  codePret: "Prêt à enregistrer",
+  verdict: {
+    vide: "Rien à enregistrer pour l’instant.",
+    malformee:
+      "Un bloc est écrit à moitié. Retirez-le et reposez-en un entier.",
+    inconnue: (nom) =>
+      `${nom} n’est pas l’un des trois blocs — le réseau le recevrait tel quel.`,
+    code: "Un code USSD commence par * ou # et finit par #.",
+    etape: (e) =>
+      `« ${e} » n’est ni un choix de menu (un ou deux chiffres) ni un bloc. ` +
+      "Un bouton s’arrête à la question — jamais un montant, un numéro ou " +
+      "le code secret.",
+  },
   nomExemple: "Nom (« Factures »)",
   ajouter: "Ajouter",
   annulerAjout: "Annuler l’ajout",
   ajouterRaccourci: "Ajouter un raccourci",
   noteCodes:
-    "Chaque opérateur a ses propres codes ; ils appartiennent au réseau et suivront toute carte du même opérateur. Ce qui s’enregistre ici entre au carnet du robot, et tous les écrans s’en servent. Un code n’ouvre que le guichet et s’arrête à la première question ; le code secret se compose sur son pavé au moment voulu, et n’est jamais enregistré.",
+    "Chaque opérateur a ses propres codes ; ils appartiennent au réseau et suivront toute carte du même opérateur. Ce qui s’enregistre ici entre au carnet du robot, et tous les écrans s’en servent. Deux façons de construire un code : posez-y les blocs — le numéro du bénéficiaire, le montant — et il part COMPLET, d’un seul coup, le réseau ne demandant plus que le code secret ; sans blocs, le code ouvre le menu et la plateforme répond à ses questions une à une. N’écrivez jamais votre code secret ici : il se compose sur son pavé au moment voulu, et n’est enregistré nulle part.",
 
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",

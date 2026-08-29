@@ -134,7 +134,7 @@ body{
 .page{width:420mm;height:297mm;padding:26mm 28mm;display:flex;flex-direction:column}
 
 /* Toutes les étiquettes du document parlent la même langue. */
-.k{font-size:12pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+.k{font-size:13pt;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
   color:#8a8279;line-height:1}
 
 /* ZONE 1 — qui émet le reçu */
@@ -144,13 +144,20 @@ body{
 .logo span{font-weight:700;text-transform:uppercase;letter-spacing:.18em;
   font-size:30pt;line-height:1}
 .doc{text-align:right}
-.doc .t{font-size:17pt;font-weight:700;letter-spacing:-.02em;line-height:1.1}
-.doc .n{font-size:12pt;color:#8a8279;font-variant-numeric:tabular-nums;margin-top:2.5mm}
+.doc .t{font-size:20pt;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.doc .n{font-size:13pt;color:#8a8279;font-variant-numeric:tabular-nums;margin-top:2.5mm}
+
+/* La marque du réseau, en tête et à une taille où elle se RECONNAÎT. Elle
+   était reléguée en bas de page, haute de onze points : sur un reçu qu'on
+   tend à un client, le réseau est la première chose qu'on cherche. */
+.reseau{display:flex;align-items:center;justify-content:flex-end;
+  margin-bottom:4mm}
+.reseau .nom{font-size:13pt;font-weight:700;color:#16171a}
 
 /* ZONE 2 — ce qui s'est passé */
 .centre{flex:1;display:flex;align-items:center;gap:24mm;padding:14mm 0}
 .somme-bloc{flex:0 0 42%}
-.somme{margin-top:6mm;font-size:74pt;font-weight:700;letter-spacing:-.04em;
+.somme{margin-top:6mm;font-size:88pt;font-weight:700;letter-spacing:-.04em;
   line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* L'écart entre tranches de trois chiffres est une marge, pas une espace :
@@ -164,33 +171,76 @@ body{
 .tiers > div{flex:1;min-width:0}
 .tiers .nom{margin-top:6mm;font-size:27pt;font-weight:700;letter-spacing:-.025em;
   line-height:1.18}
-.tiers .num{margin-top:3mm;font-size:17pt;color:#62605c;
+.tiers .num{margin-top:3mm;font-size:21pt;color:#62605c;
   font-variant-numeric:tabular-nums}
 
 /* ZONE 3 — les preuves */
+/* Le bandeau garde sa pleine largeur — c'est un aplat, pas un tableau — mais
+   ses colonnes se serrent à gauche : deux preuves écartées d'un demi-mètre ne
+   se lisent plus ensemble. */
 .preuves{background:#f7f4f1;border-radius:4mm;padding:11mm 13mm;
   display:flex;gap:12mm;align-items:stretch}
+.preuves .fin{flex:0 0 auto}
 .preuves > div{min-width:0;display:flex;flex-direction:column}
 /* L'étiquette réserve deux lignes : les valeurs s'alignent, qu'elle tienne
    sur une ligne ou sur deux. */
 .preuves .k{line-height:1.32;min-height:2.64em}
-.preuves .v{margin-top:2mm;font-size:17pt;font-weight:700;letter-spacing:-.02em;
+.preuves .v{margin-top:2mm;font-size:26pt;font-weight:700;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;line-height:1.28}
 
 .pied{margin-top:9mm;display:flex;justify-content:space-between;
-  font-size:11pt;color:#8a8279}
+  font-size:13pt;color:#8a8279}
 `;
 
-const haut = (type, recu) => `
+// La marque du réseau vient de `brand/marques-operateurs.json` — le MÊME
+// fichier que lit le robot (`totem/marques.py`). Les tracés y sont ceux des
+// fichiers publiés par les opérateurs : le carré au mot blanc d'Orange,
+// l'ovale au sigle de MTN. Aucun logo n'est redessiné ici, et aucun n'est
+// téléchargé à l'affichage.
+//
+// Elle est SEULE en tête. Écrire « MTN MoMo » à côté du logo de MTN revient à
+// légender un logo : un réseau se reconnaît, il ne se lit pas. Un opérateur
+// dont la marque n'est pas connue garde son nom écrit — mieux vaut un mot
+// qu'un blanc.
+const MARQUES_FICHIER = JSON.parse(
+  readFileSync(join(ICI, "..", "brand", "marques-operateurs.json"), "utf8"));
+
+// La marque, à la hauteur voulue. La zone de dessin du fichier officiel peut
+// commencer ailleurs qu'à l'origine — celle de MTN part de (−128, −64) —,
+// d'où le « viewBox » recopié tel quel.
+function marqueReseau(operateur, hauteur = 34) {
+  const nom = (operateur || "").trim().toLowerCase();
+  const cle = Object.keys(MARQUES_FICHIER).find((k) => nom.startsWith(k));
+  if (!cle) return `<span class="nom">${operateur}</span>`;
+  const m = MARQUES_FICHIER[cle];
+  const [vx, vy, vl, vh] = m.voir;
+  const traces = m.traces
+    .map((d) => `<path d="${d}" fill="${m.encre}"/>`).join("");
+  return (
+    `<svg width="${(hauteur * vl) / vh}" height="${hauteur}" ` +
+    `viewBox="${vx} ${vy} ${vl} ${vh}">` +
+    `<rect x="${vx}" y="${vy}" width="${vl}" height="${vh}" ` +
+    `rx="${m.rayon}" fill="${m.fond}"/>${traces}</svg>`
+  );
+}
+
+const haut = (type, recu, reseau = "Orange Money") => `
   <div class="haut">
     <div class="logo">${symbole(78, "#9a4b2e")}<span>Totem</span></div>
-    <div class="doc"><div class="t">${type}</div><div class="n">N° ${recu}</div></div>
+    <div class="doc">
+      <div class="reseau">${marqueReseau(reseau)}</div>
+      <div class="t">${type}</div><div class="n">N° ${recu}</div>
+    </div>
   </div>`;
 
 // `poids` : la part de largeur que prend la colonne. Un ID de transaction
 // occupe deux fois la place d'un montant de frais.
 const preuve = (k, v, poids = 1) =>
   `<div style="flex:${poids}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+
+// La cale qui empêche les colonnes de s'étirer sur toute la largeur quand
+// elles sont peu nombreuses. Elle ne porte rien : elle occupe ce qui reste.
+const cale = (poids) => `<div style="flex:${poids}"></div>`;
 
 // --- Les deux langues --------------------------------------------------------
 //
@@ -202,6 +252,7 @@ const LIBELLES = {
     transfert: "Transfer receipt",
     solde: "Balance receipt",
     montantRecu: "Amount received",
+    montantEnvoye: "Amount sent",
     de: "From",
     a: "To",
     idTransaction: "Transaction ID",
@@ -223,6 +274,7 @@ const LIBELLES = {
     transfert: "Reçu de transfert",
     solde: "Reçu de solde",
     montantRecu: "Montant reçu",
+    montantEnvoye: "Montant envoyé",
     de: "De",
     a: "À",
     idTransaction: "ID transaction",
@@ -242,12 +294,22 @@ const LIBELLES = {
   },
 };
 
+// Le réseau signe en tête, en grand. Le répéter ici ferait deux fois la même
+// chose, moins bien : le pied ne garde que le lieu.
 const pied = (l) => `
-  <div class="pied"><span>Orange Money · ${l.lieu}</span><span>Maquette</span></div>`;
+  <div class="pied"><span>${l.lieu}</span><span>Maquette</span></div>`;
 
 // --- 1. Reçu de transfert ----------------------------------------------------
+// Deux jeux, parce que deux réseaux ne disent pas les mêmes choses.
+//
+// Orange détaille : montant brut, frais, commission. MTN ne donne que des
+// frais, jamais de commission — mais il écrit son propre horodatage et le
+// solde qu'il laisse. Le reçu montre ce que l'opérateur a dit, et rien de
+// plus : une colonne vide vaudrait moins que pas de colonne.
 const t = {
+  reseau: "Orange Money",
   recu: "TM-2026-0731-0042",
+  sens: "recu",
   brut: 184137,           // « Montant Transaction », ce qu'Orange a prélevé
   net: 184137,            // « Montant Net », ce qui a réellement changé de main
   frais: 0,
@@ -259,37 +321,67 @@ const t = {
   aNum: "696 103 864",
 };
 
-const transfert = (langue) => {
+// Un VRAI message MTN, relevé sur le terrain : un envoi. Le réseau ne nomme
+// qu'un tiers — le destinataire — et laisse notre côté implicite (« from your
+// mobile money account »). C'est le sens de l'opération qui décide de quel
+// côté chacun se range.
+const tm = {
+  reseau: "MTN MoMo",
+  recu: "TM-2026-0825-0235",
+  sens: "envoye",
+  net: 200000,
+  frais: 0,
+  id: "18496208804",
+  deNom: "NGANGOM JONAS",
+  deNum: "+237 652 236 856",
+  aNom: "PAYSELA TECHNOLOGIES SARL",
+  aNum: "+237 681 026 861",
+  dateEnLettres: { en: "25 August 2026", fr: "25 août 2026" },
+  // L'heure du réseau se recopie à la seconde : c'est celle du relevé MTN.
+  heure: { en: "13:55:27", fr: "13 h 55 min 27 s" },
+};
+
+const transfert = (langue, d = t) => {
   const l = LIBELLES[langue];
+  const jour = d.dateEnLettres ? d.dateEnLettres[langue] : l.dateEnLettres;
+  const heure = d.heure ? d.heure[langue] : l.heureTransfert;
+  // Les colonnes du bandeau : seules celles que l'opérateur a renseignées.
+  const colonnes = [
+    preuve(l.idTransaction, d.id, 2.2),
+    preuve(l.date, `${jour}<br>${heure}`, 1.3),
+  ];
+  if (d.brut != null) colonnes.push(preuve(l.montantTransaction, montant(d.brut, langue), 1.5));
+  if (d.frais != null) colonnes.push(preuve(l.frais, montant(d.frais, langue), 1));
+  if (d.commission != null) colonnes.push(preuve(l.commission, montant(d.commission, langue), 1));
+  // Peu de colonnes : elles se serrent à gauche, une cale occupe le reste.
+  const reste = Math.max(0, 5 - colonnes.length);
+  if (reste) colonnes.push(cale(reste * 1.2));
+
   return `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
 <div class="page">
-  ${haut(l.transfert, t.recu)}
+  ${haut(l.transfert, d.recu, d.reseau)}
 
   <div class="centre">
     <div class="somme-bloc">
-      <div class="k">${l.montantRecu}</div>
-      <div class="somme">${montant(t.net, langue)}</div>
+      <div class="k">${l[d.sens === "envoye" ? "montantEnvoye" : "montantRecu"]}</div>
+      <div class="somme">${montant(d.net, langue)}</div>
     </div>
     <div class="tiers">
       <div>
         <div class="k">${l.de}</div>
-        <div class="nom">${t.deNom}</div>
-        <div class="num">${t.deNum}</div>
+        <div class="nom">${d.deNom}</div>
+        <div class="num">${d.deNum}</div>
       </div>
       <div>
         <div class="k">${l.a}</div>
-        <div class="nom">${t.aNom}</div>
-        <div class="num">${t.aNum}</div>
+        <div class="nom">${d.aNom}</div>
+        <div class="num">${d.aNum}</div>
       </div>
     </div>
   </div>
 
   <div class="preuves">
-    ${preuve(l.idTransaction, t.id, 2.2)}
-    ${preuve(l.date, `${l.dateEnLettres}<br>${l.heureTransfert}`, 1.3)}
-    ${preuve(l.montantTransaction, montant(t.brut, langue), 1.5)}
-    ${preuve(l.frais, montant(t.frais, langue), 1)}
-    ${preuve(l.commission, montant(t.commission, langue), 1)}
+    ${colonnes.join("\n    ")}
   </div>
 
   ${pied(l)}
@@ -308,7 +400,7 @@ const solde = (langue) => {
   const l = LIBELLES[langue];
   return `<!doctype html><meta charset="utf-8"><style>${STYLE}</style>
 <div class="page">
-  ${haut(l.solde, s.recu)}
+  ${haut(l.solde, s.recu, "Orange Money")}
 
   <div class="centre">
     <div class="somme-bloc">
@@ -340,8 +432,10 @@ const solde = (langue) => {
 // français prend le suffixe « -fr ».
 const documents = [
   ["recu-transfert", transfert("en")],
+  ["recu-transfert-mtn", transfert("en", tm)],
   ["recu-solde", solde("en")],
   ["recu-transfert-fr", transfert("fr")],
+  ["recu-transfert-mtn-fr", transfert("fr", tm)],
   ["recu-solde-fr", solde("fr")],
 ];
 

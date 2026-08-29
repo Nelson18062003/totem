@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { remplirVariables } from "@noyau/codes";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { Feuille } from "./feuille";
 import { useLangue } from "./langue";
@@ -147,10 +148,29 @@ export function OperationPopup({
   const lancer = async () => {
     setEtape("session");
     restants.current = [...operation.champs];
-    // Le parcours du bouton : le code d'entrée, puis chaque choix de menu
-    // retenu — en s'arrêtant net si le réseau ne suit pas. Ensuite
-    // seulement, les questions du réseau se déroulent avec les champs.
-    const etapes = operation.etapes?.length ? operation.etapes : [operation.code];
+    const brutes = operation.etapes?.length ? operation.etapes : [operation.code];
+
+    // LES TROUS D'ABORD. Un code peut porter « {numero} » et « {montant} » :
+    // on les remplace par ce qui vient d'être saisi, et le code part alors
+    // ENTIER — « *126*1*677123456*5000# » — le réseau ne demandant plus que
+    // le code secret. Sans trou, rien ne change : le code ouvre le menu et
+    // les questions se déroulent une à une, comme avant.
+    const { etapes, consommees, manquantes } = remplirVariables(brutes, valeurs);
+    // Un trou sans réponse ne part JAMAIS tel quel : « {numero} » composé
+    // au réseau, c'est un code faux — au mieux il échoue, au pire il tombe
+    // sur autre chose. On s'arrête, et on dit lequel manque.
+    if (manquantes.length) {
+      setErreur(t.trouSansReponse(manquantes.map((m) => `{${m}}`).join(", ")));
+      setFini(true);
+      return;
+    }
+    // Ce qui voyage DÉJÀ dans le code ne doit pas être resaisi ensuite : on
+    // retire ces champs de la liste des réponses à donner.
+    if (consommees.length) {
+      restants.current = restants.current.filter(
+        (c) => !consommees.includes(c.cle));
+    }
+
     let texte = await envoyer(
       "ussd",
       operation.carte
@@ -236,7 +256,11 @@ export function OperationPopup({
     <>
       <p className="text-caption uppercase tracking-wider text-ink-faint">
         {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
-        {" · "}<span className="tabnums">{operation.code}</span>
+        {" · "}<span className="tabnums">
+          {remplirVariables(
+            operation.etapes?.length ? operation.etapes : [operation.code],
+            valeurs).etapes[0]}
+        </span>
       </p>
       <h2 className="mt-0.5 truncate text-heading font-semibold">{operation.titre}</h2>
     </>

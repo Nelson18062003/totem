@@ -38,7 +38,7 @@ from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
-from .pilotage import Pilotage
+from .pilotage import Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import t
 from .version import version
@@ -1345,6 +1345,19 @@ class Robot:
                                    canal=canal)
             return
         etapes = list(raccourci["etapes"])
+        # Un bouton à TROUS (« *126*1*{numero}*{montant}# ») attend des
+        # valeurs que Telegram ne demande pas : la plateforme, elle, ouvre un
+        # formulaire avant de composer. On le dit plutôt que de composer un
+        # code amputé — qui échouerait sans qu'on sache pourquoi.
+        trous = sorted({m.group(1) for e in etapes
+                        for m in RE_VARIABLE.finditer(e)})
+        if trous:
+            return self.transport.envoyer(
+                t(f"This button expects {', '.join(trous)}: run it from the "
+                  "platform, which asks for the values before dialling.",
+                  f"Ce bouton attend {', '.join(trous)} : lancez-le depuis la "
+                  "plateforme, qui demande les valeurs avant de composer."),
+                canal=canal, boutons=[[("🏠 Menu", "c:menu")]])
         self.canal_session = canal
         self.trace_rejouee = True
         self.msg_session = None
@@ -2180,8 +2193,18 @@ class Robot:
                                                numeros=self._nos_numeros()),
                          t("Transfer receipt", "Reçu de transfert",
                            langue=langue))
-            pdf = recu_transfert(motif.paiement, numero, quand, operateur,
-                                 titre=titre, langue=langue)
+            # NOTRE côté de l'opération : le nom et le numéro inscrits aux
+            # Réglages pour cette carte. Un SMS MTN ne nomme qu'un tiers —
+            # « to PAYSELA … from your mobile money account » — et c'est ici
+            # qu'on retrouve qui est en face de lui.
+            num_nous, nom_nous = self.journal.identite(iccid)
+            # L'heure du RÉSEAU quand le message la porte : MTN l'écrit, et
+            # c'est elle qui figurera sur son relevé. Sans elle, l'heure de
+            # réception reste la seule honnête.
+            pdf = recu_transfert(motif.paiement, numero,
+                                 motif.paiement.quand or quand, operateur,
+                                 titre=titre, langue=langue,
+                                 compte=(nom_nous, num_nous))
             legende = (f"🧾 {gras(titre)} — "
                        f"{gras(self._fcfa(motif.paiement.montant))}\n"
                        f"{italique(t('No. ', 'N° ', langue=langue) + numero)}")
