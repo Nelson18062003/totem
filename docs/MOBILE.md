@@ -225,7 +225,8 @@ propriétaire sur son écran. Le jeton, lui, n'est pas un secret — il ne dit
 rien de la personne, ne localise personne et n'ouvre l'accès à rien : il
 autorise seulement à faire sonner ce téléphone-là.
 
-La table s'installe avec `migrations/20260829_appareils.sql`.
+La table s’installe avec `migrations/20260829_consolidation.sql` — la même
+migration installe aussi les comptes (voir [`COMPTES.md`](COMPTES.md)).
 
 ### Firebase : pourquoi, et ce qu'il faut faire
 

@@ -99,7 +99,7 @@ montreriez l'écran par-dessus votre épaule.
 
 ## Installer
 
-1. Exécuter `migrations/20260829_utilisateurs.sql` dans Supabase
+1. Exécuter `migrations/20260829_consolidation.sql` dans Supabase
    (SQL Editor → New query → coller → Run). Le script est rejouable.
 2. Vérifier que `SESSION_SECRET` est posé sur Vercel — sans lui, aucune
    session ne peut être signée, et **le verrou n'est pas actif du tout**.
