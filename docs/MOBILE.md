@@ -302,6 +302,12 @@ Onglet **Actions** → **Application Android** → *Run workflow* → choisir le
 profil. Une vingtaine de minutes plus tard, le lien de téléchargement
 s'affiche au bas de la page, et Expo l'envoie aussi par courriel.
 
+> **`eas.json` n'accepte aucun commentaire.** Contrairement à `app.json`, qui
+> laisse passer les clés inconnues, `eas.json` est validé strictement contre
+> son schéma : une clé `"//"` ajoutée pour s'expliquer fait échouer la
+> compilation en deux secondes, avec « `"build.apercu.//" is not allowed` ».
+> Les explications des profils vivent donc ici, pas dans le fichier.
+
 ### Les trois profils
 
 | Profil | Ce qu'il fabrique | Qui peut l'installer |

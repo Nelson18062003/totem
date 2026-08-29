@@ -1,24 +1,17 @@
 {
   "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
   "build": {
-    "//": "Trois profils, du plus privé au plus public.",
-
     "apercu": {
-      "//": "L'APK qu'on installe DIRECTEMENT, par un lien ou un code à scanner. Ni Play Store, ni compte Google : le paquet se télécharge et s'installe. C'est le chemin le plus court pour tenir l'application dans la main.",
       "distribution": "internal",
       "android": { "buildType": "apk" },
       "channel": "apercu"
     },
-
     "essai": {
-      "//": "Le paquet AAB pour la piste d'essai interne du Play Store : jusqu'à 100 testeurs, disponible en quelques minutes, SANS examen de Google. L'installation se fait depuis le vrai magasin, mais seuls les invités le voient.",
       "distribution": "store",
       "android": { "buildType": "app-bundle" },
       "channel": "essai"
     },
-
     "production": {
-      "//": "Le paquet public. Le compte d'organisation BONZINILABS est dispensé de l'épreuve des douze testeurs pendant quatorze jours : on va directement en production.",
       "distribution": "store",
       "android": { "buildType": "app-bundle" },
       "channel": "production",
@@ -27,10 +20,7 @@
   },
   "submit": {
     "production": {
-      "android": {
-        "//": "Le dépôt sur le Play Store demande une clé de service Google, à poser plus tard dans les secrets du dépôt (voir docs/MOBILE.md).",
-        "track": "internal"
-      }
+      "android": { "track": "internal" }
     }
   }
 }
