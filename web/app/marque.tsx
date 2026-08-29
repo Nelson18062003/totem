@@ -1,6 +1,9 @@
 "use client";
 
 import { useId } from "react";
+import {
+  BRIN_A, BRIN_B, COUPE, CROISEMENTS, EPAISSEUR, TAILLE_TISSAGE, VUE_BOITE,
+} from "@noyau/marque";
 
 // Marque TOTEM — symbole et verrouillage.
 //
@@ -8,38 +11,21 @@ import { useId } from "react";
 // et se rejoignent aux deux bouts. Entre deux croisements, le vide dessine un
 // losange — le treillis naît du tressage, il n'est pas posé dessus.
 //
-// Les tracés de référence sont produits par `brand/generer.py`, qui fait
-// autorité. Ce fichier en est le portage React. Voir docs/IDENTITE.md.
-
-const BRIN_A =
-  "M16 4.4C17.54 5.302 22.6 6.462 22.6 8.267C22.6 10.071 19.08 10.329 16 12.133" +
-  "C12.92 13.938 9.4 14.196 9.4 16C9.4 17.804 12.92 18.062 16 19.867" +
-  "C19.08 21.671 22.6 21.929 22.6 23.733C22.6 25.538 17.54 26.698 16 27.6";
-
-const BRIN_B =
-  "M16 4.4C14.46 5.302 9.4 6.462 9.4 8.267C9.4 10.071 12.92 10.329 16 12.133" +
-  "C19.08 13.938 22.6 14.196 22.6 16C22.6 17.804 19.08 18.062 16 19.867" +
-  "C12.92 21.671 9.4 21.929 9.4 23.733C9.4 25.538 14.46 26.698 16 27.6";
-
-const EPAISSEUR = 4.8;
-
-/** Les deux croisements intérieurs, et le brin qu'ils interrompent. */
-const CROISEMENTS = [
-  { y: 12.133, dessous: "b" },
-  { y: 19.867, dessous: "a" },
-] as const;
+// La géométrie vit dans `@noyau/marque`, partagée avec l'application du
+// téléphone : le symbole est décrit une seule fois. Ce fichier n'en est que
+// le rendu pour le navigateur. Voir docs/IDENTITE.md.
 
 function Coupe({ y }: { y: number }) {
   // Le brin du dessous est interrompu sur toute la largeur de celui du dessus,
   // plus un jeu : c'est ce vide qui donne le passage dessus-dessous.
   return (
     <rect
-      x={-7.68}
-      y={-3.55}
-      width={15.36}
-      height={7.1}
+      x={COUPE.x}
+      y={COUPE.y}
+      width={COUPE.largeur}
+      height={COUPE.hauteur}
       fill="#000"
-      transform={`translate(16,${y}) rotate(149.64)`}
+      transform={`translate(16,${y}) rotate(${COUPE.rotation})`}
     />
   );
 }
@@ -53,7 +39,7 @@ function Coupe({ y }: { y: number }) {
  */
 export function Symbole({ size = 26, className }: { size?: number; className?: string }) {
   const id = useId();
-  const tisse = size >= 22;
+  const tisse = size >= TAILLE_TISSAGE;
   const brin = {
     fill: "none",
     stroke: "currentColor",
@@ -64,7 +50,7 @@ export function Symbole({ size = 26, className }: { size?: number; className?: s
 
   return (
     <svg
-      viewBox="0 0 32 32"
+      viewBox={VUE_BOITE}
       width={size}
       height={size}
       className={className}

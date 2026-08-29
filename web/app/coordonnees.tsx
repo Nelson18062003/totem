@@ -7,6 +7,11 @@ import { textesAccueil } from "@noyau/textes/accueil";
 import { useLangue } from "@/app/langue";
 import { Feuille } from "./feuille";
 import { IconCopy, IconDownload, IconEye, IconIdentite } from "./icons";
+
+// `formaterNumero` a rejoint le noyau (le téléphone le formate à l'identique).
+// On le re-exporte d'ici pour que les écrans qui l'importaient ne bougent pas.
+import { formaterNumero } from "@noyau/numero";
+export { formaterNumero };
 import { LogoOperateur } from "./logos-operateurs";
 
 /**
@@ -22,18 +27,6 @@ import { LogoOperateur } from "./logos-operateurs";
  */
 
 /** « 237652236856 » → « +237 652 23 68 56 » : un numéro se lit par tranches. */
-export function formaterNumero(numero: string): string {
-  const d = (numero || "").replace(/\D/g, "");
-  if (!d) return "";
-  if (d.length === 12 && d.startsWith("237")) {
-    const n = d.slice(3);
-    return `+237 ${n.slice(0, 3)} ${n.slice(3, 5)} ${n.slice(5, 7)} ${n.slice(7)}`;
-  }
-  if (d.length === 9) {
-    return `${d.slice(0, 3)} ${d.slice(3, 5)} ${d.slice(5, 7)} ${d.slice(7)}`;
-  }
-  return numero;
-}
 
 /** Le nom commercial du service — ce qu'on écrit sur la ligne « réseau ». */
 function service(operateur: string): string {
