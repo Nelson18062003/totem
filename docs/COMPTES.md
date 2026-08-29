@@ -45,15 +45,40 @@ Le refus ne distingue pas « ce courriel est déjà pris » de « inscriptions
 fermées » : les distinguer dirait à un inconnu quelles adresses ont un compte
 ici.
 
-### Faire entrer quelqu'un, plus tard
+### Faire entrer quelqu'un
 
-Les rouages existent déjà : rôles, approbation, écran
-**Réglages → Qui peut se connecter**, et tout est éprouvé par
-`verifier-les-comptes.mjs`. Seule la porte d'entrée est condamnée.
+**Réglages → Qui peut se connecter → Créer un compte.**
 
-Le jour où il y aura de vraies personnes à faire entrer, ce sera au
-propriétaire d'ouvrir — depuis ses Réglages, pas en rouvrant l'inscription à
-tout le monde.
+Le propriétaire saisit un courriel et un mot de passe qu'il choisit, et
+transmet ce mot de passe à la personne. Le compte naît **approuvé** — c'est
+lui qui crée, et créer *est* décider ; une case à cocher ensuite ne servirait
+à rien. Il naît **invité**, jamais propriétaire : l'écran ne doit pas pouvoir
+fabriquer un second propriétaire, qui pourrait ensuite fermer la porte au
+premier.
+
+Le mot de passe s'affiche en clair dans le formulaire, à dessein : le
+propriétaire doit pouvoir le relire pour le transmettre. Ce n'est pas le sien.
+
+L'inscription libre, elle, reste fermée. C'est désormais le seul chemin.
+
+> **Il en fallait un.** Google EXIGE un compte qui fonctionne pour examiner
+> l'application (formulaire « Informations de connexion » de la Play
+> Console). Sans ce chemin, il aurait fallu livrer le compte du propriétaire
+> à un examinateur — c'est-à-dire son mot de passe, sans moyen de le
+> reprendre autrement qu'en le changeant.
+
+### ⚠️ Ce qu'un compte créé voit
+
+**Tout ce que voit le propriétaire.** Chaque carte, chaque message, chaque
+montant.
+
+Rattacher des SIM précises à une personne n'est pas construit (voir plus
+bas). L'écran de création le dit **avant** les champs, pas après : un
+avertissement qui arrive une fois le compte créé est un avertissement raté.
+
+Un compte se bloque ou se supprime d'un bouton, sur la même page. C'est la
+différence qui compte avec le fait de livrer son propre mot de passe : cela
+se reprend.
 
 ### La clé de secours
 

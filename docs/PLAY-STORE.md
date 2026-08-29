@@ -24,6 +24,31 @@ sans plus d'explication. Le script du verrou vérifie qu'elle reste ouverte.
 
 ---
 
+## Informations de connexion (App access)
+
+Google demande comment un examinateur passe le verrou. TOTEM est entièrement
+derrière une connexion : il faut donc **lui donner un compte qui marche**.
+
+**Ne donnez pas le vôtre.** Créez-en un pour l'examen :
+
+**Réglages → Qui peut se connecter → Créer un compte**
+
+Puis dans la Play Console, choisir « Toutes les fonctionnalités nécessitent
+un accès spécial » et remplir :
+
+| Champ | Valeur |
+|---|---|
+| Nom des identifiants | `Examen Google` |
+| Nom d'utilisateur | le courriel créé |
+| Mot de passe | celui choisi |
+| Instructions | « Sign in with the email and password above. The app shows the Mobile Money SIM cards held in the owner's terminal. » |
+
+⚠️ **Ce compte voit tout ce que voit le propriétaire** — le rattachement des
+SIM à une personne n'existe pas encore. Supprimez-le une fois l'examen
+terminé : même écran, bouton *Supprimer*.
+
+---
+
 ## Sécurité des données (Data safety)
 
 Le formulaire le plus piégeux du Play Store : il doit correspondre **au mot

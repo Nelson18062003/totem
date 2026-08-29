@@ -41,6 +41,9 @@ const en = {
   inscriptionImpossible: "the account could not be created",
   reserveAuProprietaire: "only the owner can do this",
   pasSoiMeme: "you cannot do this to your own account",
+  // Un « refus » qui n'en est pas un : le compte EST créé. La porte
+  // rend toujours une décision, et celle-ci se lit « c'est fait ».
+  compteCree: "account created",
 };
 
 const fr: typeof en = {
@@ -74,6 +77,7 @@ const fr: typeof en = {
   inscriptionImpossible: "le compte n’a pas pu être créé",
   reserveAuProprietaire: "seul le propriétaire peut faire cela",
   pasSoiMeme: "vous ne pouvez pas faire cela à votre propre compte",
+  compteCree: "compte créé",
 };
 
 export const textesApi = { en, fr } as const;
