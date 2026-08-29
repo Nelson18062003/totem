@@ -43,11 +43,20 @@ cd web && npx next build                  # l'application web
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
+cd mobile && npx tsc --noEmit                   # l'application du téléphone
+cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 ```
 
-Le dernier lance un vrai serveur et essaie d'entrer : sans jeton, avec un
-jeton forgé, avec une échéance repoussée. « Ça compile » ne dit rien d'un
-verrou. À relancer dès qu'on touche au middleware, aux sessions ou au frein.
+`verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
+avec un jeton forgé, avec une échéance repoussée. « Ça compile » ne dit rien
+d'un verrou. À relancer dès qu'on touche au middleware, aux sessions ou au
+frein.
+
+`verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
+DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
+application installée se démonte — tout ce qui entre dans ce fichier est
+public, pour toujours. À relancer avant toute compilation destinée au
+magasin.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
