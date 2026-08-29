@@ -68,6 +68,36 @@ jobs:
         working-directory: web
         run: npm ci && npm test
 
+      # La PREMIÈRE fois seulement : rattacher le projet à l'organisation.
+      #
+      # EAS refuse de compiler un projet qu'il ne connaît pas, et il refuse de
+      # le créer tout seul en mode non interactif — à raison : créer un projet
+      # est un acte, pas un détail d'exécution.
+      #
+      # Cette étape ne s'exécute donc QUE si `extra.eas.projectId` manque
+      # encore dans app.json. Dès que l'identifiant y sera écrit et commité,
+      # elle passera son tour à jamais. C'est ce qui évite qu'un projet neuf
+      # se crée à chaque compilation.
+      - name: Rattacher le projet (première fois seulement)
+        working-directory: mobile
+        run: |
+          if node -e "process.exit(require('./app.json').expo?.extra?.eas?.projectId ? 0 : 1)"; then
+            echo "Projet déjà rattaché — rien à faire."
+          else
+            echo "Projet non rattaché : création sous bonzinilabss-team…"
+            eas init --account bonzinilabss-team --non-interactive
+            ID=$(node -e "console.log(require('./app.json').expo.extra.eas.projectId)")
+            echo "### ⚠️ À commiter une seule fois" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Le projet vient d'être créé. Poser cet identifiant dans" >> $GITHUB_STEP_SUMMARY
+            echo "\`mobile/app.json\` (\`expo.extra.eas.projectId\`) pour que" >> $GITHUB_STEP_SUMMARY
+            echo "cette étape ne se rejoue plus :" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$ID" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Compiler
         working-directory: mobile
         run: eas build --platform android --profile ${{ inputs.profil }} --non-interactive --wait
