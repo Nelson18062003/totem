@@ -70,15 +70,58 @@ function projet(): string | undefined {
 }
 
 /**
- * Inscrit CE téléphone auprès de la plateforme. Rend le jeton obtenu, ou
- * `null` si l'appareil ne peut pas être notifié — et ce n'est pas une
- * erreur : un émulateur, un refus de permission, un projet pas encore
- * rattaché sont tous des cas normaux.
+ * POURQUOI L'INSCRIPTION DOIT DIRE CE QUI L'A ARRÊTÉE.
+ *
+ * Elle rendait `null` dans cinq cas différents, sans jamais dire lequel :
+ * émulateur, permission refusée, projet non rattaché, jeton non rendu,
+ * réseau coupé. Et l'appel était enveloppé dans un `catch` muet.
+ *
+ * Résultat : les réglages affichaient « aucun téléphone inscrit » et le
+ * propriétaire n'avait AUCUN moyen de savoir par quel bout prendre la
+ * panne. « Un refus n'est jamais une panne » — c'était vrai, mais je l'ai
+ * rendu invisible, ce qui est pire : on ne peut pas réparer ce qu'on ne
+ * voit pas.
+ *
+ * Chaque sortie porte donc son nom, et l'écran des réglages le montre.
  */
-export async function inscrireLAppareil(): Promise<string | null> {
-  // Un émulateur n'a pas de services Google : Expo n'a pas de jeton à
+export type EtatSonnerie =
+  /** Tout va bien : ce téléphone est inscrit et peut sonner. */
+  | "inscrit"
+  /** La permission a été refusée. Sur Android, une fois refusée, le système
+   *  ne la redemande plus : il faut passer par ses propres réglages. */
+  | "refusee"
+  /** Un émulateur, ou un appareil sans les services Google. */
+  | "simulateur"
+  /** Le projet Expo n'est pas rattaché — un défaut de compilation. */
+  | "sansProjet"
+  /** Le service de notification n'a pas rendu de jeton. */
+  | "sansJeton"
+  /** La plateforme n'a pas pu enregistrer le jeton (réseau, session). */
+  | "echec";
+
+/** Vrai si le système acceptera encore d'AFFICHER la demande de permission.
+ *
+ *  Sur Android, une permission refusée ne se redemande pas : le système
+ *  ignore l'appel, et l'application semble ne rien faire. Il faut alors
+ *  envoyer la personne dans les réglages du téléphone — et le lui dire,
+ *  plutôt que de lui faire appuyer trois fois sur un bouton inerte. */
+export async function peutEncoreDemander(): Promise<boolean> {
+  const { canAskAgain } = await Notifications.getPermissionsAsync();
+  return canAskAgain !== false;
+}
+
+/**
+ * Inscrit CE téléphone auprès de la plateforme, et DIT ce qui s'est passé.
+ *
+ * Aucun de ces cas n'est une panne de l'application : elle marche
+ * exactement pareil sans notification, on la consulte soi-même. Mais
+ * chacun demande un geste différent, et c'est pour cela qu'on les
+ * distingue.
+ */
+export async function inscrireLAppareil(): Promise<EtatSonnerie> {
+  // Un émulateur n'a pas les services Google : Expo n'a pas de jeton à
   // rendre, et insister ne ferait qu'un message d'erreur au démarrage.
-  if (!Appareil.isDevice) return null;
+  if (!Appareil.isDevice) return "simulateur";
 
   await declarerLeCanal();
 
@@ -88,16 +131,27 @@ export async function inscrireLAppareil(): Promise<string | null> {
     const { status } = await Notifications.requestPermissionsAsync();
     accord = status;
   }
-  if (accord !== "granted") return null;
+  if (accord !== "granted") return "refusee";
 
   const projectId = projet();
-  if (!projectId) return null;
+  if (!projectId) return "sansProjet";
 
-  const { data: jeton } = await Notifications.getExpoPushTokenAsync({ projectId });
-  if (!jeton) return null;
+  let jeton: string | undefined;
+  try {
+    ({ data: jeton } = await Notifications.getExpoPushTokenAsync({ projectId }));
+  } catch {
+    return "sansJeton";
+  }
+  if (!jeton) return "sansJeton";
 
-  await enregistrerAppareil(jeton, Platform.OS, Appareil.modelName ?? "");
-  return jeton;
+  try {
+    await enregistrerAppareil(jeton, Platform.OS, Appareil.modelName ?? "");
+  } catch {
+    // Réseau coupé, session expirée : le jeton est bon, c'est le dépôt qui
+    // a manqué. On réessaiera — et le propriétaire peut réessayer lui-même.
+    return "echec";
+  }
+  return "inscrit";
 }
 
 /**
@@ -115,8 +169,9 @@ export function useSonnerie(connecte: boolean | null): void {
   useEffect(() => {
     if (!connecte) return;
     inscrireLAppareil().catch(() => {
-      // Notifications refusées, réseau coupé, guichet muet : l'application
-      // fonctionne pareil. On ne dérange personne avec ça.
+      // On ne dérange personne à l'ouverture : l'application fonctionne
+      // pareil sans notification. Ce qui a manqué se lit dans les
+      // réglages, où l'on va justement quand on se pose la question.
     });
   }, [connecte]);
 }

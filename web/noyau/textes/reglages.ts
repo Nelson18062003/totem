@@ -157,6 +157,27 @@ const en = {
     "No phone signed in yet. Open the app, sign in, and accept notifications.",
   essaiEchec: "Nothing could be sent.",
   essaiOublies: "phone(s) removed: the app is no longer installed on them.",
+
+  // --- Ce qui a empêché ce téléphone de s'inscrire -----------------------
+  // Cinq raisons, cinq gestes différents. Les confondre sous un « ça ne
+  // marche pas » laisse chercher au hasard.
+  sonnerieInscrit: "This phone will ring.",
+  sonnerieRefusee:
+    "Notifications are turned off for TOTEM. Android will not ask again — " +
+    "turn them on in the phone's own settings.",
+  sonnerieOuvrirReglages: "Open phone settings",
+  sonnerieSimulateur:
+    "This device cannot receive notifications (no Google services).",
+  sonnerieSansProjet:
+    "This build is not linked to its notification project. It needs " +
+    "rebuilding — nothing you can fix from here.",
+  sonnerieSansJeton:
+    "The notification service gave nothing back. Check the connection, then " +
+    "try again.",
+  sonnerieEchec:
+    "The phone could not be registered. Check the connection, then try again.",
+  sonnerieInscrire: "Register this phone",
+  sonnerieEnCours: "Registering…",
   securite: "Security",
   motDePasse: "Change the password",
   doubleAuth: "Two-step sign-in",
@@ -309,6 +330,25 @@ const fr: typeof en = {
     "connectez-vous, et acceptez les notifications.",
   essaiEchec: "Rien n’a pu être envoyé.",
   essaiOublies: "téléphone(s) retiré(s) : l’application n’y est plus installée.",
+
+  sonnerieInscrit: "Ce téléphone sonnera.",
+  sonnerieRefusee:
+    "Les notifications sont désactivées pour TOTEM. Android ne le redemandera " +
+    "pas — activez-les dans les réglages du téléphone.",
+  sonnerieOuvrirReglages: "Ouvrir les réglages du téléphone",
+  sonnerieSimulateur:
+    "Cet appareil ne peut pas recevoir de notifications (pas de services Google).",
+  sonnerieSansProjet:
+    "Cette version n’est pas rattachée à son projet de notification. Il faut " +
+    "la recompiler — rien à corriger d’ici.",
+  sonnerieSansJeton:
+    "Le service de notification n’a rien rendu. Vérifiez la connexion, puis " +
+    "réessayez.",
+  sonnerieEchec:
+    "Le téléphone n’a pas pu être inscrit. Vérifiez la connexion, puis " +
+    "réessayez.",
+  sonnerieInscrire: "Inscrire ce téléphone",
+  sonnerieEnCours: "Inscription…",
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",
   doubleAuth: "Double authentification",
