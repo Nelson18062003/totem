@@ -19,7 +19,7 @@ const en = {
   quoi:
     "TOTEM lets one person — the owner of the Mobile Money SIM cards — manage " +
     "those cards from a screen instead of from USSD menus. The SIMs sit in a " +
-    "terminal in Douala, Cameroon; the app is an interface onto that " +
+    "terminal wherever the owner keeps it; the app is an interface onto that " +
     "terminal. It is not a payment service, a wallet, or a bank: no money " +
     "moves through it, and it holds no funds.",
 
@@ -41,7 +41,7 @@ const en = {
   sms:
     "This deserves saying plainly, because a money app that shows text " +
     "messages invites the question. The messages you see come from the modem " +
-    "in Douala, which receives them on its own SIM cards. The app requests no " +
+    "in that terminal, which receives them on its own SIM cards. The app requests no " +
     "SMS permission — Android would show it if it did — and could not read " +
     "the messages on your phone even if it wanted to.",
 
@@ -108,7 +108,7 @@ const fr: typeof en = {
   quoi:
     "TOTEM permet à une personne — le propriétaire des cartes SIM Mobile " +
     "Money — de gérer ces cartes depuis un écran plutôt que depuis des menus " +
-    "USSD. Les SIM sont dans un terminal à Douala, au Cameroun ; " +
+    "USSD. Les SIM sont dans un terminal, là où le propriétaire le garde ; " +
     "l’application est une interface sur ce terminal. Ce n’est ni un service " +
     "de paiement, ni un portefeuille, ni une banque : aucun argent n’y " +
     "transite, et elle ne détient aucun fonds.",
@@ -131,7 +131,7 @@ const fr: typeof en = {
   sms:
     "Cela mérite d’être dit franchement, parce qu’une application d’argent " +
     "qui affiche des SMS appelle la question. Les messages que vous voyez " +
-    "viennent du modem de Douala, qui les reçoit sur ses propres cartes SIM. " +
+    "viennent du modem de ce terminal, qui les reçoit sur ses propres cartes SIM. " +
     "L’application ne demande aucune autorisation SMS — Android l’afficherait " +
     "si elle le faisait — et ne pourrait pas lire les messages de votre " +
     "téléphone même si elle le voulait.",

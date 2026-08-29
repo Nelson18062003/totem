@@ -98,8 +98,12 @@ const FORMATS = [
 // LE COMPTE. La plateforme a maintenant de vrais comptes : on en crée un,
 // une fois, avant de dérouler les formats. Le PREMIER inscrit est le
 // propriétaire — il entre sans rien attendre, ce qui est exactement ce qu'il
-// faut ici. On ne s'inquiète pas d'un 409 : c'est que le compte est déjà là,
-// d'un passage précédent sur le même faux nuage.
+// faut ici.
+//
+// Deux réponses ne sont PAS des échecs, et disent la même chose — le compte
+// existe déjà, d'un passage précédent sur le même faux nuage :
+//   409  le courriel est pris (quand l'inscription était encore ouverte) ;
+//   403  l'inscription est fermée, ce qu'elle devient dès le premier compte.
 const COURRIEL = "essai@totem.test";
 const MOTDEPASSE = "un-mot-de-passe-assez-long";
 {
@@ -108,7 +112,7 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
   });
-  if (!r.ok && r.status !== 409) {
+  if (!r.ok && r.status !== 409 && r.status !== 403) {
     console.error(`  ⚠️  le compte d'essai n'a pas pu être créé (${r.status}).`);
     console.error("     La plateforme d'essai tourne-t-elle sur 3120, reliée");
     console.error("     au faux nuage sur 4999 ?");
@@ -143,11 +147,38 @@ for (const [nom, w, h] of FORMATS) {
   await courriel.fill(COURRIEL);
   await motdepasse.fill(MOTDEPASSE);
   await page.getByText("Sign in", { exact: true }).last().click();
+
+  // LA CONNEXION A-T-ELLE VRAIMENT ABOUTI ? Sans cette vérification, le
+  // harnais mesurait l'écran de connexion aux huit tailles — en vert, sans
+  // jamais voir un écran de l'application. Un contrôle qui passe sans rien
+  // regarder est pire que pas de contrôle : il rassure.
+  try {
+    await page.locator('input[type="password"]').waitFor({ state: "detached", timeout: 15000 });
+  } catch {
+    console.error(`\n✗ ${nom} : la connexion n'aboutit pas. Ce que l'écran dit :\n`);
+    console.error(await page.evaluate(() => document.body.innerText));
+    console.error("\n  L'export porte-t-il EXPO_PUBLIC_APERCU=1 ? Sans elle, le");
+    console.error("  coffre refuse de ranger la session hors développement.");
+    process.exit(1);
+  }
   await page.waitForTimeout(3800);
   await page.screenshot({ path: `/tmp/totem-f-${nom}.png` });
   // La boîte de réception : c'est là que le SMS à code s'affiche.
   await page.goto(`${APERCU}/encaissements`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
+
+  // ON EST-IL VRAIMENT DANS LA BOÎTE DE RÉCEPTION ? Le faux nuage sert des
+  // SMS connus ; si aucun n'est à l'écran, c'est qu'on mesure autre chose —
+  // l'écran de connexion, une page vide, un écran d'erreur. Toutes les
+  // mesures qui suivent seraient alors vraies et sans objet.
+  const dedans = await page.evaluate(
+    () => document.body.innerText.includes("NKENGAFAC"));
+  if (!dedans) {
+    console.error(`\n✗ ${nom} : la boîte de réception ne montre aucun SMS.`);
+    console.error("  Ce que l'écran affiche :\n");
+    console.error(await page.evaluate(() => document.body.innerText));
+    process.exit(1);
+  }
   const m = await page.evaluate(() => ({
     debord: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     coupe: [...document.querySelectorAll("*")].filter((e) => {

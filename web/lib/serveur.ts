@@ -19,7 +19,7 @@
 
 import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
 import { estNature } from "@noyau/natures";
-import { estCategorie, jourDouala } from "@noyau/types";
+import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
 const url = process.env.SUPABASE_URL;
@@ -27,7 +27,9 @@ const cle = process.env.SUPABASE_CLE;
 
 export const relie = Boolean(url && cle);
 
-const FUSEAU = "Africa/Douala"; // l'argent vit à Douala : les heures aussi
+// Le fuseau du terminal, réglable (voir lib/fuseau.ts). Il découpe les
+// journées : c'est la caisse qui décide de ce qu'est « aujourd'hui ».
+import { FUSEAU } from "./fuseau";
 
 async function lire<T>(chemin: string): Promise<T[]> {
   if (!relie) return [];
@@ -97,10 +99,10 @@ function heure(ts: string): string {
 }
 
 function libelleJour(ts: string, langue: Langue): string {
-  const jour = jourDouala(new Date(ts));
+  const jour = jourLocal(new Date(ts), FUSEAU);
   const present = new Date();
-  if (jour === jourDouala(present)) return langue === "en" ? "Today" : "Aujourd’hui";
-  if (jour === jourDouala(new Date(present.getTime() - 86_400_000))) {
+  if (jour === jourLocal(present, FUSEAU)) return langue === "en" ? "Today" : "Aujourd’hui";
+  if (jour === jourLocal(new Date(present.getTime() - 86_400_000), FUSEAU)) {
     return langue === "en" ? "Yesterday" : "Hier";
   }
   return new Intl.DateTimeFormat(LOCALE[langue], {
@@ -255,7 +257,7 @@ export async function chargerDonnees(
       montant: l.montant == null ? null : Number(l.montant),
       heure: heure(moment(l)),
       date: libelleJour(moment(l), langue),
-      jour: jourDouala(new Date(moment(l))),
+      jour: jourLocal(new Date(moment(l)), FUSEAU),
       recuLe: moment(l),
       // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne,
       // ou valeur d'un terminal plus récent que cet écran).

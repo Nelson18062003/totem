@@ -29,8 +29,28 @@ function refus(): never {
   );
 }
 
-/** Vrai si l'aperçu web de développement est autorisé à se rabattre. */
-const apercu = web && __DEV__ && typeof localStorage !== "undefined";
+/** Vrai si l'aperçu web est autorisé à se rabattre sur `localStorage`.
+ *
+ *  Deux cas, et le second a été ajouté après une mauvaise surprise :
+ *
+ *    · `__DEV__` — on développe, le serveur Metro tourne ;
+ *    · `EXPO_PUBLIC_APERCU=1` — un export web fabriqué EXPRÈS pour être
+ *      mesuré par les harnais de vérification.
+ *
+ *  Pourquoi le second. `expo export` produit du code de production, donc
+ *  `__DEV__` y est faux, donc le coffre refusait — et la connexion échouait
+ *  en silence. Le harnais des huit formats mesurait alors l'écran de
+ *  CONNEXION aux huit tailles, en vert, sans jamais voir un seul écran de
+ *  l'application. Un contrôle qui passe sans rien regarder est pire que pas
+ *  de contrôle : il rassure.
+ *
+ *  Le garde-fou reste entier pour ce qui compte : un export web PUBLIÉ n'a
+ *  pas cette variable, et refuse toujours de ranger un jeton de session dans
+ *  un navigateur. TOTEM ne se publie pas sur le web — la plateforme y est
+ *  déjà, avec son cookie httpOnly, qui est le bon outil pour ça. */
+const apercu = web
+  && (__DEV__ || process.env.EXPO_PUBLIC_APERCU === "1")
+  && typeof localStorage !== "undefined";
 
 export async function lire(cle: string): Promise<string | null> {
   if (web) return apercu ? localStorage.getItem(cle) : refus();

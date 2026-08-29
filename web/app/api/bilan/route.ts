@@ -1,7 +1,8 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
-import { jourDouala, type Paiement } from "@noyau/types";
+import { jourLocal, type Paiement } from "@noyau/types";
+import { FUSEAU } from "@/lib/fuseau";
 import type { Langue } from "@noyau/langue";
 
 export const dynamic = "force-dynamic";
@@ -77,7 +78,7 @@ export async function GET(req: Request) {
   // Le BOM en tête : sans lui, Excel ouvre l'UTF-8 en dépit du bon sens.
   const csv = "\uFEFF" + rangs.map((r) => r.map(champ).join(";")).join("\r\n") + "\r\n";
 
-  const nom = `bilan-totem-${jourDouala(new Date())}.csv`;
+  const nom = `bilan-totem-${jourLocal(new Date(), FUSEAU)}.csv`;
   return new Response(csv, {
     headers: {
       "content-type": "text/csv; charset=utf-8",

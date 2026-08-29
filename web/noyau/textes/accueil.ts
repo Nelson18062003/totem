@@ -47,7 +47,7 @@ const en = {
   choisirCarte: (l: string) => `Select the ${l} card`,
   gestesSur: (l: string) => `Operations on the ${l} card`,
   carteMuette: (d: string) =>
-    `Not seen by the terminal since ${d} — check the box in Douala. ` +
+    `Not seen by the terminal since ${d} — check the box where it is installed. ` +
     "The balance shown is the last one known.",
   // Les coordonnées de la carte — le « RIB » à donner pour être payé
   coordonneesTitre: "Account details",
@@ -116,7 +116,7 @@ const fr: typeof en = {
   choisirCarte: (l) => `Choisir la carte ${l}`,
   gestesSur: (l) => `Gestes sur la carte ${l}`,
   carteMuette: (d) =>
-    `Plus vue par le terminal depuis le ${d} — vérifiez le boîtier, à Douala. ` +
+    `Plus vue par le terminal depuis le ${d} — vérifiez le boîtier, là où il est installé. ` +
     "Le solde affiché est le dernier connu.",
   coordonneesTitre: "Mes coordonnées",
   coordonneesAria: "Afficher les coordonnées de la carte pour les partager",

@@ -58,7 +58,7 @@ justifier une collecte qui n'existe pas.
 - ❌ Position — l'application n'y touche pas
 - ❌ Informations personnelles (nom, courriel, téléphone)
 - ❌ Informations financières — **elles ne quittent jamais le terminal du propriétaire** ; l'application les affiche, elle ne les collecte pas pour elle-même
-- ❌ Messages (SMS, courriels) — **les SMS sont lus par le modem de Douala, pas par le téléphone.** L'application ne demande aucune autorisation SMS
+- ❌ Messages (SMS, courriels) — **les SMS sont lus par le modem du terminal, pas par le téléphone.** L'application ne demande aucune autorisation SMS
 - ❌ Photos, fichiers, contacts, calendrier, micro, appareil photo
 - ❌ Activité dans l'application, historique de navigation, recherches
 - ❌ Rapports de plantage, diagnostics — aucun outil de ce genre n'est installé
@@ -120,40 +120,55 @@ Gérez vos cartes SIM Mobile Money d'où que vous soyez. Fini les codes USSD.
 
 ### Description complète (4000 caractères max)
 
-> **Le cadrage, et il compte.** TOTEM ne suit pas l'argent et n'en déplace
-> pas : il rend gérables des cartes SIM que les codes USSD rendent pénibles.
-> C'est plus juste commercialement — le produit, c'est l'interface — et plus
-> sûr devant l'examen du Play Store, où « suivre l'argent » ferait poser des
-> questions de service financier auxquelles la réponse est non.
+> **Deux règles de cadrage, et elles comptent toutes les deux.**
+>
+> 1. **On ne suit pas l'argent.** TOTEM n'en déplace pas et n'en détient
+>    pas : il rend gérables des cartes SIM que les menus USSD rendent
+>    pénibles. Le produit, c'est l'interface. Dire « suivre l'argent »
+>    ferait poser des questions de service financier auxquelles la réponse
+>    est non.
+> 2. **On ne nomme aucun pays.** Le Mobile Money, le réseau qui tombe et les
+>    menus USSD ne sont pas une particularité camerounaise : c'est le
+>    quotidien du Nigeria, de la Côte d'Ivoire, du Ghana, du Sénégal, du
+>    Kenya. Écrire « au Cameroun » enfermerait la fiche dans un seul marché
+>    — et ferait croire à tous les autres que ce n'est pas pour eux.
+>    On cite les opérateurs à titre d'exemple, jamais comme une liste
+>    fermée.
 
 **Anglais**
 ```
-Your Mobile Money SIM cards stay in the country. You do not.
+Your Mobile Money SIM cards stay where they are. You do not.
 
-Anyone who has managed MTN Mobile Money or Orange Money knows the drill:
-*126#, wait, press 1, wait, press 4, mistype, start over. One menu at a
-time, on a small screen, with the SIM card physically in your hand.
+Anyone who runs a Mobile Money line knows the drill: *126#, wait, press 1,
+wait, press 4, mistype, start over. One menu at a time, on a small screen,
+with the SIM card physically in your hand. And when the network drops, you
+start again from the beginning.
 
 TOTEM replaces that with a proper interface.
 
+Your SIM cards sit in a terminal you keep — at the shop, at home, wherever
+you like. You reach them from your phone, from anywhere in the world.
+
 WHAT YOU CAN DO
 
-• Run every card from one screen — MTN, Orange, and whatever comes next.
-  Each SIM keeps its own name, its own history, its own balance.
+• Run every card from one screen. MTN, Orange, Moov, Airtel, Wave, and
+  whatever your country uses — each SIM keeps its own name, its own history,
+  its own balance.
 • Turn a USSD sequence into a button. Show TOTEM the path once, and it
-  becomes a button you press — for you and for anyone you trust.
+  becomes a button you press. It learns your operator's menus; nothing is
+  hard-coded for one network.
 • Read every operator message in full, exactly as the SIM received it.
 • Keep a PDF receipt for each transaction, ready to send to a customer.
-• Share your card's details — name, number, network — in one gesture, or as
-  a proper PDF document.
+• Share a card's details — name, number, network — in one gesture, or as a
+  proper PDF document.
 • Get a notification the moment something happens on a card.
 
-BUILT FOR HOW IT REALLY WORKS
+BUILT FOR A NETWORK THAT DROPS
 
-The internet in Douala goes down; the cards keep working. The terminal keeps
-its own journal and catches up when the network returns. Nothing is lost,
-and nothing is invented: when an operator message cannot be read with
-certainty, TOTEM says so rather than guessing.
+Internet goes down; the cards keep working. The terminal keeps its own
+journal and catches up when the network returns. Nothing is lost, and
+nothing is invented: when an operator message cannot be read with certainty,
+TOTEM says so rather than guessing.
 
 Your Mobile Money PIN is never stored, never logged, never put in a message.
 It is typed at the moment of an operation and kept nowhere afterwards. A
@@ -165,37 +180,45 @@ WHAT TOTEM IS NOT
 It is not a payment service, a wallet, or a bank. No money moves through it
 and it holds no funds. It is an interface onto SIM cards you already own,
 for the person who owns them.
+
+English and French, both complete.
 ```
 
 **Français**
 ```
-Vos cartes SIM Mobile Money restent au pays. Vous, non.
+Vos cartes SIM Mobile Money restent où elles sont. Vous, non.
 
-Qui a déjà géré du MTN Mobile Money ou de l'Orange Money connaît la
-manœuvre : *126#, attendre, taper 1, attendre, taper 4, se tromper,
-recommencer. Un menu à la fois, sur un petit écran, la carte SIM à la main.
+Qui tient une ligne Mobile Money connaît la manœuvre : *126#, attendre,
+taper 1, attendre, taper 4, se tromper, recommencer. Un menu à la fois, sur
+un petit écran, la carte SIM à la main. Et quand le réseau lâche, on reprend
+depuis le début.
 
 TOTEM remplace tout cela par une vraie interface.
 
+Vos cartes SIM sont dans un terminal que vous gardez — à la boutique, à la
+maison, où vous voulez. Vous les atteignez depuis votre téléphone, d'où que
+vous soyez dans le monde.
+
 CE QUE VOUS POUVEZ FAIRE
 
-• Piloter chaque carte depuis un seul écran — MTN, Orange, et les suivantes.
-  Chaque SIM garde son nom, son historique, son solde.
+• Piloter chaque carte depuis un seul écran. MTN, Orange, Moov, Airtel,
+  Wave, et ce que votre pays utilise — chaque SIM garde son nom, son
+  historique, son solde.
 • Transformer un parcours USSD en bouton. Montrez le chemin une fois à
-  TOTEM, et il devient un bouton — pour vous et pour vos proches de
-  confiance.
+  TOTEM, et il devient un bouton. Il apprend les menus de votre opérateur ;
+  rien n'est écrit d'avance pour un seul réseau.
 • Lire chaque message de l'opérateur en entier, tel que la SIM l'a reçu.
 • Garder un reçu PDF pour chaque opération, prêt à envoyer à un client.
-• Partager les coordonnées de votre carte — nom, numéro, réseau — d'un
-  geste, ou en vrai document PDF.
+• Partager les coordonnées d'une carte — nom, numéro, réseau — d'un geste,
+  ou en vrai document PDF.
 • Être prévenu à la seconde où quelque chose se passe sur une carte.
 
-FAIT POUR LA RÉALITÉ DU TERRAIN
+FAIT POUR UN RÉSEAU QUI TOMBE
 
-À Douala, Internet tombe ; les cartes, elles, continuent de fonctionner. Le
-terminal tient son propre journal et rattrape son retard au retour du
-réseau. Rien ne se perd, et rien ne s'invente : quand un message d'opérateur
-ne peut pas être lu avec certitude, TOTEM le dit plutôt que de deviner.
+Internet lâche ; les cartes, elles, continuent de fonctionner. Le terminal
+tient son propre journal et rattrape son retard au retour du réseau. Rien ne
+se perd, et rien ne s'invente : quand un message d'opérateur ne peut pas
+être lu avec certitude, TOTEM le dit plutôt que de deviner.
 
 Votre code PIN Mobile Money n'est jamais enregistré, jamais journalisé,
 jamais mis dans un message. Il se saisit au moment d'une opération et n'est
@@ -208,6 +231,8 @@ CE QUE TOTEM N'EST PAS
 Ni un service de paiement, ni un portefeuille, ni une banque. Aucun argent
 n'y transite et il ne détient aucun fonds. C'est une interface sur des
 cartes SIM qui sont déjà les vôtres, pour la personne qui les possède.
+
+En français et en anglais, entièrement.
 ```
 
 ---
