@@ -6,8 +6,14 @@ import { textesCharpente } from "@noyau/textes/charpente";
 import type { EtatTerminal } from "@noyau/types";
 import { Nav } from "./nav";
 
-/** Pages qui s'affichent seules, sans navigation ni bandeau. */
-const PLEIN_ECRAN = ["/connexion"];
+/** Pages qui s'affichent seules, sans navigation ni bandeau.
+ *
+ *  Les trois sont PUBLIQUES, et c'est la même raison : on y arrive sans
+ *  compte. Leur montrer la navigation de l'application serait offrir des
+ *  liens qui mènent tous au verrou — et sur « /confidentialite », qu'un
+ *  examinateur du Play Store ouvre depuis un formulaire, cela donnerait
+ *  l'impression d'une application qui se dérobe. */
+const PLEIN_ECRAN = ["/connexion", "/inscription", "/confidentialite"];
 
 export function Coquille({
   relie,

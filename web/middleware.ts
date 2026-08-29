@@ -20,7 +20,12 @@ import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 // justement en demander un. Ce qui les rend sûres n'est pas une porte fermée,
 // c'est qu'un compte neuf n'ouvre RIEN tant que le propriétaire ne l'a pas
 // approuvé (voir lib/porte.ts).
-const OUVERT = ["/connexion", "/inscription",
+// « /confidentialite » est ouverte parce que Google Play l'exige à une
+// adresse publique : un examinateur l'ouvre sans compte, depuis un lien collé
+// dans un formulaire. Derrière le verrou, l'application serait refusée sans
+// plus d'explication. La page ne contient aucune donnée — elle décrit ce que
+// le logiciel fait.
+const OUVERT = ["/connexion", "/inscription", "/confidentialite",
                 "/api/connexion", "/api/deconnexion", "/api/inscription",
                 "/api/session", "/api/plateforme"];
 
