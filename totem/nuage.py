@@ -37,6 +37,10 @@ LOT = 100           # lignes envoyées par requête
 # Après un réveil, on laisse une seconde aux arrivées voisines de rejoindre le
 # même envoi. Trois SMS reçus coup sur coup partent alors ensemble.
 DEBOUNCE = 1
+# Combien de téléphones au plus reçoivent une notification. Un propriétaire,
+# deux ou trois appareils : la borne n'existe que pour qu'une table qui aurait
+# grossi par accident ne fasse pas partir un envoi démesuré.
+PAR_ENVOI = 20
 # Le compartiment de stockage où atterrissent les reçus PDF. Il est créé par
 # sql/schema.sql, en même temps que les tables.
 SEAU = "recus"
@@ -528,6 +532,28 @@ class Nuage:
                 "&order=demandee_le.asc&limit=10")
             self.derniere_erreur = None
             return lignes
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return []
+
+    def appareils(self):
+        """Les téléphones qui ont demandé à être prévenus.
+
+        La plateforme inscrit un appareil quand l'application s'ouvre ; le
+        robot vient lire la liste au moment d'annoncer un paiement. Aucun
+        appareil, ou nuage injoignable : on rend une liste vide, et le
+        propriétaire reçoit son message sur Telegram comme toujours.
+
+        On ne remonte que les jetons — rien d'autre n'est utile ici.
+        """
+        if not self.actif:
+            return []
+        try:
+            lignes = self._lire("appareils?select=jeton&order=vu_le.desc"
+                                f"&limit={PAR_ENVOI}")
+            self.derniere_erreur = None
+            return [l["jeton"] for l in lignes
+                    if isinstance(l.get("jeton"), str) and l["jeton"]]
         except Exception as e:
             self.derniere_erreur = str(e)
             return []

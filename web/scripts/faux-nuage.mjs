@@ -95,6 +95,15 @@ const tables = () => ({
 const commandes = new Map();
 let prochainId = 1;
 
+// LES COMPTES. Une vraie table, en mémoire, avec ce que PostgREST sait faire
+// dessus : compter, chercher par courriel, insérer, modifier, supprimer.
+//
+// Elle commence VIDE, à dessein : c'est le seul moyen d'essayer le chemin qui
+// compte le plus — la toute première inscription, celle qui fait de vous le
+// propriétaire. Un compte posé d'avance masquerait exactement ce cas-là.
+const utilisateurs = new Map();     // id → ligne
+let prochainCompte = 1;
+
 function reponsePour(commande) {
   const { type, parametres } = commande;
   if (type === "ussd_fin") return "Session terminee.";
@@ -148,6 +157,63 @@ const serveur = createServer(async (req, res) => {
     const id = eq ? Number(eq.replace("eq.", "")) : null;
     const c = commandes.get(id);
     return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+  }
+
+  // --- LES COMPTES -------------------------------------------------------
+  if (chemin === "/rest/v1/utilisateurs") {
+    const lignes = [...utilisateurs.values()];
+    const filtre = url.searchParams.get("courriel");
+    const parId = url.searchParams.get("id");
+    const vise = () => lignes.filter((u) => {
+      if (filtre && u.courriel !== filtre.replace("eq.", "")) return false;
+      if (parId && u.id !== Number(parId.replace("eq.", ""))) return false;
+      return true;
+    });
+
+    if (req.method === "GET") {
+      const trouvees = vise();
+      // « prefer: count=exact » veut le total dans « content-range », et c'est
+      // ce total que la plateforme lit pour savoir si un compte existe déjà.
+      return repondre(trouvees, 200, {
+        "content-range": `0-${Math.max(0, trouvees.length - 1)}/${lignes.length}`,
+      });
+    }
+
+    if (req.method === "POST") {
+      let brut = "";
+      for await (const mm of req) brut += mm;
+      const entrantes = JSON.parse(brut || "[]");
+      const creees = [];
+      for (const u of [].concat(entrantes)) {
+        // L'unicite du courriel est tenue par la BASE, pas par l'appelant :
+        // c'est elle qui doit refuser, sinon deux inscriptions simultanees
+        // creeraient deux comptes pour la meme adresse.
+        if ([...utilisateurs.values()].some((x) => x.courriel === u.courriel)) {
+          return repondre({ code: "23505", message: "duplicate key" }, 409);
+        }
+        const ligne = {
+          id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
+          role: u.role ?? "invite", approuve: Boolean(u.approuve),
+          cree_le: maintenant(), vu_le: null,
+        };
+        utilisateurs.set(ligne.id, ligne);
+        creees.push(ligne);
+      }
+      return repondre(creees, 201);
+    }
+
+    if (req.method === "PATCH") {
+      let brut = "";
+      for await (const mm of req) brut += mm;
+      const champs = JSON.parse(brut || "{}");
+      for (const u of vise()) Object.assign(u, champs);
+      return repondre([], 204);
+    }
+
+    if (req.method === "DELETE") {
+      for (const u of vise()) utilisateurs.delete(u.id);
+      return repondre([], 204);
+    }
   }
 
   // Les tables ordinaires.

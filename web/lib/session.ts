@@ -39,20 +39,57 @@ export async function signerSession(
 }
 
 export async function verifierSession(secret: string, jeton?: string): Promise<boolean> {
-  if (!secret || !jeton) return false;
+  return (await sujetDeSession(secret, jeton)) !== null;
+}
+
+/**
+ * Le SUJET d'un jeton valide — c'est-à-dire QUI est connecté — ou `null` si
+ * le jeton ne tient pas debout.
+ *
+ * Le sujet ne fait pas foi tout seul : il n'est digne de confiance QUE parce
+ * que la signature vient d'être vérifiée juste avant d'être rendu. C'est
+ * pourquoi il n'y a pas de fonction qui se contente de le lire — on ne veut
+ * pas qu'un appelant pressé lise « proprietaire » dans un jeton forgé.
+ *
+ * Les sujets en usage :
+ *   « c:12 »        le compte numéro 12 (voir la table `utilisateurs`) ;
+ *   « secours »     la clé de secours, quand la base est injoignable ;
+ *   « proprietaire » / « telephone »   les jetons d'avant les comptes, qui
+ *                   restent valables jusqu'à leur expiration : une mise à
+ *                   jour ne doit mettre personne dehors en pleine journée.
+ */
+export async function sujetDeSession(
+  secret: string, jeton?: string,
+): Promise<string | null> {
+  if (!secret || !jeton) return null;
   const points = jeton.split(".");
-  if (points.length !== 3) return false;
+  if (points.length !== 3) return null;
   const [sujet, exp, sig] = points;
-  if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return false;
+  if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return null;
   try {
-    return await crypto.subtle.verify(
+    const bon = await crypto.subtle.verify(
       "HMAC", await cleHmac(secret), src(deB64url(sig)),
       src(enc.encode(`${sujet}.${exp}`)),
     );
+    return bon ? sujet : null;
   } catch {
-    return false;
+    return null;
   }
 }
+
+/** Le numéro du compte connecté, s'il s'agit d'un compte.
+ *
+ *  `null` pour la clé de secours et pour les jetons d'avant les comptes : ils
+ *  ouvrent la plateforme, mais ne désignent personne en particulier. */
+export function compteDuSujet(sujet: string | null): number | null {
+  if (!sujet || !sujet.startsWith("c:")) return null;
+  const n = Number(sujet.slice(2));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Le sujet d'un jeton de compte. Le « c: » évite qu'un jour un identifiant
+ *  se confonde avec un mot réservé comme « secours ». */
+export const sujetDuCompte = (id: number): string => `c:${id}`;
 
 // Comparaison à temps constant : un mot de passe ne se devine pas à la durée.
 //

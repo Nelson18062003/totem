@@ -18,6 +18,11 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# La carte d'identite du projet Firebase. Elle arrive par un secret de
+# fichier EAS (voir app.config.js), jamais par le depot.
+google-services.json
+GoogleService-Info.plist
+
 # Metro
 .metro-health-check*
 

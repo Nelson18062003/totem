@@ -17,6 +17,7 @@ import { DMSans_700Bold } from "@expo-google-fonts/dm-sans";
 
 import { FournisseurLangue } from "@/langue";
 import { FournisseurSession, useSession } from "@/session";
+import { useSonnerie } from "@/sonnerie";
 import { couleurs } from "@/theme/jetons";
 
 // L'écran de démarrage reste tant qu'on ne sait pas où aller : sans cela,
@@ -36,6 +37,9 @@ export default function Racine() {
 
 function Charpente() {
   const { connecte } = useSession();
+  // Une fois connecté, le téléphone s'inscrit pour être prévenu. Rien ne
+  // bloque : un refus de notification laisse l'application entière.
+  useSonnerie(connecte);
   const [polices] = useFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
     DMSans_700Bold,

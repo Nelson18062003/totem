@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
 import { aDesVariables, CLES_GUICHET, codesUssd, type CodeUssd } from "@noyau/codes";
 import { LANGUES } from "@noyau/langue";
@@ -596,5 +596,109 @@ export function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
         <span className="size-5 rounded-full bg-white" />
       </button>
     </div>
+  );
+}
+
+/**
+ * QUI PEUT SE CONNECTER — réservé au propriétaire.
+ *
+ * L'inscription est libre : n'importe qui peut créer un compte. Ce n'est pas
+ * une négligence, c'est le partage du travail. Un compte neuf n'ouvre RIEN ;
+ * c'est ici, et seulement ici, qu'une porte s'ouvre.
+ *
+ * La section ne s'affiche pas du tout pour un invité : la route répond 403,
+ * et l'écran ne montre rien plutôt que de laisser une case vide et
+ * mystérieuse. Le refus est déjà dit par le serveur ; le répéter à l'écran
+ * n'apprendrait rien à personne.
+ */
+export function SectionQui() {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  const [comptes, setComptes] = useState<{
+    id: number; courriel: string; role: string; approuve: boolean;
+    creeLe: string | null; vuLe: string | null;
+  }[] | null>(null);
+  const [permis, setPermis] = useState<boolean | null>(null);
+  const [occupe, setOccupe] = useState<number | null>(null);
+
+  const charger = useCallback(async () => {
+    try {
+      const r = await fetch("/api/comptes", { cache: "no-store" });
+      if (!r.ok) { setPermis(false); return; }
+      const { comptes } = await r.json();
+      setComptes(comptes ?? []);
+      setPermis(true);
+    } catch {
+      setPermis(false);
+    }
+  }, []);
+
+  useEffect(() => { void charger(); }, [charger]);
+
+  async function agir(id: number, geste: "approuver" | "fermer" | "supprimer") {
+    if (geste === "supprimer" && !confirm(t.supprimerSur)) return;
+    setOccupe(id);
+    try {
+      await fetch("/api/comptes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, geste }),
+      });
+      await charger();
+    } finally {
+      setOccupe(null);
+    }
+  }
+
+  // Ni autorisé, ni encore chargé : rien à montrer.
+  if (permis !== true || !comptes) return null;
+
+  return (
+    <section>
+      <h2 className="mb-1 text-heading font-semibold">{t.qui}</h2>
+      <p className="mb-3 text-caption leading-relaxed text-ink-faint">{t.quiAide}</p>
+      <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
+        {comptes.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-small font-medium">{c.courriel}</p>
+              <p className="mt-0.5 text-caption text-ink-faint">
+                {c.role === "proprietaire" ? t.roleProprietaire : t.roleInvite}
+                {" · "}
+                {c.approuve ? t.ouvert : t.enAttente}
+                {" · "}
+                {c.vuLe
+                  ? `${t.vuLe} ${new Date(c.vuLe).toLocaleDateString()}`
+                  : t.jamaisVenu}
+              </p>
+            </div>
+            {/* Le propriétaire n'a pas de boutons sur sa propre ligne : il ne
+                peut ni se bloquer ni se supprimer, et un bouton qui refuse
+                toujours est un bouton de trop. */}
+            {c.role !== "proprietaire" && (
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => agir(c.id, c.approuve ? "fermer" : "approuver")}
+                  disabled={occupe === c.id}
+                  className="rounded-btn border border-line px-3 py-1.5 text-caption font-medium text-ink-soft transition hover:border-ink-faint disabled:opacity-40"
+                >
+                  {c.approuve ? t.fermer : t.approuver}
+                </button>
+                <button
+                  onClick={() => agir(c.id, "supprimer")}
+                  disabled={occupe === c.id}
+                  className="rounded-btn border border-line px-3 py-1.5 text-caption text-negative transition hover:border-negative disabled:opacity-40"
+                >
+                  {t.supprimer}
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+        {comptes.length <= 1 && (
+          <li className="py-3 text-caption text-ink-faint">{t.aucunAutreCompte}</li>
+        )}
+      </ul>
+    </section>
   );
 }

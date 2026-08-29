@@ -1,7 +1,13 @@
 # Mettre l'application en ligne (Vercel)
 
-> Résultat : une adresse comme `totem.vercel.app`, ouvrable depuis n'importe
-> quel téléphone dans le monde. Gratuit. Cinq minutes.
+> Résultat : une adresse en `.vercel.app`, ouvrable depuis n'importe quel
+> téléphone dans le monde. Gratuit. Cinq minutes.
+
+> ⚠️ **Notez l'adresse que Vercel vous donne**, telle quelle. C'est elle
+> qu'attend l'application du téléphone, et elle seule. N'inventez pas
+> l'adresse « logique » : les sous-domaines en `.vercel.app` sont attribués
+> au premier arrivé, et celui que vous imaginez appartient peut-être déjà à
+> quelqu'un d'autre. C'est arrivé ici (voir [`MOBILE.md`](MOBILE.md) § 5 bis).
 
 L'application affiche pour l'instant des **données de démonstration** : c'est
 l'interface qu'on met en ligne, pas encore les vrais comptes. Un bandeau le

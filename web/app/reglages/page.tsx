@@ -10,6 +10,7 @@ import {
   ReglageNumero,
   SectionCodes,
   SectionLangue,
+  SectionQui,
 } from "./interactifs";
 
 export const dynamic = "force-dynamic";
@@ -169,6 +170,10 @@ export default async function Reglages() {
           appris={raccourcis[op] ?? []}
         />
       ))}
+
+      {/* Qui peut se connecter — la section ne s'affiche que pour le
+          propriétaire ; elle se tait d'elle-même pour les autres. */}
+      <SectionQui />
 
       {/* Sécurité */}
       <section>

@@ -166,26 +166,148 @@ vraiment, pas avant.
 
 ## 5. La sonnerie
 
-C'est la fonction qui justifie tout le reste. Le chemin :
+C'est la fonction qui justifie tout le reste.
+
+### Le chemin, en vrai
 
 ```
 SMS reçu à Douala
-   → le robot l'écrit dans Supabase (comme aujourd'hui, rien ne change)
-   → une fonction de bord Supabase se déclenche sur l'écriture
-   → elle appelle le service de notification d'Expo
-   → le téléphone sonne : « MTN ·8901 · +20 000 F reçus de NKENGAFAC M. »
+   → le robot le lit, le comprend (ou pas), l'annonce sur Telegram
+   → il demande à la plateforme la liste des téléphones inscrits
+   → il appelle le guichet d'Expo, qui appelle Google (FCM)
+   → le téléphone sonne : « MTN ·8901 — +20 000 FCFA de NGONO Marie »
 ```
 
-Trois règles, non négociables :
+**C'est le robot qui envoie, pas le nuage.** On avait d'abord imaginé une
+fonction posée dans Supabase, déclenchée à l'écriture. C'était une mauvaise
+idée, pour une raison qui tranche : le robot est le SEUL à savoir ce qu'il
+n'a **pas** compris. `analyse_sms.py` rend `None` dans le doute, et cette
+ignorance-là est la matière première d'une notification honnête. Une fonction
+du nuage ne verrait que la ligne écrite en base, sans savoir ce qui a été
+perdu en chemin. Deux avantages en prime : le robot a déjà sa file d'attente
+(une coupure Internet ne perd rien), et c'est une pièce mobile de moins.
+
+Les fichiers : `totem/notification.py` compose le texte, `totem/nuage.py`
+(`appareils()`) va lire à qui, `totem/app.py` (`_faire_sonner`) déclenche —
+dans un fil à part, pour qu'un guichet lent ne retarde jamais la lecture du
+SMS suivant.
+
+### Trois règles, non négociables
 
 - **Le code secret n'apparaît jamais** dans une notification. Ni en clair, ni
   masqué, ni « en attente de code ». Une notification s'affiche sur un écran
-  verrouillé, dans un taxi.
-- **Un montant douteux ne s'annonce pas comme un montant.** `analyse_sms.py`
-  rend `None` dans le doute ; la notification dit alors « un message de MTN »,
-  et rien de plus. La règle du dépôt s'applique ici aussi.
+  verrouillé, dans un taxi. Un SMS reconnu comme portant un code sort d'ici
+  en « Un code de MTN », sans un chiffre.
+- **Un montant douteux ne s'annonce pas comme un montant.** Sans montant lu,
+  la notification dit « montant non lu ». Sans sens établi (Orange nomme les
+  deux parties sans dire laquelle est la nôtre), elle dit « Mouvement de… »
+  sans signe : « reçu » sur un envoi serait un mensonge, et l'inverse aussi.
 - **Le téléphone ne remplace pas le journal.** Une notification peut se
   perdre — réseau, batterie, système. La liste des SMS reste la vérité.
+
+Ces trois règles sont gardées par `tests/test_notification.py`.
+
+### L'inscription d'un téléphone
+
+L'application ne peut pas s'inscrire toute seule dans la base : elle n'a
+aucune clé, par construction. Elle passe donc par la plateforme.
+
+```
+l'application s'ouvre, la session est valable
+   → src/sonnerie.tsx déclare le canal Android, demande la permission
+   → Expo rend le jeton de CET appareil : « ExpoPushToken[…] »
+   → POST /api/appareil (derrière le verrou) → table « appareils »
+```
+
+La route est **derrière le verrou** à dessein : sans cela, n'importe qui
+pourrait inscrire son propre téléphone et recevoir les encaissements du
+propriétaire sur son écran. Le jeton, lui, n'est pas un secret — il ne dit
+rien de la personne, ne localise personne et n'ouvre l'accès à rien : il
+autorise seulement à faire sonner ce téléphone-là.
+
+La table s’installe avec `migrations/20260829_consolidation.sql` — la même
+migration installe aussi les comptes (voir [`COMPTES.md`](COMPTES.md)).
+
+### Firebase : pourquoi, et ce qu'il faut faire
+
+**Pourquoi.** Sur Android il n'existe qu'un seul chemin pour faire sonner un
+téléphone : les serveurs de Google, appelés FCM. Ce n'est pas un choix
+d'outil, c'est la plomberie du système — Google possède Android et possède le
+tuyau. Expo ne remplace pas FCM, il l'emballe : le guichet d'Expo prend le
+message et le remet à Google. Les autres services (OneSignal et compagnie)
+font exactement pareil. Il n'y a donc rien à comparer : c'est FCM ou pas de
+notification.
+
+Firebase est la console où l'on crée le projet FCM. On y crée **un projet, une
+fois**, et on n'y retourne plus.
+
+**Les étapes**, dans l'ordre :
+
+1. [console.firebase.google.com](https://console.firebase.google.com) →
+   *Créer un projet* → nom `TOTEM`. Google Analytics : **non**, on n'en a
+   aucun usage.
+2. Dans le projet → *Ajouter une application* → **Android**.
+3. *Nom du package* : `com.bonzinilabs.totem`, **exactement**. C'est la clé
+   qui relie l'application au projet ; une faute de frappe ici donne des
+   notifications qui n'arrivent jamais, sans message d'erreur.
+   Le surnom et l'empreinte SHA-1 : à laisser vides.
+4. Télécharger **`google-services.json`**. C'est le seul fichier qui compte.
+5. Le déposer dans EAS, **pas dans le dépôt** :
+   [expo.dev](https://expo.dev) → le projet `totem` → *Environment variables*
+   → *Create variable* → type **File**, nom `GOOGLE_SERVICES_JSON`, visibilité
+   *Secret*, et l'envoyer pour les profils de compilation.
+6. Relancer une compilation. `mobile/app.config.js` détecte le fichier tout
+   seul et le branche.
+
+**Tant que ce n'est pas fait**, rien ne casse : l'application se compile,
+s'installe et fonctionne entièrement — seules les notifications restent
+muettes. C'est voulu (voir le commentaire en tête de `app.config.js`) : une
+ligne fixe dans `app.json` aurait au contraire fait échouer la compilation
+sur un fichier absent.
+
+**Pour l'iPhone**, ce sera un autre tuyau (APNs, chez Apple) et une clé à
+téléverser chez Expo. Rien à faire tant que l'inscription développeur Apple
+n'est pas terminée.
+
+---
+
+## 5 bis. L'adresse de la plateforme — la panne qu'on n'a pas vue venir
+
+Ce paragraphe raconte une vraie erreur, parce qu'elle est instructive.
+
+L'application portait une adresse écrite en dur : `https://totem.vercel.app`.
+Elle venait d'une phrase de documentation qui disait « une adresse **comme**
+`totem.vercel.app` » — un exemple, pas une adresse. Or ce sous-domaine
+existe : il appartient à quelqu'un d'autre, qui y héberge un tout autre
+service.
+
+Conséquences, dans l'ordre où on les a vécues :
+
+1. L'application envoyait le mot de passe du propriétaire à un serveur
+   inconnu. Il répondait 404, donc rien n'était traité — mais le mot de passe
+   avait bien voyagé jusque chez un tiers.
+2. À l'écran, cela ressemblait à un refus de connexion. On a cherché
+   longtemps du côté du mot de passe. Le mot de passe n'avait rien à voir.
+
+**Ce qui a changé, pour que cela ne se reproduise pas :**
+
+- **Plus d'adresse par défaut.** `app.json` la laisse vide. Une adresse fausse
+  est pire que pas d'adresse : sans adresse, l'application la demande ; avec
+  une fausse, elle se trompe en silence.
+- **L'application vérifie avant de parler.** Elle appelle `/api/plateforme`,
+  qui ne répond que « oui, un TOTEM habite ici ». Tant que la réponse n'est
+  pas oui, le champ du mot de passe reste fermé. Un mot de passe ne part plus
+  vers une adresse qui n'a pas montré patte blanche.
+- **Le propriétaire peut corriger l'adresse depuis l'écran de connexion**,
+  sans attendre une nouvelle compilation.
+- **`https` obligatoire**, sauf pour la machine locale (un `127.0.0.1` ne
+  quitte pas l'appareil). En `http`, le mot de passe voyagerait en clair.
+- Le verrou vérifie que `/api/plateforme` ne dit rien d'autre que ces trois
+  mots (`verifier-le-verrou.mjs`).
+
+> ⚠️ **Si un mot de passe a été tapé pendant cette période**, il est parti
+> vers un domaine tiers. Changez-le sur Vercel, et ne le réutilisez nulle
+> part ailleurs.
 
 ---
 

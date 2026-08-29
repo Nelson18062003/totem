@@ -44,15 +44,27 @@ cd web && npm test                        # les règles partagées (noyau)
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
+cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
-cd mobile && node scripts/verifier-les-formats.mjs # sur huit tailles d'écran
+cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
 avec un jeton forgé, avec une échéance repoussée. « Ça compile » ne dit rien
 d'un verrou. À relancer dès qu'on touche au middleware, aux sessions ou au
 frein.
+
+`verifier-les-comptes` déroule la vie entière d'un compte contre un vrai
+serveur : la première inscription (celle du propriétaire), une deuxième qui
+doit attendre, l'approbation, la fermeture, la clé de secours. Il cherche
+surtout à prendre en défaut — un compte non approuvé qui entrerait, un invité
+qui administrerait, un message qui dirait si un courriel a un compte ici.
+
+**Ces scripts refusent de démarrer si leur port est déjà pris.** Ce n'est pas
+un caprice : un essai précédent resté ouvert a déjà fait passer toute une
+batterie, en vert, contre du vieux code. Un harnais qui peut mesurer autre
+chose que ce qu'on lui donne ne sert à rien.
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une

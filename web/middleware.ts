@@ -11,7 +11,18 @@ import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 // `/api/session` est la porte de l'application du téléphone : comme l'écran
 // de connexion, elle doit rester ouverte — on ne peut pas exiger une session
 // de celui qui vient justement en demander une.
-const OUVERT = ["/connexion", "/api/connexion", "/api/deconnexion", "/api/session"];
+// « /api/plateforme » est ouverte pour la même raison que « /connexion » : il
+// faut pouvoir frapper à la porte avant d'avoir la clé. Elle ne rend qu'un
+// « oui, un TOTEM habite ici » — c'est ce qui empêche l'application du
+// téléphone d'envoyer le mot de passe du propriétaire à un serveur inconnu.
+// « /inscription » et « /api/inscription » sont ouvertes pour la même raison
+// que la connexion : on ne peut pas exiger un compte de celui qui vient
+// justement en demander un. Ce qui les rend sûres n'est pas une porte fermée,
+// c'est qu'un compte neuf n'ouvre RIEN tant que le propriétaire ne l'a pas
+// approuvé (voir lib/porte.ts).
+const OUVERT = ["/connexion", "/inscription",
+                "/api/connexion", "/api/deconnexion", "/api/inscription",
+                "/api/session", "/api/plateforme"];
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
 function jetonPorte(req: NextRequest): string | undefined {
