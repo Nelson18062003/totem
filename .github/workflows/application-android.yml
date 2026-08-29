@@ -1,0 +1,87 @@
+# Fabriquer l'application Android, sans ouvrir un terminal.
+#
+# Le propriétaire n'a pas à installer Node, ni les outils Android, ni quoi que
+# ce soit : il clique, GitHub compile, Expo rend un lien. C'est tout l'objet
+# de ce fichier.
+#
+# CE QU'IL FAUT UNE SEULE FOIS, avant le premier lancement :
+#
+#   1. Sur expo.dev → Account settings → Access tokens → créer un jeton.
+#   2. Sur GitHub → le dépôt → Settings → Secrets and variables → Actions
+#      → New repository secret → nom : EXPO_TOKEN, valeur : le jeton.
+#
+# Le jeton vit dans les secrets du dépôt. Il n'apparaît ni dans le code, ni
+# dans le journal de compilation : GitHub le masque.
+#
+# ENSUITE, pour obtenir un paquet : onglet Actions → « Application Android »
+# → Run workflow → choisir le profil. Le lien de téléchargement s'affiche à
+# la fin, et Expo l'envoie aussi par courriel.
+
+name: Application Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      profil:
+        description: "Quel paquet fabriquer"
+        required: true
+        default: apercu
+        type: choice
+        options:
+          - apercu       # APK à installer directement — ni magasin, ni compte
+          - essai        # AAB pour la piste d'essai interne du Play Store
+          - production   # AAB public
+
+jobs:
+  fabriquer:
+    name: Fabriquer (${{ inputs.profil }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Installer les outils d'Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        working-directory: mobile
+        run: npm ci
+
+      # Les garde-fous AVANT la compilation : une compilation dure une
+      # vingtaine de minutes, autant ne pas la lancer sur du code qui ne
+      # tient pas debout.
+      - name: Vérifier les types
+        working-directory: mobile
+        run: npx tsc --noEmit
+
+      - name: Vérifier les règles partagées
+        working-directory: web
+        run: npm ci && npm test
+
+      - name: Compiler
+        working-directory: mobile
+        run: eas build --platform android --profile ${{ inputs.profil }} --non-interactive --wait
+
+      - name: Où trouver le paquet
+        working-directory: mobile
+        run: |
+          echo "### Paquet Android — profil \`${{ inputs.profil }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          eas build:list --platform android --limit 1 --json --non-interactive \
+            | node -e "
+              let e='';process.stdin.on('data',d=>e+=d).on('end',()=>{
+                const b=JSON.parse(e)[0]||{};
+                console.log('- état : ' + (b.status ?? '?'));
+                if (b.artifacts?.buildUrl) console.log('- téléchargement : ' + b.artifacts.buildUrl);
+                if (b.appVersion) console.log('- version : ' + b.appVersion);
+              });" >> $GITHUB_STEP_SUMMARY

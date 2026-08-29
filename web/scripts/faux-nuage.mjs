@@ -19,21 +19,25 @@
 
 import { createServer } from "node:http";
 
-const MAINTENANT = new Date().toISOString();
+// Les horodatages se calculent À CHAQUE DEMANDE, pas au démarrage.
+// Figés au lancement, ils vieillissent : au bout de dix minutes le terminal
+// passe pour muet et les cartes pour retirées — l'inverse de ce qu'on veut
+// pour essayer les écrans.
+const maintenant = () => new Date().toISOString();
 const il_y_a = (min) => new Date(Date.now() - min * 60000).toISOString();
 
-const TABLES = {
+const tables = () => ({
   terminaux: [{
-    id: "douala-faux", nom: "Douala (faux)", vu_le: MAINTENANT,
+    id: "douala-faux", nom: "Douala (faux)", vu_le: maintenant(),
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
   }],
   cartes: [
     { iccid: "89237010000000008901", operateur: "MTN", libelle: "MTN ·8901",
       nom: "Caisse principale", numero: "677123456",
-      premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: MAINTENANT },
+      premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: maintenant() },
     { iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
       nom: "", numero: "699001122",
-      premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: MAINTENANT },
+      premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: maintenant() },
   ],
   comptes: [
     { iccid: "89237010000000008901", libelle: "MTN ·8901", operateur: "MTN",
@@ -82,7 +86,7 @@ const TABLES = {
     { operateur: "Orange", nom: "solde", libelle: "Solde", etapes: "#150*1#" },
   ],
   evenements: [],
-};
+});
 
 // --- Le robot joué : une commande reçoit sa réponse d'opérateur -------------
 //
@@ -148,8 +152,9 @@ const serveur = createServer(async (req, res) => {
 
   // Les tables ordinaires.
   const m = /^\/rest\/v1\/(\w+)$/.exec(chemin);
-  if (m && TABLES[m[1]]) {
-    let lignes = TABLES[m[1]];
+  const T = tables();
+  if (m && T[m[1]]) {
+    let lignes = T[m[1]];
     if (url.searchParams.get("lu_le") === "is.null") {
       lignes = lignes.filter((l) => l.lu_le === null);
     }

@@ -260,7 +260,43 @@ projet supplémentaire.
 
 ---
 
-## 8. L'ordre des choses
+## 8. Obtenir le paquet, sans ouvrir un terminal
+
+`eas build` doit tourner quelque part, avec le compte Expo du propriétaire.
+Plutôt que d'installer Node et les outils Android sur une machine, c'est
+**GitHub qui compile** : `.github/workflows/application-android.yml`.
+
+### Une seule fois
+
+1. **expo.dev** → *Account settings* → *Access tokens* → créer un jeton.
+2. **GitHub** → le dépôt → *Settings* → *Secrets and variables* → *Actions*
+   → *New repository secret*. Nom : `EXPO_TOKEN`. Valeur : le jeton.
+
+Le jeton vit dans les secrets du dépôt : ni dans le code, ni dans le journal
+de compilation — GitHub le masque.
+
+### Chaque fois
+
+Onglet **Actions** → **Application Android** → *Run workflow* → choisir le
+profil. Une vingtaine de minutes plus tard, le lien de téléchargement
+s'affiche au bas de la page, et Expo l'envoie aussi par courriel.
+
+### Les trois profils
+
+| Profil | Ce qu'il fabrique | Qui peut l'installer |
+|---|---|---|
+| `apercu` | un **APK**, à installer d'un lien ou d'un code à scanner | vous seul — ni magasin, ni compte Google |
+| `essai` | un **AAB** pour la piste d'essai interne | jusqu'à 100 invités, en quelques minutes, **sans examen** |
+| `production` | un **AAB** public | tout le monde, après l'examen de Google |
+
+`apercu` est le chemin le plus court pour tenir l'application dans la main :
+il ne demande rien à Google.
+
+L'atelier vérifie les types et les règles partagées **avant** de compiler :
+une compilation dure vingt minutes, autant ne pas la lancer sur du code qui
+ne tient pas debout.
+
+## 9. L'ordre des choses
 
 1. `noyau/` — déplacer le partagé, le site continue de compiler.
 2. `mobile/` — l'ossature Expo, la charte, l'icône, les deux langues.
