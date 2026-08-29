@@ -22,7 +22,8 @@ import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
 import { essaiNotification } from "@/api/guichet";
 import {
-  inscrireLAppareil, peutEncoreDemander, type EtatSonnerie,
+  inscrireLAppareil, peutEncoreDemander, souciDeLaSonnerie,
+  type EtatSonnerie,
 } from "@/sonnerie";
 import { textesReglages } from "@noyau/textes/reglages";
 import { textesCharpente } from "@noyau/textes/charpente";
@@ -193,6 +194,10 @@ function EssaiNotification() {
   // Ce qui a empêché ce téléphone de s'inscrire, s'il y a quelque chose.
   const [etat, setEtat] = useState<EtatSonnerie | null>(null);
   const [reglagesUtiles, setReglagesUtiles] = useState(false);
+  // Le message du système, mot pour mot. Souvent le seul qui mène quelque
+  // part — « Default FirebaseApp is not initialized » désigne la panne d'un
+  // mot, là où « sans jeton » ne désigne rien.
+  const [souci, setSouci] = useState<string | null>(null);
 
   // POURQUOI ON REGARDE À L'OUVERTURE DE L'ÉCRAN. C'est ici qu'on vient
   // quand on se demande « pourquoi ça ne sonne pas ». Attendre un appui sur
@@ -204,6 +209,7 @@ function EssaiNotification() {
       const r = await inscrireLAppareil().catch((): EtatSonnerie => "echec");
       if (!vivant) return;
       setEtat(r);
+      setSouci(souciDeLaSonnerie());
       if (r === "refusee") setReglagesUtiles(!(await peutEncoreDemander()));
     })();
     return () => { vivant = false; };
@@ -225,6 +231,7 @@ function EssaiNotification() {
     try {
       const r = await inscrireLAppareil();
       setEtat(r);
+      setSouci(souciDeLaSonnerie());
       if (r === "refusee") setReglagesUtiles(!(await peutEncoreDemander()));
     } finally {
       setInscription(false);
@@ -292,6 +299,15 @@ function EssaiNotification() {
             </Texte>
           </View>
         )}
+
+        {/* Le message du système, tel quel. Il est en anglais et technique —
+            on le montre quand même : c'est lui qui permet de dire ce qui
+            manque, à nous comme à qui viendrait aider. */}
+        {souci ? (
+          <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 16 }}>
+            {souci}
+          </Texte>
+        ) : null}
 
         {/* Une permission refusée pour de bon ne se redemande pas : Android
             ignore l'appel. Le seul chemin passe par ses propres réglages. */}

@@ -105,6 +105,17 @@ export type EtatSonnerie =
  *  ignore l'appel, et l'application semble ne rien faire. Il faut alors
  *  envoyer la personne dans les réglages du téléphone — et le lui dire,
  *  plutôt que de lui faire appuyer trois fois sur un bouton inerte. */
+/**
+ * Le dernier message d'erreur rendu par le système, s'il y en a un.
+ *
+ * Les cas nommés (`refusee`, `sansProjet`…) disent QUOI. Celui-ci dit
+ * pourquoi, avec les mots du système — et ce sont souvent les seuls qui
+ * mènent quelque part. « Default FirebaseApp is not initialized » désigne
+ * la panne d'un mot ; « sansJeton » ne désigne rien.
+ */
+let dernierSouci: string | null = null;
+export const souciDeLaSonnerie = (): string | null => dernierSouci;
+
 export async function peutEncoreDemander(): Promise<boolean> {
   const { canAskAgain } = await Notifications.getPermissionsAsync();
   return canAskAgain !== false;
@@ -121,6 +132,7 @@ export async function peutEncoreDemander(): Promise<boolean> {
 export async function inscrireLAppareil(): Promise<EtatSonnerie> {
   // Un émulateur n'a pas les services Google : Expo n'a pas de jeton à
   // rendre, et insister ne ferait qu'un message d'erreur au démarrage.
+  dernierSouci = null;
   if (!Appareil.isDevice) return "simulateur";
 
   await declarerLeCanal();
@@ -139,14 +151,20 @@ export async function inscrireLAppareil(): Promise<EtatSonnerie> {
   let jeton: string | undefined;
   try {
     ({ data: jeton } = await Notifications.getExpoPushTokenAsync({ projectId }));
-  } catch {
+  } catch (e) {
+    // ON GARDE LE MESSAGE. C'est ici que se joue la panne la plus opaque :
+    // sans Firebase dans le paquet, Android répond « Default FirebaseApp is
+    // not initialized » — une phrase qui dit tout. L'avaler, comme je le
+    // faisais, laissait « aucun téléphone inscrit » et rien d'autre.
+    dernierSouci = e instanceof Error ? e.message : String(e);
     return "sansJeton";
   }
   if (!jeton) return "sansJeton";
 
   try {
     await enregistrerAppareil(jeton, Platform.OS, Appareil.modelName ?? "");
-  } catch {
+  } catch (e) {
+    dernierSouci = e instanceof Error ? e.message : String(e);
     // Réseau coupé, session expirée : le jeton est bon, c'est le dépôt qui
     // a manqué. On réessaiera — et le propriétaire peut réessayer lui-même.
     return "echec";

@@ -35,18 +35,65 @@
 // donc sans danger — mais elle reste une configuration qui depend de son
 // environnement, et ce genre de chose se paie toujours quelque part.
 
-const { existsSync } = require("fs");
+const { copyFileSync, existsSync } = require("fs");
+const { isAbsolute, join, resolve } = require("path");
 
 /** Le chemin du fichier Firebase, s'il y en a un a portee. */
 function fichierFirebase() {
-  // EAS ecrit le secret de fichier ou il veut, et donne son chemin ici.
+  // LE CHEMIN QUE DONNE EAS EST RELATIF.
+  //
+  // Le journal d'une compilation l'a montré : « ../../eas-environment-secrets/
+  // f15d60d… ». Un chemin relatif ne veut rien dire tout seul — il dépend du
+  // dossier depuis lequel on le lit. Si Expo évalue cette configuration
+  // depuis un autre dossier, `existsSync` répond non, la ligne Firebase
+  // disparaît, et la compilation RÉUSSIT quand même : on obtient une
+  // application sans notifications, sans le moindre message.
+  //
+  // On résout donc le chemin contre le dossier de ce fichier, qui lui ne
+  // bouge jamais. Et surtout : ON COPIE LE FICHIER DANS LE PROJET. Ainsi
+  // tout ce qui suit — le plugin d'Expo, Gradle, l'empreinte — voit un
+  // chemin stable, à l'intérieur du projet, identique à chaque lecture.
+  // Pointer vers l'extérieur du projet, c'est dépendre d'un dossier
+  // temporaire qu'on ne contrôle pas.
+  const dansLeProjet = join(__dirname, "google-services.json");
+
   const depuisEas = process.env.GOOGLE_SERVICES_JSON;
-  if (depuisEas && existsSync(depuisEas)) return depuisEas;
+  if (depuisEas) {
+    // Un chemin relatif se lit depuis QUELQUE PART, et on ne sait pas d'où :
+    // Expo peut évaluer cette configuration depuis le dossier du projet ou
+    // depuis celui d'où la commande a été lancée. On essaie les deux plutôt
+    // que de parier — se tromper de base ne donne pas une erreur, mais une
+    // application silencieusement sans notifications.
+    const pistes = isAbsolute(depuisEas)
+      ? [depuisEas]
+      : [resolve(process.cwd(), depuisEas), resolve(__dirname, depuisEas)];
+    const absolu = pistes.find((p) => existsSync(p));
+    if (absolu) {
+      // Déjà à sa place ? On ne se recopie pas sur soi-même.
+      if (resolve(absolu) !== resolve(dansLeProjet)) {
+        copyFileSync(absolu, dansLeProjet);
+      }
+      console.log(`Firebase : google-services.json en place (depuis ${depuisEas}).`);
+      return "./google-services.json";
+    }
+    // Le secret est déclaré mais introuvable : le DIRE. C'est exactement le
+    // cas où l'on croit avoir configuré Firebase et où rien ne sonne.
+    console.warn(
+      `Firebase : GOOGLE_SERVICES_JSON vaut « ${depuisEas} », mais aucun `
+      + `fichier n'est là. Cherché : ${pistes.join(" et ")}. Les `
+      + `notifications seront MUETTES dans ce paquet.`);
+  }
+
   // Sur la machine de quelqu'un qui compile a la main, le fichier peut etre
   // simplement pose a cote. Il est ignore par git (voir .gitignore).
-  if (existsSync(`${__dirname}/google-services.json`)) {
+  if (existsSync(dansLeProjet)) {
+    console.log("Firebase : google-services.json trouvé dans le projet.");
     return "./google-services.json";
   }
+
+  console.warn(
+    "Firebase : aucun google-services.json. L'application se compilera et "
+    + "fonctionnera, mais elle ne pourra pas recevoir de notifications.");
   return undefined;
 }
 
