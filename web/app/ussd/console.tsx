@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { codesUssd } from "@/lib/codes";
-import { textesUssd } from "@/lib/textes/ussd";
-import type { RaccourciAppris, Sim } from "@/lib/types";
+import { codesUssd } from "@noyau/codes";
+import { textesUssd } from "@noyau/textes/ussd";
+import type { RaccourciAppris, Sim } from "@noyau/types";
 import { BarreArret, BoutonFermer } from "../feuille";
 import { IconHash } from "../icons";
 import { useLangue } from "../langue";

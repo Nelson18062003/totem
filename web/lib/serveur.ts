@@ -17,10 +17,10 @@
 // qu'il a poussé. Aucune donnée n'est inventée : sans variables, les écrans
 // sont vides et le disent.
 
-import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "./types";
-import { estNature } from "./natures";
-import { estCategorie, jourDouala } from "./types";
-import type { Langue } from "./langue";
+import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
+import { estNature } from "@noyau/natures";
+import { estCategorie, jourDouala } from "@noyau/types";
+import type { Langue } from "@noyau/langue";
 
 const url = process.env.SUPABASE_URL;
 const cle = process.env.SUPABASE_CLE;

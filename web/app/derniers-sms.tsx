@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useLangue } from "@/app/langue";
-import { textesCharpente } from "@/lib/textes/charpente";
-import { fcfa, type Paiement } from "@/lib/types";
+import { textesCharpente } from "@noyau/textes/charpente";
+import { fcfa, type Paiement } from "@noyau/types";
 import { catDe, CatIcone, classeCat, FicheSms, texteSurEcran } from "./fiche-sms";
 import { IconDoc } from "./icons";
 

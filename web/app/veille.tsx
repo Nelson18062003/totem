@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useLangue } from "@/app/langue";
-import { textesCharpente } from "@/lib/textes/charpente";
+import { textesCharpente } from "@noyau/textes/charpente";
 
 // La veille interroge une route minuscule (/api/actualite). Cinq secondes :
 // assez vif pour qu'un encaissement « apparaisse tout seul », assez espacé

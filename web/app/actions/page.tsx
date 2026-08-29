@@ -1,6 +1,6 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import { textesGuichet } from "@/lib/textes/guichet";
+import { textesGuichet } from "@noyau/textes/guichet";
 import { Vide } from "../vide";
 import { Guichet } from "./guichet";
 

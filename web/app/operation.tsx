@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { textesGuichet } from "@/lib/textes/guichet";
+import { textesGuichet } from "@noyau/textes/guichet";
 import { Feuille } from "./feuille";
 import { useLangue } from "./langue";
 import { PaveSecret } from "./pave-secret";

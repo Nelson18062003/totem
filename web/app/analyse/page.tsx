@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import type { Langue } from "@/lib/langue";
-import { textesAnalyse } from "@/lib/textes/analyse";
-import { fcfa, jourDouala, nombre, type Paiement } from "@/lib/types";
+import type { Langue } from "@noyau/langue";
+import { textesAnalyse } from "@noyau/textes/analyse";
+import { fcfa, jourDouala, nombre, type Paiement } from "@noyau/types";
 import { IconDoc } from "../icons";
 import { Vide } from "../vide";
 

@@ -2,8 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import { useLangue } from "@/app/langue";
-import { textesCharpente } from "@/lib/textes/charpente";
-import type { EtatTerminal } from "@/lib/types";
+import { textesCharpente } from "@noyau/textes/charpente";
+import type { EtatTerminal } from "@noyau/types";
 import { Nav } from "./nav";
 
 /** Pages qui s'affichent seules, sans navigation ni bandeau. */

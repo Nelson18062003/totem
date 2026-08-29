@@ -1,8 +1,8 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { erreurApi } from "@/lib/textes/api";
-import { jourDouala, type Paiement } from "@/lib/types";
-import type { Langue } from "@/lib/langue";
+import { erreurApi } from "@noyau/textes/api";
+import { jourDouala, type Paiement } from "@noyau/types";
+import type { Langue } from "@noyau/langue";
 
 export const dynamic = "force-dynamic";
 

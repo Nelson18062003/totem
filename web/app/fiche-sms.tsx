@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
-import { NATURES as NATURES_CHOISIES } from "@/lib/natures";
-import { textesSms } from "@/lib/textes/sms";
-import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { NATURES as NATURES_CHOISIES } from "@noyau/natures";
+import { textesSms } from "@noyau/textes/sms";
+import { type Categorie, fcfa, type Paiement } from "@noyau/types";
 import { Feuille } from "./feuille";
 import {
   IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,

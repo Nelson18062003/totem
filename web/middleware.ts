@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESSION, verifierSession } from "@/lib/session";
-import { COOKIE_LANGUE, langueDe } from "@/lib/langue";
+import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 
 // Le verrou de la plateforme. Tant que `SESSION_SECRET` n'est pas défini, il
 // n'y a AUCUN verrou (utile en développement local) — mais dès qu'on le pose

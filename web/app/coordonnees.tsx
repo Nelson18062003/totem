@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { pdfCoordonnees } from "@/lib/pdf-rib";
-import { textesAccueil } from "@/lib/textes/accueil";
+import { textesAccueil } from "@noyau/textes/accueil";
 import { useLangue } from "@/app/langue";
 import { Feuille } from "./feuille";
 import { IconCopy, IconDownload, IconEye, IconIdentite } from "./icons";

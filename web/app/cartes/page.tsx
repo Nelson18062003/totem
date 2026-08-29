@@ -1,7 +1,7 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import { textesCartes } from "@/lib/textes/cartes";
-import { fcfa, nombre } from "@/lib/types";
+import { textesCartes } from "@noyau/textes/cartes";
+import { fcfa, nombre } from "@noyau/types";
 import { IconWallet } from "../icons";
 import { LogoOperateur, operateurReconnu } from "../logos-operateurs";
 import { Vide } from "../vide";

@@ -1,6 +1,6 @@
 import { lireCommande } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { erreurApi } from "@/lib/textes/api";
+import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
 

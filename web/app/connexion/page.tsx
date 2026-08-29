@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { Fragment, useState } from "react";
-import { LANGUES } from "@/lib/langue";
-import { textesConnexion } from "@/lib/textes/connexion";
+import { LANGUES } from "@noyau/langue";
+import { textesConnexion } from "@noyau/textes/connexion";
 import { changerLangue, useLangue } from "@/app/langue";
 import { Symbole } from "../marque";
 

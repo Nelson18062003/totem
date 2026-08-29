@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
-import { CLES_GUICHET, codesUssd, type CodeUssd } from "@/lib/codes";
-import { LANGUES } from "@/lib/langue";
-import { textesReglages } from "@/lib/textes/reglages";
-import type { RaccourciAppris } from "@/lib/types";
+import { CLES_GUICHET, codesUssd, type CodeUssd } from "@noyau/codes";
+import { LANGUES } from "@noyau/langue";
+import { textesReglages } from "@noyau/textes/reglages";
+import type { RaccourciAppris } from "@noyau/types";
 import { IconHash, IconPlus } from "../icons";
 import { BoutonFermer } from "../feuille";
 
