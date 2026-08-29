@@ -22,6 +22,18 @@
 // s'installe, tout fonctionne — seules les notifications restent muettes.
 // Une ligne fixe dans `app.json` ferait au contraire echouer la compilation
 // avec « Cannot copy google-services.json », pour un fichier absent.
+//
+// CE QUE CETTE CONDITION A DEJA COUTE, pour que personne ne la reintroduise
+// ailleurs sans y penser. Elle rend cette configuration DIFFERENTE selon la
+// machine qui la lit : le serveur d'Expo a le fichier, la machine de GitHub
+// ne l'a pas. Tant que `runtimeVersion` etait calcule par empreinte
+// (« fingerprint »), les deux machines calculaient deux empreintes, et la
+// compilation s'arretait sur « Runtime version mismatch ».
+//
+// C'est reglé en ne calculant plus d'empreinte : `runtimeVersion` suit
+// desormais le numero de version (voir app.json). Cette condition redevient
+// donc sans danger — mais elle reste une configuration qui depend de son
+// environnement, et ce genre de chose se paie toujours quelque part.
 
 const { existsSync } = require("fs");
 

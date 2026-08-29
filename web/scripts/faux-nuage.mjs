@@ -104,6 +104,9 @@ let prochainId = 1;
 const utilisateurs = new Map();     // id → ligne
 let prochainCompte = 1;
 
+// Les téléphones inscrits pour les notifications, par jeton.
+const appareils = new Map();
+
 function reponsePour(commande) {
   const { type, parametres } = commande;
   if (type === "ussd_fin") return "Session terminee.";
@@ -157,6 +160,24 @@ const serveur = createServer(async (req, res) => {
     const id = eq ? Number(eq.replace("eq.", "")) : null;
     const c = commandes.get(id);
     return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+  }
+
+  // --- LES APPAREILS (les téléphones à faire sonner) ----------------------
+  if (chemin === "/rest/v1/appareils") {
+    if (req.method === "POST") {
+      let brut = "";
+      for await (const mm of req) brut += mm;
+      for (const a of [].concat(JSON.parse(brut || "[]"))) {
+        appareils.set(a.jeton, { ...a, vu_le: maintenant() });
+      }
+      return repondre([], 201);
+    }
+    if (req.method === "DELETE") {
+      const eq = url.searchParams.get("jeton");
+      if (eq) appareils.delete(decodeURIComponent(eq.replace("eq.", "")));
+      return repondre([], 204);
+    }
+    return repondre([...appareils.values()]);
   }
 
   // --- LES COMPTES -------------------------------------------------------

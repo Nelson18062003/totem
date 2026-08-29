@@ -141,6 +141,22 @@ const en = {
   jamaisVenu: "Never signed in",
   vuLe: "Last signed in",
   aucunAutreCompte: "No other account yet.",
+  // --- L'essai de notification
+  // Le propriétaire vient d'installer l'application. Lui demander d'attendre
+  // un vrai paiement pour savoir si son téléphone sonne serait cruel — et
+  // s'il ne sonne pas, il chercherait longtemps.
+  essai: "Does my phone ring?",
+  essaiAide:
+    "Sends a test notification to the phones signed in. It checks the phone " +
+    "side — not the terminal in Douala.",
+  essaiBouton: "Send a test",
+  essaiEnCours: "Sending…",
+  essaiTexte: "This is a test. Notifications are working.",
+  essaiReussi: "Sent. Your phone should ring within a few seconds.",
+  essaiAucunAppareil:
+    "No phone signed in yet. Open the app, sign in, and accept notifications.",
+  essaiEchec: "Nothing could be sent.",
+  essaiOublies: "phone(s) removed: the app is no longer installed on them.",
   securite: "Security",
   motDePasse: "Change the password",
   doubleAuth: "Two-step sign-in",
@@ -280,6 +296,19 @@ const fr: typeof en = {
   jamaisVenu: "Jamais connecté",
   vuLe: "Dernière connexion",
   aucunAutreCompte: "Aucun autre compte pour l’instant.",
+  essai: "Est-ce que mon téléphone sonne ?",
+  essaiAide:
+    "Envoie une notification d’essai aux téléphones connectés. Elle vérifie " +
+    "le côté téléphone — pas le terminal de Douala.",
+  essaiBouton: "Envoyer un essai",
+  essaiEnCours: "Envoi…",
+  essaiTexte: "Ceci est un essai. Les notifications fonctionnent.",
+  essaiReussi: "Envoyé. Votre téléphone devrait sonner dans quelques secondes.",
+  essaiAucunAppareil:
+    "Aucun téléphone connecté pour l’instant. Ouvrez l’application, " +
+    "connectez-vous, et acceptez les notifications.",
+  essaiEchec: "Rien n’a pu être envoyé.",
+  essaiOublies: "téléphone(s) retiré(s) : l’application n’y est plus installée.",
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",
   doubleAuth: "Double authentification",

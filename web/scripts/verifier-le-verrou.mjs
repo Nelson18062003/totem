@@ -66,6 +66,10 @@ try {
   // verrou, n'importe qui pourrait inscrire son appareil et recevoir les
   // encaissements du proprietaire sur son propre ecran.
   verifier("/api/comptes sans jeton", await code("/api/comptes"), 401);
+  // Faire sonner le téléphone du propriétaire n'est pas un geste qu'on offre
+  // à un inconnu : ce serait un moyen commode de le harceler.
+  verifier("/api/essai-notification sans jeton",
+           await code("/api/essai-notification", { method: "POST" }), 401);
   verifier("/api/appareil sans jeton", await code("/api/appareil", {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jeton: "ExpoPushToken[intrus]" }),

@@ -207,6 +207,37 @@ SMS suivant.
 
 Ces trois règles sont gardées par `tests/test_notification.py`.
 
+### Vérifier que ça sonne, sans attendre un vrai paiement
+
+**Réglages → « Est-ce que mon téléphone sonne ? » → Envoyer un essai.**
+
+Le téléphone doit sonner dans les secondes qui suivent.
+
+Sans ce bouton, il faudrait attendre qu'un vrai client envoie de l'argent
+pour savoir si la chaîne fonctionne — et si elle ne fonctionne pas, chercher
+à l'aveugle : Firebase ? le jeton ? le canal Android ? la permission refusée
+au premier lancement ?
+
+**Ce que l'essai prouve** — le dernier kilomètre, celui qui casse le plus
+souvent :
+
+| | |
+|---|---|
+| ✓ | le jeton de l'appareil est enregistré |
+| ✓ | Expo l'accepte |
+| ✓ | Firebase le relaie |
+| ✓ | Android l'affiche, sur le bon canal, avec le bon son |
+| ✗ | **pas** le robot de Douala : ni le modem, ni la lecture du SMS, ni l'analyse |
+
+**Le ménage au passage.** Expo rend un billet par appareil. Un téléphone
+désinstallé répond « DeviceNotRegistered » : son jeton est alors retiré de la
+base. Sans cette lecture, il y resterait pour toujours, et le compte des
+appareils servis mentirait.
+
+Aucun contenu de paiement ne traverse cet essai — le message ne parle que de
+lui-même. Les trois règles qui protègent les notifications restent donc
+entièrement chez le robot, à un seul endroit.
+
 ### L'inscription d'un téléphone
 
 L'application ne peut pas s'inscrire toute seule dans la base : elle n'a
@@ -433,17 +464,48 @@ Obligatoire dès qu'une brique **native** bouge :
 - le fichier `google-services.json` de Firebase ;
 - la version d'Android visée.
 
-### On ne peut pas se tromper de chemin
+### La règle à tenir soi-même
 
-`app.json` porte `runtimeVersion: { policy: "fingerprint" }`. Expo calcule une
-empreinte de tout ce qui est natif dans le projet, et **une mise à jour ne
-rejoint que les applications qui portent la même empreinte**.
+`app.json` porte `runtimeVersion: { policy: "appVersion" }` : **une mise à
+jour ne rejoint que les applications qui portent le même numéro de
+`version`.**
 
-Si vous poussez par le chemin court du code qui réclame une brique native
-absente du téléphone, il ne la recevra tout simplement pas. C'est très
-volontaire : la recevoir la ferait planter au démarrage, et une application
-qui plante au démarrage **ne peut plus recevoir la correction**. Le téléphone
-serait mort pour de bon.
+> **Dès qu'une brique native change, montez `version` dans `app.json` et
+> recompilez** — avant de publier quoi que ce soit par le chemin court.
+
+Sans cela, une mise à jour écrite pour une bibliothèque absente de
+l'application installée la ferait planter au démarrage. Et une application qui
+plante au démarrage **ne peut plus recevoir la correction** : il faudrait
+désinstaller et réinstaller à la main, sur chaque téléphone.
+
+### Pourquoi pas l'empreinte automatique
+
+On avait d'abord réglé `runtimeVersion` sur `fingerprint` : Expo calcule alors
+une empreinte de tout ce qui est natif, et refuse tout seul les mises à jour
+incompatibles. C'est mieux — quand ça marche.
+
+Ici, ça ne marchait pas, et la compilation le disait :
+
+```
+Runtime version mismatch:
+- Runtime version calculated on local machine: 9479e01c...
+- Runtime version calculated on EAS:           a6b1e178...
+```
+
+L'empreinte est calculée à **deux endroits**, et les deux ne voient pas le
+même projet :
+
+| | machine GitHub | serveur Expo |
+|---|---|---|
+| `google-services.json` | absent | présent (écrit depuis le secret) |
+| dossier `android/` | absent | présent (généré par le prebuild) |
+
+Deux mondes qui ne peuvent pas se ressembler, donc deux empreintes, donc un
+refus — à chaque compilation. Le fingerprint est un bon garde-fou quand on
+compile à un seul endroit ; il ne l'est pas ici.
+
+C'est la première compilation avec Firebase qui l'a révélé : celle d'avant,
+sans le fichier, passait — les deux côtés étaient également démunis.
 
 ### Le premier paquet ne reçoit rien
 

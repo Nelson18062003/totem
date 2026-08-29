@@ -9,6 +9,7 @@ import {
   ReglageNom,
   ReglageNumero,
   SectionCodes,
+  SectionEssaiNotification,
   SectionLangue,
   SectionQui,
 } from "./interactifs";
@@ -152,6 +153,10 @@ export default async function Reglages() {
           <Bascule t={t.notifCourant} defaut />
         </div>
       </section>
+
+      {/* L'essai, juste sous les réglages de notification : c'est là qu'on se
+          demande si elles marchent vraiment. */}
+      <SectionEssaiNotification />
       </div>
 
       <div className="flex flex-col gap-8">
