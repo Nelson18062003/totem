@@ -26,8 +26,8 @@ export async function generateMetadata(): Promise<Metadata> {
     title: titre,
     description:
       langue === "en"
-        ? "Run your MTN Mobile Money and Orange Money SIMs remotely, from anywhere in the world."
-        : "Pilotez vos SIM MTN Mobile Money et Orange Money à distance, depuis n'importe où dans le monde.",
+        ? "Manage your MTN Mobile Money and Orange Money SIM cards from anywhere. No more USSD menus."
+        : "Gérez vos cartes SIM MTN Mobile Money et Orange Money d'où que vous soyez. Fini les menus USSD.",
     applicationName: "TOTEM",
     appleWebApp: { capable: true, title: "TOTEM", statusBarStyle: "default" },
     // Maquette : on ne veut pas la voir remonter dans les moteurs de recherche.

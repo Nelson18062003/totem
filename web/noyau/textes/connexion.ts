@@ -4,9 +4,13 @@ const en = {
   titre: "Sign in",
   // Ce que fait la plateforme, dit en une phrase : la plupart des visiteurs
   // ne verront que cet écran, il doit se présenter tout seul.
+  // Ce que TOTEM fait, en une phrase. Elle dit GÉRER, pas suivre l'argent :
+  // le produit est l'interface qui remplace les menus USSD, pas un service
+  // qui toucherait à l'argent de quelqu'un. C'est plus juste — et cela évite
+  // de faire croire à un service financier, ce que TOTEM n'est pas.
   sousTitre:
-    "Your Mobile Money SIMs stay in the country; from here you watch the " +
-    "money come in, run the cards and keep every receipt — wherever you are.",
+    "Your Mobile Money SIM cards stay in the country. From here you run " +
+    "them — every card, every receipt — wherever you are.",
   reserve: "For the terminal's owner only.",
   motDePasse: "Password",
   verification: "Checking…",
@@ -76,8 +80,8 @@ const en = {
 const fr: typeof en = {
   titre: "Connexion",
   sousTitre:
-    "Vos SIM Mobile Money restent au pays ; d’ici, vous suivez l’argent qui " +
-    "arrive, pilotez les cartes et gardez chaque reçu — d’où que vous soyez.",
+    "Vos cartes SIM Mobile Money restent au pays. D’ici, vous les pilotez — " +
+    "chaque carte, chaque reçu — d’où que vous soyez.",
   reserve: "Accès réservé au propriétaire du terminal.",
   motDePasse: "Mot de passe",
   verification: "Vérification…",

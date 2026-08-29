@@ -17,10 +17,11 @@ const en = {
 
   quoiTitre: "What TOTEM is",
   quoi:
-    "TOTEM lets one person — the owner of the Mobile Money SIM cards — follow " +
-    "the money arriving on those cards. The SIMs sit in a terminal in Douala, " +
-    "Cameroon. The app is a window onto that terminal. It is not a payment " +
-    "service: no money moves through it, and it holds no funds.",
+    "TOTEM lets one person — the owner of the Mobile Money SIM cards — manage " +
+    "those cards from a screen instead of from USSD menus. The SIMs sit in a " +
+    "terminal in Douala, Cameroon; the app is an interface onto that " +
+    "terminal. It is not a payment service, a wallet, or a bank: no money " +
+    "moves through it, and it holds no funds.",
 
   collecteTitre: "What the app collects about you",
   collecte:
@@ -106,9 +107,10 @@ const fr: typeof en = {
   quoiTitre: "Ce qu’est TOTEM",
   quoi:
     "TOTEM permet à une personne — le propriétaire des cartes SIM Mobile " +
-    "Money — de suivre l’argent qui arrive sur ces cartes. Les SIM sont dans " +
-    "un terminal à Douala, au Cameroun. L’application est une fenêtre sur ce " +
-    "terminal. Ce n’est pas un service de paiement : aucun argent n’y " +
+    "Money — de gérer ces cartes depuis un écran plutôt que depuis des menus " +
+    "USSD. Les SIM sont dans un terminal à Douala, au Cameroun ; " +
+    "l’application est une interface sur ce terminal. Ce n’est ni un service " +
+    "de paiement, ni un portefeuille, ni une banque : aucun argent n’y " +
     "transite, et elle ne détient aucun fonds.",
 
   collecteTitre: "Ce que l’application collecte sur vous",
