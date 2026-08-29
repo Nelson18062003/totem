@@ -69,6 +69,13 @@ const travaux = [
   ["totem-icone-app.svg", "../mobile/assets/images/icone.png", 1024, null, 0],
   ["totem-symbole-reserve.svg", "../mobile/assets/images/icone-android-avant.png", 1024, null, 22],
   ["totem-symbole.svg", "../mobile/assets/images/demarrage.png", 512, null, 0],
+  //
+  // `notification.png` : l'icone de la barre d'etat quand une notification
+  // arrive. Android n'en garde que la SILHOUETTE — il jette la couleur et
+  // teinte lui-meme le trace. Un logo en couleurs y deviendrait un carre
+  // blanc ; c'est donc le symbole en reserve qu'on decoupe, sur fond
+  // transparent. 96 px : la taille que le systeme attend.
+  ["totem-symbole-reserve.svg", "../mobile/assets/images/notification.png", 96, null, 10],
 ];
 
 // Le proxy sortant de l'environnement ne doit pas intercepter le rendu local.

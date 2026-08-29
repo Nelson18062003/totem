@@ -38,9 +38,10 @@ from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
+from .notification import composer, envoyer
 from .pilotage import Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
-from .textes import t
+from .textes import langue_active, t
 from .version import version
 
 ARRET_PROPRE = "arrêt propre"
@@ -2400,6 +2401,40 @@ class Robot:
                             "lecture incomplète, opération comptée nulle part")
 
         self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
+        self._faire_sonner(paiement, expediteur, compte.libelle, texte)
+
+    def _faire_sonner(self, paiement, expediteur, libelle, texte):
+        """Fait sonner les téléphones qui se sont inscrits.
+
+        Rien ici ne peut retarder ni empêcher l'annonce Telegram : elle est
+        déjà partie. L'envoi s'en va dans un fil à part — le guichet d'Expo
+        est sur Internet, et à Douala Internet met parfois dix secondes à
+        répondre non. On ne veut pas de ces dix secondes dans la lecture des
+        SMS, où le message suivant attend son tour.
+
+        Le tri de ce qu'on a le droit de dire n'est pas ici : il est dans
+        `notification.composer`, qui protège les codes et refuse d'inventer
+        un montant.
+        """
+        if not self.nuage:
+            return
+        try:
+            categorie = categoriser(texte, numeros=self._nos_numeros())
+        except Exception:
+            categorie = None
+        message = composer(paiement, expediteur, libelle, categorie,
+                           anglais=langue_active() == "en")
+        if not message:
+            return
+        titre, corps = message
+
+        def porter():
+            try:
+                envoyer(self.nuage.appareils(), titre, corps)
+            except Exception:
+                pass    # une notification perdue n'est pas une panne
+
+        threading.Thread(target=porter, daemon=True).start()
 
     def _courrier_abandonne(self, canal, texte):
         """Le facteur a dû jeter un message que Telegram refusait obstinément

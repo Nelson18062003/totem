@@ -41,6 +41,13 @@ try {
   console.log("\nPortes fermées sans session");
   verifier("/api/donnees sans jeton", await code("/api/donnees"), 401);
   verifier("/api/bilan sans jeton", await code("/api/bilan"), 401);
+  // L'inscription d'un telephone aux notifications est une ECRITURE : sans
+  // verrou, n'importe qui pourrait inscrire son appareil et recevoir les
+  // encaissements du proprietaire sur son propre ecran.
+  verifier("/api/appareil sans jeton", await code("/api/appareil", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jeton: "ExpoPushToken[intrus]" }),
+  }), 401);
   verifier("/ renvoie vers la connexion", await code("/", { redirect: "manual" }), 307);
 
   console.log("\nPorte de l'application");

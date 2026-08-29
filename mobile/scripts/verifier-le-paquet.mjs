@@ -52,7 +52,7 @@ console.log("Le noyau partagé voyage bien avec l'application");
 ].forEach((s) => doitEtre(true, s));
 
 console.log("\nL'application ne parle qu'à la plateforme");
-["/api/session", "/api/donnees", "totem.jeton"].forEach((s) => doitEtre(true, s));
+["/api/session", "/api/donnees", "/api/appareil", "totem.jeton"].forEach((s) => doitEtre(true, s));
 
 console.log("\nAUCUN SECRET N'A FUI");
 [

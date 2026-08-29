@@ -139,6 +139,21 @@ export function marquerLu(id: number): Promise<{ ok: true }> {
   return demander("/api/lu", { method: "POST", body: JSON.stringify({ id }) });
 }
 
+/** Inscrit ce téléphone pour les notifications.
+ *
+ *  Le jeton d'Expo n'est pas un secret : il ne dit rien du propriétaire et
+ *  n'ouvre l'accès à rien — il autorise seulement à faire sonner CET
+ *  appareil. Il part quand même par la porte verrouillée, pour que seul un
+ *  téléphone connecté puisse s'inscrire. */
+export function enregistrerAppareil(
+  jeton: string, plateforme: string, nom: string,
+): Promise<{ ok: true }> {
+  return demander("/api/appareil", {
+    method: "POST",
+    body: JSON.stringify({ jeton, plateforme, nom }),
+  });
+}
+
 /** Le pouls : le dernier SMS connu, et le nombre de non-lus. */
 export function actualite(): Promise<{ dernier: number; nonLus: number }> {
   return demander("/api/actualite");

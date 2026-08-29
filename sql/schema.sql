@@ -205,6 +205,34 @@ comment on table raccourcis is
   'Les boutons USSD appris par le robot, par opérateur. Copie du journal '
   'local du terminal : c''est lui qui écrit, la plateforme ne fait que lire.';
 
+-- Les téléphones qui reçoivent les notifications.
+--
+-- C'est le robot de Douala qui fait sonner (voir totem/notification.py) : il
+-- lui faut donc savoir À QUI. Les appareils s'inscrivent ici en passant par
+-- la plateforme (/api/appareil, derrière le verrou), jamais en écrivant
+-- directement — le téléphone n'a aucune clé.
+--
+-- Le jeton d'Expo identifie un APPAREIL, pas une personne. Il ne dit rien du
+-- propriétaire, ne permet pas de le localiser, et n'ouvre l'accès à rien : il
+-- autorise seulement à faire sonner ce téléphone-là.
+create table if not exists appareils (
+  -- « ExpoPushToken[xxxxxxxx] ». C'est LUI la clé : réinstaller l'application
+  -- en donne un neuf, et l'ancien s'éteint tout seul chez Expo.
+  jeton       text primary key,
+  plateforme  text,                      -- « android » ou « ios »
+  -- De quoi reconnaître l'appareil dans une liste (« Pixel 8 »), quand il
+  -- faudra en retirer un. Jamais un identifiant matériel : le modèle suffit.
+  nom         text,
+  -- Dernière fois que l'application s'est signalée. Un appareil qui ne
+  -- reparaît plus a été perdu, vendu ou désinstallé.
+  vu_le       timestamptz not null default now(),
+  cree_le     timestamptz not null default now()
+);
+
+comment on table appareils is
+  'Les téléphones à qui le robot fait sonner une notification. Le jeton '
+  'identifie un appareil, jamais une personne, et n''ouvre l''accès à rien.';
+
 -- ---------------------------------------------------------------------------
 -- Mise à niveau des bases créées avant le cloisonnement par carte
 --
@@ -331,6 +359,9 @@ create index if not exists cartes_derniere_vue_idx on cartes (terminal, derniere
 create index if not exists recus_etabli_le_idx on recus (terminal, etabli_le desc);
 create index if not exists commandes_attente_idx
   on commandes (terminal, etat) where etat = 'en_attente';
+-- Le robot lit « les appareils encore vivants » : un index sur la date rend
+-- cette lecture immédiate même avec des années d'appareils oubliés.
+create index if not exists appareils_vu_le on appareils (vu_le desc);
 
 -- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit sans être connecté.
@@ -347,6 +378,7 @@ alter table evenements enable row level security;
 alter table commandes  enable row level security;
 alter table recus      enable row level security;
 alter table raccourcis enable row level security;
+alter table appareils  enable row level security;
 
 do $$
 declare t text;
@@ -359,6 +391,12 @@ begin
       t, t);
   end loop;
 end $$;
+
+-- « appareils » n'est PAS dans cette liste, et c'est délibéré : aucune
+-- politique n'est créée pour cette table, donc personne ne passe. Ni le
+-- navigateur, ni le téléphone n'ont à lire la liste des appareils inscrits.
+-- Seules la plateforme (côté serveur) et le robot y touchent, avec la clé de
+-- service — qui contourne ces règles par nature.
 
 -- Seule exception en écriture : un utilisateur connecté peut demander une
 -- commande (appuyer sur un bouton). Il ne peut pas modifier l'historique.

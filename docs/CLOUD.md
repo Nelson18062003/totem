@@ -40,7 +40,8 @@ se vide toute seule au retour du réseau.
 3. **Run**. Le script est rejouable : le relancer plus tard ne casse rien.
 
 Vérification : menu **Table Editor** → vous devez voir `terminaux`, `cartes`,
-`comptes`, `paiements`, `evenements`, `commandes`.
+`comptes`, `paiements`, `evenements`, `commandes`, `recus`, `raccourcis` et
+`appareils`.
 
 > **Vous aviez déjà exécuté ce script ?** Refaites l'opération telle quelle.
 > `create table if not exists` ne touche pas une table existante : le fichier

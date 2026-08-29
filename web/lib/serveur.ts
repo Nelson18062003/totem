@@ -471,6 +471,40 @@ export async function marquerLu(id: number): Promise<boolean> {
   }
 }
 
+/**
+ * Inscrit (ou rafraîchit) un téléphone qui veut recevoir les notifications.
+ *
+ * Le jeton d'Expo est la clé : réinstaller l'application en donne un neuf, et
+ * l'ancien s'éteint tout seul chez Expo. On écrase donc sans état d'âme —
+ * `merge-duplicates` fait un « upsert », ce qui remet `vu_le` à jour à chaque
+ * ouverture de l'application.
+ *
+ * Le téléphone n'écrit JAMAIS dans la base lui-même : il passe par ici,
+ * c'est-à-dire par un serveur qui a vérifié sa session.
+ */
+export async function enregistrerAppareil(
+  jeton: string, plateforme: string, nom: string,
+): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/appareils`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+        prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({
+        jeton, plateforme, nom, vu_le: new Date().toISOString(),
+      }),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function lireCommande(
   id: number,
 ): Promise<{ etat: string; resultat: string | null } | null> {

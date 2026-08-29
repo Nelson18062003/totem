@@ -19,7 +19,7 @@
         "backgroundColor": "#16171a",
         "monochromeImage": "./assets/images/icone-android-avant.png"
       },
-      "//permissions": "La liste est VIDE, et c'est un choix. Les SMS sont lus par le modem de Douala, jamais par le telephone : READ_SMS et RECEIVE_SMS sont des autorisations restreintes qui declenchent un formulaire de justification et, presque toujours, un refus. Ne jamais les ajouter, meme pour essayer.",
+      "//permissions": "La liste est VIDE, et c'est un choix. Les SMS sont lus par le modem de Douala, jamais par le telephone : READ_SMS et RECEIVE_SMS sont des autorisations restreintes qui declenchent un formulaire de justification et, presque toujours, un refus. Ne jamais les ajouter, meme pour essayer. Cette liste ne sert qu'a AJOUTER des autorisations : celles dont une bibliotheque a besoin arrivent toutes seules avec elle (expo-notifications apporte POST_NOTIFICATIONS). La laisser vide n'enleve donc rien.",
       "permissions": [],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": true,
@@ -53,7 +53,18 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "//icon": "Android ne garde que la SILHOUETTE de cette image : il jette la couleur et teinte lui-meme le trace. Un logo en couleurs y deviendrait un carre blanc. C'est donc le symbole en reserve, decoupe sur fond transparent, fabrique par brand/generer-png.mjs.",
+          "icon": "./assets/images/notification.png",
+          "//color": "La teinte que le systeme applique a la silhouette : la laterite de la marque.",
+          "color": "#9a4b2e",
+          "//defaultChannel": "Le canal qu'Android utilise si une notification n'en nomme aucun. Le meme que celui declare par src/sonnerie.tsx et vise par totem/notification.py : sans lui, un message atterrirait dans un canal \u00ab Divers \u00bb muet.",
+          "defaultChannel": "paiements"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
