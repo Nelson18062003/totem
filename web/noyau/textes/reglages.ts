@@ -153,8 +153,22 @@ const en = {
   essaiEnCours: "Sending…",
   essaiTexte: "This is a test. Notifications are working.",
   essaiReussi: "Sent. Your phone should ring within a few seconds.",
+  // « Aucun téléphone connecté » était un CONTRESENS. Le propriétaire EST
+  // connecté — il vient de taper son courriel et son mot de passe — et le
+  // message lui disait le contraire. Ce qui manque n'est pas une session,
+  // c'est un APPAREIL INSCRIT pour recevoir les notifications. Deux choses
+  // sans rapport, sous un même mot.
   essaiAucunAppareil:
-    "No phone signed in yet. Open the app, sign in, and accept notifications.",
+    "No phone is registered for notifications. This is not about your " +
+    "sign-in — you are signed in. It means no phone has yet told the " +
+    "platform where to ring.",
+  // Sur le navigateur, la précision qui manquait le plus : un navigateur
+  // n'est pas un téléphone, et ne recevra jamais de notification. Sans
+  // cela, on appuie sur « envoyer un essai » depuis un ordinateur en
+  // attendant qu'il sonne.
+  essaiDepuisNavigateur:
+    "A browser never receives these notifications — only the TOTEM app on " +
+    "a phone does. Open the app on your phone, then come back here.",
   essaiEchec: "Nothing could be sent.",
   essaiOublies: "phone(s) removed: the app is no longer installed on them.",
 
@@ -326,8 +340,13 @@ const fr: typeof en = {
   essaiTexte: "Ceci est un essai. Les notifications fonctionnent.",
   essaiReussi: "Envoyé. Votre téléphone devrait sonner dans quelques secondes.",
   essaiAucunAppareil:
-    "Aucun téléphone connecté pour l’instant. Ouvrez l’application, " +
-    "connectez-vous, et acceptez les notifications.",
+    "Aucun téléphone n’est inscrit pour les notifications. Cela ne concerne " +
+    "pas votre connexion — vous êtes bien connecté. Cela veut dire qu’aucun " +
+    "téléphone n’a encore dit à la plateforme où sonner.",
+  essaiDepuisNavigateur:
+    "Un navigateur ne reçoit jamais ces notifications — seule l’application " +
+    "TOTEM sur un téléphone les reçoit. Ouvrez l’application sur votre " +
+    "téléphone, puis revenez ici.",
   essaiEchec: "Rien n’a pu être envoyé.",
   essaiOublies: "téléphone(s) retiré(s) : l’application n’y est plus installée.",
 

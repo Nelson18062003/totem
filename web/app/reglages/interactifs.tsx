@@ -737,7 +737,7 @@ export function SectionEssaiNotification() {
         setMessage(c?.erreur ?? t.essaiEchec);
       } else if (c.aucun) {
         setRate(true);
-        setMessage(t.essaiAucunAppareil);
+        setMessage(`${t.essaiAucunAppareil} ${t.essaiDepuisNavigateur}`);
       } else if (c.servis > 0) {
         setRate(false);
         setMessage(
