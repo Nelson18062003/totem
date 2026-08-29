@@ -66,6 +66,11 @@ un caprice : un essai précédent resté ouvert a déjà fait passer toute une
 batterie, en vert, contre du vieux code. Un harnais qui peut mesurer autre
 chose que ce qu'on lui donne ne sert à rien.
 
+Une mise à jour à distance arrive sur des téléphones EN SERVICE, en quelques
+secondes, sans que personne ne l'installe ni ne la relise. Un écran cassé
+poussé ainsi est cassé partout, tout de suite : la batterie se lance AVANT de
+publier, jamais après.
+
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
 application installée se démonte — tout ce qui entre dans ce fichier est

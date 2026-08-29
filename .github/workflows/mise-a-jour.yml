@@ -1,0 +1,116 @@
+# Envoyer une mise à jour aux téléphones DÉJÀ installés, sans rien réinstaller.
+#
+# LA DIFFÉRENCE AVEC « Application Android », en une phrase : celui-là
+# fabrique un paquet qu'on installe à la main et qui prend vingt minutes ;
+# celui-ci pousse le nouveau code vers les applications déjà en place, et
+# prend une minute.
+#
+# CE QUE CE CHEMIN SAIT FAIRE : tout ce qui est écrit en JavaScript — les
+# écrans, les textes, les couleurs, les calculs, les corrections de bugs.
+# C'est-à-dire l'écrasante majorité du travail.
+#
+# CE QU'IL NE SAIT PAS FAIRE : ajouter ou changer une brique NATIVE — une
+# permission Android, une bibliothèque nouvelle, le fichier de Firebase, la
+# version d'Android visée. Là, il faut une vraie compilation.
+#
+# ON NE PEUT PAS SE TROMPER, et c'est voulu : app.json porte
+# `runtimeVersion: fingerprint`. Expo calcule une empreinte de tout ce qui
+# est natif dans le projet ; une mise à jour ne rejoint QUE les applications
+# qui portent la même empreinte. Si vous poussez du code qui réclame une
+# brique absente de l'application installée, elle ne la recevra tout
+# simplement pas — au lieu de la recevoir et de planter au démarrage. Or une
+# application qui plante au démarrage ne peut plus recevoir la correction :
+# le téléphone serait mort pour de bon.
+#
+# COMMENT S'EN SERVIR : onglet Actions → « Mise à jour » → Run workflow →
+# choisir le canal. Le canal doit être celui du paquet installé sur le
+# téléphone : « apercu » pour l'APK qu'on s'envoie à soi-même, « essai »
+# pour la piste interne du Play Store, « production » pour le public.
+
+name: Mise à jour
+
+on:
+  workflow_dispatch:
+    inputs:
+      canal:
+        description: "Quels téléphones mettre à jour"
+        required: true
+        default: apercu
+        type: choice
+        options:
+          - apercu       # l'APK qu'on s'installe soi-même
+          - essai        # la piste d'essai interne du Play Store
+          - production   # les téléphones du public
+      message:
+        description: "Ce que cette mise à jour change (visible dans Expo)"
+        required: false
+        default: ""
+
+jobs:
+  publier:
+    name: Publier sur « ${{ inputs.canal }} »
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Installer les outils d'Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        working-directory: mobile
+        run: npm ci
+
+      # LES GARDE-FOUS, et ils comptent plus ici que pour une compilation.
+      #
+      # Une mise à jour à distance arrive sur des téléphones EN SERVICE, en
+      # quelques secondes, sans que personne ne l'installe ni ne la relise.
+      # Un écran cassé poussé ainsi est cassé partout, tout de suite. On ne
+      # publie donc rien qui n'ait passé les vérifications.
+      - name: Vérifier les types
+        working-directory: mobile
+        run: npx tsc --noEmit
+
+      - name: Vérifier les règles partagées
+        working-directory: web
+        run: npm ci && npm test
+
+      - name: Publier la mise à jour
+        working-directory: mobile
+        run: |
+          MESSAGE="${{ inputs.message }}"
+          # Sans message, on prend celui du dernier commit : mieux vaut la
+          # vraie raison du changement qu'une ligne vide dans l'historique.
+          if [ -z "$MESSAGE" ]; then
+            MESSAGE="$(git log -1 --pretty=%s)"
+          fi
+          eas update --channel "${{ inputs.canal }}" --message "$MESSAGE" --non-interactive
+
+      - name: Ce qui est parti
+        working-directory: mobile
+        run: |
+          echo "### Mise à jour publiée sur \`${{ inputs.canal }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Les téléphones la prendront **au prochain démarrage** de" >> $GITHUB_STEP_SUMMARY
+          echo "l'application. Rien à réinstaller." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          eas update:list --branch "${{ inputs.canal }}" --limit 1 --json --non-interactive \
+            | node -e "
+              let e='';process.stdin.on('data',d=>e+=d).on('end',()=>{
+                try {
+                  const g=JSON.parse(e).currentPage?.[0];
+                  if (!g) return;
+                  console.log('- message : ' + (g.message ?? '?'));
+                  console.log('- publiée le : ' + (g.createdAt ?? '?'));
+                } catch { /* rien à ajouter : le résumé se suffit */ }
+              });" >> $GITHUB_STEP_SUMMARY
