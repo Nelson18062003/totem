@@ -2,8 +2,17 @@
 //
 //     node scripts/verifier-les-formats.mjs
 //
-// Prérequis : l'application exportée pour le web et servie sur 3210, la
-// plateforme sur 3120 (voir web/scripts/faux-nuage.mjs).
+// Prérequis, dans cet ordre :
+//
+//   node web/scripts/faux-nuage.mjs                        (le faux Supabase)
+//   cd web && SUPABASE_URL=http://127.0.0.1:4999 SUPABASE_CLE=x \
+//     SESSION_SECRET=essai TOTEM_MOT_DE_PASSE=essai npx next start -p 3120
+//   cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3120 \
+//     npx expo export --platform web --output-dir /tmp/apercu
+//   cd /tmp/apercu && python3 -m http.server 3210 --bind 127.0.0.1
+//
+// L'adresse se pose à l'export : l'écran de connexion la vérifie avant de
+// laisser taper un mot de passe, et sans elle il ne s'ouvrirait pas.
 //
 // Depuis Android 16, le système IGNORE le verrouillage d'orientation au-delà
 // de 600 dp, et sous l'API 37 il n'y aura plus d'échappatoire. Une
@@ -29,7 +38,14 @@ const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 const nav = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium",
-  args: ["--no-sandbox", "--no-proxy-server"], proxy: { server: "direct://" },
+  // « disable-web-security » : le navigateur applique le CORS, un téléphone
+  // NON. L'application native appelle la plateforme sans rien demander à
+  // personne ; l'aperçu web, servi depuis un autre port, se ferait refuser.
+  // C'est donc l'aperçu qu'on rend fidèle au téléphone, pas l'inverse — et
+  // ce drapeau ne vit que dans ce script d'essai, jamais dans l'application.
+  args: ["--no-sandbox", "--no-proxy-server", "--disable-web-security",
+         "--disable-features=IsolateOrigins,site-per-process"],
+  proxy: { server: "direct://" },
 });
 
 // Les classes de Google : compacte (<600), moyenne (600-840), étendue (840+).
@@ -50,7 +66,11 @@ for (const [nom, w, h] of FORMATS) {
   page.on("pageerror", (e) => soucis.push(String(e).slice(0, 110)));
   await page.goto("http://127.0.0.1:3210", { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
-  await page.locator("input").first().fill("essai");
+  // Le champ du mot de passe, nommément : l'écran porte désormais l'encart de
+  // la plateforme au-dessus, et « le premier champ » n'est plus le bon.
+  const motdepasse = page.locator('input[type="password"]');
+  await motdepasse.waitFor({ state: "visible", timeout: 15000 });
+  await motdepasse.fill("essai");
   await page.getByText("Sign in", { exact: true }).last().click();
   await page.waitForTimeout(3800);
   await page.screenshot({ path: `/tmp/totem-f-${nom}.png` });

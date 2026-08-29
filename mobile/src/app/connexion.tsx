@@ -8,18 +8,35 @@
 // Le mot de passe ne vit que dans l'état de cet écran, le temps de l'envoi.
 // Ce qui se range dans le coffre, c'est le JETON rendu par la plateforme —
 // jamais le mot de passe lui-même.
+//
+// AVANT LE MOT DE PASSE, L'ADRESSE. Cet écran commence par demander à
+// l'adresse configurée : « y a-t-il un TOTEM ici ? » Tant que la réponse
+// n'est pas oui, le champ du mot de passe reste fermé.
+//
+// Ce n'est pas de la prudence théorique. L'application a porté pendant un
+// temps une adresse d'exemple, reprise d'une documentation, qui appartenait
+// en fait à quelqu'un d'autre : le mot de passe du propriétaire partait vers
+// un serveur inconnu, et l'écran ne disait qu'un « connexion impossible »
+// où l'on cherchait une faute de frappe dans le mot de passe. Un mot de
+// passe ne part plus vers une adresse qui n'a pas montré patte blanche.
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, TextInput, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Carte, MotTotem, Texte, couleurs, espaces, rayons, textes } from "@/ui";
+import {
+  Carte, MotTotem, Pastille, Texte, couleurs, espaces, rayons, textes,
+} from "@/ui";
 import { Icone } from "@/icones";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
+import {
+  adressePlateforme, adresseValable, definirAdresse, verifierPlateforme,
+  type EtatPlateforme,
+} from "@/api/guichet";
 import { textesConnexion } from "@noyau/textes/connexion";
 import { autreLangue } from "@noyau/langue";
 import { polices } from "@/theme/jetons";
@@ -35,10 +52,50 @@ export default function Connexion() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
 
+  // L'adresse de la plateforme, et ce qu'on a trouvé au bout.
+  // `null` = on n'a pas encore regardé.
+  const [etat, setEtat] = useState<EtatPlateforme | null>(null);
+  const [adresse, setAdresse] = useState("");
+  const [saisie, setSaisie] = useState<string | null>(null);   // null = pas en train de changer
+  // Une erreur d'adresse a son propre message : elle s'affiche là où l'on
+  // vient de taper, pas sous le mot de passe, qui n'y est pour rien.
+  const [erreurAdresse, setErreurAdresse] = useState<string | null>(null);
+
   const autre = autreLangue(langue);
 
+  /** Frapper à la porte : y a-t-il un TOTEM à cette adresse ? */
+  const sonder = useCallback(async () => {
+    setEtat(null);
+    const a = await adressePlateforme();
+    setAdresse(a);
+    // Sans adresse du tout (premier lancement), inutile d'appeler : on
+    // demande directement laquelle, plutôt que d'afficher un échec.
+    if (!adresseValable(a)) {
+      setEtat("absente");
+      setSaisie((s) => (s === null ? "https://" : s));
+      return;
+    }
+    setEtat(await verifierPlateforme(a));
+  }, []);
+
+  useEffect(() => { void sonder(); }, [sonder]);
+
+  const enregistrerAdresse = async () => {
+    if (saisie === null) return;
+    if (!(await definirAdresse(saisie))) {
+      setErreurAdresse(t.adresseInvalide);
+      return;
+    }
+    setErreurAdresse(null);
+    setSaisie(null);
+    await sonder();
+  };
+
+  // Le mot de passe ne part QUE vers un TOTEM qui a répondu.
+  const porteOuverte = etat === "trouvee";
+
   const valider = async () => {
-    if (!motdepasse || enCours) return;
+    if (!motdepasse || enCours || !porteOuverte) return;
     setEnCours(true);
     setErreur(null);
     try {
@@ -78,6 +135,125 @@ export default function Connexion() {
             </Texte>
           </View>
 
+          {/* LA PLATEFORME, avant le mot de passe.
+              Cet encart n'est pas décoratif : il est la réponse à la seule
+              question qui compte avant de taper quoi que ce soit — « est-ce
+              que je parle bien à MON TOTEM ? ». Il porte donc l'adresse en
+              toutes lettres, pas un voyant vert. */}
+          <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
+              <Icone nom="Globe" taille={16} couleur={couleurs.encrePale} />
+              <Texte taille={textes.petit} ton="doux" poids="moyen" style={{ flex: 1 }}>
+                {t.plateforme}
+              </Texte>
+              {etat === null ? (
+                <ActivityIndicator size="small" color={couleurs.encrePale} />
+              ) : (
+                <Pastille couleur={
+                  etat === "trouvee" ? couleurs.positifVif
+                    : etat === "non-configuree" ? couleurs.alerte
+                      : couleurs.negatif
+                } />
+              )}
+            </View>
+
+            {saisie === null ? (
+              <>
+                {/* L'adresse en toutes lettres. `selectable` : on peut la
+                    copier pour la comparer à celle de Vercel. */}
+                <Texte
+                  taille={textes.petit}
+                  ton={etat === "trouvee" ? "doux" : "pale"}
+                  selectable
+                  style={{ lineHeight: 20 }}
+                >
+                  {adresse || "—"}
+                </Texte>
+
+                {etat !== null && etat !== "trouvee" ? (
+                  <Texte taille={textes.petit} ton="negatif" style={{ lineHeight: 20 }}>
+                    {etat === "absente" ? t.plateformeAbsente
+                      : etat === "injoignable" ? t.plateformeInjoignable
+                        : t.plateformeNonConfiguree}
+                  </Texte>
+                ) : null}
+
+                <View style={{ flexDirection: "row", gap: espaces.lg }}>
+                  <Pressable
+                    onPress={() => { setSaisie(adresse || "https://"); setErreurAdresse(null); }}
+                    hitSlop={8}
+                  >
+                    <Texte taille={textes.petit} ton="doux" poids="moyen"
+                           style={{ textDecorationLine: "underline" }}>
+                      {t.changerAdresse}
+                    </Texte>
+                  </Pressable>
+                  {etat !== null && etat !== "trouvee" ? (
+                    <Pressable onPress={() => void sonder()} hitSlop={8}>
+                      <Texte taille={textes.petit} ton="doux" poids="moyen"
+                             style={{ textDecorationLine: "underline" }}>
+                        {t.reessayer}
+                      </Texte>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  value={saisie}
+                  onChangeText={(v) => { setSaisie(v); setErreurAdresse(null); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  inputMode="url"
+                  autoFocus
+                  onSubmitEditing={enregistrerAdresse}
+                  returnKeyType="done"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: erreurAdresse ? couleurs.negatif : couleurs.trait,
+                    borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
+                    paddingHorizontal: espaces.md, paddingVertical: espaces.md,
+                    fontFamily: polices.corps, fontSize: textes.corps,
+                    color: couleurs.encre,
+                  }}
+                />
+                {erreurAdresse ? (
+                  <Texte taille={textes.petit} ton="negatif">{erreurAdresse}</Texte>
+                ) : null}
+                <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
+                  {t.adresseAide}
+                </Texte>
+                <View style={{ flexDirection: "row", gap: espaces.sm }}>
+                  <Pressable
+                    onPress={enregistrerAdresse}
+                    style={({ pressed }) => ({
+                      flex: 1, alignItems: "center",
+                      backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
+                      borderRadius: rayons.bouton, paddingVertical: espaces.md,
+                    })}
+                  >
+                    <Texte poids="demi" style={{ color: couleurs.surfaceHaute }}>
+                      {t.enregistrer}
+                    </Texte>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { setSaisie(null); setErreurAdresse(null); }}
+                    style={{
+                      alignItems: "center", justifyContent: "center",
+                      borderWidth: 1, borderColor: couleurs.trait,
+                      borderRadius: rayons.bouton,
+                      paddingVertical: espaces.md, paddingHorizontal: espaces.lg,
+                    }}
+                  >
+                    <Texte ton="doux">{t.annuler}</Texte>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </Carte>
+
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
             <Texte taille={textes.petit} ton="doux" poids="moyen">
               {t.motDePasse}
@@ -95,7 +271,7 @@ export default function Connexion() {
                 secureTextEntry={!visible}
                 autoCapitalize="none"
                 autoCorrect={false}
-                editable={!enCours}
+                editable={!enCours && porteOuverte}
                 onSubmitEditing={valider}
                 returnKeyType="go"
                 style={{
@@ -119,9 +295,9 @@ export default function Connexion() {
 
             <Pressable
               onPress={valider}
-              disabled={!motdepasse || enCours}
+              disabled={!motdepasse || enCours || !porteOuverte}
               style={({ pressed }) => ({
-                backgroundColor: !motdepasse
+                backgroundColor: !motdepasse || !porteOuverte
                   ? couleurs.surface3
                   : pressed ? couleurs.accentAppui : couleurs.accent,
                 borderRadius: rayons.bouton,

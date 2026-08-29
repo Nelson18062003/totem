@@ -17,6 +17,36 @@ const en = {
     "The Mobile Money PIN is never asked for here. It is only entered " +
     "during an operation, and is never stored anywhere.",
   langue: "Language",
+
+  // L'adresse de la plateforme — seulement sur le téléphone. Le navigateur
+  // EST déjà sur la plateforme : il n'a rien à chercher.
+  //
+  // Ces textes existent parce qu'une adresse fausse est arrivée pour de vrai :
+  // l'application pointait sur un sous-domaine appartenant à quelqu'un
+  // d'autre. Sans un mot clair, cela ressemble à un mot de passe refusé, et
+  // on cherche pendant des heures du mauvais côté.
+  plateforme: "Platform",
+  plateformeCherche: "Looking for the platform…",
+  plateformeTrouvee: "TOTEM found",
+  plateformeAbsente:
+    "No TOTEM at this address. The password will not be sent there.",
+  plateformeInjoignable:
+    "This address does not answer. Check your connection, then the address.",
+  // Sans nommer les variables d'environnement : leurs noms sont du jargon
+  // pour le propriétaire, ET les écrire ici les ferait entrer dans le paquet
+  // de l'application, où le contrôle des secrets les attend au tournant. La
+  // marche à suivre est dans docs/CLOUD.md, à sa place.
+  plateformeNonConfiguree:
+    "The TOTEM is here, but sign-in has not been set up on it yet. No " +
+    "password can work until the platform's settings are filled in on Vercel.",
+  changerAdresse: "Change the address",
+  adresseAide:
+    "The web address of your platform, the one Vercel gave you. It starts " +
+    "with https://",
+  reessayer: "Try again",
+  enregistrer: "Save",
+  annuler: "Cancel",
+  adresseInvalide: "That is not a web address. It must start with https://",
 };
 
 const fr: typeof en = {
@@ -34,6 +64,26 @@ const fr: typeof en = {
     "Le code PIN Mobile Money n’est jamais demandé ici. Il ne se saisit " +
     "qu’au moment d’une opération, et n’est enregistré nulle part.",
   langue: "Langue",
+
+  plateforme: "Plateforme",
+  plateformeCherche: "Recherche de la plateforme…",
+  plateformeTrouvee: "TOTEM trouvé",
+  plateformeAbsente:
+    "Aucun TOTEM à cette adresse. Le mot de passe n’y sera pas envoyé.",
+  plateformeInjoignable:
+    "Cette adresse ne répond pas. Vérifiez la connexion, puis l’adresse.",
+  plateformeNonConfiguree:
+    "Le TOTEM est bien là, mais la connexion n’y est pas encore configurée. " +
+    "Aucun mot de passe ne peut marcher tant que les réglages de la " +
+    "plateforme ne sont pas remplis sur Vercel.",
+  changerAdresse: "Changer l’adresse",
+  adresseAide:
+    "L’adresse web de votre plateforme, celle que Vercel vous a donnée. Elle " +
+    "commence par https://",
+  reessayer: "Réessayer",
+  enregistrer: "Enregistrer",
+  annuler: "Annuler",
+  adresseInvalide: "Ce n’est pas une adresse web. Elle doit commencer par https://",
 };
 
 export const textesConnexion = { en, fr } as const;

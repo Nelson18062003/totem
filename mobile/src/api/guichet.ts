@@ -6,6 +6,10 @@
 // serveur non. Voir `docs/MOBILE.md`.
 
 import * as Coffre from "./coffre";
+// L'adresse n'est pas un secret : elle a son rangement à elle. Voir
+// `reglage.ts` — le coffre refuse d'écrire hors du téléphone, ce qui
+// est juste pour un jeton et absurde pour une adresse.
+import * as Reglage from "./reglage";
 import type { Donnees } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
@@ -14,15 +18,126 @@ import type { Langue } from "@noyau/langue";
 // toucher au code.
 import Constants from "expo-constants";
 
-// `EXPO_PUBLIC_ADRESSE` prime quand elle est posée : c'est ce qui permet de
-// compiler une version d'essai visant une préversion, ou un serveur local,
-// sans toucher au code ni à `app.json`. Rien de secret ne passe par là —
-// une adresse n'est pas un secret, et tout ce qui porte `EXPO_PUBLIC_` entre
-// dans le paquet, donc devient public.
-const ADRESSE: string =
+// L'ADRESSE DE LA PLATEFORME — et pourquoi elle n'est plus une constante.
+//
+// Elle l'était, et cela s'est mal passé : l'adresse écrite ici était un
+// EXEMPLE repris d'une documentation, et ce sous-domaine appartenait à
+// quelqu'un d'autre. L'application envoyait donc le mot de passe du
+// propriétaire à un serveur inconnu, et n'affichait qu'un « connexion
+// impossible » incompréhensible. On cherchait du côté du mot de passe ; le
+// problème était l'adresse.
+//
+// Trois lecons, et elles sont toutes les trois dans ce fichier :
+//
+//   1. Le propriétaire doit pouvoir CORRIGER l'adresse depuis l'application,
+//      sans attendre une nouvelle compilation. D'où le coffre.
+//   2. L'application doit VÉRIFIER qu'un TOTEM habite là AVANT d'envoyer quoi
+//      que ce soit de sensible. D'où `verifierPlateforme`.
+//   3. Une valeur par défaut reste commode, mais elle n'est qu'une
+//      proposition — jamais une garantie.
+//
+// L'ordre : ce que le propriétaire a réglé, sinon `EXPO_PUBLIC_ADRESSE`
+// (pratique pour viser une préversion ou un serveur local sans toucher au
+// code), sinon `app.json`. Rien de secret ne passe par là : une adresse
+// n'est pas un secret, et tout ce qui porte `EXPO_PUBLIC_` entre dans le
+// paquet, donc devient public.
+const CLE_ADRESSE = "totem.adresse";
+
+const ADRESSE_LIVREE: string =
   process.env.EXPO_PUBLIC_ADRESSE ||
   (Constants.expoConfig?.extra?.adressePlateforme as string) ||
-  "https://totem.vercel.app";
+  "";
+
+// Lue une fois au démarrage puis gardée sous la main : chaque appel du
+// guichet en a besoin, et une lecture de coffre par requête serait du gâchis.
+let adresseEnMemoire: string | null = null;
+
+/** Enlève le « / » final : « https://x.app/ » et « https://x.app » sont la
+ *  même adresse, et les chemins qu'on y colle commencent tous par « / ». */
+function normaliserAdresse(brute: string): string {
+  return brute.trim().replace(/\/+$/, "");
+}
+
+/** Vrai si le texte ressemble à une adresse web utilisable.
+ *
+ *  On EXIGE « https ». Ce n'est pas de la pudeur : le mot de passe du
+ *  propriétaire passe par là. En « http », il voyagerait en clair sur le
+ *  réseau du cybercafé ou de l'hôtel.
+ *
+ *  UNE seule exception, et c'est celle que les navigateurs eux-mêmes font :
+ *  la machine locale. Un « http://127.0.0.1:3120 » ne quitte pas l'appareil,
+ *  il n'y a donc aucun réseau où l'écouter. Sans cette exception, on ne
+ *  pourrait plus essayer l'application contre un serveur d'essai — et un
+ *  garde-fou qu'on doit désactiver pour travailler finit toujours par être
+ *  désactivé pour de bon. */
+const LOCALES = ["127.0.0.1", "localhost", "::1", "10.0.2.2"];
+
+export function adresseValable(brute: string): boolean {
+  const a = normaliserAdresse(brute);
+  try {
+    const u = new URL(a);
+    if (!u.hostname) return false;
+    if (u.protocol === "https:") return true;
+    // « 10.0.2.2 » est l'adresse par laquelle un émulateur Android atteint la
+    // machine qui l'héberge : c'est la même boucle locale, vue de l'intérieur.
+    return u.protocol === "http:" && LOCALES.includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** L'adresse en service : celle du propriétaire, sinon celle livrée. */
+export async function adressePlateforme(): Promise<string> {
+  if (adresseEnMemoire !== null) return adresseEnMemoire;
+  const rangee = await Reglage.lire(CLE_ADRESSE);
+  adresseEnMemoire = rangee && adresseValable(rangee)
+    ? normaliserAdresse(rangee) : ADRESSE_LIVREE;
+  return adresseEnMemoire;
+}
+
+/** Le propriétaire corrige l'adresse. Rend `false` si elle ne tient pas
+ *  debout — mieux vaut refuser que de ranger une adresse qui ne marchera
+ *  jamais. */
+export async function definirAdresse(brute: string): Promise<boolean> {
+  if (!adresseValable(brute)) return false;
+  const a = normaliserAdresse(brute);
+  await Reglage.ecrire(CLE_ADRESSE, a);
+  adresseEnMemoire = a;
+  return true;
+}
+
+/** Ce qu'on a trouvé au bout de l'adresse. */
+export type EtatPlateforme =
+  | "trouvee"           // un TOTEM, prêt à recevoir une connexion
+  | "non-configuree"    // un TOTEM, mais sans mot de passe posé côté serveur
+  | "absente"           // quelque chose répond, mais ce n'est pas un TOTEM
+  | "injoignable";      // rien ne répond : réseau coupé, ou adresse morte
+
+/**
+ * « Y a-t-il un TOTEM au bout de cette adresse ? »
+ *
+ * À appeler AVANT de proposer de taper un mot de passe. Rien de sensible ne
+ * part dans cet appel : c'est une simple question, et la réponse ne contient
+ * ni nom, ni chiffre, ni adresse de base.
+ */
+export async function verifierPlateforme(adresse?: string): Promise<EtatPlateforme> {
+  const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
+  if (!adresseValable(base)) return "absente";
+  try {
+    const r = await fetch(`${base}/api/plateforme`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    });
+    if (!r.ok) return "absente";
+    const corps = await r.json().catch(() => null);
+    // Le drapeau doit être là. Un serveur quelconque qui rendrait 200 sur
+    // n'importe quel chemin ne passe pas cette porte.
+    if (corps?.totem !== true) return "absente";
+    return corps.configuree === true ? "trouvee" : "non-configuree";
+  } catch {
+    return "injoignable";
+  }
+}
 
 // Le jeton vit dans le coffre du système — celui qu'ouvre le doigt ou le
 // visage — et jamais dans un fichier ordinaire.
@@ -49,7 +164,8 @@ export async function sessionVivante(): Promise<boolean> {
 
 /** Ouvre une session. Le mot de passe ne survit pas à cet appel. */
 export async function ouvrirSession(motdepasse: string, langue: Langue): Promise<void> {
-  const r = await fetch(`${ADRESSE}/api/session?langue=${langue}`, {
+  const base = await adressePlateforme();
+  const r = await fetch(`${base}/api/session?langue=${langue}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ motdepasse }),
@@ -72,7 +188,8 @@ async function demander<T>(chemin: string, options: RequestInit = {}): Promise<T
   const jeton = await Coffre.lire(CLE_JETON);
   if (!jeton) throw new ErreurGuichet("session absente", 401);
 
-  const r = await fetch(`${ADRESSE}${chemin}`, {
+  const base = await adressePlateforme();
+  const r = await fetch(`${base}${chemin}`, {
     ...options,
     headers: {
       ...options.headers,

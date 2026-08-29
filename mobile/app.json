@@ -70,8 +70,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "//adressePlateforme": "L'adresse de la plateforme que l'application interroge. Une compilation d'essai peut viser une preversion sans toucher au code.",
-      "adressePlateforme": "https://totem.vercel.app"
+      "//adressePlateforme": "VIDE, et c'est une lecon apprise. Il y avait ici une adresse d'exemple reprise d'une documentation \u2014 et ce sous-domaine appartenait a quelqu'un d'autre. L'application envoyait donc le mot de passe du proprietaire a un serveur inconnu, en n'affichant qu'un << connexion impossible >> incomprehensible. Une adresse par defaut fausse est PIRE que pas d'adresse du tout : sans adresse, l'application la demande poliment au premier lancement ; avec une fausse, elle se trompe en silence. N'ecrire ici une adresse que le jour ou elle est verifiee, et jamais un exemple.",
+      "adressePlateforme": ""
     },
     "//orientation": "\u00ab default \u00bb et non \u00ab portrait \u00bb, a dessein. Depuis Android 16 (API 36), le systeme IGNORE le verrouillage d'orientation des que la fenetre fait 600 dp ou plus \u2014 tablette, ecran interieur d'un pliable, ecran partage \u2014 et sous l'API 37 il n'y aura plus d'echappatoire. Verrouiller ne servirait donc qu'a se mentir : autant dessiner pour toutes les tailles, ce que fait src/ecran.ts."
   }

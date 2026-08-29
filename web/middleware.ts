@@ -11,7 +11,12 @@ import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 // `/api/session` est la porte de l'application du téléphone : comme l'écran
 // de connexion, elle doit rester ouverte — on ne peut pas exiger une session
 // de celui qui vient justement en demander une.
-const OUVERT = ["/connexion", "/api/connexion", "/api/deconnexion", "/api/session"];
+// « /api/plateforme » est ouverte pour la même raison que « /connexion » : il
+// faut pouvoir frapper à la porte avant d'avoir la clé. Elle ne rend qu'un
+// « oui, un TOTEM habite ici » — c'est ce qui empêche l'application du
+// téléphone d'envoyer le mot de passe du propriétaire à un serveur inconnu.
+const OUVERT = ["/connexion", "/api/connexion", "/api/deconnexion",
+                "/api/session", "/api/plateforme"];
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
 function jetonPorte(req: NextRequest): string | undefined {

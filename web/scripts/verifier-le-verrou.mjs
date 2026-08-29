@@ -50,6 +50,21 @@ try {
   }), 401);
   verifier("/ renvoie vers la connexion", await code("/", { redirect: "manual" }), 307);
 
+  console.log("\nLa porte à laquelle on frappe avant d'avoir la clé");
+  // « /api/plateforme » est OUVERTE, et doit l'être : sans elle, l'application
+  // du téléphone ne peut pas savoir si un TOTEM habite à l'adresse qu'elle
+  // porte — et enverrait le mot de passe du propriétaire à un inconnu.
+  // Ouverte ne veut pas dire bavarde : on vérifie ce qu'elle ne dit pas.
+  const rp = await fetch(B + "/api/plateforme");
+  verifier("/api/plateforme répond sans jeton", rp.status, 200);
+  const plate = await rp.json();
+  verifier("elle se présente comme un TOTEM", plate.totem, true);
+  const dit = JSON.stringify(plate);
+  verifier("elle ne donne pas le mot de passe", dit.includes(MOTDEPASSE), false);
+  verifier("elle ne donne pas le secret", dit.includes(SECRET), false);
+  verifier("elle ne donne que trois clés", Object.keys(plate).sort().join(","),
+           "configuree,relie,totem");
+
   console.log("\nPorte de l'application");
   const json = (corps) => ({
     method: "POST", headers: { "content-type": "application/json" },

@@ -270,6 +270,46 @@ n'est pas terminée.
 
 ---
 
+## 5 bis. L'adresse de la plateforme — la panne qu'on n'a pas vue venir
+
+Ce paragraphe raconte une vraie erreur, parce qu'elle est instructive.
+
+L'application portait une adresse écrite en dur : `https://totem.vercel.app`.
+Elle venait d'une phrase de documentation qui disait « une adresse **comme**
+`totem.vercel.app` » — un exemple, pas une adresse. Or ce sous-domaine
+existe : il appartient à quelqu'un d'autre, qui y héberge un tout autre
+service.
+
+Conséquences, dans l'ordre où on les a vécues :
+
+1. L'application envoyait le mot de passe du propriétaire à un serveur
+   inconnu. Il répondait 404, donc rien n'était traité — mais le mot de passe
+   avait bien voyagé jusque chez un tiers.
+2. À l'écran, cela ressemblait à un refus de connexion. On a cherché
+   longtemps du côté du mot de passe. Le mot de passe n'avait rien à voir.
+
+**Ce qui a changé, pour que cela ne se reproduise pas :**
+
+- **Plus d'adresse par défaut.** `app.json` la laisse vide. Une adresse fausse
+  est pire que pas d'adresse : sans adresse, l'application la demande ; avec
+  une fausse, elle se trompe en silence.
+- **L'application vérifie avant de parler.** Elle appelle `/api/plateforme`,
+  qui ne répond que « oui, un TOTEM habite ici ». Tant que la réponse n'est
+  pas oui, le champ du mot de passe reste fermé. Un mot de passe ne part plus
+  vers une adresse qui n'a pas montré patte blanche.
+- **Le propriétaire peut corriger l'adresse depuis l'écran de connexion**,
+  sans attendre une nouvelle compilation.
+- **`https` obligatoire**, sauf pour la machine locale (un `127.0.0.1` ne
+  quitte pas l'appareil). En `http`, le mot de passe voyagerait en clair.
+- Le verrou vérifie que `/api/plateforme` ne dit rien d'autre que ces trois
+  mots (`verifier-le-verrou.mjs`).
+
+> ⚠️ **Si un mot de passe a été tapé pendant cette période**, il est parti
+> vers un domaine tiers. Changez-le sur Vercel, et ne le réutilisez nulle
+> part ailleurs.
+
+---
+
 ## 6. Publier sur Google Play
 
 ### Le formulaire de création
