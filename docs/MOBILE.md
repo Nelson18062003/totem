@@ -268,12 +268,33 @@ Plutôt que d'installer Node et les outils Android sur une machine, c'est
 
 ### Une seule fois
 
-1. **expo.dev** → *Account settings* → *Access tokens* → créer un jeton.
-2. **GitHub** → le dépôt → *Settings* → *Secrets and variables* → *Actions*
+Le projet appartient à l'**organisation** `bonzinilabss-team`, pas à un
+compte personnel. Le jeton doit donc appartenir à l'organisation lui aussi —
+c'est un **robot**, pas une personne.
+
+1. **expo.dev** → l'organisation → *Settings* → *Access tokens* →
+   **Add robot**.
+   - Nom : `github-totem` (celui qui compile — un robot par usage).
+   - Rôle : **Developer**. C'est le plus petit rôle qui sache « make new
+     builds, release updates, and manage credentials » ; Owner et Admin
+     donneraient en plus le droit de supprimer le compte, ce qu'un atelier
+     de compilation n'a aucune raison de pouvoir faire.
+2. Sur le robot créé → **Create token** → copier la chaîne.
+   **Expo ne la remontre jamais.**
+3. **GitHub** → le dépôt → *Settings* → *Secrets and variables* → *Actions*
    → *New repository secret*. Nom : `EXPO_TOKEN`. Valeur : le jeton.
 
 Le jeton vit dans les secrets du dépôt : ni dans le code, ni dans le journal
 de compilation — GitHub le masque.
+
+> **Pourquoi un robot plutôt qu'un jeton personnel.** Un jeton personnel agit
+> *au nom du propriétaire*, partout, sans limite. Un robot ne sait faire que
+> ce que son rôle autorise, et se révoque sans toucher au compte de personne.
+> C'est ce qu'Expo recommande pour l'intégration continue.
+>
+> C'est aussi pour cela qu'`app.json` porte `owner: "bonzinilabss-team"` :
+> sans cette ligne, Expo attribuerait le projet au compte qui lance la
+> commande — donc au robot — et le projet sortirait de l'organisation.
 
 ### Chaque fois
 

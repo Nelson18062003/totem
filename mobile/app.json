@@ -2,6 +2,8 @@
   "expo": {
     "name": "TOTEM",
     "slug": "totem",
+    "//owner": "Le compte Expo QUI POSSEDE le projet. Sans cette ligne, Expo prend le compte de celui qui lance la commande \u2014 et en integration continue, c'est le robot. Le projet atterrirait alors sous un compte personnel, hors de portee du jeton de l'organisation, et la compilation echouerait sur une erreur d'autorisation difficile a lire.",
+    "owner": "bonzinilabss-team",
     "version": "1.0.0",
     "orientation": "default",
     "scheme": "totem",
