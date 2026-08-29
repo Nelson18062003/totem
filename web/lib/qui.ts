@@ -13,8 +13,8 @@ import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
 import { utilisateurParId, type Utilisateur } from "@/lib/serveur";
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
-function jetonPorte(req: Request): string | undefined {
-  const porte = req.headers.get("authorization");
+function jetonPorte(req?: Request): string | undefined {
+  const porte = req?.headers.get("authorization");
   if (!porte) return undefined;
   const [schema, valeur] = porte.split(" ");
   return schema?.toLowerCase() === "bearer" && valeur ? valeur : undefined;
@@ -23,11 +23,15 @@ function jetonPorte(req: Request): string | undefined {
 /**
  * Le compte connecté, ou `null`.
  *
+ * `req` est FACULTATIF : une page rendue au serveur n'a pas d'objet Request
+ * sous la main, seulement le cookie. Le téléphone, lui, porte son jeton dans
+ * l'en-tête « Authorization », et il faut alors passer la requête.
+ *
  * `null` ne veut pas dire « personne » : il veut dire « pas un compte ». Une
  * session ouverte avec la clé de secours, ou un jeton d'avant les comptes,
  * ouvre bien la plateforme mais ne désigne personne — voir `estProprietaire`.
  */
-export async function compteConnecte(req: Request): Promise<Utilisateur | null> {
+export async function compteConnecte(req?: Request): Promise<Utilisateur | null> {
   const secret = process.env.SESSION_SECRET || "";
   if (!secret) return null;
   const boite = await cookies();

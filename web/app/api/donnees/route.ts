@@ -1,4 +1,5 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
+import { compteConnecte } from "@/lib/qui";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -48,5 +49,10 @@ export async function GET(req: Request) {
     recus: borne(params.get("recus"), 200, MAX_RECUS),
   });
 
-  return Response.json(donnees);
+  // Qui regarde ? Uniquement pour le saluer par son prénom. Le courriel ne
+  // sort pas d'ici autrement : il ne part ni chez Expo, ni dans une
+  // notification, ni dans un journal.
+  const moi = await compteConnecte(req);
+
+  return Response.json({ ...donnees, courriel: moi?.courriel ?? null });
 }

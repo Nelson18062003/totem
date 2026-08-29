@@ -239,17 +239,36 @@ En français et en anglais, entièrement.
 
 ## Les images
 
-| Élément | Exigence | D'où il sort |
+**Tout est fabriqué et rangé dans `boutique/`.** Il n'y a plus qu'à
+téléverser.
+
+| Élément | Fichier | Taille |
 |---|---|---|
-| Icône | 512 × 512, PNG 32 bits | `brand/png/totem-icone-app.png` |
-| Image de présentation | 1024 × 500 | à fabriquer |
-| Captures téléphone | 2 à 8, min. 320 px de côté | l'aperçu web, aux tailles du harnais |
+| Icône | `brand/png/totem-icone-app.png` | 1024 × 1024 |
+| Image de présentation | `boutique/presentation-1024x500.png` | 1024 × 500 |
+| Captures téléphone | `boutique/captures/1-caisses.png` … `4-cartes.png` | 1080 × 1920 |
 
-Les captures se prennent avec la plateforme d'essai (le faux nuage), **jamais
-avec de vraies données** : un montant réel ou un nom de client n'a rien à
-faire dans une fiche publique.
+Les captures se refabriquent d'une commande, jamais à la main :
 
----
+```sh
+node web/scripts/faux-nuage.mjs &
+cd web && SUPABASE_URL=http://127.0.0.1:4999 SUPABASE_CLE=x \
+  SESSION_SECRET=essai npx next start -p 3180 &
+cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3180 EXPO_PUBLIC_APERCU=1 \
+  npx expo export --platform web --output-dir /tmp/apercu
+node scripts/captures-boutique.mjs /tmp/apercu
+```
+
+**Avec le faux nuage, jamais avec de vraies données.** Une capture part sur
+une fiche publique, visible de la terre entière et archivée par des gens
+qu'on ne connaît pas. Un montant réel, un nom de client, un numéro de
+téléphone n'ont rien à y faire — et une fois publiés, ils ne se reprennent
+pas. Le script s'arrête d'ailleurs s'il retombe sur l'écran de connexion :
+une capture de l'écran de connexion sur une fiche de magasin serait ridicule.
+
+L'image de présentation **sera rognée** par Google selon les emplacements :
+la marque et la phrase tiennent donc dans le tiers central, et les bords ne
+portent que le motif.
 
 ## Classification du contenu
 
