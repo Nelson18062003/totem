@@ -406,7 +406,7 @@ la mauvaise réponse.
 | Champ | Valeur |
 |---|---|
 | Name | `ADRESSE_PLATEFORME` |
-| Value | l'adresse que Vercel a donnée, par ex. `https://totem-abc.vercel.app` |
+| Value | `https://totemlabs.app` |
 
 Toutes les compilations suivantes portent l'adresse dans le paquet. Le champ
 ne s'affiche plus, sur aucun téléphone.

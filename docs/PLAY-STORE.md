@@ -11,7 +11,7 @@
 Google Play **refuse** une application financière sans politique de
 confidentialité à une adresse publique.
 
-Elle est en ligne : **`https://VOTRE-ADRESSE.vercel.app/confidentialite`**
+Elle est en ligne : **https://totemlabs.app/confidentialite**
 
 Elle s'ouvre sans compte — un examinateur y arrive depuis un lien collé dans
 un formulaire, et une page derrière le verrou ferait refuser l'application
