@@ -40,6 +40,7 @@ autre branche sans autorisation explicite.
 ```sh
 python3 -m unittest discover -s tests     # la batterie complète
 cd web && npx next build                  # l'application web
+cd web && npm test                        # les règles partagées (noyau)
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué

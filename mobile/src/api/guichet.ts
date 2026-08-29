@@ -5,7 +5,7 @@
 // Cette ignorance est volontaire — une application installée se démonte, un
 // serveur non. Voir `docs/MOBILE.md`.
 
-import * as Coffre from "expo-secure-store";
+import * as Coffre from "./coffre";
 import type { Donnees } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
@@ -14,7 +14,13 @@ import type { Langue } from "@noyau/langue";
 // toucher au code.
 import Constants from "expo-constants";
 
+// `EXPO_PUBLIC_ADRESSE` prime quand elle est posée : c'est ce qui permet de
+// compiler une version d'essai visant une préversion, ou un serveur local,
+// sans toucher au code ni à `app.json`. Rien de secret ne passe par là —
+// une adresse n'est pas un secret, et tout ce qui porte `EXPO_PUBLIC_` entre
+// dans le paquet, donc devient public.
 const ADRESSE: string =
+  process.env.EXPO_PUBLIC_ADRESSE ||
   (Constants.expoConfig?.extra?.adressePlateforme as string) ||
   "https://totem.vercel.app";
 
@@ -32,8 +38,8 @@ export class ErreurGuichet extends Error {
 /** Vrai si la session est encore valable dans plus d'une journée. */
 export async function sessionVivante(): Promise<boolean> {
   const [jeton, echeance] = await Promise.all([
-    Coffre.getItemAsync(CLE_JETON),
-    Coffre.getItemAsync(CLE_ECHEANCE),
+    Coffre.lire(CLE_JETON),
+    Coffre.lire(CLE_ECHEANCE),
   ]);
   if (!jeton || !echeance) return false;
   // Une marge d'un jour : on se reconnecte AVANT d'être refusé, plutôt
@@ -52,18 +58,18 @@ export async function ouvrirSession(motdepasse: string, langue: Langue): Promise
   if (!r.ok) {
     throw new ErreurGuichet(corps?.erreur ?? "connexion refusée", r.status);
   }
-  await Coffre.setItemAsync(CLE_JETON, corps.jeton);
-  await Coffre.setItemAsync(CLE_ECHEANCE, String(corps.expire));
+  await Coffre.ecrire(CLE_JETON, corps.jeton);
+  await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
 }
 
 export async function fermerSession(): Promise<void> {
-  await Coffre.deleteItemAsync(CLE_JETON);
-  await Coffre.deleteItemAsync(CLE_ECHEANCE);
+  await Coffre.effacer(CLE_JETON);
+  await Coffre.effacer(CLE_ECHEANCE);
 }
 
 /** Une demande signée par le jeton du coffre. */
 async function demander<T>(chemin: string, options: RequestInit = {}): Promise<T> {
-  const jeton = await Coffre.getItemAsync(CLE_JETON);
+  const jeton = await Coffre.lire(CLE_JETON);
   if (!jeton) throw new ErreurGuichet("session absente", 401);
 
   const r = await fetch(`${ADRESSE}${chemin}`, {

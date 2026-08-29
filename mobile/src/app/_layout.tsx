@@ -64,6 +64,9 @@ function Charpente() {
             aussitôt : la route n'est même pas montée. */}
         <Stack.Protected guard={connecte}>
           <Stack.Screen name="(onglets)" />
+          {/* Les reglages vivent hors des onglets : on y vient
+              depuis l'accueil, la barre garde ses quatre entrees. */}
+          <Stack.Screen name="reglages" options={{ animation: "slide_from_right" }} />
         </Stack.Protected>
         <Stack.Protected guard={!connecte}>
           <Stack.Screen name="connexion" />

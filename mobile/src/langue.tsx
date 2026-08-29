@@ -8,7 +8,7 @@
 // la SIM les a reçus — les traduire serait les trahir.
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import * as Coffre from "expo-secure-store";
+import * as Coffre from "@/api/coffre";
 import { LANGUE_DEFAUT, langueDe, type Langue } from "@noyau/langue";
 
 const CLE = "totem.langue";
@@ -22,14 +22,14 @@ export function FournisseurLangue({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Le choix précédent, s'il y en a un. Une lecture qui échoue n'est pas
     // une panne : on reste simplement sur la langue principale.
-    Coffre.getItemAsync(CLE)
+    Coffre.lire(CLE)
       .then((v) => setLangue(langueDe(v)))
       .catch(() => {});
   }, []);
 
   const changer = (l: Langue) => {
     setLangue(l);
-    Coffre.setItemAsync(CLE, l).catch(() => {});
+    Coffre.ecrire(CLE, l).catch(() => {});
   };
 
   return <Contexte.Provider value={{ langue, changer }}>{children}</Contexte.Provider>;

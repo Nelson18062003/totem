@@ -4,8 +4,9 @@
 // de plus : combien il y a sur chaque carte, et si le boîtier de Douala
 // respire encore. Le reste attend.
 
-import { RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 
 import { Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
 import { Icone } from "@/icones";
@@ -41,10 +42,17 @@ export default function Accueil() {
                           tintColor={couleurs.encrePale} />
         }
       >
-        <View style={{ gap: espaces.xs }}>
-          <MotTotem taille={13} />
-          <Texte taille={textes.petit} ton="doux">{t.bonjour}</Texte>
-          <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
+        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+          <View style={{ flex: 1, gap: espaces.xs }}>
+            <MotTotem taille={13} />
+            <Texte taille={textes.petit} ton="doux">{t.bonjour}</Texte>
+            <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
+          </View>
+          {/* L'engrenage : le chemin des réglages, comme sur la plateforme. */}
+          <Pressable onPress={() => router.push("/reglages")} hitSlop={12}
+                     accessibilityLabel={t.reglages} style={{ paddingTop: espaces.sm }}>
+            <Icone nom="Settings" taille={22} couleur={couleurs.encreDouce} />
+          </Pressable>
         </View>
 
         {erreur ? (

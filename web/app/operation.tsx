@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { remplirVariables } from "@noyau/codes";
+import { champPourQuestion, demandeUnCode } from "@noyau/ussd";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { Feuille } from "./feuille";
 import { useLangue } from "./langue";
@@ -43,22 +44,6 @@ export type Operation = {
 };
 
 type Msg = { de: "reseau" | "vous"; texte: string };
-
-// La question du réseau ↔ le champ qui peut y répondre tout seul. Les
-// opérateurs camerounais écrivent dans les deux langues : chaque motif porte
-// donc les mots français ET anglais — c'est du texte opérateur qu'on lit,
-// jamais celui de l'écran.
-const RECONNAISSANCE: { motif: RegExp; type: ChampOperation["type"] }[] = [
-  { motif: /num[ée]ro|beneficiaire|b[ée]n[ée]ficiaire|abonn[ée]|agent|destinataire|t[ée]l[ée]phone|number|recipient|beneficiary|receiver|subscriber|phone/i, type: "numero" },
-  { motif: /montant|somme|combien|amount|how\s+much/i, type: "montant" },
-];
-
-const RE_OPTION = /^\s*\d{1,2}\s*[.):\-]\s*\S/m;
-
-function demandeUnCode(texte: string): boolean {
-  return !RE_OPTION.test(texte || "") &&
-    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte || "");
-}
 
 export function OperationPopup({
   operation,
@@ -136,8 +121,7 @@ export function OperationPopup({
   const derouler = async (texte: string | null) => {
     while (texte) {
       if (demandeUnCode(texte)) return;              // le pavé prend la main
-      const champ = restants.current.find((c) =>
-        RECONNAISSANCE.some((r) => r.type === c.type && r.motif.test(texte!)));
+      const champ = champPourQuestion(texte, restants.current);
       if (!champ) return;                            // question inattendue : à vous
       restants.current = restants.current.filter((c) => c !== champ);
       const valeur = chiffres(valeurs[champ.cle] ?? "");
