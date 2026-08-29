@@ -42,7 +42,12 @@ python3 -m unittest discover -s tests     # la batterie complète
 cd web && npx next build                  # l'application web
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
+cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 ```
+
+Le dernier lance un vrai serveur et essaie d'entrer : sans jeton, avec un
+jeton forgé, avec une échéance repoussée. « Ça compile » ne dit rien d'un
+verrou. À relancer dès qu'on touche au middleware, aux sessions ou au frein.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
