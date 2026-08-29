@@ -3,7 +3,7 @@
     "name": "TOTEM",
     "slug": "totem",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "totem",
     "//userInterfaceStyle": "La plateforme web est en clair uniquement (aucun prefers-color-scheme dans globals.css). L'application la suit : deux TOTEM qui ne se ressemblent pas seraient deux produits.",
     "userInterfaceStyle": "light",
@@ -20,7 +20,8 @@
       "//permissions": "La liste est VIDE, et c'est un choix. Les SMS sont lus par le modem de Douala, jamais par le telephone : READ_SMS et RECEIVE_SMS sont des autorisations restreintes qui declenchent un formulaire de justification et, presque toujours, un refus. Ne jamais les ajouter, meme pour essayer.",
       "permissions": [],
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": true,
+      "resizeableActivity": true
     },
     "ios": {
       "bundleIdentifier": "com.bonzinilabs.totem",
@@ -58,6 +59,7 @@
     "extra": {
       "//adressePlateforme": "L'adresse de la plateforme que l'application interroge. Une compilation d'essai peut viser une preversion sans toucher au code.",
       "adressePlateforme": "https://totem.vercel.app"
-    }
+    },
+    "//orientation": "\u00ab default \u00bb et non \u00ab portrait \u00bb, a dessein. Depuis Android 16 (API 36), le systeme IGNORE le verrouillage d'orientation des que la fenetre fait 600 dp ou plus \u2014 tablette, ecran interieur d'un pliable, ecran partage \u2014 et sous l'API 37 il n'y aura plus d'echappatoire. Verrouiller ne servirait donc qu'a se mentir : autant dessiner pour toutes les tailles, ce que fait src/ecran.ts."
   }
 }

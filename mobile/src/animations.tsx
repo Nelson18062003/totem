@@ -1,68 +1,73 @@
-// Le mouvement de l'application.
+// Le mouvement de l'application, sur Reanimated 4.
 //
-// Une règle, et elle tient en une phrase : le mouvement SERT LA LECTURE, il
-// ne la décore pas. Les blocs entrent dans l'ordre où l'œil les prendrait —
-// l'en-tête, la caisse, les gestes, les messages — ce qui donne à l'écran le
-// temps de se composer au lieu d'apparaître d'un bloc.
+// Pourquoi Reanimated et non l'API `Animated` de React Native : Reanimated
+// exécute l'animation sur le fil de l'INTERFACE, pas sur celui du JavaScript.
+// Conséquence concrète — quand l'écran charge ses données, le JavaScript est
+// occupé ; une animation ordinaire saccade précisément à ce moment-là. Celle
+// d'ici ne le sent pas.
 //
-// Trois bornes, parce qu'une animation ratée coûte plus qu'aucune :
+// Trois bornes, parce qu'une animation ratée coûte plus cher qu'aucune :
 //
-//   — court. 260 ms, jamais plus : au-delà, on ATTEND l'écran.
-//   — discret. Huit points de montée et un fondu. Rien ne rebondit, rien ne
-//     tourne : c'est un tableau de bord d'argent, pas un jeu.
-//   — respectueux. Qui a demandé « moins d'animations » dans les réglages du
-//     téléphone n'en reçoit aucune — seulement l'affichage, tout de suite.
+//   — courte. 260 ms, jamais plus : au-delà, on ATTEND l'écran.
+//   — discrète. Une montée de quelques points et un fondu. Rien ne rebondit,
+//     rien ne tourne : c'est un tableau de bord d'argent, pas un jeu.
+//   — respectueuse. Qui a demandé « moins d'animations » dans les réglages
+//     du téléphone n'en reçoit aucune.
 
-import { useEffect, useRef } from "react";
-import { AccessibilityInfo, Animated, Easing, type ViewProps } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { AccessibilityInfo, type ViewProps } from "react-native";
+import Animated, {
+  FadeIn, useAnimatedStyle, useSharedValue, withSpring, withTiming,
+  Easing,
+} from "react-native-reanimated";
 
-/** L'entrée d'un bloc : il monte de huit points en se révélant. */
-export function Entree({
-  delai = 0, children, style, ...reste
-}: ViewProps & { delai?: number }) {
-  const avancement = useRef(new Animated.Value(0)).current;
-  const reduit = useRef(false);
-
+/** Le réglage système « réduire les animations ». */
+export function useMouvementReduit(): boolean {
+  const [reduit, setReduit] = useState(false);
   useEffect(() => {
     let vivant = true;
     AccessibilityInfo.isReduceMotionEnabled()
-      .then((r) => {
-        if (!vivant) return;
-        reduit.current = r;
-        if (r) {
-          // Pas d'animation du tout : on affiche, point.
-          avancement.setValue(1);
-          return;
-        }
-        Animated.timing(avancement, {
-          toValue: 1,
-          duration: 260,
-          delay: delai,
-          // Sortie douce : rapide au départ, freinée à l'arrivée. C'est ce
-          // qui donne l'impression d'un objet qui se pose, pas d'un écran
-          // qui clignote.
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }).start();
-      })
-      .catch(() => avancement.setValue(1));
-    return () => { vivant = false; };
-  }, [avancement, delai]);
+      .then((r) => { if (vivant) setReduit(r); })
+      .catch(() => {});
+    const abonnement = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged", setReduit);
+    return () => { vivant = false; abonnement.remove(); };
+  }, []);
+  return reduit;
+}
+
+/**
+ * L'entrée d'un bloc : il monte de quelques points en se révélant.
+ *
+ * Les blocs entrent dans l'ordre où l'œil les prendrait, ce qui donne à
+ * l'écran le temps de se composer au lieu d'apparaître d'un coup.
+ */
+export function Entree({
+  delai = 0, montee = 10, children, style, ...reste
+}: ViewProps & { delai?: number; montee?: number; children?: ReactNode }) {
+  const reduit = useMouvementReduit();
+  const avancement = useSharedValue(reduit ? 1 : 0);
+
+  useEffect(() => {
+    if (reduit) { avancement.value = 1; return; }
+    avancement.value = withTiming(1, {
+      duration: 260,
+      // Sortie douce : rapide au départ, freinée à l'arrivée. C'est ce qui
+      // donne l'impression d'un objet qui se pose.
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [reduit, avancement]);
+
+  const anime = useAnimatedStyle(() => ({
+    opacity: avancement.value,
+    transform: [{ translateY: (1 - avancement.value) * montee }],
+  }));
 
   return (
     <Animated.View
       {...reste}
-      style={[
-        style,
-        {
-          opacity: avancement,
-          transform: [{
-            translateY: avancement.interpolate({
-              inputRange: [0, 1], outputRange: [8, 0],
-            }),
-          }],
-        },
-      ]}
+      entering={reduit ? undefined : FadeIn.delay(delai).duration(1)}
+      style={[style, anime]}
     >
       {children}
     </Animated.View>
@@ -72,15 +77,14 @@ export function Entree({
 /** L'appui d'une surface : elle s'enfonce très légèrement. Le doigt doit
  *  SENTIR qu'il a touché, avant même que l'écran change. */
 export function useAppui() {
-  const echelle = useRef(new Animated.Value(1)).current;
-  const vers = (v: number) =>
-    Animated.spring(echelle, {
-      toValue: v, useNativeDriver: true,
-      speed: 40, bounciness: 0,      // aucun rebond : ce n'est pas un jouet
-    }).start();
+  const echelle = useSharedValue(1);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: echelle.value }] }));
   return {
-    echelle,
-    onPressIn: () => vers(0.975),
-    onPressOut: () => vers(1),
+    style,
+    // Ressort sans rebond : ce n'est pas un jouet.
+    onPressIn: () => { echelle.value = withSpring(0.97, { damping: 20, stiffness: 400 }); },
+    onPressOut: () => { echelle.value = withSpring(1, { damping: 20, stiffness: 400 }); },
   };
 }
+
+export { Animated };
