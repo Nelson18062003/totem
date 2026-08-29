@@ -148,7 +148,7 @@ const en = {
   essai: "Does my phone ring?",
   essaiAide:
     "Sends a test notification to the phones signed in. It checks the phone " +
-    "side — not the terminal in Douala.",
+    "side — not the terminal itself.",
   essaiBouton: "Send a test",
   essaiEnCours: "Sending…",
   essaiTexte: "This is a test. Notifications are working.",
@@ -299,7 +299,7 @@ const fr: typeof en = {
   essai: "Est-ce que mon téléphone sonne ?",
   essaiAide:
     "Envoie une notification d’essai aux téléphones connectés. Elle vérifie " +
-    "le côté téléphone — pas le terminal de Douala.",
+    "le côté téléphone — pas le terminal lui-même.",
   essaiBouton: "Envoyer un essai",
   essaiEnCours: "Envoi…",
   essaiTexte: "Ceci est un essai. Les notifications fonctionnent.",

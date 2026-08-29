@@ -14,7 +14,7 @@ const en = {
 
   // --- La console ---------------------------------------------------------------
   sousTitre: (libelle: string) =>
-    `Dial as you would on the phone: the terminal in Douala types the code ` +
+    `Dial as you would on the phone: the terminal types the code ` +
     `on the ${libelle} card, and the network's reply comes back here.`,
   composer: "Dial",
   // Le libellé d'un raccourci du catalogue : par sa clé, sinon tel quel.
@@ -34,11 +34,11 @@ const en = {
   boutonAVariables:
     "asks for a number or an amount — run it from Operations",
   noteSession:
-    "The session goes through the terminal in Douala: every reply shown " +
+    "The session goes through the terminal: every reply shown " +
     "here is the operator's, word for word. The secret code is dialled on " +
     "its own keypad and never stored anywhere.",
   noteSessionCourte:
-    "The session goes through the terminal in Douala: every reply shown " +
+    "The session goes through the terminal: every reply shown " +
     "here is the operator's, word for word.",
   aucuneSession:
     "No session in progress. Dial a code and the network's reply will appear here.",
@@ -69,7 +69,7 @@ const fr: typeof en = {
     "Dès qu'une SIM sera vue, vous pourrez composer ses codes ici, comme sur un téléphone.",
 
   sousTitre: (libelle) =>
-    `Composez comme sur le téléphone : le terminal de Douala tape le code ` +
+    `Composez comme sur le téléphone : le terminal tape le code ` +
     `sur la carte ${libelle}, et la réponse du réseau revient ici.`,
   composer: "Composer",
   libelleCode: (cle, defaut) =>
@@ -88,11 +88,11 @@ const fr: typeof en = {
   boutonAVariables:
     "demande un numéro ou un montant — lancez-le depuis Opérations",
   noteSession:
-    "La session traverse le terminal de Douala : chaque réponse affichée " +
+    "La session traverse le terminal : chaque réponse affichée " +
     "ici est celle de l’opérateur, mot pour mot. Le code secret, lui, se " +
     "compose sur son pavé et n’est enregistré nulle part.",
   noteSessionCourte:
-    "La session traverse le terminal de Douala : chaque réponse affichée ici " +
+    "La session traverse le terminal : chaque réponse affichée ici " +
     "est celle de l’opérateur, mot pour mot.",
   aucuneSession:
     "Aucune session en cours. Composez un code, la réponse du réseau s’affichera ici.",

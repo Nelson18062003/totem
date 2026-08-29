@@ -48,6 +48,7 @@ const tables = () => ({
       solde: 87300, signal: 18, maj: il_y_a(40) },
   ],
   paiements: [
+    ...[...smsEnPlus].reverse(),
     { id: 3, source_id: 3, expediteur: "MTNMobileMoney", terminal: "douala-faux",
       compte: "MTN ·8901", carte: "89237010000000008901", sens: "entree",
       montant: 20000, tiers: "NKENGAFAC M.", numero: "677998877",
@@ -107,6 +108,9 @@ let prochainCompte = 1;
 // Les téléphones inscrits pour les notifications, par jeton.
 const appareils = new Map();
 
+// Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
+const smsEnPlus = [];
+
 function reponsePour(commande) {
   const { type, parametres } = commande;
   if (type === "ussd_fin") return "Session terminee.";
@@ -160,6 +164,24 @@ const serveur = createServer(async (req, res) => {
     const id = eq ? Number(eq.replace("eq.", "")) : null;
     const c = commandes.get(id);
     return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+  }
+
+  // Un SMS qui tombe PENDANT qu'on regarde. Sans cela, impossible d'éprouver
+  // que l'application se met à jour toute seule : elle n'aurait jamais rien
+  // de neuf à découvrir.
+  //
+  //     curl -X POST http://127.0.0.1:4999/essai/nouveau-sms
+  if (req.method === "POST" && chemin === "/essai/nouveau-sms") {
+    smsEnPlus.push({
+      id: 900000 + smsEnPlus.length,
+      terminal: "douala-faux", source_id: 900 + smsEnPlus.length,
+      compte: "MTN ·8901", carte: "893700000000008901",
+      expediteur: "MTNMobileMoney", categorie: "encaissement",
+      sens: "entree", montant: 7500, tiers: "ESSAI Direct",
+      texte: "Vous avez recu 7 500 FCFA de ESSAI Direct (677000000).",
+      recu_le: maintenant(), moment: maintenant(), lu_le: null,
+    });
+    return repondre({ ajoutes: smsEnPlus.length });
   }
 
   // --- LES APPAREILS (les téléphones à faire sonner) ----------------------

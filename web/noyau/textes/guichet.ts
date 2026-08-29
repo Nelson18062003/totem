@@ -44,7 +44,7 @@ const en = {
   session: "Session",
   fermer: "Close",
   noteSaisie:
-    "The session opens on the card, in Douala. The platform answers the " +
+    "The session opens on the card itself. The platform answers the " +
     "menu's questions with these details; the secret code then goes in on " +
     "its own keypad.",
   annuler: "Cancel",
@@ -118,7 +118,7 @@ const fr: typeof en = {
   session: "Session",
   fermer: "Fermer",
   noteSaisie:
-    "La session s’ouvre sur la carte, à Douala. La plateforme répond aux " +
+    "La session s’ouvre sur la carte elle-même. La plateforme répond aux " +
     "questions du menu avec ces informations ; le code secret se compose " +
     "ensuite sur son pavé.",
   annuler: "Annuler",

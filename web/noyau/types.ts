@@ -71,7 +71,7 @@ export type Paiement = {
   montant: number | null;
   heure: string;
   date: string;             // « Today », « Hier », « 28 juillet » — déjà traduit
-  // La clé STABLE du jour (« 2026-08-05 », heure de Douala) : c'est elle qui
+  // La clé STABLE du jour (« 2026-08-05 », heure du terminal) : c'est elle qui
   // sert à regrouper et à filtrer. Le libellé `date` n'est qu'un habit — le
   // comparer casserait dès qu'on change de langue.
   jour: string;
@@ -138,7 +138,26 @@ export function nombre(n: number, langue: Langue): string {
     : n.toLocaleString("fr-FR").replace(/ /g, " ");
 }
 
-/** Le jour d'un instant, vu de Douala, sous forme de clé « 2026-08-05 ». */
-export function jourDouala(d: Date): string {
-  return new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" }).format(d);
+/**
+ * Le fuseau par défaut du terminal.
+ *
+ * C'est un DÉFAUT, pas une vérité. Il était écrit en dur partout, ce qui
+ * revenait à décider que TOTEM ne servirait qu'au Cameroun. Or le Mobile
+ * Money, le réseau qui tombe et les menus USSD sont le quotidien du Nigeria,
+ * de la Côte d'Ivoire, du Ghana, du Kenya. Et un fuseau faux n'est pas un
+ * détail cosmétique : il découpe les journées au mauvais moment. À Abidjan
+ * (UTC+0), les encaissements de 23 h tomberaient dans le bilan du lendemain.
+ */
+export const FUSEAU_DEFAUT = "Africa/Douala";
+
+/**
+ * Le jour d'un instant, vu du terminal, sous forme de clé « 2026-08-05 ».
+ *
+ * Le fuseau se passe explicitement : c'est celui du TERMINAL, pas celui du
+ * serveur qui calcule ni du téléphone qui regarde. Le propriétaire peut être
+ * à Paris et sa caisse à Lagos ; c'est la caisse qui décide de ce qu'est
+ * « aujourd'hui », parce que c'est elle qui encaisse.
+ */
+export function jourLocal(d: Date, fuseau: string = FUSEAU_DEFAUT): string {
+  return new Intl.DateTimeFormat("fr-CA", { timeZone: fuseau }).format(d);
 }

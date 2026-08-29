@@ -3,17 +3,17 @@ import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import type { Langue } from "@noyau/langue";
 import { textesAnalyse } from "@noyau/textes/analyse";
-import { fcfa, jourDouala, nombre, type Paiement } from "@noyau/types";
+import { fcfa, jourLocal, nombre, type Paiement } from "@noyau/types";
+import { FUSEAU } from "@/lib/fuseau";
 import { IconDoc } from "../icons";
 import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
 
-// L'argent vit à Douala : les jours se découpent dans SON fuseau, exactement
+// Les jours se découpent dans le fuseau DU TERMINAL, exactement
 // comme la liste des SMS (lib/serveur.ts). Sans cela, un encaissement de
-// minuit à Douala tombait, ici, dans le jour de la veille (fuseau du serveur
+// minuit au terminal tombait, ici, dans le jour de la veille (fuseau du serveur
 // de rendu) — et la liste et le graphe montraient deux jours différents.
-const FUSEAU = "Africa/Douala";
 
 // Les encaissements des 7 derniers jours, calculés sur les vrais paiements —
 // aucun chiffre n'est écrit à la main. Les noms de jours suivent la langue.
@@ -23,9 +23,9 @@ function septDerniersJours(paiements: Paiement[], langue: Langue) {
   const locale = langue === "en" ? "en-GB" : "fr-FR";
   for (let i = 6; i >= 0; i--) {
     const d = new Date(present - i * 86_400_000);
-    const cle = jourDouala(d);
+    const cle = jourLocal(d, FUSEAU);
     const montant = paiements
-      .filter((p) => p.sens === "in" && p.montant != null && jourDouala(new Date(p.recuLe)) === cle)
+      .filter((p) => p.sens === "in" && p.montant != null && jourLocal(new Date(p.recuLe), FUSEAU) === cle)
       .reduce((s, p) => s + (p.montant ?? 0), 0);
     // « lun. » devient « Lun », « Mon » reste « Mon » : sans point, une
     // majuscule initiale dans les deux langues.

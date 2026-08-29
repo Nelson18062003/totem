@@ -76,6 +76,17 @@ try {
   }), 401);
   verifier("/ renvoie vers la connexion", await code("/", { redirect: "manual" }), 307);
 
+  console.log("\nLa page que Google Play exige ouverte");
+  // Un examinateur du Play Store l'ouvre SANS COMPTE, depuis un lien collé
+  // dans un formulaire. Derrière le verrou, l'application serait refusée sans
+  // plus d'explication — et l'on chercherait longtemps pourquoi.
+  const rc = await fetch(B + "/confidentialite");
+  verifier("/confidentialite s'ouvre sans session", rc.status, 200);
+  const page = await rc.text();
+  // Elle décrit le logiciel ; elle ne doit contenir AUCUNE donnée.
+  verifier("elle ne montre aucun paiement", page.includes("FCFA"), false);
+  verifier("elle ne montre pas le mot de passe", page.includes(MOTDEPASSE), false);
+
   console.log("\nLa porte à laquelle on frappe avant d'avoir la clé");
   // « /api/plateforme » est OUVERTE, et doit l'être : sans elle, l'application
   // du téléphone ne peut pas savoir si un TOTEM habite à l'adresse qu'elle

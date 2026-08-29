@@ -7,7 +7,8 @@
 // règle pas, ne se garde pas, ne s'oublie pas — il n'existe qu'au moment
 // d'une opération.
 
-import { ScrollView, View, Pressable, Alert } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, ScrollView, View, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -17,6 +18,7 @@ import { couleurs, espaces, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
+import { essaiNotification } from "@/api/guichet";
 import { textesReglages } from "@noyau/textes/reglages";
 import { textesCharpente } from "@noyau/textes/charpente";
 import { LANGUES } from "@noyau/langue";
@@ -110,6 +112,12 @@ export default function Reglages() {
           </Carte>
         </View>
 
+        {/* « Est-ce que mon téléphone sonne ? »
+            Il existait sur la plateforme web, pas ici — c'est-à-dire pas là
+            où l'on vient de refuser ou d'accepter les notifications, et où
+            l'on se pose justement la question. */}
+        <EssaiNotification />
+
         {/* La sécurité — et la promesse sur le code secret, répétée ici parce
             que c'est l'écran où l'on vient chercher « où est mon code ? ». */}
         <View style={{ gap: espaces.sm }}>
@@ -152,6 +160,94 @@ function Rangee({ libelle, valeur }: { libelle: string; valeur: string }) {
       <Texte taille={textes.petit} style={{ marginLeft: "auto" }} chiffresAlignes>
         {valeur || "—"}
       </Texte>
+    </View>
+  );
+}
+
+/**
+ * « Est-ce que mon téléphone sonne ? »
+ *
+ * On vient d'installer l'application et d'accepter — ou de refuser d'un
+ * geste — les notifications. Sans ce bouton, il faudrait attendre qu'un vrai
+ * client envoie de l'argent pour savoir si la chaîne fonctionne. Et si elle
+ * ne fonctionne pas, chercher à l'aveugle : la permission ? le jeton ?
+ * Firebase ? le canal Android ?
+ *
+ * Il dit aussi ce qu'il NE prouve pas. La chaîne complète part du modem et
+ * finit sur cet écran ; l'essai n'en éprouve que le dernier kilomètre. Le
+ * taire laisserait croire que tout est vérifié — et l'on ne chercherait pas
+ * du côté du terminal le jour où c'est lui qui est muet.
+ */
+function EssaiNotification() {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  const [envoi, setEnvoi] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [rate, setRate] = useState(false);
+
+  const essayer = async () => {
+    if (envoi) return;
+    setEnvoi(true);
+    setMessage(null);
+    try {
+      const r = await essaiNotification(langue);
+      if (r.aucun) {
+        setRate(true);
+        setMessage(t.essaiAucunAppareil);
+      } else if (r.servis > 0) {
+        setRate(false);
+        setMessage(t.essaiReussi
+          + (r.oublies ? ` (${r.oublies} ${t.essaiOublies})` : ""));
+      } else {
+        setRate(true);
+        // Le détail vient du service de notification, en anglais. On le
+        // montre quand même : sans lui, « rien n'a pu être envoyé » ne dit
+        // pas par où chercher.
+        setMessage(t.essaiEchec
+          + (r.soucis?.length ? ` — ${r.soucis.join(" · ")}` : ""));
+      }
+    } catch (e) {
+      setRate(true);
+      setMessage(e instanceof Error ? e.message : t.essaiEchec);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  return (
+    <View style={{ gap: espaces.sm }}>
+      <Texte taille={textes.intertitre} poids="demi">{t.essai}</Texte>
+      <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
+        <Texte taille={textes.petit} ton="pale" style={{ lineHeight: 18 }}>
+          {t.essaiAide}
+        </Texte>
+        <Pressable
+          onPress={essayer}
+          disabled={envoi}
+          style={({ pressed }) => ({
+            borderWidth: 1, borderColor: couleurs.trait,
+            borderRadius: 10, paddingVertical: espaces.md,
+            alignItems: "center", flexDirection: "row",
+            justifyContent: "center", gap: espaces.sm,
+            backgroundColor: pressed ? couleurs.surface2 : "transparent",
+            opacity: envoi ? 0.5 : 1,
+          })}
+        >
+          {envoi ? <ActivityIndicator size="small" color={couleurs.encrePale} /> : null}
+          <Texte poids="demi" ton="doux">
+            {envoi ? t.essaiEnCours : t.essaiBouton}
+          </Texte>
+        </Pressable>
+        {message ? (
+          <Texte
+            taille={textes.petit}
+            ton={rate ? "negatif" : "doux"}
+            style={{ lineHeight: 18 }}
+          >
+            {message}
+          </Texte>
+        ) : null}
+      </Carte>
     </View>
   );
 }

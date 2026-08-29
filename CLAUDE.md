@@ -48,6 +48,7 @@ cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
+#   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -60,6 +61,13 @@ serveur : la première inscription (celle du propriétaire), une deuxième qui
 doit attendre, l'approbation, la fermeture, la clé de secours. Il cherche
 surtout à prendre en défaut — un compte non approuvé qui entrerait, un invité
 qui administrerait, un message qui dirait si un courriel a un compte ici.
+
+**Un contrôle qui passe sans rien regarder est pire que pas de contrôle : il
+rassure.** Le harnais des formats a mesuré l'écran de connexion aux huit
+tailles, en vert, sans jamais voir un écran de l'application — la session ne
+pouvait pas se ranger sur un export web de production. Il vérifie maintenant
+qu'il est bien connecté ET que la boîte de réception montre un SMS connu,
+sans quoi il s'arrête en montrant ce qu'il avait sous les yeux.
 
 **Ces scripts refusent de démarrer si leur port est déjà pris.** Ce n'est pas
 un caprice : un essai précédent resté ouvert a déjà fait passer toute une
