@@ -513,3 +513,171 @@ export async function lireCommande(
   const c = lignes.find((x) => x.id === id);
   return c ? { etat: c.etat, resultat: c.resultat } : null;
 }
+
+// ---------------------------------------------------------------------------
+// LES COMPTES
+//
+// Tout ce qui touche à la table `utilisateurs` passe par ici, et seulement
+// par ici. Aucune de ces fonctions n'est appelée depuis un composant client :
+// elles vivent derrière les routes API, qui vérifient la session avant.
+//
+// L'empreinte du mot de passe ne SORT jamais de ce fichier autrement que
+// pour être vérifiée sur place (voir `lib/motdepasse.ts`). Elle n'entre dans
+// aucune réponse, aucun journal, aucun message.
+// ---------------------------------------------------------------------------
+
+export type Utilisateur = {
+  id: number;
+  courriel: string;
+  role: "proprietaire" | "invite";
+  approuve: boolean;
+  creeLe: string | null;
+  vuLe: string | null;
+};
+
+type LigneUtilisateur = {
+  id: number; courriel: string; empreinte: string;
+  role: string; approuve: boolean;
+  cree_le: string | null; vu_le: string | null;
+};
+
+const versUtilisateur = (l: LigneUtilisateur): Utilisateur => ({
+  id: l.id,
+  courriel: l.courriel,
+  role: l.role === "proprietaire" ? "proprietaire" : "invite",
+  approuve: Boolean(l.approuve),
+  creeLe: l.cree_le,
+  vuLe: l.vu_le,
+});
+
+/** Écrit dans la base avec la clé de service. Rend la réponse brute. */
+async function ecrire(
+  chemin: string, methode: string, corps: unknown, entetes: Record<string, string> = {},
+): Promise<Response | null> {
+  if (!relie) return null;
+  try {
+    return await fetch(`${url}/rest/v1/${chemin}`, {
+      method: methode,
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+        prefer: "return=representation",
+        ...entetes,
+      },
+      body: JSON.stringify(corps),
+      cache: "no-store",
+    });
+  } catch (e) {
+    console.error(`Supabase injoignable : ${String(e)}`);
+    return null;
+  }
+}
+
+/** Combien de comptes existent. Sert à savoir si celui qu'on crée est LE
+ *  premier — celui du propriétaire, qui n'a personne pour l'approuver.
+ *
+ *  Rend `null` si la base ne répond pas : « je ne sais pas » n'est pas
+ *  « zéro ». Confondre les deux ferait du prochain inscrit un propriétaire
+ *  parce que Supabase a hoqueté — la pire des portes dérobées. */
+export async function compterUtilisateurs(): Promise<number | null> {
+  if (!relie) return null;
+  try {
+    const r = await fetch(`${url}/rest/v1/utilisateurs?select=id&limit=1`, {
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        prefer: "count=exact", range: "0-0",
+      },
+      cache: "no-store",
+    });
+    if (!r.ok) return null;
+    // PostgREST met le total dans « content-range » : « 0-0/7 ».
+    const total = r.headers.get("content-range")?.split("/")[1];
+    if (total === undefined || total === "*") return null;
+    const n = Number(total);
+    return Number.isInteger(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Le compte portant ce courriel, EMPREINTE COMPRISE — pour la vérifier.
+ *
+ *  Le seul endroit où l'empreinte sort de la base. Elle ne doit pas quitter
+ *  la route qui appelle ceci. */
+export async function utilisateurAVerifier(
+  courriel: string,
+): Promise<{ compte: Utilisateur; empreinte: string } | null> {
+  if (!relie || !courriel) return null;
+  const lignes = await lire<LigneUtilisateur>(
+    `utilisateurs?courriel=eq.${encodeURIComponent(courriel)}&limit=1`);
+  const l = lignes[0];
+  return l ? { compte: versUtilisateur(l), empreinte: l.empreinte } : null;
+}
+
+/** Le compte portant cet identifiant. Sans empreinte : on ne la sort que
+ *  pour la vérifier, et cette fonction-ci sert à afficher. */
+export async function utilisateurParId(id: number): Promise<Utilisateur | null> {
+  if (!relie || !Number.isInteger(id)) return null;
+  const lignes = await lire<LigneUtilisateur>(
+    `utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le&id=eq.${id}&limit=1`);
+  return lignes[0] ? versUtilisateur(lignes[0] as LigneUtilisateur) : null;
+}
+
+/** Crée un compte. Rend `null` si le courriel est déjà pris, ou si la base
+ *  n'a pas répondu — jamais un compte à moitié créé. */
+export async function creerUtilisateur(
+  courriel: string, empreinte: string,
+  role: "proprietaire" | "invite", approuve: boolean,
+): Promise<Utilisateur | null> {
+  const r = await ecrire("utilisateurs", "POST", [{
+    courriel, empreinte, role, approuve,
+  }]);
+  if (!r || !r.ok) return null;
+  const lignes = (await r.json().catch(() => [])) as LigneUtilisateur[];
+  return lignes[0] ? versUtilisateur(lignes[0]) : null;
+}
+
+/** Note l'heure de la connexion réussie, et rafraîchit l'empreinte si le
+ *  nombre de tours a été augmenté depuis. Ni l'un ni l'autre ne doit pouvoir
+ *  faire échouer une connexion : on ignore l'échec. */
+export async function noterConnexion(
+  id: number, nouvelleEmpreinte?: string,
+): Promise<void> {
+  const champs: Record<string, unknown> = { vu_le: new Date().toISOString() };
+  if (nouvelleEmpreinte) champs.empreinte = nouvelleEmpreinte;
+  await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", champs,
+               { prefer: "return=minimal" });
+}
+
+/** Tous les comptes, pour l'écran du propriétaire. Sans les empreintes. */
+export async function listerUtilisateurs(): Promise<Utilisateur[]> {
+  const lignes = await lire<LigneUtilisateur>(
+    "utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le" +
+    "&order=cree_le.asc&limit=200");
+  return lignes.map(versUtilisateur);
+}
+
+/** Le propriétaire ouvre — ou referme — la porte à un compte. */
+export async function definirApprobation(
+  id: number, approuve: boolean,
+): Promise<boolean> {
+  if (!Number.isInteger(id)) return false;
+  const r = await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", { approuve },
+                         { prefer: "return=minimal" });
+  return Boolean(r?.ok);
+}
+
+/** Le propriétaire supprime un compte. Le sien, jamais : la route le refuse. */
+export async function supprimerUtilisateur(id: number): Promise<boolean> {
+  if (!relie || !Number.isInteger(id)) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/utilisateurs?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: cle!, authorization: `Bearer ${cle}` },
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}

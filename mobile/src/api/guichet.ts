@@ -162,13 +162,26 @@ export async function sessionVivante(): Promise<boolean> {
   return Number(echeance) - Date.now() > 24 * 3600 * 1000;
 }
 
-/** Ouvre une session. Le mot de passe ne survit pas à cet appel. */
-export async function ouvrirSession(motdepasse: string, langue: Langue): Promise<void> {
+/**
+ * Ouvre une session avec un COMPTE — un courriel et un mot de passe.
+ *
+ * Sans courriel, la plateforme comprend qu'on présente la clé de secours :
+ * le mot de passe unique posé sur l'hébergement. Il existe pour le jour où
+ * la base des comptes ne répond plus, et le propriétaire doit tout de même
+ * pouvoir entrer, ne serait-ce que pour constater la panne.
+ *
+ * Ni le courriel ni le mot de passe ne survivent à cet appel : ce qui se
+ * range dans le coffre, c'est le JETON rendu par la plateforme.
+ */
+export async function ouvrirSession(
+  courriel: string, motdepasse: string, langue: Langue,
+): Promise<void> {
   const base = await adressePlateforme();
   const r = await fetch(`${base}/api/session?langue=${langue}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ motdepasse }),
+    body: JSON.stringify(
+      courriel ? { courriel, motdepasse } : { motdepasse }),
   });
   const corps = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -176,6 +189,40 @@ export async function ouvrirSession(motdepasse: string, langue: Langue): Promise
   }
   await Coffre.ecrire(CLE_JETON, corps.jeton);
   await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
+}
+
+/** Ce qu'une inscription peut donner. */
+export type Inscription =
+  | { entre: true }        // le propriétaire : il entre tout de suite
+  | { entre: false };      // un invité : le compte attend une approbation
+
+/**
+ * Crée un compte.
+ *
+ * Le PREMIER compte de la plateforme est celui du propriétaire : il entre
+ * immédiatement, et la session est rangée ici même. Tous les suivants sont
+ * créés mais n'ouvrent rien tant que le propriétaire ne les a pas approuvés
+ * — d'où `entre: false`, qui n'est pas une erreur.
+ */
+export async function creerCompte(
+  courriel: string, motdepasse: string, langue: Langue,
+): Promise<Inscription> {
+  const base = await adressePlateforme();
+  const r = await fetch(`${base}/api/inscription?langue=${langue}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel, motdepasse }),
+  });
+  const corps = await r.json().catch(() => ({}));
+  if (!r.ok && r.status !== 202) {
+    throw new ErreurGuichet(corps?.erreur ?? "inscription refusée", r.status);
+  }
+  if (corps?.proprietaire && corps?.jeton) {
+    await Coffre.ecrire(CLE_JETON, corps.jeton);
+    await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
+    return { entre: true };
+  }
+  return { entre: false };
 }
 
 export async function fermerSession(): Promise<void> {

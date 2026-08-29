@@ -124,6 +124,23 @@ const en = {
     "Each operator has its own codes: they belong to the network, and work with any card from that operator. What you save here goes into the robot's notebook and every screen uses it. Two ways to build one: drop the blocks into the code — the recipient's number, the amount — and it goes out complete in one shot, the network then only asking for your secret code; leave the blocks out and the code opens the menu, and the platform answers its questions one by one. Never type your secret code here: it is entered on its keypad when the moment comes, and is stored nowhere.",
 
   // --- La sécurité
+  // --- Qui peut se connecter (réservé au propriétaire)
+  // « comptes » plus haut, ce sont les SIM Mobile Money. Ici ce sont les
+  // PERSONNES. Deux choses très différentes qui portaient le même mot.
+  qui: "Who can sign in",
+  quiAide:
+    "Anyone can create an account. Nobody gets in until you let them.",
+  roleProprietaire: "Owner",
+  roleInvite: "Guest",
+  enAttente: "Waiting",
+  ouvert: "Allowed in",
+  approuver: "Let in",
+  fermer: "Block",
+  supprimer: "Delete",
+  supprimerSur: "Delete this account for good?",
+  jamaisVenu: "Never signed in",
+  vuLe: "Last signed in",
+  aucunAutreCompte: "No other account yet.",
   securite: "Security",
   motDePasse: "Change the password",
   doubleAuth: "Two-step sign-in",
@@ -248,6 +265,21 @@ const fr: typeof en = {
   noteCodes:
     "Chaque opérateur a ses propres codes ; ils appartiennent au réseau et suivront toute carte du même opérateur. Ce qui s’enregistre ici entre au carnet du robot, et tous les écrans s’en servent. Deux façons de construire un code : posez-y les blocs — le numéro du bénéficiaire, le montant — et il part COMPLET, d’un seul coup, le réseau ne demandant plus que le code secret ; sans blocs, le code ouvre le menu et la plateforme répond à ses questions une à une. N’écrivez jamais votre code secret ici : il se compose sur son pavé au moment voulu, et n’est enregistré nulle part.",
 
+  qui: "Qui peut se connecter",
+  quiAide:
+    "N’importe qui peut créer un compte. Personne n’entre tant que vous ne " +
+    "l’avez pas laissé entrer.",
+  roleProprietaire: "Propriétaire",
+  roleInvite: "Invité",
+  enAttente: "En attente",
+  ouvert: "Peut entrer",
+  approuver: "Laisser entrer",
+  fermer: "Bloquer",
+  supprimer: "Supprimer",
+  supprimerSur: "Supprimer ce compte définitivement ?",
+  jamaisVenu: "Jamais connecté",
+  vuLe: "Dernière connexion",
+  aucunAutreCompte: "Aucun autre compte pour l’instant.",
   securite: "Sécurité",
   motDePasse: "Changer le mot de passe",
   doubleAuth: "Double authentification",

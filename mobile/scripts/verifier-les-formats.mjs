@@ -34,7 +34,42 @@
 
 // L'application sur tout ce qu'Android peut être aujourd'hui.
 import { createRequire } from "module";
+import { createServer } from "node:http";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { extname, join, normalize } from "node:path";
 const require = createRequire(import.meta.url);
+
+// --- L'aperçu, servi par nous ---------------------------------------------
+const RACINE = process.argv[2] || "dist";
+if (!existsSync(join(RACINE, "index.html"))) {
+  console.error(`\n✗ Aucun aperçu web dans « ${RACINE} ».`);
+  console.error("  Exportez-le d'abord :");
+  console.error("    EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3120 \\");
+  console.error("      npx expo export --platform web --output-dir /tmp/apercu");
+  process.exit(1);
+}
+
+const TYPES = {
+  ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+  ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml", ".ttf": "font/ttf", ".woff2": "font/woff2",
+  ".ico": "image/x-icon", ".map": "application/json",
+};
+
+const fichiers = createServer((req, res) => {
+  // `normalize` puis retrait des « .. » : un aperçu ne sert que son dossier.
+  const demande = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  const sur = normalize(demande).replace(/^(\.\.[/\\])+/, "");
+  let chemin = join(RACINE, sur);
+  if (!existsSync(chemin) || statSync(chemin).isDirectory()) {
+    chemin = join(RACINE, "index.html");   // les routes de l'application
+  }
+  res.writeHead(200, { "content-type": TYPES[extname(chemin)] || "application/octet-stream" });
+  createReadStream(chemin).pipe(res);
+});
+await new Promise((r) => fichiers.listen(0, "127.0.0.1", r));
+const APERCU = `http://127.0.0.1:${fichiers.address().port}`;
+console.log(`\n  aperçu servi depuis « ${RACINE} » sur ${APERCU}\n`);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 const nav = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium",
@@ -60,22 +95,58 @@ const FORMATS = [
   ["tablette-pays",1280, 800],
 ];
 
+// LE COMPTE. La plateforme a maintenant de vrais comptes : on en crée un,
+// une fois, avant de dérouler les formats. Le PREMIER inscrit est le
+// propriétaire — il entre sans rien attendre, ce qui est exactement ce qu'il
+// faut ici. On ne s'inquiète pas d'un 409 : c'est que le compte est déjà là,
+// d'un passage précédent sur le même faux nuage.
+const COURRIEL = "essai@totem.test";
+const MOTDEPASSE = "un-mot-de-passe-assez-long";
+{
+  const r = await fetch("http://127.0.0.1:3120/api/inscription", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+  });
+  if (!r.ok && r.status !== 409) {
+    console.error(`  ⚠️  le compte d'essai n'a pas pu être créé (${r.status}).`);
+    console.error("     La plateforme d'essai tourne-t-elle sur 3120, reliée");
+    console.error("     au faux nuage sur 4999 ?");
+    process.exit(1);
+  }
+}
+
 for (const [nom, w, h] of FORMATS) {
   const page = await nav.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
   const soucis = [];
   page.on("pageerror", (e) => soucis.push(String(e).slice(0, 110)));
-  await page.goto("http://127.0.0.1:3210", { waitUntil: "networkidle" });
+  await page.goto(APERCU, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
-  // Le champ du mot de passe, nommément : l'écran porte désormais l'encart de
-  // la plateforme au-dessus, et « le premier champ » n'est plus le bon.
+  // On se connecte comme le propriétaire le ferait : un courriel et un mot de
+  // passe, sur un compte créé plus haut. Les champs sont visés par leur TYPE
+  // et non par leur rang — l'écran porte maintenant l'encart de la plateforme
+  // au-dessus, et « le premier champ » n'est plus le bon.
+  // On attend que la porte soit OUVERTE, pas seulement que les champs soient
+  // à l'écran : l'application interroge d'abord la plateforme, et les champs
+  // restent verrouillés tant qu'elle n'a pas répondu « oui, un TOTEM ». Les
+  // viser trop tôt donnerait un « element is not editable » incompréhensible.
+  const courriel = page.locator('input[type="email"]:not([readonly])');
+  try {
+    await courriel.waitFor({ state: "visible", timeout: 20000 });
+  } catch {
+    console.error("\n✗ L'écran de connexion ne s'ouvre pas. Ce qu'il affiche :\n");
+    console.error(await page.evaluate(() => document.body.innerText));
+    console.error("\n  La plateforme d'essai répond-elle sur 3120 ?");
+    process.exit(1);
+  }
   const motdepasse = page.locator('input[type="password"]');
-  await motdepasse.waitFor({ state: "visible", timeout: 15000 });
-  await motdepasse.fill("essai");
+  await courriel.fill(COURRIEL);
+  await motdepasse.fill(MOTDEPASSE);
   await page.getByText("Sign in", { exact: true }).last().click();
   await page.waitForTimeout(3800);
   await page.screenshot({ path: `/tmp/totem-f-${nom}.png` });
   // La boîte de réception : c'est là que le SMS à code s'affiche.
-  await page.goto("http://127.0.0.1:3210/encaissements", { waitUntil: "networkidle" });
+  await page.goto(`${APERCU}/encaissements`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
   const m = await page.evaluate(() => ({
     debord: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -127,3 +198,4 @@ for (const [nom, w, h] of FORMATS) {
   await page.close();
 }
 await nav.close();
+fichiers.close();

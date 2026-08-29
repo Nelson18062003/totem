@@ -26,6 +26,27 @@ function verifier(nom, obtenu, attendu) {
 const code = async (chemin, options = {}) =>
   (await fetch(B + chemin, options).catch(() => ({ status: 0 }))).status;
 
+
+// UN SERVEUR DÉJÀ LÀ EST UN PIÈGE. Si le port est occupé — par un essai
+// précédent mal refermé — le serveur qu'on lance ici ne démarre pas, et
+// TOUTES les vérifications s'exécutent contre l'ancien code. Elles passent,
+// en vert, et ne prouvent rien. C'est arrivé. On refuse donc de commencer.
+async function portLibre(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) });
+    return false;       // quelqu'un a répondu : le port est pris
+  } catch {
+    return true;
+  }
+}
+
+if (!(await portLibre(PORT))) {
+  console.error(`\n✗ Le port ${PORT} est déjà occupé. Un essai précédent tourne`);
+  console.error("  encore : ces vérifications porteraient sur SON code, pas sur");
+  console.error("  celui d'ici. Arrêtez-le, puis relancez.");
+  process.exit(1);
+}
+
 const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: MOTDEPASSE },
   stdio: "ignore",
@@ -44,6 +65,7 @@ try {
   // L'inscription d'un telephone aux notifications est une ECRITURE : sans
   // verrou, n'importe qui pourrait inscrire son appareil et recevoir les
   // encaissements du proprietaire sur son propre ecran.
+  verifier("/api/comptes sans jeton", await code("/api/comptes"), 401);
   verifier("/api/appareil sans jeton", await code("/api/appareil", {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ jeton: "ExpoPushToken[intrus]" }),
@@ -72,10 +94,13 @@ try {
   });
   verifier("/api/session est atteignable", await code("/api/session", json({})), 401);
 
+  // Sans courriel, c'est la CLÉ DE SECOURS qu'on présente — celle des
+  // variables d'environnement. Les comptes ont leur propre script,
+  // « verifier-les-comptes.mjs » ; ici on éprouve le JETON lui-même.
   const rep = await fetch(B + "/api/session", json({ motdepasse: MOTDEPASSE }));
   const { jeton } = await rep.json();
   verifier("le bon mot de passe rend un jeton", Boolean(jeton), true);
-  verifier("le jeton porte le sujet « telephone »", jeton.split(".")[0], "telephone");
+  verifier("le jeton porte le sujet « secours »", jeton.split(".")[0], "secours");
 
   // 503 = le verrou a laissé passer (la base n'est pas configurée ici).
   const avec = (j) => code("/api/donnees", { headers: { Authorization: `Bearer ${j}` } });

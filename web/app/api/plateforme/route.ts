@@ -27,7 +27,19 @@ export const dynamic = "force-dynamic";
  * heures — le serveur, lui, sait qu'aucun mot de passe ne marchera.
  */
 export async function GET() {
-  const configuree = Boolean(
-    process.env.SESSION_SECRET && process.env.TOTEM_MOT_DE_PASSE);
+  // « Configurée » veut dire : quelqu'un peut se connecter ici. Deux
+  // conditions, et la seconde a un OU qui compte.
+  //
+  //   · SESSION_SECRET, sans quoi aucune session ne peut être signée ;
+  //   · ET un chemin d'entrée : soit la base des comptes répond (on peut y
+  //     créer un compte et s'en servir), soit la clé de secours est posée.
+  //
+  // Ce OU n'était pas là au début, et c'était faux : une plateforme reliée à
+  // sa base, avec de vrais comptes, se déclarait « non configurée » au seul
+  // motif que l'ancienne clé de secours n'existait pas. L'application
+  // refusait alors de laisser taper quoi que ce soit, sur une plateforme
+  // parfaitement utilisable.
+  const configuree = Boolean(process.env.SESSION_SECRET)
+    && (relie || Boolean(process.env.TOTEM_MOT_DE_PASSE));
   return Response.json({ totem: true, configuree, relie });
 }

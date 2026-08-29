@@ -21,6 +21,21 @@ const en = {
   raccourciIncomplet: "incomplete shortcut: operator, button and code are needed",
   variableInconnue: "unknown variable in the code: only {numero}, {montant} and {point} exist",
   variableMalFormee: "a variable is misspelt: write it whole, braces included — {numero}",
+
+  // --- Les comptes --------------------------------------------------------
+  // Un seul et même message pour « ce courriel n'existe pas » et « ce mot de
+  // passe est faux ». Les distinguer dirait à un inconnu quelles adresses
+  // ont un compte ici — de quoi dresser une liste, puis s'acharner dessus.
+  identifiantsIncorrects: "wrong email or password",
+  compteEnAttente:
+    "This account is waiting for the owner's approval. It cannot open " +
+    "anything yet.",
+  courrielInvalide: "that does not look like an email address",
+  motDePasseTropCourt: "the password must be at least 12 characters long",
+  courrielDejaPris: "an account already exists with this email",
+  inscriptionImpossible: "the account could not be created",
+  reserveAuProprietaire: "only the owner can do this",
+  pasSoiMeme: "you cannot do this to your own account",
 };
 
 const fr: typeof en = {
@@ -41,6 +56,16 @@ const fr: typeof en = {
   raccourciIncomplet: "raccourci incomplet : il faut l’opérateur, le bouton et le code",
   variableInconnue: "variable inconnue dans le code : seuls {numero}, {montant} et {point} existent",
   variableMalFormee: "une variable est mal écrite : écrivez-la en entier, accolades comprises — {numero}",
+
+  identifiantsIncorrects: "courriel ou mot de passe incorrect",
+  compteEnAttente:
+    "Ce compte attend l’approbation du propriétaire. Il n’ouvre encore rien.",
+  courrielInvalide: "cela ne ressemble pas à une adresse de courriel",
+  motDePasseTropCourt: "le mot de passe doit faire au moins 12 caractères",
+  courrielDejaPris: "un compte existe déjà avec ce courriel",
+  inscriptionImpossible: "le compte n’a pas pu être créé",
+  reserveAuProprietaire: "seul le propriétaire peut faire cela",
+  pasSoiMeme: "vous ne pouvez pas faire cela à votre propre compte",
 };
 
 export const textesApi = { en, fr } as const;

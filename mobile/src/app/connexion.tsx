@@ -1,9 +1,17 @@
 // Le verrou de l'application.
 //
-// Le mot de passe du propriétaire — PAS le code PIN Mobile Money. Celui-là ne
-// se saisit qu'au moment d'une opération, sur un pavé de boutons, et ne
-// s'enregistre nulle part. La note en bas de l'écran le dit, parce que c'est
-// exactement là qu'on peut se tromper.
+// UN COURRIEL ET UN MOT DE PASSE, vérifiés contre un compte rangé en base. Le
+// mot de passe n'y est jamais : seulement son empreinte, qui ne se remonte
+// pas. Le même écran sert à créer un compte — c'est la même paire de champs,
+// il aurait été absurde d'en faire deux écrans.
+//
+// LE PREMIER COMPTE de la plateforme est celui du propriétaire : il entre
+// tout de suite. Les suivants sont créés et attendent qu'il leur ouvre.
+//
+// Ce n'est PAS le code PIN Mobile Money. Celui-là ne se saisit qu'au moment
+// d'une opération, sur un pavé de boutons, et ne s'enregistre nulle part. La
+// note en bas de l'écran le dit, parce que c'est exactement là qu'on peut se
+// tromper.
 //
 // Le mot de passe ne vit que dans l'état de cet écran, le temps de l'envoi.
 // Ce qui se range dans le coffre, c'est le JETON rendu par la plateforme —
@@ -45,9 +53,13 @@ export default function Connexion() {
   const langue = useLangue();
   const changerLangue = useChangerLangue();
   const t = textesConnexion[langue];
-  const { ouvrir } = useSession();
+  const { ouvrir, inscrire } = useSession();
 
+  // « entrer » : je me connecte. « creer » : je crée un compte.
+  const [mode, setMode] = useState<"entrer" | "creer">("entrer");
+  const [courriel, setCourriel] = useState("");
   const [motdepasse, setMotdepasse] = useState("");
+  const [attente, setAttente] = useState(false);   // compte créé, en attente
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
@@ -94,13 +106,28 @@ export default function Connexion() {
   // Le mot de passe ne part QUE vers un TOTEM qui a répondu.
   const porteOuverte = etat === "trouvee";
 
+  // Au moins douze caractères : la longueur vaut mieux que la complication,
+  // et c'est la seule règle. Voir web/lib/motdepasse.ts.
+  const assezLong = motdepasse.length >= 12;
+  const complet = mode === "creer"
+    ? Boolean(courriel) && assezLong
+    : Boolean(courriel) && Boolean(motdepasse);
+
   const valider = async () => {
-    if (!motdepasse || enCours || !porteOuverte) return;
+    if (!complet || enCours || !porteOuverte) return;
     setEnCours(true);
     setErreur(null);
     try {
-      await ouvrir(motdepasse, langue);
-      setMotdepasse("");            // rien ne subsiste après l'envoi
+      if (mode === "creer") {
+        const entre = await inscrire(courriel, motdepasse, langue);
+        setMotdepasse("");          // rien ne subsiste après l'envoi
+        // Un compte en attente ne connecte personne : on le dit, franchement,
+        // plutôt que de laisser croire à un échec.
+        if (!entre) { setAttente(true); setEnCours(false); }
+        return;
+      }
+      await ouvrir(courriel, motdepasse, langue);
+      setMotdepasse("");
     } catch (e) {
       // Le guichet rend déjà le message dans la bonne langue ; on ne le
       // réécrit pas ici, on ne fait que le montrer.
@@ -109,6 +136,48 @@ export default function Connexion() {
       setEnCours(false);
     }
   };
+
+  const changerDeMode = () => {
+    setMode((m) => (m === "entrer" ? "creer" : "entrer"));
+    setMotdepasse("");
+    setErreur(null);
+  };
+
+  // LE COMPTE EST CRÉÉ, ET IL ATTEND. On le dit sur un écran à lui : renvoyer
+  // au formulaire donnerait l'impression d'un échec, alors que tout s'est
+  // bien passé — il manque seulement l'accord du propriétaire.
+  if (attente) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.sable }}>
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1, justifyContent: "center",
+            padding: espaces.xl, gap: espaces.lg,
+          }}
+        >
+          <View style={{ alignItems: "center", gap: espaces.md }}>
+            <MotTotem taille={22} />
+            <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
+              {t.compteEnAttenteTitre}
+            </Texte>
+            <Texte ton="doux" style={{ textAlign: "center", lineHeight: 22 }}>
+              {t.compteEnAttenteTexte}
+            </Texte>
+          </View>
+          <Pressable
+            onPress={() => { setAttente(false); setMode("entrer"); }}
+            style={{
+              borderWidth: 1, borderColor: couleurs.trait,
+              borderRadius: rayons.bouton, paddingVertical: espaces.md,
+              alignItems: "center",
+            }}
+          >
+            <Texte poids="demi" ton="doux">{t.jAiDejaUnCompte}</Texte>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     // La connexion est une SURFACE DE MARQUE : c'est le seul endroit, avec la
@@ -128,10 +197,10 @@ export default function Connexion() {
           <View style={{ alignItems: "center", gap: espaces.md }}>
             <MotTotem taille={22} />
             <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
-              {t.titre}
+              {mode === "creer" ? t.inscriptionTitre : t.titre}
             </Texte>
             <Texte ton="doux" style={{ textAlign: "center", lineHeight: 22 }}>
-              {t.sousTitre}
+              {mode === "creer" ? t.inscriptionSousTitre : t.sousTitre}
             </Texte>
           </View>
 
@@ -256,6 +325,28 @@ export default function Connexion() {
 
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
             <Texte taille={textes.petit} ton="doux" poids="moyen">
+              {t.courriel}
+            </Texte>
+            <TextInput
+              value={courriel}
+              onChangeText={(v) => { setCourriel(v); setErreur(null); }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              keyboardType="email-address"
+              inputMode="email"
+              editable={!enCours && porteOuverte}
+              style={{
+                borderWidth: 1,
+                borderColor: erreur ? couleurs.negatif : couleurs.trait,
+                borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
+                paddingHorizontal: espaces.md, paddingVertical: espaces.md,
+                fontFamily: polices.corps, fontSize: textes.corps,
+                color: couleurs.encre,
+              }}
+            />
+
+            <Texte taille={textes.petit} ton="doux" poids="moyen">
               {t.motDePasse}
             </Texte>
 
@@ -289,15 +380,25 @@ export default function Connexion() {
               </Pressable>
             </View>
 
+            {mode === "creer" ? (
+              <Texte
+                taille={textes.legende}
+                ton={motdepasse && !assezLong ? "negatif" : "pale"}
+                style={{ lineHeight: 18 }}
+              >
+                {t.motDePasseConseil}
+              </Texte>
+            ) : null}
+
             {erreur ? (
               <Texte taille={textes.petit} ton="negatif">{erreur}</Texte>
             ) : null}
 
             <Pressable
               onPress={valider}
-              disabled={!motdepasse || enCours || !porteOuverte}
+              disabled={!complet || enCours || !porteOuverte}
               style={({ pressed }) => ({
-                backgroundColor: !motdepasse || !porteOuverte
+                backgroundColor: !complet || !porteOuverte
                   ? couleurs.surface3
                   : pressed ? couleurs.accentAppui : couleurs.accent,
                 borderRadius: rayons.bouton,
@@ -310,12 +411,23 @@ export default function Connexion() {
             >
               {enCours ? <ActivityIndicator size="small" color={couleurs.surface} /> : null}
               <Texte poids="demi" style={{ color: couleurs.surfaceHaute }}>
-                {enCours ? t.verification : t.seConnecter}
+                {enCours ? t.verification
+                  : mode === "creer" ? t.creerUnCompte : t.seConnecter}
               </Texte>
             </Pressable>
           </Carte>
 
           <View style={{ gap: espaces.lg, alignItems: "center" }}>
+            {/* Passer de « je me connecte » à « je crée un compte ». Ce sont
+                les mêmes deux champs : deux écrans auraient été deux fois le
+                même écran. */}
+            <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}>
+              <Texte taille={textes.petit} poids="moyen" ton="doux"
+                     style={{ textDecorationLine: "underline" }}>
+                {mode === "creer" ? t.jAiDejaUnCompte : t.creerUnCompte}
+              </Texte>
+            </Pressable>
+
             {/* La promesse sur le code secret. Elle vit ici, sur l'écran que
                 tout le monde voit, et pas enfouie dans les réglages. */}
             <View style={{ flexDirection: "row", gap: espaces.sm, paddingHorizontal: espaces.sm }}>

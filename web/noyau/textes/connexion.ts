@@ -47,6 +47,30 @@ const en = {
   enregistrer: "Save",
   annuler: "Cancel",
   adresseInvalide: "That is not a web address. It must start with https://",
+
+  // --- Les comptes --------------------------------------------------------
+  courriel: "Email",
+  creerUnCompte: "Create an account",
+  jAiDejaUnCompte: "I already have an account",
+  inscriptionTitre: "Create your account",
+  inscriptionSousTitre:
+    "The first account created is the owner's. The ones after it wait for " +
+    "the owner to open the door.",
+  premierCompte:
+    "No account exists yet. The one you create now will be the owner's.",
+  motDePasseConseil: "At least 12 characters. Length beats complication.",
+  confirmerMotDePasse: "Repeat the password",
+  motsDePasseDifferents: "The two passwords are not the same.",
+  compteCree: "Account created.",
+  compteEnAttenteTitre: "Your account is waiting",
+  compteEnAttenteTexte:
+    "It exists, but it opens nothing yet. The owner has to let you in. " +
+    "Come back once they have.",
+  cleDeSecours: "Use the recovery key",
+  cleDeSecoursAide:
+    "The single password set on the hosting platform. It works even when the " +
+    "accounts database is unreachable — that is what it is for.",
+  retourAuCompte: "Sign in with an account",
 };
 
 const fr: typeof en = {
@@ -84,6 +108,30 @@ const fr: typeof en = {
   enregistrer: "Enregistrer",
   annuler: "Annuler",
   adresseInvalide: "Ce n’est pas une adresse web. Elle doit commencer par https://",
+
+  courriel: "Courriel",
+  creerUnCompte: "Créer un compte",
+  jAiDejaUnCompte: "J’ai déjà un compte",
+  inscriptionTitre: "Créez votre compte",
+  inscriptionSousTitre:
+    "Le premier compte créé est celui du propriétaire. Les suivants attendent " +
+    "qu’il leur ouvre la porte.",
+  premierCompte:
+    "Aucun compte n’existe encore. Celui que vous créez maintenant sera celui " +
+    "du propriétaire.",
+  motDePasseConseil: "Au moins 12 caractères. La longueur vaut mieux que la complication.",
+  confirmerMotDePasse: "Répétez le mot de passe",
+  motsDePasseDifferents: "Les deux mots de passe ne sont pas les mêmes.",
+  compteCree: "Compte créé.",
+  compteEnAttenteTitre: "Votre compte attend",
+  compteEnAttenteTexte:
+    "Il existe, mais il n’ouvre encore rien. C’est au propriétaire de vous " +
+    "laisser entrer. Revenez quand ce sera fait.",
+  cleDeSecours: "Utiliser la clé de secours",
+  cleDeSecoursAide:
+    "Le mot de passe unique posé sur l’hébergement. Il fonctionne même quand " +
+    "la base des comptes est injoignable — c’est précisément à cela qu’il sert.",
+  retourAuCompte: "Se connecter avec un compte",
 };
 
 export const textesConnexion = { en, fr } as const;
