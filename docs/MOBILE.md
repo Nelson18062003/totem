@@ -207,6 +207,37 @@ SMS suivant.
 
 Ces trois règles sont gardées par `tests/test_notification.py`.
 
+### Vérifier que ça sonne, sans attendre un vrai paiement
+
+**Réglages → « Est-ce que mon téléphone sonne ? » → Envoyer un essai.**
+
+Le téléphone doit sonner dans les secondes qui suivent.
+
+Sans ce bouton, il faudrait attendre qu'un vrai client envoie de l'argent
+pour savoir si la chaîne fonctionne — et si elle ne fonctionne pas, chercher
+à l'aveugle : Firebase ? le jeton ? le canal Android ? la permission refusée
+au premier lancement ?
+
+**Ce que l'essai prouve** — le dernier kilomètre, celui qui casse le plus
+souvent :
+
+| | |
+|---|---|
+| ✓ | le jeton de l'appareil est enregistré |
+| ✓ | Expo l'accepte |
+| ✓ | Firebase le relaie |
+| ✓ | Android l'affiche, sur le bon canal, avec le bon son |
+| ✗ | **pas** le robot de Douala : ni le modem, ni la lecture du SMS, ni l'analyse |
+
+**Le ménage au passage.** Expo rend un billet par appareil. Un téléphone
+désinstallé répond « DeviceNotRegistered » : son jeton est alors retiré de la
+base. Sans cette lecture, il y resterait pour toujours, et le compte des
+appareils servis mentirait.
+
+Aucun contenu de paiement ne traverse cet essai — le message ne parle que de
+lui-même. Les trois règles qui protègent les notifications restent donc
+entièrement chez le robot, à un seul endroit.
+
 ### L'inscription d'un téléphone
 
 L'application ne peut pas s'inscrire toute seule dans la base : elle n'a

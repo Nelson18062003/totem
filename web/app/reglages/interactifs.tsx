@@ -702,3 +702,82 @@ export function SectionQui() {
     </section>
   );
 }
+
+/**
+ * « Est-ce que mon téléphone sonne ? »
+ *
+ * Le propriétaire vient d'installer l'application. Lui demander d'attendre un
+ * vrai paiement pour savoir si son téléphone sonnera serait cruel — et s'il
+ * ne sonne pas, il chercherait longtemps, sans savoir par quel bout prendre
+ * la panne : Firebase ? le jeton ? le canal Android ? la permission ?
+ *
+ * Ce bouton répond en trois secondes.
+ *
+ * Il dit aussi ce qu'il NE prouve pas. La chaîne complète va du modem de
+ * Douala jusqu'à l'écran ; cet essai n'en éprouve que le dernier kilomètre.
+ * Le taire laisserait croire que tout est vérifié.
+ */
+export function SectionEssaiNotification() {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  const [etat, setEtat] = useState<"repos" | "envoi">("repos");
+  const [message, setMessage] = useState<string | null>(null);
+  const [rate, setRate] = useState(false);
+
+  async function essayer() {
+    setEtat("envoi");
+    setMessage(null);
+    try {
+      const r = await fetch(`/api/essai-notification?langue=${langue}`, {
+        method: "POST",
+      });
+      const c = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setRate(true);
+        setMessage(c?.erreur ?? t.essaiEchec);
+      } else if (c.aucun) {
+        setRate(true);
+        setMessage(t.essaiAucunAppareil);
+      } else if (c.servis > 0) {
+        setRate(false);
+        setMessage(
+          t.essaiReussi
+          + (c.oublies ? ` (${c.oublies} ${t.essaiOublies})` : ""));
+      } else {
+        setRate(true);
+        // Le détail vient d'Expo, en anglais. On le montre quand même : sans
+        // lui, « rien n'a pu être envoyé » ne dit pas par où chercher.
+        setMessage(
+          t.essaiEchec + (c.soucis?.length ? ` — ${c.soucis.join(" · ")}` : ""));
+      }
+    } catch {
+      setRate(true);
+      setMessage(t.essaiEchec);
+    } finally {
+      setEtat("repos");
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="mb-1 text-heading font-semibold">{t.essai}</h2>
+      <p className="mb-3 text-caption leading-relaxed text-ink-faint">{t.essaiAide}</p>
+      <div className="rounded-card border border-line bg-surface-raised p-4">
+        <button
+          onClick={essayer}
+          disabled={etat === "envoi"}
+          className="w-full rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft transition hover:border-ink-faint disabled:opacity-40"
+        >
+          {etat === "envoi" ? t.essaiEnCours : t.essaiBouton}
+        </button>
+        {message && (
+          <p className={`mt-3 text-caption leading-relaxed ${
+            rate ? "text-negative" : "text-ink-soft"
+          }`}>
+            {message}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}

@@ -681,3 +681,32 @@ export async function supprimerUtilisateur(id: number): Promise<boolean> {
     return false;
   }
 }
+
+/** Les jetons des appareils inscrits — comme le robot les lit.
+ *
+ *  Sert à l'essai de notification : la plateforme doit pouvoir sonner
+ *  elle-même, une fois, pour que le propriétaire sache tout de suite si son
+ *  téléphone répond. Le reste du temps, c'est le robot qui sonne. */
+export async function listerAppareils(): Promise<
+  { jeton: string; nom: string | null; plateforme: string | null }[]
+> {
+  return lire("appareils?select=jeton,nom,plateforme&order=vu_le.desc&limit=20");
+}
+
+/** Oublie un appareil dont Expo dit qu'il n'existe plus.
+ *
+ *  Sans ce ménage, un téléphone désinstallé garde sa ligne pour toujours, et
+ *  chaque notification part vers une adresse morte — jusqu'au jour où l'on
+ *  compte les appareils servis et où le chiffre ment. */
+export async function oublierAppareil(jeton: string): Promise<boolean> {
+  if (!relie || !jeton) return false;
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/appareils?jeton=eq.${encodeURIComponent(jeton)}`,
+      { method: "DELETE", headers: { apikey: cle!, authorization: `Bearer ${cle}` },
+        cache: "no-store" });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
