@@ -55,6 +55,14 @@ console.log("\nL'application ne parle qu'à la plateforme");
 ["/api/session", "/api/donnees", "/api/appareil", "/api/inscription",
  "/api/plateforme", "totem.jeton"].forEach((s) => doitEtre(true, s));
 
+// Les mises à jour à distance sont-elles vraiment branchées ? Sans cette
+// adresse dans le paquet, l'application installée ne saura jamais où
+// chercher une correction — et il faudra réinstaller à la main pour la
+// moindre virgule. La compilation ne le signale pas : elle réussit,
+// simplement l'application est sourde. C'est le genre de manque qu'on ne
+// découvre que le jour où l'on a besoin de corriger vite.
+doitEtre(true, "u.expo.dev");
+
 console.log("\nAUCUN SECRET N'A FUI");
 [
   "SUPABASE_CLE", "SUPABASE_URL", "service_role", "supabase.co",

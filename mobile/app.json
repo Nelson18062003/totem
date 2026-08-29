@@ -13,7 +13,7 @@
     "android": {
       "//package": "DEFINITIF. Ne se change jamais : il identifie l'application dans Android et sur le Play Store. Le changer reviendrait a publier une autre application et a perdre les installations.",
       "package": "com.bonzinilabs.totem",
-      "versionCode": 1,
+      "//versionCode": "RETIRE, et c'est EAS qui le dit : eas.json porte appVersionSource=remote, donc les numeros de version sont tenus par le serveur d'Expo. Une valeur ecrite ici serait ignoree a la compilation tout en restant visible dans le paquet — deux verites pour un seul numero.",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icone-android-avant.png",
         "backgroundColor": "#16171a",
@@ -69,7 +69,19 @@
     "experiments": {
       "typedRoutes": true
     },
+    "//updates": "LES MISES A JOUR A DISTANCE. Une application installee n'a pas besoin d'etre reinstallee a chaque correction : Expo depose la nouvelle version du code sur cette adresse, et l'application la prend au demarrage suivant. Quelques secondes, sans passer par le magasin, sans que personne ne telecharge quoi que ce soit a la main. Cela ne vaut QUE pour le code JavaScript ; changer une brique native (une permission, une bibliotheque) demande toujours une vraie compilation.",
+    "updates": {
+      "url": "https://u.expo.dev/66fbf865-c824-40f0-97f7-b4ecb83ab50f"
+    },
+    "//runtimeVersion": "LE GARDE-FOU des mises a jour a distance. << fingerprint >> : Expo calcule une empreinte de tout ce qui est NATIF dans le projet, et une mise a jour ne rejoint que les applications qui portent la meme. Sans ce garde-fou, une mise a jour ecrite pour une bibliotheque native absente de l'application installee la ferait planter au demarrage — et une application qui plante au demarrage ne peut plus recevoir la correction. Le telephone serait mort pour de bon.",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "extra": {
+      "//eas": "L'identifiant du projet chez Expo, cree une seule fois par la compilation du 29 aout. Il est ECRIT ICI a dessein : tant qu'il manquait, l'etape de rattachement se rejouait a chaque compilation. Ne jamais le changer — il relie l'application a son projet, a ses cles de signature et a ses mises a jour.",
+      "eas": {
+        "projectId": "66fbf865-c824-40f0-97f7-b4ecb83ab50f"
+      },
       "//adressePlateforme": "VIDE, et c'est une lecon apprise. Il y avait ici une adresse d'exemple reprise d'une documentation \u2014 et ce sous-domaine appartenait a quelqu'un d'autre. L'application envoyait donc le mot de passe du proprietaire a un serveur inconnu, en n'affichant qu'un << connexion impossible >> incomprehensible. Une adresse par defaut fausse est PIRE que pas d'adresse du tout : sans adresse, l'application la demande poliment au premier lancement ; avec une fausse, elle se trompe en silence. N'ecrire ici une adresse que le jour ou elle est verifiee, et jamais un exemple.",
       "adressePlateforme": ""
     },

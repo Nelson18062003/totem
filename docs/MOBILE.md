@@ -356,6 +356,55 @@ secret).
 
 ---
 
+## 6 bis. Mettre à jour, ensuite
+
+Deux chemins, et ils ne servent pas à la même chose.
+
+### Le chemin court : la mise à jour à distance (une minute)
+
+Actions → **« Mise à jour »** → Run workflow → canal `apercu`.
+
+Le nouveau code part chez Expo. Les téléphones déjà installés le prennent
+**au prochain démarrage de l'application**. Rien à réinstaller, rien à
+télécharger à la main, personne à prévenir.
+
+C'est le chemin de tous les jours : les écrans, les textes, les couleurs,
+les calculs, les corrections de bugs. L'écrasante majorité du travail.
+
+### Le chemin long : une nouvelle compilation (vingt minutes)
+
+Actions → **« Application Android »** → Run workflow → profil `apercu`.
+
+Obligatoire dès qu'une brique **native** bouge :
+
+- une permission Android ajoutée ou retirée ;
+- une bibliothèque nouvelle (`expo-notifications`, `expo-updates`…) ;
+- le fichier `google-services.json` de Firebase ;
+- la version d'Android visée.
+
+### On ne peut pas se tromper de chemin
+
+`app.json` porte `runtimeVersion: { policy: "fingerprint" }`. Expo calcule une
+empreinte de tout ce qui est natif dans le projet, et **une mise à jour ne
+rejoint que les applications qui portent la même empreinte**.
+
+Si vous poussez par le chemin court du code qui réclame une brique native
+absente du téléphone, il ne la recevra tout simplement pas. C'est très
+volontaire : la recevoir la ferait planter au démarrage, et une application
+qui plante au démarrage **ne peut plus recevoir la correction**. Le téléphone
+serait mort pour de bon.
+
+### Le premier paquet ne reçoit rien
+
+Un détail qui se paie cher si on l'ignore : `expo-updates` est une brique
+native. **L'APK compilé avant son installation ne sait pas qu'il existe** et
+ne recevra jamais aucune mise à jour à distance.
+
+Il faut donc **une compilation complète** après ce changement. Celle-là, et
+toutes celles d'après, savent écouter.
+
+---
+
 ## 7. L'iPhone
 
 L'inscription au programme Apple prend **deux à quatre semaines** pour une
