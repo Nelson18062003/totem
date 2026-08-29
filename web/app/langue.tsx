@@ -5,7 +5,7 @@
 // par le crochet `useLangue()`.
 
 import { createContext, useContext } from "react";
-import { COOKIE_LANGUE, LANGUE_DEFAUT, LANGUES, type Langue } from "@/lib/langue";
+import { COOKIE_LANGUE, LANGUE_DEFAUT, LANGUES, type Langue } from "@noyau/langue";
 
 const ContexteLangue = createContext<Langue>(LANGUE_DEFAUT);
 

@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "TOTEM",
+    "slug": "totem",
+    "//owner": "Le compte Expo QUI POSSEDE le projet. Sans cette ligne, Expo prend le compte de celui qui lance la commande \u2014 et en integration continue, c'est le robot. Le projet atterrirait alors sous un compte personnel, hors de portee du jeton de l'organisation, et la compilation echouerait sur une erreur d'autorisation difficile a lire.",
+    "owner": "bonzinilabss-team",
+    "version": "1.0.0",
+    "orientation": "default",
+    "scheme": "totem",
+    "//userInterfaceStyle": "La plateforme web est en clair uniquement (aucun prefers-color-scheme dans globals.css). L'application la suit : deux TOTEM qui ne se ressemblent pas seraient deux produits.",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/images/icone.png",
+    "android": {
+      "//package": "DEFINITIF. Ne se change jamais : il identifie l'application dans Android et sur le Play Store. Le changer reviendrait a publier une autre application et a perdre les installations.",
+      "package": "com.bonzinilabs.totem",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icone-android-avant.png",
+        "backgroundColor": "#16171a",
+        "monochromeImage": "./assets/images/icone-android-avant.png"
+      },
+      "//permissions": "La liste est VIDE, et c'est un choix. Les SMS sont lus par le modem de Douala, jamais par le telephone : READ_SMS et RECEIVE_SMS sont des autorisations restreintes qui declenchent un formulaire de justification et, presque toujours, un refus. Ne jamais les ajouter, meme pour essayer.",
+      "permissions": [],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": true,
+      "resizeableActivity": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.bonzinilabs.totem",
+      "buildNumber": "1",
+      "supportsTablet": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/demarrage.png",
+          "imageWidth": 96,
+          "backgroundColor": "#f4efe9",
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "//": "Depuis le 31 aout 2026, une nouvelle application doit viser Android 16 (API 36) pour entrer sur le Play Store. On le pose explicitement des la premiere compilation plutot que de dependre d'une valeur par defaut qui bougera.",
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "//adressePlateforme": "L'adresse de la plateforme que l'application interroge. Une compilation d'essai peut viser une preversion sans toucher au code.",
+      "adressePlateforme": "https://totem.vercel.app"
+    },
+    "//orientation": "\u00ab default \u00bb et non \u00ab portrait \u00bb, a dessein. Depuis Android 16 (API 36), le systeme IGNORE le verrouillage d'orientation des que la fenetre fait 600 dp ou plus \u2014 tablette, ecran interieur d'un pliable, ecran partage \u2014 et sous l'API 37 il n'y aura plus d'echappatoire. Verrouiller ne servirait donc qu'a se mentir : autant dessiner pour toutes les tailles, ce que fait src/ecran.ts."
+  }
+}

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESSION, verifierSession } from "@/lib/session";
-import { COOKIE_LANGUE, langueDe } from "@/lib/langue";
+import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 
 // Le verrou de la plateforme. Tant que `SESSION_SECRET` n'est pas défini, il
 // n'y a AUCUN verrou (utile en développement local) — mais dès qu'on le pose
@@ -8,7 +8,18 @@ import { COOKIE_LANGUE, langueDe } from "@/lib/langue";
 // ne se lit ni ne s'appelle sans une session valide.
 //
 // Ce qui reste toujours ouvert : la page de connexion et sa route.
-const OUVERT = ["/connexion", "/api/connexion", "/api/deconnexion"];
+// `/api/session` est la porte de l'application du téléphone : comme l'écran
+// de connexion, elle doit rester ouverte — on ne peut pas exiger une session
+// de celui qui vient justement en demander une.
+const OUVERT = ["/connexion", "/api/connexion", "/api/deconnexion", "/api/session"];
+
+/** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
+function jetonPorte(req: NextRequest): string | undefined {
+  const porte = req.headers.get("authorization");
+  if (!porte) return undefined;
+  const [schema, valeur] = porte.split(" ");
+  return schema?.toLowerCase() === "bearer" && valeur ? valeur : undefined;
+}
 
 export async function middleware(req: NextRequest) {
   const secret = process.env.SESSION_SECRET || "";
@@ -19,7 +30,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const jeton = req.cookies.get(COOKIE_SESSION)?.value;
+  // Deux façons de présenter la MÊME session, selon qui frappe :
+  //   — le navigateur l'a dans un cookie, posé par le serveur ;
+  //   — l'application du téléphone la porte dans l'en-tête « Authorization »,
+  //     parce qu'un téléphone n'a pas de cookie à offrir.
+  // Le jeton est identique dans les deux cas, et vérifié par la même
+  // signature : ajouter cette porte n'affaiblit rien, et le chemin du
+  // navigateur n'est pas touché.
+  const jeton = req.cookies.get(COOKIE_SESSION)?.value ?? jetonPorte(req);
   if (await verifierSession(secret, jeton)) return NextResponse.next();
 
   // Une API répond « connexion requise » (le navigateur gère) ; une page

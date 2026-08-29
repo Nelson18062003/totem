@@ -1,0 +1,81 @@
+// Ce que le réseau demande — la lecture mise à l'épreuve.
+//
+//     node --test noyau/tests/
+//
+// Ces tests gardent la décision la plus coûteuse de l'application : ouvrir
+// le pavé du code secret, ou pas. Se tromper dans un sens ouvre le pavé sur
+// une question ordinaire ; se tromper dans l'autre fait taper le code dans
+// une zone de texte, où il s'affiche et reste. Les messages ci-dessous sont
+// de VRAIS textes d'opérateurs camerounais, dans les deux langues.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { champPourQuestion, demandeUnCode } from "../ussd.ts";
+
+test("le code secret est reconnu, en français comme en anglais", () => {
+  for (const message of [
+    "Entrez votre code secret",
+    "Veuillez saisir votre code PIN",
+    "Enter your PIN",
+    "Please enter your secret code",
+    "Entrez votre mot de passe MoMo",
+    "Saisissez votre code confidentiel",
+    "Enter passcode to confirm",
+  ]) {
+    assert.equal(demandeUnCode(message), true, message);
+  }
+});
+
+test("un MENU n'est jamais une demande de code, même s'il contient le mot", () => {
+  // Le piège : le menu MTN parle de « code » dans une de ses options. Sans
+  // la garde sur les listes numérotées, le pavé s'ouvrirait ici — et le
+  // propriétaire taperait son code secret en guise de choix de menu.
+  for (const menu of [
+    "1. Envoyer argent\n2. Retirer\n3. Mon code\n4. Solde",
+    "1) Transfer\n2) Withdraw\n3) Change PIN\n4) Balance",
+    "Choisissez:\n1. Depot\n2. Code secret\n3. Retour",
+  ]) {
+    assert.equal(demandeUnCode(menu), false, menu.split("\n")[0]);
+  }
+});
+
+test("une question ordinaire n'ouvre pas le pavé", () => {
+  for (const message of [
+    "Entrez le numero du beneficiaire",
+    "Enter amount",
+    "Transaction reussie. Nouveau solde: 412500 FCFA",
+    "",
+  ]) {
+    assert.equal(demandeUnCode(message), false, message || "(vide)");
+  }
+});
+
+const champs = [
+  { cle: "numero", type: "numero" as const },
+  { cle: "montant", type: "montant" as const },
+];
+
+test("la question du réseau trouve le champ qui y répond", () => {
+  const cas: [string, string | undefined][] = [
+    ["Entrez le numero du beneficiaire", "numero"],
+    ["Enter recipient phone number", "numero"],
+    ["Numero de l'agent :", "numero"],
+    ["Entrez le montant", "montant"],
+    ["Enter amount to send", "montant"],
+    ["How much do you want to send?", "montant"],
+    // Une question qu'on ne comprend pas ne se devine PAS : on rend la main.
+    ["Confirmez-vous cette operation ?", undefined],
+    ["Veuillez patienter", undefined],
+  ];
+  for (const [question, attendu] of cas) {
+    assert.equal(champPourQuestion(question, champs)?.cle, attendu, question);
+  }
+});
+
+test("un champ déjà consommé ne resert pas", () => {
+  // Le réseau redemande un numéro alors qu'on l'a déjà donné : sans cette
+  // règle, on renverrait la même valeur en boucle au lieu de rendre la main.
+  const restants = champs.filter((c) => c.cle !== "numero");
+  assert.equal(champPourQuestion("Entrez le numero", restants), undefined);
+  assert.equal(champPourQuestion("Entrez le montant", restants)?.cle, "montant");
+});

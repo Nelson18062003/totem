@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { textesGuichet } from "@/lib/textes/guichet";
+import { textesGuichet } from "@noyau/textes/guichet";
 import { useLangue } from "./langue";
 
 /**

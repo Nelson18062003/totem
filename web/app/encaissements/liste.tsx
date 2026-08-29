@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLangue } from "@/app/langue";
-import { textesSms } from "@/lib/textes/sms";
-import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { textesSms } from "@noyau/textes/sms";
+import { type Categorie, fcfa, type Paiement } from "@noyau/types";
 // La fiche d'un SMS et ses pastilles vivent dans un module partagé : la même
 // fiche s'ouvre ici et depuis les derniers SMS de l'accueil.
 import { catDe, CatIcone, classeCat, FicheSms, texteSurEcran } from "../fiche-sms";

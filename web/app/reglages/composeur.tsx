@@ -37,8 +37,8 @@ import {
   decouperEnBlocs,
   recomposer,
   verdictCode,
-} from "@/lib/codes";
-import { textesReglages } from "@/lib/textes/reglages";
+} from "@noyau/codes";
+import { textesReglages } from "@noyau/textes/reglages";
 import { IconBank, IconPhone, IconWallet } from "../icons";
 import { useLangue } from "../langue";
 

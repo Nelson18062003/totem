@@ -1,6 +1,6 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import { textesUssd } from "@/lib/textes/ussd";
+import { textesUssd } from "@noyau/textes/ussd";
 import { Vide } from "../vide";
 import { ConsoleUssd } from "./console";
 

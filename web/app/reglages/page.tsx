@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import { textesReglages } from "@/lib/textes/reglages";
+import { textesReglages } from "@noyau/textes/reglages";
 import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
 import {
   Bascule,

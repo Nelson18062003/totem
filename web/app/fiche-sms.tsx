@@ -3,9 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
-import { NATURES as NATURES_CHOISIES } from "@/lib/natures";
-import { textesSms } from "@/lib/textes/sms";
-import { type Categorie, fcfa, type Paiement } from "@/lib/types";
+import { NATURES } from "@noyau/natures";
+import {
+  categorieDe, estArgent, LONG_MESSAGE, texteSurEcran,
+} from "@noyau/sms";
+import { textesSms } from "@noyau/textes/sms";
+import { type Categorie, fcfa, type Paiement } from "@noyau/types";
 import { Feuille } from "./feuille";
 import {
   IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
@@ -59,33 +62,10 @@ const SCHEMA_CAT: Partial<Record<Categorie, string>> = {
 export const classeCat = (c: Categorie): string =>
   SCHEMA_CAT[c] ?? "border border-line text-ink-soft";
 
-// Les natures que le propriétaire peut choisir à la main (elles donnent un
-// reçu) — la liste partagée avec les guichets d'API, miroir du terminal.
-const NATURES: readonly Categorie[] = NATURES_CHOISIES;
-
-// La catégorie effective : la nature choisie par le propriétaire l'emporte sur
-// la catégorie devinée par le terminal.
-export const catDe = (p: Paiement): Categorie => p.nature ?? p.categorie;
-
-// Un SMS d'argent : il porte un montant, ou sa catégorie est un mouvement.
-// C'est LUI seul qui a droit à un reçu — jamais une publicité, jamais un code.
-const ARGENT: Categorie[] = [...NATURES, "encaissement", "envoi"];
-export const estArgent = (p: Paiement): boolean =>
-  p.montant != null || ARGENT.includes(catDe(p));
-
-// Seconde ligne de défense : le robot masque les codes à usage unique avant
-// de les transmettre, mais l'écran ne fait pas aveuglément confiance à la
-// base — une ligne d'avant le masquage remasque ses chiffres à l'affichage.
-// La catégorie DEVINÉE suffit à déclencher le masque : une nature posée à la
-// main ne doit jamais déshabiller un code — c'est une défense, pas un habit.
-export const texteSurEcran = (p: Paiement): string =>
-  p.categorie === "code" || catDe(p) === "code"
-    ? p.smsBrut.replace(/\d(?:[\s.-]?\d){2,9}/g, "••••••")
-    : p.smsBrut;
-
-// Au-delà de cette taille, la fiche replie le message : la preuve reste à un
-// geste, mais elle ne chasse plus les détails de l'écran.
-const LONG_MESSAGE = 380;
+// Les règles — quelle catégorie fait foi, qui a droit à un reçu, et le
+// masquage des codes — vivent dans le noyau, partagées avec le téléphone.
+// Ici on ne garde que le DESSIN.
+export { categorieDe as catDe, estArgent, texteSurEcran };
 
 /**
  * La fiche d'un SMS — une feuille (jamais un écran entier) : l'essentiel en
@@ -348,7 +328,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           sortie quand le robot n'a pas su lire un SMS d'argent. Elle était
           réservée à « inconnu » — une valeur que le robot n'émet jamais —
           et le propriétaire restait sans recours devant son propre argent. */}
-      {(argent || ["inconnu", "illisible", "echec", "message"].includes(catDe(p))) && (
+      {(argent || ["inconnu", "illisible", "echec", "message"].includes(categorieDe(p))) && (
           <div className="border-t border-line py-2.5">
             {choisirType ? (
               <>
@@ -376,7 +356,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
                 <span className="text-small text-ink-soft">{t.typeTitre}</span>
                 <span className="flex items-center gap-2">
                   <span className="flex items-center gap-1.5 text-small font-medium">
-                    <CatIcone c={catDe(p)} size={14} /> {t.cat[catDe(p)]}
+                    <CatIcone c={categorieDe(p)} size={14} /> {t.cat[categorieDe(p)]}
                   </span>
                   <button onClick={() => setChoisirType(true)}
                     className="text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink">

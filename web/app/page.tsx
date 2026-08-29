@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
-import { textesAccueil } from "@/lib/textes/accueil";
+import { textesAccueil } from "@noyau/textes/accueil";
 import { AccueilGuichet } from "./accueil-client";
 import { DerniersSms } from "./derniers-sms";
 import { BasculeLangue } from "./langue";

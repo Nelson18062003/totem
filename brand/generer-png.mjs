@@ -53,6 +53,22 @@ const travaux = [
   ["totem-icone-app.svg", "../web/app/apple-icon.png", 180, null, 0],
   ["totem-icone-app.svg", "../web/public/icone-192.png", 192, null, 0],
   ["totem-icone-app.svg", "../web/public/icone-512.png", 512, null, 0],
+  // Les icones que consomme l'application du telephone.
+  //
+  // Elles sortent d'ici, comme celles du web : le symbole reste decrit une
+  // seule fois, dans generer.py. On ne le redessine pas pour Android.
+  //
+  // `icone.png` : l'icone pleine, fond encre incruste (1024, ce qu'exigent
+  // les deux magasins).
+  //
+  // `icone-android-avant.png` : l'avant-plan de l'icone adaptative
+  // d'Android. Le lanceur la rogne en rond, en goutte ou en carre selon le
+  // telephone, et ne garantit que les 66 % centraux. D'ou la marge de 22 % :
+  // le symbole reste entier quelle que soit la decoupe. Fond transparent —
+  // la couleur vient d'`app.json`.
+  ["totem-icone-app.svg", "../mobile/assets/images/icone.png", 1024, null, 0],
+  ["totem-symbole-reserve.svg", "../mobile/assets/images/icone-android-avant.png", 1024, null, 22],
+  ["totem-symbole.svg", "../mobile/assets/images/demarrage.png", 512, null, 0],
 ];
 
 // Le proxy sortant de l'environnement ne doit pas intercepter le rendu local.

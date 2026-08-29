@@ -1,8 +1,8 @@
-import { variablesInconnues } from "@/lib/codes";
-import { estNature } from "@/lib/natures";
+import { variablesInconnues } from "@noyau/codes";
+import { estNature } from "@noyau/natures";
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { erreurApi } from "@/lib/textes/api";
+import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
 

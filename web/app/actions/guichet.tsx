@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { etapesGeste } from "@/lib/codes";
-import { textesGuichet } from "@/lib/textes/guichet";
-import type { RaccourciAppris, Sim } from "@/lib/types";
+import { etapesGeste } from "@noyau/codes";
+import { textesGuichet } from "@noyau/textes/guichet";
+import type { RaccourciAppris, Sim } from "@noyau/types";
 import {
   IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash,
   IconInbox, IconPhone, IconRefresh, IconWallet,
