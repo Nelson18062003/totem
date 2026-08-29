@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test \"noyau/tests/*.test.ts\""
+    "test": "node --import ./noyau/tests/resolveur.mjs --test \"noyau/tests/*.test.ts\""
   },
   "dependencies": {
     "next": "16.2.10",

@@ -20,6 +20,7 @@ import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
 import { OperationPopup, type Operation } from "@/operation";
+import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
@@ -45,6 +46,7 @@ export default function Accueil() {
   const [choisie, setChoisie] = useState<string | null>(null);
   const active = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const [operation, setOperation] = useState<Operation | null>(null);
+  const [smsOuvert, setSmsOuvert] = useState<Paiement | null>(null);
 
   // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
   // jamais APPARAÎTRE puis se cacher — dans ce sens-là, c'est trop tard.
@@ -165,7 +167,8 @@ export default function Accueil() {
               {derniers.map((p, i) => (
                 <View key={p.id}>
                   {i > 0 ? <Filet /> : null}
-                  <LigneSms paiement={p} langue={langue} />
+                  <LigneSms paiement={p} langue={langue}
+                            onPress={() => setSmsOuvert(p)} />
                 </View>
               ))}
             </Carte>
@@ -244,6 +247,11 @@ export default function Accueil() {
         <OperationPopup operation={operation} onFermer={() => setOperation(null)}
                         onTermine={recharger} />
       ) : null}
+
+      {smsOuvert ? (
+        <FicheSms paiement={smsOuvert} onFermer={() => setSmsOuvert(null)}
+                  onChange={recharger} />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -317,22 +325,24 @@ function BoutonGeste({ libelle, icone, onPress }: {
 }
 
 /** Une ligne de message : la nature d'un coup d'œil, le nom, le montant. */
-function LigneSms({ paiement: p, langue }: { paiement: Paiement; langue: "en" | "fr" }) {
+function LigneSms({ paiement: p, langue, onPress }: {
+  paiement: Paiement; langue: "en" | "fr"; onPress: () => void;
+}) {
   const entree = p.sens === "in";
   const sortie = p.sens === "out";
-  const fond = entree ? "#e7f5ec"
-    : p.categorie === "publicite" ? "#fdf3d6" : couleurs.surface2;
-  const teinte = entree ? couleurs.positif
-    : p.categorie === "publicite" ? couleurs.alerte : couleurs.encreDouce;
-  const icone: NomIcone = entree ? "ArrowDown"
-    : sortie ? "ArrowUp" : p.categorie === "publicite" ? "Megaphone" : "Bubble";
+  const schema = couleursCategorie(p.nature ?? p.categorie);
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md,
-                   padding: espaces.lg }}>
+    <Pressable onPress={onPress}
+               style={({ pressed }) => ({
+                 flexDirection: "row", alignItems: "center", gap: espaces.md,
+                 padding: espaces.lg,
+                 backgroundColor: pressed ? couleurs.surface2 : "transparent",
+               })}>
       <View style={{ width: 34, height: 34, borderRadius: rayons.petit,
-                     backgroundColor: fond, alignItems: "center", justifyContent: "center" }}>
-        <Icone nom={icone} taille={15} couleur={teinte} />
+                     backgroundColor: schema.fond, alignItems: "center",
+                     justifyContent: "center" }}>
+        <Icone nom={iconeCat(p.nature ?? p.categorie)} taille={15} couleur={schema.encre} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs }}>
@@ -354,6 +364,6 @@ function LigneSms({ paiement: p, langue }: { paiement: Paiement; langue: "en" | 
           {entree ? "+" : sortie ? "−" : ""}{fcfa(p.montant, langue)}
         </Texte>
       ) : null}
-    </View>
+    </Pressable>
   );
 }

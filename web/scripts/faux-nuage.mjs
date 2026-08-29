@@ -58,6 +58,14 @@ const TABLES = {
       texte: "Transfert de 5 000 FCFA vers BOUTIQUE AKWA effectue. Frais: 100 FCFA. Solde: 87 300 FCFA.",
       categorie: "envoi", nature: null,
       emis_le: il_y_a(95), recu_le: il_y_a(95), lu_le: il_y_a(90) },
+    { id: 4, source_id: 4, expediteur: "MTN", terminal: "douala-faux",
+      compte: "MTN ·8901", carte: "89237010000000008901", sens: null,
+      montant: null, tiers: null, numero: null, reference: null, solde_apres: null,
+      // Une ligne ECRITE AVANT le masquage du robot : elle porte le code en
+      // clair. C'est exactement le cas que l'ecran doit rattraper.
+      texte: "Votre code de confirmation est 483921. Ne le communiquez a personne.",
+      categorie: "code", nature: null,
+      emis_le: il_y_a(45), recu_le: il_y_a(45), lu_le: null },
     { id: 1, source_id: 1, expediteur: "MTN", terminal: "douala-faux",
       compte: "MTN ·8901", carte: "89237010000000008901", sens: null,
       montant: null, tiers: null, numero: null, reference: null, solde_apres: null,

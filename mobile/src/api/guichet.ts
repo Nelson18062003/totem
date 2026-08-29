@@ -122,6 +122,23 @@ export function lireCommande(id: number): Promise<{ etat: string; resultat: stri
   return demander(`/api/commande/${id}`);
 }
 
+/** Classe un SMS : le propriétaire décide sa nature, pour l'affichage et le
+ *  reçu. `null` le remet à « non classé ».
+ *
+ *  L'identifiant est celui de la LIGNE en base (`p.id`), pas `sourceId` :
+ *  c'est une métadonnée d'affichage, posée sur la ligne, et le robot ne
+ *  réécrit jamais une ligne déjà transmise. */
+export function definirNature(id: number, nature: string | null): Promise<{ ok: true }> {
+  return demander("/api/nature", {
+    method: "POST", body: JSON.stringify({ id, nature }),
+  });
+}
+
+/** Le propriétaire vient d'ouvrir la fiche d'un SMS : il est lu. */
+export function marquerLu(id: number): Promise<{ ok: true }> {
+  return demander("/api/lu", { method: "POST", body: JSON.stringify({ id }) });
+}
+
 /** Le pouls : le dernier SMS connu, et le nombre de non-lus. */
 export function actualite(): Promise<{ dernier: number; nonLus: number }> {
   return demander("/api/actualite");

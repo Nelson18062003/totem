@@ -54,6 +54,9 @@ for (const [nom, w, h] of FORMATS) {
   await page.getByText("Sign in", { exact: true }).last().click();
   await page.waitForTimeout(3800);
   await page.screenshot({ path: `/tmp/totem-f-${nom}.png` });
+  // La boîte de réception : c'est là que le SMS à code s'affiche.
+  await page.goto("http://127.0.0.1:3210/encaissements", { waitUntil: "networkidle" });
+  await page.waitForTimeout(2500);
   const m = await page.evaluate(() => ({
     debord: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     coupe: [...document.querySelectorAll("*")].filter((e) => {
@@ -86,11 +89,19 @@ for (const [nom, w, h] of FORMATS) {
         return true;
       })
       .map((e) => (e.textContent || "").trim().slice(0, 22)),
+    // Le texte entier de l'écran, pour la garde ci-dessous.
+    texte: document.body.innerText,
   }));
   const cls = w >= 840 ? "étendue" : w >= 600 ? "moyenne" : "compacte";
-  const ok = !m.debord && !m.coupe && !m.tronque.length;
+  // LA GARDE. Le faux nuage sert un SMS portant « 483921 » en clair —
+  // une ligne écrite avant que le robot n'apprenne à masquer. Aucun écran ne
+  // doit le montrer : ni la fiche, ni la LISTE. Le masque a déjà manqué une
+  // fois à la liste ; ce contrôle est là pour que ça ne repasse pas.
+  const codeNu = m.texte.includes("483921");
+  const ok = !m.debord && !m.coupe && !m.tronque.length && !codeNu;
   console.log(`  ${nom.padEnd(16)} ${String(w).padStart(4)}×${String(h).padEnd(4)} ${cls.padEnd(9)}` +
-    ` débord ${m.debord}  hors-cadre ${m.coupe}  coupé ${m.tronque.length}  ${ok ? "✓" : "⚠️"}` +
+    ` débord ${m.debord}  hors-cadre ${m.coupe}  coupé ${m.tronque.length}` +
+    `  code nu ${codeNu ? "⚠️ OUI" : "non"}  ${ok ? "✓" : "⚠️"}` +
     (m.tronque.length ? ` → ${m.tronque.slice(0, 3).join(" | ")}` : "") +
     (soucis.length ? ` ERREUR ${soucis[0]}` : ""));
   await page.close();

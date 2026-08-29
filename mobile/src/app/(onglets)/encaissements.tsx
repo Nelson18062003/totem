@@ -12,6 +12,8 @@ import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-na
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Carte, Filet, Texte } from "@/ui";
+import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
+import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
 import { Entree } from "@/animations";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -31,6 +33,7 @@ export default function Encaissements() {
   const [recherche, setRecherche] = useState("");
   const [carte, setCarte] = useState<string | null>(null);       // null = toutes
   const [categorie, setCategorie] = useState<Categorie | null>(null);
+  const [ouvert, setOuvert] = useState<Paiement | null>(null);
 
   const paiements = donnees?.paiements ?? [];
   const sims = donnees?.sims ?? [];
@@ -144,7 +147,8 @@ export default function Encaissements() {
                 {j.lignes.map((p, i) => (
                   <View key={p.id}>
                     {i > 0 ? <Filet /> : null}
-                    <Ligne paiement={p} langue={langue} />
+                    <Ligne paiement={p} langue={langue}
+                           onPress={() => setOuvert(p)} />
                   </View>
                 ))}
               </Carte>
@@ -152,6 +156,11 @@ export default function Encaissements() {
           </Entree>
         ))}
       </ScrollView>
+
+      {ouvert ? (
+        <FicheSms paiement={ouvert} onFermer={() => setOuvert(null)}
+                  onChange={recharger} />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -205,21 +214,24 @@ function iconeDe(c: Categorie): NomIcone {
 }
 
 /** Une ligne : la pastille de nature, l'entête, le message, le montant. */
-function Ligne({ paiement: p, langue }: { paiement: Paiement; langue: "en" | "fr" }) {
+function Ligne({ paiement: p, langue, onPress }: {
+  paiement: Paiement; langue: "en" | "fr"; onPress: () => void;
+}) {
   const entree = p.sens === "in";
   const sortie = p.sens === "out";
-  const fond = entree ? "#e7f5ec"
-    : p.categorie === "publicite" ? "#fdf3d6" : couleurs.surface2;
-  const teinte = entree ? couleurs.positif
-    : p.categorie === "publicite" ? couleurs.alerte : couleurs.encreDouce;
+  const schema = couleursCategorie(p.nature ?? p.categorie);
 
   return (
-    <View style={{ flexDirection: "row", gap: espaces.md, padding: espaces.lg }}>
+    <Pressable onPress={onPress}
+               style={({ pressed }) => ({
+                 flexDirection: "row", gap: espaces.md, padding: espaces.lg,
+                 backgroundColor: pressed ? couleurs.surface2 : "transparent",
+               })}>
       <View style={{
-        width: 36, height: 36, borderRadius: rayons.petit, backgroundColor: fond,
+        width: 36, height: 36, borderRadius: rayons.petit, backgroundColor: schema.fond,
         alignItems: "center", justifyContent: "center",
       }}>
-        <Icone nom={iconeDe(p.categorie)} taille={16} couleur={teinte} />
+        <Icone nom={iconeCat(p.nature ?? p.categorie)} taille={16} couleur={schema.encre} />
       </View>
 
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -246,12 +258,16 @@ function Ligne({ paiement: p, langue }: { paiement: Paiement; langue: "en" | "fr
         ) : (
           // Sans partie humaine (publicité, information), c'est le message
           // lui-même qui prend la place — mot pour mot.
+          // MASQUÉ, comme dans la fiche. La défense contre les codes à
+          // usage unique ne vaut que si elle est posée PARTOUT où le texte
+          // s'affiche : une liste qui montre le code en clair annule le
+          // masquage de la fiche.
           <Texte ton="doux" taille={textes.petit} numberOfLines={2}
                  style={{ lineHeight: 20 }}>
-            {p.smsBrut}
+            {texteSurEcran(p)}
           </Texte>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
