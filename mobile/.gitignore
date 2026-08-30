@@ -23,6 +23,12 @@ expo-env.d.ts
 google-services.json
 GoogleService-Info.plist
 
+# La cle du compte de service Google Play, qui autorise le depot automatique
+# au magasin. Elle arrive par un secret GitHub, le temps d'un envoi, et le
+# robot l'efface aussitot. Qui la tient peut publier a la place du
+# proprietaire : elle n'a rien a faire ici.
+google-play.json
+
 # Metro
 .metro-health-check*
 

@@ -94,8 +94,34 @@ const cible = join(brand, "../boutique/presentation-1024x500.png");
 // `omitBackground: false` : le PNG doit être OPAQUE. Une transparence
 // donnerait un fond noir ou blanc imprévisible selon l'écran de Google.
 await page.screenshot({ path: cible, omitBackground: false });
+
+// L'ICÔNE DE LA FICHE — 512 × 512, CARRÉE ET OPAQUE.
+//
+// Ce n'est pas l'icône du téléphone, et c'est le piège. Sur l'appareil,
+// l'icône porte ses angles arrondis (`rx="7.2"`). Le magasin, lui, arrondit
+// LUI-MÊME : livrer une icône déjà arrondie laisse quatre coins
+// transparents que Google rogne une seconde fois, et la vignette sort avec
+// des angles sales ou noirs selon l'écran. On remet donc l'angle à zéro —
+// même dessin, carré plein, fond incrusté.
+const icone = readFileSync(join(brand, "totem-icone-app.svg"), "utf8")
+  .replace('rx="7.2"', 'rx="0"');
+const pageIcone = await navigateur.newPage({
+  viewport: { width: 512, height: 512 }, deviceScaleFactor: 1,
+});
+await pageIcone.setContent(
+  `<style>*{margin:0;padding:0}`
+  + `body{width:512px;height:512px;background:${ENCRE};overflow:hidden}`
+  + `svg{display:block;width:512px;height:512px}</style>` + icone);
+await pageIcone.waitForTimeout(200);
+await pageIcone.screenshot({
+  path: join(brand, "../boutique/icone-512x512.png"), omitBackground: false,
+});
+
 await navigateur.close();
 
 console.log("  ✓ boutique/presentation-1024x500.png");
 console.log("    1024 × 500, opaque, marque et phrase au centre (les bords");
 console.log("    seront rognés par Google).");
+console.log("  ✓ boutique/icone-512x512.png");
+console.log("    512 × 512, carrée, opaque — SANS angles arrondis : c'est le");
+console.log("    magasin qui les arrondit.");
