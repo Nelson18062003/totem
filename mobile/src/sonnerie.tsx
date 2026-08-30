@@ -20,7 +20,7 @@
 // sans notification, on la consulte simplement soi-même.
 
 import { useEffect } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Appareil from "expo-device";
 import Constants from "expo-constants";
@@ -183,13 +183,96 @@ export async function inscrireLAppareil(): Promise<EtatSonnerie> {
  * (réinstallation, restauration de sauvegarde), et l'inscription rafraîchit
  * aussi la date de dernière vue.
  */
+/** Les cas où RÉESSAYER a un sens. Les autres ne changeront pas tout seuls :
+ *  une permission refusée se rend dans les réglages du téléphone, un projet
+ *  non rattaché se répare à la compilation, un émulateur reste un émulateur.
+ *  Insister ne ferait qu'user la batterie. */
+const A_REESSAYER: ReadonlySet<EtatSonnerie> = new Set(["echec", "sansJeton"]);
+
+/** Les attentes entre deux tentatives. Elles s'allongent : un réseau qui
+ *  revient revient vite, et s'il ne revient pas, on cesse de le harceler. */
+const ATTENTES = [2_000, 5_000, 15_000, 60_000];
+
+/** Une seule inscription à la fois, et pas deux à la suite. Sans ces deux
+ *  garde-fous, un retour à l'écran pendant un réessai en lancerait un
+ *  second, et l'écoute du jeton pourrait boucler sur elle-même. */
+let enCours = false;
+let derniereTentative = 0;
+const REPOS = 20_000;
+
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Inscrire ce téléphone, et INSISTER tant que cela peut encore marcher.
+ *
+ * POURQUOI CETTE FONCTION EXISTE. L'inscription ne se tentait qu'UNE fois,
+ * à l'ouverture de la session, et abandonnait pour toujours au premier
+ * échec. Un réseau absent une seconde à ce moment-là, et le téléphone ne
+ * sonnait plus jamais — sans que rien ne le dise, sinon une ligne dans les
+ * réglages et un bouton « Inscrire ce téléphone » qu'il fallait deviner.
+ *
+ * Aucune application ne demande cela. Ce bouton était l'aveu que
+ * l'inscription ne se réparait pas toute seule. Elle se répare maintenant.
+ */
+export async function inscrireAvecPatience(force = false): Promise<EtatSonnerie> {
+  if (enCours) return "echec";
+  if (!force && Date.now() - derniereTentative < REPOS) return "echec";
+  enCours = true;
+  derniereTentative = Date.now();
+  try {
+    let etat = await inscrireLAppareil();
+    for (const attente of ATTENTES) {
+      if (!A_REESSAYER.has(etat)) break;
+      await dormir(attente);
+      etat = await inscrireLAppareil();
+    }
+    return etat;
+  } catch {
+    return "echec";
+  } finally {
+    enCours = false;
+  }
+}
+
+/**
+ * Le branchement, posé une fois la session ouverte.
+ *
+ * L'inscription attend la connexion à dessein : la route qui l'accueille est
+ * derrière le verrou, et un appareil qui n'a pas prouvé qu'il connaît le mot
+ * de passe n'a rien à faire dans la liste des téléphones à faire sonner.
+ *
+ * TROIS DÉCLENCHEURS, parce qu'un seul ne suffisait pas :
+ *
+ *   1. L'OUVERTURE DE SESSION. C'était le seul, et c'était trop peu.
+ *   2. LE RETOUR À L'ÉCRAN. Le réseau manquait peut-être à l'ouverture ; il
+ *      est là maintenant. C'est le rattrapage le plus fréquent.
+ *   3. LE CHANGEMENT DE JETON. Android en change tout seul — restauration
+ *      d'une sauvegarde, mise à jour du service, effacement des données de
+ *      Google Play. L'ancien jeton devient muet SANS PRÉVENIR : le robot
+ *      continue d'écrire à une adresse que plus personne ne relève. C'est
+ *      la panne la plus traître, parce que tout a marché la veille.
+ *
+ * Le service ne rend pas le jeton d'Expo dans cet événement, mais le jeton
+ * natif : on relance donc l'inscription complète, hors du fil de l'écoute
+ * pour ne pas la rappeler depuis elle-même.
+ */
 export function useSonnerie(connecte: boolean | null): void {
   useEffect(() => {
     if (!connecte) return;
-    inscrireLAppareil().catch(() => {
-      // On ne dérange personne à l'ouverture : l'application fonctionne
-      // pareil sans notification. Ce qui a manqué se lit dans les
-      // réglages, où l'on va justement quand on se pose la question.
+
+    void inscrireAvecPatience(true);
+
+    const auRetour = AppState.addEventListener("change", (etat) => {
+      if (etat === "active") void inscrireAvecPatience();
     });
+
+    const auJeton = Notifications.addPushTokenListener(() => {
+      setTimeout(() => { void inscrireAvecPatience(true); }, 0);
+    });
+
+    return () => {
+      auRetour.remove();
+      auJeton.remove();
+    };
   }, [connecte]);
 }

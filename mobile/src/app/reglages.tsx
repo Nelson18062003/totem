@@ -22,7 +22,7 @@ import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
 import { essaiNotification } from "@/api/guichet";
 import {
-  inscrireLAppareil, peutEncoreDemander, souciDeLaSonnerie,
+  inscrireAvecPatience, peutEncoreDemander, souciDeLaSonnerie,
   type EtatSonnerie,
 } from "@/sonnerie";
 import { textesReglages } from "@noyau/textes/reglages";
@@ -206,7 +206,7 @@ function EssaiNotification() {
   useEffect(() => {
     let vivant = true;
     (async () => {
-      const r = await inscrireLAppareil().catch((): EtatSonnerie => "echec");
+      const r = await inscrireAvecPatience(true).catch((): EtatSonnerie => "echec");
       if (!vivant) return;
       setEtat(r);
       setSouci(souciDeLaSonnerie());
@@ -229,7 +229,7 @@ function EssaiNotification() {
     setInscription(true);
     setMessage(null);
     try {
-      const r = await inscrireLAppareil();
+      const r = await inscrireAvecPatience(true);
       setEtat(r);
       setSouci(souciDeLaSonnerie());
       if (r === "refusee") setReglagesUtiles(!(await peutEncoreDemander()));
