@@ -337,8 +337,3 @@ export function essaiNotification(langue: Langue): Promise<{
 }> {
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
 }
-
-/** Le pouls : le dernier SMS connu, et le nombre de non-lus. */
-export function actualite(): Promise<{ dernier: number; nonLus: number }> {
-  return demander("/api/actualite");
-}
