@@ -78,7 +78,14 @@ const tables = () => ({
       categorie: "publicite", nature: null,
       emis_le: il_y_a(300), recu_le: il_y_a(300), lu_le: il_y_a(280) },
   ],
-  recus: [],
+  recus: [
+    // Un reçu DÉJÀ établi, pour l'encaissement de NKENGAFAC M. (même
+    // référence). Sans lui, aucun écran d'essai ne peut montrer l'état
+    // « le reçu existe, on l'ouvre » — le bouton principal de la fiche.
+    { numero: "TM-20250829-0003", reference: "PP240829.1042.A31245",
+      terminal: "douala-faux", chemin: "2025/TM-20250829-0003.pdf",
+      etabli_le: il_y_a(16) },
+  ],
   raccourcis: [
     { operateur: "MTN", nom: "solde", libelle: "Solde", etapes: "*126#,5,1" },
     { operateur: "MTN", nom: "depot", libelle: "Depot", etapes: "*126#,1,1" },
