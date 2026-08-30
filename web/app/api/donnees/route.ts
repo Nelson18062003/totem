@@ -13,6 +13,10 @@ const MAX_SMS = 1000;
 const MAX_RECUS = 1000;
 
 function borne(valeur: string | null, defaut: number, plafond: number): number {
+  // Un paramètre ABSENT vaut le défaut. Le piège : Number(null) fait 0, pas
+  // NaN — sans cette garde, un écran qui ne précisait pas « sms » recevait
+  // ZÉRO ligne au lieu de deux cents, et se croyait devant une caisse vide.
+  if (valeur == null) return defaut;
   const n = Number(valeur);
   if (!Number.isFinite(n)) return defaut;
   return Math.min(Math.max(0, Math.trunc(n)), plafond);

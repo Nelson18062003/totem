@@ -24,7 +24,10 @@ export default function Comptes() {
   const langue = useLangue();
   const t = textesCartes[langue];
   const ecran = useEcran();
-  const { donnees, chargement, recharger } = useDonnees();
+  // Le bilan des cartes retirées (nombre de paiements, total reçu) se
+  // compte sur les SMS : la même profondeur que la page web (1000 lignes),
+  // sinon le téléphone et le web affichent deux totaux différents.
+  const { donnees, chargement, recharger } = useDonnees({ sms: 1000, recus: 0 });
 
   const sims = donnees?.sims ?? [];
   const enPlace = sims.filter((s) => s.enPlace);

@@ -25,6 +25,10 @@ const en = {
     "silence is not normal.",
   nonLu: "unread",
   telechargerRecu: "Download the PDF receipt",
+  ouvrirRecu: "Open the receipt (PDF)",
+  refaireRecu: "Rebuild the receipt",
+  ouvertureRecu: "Opening…",
+  lienRecuImpossible: "The receipt could not be opened. Check the connection, then try again.",
   toutesLesCartes: "All SIMs",
   soldesRepetes: (n: number) =>
     n === 1 ? "1 earlier balance check" : `${n} earlier balance checks`,
@@ -107,6 +111,10 @@ const fr: typeof en = {
     "prolongé n’est pas normal.",
   nonLu: "non lu",
   telechargerRecu: "Télécharger le reçu PDF",
+  ouvrirRecu: "Ouvrir le reçu (PDF)",
+  refaireRecu: "Refaire le reçu",
+  ouvertureRecu: "Ouverture…",
+  lienRecuImpossible: "Le reçu n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
   toutesLesCartes: "Toutes les cartes",
   soldesRepetes: (n) =>
     n === 1 ? "1 consultation de solde plus tôt" : `${n} consultations de solde plus tôt`,

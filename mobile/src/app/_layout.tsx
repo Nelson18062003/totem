@@ -71,6 +71,11 @@ function Charpente() {
           {/* Les reglages vivent hors des onglets : on y vient
               depuis l'accueil, la barre garde ses quatre entrees. */}
           <Stack.Screen name="reglages" options={{ animation: "slide_from_right" }} />
+          {/* Le cadran USSD aussi : on y vient depuis Opérations, pour
+              composer un code à la main comme sur un téléphone. */}
+          <Stack.Screen name="ussd" options={{ animation: "slide_from_right" }} />
+          {/* L'analyse : la semaine en chiffres, depuis l'accueil. */}
+          <Stack.Screen name="analyse" options={{ animation: "slide_from_right" }} />
         </Stack.Protected>
         <Stack.Protected guard={!connecte}>
           <Stack.Screen name="connexion" />

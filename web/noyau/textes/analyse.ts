@@ -20,6 +20,8 @@ const en = {
   exportSemaine: "The week",
   exportJours: (n: number) => `${n} days`,
   exportNote: "CSV file, ready for Excel or the accountant.",
+  exportImpossible:
+    "The report could not be opened. Check the connection and try again.",
 };
 
 const fr: typeof en = {
@@ -41,6 +43,8 @@ const fr: typeof en = {
   exportSemaine: "La semaine",
   exportJours: (n) => `${n} jours`,
   exportNote: "Fichier CSV, prêt pour Excel ou la comptabilité.",
+  exportImpossible:
+    "Le bilan n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
 };
 
 export const textesAnalyse = { en, fr } as const;

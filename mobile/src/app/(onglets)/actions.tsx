@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { RefreshControl, ScrollView, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 
 import { Carte, Filet, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
@@ -17,10 +18,12 @@ import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { textesGuichet } from "@noyau/textes/guichet";
+import { textesUssd } from "@noyau/textes/ussd";
 
 export default function Actions() {
   const langue = useLangue();
   const t = textesGuichet[langue];
+  const tu = textesUssd[langue];
   const { donnees, chargement, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const [operation, setOperation] = useState<Operation | null>(null);
@@ -174,6 +177,14 @@ export default function Actions() {
             </Carte>
           </View>
         ) : null}
+
+        {/* Le cadran : composer n'importe quel code, comme sur un téléphone.
+            Le web l'a en page à part (« Code USSD ») ; ici il s'ouvre d'une
+            ligne — c'est le geste de secours quand aucun bouton ne convient. */}
+        <Carte>
+          <Ligne titre={tu.titre} sous={tu.composerSous} icone="Hash"
+                 onPress={() => router.push("/ussd")} />
+        </Carte>
       </ScrollView>
 
       {operation ? (

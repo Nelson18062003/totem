@@ -7,9 +7,10 @@
 // Le texte de l'opérateur s'affiche mot pour mot, dans la langue où la SIM
 // l'a reçu. Le traduire serait le trahir.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 
 import { Carte, Filet, Texte } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
@@ -25,6 +26,30 @@ import { fcfa, type Categorie, type Paiement } from "@noyau/types";
 // Les natures proposées en filtre, dans l'ordre où on les cherche.
 const FILTRES: Categorie[] = ["encaissement", "envoi", "transfert", "publicite"];
 
+// Une ligne de la liste, ou un pli de consultations de solde répétées : les
+// vérifications identiques se replient derrière la plus récente — rien ne se
+// supprime, tout reste à un geste. La même règle que le web (liste.tsx).
+type Rangee2 =
+  | { genre: "sms"; p: Paiement }
+  | { genre: "soldes"; recent: Paiement; anciens: Paiement[] };
+
+function plierLesSoldes(items: Paiement[]): Rangee2[] {
+  const rangees: Rangee2[] = [];
+  for (const p of items) {
+    const derniere = rangees[rangees.length - 1];
+    if ((p.nature ?? p.categorie) === "solde" && p.montant == null) {
+      if (derniere?.genre === "soldes") {
+        derniere.anciens.push(p);
+        continue;
+      }
+      rangees.push({ genre: "soldes", recent: p, anciens: [] });
+      continue;
+    }
+    rangees.push({ genre: "sms", p });
+  }
+  return rangees;
+}
+
 export default function Encaissements() {
   const langue = useLangue();
   const t = textesSms[langue];
@@ -34,6 +59,25 @@ export default function Encaissements() {
   const [carte, setCarte] = useState<string | null>(null);       // null = toutes
   const [categorie, setCategorie] = useState<Categorie | null>(null);
   const [ouvert, setOuvert] = useState<Paiement | null>(null);
+  // Les plis de soldes dépliés, par l'identifiant de leur ligne récente.
+  const [deplies, setDeplies] = useState<Set<string>>(new Set());
+  const basculer = (id: string) =>
+    setDeplies((d) => {
+      const suite = new Set(d);
+      if (suite.has(id)) suite.delete(id); else suite.add(id);
+      return suite;
+    });
+
+  // Arriver déjà filtré : l'Analyse pousse un nom de client, la liste
+  // s'ouvre sur ses paiements — même chemin que le web
+  // (`/encaissements?recherche=…`). Le champ reste libre ensuite, et
+  // « moment » fait que retoucher le MÊME nom refiltre quand même.
+  const params = useLocalSearchParams<{ recherche?: string; moment?: string }>();
+  useEffect(() => {
+    if (typeof params.recherche === "string" && params.recherche) {
+      setRecherche(params.recherche);
+    }
+  }, [params.recherche, params.moment]);
 
   const paiements = donnees?.paiements ?? [];
   const sims = donnees?.sims ?? [];
@@ -74,6 +118,16 @@ export default function Encaissements() {
         <Entree>
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </Entree>
+
+        {/* Ce que le terminal a relevé mais pas encore transmis : la liste
+            paraît à jour, elle ne l'est pas — le web le dit, ici aussi. */}
+        {(donnees?.terminal?.enAttente ?? 0) > 0 ? (
+          <Carte style={{ padding: espaces.md }}>
+            <Texte taille={textes.petit} ton="doux">
+              {t.enCoursDeTransmission(donnees!.terminal!.enAttente)}
+            </Texte>
+          </Carte>
+        ) : null}
 
         {/* La recherche. */}
         <Entree delai={60}>
@@ -144,11 +198,52 @@ export default function Encaissements() {
                 {j.libelle}
               </Texte>
               <Carte>
-                {j.lignes.map((p, i) => (
-                  <View key={p.id}>
+                {plierLesSoldes(j.lignes).map((r, i) => (
+                  <View key={r.genre === "sms" ? r.p.id : r.recent.id}>
                     {i > 0 ? <Filet /> : null}
-                    <Ligne paiement={p} langue={langue}
-                           onPress={() => setOuvert(p)} />
+                    {r.genre === "sms" ? (
+                      <Ligne paiement={r.p} langue={langue}
+                             onPress={() => setOuvert(r.p)} />
+                    ) : (
+                      <>
+                        <Ligne paiement={r.recent} langue={langue}
+                               onPress={() => setOuvert(r.recent)} />
+                        {/* Les consultations identiques d'avant, repliées
+                            derrière la plus récente — dépliables d'un
+                            geste, jamais perdues. */}
+                        {r.anciens.length ? (
+                          <Pressable onPress={() => basculer(r.recent.id)}
+                                     hitSlop={6}
+                                     style={{ flexDirection: "row",
+                                              alignItems: "center",
+                                              gap: espaces.xs,
+                                              paddingLeft: 66,
+                                              paddingBottom: espaces.md }}>
+                            {!deplies.has(r.recent.id)
+                              && r.anciens.some((p) => p.nonLu) ? (
+                              <View style={{ width: 6, height: 6,
+                                             borderRadius: rayons.rond,
+                                             backgroundColor: couleurs.accent }} />
+                            ) : null}
+                            <Texte taille={textes.legende} ton="pale"
+                                   style={{ textDecorationLine: "underline" }}>
+                              {deplies.has(r.recent.id)
+                                ? t.replierSoldes
+                                : t.soldesRepetes(r.anciens.length)}
+                            </Texte>
+                          </Pressable>
+                        ) : null}
+                        {deplies.has(r.recent.id)
+                          ? r.anciens.map((p) => (
+                              <View key={p.id}>
+                                <Filet />
+                                <Ligne paiement={p} langue={langue}
+                                       onPress={() => setOuvert(p)} />
+                              </View>
+                            ))
+                          : null}
+                      </>
+                    )}
                   </View>
                 ))}
               </Carte>

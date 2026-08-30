@@ -64,6 +64,12 @@ const en = {
   coordSansNom: "No name yet — add it in Settings so it appears here.",
   coordCopier: "Copy",
   coordCopie: "Copied",
+  // Sur le téléphone, le geste naturel n'est pas de copier mais de PARTAGER :
+  // la feuille d'Android porte WhatsApp, les SMS — et « Copier » avec.
+  coordPartager: "Share",
+  coordPdf: "Download the PDF",
+  coordPdfImpossible:
+    "The PDF could not be opened. Check the connection and try again.",
   coordVoir: "View",
   coordTelecharger: "Download",
   copierNumero: "Copy the number",
@@ -133,6 +139,10 @@ const fr: typeof en = {
   coordSansNom: "Aucun nom pour l’instant — ajoutez-le dans les Réglages pour qu’il apparaisse ici.",
   coordCopier: "Copier",
   coordCopie: "Copié",
+  coordPartager: "Partager",
+  coordPdf: "Télécharger le PDF",
+  coordPdfImpossible:
+    "Le PDF n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
   coordVoir: "Voir",
   coordTelecharger: "Télécharger",
   copierNumero: "Copier le numéro",

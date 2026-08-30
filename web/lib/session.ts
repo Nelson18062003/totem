@@ -67,8 +67,18 @@ export async function sujetDeSession(
   const [sujet, exp, sig] = points;
   if (!/^\d+$/.test(exp) || Number(exp) < Date.now()) return null;
   try {
+    const octets = deB64url(sig);
+    // LA FORME CANONIQUE, ET ELLE SEULE. Le dernier caractère d'une
+    // signature en base64url ne porte que quatre bits utiles : « …W » et
+    // « …X » peuvent décoder les MÊMES octets. Sans cette garde, un jeton
+    // récrit passait — aucun secret n'était contourné, mais un contrôle qui
+    // altérait ce caractère pouvait conclure « repoussé » à tort, et une
+    // signature avait plusieurs écritures. Une seule écriture, une seule
+    // porte. (C'est le harnais du verrou qui l'a montré, en échouant une
+    // fois sur vingt.)
+    if (versB64url(octets.buffer as ArrayBuffer) !== sig) return null;
     const bon = await crypto.subtle.verify(
-      "HMAC", await cleHmac(secret), src(deB64url(sig)),
+      "HMAC", await cleHmac(secret), src(octets),
       src(enc.encode(`${sujet}.${exp}`)),
     );
     return bon ? sujet : null;

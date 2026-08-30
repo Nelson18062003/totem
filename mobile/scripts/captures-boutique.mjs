@@ -55,6 +55,22 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
     console.error(`\n✗ compte d'essai impossible (${r.status}).`);
     process.exit(1);
   }
+  // 403 dit « les inscriptions sont fermées » — pas « VOTRE compte existe » :
+  // un AUTRE script a pu poser le premier compte sur ce même faux nuage. On
+  // le prouve tout de suite, sinon l'échec arrive plus tard, à la connexion,
+  // avec un diagnostic qui accuse le mauvais coupable.
+  if (r.status === 403) {
+    const c = await fetch("http://127.0.0.1:3180/api/connexion", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+    });
+    if (!c.ok) {
+      console.error("\n✗ Les inscriptions sont fermées par un AUTRE compte :");
+      console.error("  un autre harnais a déjà utilisé ce faux nuage.");
+      console.error("  Redémarrez le faux nuage, puis relancez.");
+      process.exit(1);
+    }
+  }
 }
 
 const nav = await chromium.launch({

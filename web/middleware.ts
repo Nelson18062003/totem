@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESSION, verifierSession } from "@/lib/session";
+import { verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 
 // Le verrou de la plateforme. Tant que `SESSION_SECRET` n'est pas défini, il
@@ -46,6 +47,34 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
   if (OUVERT.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+    return NextResponse.next();
+  }
+
+  // UN DOCUMENT AU PORTEUR D'UN LIEN SIGNÉ. Le navigateur du téléphone n'a
+  // ni cookie ni en-tête : l'application (elle, authentifiée) lui demande un
+  // lien signé par la plateforme — dix minutes, CE document, rien d'autre.
+  // La signature couvre le genre, l'identifiant ET l'échéance ; falsifiée,
+  // périmée ou présentée à la mauvaise porte (un lien de reçu sur des
+  // coordonnées), on retombe sur le verrou ordinaire, qui refusera. Les PDF
+  // seuls sont concernés : « /lien » et « /fiche » restent derrière la porte.
+  const recu = pathname.match(/^\/api\/recu\/([\w.-]{1,64})$/);
+  if (recu && await verifierLien(
+        secret, "recu", recu[1],
+        req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
+    return NextResponse.next();
+  }
+  const coordonnees = pathname.match(/^\/api\/coordonnees\/(\w{1,32})$/);
+  if (coordonnees && await verifierLien(
+        secret, "coordonnees", coordonnees[1],
+        req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
+    return NextResponse.next();
+  }
+  // Le bilan CSV : la signature couvre le NOMBRE DE JOURS demandé — un lien
+  // signé pour la semaine n'ouvre pas le trimestre.
+  const jours = req.nextUrl.searchParams.get("jours");
+  if (pathname === "/api/bilan" && jours && /^\d{1,2}$/.test(jours)
+      && await verifierLien(secret, "bilan", jours,
+           req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return NextResponse.next();
   }
 

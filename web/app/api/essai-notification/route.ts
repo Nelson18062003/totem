@@ -2,6 +2,7 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { textesReglages } from "@noyau/textes/reglages";
 import { listerAppareils, oublierAppareil, relie } from "@/lib/serveur";
+import { estProprietaire } from "@/lib/qui";
 import { pousser } from "@/lib/pousser";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,17 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const langue = await langueDemandee(req);
   const t = textesReglages[langue];
+
+  // AU PROPRIÉTAIRE SEUL, comme les commandes du terminal. Le verrou de
+  // session laissait entrer tout compte approuvé — un invité pouvait donc
+  // faire sonner en boucle tous les téléphones du propriétaire, et le
+  // ménage des jetons se déclenchait sur ses essais. Le commentaire d'en
+  // haut le disait déjà : ce n'est pas un geste que l'on offre.
+  // (Sans SESSION_SECRET, aucun verrou n'existe : on ne fait pas semblant.)
+  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+    return Response.json(
+      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+  }
 
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });

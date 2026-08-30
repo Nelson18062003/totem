@@ -32,8 +32,11 @@ const tables = () => ({
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
   }],
   cartes: [
+    // « nom » est le nom COMMERCIAL — ce qu'on donne à qui veut payer, ce
+    // que la fiche des coordonnées affiche. « Caisse principale » était un
+    // libellé de tiroir, pas un nom qu'on écrit sur un virement.
     { iccid: "89237010000000008901", operateur: "MTN", libelle: "MTN ·8901",
-      nom: "Caisse principale", numero: "677123456",
+      nom: "ETS NKENGAFAC", numero: "677123456",
       premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: maintenant() },
     { iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
       nom: "", numero: "699001122",
@@ -77,8 +80,46 @@ const tables = () => ({
       texte: "Rechargez votre compte et gagnez des bonus. Composez *126#.",
       categorie: "publicite", nature: null,
       emis_le: il_y_a(300), recu_le: il_y_a(300), lu_le: il_y_a(280) },
+    // Trois consultations de solde d'affilée : c'est elles qui font
+    // apparaître le PLI (« n vérifications répétées ») — sans elles, l'état
+    // replié de la liste resterait invisible à tout essai.
+    ...[[10, 40], [11, 55], [12, 70]].map(([id, minutes]) => ({
+      id, source_id: id, expediteur: "MTN", terminal: "douala-faux",
+      compte: "MTN ·8901", carte: "89237010000000008901", sens: null,
+      montant: null, tiers: null, numero: null, reference: null,
+      solde_apres: null,
+      texte: "Votre solde MoMo est de 412 500 FCFA.",
+      categorie: "solde", nature: null,
+      emis_le: il_y_a(minutes), recu_le: il_y_a(minutes), lu_le: il_y_a(30),
+    })),
+    // Une semaine d'encaissements étalés sur les jours : sans eux, l'écran
+    // Analyse n'aurait qu'une barre, et les « principaux clients » qu'un
+    // nom — un écran d'essai doit montrer l'écran plein, pas son squelette.
+    ...[
+      [5, 35000, "MAMA CLARISSE", "670334455", 1500],
+      [6, 12500, "NKENGAFAC M.", "677998877", 2900],
+      [7, 8000, "TAILLEUR JEAN", "651672233", 4360],
+      [8, 50000, "ETS KAMDEM", "699887711", 7180],
+      [9, 15000, "MAMA CLARISSE", "670334455", 8640],
+    ].map(([id, montant, tiers, numero, minutes]) => ({
+      id, source_id: id, expediteur: "MTNMobileMoney", terminal: "douala-faux",
+      compte: "MTN ·8901", carte: "89237010000000008901", sens: "entree",
+      montant, tiers, numero, reference: `PP2408.${id}.E${id}${id}`,
+      solde_apres: null,
+      texte: `Vous avez recu ${montant.toLocaleString("fr-FR")} FCFA de ` +
+             `${tiers} (${numero}).`,
+      categorie: "encaissement", nature: null,
+      emis_le: il_y_a(minutes), recu_le: il_y_a(minutes), lu_le: il_y_a(minutes - 5),
+    })),
   ],
-  recus: [],
+  recus: [
+    // Un reçu DÉJÀ établi, pour l'encaissement de NKENGAFAC M. (même
+    // référence). Sans lui, aucun écran d'essai ne peut montrer l'état
+    // « le reçu existe, on l'ouvre » — le bouton principal de la fiche.
+    { numero: "TM-20250829-0003", reference: "PP240829.1042.A31245",
+      terminal: "douala-faux", chemin: "2025/TM-20250829-0003.pdf",
+      etabli_le: il_y_a(16) },
+  ],
   raccourcis: [
     { operateur: "MTN", nom: "solde", libelle: "Solde", etapes: "*126#,5,1" },
     { operateur: "MTN", nom: "depot", libelle: "Depot", etapes: "*126#,1,1" },
@@ -114,6 +155,10 @@ const smsEnPlus = [];
 function reponsePour(commande) {
   const { type, parametres } = commande;
   if (type === "ussd_fin") return "Session terminee.";
+  // Le nom ou le numéro d'une carte, un bouton du carnet : le vrai robot
+  // écrit dans sa table ; le faux se contente d'acquiescer — l'écran qui
+  // attend « faite » doit pouvoir dérouler son chemin heureux.
+  if (type === "identite" || type === "raccourci") return "C'est note.";
   if (type === "ussd") {
     const code = String(parametres.code ?? "");
     // Un code complet (avec le numéro et le montant dedans) va droit au code
@@ -175,7 +220,10 @@ const serveur = createServer(async (req, res) => {
     smsEnPlus.push({
       id: 900000 + smsEnPlus.length,
       terminal: "douala-faux", source_id: 900 + smsEnPlus.length,
-      compte: "MTN ·8901", carte: "893700000000008901",
+      // Le MÊME ICCID que la carte semée plus haut : avec une faute de
+      // frappe ici, le SMS ajouté à chaud n'était jamais attribué à la
+      // carte — les compteurs par carte l'excluaient en silence.
+      compte: "MTN ·8901", carte: "89237010000000008901",
       expediteur: "MTNMobileMoney", categorie: "encaissement",
       sens: "entree", montant: 7500, tiers: "ESSAI Direct",
       texte: "Vous avez recu 7 500 FCFA de ESSAI Direct (677000000).",

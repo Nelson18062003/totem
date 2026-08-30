@@ -174,12 +174,17 @@ export async function inscrire(
   // « inscriptions fermées » à l'autre dirait qui a un compte ici.
   if (combien > 0) return refus(langue, "inscriptionsFermees", 403);
 
+  // Le secret se vérifie AVANT de créer quoi que ce soit. Après, le compte
+  // du propriétaire existait durablement pendant que la réponse affichait
+  // une erreur — et le second essai butait sur « inscriptions fermées »,
+  // sans un mot pour dire que son compte était là et son mot de passe bon.
+  // Un refus ne doit rien laisser derrière lui.
+  const secret = process.env.SESSION_SECRET || "";
+  if (!secret) return refus(langue, "connexionNonConfiguree", 503);
+
   const compte = await creerUtilisateur(
     courriel, await empreinter(motdepasse), "proprietaire", true);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
-
-  const secret = process.env.SESSION_SECRET || "";
-  if (!secret) return refus(langue, "connexionNonConfiguree", 503);
   // Le propriétaire entre tout de suite : il vient de créer la maison.
   const sujet = sujetDuCompte(compte.id);
   return { ok: true, jeton: await signerSession(secret, sujet), sujet };

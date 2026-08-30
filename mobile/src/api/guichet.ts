@@ -129,6 +129,11 @@ export const peutSInscrire = (): boolean => inscriptionOuverte;
  * ni nom, ni chiffre, ni adresse de base.
  */
 export async function verifierPlateforme(adresse?: string): Promise<EtatPlateforme> {
+  // Le drapeau retombe AVANT de sonder : sans cela, il gardait la valeur de
+  // la plateforme PRÉCÉDENTE — on pointait l'application vers un serveur
+  // mort ou étranger, et l'écran offrait encore « créer un compte » sur la
+  // foi d'une autre maison.
+  inscriptionOuverte = false;
   const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
   if (!adresseValable(base)) return "absente";
   try {
@@ -327,6 +332,15 @@ export function enregistrerAppareil(
   });
 }
 
+/** Un lien de reçu SIGNÉ, que le navigateur du téléphone peut ouvrir.
+ *
+ *  Le navigateur du système n'a ni cookie ni jeton : le PDF lui était
+ *  interdit. L'application, elle, est authentifiée — elle demande ce
+ *  laissez-passer de dix minutes, pour CE reçu, et l'ouvre aussitôt. */
+export function lienRecu(numero: string): Promise<{ url: string }> {
+  return demander(`/api/recu/${encodeURIComponent(numero)}/lien`);
+}
+
 /** « Est-ce que mon téléphone sonne ? »
  *
  *  Fait envoyer une notification d'essai aux appareils inscrits. Rend
@@ -336,4 +350,39 @@ export function essaiNotification(langue: Langue): Promise<{
   servis: number; oublies: number; aucun?: boolean; soucis?: string[];
 }> {
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
+}
+
+/** Un compte de la plateforme, tel que la liste du propriétaire le montre. */
+export type CompteInscrit = {
+  id: number; courriel: string; role: string; approuve: boolean;
+  creeLe: string | null; vuLe: string | null;
+};
+
+/** La liste des comptes — réservée au propriétaire : 403 pour les autres,
+ *  et l'écran se tait alors de lui-même, comme sur le web. */
+export function listerComptes(): Promise<{ comptes: CompteInscrit[] }> {
+  return demander("/api/comptes");
+}
+
+/** Un geste du propriétaire sur un compte : laisser entrer, bloquer,
+ *  supprimer — ou en créer un (l'inscription libre est fermée). */
+export function agirSurCompte(
+  corps:
+    | { id: number; geste: "approuver" | "fermer" | "supprimer" }
+    | { geste: "creer"; courriel: string; motdepasse: string },
+): Promise<unknown> {
+  return demander("/api/comptes", { method: "POST", body: JSON.stringify(corps) });
+}
+
+/** Un lien signé vers la fiche PDF des coordonnées d'une carte — même
+ *  mécanique que le lien de reçu : dix minutes, cette carte, ce genre-là. */
+export function lienCoordonnees(iccid: string): Promise<{ url: string }> {
+  return demander(`/api/coordonnees/${encodeURIComponent(iccid)}/lien`);
+}
+
+/** Un lien signé vers le bilan CSV (7, 30 ou 90 jours) — le navigateur du
+ *  système sait télécharger un fichier, l'application ne sait que
+ *  l'afficher. La signature couvre le nombre de jours. */
+export function lienBilan(jours: number): Promise<{ url: string }> {
+  return demander(`/api/bilan/lien?jours=${jours}`);
 }

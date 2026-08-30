@@ -74,11 +74,18 @@ export default async function Analyse() {
   const evolution = precedente > 0 ? Math.round(((total - precedente) / precedente) * 100) : null;
 
   // Les clients qui reviennent, sur tout l'historique chargé.
+  //
+  // LE CLIENT, C'EST « tiers » — la personne qui a payé. « nom » est
+  // l'EXPÉDITEUR du SMS (« MTNMobileMoney »), le même pour tous les
+  // encaissements d'un opérateur : grouper dessus fondait tous les clients
+  // en une seule ligne au nom de l'opérateur. Le faux nuage l'a montré dès
+  // qu'il a porté plusieurs clients.
   const parClient = new Map<string, { nb: number; total: number }>();
   for (const p of paiements.filter((x) => x.sens === "in" && x.montant != null)) {
-    const c = parClient.get(p.nom) ?? { nb: 0, total: 0 };
+    const cle = p.tiers || p.nom;
+    const c = parClient.get(cle) ?? { nb: 0, total: 0 };
     c.nb += 1; c.total += p.montant ?? 0;
-    parClient.set(p.nom, c);
+    parClient.set(cle, c);
   }
   const topClients = [...parClient.entries()]
     .map(([nom, v]) => ({ nom, ...v }))

@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
+import { Coordonnees } from "@/coordonnees";
 import { Carte, Filet, Pastille, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
@@ -29,6 +30,7 @@ import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { fcfa, type Paiement, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { textesAnalyse } from "@noyau/textes/analyse";
 import { salutation } from "@noyau/salutation";
 
 const CLE_SOLDE_CACHE = "totem.solde.cache";
@@ -36,6 +38,7 @@ const CLE_SOLDE_CACHE = "totem.solde.cache";
 export default function Accueil() {
   const langue = useLangue();
   const t = textesAccueil[langue];
+  const ta = textesAnalyse[langue];
   const ecran = useEcran();
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 30, recus: 60 });
 
@@ -48,6 +51,7 @@ export default function Accueil() {
   const active = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const [operation, setOperation] = useState<Operation | null>(null);
   const [smsOuvert, setSmsOuvert] = useState<Paiement | null>(null);
+  const [coordonnees, setCoordonnees] = useState(false);
 
   // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
   // jamais APPARAÎTRE puis se cacher — dans ce sens-là, c'est trop tard.
@@ -124,8 +128,11 @@ export default function Accueil() {
             ) : null}
             <Commande icone="Refresh" libelle={t.actualiserAria}
                       onPress={() => setOperation(operationDe("solde", t.consulterSolde, []))} />
+            {/* Les coordonnées à donner pour être payé — la fiche s'ouvre
+                ICI, comme sur le web. Ce bouton renvoyait aux Réglages :
+                un détour, pour la chose qu'on montre le plus souvent. */}
             <Commande icone="Identite" libelle={t.coordonneesAria}
-                      onPress={() => router.push("/reglages")} />
+                      onPress={() => setCoordonnees(true)} />
           </View>
         </Entree>
       ) : null}
@@ -144,6 +151,25 @@ export default function Accueil() {
                            onPress={() => setOperation(g.fabrique())} />
             ))}
           </View>
+        </Entree>
+      ) : active && !chargement ? (
+        // Aucun code relevé pour cet opérateur : le web le DIT et mène aux
+        // Réglages ; ici les gestes disparaissaient sans un mot, comme si
+        // l'application était en panne.
+        <Entree delai={180}>
+          <Pressable onPress={() => router.push("/reglages")}>
+            <Carte style={{ padding: espaces.lg, borderStyle: "dashed",
+                            alignItems: "center" }}>
+              <Texte taille={textes.petit} ton="pale"
+                     style={{ textAlign: "center", lineHeight: 20 }}>
+                {t.aucunCode(active.operateur)}{" "}
+                <Texte taille={textes.petit} ton="doux"
+                       style={{ textDecorationLine: "underline" }}>
+                  {t.aucunCodeLien}
+                </Texte>.
+              </Texte>
+            </Carte>
+          </Pressable>
         </Entree>
       ) : null}
     </View>
@@ -223,6 +249,13 @@ export default function Accueil() {
               </Texte>
               <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
             </View>
+            {/* L'analyse puis l'engrenage : les deux écrans « à part »,
+                côte à côte dans l'angle où le pouce les attend. */}
+            <Pressable onPress={() => router.push("/analyse")} hitSlop={12}
+                       accessibilityLabel={ta.titre}
+                       style={{ marginRight: espaces.lg }}>
+              <Icone nom="Chart" taille={22} couleur={couleurs.encreDouce} />
+            </Pressable>
             <Pressable onPress={() => router.push("/reglages")} hitSlop={12}
                        accessibilityLabel={t.reglages}>
               <Icone nom="Settings" taille={22} couleur={couleurs.encreDouce} />
@@ -254,6 +287,13 @@ export default function Accueil() {
       {smsOuvert ? (
         <FicheSms paiement={smsOuvert} onFermer={() => setSmsOuvert(null)}
                   onChange={recharger} />
+      ) : null}
+
+      {coordonnees && active ? (
+        <Coordonnees langue={langue} onFermer={() => setCoordonnees(false)}
+                     carte={{ iccid: active.iccid, nom: active.nom,
+                              numero: active.numero,
+                              operateur: active.operateur, libelle: active.libelle }} />
       ) : null}
     </SafeAreaView>
   );

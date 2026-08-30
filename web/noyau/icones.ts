@@ -82,6 +82,14 @@ export const ICONES = {
     { f: "rect", x: "9", y: "9", w: "11", h: "11", r: "2" },
     { f: "path", d: "M5 15V6a2 2 0 0 1 2-2h9" },
   ],
+  // Le partage, à la façon d'Android : trois points reliés. C'est le geste
+  // du téléphone — la feuille de partage porte WhatsApp, les SMS, la copie.
+  Partage: [
+    { f: "circle", cx: "6", cy: "12", r: "2.6" },
+    { f: "circle", cx: "17.5", cy: "5.5", r: "2.6" },
+    { f: "circle", cx: "17.5", cy: "18.5", r: "2.6" },
+    { f: "path", d: "m8.4 10.7 6.8-4M8.4 13.3l6.8 4" },
+  ],
   Refund: [
     { f: "path", d: "M4 10h11a4.5 4.5 0 1 1 0 9h-6" },
     { f: "path", d: "m8 6-4 4 4 4" },
