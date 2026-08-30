@@ -72,7 +72,7 @@ try {
            await code("/api/essai-notification", { method: "POST" }), 401);
   verifier("/api/appareil sans jeton", await code("/api/appareil", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jeton: "ExpoPushToken[intrus]" }),
+    body: JSON.stringify({ jeton: "ExponentPushToken[intrusAaBbCc001122]" }),
   }), 401);
   verifier("/ renvoie vers la connexion", await code("/", { redirect: "manual" }), 307);
 
@@ -140,6 +140,33 @@ try {
   verifier("jeton inventé", await avec("telephone.99999999999999.n-importe-quoi"), 401);
   verifier("jeton vide", await avec(""), 401);
   verifier("déjà expiré", await avec(`${sujet}.${Date.now() - 86400000}.${sign}`), 401);
+
+  // LA FORME DU JETON D'UN TÉLÉPHONE — et pourquoi ce contrôle existe.
+  //
+  // La route n'acceptait que « ExpoPushToken[…] ». Expo rend en réalité
+  // « ExponENTPushToken[…] ». Tous les téléphones réels étaient donc refusés,
+  // la table des appareils est restée vide, et le robot a envoyé ses
+  // notifications à personne pendant des jours.
+  //
+  // Ce harnais n'a rien vu parce qu'il présentait « ExpoPushToken[intrus] » —
+  // la forme inventée dans la route. Il validait la faute contre elle-même.
+  // On présente donc les DEUX formes, et on exige que la vraie passe.
+  //
+  // 503 = la forme est acceptée et le verrou a laissé passer (la base n'est
+  // pas branchée ici) ; 400 = la forme est refusée.
+  console.log("\nLe jeton d'un téléphone, dans sa VRAIE forme");
+  const inscrire = (j) => code("/api/appareil", {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: `Bearer ${jeton}` },
+    body: JSON.stringify({ jeton: j, plateforme: "android", nom: "harnais" }),
+  });
+  verifier("« ExponentPushToken[…] » est accepté",
+           await inscrire("ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]"), 503);
+  verifier("« ExpoPushToken[…] » aussi (anciennes applications)",
+           await inscrire("ExpoPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]"), 503);
+  verifier("une adresse qui n'est pas d'Expo est refusée",
+           await inscrire("https://chez-moi.example/sonner"), 400);
+  verifier("un jeton vide est refusé", await inscrire(""), 400);
 
   console.log("\nLe navigateur, inchangé");
   const co = await fetch(B + "/api/connexion", json({ motdepasse: MOTDEPASSE }));

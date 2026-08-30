@@ -19,10 +19,26 @@ export async function POST(req: Request) {
   const corps = await req.json().catch(() => null);
 
   const jeton = typeof corps?.jeton === "string" ? corps.jeton.trim() : "";
-  // La forme d'un jeton Expo : « ExpoPushToken[…] ». On refuse tout le reste
-  // plutôt que de garnir la table d'adresses qui ne servent à rien — et un
-  // jeton qui n'est pas d'Expo ne pourrait de toute façon rien recevoir.
-  if (!/^ExpoPushToken\[[\w.:%+-]{1,200}\]$/.test(jeton)) {
+  // LA FORME D'UN JETON EXPO — et la faute qui a rendu les notifications
+  // muettes pendant des jours.
+  //
+  // Ce contrôle n'acceptait que « ExpoPushToken[…] ». Or Expo rend
+  // « ExponENTPushToken[…] » : le nom historique de la société, avec « ent ».
+  // Chaque téléphone réel était donc refusé — « identifiant invalide » — et
+  // l'application affichait « le téléphone n'a pas pu être inscrit ». La
+  // table des appareils est restée VIDE, le robot a fidèlement envoyé ses
+  // notifications à une liste vide, et personne n'a rien entendu.
+  //
+  // Ce qui a permis à la faute de vivre : le harnais du verrou éprouvait
+  // cette route avec « ExpoPushToken[intrus] » — la forme INVENTÉE ICI. Il
+  // validait donc la faute contre elle-même. Un contrôle qui mesure sa
+  // propre invention ne mesure rien ; il rassure, ce qui est pire. Le
+  // harnais présente désormais un jeton de la VRAIE forme.
+  //
+  // Les deux sont acceptées : Expo a livré les deux préfixes au fil des
+  // années, et une application ancienne ne doit pas devenir muette parce
+  // qu'on a durci le filtre.
+  if (!/^(?:Expo|Exponent)PushToken\[[\w.:%+-]{1,200}\]$/.test(jeton)) {
     return Response.json(
       { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
   }

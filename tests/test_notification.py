@@ -99,15 +99,15 @@ class EnvoiDesNotifications(unittest.TestCase):
         self.assertEqual(envoyer([], "T", "C"), 0)
 
     def test_un_corps_vide_ne_part_pas(self):
-        self.assertEqual(envoyer(["ExpoPushToken[abc]"], "T", ""), 0)
+        self.assertEqual(envoyer(["ExponentPushToken[abc]"], "T", ""), 0)
 
 
 class ListeDesAppareils(unittest.TestCase):
     """Le robot va lire, dans la base, les téléphones à faire sonner."""
 
     def setUp(self):
-        self.repondre = [{"jeton": "ExpoPushToken[un]"},
-                         {"jeton": "ExpoPushToken[deux]"}]
+        self.repondre = [{"jeton": "ExponentPushToken[un]"},
+                         {"jeton": "ExponentPushToken[deux]"}]
         essai = self
 
         class Base(BaseHTTPRequestHandler):
@@ -134,13 +134,13 @@ class ListeDesAppareils(unittest.TestCase):
 
     def test_on_ne_remonte_que_les_jetons(self):
         self.assertEqual(self.nuage.appareils(),
-                         ["ExpoPushToken[un]", "ExpoPushToken[deux]"])
+                         ["ExponentPushToken[un]", "ExponentPushToken[deux]"])
         self.assertIn("appareils?select=jeton", self.demande)
 
     def test_une_ligne_sans_jeton_est_ecartee(self):
         self.repondre = [{"jeton": None}, {}, {"jeton": ""},
-                         {"jeton": "ExpoPushToken[bon]"}]
-        self.assertEqual(self.nuage.appareils(), ["ExpoPushToken[bon]"])
+                         {"jeton": "ExponentPushToken[bon]"}]
+        self.assertEqual(self.nuage.appareils(), ["ExponentPushToken[bon]"])
 
     def test_un_nuage_non_configure_ne_demande_rien(self):
         self.assertEqual(Nuage("", "", "totem", journal=None).appareils(), [])
@@ -169,7 +169,7 @@ class FaireSonnerLeTelephone(unittest.TestCase):
         class FauxNuage:
             @staticmethod
             def appareils():
-                return ["ExpoPushToken[abc]"]
+                return ["ExponentPushToken[abc]"]
 
         class FauxRobot:
             nuage = FauxNuage()
@@ -192,7 +192,7 @@ class FaireSonnerLeTelephone(unittest.TestCase):
         self._sonner("Vous avez recu 20 000 FCFA de NGONO Marie (677123456)")
         self.assertEqual(len(self.envois), 1)
         jetons, titre, corps = self.envois[0]
-        self.assertEqual(jetons, ["ExpoPushToken[abc]"])
+        self.assertEqual(jetons, ["ExponentPushToken[abc]"])
         self.assertEqual(titre, "MTN ·8901")
         self.assertIn("20 000 FCFA", corps)
 
