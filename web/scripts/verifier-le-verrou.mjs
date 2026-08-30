@@ -76,7 +76,7 @@ try {
   }), 401);
   verifier("/ renvoie vers la connexion", await code("/", { redirect: "manual" }), 307);
 
-  console.log("\nLa page que Google Play exige ouverte");
+  console.log("\nLes pages que Google Play exige ouvertes");
   // Un examinateur du Play Store l'ouvre SANS COMPTE, depuis un lien collé
   // dans un formulaire. Derrière le verrou, l'application serait refusée sans
   // plus d'explication — et l'on chercherait longtemps pourquoi.
@@ -86,6 +86,18 @@ try {
   // Elle décrit le logiciel ; elle ne doit contenir AUCUNE donnée.
   verifier("elle ne montre aucun paiement", page.includes("FCFA"), false);
   verifier("elle ne montre pas le mot de passe", page.includes(MOTDEPASSE), false);
+
+  // La marche à suivre pour se faire effacer. Même exigence, même piège : le
+  // formulaire « Sécurité des données » refuse un lien qui mène au verrou.
+  const rs = await fetch(B + "/suppression");
+  verifier("/suppression s'ouvre sans session", rs.status, 200);
+  const pageS = await rs.text();
+  verifier("elle nomme l'application", pageS.includes("com.bonzinilabs.totem"), true);
+  verifier("elle ne montre aucun paiement", pageS.includes("FCFA"), false);
+  verifier("elle ne montre pas le mot de passe", pageS.includes(MOTDEPASSE), false);
+  // Une adresse par défaut inventée promettrait une boîte qui n'existe pas.
+  verifier("elle n'affiche pas d'adresse inventée",
+           pageS.includes("contact@bonzinilabs.com"), false);
 
   console.log("\nLa porte à laquelle on frappe avant d'avoir la clé");
   // « /api/plateforme » est OUVERTE, et doit l'être : sans elle, l'application

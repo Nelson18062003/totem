@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { textesConfidentialite } from "@noyau/textes/confidentialite";
 import { langueServeur } from "@/lib/langue-serveur";
+import { courrielDeContact } from "@/lib/contact";
 import { Symbole } from "../marque";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,7 @@ export const metadata: Metadata = {
 export default async function Confidentialite() {
   const langue = await langueServeur();
   const t = textesConfidentialite[langue];
+  const adresse = courrielDeContact();
 
   return (
     <div className="mx-auto w-full max-w-2xl px-5 py-12">
@@ -87,18 +90,36 @@ export default async function Confidentialite() {
         </Bloc>
 
         <Bloc titre={t.gardeTitre}>{t.garde}</Bloc>
-        <Bloc titre={t.supprimerTitre}>{t.supprimer}</Bloc>
+        <Bloc titre={t.supprimerTitre}>
+          {t.supprimer}
+          <p className="mt-3">
+            <Link
+              href="/suppression"
+              className="font-medium text-ink underline underline-offset-4"
+            >
+              {t.supprimerLien}
+            </Link>
+          </p>
+        </Bloc>
 
         <Bloc titre={t.contactTitre}>
-          {t.contact}{" "}
           {/* L'adresse vient d'une variable d'environnement : elle n'a pas à
-              vivre dans le dépôt, et le propriétaire la change sans nous. */}
-          <a
-            href={`mailto:${process.env.CONTACT_COURRIEL || "contact@bonzinilabs.com"}`}
-            className="font-medium text-ink underline underline-offset-4"
-          >
-            {process.env.CONTACT_COURRIEL || "contact@bonzinilabs.com"}
-          </a>
+              vivre dans le dépôt, et le propriétaire la change sans nous.
+              Quand elle manque, on ne montre PAS d'adresse par défaut : une
+              boîte inventée promet une porte qui ne s'ouvre pas. */}
+          {adresse ? (
+            <>
+              {t.contact}{" "}
+              <a
+                href={`mailto:${adresse}`}
+                className="font-medium text-ink underline underline-offset-4"
+              >
+                {adresse}
+              </a>
+            </>
+          ) : (
+            t.contactSansAdresse
+          )}
         </Bloc>
       </div>
     </div>
