@@ -80,6 +80,18 @@ const tables = () => ({
       texte: "Rechargez votre compte et gagnez des bonus. Composez *126#.",
       categorie: "publicite", nature: null,
       emis_le: il_y_a(300), recu_le: il_y_a(300), lu_le: il_y_a(280) },
+    // Trois consultations de solde d'affilée : c'est elles qui font
+    // apparaître le PLI (« n vérifications répétées ») — sans elles, l'état
+    // replié de la liste resterait invisible à tout essai.
+    ...[[10, 40], [11, 55], [12, 70]].map(([id, minutes]) => ({
+      id, source_id: id, expediteur: "MTN", terminal: "douala-faux",
+      compte: "MTN ·8901", carte: "89237010000000008901", sens: null,
+      montant: null, tiers: null, numero: null, reference: null,
+      solde_apres: null,
+      texte: "Votre solde MoMo est de 412 500 FCFA.",
+      categorie: "solde", nature: null,
+      emis_le: il_y_a(minutes), recu_le: il_y_a(minutes), lu_le: il_y_a(30),
+    })),
     // Une semaine d'encaissements étalés sur les jours : sans eux, l'écran
     // Analyse n'aurait qu'une barre, et les « principaux clients » qu'un
     // nom — un écran d'essai doit montrer l'écran plein, pas son squelette.

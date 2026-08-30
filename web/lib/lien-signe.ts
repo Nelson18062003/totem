@@ -35,9 +35,9 @@ function b64url(o: ArrayBuffer): string {
 }
 
 /** Ce qu'un lien peut ouvrir. Le GENRE fait partie de ce qui est signé :
- *  un lien de reçu ne peut pas ouvrir des coordonnées, ni l'inverse —
- *  chaque porte a sa propre signature. */
-export type GenreLien = "recu" | "coordonnees";
+ *  un lien de reçu ne peut pas ouvrir des coordonnées ni un bilan, et
+ *  ainsi de suite — chaque porte a sa propre signature. */
+export type GenreLien = "recu" | "coordonnees" | "bilan";
 
 /** Ce que la signature couvre : le genre, l'identifiant ET l'échéance.
  *  Signer l'identifiant seul ferait un laissez-passer éternel ; l'échéance

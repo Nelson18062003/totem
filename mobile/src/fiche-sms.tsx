@@ -72,14 +72,27 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
   const schema = couleursCategorie(cat);
 
   /** Poser une nature : c'est le propriétaire qui sait ce qu'était
-   *  l'opération ; le robot n'a que le texte du SMS. */
+   *  l'opération ; le robot n'a que le texte du SMS. Et le reçu SUIT dans
+   *  la foulée — établi s'il n'existe pas, refabriqué s'il existe sous une
+   *  autre nature : c'est ce que l'aide de l'écran promet, et le web fait
+   *  déjà. Sans cela, la liste disait « Retrait » et le PDF déjà émis
+   *  disait encore « Reçu de dépôt ». */
   const poserNature = async (n: Categorie | null) => {
+    const avant = nature;
     setNature(n as Paiement["nature"]);
     setChoisirType(false);
     try {
       await definirNature(Number(p.id), n);
       onChange?.();
-    } catch { /* l'écran garde le choix ; la prochaine lecture tranchera */ }
+    } catch {
+      // La nature n'est pas retenue : l'écran la rend — jamais une pastille
+      // que la base n'a pas. Et pas de reçu pour un classement raté.
+      setNature(avant);
+      return;
+    }
+    if (n && p.sourceId != null && (!p.recu || n !== (avant ?? p.categorie))) {
+      await etablirRecu(n);
+    }
   };
 
   /** Demander le reçu au terminal QUI A REÇU ce SMS — jamais au dernier qui
@@ -102,12 +115,16 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
     }
   };
 
-  const etablirRecu = async () => {
+  // La nature VOULUE voyage explicitement quand elle vient d'être choisie :
+  // l'état React de ce rendu porte encore l'ancienne valeur.
+  const etablirRecu = async (natureVoulue?: Categorie) => {
     if (p.sourceId == null) return;
+    const natureDemandee = natureVoulue ?? nature;
     setEtabli("envoi");
     try {
       const { id } = await deposerCommande(
-        "recu", { source_id: p.sourceId, nature: nature ?? undefined }, p.terminal);
+        "recu", { source_id: p.sourceId, nature: natureDemandee ?? undefined },
+        p.terminal);
       for (let i = 0; i < 25; i++) {
         await new Promise((r) => setTimeout(r, 1200));
         const c = await lireCommande(id).catch(() => null);
@@ -155,7 +172,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 la fabrication au terminal, et le PDF restait inaccessible.
                 Sans reçu, on l'ÉTABLIT, comme avant. */}
             <Pressable
-              onPress={p.recu ? ouvrirRecu : etablirRecu}
+              onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
               disabled={ouverture === "envoi" || etabli === "envoi"}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
@@ -177,7 +194,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 nature vient d'être rechoisie — même numéro, document neuf. */}
             {p.recu && p.sourceId != null ? (
               <Pressable
-                onPress={etablirRecu}
+                onPress={() => void etablirRecu()}
                 disabled={etabli === "envoi"}
                 style={({ pressed }) => ({
                   flexDirection: "row", alignItems: "center", justifyContent: "center",

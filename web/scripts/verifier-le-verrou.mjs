@@ -252,6 +252,32 @@ try {
   verifier("et ce lien-là ouvre vraiment",
            (await fetch(lienCoordSigne)).status, 404);
 
+  console.log("\nLe lien de bilan signé — la troisième porte, attaquée");
+  // La signature couvre le NOMBRE DE JOURS : un lien signé pour la semaine
+  // ne doit pas ouvrir le trimestre. (503 = entré, la base n'est pas
+  // configurée ici ; 401 = repoussé par le verrou.)
+  const signerBilan = (jours, exp) =>
+    createHmac("sha256", SECRET).update(`bilan:${jours}:${exp}`).digest("base64url");
+  const bonBilan = signerBilan("7", futur);
+  verifier("le CSV sans rien reste fermé", await code("/api/bilan?jours=7"), 401);
+  verifier("un lien signé valable entre (503 : base absente ici)",
+           await code(`/api/bilan?jours=7&e=${futur}&s=${bonBilan}`), 503);
+  verifier("le lien de la semaine n'ouvre pas le trimestre",
+           await code(`/api/bilan?jours=90&e=${futur}&s=${bonBilan}`), 401);
+  verifier("échéance passée : dehors",
+           await code(`/api/bilan?jours=7&e=${passe}&s=${signerBilan("7", passe)}`), 401);
+  verifier("un lien de reçu n'ouvre pas le bilan",
+           await code(`/api/bilan?jours=7&e=${futur}&s=${signer("7", futur)}`), 401);
+  verifier("la fabrique reste derrière le verrou",
+           await code("/api/bilan/lien?jours=7"), 401);
+  const rLienBilan = await fetch(`${B}/api/bilan/lien?jours=7`, {
+    headers: { Authorization: `Bearer ${jeton}` },
+  });
+  verifier("authentifiée, elle rend un lien", rLienBilan.status, 200);
+  const { url: lienBilanSigne } = await rLienBilan.json();
+  verifier("et ce lien-là entre vraiment",
+           (await fetch(lienBilanSigne)).status, 503);
+
   console.log("\nLe navigateur, inchangé");
   const co = await fetch(B + "/api/connexion", json({ motdepasse: MOTDEPASSE }));
   verifier("connexion navigateur acceptée", co.status, 200);

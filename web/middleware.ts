@@ -69,6 +69,14 @@ export async function middleware(req: NextRequest) {
         req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return NextResponse.next();
   }
+  // Le bilan CSV : la signature couvre le NOMBRE DE JOURS demandé — un lien
+  // signé pour la semaine n'ouvre pas le trimestre.
+  const jours = req.nextUrl.searchParams.get("jours");
+  if (pathname === "/api/bilan" && jours && /^\d{1,2}$/.test(jours)
+      && await verifierLien(secret, "bilan", jours,
+           req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
+    return NextResponse.next();
+  }
 
   // Deux façons de présenter la MÊME session, selon qui frappe :
   //   — le navigateur l'a dans un cookie, posé par le serveur ;

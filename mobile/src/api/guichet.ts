@@ -374,3 +374,10 @@ export function agirSurCompte(
 export function lienCoordonnees(iccid: string): Promise<{ url: string }> {
   return demander(`/api/coordonnees/${encodeURIComponent(iccid)}/lien`);
 }
+
+/** Un lien signé vers le bilan CSV (7, 30 ou 90 jours) — le navigateur du
+ *  système sait télécharger un fichier, l'application ne sait que
+ *  l'afficher. La signature couvre le nombre de jours. */
+export function lienBilan(jours: number): Promise<{ url: string }> {
+  return demander(`/api/bilan/lien?jours=${jours}`);
+}

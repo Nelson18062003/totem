@@ -6,13 +6,15 @@
 // caisse peut être à Douala et le téléphone à Paris, un encaissement de
 // 23 h reste dans son jour.
 //
-// L'export CSV du bilan reste sur la plateforme : un téléphone partage mal
-// un fichier qu'aucune application n'attend, et le comptable travaille sur
-// un ordinateur.
+// L'export CSV passe par le navigateur du système, muni d'un lien signé :
+// c'est lui qui sait TÉLÉCHARGER un fichier — l'application ne sait que
+// l'afficher. Même chemin que le reçu et la fiche des coordonnées.
 
+import { useState } from "react";
 import { RefreshControl, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import * as Navigateur from "expo-web-browser";
 
 import { Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
@@ -21,6 +23,7 @@ import { useEcran } from "@/ecran";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
+import { lienBilan } from "@/api/guichet";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { textesUssd } from "@noyau/textes/ussd";
 import { fcfa, jourLocal, nombre, FUSEAU_DEFAUT, type Paiement } from "@noyau/types";
@@ -202,6 +205,14 @@ export default function Analyse() {
               </View>
             </Entree>
 
+            {/* Le bilan en CSV, prêt pour Excel ou la comptabilité — les
+                mêmes colonnes que l'export du robot. Le fichier se
+                télécharge par le navigateur du système, muni d'un lien
+                signé : c'est lui qui sait enregistrer un fichier. */}
+            <Entree delai={210}>
+              <ExportBilan langue={langue} />
+            </Entree>
+
             {/* Les principaux clients. Toucher un nom ouvre la boîte de
                 réception, déjà filtrée sur lui. */}
             {topClients.length ? (
@@ -252,5 +263,63 @@ export default function Analyse() {
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/** L'export du bilan : la semaine pour le quotidien, 30 et 90 jours pour le
+ *  bilan du mois ou du trimestre — les mêmes trois portes que le web. */
+function ExportBilan({ langue }: { langue: Langue }) {
+  const t = textesAnalyse[langue];
+  const [occupe, setOccupe] = useState<number | null>(null);
+  const [refus, setRefus] = useState(false);
+
+  const exporter = async (jours: number) => {
+    if (occupe != null) return;
+    setOccupe(jours);
+    setRefus(false);
+    try {
+      const { url } = await lienBilan(jours);
+      await Navigateur.openBrowserAsync(url);
+    } catch {
+      setRefus(true);
+    } finally {
+      setOccupe(null);
+    }
+  };
+
+  const portes = [
+    { jours: 7, libelle: t.exportSemaine },
+    { jours: 30, libelle: t.exportJours(30) },
+    { jours: 90, libelle: t.exportJours(90) },
+  ];
+
+  return (
+    <View style={{ gap: espaces.sm }}>
+      <Texte taille={textes.intertitre} poids="demi">{t.exporterBilan}</Texte>
+      <View style={{ flexDirection: "row", gap: espaces.sm }}>
+        {portes.map((p) => (
+          <Pressable
+            key={p.jours}
+            onPress={() => void exporter(p.jours)}
+            disabled={occupe != null}
+            style={({ pressed }) => ({
+              flex: 1, alignItems: "center", paddingVertical: espaces.md,
+              borderRadius: rayons.bouton, borderWidth: 1,
+              borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+              opacity: occupe != null && occupe !== p.jours ? 0.5 : 1,
+            })}
+          >
+            <Texte taille={textes.petit} poids="moyen">
+              {occupe === p.jours ? "…" : p.libelle}
+            </Texte>
+          </Pressable>
+        ))}
+      </View>
+      {refus ? (
+        <Texte taille={textes.legende} ton="negatif">{t.exportImpossible}</Texte>
+      ) : null}
+      <Texte taille={textes.legende} ton="pale">{t.exportNote}</Texte>
+    </View>
   );
 }
