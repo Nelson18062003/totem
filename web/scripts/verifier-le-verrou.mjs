@@ -134,7 +134,22 @@ try {
   console.log("\nLe jeton ouvre — et lui seul (401 = repoussé, 503 = entré)");
   const [sujet, expir, sign] = jeton.split(".");
   verifier("jeton authentique", await avec(jeton), 503);
-  verifier("signature modifiée", await avec(`${sujet}.${expir}.${sign.slice(0, -1)}X`), 401);
+  // On altère un caractère DU MILIEU, jamais le dernier : le dernier
+  // caractère d'une signature base64url ne porte que quatre bits utiles,
+  // et « …W » → « …X » peut décoder les MÊMES octets — l'altération ne
+  // serait alors pas une altération, et le contrôle échouerait à tort une
+  // fois sur vingt. C'est arrivé.
+  const altere = sign.slice(0, 10)
+    + (sign[10] === "A" ? "B" : "A") + sign.slice(11);
+  verifier("signature modifiée", await avec(`${sujet}.${expir}.${altere}`), 401);
+  // Et l'écriture NON CANONIQUE de la vraie signature (le dernier caractère
+  // récrit avec les mêmes bits utiles) est refusée aussi : une signature n'a
+  // qu'une seule écriture, sinon un jeton a plusieurs formes valables.
+  const dernier = sign[sign.length - 1];
+  const ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const jumeau = ABC[(ABC.indexOf(dernier) ^ 1)];
+  verifier("signature récrite (mêmes octets, autre écriture)",
+    await avec(`${sujet}.${expir}.${sign.slice(0, -1)}${jumeau}`), 401);
   verifier("échéance repoussée", await avec(`${sujet}.99999999999999.${sign}`), 401);
   verifier("sujet changé", await avec(`proprietaire.${expir}.${sign}`), 401);
   verifier("jeton inventé", await avec("telephone.99999999999999.n-importe-quoi"), 401);

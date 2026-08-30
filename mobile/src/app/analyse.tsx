@@ -22,6 +22,7 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { textesAnalyse } from "@noyau/textes/analyse";
+import { textesUssd } from "@noyau/textes/ussd";
 import { fcfa, jourLocal, nombre, FUSEAU_DEFAUT, type Paiement } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
@@ -60,9 +61,10 @@ export default function Analyse() {
   const langue = useLangue();
   const t = textesAnalyse[langue];
   const ecran = useEcran();
-  // Chaque écran dit ce dont il a besoin : ici, deux semaines de paiements
-  // au moins — 200 lignes couvrent large — et aucun reçu.
-  const { donnees, chargement, recharger } = useDonnees({ sms: 200, recus: 0 });
+  // La même profondeur que la page web (1000 lignes) : à 200, la semaine
+  // PRÉCÉDENTE est la première tronquée sur une caisse active, et le
+  // pourcentage d'évolution ment — en bien, ce qui est pire.
+  const { donnees, chargement, recharger } = useDonnees({ sms: 1000, recus: 0 });
 
   const paiements = donnees?.paiements ?? [];
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
@@ -107,7 +109,7 @@ export default function Analyse() {
         <Entree montee={6}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
             <Pressable onPress={() => router.back()} hitSlop={12}
-                       accessibilityLabel={t.titre}>
+                       accessibilityLabel={textesUssd[langue].fermerEcran}>
               <View style={{ transform: [{ rotate: "180deg" }] }}>
                 <Icone nom="Chevron" taille={22} couleur={couleurs.encreDouce} />
               </View>
@@ -215,7 +217,10 @@ export default function Analyse() {
                         <Pressable
                           onPress={() => router.push({
                             pathname: "/encaissements",
-                            params: { recherche: c.nom },
+                            // « moment » distingue deux appuis sur le MÊME
+                            // nom : sans lui, revenir toucher le même client
+                            // après avoir vidé la recherche ne ferait rien.
+                            params: { recherche: c.nom, moment: String(Date.now()) },
                           })}
                           style={({ pressed }) => ({
                             flexDirection: "row", alignItems: "center", gap: espaces.md,

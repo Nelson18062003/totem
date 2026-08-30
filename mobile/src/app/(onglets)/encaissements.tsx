@@ -38,13 +38,14 @@ export default function Encaissements() {
 
   // Arriver déjà filtré : l'Analyse pousse un nom de client, la liste
   // s'ouvre sur ses paiements — même chemin que le web
-  // (`/encaissements?recherche=…`). Le champ reste libre ensuite.
-  const params = useLocalSearchParams<{ recherche?: string }>();
+  // (`/encaissements?recherche=…`). Le champ reste libre ensuite, et
+  // « moment » fait que retoucher le MÊME nom refiltre quand même.
+  const params = useLocalSearchParams<{ recherche?: string; moment?: string }>();
   useEffect(() => {
     if (typeof params.recherche === "string" && params.recherche) {
       setRecherche(params.recherche);
     }
-  }, [params.recherche]);
+  }, [params.recherche, params.moment]);
 
   const paiements = donnees?.paiements ?? [];
   const sims = donnees?.sims ?? [];

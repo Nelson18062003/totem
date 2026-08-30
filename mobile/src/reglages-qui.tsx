@@ -14,13 +14,16 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, TextInput, View } from "react-native";
 
 import { Carte, Filet, Texte } from "@/ui";
-import { agirSurCompte, listerComptes, type CompteInscrit } from "@/api/guichet";
+import { agirSurCompte, ErreurGuichet, listerComptes,
+         type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { textesReglages } from "@noyau/textes/reglages";
+import { textesConnexion } from "@noyau/textes/connexion";
 import type { Langue } from "@noyau/langue";
 
 export function SectionQui({ langue }: { langue: Langue }) {
   const t = textesReglages[langue];
+  const tc = textesConnexion[langue];
   const [comptes, setComptes] = useState<CompteInscrit[] | null>(null);
   const [permis, setPermis] = useState<boolean | null>(null);
   const [occupe, setOccupe] = useState<number | null>(null);
@@ -32,13 +35,23 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const [mot, setMot] = useState<string | null>(null);
   const [rate, setRate] = useState(false);
 
+  // « Pas le propriétaire » et « le réseau a toussé » ne se ressemblent
+  // pas : le premier tait la section (403, comme au web), le second se DIT
+  // — sinon le propriétaire conclut que l'écran n'existe pas, pendant qu'un
+  // invité attend son approbation.
+  const [accroc, setAccroc] = useState(false);
   const charger = useCallback(async () => {
     try {
       const { comptes } = await listerComptes();
       setComptes(comptes ?? []);
       setPermis(true);
-    } catch {
-      setPermis(false);
+      setAccroc(false);
+    } catch (e) {
+      if (e instanceof ErreurGuichet && e.statut === 403) {
+        setPermis(false);
+        return;
+      }
+      setAccroc(true);
     }
   }, []);
 
@@ -47,12 +60,18 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const agir = async (c: CompteInscrit, geste: "approuver" | "fermer" | "supprimer") => {
     const faire = async () => {
       setOccupe(c.id);
+      setMot(null);
       try {
         await agirSurCompte({ id: c.id, geste });
-        await charger();
-      } catch {
-        /* la liste rechargée dira l'état réel */
+        setRate(false);
+      } catch (e) {
+        // Un geste raté se DIT : un « Approuver » silencieusement perdu
+        // laisse l'invité dehors et le propriétaire persuadé du contraire.
+        setRate(true);
+        setMot(e instanceof Error && e.message ? e.message : t.pasPartie);
       } finally {
+        // Réussi ou non, la liste rechargée dit l'état réel.
+        await charger();
         setOccupe(null);
       }
     };
@@ -87,8 +106,36 @@ export function SectionQui({ langue }: { langue: Langue }) {
     }
   };
 
-  // Ni autorisé, ni encore chargé : rien à montrer.
-  if (permis !== true || !comptes) return null;
+  // Pas le propriétaire : la section se tait, comme au web.
+  if (permis === false) return null;
+  // Le premier chargement a raté : on le dit, avec de quoi réessayer —
+  // disparaître en silence ferait croire que la section n'existe pas.
+  if (accroc && comptes == null) {
+    return (
+      <View style={{ gap: espaces.sm }}>
+        <Texte taille={textes.intertitre} poids="demi">{t.qui}</Texte>
+        <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
+          <Texte taille={textes.petit} ton="negatif" style={{ lineHeight: 20 }}>
+            {t.pasPartie}
+          </Texte>
+          <Pressable
+            onPress={() => void charger()}
+            style={({ pressed }) => ({
+              alignSelf: "flex-start",
+              paddingHorizontal: espaces.lg, paddingVertical: espaces.sm,
+              borderRadius: rayons.bouton, borderWidth: 1,
+              borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+            })}
+          >
+            <Texte taille={textes.petit} poids="moyen">{tc.reessayer}</Texte>
+          </Pressable>
+        </Carte>
+      </View>
+    );
+  }
+  // Encore en route.
+  if (comptes == null) return null;
 
   return (
     <View style={{ gap: espaces.sm }}>

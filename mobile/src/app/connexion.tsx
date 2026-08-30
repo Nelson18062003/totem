@@ -30,7 +30,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, KeyboardAvoidingView, Pressable,
   ScrollView, TextInput, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";

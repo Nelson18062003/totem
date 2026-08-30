@@ -13,7 +13,7 @@
 
 import { useRef, useState } from "react";
 import {
-  Dimensions, FlatList, Pressable, View, type ViewToken,
+  FlatList, Pressable, View, useWindowDimensions, type ViewToken,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -50,7 +50,10 @@ export function Bienvenue({ onFini }: { onFini: () => void }) {
   const t = textesBienvenue[langue];
   const [page, setPage] = useState(0);
   const liste = useRef<FlatList>(null);
-  const largeur = Dimensions.get("window").width;
+  // `useWindowDimensions`, jamais `Dimensions.get()` (voir ecran.ts) :
+  // tourner ou déplier l'appareil PENDANT l'accueil recalcule les pages,
+  // sinon le défilement retombe entre deux écrans.
+  const { width: largeur } = useWindowDimensions();
 
   const finir = () => {
     void Reglage.ecrire(CLE_VUE, "oui");
