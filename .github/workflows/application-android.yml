@@ -13,6 +13,21 @@
 # Le jeton vit dans les secrets du dépôt. Il n'apparaît ni dans le code, ni
 # dans le journal de compilation : GitHub le masque.
 #
+# POUR QUE LE PAQUET PARTE TOUT SEUL AU MAGASIN, une seule fois aussi :
+#
+#   3. Play Console → Configuration → Accès à l'API → associer un projet
+#      Google Cloud, puis créer un compte de service et lui donner le droit
+#      « Gérer les versions » sur cette application.
+#   4. Google Cloud → ce compte de service → Clés → Ajouter une clé → JSON.
+#   5. GitHub → Settings → Secrets and variables → Actions → New repository
+#      secret → nom : GOOGLE_PLAY_CLE, valeur : le contenu ENTIER du fichier
+#      JSON téléchargé.
+#
+# Sans ce secret, rien ne casse : le paquet se compile, et le résumé donne le
+# lien pour le déposer à la main, comme avant. Avec lui, il n'y a plus rien à
+# télécharger ni à glisser : la version apparaît d'elle-même dans la Play
+# Console, sur la piste d'essai interne.
+#
 # ENSUITE, pour obtenir un paquet : onglet Actions → « Application Android »
 # → Run workflow → choisir le profil. Le lien de téléchargement s'affiche à
 # la fin, et Expo l'envoie aussi par courriel.
@@ -122,9 +137,61 @@ jobs:
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # LA CLÉ DU MAGASIN — posée AVANT la compilation, pas après.
+      #
+      # Elle ne sert qu'à la fin, mais on la regarde maintenant : découvrir au
+      # bout de vingt minutes que le dépôt automatique ne peut pas se faire,
+      # c'est vingt minutes pour rien. Ici, on le sait tout de suite.
+      #
+      # « apercu » est un APK qu'on installe à la main : il n'a rien à faire
+      # au magasin, et cette étape passe son tour.
+      - name: Poser la clé du magasin
+        id: cle
+        if: inputs.profil != 'apercu'
+        working-directory: mobile
+        env:
+          CLE: ${{ secrets.GOOGLE_PLAY_CLE }}
+        run: |
+          if [ -z "$CLE" ]; then
+            echo "posee=non" >> $GITHUB_OUTPUT
+            echo "Pas de clé GOOGLE_PLAY_CLE : le paquet devra être déposé à la main."
+            exit 0
+          fi
+          printf '%s' "$CLE" > google-play.json
+          # Une clé tronquée au copier-coller donnerait, après la
+          # compilation, une erreur que personne ne sait lire. On la lit ici.
+          if ! node -e "const c=require('./google-play.json'); if(!c.client_email||!c.private_key) process.exit(1)"; then
+            echo "::error::GOOGLE_PLAY_CLE n'est pas une clé de compte de service valable (client_email et private_key attendus). Recopier le fichier JSON ENTIER."
+            exit 1
+          fi
+          echo "posee=oui" >> $GITHUB_OUTPUT
+
       - name: Compiler
         working-directory: mobile
         run: eas build --platform android --profile ${{ inputs.profil }} --non-interactive --wait
+
+      # LE DÉPÔT AU MAGASIN, sans passer par les mains du propriétaire.
+      #
+      # C'était le dernier geste manuel, et il revenait à CHAQUE version :
+      # télécharger l'AAB depuis GitHub, ouvrir la Play Console, le glisser
+      # dans une boîte. Expo sait le faire lui-même — le compte de service
+      # l'y autorise.
+      #
+      # Où atterrit le paquet est décidé dans `eas.json`, pas ici :
+      #   essai      → piste d'essai interne, disponible aussitôt ;
+      #   production → piste publique, mais en BROUILLON. Rien n'atteint les
+      #                gens déjà installés sans un clic du propriétaire.
+      - name: Déposer au magasin
+        if: inputs.profil != 'apercu' && steps.cle.outputs.posee == 'oui'
+        working-directory: mobile
+        run: eas submit --platform android --profile ${{ inputs.profil }} --latest --non-interactive
+
+      # La clé ne survit pas au travail. `always()` : même si la compilation
+      # ou le dépôt a échoué — surtout dans ce cas.
+      - name: Effacer la clé du magasin
+        if: always()
+        working-directory: mobile
+        run: rm -f google-play.json
 
       - name: Où trouver le paquet
         working-directory: mobile
@@ -139,3 +206,20 @@ jobs:
                 if (b.artifacts?.buildUrl) console.log('- téléchargement : ' + b.artifacts.buildUrl);
                 if (b.appVersion) console.log('- version : ' + b.appVersion);
               });" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.profil }}" = "apercu" ]; then
+            echo "APK à installer directement : ni magasin, ni compte." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.cle.outputs.posee }}" = "oui" ]; then
+            echo "✅ **Déposé au magasin tout seul.** Rien à télécharger." >> $GITHUB_STEP_SUMMARY
+            if [ "${{ inputs.profil }}" = "essai" ]; then
+              echo "La version est sur la piste d'essai interne, disponible pour" >> $GITHUB_STEP_SUMMARY
+              echo "les testeurs de la liste." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "La version est en BROUILLON sur la piste publique : elle" >> $GITHUB_STEP_SUMMARY
+              echo "n'atteindra personne tant qu'elle n'est pas déployée à la main." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ **Dépôt manuel.** Le secret \`GOOGLE_PLAY_CLE\` n'est pas posé :" >> $GITHUB_STEP_SUMMARY
+            echo "télécharger le paquet ci-dessus et le glisser dans la Play" >> $GITHUB_STEP_SUMMARY
+            echo "Console. Voir l'en-tête de ce fichier pour s'en passer." >> $GITHUB_STEP_SUMMARY
+          fi

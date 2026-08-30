@@ -360,6 +360,63 @@ Catégorie : **Finance**.
 
 ---
 
+## Le paquet part tout seul au magasin
+
+Télécharger l'AAB depuis GitHub, ouvrir la Play Console, le glisser dans une
+boîte, recommencer à la version suivante : c'est le genre de geste qu'on
+répète cent fois avant de se demander pourquoi. Il n'y a pas de raison.
+
+`eas submit` dépose le paquet lui-même, à la fin de la compilation. Il faut
+lui donner une autorisation, **une seule fois**.
+
+### Ce qu'il faut faire, une fois
+
+1. **Play Console → Configuration → Accès à l'API.** Associer un projet
+   Google Cloud (il en propose un, ou en crée un).
+2. Sur la même page, **créer un compte de service**. Le lien mène à Google
+   Cloud ; on lui donne un nom (« depot-totem » fait l'affaire) et on
+   revient.
+3. De retour dans la Play Console, **accorder l'accès** à ce compte de
+   service sur l'application TOTEM, avec le droit **« Gérer les versions »**.
+   Rien de plus : il n'a pas à lire les finances ni à répondre aux avis.
+4. **Google Cloud → ce compte de service → Clés → Ajouter une clé → JSON.**
+   Un fichier se télécharge.
+5. **GitHub → Settings → Secrets and variables → Actions → New repository
+   secret.** Nom : `GOOGLE_PLAY_CLE`. Valeur : le contenu **entier** du
+   fichier JSON, accolades comprises.
+
+Ensuite, plus rien. On lance la compilation, et la version apparaît d'elle-même
+dans la Play Console.
+
+### Où atterrit le paquet
+
+C'est `mobile/eas.json` qui le décide, et la différence compte :
+
+| Profil | Piste | En arrivant |
+|---|---|---|
+| `essai` | essai interne | **disponible aussitôt** pour les testeurs de la liste |
+| `production` | publique | **brouillon** — personne ne le reçoit sans un clic |
+
+Une production qui se déploierait toute seule enverrait du code neuf sur des
+téléphones en service, à la seconde où la compilation finit. Le brouillon
+laisse la dernière décision à quelqu'un.
+
+### Cette clé publie à la place du propriétaire
+
+Qui la tient peut envoyer n'importe quel paquet sous le nom de TOTEM. Elle ne
+vit donc que dans les secrets de GitHub, elle n'entre jamais dans le dépôt
+(`mobile/.gitignore`), et le robot l'efface à la fin du travail — même quand
+la compilation a échoué, surtout dans ce cas.
+
+Le robot la relit avant de compiler : une clé tronquée au copier-coller
+arrête tout de suite, au lieu de donner une erreur illisible vingt minutes
+plus tard.
+
+Sans le secret, rien ne casse : le paquet se compile et le résumé donne le
+lien pour le déposer à la main, comme avant.
+
+---
+
 ## L'ordre des choses
 
 1. Poser `CONTACT_COURRIEL` sur Vercel, redéployer, vérifier les DEUX pages
@@ -370,8 +427,8 @@ Catégorie : **Finance**.
 5. Remplir *Fonctionnalités financières*.
 6. Remplir la classification du contenu.
 7. Fiche du magasin : descriptions, icône, captures.
-8. Compiler un paquet `essai` (AAB), le téléverser sur la **piste d'essai
-   interne**.
+8. Poser `GOOGLE_PLAY_CLE` (voir ci-dessus), puis compiler un paquet `essai`
+   (AAB) : il part seul sur la **piste d'essai interne**.
 9. L'installer soi-même, l'utiliser quelques jours.
 10. Puis la production.
 
