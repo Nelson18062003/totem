@@ -15,7 +15,10 @@ import { Feuille } from "@/feuille";
 import { Carte, Filet, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import { definirNature, deposerCommande, lireCommande, marquerLu } from "@/api/guichet";
+import * as Navigateur from "expo-web-browser";
+import {
+  definirNature, deposerCommande, lienRecu, lireCommande, marquerLu,
+} from "@/api/guichet";
 import { useLangue } from "@/langue";
 import { NATURES } from "@noyau/natures";
 import {
@@ -82,6 +85,23 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
   /** Demander le reçu au terminal QUI A REÇU ce SMS — jamais au dernier qui
    *  a donné signe de vie : `sourceId` ne veut rien dire dans un autre
    *  journal, et le reçu porterait sur une autre opération. */
+  // OUVRIR le reçu — le geste pour lequel un reçu existe : le montrer, le
+  // partager. Le PDF s'ouvre dans le navigateur du système, muni d'un lien
+  // signé de dix minutes (voir web/lib/lien-signe.ts) : de là, le partage
+  // d'Android fait le reste — WhatsApp compris.
+  const [ouverture, setOuverture] = useState<"repos" | "envoi" | "refus">("repos");
+  const ouvrirRecu = async () => {
+    if (!p.recu || ouverture === "envoi") return;
+    setOuverture("envoi");
+    try {
+      const { url } = await lienRecu(p.recu);
+      await Navigateur.openBrowserAsync(url);
+      setOuverture("repos");
+    } catch {
+      setOuverture("refus");
+    }
+  };
+
   const etablirRecu = async () => {
     if (p.sourceId == null) return;
     setEtabli("envoi");
@@ -127,32 +147,58 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
         </>
       }
       pied={
-        argent && p.sourceId != null ? (
+        argent && (p.recu || p.sourceId != null) ? (
           <View style={{ gap: espaces.sm }}>
-            {/* Le reçu, geste principal d'un mouvement d'argent. */}
+            {/* LE GESTE PRINCIPAL suit ce qui existe. Un reçu déjà établi
+                s'OUVRE — c'est pour être montré et partagé qu'il existe, et
+                c'est ce que ce bouton ne savait pas faire : il redemandait
+                la fabrication au terminal, et le PDF restait inaccessible.
+                Sans reçu, on l'ÉTABLIT, comme avant. */}
             <Pressable
-              onPress={etablirRecu}
-              disabled={etabli === "envoi" || etabli === "fait"}
+              onPress={p.recu ? ouvrirRecu : etablirRecu}
+              disabled={ouverture === "envoi" || etabli === "envoi"}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
                 gap: espaces.sm, paddingVertical: espaces.md,
                 borderRadius: rayons.bouton,
-                backgroundColor: etabli === "fait"
-                  ? couleurs.surface3
-                  : pressed ? couleurs.accentAppui : couleurs.accent,
+                backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
               })}
             >
-              <Icone nom="Doc" taille={17}
-                     couleur={etabli === "fait" ? couleurs.encreDouce : couleurs.surfaceHaute} />
+              <Icone nom="Doc" taille={17} couleur={couleurs.surfaceHaute} />
               <Texte poids="demi" taille={textes.petit}
-                     style={{ color: etabli === "fait" ? couleurs.encreDouce : couleurs.surfaceHaute }}>
-                {etabli === "envoi" ? t.demandeAuTerminal
-                  : etabli === "fait" ? t.regenerationFaite
-                  : p.recu ? t.telechargerRecu : t.etablirRecu}
+                     style={{ color: couleurs.surfaceHaute }}>
+                {p.recu
+                  ? (ouverture === "envoi" ? t.ouvertureRecu : t.ouvrirRecu)
+                  : (etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu)}
               </Texte>
             </Pressable>
+
+            {/* REFAIRE le reçu : le second geste, discret. Il sert quand la
+                nature vient d'être rechoisie — même numéro, document neuf. */}
+            {p.recu && p.sourceId != null ? (
+              <Pressable
+                onPress={etablirRecu}
+                disabled={etabli === "envoi"}
+                style={({ pressed }) => ({
+                  flexDirection: "row", alignItems: "center", justifyContent: "center",
+                  gap: espaces.sm, paddingVertical: espaces.md,
+                  borderRadius: rayons.bouton, borderWidth: 1,
+                  borderColor: couleurs.trait,
+                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
+                })}
+              >
+                <Texte poids="moyen" taille={textes.petit} ton="doux">
+                  {etabli === "envoi" ? t.demandeAuTerminal
+                    : etabli === "fait" ? t.regenerationFaite : t.refaireRecu}
+                </Texte>
+              </Pressable>
+            ) : null}
+
             {etabli === "refus" ? (
               <Texte taille={textes.legende} ton="negatif">{t.terminalMuet}</Texte>
+            ) : null}
+            {ouverture === "refus" ? (
+              <Texte taille={textes.legende} ton="negatif">{t.lienRecuImpossible}</Texte>
             ) : null}
           </View>
         ) : null

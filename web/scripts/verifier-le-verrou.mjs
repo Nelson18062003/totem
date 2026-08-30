@@ -168,6 +168,43 @@ try {
            await inscrire("https://chez-moi.example/sonner"), 400);
   verifier("un jeton vide est refusé", await inscrire(""), 400);
 
+  // LE LIEN DE REÇU SIGNÉ — la seule brèche volontaire du verrou, et donc
+  // celle qu'on attaque le plus fort. Le navigateur du téléphone n'a ni
+  // cookie ni jeton : l'application demande un laissez-passer signé de dix
+  // minutes pour UN reçu. On vérifie que ce passe ouvre, et surtout que
+  // tout ce qui n'est pas exactement lui reste dehors.
+  //
+  // 404 = le verrou a laissé passer et la route a cherché le reçu (aucune
+  // base ici) ; 401 = repoussé à la porte. C'est toute la différence.
+  console.log("\nLe lien de reçu signé — la brèche volontaire, attaquée");
+  const { createHmac } = await import("node:crypto");
+  const signer = (numero, exp) =>
+    createHmac("sha256", SECRET).update(`recu:${numero}:${exp}`).digest("base64url");
+  const futur = Date.now() + 600_000;
+  const passe = Date.now() - 1_000;
+  const bonne = signer("essai-1", futur);
+
+  verifier("le PDF sans rien reste fermé", await code("/api/recu/essai-1"), 401);
+  verifier("un lien signé valable ouvre (404 : cherché, pas repoussé)",
+           await code(`/api/recu/essai-1?e=${futur}&s=${bonne}`), 404);
+  verifier("signature falsifiée : dehors",
+           await code(`/api/recu/essai-1?e=${futur}&s=${bonne.slice(0, -2)}xx`), 401);
+  verifier("échéance passée : dehors",
+           await code(`/api/recu/essai-1?e=${passe}&s=${signer("essai-1", passe)}`), 401);
+  verifier("échéance repoussée après signature : dehors",
+           await code(`/api/recu/essai-1?e=${futur + 9}&s=${bonne}`), 401);
+  verifier("le passe d'un reçu n'ouvre pas un autre reçu",
+           await code(`/api/recu/essai-2?e=${futur}&s=${bonne}`), 401);
+  verifier("la fabrique de liens reste derrière le verrou",
+           await code("/api/recu/essai-1/lien"), 401);
+  const rLien = await fetch(`${B}/api/recu/essai-1/lien`, {
+    headers: { Authorization: `Bearer ${jeton}` },
+  });
+  verifier("authentifié, elle rend un lien", rLien.status, 200);
+  const { url: lienSigne } = await rLien.json();
+  verifier("et ce lien-là ouvre vraiment",
+           (await fetch(lienSigne)).status, 404);
+
   console.log("\nLe navigateur, inchangé");
   const co = await fetch(B + "/api/connexion", json({ motdepasse: MOTDEPASSE }));
   verifier("connexion navigateur acceptée", co.status, 200);

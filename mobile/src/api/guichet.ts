@@ -327,6 +327,15 @@ export function enregistrerAppareil(
   });
 }
 
+/** Un lien de reçu SIGNÉ, que le navigateur du téléphone peut ouvrir.
+ *
+ *  Le navigateur du système n'a ni cookie ni jeton : le PDF lui était
+ *  interdit. L'application, elle, est authentifiée — elle demande ce
+ *  laissez-passer de dix minutes, pour CE reçu, et l'ouvre aussitôt. */
+export function lienRecu(numero: string): Promise<{ url: string }> {
+  return demander(`/api/recu/${encodeURIComponent(numero)}/lien`);
+}
+
 /** « Est-ce que mon téléphone sonne ? »
  *
  *  Fait envoyer une notification d'essai aux appareils inscrits. Rend
