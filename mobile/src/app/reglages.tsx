@@ -17,6 +17,7 @@ import { router } from "expo-router";
 import { Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { SectionCartes } from "@/reglages-cartes";
+import { SectionCodes } from "@/reglages-codes";
 import { SectionQui } from "@/reglages-qui";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
@@ -42,6 +43,11 @@ export default function Reglages() {
   // Les cartes en place d'abord — c'est elles qu'on vient régler.
   const sims = [...(donnees?.sims ?? [])]
     .sort((a, b) => Number(b.enPlace) - Number(a.enPlace));
+  // Une section de codes PAR OPÉRATEUR présent, comme au web : le repli
+  // « Orange » d'autrefois mentait dès qu'une MTN était dans le berceau.
+  const enPlaceOps = sims.filter((s) => s.enPlace).map((s) => s.operateur);
+  const operateurs = [...new Set([...enPlaceOps, ...sims.map((s) => s.operateur)])]
+    .filter((op) => op && op !== "?");
 
   const seDeconnecter = () => {
     Alert.alert(t.seDeconnecter, undefined, [
@@ -134,6 +140,17 @@ export default function Reglages() {
             où l'on vient de refuser ou d'accepter les notifications, et où
             l'on se pose justement la question. */}
         <EssaiNotification />
+
+        {/* Les codes USSD — une section par opérateur vu par le terminal,
+            avec les boutons appris par le robot en regard. */}
+        {operateurs.map((op) => (
+          <SectionCodes key={op} operateur={op}
+                        enPlace={enPlaceOps.includes(op)}
+                        appris={donnees?.raccourcis?.[op] ?? []}
+                        langue={langue}
+                        terminal={terminal?.id ?? null}
+                        onChange={recharger} />
+        ))}
 
         {/* Qui peut se connecter — visible du propriétaire seul : la
             section se tait d'elle-même pour les autres. */}

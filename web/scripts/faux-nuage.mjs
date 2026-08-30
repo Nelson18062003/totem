@@ -143,10 +143,10 @@ const smsEnPlus = [];
 function reponsePour(commande) {
   const { type, parametres } = commande;
   if (type === "ussd_fin") return "Session terminee.";
-  // Le nom ou le numéro d'une carte : le vrai robot l'écrit dans la table
-  // des cartes ; le faux se contente d'acquiescer — l'écran qui attend
-  // « faite » doit pouvoir dérouler son chemin heureux.
-  if (type === "identite") return "C'est note.";
+  // Le nom ou le numéro d'une carte, un bouton du carnet : le vrai robot
+  // écrit dans sa table ; le faux se contente d'acquiescer — l'écran qui
+  // attend « faite » doit pouvoir dérouler son chemin heureux.
+  if (type === "identite" || type === "raccourci") return "C'est note.";
   if (type === "ussd") {
     const code = String(parametres.code ?? "");
     // Un code complet (avec le numéro et le montant dedans) va droit au code

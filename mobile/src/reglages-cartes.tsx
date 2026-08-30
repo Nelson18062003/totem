@@ -25,7 +25,7 @@ import type { Langue } from "@noyau/langue";
 import type { Sim } from "@noyau/types";
 
 /** Attend l'issue d'une demande déposée pour le robot (≈40 s au plus). */
-async function attendreCommande(id: number) {
+export async function attendreCommande(id: number) {
   for (let i = 0; i < 26; i++) {
     await new Promise((r) => setTimeout(r, 1500));
     const c = await lireCommande(id).catch(() => null);
