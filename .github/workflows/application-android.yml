@@ -50,12 +50,27 @@ on:
         description: "Adresse de la plateforme (vide = celle des réglages du dépôt)"
         required: false
         default: ""
+      sans_compiler:
+        description: "Déposer au magasin le DERNIER paquet déjà fabriqué, sans en refaire un"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   fabriquer:
     name: Fabriquer (${{ inputs.profil }})
     runs-on: ubuntu-latest
     steps:
+      # « apercu » fabrique un APK qu'on installe à la main : il ne va jamais
+      # au magasin. « sans_compiler » ne sait que déposer. Ensemble, ils ne
+      # feraient NI l'un NI l'autre — et le travail finirait en vert, sans
+      # rien avoir fait. Un succès qui n'a rien produit se cherche longtemps.
+      - name: Refuser une combinaison qui ne ferait rien
+        if: ${{ inputs.profil == 'apercu' && inputs.sans_compiler }}
+        run: |
+          echo "::error::« apercu » ne va pas au magasin, et « sans compiler » ne sait que déposer : ensemble, ce travail ne ferait rien. Choisir « essai » ou « production », ou décocher « sans compiler »."
+          exit 1
+
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
@@ -80,10 +95,12 @@ jobs:
       # vingtaine de minutes, autant ne pas la lancer sur du code qui ne
       # tient pas debout.
       - name: Vérifier les types
+        if: ${{ !inputs.sans_compiler }}
         working-directory: mobile
         run: npx tsc --noEmit
 
       - name: Vérifier les règles partagées
+        if: ${{ !inputs.sans_compiler }}
         working-directory: web
         run: npm ci && npm test
 
@@ -137,6 +154,31 @@ jobs:
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # CE QUE LE PAQUET EMPORTE — regardé, pas supposé.
+      #
+      # Cette étape MANQUAIT, et la première version partie au magasin est
+      # donc partie sans elle. Elle a été passée à la main après coup, et
+      # elle passait ; mais un contrôle qu'il faut penser à lancer n'est pas
+      # un contrôle.
+      #
+      # Le script compile le paquet JavaScript et regarde DEDANS : le noyau
+      # partagé doit y être, et aucun secret ne doit s'y trouver. Une
+      # application installée se démonte — tout ce qui entre dans ce fichier
+      # est public, pour toujours, et aucune mise à jour ne rattrape une clé
+      # déjà lue par quelqu'un.
+      #
+      # Elle vient AVANT la compilation : découvrir une fuite dans un paquet
+      # déjà déposé au magasin ne répare rien.
+      #
+      # On la saute quand on ne compile pas : elle regarderait le code
+      # D'AUJOURD'HUI, alors qu'on dépose un paquet fabriqué hier. Un
+      # contrôle qui mesure autre chose que ce qu'on livre ne sert à rien —
+      # le paquet déposé, lui, a été vérifié le jour où il a été fabriqué.
+      - name: Vérifier ce que le paquet emporte
+        if: ${{ !inputs.sans_compiler }}
+        working-directory: mobile
+        run: node scripts/verifier-le-paquet.mjs
+
       # LA CLÉ DU MAGASIN — posée AVANT la compilation, pas après.
       #
       # Elle ne sert qu'à la fin, mais on la regarde maintenant : découvrir au
@@ -166,7 +208,21 @@ jobs:
           fi
           echo "posee=oui" >> $GITHUB_OUTPUT
 
+      # SANS COMPILER : on dépose le dernier paquet déjà fabriqué.
+      #
+      # Pourquoi ce chemin existe. Déposer un paquet à la main dans la Play
+      # Console veut dire téléverser 84 Mo depuis un navigateur, sans quitter
+      # la page — et une connexion qui hoquette laisse une « release » vide
+      # que Google refuse ensuite de déployer, avec deux messages
+      # incompréhensibles. C'est arrivé trois fois en une nuit.
+      #
+      # Le robot, lui, part des serveurs d'Expo et pousse vers ceux de
+      # Google : rien ne traverse la maison de personne. Et changer de piste
+      # (essai → production) ne demande pas de recompiler : c'est le MÊME
+      # paquet, envoyé ailleurs. Vingt minutes de compilation pour un
+      # changement de destination seraient vingt minutes volées.
       - name: Compiler
+        if: ${{ !inputs.sans_compiler }}
         working-directory: mobile
         run: eas build --platform android --profile ${{ inputs.profil }} --non-interactive --wait
 
@@ -207,6 +263,11 @@ jobs:
                 if (b.appVersion) console.log('- version : ' + b.appVersion);
               });" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.sans_compiler }}" = "true" ]; then
+            echo "_Aucune compilation : c'est le dernier paquet déjà fabriqué_" >> $GITHUB_STEP_SUMMARY
+            echo "_qui vient d'être déposé._" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
           if [ "${{ inputs.profil }}" = "apercu" ]; then
             echo "APK à installer directement : ni magasin, ni compte." >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.cle.outputs.posee }}" = "oui" ]; then
