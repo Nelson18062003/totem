@@ -128,6 +128,12 @@ export type Donnees = {
   // Vide tant que le terminal n'a rien appris — ou que la base n'a pas
   // encore la table (migration en retard) : jamais un écran cassé.
   raccourcis: Record<string, RaccourciAppris[]>;
+  // Le fuseau du terminal — celui qui découpe les journées. Le téléphone
+  // en a besoin pour ranger un encaissement dans le BON jour : sans lui,
+  // il découperait selon son propre fuseau, ou selon un défaut écrit en
+  // dur, et un paiement de 23 h changerait de jour selon l'écran.
+  // Optionnel : une plateforme pas encore à jour ne casse aucun écran.
+  fuseau?: string;
 };
 
 export function fcfa(n: number, langue: Langue): string {

@@ -30,6 +30,7 @@ import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { fcfa, type Paiement, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { textesAnalyse } from "@noyau/textes/analyse";
 import { salutation } from "@noyau/salutation";
 
 const CLE_SOLDE_CACHE = "totem.solde.cache";
@@ -37,6 +38,7 @@ const CLE_SOLDE_CACHE = "totem.solde.cache";
 export default function Accueil() {
   const langue = useLangue();
   const t = textesAccueil[langue];
+  const ta = textesAnalyse[langue];
   const ecran = useEcran();
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 30, recus: 60 });
 
@@ -247,6 +249,13 @@ export default function Accueil() {
               </Texte>
               <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
             </View>
+            {/* L'analyse puis l'engrenage : les deux écrans « à part »,
+                côte à côte dans l'angle où le pouce les attend. */}
+            <Pressable onPress={() => router.push("/analyse")} hitSlop={12}
+                       accessibilityLabel={ta.titre}
+                       style={{ marginRight: espaces.lg }}>
+              <Icone nom="Chart" taille={22} couleur={couleurs.encreDouce} />
+            </Pressable>
             <Pressable onPress={() => router.push("/reglages")} hitSlop={12}
                        accessibilityLabel={t.reglages}>
               <Icone nom="Settings" taille={22} couleur={couleurs.encreDouce} />

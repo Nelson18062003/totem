@@ -7,9 +7,10 @@
 // Le texte de l'opérateur s'affiche mot pour mot, dans la langue où la SIM
 // l'a reçu. Le traduire serait le trahir.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 
 import { Carte, Filet, Texte } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
@@ -34,6 +35,16 @@ export default function Encaissements() {
   const [carte, setCarte] = useState<string | null>(null);       // null = toutes
   const [categorie, setCategorie] = useState<Categorie | null>(null);
   const [ouvert, setOuvert] = useState<Paiement | null>(null);
+
+  // Arriver déjà filtré : l'Analyse pousse un nom de client, la liste
+  // s'ouvre sur ses paiements — même chemin que le web
+  // (`/encaissements?recherche=…`). Le champ reste libre ensuite.
+  const params = useLocalSearchParams<{ recherche?: string }>();
+  useEffect(() => {
+    if (typeof params.recherche === "string" && params.recherche) {
+      setRecherche(params.recherche);
+    }
+  }, [params.recherche]);
 
   const paiements = donnees?.paiements ?? [];
   const sims = donnees?.sims ?? [];

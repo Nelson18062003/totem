@@ -80,10 +80,8 @@ export default function CadranUssd() {
           </Carte>
         ) : (
           <>
-            <Texte taille={textes.petit} ton="doux" style={{ lineHeight: 20 }}>
-              {t.sousTitre(carte.libelle)}
-            </Texte>
-
+            {/* Pas de mode d'emploi : les pastilles disent la carte, le champ
+                dit le geste. Un cadran de téléphone ne s'explique pas. */}
             {/* La carte du cadran. Se tromper composerait sur la mauvaise
                 caisse — le choix se voit avant de taper. */}
             {cartes.length > 1 ? (
@@ -213,9 +211,6 @@ export default function CadranUssd() {
               </View>
             ) : null}
 
-            <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
-              {t.noteSessionCourte}
-            </Texte>
           </>
         )}
       </ScrollView>

@@ -80,6 +80,25 @@ const tables = () => ({
       texte: "Rechargez votre compte et gagnez des bonus. Composez *126#.",
       categorie: "publicite", nature: null,
       emis_le: il_y_a(300), recu_le: il_y_a(300), lu_le: il_y_a(280) },
+    // Une semaine d'encaissements étalés sur les jours : sans eux, l'écran
+    // Analyse n'aurait qu'une barre, et les « principaux clients » qu'un
+    // nom — un écran d'essai doit montrer l'écran plein, pas son squelette.
+    ...[
+      [5, 35000, "MAMA CLARISSE", "670334455", 1500],
+      [6, 12500, "NKENGAFAC M.", "677998877", 2900],
+      [7, 8000, "TAILLEUR JEAN", "651672233", 4360],
+      [8, 50000, "ETS KAMDEM", "699887711", 7180],
+      [9, 15000, "MAMA CLARISSE", "670334455", 8640],
+    ].map(([id, montant, tiers, numero, minutes]) => ({
+      id, source_id: id, expediteur: "MTNMobileMoney", terminal: "douala-faux",
+      compte: "MTN ·8901", carte: "89237010000000008901", sens: "entree",
+      montant, tiers, numero, reference: `PP2408.${id}.E${id}${id}`,
+      solde_apres: null,
+      texte: `Vous avez recu ${montant.toLocaleString("fr-FR")} FCFA de ` +
+             `${tiers} (${numero}).`,
+      categorie: "encaissement", nature: null,
+      emis_le: il_y_a(minutes), recu_le: il_y_a(minutes), lu_le: il_y_a(minutes - 5),
+    })),
   ],
   recus: [
     // Un reçu DÉJÀ établi, pour l'encaissement de NKENGAFAC M. (même

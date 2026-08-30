@@ -18,7 +18,7 @@ const en = {
     `on the ${libelle} card, and the network's reply comes back here.`,
   composer: "Dial",
   // La ligne d'entrée du cadran, depuis l'écran Opérations du téléphone.
-  composerSous: "Dial any code by hand, as on a phone",
+  composerSous: "Dial any code",
   // Le libellé d'un raccourci du catalogue : par sa clé, sinon tel quel.
   libelleCode: (cle: string, defaut: string) =>
     (
@@ -74,7 +74,7 @@ const fr: typeof en = {
     `Composez comme sur le téléphone : le terminal tape le code ` +
     `sur la carte ${libelle}, et la réponse du réseau revient ici.`,
   composer: "Composer",
-  composerSous: "Composer n’importe quel code à la main, comme sur un téléphone",
+  composerSous: "Composer n’importe quel code",
   libelleCode: (cle, defaut) =>
     (
       {

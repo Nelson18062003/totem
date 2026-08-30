@@ -316,7 +316,7 @@ export async function chargerDonnees(
     });
   }
 
-  return { relie, terminal, sims, paiements, raccourcis };
+  return { relie, terminal, sims, paiements, raccourcis, fuseau: FUSEAU };
 }
 
 /** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque
