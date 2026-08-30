@@ -40,6 +40,7 @@ import {
 } from "@/ui";
 import { Symbole } from "@/marque";
 import { Entree } from "@/animations";
+import { Bienvenue, accueilDejaVu } from "@/bienvenue";
 import { Icone } from "@/icones";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
@@ -79,7 +80,18 @@ export default function Connexion() {
   // vient de taper, pas sous le mot de passe, qui n'y est pour rien.
   const [erreurAdresse, setErreurAdresse] = useState<string | null>(null);
 
+  // L'ACCUEIL — les trois écrans qu'on ne voit qu'une fois.
+  // `null` = on n'a pas encore lu le réglage : on n'affiche RIEN plutôt que
+  // de montrer le formulaire une demi-seconde avant de le recouvrir.
+  const [accueilli, setAccueilli] = useState<boolean | null>(null);
+  useEffect(() => {
+    accueilDejaVu().then(setAccueilli).catch(() => setAccueilli(true));
+  }, []);
+
   const autre = autreLangue(langue);
+  // Le drapeau dit la langue qu'on OBTIENT en appuyant — celle qu'on cherche.
+  const drapeau = autre.code === "fr" ? "🇫🇷" : "🇬🇧";
+  const nomAutre = autre.code === "fr" ? "Français" : "English";
 
   /** Frapper à la porte : y a-t-il un TOTEM à cette adresse ? */
   const sonder = useCallback(async () => {
@@ -150,12 +162,20 @@ export default function Connexion() {
     setErreur(null);
   };
 
+  // L'accueil d'abord — et rien tant qu'on ne sait pas s'il a été vu.
+  if (accueilli === null) {
+    return <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.surface }} />;
+  }
+  if (!accueilli) {
+    return <Bienvenue onFini={() => setAccueilli(true)} />;
+  }
+
   // LE COMPTE EST CRÉÉ, ET IL ATTEND. On le dit sur un écran à lui : renvoyer
   // au formulaire donnerait l'impression d'un échec, alors que tout s'est
   // bien passé — il manque seulement l'accord du propriétaire.
   if (attente) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.sable }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.surface }}>
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1, justifyContent: "center",
@@ -163,7 +183,7 @@ export default function Connexion() {
           }}
         >
           <View style={{ alignItems: "center", gap: espaces.md }}>
-            <MotTotem taille={22} />
+            <MotTotem taille={22} couleur={couleurs.encre} />
             <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
               {t.compteEnAttenteTitre}
             </Texte>
@@ -187,9 +207,10 @@ export default function Connexion() {
   }
 
   return (
-    // La connexion est une SURFACE DE MARQUE : c'est le seul endroit, avec la
-    // couverture, où le sable et la latérite ont le droit de tenir le fond.
-    <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.sable }}>
+    // Le même fond neutre que le reste de l'application : le propriétaire a
+    // tranché — la marque se porte en NOIR sur fond clair, comme les écrans
+    // qu'on habite. Le sable et la latérite restent à la couverture.
+    <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.surface }}>
       {/* `padding` SUR LES DEUX PLATEFORMES. Sur Android, ce composant ne
           faisait RIEN (`behavior: undefined`) : ouvrir le clavier recouvrait
           le champ du mot de passe, et l'on tapait douze caractères à
@@ -205,8 +226,8 @@ export default function Connexion() {
           {/* L'entrée en scène : la marque d'abord, puis la carte, puis le
               pied — chaque bloc se pose, dans l'ordre où l'œil les prend. */}
           <Entree delai={0} style={{ alignItems: "center", gap: espaces.md }}>
-            <Symbole taille={44} couleur={couleurs.laterite} />
-            <MotTotem taille={24} />
+            <Symbole taille={44} couleur={couleurs.encre} />
+            <MotTotem taille={24} couleur={couleurs.encre} />
             <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
               {mode === "creer" ? t.inscriptionTitre : t.titre}
             </Texte>
@@ -459,27 +480,22 @@ export default function Connexion() {
               </Pressable>
             )}
 
-            {/* La bascule porte le nom de l'AUTRE langue, écrit dans cette
-                langue : celle qui la cherche peut la lire. */}
+            {/* La bascule de langue : un drapeau et le nom de l'AUTRE langue,
+                dans une pastille visible — celle qui la cherche la voit. */}
             <Pressable
               onPress={() => changerLangue(autre.code)}
-              style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}
               hitSlop={8}
+              style={({ pressed }) => ({
+                flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+                borderWidth: 1, borderColor: couleurs.surface2,
+                borderRadius: 999,
+                paddingVertical: espaces.sm + 2, paddingHorizontal: espaces.lg,
+              })}
             >
-              <Icone nom="Globe" taille={16} couleur={couleurs.encreDouce} />
-              <Texte taille={textes.petit} ton="doux">{autre.bascule}</Texte>
+              <Texte taille={18}>{drapeau}</Texte>
+              <Texte taille={textes.petit} poids="moyen">{nomAutre}</Texte>
             </Pressable>
-
-            {porteOuverte && saisie === null ? (
-              <Pressable
-                onPress={() => { setSaisie(adresse || "https://"); setErreurAdresse(null); }}
-                hitSlop={8}
-              >
-                <Texte taille={textes.legende} ton="pale">
-                  {t.changerAdresse}
-                </Texte>
-              </Pressable>
-            ) : null}
           </Entree>
         </ScrollView>
       </KeyboardAvoidingView>
