@@ -33,13 +33,31 @@ import { readFileSync, writeFileSync } from "node:fs";
 const brute = (process.argv[2] || "").trim();
 
 if (!brute) {
+  // SANS ARGUMENT, on ne suppose pas : on va LIRE ce que le paquet emporte
+  // déjà. Ce message disait « l'application demandera l'adresse à l'écran »
+  // dans tous les cas — y compris quand app.json en portait une, ce qui est
+  // le cas depuis qu'on y a écrit la nôtre. Un journal de compilation qui
+  // annonce le contraire de ce qui va se passer est pire que muet : on
+  // finit par ne plus le lire.
+  let deja = "";
+  try {
+    deja = JSON.parse(readFileSync(new URL("../app.json", import.meta.url), "utf8"))
+      .expo?.extra?.adressePlateforme ?? "";
+  } catch { /* app.json illisible : la compilation le dira mieux que nous */ }
+
   console.log("Aucune adresse fournie : app.json reste tel quel.");
-  console.log("L'application demandera l'adresse à l'écran de connexion.");
-  console.log("");
-  console.log("Pour ne plus jamais la taper : GitHub → le dépôt → Settings →");
-  console.log("Secrets and variables → Actions → onglet « Variables » →");
-  console.log("New repository variable → nom : ADRESSE_PLATEFORME,");
-  console.log("valeur : l'adresse que Vercel vous a donnée.");
+  if (deja) {
+    console.log(`Le paquet en porte déjà une : ${deja}`);
+    console.log("L'écran de connexion ne la demandera pas.");
+  } else {
+    console.log("Et il n'en porte aucune : l'application demandera l'adresse");
+    console.log("à l'écran de connexion.");
+    console.log("");
+    console.log("Pour ne plus jamais la taper : GitHub → le dépôt → Settings →");
+    console.log("Secrets and variables → Actions → onglet « Variables » →");
+    console.log("New repository variable → nom : ADRESSE_PLATEFORME,");
+    console.log("valeur : l'adresse de votre plateforme.");
+  }
   process.exit(0);
 }
 

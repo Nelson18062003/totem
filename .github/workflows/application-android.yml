@@ -137,6 +137,25 @@ jobs:
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
 
+      # CE QUE LE PAQUET EMPORTE — regardé, pas supposé.
+      #
+      # Cette étape MANQUAIT, et la première version partie au magasin est
+      # donc partie sans elle. Elle a été passée à la main après coup, et
+      # elle passait ; mais un contrôle qu'il faut penser à lancer n'est pas
+      # un contrôle.
+      #
+      # Le script compile le paquet JavaScript et regarde DEDANS : le noyau
+      # partagé doit y être, et aucun secret ne doit s'y trouver. Une
+      # application installée se démonte — tout ce qui entre dans ce fichier
+      # est public, pour toujours, et aucune mise à jour ne rattrape une clé
+      # déjà lue par quelqu'un.
+      #
+      # Elle vient AVANT la compilation : découvrir une fuite dans un paquet
+      # déjà déposé au magasin ne répare rien.
+      - name: Vérifier ce que le paquet emporte
+        working-directory: mobile
+        run: node scripts/verifier-le-paquet.mjs
+
       # LA CLÉ DU MAGASIN — posée AVANT la compilation, pas après.
       #
       # Elle ne sert qu'à la fin, mais on la regarde maintenant : découvrir au
