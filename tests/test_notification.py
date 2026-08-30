@@ -101,6 +101,44 @@ class EnvoiDesNotifications(unittest.TestCase):
     def test_un_corps_vide_ne_part_pas(self):
         self.assertEqual(envoyer(["ExponentPushToken[abc]"], "T", ""), 0)
 
+    def test_la_notification_part_en_haute_priorite(self):
+        # LE RETARD DE TROIS À CINQ MINUTES venait d'ici : sans priorité,
+        # l'envoi voyage en « normale », et Android ne réveille pas un
+        # téléphone qui dort pour une priorité normale — il attend sa
+        # prochaine fenêtre d'entretien. L'argent arrivait, le téléphone se
+        # taisait, puis sonnait « en retard » sans que rien ne semble cassé.
+        #
+        # On capture donc CE QUI PART VRAIMENT, et on exige la haute
+        # priorité et le canal. Un contrôle qui n'ouvrirait pas l'enveloppe
+        # laisserait la faute revenir sans bruit.
+        envois = []
+
+        class FauxGuichet:
+            status = 200
+
+            def __enter__(soi):
+                return soi
+
+            def __exit__(soi, *args):
+                return False
+
+        def faux_urlopen(requete, timeout=None):
+            envois.append(json.loads(requete.data.decode("utf-8")))
+            return FauxGuichet()
+
+        import totem.notification as module
+        vrai = module.urllib.request.urlopen
+        module.urllib.request.urlopen = faux_urlopen
+        try:
+            servis = envoyer(["ExponentPushToken[abc]"], "Titre", "Corps")
+        finally:
+            module.urllib.request.urlopen = vrai
+
+        self.assertEqual(servis, 1)
+        (message,) = envois[0]
+        self.assertEqual(message["priority"], "high")
+        self.assertEqual(message["channelId"], "paiements")
+
 
 class ListeDesAppareils(unittest.TestCase):
     """Le robot va lire, dans la base, les téléphones à faire sonner."""
