@@ -9,13 +9,16 @@
 // ou de ce que le propriétaire a inscrit, le nom de ce qu'il a inscrit dans
 // les Réglages. Sans nom, la fiche le dit et mène aux Réglages.
 
+import { useState } from "react";
 import { Pressable, Share, View } from "react-native";
 import { router } from "expo-router";
+import * as Navigateur from "expo-web-browser";
 
 import { Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { LogoOperateur } from "@/logos-operateurs";
+import { lienCoordonnees } from "@/api/guichet";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
 import { textesAccueil } from "@noyau/textes/accueil";
@@ -29,7 +32,8 @@ function service(operateur: string): string {
 }
 
 export function Coordonnees({ carte, langue, onFermer }: {
-  carte: { nom: string; numero: string; operateur: string; libelle: string };
+  carte: { iccid: string; nom: string; numero: string;
+           operateur: string; libelle: string };
   langue: Langue;
   onFermer: () => void;
 }) {
@@ -46,6 +50,23 @@ export function Coordonnees({ carte, langue, onFermer }: {
     void Share.share({ message }).catch(() => {
       /* feuille refermée sans choisir : il n'y a rien à rattraper */
     });
+  };
+
+  // Le PDF — LE MÊME document que le bouton « Télécharger » du web (un seul
+  // générateur, lib/pdf-rib). Il s'ouvre dans le navigateur du système par
+  // un lien signé de dix minutes ; de là, Android le télécharge ou le
+  // partage comme n'importe quel fichier.
+  const [pdf, setPdf] = useState<"repos" | "envoi" | "refus">("repos");
+  const ouvrirPdf = async () => {
+    if (pdf === "envoi") return;
+    setPdf("envoi");
+    try {
+      const { url } = await lienCoordonnees(carte.iccid);
+      await Navigateur.openBrowserAsync(url);
+      setPdf("repos");
+    } catch {
+      setPdf("refus");
+    }
   };
 
   return (
@@ -66,21 +87,47 @@ export function Coordonnees({ carte, langue, onFermer }: {
         </>
       }
       pied={
-        <Pressable
-          onPress={partager}
-          style={({ pressed }) => ({
-            flexDirection: "row", alignItems: "center", justifyContent: "center",
-            gap: espaces.sm, paddingVertical: espaces.md,
-            borderRadius: rayons.bouton,
-            backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
-          })}
-        >
-          <Icone nom="Partage" taille={17} couleur={couleurs.surfaceHaute} />
-          <Texte poids="demi" taille={textes.petit}
-                 style={{ color: couleurs.surfaceHaute }}>
-            {t.coordPartager}
-          </Texte>
-        </Pressable>
+        <View style={{ gap: espaces.sm }}>
+          <Pressable
+            onPress={partager}
+            style={({ pressed }) => ({
+              flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: espaces.sm, paddingVertical: espaces.md,
+              borderRadius: rayons.bouton,
+              backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
+            })}
+          >
+            <Icone nom="Partage" taille={17} couleur={couleurs.surfaceHaute} />
+            <Texte poids="demi" taille={textes.petit}
+                   style={{ color: couleurs.surfaceHaute }}>
+              {t.coordPartager}
+            </Texte>
+          </Pressable>
+          {/* Le PDF, en second geste : le document qu'on imprime ou qu'on
+              joint — le partage en texte reste le chemin de tous les jours. */}
+          <Pressable
+            onPress={() => void ouvrirPdf()}
+            disabled={pdf === "envoi"}
+            style={({ pressed }) => ({
+              flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: espaces.sm, paddingVertical: espaces.md,
+              borderRadius: rayons.bouton, borderWidth: 1,
+              borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : "transparent",
+              opacity: pdf === "envoi" ? 0.6 : 1,
+            })}
+          >
+            <Icone nom="Doc" taille={16} couleur={couleurs.encreDouce} />
+            <Texte poids="moyen" taille={textes.petit} ton="doux">
+              {t.coordPdf}
+            </Texte>
+          </Pressable>
+          {pdf === "refus" ? (
+            <Texte taille={textes.legende} ton="negatif">
+              {t.coordPdfImpossible}
+            </Texte>
+          ) : null}
+        </View>
       }
     >
       <Carte>

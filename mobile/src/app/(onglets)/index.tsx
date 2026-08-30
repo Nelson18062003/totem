@@ -291,7 +291,8 @@ export default function Accueil() {
 
       {coordonnees && active ? (
         <Coordonnees langue={langue} onFermer={() => setCoordonnees(false)}
-                     carte={{ nom: active.nom, numero: active.numero,
+                     carte={{ iccid: active.iccid, nom: active.nom,
+                              numero: active.numero,
                               operateur: active.operateur, libelle: active.libelle }} />
       ) : null}
     </SafeAreaView>

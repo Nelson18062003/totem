@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESSION, verifierSession } from "@/lib/session";
-import { verifierLienRecu } from "@/lib/lien-signe";
+import { verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 
 // Le verrou de la plateforme. Tant que `SESSION_SECRET` n'est pas défini, il
@@ -50,15 +50,22 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // UN REÇU AU PORTEUR D'UN LIEN SIGNÉ. Le navigateur du téléphone n'a ni
-  // cookie ni en-tête : l'application (elle, authentifiée) lui demande un
-  // lien signé par la plateforme — dix minutes, CE reçu, rien d'autre. La
-  // signature couvre le numéro ET l'échéance ; falsifiée ou périmée, on
-  // retombe sur le verrou ordinaire, qui refusera. Le PDF seul est
-  // concerné : « /lien » et « /fiche » restent derrière la porte.
+  // UN DOCUMENT AU PORTEUR D'UN LIEN SIGNÉ. Le navigateur du téléphone n'a
+  // ni cookie ni en-tête : l'application (elle, authentifiée) lui demande un
+  // lien signé par la plateforme — dix minutes, CE document, rien d'autre.
+  // La signature couvre le genre, l'identifiant ET l'échéance ; falsifiée,
+  // périmée ou présentée à la mauvaise porte (un lien de reçu sur des
+  // coordonnées), on retombe sur le verrou ordinaire, qui refusera. Les PDF
+  // seuls sont concernés : « /lien » et « /fiche » restent derrière la porte.
   const recu = pathname.match(/^\/api\/recu\/([\w.-]{1,64})$/);
-  if (recu && await verifierLienRecu(
-        secret, recu[1],
+  if (recu && await verifierLien(
+        secret, "recu", recu[1],
+        req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
+    return NextResponse.next();
+  }
+  const coordonnees = pathname.match(/^\/api\/coordonnees\/(\w{1,32})$/);
+  if (coordonnees && await verifierLien(
+        secret, "coordonnees", coordonnees[1],
         req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return NextResponse.next();
   }

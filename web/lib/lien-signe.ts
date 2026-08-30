@@ -34,27 +34,45 @@ function b64url(o: ArrayBuffer): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Ce que la signature couvre : le numéro ET l'échéance. Signer le numéro
- *  seul ferait un laissez-passer éternel ; l'échéance seule, un passe pour
- *  tous les reçus. */
-const corps = (numero: string, expiration: number) => `recu:${numero}:${expiration}`;
+/** Ce qu'un lien peut ouvrir. Le GENRE fait partie de ce qui est signé :
+ *  un lien de reçu ne peut pas ouvrir des coordonnées, ni l'inverse —
+ *  chaque porte a sa propre signature. */
+export type GenreLien = "recu" | "coordonnees";
 
-export async function signerLienRecu(
-  secret: string, numero: string,
+/** Ce que la signature couvre : le genre, l'identifiant ET l'échéance.
+ *  Signer l'identifiant seul ferait un laissez-passer éternel ; l'échéance
+ *  seule, un passe pour tous les documents. L'identifiant est validé
+ *  (`[\w.-]`) avant signature comme avant vérification : aucun « : » ne
+ *  peut s'y glisser et déplacer les frontières du corps signé. */
+const corps = (genre: GenreLien, id: string, expiration: number) =>
+  `${genre}:${id}:${expiration}`;
+
+export async function signerLien(
+  secret: string, genre: GenreLien, id: string,
 ): Promise<{ expiration: number; signature: string }> {
   const expiration = Date.now() + DUREE_MS;
   const sig = await crypto.subtle.sign(
-    "HMAC", await cle(secret), enc.encode(corps(numero, expiration)) as unknown as BufferSource);
+    "HMAC", await cle(secret),
+    enc.encode(corps(genre, id, expiration)) as unknown as BufferSource);
   return { expiration, signature: b64url(sig) };
 }
 
-export async function verifierLienRecu(
-  secret: string, numero: string, expiration: string | null, signature: string | null,
+export async function verifierLien(
+  secret: string, genre: GenreLien, id: string,
+  expiration: string | null, signature: string | null,
 ): Promise<boolean> {
   if (!expiration || !signature) return false;
   const exp = Number(expiration);
   if (!Number.isFinite(exp) || Date.now() > exp) return false;
   const attendue = b64url(await crypto.subtle.sign(
-    "HMAC", await cle(secret), enc.encode(corps(numero, exp)) as unknown as BufferSource));
+    "HMAC", await cle(secret),
+    enc.encode(corps(genre, id, exp)) as unknown as BufferSource));
   return egaliteConstante(attendue, signature);
 }
+
+export const signerLienRecu = (secret: string, numero: string) =>
+  signerLien(secret, "recu", numero);
+
+export const verifierLienRecu = (
+  secret: string, numero: string, expiration: string | null, signature: string | null,
+) => verifierLien(secret, "recu", numero, expiration, signature);

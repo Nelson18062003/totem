@@ -220,6 +220,38 @@ try {
   verifier("et ce lien-là ouvre vraiment",
            (await fetch(lienSigne)).status, 404);
 
+  console.log("\nLe lien de coordonnées signé — la seconde porte, attaquée");
+  // Même mécanique que le reçu, GENRE distinct dans le corps signé : la
+  // vérification qui compte le plus ici est la CROISÉE — un lien de reçu
+  // présenté à la porte des coordonnées, et l'inverse. Si l'une des deux
+  // passait, les deux portes n'en feraient qu'une.
+  const signerCoord = (iccid, exp) =>
+    createHmac("sha256", SECRET).update(`coordonnees:${iccid}:${exp}`).digest("base64url");
+  const bonneCoord = signerCoord("8901essai", futur);
+  verifier("le PDF sans rien reste fermé",
+           await code("/api/coordonnees/8901essai"), 401);
+  verifier("un lien signé valable ouvre (404 : cherché, pas repoussé)",
+           await code(`/api/coordonnees/8901essai?e=${futur}&s=${bonneCoord}`), 404);
+  verifier("signature falsifiée : dehors",
+           await code(`/api/coordonnees/8901essai?e=${futur}&s=${bonneCoord.slice(0, -2)}xx`), 401);
+  verifier("échéance passée : dehors",
+           await code(`/api/coordonnees/8901essai?e=${passe}&s=${signerCoord("8901essai", passe)}`), 401);
+  verifier("échéance repoussée après signature : dehors",
+           await code(`/api/coordonnees/8901essai?e=${futur + 9}&s=${bonneCoord}`), 401);
+  verifier("un lien de REÇU n'ouvre pas des coordonnées (même identifiant)",
+           await code(`/api/coordonnees/8901essai?e=${futur}&s=${signer("8901essai", futur)}`), 401);
+  verifier("ni l'inverse : un lien de coordonnées n'ouvre pas un reçu",
+           await code(`/api/recu/8901essai?e=${futur}&s=${bonneCoord}`), 401);
+  verifier("la fabrique de liens reste derrière le verrou",
+           await code("/api/coordonnees/8901essai/lien"), 401);
+  const rLienCoord = await fetch(`${B}/api/coordonnees/8901essai/lien`, {
+    headers: { Authorization: `Bearer ${jeton}` },
+  });
+  verifier("authentifiée, elle rend un lien", rLienCoord.status, 200);
+  const { url: lienCoordSigne } = await rLienCoord.json();
+  verifier("et ce lien-là ouvre vraiment",
+           (await fetch(lienCoordSigne)).status, 404);
+
   console.log("\nLe navigateur, inchangé");
   const co = await fetch(B + "/api/connexion", json({ motdepasse: MOTDEPASSE }));
   verifier("connexion navigateur acceptée", co.status, 200);

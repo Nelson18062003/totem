@@ -368,3 +368,9 @@ export function agirSurCompte(
 ): Promise<unknown> {
   return demander("/api/comptes", { method: "POST", body: JSON.stringify(corps) });
 }
+
+/** Un lien signé vers la fiche PDF des coordonnées d'une carte — même
+ *  mécanique que le lien de reçu : dix minutes, cette carte, ce genre-là. */
+export function lienCoordonnees(iccid: string): Promise<{ url: string }> {
+  return demander(`/api/coordonnees/${encodeURIComponent(iccid)}/lien`);
+}
