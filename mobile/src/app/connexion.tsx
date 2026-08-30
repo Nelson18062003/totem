@@ -38,6 +38,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Carte, MotTotem, Pastille, Texte, couleurs, espaces, rayons, textes,
 } from "@/ui";
+import { Symbole } from "@/marque";
+import { Entree } from "@/animations";
 import { Icone } from "@/icones";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
@@ -188,10 +190,11 @@ export default function Connexion() {
     // La connexion est une SURFACE DE MARQUE : c'est le seul endroit, avec la
     // couverture, où le sable et la latérite ont le droit de tenir le fond.
     <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.sable }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      {/* `padding` SUR LES DEUX PLATEFORMES. Sur Android, ce composant ne
+          faisait RIEN (`behavior: undefined`) : ouvrir le clavier recouvrait
+          le champ du mot de passe, et l'on tapait douze caractères à
+          l'aveugle. « Je ne voyais pas mon mot de passe » — c'était ça. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1, justifyContent: "center",
@@ -199,21 +202,33 @@ export default function Connexion() {
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ alignItems: "center", gap: espaces.md }}>
-            <MotTotem taille={22} />
+          {/* L'entrée en scène : la marque d'abord, puis la carte, puis le
+              pied — chaque bloc se pose, dans l'ordre où l'œil les prend. */}
+          <Entree delai={0} style={{ alignItems: "center", gap: espaces.md }}>
+            <Symbole taille={44} couleur={couleurs.laterite} />
+            <MotTotem taille={24} />
             <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
               {mode === "creer" ? t.inscriptionTitre : t.titre}
             </Texte>
-            <Texte ton="doux" style={{ textAlign: "center", lineHeight: 22 }}>
-              {mode === "creer" ? t.inscriptionSousTitre : t.sousTitre}
-            </Texte>
-          </View>
+            {/* Le sous-titre ne s'affiche qu'à la création d'un compte, où il
+                dit une chose utile (le compte attendra l'approbation). À la
+                connexion, il ne faisait que remplir l'écran. */}
+            {mode === "creer" ? (
+              <Texte ton="doux" style={{ textAlign: "center", lineHeight: 22 }}>
+                {t.inscriptionSousTitre}
+              </Texte>
+            ) : null}
+          </Entree>
 
-          {/* LA PLATEFORME, avant le mot de passe.
-              Cet encart n'est pas décoratif : il est la réponse à la seule
-              question qui compte avant de taper quoi que ce soit — « est-ce
-              que je parle bien à MON TOTEM ? ». Il porte donc l'adresse en
-              toutes lettres, pas un voyant vert. */}
+          {/* LA PLATEFORME — seulement quand elle a quelque chose à dire.
+              Quand l'adresse embarquée répond « je suis un TOTEM », cet
+              encart n'apprenait rien : il occupait l'écran avec une URL que
+              personne ne lit. Il ne s'affiche plus que s'il y a un SOUCI
+              (pas de plateforme, injoignable) ou qu'on est en train de
+              changer l'adresse — les deux seuls moments où il est la
+              réponse à une vraie question. */}
+          {porteOuverte && saisie === null ? null : (
+          <Entree delai={40}>
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
               <Icone nom="Globe" taille={16} couleur={couleurs.encrePale} />
@@ -327,7 +342,10 @@ export default function Connexion() {
               </>
             )}
           </Carte>
+          </Entree>
+          )}
 
+          <Entree delai={80}>
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
             <Texte taille={textes.petit} ton="doux" poids="moyen">
               {t.courriel}
@@ -338,6 +356,7 @@ export default function Connexion() {
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="email"
+              textContentType="emailAddress"
               keyboardType="email-address"
               inputMode="email"
               editable={!enCours && porteOuverte}
@@ -367,6 +386,8 @@ export default function Connexion() {
                 secureTextEntry={!visible}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoComplete="password"
+                textContentType="password"
                 editable={!enCours && porteOuverte}
                 onSubmitEditing={valider}
                 returnKeyType="go"
@@ -421,11 +442,14 @@ export default function Connexion() {
               </Texte>
             </Pressable>
           </Carte>
+          </Entree>
 
-          <View style={{ gap: espaces.lg, alignItems: "center" }}>
-            {/* Passer de « je me connecte » à « je crée un compte ». Ce sont
-                les mêmes deux champs : deux écrans auraient été deux fois le
-                même écran. */}
+          {/* Le pied, réduit à ce qui SERT : changer de mode s'il y a lieu,
+              changer de langue, retrouver l'adresse de la plateforme quand
+              tout va bien (un mot discret, pas un encart). La promesse sur le
+              code PIN vit dans la politique de confidentialité et sur le pavé
+              lui-même — la répéter ici ne faisait qu'épaissir l'écran. */}
+          <Entree delai={120} style={{ gap: espaces.lg, alignItems: "center" }}>
             {(inscriptionOuverte || mode === "creer") && (
               <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}>
                 <Texte taille={textes.petit} poids="moyen" ton="doux"
@@ -434,15 +458,6 @@ export default function Connexion() {
                 </Texte>
               </Pressable>
             )}
-
-            {/* La promesse sur le code secret. Elle vit ici, sur l'écran que
-                tout le monde voit, et pas enfouie dans les réglages. */}
-            <View style={{ flexDirection: "row", gap: espaces.sm, paddingHorizontal: espaces.sm }}>
-              <Icone nom="Lock" taille={16} couleur={couleurs.encrePale} />
-              <Texte taille={textes.legende} ton="pale" style={{ flex: 1, lineHeight: 18 }}>
-                {t.notePin}
-              </Texte>
-            </View>
 
             {/* La bascule porte le nom de l'AUTRE langue, écrit dans cette
                 langue : celle qui la cherche peut la lire. */}
@@ -454,7 +469,18 @@ export default function Connexion() {
               <Icone nom="Globe" taille={16} couleur={couleurs.encreDouce} />
               <Texte taille={textes.petit} ton="doux">{autre.bascule}</Texte>
             </Pressable>
-          </View>
+
+            {porteOuverte && saisie === null ? (
+              <Pressable
+                onPress={() => { setSaisie(adresse || "https://"); setErreurAdresse(null); }}
+                hitSlop={8}
+              >
+                <Texte taille={textes.legende} ton="pale">
+                  {t.changerAdresse}
+                </Texte>
+              </Pressable>
+            ) : null}
+          </Entree>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
