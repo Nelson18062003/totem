@@ -65,6 +65,12 @@ export async function pousser(
     title: titre,
     body: corps,
     sound: "default",
+    // La même priorité que celle du robot, et pour la même raison : en
+    // priorité « normale », Android ne réveille pas un téléphone qui dort —
+    // il garde la notification pour sa prochaine fenêtre d'entretien,
+    // plusieurs minutes plus tard. Un essai qui voyagerait autrement que les
+    // vraies notifications ne prouverait rien des vraies.
+    priority: "high",
     // Le même canal que celui du robot, déclaré par `src/sonnerie.tsx` :
     // un essai qui arriverait sur un autre canal ne prouverait rien du
     // canal qui sert vraiment.

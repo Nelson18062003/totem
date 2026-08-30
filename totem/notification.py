@@ -112,6 +112,19 @@ def envoyer(jetons, titre, corps, ouvrir=None):
                 "title": titre,
                 "body": corps,
                 "sound": "default",
+                # HAUTE PRIORITÉ, et ce n'est pas un détail : sans elle, la
+                # notification voyage en priorité « normale », et Android ne
+                # RÉVEILLE PAS un téléphone qui dort pour une priorité
+                # normale — il la garde pour la prochaine fenêtre d'entretien,
+                # trois à cinq minutes plus tard, parfois plus. C'est
+                # exactement le retard qui a été constaté sur le terrain :
+                # l'argent arrivait, le téléphone se taisait, et sonnait
+                # ensuite « en retard » sans que rien ne semble cassé.
+                # Un paiement est le cas d'école de la haute priorité : une
+                # notification visible, attendue par une personne, qui perd
+                # sa valeur en vieillissant. Telegram sonne à la seconde pour
+                # la même raison.
+                "priority": "high",
                 # Android : le canal décide de la sonnerie et de la
                 # discrétion. Celui-ci est déclaré par l'application.
                 "channelId": "paiements",
