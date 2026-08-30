@@ -32,8 +32,11 @@ const tables = () => ({
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
   }],
   cartes: [
+    // « nom » est le nom COMMERCIAL — ce qu'on donne à qui veut payer, ce
+    // que la fiche des coordonnées affiche. « Caisse principale » était un
+    // libellé de tiroir, pas un nom qu'on écrit sur un virement.
     { iccid: "89237010000000008901", operateur: "MTN", libelle: "MTN ·8901",
-      nom: "Caisse principale", numero: "677123456",
+      nom: "ETS NKENGAFAC", numero: "677123456",
       premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: maintenant() },
     { iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
       nom: "", numero: "699001122",
