@@ -118,6 +118,21 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
     console.error("     au faux nuage sur 4999 ?");
     process.exit(1);
   }
+  // 403 dit « fermées » — pas « VOTRE compte existe » : un autre harnais a
+  // pu poser le premier compte sur ce faux nuage. On le prouve maintenant,
+  // pas au moment de la connexion, avec le mauvais diagnostic.
+  if (r.status === 403) {
+    const c = await fetch("http://127.0.0.1:3120/api/connexion", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+    });
+    if (!c.ok) {
+      console.error("  ✗ Les inscriptions sont fermées par un AUTRE compte :");
+      console.error("    un autre harnais a déjà utilisé ce faux nuage.");
+      console.error("    Redémarrez le faux nuage, puis relancez.");
+      process.exit(1);
+    }
+  }
 }
 
 for (const [nom, w, h] of FORMATS) {

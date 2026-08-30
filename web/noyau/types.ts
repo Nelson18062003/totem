@@ -168,6 +168,17 @@ export const FUSEAU_DEFAUT = "Africa/Douala";
  * à Paris et sa caisse à Lagos ; c'est la caisse qui décide de ce qu'est
  * « aujourd'hui », parce que c'est elle qui encaisse.
  */
+// Un formateur par fuseau, gardé : en construire un par APPEL coûtait cher
+// partout où l'on classe mille paiements par jour (l'analyse, le bilan) —
+// des secondes de gel sur un petit téléphone. Il n'y a jamais qu'une
+// poignée de fuseaux dans une vie de caisse.
+const formateursJour = new Map<string, Intl.DateTimeFormat>();
+
 export function jourLocal(d: Date, fuseau: string = FUSEAU_DEFAUT): string {
-  return new Intl.DateTimeFormat("fr-CA", { timeZone: fuseau }).format(d);
+  let f = formateursJour.get(fuseau);
+  if (!f) {
+    f = new Intl.DateTimeFormat("fr-CA", { timeZone: fuseau });
+    formateursJour.set(fuseau, f);
+  }
+  return f.format(d);
 }

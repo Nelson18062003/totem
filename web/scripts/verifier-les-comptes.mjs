@@ -209,6 +209,16 @@ try {
                                { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire passe le verrou", rProprio.status !== 403, true);
 
+  // La sonnerie d'essai obéit à la même règle : un invité pouvait faire
+  // sonner en boucle tous les téléphones du propriétaire, et le ménage des
+  // jetons se déclenchait sur SES essais. Il regarde ; il ne sonne pas.
+  const rSonne = await poste("/api/essai-notification", {},
+                             { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne fait pas sonner les téléphones", rSonne.status, 403);
+  const rSonneProprio = await poste("/api/essai-notification", {},
+                                    { authorization: `Bearer ${jetonProprio}` });
+  verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
+
   console.log("\nLe propriétaire crée un compte lui-même");
   // L'inscription libre est fermée et le reste. C'est désormais le SEUL
   // chemin pour faire entrer quelqu'un — et il en fallait un : Google exige

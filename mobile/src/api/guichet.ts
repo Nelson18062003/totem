@@ -129,6 +129,11 @@ export const peutSInscrire = (): boolean => inscriptionOuverte;
  * ni nom, ni chiffre, ni adresse de base.
  */
 export async function verifierPlateforme(adresse?: string): Promise<EtatPlateforme> {
+  // Le drapeau retombe AVANT de sonder : sans cela, il gardait la valeur de
+  // la plateforme PRÉCÉDENTE — on pointait l'application vers un serveur
+  // mort ou étranger, et l'écran offrait encore « créer un compte » sur la
+  // foi d'une autre maison.
+  inscriptionOuverte = false;
   const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
   if (!adresseValable(base)) return "absente";
   try {

@@ -220,7 +220,10 @@ const serveur = createServer(async (req, res) => {
     smsEnPlus.push({
       id: 900000 + smsEnPlus.length,
       terminal: "douala-faux", source_id: 900 + smsEnPlus.length,
-      compte: "MTN ·8901", carte: "893700000000008901",
+      // Le MÊME ICCID que la carte semée plus haut : avec une faute de
+      // frappe ici, le SMS ajouté à chaud n'était jamais attribué à la
+      // carte — les compteurs par carte l'excluaient en silence.
+      compte: "MTN ·8901", carte: "89237010000000008901",
       expediteur: "MTNMobileMoney", categorie: "encaissement",
       sens: "entree", montant: 7500, tiers: "ESSAI Direct",
       texte: "Vous avez recu 7 500 FCFA de ESSAI Direct (677000000).",

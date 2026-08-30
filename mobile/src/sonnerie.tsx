@@ -196,7 +196,8 @@ const ATTENTES = [2_000, 5_000, 15_000, 60_000];
 /** Une seule inscription à la fois, et pas deux à la suite. Sans ces deux
  *  garde-fous, un retour à l'écran pendant un réessai en lancerait un
  *  second, et l'écoute du jeton pourrait boucler sur elle-même. */
-let enCours = false;
+let enCours: Promise<EtatSonnerie> | null = null;
+let dernierEtat: EtatSonnerie = "echec";
 let derniereTentative = 0;
 const REPOS = 20_000;
 
@@ -214,24 +215,36 @@ const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Aucune application ne demande cela. Ce bouton était l'aveu que
  * l'inscription ne se réparait pas toute seule. Elle se répare maintenant.
  */
-export async function inscrireAvecPatience(force = false): Promise<EtatSonnerie> {
-  if (enCours) return "echec";
-  if (!force && Date.now() - derniereTentative < REPOS) return "echec";
-  enCours = true;
-  derniereTentative = Date.now();
-  try {
-    let etat = await inscrireLAppareil();
-    for (const attente of ATTENTES) {
-      if (!A_REESSAYER.has(etat)) break;
-      await dormir(attente);
-      etat = await inscrireLAppareil();
-    }
-    return etat;
-  } catch {
-    return "echec";
-  } finally {
-    enCours = false;
+export function inscrireAvecPatience(force = false): Promise<EtatSonnerie> {
+  // Une tentative déjà en route se REJOINT — on n'invente pas un échec.
+  // L'écran des réglages, ouvert pendant l'inscription du démarrage,
+  // affichait « l'inscription a échoué » pour une inscription qui allait
+  // réussir trois secondes plus tard, et rien ne corrigeait ce mensonge.
+  if (enCours) return enCours;
+  // Dans la période de repos, on rend le DERNIER état connu : « echec »
+  // vingt secondes après une réussite était l'autre moitié du mensonge.
+  if (!force && Date.now() - derniereTentative < REPOS) {
+    return Promise.resolve(dernierEtat);
   }
+  derniereTentative = Date.now();
+  enCours = (async () => {
+    try {
+      let etat = await inscrireLAppareil();
+      for (const attente of ATTENTES) {
+        if (!A_REESSAYER.has(etat)) break;
+        await dormir(attente);
+        etat = await inscrireLAppareil();
+      }
+      dernierEtat = etat;
+      return etat;
+    } catch {
+      dernierEtat = "echec";
+      return "echec";
+    } finally {
+      enCours = null;
+    }
+  })();
+  return enCours;
 }
 
 /**

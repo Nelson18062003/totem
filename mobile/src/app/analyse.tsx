@@ -10,7 +10,7 @@
 // c'est lui qui sait TÉLÉCHARGER un fichier — l'application ne sait que
 // l'afficher. Même chemin que le reçu et la fiche des coordonnées.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { RefreshControl, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -29,20 +29,28 @@ import { textesUssd } from "@noyau/textes/ussd";
 import { fcfa, jourLocal, nombre, FUSEAU_DEFAUT, type Paiement } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
-/** Les encaissements des 7 derniers jours, jour par jour. */
+/** Les encaissements des 7 derniers jours, jour par jour.
+ *
+ *  Le jour de CHAQUE paiement se calcule UNE fois, dans une table — pas à
+ *  chaque jour de la semaine : `jourLocal` construit un Intl.DateTimeFormat,
+ *  et 7 jours × 1000 paiements en fabriquaient sept mille par rendu — des
+ *  secondes de gel sur un petit Android. */
 function septDerniersJours(paiements: Paiement[], langue: Langue, fuseau: string) {
+  const parJour = new Map<string, number>();
+  for (const p of paiements) {
+    if (p.sens !== "in" || p.montant == null) continue;
+    const cle = jourLocal(new Date(p.recuLe), fuseau);
+    parJour.set(cle, (parJour.get(cle) ?? 0) + p.montant);
+  }
   const jours: { jour: string; montant: number }[] = [];
   const present = Date.now();
   const locale = langue === "en" ? "en-GB" : "fr-FR";
+  const nomDuJour = new Intl.DateTimeFormat(locale,
+    { timeZone: fuseau, weekday: "short" });
   for (let i = 6; i >= 0; i--) {
     const d = new Date(present - i * 86_400_000);
-    const cle = jourLocal(d, fuseau);
-    const montant = paiements
-      .filter((p) => p.sens === "in" && p.montant != null
-                     && jourLocal(new Date(p.recuLe), fuseau) === cle)
-      .reduce((s, p) => s + (p.montant ?? 0), 0);
-    const nom = new Intl.DateTimeFormat(locale, { timeZone: fuseau, weekday: "short" })
-      .format(d).replace(".", "");
+    const montant = parJour.get(jourLocal(d, fuseau)) ?? 0;
+    const nom = nomDuJour.format(d).replace(".", "");
     jours.push({ jour: nom.charAt(0).toUpperCase() + nom.slice(1), montant });
   }
   return jours;
@@ -72,31 +80,39 @@ export default function Analyse() {
   const paiements = donnees?.paiements ?? [];
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
 
-  const septJours = septDerniersJours(paiements, langue, fuseau);
-  const total = septJours.reduce((s, d) => s + d.montant, 0);
-  const moyenne = Math.round(total / 7);
-  const meilleur = septJours.reduce((a, b) => (b.montant > a.montant ? b : a));
-  const max = Math.max(...septJours.map((d) => d.montant), 1);
+  // Tout le comptage d'un coup, UNE fois par jeu de données — pas à chaque
+  // rendu : mille paiements se reclassent vite, mais pas au point de le
+  // refaire pour un simple changement d'état d'écran.
+  const { septJours, total, moyenne, meilleur, max, evolution, topClients } =
+    useMemo(() => {
+      const septJours = septDerniersJours(paiements, langue, fuseau);
+      const total = septJours.reduce((s, d) => s + d.montant, 0);
+      const moyenne = Math.round(total / 7);
+      const meilleur = septJours.reduce((a, b) => (b.montant > a.montant ? b : a));
+      const max = Math.max(...septJours.map((d) => d.montant), 1);
 
-  // La semaine précédente, pour situer celle-ci — calculée, pas décrétée.
-  const precedente = semaine(paiements, 14, 7);
-  const evolution = precedente > 0
-    ? Math.round(((total - precedente) / precedente) * 100) : null;
+      // La semaine précédente, pour situer celle-ci — calculée, pas décrétée.
+      const precedente = semaine(paiements, 14, 7);
+      const evolution = precedente > 0
+        ? Math.round(((total - precedente) / precedente) * 100) : null;
 
-  // Les clients qui reviennent, sur tout l'historique chargé. Le client,
-  // c'est « tiers » — la personne qui a payé ; « nom » est l'expéditeur du
-  // SMS, le même pour tout un opérateur (voir web/app/analyse/page.tsx).
-  const parClient = new Map<string, { nb: number; total: number }>();
-  for (const p of paiements.filter((x) => x.sens === "in" && x.montant != null)) {
-    const cle = p.tiers || p.nom;
-    const c = parClient.get(cle) ?? { nb: 0, total: 0 };
-    c.nb += 1; c.total += p.montant ?? 0;
-    parClient.set(cle, c);
-  }
-  const topClients = [...parClient.entries()]
-    .map(([nom, v]) => ({ nom, ...v }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+      // Les clients qui reviennent, sur tout l'historique chargé. Le client,
+      // c'est « tiers » — la personne qui a payé ; « nom » est l'expéditeur
+      // du SMS, le même pour tout un opérateur (voir web/app/analyse).
+      const parClient = new Map<string, { nb: number; total: number }>();
+      for (const p of paiements.filter((x) => x.sens === "in" && x.montant != null)) {
+        const cle = p.tiers || p.nom;
+        const c = parClient.get(cle) ?? { nb: 0, total: 0 };
+        c.nb += 1; c.total += p.montant ?? 0;
+        parClient.set(cle, c);
+      }
+      const topClients = [...parClient.entries()]
+        .map(([nom, v]) => ({ nom, ...v }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5);
+
+      return { septJours, total, moyenne, meilleur, max, evolution, topClients };
+    }, [paiements, langue, fuseau]);
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
