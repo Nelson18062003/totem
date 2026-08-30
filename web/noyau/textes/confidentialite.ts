@@ -95,9 +95,13 @@ const en = {
     "The owner can empty the database at any time from the Supabase project, " +
     "or ask for it at the address below. Uninstalling the app removes " +
     "everything it kept on the phone.",
+  supprimerLien: "The whole procedure, step by step: delete your account and data.",
 
   contactTitre: "Contact",
   contact: "Questions about this policy:",
+  contactSansAdresse:
+    "Use the developer email address shown on this app\u2019s Google Play " +
+    "listing, under \u201cApp support\u201d.",
 };
 
 const fr: typeof en = {
@@ -186,9 +190,13 @@ const fr: typeof en = {
     "Le propriétaire peut vider la base à tout moment depuis le projet " +
     "Supabase, ou en faire la demande à l’adresse ci-dessous. Désinstaller " +
     "l’application retire tout ce qu’elle gardait sur le téléphone.",
+  supprimerLien: "La marche à suivre, pas à pas : supprimer votre compte et vos données.",
 
   contactTitre: "Contact",
   contact: "Questions sur cette politique :",
+  contactSansAdresse:
+    "Utilisez l\u2019adresse du d\u00e9veloppeur affich\u00e9e sur la fiche Google Play " +
+    "de cette application, \u00e0 la rubrique \u00ab Assistance \u00bb.",
 };
 
 export const textesConfidentialite = { en, fr } as const;

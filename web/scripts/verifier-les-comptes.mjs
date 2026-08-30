@@ -183,6 +183,76 @@ try {
                              { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne s'approuve personne", rPromo.status, 403);
 
+  console.log("\nUn invité ne touche pas aux cartes");
+  // C'est le contrôle le plus important de ce script. Un compte approuvé
+  // ouvrait jusqu'ici le GUICHET : déposer une demande, c'est faire composer
+  // un code sur une vraie carte SIM, avec de vrais francs derrière. Un
+  // examinateur du magasin, à qui l'on donne un compte pour qu'il regarde,
+  // pouvait lancer une opération réelle. Il regarde ; il ne compose pas.
+  const rSolde = await poste("/api/commande", { type: "solde" },
+                             { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne demande pas un solde", rSolde.status, 403);
+  const rUssd = await poste("/api/commande",
+    { type: "ussd", parametres: { code: "*126#" } },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne compose pas un code USSD", rUssd.status, 403);
+  const rRacc = await poste("/api/commande",
+    { type: "raccourci", parametres: { operateur: "MTN", cle: "depot",
+      etapes: ["*126#"], action: "definir" } },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne range rien dans le carnet", rRacc.status, 403);
+  const rSansJeton = await poste("/api/commande", { type: "solde" });
+  verifier("un inconnu non plus", rSansJeton.status, 401);
+  // Le propriétaire, lui, passe : 503 parce que la base n'est pas branchée
+  // ici, et 503 se lit « le verrou a laissé passer, la base s'est tue ».
+  const rProprio = await poste("/api/commande", { type: "solde" },
+                               { authorization: `Bearer ${jetonProprio}` });
+  verifier("le propriétaire passe le verrou", rProprio.status !== 403, true);
+
+  console.log("\nLe propriétaire crée un compte lui-même");
+  // L'inscription libre est fermée et le reste. C'est désormais le SEUL
+  // chemin pour faire entrer quelqu'un — et il en fallait un : Google exige
+  // un compte qui fonctionne pour examiner l'application, et sans cela il
+  // aurait fallu livrer le sien.
+  const MDP2 = "un-autre-mot-de-passe-long";
+  const rCree = await poste("/api/comptes",
+    { geste: "creer", courriel: "Examen@Google.COM", motdepasse: MDP2 },
+    { authorization: `Bearer ${jetonProprio}` });
+  verifier("le propriétaire peut créer un compte", rCree.status, 201);
+
+  const rNouveau = await poste("/api/session",
+    { courriel: "examen@google.com", motdepasse: MDP2 });
+  // Créé PAR le propriétaire, donc déjà approuvé : créer EST décider.
+  verifier("ce compte entre tout de suite", rNouveau.status, 200);
+  const jetonNouveau = (await rNouveau.json()).jeton;
+
+  const rPasProprio = await fetch(B + "/api/comptes", {
+    headers: { authorization: `Bearer ${jetonNouveau}` },
+  });
+  // Il naît « invite », jamais « proprietaire » : l'écran des comptes ne
+  // doit pas pouvoir fabriquer un second propriétaire, qui pourrait
+  // ensuite fermer la porte au premier.
+  verifier("mais il n'administre rien", rPasProprio.status, 403);
+
+  const rInvitecree = await poste("/api/comptes",
+    { geste: "creer", courriel: "encore@exemple.cm", motdepasse: MDP2 },
+    { authorization: `Bearer ${jetonNouveau}` });
+  verifier("un invité ne crée personne", rInvitecree.status, 403);
+
+  const rDejaLa = await poste("/api/comptes",
+    { geste: "creer", courriel: "examen@google.com", motdepasse: MDP2 },
+    { authorization: `Bearer ${jetonProprio}` });
+  verifier("deux fois le même courriel : refusé", rDejaLa.status, 409);
+
+  const rFaible = await poste("/api/comptes",
+    { geste: "creer", courriel: "faible@exemple.cm", motdepasse: "court" },
+    { authorization: `Bearer ${jetonProprio}` });
+  verifier("un mot de passe trop court : refusé", rFaible.status, 400);
+
+  const rAnonCree = await poste("/api/comptes",
+    { geste: "creer", courriel: "intrus@exemple.cm", motdepasse: MDP2 });
+  verifier("sans session : refusé", rAnonCree.status, 401);
+
   console.log("\nLe propriétaire referme");
   await poste("/api/comptes", { id: idAmi, geste: "fermer" },
               { authorization: `Bearer ${jetonProprio}` });

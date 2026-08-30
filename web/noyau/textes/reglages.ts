@@ -141,6 +141,26 @@ const en = {
   jamaisVenu: "Never signed in",
   vuLe: "Last signed in",
   aucunAutreCompte: "No other account yet.",
+
+  // --- Créer un compte pour quelqu'un d'autre ---------------------------
+  // Le seul chemin qui reste pour faire entrer quelqu'un : l'inscription
+  // libre est fermée, et doit le rester.
+  creerCompte: "Create an account",
+  creerCompteAide:
+    "Sign-up is closed to everyone. This is the only way to let someone in — " +
+    "you create the account, you hand over the password, and you can block " +
+    "or delete it whenever you want.",
+  creerCourriel: "Their email",
+  creerMotDePasse: "Password you choose for them",
+  creerLongueur: "At least 12 characters.",
+  creerBouton: "Create",
+  creerEnCours: "Creating…",
+  creerFait: "Account created. It can sign in right away.",
+  // L'avertissement qui compte : tant que rattacher une SIM à une personne
+  // n'existe pas, un compte approuvé voit TOUT.
+  creerAvertissement:
+    "This account will see everything you see — every card, every message, " +
+    "every amount. Attaching specific SIMs to a person does not exist yet.",
   // --- L'essai de notification
   // Le propriétaire vient d'installer l'application. Lui demander d'attendre
   // un vrai paiement pour savoir si son téléphone sonne serait cruel — et
@@ -331,6 +351,22 @@ const fr: typeof en = {
   jamaisVenu: "Jamais connecté",
   vuLe: "Dernière connexion",
   aucunAutreCompte: "Aucun autre compte pour l’instant.",
+
+  creerCompte: "Créer un compte",
+  creerCompteAide:
+    "L’inscription est fermée à tout le monde. C’est le seul moyen de faire " +
+    "entrer quelqu’un — vous créez le compte, vous transmettez le mot de " +
+    "passe, et vous pouvez le bloquer ou le supprimer quand vous voulez.",
+  creerCourriel: "Son courriel",
+  creerMotDePasse: "Le mot de passe que vous lui donnez",
+  creerLongueur: "Au moins 12 caractères.",
+  creerBouton: "Créer",
+  creerEnCours: "Création…",
+  creerFait: "Compte créé. Il peut se connecter tout de suite.",
+  creerAvertissement:
+    "Ce compte verra tout ce que vous voyez — chaque carte, chaque message, " +
+    "chaque montant. Rattacher des SIM précises à une personne n’existe pas " +
+    "encore.",
   essai: "Est-ce que mon téléphone sonne ?",
   essaiAide:
     "Envoie une notification d’essai aux téléphones connectés. Elle vérifie " +

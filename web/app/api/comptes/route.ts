@@ -4,6 +4,7 @@ import { compteConnecte, estProprietaire } from "@/lib/qui";
 import {
   definirApprobation, listerUtilisateurs, relie, supprimerUtilisateur,
 } from "@/lib/serveur";
+import { creerParLeProprietaire } from "@/lib/porte";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +38,22 @@ export async function POST(req: Request) {
   }
 
   const corps = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  const id = Number(corps?.id);
   const geste = corps?.geste;
+
+  // CRÉER un compte ne vise aucun identifiant : il n'en existe pas encore.
+  // Ce geste passe donc avant les contrôles qui en réclament un.
+  if (geste === "creer") {
+    const r = await creerParLeProprietaire(corps?.courriel, corps?.motdepasse, langue);
+    // 201 : le compte est créé. `Entree` rend toujours une décision, et
+    // celle-ci se lit « c'est fait » — voir `creerParLeProprietaire`.
+    return Response.json(
+      r.ok || (!r.ok && r.statut === 201)
+        ? { ok: true }
+        : { erreur: (r as { erreur: string }).erreur },
+      { status: r.ok ? 200 : r.statut === 201 ? 201 : r.statut });
+  }
+
+  const id = Number(corps?.id);
   if (!Number.isInteger(id) || id <= 0) {
     return Response.json(
       { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });

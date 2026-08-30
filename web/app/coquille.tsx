@@ -8,12 +8,13 @@ import { Nav } from "./nav";
 
 /** Pages qui s'affichent seules, sans navigation ni bandeau.
  *
- *  Les trois sont PUBLIQUES, et c'est la même raison : on y arrive sans
+ *  Elles sont toutes PUBLIQUES, et c'est la même raison : on y arrive sans
  *  compte. Leur montrer la navigation de l'application serait offrir des
  *  liens qui mènent tous au verrou — et sur « /confidentialite », qu'un
  *  examinateur du Play Store ouvre depuis un formulaire, cela donnerait
  *  l'impression d'une application qui se dérobe. */
-const PLEIN_ECRAN = ["/connexion", "/inscription", "/confidentialite"];
+const PLEIN_ECRAN = ["/connexion", "/inscription", "/confidentialite",
+                     "/suppression"];
 
 export function Coquille({
   relie,

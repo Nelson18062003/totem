@@ -184,3 +184,50 @@ export async function inscrire(
   const sujet = sujetDuCompte(compte.id);
   return { ok: true, jeton: await signerSession(secret, sujet), sujet };
 }
+
+/**
+ * Le propriétaire crée un compte pour quelqu'un d'autre.
+ *
+ * L'INSCRIPTION LIBRE EST FERMÉE, et le reste. Elle ne servait qu'à poser le
+ * premier compte ; un inconnu ne dépose plus rien ici. Mais fermer la porte
+ * d'entrée avait supprimé le seul moyen de faire entrer quelqu'un — y
+ * compris l'examinateur du Play Store, à qui Google EXIGE qu'on donne un
+ * compte qui fonctionne.
+ *
+ * Le compte naît APPROUVÉ. Ailleurs l'approbation sert à ce que le
+ * propriétaire décide ; ici, c'est lui qui crée, et créer EST décider. Un
+ * compte qu'on vient de poser soi-même et qu'il faudrait ensuite approuver
+ * serait une case à cocher pour rien.
+ *
+ * Il naît « invite », jamais « proprietaire » : il n'y a qu'un propriétaire,
+ * et l'écran des comptes ne doit pas pouvoir en fabriquer un second qui
+ * pourrait ensuite fermer la porte au premier.
+ *
+ * QUI PEUT APPELER CECI : la route s'en assure (`estProprietaire`). Cette
+ * fonction ne vérifie rien de tel — elle n'est appelée que de là.
+ */
+export async function creerParLeProprietaire(
+  courrielBrut: unknown, motdepasse: unknown, langue: Langue,
+): Promise<Entree> {
+  const courriel = normaliserCourriel(courrielBrut);
+  if (!courrielAcceptable(courriel)) return refus(langue, "courrielInvalide", 400);
+  if (typeof motdepasse !== "string" || !motDePasseAcceptable(motdepasse)) {
+    return refus(langue, "motDePasseTropCourt", 400);
+  }
+
+  // Ici on distingue « déjà pris » de tout le reste, et c'est voulu : celui
+  // qui lit est le propriétaire, chez lui. Le secret sur qui a un compte
+  // protège des inconnus, pas de la personne qui tient la maison.
+  if (await utilisateurAVerifier(courriel)) {
+    return refus(langue, "courrielDejaPris", 409);
+  }
+
+  const compte = await creerUtilisateur(
+    courriel, await empreinter(motdepasse), "invite", true);
+  if (!compte) return refus(langue, "inscriptionImpossible", 502);
+
+  // Aucune session n'est rendue : le propriétaire crée un compte POUR
+  // QUELQU'UN D'AUTRE. Lui ouvrir une session par-dessus la sienne serait
+  // un contresens, et le déconnecterait de son propre compte.
+  return refus(langue, "compteCree", 201);
+}

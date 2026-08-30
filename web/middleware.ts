@@ -24,8 +24,11 @@ import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 // adresse publique : un examinateur l'ouvre sans compte, depuis un lien collé
 // dans un formulaire. Derrière le verrou, l'application serait refusée sans
 // plus d'explication. La page ne contient aucune donnée — elle décrit ce que
-// le logiciel fait.
+// le logiciel fait. « /suppression » l'accompagne : le formulaire
+// « Sécurité des données » du magasin exige une adresse publique où lire
+// comment faire effacer son compte, et l'ouvre lui aussi sans compte.
 const OUVERT = ["/connexion", "/inscription", "/confidentialite",
+                "/suppression",
                 "/api/connexion", "/api/deconnexion", "/api/inscription",
                 "/api/session", "/api/plateforme"];
 

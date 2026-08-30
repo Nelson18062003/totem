@@ -620,6 +620,14 @@ export function SectionQui() {
   }[] | null>(null);
   const [permis, setPermis] = useState<boolean | null>(null);
   const [occupe, setOccupe] = useState<number | null>(null);
+  // La création d'un compte : ouverte à la demande, pas affichée d'office.
+  // Ce n'est pas un geste de tous les jours.
+  const [ouvrirCreation, setOuvrirCreation] = useState(false);
+  const [courriel, setCourriel] = useState("");
+  const [motdepasse, setMotdepasse] = useState("");
+  const [creation, setCreation] = useState(false);
+  const [motCree, setMotCree] = useState<string | null>(null);
+  const [rateCree, setRateCree] = useState(false);
 
   const charger = useCallback(async () => {
     try {
@@ -647,6 +655,36 @@ export function SectionQui() {
       await charger();
     } finally {
       setOccupe(null);
+    }
+  }
+
+  async function creer(e: React.FormEvent) {
+    e.preventDefault();
+    if (creation || !courriel || motdepasse.length < 12) return;
+    setCreation(true);
+    setMotCree(null);
+    try {
+      const r = await fetch("/api/comptes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ geste: "creer", courriel, motdepasse }),
+      });
+      const c = await r.json().catch(() => ({}));
+      if (r.ok || r.status === 201) {
+        setRateCree(false);
+        setMotCree(t.creerFait);
+        // Le mot de passe ne reste pas à l'écran : il vient d'être transmis
+        // au serveur, il n'a plus rien à faire dans un champ ouvert.
+        setCourriel("");
+        setMotdepasse("");
+        setOuvrirCreation(false);
+        await charger();
+      } else {
+        setRateCree(true);
+        setMotCree(c?.erreur ?? t.creerBouton);
+      }
+    } finally {
+      setCreation(false);
     }
   }
 
@@ -699,6 +737,76 @@ export function SectionQui() {
           <li className="py-3 text-caption text-ink-faint">{t.aucunAutreCompte}</li>
         )}
       </ul>
+
+      {/* CRÉER UN COMPTE. L'inscription libre est fermée et le reste : c'est
+          désormais le seul chemin pour faire entrer quelqu'un. Il en fallait
+          un — Google EXIGE un compte qui fonctionne pour examiner
+          l'application, et sans cela il aurait fallu livrer le sien. */}
+      {!ouvrirCreation ? (
+        <button
+          onClick={() => { setOuvrirCreation(true); setMotCree(null); }}
+          className="mt-3 rounded-btn border border-line px-3.5 py-2 text-small font-medium text-ink-soft transition hover:border-ink-faint"
+        >
+          {t.creerCompte}
+        </button>
+      ) : (
+        <form onSubmit={creer} className="mt-3 flex flex-col gap-3 rounded-card border border-line bg-surface-raised p-4">
+          <p className="text-caption leading-relaxed text-ink-faint">
+            {t.creerCompteAide}
+          </p>
+          {/* L'AVERTISSEMENT, avant les champs et pas après. Un compte
+              approuvé voit TOUT : le dire une fois le compte créé serait
+              trop tard. */}
+          <p className="rounded-btn border border-line bg-surface px-3 py-2 text-caption leading-relaxed text-negative">
+            {t.creerAvertissement}
+          </p>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-small text-ink-soft">{t.creerCourriel}</span>
+            <input
+              type="email" value={courriel} required autoCapitalize="none"
+              onChange={(e) => setCourriel(e.target.value)}
+              className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-small text-ink-soft">{t.creerMotDePasse}</span>
+            {/* En clair, à dessein : le propriétaire doit pouvoir le relire
+                pour le transmettre. Ce n'est pas SON mot de passe. */}
+            <input
+              type="text" value={motdepasse} required autoComplete="off"
+              onChange={(e) => setMotdepasse(e.target.value)}
+              className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+            />
+            <span className={`text-caption ${
+              motdepasse && motdepasse.length < 12 ? "text-negative" : "text-ink-faint"
+            }`}>
+              {t.creerLongueur}
+            </span>
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={creation || !courriel || motdepasse.length < 12}
+              className="rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-35"
+            >
+              {creation ? t.creerEnCours : t.creerBouton}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOuvrirCreation(false); setMotCree(null); }}
+              className="rounded-btn border border-line px-4 py-2 text-small text-ink-soft transition hover:border-ink-faint"
+            >
+              {t.annuler}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {motCree && (
+        <p className={`mt-2 text-caption ${rateCree ? "text-negative" : "text-ink-soft"}`}>
+          {motCree}
+        </p>
+      )}
     </section>
   );
 }

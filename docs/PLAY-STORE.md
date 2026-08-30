@@ -11,16 +11,70 @@
 Google Play **refuse** une application financière sans politique de
 confidentialité à une adresse publique.
 
-Elle est en ligne : **`https://VOTRE-ADRESSE.vercel.app/confidentialite`**
+Elle est en ligne : **https://totemlabs.app/confidentialite**
 
 Elle s'ouvre sans compte — un examinateur y arrive depuis un lien collé dans
 un formulaire, et une page derrière le verrou ferait refuser l'application
 sans plus d'explication. Le script du verrou vérifie qu'elle reste ouverte.
 
 > ⚠️ **Une chose à régler avant de coller ce lien.** Le courriel de contact
-> vient de la variable d'environnement `CONTACT_COURRIEL` sur Vercel. Sans
-> elle, la page affiche `contact@bonzinilabs.com`, qui n'est peut-être pas
-> une adresse relevée. Posez la vôtre, puis redéployez.
+> vient de la variable d'environnement `CONTACT_COURRIEL` sur Vercel. Tant
+> qu'elle n'est pas posée, les deux pages n'affichent AUCUNE adresse : elles
+> renvoient vers l'adresse du développeur de la fiche du magasin. C'est
+> volontaire — une adresse par défaut inventée promettrait une boîte qui
+> n'existe pas. Posez la vôtre, puis redéployez.
+
+---
+
+## La page de suppression des données
+
+Le formulaire *Sécurité des données* demande une **URL de suppression des
+données** dès qu'on répond « oui » à « proposez-vous un moyen de demander la
+suppression ? ».
+
+Elle est en ligne : **https://totemlabs.app/suppression**
+
+Google exige trois choses de cette page, et refuse le lien s'il en manque
+une. La page les porte toutes les trois :
+
+1. **Nommer l'application ou l'éditeur** de la fiche — elle nomme TOTEM et le
+   nom de paquet `com.bonzinilabs.totem` ;
+2. **Décrire la marche à suivre** — écrire depuis l'adresse du compte, objet
+   « SUPPRIMER », réponse de confirmation, effacement sous 30 jours ;
+3. **Dire ce qui est effacé et ce qui est gardé**, avec les délais — le
+   compte, les jetons de notification et les sessions partent ; les écritures
+   du terminal (SMS, paiements, reçus) restent, parce qu'elles appartiennent
+   au propriétaire des cartes et ne sont pas des données personnelles de qui
+   demande.
+
+Elle est ouverte sans compte, comme la politique. Le script du verrou vérifie
+qu'elle le reste, qu'elle nomme bien l'application, et qu'elle n'affiche pas
+d'adresse inventée.
+
+---
+
+## Informations de connexion (App access)
+
+Google demande comment un examinateur passe le verrou. TOTEM est entièrement
+derrière une connexion : il faut donc **lui donner un compte qui marche**.
+
+**Ne donnez pas le vôtre.** Créez-en un pour l'examen :
+
+**Réglages → Qui peut se connecter → Créer un compte**
+
+Puis dans la Play Console, choisir « Toutes les fonctionnalités nécessitent
+un accès spécial » et remplir :
+
+| Champ | Valeur |
+|---|---|
+| Nom des identifiants | `Examen Google` |
+| Nom d'utilisateur | le courriel créé |
+| Mot de passe | celui choisi |
+| Instructions | « Sign in with the email and password above. The app shows the Mobile Money SIM cards held in the owner's terminal. » |
+
+⚠️ **Ce compte voit tout ce que voit le propriétaire** — le rattachement des
+SIM à une personne n'existe pas encore. Supprimez-le une fois l'examen
+terminé : même écran, bouton *Supprimer*.
 
 ---
 
@@ -36,7 +90,9 @@ est un motif de refus, et elle se voit.
 |---|---|---|
 | L'app collecte-t-elle des données ? | **Oui** | Un seul élément, ci-dessous. |
 | Les données sont-elles chiffrées en transit ? | **Oui** | Tout passe en HTTPS ; l'application refuse une adresse en `http` (sauf la machine locale). |
-| Peut-on demander la suppression ? | **Oui** | Désinstaller retire tout ce qui est sur le téléphone ; le propriétaire vide la base quand il veut. |
+| Peut-on demander la suppression ? | **Oui** | Coller `https://totemlabs.app/suppression` dans *URL de suppression des données*. |
+| Les comptes sont-ils créés dans l'application ? | **Non** | L'inscription libre est fermée : le propriétaire crée les comptes lui-même. |
+| Peut-on se connecter avec un compte créé hors de l'application ? | **Oui** | Le compte est créé par le propriétaire, puis utilisé dans l'application. Sous « comment ces comptes sont-ils créés », cocher **par le développeur ou l'entreprise** — c'est exactement ce qui se passe. |
 
 ### Le seul type de données à déclarer
 
@@ -306,7 +362,8 @@ Catégorie : **Finance**.
 
 ## L'ordre des choses
 
-1. Poser `CONTACT_COURRIEL` sur Vercel, redéployer, vérifier la page.
+1. Poser `CONTACT_COURRIEL` sur Vercel, redéployer, vérifier les DEUX pages
+   (`/confidentialite` et `/suppression`) : l'adresse doit s'y afficher.
 2. Créer l'application dans la Play Console (nom, langue par défaut anglais).
 3. Coller le lien de la politique de confidentialité.
 4. Remplir *Sécurité des données* — les réponses sont ci-dessus.
