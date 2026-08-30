@@ -114,6 +114,36 @@ trouve en une seconde, et poussent à écrire le mot de passe sur un papier.
 
 ---
 
+## Un invité regarde ; il ne compose pas
+
+Il y a deux rôles : **propriétaire** et **invité**. Jusqu'ici, tout compte
+approuvé ouvrait le guichet — c'est-à-dire pouvait faire composer un code sur
+une vraie carte SIM, avec de vrais francs derrière. Le verrou vérifiait qu'une
+session était valable, pas à QUI elle appartenait.
+
+C'était une porte grande ouverte le jour où il a fallu donner un compte à un
+examinateur du magasin pour qu'il regarde l'application.
+
+Désormais, `/api/commande` est **réservée au propriétaire** :
+
+| Qui | Consulter les écrans | Déposer une demande au terminal |
+|---|---|---|
+| Personne (sans session) | non | non |
+| Invité approuvé | oui | **non** |
+| Propriétaire | oui | oui |
+| Clé de secours | oui | oui |
+
+La clé de secours passe, et c'est voulu : elle ne vit que dans les variables
+d'environnement de Vercel — y avoir accès, c'est déjà être le propriétaire.
+
+Un **ancien jeton**, émis avant les comptes, ne désigne personne : il ouvre
+encore les écrans jusqu'à son expiration, mais plus le guichet. Si le
+propriétaire voit « réservé au propriétaire » là où il commandait hier, il
+suffit qu'il se déconnecte et se reconnecte : le nouveau jeton porte son
+compte.
+
+---
+
 ## Ce que la plateforme refuse de dire
 
 Un courriel inconnu et un mauvais mot de passe reçoivent **exactement le même

@@ -2,6 +2,7 @@ import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
+import { estProprietaire } from "@/lib/qui";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -13,12 +14,29 @@ const GENRES = new Set([
 ]);
 
 /**
- * Dépose une demande pour le terminal. Le corps n'est JAMAIS journalisé :
- * une réponse peut porter le code secret, qui ne doit laisser aucune trace
- * ici — le robot le masque en base sitôt lu.
+ * Dépose une demande pour le terminal — RÉSERVÉ AU PROPRIÉTAIRE.
+ *
+ * Déposer une demande ici, ce n'est pas consulter un écran : c'est faire
+ * composer un code sur une vraie carte SIM, avec de vrais francs derrière.
+ * Le verrou de la plateforme ne suffisait pas — il vérifie qu'une session
+ * est valable, pas à QUI elle appartient. N'importe quel compte approuvé,
+ * y compris un invité, pouvait ainsi lancer une opération réelle.
+ *
+ * Un invité voit les écrans. Il ne touche pas aux cartes.
+ *
+ * Le corps n'est JAMAIS journalisé : une réponse peut porter le code secret,
+ * qui ne doit laisser aucune trace ici — le robot le masque en base sitôt lu.
  */
 export async function POST(req: Request) {
   const langue = await langueServeur();
+
+  // Sans SESSION_SECRET, la plateforme n'a AUCUN verrou : le middleware
+  // laisse tout passer. Refuser ici donnerait l'illusion d'une porte fermée
+  // devant une maison ouverte, et casserait le développement local pour rien.
+  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+    return Response.json(
+      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+  }
   const corps = await req.json().catch(() => null);
   const genre = typeof corps?.type === "string" ? corps.type : "";
   if (!GENRES.has(genre)) {
