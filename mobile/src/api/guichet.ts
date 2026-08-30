@@ -346,3 +346,25 @@ export function essaiNotification(langue: Langue): Promise<{
 }> {
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
 }
+
+/** Un compte de la plateforme, tel que la liste du propriétaire le montre. */
+export type CompteInscrit = {
+  id: number; courriel: string; role: string; approuve: boolean;
+  creeLe: string | null; vuLe: string | null;
+};
+
+/** La liste des comptes — réservée au propriétaire : 403 pour les autres,
+ *  et l'écran se tait alors de lui-même, comme sur le web. */
+export function listerComptes(): Promise<{ comptes: CompteInscrit[] }> {
+  return demander("/api/comptes");
+}
+
+/** Un geste du propriétaire sur un compte : laisser entrer, bloquer,
+ *  supprimer — ou en créer un (l'inscription libre est fermée). */
+export function agirSurCompte(
+  corps:
+    | { id: number; geste: "approuver" | "fermer" | "supprimer" }
+    | { geste: "creer"; courriel: string; motdepasse: string },
+): Promise<unknown> {
+  return demander("/api/comptes", { method: "POST", body: JSON.stringify(corps) });
+}

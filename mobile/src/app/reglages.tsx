@@ -16,6 +16,8 @@ import { router } from "expo-router";
 
 import { Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
 import { Icone } from "@/icones";
+import { SectionCartes } from "@/reglages-cartes";
+import { SectionQui } from "@/reglages-qui";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useChangerLangue, useLangue } from "@/langue";
@@ -35,8 +37,11 @@ export default function Reglages() {
   const t = textesReglages[langue];
   const c = textesCharpente[langue];
   const { fermer } = useSession();
-  const { donnees } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, recharger } = useDonnees({ sms: 0, recus: 0 });
   const terminal = donnees?.terminal ?? null;
+  // Les cartes en place d'abord — c'est elles qu'on vient régler.
+  const sims = [...(donnees?.sims ?? [])]
+    .sort((a, b) => Number(b.enPlace) - Number(a.enPlace));
 
   const seDeconnecter = () => {
     Alert.alert(t.seDeconnecter, undefined, [
@@ -118,11 +123,21 @@ export default function Reglages() {
           </Carte>
         </View>
 
+        {/* Les cartes : le nom et le numéro de chacune — ce que la fiche
+            des coordonnées montre s'inscrit ici. */}
+        <SectionCartes sims={sims} langue={langue}
+                       terminal={terminal?.id ?? null}
+                       onChange={recharger} />
+
         {/* « Est-ce que mon téléphone sonne ? »
             Il existait sur la plateforme web, pas ici — c'est-à-dire pas là
             où l'on vient de refuser ou d'accepter les notifications, et où
             l'on se pose justement la question. */}
         <EssaiNotification />
+
+        {/* Qui peut se connecter — visible du propriétaire seul : la
+            section se tait d'elle-même pour les autres. */}
+        <SectionQui langue={langue} />
 
         {/* La sécurité — et la promesse sur le code secret, répétée ici parce
             que c'est l'écran où l'on vient chercher « où est mon code ? ». */}
