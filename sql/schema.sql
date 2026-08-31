@@ -490,18 +490,35 @@ create trigger un_proprietaire_reste
 create table if not exists freins (
   -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
   -- une table d'adresses ne doit pas devenir une liste de qui a un compte.
-  cle    text primary key,
+  cle    text,
   n      integer not null default 0,
   vu     timestamptz not null default now()
 );
+
+-- « create table if not exists » ne vérifie que le NOM, jamais la FORME : une
+-- table homonyme déjà présente ferait sauter la création en silence, et tout
+-- ce qui suit supposerait des colonnes absentes. C'est arrivé en service.
+alter table freins add column if not exists cle text;
+alter table freins add column if not exists n   integer not null default 0;
+alter table freins add column if not exists vu  timestamptz not null default now();
+
+-- L'UNICITÉ EST POSÉE À PART, et pas comme clé primaire dans la création.
+--
+-- « on conflict (cle) » exige un index unique sur « cle » : sans lui, le
+-- comptage échoue sur « no unique or exclusion constraint matching ». Une
+-- table déjà présente n'en a pas forcément. En sortant l'index de la
+-- création, les deux chemins — base neuve et base déjà là — aboutissent
+-- exactement au même index, portant le même nom.
+create unique index if not exists freins_cle_unique on freins (cle);
 
 create index if not exists freins_vu on freins (vu);
 
 create or replace function compter_un_essai(la_cle text, fenetre_s integer)
 returns integer
 language sql
+set search_path = public
 as $$
-  insert into freins (cle, n, vu)
+  insert into public.freins (cle, n, vu)
   values (la_cle, 1, now())
   on conflict (cle) do update
     set n = case
