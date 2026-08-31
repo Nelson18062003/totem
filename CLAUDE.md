@@ -218,6 +218,14 @@ pas tout de suite. Il faut donc un verrou SYNCHRONE (`useGesteUnique`) et une
 clé d'intention — le verrou pare le double appui, la clé pare la réponse
 perdue en route où la personne recommence de bonne foi.
 
+**Une date se lit dans la langue de l'ÉCRAN, pas dans celle de l'appareil.**
+`toLocaleDateString()` sans argument suit le réglage du téléphone : l'écran
+des comptes affichait « Last signed in 8/31/2026 » — un mois avant un jour —
+au milieu d'une application française. « 8/31 » et « 31/8 » se confondent onze
+mois sur douze, et sur une date on ne devine pas. Le mois s'écrit donc en
+toutes lettres (`dateVue` dans le noyau), et un test du noyau balaie les DEUX
+surfaces : la faute était écrite deux fois, à l'identique.
+
 `verifier-les-fiches` tient une règle en une phrase : **on tronque dans une
 LISTE, jamais dans une FICHE**. Dans une liste, les lignes doivent s'aligner —
 l'œil parcourt une colonne, il ne lit pas ; couper y est juste. Dans une

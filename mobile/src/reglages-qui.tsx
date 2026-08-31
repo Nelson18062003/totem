@@ -22,6 +22,7 @@ import { useGesteUnique } from "@/geste";
 import { agirSurCompte, ErreurGuichet, listerComptes,
          type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
+import { dateVue } from "@noyau/types";
 import { textesReglages } from "@noyau/textes/reglages";
 import { textesConnexion } from "@noyau/textes/connexion";
 import type { Langue } from "@noyau/langue";
@@ -187,7 +188,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
                   {c.approuve ? t.ouvert : t.enAttente}
                   {" · "}
                   {c.vuLe
-                    ? `${t.vuLe} ${new Date(c.vuLe).toLocaleDateString()}`
+                    ? `${t.vuLe} ${dateVue(c.vuLe, langue)}`
                     : t.jamaisVenu}
                 </Texte>
               </View>

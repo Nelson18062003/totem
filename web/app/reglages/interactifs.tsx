@@ -7,7 +7,7 @@ import { aDesVariables, CLES_GUICHET, codesUssd, type CodeUssd } from "@noyau/co
 import { LANGUES } from "@noyau/langue";
 import { textesReglages } from "@noyau/textes/reglages";
 import { ApercuCode, Composeur } from "./composeur";
-import type { RaccourciAppris } from "@noyau/types";
+import { dateVue, type RaccourciAppris } from "@noyau/types";
 import { IconHash, IconPlus } from "../icons";
 import { BoutonFermer } from "../feuille";
 
@@ -702,7 +702,7 @@ export function SectionQui() {
                 {c.approuve ? t.ouvert : t.enAttente}
                 {" · "}
                 {c.vuLe
-                  ? `${t.vuLe} ${new Date(c.vuLe).toLocaleDateString()}`
+                  ? `${t.vuLe} ${dateVue(c.vuLe, langue)}`
                   : t.jamaisVenu}
               </p>
             </div>

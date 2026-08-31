@@ -47,7 +47,9 @@ type Etat = {
   recharger: () => void;
 };
 
-export function useDonnees(bornes?: { sms?: number; recus?: number }): Etat {
+export function useDonnees(
+  bornes?: { sms?: number; recus?: number; sansLignes?: boolean },
+): Etat {
   const langue = useLangue();
   const { perdue } = useSession();
   const [donnees, setDonnees] = useState<Donnees | null>(null);
@@ -56,6 +58,7 @@ export function useDonnees(bornes?: { sms?: number; recus?: number }): Etat {
 
   const sms = bornes?.sms;
   const recus = bornes?.recus;
+  const sansLignes = bornes?.sansLignes;
 
 
   /**
@@ -68,7 +71,7 @@ export function useDonnees(bornes?: { sms?: number; recus?: number }): Etat {
     if (!discret) setChargement(true);
     setErreur(null);
     try {
-      const d = await chargerDonnees(langue, { sms, recus });
+      const d = await chargerDonnees(langue, { sms, recus, sansLignes });
       setDonnees(d);
     } catch (e) {
       // Session expirée : ce n'est pas une erreur à afficher, c'est un
@@ -94,7 +97,7 @@ export function useDonnees(bornes?: { sms?: number; recus?: number }): Etat {
     } finally {
       if (!discret) setChargement(false);
     }
-  }, [langue, sms, recus, perdue]);
+  }, [langue, sms, recus, sansLignes, perdue]);
 
   useEffect(() => { charger(); }, [charger]);
 

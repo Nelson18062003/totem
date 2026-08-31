@@ -237,7 +237,16 @@ export async function chargerDonnees(
   // comptage exact lui coûte un parcours complet — il ne se paie que là où
   // ignorer une troncature serait un mensonge (l'export comptable), pas à
   // chaque ouverture d'écran.
-  bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean },
+  //
+  // `sansLignes` : COMPTER SANS RAPPORTER. L'écran des cartes demandait mille
+  // SMS — non pour les montrer, il ne les regarde jamais, mais pour que les
+  // compteurs par carte (nbPaiements, totalRecu) soient calculés sur la même
+  // profondeur que le web. Le serveur comptait bien, puis renvoyait les mille
+  // lignes, textes de SMS compris : 264 Ko sur le réseau mobile de Douala
+  // pour afficher des soldes de cartes. Avec ce drapeau, le comptage se fait
+  // et les lignes restent ici.
+  bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean;
+             sansLignes?: boolean },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
@@ -415,8 +424,12 @@ export async function chargerDonnees(
     });
   }
 
-  return { relie, terminal, sims, paiements, raccourcis, fuseau: FUSEAU,
-           smsTronques };
+  return {
+    relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques,
+    // Les compteurs des cartes sont déjà calculés : les lignes qui ont servi
+    // à les calculer n'ont plus rien à faire sur le réseau.
+    paiements: bornes?.sansLignes ? [] : paiements,
+  };
 }
 
 /** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque

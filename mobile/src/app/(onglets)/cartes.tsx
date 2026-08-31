@@ -27,7 +27,14 @@ export default function Comptes() {
   // Le bilan des cartes retirées (nombre de paiements, total reçu) se
   // compte sur les SMS : la même profondeur que la page web (1000 lignes),
   // sinon le téléphone et le web affichent deux totaux différents.
-  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 1000, recus: 0 });
+  // COMPTER SANS RAPPORTER. Cet écran ne lit JAMAIS `donnees.paiements` — il
+  // montre des soldes et des compteurs. Il demandait pourtant mille SMS pour
+  // que le serveur compte sur la même profondeur que le web, et le serveur
+  // les renvoyait tous, textes compris : 264 Ko sur une connexion mobile pour
+  // afficher quatre cartes. Les compteurs restent justes ; les lignes
+  // s'arrêtent au serveur.
+  const { donnees, chargement, erreur, recharger } =
+    useDonnees({ sms: 1000, recus: 0, sansLignes: true });
 
   const sims = donnees?.sims ?? [];
   const enPlace = sims.filter((s) => s.enPlace);

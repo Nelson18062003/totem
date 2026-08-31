@@ -51,6 +51,9 @@ export async function GET(req: Request) {
   const donnees = await chargerDonnees(langue, {
     sms: borne(params.get("sms"), 200, MAX_SMS),
     recus: borne(params.get("recus"), 200, MAX_RECUS),
+    // « compte, mais ne me les envoie pas » : l'écran des cartes veut des
+    // compteurs justes, pas mille textes de SMS sur une connexion mobile.
+    sansLignes: params.get("sansLignes") === "1",
   });
 
   // Qui regarde ? Uniquement pour le saluer par son prénom. Le courriel ne
