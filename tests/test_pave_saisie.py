@@ -229,3 +229,22 @@ class TestLHorodatageNeFermePasLePave(unittest.TestCase):
         entete, options = Robot._analyser_menu("10:44\nVotre solde est de 100 FCFA")
         self.assertEqual(options, [])
         self.assertIn("10:44", " ".join(entete))
+
+
+class TestNIPOuvreLePave(unittest.TestCase):
+    """« NIP » — Numéro d'Identification Personnel — est le mot le plus courant
+    pour le code secret Mobile Money en Afrique francophone. Il manquait à la
+    détection : « Veuillez saisir votre NIP » n'ouvrait pas le pavé, le code se
+    tapait dans la conversation, en clair, et s'inscrivait dans la table `ussd`
+    — qui part dans la sauvegarde postée sur Telegram. La quatrième fuite.
+    """
+
+    def test_le_NIP_ouvre_le_pave(self):
+        from totem.app import Robot
+        for prompt in ("Veuillez saisir votre NIP:", "Entrez votre NIP",
+                       "Entrer votre N.I.P.", "Confirmez avec votre NIP"):
+            self.assertTrue(Robot._demande_un_code(prompt), prompt)
+
+    def test_pas_de_faux_positif_sur_un_numero(self):
+        from totem.app import Robot
+        self.assertFalse(Robot._demande_un_code("Entrez le numero du beneficiaire"))

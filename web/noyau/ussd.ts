@@ -55,8 +55,12 @@ function estUnMenu(texte: string): boolean {
   return (texte.match(RE_OPTION) ?? []).length >= MENU_MINIMUM;
 }
 
+// « NIP » (Numéro d'Identification Personnel) est le mot COURANT pour le
+// code secret Mobile Money en Afrique francophone — plus que « PIN ». Sans
+// lui, « Saisir votre NIP » n'ouvrait pas le pavé, et le code partait en
+// clair. Même correctif que côté robot.
 const RE_SECRET =
-  /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i;
+  /\bn\.?i\.?p\.?\b|\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i;
 
 /**
  * Le réseau réclame-t-il le code secret ?

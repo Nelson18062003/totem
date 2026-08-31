@@ -82,6 +82,10 @@ class ModemSerie:
         self._memo = {}
         self._commande_iccid = None    # celle que ce firmware accepte
         self._traine_urc = b""         # fin des annonces non sollicitées (+CMTI)
+        # Depuis quand attend-on chaque groupe de morceaux incomplet ?
+        # Conservé d'un tour de relève à l'autre pour qu'un morceau au
+        # SCTS corrompu ne bloque pas son emplacement modem pour toujours.
+        self._morceaux_vus = {}
         self._initialiser()
 
     # ---- bas niveau -------------------------------------------------------
@@ -447,7 +451,12 @@ class ModemSerie:
         # morceaux eux-mêmes, avant de la propager à l'appelant.
         heures = {index: morceau.horodatage for index, morceau in morceaux}
         messages = []
-        for indices, expediteur, texte, _complet in recoller(morceaux):
+        # `getattr` défensif : un modem fabriqué sans `__init__` (les tests, ou
+        # un chemin de reprise) n'a pas encore sa carte — on la crée à la volée.
+        if not hasattr(self, "_morceaux_vus"):
+            self._morceaux_vus = {}
+        for indices, expediteur, texte, _complet in recoller(
+                morceaux, premiere_vue=self._morceaux_vus):
             emis_le = max((h for h in (heures.get(i) for i in indices) if h),
                           default=None)
             messages.append((indices, expediteur, texte, emis_le))

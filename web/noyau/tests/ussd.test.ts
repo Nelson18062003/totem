@@ -148,3 +148,15 @@ test("un menu n'est jamais une question à laquelle on répond seul", () => {
   assert.deepEqual(
     champPourQuestion("Entrez le numero du beneficiaire", champs), champs[0]);
 });
+
+test("« NIP » ouvre le pavé — le mot le plus courant du code secret", () => {
+  // NIP (Numéro d'Identification Personnel) est en Afrique francophone le mot
+  // le plus banal pour le code Mobile Money — plus que « PIN ». Il manquait :
+  // « Saisir votre NIP » n'ouvrait pas le pavé, et le code partait en clair.
+  for (const message of ["Veuillez saisir votre NIP", "Entrez votre NIP",
+                         "Entrer votre N.I.P.", "Confirmez avec le NIP"]) {
+    assert.equal(demandeUnCode(message), true, message);
+  }
+  // Sans faux positif : un vrai numéro de bénéficiaire n'est pas un code.
+  assert.equal(demandeUnCode("Entrez le numero du beneficiaire"), false);
+});

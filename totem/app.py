@@ -57,8 +57,15 @@ RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
 # On masque donc au moindre doute. « Entrez votre code », « Enter your Orange
 # Money code », « Veuillez entrer votre MDP » doivent tous déclencher le pavé.
 RE_DEMANDE_CODE = re.compile(
-    r"\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password"
-    r"|passcode|passphrase",
+    # « NIP » — Numéro d'Identification Personnel — est le mot COURANT pour le
+    # code secret Mobile Money en Afrique francophone, plus courant que « PIN »
+    # ou « code secret ». Il manquait : « Veuillez saisir votre NIP » n'ouvrait
+    # donc pas le pavé sécurisé, le code se tapait dans la conversation, en
+    # clair, et s'inscrivait tel quel dans la table `ussd` — laquelle part dans
+    # le fichier de sauvegarde posté sur Telegram. La quatrième fuite du code
+    # secret, et par le mot le plus banal de tous.
+    r"\bn\.?i\.?p\.?\b|\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel"
+    r"|mot\s+de\s+passe|password|passcode|passphrase",
     re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.

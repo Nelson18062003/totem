@@ -158,6 +158,38 @@ class MessageLongCoupeEnMorceaux(unittest.TestCase):
         self.assertIn("message incomplet", texte)
         self.assertIn("3", texte)                   # le morceau manquant est nommé
 
+    def test_un_morceau_sans_horodatage_ne_bloque_pas_son_emplacement(self):
+        # Le défaut réel : un morceau au TP-SCTS corrompu (horodatage None),
+        # dans un message incomplet, n'atteignait JAMAIS la limite de patience.
+        # Son emplacement modem restait pris à chaque tour, et quelques-uns
+        # saturaient la mémoire — le réseau ne pouvait plus déposer les
+        # encaissements suivants. Avec la carte de première-vue, il vieillit.
+        morceau = Morceau("MTN", "moitie", None, reference=9, total=2, position=1)
+        vus = {}
+        t0 = datetime(2026, 8, 31, 10, 0, tzinfo=timezone.utc)
+
+        # Tour 1 et 2 : on attend encore la suite (elle peut arriver).
+        self.assertEqual(recoller([(0, morceau)], t0, vus), [])
+        self.assertEqual(
+            recoller([(0, morceau)], t0 + timedelta(minutes=5), vus), [])
+
+        # Passé la patience depuis la PREMIÈRE vue : livré incomplet et effacé.
+        livre = recoller([(0, morceau)], t0 + timedelta(minutes=20), vus)
+        self.assertEqual(len(livre), 1)
+        indices, _, texte, complet = livre[0]
+        self.assertEqual(indices, [0])              # l'emplacement se libère
+        self.assertFalse(complet)
+        self.assertIn("incomplet", texte)
+        # La carte se vide après livraison : elle n'enfle pas sans fin.
+        self.assertEqual(vus, {})
+
+    def test_sans_carte_le_comportement_reste_celui_d_avant(self):
+        # Les tests directs (sans carte persistée) ne changent pas : un morceau
+        # sans date reste retenu, faute d'horloge.
+        morceau = Morceau("MTN", "x", None, reference=3, total=2, position=1)
+        tard = datetime.now(timezone.utc) + timedelta(days=400)
+        self.assertEqual(recoller([(0, morceau)], maintenant=tard), [])
+
     def test_deux_messages_longs_ne_se_melangent_pas(self):
         morceaux = [
             (1, decoder(fabriquer_pdu("AAA", reference=1, total=2, position=1))),
