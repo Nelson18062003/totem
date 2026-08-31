@@ -66,7 +66,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
 
   const cat = categorieDe({ ...p, nature });
   const argent = estArgent({ ...p, nature });
-  // Le masque des codes se pose ICI, à l'affichage — pas seulement en base.
+  // Le texte du SMS, tel qu'il est arrivé — codes compris, rien de masqué.
   const texte = texteSurEcran(p);
   const long = texte.length > LONG_MESSAGE;
   const schema = couleursCategorie(cat);

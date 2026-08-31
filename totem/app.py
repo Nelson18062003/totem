@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
-                          masquer_secrets, solde_annonce)
+                          solde_annonce)
 from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
                           motif_du_sms, motif_selon_nature, raison_du_refus)
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
@@ -1979,11 +1979,13 @@ class Robot:
             # tant qu'il n'a pas été journalisé : sinon un encaissement
             # disparaîtrait sans laisser de trace.
             try:
-                # Un code à usage unique ne doit survivre nulle part : ni au
-                # journal, ni dans la sauvegarde hors du Pi, ni sur Telegram.
-                # On le masque ici, une fois, et tout ce qui suit ne voit plus
-                # que la version sûre.
-                texte = masquer_secrets(texte)
+                # Le SMS est enregistré et transmis TEL QUEL — y compris les
+                # codes qu'il porte. Ce sont les messages du propriétaire, sur
+                # sa carte : il les reçoit entiers, pour lire un code de
+                # connexion comme le reste. On ne modifie pas un SMS.
+                # (Le code SECRET Mobile Money que le propriétaire TAPE
+                # pendant une opération n'entre jamais par ici : il n'est
+                # jamais reçu par SMS. Il reste protégé, ailleurs.)
                 if not self.journal.sms_existe(expediteur, texte, compte.libelle):
                     # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
                     # vraie de l'opération, distincte de l'heure de relève —

@@ -373,17 +373,21 @@ class TestLaChaine(unittest.TestCase):
         _distribuer(robot, journal)
         self.assertEqual(len(robot.transport.fichiers), 1)
 
-    def test_le_code_ne_produit_rien_et_ne_sarchive_pas_en_clair(self):
+    def test_le_code_ne_produit_pas_de_recu_mais_sarchive_entier(self):
+        # Un code à usage unique n'est pas un paiement : AUCUN reçu. Mais le
+        # SMS appartient au propriétaire — il s'archive et se transmet
+        # ENTIER, code compris. On ne modifie pas un SMS : le propriétaire
+        # doit pouvoir lire son propre code de connexion.
         robot, compte, modem, journal = _robot()
         modem.sms_en_attente.append((1, "OrangeMoney", CODE_ORANGE))
         robot._relever_sms(compte)
         _distribuer(robot, journal)
 
-        self.assertEqual(robot.transport.fichiers, [])
+        self.assertEqual(robot.transport.fichiers, [])        # pas de reçu
         self.assertEqual(journal.recus_en_attente(), 0)
         _, _, garde, _ = journal.derniers_sms(1)[0]
-        self.assertNotIn("515318", garde)
-        self.assertNotIn("515318", robot.transport.messages[0])
+        self.assertIn("515318", garde)                        # archivé en clair
+        self.assertIn("515318", robot.transport.messages[0])  # transmis en clair
 
     def test_un_sms_incompris_ne_produit_rien(self):
         robot, compte, modem, journal = _robot()

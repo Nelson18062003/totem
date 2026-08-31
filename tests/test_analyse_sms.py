@@ -12,7 +12,7 @@ Lancer :  python3 -m unittest discover -s tests
 import unittest
 
 from totem.analyse_sms import (analyser, categoriser, code_a_usage_unique,
-                               formater_montant, masquer_secrets, solde_annonce)
+                               formater_montant, solde_annonce)
 
 # Le vrai SMS d'Orange Money, relevé sur les captures du propriétaire en
 # juillet 2026. Il sert de référence à tout ce fichier : c'est lui qu'il faut
@@ -460,10 +460,13 @@ class TestBruitAnglais(unittest.TestCase):
         self.assertIsNone(analyser(pub))
         self.assertEqual(categoriser(pub), "publicite")
 
-    def test_le_code_anglais_est_masque(self):
+    def test_le_code_anglais_est_range_mais_jamais_modifie(self):
+        # Un code à usage unique est RANGÉ dans la catégorie « code » (une
+        # icône, pas de reçu). Mais le SMS n'est PAS modifié : le
+        # propriétaire reçoit son code en entier — c'est le sien.
         code = "Your one-time password is 481516. Do not share it."
         self.assertEqual(categoriser(code), "code")
-        self.assertNotIn("481516", masquer_secrets(code))
+        self.assertTrue(code_a_usage_unique(code))
 
     def test_une_entreprise_nommee_win_paie_quand_meme(self):
         """« win » est un mot de réclame, mais WIN TELECOM est un client :
@@ -550,19 +553,20 @@ class TestCodeAUsageUnique(unittest.TestCase):
     def test_nest_pas_un_paiement(self):
         self.assertIsNone(analyser(self.CODE))
 
-    def test_masque(self):
-        masque = masquer_secrets(self.CODE)
-        self.assertNotIn("515318", masque)
-        self.assertIn("696103864", masque)     # le numéro n'est pas un secret
-        self.assertIn("•", masque)
+    def test_le_code_est_reconnu_mais_le_sms_reste_entier(self):
+        # On ne masque plus RIEN : le SMS du propriétaire, code compris, se
+        # lit tel qu'il est arrivé. `code_a_usage_unique` sert seulement à le
+        # RANGER (catégorie « code », pas de reçu), jamais à le cacher.
+        self.assertTrue(code_a_usage_unique(self.CODE))
+        self.assertEqual(categoriser(self.CODE), "code")
 
-    def test_un_vrai_paiement_nest_jamais_masque(self):
-        """Un encaissement qui contiendrait le mot « code » doit rester
-        lisible en entier : le masquage ne s'applique qu'aux secrets."""
+    def test_un_encaissement_avec_le_mot_code_reste_un_paiement(self):
+        """Un encaissement qui contient le mot « code » (« Code marchand »)
+        n'est pas pris pour un code à usage unique : il reste un paiement,
+        lisible en entier."""
         sms = ("Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
                "Code marchand: 4455. Nouveau solde: 872 500 FCFA.")
         self.assertFalse(code_a_usage_unique(sms))
-        self.assertEqual(masquer_secrets(sms), sms)
         self.assertEqual(analyser(sms).montant, 25000)
 
     def test_autres_tournures(self):

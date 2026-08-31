@@ -961,24 +961,13 @@ def code_a_usage_unique(texte):
     return analyser(texte) is None
 
 
-def masquer_secrets(texte):
-    """Le même message, le code remplacé par des points.
-
-    C'est cette version-là qui est écrite au journal et affichée sur Telegram :
-    un code à usage unique n'a aucune raison de survivre à sa minute, ni de
-    traîner dans une sauvegarde envoyée hors du Pi.
-    """
-    if not texte or not code_a_usage_unique(texte):
-        return texte
-
-    def _points(m):
-        return m.group(0)[:m.start(1) - m.start(0)] + "•" * len(m.group(1))
-
-    # Le motif est écrit pour le texte normalisé ; sur l'original on refait
-    # une passe insensible à la casse, qui suffit ici (le code est un nombre).
-    return re.sub(RE_CODE_UNIQUE.pattern, _points, texte, flags=re.I)
+# Le SMS n'est JAMAIS modifié : il appartient au propriétaire, codes compris.
+# `masquer_secrets`, qui remplaçait le code par des points avant l'écriture au
+# journal, a été retiré — cacher au propriétaire son propre code de connexion
+# l'empêchait de s'en servir. `code_a_usage_unique` demeure : il ne cache
+# rien, il sert seulement à ranger le SMS dans la catégorie « code » (une
+# icône, pas de reçu) et se lit en entier comme les autres.
 
 
 __all__ = ["Paiement", "Partie", "analyser", "solde_annonce", "categoriser",
-           "code_a_usage_unique", "est_echec", "masquer_secrets",
-           "formater_montant"]
+           "code_a_usage_unique", "est_echec", "formater_montant"]
