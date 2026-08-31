@@ -496,17 +496,19 @@ class Pilotage:
         return reponse
 
     def _repondre(self, identifiant, parametres, langue=None):
-        # On fige la session dans une variable locale : le fil Telegram peut
-        # la remettre à None (ceder) entre le test et la lecture. Sans ce
-        # cliché, « self._session["compte"] » lèverait par intermittence.
-        session = self._session
-        if not session:
-            raise RefusPoli(t(
-                "No session in progress: dial a code first.",
-                "Aucune session en cours : composez d'abord un code.",
-                langue=langue))
-        compte = session["compte"]
         texte = str(parametres.get("texte") or "")
+        # L'EFFACEMENT D'ABORD, LE REFUS ENSUITE.
+        #
+        # Cet effacement venait APRÈS le contrôle de session. Or c'est
+        # précisément quand la session a disparu que la commande est refusée :
+        # coupure de courant à Douala et robot redémarré (`_session` repart
+        # TOUJOURS à None), session expirée, main rendue à Telegram. Le code
+        # secret était alors refusé ET conservé — en clair, dans la base, pour
+        # toujours, sans même avoir été composé. Le pire des deux mondes, et
+        # sur la panne la plus banale de toutes.
+        #
+        # On efface donc avant de juger quoi que ce soit d'autre : un refus
+        # n'est jamais une raison de garder un code secret.
         if parametres.get("secret"):
             # Le code confidentiel : effacé de la base AVANT d'être composé.
             # S'il ne devait rester qu'une règle, ce serait celle-là — alors
@@ -531,6 +533,16 @@ class Pilotage:
                     "Le code secret n'a pas pu être sécurisé — il n'a pas "
                     "été composé. Vérifiez la connexion, puis réessayez.",
                     langue=langue))
+        # On fige la session dans une variable locale : le fil Telegram peut
+        # la remettre à None (ceder) entre le test et la lecture. Sans ce
+        # cliché, « self._session["compte"] » lèverait par intermittence.
+        session = self._session
+        if not session:
+            raise RefusPoli(t(
+                "No session in progress: dial a code first.",
+                "Aucune session en cours : composez d'abord un code.",
+                langue=langue))
+        compte = session["compte"]
         if not texte:
             raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
         reponse = compte.ussd_repondre(texte)

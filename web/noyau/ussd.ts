@@ -27,10 +27,33 @@ export const RECONNAISSANCE: { motif: RegExp; type: TypeChamp }[] = [
   { motif: /montant|somme|combien|amount|how\s+much/i, type: "montant" },
 ];
 
-// Une liste de choix numérotés (« 1. Envoyer  2. Retirer »). Sa présence
-// prime : un menu qui contient le mot « code » reste un menu, pas une
-// demande de code secret.
-const RE_OPTION = /^\s*\d{1,2}\s*[.):\-]\s*\S/m;
+// Une ligne de choix numéroté : « 1. Envoyer », « 2) Retirer », « 3 - Solde ».
+//
+// Le « : » est admis, des opérateurs l'emploient — mais il sépare aussi les
+// heures, et « 10:44 » n'est pas un choix de menu. On écarte donc ce qui a la
+// forme d'un horodatage.
+const RE_OPTION = /^[ \t]*\d{1,2}[ \t]*[.):\-][ \t]*(?!\d{2}(?:\D|$))\S/gm;
+
+// UN MENU A AU MOINS DEUX CHOIX — et c'est tout l'enjeu du code secret.
+//
+// Une SEULE ligne numérotée ne fait pas un menu. Deux messages d'opérateur
+// parfaitement ordinaires désarmaient pourtant la garde :
+//
+//   « 10:44 \n Entrez votre code secret »        (l'heure en tête)
+//   « 1. Entrez votre code PIN pour confirmer »  (une demande numérotée)
+//
+// Les deux étaient déclarés « menu », donc PAS une demande de code. Le pavé
+// ne s'ouvrait pas, le code se tapait dans la zone de texte ordinaire, il
+// s'affichait dans le fil de la conversation, et il partait SANS le drapeau
+// « secret » — le robot ne l'effaçait donc jamais, et le code secret Mobile
+// Money restait EN CLAIR dans le nuage, pour toujours. Exactement ce que
+// l'en-tête de ce fichier promet d'empêcher.
+const MENU_MINIMUM = 2;
+
+/** Le message est-il une liste de choix ? (au moins deux lignes numérotées) */
+function estUnMenu(texte: string): boolean {
+  return (texte.match(RE_OPTION) ?? []).length >= MENU_MINIMUM;
+}
 
 const RE_SECRET =
   /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i;
@@ -46,7 +69,7 @@ const RE_SECRET =
  */
 export function demandeUnCode(texte: string): boolean {
   const t = texte || "";
-  return !RE_OPTION.test(t) && RE_SECRET.test(t);
+  return !estUnMenu(t) && RE_SECRET.test(t);
 }
 
 /**
@@ -58,6 +81,14 @@ export function champPourQuestion<T extends { type: TypeChamp }>(
   texte: string,
   restants: readonly T[],
 ): T | undefined {
+  // UN MENU N'EST PAS UNE QUESTION. « Transfert d'argent / 1. Vers un numero
+  // MTN / 2. Vers un autre reseau » contient le mot « numero » sans rien
+  // demander de tel : on y répondait tout seul, et le numéro du bénéficiaire
+  // partait COMME CHOIX DE MENU sur la vraie SIM — une branche non voulue
+  // s'ouvrait, et le champ étant consommé, la vraie question qui suivait ne
+  // pouvait plus être servie. Un menu se lit, il ne se remplit pas.
+  if (estUnMenu(texte)) return undefined;
+
   const correspondants = restants.filter((c) =>
     RECONNAISSANCE.some((r) => r.type === c.type && r.motif.test(texte)));
   // Un SEUL champ reconnu : c'est lui. Plusieurs — une question qui nomme À

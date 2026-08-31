@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_SESSION, verifierSession } from "@/lib/session";
+import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
+import { compteEncoreOuvert } from "@/lib/session-vivante";
 import { verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 
@@ -43,9 +44,36 @@ function jetonPorte(req: NextRequest): string | undefined {
 
 export async function middleware(req: NextRequest) {
   const secret = process.env.SESSION_SECRET || "";
-  if (!secret) return NextResponse.next();          // verrou non activé
-
   const { pathname } = req.nextUrl;
+
+  // SANS CLÉ, PAS DE VERROU — et c'est une commodité de DÉVELOPPEMENT, pas un
+  // mode d'exploitation. En production, l'absence de `SESSION_SECRET` ouvrait
+  // la plateforme entière : les SMS, les soldes, le bilan, et jusqu'à
+  // « composer un code USSD sur une carte qui porte de l'argent » — car les
+  // gardes des routes sensibles sont elles aussi écrites « si SESSION_SECRET
+  // est posé, alors vérifier », donc elles se taisaient de concert.
+  //
+  // Rien ne distinguait le local de la production. Or les variables
+  // d'environnement de Vercel se posent PAR ENVIRONNEMENT : la clé mise sur
+  // « Production » seulement, et chaque déploiement de prévisualisation — une
+  // URL publique par branche — devenait un TOTEM sans serrure, branché sur la
+  // vraie base. `/api/plateforme` annonçait même l'état de la serrure à qui
+  // demandait.
+  //
+  // Hors développement, on refuse donc tout : mieux vaut une plateforme
+  // injoignable, qu'on répare en posant la clé, qu'une plateforme ouverte
+  // dont personne ne sait qu'elle l'est.
+  if (!secret) {
+    if (process.env.NODE_ENV !== "production") return NextResponse.next();
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { erreur: "plateforme non configurée" }, { status: 503 });
+    }
+    return new NextResponse(
+      "TOTEM n'est pas configuré : la clé de session manque.",
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
+  }
+
   if (OUVERT.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
     return NextResponse.next();
   }
@@ -86,7 +114,23 @@ export async function middleware(req: NextRequest) {
   // signature : ajouter cette porte n'affaiblit rien, et le chemin du
   // navigateur n'est pas touché.
   const jeton = req.cookies.get(COOKIE_SESSION)?.value ?? jetonPorte(req);
-  if (await verifierSession(secret, jeton)) return NextResponse.next();
+  const sujet = await sujetDeSession(secret, jeton);
+  if (sujet !== null) {
+    // LE JETON NE SUFFIT PAS : le compte doit exister encore.
+    //
+    // Un jeton vit trente jours. Sans cette lecture, fermer ou supprimer un
+    // compte ne fermait rien du tout — celui qui détenait déjà le sien
+    // continuait de lire les SMS, les soldes et le bilan pendant un mois.
+    // C'est ici, au seul endroit que TOUTES les routes traversent, plutôt
+    // que route par route où l'oubli est certain.
+    //
+    // `compteDuSujet` rend null pour la clé de SECOURS et pour les jetons
+    // d'avant les comptes : ceux-là ne désignent personne en base, il n'y a
+    // donc rien à y relire — la clé de secours existe justement pour le jour
+    // où la base des comptes est injoignable.
+    const id = compteDuSujet(sujet);
+    if (id === null || await compteEncoreOuvert(id)) return NextResponse.next();
+  }
 
   // Une API répond « connexion requise » (le navigateur gère) ; une page
   // renvoie vers l'écran de connexion.

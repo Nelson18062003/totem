@@ -393,11 +393,14 @@ create index if not exists appareils_vu_le on appareils (vu_le desc);
 create index if not exists utilisateurs_courriel on utilisateurs (lower(courriel));
 
 -- ---------------------------------------------------------------------------
--- Sécurité : personne ne lit sans être connecté.
+-- Sécurité : personne ne lit la base en direct. Personne.
 --
 -- Le Pi écrit avec la clé « service_role », qui contourne ces règles — c'est
 -- pour cela qu'elle ne doit jamais quitter le fichier de configuration du Pi.
--- L'application web lit avec la clé publique, et n'obtient rien sans session.
+-- La plateforme web lit avec cette même clé, mais depuis le SERVEUR
+-- uniquement (`SUPABASE_CLE`, sans `NEXT_PUBLIC_`) : le navigateur et le
+-- téléphone ne parlent qu'à la plateforme, jamais à Supabase.
+-- Aucune clé publique n'ouvre donc quoi que ce soit — voir plus bas.
 -- ---------------------------------------------------------------------------
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;
@@ -410,30 +413,39 @@ alter table raccourcis enable row level security;
 alter table appareils  enable row level security;
 alter table utilisateurs enable row level security;
 
-do $$
-declare t text;
-begin
-  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus','raccourcis']
-  loop
-    execute format(
-      'drop policy if exists "lecture connectee" on %I; '
-      'create policy "lecture connectee" on %I for select to authenticated using (true);',
-      t, t);
-  end loop;
-end $$;
-
--- « appareils » et « utilisateurs » ne sont PAS dans cette liste, et c'est
--- délibéré : aucune politique n'est créée pour ces tables, donc personne ne
--- passe. Ni le navigateur ni le téléphone n'ont à lire la liste des appareils
--- inscrits, et une table d'empreintes de mots de passe encore moins. Seules
--- la plateforme (côté serveur) et le robot y touchent, avec la clé de service
--- — qui contourne ces règles par nature.
-
--- Seule exception en écriture : un utilisateur connecté peut demander une
--- commande (appuyer sur un bouton). Il ne peut pas modifier l'historique.
-drop policy if exists "demander une commande" on commandes;
-create policy "demander une commande" on commandes
-  for insert to authenticated with check (true);
+-- AUCUNE POLITIQUE. Sur AUCUNE table. C'est le but, pas un oubli.
+--
+-- « Row level security » active et zéro politique = personne ne passe, sauf
+-- la clé de SERVICE, qui n'est pas soumise à ces règles et que seuls le
+-- serveur de la plateforme et le robot détiennent. Ni le navigateur ni le
+-- téléphone ne parlent jamais à Supabase directement : ils parlent à la
+-- plateforme, qui, elle, a la clé.
+--
+-- CE QU'IL Y AVAIT ICI, et pourquoi c'est parti. Huit tables accordaient la
+-- lecture au rôle `authenticated`, et `commandes` y ajoutait l'écriture :
+--
+--     create policy "lecture connectee" on paiements
+--       for select to authenticated using (true);
+--     create policy "demander une commande" on commandes
+--       for insert to authenticated with check (true);
+--
+-- Ces règles attendaient une application web qui lirait la base avec la clé
+-- publique. Elle n'a jamais existé — la plateforme utilise la clé de service,
+-- côté serveur — et aucun code du dépôt n'ouvre de session Supabase. Le rôle
+-- `authenticated` n'avait donc plus aucun usage ici, sinon pour un tiers :
+-- c'est « toute personne ayant ouvert un compte sur le projet », inscription
+-- ouverte par défaut avec la clé `anon`, qui est publique par construction.
+--
+-- Avec cette seule clé publique, on lisait chaque SMS en entier, chaque
+-- montant, chaque solde, chaque numéro de client. Et sur `commandes`, on
+-- ÉCRIVAIT : le robot relève cette table et compose ce qu'il y trouve sur la
+-- carte SIM. Sur une ligne Mobile Money, l'USSD est l'interface de transfert.
+-- Une ligne insérée depuis n'importe où faisait composer un transfert avec le
+-- vrai argent. (Voir `migrations/20260831_verrouiller-les-regles.sql`.)
+--
+-- Si un jour le navigateur doit lire la base en direct, cela se rouvrira
+-- table par table, avec une politique qui nomme SON propriétaire — jamais un
+-- « using (true) » posé sur un rôle que le monde entier peut endosser.
 
 -- ---------------------------------------------------------------------------
 -- Le compartiment de stockage des reçus

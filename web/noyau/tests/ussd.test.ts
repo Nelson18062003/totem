@@ -100,3 +100,51 @@ test("un trou dont la valeur n'a aucun chiffre reste MANQUANT", async () => {
   assert.deepEqual(ok.consommees, ["montant"]);
   assert.equal(ok.etapes[0], "*126*1*20000#");
 });
+
+// --- Ce qui EST un menu, et ce qui n'en est pas -----------------------------
+//
+// La garde des menus protège le code secret : un menu qui contient le mot
+// « code » reste un menu. Mais elle se contentait d'UNE ligne qui ressemble à
+// une option — et l'heure en tête d'un message d'opérateur (« 10:44 ») en a
+// la forme exacte. Le pavé ne s'ouvrait donc pas, le code se tapait dans une
+// zone de texte ordinaire, s'affichait dans le fil, et partait SANS le
+// drapeau « secret » : il restait en clair dans le nuage, pour toujours.
+
+test("un horodatage en tête ne fait pas un menu — le pavé s'ouvre", () => {
+  for (const message of [
+    "10:44\nEntrez votre code secret",
+    "12-05-2026 10:44\nSaisissez votre code PIN",
+    "1. Entrez votre code PIN pour confirmer",   // une demande numérotée
+  ]) {
+    assert.equal(demandeUnCode(message), true, message);
+  }
+});
+
+test("un vrai menu reste un menu, même s'il parle de code", () => {
+  for (const menu of [
+    "1. Envoyer argent\n2. Retirer\n3. Mon code",
+    "1) Transfert\n2) Solde",
+    "1 - Depot\n2 - Retrait\n3 - Changer mon code secret",
+  ]) {
+    assert.equal(demandeUnCode(menu), false, menu);
+  }
+});
+
+test("un menu n'est jamais une question à laquelle on répond seul", () => {
+  // « 1. Vers un numero MTN » contient « numero » sans rien demander de tel :
+  // on y postait le numéro du bénéficiaire COMME CHOIX DE MENU, sur la vraie
+  // SIM — et le champ, consommé, ne servait plus la vraie question d'après.
+  const champs = [
+    { cle: "numero", type: "numero" as const },
+    { cle: "montant", type: "montant" as const },
+  ];
+  for (const menu of [
+    "Transfert d'argent\n1. Vers un numero MTN\n2. Vers un autre reseau\n3. Retour",
+    "Choisir le montant\n1. 500\n2. 1000\n3. Autre",
+  ]) {
+    assert.equal(champPourQuestion(menu, champs), undefined, menu);
+  }
+  // Une vraie question, elle, se remplit toujours.
+  assert.deepEqual(
+    champPourQuestion("Entrez le numero du beneficiaire", champs), champs[0]);
+});

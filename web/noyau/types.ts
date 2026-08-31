@@ -142,10 +142,20 @@ export function fcfa(n: number, langue: Langue): string {
 
 // Le nombre seul, complet, sans abréviation : 287 000 — jamais « 287 k ».
 // En anglais, le séparateur de milliers est la virgule : 287,000.
+// L'ESPACE QUI NE SE REMPLAÇAIT PAS. Ce `replace` cherchait U+0020 pour le
+// remplacer par… U+0020 : les deux caractères étaient l'espace ordinaire, et
+// la substitution ne faisait donc rien du tout. Or la locale « fr-FR » sépare
+// les milliers avec U+202F (espace fine insécable) — le caractère qu'il
+// fallait viser. Les montants sortaient donc avec un séparateur invisible et
+// différent de celui du robot, qui, lui, écrit une espace ordinaire
+// (`analyse_sms.formater_montant`). Même somme, deux écritures : une
+// recherche échouait, un copier-coller vers un tableur aussi, et le CSV du
+// bilan emportait le caractère exotique. On vise désormais les deux espaces
+// insécables par leur code, jamais par un caractère invisible dans le source.
 export function nombre(n: number, langue: Langue): string {
   return langue === "en"
     ? n.toLocaleString("en-US")
-    : n.toLocaleString("fr-FR").replace(/ /g, " ");
+    : n.toLocaleString("fr-FR").replace(/[\u202f\u00a0]/g, " ");
 }
 
 /**

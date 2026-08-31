@@ -232,6 +232,17 @@ try {
   const rLu = await poste("/api/lu", { id: 1 },
                           { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne marque rien lu", rLu.status, 403);
+  // ET IL NE S'ABONNE PAS AUX NOTIFICATIONS. Une notification porte le SMS
+  // reçu en aperçu : s'y inscrire, c'est recevoir chaque mouvement d'argent
+  // du propriétaire en direct, sur son propre écran verrouillé, sans jamais
+  // rouvrir la plateforme. Aucun écran ne liste les appareils inscrits :
+  // l'abonné clandestin serait resté invisible. Et le robot ne servant que
+  // les vingt derniers vus, s'inscrire en boucle rendait MUET le vrai
+  // téléphone du propriétaire.
+  const rAbonne = await poste("/api/appareil",
+    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne s'abonne pas aux SMS du propriétaire", rAbonne.status, 403);
   const rLireProprio = await fetch(B + "/api/commande/1",
     { headers: { authorization: `Bearer ${jetonProprio}` } });
   verifier("le propriétaire, lui, passe le verrou de lecture",
@@ -286,6 +297,26 @@ try {
               { authorization: `Bearer ${jetonProprio}` });
   const rRefuse = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
   verifier("l'invité ne rentre plus", rRefuse.status, 403);
+
+  // LE JETON DÉJÀ DÉLIVRÉ — la seule chose que l'intrus possède vraiment.
+  //
+  // Ce harnais fermait le compte puis éprouvait une NOUVELLE connexion : 403,
+  // tout allait bien. Il ne présentait jamais le jeton déjà en main, or c'est
+  // exactement ce qu'un invité renvoyé emporte avec lui. La porte est restée
+  // grande ouverte trente jours durant — SMS en clair, soldes, bilan du
+  // trimestre, reçus — sans qu'aucune vérification ne s'en émeuve.
+  //
+  // On présente donc l'ANCIEN jeton, sur les routes qui portent l'argent.
+  const avecAncien = { headers: { authorization: `Bearer ${jetonAmi}` } };
+  for (const chemin of ["/api/donnees", "/api/bilan?jours=90", "/api/actualite"]) {
+    const r = await fetch(B + chemin, avecAncien);
+    verifier(`l'ancien jeton ne lit plus ${chemin}`, r.status, 401);
+  }
+  const rAncienAppareil = await poste("/api/appareil",
+    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("l'ancien jeton n'inscrit plus de téléphone",
+           rAncienAppareil.status === 401 || rAncienAppareil.status === 403, true);
 
   console.log("\nOn ne se ferme pas la porte à soi-même");
   const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === "nelson@exemple.cm").id;

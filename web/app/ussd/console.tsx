@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { aDesVariables, codesUssd } from "@noyau/codes";
+import { demandeUnCode } from "@noyau/ussd";
 import { textesUssd } from "@noyau/textes/ussd";
 import type { RaccourciAppris, Sim } from "@noyau/types";
 import { BarreArret, BoutonFermer } from "../feuille";
@@ -26,20 +27,13 @@ import { PaveSecret } from "../pave-secret";
 
 type Msg = { de: "reseau" | "vous"; texte: string };
 
-// « 1) Transfert » — une ligne d'option numérotée du menu de l'opérateur.
-const RE_OPTION = /^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$/;
-
-// Le réseau attend-il le code secret ? (même règle que le robot : un menu
-// qui PARLE du code sans rien demander porte des options numérotées.)
-// Le motif lit du texte opérateur, écrit en français comme en anglais.
-function demandeUnCode(texte: string): boolean {
-  const porteOptions = (texte || "")
-    .split(/\r\n|\r|\n/)
-    .some((l) => RE_OPTION.test(l.trim()));
-  return !porteOptions &&
-    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte);
-}
-
+// « Le réseau attend-il le code secret ? » se lit dans le NOYAU, jamais ici.
+//
+// Cet écran en gardait sa propre copie, et les deux ne s'accordaient déjà
+// plus : sur « 3)\nEntrez votre code PIN », le noyau disait non et cette
+// console disait oui. Même texte d'opérateur, décision opposée sur
+// l'ouverture du pavé, dans la même plateforme — et c'est la décision qui
+// détermine si le code part masqué ou en clair. Une seule lecture, partagée.
 type CarteConsole = Pick<Sim, "libelle" | "operateur" | "iccid">;
 
 export function ConsoleUssd({
