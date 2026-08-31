@@ -56,6 +56,36 @@ class FauxSupabase(BaseHTTPRequestHandler):
         self.send_response(201)
         self.end_headers()
 
+    patches = []            # les chemins des PATCH reçus, dans l'ordre
+    deja_prises = set()     # les demandes qu'un autre robot a déjà prises
+
+    def do_PATCH(self):
+        if FauxSupabase.en_panne:
+            self.send_error(503)
+            return
+        taille = int(self.headers.get("Content-Length", 0))
+        corps = json.loads(self.rfile.read(taille) or b"{}")
+        FauxSupabase.patches.append((self.path, corps))
+
+        # LA SÉMANTIQUE QUI COMPTE. Un PATCH conditionnel — « …&etat=eq.
+        # en_attente » — ne modifie AUCUNE ligne si la condition ne tient
+        # plus, et PostgREST rend alors un tableau VIDE. C'est ainsi qu'un
+        # robot apprend qu'un autre est passé avant lui.
+        conditionnel = "etat=eq.en_attente" in self.path
+        identifiant = None
+        for morceau in self.path.split("?")[-1].split("&"):
+            if morceau.startswith("id=eq."):
+                identifiant = morceau[len("id=eq."):]
+        touchees = ([] if conditionnel and identifiant in FauxSupabase.deja_prises
+                    else [{"id": identifiant, **corps}])
+
+        charge = json.dumps(touchees).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(charge)))
+        self.end_headers()
+        self.wfile.write(charge)
+
     def do_DELETE(self):
         if FauxSupabase.en_panne:
             self.send_error(503)
@@ -81,6 +111,8 @@ class TestNuage(unittest.TestCase):
 
     def setUp(self):
         FauxSupabase.recu = []
+        FauxSupabase.patches = []
+        FauxSupabase.deja_prises = set()
         FauxSupabase.en_panne = False
         FauxSupabase.refuser_texte = None
         FauxSupabase.colonnes_absentes = set()
@@ -90,6 +122,44 @@ class TestNuage(unittest.TestCase):
 
     def _lignes(self, table):
         return [l for t, corps in FauxSupabase.recu if t == table for l in corps]
+
+    # --- la prise en charge d'une demande ---
+    #
+    # C'est le seul canal par lequel le monde extérieur fait composer un code
+    # sur une vraie carte SIM. Se tromper ici, c'est de l'argent.
+
+    def test_reclamer_pose_la_condition_dans_la_requete(self):
+        """La condition doit voyager AVEC le PATCH, pas avant lui.
+
+        La lire d'abord puis écrire ensuite laisserait la place, entre les
+        deux, à l'autre robot. C'est la base qui doit trancher, en une seule
+        requête — elle seule voit les deux."""
+        self.assertTrue(self.nuage.reclamer(42))
+        chemin, corps = FauxSupabase.patches[-1]
+        self.assertIn("commandes?id=eq.42", chemin)
+        self.assertIn("etat=eq.en_attente", chemin)
+        self.assertEqual(corps, {"etat": "en_cours"})
+
+    def test_une_demande_deja_prise_se_reconnait(self):
+        """Aucune ligne modifiée : un autre robot l'a eue."""
+        FauxSupabase.deja_prises = {"42"}
+        self.assertFalse(self.nuage.reclamer(42))
+
+    def test_le_nuage_muet_ne_donne_pas_la_demande(self):
+        """Dans le doute, on ne compose pas.
+
+        Ne rien faire se rattrape au tour suivant ; composer deux fois un
+        transfert, jamais."""
+        FauxSupabase.en_panne = True
+        self.assertFalse(self.nuage.reclamer(42))
+
+    def test_une_ecriture_ratee_se_dit(self):
+        """`commande_maj` rend False quand elle n'a pas abouti — c'est cette
+        réponse qui protège le code confidentiel (voir pilotage)."""
+        FauxSupabase.en_panne = True
+        self.assertFalse(self.nuage.commande_maj(7, {"etat": "faite"}))
+        FauxSupabase.en_panne = False
+        self.assertTrue(self.nuage.commande_maj(7, {"etat": "faite"}))
 
     # --- configuration ---
     def test_inerte_sans_configuration(self):
@@ -370,6 +440,8 @@ class TestReveilImmediat(unittest.TestCase):
 
     def setUp(self):
         FauxSupabase.recu = []
+        FauxSupabase.patches = []
+        FauxSupabase.deja_prises = set()
         FauxSupabase.en_panne = False
         self.journal = Journal(":memory:")
         # Battement volontairement très long : si la ligne part quand même,

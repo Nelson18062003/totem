@@ -1,6 +1,6 @@
 # La carte du système — ce qu'il y a à défendre
 
-*Établie le 31 août 2026, mise à jour au tour 1. À relire à chaque tour
+*Établie le 31 août 2026, mise à jour au tour 2. À relire à chaque tour
 d'audit : une carte périmée fait chercher au mauvais endroit.*
 
 Ce document ne décrit pas ce que TOTEM fait pour le propriétaire — c'est le
@@ -41,6 +41,10 @@ Trois codes séparés, une seule base :
 | La plateforme | `web/` | TypeScript, Next.js 16 (App Router) | `SESSION_SECRET`, `SUPABASE_CLE` (service), `TOTEM_MOT_DE_PASSE` |
 | Le téléphone | `mobile/` | TypeScript, Expo/React Native | un jeton de session, dans le coffre du système |
 | Le robot | `totem/` | Python | le PIN (jamais écrit), la clé de service, le jeton Telegram |
+
+Côté robot, deux niveaux aussi, et sur Telegram cette fois : **administrateur**
+(pilote la SIM) et **observateur** (voit l'activité). Les conversations non
+déclarées sont ignorées en silence.
 | Le noyau partagé | `web/noyau/` | TypeScript | rien — des règles, copiées dans les deux paquets |
 
 ## 2. Les frontières de confiance
@@ -54,8 +58,24 @@ Tout passe par `web/middleware.ts`.
 TypeScript. C'est le fait le plus important de cette carte.
 
 **F3 — Le robot → Supabase.** Même clé de service, depuis `totem.conf`
-(ignoré par git). Hors du périmètre web, mais un Pi compromis écrit ce qu'il
-veut dans le grand livre.
+(ignoré par git). Un Pi compromis écrit ce qu'il veut dans le grand livre.
+
+**F3bis — Supabase → le robot : LE CANAL DESCENDANT.** C'est la frontière la
+plus lourde de conséquence de tout le système, et elle ne se voit pas sur le
+schéma. La table `commandes` est le seul endroit d'où de l'argent peut
+BOUGER : le robot y relève des demandes et les compose sur une vraie carte.
+Deux choses la tiennent, toutes deux posées au tour 2 :
+  · la demande est **réclamée** avant d'être exécutée (PATCH conditionnel), si
+    bien que deux robots ne composent pas la même — voir SEC-12 ;
+  · le code confidentiel est **effacé de la base avant d'être composé**, et
+    s'il ne peut pas l'être, il n'est pas composé — voir SEC-11.
+
+**F4bis — N'IMPORTE QUI → la SIM, par SMS.** La seule entrée du système qui
+n'exige ni compte, ni jeton, ni autorisation : quiconque connaît le numéro de
+la carte peut lui écrire, et `analyse_sms.py` lit ce qu'il envoie. Poussée au
+tour 2 (dix charges hostiles, pire cas 6,7 ms, linéaire) : rien ne s'emballe.
+Et la règle du dépôt tient — dans le doute, l'analyseur rend `None` et
+n'invente jamais un montant.
 
 **F4 — La plateforme → Expo.** Une seule sortie, vers une adresse fixe
 (`web/lib/pousser.ts:82`). Pas de récupération d'URL fournie par l'utilisateur :

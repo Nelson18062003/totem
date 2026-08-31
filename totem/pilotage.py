@@ -141,7 +141,19 @@ class Pilotage:
         # La langue de la demande : la plateforme la joint à chaque commande.
         # La réponse repart dans cette langue-là ; à défaut, celle du robot.
         langue = parametres.get("langue") or None
-        self.nuage.commande_maj(identifiant, {"etat": "en_cours"})
+
+        # ON RÉCLAME LA DEMANDE AVANT DE Y TOUCHER, et on n'avance que si on
+        # l'a obtenue. C'était un ordre — « mets-la en cours » — envoyé sans
+        # jamais regarder s'il avait pris. Deux robots sur le même terminal
+        # composaient donc la même demande tous les deux, et sur un transfert
+        # c'est deux fois l'argent. Voir `nuage.reclamer`.
+        #
+        # Perdue ou incertaine : on s'en va, en silence. Un autre l'a prise
+        # et la mènera à bien ; ou le nuage est muet, et le tour suivant
+        # réessaiera. Ne rien faire se rattrape toujours ; composer deux fois,
+        # jamais.
+        if not self.nuage.reclamer(identifiant):
+            return
 
         try:
             if genre == "solde":
@@ -174,8 +186,23 @@ class Pilotage:
             self.journal.evenement(t(f"remote desk: failure ({genre})",
                                      f"guichet à distance : échec ({genre})"))
 
-        self.nuage.commande_maj(identifiant, {
-            "etat": etat, "resultat": resultat, "traitee_le": _horodatage()})
+        final = {"etat": etat, "resultat": resultat,
+                 "traitee_le": _horodatage()}
+        # L'EFFACEMENT DU CODE VOYAGE AVEC LA DERNIÈRE ÉCRITURE, toujours.
+        #
+        # `_repondre` l'efface déjà, et refuse de composer s'il n'y arrive
+        # pas. Mais refuser de composer n'efface rien : après un hoquet du
+        # réseau, la ligne restait là avec le code en clair dedans, et plus
+        # personne ne repassait pour le retirer.
+        #
+        # On le remet donc dans l'écriture finale, qui a lieu de toute façon.
+        # Deux occasions valent mieux qu'une, et si le nuage est revenu entre
+        # les deux — c'est le cas ordinaire, un hoquet dure quelques
+        # secondes — le code s'en va avec celle-ci. Réécrire un effacement
+        # déjà fait ne coûte rien.
+        if parametres.get("secret"):
+            final["parametres"] = {"secret": True}
+        self.nuage.commande_maj(identifiant, final)
 
     def _etablir_recu(self, parametres, langue=None):
         """Le reçu d'un message passé, refabriqué depuis le SMS d'origine.
@@ -508,10 +535,34 @@ class Pilotage:
         compte = session["compte"]
         texte = str(parametres.get("texte") or "")
         if parametres.get("secret"):
-            # Le code confidentiel : effacé de la base AVANT d'être composé.
+            # LE CODE CONFIDENTIEL : effacé de la base AVANT d'être composé.
             # S'il ne devait rester qu'une règle, ce serait celle-là.
-            self.nuage.commande_maj(
-                identifiant, {"parametres": {"secret": True}})
+            #
+            # Et jusqu'ici elle n'était qu'à moitié tenue : l'effacement
+            # était DEMANDÉ, jamais VÉRIFIÉ. `commande_maj` rend False quand
+            # elle n'a pas abouti — réseau coupé, Supabase en panne — et
+            # cette réponse partait à la poubelle. Le code partait alors sur
+            # le réseau en laissant sa copie EN CLAIR dans la table des
+            # commandes, pour toujours.
+            #
+            # Ce qu'il faut faire dans ce cas est le contraire de ce qui se
+            # faisait : NE PAS COMPOSER. Un transfert manqué se refait d'un
+            # geste, et le propriétaire voit le refus tout de suite. Un code
+            # confidentiel qui a fui ne se reprend pas — il faut aller le
+            # changer chez l'opérateur, en supposant qu'on ait remarqué.
+            #
+            # (L'essai du dépôt validait ce chemin contre un faux nuage qui
+            # répondait toujours oui : il mesurait le cas où il n'y a rien à
+            # craindre. C'est l'autre qui compte.)
+            if not self.nuage.commande_maj(
+                    identifiant, {"parametres": {"secret": True}}):
+                raise RefusPoli(t(
+                    "The platform is unreachable: your code has NOT been "
+                    "dialled, so that no copy of it stays in the database. "
+                    "Try again in a moment.",
+                    "La plateforme est injoignable : votre code n'a PAS été "
+                    "composé, pour qu'aucune copie n'en reste dans la base. "
+                    "Réessayez dans un instant.", langue=langue))
         if not texte:
             raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
         reponse = compte.ussd_repondre(texte)

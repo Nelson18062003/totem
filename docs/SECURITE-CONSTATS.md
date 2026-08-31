@@ -1,7 +1,15 @@
 # Le registre des constats de sécurité
 
-*Tour 1 — 31 août 2026. Corrigé : 8. Ouvert : 1 (à appliquer par le
-propriétaire). Classé : 1.*
+*Tour 2 — 31 août 2026. Corrigé : 11. Ouvert : 2 (une à appliquer par le
+propriétaire, une à décider). Classé : 2.*
+
+**Ce que le tour 2 a changé.** L'audit est passé du côté du ROBOT — celui qui
+tient les vraies cartes SIM. Deux défauts P1 y attendaient, tous deux sur le
+canal par lequel la plateforme fait composer un code : le code confidentiel
+pouvait rester en clair dans la base, et une même demande pouvait être
+composée deux fois. Tous deux mesurés rouges avant correction. Semgrep a
+aussi été joué, et le lecteur de SMS — la seule entrée du système qui
+n'exige rien de personne — a été poussé sans rien trouver.
 
 **Ce que le tour 1 a changé.** Les trois P1 sont traités, les trois P2 aussi,
 et deux constats qui étaient RAISONNÉS sont devenus MESURÉS avant d'être
@@ -27,6 +35,11 @@ attaquant obtient, pas à quel point c'est agaçant.
 | SEC-08 | P3 | Le courriel entre dans les journaux | CONFIRMÉ | **corrigé** |
 | SEC-09 | P3 | Dépendances à mettre à jour | CONFIRMÉ | **corrigé en partie** |
 | SEC-10 | — | `rls_auto_enable` : fausse alerte | CONFIRMÉ | classé |
+| SEC-11 | **P1** | Le code secret survit dans la base | MESURÉ | **corrigé** |
+| SEC-12 | **P1** | Une demande peut être composée deux fois | MESURÉ | **corrigé** |
+| SEC-13 | P3 | Une saisie devient du code dans les workflows | CONFIRMÉ | **corrigé** |
+| SEC-14 | P3 | Les actions GitHub suivent une étiquette mobile | CONFIRMÉ | **à décider** |
+| SEC-15 | — | SHA-1 dans `app.py` : fausse alerte | CONFIRMÉ | classé |
 
 **MESURÉ** veut dire quelque chose de précis ici : l'essai a d'abord été écrit,
 lancé, et vu ÉCHOUER contre le défaut — avant toute correction. Un essai qu'on
@@ -498,6 +511,28 @@ prochain tour.
 - **Secrets dans le dépôt** — rien, historique compris ; deux secrets
   d'essai clairement nommés dans `web/scripts/`. Aucun secret derrière un
   préfixe `NEXT_PUBLIC_` ou `EXPO_PUBLIC_`.
+- **Le lecteur de SMS, poussé** — c'est la seule entrée du système qui
+  n'exige ni compte, ni jeton, ni autorisation : quiconque connaît le numéro
+  de la SIM peut lui écrire. Dix charges hostiles de 5 000 à 20 000
+  caractères (virgules et points répétés, devises en boucle, nombres à
+  rallonge, sauts de ligne) passées dans `analyser` : **pire cas 6,7 ms**,
+  strictement linéaire. Aucun emballement, alors même qu'un SMS concaténé ne
+  dépasse pas ~6 000 caractères sur le réseau. Le seul motif à quantificateurs
+  imbriqués (`MONTANT`) est déterministe. Pas de ReDoS.
+- **Les rôles du robot sur Telegram** — les conversations non déclarées sont
+  ignorées en silence, et le répartiteur des boutons est fermé dans le bon
+  sens : une liste blanche de gestes d'observateur, puis le contrôle
+  administrateur pour tout le reste, y compris les genres inconnus. Un
+  observateur voit l'activité ; il ne compose rien.
+- **Le code PIN côté Telegram** — journalisé `****` (`app.py:616,1082`),
+  affiché en points, tampon vidé à l'envoi ; et un code tapé au clavier par
+  habitude est **effacé de la conversation** puis journalisé `****` lui aussi.
+- **L'injection de commandes AT** — guillemets, retours chariot et caractères
+  de contrôle retirés dans `modem._cusd`, en plus du nettoyage déjà fait côté
+  web. Défense en profondeur réelle, aux deux bouts.
+- **Les messages d'erreur du modem** ne recopient jamais ce qui a été composé.
+- **Le diagnostic Telegram** ne montre ni secret, ni clé, ni adresse de base —
+  version, durée, ICCID masqué, mémoire SMS, signal.
 - **Le coffre du téléphone** — Keystore/Keychain, avec un refus franc plutôt
   qu'un repli sur `localStorage` hors développement (`mobile/src/api/coffre.ts`).
 - **L'adresse du téléphone** — `https` exigé, sauf boucle locale
@@ -506,6 +541,179 @@ prochain tour.
 - **Cookies** — `httpOnly`, `secure`, `sameSite: lax`, `path: /`. `lax` suffit :
   toutes les écritures sont des `POST` en `application/json`, qu'un formulaire
   d'un autre site ne sait pas fabriquer.
+
+## SEC-11 · P1 · Le code secret survit dans la base
+
+**ASVS** V6.2, V7.1.1 · **CWE-312** (donnée sensible en clair) ·
+**Confiance : HAUTE — MESURÉ**
+
+**La règle que ça enfreint.** Elle est écrite dans les consignes du dépôt :
+« Le code PIN n'est jamais stocké, jamais écrit dans un message, jamais
+journalisé autrement que `****`. » Et `pilotage.py` la redisait lui-même :
+« s'il ne devait rester qu'une règle, ce serait celle-là ».
+
+**Ce qui se passait.** Quand le propriétaire compose son code depuis
+l'application, il voyage jusqu'au robot par la table `commandes`. Le robot
+l'efface avant de le composer :
+
+```py
+if parametres.get("secret"):
+    self.nuage.commande_maj(identifiant, {"parametres": {"secret": True}})
+```
+
+L'effacement était **demandé**, jamais **vérifié**. `commande_maj` rend
+`False` quand elle n'aboutit pas — réseau coupé, 5xx de Supabase — et cette
+réponse partait à la poubelle, ici comme à ses deux autres appels. Le code
+partait alors sur le réseau **en laissant sa copie en clair dans la base**,
+pour toujours.
+
+**Pourquoi personne ne l'avait vu.** Il existait un essai,
+`test_le_code_secret_est_masque_avant_d_etre_compose`. Mais le faux nuage du
+harnais rendait `True` à toute écriture : **il ne savait pas échouer**.
+L'essai mesurait donc le cas où il n'y a rien à craindre. C'est exactement ce
+que le dépôt dit ailleurs — *un contrôle qui passe sans rien regarder est pire
+que pas de contrôle : il rassure*.
+
+**MESURÉ.** Le faux nuage sait maintenant tomber en panne. Avec l'ancien code,
+nuage muet : `compte.recu` contenait `"1234"`. Le code était composé, et sa
+copie restait en base.
+
+**CORRIGÉ**, en deux temps — parce que refuser de composer ne suffit pas :
+
+1. **On ne compose plus si l'effacement n'a pas abouti.** Le refus est
+   explicite et dit pourquoi. C'est le bon sens du dépôt appliqué ici : un
+   transfert manqué se refait d'un geste, et le propriétaire voit le refus
+   tout de suite ; un code confidentiel qui a fui ne se reprend pas — il faut
+   aller le changer chez l'opérateur, en supposant qu'on ait remarqué.
+2. **L'effacement repart avec l'écriture finale**, qui a lieu de toute façon.
+   Refuser de composer met à l'abri du pire — composer ET garder une copie —
+   mais n'efface rien tout seul : après un hoquet, la ligne serait restée là
+   avec le code dedans, et personne ne repassait. Deux occasions valent mieux
+   qu'une, et un hoquet dure quelques secondes.
+
+**Vérifié aussi :** aucun message d'erreur du modem ne recopie ce qui a été
+composé (`totem/modem.py`), donc le code ne peut pas ressortir par le champ
+`resultat`.
+
+---
+
+## SEC-12 · P1 · Une demande peut être composée deux fois
+
+**ASVS** V11.1.4 (transactions rejouées) · **CWE-362** (course) ·
+**Confiance : HAUTE — MESURÉ**
+
+**Ce qui se passait.** Le robot prenait une demande en charge ainsi :
+
+```py
+self.nuage.commande_maj(identifiant, {"etat": "en_cours"})
+```
+
+Ce n'est pas une prise en charge, c'est un ordre : « mets-la en cours ». Il ne
+demande pas **si elle est encore à prendre**, et sa réponse n'est pas
+regardée. Deux conséquences, et il y a de l'argent au bout des deux :
+
+- **Deux robots.** Un second Pi branché, ou un redémarrage qui chevauche
+  l'ancien : les deux lisent la même ligne `en_attente` et composent tous les
+  deux. Sur un transfert, c'est deux fois l'argent, et la seconde fois
+  personne ne l'a demandée.
+- **Un seul robot suffit.** Si l'écriture échoue, la ligne reste
+  `en_attente` — et le tour suivant la reprend, **après l'avoir déjà
+  exécutée**.
+
+Il n'y avait ni clé d'idempotence, ni contrainte d'unicité, ni prise
+conditionnelle : rien dans le système n'empêchait le double.
+
+**MESURÉ.** Avec l'ancien code, une demande déjà prise par un autre robot
+était composée quand même : `compte.recu == ["*126*1*696000000*50000#"]`.
+
+**CORRIGÉ.** `nuage.reclamer(id)` fait un PATCH **conditionnel** —
+`commandes?id=eq.N&etat=eq.en_attente` — et lit ce que la base a réellement
+modifié (`Prefer: return=representation`). Une liste vide veut dire « un autre
+est passé avant toi ». C'est la base qui tranche, en une seule requête, dans
+le même verrou de ligne : elle seule voit les deux robots. Lire d'abord puis
+écrire ensuite laisserait justement la place entre les deux.
+
+`_traiter` ne commence donc qu'après avoir gagné la ligne. Perdue **ou
+incertaine** — nuage muet, réponse illisible — il s'en va en silence : ne rien
+faire se rattrape au tour suivant, composer deux fois jamais.
+
+**Résidu :** cela protège du double **entre robots** et du rejeu après une
+écriture ratée. Cela ne rend pas la demande idempotente de bout en bout — si
+le modem exécute puis que la ligne n'est jamais marquée `faite`, la demande
+reste `en_cours` et n'est plus reprise. C'est le bon côté de l'erreur.
+
+---
+
+## SEC-13 · P3 · Une saisie devient du code dans les workflows
+
+**API Top 10** API8 · **CWE-94** · **Confiance : HAUTE** (Semgrep,
+`run-shell-injection`, 7 emplacements)
+
+Les deux workflows collaient des valeurs saisies dans leurs lignes de
+commande :
+
+```yaml
+run: |
+  MESSAGE="${{ inputs.message }}"
+```
+
+`${{ … }}` est remplacé **avant** que le shell ne lise la ligne : un message
+bien choisi n'est plus un message, c'est une commande. Elle s'exécuterait sur
+une machine qui tient le jeton Expo et la clé du Play Store — et
+`mise-a-jour.yml` pousse du code vers des téléphones **en service**.
+
+**Ce qui limitait la portée :** les deux workflows sont en
+`workflow_dispatch`, donc réservés à qui a déjà le droit d'écrire dans le
+dépôt — et qui peut donc déjà modifier le workflow lui-même. Ce n'est pas un
+franchissement de privilège ; c'est de la défense en profondeur, gratuite.
+
+**CORRIGÉ.** Toutes les valeurs passent par `env:` et sont lues comme des
+variables ordinaires, que le shell ne relit jamais comme du code. Y compris
+celles que GitHub contraint déjà (`choice`, `boolean`) : une règle sans
+exception se tient, une règle avec « sauf celles-là » se perd le jour où
+quelqu'un change le type d'une entrée sans y penser. Semgrep ne signale plus
+rien sur ce point.
+
+---
+
+## SEC-14 · P3 · Les actions GitHub suivent une étiquette mobile
+
+**API Top 10** API8 · **CWE-1357** · **Confiance : HAUTE** — **à décider**
+
+Six emplois d'actions, tous sur une étiquette qui peut être redéplacée :
+`actions/checkout@v4`, `actions/setup-node@v4`, `expo/expo-github-action@v8`.
+
+Une étiquette n'est pas un contenu : celui qui la contrôle peut la faire
+pointer ailleurs. Ces workflows tiennent `EXPO_TOKEN` et `GOOGLE_PLAY_CLE`, et
+publient vers des téléphones en service — c'est ce qu'une action détournée
+obtiendrait. `actions/*` appartient à GitHub (risque plus faible) ;
+`expo/expo-github-action` est un tiers.
+
+**Pourquoi je ne l'ai pas corrigé de moi-même.** L'épinglage à une empreinte
+ferme le risque, mais il a un coût qui dure : plus aucune correction de
+sécurité de ces actions n'arrive toute seule, et il faut relever les
+empreintes à la main — ou installer Dependabot pour le faire. Imposer un
+entretien récurrent n'est pas une correction « sans effet de bord », et ce
+n'est pas à un audit d'en décider seul.
+
+**Ce que je propose :** épingler les trois à leur empreinte, et ajouter
+Dependabot pour qu'elles continuent de monter. À faire d'un mot.
+
+---
+
+## SEC-15 · Classé · SHA-1 dans `app.py` : fausse alerte
+
+Semgrep signale `insecure-hash-algorithm-sha1` en `totem/app.py:214`.
+
+**Vérifié, et c'est faux.** Ce SHA-1 n'est pas un contrôle de sécurité :
+c'est une **empreinte de contenu** qui sert à savoir si le lecteur de SMS a
+changé, pour relire l'historique le cas échéant. Personne n'a intérêt à en
+fabriquer une collision, et une collision ne donnerait rien — au pire, un
+historique non relu. SHA-1 convient parfaitement à cet usage.
+
+Classé sans suite. Noté ici pour qu'on ne le rejuge pas à chaque tour.
+
+---
 
 ## Le résidu — ce qui reste vrai après le tour 1
 
@@ -525,6 +733,13 @@ prochain tour.
   propres dépendances. Voir SEC-09.
 - **SEC-03 n'est pas appliqué** sur la base en service. Tant que ce n'est pas
   fait, les politiques `using (true)` sont toujours là.
+- **Une demande exécutée mais jamais marquée reste bloquée.** Si le modem
+  compose puis que l'écriture finale n'aboutit pas, la ligne reste
+  « en_cours » et n'est plus reprise. C'est le bon côté de l'erreur — mieux
+  vaut une demande à refaire qu'une demande faite deux fois — mais elle
+  demande un geste du propriétaire.
+- **Les actions GitHub ne sont pas épinglées.** Voir SEC-14 : c'est une
+  décision à prendre, pas un oubli.
 - **Un seul niveau de lecture.** Tout compte approuvé voit tout l'argent. Ce
   n'est pas un défaut, c'est le modèle — une caisse, un propriétaire — mais
   cela cesserait d'en être un le jour où de vraies personnes seraient
@@ -535,7 +750,14 @@ prochain tour.
 - TLS et en-têtes en service (`testssl.sh`, `curl -I` sur le domaine réel) —
   il faut l'adresse de production.
 - DNS : CAA, SPF/DKIM/DMARC, sous-domaines pendants.
-- Le côté Python (`totem/`) : le robot, Telegram, le PIN, les codes USSD.
-- Le mode de reprise des SMS et le canal `commandes`, du côté du Pi.
-- Semgrep / CodeQL — pas encore joués.
+- **Le stockage local du robot** (`storage.py`, 1 011 lignes) : la base SQLite
+  du Pi, ce qu'elle garde et sous quels droits de fichier.
+- **`recu.py` et `pdf.py`** : ce qui entre dans un document remis à un tiers.
+- **`detect.py` et `courrier.py`** : la découverte des modems, la file
+  sortante.
+- **`config.py` et `install.sh`** : les droits du fichier `totem.conf`, qui
+  porte la clé de service et le jeton Telegram.
+- CodeQL — pas encore joué (Semgrep l'a été, tour 2).
 - Le frein hors mémoire d'instance (voir le résidu).
+- Les vérifications du bord (TLS, en-têtes en service, DNS/CAA, sous-domaine
+  pendant) — il faut l'adresse de production.

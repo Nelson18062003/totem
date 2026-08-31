@@ -120,9 +120,20 @@ jobs:
       #
       # Rien n'échoue si elle n'est pas posée : l'application demandera
       # l'adresse à l'écran, comme avant. Moins bien, pas cassé.
+      # L'adresse passe par « env », jamais collée dans la ligne de commande.
+      #
+      # Ce n'est pas une précaution de principe. « ${{ … }} » est remplacé
+      # AVANT que le shell ne lise la ligne : une adresse contenant un
+      # guillemet et un point-virgule deviendrait une commande à exécuter, ici,
+      # sur une machine qui tient le jeton Expo et la clé du Play Store.
+      # Il faut déjà pouvoir lancer ce travail pour en arriver là — mais la
+      # défense ne coûte rien, et le jour où ce déclencheur change, elle est
+      # déjà en place.
       - name: Poser l'adresse de la plateforme
         working-directory: mobile
-        run: node scripts/poser-l-adresse.mjs "${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}"
+        env:
+          ADRESSE: ${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}
+        run: node scripts/poser-l-adresse.mjs "$ADRESSE"
 
       # La PREMIÈRE fois seulement : rattacher le projet à l'organisation.
       #
@@ -224,7 +235,9 @@ jobs:
       - name: Compiler
         if: ${{ !inputs.sans_compiler }}
         working-directory: mobile
-        run: eas build --platform android --profile ${{ inputs.profil }} --non-interactive --wait
+        env:
+          PROFIL: ${{ inputs.profil }}
+        run: eas build --platform android --profile "$PROFIL" --non-interactive --wait
 
       # LE DÉPÔT AU MAGASIN, sans passer par les mains du propriétaire.
       #
@@ -240,7 +253,9 @@ jobs:
       - name: Déposer au magasin
         if: inputs.profil != 'apercu' && steps.cle.outputs.posee == 'oui'
         working-directory: mobile
-        run: eas submit --platform android --profile ${{ inputs.profil }} --latest --non-interactive
+        env:
+          PROFIL: ${{ inputs.profil }}
+        run: eas submit --platform android --profile "$PROFIL" --latest --non-interactive
 
       # La clé ne survit pas au travail. `always()` : même si la compilation
       # ou le dépôt a échoué — surtout dans ce cas.
@@ -251,8 +266,11 @@ jobs:
 
       - name: Où trouver le paquet
         working-directory: mobile
+        env:
+          PROFIL: ${{ inputs.profil }}
+          SANS_COMPILER: ${{ inputs.sans_compiler }}
         run: |
-          echo "### Paquet Android — profil \`${{ inputs.profil }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### Paquet Android — profil \`$PROFIL\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           eas build:list --platform android --limit 1 --json --non-interactive \
             | node -e "
@@ -263,16 +281,16 @@ jobs:
                 if (b.appVersion) console.log('- version : ' + b.appVersion);
               });" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ inputs.sans_compiler }}" = "true" ]; then
+          if [ "$SANS_COMPILER" = "true" ]; then
             echo "_Aucune compilation : c'est le dernier paquet déjà fabriqué_" >> $GITHUB_STEP_SUMMARY
             echo "_qui vient d'être déposé._" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          if [ "${{ inputs.profil }}" = "apercu" ]; then
+          if [ "$PROFIL" = "apercu" ]; then
             echo "APK à installer directement : ni magasin, ni compte." >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.cle.outputs.posee }}" = "oui" ]; then
             echo "✅ **Déposé au magasin tout seul.** Rien à télécharger." >> $GITHUB_STEP_SUMMARY
-            if [ "${{ inputs.profil }}" = "essai" ]; then
+            if [ "$PROFIL" = "essai" ]; then
               echo "La version est sur la piste d'essai interne, disponible pour" >> $GITHUB_STEP_SUMMARY
               echo "les testeurs de la liste." >> $GITHUB_STEP_SUMMARY
             else
