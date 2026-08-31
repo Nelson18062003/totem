@@ -256,6 +256,41 @@ const serveur = createServer(async (req, res) => {
     return repondre({ ajoutes: smsEnPlus.length });
   }
 
+  // Une caisse qui TOURNE DEPUIS DES MOIS. Les cinq encaissements semés plus
+  // haut suffisent à remplir un écran ; ils ne suffisent pas à éprouver ce
+  // qui casse sur une vraie caisse : une période plus large que ce qu'une
+  // lecture rapporte, et un bilan qui s'arrête sans le dire.
+  //
+  //     curl -X POST "http://127.0.0.1:4999/essai/semer?jours=120&parJour=20"
+  if (req.method === "POST" && chemin === "/essai/semer") {
+    const jours = Number(url.searchParams.get("jours") || 120);
+    const parJour = Number(url.searchParams.get("parJour") || 20);
+    // Un encaissement par tranche d'heures, à heure FIXE : le harnais doit
+    // pouvoir dire, sans deviner, lequel tombe dans la fenêtre et lequel non.
+    const pas = Math.floor((20 * 3600000) / Math.max(1, parJour));
+    for (let j = 0; j < jours; j++) {
+      for (let k = 0; k < parJour; k++) {
+        // 02 h 00 + k × pas, en remontant de j jours.
+        const t = new Date(Date.now() - j * 86400000);
+        t.setUTCHours(2, 0, 0, 0);
+        const quand = new Date(t.getTime() + k * pas);
+        if (quand.getTime() > Date.now()) continue;
+        const iso = quand.toISOString();
+        smsEnPlus.push({
+          id: 500000 + smsEnPlus.length, source_id: 500 + smsEnPlus.length,
+          terminal: "douala-faux",
+          compte: "MTN ·8901", carte: "89237010000000008901",
+          expediteur: "MTNMobileMoney", categorie: "encaissement",
+          sens: "entree", montant: 1000, tiers: "SEMEUR", numero: "677000001",
+          reference: null, solde_apres: null,
+          texte: "Vous avez recu 1 000 FCFA de SEMEUR (677000001).",
+          nature: null, emis_le: iso, recu_le: iso, moment: iso, lu_le: null,
+        });
+      }
+    }
+    return repondre({ semes: smsEnPlus.length });
+  }
+
   // --- LES APPAREILS (les téléphones à faire sonner) ----------------------
   if (chemin === "/rest/v1/appareils") {
     if (req.method === "POST") {
@@ -332,24 +367,69 @@ const serveur = createServer(async (req, res) => {
   }
 
   // Les tables ordinaires.
+  //
+  // CE FAUX NUAGE DOIT SAVOIR TRONQUER, ET LE DIRE. Il rendait autrefois le
+  // total APRÈS avoir appliqué la limite : « 1000 lignes sur 1000 » quand la
+  // base en avait 1834. Un contrôle qui ne peut pas voir la troncature ne
+  // garde rien — et c'est exactement la panne qu'on cherchait ici (un bilan
+  // de trimestre amputé sans un mot). Le vrai PostgREST compte AVANT.
   const m = /^\/rest\/v1\/(\w+)$/.exec(chemin);
   const T = tables();
   if (m && T[m[1]]) {
     let lignes = T[m[1]];
-    if (url.searchParams.get("lu_le") === "is.null") {
-      lignes = lignes.filter((l) => l.lu_le === null);
+
+    // Les filtres de colonne : « recu_le=gte.2026-08-01 », « lu_le=is.null »…
+    for (const [champ, brut] of url.searchParams) {
+      if (["select", "order", "limit", "offset", "or"].includes(champ)) continue;
+      const [op, ...reste] = brut.split(".");
+      const valeur = reste.join(".");
+      lignes = lignes.filter((l) => {
+        const v = l[champ];
+        switch (op) {
+          case "is": return valeur === "null" ? v == null : v != null;
+          case "eq": return String(v) === valeur;
+          case "neq": return String(v) !== valeur;
+          case "gte": return v != null && String(v) >= valeur;
+          case "gt": return v != null && String(v) > valeur;
+          case "lte": return v != null && String(v) <= valeur;
+          case "lt": return v != null && String(v) < valeur;
+          default: return true;
+        }
+      });
     }
+
+    // L'ordre demandé : « recu_le.desc », « id.asc »…
+    const tri = url.searchParams.get("order");
+    if (tri) {
+      const [col, ...options] = tri.split(",")[0].split(".");
+      const descendant = options.includes("desc");
+      lignes = [...lignes].sort((a, b) => {
+        const x = a[col], y = b[col];
+        if (x === y) return 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return (x < y ? -1 : 1) * (descendant ? -1 : 1);
+      });
+    }
+
+    // Le total se compte AVANT la limite : c'est lui qui révèle la coupe.
+    const total = lignes.length;
     const limite = Number(url.searchParams.get("limit") || 0);
     if (limite) lignes = lignes.slice(0, limite);
     return repondre(lignes, 200,
-      { "content-range": `0-${Math.max(0, lignes.length - 1)}/${lignes.length}` });
+      { "content-range": `0-${Math.max(0, lignes.length - 1)}/${total}` });
   }
 
   return repondre({ message: "table inconnue (faux nuage)" }, 404);
 });
 
-serveur.listen(4999, "127.0.0.1", () => {
-  console.log("faux nuage sur http://127.0.0.1:4999");
+// Le port se règle : deux harnais lancés à la suite ne doivent pas se
+// disputer la même écoute — et surtout, aucun ne doit mesurer le faux nuage
+// de l'autre.
+const PORT_NUAGE = Number(process.env.PORT || 4999);
+
+serveur.listen(PORT_NUAGE, "127.0.0.1", () => {
+  console.log(`faux nuage sur http://127.0.0.1:${PORT_NUAGE}`);
   console.log("  2 cartes, 3 SMS, des raccourcis MTN et Orange");
   console.log("  les commandes reçoivent une réponse d'opérateur après ~0,7 s");
 });

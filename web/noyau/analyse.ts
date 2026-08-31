@@ -83,6 +83,23 @@ function depuisMinuit(instant: number, fuseau: string): number {
   return ((h * 60 + m) * 60 + s) * 1000 + (instant % 1000 + 1000) % 1000;
 }
 
+/**
+ * Le début de la fenêtre de N jours qui finit maintenant.
+ *
+ * C'est le début du jour le plus ancien MONTRÉ, dans le fuseau du terminal —
+ * pas « maintenant moins N × 24 h ». La différence n'est pas théorique : le
+ * bilan CSV « la semaine » se coupait à 168 heures pendant que le graphe
+ * juste au-dessus dessinait des jours de calendrier. À 18 h, le fichier
+ * portait six heures d'un jour que le graphe ne montrait pas, et son total
+ * ne tombait pas juste avec le chiffre affiché. Deux réponses à « la
+ * semaine », dans le même écran.
+ */
+export function debutDeFenetre(
+  maintenant: number, fuseau: string, jours: number = JOURS_MONTRES,
+): number {
+  return maintenant - (jours - 1) * JOUR_MS - depuisMinuit(maintenant, fuseau);
+}
+
 export type JourEncaisse = { jour: string; montant: number };
 export type ClientFidele = { nom: string; nb: number; total: number };
 
@@ -155,8 +172,7 @@ export function resumeSemaine(
   // La fenêtre montrée : du début du jour le plus ancien du graphe jusqu'à
   // maintenant. C'est elle, et non « les 168 dernières heures », que le
   // graphe dessine.
-  const debutFenetre =
-    maintenant - (JOURS_MONTRES - 1) * JOUR_MS - depuisMinuit(maintenant, fuseau);
+  const debutFenetre = debutDeFenetre(maintenant, fuseau, JOURS_MONTRES);
 
   // Le total se lit sur la fenêtre, pas sur la somme des barres : un
   // encaissement daté du futur (horloge de terminal en avance) tomberait

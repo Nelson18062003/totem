@@ -47,6 +47,7 @@ python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
+cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
@@ -85,6 +86,17 @@ base), l'ouverture porte une clé d'intention (sans quoi un geste rejoué
 composerait le transfert deux fois), et quitter l'écran raccroche la session.
 Il RECOMPILE avant de mesurer : `next start` sert « .next », pas le disque —
 sans cela le parcours passerait en vert contre du code d'hier.
+
+`verifier-le-bilan` sème quatre mois de caisse dans le faux nuage — 2 400
+encaissements — et redemande le bilan CSV. C'est le seul chiffre de TOTEM qui
+SORT de TOTEM : il part chez un comptable, il se rapproche d'un solde, il
+justifie un impôt. Un écran faux se corrige au rechargement suivant ; un bilan
+faux est déjà dans un classeur. Il exige que « la semaine » du fichier soit
+exactement les jours du graphe, qu'un trimestre demandé rende un trimestre, et
+que le fichier DISE quand il est coupé. Pour qu'il puisse prendre en défaut, le
+faux nuage a d'abord dû apprendre à mentir comme la vraie base : il rendait le
+total APRÈS avoir appliqué la limite — « mille lignes sur mille » quand elle en
+avait deux mille quatre cents.
 
 **Un contrôle qui passe sans rien regarder est pire que pas de contrôle : il
 rassure.** Le harnais des formats a mesuré l'écran de connexion aux huit

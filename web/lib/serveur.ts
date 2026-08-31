@@ -49,6 +49,43 @@ function sansValeurs(chemin: string): string {
     /(=(?:eq|neq|ilike|like|lt|lte|gt|gte|in|is)\.)[^&]*/gi, "$1…");
 }
 
+/**
+ * Une lecture qui dit AUSSI combien de lignes la base avait à donner.
+ *
+ * PostgREST répond « content-range: 0-999/1834 » quand on le lui demande :
+ * mille lignes rendues, mille huit cent trente-quatre disponibles. Sans ce
+ * total, une lecture plafonnée est indiscernable d'une lecture complète — le
+ * bilan d'un trimestre s'arrêtait à mille lignes et ne le disait à personne.
+ *
+ * Le comptage exact coûte un parcours à la base : il ne se demande que là où
+ * la troncature serait un mensonge (l'export comptable), pas à chaque page.
+ */
+async function lireEtCompter<T>(chemin: string): Promise<{ lignes: T[]; total: number | null }> {
+  if (!relie) return { lignes: [], total: null };
+  try {
+    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        prefer: "count=exact",
+      },
+      cache: "no-store",
+    });
+    if (!r.ok) {
+      console.error(`Supabase : ${sansValeurs(chemin)} → ${r.status}`);
+      return { lignes: [], total: null };
+    }
+    const lignes = (await r.json()) as T[];
+    // « 0-999/1834 », ou « */1834 », ou rien du tout si la base ne compte pas.
+    const brut = r.headers.get("content-range") ?? "";
+    const apres = brut.slice(brut.indexOf("/") + 1);
+    const total = /^\d+$/.test(apres) ? Number(apres) : null;
+    return { lignes, total };
+  } catch (e) {
+    console.error(`Supabase injoignable : ${String(e)}`);
+    return { lignes: [], total: null };
+  }
+}
+
 async function lire<T>(chemin: string): Promise<T[]> {
   if (!relie) return [];
   try {
@@ -185,22 +222,45 @@ export async function chargerDonnees(
   // d'en charger 1000. `sms: 0` saute la requête entièrement. ATTENTION :
   // les compteurs des cartes (nbPaiements, totalRecu) ne comptent que ce qui
   // est chargé — la page qui les affiche (Comptes) charge donc tout.
-  bornes?: { sms?: number; recus?: number },
+  //
+  // `depuis` : ne rapporter que les SMS relevés à partir de cet instant (ISO).
+  // Le découpage d'une PÉRIODE se fait dans la BASE, pas après coup sur une
+  // page arbitraire : le bilan CSV chargeait les mille derniers SMS puis
+  // écartait ce qui dépassait — sur une caisse active, un trimestre demandé
+  // rendait cinq semaines, sans un mot.
+  //
+  // `compter` : demander AUSSI à la base combien de lignes elle avait. Le
+  // comptage exact lui coûte un parcours complet — il ne se paie que là où
+  // ignorer une troncature serait un mensonge (l'export comptable), pas à
+  // chaque ouverture d'écran.
+  bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
+  // Le filtre porte sur `recu_le` — la seule colonne d'heure qui ne manque
+  // jamais (l'heure réseau, elle, est absente de la moitié des SMS). Un SMS
+  // relevé en retard après une coupure porte donc une heure de relève
+  // postérieure à son heure d'émission : la borne est prise LARGE, et le
+  // tri fin se fait ensuite sur l'heure qui fait foi.
+  const filtreDate = bornes?.depuis
+    ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "";
   // « select=* » à dessein : exiger une colonne par son nom rend l'écran
   // VIDE quand la base a une migration de retard (la requête entière est
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
   // moins riche — jamais une liste vide. Les champs du type non présents
   // arrivent à undefined, que chaque lecture traite déjà comme null.
-  const [terminaux, cartes, comptes, lignes, recus, boutons] = await Promise.all([
+  const [terminaux, cartes, comptes, releve, recus, boutons] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=*"),
     nSms > 0
-      ? lire<LignePaiement>(`paiements?select=*&order=recu_le.desc&limit=${nSms}`)
-      : Promise.resolve([] as LignePaiement[]),
+      ? (bornes?.compter
+          ? lireEtCompter<LignePaiement>(
+              `paiements?select=*${filtreDate}&order=recu_le.desc&limit=${nSms}`)
+          : lire<LignePaiement>(
+              `paiements?select=*${filtreDate}&order=recu_le.desc&limit=${nSms}`)
+              .then((lignes) => ({ lignes, total: null as number | null })))
+      : Promise.resolve({ lignes: [] as LignePaiement[], total: null as number | null }),
     nRecus > 0
       ? lire<LigneRecu>(`recus?select=*&order=etabli_le.desc&limit=${nRecus}`)
       : Promise.resolve([] as LigneRecu[]),
@@ -208,6 +268,12 @@ export async function chargerDonnees(
     // `lire` rend [] sans bruit — les écrans montrent juste moins de boutons.
     lire<LigneRaccourci>("raccourcis?select=*&order=id"),
   ]);
+
+  const lignes = releve.lignes;
+  // La base avait-elle plus à donner que ce qu'on a demandé ? La réponse
+  // n'intéresse que l'export comptable — mais elle ne peut se calculer QUE
+  // ici, au moment de la lecture.
+  const smsTronques = releve.total != null && releve.total > lignes.length;
 
   const terminal = versTerminal(terminaux[0], langue);
 
@@ -345,7 +411,8 @@ export async function chargerDonnees(
     });
   }
 
-  return { relie, terminal, sims, paiements, raccourcis, fuseau: FUSEAU };
+  return { relie, terminal, sims, paiements, raccourcis, fuseau: FUSEAU,
+           smsTronques };
 }
 
 /** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque

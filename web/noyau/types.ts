@@ -134,6 +134,10 @@ export type Donnees = {
   // dur, et un paiement de 23 h changerait de jour selon l'écran.
   // Optionnel : une plateforme pas encore à jour ne casse aucun écran.
   fuseau?: string;
+  // Vrai quand la base avait PLUS de SMS que ce que cette lecture rapporte.
+  // Seul l'export comptable s'en sert : un bilan amputé doit le dire, sans
+  // quoi il se lit comme un bilan complet.
+  smsTronques?: boolean;
 };
 
 export function fcfa(n: number, langue: Langue): string {
