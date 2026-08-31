@@ -962,3 +962,29 @@ class VarianteFrancaise(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class BoutonReglagesReserveALAdmin(unittest.TestCase):
+    """Le bouton « Réglages » ouvre l'écran des numéros et noms de carte. Sa
+    version texte (« /reglages ») est réservée à l'administrateur ; le bouton
+    doit l'être aussi. Dans un groupe, un observateur voyant le menu de
+    l'administrateur pouvait sinon cliquer et lire ces coordonnées.
+    """
+
+    def test_un_observateur_ne_peut_pas_ouvrir_les_reglages(self):
+        r, transport, _ = robot(admins=(1,))
+        avant = len(transport.envois) + len(transport.editions)
+        clic(r, "c:reglages", utilisateur=2)      # 2 n'est pas admin
+        # Aucun écran de réglages ne s'affiche : soit rien, soit un refus.
+        vu = " ".join(e[0] for e in transport.envois) \
+             + " ".join(x[1] for x in transport.editions)
+        # L'écran des réglages porte cet en-tête (« ⚙️ Settings / Réglages ») :
+        # rien de tel ne doit paraître pour un observateur.
+        self.assertNotIn("Settings", vu)
+        self.assertNotIn("Réglages", vu)
+
+    def test_l_administrateur_ouvre_bien_les_reglages(self):
+        r, transport, _ = robot(admins=(1,))
+        clic(r, "c:reglages", utilisateur=1)      # 1 est admin
+        vu = transport.dernier_texte()
+        self.assertIsNotNone(vu)

@@ -676,15 +676,26 @@ class Robot:
             self._demander_identite(champ, iccid, canal)
             return
 
+        # « c:reglages » ouvre l'écran qui montre le numéro et le nom déclarés
+        # de chaque carte. Sa version TEXTE (« /reglages ») est réservée à
+        # l'administrateur ; le bouton, lui, ne l'était pas. Dans un groupe
+        # d'équipe, un simple observateur qui voit le menu de l'administrateur
+        # pouvait donc cliquer et lire ces coordonnées. On aligne le bouton sur
+        # la commande : même écran, même porte.
+        if genre == "c" and valeur == "reglages":
+            if not self._verifier_admin(role, entrant, canal):
+                return
+            self._reglages(canal)
+            return
+
         if genre == "c" and valeur in ("menu", "statut", "sms", "rapport",
                                        "export", "aide", "comptes",
-                                       "diagnostic", "sims", "reglages"):
+                                       "diagnostic", "sims"):
             {"menu": lambda: self._accueil(canal, role),
              "aide": lambda: self.transport.envoyer(self._aide(), canal=canal),
              "statut": lambda: self._statut(canal),
              "comptes": lambda: self._lister_comptes(canal, role),
              "sims": lambda: self._lister_cartes(canal),
-             "reglages": lambda: self._reglages(canal),
              "sms": lambda: self._derniers_sms(canal),
              "rapport": lambda: self._rapport(canal=canal, manuel=True),
              "diagnostic": lambda: self._diagnostic(canal),
