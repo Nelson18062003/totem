@@ -63,6 +63,10 @@ export function OperationPopup({
   const [fil, setFil] = useState<Msg[]>([]);
   const [attente, setAttente] = useState(false);
   const [enSession, setEnSession] = useState(false);
+  // Un raccrochage est-il DÛ ? (session ouverte, pas encore close.) Un
+  // `ref` synchrone, lisible depuis le nettoyage de démontage — l'état
+  // React n'y serait plus à jour.
+  const raccrochageDu = useRef(false);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [reponseLibre, setReponseLibre] = useState("");
@@ -178,6 +182,16 @@ export function OperationPopup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Le drapeau suit l'état : une session vivante et non finie DOIT être
+  // raccrochée. Les boutons de fermeture le font déjà ; ce qui manquait,
+  // c'est le cas où l'on QUITTE l'écran autrement — un appui sur la
+  // navigation, le bouton « précédent » du navigateur. Le composant se
+  // démonte alors sans un mot, et la session reste ouverte sur la vraie SIM,
+  // à Douala : l'opération suivante peut échouer parce que la carte est
+  // encore « en ligne » sur un menu. Le nettoyage de démontage raccroche.
+  useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
+  useEffect(() => () => { if (raccrochageDu.current) posterFin(); }, []);
+
   const secret = async (code: string) => {
     const texte = await envoyer("ussd_reponse", { texte: code, secret: true }, { de: "vous", texte: "••••" });
     if (texte) { setFini(true); onTermine?.(); }
@@ -192,6 +206,7 @@ export function OperationPopup({
 
   // L'ordre de raccrochage, sans faire attendre l'écran.
   const posterFin = () => {
+    raccrochageDu.current = false;      // c'est fait : le démontage ne refera rien
     fetch("/api/commande", {
       method: "POST",
       headers: { "content-type": "application/json" },

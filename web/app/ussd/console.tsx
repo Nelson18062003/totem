@@ -63,6 +63,20 @@ export function ConsoleUssd({
   // réponse d'une génération passée est jetée — un écran refermé ne se
   // rouvre pas tout seul sur une réponse tardive.
   const generation = useRef(0);
+  // Une session vivante à raccrocher ? Lu depuis le nettoyage de démontage,
+  // d'où un `ref` synchrone plutôt que l'état React.
+  const aRaccrocher = useRef(false);
+
+  // L'ordre de raccrochage, à un seul endroit : il marque aussi que c'est
+  // fait, pour que le démontage ne le renvoie pas une seconde fois.
+  const posterFin = useCallback(() => {
+    aRaccrocher.current = false;
+    fetch("/api/commande", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+    }).catch(() => {});
+  }, []);
 
   // Rend la réponse du réseau quand la demande aboutit, null sinon : c'est
   // ce qui permet de rejouer un bouton appris étape par étape, en s'arrêtant
@@ -160,29 +174,19 @@ export function ConsoleUssd({
   // attendre l'écran — la carte se replie sur-le-champ.
   const raccrocher = useCallback(() => {
     generation.current++;
-    fetch("/api/commande", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
-    }).catch(() => {});
+    posterFin();
     setFil([]); setEnSession(false); setErreur(null);
     setAttente(false); setConfirme(false);
-  }, []);
+  }, [posterFin]);
 
   // Fermer l'écran quand rien ne vit : immédiat, sans aller-retour. Si une
   // commande est encore EN VOL, on raccroche défensivement — une session qui
   // s'ouvrirait après la fermeture ne doit jamais rester pendue sur la carte.
   const fermerEcran = useCallback(() => {
-    if (attente) {
-      fetch("/api/commande", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
-      }).catch(() => {});
-    }
+    if (attente) posterFin();
     generation.current++;
     setFil([]); setErreur(null); setAttente(false); setConfirme(false);
-  }, [attente]);
+  }, [attente, posterFin]);
 
   // LA porte de sortie : libre quand la session est finie, retenue par la
   // confirmation quand elle est vivante — croix, voile et Échap, même porte.
@@ -192,6 +196,14 @@ export function ConsoleUssd({
   }, [enSession, fermerEcran]);
 
   const visible = fil.length > 0 || attente;
+
+  // QUITTER LA PAGE NE DOIT PAS LAISSER LA SIM EN LIGNE. Les boutons
+  // raccrochent déjà ; ce qui manquait, c'est le départ AUTREMENT — la
+  // navigation, le « précédent » du navigateur. La console est une carte de
+  // la page /ussd : en quitter la page la démonte, et sans ce nettoyage la
+  // session restait ouverte sur la vraie carte, à Douala.
+  useEffect(() => { aRaccrocher.current = enSession; }, [enSession]);
+  useEffect(() => () => { if (aRaccrocher.current) posterFin(); }, [posterFin]);
 
   // Échap sort — la même porte qu'au doigt.
   useEffect(() => {

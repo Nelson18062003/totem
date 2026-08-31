@@ -79,7 +79,21 @@ export function OperationPopup({
   // L'écran est-il encore monté ? Une session peut répondre après la
   // fermeture ; on ne veut pas écrire dans un composant démonté.
   const vivant = useRef(true);
-  useEffect(() => () => { vivant.current = false; }, []);
+  // Un raccrochage est-il DÛ au démontage ? Le nettoyage ci-dessous le lit ;
+  // il est tenu à jour plus bas, dès que la session vit ou se termine.
+  const raccrochageDu = useRef(false);
+  useEffect(() => () => {
+    vivant.current = false;
+    // QUITTER SANS RACCROCHER LAISSE LA SIM EN LIGNE. Les boutons raccrochent
+    // déjà ; ce qui manquait, c'est le départ AUTREMENT — un balayage arrière,
+    // la navigation, l'application mise en fond. La fiche se démonte alors
+    // sans un mot, et la session reste ouverte sur la vraie carte, à Douala :
+    // l'opération suivante peut échouer parce que la carte est encore sur un
+    // menu. On raccroche.
+    if (raccrochageDu.current) {
+      void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {});
+    }
+  }, [operation.terminal]);
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
   const complet = operation.champs.every((c) => (valeurs[c.cle] ?? "").trim());
@@ -225,7 +239,10 @@ export function OperationPopup({
   };
 
   /** L'ordre de raccrochage, sans faire attendre l'écran. */
-  const posterFin = () => { void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {}); };
+  const posterFin = () => {
+    raccrochageDu.current = false;   // c'est fait : le démontage ne refait rien
+    void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {});
+  };
 
   const raccrocher = () => { posterFin(); onFermer(); };
 
@@ -236,6 +253,9 @@ export function OperationPopup({
     if (attente && !fini) posterFin();
     onFermer();
   };
+
+  // Une session vivante et non finie devra être raccrochée si l'on quitte.
+  useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
 
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);
