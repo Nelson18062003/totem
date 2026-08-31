@@ -150,7 +150,7 @@ create table if not exists evenements (
   id          bigint generated always as identity primary key,
   -- Le terminal concerné, ou RIEN quand c'est la plateforme qui parle : la
   -- base injoignable, une session refusée, un bilan coupé n'appartiennent à
-  -- aucun terminal. Voir migrations/20260831_le-journal-des-incidents.sql.
+  -- aucun terminal. Voir migrations/20260831_consolidation.sql.
   terminal    text references terminaux(id) on delete cascade,
   source_id   bigint not null,
   texte       text not null,
@@ -436,7 +436,7 @@ create index if not exists utilisateurs_courriel on utilisateurs (lower(courriel
 --
 -- Une vérification faite AVANT une écriture ne garantit rien : entre les
 -- deux, quelqu'un a pu écrire. Seule une règle que la base fait respecter au
--- moment de l'écriture tient. Voir migrations/20260831_un-seul-proprietaire.sql.
+-- moment de l'écriture tient. Voir migrations/20260831_consolidation.sql.
 create unique index if not exists utilisateurs_un_seul_proprietaire
   on utilisateurs (role) where role = 'proprietaire';
 
@@ -449,7 +449,7 @@ create unique index if not exists utilisateurs_un_seul_proprietaire
 --
 -- « La table est vide » et « cette plateforme n'a jamais été installée » sont
 -- deux faits différents. La table ne peut plus se vider.
--- Voir migrations/20260831_le-proprietaire-ne-se-supprime-pas.sql.
+-- Voir migrations/20260831_consolidation.sql.
 create or replace function refuser_de_laisser_la_maison_sans_proprietaire()
 returns trigger
 language plpgsql
@@ -485,7 +485,7 @@ create trigger un_proprietaire_reste
 -- Le comptage tient en UNE instruction. Lire puis écrire aurait reproduit un
 -- cran plus bas la faute corrigée un cran plus haut : entre les deux,
 -- soixante essais passent.
--- Voir migrations/20260831_le-frein-partage.sql.
+-- Voir migrations/20260831_consolidation.sql.
 -- ---------------------------------------------------------------------------
 create table if not exists freins (
   -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
@@ -565,7 +565,7 @@ alter table freins   enable row level security;
 -- ÉCRIVAIT : le robot relève cette table et compose ce qu'il y trouve sur la
 -- carte SIM. Sur une ligne Mobile Money, l'USSD est l'interface de transfert.
 -- Une ligne insérée depuis n'importe où faisait composer un transfert avec le
--- vrai argent. (Voir `migrations/20260831_verrouiller-les-regles.sql`.)
+-- vrai argent. (Voir `migrations/20260831_consolidation.sql`.)
 --
 -- Si un jour le navigateur doit lire la base en direct, cela se rouvrira
 -- table par table, avec une politique qui nomme SON propriétaire — jamais un
