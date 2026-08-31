@@ -212,7 +212,11 @@ function CarteCompte({ sim: s, tete, langue, t }: {
       </View>
 
       <View style={{ gap: 2 }}>
-        <Texte poids="demi" chiffresAlignes numberOfLines={1}
+        {/* « adjustsFontSizeToFit » : le solde RÉTRÉCIT pour tenir sur sa
+            ligne au lieu de se tronquer — que la pression vienne d'un nombre
+            très long OU du réglage « grand texte » d'Android. Sans lui,
+            numberOfLines={1} coupait, et un solde coupé est un solde faux. */}
+        <Texte poids="demi" chiffresAlignes numberOfLines={1} adjustsFontSizeToFit
                taille={long ? textes.intertitre : textes.display}
                style={{ color: encre, letterSpacing: -0.5 }}>
           {s.solde == null ? "—" : fcfa(s.solde, langue)}

@@ -121,14 +121,20 @@ export function remplirVariables(
   const remplies = etapes.map((e) =>
     e.replace(RE_VARIABLE, (tout, nom: string) => {
       const source = sourcePour(nom, valeurs);
-      if (!source) {
+      // Seuls les chiffres entrent dans un code : un espace ou un « + »
+      // couperait la chaîne AT côté modem.
+      const chiffres = source ? source.valeur.replace(/\D/g, "") : "";
+      // Une valeur qui ne laisse AUCUN chiffre (« abc », « + », « — ») est un
+      // TROU, pas une réponse. La marquer consommée composait un code amputé
+      // — « *126*1**# », le montant absent — en silence, ce que le docstring
+      // promet justement de ne jamais faire. On la déclare manquante :
+      // l'appelant s'arrête et dit lequel manque.
+      if (!chiffres) {
         if (!manquantes.includes(nom)) manquantes.push(nom);
         return tout;
       }
-      if (!consommees.includes(source.cle)) consommees.push(source.cle);
-      // Seuls les chiffres entrent dans un code : un espace ou un « + »
-      // couperait la chaîne AT côté modem.
-      return source.valeur.replace(/\D/g, "");
+      if (source && !consommees.includes(source.cle)) consommees.push(source.cle);
+      return chiffres;
     }));
   return { etapes: remplies, consommees, manquantes };
 }

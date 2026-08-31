@@ -88,7 +88,13 @@ export default function Encaissements() {
     const q = recherche.trim().toLowerCase();
     return paiements.filter((p) => {
       if (carte && p.sim !== carte) return false;
-      if (categorie && p.categorie !== categorie) return false;
+      // La nature CHOISIE par le propriétaire l'emporte sur la catégorie
+      // devinée — comme la couleur, l'icône et le pli des soldes de cet
+      // écran (`p.nature ?? p.categorie`), et comme le web (`catDe`). Sans
+      // cela, un SMS reclassé en « publicité » s'affichait en publicité mais
+      // le filtre « Publicité » le cachait, et « Encaissement » le montrait
+      // encore : le filtre contredisait l'écran.
+      if (categorie && (p.nature ?? p.categorie) !== categorie) return false;
       if (!q) return true;
       // On cherche dans tout ce qui est lisible : le nom, le numéro, le
       // montant, et le message entier.

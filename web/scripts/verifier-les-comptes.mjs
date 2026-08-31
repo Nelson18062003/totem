@@ -219,6 +219,24 @@ try {
                                     { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
 
+  // La LECTURE d'une commande, longtemps ouverte à tout compte, portait
+  // fugitivement le code secret dans « resultat » avant que le robot ne le
+  // masque : un invité pouvait l'énumérer. Fermée au propriétaire.
+  const rLire = await fetch(B + "/api/commande/1",
+    { headers: { authorization: `Bearer ${jetonAmi}` } });
+  verifier("il ne lit pas une commande (le code y passe)", rLire.status, 403);
+  // Et il n'écrit pas dans le registre : ni la nature, ni le lu/non-lu.
+  const rNature = await poste("/api/nature", { id: 1, nature: "publicite" },
+                              { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne reclasse pas un SMS", rNature.status, 403);
+  const rLu = await poste("/api/lu", { id: 1 },
+                          { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne marque rien lu", rLu.status, 403);
+  const rLireProprio = await fetch(B + "/api/commande/1",
+    { headers: { authorization: `Bearer ${jetonProprio}` } });
+  verifier("le propriétaire, lui, passe le verrou de lecture",
+           rLireProprio.status !== 403, true);
+
   console.log("\nLe propriétaire crée un compte lui-même");
   // L'inscription libre est fermée et le reste. C'est désormais le SEUL
   // chemin pour faire entrer quelqu'un — et il en fallait un : Google exige

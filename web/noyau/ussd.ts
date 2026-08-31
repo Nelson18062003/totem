@@ -58,6 +58,13 @@ export function champPourQuestion<T extends { type: TypeChamp }>(
   texte: string,
   restants: readonly T[],
 ): T | undefined {
-  return restants.find((c) =>
+  const correspondants = restants.filter((c) =>
     RECONNAISSANCE.some((r) => r.type === c.type && r.motif.test(texte)));
+  // Un SEUL champ reconnu : c'est lui. Plusieurs — une question qui nomme À
+  // LA FOIS le montant et le bénéficiaire (« Montant à envoyer au
+  // bénéficiaire ») — on ne DEVINE pas : `find` rendait le premier de la
+  // liste (le numéro), et le numéro partait là où le réseau attendait un
+  // montant. On rend la main au propriétaire, comme pour une question
+  // inconnue. Zéro : on rend la main aussi.
+  return correspondants.length === 1 ? correspondants[0] : undefined;
 }

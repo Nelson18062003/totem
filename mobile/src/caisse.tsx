@@ -150,20 +150,28 @@ export function Caisse({ carte, langue, soldeCache }: {
           {carte.signal != null ? <BarresSignal niveau={carte.signal} /> : null}
         </View>
 
-        {/* Au milieu : le solde. C'est ce qu'on vient voir. */}
+        {/* Au milieu : le solde. C'est ce qu'on vient voir.
+            « allowFontScaling={false} » sur les TROIS morceaux : le corps est
+            DÉJÀ calculé pour remplir la largeur de la carte. Le laisser
+            grossir avec le réglage « grand texte » d'Android multiplierait
+            cette taille calculée, le nombre déborderait sa ligne, et
+            « numberOfLines={1} » le tronquerait — « 412,5… ». Un montant
+            tronqué est un montant faux, ici déclenché par un réglage
+            d'accessibilité. La taille reste donc fixe et lisible ; les autres
+            textes de l'application, eux, suivent le réglage. */}
         <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-          <Texte poids="demi" chiffresAlignes numberOfLines={1}
+          <Texte poids="demi" chiffresAlignes numberOfLines={1} allowFontScaling={false}
                  style={{ fontSize: corps, lineHeight: corps * 1.05,
                           color: "#ffffff", letterSpacing: -corps * 0.025 }}>
             {entier}
           </Texte>
           {decimales != null ? (
-            <Texte poids="demi" chiffresAlignes
+            <Texte poids="demi" chiffresAlignes allowFontScaling={false}
                    style={{ fontSize: corps * 0.5, color: "rgba(255,255,255,0.7)" }}>
               {langue === "en" ? "." : ","}{decimales}
             </Texte>
           ) : null}
-          <Texte poids="moyen" style={{
+          <Texte poids="moyen" allowFontScaling={false} style={{
             fontSize: Math.max(11, corps * 0.26), marginLeft: 6,
             color: "rgba(255,255,255,0.6)",
           }}>

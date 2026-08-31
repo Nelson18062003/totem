@@ -66,6 +66,10 @@ test("la question du réseau trouve le champ qui y répond", () => {
     // Une question qu'on ne comprend pas ne se devine PAS : on rend la main.
     ["Confirmez-vous cette operation ?", undefined],
     ["Veuillez patienter", undefined],
+    // AMBIGUË : elle nomme le montant ET le bénéficiaire. On ne devine pas —
+    // répondre le numéro là où le réseau attend un montant serait grave.
+    ["Montant a envoyer au beneficiaire", undefined],
+    ["Amount to send to recipient", undefined],
   ];
   for (const [question, attendu] of cas) {
     assert.equal(champPourQuestion(question, champs)?.cle, attendu, question);
@@ -78,4 +82,21 @@ test("un champ déjà consommé ne resert pas", () => {
   const restants = champs.filter((c) => c.cle !== "numero");
   assert.equal(champPourQuestion("Entrez le numero", restants), undefined);
   assert.equal(champPourQuestion("Entrez le montant", restants)?.cle, "montant");
+});
+
+test("un trou dont la valeur n'a aucun chiffre reste MANQUANT", async () => {
+  const { remplirVariables } = await import("../codes.ts");
+  // « abc » dans le champ montant : il se réduit à rien une fois les chiffres
+  // gardés. Le composer donnerait « *126*1**# » — un code amputé, en
+  // silence. Il doit être signalé manquant, pas consommé.
+  const r = remplirVariables(["*126*1*{montant}#"], { montant: "abc" });
+  assert.deepEqual(r.manquantes, ["montant"]);
+  assert.deepEqual(r.consommees, []);
+  assert.equal(r.etapes[0], "*126*1*{montant}#");   // le trou reste béant
+
+  // Une vraie valeur, elle, se remplit et se consomme.
+  const ok = remplirVariables(["*126*1*{montant}#"], { montant: "20 000" });
+  assert.deepEqual(ok.manquantes, []);
+  assert.deepEqual(ok.consommees, ["montant"]);
+  assert.equal(ok.etapes[0], "*126*1*20000#");
 });

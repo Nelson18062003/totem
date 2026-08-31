@@ -131,7 +131,17 @@ export function OperationPopup({
     }
   };
 
+  // UNE SEULE SESSION, JAMAIS DEUX. `setEtape` est asynchrone : un
+  // double-appui sur « Lancer » rappelle `lancer` avant que le pied ne se
+  // redessine, et déposait DEUX commandes « ussd » pour la même carte — deux
+  // sessions ouvertes sur la SIM, une opération d'argent jouée deux fois. Le
+  // verrou synchrone (un drapeau, pas un état) ferme cette porte, comme
+  // partout ailleurs dans le code. `lancer` est à usage unique de toute
+  // façon : une fois lancée, l'écran quitte l'étape « saisie ».
+  const lance = useRef(false);
   const lancer = async () => {
+    if (lance.current) return;
+    lance.current = true;
     setEtape("session");
     restants.current = [...operation.champs];
     const brutes = operation.etapes?.length ? operation.etapes : [operation.code];

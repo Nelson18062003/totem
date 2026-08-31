@@ -70,7 +70,13 @@ export async function GET(req: Request) {
     ...lignes.map((p) => [
       p.jour, p.heure, p.sim, p.carte, SENS[langue][p.sens],
       p.montant == null ? "" : String(p.montant),
-      p.nom, p.numero, p.reference,
+      // LA COLONNE « tiers/party », c'est le TIERS — la personne qui a payé
+      // (« NKENGAFAC M. ») — pas « nom », l'expéditeur du SMS
+      // (« MTNMobileMoney », le même pour tout un opérateur). Le robot
+      // exporte déjà « tiers » (storage.py) ; l'app l'affiche partout ainsi
+      // (`p.tiers || p.nom`) ; le bilan mettait l'opérateur sur chaque ligne,
+      // et le vrai tiers ne sortait jamais.
+      p.tiers || p.nom, p.numero, p.reference,
       p.soldeApres == null ? "" : String(p.soldeApres),
       p.recu ?? "", p.smsBrut,
     ]),

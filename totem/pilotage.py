@@ -509,9 +509,28 @@ class Pilotage:
         texte = str(parametres.get("texte") or "")
         if parametres.get("secret"):
             # Le code confidentiel : effacé de la base AVANT d'être composé.
-            # S'il ne devait rester qu'une règle, ce serait celle-là.
-            self.nuage.commande_maj(
-                identifiant, {"parametres": {"secret": True}})
+            # S'il ne devait rester qu'une règle, ce serait celle-là — alors
+            # on VÉRIFIE que l'effacement a pris. « commande_maj » rend faux
+            # si le nuage n'a pas répondu (une coupure à Douala, justement) ;
+            # l'ignorer laissait le code EN CLAIR dans le nuage, pour
+            # toujours, pendant qu'on le composait quand même. On réessaie ;
+            # et si l'effacement ne prend pas, on REFUSE de composer. Mieux
+            # vaut une opération échouée, à reprendre, qu'un code secret qui
+            # traîne dans la base.
+            efface = False
+            for _ in range(3):
+                if self.nuage.commande_maj(
+                        identifiant, {"parametres": {"secret": True}}):
+                    efface = True
+                    break
+                time.sleep(0.5)
+            if not efface:
+                raise RefusPoli(t(
+                    "The secret code could not be secured — it was not "
+                    "dialled. Check the connection and try again.",
+                    "Le code secret n'a pas pu être sécurisé — il n'a pas "
+                    "été composé. Vérifiez la connexion, puis réessayez.",
+                    langue=langue))
         if not texte:
             raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
         reponse = compte.ussd_repondre(texte)
