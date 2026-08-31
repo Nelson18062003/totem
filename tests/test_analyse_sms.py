@@ -822,3 +822,69 @@ class TestCarnetAgentMtn(unittest.TestCase):
     def test_un_echec_avec_solde_courant_reste_un_echec(self):
         self.assertIsNone(solde_annonce(
             "Transaction failed. Current balance: 8910 FCFA."))
+
+
+class TestSoldeEtrangerAuPorteMonnaie(unittest.TestCase):
+    """Un solde n'est pas l'autre : le crédit d'appel n'est pas l'argent.
+
+    MTN glisse « Airtime balance » AVANT « New balance » dans ses SMS
+    d'opération. Le lecteur prenait le premier « balance » venu — le crédit
+    téléphonique s'affichait donc comme le solde après opération, et l'alerte
+    de solde bas s'en nourrissait.
+    """
+
+    TRANSFERT = ("Transfer of 5,000 FCFA to 677123456 NGONO Marie completed. "
+                 "Fee: 100 FCFA. Airtime balance: 7,943 FCFA. "
+                 "New balance: 8,910 FCFA. Financial Transaction Id: 123456789.")
+
+    def test_le_solde_apres_saute_le_credit_dappel(self):
+        p = analyser(self.TRANSFERT)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+        self.assertEqual(p.solde_apres, 8910)   # et non 7943, le crédit d'appel
+
+    def test_un_releve_de_credit_dappel_seul_nannonce_aucun_solde(self):
+        # Mieux vaut aucun solde qu'un solde faux : ce message ne dit rien de
+        # l'argent du compte.
+        self.assertIsNone(solde_annonce("Airtime balance: 7,943 FCFA."))
+
+    def test_les_soldes_etiquetes_restent_lus_dans_les_deux_ordres(self):
+        for texte in ("Mobile Money Balance: 12000 FCFA. Airtime balance: 7,943 FCFA.",
+                      "Airtime balance: 7,943 FCFA. Mobile Money Balance: 12000 FCFA."):
+            self.assertEqual(solde_annonce(texte), 12000, texte)
+
+    def test_un_solde_nul_reste_nul(self):
+        # 0 est une réponse, pas une absence de réponse.
+        self.assertEqual(
+            solde_annonce("Mobile Money Balance: 0 FCFA. Airtime balance: 7,943 FCFA."),
+            0)
+
+
+class TestFraisJamaisPrisPourLeMontant(unittest.TestCase):
+    """« Fee amount » porte le mot « amount » sans être le montant.
+
+    On lisait le prix du service à la place de la somme : un retrait passait
+    pour un mouvement de 100 FCFA, et le même nombre paraissait en montant ET
+    en frais.
+    """
+
+    def test_fee_amount_ne_devient_pas_le_montant(self):
+        p = analyser("Cash Out completed from 677123456 NGONO Marie. "
+                     "Fee amount: 100 FCFA. New balance: 5000 FCFA.")
+        # Aucun montant d'opération n'est annoncé : on refuse plutôt que
+        # d'annoncer les frais comme la somme.
+        self.assertIsNone(p)
+
+    def test_des_frais_ecrits_avant_le_montant_ne_le_masquent_pas(self):
+        p = analyser("Depot reussi. Frais: 100 FCFA. Montant: 5000 FCFA. "
+                     "vers 677123456 NGONO Marie. Nouveau solde: 20000 FCFA.")
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+
+    def test_un_depot_ordinaire_garde_montant_et_frais(self):
+        p = analyser("Depot de 50000 FCFA vers 677123456 NGONO Marie reussi. "
+                     "Frais: 100 FCFA. Nouveau solde: 150000 FCFA.")
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 50000)
+        self.assertEqual(p.frais, 100)
+        self.assertEqual(p.solde_apres, 150000)

@@ -338,6 +338,25 @@ RE_SOLDES_ETIQUETES = (
                r"[^\d]{0,40}?" + MONTANT, re.S),
 )
 
+# UN SOLDE N'EST PAS L'AUTRE. « Airtime balance », « MTN MoMo Gift Balance »,
+# « commission balance » : ces montants-là ne sont pas le porte-monnaie. Dans
+#
+#   « Transfer of 5 000 FCFA to 677123456 … completed. Fee: 100 FCFA.
+#     Airtime balance: 7 943 FCFA. New balance: 8 910 FCFA. »
+#
+# le PREMIER « balance » rencontré est celui du crédit d'appel — et c'est lui
+# que le solde après opération affichait : 7 943 au lieu de 8 910, le crédit
+# téléphonique à la place de l'argent. L'alerte de solde bas (`declencheur`)
+# s'en nourrissait aussi. Le mot qui PRÉCÈDE le champ tranche.
+RE_SOLDE_ETRANGER = re.compile(
+    r"\b(?:airtime|credit\s*(?:d\s*)?appel|gift|cadeau|bonus"
+    r"|commission|loan|pret|dette)\b")
+
+# « Nouveau solde » / « New balance » : LE champ d'un SMS d'opération, celui
+# qui suit le mouvement. Il prime sur un « balance » nu croisé plus tôt.
+RE_SOLDE_APRES = re.compile(
+    r"\b(?:nouveau\s+solde|new\s+balance)\b[^\d]{0,40}?" + MONTANT, re.S)
+
 # « Le solde de votre compte est de 2784137.6FCFA. » — la phrase d'Orange
 # après une interrogation USSD. Elle place vingt-cinq caractères entre le mot
 # et le chiffre, bien plus que le motif ci-dessus n'en tolère. On l'accepte
@@ -363,6 +382,13 @@ RE_MONTANT_BRUT = re.compile(
 # et retraits qui ne détaillent ni « net » ni « transaction ».
 RE_MONTANT_SIMPLE = re.compile(
     r"\b(?:montant|amount)\b[^\d]{0,20}?" + MONTANT, re.S)
+# Le mot « montant »/« amount » appartient parfois aux FRAIS : « Fee amount:
+# 100 FCFA ». Le lire comme le montant de l'opération faisait passer un
+# retrait pour un mouvement de 100 FCFA — le prix du service à la place de la
+# somme, et le même nombre annoncé en montant ET en frais. Là encore, c'est le
+# mot d'avant qui dit de quel champ il s'agit.
+RE_MONTANT_ETRANGER = re.compile(
+    r"\b(?:frais|fee[s]?|charge[s]?|commission|taxe?s?|penalite?s?)\W*$")
 # Un montant nu, sans mot-clé, cherché dans la seule tête de phrase — « depot
 # de 50000 FCFA vers … » : trop court pour contenir des frais ou un solde.
 RE_MONTANT_SEUL = re.compile(MONTANT, re.S)
@@ -622,6 +648,54 @@ def _montant_nomme(motif, norme):
     return _nombre(m.group(1)) if m else None
 
 
+def _sans_voisin(motif, exclusion, norme, portee=20, debut=0, fin=None):
+    """Le premier montant de `motif` dont le VOISINAGE AMONT ne porte pas un
+    mot d'`exclusion`.
+
+    Beaucoup de champs se ressemblent — « balance », « amount », ou même un
+    nombre nu — et seul le mot qui les précède dit de quoi ils parlent :
+    « Airtime balance » n'est pas le porte-monnaie, « Fee amount » n'est pas le
+    montant de l'opération, et le « 100 » de « Frais : 100 FCFA » n'est pas la
+    somme envoyée. On lit donc les quelques caractères d'avant, et on passe au
+    champ suivant quand ce n'est pas le bon. Renvoie None si aucun ne convient
+    — on préfère ne rien dire que dire le mauvais nombre.
+
+    `debut`/`fin` bornent la recherche sans rogner le voisinage : on regarde
+    toujours en amont dans le texte ENTIER, sinon le premier champ de la
+    tranche paraîtrait sans étiquette.
+    """
+    for m in motif.finditer(norme, debut, len(norme) if fin is None else fin):
+        avant = norme[max(0, m.start() - portee):m.start()]
+        if not exclusion.search(avant):
+            return _nombre(m.group(1))
+    return None
+
+
+def _solde_du_message(norme):
+    """Le solde du PORTE-MONNAIE, jamais le crédit d'appel.
+
+    Trois passes, de la plus explicite à la plus large :
+
+      1. les soldes étiquetés (« Mobile Money Balance », « Current balance ») ;
+      2. le « Nouveau solde » / « New balance » d'un SMS d'opération ;
+      3. un « solde »/« balance » nu — en sautant ceux qu'un mot voisin
+         désigne comme étrangers au porte-monnaie.
+    """
+    for motif in RE_SOLDES_ETIQUETES:
+        m = motif.search(norme)
+        if m:
+            return _nombre(m.group(1))
+    m = RE_SOLDE_APRES.search(norme)
+    if m:
+        return _nombre(m.group(1))
+    return _sans_voisin(RE_SOLDE, RE_SOLDE_ETRANGER, norme)
+
+
+def _montant_simple(norme):
+    """Un champ « Montant : … » isolé — mais jamais celui des frais."""
+    return _sans_voisin(RE_MONTANT_SIMPLE, RE_MONTANT_ETRANGER, norme, 15)
+
+
 def _parties_de_loperation(norme, propre):
     """Les deux parties d'une opération, ancrées sur leurs numéros.
 
@@ -682,11 +756,13 @@ def _operation_structuree(norme, propre, texte):
     brut = _montant_nomme(RE_MONTANT_BRUT, norme)
     montant = net if net is not None else brut
     if montant is None and premiere is not None:
-        tete = RE_MONTANT_SEUL.search(norme, geste.end(), premiere)
-        if tete:
-            montant = _nombre(tete.group(1))
+        # Un montant nu en tête — mais pas celui des frais : « Depot reussi.
+        # Frais: 100 FCFA. Montant: 5000 FCFA. vers … » plaçait le prix du
+        # service avant la somme, et c'est lui qu'on lisait.
+        montant = _sans_voisin(RE_MONTANT_SEUL, RE_MONTANT_ETRANGER,
+                               norme, 15, geste.end(), premiere)
     if montant is None:
-        montant = _montant_nomme(RE_MONTANT_SIMPLE, norme)
+        montant = _montant_simple(norme)
     if not montant:
         # Illisible OU nul : un mouvement de 0 FCFA n'existe pas — même
         # règle que la lecture simple, on renonce plutôt que d'annoncer
@@ -696,7 +772,7 @@ def _operation_structuree(norme, propre, texte):
     return Paiement(
         sens=None, montant=montant, texte=texte,
         reference=_reference(norme, propre),
-        solde_apres=_montant_nomme(RE_SOLDE, norme),
+        solde_apres=_solde_du_message(norme),
         frais=_montant_nomme(RE_FRAIS, norme),
         commission=_montant_nomme(RE_COMMISSION, norme),
         montant_brut=brut, quand=_horodatage(norme),
@@ -750,14 +826,14 @@ def analyser(texte, numeros=()):
     # le verbe seul (« cash in » = entrée ?) mentirait sur une ligne
     # d'agent. « Added commission » est un gain de l'agent, pas des frais.
     if RE_CASH_OUT_ENTRANT.search(norme) and RE_REUSSITE.search(norme):
-        montant = _montant_nomme(RE_MONTANT_SIMPLE, norme)
+        montant = _montant_simple(norme)
         if montant:
             nom, numero = _extraire_tiers(norme, propre)
             return Paiement(
                 sens="entree", montant=montant, texte=texte,
                 nom=nom, numero=numero,
                 reference=_reference(norme, propre),
-                solde_apres=_montant_nomme(RE_SOLDE, norme),
+                solde_apres=_solde_du_message(norme),
                 quand=_horodatage(norme),
                 commission=_montant_nomme(RE_COMMISSION, norme))
     cash_in = RE_CASH_IN_SORTANT.search(norme)
@@ -770,7 +846,7 @@ def analyser(texte, numeros=()):
                 sens="sortie", montant=montant, texte=texte,
                 nom=nom, numero=numero,
                 reference=_reference(norme, propre),
-                solde_apres=_montant_nomme(RE_SOLDE, norme),
+                solde_apres=_solde_du_message(norme),
                 quand=_horodatage(norme),
                 commission=_montant_nomme(RE_COMMISSION, norme))
 
@@ -796,7 +872,6 @@ def analyser(texte, numeros=()):
         return None     # sans montant fiable, on n'invente pas
 
     nom, numero = _extraire_tiers(norme, propre)
-    solde = RE_SOLDE.search(norme)
     frais = RE_FRAIS.search(norme) or RE_COMMISSION.search(norme)
 
     return Paiement(
@@ -806,7 +881,7 @@ def analyser(texte, numeros=()):
         nom=nom,
         numero=numero,
         reference=_reference(norme, propre),
-        solde_apres=_nombre(solde.group(1)) if solde else None,
+        solde_apres=_solde_du_message(norme),
         frais=_nombre(frais.group(1)) if frais else None,
         commission=_montant_nomme(RE_COMMISSION, norme),
         quand=_horodatage(norme),
@@ -870,8 +945,14 @@ def solde_annonce(texte):
             return _nombre(m.group(1))
     if len(RE_CHAMP_ARGENT.findall(norme)) >= 2:
         return None
-    m = RE_SOLDE.search(norme) or RE_SOLDE_SEUL.search(norme)
-    return _nombre(m.group(1)) if m else None
+    # Un « balance » nu, mais jamais celui du crédit d'appel : un relevé qui
+    # ne parle QUE d'airtime n'annonce aucun solde de porte-monnaie, et mieux
+    # vaut n'en annoncer aucun que d'afficher le crédit téléphonique comme
+    # l'argent du compte.
+    solde = _sans_voisin(RE_SOLDE, RE_SOLDE_ETRANGER, norme)
+    if solde is None:
+        solde = _sans_voisin(RE_SOLDE_SEUL, RE_SOLDE_ETRANGER, norme)
+    return solde
 
 
 def categoriser(texte, numeros=()):
