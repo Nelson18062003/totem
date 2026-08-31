@@ -106,3 +106,44 @@ export function Pastille({ vif, couleur }: { vif?: boolean; couleur?: string }) 
 }
 
 export { couleurs, espaces, rayons, textes, polices };
+
+// L'ACCROC : la vérité quand la plateforme ne répond pas. Chaque écran de
+// données doit la dire — sans elle, un téléphone hors ligne montrait
+// « Aucun SMS », « Aucune carte », « Rien à analyser » : une connexion en
+// panne déguisée en commerce vide. Le message vient du guichet (déjà dans
+// la langue de l'écran) ; le bouton relance la lecture.
+import { Pressable } from "react-native";
+import { useLangue } from "./langue";
+import { textesConnexion } from "@noyau/textes/connexion";
+
+export function Accroc({ message, onReessayer }: {
+  message: string;
+  onReessayer: () => void;
+}) {
+  const langue = useLangue();
+  return (
+    <View style={{
+      borderWidth: 1, borderColor: couleurs.negatif,
+      borderRadius: rayons.carte, backgroundColor: couleurs.surfaceHaute,
+      padding: espaces.lg, gap: espaces.md,
+    }}>
+      <Texte taille={textes.petit} ton="negatif" style={{ lineHeight: 20 }}>
+        {message}
+      </Texte>
+      <Pressable
+        onPress={onReessayer}
+        style={({ pressed }) => ({
+          alignSelf: "flex-start",
+          paddingHorizontal: espaces.lg, paddingVertical: espaces.sm,
+          borderRadius: rayons.bouton, borderWidth: 1,
+          borderColor: couleurs.trait,
+          backgroundColor: pressed ? couleurs.surface2 : couleurs.surface,
+        })}
+      >
+        <Texte taille={textes.petit} poids="moyen">
+          {textesConnexion[langue].reessayer}
+        </Texte>
+      </Pressable>
+    </View>
+  );
+}

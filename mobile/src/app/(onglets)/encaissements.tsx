@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -55,7 +55,7 @@ function plierLesSoldes(items: Paiement[]): Rangee2[] {
 export default function Encaissements() {
   const langue = useLangue();
   const t = textesSms[langue];
-  const { donnees, chargement, recharger } = useDonnees({ sms: 200 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 200 });
 
   const [recherche, setRecherche] = useState("");
   const [carte, setCarte] = useState<string | null>(null);       // null = toutes
@@ -185,7 +185,9 @@ export default function Encaissements() {
           </View>
         </Entree>
 
-        {jours.length === 0 && !chargement ? (
+        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+
+        {jours.length === 0 && !chargement && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
             <Texte poids="demi">
               {recherche || carte || categorie ? t.aucunResultatTitre : t.aucunSmsTitre}

@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -29,7 +29,7 @@ import { textesUssd } from "@noyau/textes/ussd";
 export default function CadranUssd() {
   const langue = useLangue();
   const t = textesUssd[langue];
-  const { donnees } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const cartes = (donnees?.sims ?? []).filter((s) => s.enPlace);
   const [choisie, setChoisie] = useState<string | null>(null);
@@ -75,7 +75,9 @@ export default function CadranUssd() {
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
 
-        {!carte ? (
+        {erreur && !carte ? (
+          <Accroc message={erreur} onReessayer={recharger} />
+        ) : !carte ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.aucuneCarte}</Texte>

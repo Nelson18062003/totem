@@ -16,7 +16,7 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Carte, Filet, Pastille, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Pastille, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
@@ -263,11 +263,7 @@ export default function Accueil() {
           </View>
         </Entree>
 
-        {erreur ? (
-          <Carte style={{ padding: espaces.lg, borderColor: couleurs.negatif }}>
-            <Texte ton="negatif" taille={textes.petit}>{erreur}</Texte>
-          </Carte>
-        ) : null}
+        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
 
         {deux ? (
           <View style={{ flexDirection: "row", gap: espaces.xl, alignItems: "flex-start" }}>

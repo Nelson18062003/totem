@@ -10,7 +10,7 @@ import { RefreshControl, ScrollView, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
@@ -24,7 +24,7 @@ export default function Actions() {
   const langue = useLangue();
   const t = textesGuichet[langue];
   const tu = textesUssd[langue];
-  const { donnees, chargement, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const [operation, setOperation] = useState<Operation | null>(null);
   const [choisie, setChoisie] = useState<string | null>(null);
@@ -41,12 +41,18 @@ export default function Actions() {
           refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
         >
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
-          <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
-            <Texte poids="demi">{t.aucuneCarte}</Texte>
-            <Texte ton="doux" taille={textes.petit} style={{ textAlign: "center", lineHeight: 20 }}>
-              {t.aucuneCarteDetail}
-            </Texte>
-          </Carte>
+          {/* La panne AVANT l'état vide : hors ligne, « aucune carte »
+              serait un mensonge. */}
+          {erreur ? (
+            <Accroc message={erreur} onReessayer={recharger} />
+          ) : (
+            <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
+              <Texte poids="demi">{t.aucuneCarte}</Texte>
+              <Texte ton="doux" taille={textes.petit} style={{ textAlign: "center", lineHeight: 20 }}>
+                {t.aucuneCarteDetail}
+              </Texte>
+            </Carte>
+          )}
         </ScrollView>
       </SafeAreaView>
     );

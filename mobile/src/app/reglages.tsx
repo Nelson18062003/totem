@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
+import { Accroc, Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { SectionCartes } from "@/reglages-cartes";
 import { SectionCodes } from "@/reglages-codes";
@@ -39,7 +39,7 @@ export default function Reglages() {
   const t = textesReglages[langue];
   const c = textesCharpente[langue];
   const { fermer } = useSession();
-  const { donnees, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
   const terminal = donnees?.terminal ?? null;
   // Les cartes en place d'abord — c'est elles qu'on vient régler.
   const sims = [...(donnees?.sims ?? [])]
@@ -79,6 +79,10 @@ export default function Reglages() {
           </Pressable>
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
+
+        {/* La panne se dit : sans cela, un terminal et des cartes
+            absents ressemblaient à un compte vide. */}
+        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
 
         {/* La langue */}
         <View style={{ gap: espaces.sm }}>

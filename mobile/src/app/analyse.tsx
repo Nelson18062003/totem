@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Navigateur from "expo-web-browser";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Entree } from "@/animations";
 import { useEcran } from "@/ecran";
@@ -75,7 +75,7 @@ export default function Analyse() {
   // La même profondeur que la page web (1000 lignes) : à 200, la semaine
   // PRÉCÉDENTE est la première tronquée sur une caisse active, et le
   // pourcentage d'évolution ment — en bien, ce qui est pire.
-  const { donnees, chargement, recharger } = useDonnees({ sms: 1000, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 1000, recus: 0 });
 
   const paiements = donnees?.paiements ?? [];
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
@@ -137,7 +137,9 @@ export default function Analyse() {
           </View>
         </Entree>
 
-        {paiements.length === 0 && !chargement ? (
+        {erreur ? (
+          <Accroc message={erreur} onReessayer={recharger} />
+        ) : paiements.length === 0 && !chargement ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.rienTitre}</Texte>
