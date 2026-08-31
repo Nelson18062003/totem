@@ -112,7 +112,7 @@ export { couleurs, espaces, rayons, textes, polices };
 // « Aucun SMS », « Aucune carte », « Rien à analyser » : une connexion en
 // panne déguisée en commerce vide. Le message vient du guichet (déjà dans
 // la langue de l'écran) ; le bouton relance la lecture.
-import { Pressable } from "react-native";
+import { Pressable, type ViewStyle } from "react-native";
 import { Animated, useAppui } from "./animations";
 import { Icone, type NomIcone } from "./icones";
 import { useLangue } from "./langue";
@@ -133,6 +133,7 @@ export function Accroc({ message, onReessayer }: {
         {message}
       </Texte>
       <Pressable
+        accessibilityRole="button"
         onPress={onReessayer}
         style={({ pressed }) => ({
           alignSelf: "flex-start",
@@ -149,6 +150,32 @@ export function Accroc({ message, onReessayer }: {
     </View>
   );
 }
+
+/** LA RÉPONSE D'UN LIEN OU D'UNE PASTILLE : il pâlit sous le doigt.
+ *
+ *  Mesuré dans l'application qui tourne (`verifier-la-reponse`) : « tout
+ *  voir », l'œil du mot de passe, les onglets ne remuaient PAS UN PIXEL tant
+ *  que le doigt restait posé. Or « tout voir » mène à un autre écran, et
+ *  changer d'écran prend du temps : pendant ce temps, rien ne dit que
+ *  l'appui a été pris. On réappuie — et c'est normal.
+ *
+ *  Pourquoi l'opacité, et non l'échelle de `useAppui` : un mot souligné qui
+ *  RÉTRÉCIT se lit comme un défaut d'affichage. Les surfaces s'enfoncent,
+ *  les mots pâlissent.
+ *
+ *  Et le changement est INSTANTANÉ : `pressed` vient du rendu de `Pressable`
+ *  lui-même, pas d'un état React qui n'arriverait qu'à l'image suivante —
+ *  c'est la faute que `verifier-les-gestes` garde de l'autre côté.
+ */
+export const appuiTexte = ({ pressed }: { pressed: boolean }): ViewStyle =>
+  ({ opacity: pressed ? 0.5 : 1 });
+
+/** La même réponse, posée SUR un style déjà écrit. Les pastilles et les
+ *  cartes ont leur fond et leur bordure : on n'en refait pas une copie, on y
+ *  ajoute l'opacité. */
+export const avecAppui = (base: ViewStyle) =>
+  ({ pressed }: { pressed: boolean }): ViewStyle =>
+    ({ ...base, opacity: pressed ? 0.5 : 1 });
 
 /**
  * UN BOUTON À ICÔNE NUE — la flèche retour, la croix d'une feuille,

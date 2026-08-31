@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { Feuille } from "@/feuille";
-import { Carte, Filet, Texte } from "@/ui";
+import { Carte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
 import { useGesteUnique } from "@/geste";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
@@ -199,6 +199,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 comme il restait actif, le geste naturel — réappuyer —
                 déposait une SECONDE commande pour le même SMS. */}
             <Pressable
+              accessibilityRole="button"
               onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
               disabled={ouverture === "envoi" || etabli === "envoi"
                         || gesteRecu.occupe || (!p.recu && etabli === "fait")}
@@ -224,6 +225,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 nature vient d'être rechoisie — même numéro, document neuf. */}
             {p.recu && p.sourceId != null ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() => void etablirRecu()}
                 disabled={etabli === "envoi" || gesteRecu.occupe}
                 style={({ pressed }) => ({
@@ -286,14 +288,15 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
           {choisirType ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
               {NATURES.map((n) => (
-                <Pressable key={n} onPress={() => poserNature(n)}
-                           style={{
+                <Pressable
+                           accessibilityRole="button" key={n} onPress={() => poserNature(n)}
+                           style={avecAppui({
                              flexDirection: "row", alignItems: "center", gap: espaces.xs,
                              paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
                              borderRadius: rayons.rond,
                              borderWidth: nature === n ? 0 : 1, borderColor: couleurs.trait,
                              backgroundColor: nature === n ? couleurs.accent : couleurs.surfaceHaute,
-                           }}>
+                           })}>
                   <Icone nom={icone(n)} taille={14}
                          couleur={nature === n ? couleurs.surfaceHaute : couleurs.encreDouce} />
                   <Texte taille={textes.petit} poids="moyen" ton={nature === n ? "normal" : "doux"}
@@ -304,7 +307,8 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
               ))}
             </View>
           ) : (
-            <Pressable onPress={() => setChoisirType(true)}
+            <Pressable
+                       accessibilityRole="button" onPress={() => setChoisirType(true)}
                        style={({ pressed }) => ({
                          flexDirection: "row", alignItems: "center", gap: espaces.sm,
                          padding: espaces.lg, borderRadius: rayons.carte,
@@ -338,7 +342,8 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
           </Texte>
         </View>
         {long ? (
-          <Pressable onPress={() => setDeplie((d) => !d)} hitSlop={8}>
+          <Pressable accessibilityRole="button" onPress={() => setDeplie((d) => !d)}
+                     hitSlop={8} style={appuiTexte}>
             <Texte taille={textes.petit} ton="doux" poids="moyen">
               {deplie ? t.replierMessage : t.toutLeMessage}
             </Texte>

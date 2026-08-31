@@ -144,6 +144,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
             {t.pasPartie}
           </Texte>
           <Pressable
+            accessibilityRole="button"
             onPress={() => void charger()}
             style={({ pressed }) => ({
               alignSelf: "flex-start",
@@ -222,6 +223,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
 
       {!creationOuverte ? (
         <Pressable
+          accessibilityRole="button"
           onPress={() => { setCreationOuverte(true); setMot(null); }}
           style={({ pressed }) => ({
             alignSelf: "flex-start",
@@ -255,6 +257,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
           </View>
           <View style={{ flexDirection: "row", gap: espaces.sm }}>
             <Pressable
+              accessibilityRole="button"
               onPress={() => void creer()}
               disabled={creation || !courriel || motdepasse.length < 12}
               style={({ pressed }) => ({
@@ -272,6 +275,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
                   </Texte>}
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               onPress={() => { setCreationOuverte(false); setMot(null); }}
               style={({ pressed }) => ({
                 flex: 1, alignItems: "center", paddingVertical: espaces.md,
@@ -305,6 +309,7 @@ function Petit({ libelle, onPress, occupe, danger, accent }: {
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={occupe}
       // 26 dp de haut, sans marge de touche, entre deux gestes irréversibles.

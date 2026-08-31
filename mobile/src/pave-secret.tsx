@@ -95,6 +95,7 @@ function Touche({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={desactive}
       accessibilityLabel={accessibilityLabel ?? libelle}

@@ -198,6 +198,7 @@ export default function Analyse() {
                       <View key={c.nom}>
                         {i > 0 ? <Filet /> : null}
                         <Pressable
+                          accessibilityRole="button"
                           onPress={() => router.push({
                             pathname: "/encaissements",
                             // « moment » distingue deux appuis sur le MÊME
@@ -271,6 +272,7 @@ function ExportBilan({ langue }: { langue: Langue }) {
       <View style={{ flexDirection: "row", gap: espaces.sm }}>
         {portes.map((p) => (
           <Pressable
+            accessibilityRole="button"
             key={p.jours}
             onPress={() => void exporter(p.jours)}
             disabled={occupe != null}

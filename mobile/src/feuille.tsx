@@ -71,8 +71,12 @@ export function Feuille({
           translucide ; « undefined » ne fait rien du tout. */}
       <KeyboardAvoidingView behavior="padding"
         style={{ flex: 1, backgroundColor: "rgba(30,30,30,0.45)", justifyContent: "flex-end" }}>
-        {/* Le voile : le toucher passe par la même confirmation. */}
-        <Pressable style={{ flex: 1 }} onPress={sortir} accessibilityLabel={libelleFermer} />
+        {/* Le voile : le toucher passe par la même confirmation.
+            SEUL BOUTON DE L'APPLICATION QUI NE RÉPOND PAS SOUS LE DOIGT, et
+            c'est voulu — il occupe tout le haut de l'écran ; le voir pâlir
+            se lirait comme un écran qui s'efface, pas comme un appui pris. */}
+        <Pressable accessibilityRole="button" style={{ flex: 1 }}
+                   onPress={sortir} accessibilityLabel={libelleFermer} />
 
         <SafeAreaView edges={["bottom"]} style={{
           backgroundColor: couleurs.surface,

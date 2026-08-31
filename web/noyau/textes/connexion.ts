@@ -21,6 +21,11 @@ const en = {
     "The Mobile Money PIN is never asked for here. It is only entered " +
     "during an operation, and is never stored anywhere.",
   langue: "Language",
+  // L'œil du champ de mot de passe. Il n'avait AUCUN texte : son étiquette
+  // était écrite en français dans le code, sur un écran qui peut être en
+  // anglais — un lecteur d'écran annonçait « Masquer » au milieu de l'anglais.
+  montrerMotDePasse: "Show the password",
+  masquerMotDePasse: "Hide the password",
 
   // L'adresse de la plateforme — seulement sur le téléphone. Le navigateur
   // EST déjà sur la plateforme : il n'a rien à chercher.
@@ -97,6 +102,8 @@ const fr: typeof en = {
     "Le code PIN Mobile Money n’est jamais demandé ici. Il ne se saisit " +
     "qu’au moment d’une opération, et n’est enregistré nulle part.",
   langue: "Langue",
+  montrerMotDePasse: "Afficher le mot de passe",
+  masquerMotDePasse: "Masquer le mot de passe",
 
   plateforme: "Plateforme",
   plateformeCherche: "Recherche de la plateforme…",

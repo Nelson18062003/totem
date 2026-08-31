@@ -58,6 +58,7 @@ cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
+cd mobile && node scripts/verifier-la-reponse.mjs # le bouton se fait reconnaître
 cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
 cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
@@ -220,6 +221,40 @@ un bouton qui ne réagit pas tout de suite, et à Douala un bouton ne réagit
 pas tout de suite. Il faut donc un verrou SYNCHRONE (`useGesteUnique`) et une
 clé d'intention — le verrou pare le double appui, la clé pare la réponse
 perdue en route où la personne recommence de bonne foi.
+
+`verifier-la-reponse` garde la CAUSE dont `verifier-les-gestes` garde la
+conséquence : **on appuie deux fois parce que le premier appui n'a rien
+répondu.** Il maintient le doigt sur un bouton, prend l'image avant et
+pendant, et compte les pixels qui bougent. Mesuré : « tout voir », l'œil du
+mot de passe, les onglets ne remuaient PAS UN PIXEL — et « tout voir » change
+d'écran, ce qui prend du temps.
+
+Il tient l'autre moitié de la même promesse : **un bouton se fait reconnaître
+par le doigt ET par la voix.** Sur l'accueil, une aide technique annonçait
+DEUX boutons pour SEIZE choses qui se pressent — « Dépôt », « Retrait »,
+« Transfert », les gestes qui déplacent de l'argent, passaient pour du texte
+ordinaire. Compter cela demande le bon repère : `cursor: pointer` DESCEND en
+héritage, et un premier comptage trouvait 850 « boutons » sur un écran qui en
+porte seize, en comptant les mots à l'intérieur des boutons. Ce qui distingue
+un bouton, c'est que le clavier peut s'y poser.
+
+Le harnais porte son propre TÉMOIN — deux boutons dont on sait qu'ils
+répondent — et s'arrête si eux-mêmes sortent ✗ : une sonde qui répond non à
+tout est indiscernable d'une application immobile. Le premier témoin écrit
+ici visait « Se connecter », dont le code suit `pressed` depuis toujours, et
+sortait ✗ : les champs étaient vides, donc le bouton `disabled`. **Le code
+disait oui, l'écran disait non, et c'est l'écran qui a raison.**
+
+**Un budget d'affichage se compte dans l'unité qu'on veut borner.** La boîte
+de réception rendait quatre JOURS avant d'aller chercher la suite : ce
+qu'elle montait suivait donc ce que la boutique ENCAISSAIT. Quatre jours
+faisaient 88 lignes sur une caisse tranquille, 165 sur une caisse à quarante
+par jour, et une seule journée à cent quarante en montait cent quarante. Plus
+la boutique travaille, plus son téléphone peine — exactement à l'envers. Le
+budget se compte maintenant en lignes : 41 sur l'une, 44 sur l'autre. Le
+harnais n'a rien trouvé de nouveau ce jour-là ; il a simplement été lancé sur
+une caisse plus dense, et **une donnée d'essai trop sage cache le défaut au
+lieu de le montrer**.
 
 **Une date se lit dans la langue de l'ÉCRAN, pas dans celle de l'appareil.**
 `toLocaleDateString()` sans argument suit le réglage du téléphone : l'écran

@@ -80,6 +80,7 @@ export function SectionCodes({ operateur, enPlace, appris, langue, terminal, onC
           <View key={r.cle}>
             {i > 0 ? <Filet /> : null}
             <Pressable
+              accessibilityRole="button"
               onPress={() => setOuvert(r)}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", gap: espaces.md,
@@ -124,6 +125,7 @@ export function SectionCodes({ operateur, enPlace, appris, langue, terminal, onC
         ))}
         <Filet />
         <Pressable
+          accessibilityRole="button"
           onPress={() => setOuvert("ajout")}
           style={({ pressed }) => ({
             flexDirection: "row", alignItems: "center", justifyContent: "center",
@@ -229,6 +231,7 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
       pied={
         <View style={{ gap: espaces.sm }}>
           <Pressable
+            accessibilityRole="button"
             onPress={enregistrer}
             disabled={etat === "envoi" || !pret}
             style={({ pressed }) => ({
@@ -245,6 +248,7 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
           </Pressable>
           {rang?.defini ? (
             <Pressable
+              accessibilityRole="button"
               onPress={() => void poser("supprimer", [])}
               disabled={etat === "envoi"}
               style={({ pressed }) => ({

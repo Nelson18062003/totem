@@ -16,7 +16,8 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Accroc, BoutonIcone, Carte, Filet, Pastille, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
+         appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
@@ -184,7 +185,8 @@ export default function Accueil() {
         // Réglages ; ici les gestes disparaissaient sans un mot, comme si
         // l'application était en panne.
         <Entree delai={180}>
-          <Pressable onPress={() => router.push("/reglages")}>
+          <Pressable onPress={() => router.push("/reglages")}
+                     accessibilityRole="button" style={appuiTexte}>
             <Carte style={{ padding: espaces.lg, borderStyle: "dashed",
                             alignItems: "center" }}>
               <Texte taille={textes.petit} ton="pale"
@@ -212,7 +214,9 @@ export default function Accueil() {
                 {t.derniersSms}
               </Texte>
               <Pressable onPress={() => router.push("/encaissements")} hitSlop={8}
-                         style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs }}>
+                         accessibilityRole="button"
+                         style={avecAppui({ flexDirection: "row", alignItems: "center",
+                                            gap: espaces.xs })}>
                 <Texte taille={textes.petit} ton="doux">{t.toutVoir}</Texte>
                 <Icone nom="Chevron" taille={14} couleur={couleurs.encrePale} />
               </Pressable>
@@ -333,6 +337,7 @@ function PuceCarte({ carte, actif, onPress }: {
   return (
     <Animated.View style={appui.style}>
       <Pressable onPress={onPress} {...appui}
+                 accessibilityRole="button"
                  accessibilityState={{ selected: actif }}
                  style={{
                    flexDirection: "row", alignItems: "center", gap: espaces.sm,
@@ -359,7 +364,8 @@ function Commande({ icone, libelle, onPress }: {
   const appui = useAppui();
   return (
     <Animated.View style={appui.style}>
-      <Pressable onPress={onPress} {...appui} accessibilityLabel={libelle}
+      <Pressable onPress={onPress} {...appui} accessibilityRole="button"
+                 accessibilityLabel={libelle}
                  style={{
                    width: 46, height: 46, borderRadius: rayons.rond,
                    borderWidth: 1, borderColor: couleurs.trait,
@@ -379,6 +385,7 @@ function BoutonGeste({ libelle, icone, onPress }: {
   return (
     <Animated.View style={[{ width: "48.5%" }, appui.style]}>
       <Pressable onPress={onPress} {...appui}
+                 accessibilityRole="button"
                  style={{
                    alignItems: "center", gap: espaces.sm,
                    paddingVertical: espaces.lg, paddingHorizontal: espaces.sm,
@@ -403,6 +410,7 @@ function LigneSms({ paiement: p, langue, onPress }: {
 
   return (
     <Pressable onPress={onPress}
+               accessibilityRole="button"
                style={({ pressed }) => ({
                  flexDirection: "row", alignItems: "center", gap: espaces.md,
                  padding: espaces.lg,

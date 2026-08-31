@@ -6,6 +6,14 @@
 // avec une caisse SEMÉE, sans quoi il n'y a rien à mesurer :
 //   curl -X POST "http://127.0.0.1:4999/essai/semer?jours=30&parJour=20"
 //
+// SEMER DENSE VAUT MIEUX QUE SEMER LARGE. Ce harnais a passé au vert sur une
+// caisse à vingt encaissements par jour, puis échoué le lendemain sur la
+// même liste avec une caisse à quarante — sans qu'une ligne de code ait
+// bougé. C'est ce qu'il devait dire : la liste rendait quatre JOURS, donc ce
+// qu'elle montait suivait ce que la boutique encaissait. Une journée à cent
+// quarante en montait cent quarante.
+//   curl -X POST "http://127.0.0.1:4999/essai/semer?jours=3&parJour=120"
+//
 // POURQUOI. Un `ScrollView` monte TOUS ses enfants — sur Android comme sur
 // le web. Mesuré sur une caisse de trente jours : 201 lignes montées pour 10
 // visibles à l'écran, 2 386 nœuds pour dix lignes. Chaque ligne construit
@@ -36,7 +44,14 @@ const COURRIEL = "essai@totem.test";
 const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
 // Ce qu'on tolère au premier affichage. Au-delà, la liste monte trop.
-const MONTEES_MAX = 120;
+//
+// Le budget de l'écran est de 40 rangées ; mesuré à 41 sur une caisse à
+// quarante par jour, 44 sur une caisse à cent quarante EN UN JOUR. C'est le
+// point : ce chiffre ne doit pas suivre la densité de la caisse. La barre
+// est donc serrée — à 120, un retour au découpage par jours passait au vert
+// sur une boutique tranquille et n'échouait que chez la plus occupée, celle
+// qui a justement le moins de marge.
+const MONTEES_MAX = 80;
 // En dessous, il n'y a rien à mesurer : le harnais le dit plutôt que de
 // passer au vert sur une caisse vide.
 const MINIMUM_POUR_MESURER = 150;

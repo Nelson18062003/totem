@@ -434,6 +434,7 @@ function Bouton({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={desactive}
       style={({ pressed }) => ([{

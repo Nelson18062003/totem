@@ -7,14 +7,14 @@
 // Le texte de l'opérateur s'affiche mot pour mot, dans la langue où la SIM
 // l'a reçu. Le traduire serait le trahir.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, TextInput, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -120,9 +120,19 @@ export default function Encaissements() {
   // geste juste à terme — elle démonte aussi ce qui est passé — mais elle
   // demande de restructurer cet écran, et de l'éprouver sur un VRAI
   // téléphone, ce qu'on ne peut pas faire d'ici.
-  const PREMIER_LOT = 4;
-  const LOT_SUIVANT = 4;
-  const [joursRendus, setJoursRendus] = useState(PREMIER_LOT);
+  // LE BUDGET SE COMPTE EN LIGNES, PAS EN JOURS.
+  //
+  // Il se comptait en jours — quatre au premier affichage — et cela liait ce
+  // que le téléphone monte à ce que la boutique ENCAISSE. Mesuré : sur une
+  // caisse à vingt encaissements par jour, ces quatre jours faisaient 88
+  // lignes ; sur une caisse à quarante, les MÊMES quatre jours en font 165.
+  // C'est exactement à l'envers — plus la boutique travaille, plus son
+  // téléphone peine. On compte donc des lignes, et le premier affichage
+  // coûte la même chose à tout le monde.
+  const LIGNES_PREMIER_LOT = 40;
+  const LIGNES_LOT_SUIVANT = 40;
+  const [budget, setBudget] = useState(LIGNES_PREMIER_LOT);
+  const [hauteurVue, setHauteurVue] = useState(0);
 
   const jours = useMemo(() => {
     const par = new Map<string, { libelle: string; lignes: Paiement[] }>();
@@ -131,13 +141,38 @@ export default function Encaissements() {
       g.lignes.push(p);
       par.set(p.jour, g);
     }
-    return [...par.values()];
+    // On plie ICI les consultations de solde répétées : ce qui se monte,
+    // c'est la rangée pliée, pas l'encaissement. Compter avant le pliage
+    // budgétait des lignes qui n'existent pas à l'écran.
+    return [...par.values()].map((g) => ({ libelle: g.libelle,
+                                           rangees: plierLesSoldes(g.lignes) }));
   }, [filtres]);
+
+  const rangeesEnTout = useMemo(
+    () => jours.reduce((n, j) => n + j.rangees.length, 0), [jours]);
+
+  // Ce qu'on rend vraiment : les jours dans l'ordre, coupés dès le budget
+  // atteint — au milieu d'un jour s'il le faut. Une seule journée très
+  // chargée ne doit pas monter à elle seule quatre cents lignes.
+  const rendus = useMemo(() => {
+    const sortie = [];
+    let reste = budget;
+    for (const j of jours) {
+      sortie.push({ libelle: j.libelle, rangees: j.rangees.slice(0, Math.max(1, reste)) });
+      reste -= j.rangees.length;
+      if (reste <= 0) break;
+    }
+    return sortie;
+  }, [jours, budget]);
+
+  const allonger = useCallback(() => {
+    setBudget((b) => (b >= rangeesEnTout ? b : b + LIGNES_LOT_SUIVANT));
+  }, [rangeesEnTout]);
 
   // UNE NOUVELLE RECHERCHE REPART DU HAUT. Sans cela, taper trois lettres
   // après avoir descendu la liste laissait vingt jours rendus pour trois
   // résultats — et le bas de l'écran se remplissait de vide.
-  useEffect(() => { setJoursRendus(PREMIER_LOT); }, [filtres]);
+  useEffect(() => { setBudget(LIGNES_PREMIER_LOT); }, [filtres]);
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -155,10 +190,15 @@ export default function Encaissements() {
         onScroll={({ nativeEvent: n }) => {
           const restant = n.contentSize.height
             - (n.contentOffset.y + n.layoutMeasurement.height);
-          if (restant < n.layoutMeasurement.height * 1.5) {
-            setJoursRendus((rendus) =>
-              rendus >= jours.length ? rendus : rendus + LOT_SUIVANT);
-          }
+          if (restant < n.layoutMeasurement.height * 1.5) allonger();
+        }}
+        // UNE LISTE TROP COURTE NE DÉFILE PAS, DONC NE S'ALLONGE JAMAIS.
+        // Si le lot rendu ne remplit pas deux écrans, aucun geste ne peut
+        // venir chercher la suite : la liste resterait bloquée là, avec des
+        // encaissements hors de portée. On l'allonge alors toute seule.
+        onLayout={({ nativeEvent: n }) => setHauteurVue(n.layout.height)}
+        onContentSizeChange={(_, h) => {
+          if (hauteurVue && h < hauteurVue * 2) allonger();
         }}
         refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger}
                                         tintColor={couleurs.encrePale} />}
@@ -245,7 +285,7 @@ export default function Encaissements() {
           </Carte>
         ) : null}
 
-        {jours.slice(0, joursRendus).map((j, k) => (
+        {rendus.map((j, k) => (
           <Entree key={j.libelle} delai={180 + k * 40}>
             <View style={{ gap: espaces.sm }}>
               <Texte taille={textes.legende} ton="pale"
@@ -253,7 +293,7 @@ export default function Encaissements() {
                 {j.libelle}
               </Texte>
               <Carte>
-                {plierLesSoldes(j.lignes).map((r, i) => (
+                {j.rangees.map((r, i) => (
                   <View key={r.genre === "sms" ? r.p.id : r.recent.id}>
                     {i > 0 ? <Filet /> : null}
                     {r.genre === "sms" ? (
@@ -267,13 +307,14 @@ export default function Encaissements() {
                             derrière la plus récente — dépliables d'un
                             geste, jamais perdues. */}
                         {r.anciens.length ? (
-                          <Pressable onPress={() => basculer(r.recent.id)}
+                          <Pressable
+                                     accessibilityRole="button" onPress={() => basculer(r.recent.id)}
                                      hitSlop={6}
-                                     style={{ flexDirection: "row",
+                                     style={avecAppui({ flexDirection: "row",
                                               alignItems: "center",
                                               gap: espaces.xs,
                                               paddingLeft: 66,
-                                              paddingBottom: espaces.md }}>
+                                              paddingBottom: espaces.md })}>
                             {!deplies.has(r.recent.id)
                               && r.anciens.some((p) => p.nonLu) ? (
                               <View style={{ width: 6, height: 6,
@@ -332,15 +373,16 @@ function Puce({ libelle, actif, icone, onPress }: {
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       accessibilityState={{ selected: actif }}
-      style={{
+      style={avecAppui({
         flexDirection: "row", alignItems: "center", gap: espaces.xs,
         paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
         borderRadius: rayons.rond,
         borderWidth: actif ? 0 : 1, borderColor: couleurs.trait,
         backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
-      }}
+      })}
     >
       {icone ? (
         <Icone nom={icone} taille={14}
@@ -373,7 +415,8 @@ function Ligne({ paiement: p, langue, onPress }: {
   const schema = couleursCategorie(p.nature ?? p.categorie);
 
   return (
-    <Pressable onPress={onPress}
+    <Pressable
+               accessibilityRole="button" onPress={onPress}
                style={({ pressed }) => ({
                  flexDirection: "row", gap: espaces.md, padding: espaces.lg,
                  backgroundColor: pressed ? couleurs.surface2 : "transparent",

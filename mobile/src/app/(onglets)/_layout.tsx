@@ -144,7 +144,15 @@ function Pilule({ actif, libelle, icone, onPress }: {
       accessibilityRole="tab"
       accessibilityState={{ selected: actif }}
       accessibilityLabel={libelle}
-      style={{ borderRadius: rayons.rond, overflow: "hidden" }}
+      // LA PASTILLE NE RÉPOND PAS À L'APPUI, elle répond au CHOIX : elle ne
+      // se remplit qu'une fois `actif` changé, donc une fois l'écran changé.
+      // Entre les deux, l'onglet restait parfaitement immobile — mesuré à
+      // zéro pixel par `verifier-la-reponse`. Sur un téléphone lent, c'est
+      // là qu'on appuie deux fois.
+      style={({ pressed }) => ({
+        borderRadius: rayons.rond, overflow: "hidden",
+        opacity: pressed ? 0.5 : 1,
+      })}
     >
       <Animated.View
         style={{

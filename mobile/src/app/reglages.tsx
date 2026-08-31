@@ -15,7 +15,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, BoutonIcone, Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, MotTotem, Pastille, Texte,
+        appuiTexte } from "@/ui";
 import { Icone } from "@/icones";
 import { SectionCartes } from "@/reglages-cartes";
 import { SectionCodes } from "@/reglages-codes";
@@ -89,6 +90,7 @@ export default function Reglages() {
               <View key={l.code}>
                 {i > 0 ? <Filet /> : null}
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() => changerLangue(l.code)}
                   style={({ pressed }) => ({
                     flexDirection: "row", alignItems: "center", gap: espaces.md,
@@ -185,6 +187,7 @@ export default function Reglages() {
             </View>
             <Filet />
             <Pressable
+              accessibilityRole="button"
               onPress={seDeconnecter}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", gap: espaces.md,
@@ -359,9 +362,13 @@ function EssaiNotification() {
         ) : null}
 
         {/* Une permission refusée pour de bon ne se redemande pas : Android
-            ignore l'appel. Le seul chemin passe par ses propres réglages. */}
+            ignore l'appel. Le seul chemin passe par ses propres réglages.
+            Ce lien QUITTE l'application : Android met un instant à ouvrir ses
+            réglages, et pendant cet instant rien ne disait que l'appui était
+            pris — d'où l'opacité. */}
         {reglagesUtiles ? (
-          <Pressable onPress={() => { void Linking.openSettings(); }}>
+          <Pressable accessibilityRole="button" style={appuiTexte}
+                     onPress={() => { void Linking.openSettings(); }}>
             <Texte taille={textes.petit} poids="moyen" ton="doux"
                    style={{ textDecorationLine: "underline" }}>
               {t.sonnerieOuvrirReglages}
@@ -371,6 +378,7 @@ function EssaiNotification() {
 
         {peutReessayer ? (
           <Pressable
+            accessibilityRole="button"
             onPress={reinscrire}
             disabled={inscription}
             style={({ pressed }) => ({
@@ -391,6 +399,7 @@ function EssaiNotification() {
 
         {/* L'essai n'a de sens que si ce téléphone est inscrit. */}
         <Pressable
+          accessibilityRole="button"
           onPress={essayer}
           disabled={envoi || !pret}
           style={({ pressed }) => ({
