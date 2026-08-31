@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, Carte, Filet, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -66,12 +66,9 @@ export default function CadranUssd() {
       <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
-          <Pressable onPress={() => router.back()} hitSlop={12}
-                     accessibilityLabel={t.fermerEcran}>
-            <View style={{ transform: [{ rotate: "180deg" }] }}>
-              <Icone nom="Chevron" taille={22} couleur={couleurs.encreDouce} />
-            </View>
-          </Pressable>
+          <BoutonIcone nom="Chevron" etiquette={t.fermerEcran}
+                       onPress={() => router.back()}
+                       style={{ transform: [{ rotate: "180deg" }] }} />
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
 

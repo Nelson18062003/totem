@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Texte } from "@/ui";
+import { BoutonIcone, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { couleurs, espaces, rayons } from "@/theme/jetons";
 
@@ -87,9 +87,7 @@ export function Feuille({
             borderBottomWidth: 1, borderBottomColor: couleurs.trait,
           }}>
             <View style={{ flex: 1 }}>{entete}</View>
-            <Pressable onPress={sortir} hitSlop={12} accessibilityLabel={libelleFermer}>
-              <Icone nom="Close" taille={22} couleur={couleurs.encreDouce} />
-            </Pressable>
+            <BoutonIcone nom="Close" etiquette={libelleFermer} onPress={sortir} />
           </View>
 
           <ScrollView

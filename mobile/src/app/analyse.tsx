@@ -21,7 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Navigateur from "expo-web-browser";
 
-import { Accroc, Carte, Filet, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Entree } from "@/animations";
 import { SqueletteAnalyse } from "@/squelettes";
@@ -69,12 +69,11 @@ export default function Analyse() {
       >
         <Entree montee={6}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
-            <Pressable onPress={() => router.back()} hitSlop={12}
-                       accessibilityLabel={textesUssd[langue].fermerEcran}>
-              <View style={{ transform: [{ rotate: "180deg" }] }}>
-                <Icone nom="Chevron" taille={22} couleur={couleurs.encreDouce} />
-              </View>
-            </Pressable>
+            {/* La flèche retour : une icône nue, donc rien à teindre —
+                c'est l'échelle qui répond au doigt. Voir `BoutonIcone`. */}
+            <BoutonIcone nom="Chevron" etiquette={textesUssd[langue].fermerEcran}
+                         onPress={() => router.back()}
+                         style={{ transform: [{ rotate: "180deg" }] }} />
             <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
           </View>
         </Entree>

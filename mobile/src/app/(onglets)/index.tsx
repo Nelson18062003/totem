@@ -16,7 +16,7 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Accroc, Carte, Filet, Pastille, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Pastille, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
@@ -285,15 +285,11 @@ export default function Accueil() {
             </View>
             {/* L'analyse puis l'engrenage : les deux écrans « à part »,
                 côte à côte dans l'angle où le pouce les attend. */}
-            <Pressable onPress={() => router.push("/analyse")} hitSlop={12}
-                       accessibilityLabel={ta.titre}
-                       style={{ marginRight: espaces.lg }}>
-              <Icone nom="Chart" taille={22} couleur={couleurs.encreDouce} />
-            </Pressable>
-            <Pressable onPress={() => router.push("/reglages")} hitSlop={12}
-                       accessibilityLabel={t.reglages}>
-              <Icone nom="Settings" taille={22} couleur={couleurs.encreDouce} />
-            </Pressable>
+            <BoutonIcone nom="Chart" etiquette={ta.titre}
+                         onPress={() => router.push("/analyse")}
+                         style={{ marginRight: espaces.lg }} />
+            <BoutonIcone nom="Settings" etiquette={t.reglages}
+                         onPress={() => router.push("/reglages")} />
           </View>
         </Entree>
 

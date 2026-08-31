@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { Accroc, Carte, Filet, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -162,10 +162,9 @@ export default function Encaissements() {
               }}
             />
             {recherche ? (
-              <Pressable onPress={() => setRecherche("")} hitSlop={10}
-                         accessibilityLabel={t.effacerRecherche}>
-                <Icone nom="Close" taille={16} couleur={couleurs.encrePale} />
-              </Pressable>
+              <BoutonIcone nom="Close" taille={16} couleur={couleurs.encrePale}
+                           etiquette={t.effacerRecherche}
+                           onPress={() => setRecherche("")} />
             ) : null}
           </View>
         </Entree>

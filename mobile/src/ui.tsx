@@ -113,6 +113,8 @@ export { couleurs, espaces, rayons, textes, polices };
 // panne déguisée en commerce vide. Le message vient du guichet (déjà dans
 // la langue de l'écran) ; le bouton relance la lecture.
 import { Pressable } from "react-native";
+import { Animated, useAppui } from "./animations";
+import { Icone, type NomIcone } from "./icones";
 import { useLangue } from "./langue";
 import { textesConnexion } from "@noyau/textes/connexion";
 
@@ -145,5 +147,62 @@ export function Accroc({ message, onReessayer }: {
         </Texte>
       </Pressable>
     </View>
+  );
+}
+
+/**
+ * UN BOUTON À ICÔNE NUE — la flèche retour, la croix d'une feuille,
+ * l'engrenage des réglages.
+ *
+ * POURQUOI IL EXISTE. Ces boutons-là n'ont aucune surface : rien à teindre
+ * au moment de l'appui. Les autres boutons de l'application réagissent par
+ * la couleur (`style={({ pressed }) => …}`) — une icône posée sur le fond de
+ * l'écran ne le peut pas, et restait donc parfaitement immobile sous le
+ * doigt.
+ *
+ * Or c'est exactement là que le retour manque le plus : ce sont les plus
+ * PETITES cibles de l'écran. Quand rien ne bouge, on ne sait pas si on a
+ * touché à côté — et le geste naturel est de réappuyer. C'est ainsi qu'on
+ * ouvre deux fois un écran, ou qu'on dépose deux fois une demande.
+ *
+ * La réponse est donc une ÉCHELLE, pas une couleur : l'icône s'enfonce de
+ * 3 %, sans rebond, sur le fil de l'interface (voir `useAppui`). Elle est
+ * insensible au JavaScript occupé — c'est-à-dire au moment précis où l'écran
+ * charge et où l'on appuie sans être sûr.
+ *
+ * L'ÉTIQUETTE EST OBLIGATOIRE, par le type. Une icône ne se lit pas : sans
+ * étiquette, un lecteur d'écran n'annonce rien du tout — un bouton muet dans
+ * les deux sens.
+ */
+export function BoutonIcone({
+  nom, taille = 22, couleur = couleurs.encreDouce, etiquette, onPress,
+  style, ...reste
+}: Omit<React.ComponentProps<typeof Pressable>, "children" | "accessibilityLabel"> & {
+  nom: NomIcone;
+  taille?: number;
+  couleur?: string;
+  /** Ce qu'un lecteur d'écran annonce. Jamais facultatif. */
+  etiquette: string;
+}) {
+  // Le style animé va sur la VUE, jamais sur le Pressable : le répandre en
+  // bloc y ferait atterrir un style qu'on écrase à la ligne suivante.
+  const { style: styleAnime, onPressIn, onPressOut } = useAppui();
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      // Une icône de 22 points est plus petite que le bout d'un doigt : la
+      // zone sensible déborde de douze points tout autour.
+      hitSlop={12}
+      accessibilityRole="button"
+      accessibilityLabel={etiquette}
+      {...reste}
+      style={style}
+    >
+      <Animated.View style={styleAnime}>
+        <Icone nom={nom} taille={taille} couleur={couleur} />
+      </Animated.View>
+    </Pressable>
   );
 }
