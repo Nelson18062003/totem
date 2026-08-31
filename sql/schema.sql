@@ -233,6 +233,43 @@ comment on table appareils is
   'Les téléphones à qui le robot fait sonner une notification. Le jeton '
   'identifie un appareil, jamais une personne, et n''ouvre l''accès à rien.';
 
+-- L'ardoise du frein aux mots de passe.
+--
+-- POURQUOI ELLE EST EN BASE ET NON EN MÉMOIRE. Le frein comptait les échecs
+-- dans la mémoire du serveur. Sur Vercel, chaque instance froide repart à
+-- zéro : il suffisait d'insister pour tomber sur une neuve et retrouver ses
+-- essais libres. Mesuré — une seconde instance, mémoire vierge, répondait en
+-- 36 ms là où la première faisait attendre huit secondes.
+--
+-- POURQUOI ELLE EST BÊTE, ET C'EST VOULU. On AJOUTE une ligne par échec, on
+-- ne modifie jamais rien : pas de lecture-puis-écriture, donc pas de comptage
+-- perdu entre deux instances qui écrivent en même temps. Compter les lignes
+-- de la fenêtre suffit.
+--
+-- ELLE NE FERME JAMAIS LA PORTE À ELLE SEULE. Si la base ne répond pas, la
+-- plateforme retombe sur sa mémoire locale (voir web/lib/frein.ts). Faire
+-- dépendre la connexion d'une base joignable serait exactement ce que la clé
+-- de secours existe pour éviter.
+--
+-- ELLE NE PORTE AUCUN SECRET : ni courriel, ni mot de passe, ni jeton. Une
+-- adresse vue par le serveur, et une heure.
+create table if not exists freins (
+  id     bigserial primary key,
+  -- L'identité freinée : « s:<adresse attestée> », « d:<adresse annoncée> »,
+  -- ou le seau commun. Jamais une personne, jamais un courriel.
+  cle    text        not null,
+  vu_le  timestamptz not null default now()
+);
+
+-- Les deux seules lectures faites dessus : compter par clé sur une fenêtre,
+-- et faire le ménage des vieilles lignes.
+create index if not exists freins_cle_vu on freins (cle, vu_le desc);
+
+comment on table freins is
+  'Les échecs de connexion récents, pour que le frein soit le même sur '
+  'toutes les instances. Aucun secret, aucune identité : une adresse et une '
+  'heure, effacées au bout d''un quart d''heure.';
+
 -- Les comptes qui ouvrent la plateforme.
 --
 -- Avant, la plateforme avait UN mot de passe rangé dans une variable
@@ -433,6 +470,7 @@ alter table recus      enable row level security;
 alter table raccourcis enable row level security;
 alter table appareils  enable row level security;
 alter table utilisateurs enable row level security;
+alter table freins       enable row level security;
 
 -- Aucune politique, sur aucune table. Sur une base NEUVE il n'y a donc rien
 -- à retirer ; sur une base déjà en service, c'est

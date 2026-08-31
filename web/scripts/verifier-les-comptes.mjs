@@ -44,7 +44,7 @@ async function portLibre(port) {
   }
 }
 
-for (const port of [3131, 4999]) {
+for (const port of [3131, 3132, 4999]) {
   if (!(await portLibre(port))) {
     console.error(`\n✗ Le port ${port} est déjà occupé. Un essai précédent tourne`);
     console.error("  encore : ces vérifications porteraient sur SON code, pas sur");
@@ -53,14 +53,30 @@ for (const port of [3131, 4999]) {
   }
 }
 
+const ENV = {
+  ...process.env,
+  SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
+  SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
+};
+
 const nuage = spawn("node", ["scripts/faux-nuage.mjs"], { stdio: "ignore" });
 const serveur = spawn("npx", ["next", "start", "-p", "3131"], {
-  env: {
-    ...process.env,
-    SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
-    SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
-  },
-  stdio: "ignore",
+  env: ENV, stdio: "ignore",
+});
+
+// UNE SECONDE INSTANCE, sur un autre port, avec la MÊME base derrière.
+//
+// C'est la seule façon d'éprouver ce qui compte. Le frein vit dans la
+// mémoire d'un processus : sur Vercel, chaque instance froide repart à zéro,
+// et il suffisait d'insister pour tomber sur une neuve et retrouver ses
+// essais libres. Un harnais à un seul serveur ne peut pas voir ça — il
+// mesure toujours la même mémoire, et conclut que tout va bien.
+//
+// Celle-ci ne partage RIEN avec la première, sauf la base. Si elle freine,
+// c'est que l'ardoise commune fait son travail.
+const B2 = "http://127.0.0.1:3132";
+const serveur2 = spawn("npx", ["next", "start", "-p", "3132"], {
+  env: ENV, stdio: "ignore",
 });
 
 const poste = (chemin, corps, entetes = {}) =>
@@ -355,11 +371,45 @@ try {
   const rDeja = await poste("/api/inscription", { courriel: "nelson@exemple.cm", motdepasse: MDP });
   verifier("le courriel du propriétaire : même refus", rDeja.status, 403);
 
+  console.log("\nLe frein tient d'une instance à l'autre");
+  // On brûle les essais libres sur la PREMIÈRE instance, puis on va frapper
+  // à la SECONDE — qui n'a jamais rien vu de cette adresse, et dont la
+  // mémoire est vierge. Sans ardoise commune, elle offre vingt essais neufs.
+  {
+    const XFF = { "x-forwarded-for": "198.51.100.77" };
+    const mauvais = (base) => fetch(base + "/api/session", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...XFF },
+      body: JSON.stringify({ motdepasse: "ce-n-est-pas-le-bon" }),
+    });
+
+    // La seconde instance est-elle prête ?
+    for (let i = 0; i < 60; i++) {
+      try { if ((await fetch(B2 + "/api/plateforme")).ok) break; } catch { /* pas encore */ }
+      await attendre(500);
+    }
+    // Une mesure de référence AVANT tout échec : la seconde instance est
+    // libre, et on veut le prouver plutôt que le supposer.
+    const debutLibre = Date.now();
+    await mauvais(B2);
+    const libre = Date.now() - debutLibre;
+
+    for (let i = 0; i < 25; i++) await mauvais(B);
+
+    const debut = Date.now();
+    await mauvais(B2);
+    const freine = Date.now() - debut;
+    console.log(`     (2ᵉ instance : ${libre}ms avant, ${freine}ms après les `
+                + `échecs de la 1ʳᵉ)`);
+    verifier("une instance neuve freine quand même", freine > libre + 400, true);
+  }
+
   console.log(echecs
     ? `\n✗ ${echecs} vérification(s) en échec.`
     : "\n✓ Les comptes tiennent : toutes les vérifications passent.");
 } finally {
   serveur.kill();
+  serveur2.kill();
   nuage.kill();
 }
 process.exit(echecs ? 1 : 0);

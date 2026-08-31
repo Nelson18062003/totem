@@ -56,6 +56,22 @@ on:
         default: false
         type: boolean
 
+# POURQUOI DES EMPREINTES ET NON DES ÉTIQUETTES (« @v4 »).
+#
+# Une étiquette n'est pas un contenu : c'est un nom, et celui qui contrôle le
+# dépôt peut le faire pointer ailleurs, sans que rien ne change ici. Ces
+# travaux-ci tiennent le jeton Expo et la clé du Play Store, et « Mise à jour »
+# publie du code vers des téléphones EN SERVICE. Une action détournée
+# obtiendrait les deux.
+#
+# L'empreinte, elle, désigne un contenu et un seul. La version lisible reste
+# en commentaire à côté — sans quoi plus personne ne sait ce qui tourne.
+#
+# CE QUE CELA COÛTE, et c'est réel : ces actions ne montent plus toutes
+# seules, corrections de sécurité comprises. D'où « .github/dependabot.yml »,
+# qui ouvre une pull request quand une nouvelle version paraît. On relit, on
+# fusionne : le choix reste à nous, mais l'information vient à nous.
+
 jobs:
   fabriquer:
     name: Fabriquer (${{ inputs.profil }})
@@ -72,17 +88,17 @@ jobs:
           exit 1
 
       - name: Récupérer le dépôt
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
 
       - name: Installer Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
       - name: Installer les outils d'Expo
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e   # 8.2.1
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}

@@ -36,6 +36,8 @@ import re
 import threading
 import time
 
+from datetime import datetime, timedelta
+
 from .analyse_sms import solde_annonce
 from .declencheur import NATURES, RefusRecu
 from .nuage import _horodatage
@@ -56,6 +58,12 @@ RE_VARIABLE = re.compile(r"\{([A-Za-z_]+)\}")
 # plus posé au repos — la base n'a pas besoin d'être frappée à la porte.
 PAS_REPOS = 3
 PAS_SESSION = 1.5
+
+# Une demande prise en charge et sans nouvelles depuis ce délai a été
+# interrompue — coupure de courant, redémarrage, plantage. Cinq minutes
+# laissent largement le temps à la plus lente (un reçu à refabriquer) de
+# finir. Voir `_abandonner_les_orphelines`.
+ORPHELINE_S = 300
 
 
 class Pilotage:
@@ -96,11 +104,45 @@ class Pilotage:
                 for demande in self.nuage.commandes_en_attente():
                     self._traiter(demande)
                 self._expirer_session()
+                self._abandonner_les_orphelines()
             except Exception as e:   # jamais mourir sur une demande
                 self.journal.evenement(t(
                     f"remote desk: error {e}",
                     f"guichet à distance : erreur {e}"))
             time.sleep(PAS_SESSION if self._session else self.pause)
+
+    def _abandonner_les_orphelines(self):
+        """Les demandes coupées en plein vol ne restent pas en suspens.
+
+        Le robot peut être arrêté entre le moment où il prend une demande et
+        celui où il écrit son résultat. La ligne reste alors « en cours »
+        pour toujours, et l'écran tourne dans le vide.
+
+        On les marque ÉCHOUÉES, jamais « en attente » : les remettre en file
+        les ferait rejouer, alors qu'on ne sait pas si le code a été composé
+        avant la coupure. Sur un transfert, c'est le doute qu'il faut lever,
+        pas l'argent qu'il faut renvoyer. Le message le dit franchement — le
+        propriétaire ira voir son solde, qui fait foi.
+        """
+        # `_horodatage` attend une date ISO, pas un nombre de secondes : on la
+        # lui donne déjà écrite, dans le fuseau du Pi.
+        limite = _horodatage(
+            (datetime.now() - timedelta(seconds=ORPHELINE_S)).isoformat())
+        for demande in self.nuage.commandes_abandonnees(limite):
+            self.nuage.commande_maj(demande.get("id"), {
+                "etat": "echouee",
+                "resultat": t(
+                    "The terminal was interrupted while handling this request. "
+                    "It may or may not have gone through: check the balance "
+                    "before trying again.",
+                    "Le terminal a été interrompu pendant cette demande. Elle "
+                    "est peut-être passée, peut-être pas : vérifiez le solde "
+                    "avant de recommencer."),
+                "traitee_le": _horodatage(),
+            })
+            self.journal.evenement(t(
+                "remote desk: request abandoned after an interruption",
+                "guichet à distance : demande abandonnée après une coupure"))
 
     def _expirer_session(self):
         if self._session and time.time() - self._session["vie"] > SESSION_MUETTE:

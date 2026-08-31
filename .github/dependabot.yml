@@ -1,0 +1,25 @@
+# Les actions épinglées doivent quand même monter.
+#
+# On les a épinglées à leur empreinte (voir « application-android.yml ») :
+# une étiquette « @v4 » peut être redéplacée par qui contrôle le dépôt, et
+# ces travaux tiennent le jeton Expo et la clé du Play Store. L'empreinte
+# ferme ce risque — mais elle en ouvre un autre, plus lent : plus aucune
+# correction de sécurité n'arrive toute seule.
+#
+# Dependabot referme celui-là. Quand une nouvelle version paraît, il ouvre
+# une pull request qui remplace l'empreinte par la nouvelle. On la relit, on
+# la fusionne. Le choix reste à nous ; c'est l'information qui vient à nous,
+# au lieu qu'on aille la chercher — ce que personne ne fait.
+#
+# Une fois par semaine : ces actions ne bougent pas tous les jours, et une
+# pull request quotidienne finirait par ne plus être lue.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "outillage"
+    labels:
+      - outillage

@@ -1,7 +1,13 @@
 # Le registre des constats de sécurité
 
-*Tour 2 — 31 août 2026. Corrigé : 11. Ouvert : 2 (une à appliquer par le
-propriétaire, une à décider). Classé : 2.*
+*Tour 3 — 31 août 2026. Corrigé : 17. Ouvert : 0. Classé : 2.*
+
+**Plus rien n'est en attente.** Les deux constats laissés au propriétaire ont
+été traités : la migration des règles dormantes est APPLIQUÉE sur la base en
+service — et vérifiée en endossant réellement les rôles `anon` et
+`authenticated` — et les actions GitHub sont épinglées, avec Dependabot pour
+qu'elles continuent de monter. Le tour 3 a aussi ouvert le dernier morceau
+non audité, le disque du Pi, et y a trouvé un P1.
 
 **Ce que le tour 2 a changé.** L'audit est passé du côté du ROBOT — celui qui
 tient les vraies cartes SIM. Deux défauts P1 y attendaient, tous deux sur le
@@ -27,19 +33,20 @@ attaquant obtient, pas à quel point c'est agaçant.
 |---|---|---|---|---|
 | SEC-01 | **P1** | Une session ne se révoque jamais | MESURÉ | **corrigé** |
 | SEC-02 | **P1** | Toute l'autorisation tient à un seul fichier | CONFIRMÉ | **corrigé** |
-| SEC-03 | **P1** | Les règles de la base ouvrent le grand livre | CONFIRMÉ | **à appliquer** |
+| SEC-03 | **P1** | Les règles de la base ouvrent le grand livre | **PROUVÉ FERMÉ** | **corrigé** |
 | SEC-04 | P2 | Le frein se contourne avec un en-tête | MESURÉ | **corrigé** |
 | SEC-05 | P2 | Aucun en-tête de sécurité | CONFIRMÉ | **corrigé** |
 | SEC-06 | P2 | Un invité peut reclasser un paiement | MESURÉ | **corrigé** |
 | SEC-07 | P3 | Un nom de fichier non échappé | CONFIRMÉ | **corrigé** |
 | SEC-08 | P3 | Le courriel entre dans les journaux | CONFIRMÉ | **corrigé** |
-| SEC-09 | P3 | Dépendances à mettre à jour | CONFIRMÉ | **corrigé en partie** |
+| SEC-09 | P3 | Dépendances à mettre à jour | CONFIRMÉ | **corrigé** |
 | SEC-10 | — | `rls_auto_enable` : fausse alerte | CONFIRMÉ | classé |
 | SEC-11 | **P1** | Le code secret survit dans la base | MESURÉ | **corrigé** |
 | SEC-12 | **P1** | Une demande peut être composée deux fois | MESURÉ | **corrigé** |
 | SEC-13 | P3 | Une saisie devient du code dans les workflows | CONFIRMÉ | **corrigé** |
-| SEC-14 | P3 | Les actions GitHub suivent une étiquette mobile | CONFIRMÉ | **à décider** |
+| SEC-14 | P3 | Les actions GitHub suivent une étiquette mobile | CONFIRMÉ | **corrigé** |
 | SEC-15 | — | SHA-1 dans `app.py` : fausse alerte | CONFIRMÉ | classé |
+| SEC-16 | **P1** | Les secrets du Pi sont lisibles par tous | MESURÉ | **corrigé** |
 
 **MESURÉ** veut dire quelque chose de précis ici : l'essai a d'abord été écrit,
 lancé, et vu ÉCHOUER contre le défaut — avant toute correction. Un essai qu'on
@@ -229,7 +236,7 @@ choisie, et expliquée, pour `utilisateurs` et `appareils`
 (`sql/schema.sql:424-429`). Et corriger le commentaire de `schema.sql`, qui
 décrit une architecture abandonnée.
 
-**ÉCRIT, PAS APPLIQUÉ — et c'est délibéré.**
+**APPLIQUÉ, ET PROUVÉ FERMÉ** (31 août 2026).
 
 Le correctif est `migrations/20260831_regles_dormantes.sql` : il retire les
 politiques, s'assure que RLS reste active partout, et porte son propre bloc
@@ -238,16 +245,35 @@ son commentaire — qui décrivait une architecture abandonnée, et affirmait qu
 « l'application web lit avec la clé publique » — dit maintenant la vérité :
 la base ne protège rien, toute l'autorisation est du code.
 
-**Ce qui reste à faire, et par qui.** Appliquer ce fichier dans l'éditeur SQL
-de Supabase. Je ne l'ai pas fait moi-même : c'est la base EN SERVICE, celle
-qui porte 302 paiements réels, et un audit n'écrit pas dans la production.
-Le fichier est rejouable, ne touche aucune donnée, et son bloc (a) doit
-rendre **zéro ligne**, (b) **zéro ligne**, (c) les mêmes comptes qu'avant.
+**COMMENT ON L'A VÉRIFIÉ**, et c'est le point important : pas en constatant
+l'absence de politiques, mais en ENDOSSANT les rôles qu'un attaquant
+aurait. `set local role authenticated`, puis les mêmes requêtes qu'avant :
 
-**À vérifier au passage** [À VÉRIFIER] : l'inscription Supabase Auth est-elle
-ouverte sur le projet (Authentication → Providers) ? Après cette migration,
-la réponse n'a plus d'importance pour l'argent — mais elle vaut d'être
-connue.
+| | avant | après |
+|---|---|---|
+| `paiements` vus par `authenticated` | 303 | **0** |
+| `comptes` (soldes) | tous | **0** |
+| `recus` | 203 | **0** |
+| `commandes` | 859 | **0** |
+| déposer une commande (composer sur une vraie SIM) | accepté | **`new row violates row-level security policy`** |
+
+Et `anon` : 0 paiements. Les données, elles, n'ont pas bougé — 303 paiements,
+203 reçus, 2 comptes, avant comme après. Le conseiller Supabase ne signale
+plus que « RLS active, aucune politique » sur chaque table, en INFO : c'est
+exactement l'état voulu, celui qui était déjà assumé pour `utilisateurs` et
+`appareils`.
+
+**Un mot sur la méthode.** J'ai d'abord cru avoir laissé une ligne d'essai
+derrière moi : le compte des commandes était passé de 859 à 860 entre deux
+requêtes. Vérification faite, la ligne 860 était une VRAIE commande du
+propriétaire, arrivée entre-temps — elle portait un code, une carte, une
+langue, et l'état « faite », ce que mon insertion n'avait pas. La mienne
+avait bien été refusée. Compter une différence n'est pas constater une
+cause ; il a fallu aller regarder la ligne.
+
+**Ce que la question de l'inscription Supabase Auth devient.** Sans objet
+pour l'argent : même un compte `authenticated` créé librement ne voit plus
+rien. Elle reste bonne à savoir, elle n'est plus un risque.
 
 ---
 
@@ -442,22 +468,15 @@ paquet installé. À traiter avec la prochaine montée d'Expo, pas en urgence.
 **CORRIGÉ EN PARTIE.** `next` est en **16.2.11** (épinglé exactement) et
 `nanoid` en **3.3.18**. La batterie complète a été jouée après la montée.
 
-**Ce qui reste, et pourquoi je m'arrête là.** `npm audit` signale encore trois
-avis de gravité haute, tous dans des dépendances **de `next` lui-même** :
-`postcss` (≤ 8.5.22) et `sharp` (< 0.35.0). Les fermer demande
-**`next@16.3.3`**, une montée mineure hors de la plage actuelle.
+**ENTIÈREMENT FERMÉ** (tour 3). `next` est monté en **16.3.3**, ce qui emporte
+les trois derniers avis — `postcss` et `sharp`, tous deux dans les
+dépendances de `next` lui-même. `npm audit` rend maintenant **0 vulnérabilité**.
 
-Ni l'un ni l'autre n'est atteignable ici, et c'est vérifié plutôt que
-supposé :
-  · `postcss` ne traite que la feuille de style du projet, à la compilation —
-    aucune CSS fournie par un visiteur ne l'atteint ;
-  · les avis `sharp`/libvips passent par l'optimisation d'images, et
-    **`next/image` n'est utilisé nulle part** dans ce dépôt (`grep` : aucun).
-
-Une montée mineure du cadre, juste après un changement d'autorisation aussi
-large, brouillerait le diff pour fermer des avis qui n'ont pas de support
-ici. Elle mérite son propre passage, avec sa propre batterie. **À faire au
-tour suivant**, ou tout de suite si le propriétaire préfère.
+La montée a eu sa propre batterie, parce qu'elle change le cadre : compilation,
+types, le verrou, les comptes, et surtout la politique de contenu REVÉRIFIÉE
+dans un vrai navigateur — la propagation du nonce par Next est exactement le
+genre de chose qu'une montée de version peut casser en silence. Zéro refus,
+tous les scripts portent le nonce, le chemin du PDF passe toujours.
 
 ---
 
@@ -511,6 +530,9 @@ prochain tour.
 - **Secrets dans le dépôt** — rien, historique compris ; deux secrets
   d'essai clairement nommés dans `web/scripts/`. Aucun secret derrière un
   préfixe `NEXT_PUBLIC_` ou `EXPO_PUBLIC_`.
+- **Les reçus PDF** — le SOLDE n'y figure pas, délibérément : « un reçu se
+  tend à un client ; il n'a pas à y lire la caisse de l'agent »
+  (`recu.py:640`). Le document remis à un tiers ne porte que l'opération.
 - **Le lecteur de SMS, poussé** — c'est la seule entrée du système qui
   n'exige ni compte, ni jeton, ni autorisation : quiconque connaît le numéro
   de la SIM peut lui écrire. Dix charges hostiles de 5 000 à 20 000
@@ -689,15 +711,25 @@ publient vers des téléphones en service — c'est ce qu'une action détournée
 obtiendrait. `actions/*` appartient à GitHub (risque plus faible) ;
 `expo/expo-github-action` est un tiers.
 
-**Pourquoi je ne l'ai pas corrigé de moi-même.** L'épinglage à une empreinte
-ferme le risque, mais il a un coût qui dure : plus aucune correction de
-sécurité de ces actions n'arrive toute seule, et il faut relever les
-empreintes à la main — ou installer Dependabot pour le faire. Imposer un
-entretien récurrent n'est pas une correction « sans effet de bord », et ce
-n'est pas à un audit d'en décider seul.
+**CORRIGÉ.** Les trois sont épinglées à leur empreinte, avec la version
+lisible en commentaire — sans quoi plus personne ne sait ce qui tourne :
 
-**Ce que je propose :** épingler les trois à leur empreinte, et ajouter
-Dependabot pour qu'elles continuent de monter. À faire d'un mot.
+| action | empreinte | version |
+|---|---|---|
+| `actions/checkout` | `11d5960a3267…` | v4.4.0 |
+| `actions/setup-node` | `49933ea5288c…` | v4.4.0 |
+| `expo/expo-github-action` | `c7b66a9c327a…` | 8.2.1 |
+
+Chaque empreinte a été **résolue depuis le dépôt d'origine** (`git ls-remote`)
+puis recoupée avec la version précise qu'elle porte — pas recopiée de
+mémoire, où elle n'aurait été qu'une suite de caractères plausibles.
+
+**Le coût est réel, et il est couvert.** Épingler supprime les montées
+automatiques, corrections de sécurité comprises. D'où
+`.github/dependabot.yml`, qui ouvre une pull request hebdomadaire quand une
+nouvelle version paraît : on relit, on fusionne. Le choix reste au
+propriétaire ; c'est l'information qui vient à lui, au lieu qu'il aille la
+chercher — ce que personne ne fait.
 
 ---
 
@@ -715,31 +747,99 @@ Classé sans suite. Noté ici pour qu'on ne le rejuge pas à chaque tour.
 
 ---
 
-## Le résidu — ce qui reste vrai après le tour 1
+## SEC-16 · P1 · Les secrets du Pi sont lisibles par tous
+
+**ASVS** V14.1, V7.1 · **CWE-732** (droits trop larges) · **CWE-312** ·
+**Confiance : HAUTE — MESURÉ**
+
+**Ce qui se passait.** Deux fichiers valent tout le reste sur cette machine :
+
+- **`totem.conf`** — il porte le jeton du robot Telegram, qui permet de
+  PARLER à sa place donc de piloter la SIM, et la **clé de service Supabase**,
+  qui contourne toutes les règles de la base : la lire, c'est lire, écrire et
+  effacer tout le grand livre. Le fichier d'exemple le dit lui-même :
+  « ⚠ SECRÈTE : elle contourne… ».
+- **`/var/lib/totem/journal.db`** — tout l'historique : montants, tiers,
+  numéros de téléphone, soldes.
+
+L'installateur copiait l'exemple (`cp`) puis y écrivait les secrets, **sans
+jamais restreindre les droits** ; `mkdir -p /var/lib/totem` suivait le umask ;
+et SQLite créait sa base de la même façon. Sur un Raspberry Pi, umask vaut
+022 : **tout naissait en 0644**, lisible par n'importe quel compte de la
+machine. Un Pi n'est pas une machine à un seul utilisateur — il a un compte
+`pi`, souvent un accès SSH partagé pour la maintenance, parfois un second
+compte pour quelqu'un du bureau.
+
+Le jeton du robot s'affichait aussi **en clair à l'écran** pendant
+l'installation (`read -rp`), qui se fait souvent en partage d'écran ou devant
+quelqu'un qui aide.
+
+**MESURÉ.** `tests/test_secrets_au_repos.py` crée les fichiers comme le code
+les crée et regarde les droits obtenus : `journal.db` en **0o644**, la
+sauvegarde en **0o644**. Cinq essais rouges au départ.
+
+**CORRIGÉ**, aux trois endroits :
+
+1. **`install.sh`** — `chmod 600` sur la configuration **avant** d'y écrire
+   les secrets (l'ordre n'est pas décoratif : les poser d'abord les ferait
+   exister en clair et lisibles, ne serait-ce qu'un instant), puis à chaque
+   passage pour rattraper les installations existantes ; `chmod 700` sur
+   `/var/lib/totem` ; et `read -rsp` pour que le jeton ne s'affiche plus.
+2. **`storage.py`** — le journal ET sa sauvegarde se referment à 0600 dès
+   l'ouverture. La sauvegarde compte autant : c'est une copie ENTIÈRE, et la
+   laisser ouverte le temps du transfert annulerait le soin pris sur
+   l'original.
+3. **`config.py`** — le robot DIT, au démarrage, si son fichier de secrets est
+   lisible par d'autres.
+
+**LE CAS QU'ON NE PEUT PAS FERMER, et pourquoi on le dit au lieu de le taire.**
+Le chemin recommandé est `/boot/firmware/totem.conf`, sur la partition de
+démarrage. Elle est en **FAT — un système de fichiers sans droits Unix**.
+Aucun `chmod` n'y peut rien, et c'est un choix assumé : on veut pouvoir
+corriger la configuration depuis un PC Windows, en sortant la carte, sans
+savoir ouvrir un terminal. Refuser de démarrer mettrait le robot à l'arrêt
+pour un défaut qui n'est pas une panne — et un robot arrêté, c'est une caisse
+qu'on ne surveille plus.
+
+Alors le robot le dit, à chaque démarrage, avec le geste exact pour y
+remédier (`sudo mv … /etc/totem.conf && sudo chmod 600 …`). **Un risque qu'on
+connaît et qu'on a choisi n'est pas le même qu'un risque qu'on ignore.**
+
+**Résidu assumé :** sur la partition de démarrage, ces secrets restent
+lisibles. Quiconque prend la carte SD les lit, sur n'importe quel ordinateur.
+C'est vrai de toute installation Raspberry Pi, et le déplacement vers `/etc`
+est à un `mv` de distance.
+
+---
+
+## Le résidu — ce qui reste vrai après le tour 3
 
 À écrire, sinon « corrigé » finit par vouloir dire « on n'y pense plus ».
 
-- **Le frein ne vit que dans une instance.** Il mord sur la cadence d'une
-  instance chaude ; sur Vercel, une instance froide repart à zéro. Un frein
-  réellement partagé demande un compteur hors du serveur.
-- **Le garde relit la base toutes les dix secondes.** Une session fermée peut
-  donc vivre dix secondes de plus — sauf si c'est le propriétaire qui vient de
-  la fermer, auquel cas l'effet est immédiat. Ce n'est plus trente jours.
-- **Le sursis de cinq minutes.** Si la base se tait, un compte vu approuvé il
-  y a quatre minutes passe encore. C'est un choix : l'inverse ferait d'une
-  panne de Supabase un verrou sur sa propre maison.
+- ~~Le frein ne vit que dans une instance.~~ **Fermé au tour 3** : une
+  ardoise commune en base (table `freins`) compte les échecs de toutes les
+  instances. Mesuré avec DEUX serveurs partageant la même base — la seconde,
+  mémoire vierge, est passée de 37 ms à 8 032 ms. Elle ne ferme jamais la
+  porte à elle seule : base muette, on retombe sur la mémoire locale.
+- ~~`next` reste en 16.2.11.~~ **Fermé au tour 3** : 16.3.3, `npm audit` rend
+  0 vulnérabilité.
+- ~~SEC-03 n'est pas appliqué.~~ **Appliqué au tour 3**, et prouvé fermé en
+  endossant les rôles `anon` et `authenticated`.
+- ~~Une demande exécutée mais jamais marquée reste bloquée.~~ **Fermé au
+  tour 3** : le robot reprend les demandes restées « en cours » plus de cinq
+  minutes et les marque ÉCHOUÉES — jamais « en attente », ce qui les ferait
+  rejouer alors qu'on ne sait pas si le code a été composé. Le message
+  renvoie au solde, qui fait foi.
+- ~~Les actions GitHub ne sont pas épinglées.~~ **Fermé au tour 3.**
+- **Les secrets sur la partition de démarrage restent lisibles.** FAT n'a pas
+  de droits ; le robot le dit à chaque démarrage, avec le geste pour y
+  remédier. Voir SEC-16.
+- **Le garde relit la base toutes les dix secondes** (immédiat sur un geste
+  du propriétaire), et accorde cinq minutes de sursis si la base se tait.
 - **`style-src` garde `unsafe-inline`.** Voir SEC-05.
-- **`next` reste en 16.2.11**, avec trois avis non atteignables dans ses
-  propres dépendances. Voir SEC-09.
-- **SEC-03 n'est pas appliqué** sur la base en service. Tant que ce n'est pas
-  fait, les politiques `using (true)` sont toujours là.
-- **Une demande exécutée mais jamais marquée reste bloquée.** Si le modem
-  compose puis que l'écriture finale n'aboutit pas, la ligne reste
-  « en_cours » et n'est plus reprise. C'est le bon côté de l'erreur — mieux
-  vaut une demande à refaire qu'une demande faite deux fois — mais elle
-  demande un geste du propriétaire.
-- **Les actions GitHub ne sont pas épinglées.** Voir SEC-14 : c'est une
-  décision à prendre, pas un oubli.
+- **Le frein interroge la base à chaque tentative de connexion.** C'est un
+  aller-retour de plus sur un chemin qui en compte déjà (PBKDF2, 210 000
+  tours). Assumé : la connexion n'est pas un chemin chaud.
 - **Un seul niveau de lecture.** Tout compte approuvé voit tout l'argent. Ce
   n'est pas un défaut, c'est le modèle — une caisse, un propriétaire — mais
   cela cesserait d'en être un le jour où de vraies personnes seraient
@@ -750,14 +850,13 @@ Classé sans suite. Noté ici pour qu'on ne le rejuge pas à chaque tour.
 - TLS et en-têtes en service (`testssl.sh`, `curl -I` sur le domaine réel) —
   il faut l'adresse de production.
 - DNS : CAA, SPF/DKIM/DMARC, sous-domaines pendants.
-- **Le stockage local du robot** (`storage.py`, 1 011 lignes) : la base SQLite
-  du Pi, ce qu'elle garde et sous quels droits de fichier.
-- **`recu.py` et `pdf.py`** : ce qui entre dans un document remis à un tiers.
 - **`detect.py` et `courrier.py`** : la découverte des modems, la file
-  sortante.
-- **`config.py` et `install.sh`** : les droits du fichier `totem.conf`, qui
-  porte la clé de service et le jeton Telegram.
-- CodeQL — pas encore joué (Semgrep l'a été, tour 2).
-- Le frein hors mémoire d'instance (voir le résidu).
-- Les vérifications du bord (TLS, en-têtes en service, DNS/CAA, sous-domaine
-  pendant) — il faut l'adresse de production.
+  sortante. Aucun des deux ne touche à un secret ni à une décision d'accès —
+  c'est pourquoi ils viennent après le reste.
+- **CodeQL** — pas encore joué (Semgrep l'a été au tour 2, et rejoué au
+  tour 3 : plus aucun constat d'injection).
+- **Les vérifications du BORD** — TLS, en-têtes servis en production,
+  DNS/CAA, SPF/DKIM/DMARC, sous-domaine pendant. **C'est le seul morceau que
+  je ne peux pas faire seul : il faut l'adresse de production.** Les en-têtes
+  ont été vérifiés sur un vrai serveur local et dans un vrai navigateur, mais
+  ce n'est pas la même chose que de les voir sortir de Vercel.

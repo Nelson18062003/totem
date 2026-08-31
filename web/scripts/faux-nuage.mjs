@@ -148,6 +148,8 @@ let prochainCompte = 1;
 
 // Les téléphones inscrits pour les notifications, par jeton.
 const appareils = new Map();
+// L'ardoise du frein : une ligne par échec, comme en vrai.
+const freins = [];
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
@@ -248,6 +250,47 @@ const serveur = createServer(async (req, res) => {
       return repondre([], 204);
     }
     return repondre([...appareils.values()]);
+  }
+
+  // --- L'ARDOISE DU FREIN ------------------------------------------------
+  //
+  // C'est ce qui rend le frein commun à TOUTES les instances : chaque échec
+  // ajoute une ligne, et chaque tentative compte celles de la fenêtre. Sans
+  // cette table ici, le harnais ne pourrait pas éprouver la seule chose qui
+  // compte — qu'une instance NEUVE, qui n'a rien en mémoire, freine quand
+  // même celui qui a déjà brûlé ses essais ailleurs.
+  if (chemin === "/rest/v1/freins") {
+    if (req.method === "POST") {
+      let brut = "";
+      for await (const mm of req) brut += mm;
+      for (const f of [].concat(JSON.parse(brut || "[]"))) {
+        freins.push({ cle: f.cle, vu_le: f.vu_le ?? maintenant() });
+      }
+      return repondre([], 201);
+    }
+    if (req.method === "DELETE") {
+      const avant = url.searchParams.get("vu_le");
+      if (avant?.startsWith("lt.")) {
+        const seuil = decodeURIComponent(avant.slice(3));
+        for (let i = freins.length - 1; i >= 0; i--) {
+          if (freins[i].vu_le < seuil) freins.splice(i, 1);
+        }
+      }
+      return repondre([], 204);
+    }
+    // GET : on compte, comme PostgREST, dans « content-range ».
+    const eq = url.searchParams.get("cle");
+    const depuis = url.searchParams.get("vu_le");
+    const seuil = depuis?.startsWith("gte.")
+      ? decodeURIComponent(depuis.slice(4)) : null;
+    const trouvees = freins.filter((f) => {
+      if (eq && f.cle !== decodeURIComponent(eq.replace("eq.", ""))) return false;
+      if (seuil && f.vu_le < seuil) return false;
+      return true;
+    });
+    return repondre([], 200, {
+      "content-range": `0-${Math.max(0, trouvees.length - 1)}/${trouvees.length}`,
+    });
   }
 
   // --- LES COMPTES -------------------------------------------------------

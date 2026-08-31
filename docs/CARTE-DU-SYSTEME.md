@@ -1,6 +1,6 @@
 # La carte du système — ce qu'il y a à défendre
 
-*Établie le 31 août 2026, mise à jour au tour 2. À relire à chaque tour
+*Établie le 31 août 2026, mise à jour au tour 3. À relire à chaque tour
 d'audit : une carte périmée fait chercher au mauvais endroit.*
 
 Ce document ne décrit pas ce que TOTEM fait pour le propriétaire — c'est le
@@ -40,7 +40,7 @@ Trois codes séparés, une seule base :
 |---|---|---|---|
 | La plateforme | `web/` | TypeScript, Next.js 16 (App Router) | `SESSION_SECRET`, `SUPABASE_CLE` (service), `TOTEM_MOT_DE_PASSE` |
 | Le téléphone | `mobile/` | TypeScript, Expo/React Native | un jeton de session, dans le coffre du système |
-| Le robot | `totem/` | Python | le PIN (jamais écrit), la clé de service, le jeton Telegram |
+| Le robot | `totem/` | Python | le PIN (jamais écrit), la clé de service, le jeton Telegram — dans `totem.conf`, en 0600 depuis le tour 3 (sauf sur la partition de démarrage, qui n'a pas de droits : le robot le dit alors au démarrage) |
 
 Côté robot, deux niveaux aussi, et sur Telegram cette fois : **administrateur**
 (pilote la SIM) et **observateur** (voit l'activité). Les conversations non
@@ -56,6 +56,12 @@ Tout passe par `web/middleware.ts`.
 **contourne toutes les règles de la base** (`web/lib/serveur.ts:25-26`). Donc :
 *aucune* protection ne vient de la base. Toute l'autorisation est du code
 TypeScript. C'est le fait le plus important de cette carte.
+
+Depuis le tour 3, la base ne porte plus AUCUNE politique : RLS est active
+partout, sans porte. Vérifié en endossant les rôles — `anon` et
+`authenticated` voient zéro paiement, zéro solde, zéro reçu, et ne peuvent
+plus déposer de commande. La clé publique de Supabase n'ouvre donc plus rien,
+ce qui est le seul état acceptable pour une clé publique par construction.
 
 **F3 — Le robot → Supabase.** Même clé de service, depuis `totem.conf`
 (ignoré par git). Un Pi compromis écrit ce qu'il veut dans le grand livre.

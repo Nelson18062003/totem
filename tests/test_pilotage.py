@@ -30,9 +30,15 @@ class FauxNuage:
         self.echouer_maj = False    # toute écriture échoue
         self.reclamations = []      # les demandes qu'on a tenté de réclamer
         self.reclamation_perdue = False   # un autre robot l'a prise
+        self.orphelines = []              # prises en charge, jamais finies
+        self.limites_demandees = []
 
     def commandes_en_attente(self):
         return []
+
+    def commandes_abandonnees(self, avant):
+        self.limites_demandees.append(avant)
+        return list(self.orphelines)
 
     def reveiller(self):
         self.reveils += 1
@@ -240,6 +246,40 @@ class TestGuichet(unittest.TestCase):
         etats = [c.get("etat") for i, c in nuage.maj if i == 10 and "etat" in c]
         self.assertEqual(etats, ["en_cours", "faite"])
         self.assertEqual(compte.recu, ["#148#"])
+
+    def test_une_demande_coupee_en_plein_vol_ne_reste_pas_en_suspens(self):
+        """Le robot peut être arrêté entre la prise en charge et le résultat.
+
+        La ligne restait alors « en cours » pour toujours : l'écran attendait
+        une réponse qui ne viendrait jamais, et le propriétaire ne savait pas
+        si son opération était passée.
+
+        On la marque ÉCHOUÉE — jamais « en attente ». La remettre en file la
+        ferait rejouer, alors qu'on ne sait justement pas si le code a été
+        composé avant la coupure. Sur un transfert, c'est le doute qu'il faut
+        lever, pas l'argent qu'il faut renvoyer.
+        """
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        nuage.orphelines = [{"id": 77, "type": "ussd", "etat": "en_cours"}]
+
+        p._abandonner_les_orphelines()
+
+        self.assertEqual(len(nuage.maj), 1)
+        identifiant, champs = nuage.maj[0]
+        self.assertEqual(identifiant, 77)
+        self.assertEqual(champs["etat"], "echouee")
+        # Le message renvoie au SOLDE, qui fait foi — dans la langue du robot,
+        # quelle qu'elle soit. On n'ancre pas un essai sur une langue : le
+        # robot parle anglais par défaut et français sur demande.
+        dit = champs["resultat"].lower()
+        self.assertTrue("balance" in dit or "solde" in dit, dit)
+        # Rien n'a été composé : on ne rejoue pas ce qu'on ne comprend pas.
+        self.assertEqual(compte.recu, [])
+        # Et la limite demandée est bien une date, pas un nombre de secondes.
+        self.assertEqual(len(nuage.limites_demandees), 1)
+        from datetime import datetime
+        datetime.fromisoformat(nuage.limites_demandees[0])
 
     def test_un_solde_annonce_est_publie(self):
         compte = FauxCompte([

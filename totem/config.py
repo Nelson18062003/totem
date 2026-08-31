@@ -11,6 +11,7 @@ Ordre de recherche :
 import configparser
 import os
 import re
+import stat
 
 CHEMINS = [
     os.environ.get("TOTEM_CONF", ""),
@@ -22,6 +23,70 @@ CHEMINS = [
 
 class ErreurConfig(Exception):
     pass
+
+
+def avertissements_droits(chemin):
+    """Ce fichier laisse-t-il lire ses secrets à quelqu'un d'autre ?
+
+    CE QU'IL PORTE : le jeton du robot Telegram — qui permet de PARLER à la
+    place du robot, donc de piloter la SIM — et la clé de service Supabase,
+    qui contourne toutes les règles de la base : la lire, c'est lire, écrire
+    et effacer tout le grand livre. Le fichier d'exemple le dit lui-même :
+    « ⚠ SECRÈTE : elle contourne… ».
+
+    POURQUOI UN AVERTISSEMENT ET NON UN REFUS. Deux raisons, et la seconde
+    est la vraie.
+
+    D'abord, refuser de démarrer mettrait le robot à l'arrêt pour un défaut
+    qui n'est pas une panne — et un robot arrêté, c'est une caisse qu'on ne
+    surveille plus.
+
+    Ensuite et surtout : le chemin RECOMMANDÉ est
+    `/boot/firmware/totem.conf`, sur la partition de démarrage. Elle est en
+    FAT — un système de fichiers qui n'a PAS de droits Unix. Aucun `chmod`
+    n'y peut rien, et c'est un choix assumé : on veut pouvoir corriger la
+    configuration depuis un PC Windows, en sortant la carte, sans être
+    capable d'ouvrir un terminal. Refuser reviendrait à interdire
+    l'installation ordinaire.
+
+    Alors on le DIT. Un risque qu'on connaît et qu'on a choisi n'est pas le
+    même qu'un risque qu'on ignore. Et le message dit quoi faire : déplacer
+    le fichier vers `/etc/totem.conf`, où les droits existent vraiment.
+
+    Rend une liste de phrases — vide si tout va bien.
+    """
+    try:
+        mode = stat.S_IMODE(os.stat(chemin).st_mode)
+    except OSError:
+        return []
+    if not mode & (stat.S_IRGRP | stat.S_IROTH):
+        return []
+
+    phrases = [
+        f"Le fichier de configuration {chemin} est en {oct(mode)[-3:]} : "
+        "d'autres comptes de cette machine peuvent le lire. Il porte le jeton "
+        "du robot et la clé de service de la base."
+    ]
+    if _sur_partition_sans_droits(chemin):
+        phrases.append(
+            "Ce fichier est sur la partition de démarrage, en FAT : elle n'a "
+            "pas de droits Unix, et « chmod » n'y changera rien. Pour le "
+            "fermer vraiment, déplacez-le vers /etc/totem.conf "
+            "(sudo mv " + chemin + " /etc/totem.conf && "
+            "sudo chmod 600 /etc/totem.conf).")
+    else:
+        phrases.append(f"À refermer : sudo chmod 600 {chemin}")
+    return phrases
+
+
+def _sur_partition_sans_droits(chemin):
+    """Le fichier est-il sur la partition de démarrage (FAT) ?
+
+    On se fie au chemin plutôt qu'au type de système de fichiers : c'est
+    lisible, cela ne dépend d'aucun outil, et ces deux emplacements sont les
+    seuls que l'installateur propose là-bas."""
+    reel = os.path.realpath(chemin)
+    return reel.startswith("/boot/")
 
 
 def _liste(valeur):
@@ -112,6 +177,11 @@ def charger():
                     "cloud_url": cfg.get("cloud", "url", fallback="").strip(),
                     "cloud_cle": cfg.get("cloud", "cle", fallback="").strip(),
                     "terminal": cfg.get("cloud", "terminal", fallback="totem").strip(),
+                    # D'OÙ VIENNENT CES VALEURS. Le robot en a besoin pour
+                    # dire, au démarrage, si le fichier qui porte ses secrets
+                    # est lisible par d'autres comptes de la machine.
+                    "chemin_config": chemin,
+                    "avertissements": avertissements_droits(chemin),
                 }
             except KeyError as e:
                 raise ErreurConfig(f"Clé manquante dans {chemin} : {e}")

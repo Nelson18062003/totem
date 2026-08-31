@@ -25,6 +25,10 @@ import type { Langue } from "@noyau/langue";
 const url = process.env.SUPABASE_URL;
 const cle = process.env.SUPABASE_CLE;
 
+/** La clé de service, sous un nom qui ne se heurte pas à une variable locale.
+ *  (Le frein partagé nomme « cle » son identité freinée.) */
+const cle_ = (): string => cle!;
+
 export const relie = Boolean(url && cle);
 
 // Le fuseau du terminal, réglable (voir lib/fuseau.ts). Il découpe les
@@ -743,6 +747,79 @@ export async function supprimerUtilisateur(id: number): Promise<boolean> {
     return r.ok;
   } catch {
     return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LE FREIN PARTAGÉ
+//
+// Le frein aux mots de passe vit dans la mémoire d'une instance (lib/frein.ts).
+// Cela suffit à casser la cadence sur une instance chaude — et pas du tout
+// sur Vercel, où chaque instance froide repart à zéro : il suffit d'insister
+// pour tomber sur une neuve, et retrouver ses essais libres.
+//
+// D'où cette ardoise commune, en base. Elle est VOLONTAIREMENT bête :
+//
+//   · on AJOUTE une ligne par échec, on ne modifie jamais rien. Pas de
+//     lecture-puis-écriture, donc pas de comptage perdu entre deux instances
+//     qui écrivent en même temps ;
+//   · on COMPTE les lignes de la fenêtre pour savoir où l'on en est ;
+//   · le ménage se fait en passant, sur les lignes trop vieilles.
+//
+// ET ELLE NE DOIT JAMAIS FERMER LA PORTE. Si la base ne répond pas, on rend
+// `null` — « je ne sais pas » — et le frein retombe sur sa mémoire locale.
+// Faire dépendre la connexion d'une base joignable serait exactement ce que
+// la clé de secours existe pour éviter : une base en panne ne doit pas être
+// un verrou sur sa propre maison.
+// ---------------------------------------------------------------------------
+
+/** Un échec de plus sur cette ardoise. Sans bruit si la base se tait. */
+export async function noterEchecPartage(cles: string[]): Promise<void> {
+  if (!relie || !cles.length) return;
+  const maintenant = new Date().toISOString();
+  await ecrire("freins", "POST", cles.map((cle) => ({ cle, vu_le: maintenant })),
+               { prefer: "return=minimal" });
+}
+
+/** Combien d'échecs sur cette ardoise depuis `depuis` ? `null` si on ne sait pas. */
+export async function compterEchecsPartages(
+  cle: string, depuis: Date,
+): Promise<number | null> {
+  if (!relie) return null;
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/freins?select=cle&cle=eq.${encodeURIComponent(cle)}` +
+      `&vu_le=gte.${encodeURIComponent(depuis.toISOString())}`,
+      {
+        headers: {
+          apikey: cle_(), authorization: `Bearer ${cle_()}`,
+          prefer: "count=exact", range: "0-0",
+        },
+        cache: "no-store",
+      });
+    if (!r.ok) return null;
+    const total = r.headers.get("content-range")?.split("/")[1];
+    if (total === undefined || total === "*") return null;
+    const n = Number(total);
+    return Number.isInteger(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Le ménage de l'ardoise : les lignes hors fenêtre ne servent plus. */
+export async function oublierVieuxFreins(avant: Date): Promise<void> {
+  if (!relie) return;
+  try {
+    await fetch(
+      `${url}/rest/v1/freins?vu_le=lt.${encodeURIComponent(avant.toISOString())}`,
+      {
+        method: "DELETE",
+        headers: { apikey: cle_(), authorization: `Bearer ${cle_()}` },
+        cache: "no-store",
+      });
+  } catch {
+    /* le prochain passage réessaiera */
   }
 }
 

@@ -556,6 +556,34 @@ class Nuage:
             self.derniere_erreur = str(e)
             return []
 
+    def commandes_abandonnees(self, avant):
+        """Les demandes prises en charge et jamais terminées.
+
+        POURQUOI IL EN EXISTE. Une demande se RÉCLAME avant d'être exécutée
+        (voir `reclamer`), et son résultat s'écrit après. Entre les deux, le
+        robot peut être coupé — courant, redémarrage, plantage. La ligne
+        reste alors « en cours » pour toujours : l'écran attend une réponse
+        qui ne viendra pas, et le propriétaire ne sait pas si son opération
+        est passée.
+
+        POURQUOI ON NE LES REMET PAS « EN ATTENTE ». Ce serait les faire
+        rejouer — et on ne sait justement PAS si le code a été composé avant
+        la coupure. Sur un transfert, c'est le doute qu'il faut lever, pas
+        l'argent qu'il faut renvoyer. On les marque échouées, avec un mot qui
+        dit ce qu'on ne sait pas.
+        """
+        if not self.actif:
+            return []
+        try:
+            lignes = self._lire(
+                f"commandes?terminal=eq.{self.terminal}&etat=eq.en_cours"
+                f"&demandee_le=lt.{urllib.parse.quote(avant)}&limit=20")
+            self.derniere_erreur = None
+            return lignes
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return []
+
     def appareils(self):
         """Les téléphones qui ont demandé à être prévenus.
 
