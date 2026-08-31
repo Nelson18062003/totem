@@ -34,6 +34,13 @@
 -- porte DÉJÀ plusieurs propriétaires — c'est-à-dire si la course a déjà eu
 -- lieu. Le message le dit et montre quoi regarder.
 --
+-- Une première version de ce fichier échouait sur « column "vu" does not
+-- exist » : « create table if not exists » ne vérifie que le NOM d'une table,
+-- jamais sa FORME. Une table « freins » déjà présente, d'une autre forme,
+-- faisait sauter la création en silence — et tout ce qui suivait supposait
+-- des colonnes absentes. La section 6 rattrape désormais la forme, colonne
+-- par colonne.
+--
 -- NB : `sql/schema.sql` reste le script COMPLET et rejouable de la base ; il
 -- contient déjà tous ces blocs. Ce fichier-ci est le chemin COURT pour une
 -- base déjà en service.
@@ -215,10 +222,34 @@ create trigger un_proprietaire_reste
 create table if not exists freins (
   -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
   -- une table d'adresses ne doit pas devenir une liste de qui a un compte.
-  cle    text primary key,
+  cle    text,
   n      integer not null default 0,
   vu     timestamptz not null default now()
 );
+
+-- « CREATE TABLE IF NOT EXISTS » NE VÉRIFIE QUE LE NOM, PAS LA FORME.
+--
+-- Si une table « freins » existe déjà — un essai antérieur, une version plus
+-- ancienne de ce fichier, une table homonyme — la création ci-dessus ne fait
+-- RIEN, en silence. Tout ce qui suit suppose alors des colonnes qui ne sont
+-- pas là, et la migration s'écroule sur « column "vu" does not exist » sans
+-- que le message dise pourquoi.
+--
+-- C'est arrivé sur la base en service. Les trois lignes ci-dessous rattrapent
+-- la forme quelle que soit la table trouvée. Elles ne coûtent rien sur une
+-- base neuve, où les colonnes viennent d'être créées.
+alter table freins add column if not exists cle text;
+alter table freins add column if not exists n   integer not null default 0;
+alter table freins add column if not exists vu  timestamptz not null default now();
+
+-- L'UNICITÉ EST POSÉE À PART, et pas comme clé primaire dans la création.
+--
+-- « on conflict (cle) » exige un index unique sur « cle » : sans lui, le
+-- comptage échoue sur « no unique or exclusion constraint matching ». Une
+-- table déjà présente n'en a pas forcément. En sortant l'index de la
+-- création, les deux chemins — base neuve et base déjà là — aboutissent
+-- exactement au même index, portant le même nom.
+create unique index if not exists freins_cle_unique on freins (cle);
 
 comment on table freins is
   'Les essais de mot de passe comptés, partagés par toutes les instances. '
@@ -229,11 +260,14 @@ create index if not exists freins_vu on freins (vu);
 alter table freins enable row level security;
 -- Aucune politique : seule la clé de service entre, comme partout ailleurs.
 
+-- Le chemin de recherche est FIGÉ et la table QUALIFIÉE : une fonction qui
+-- s'en remet au chemin de l'appelant peut viser une autre table du même nom.
 create or replace function compter_un_essai(la_cle text, fenetre_s integer)
 returns integer
 language sql
+set search_path = public
 as $$
-  insert into freins (cle, n, vu)
+  insert into public.freins (cle, n, vu)
   values (la_cle, 1, now())
   on conflict (cle) do update
     set n = case

@@ -107,6 +107,46 @@ done
 # ---------------------------------------------------------------------------
 # L'ATTAQUE. Chaque essai doit être refusé — ou réussir, quand c'est écrit.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# UNE BASE DÉJÀ EN SERVICE N'EST PAS UNE BASE NEUVE.
+#
+# Ce harnais partait toujours d'une base vierge — et c'est précisément ce qui
+# lui a échappé. « create table if not exists » ne vérifie que le NOM d'une
+# table, jamais sa FORME : une table homonyme déjà présente fait sauter la
+# création EN SILENCE, et tout ce qui suit suppose des colonnes absentes.
+#
+# La migration est partie ainsi sur la base en service et s'est arrêtée sur
+# « column "vu" does not exist ». On rejoue donc les migrations sur une table
+# abîmée à dessein.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Les migrations rattrapent une table déjà là, mal formée"
+$P -d totem -c "drop table if exists freins cascade;
+                create table freins (autre_chose text);" >/dev/null 2>&1
+for m in migrations/*.sql; do
+  if ! $P -d totem -f "$m" >/dev/null 2>&1; then
+    echo "  ✗ $(basename "$m") échoue sur une table « freins » mal formée"
+    echecs=$((echecs + 1))
+  fi
+done
+formeRattrapee=$($P -d totem -tAc "
+  select count(*) from information_schema.columns
+   where table_name = 'freins' and column_name in ('cle', 'n', 'vu');")
+if [ "$formeRattrapee" = "3" ]; then
+  echo "  ✓ les trois colonnes sont rattrapées"
+else
+  echo "  ✗ seulement $formeRattrapee colonne(s) sur 3 après rattrapage"
+  echecs=$((echecs + 1))
+fi
+# Et le comptage doit fonctionner : « on conflict (cle) » exige un index
+# unique, qu'une table déjà présente n'a pas forcément.
+if $P -d totem -tAc "select compter_un_essai('rattrapage', 900);" >/dev/null 2>&1; then
+  echo "  ✓ le comptage fonctionne sur la table rattrapée"
+else
+  echo "  ✗ le comptage échoue sur la table rattrapée"
+  echecs=$((echecs + 1))
+fi
+
 echo ""
 echo "Ce que la base doit REFUSER"
 
