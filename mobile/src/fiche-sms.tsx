@@ -167,8 +167,17 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
             </View>
             <Texte taille={textes.legende} ton="pale" chiffresAlignes>{p.sim}</Texte>
           </View>
-          <Texte taille={textes.intertitre} poids="demi" numberOfLines={1}
-                 style={{ marginTop: espaces.xs }}>
+          {/* ON TRONQUE DANS UNE LISTE, JAMAIS DANS UNE FICHE.
+              Dans la boîte de réception, les lignes doivent s'aligner : un
+              nom trop long se coupe, et c'est juste. Ici, on a OUVERT la
+              fiche — pour tout voir. « NKENGAFAC MBOUNGOU J… » ne dit pas
+              qui a payé, et c'est justement la question qu'on se pose en
+              ouvrant. Le nom passe donc à la ligne.
+              Deux lignes suffisent à tout nom d'état civil ; au-delà, on
+              coupe, parce qu'un en-tête qui pousse le contenu hors de
+              l'écran est un autre défaut. */}
+          <Texte taille={textes.intertitre} poids="demi" numberOfLines={2}
+                 selectable style={{ marginTop: espaces.xs }}>
             {p.tiers || p.nom}
           </Texte>
         </>
@@ -340,12 +349,22 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
   );
 }
 
+/** Une ligne « libellé · valeur » de la fiche.
+ *
+ *  LA VALEUR NE SE COUPE PAS. Elle portait `numberOfLines={1}` : la
+ *  RÉFÉRENCE de l'opérateur — « PP240829.1042.A31245 » — s'affichait
+ *  tronquée. Or c'est exactement le numéro qu'on recopie pour réclamer
+ *  auprès de MTN ou d'Orange quand une opération est contestée. Une
+ *  référence coupée ne sert à rien ; elle donne même l'illusion de l'avoir.
+ *
+ *  Elle est aussi SÉLECTIONNABLE : un appui long la copie. C'était la seule
+ *  façon de la sortir de l'application, et il n'y en avait aucune. */
 function Rangee({ libelle, valeur }: { libelle: string; valeur: string }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md,
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: espaces.md,
                    padding: espaces.lg }}>
       <Texte taille={textes.petit} ton="doux">{libelle}</Texte>
-      <Texte taille={textes.petit} chiffresAlignes numberOfLines={1}
+      <Texte taille={textes.petit} chiffresAlignes selectable
              style={{ flex: 1, textAlign: "right" }}>
         {valeur}
       </Texte>

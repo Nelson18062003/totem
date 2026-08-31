@@ -58,6 +58,7 @@ cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
+cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
@@ -216,6 +217,17 @@ un bouton qui ne réagit pas tout de suite, et à Douala un bouton ne réagit
 pas tout de suite. Il faut donc un verrou SYNCHRONE (`useGesteUnique`) et une
 clé d'intention — le verrou pare le double appui, la clé pare la réponse
 perdue en route où la personne recommence de bonne foi.
+
+`verifier-les-fiches` tient une règle en une phrase : **on tronque dans une
+LISTE, jamais dans une FICHE**. Dans une liste, les lignes doivent s'aligner —
+l'œil parcourt une colonne, il ne lit pas ; couper y est juste. Dans une
+fiche, on a demandé à voir : couper y est un contresens. Le titre de la fiche
+d'un SMS affichait « NKENGAFAC MBOUNGOU J… », et c'est exactement la question
+qu'on se pose en l'ouvrant. La valeur d'une rangée aussi : une référence
+d'opérateur coupée ne sert à rien — c'est le numéro qu'on recopie pour
+réclamer chez MTN — et elle donne l'illusion de l'avoir. Un courriel n'est
+jamais coupé non plus : c'est sur lui qu'on décide d'ouvrir la caisse à
+quelqu'un, et « jean@exemp… » ressemble beaucoup à « jean@exemple-piege.cm ».
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une

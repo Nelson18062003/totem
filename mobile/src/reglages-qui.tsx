@@ -173,7 +173,12 @@ export function SectionQui({ langue }: { langue: Langue }) {
             {i > 0 ? <Filet /> : null}
             <View style={{ padding: espaces.lg, gap: espaces.sm }}>
               <View style={{ gap: 2 }}>
-                <Texte poids="moyen" taille={textes.petit} numberOfLines={1}>
+                {/* LE COURRIEL EN ENTIER. C'est sur lui qu'on décide
+                    d'ouvrir la caisse à quelqu'un : « jean.dupont@exemp… »
+                    et « jean.dupont@exemple-piege.cm » se ressemblent
+                    beaucoup une fois coupés. On ne tronque pas ce qui sert
+                    à reconnaître une personne. */}
+                <Texte poids="moyen" taille={textes.petit} selectable>
                   {c.courriel}
                 </Texte>
                 <Texte taille={textes.legende} ton="pale" numberOfLines={1}>
