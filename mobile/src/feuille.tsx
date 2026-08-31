@@ -8,7 +8,9 @@
 // l'opérateur.
 
 import type { ReactNode } from "react";
-import { Alert, BackHandler, Modal, Pressable, ScrollView, View } from "react-native";
+import {
+  Alert, BackHandler, KeyboardAvoidingView, Modal, Pressable, ScrollView, View,
+} from "react-native";
 import { useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Texte } from "@/ui";
@@ -58,7 +60,17 @@ export function Feuille({
   return (
     <Modal visible={visible} animationType="slide" transparent
            onRequestClose={sortir} statusBarTranslucent>
-      <View style={{ flex: 1, backgroundColor: "rgba(30,30,30,0.45)", justifyContent: "flex-end" }}>
+      {/* LE CLAVIER NE COUVRE JAMAIS LA FEUILLE. L'application vit bord à
+          bord (edgeToEdgeEnabled) : Android ne redimensionne RIEN tout seul
+          quand le clavier monte — et les champs d'une feuille vivent
+          précisément en bas, là où le clavier se pose. Sans cette enveloppe,
+          taper un nom de carte ou une réponse d'opérateur se faisait à
+          l'aveugle, le champ ET son bouton sous le clavier. « padding » sur
+          les deux plateformes, pour la même raison que l'écran de
+          connexion : sur Android, « height » se bat avec la barre d'état
+          translucide ; « undefined » ne fait rien du tout. */}
+      <KeyboardAvoidingView behavior="padding"
+        style={{ flex: 1, backgroundColor: "rgba(30,30,30,0.45)", justifyContent: "flex-end" }}>
         {/* Le voile : le toucher passe par la même confirmation. */}
         <Pressable style={{ flex: 1 }} onPress={sortir} accessibilityLabel={libelleFermer} />
 
@@ -97,7 +109,7 @@ export function Feuille({
             </View>
           ) : null}
         </SafeAreaView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

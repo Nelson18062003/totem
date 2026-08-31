@@ -9,7 +9,8 @@
 
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Linking, ScrollView, View, Pressable, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Linking, ScrollView, View,
+  Pressable, Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -61,7 +62,14 @@ export default function Reglages() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-      <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}>
+      {/* Le clavier ne couvre pas le formulaire de création de compte, qui
+          vit au milieu de la page : bord à bord, Android ne redimensionne
+          rien tout seul (voir feuille.tsx). Et « handled » : un appui sur
+          « Créer » pendant que le clavier est levé COMPTE — sans lui, le
+          premier toucher ne faisait que ranger le clavier. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+                  keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
           <Pressable onPress={() => router.back()} hitSlop={12}
                      accessibilityLabel={t.annuler}>
@@ -187,6 +195,7 @@ export default function Reglages() {
           <Texte taille={textes.legende} ton="pale">{t.proprietaire}</Texte>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

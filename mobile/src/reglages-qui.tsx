@@ -9,6 +9,10 @@
 // ICI est le seul chemin pour faire entrer quelqu'un. L'avertissement vient
 // AVANT les champs — un compte approuvé voit tout, le dire après serait
 // trop tard.
+//
+// clavier : protégé par app/reglages.tsx — la section vit dans l'écran des
+// réglages, dont le KeyboardAvoidingView pousse le formulaire au-dessus du
+// clavier (vérifié par scripts/verifier-le-clavier.mjs).
 
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, TextInput, View } from "react-native";

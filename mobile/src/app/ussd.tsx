@@ -11,7 +11,9 @@
 // le tape sur la carte, et la réponse de l'opérateur revient telle quelle.
 
 import { useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, Pressable, ScrollView, TextInput, View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -57,6 +59,10 @@ export default function CadranUssd() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      {/* Bord à bord : le clavier ne pousse rien tout seul (voir
+          feuille.tsx). Le cadran vit en haut, mais un téléphone couché n'a
+          que quelques lignes au-dessus du clavier. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
@@ -214,6 +220,7 @@ export default function CadranUssd() {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {operation ? (
         <OperationPopup operation={operation} onFermer={() => setOperation(null)} />

@@ -8,7 +8,9 @@
 // l'a reçu. Le traduire serait le trahir.
 
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, TextInput, View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
@@ -109,6 +111,10 @@ export default function Encaissements() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      {/* Bord à bord : le clavier ne pousse rien tout seul (voir
+          feuille.tsx). La recherche vit en haut, mais un téléphone couché
+          n'a que quelques lignes au-dessus du clavier. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: 108 }}
         keyboardShouldPersistTaps="handled"
@@ -251,6 +257,7 @@ export default function Encaissements() {
           </Entree>
         ))}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {ouvert ? (
         <FicheSms paiement={ouvert} onFermer={() => setOuvert(null)}

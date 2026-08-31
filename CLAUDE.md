@@ -46,6 +46,7 @@ python3 brand/generer.py                  # les fichiers de la marque
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
+cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
