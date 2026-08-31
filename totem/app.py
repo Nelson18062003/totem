@@ -62,7 +62,13 @@ RE_DEMANDE_CODE = re.compile(
     re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
+# Le « : » est admis — des opérateurs l'emploient — mais il sépare AUSSI les
+# heures : « 10:44 » n'est pas un choix de menu. On écarte donc ce qui a la
+# forme d'un horodatage, faute de quoi l'heure en tête d'un message d'opérateur
+# se change en bouton, et surtout désarme la garde du code secret ci-dessous.
+RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(?!\d{2}(?:\D|$))(\S.*)$")
+# UN MENU A AU MOINS DEUX CHOIX. Une seule ligne numérotée ne fait pas un menu.
+MENU_MINIMUM = 2
 # Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
 # permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
 RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount|how\s+much|\bsum\b", re.I)
@@ -884,9 +890,17 @@ class Robot:
         Un menu qui se contente de *parler* du code (« 5) Gerer mon code
         secret ») porte des options numérotées : c'est une navigation, pas une
         saisie. Chercher le seul mot « PIN » faisait apparaître le pavé au
-        mauvais moment."""
+        mauvais moment.
+
+        MAIS UNE SEULE LIGNE NUMÉROTÉE NE FAIT PAS UN MENU, et c'est par là
+        que le code fuyait. « 10:44 » en tête d'un message d'opérateur a la
+        forme exacte d'une option ; « 1. Entrez votre code PIN » aussi. Le
+        pavé ne s'ouvrait donc pas, le code se tapait dans la conversation,
+        s'affichait en clair sur la carte de session, et s'inscrivait tel quel
+        dans la table `ussd` — laquelle part ensuite dans le fichier de
+        sauvegarde posté sur Telegram. Un menu, c'est au moins DEUX choix."""
         _, options = cls._analyser_menu(menu)
-        return not options and bool(RE_DEMANDE_CODE.search(menu))
+        return len(options) < MENU_MINIMUM and bool(RE_DEMANDE_CODE.search(menu))
 
     @staticmethod
     def _analyser_menu(menu):

@@ -71,6 +71,33 @@ class Nuage:
         self.terminal = terminal or "totem"
         self.journal = journal
         self.pause = pause
+        # HTTPS, OU RIEN. Cette adresse se tape à la main dans
+        # `/boot/firmware/totem.conf`, souvent depuis un PC Windows, sur une
+        # partition FAT. Un « http:// » — une faute de frappe, un copier-coller
+        # d'un vieux mémo — enverrait la CLÉ DE SERVICE en clair sur le réseau
+        # mobile camerounais, toutes les soixante secondes. Cette clé-là
+        # contourne toutes les règles d'accès : la lire, c'est pouvoir lire,
+        # modifier et effacer le registre entier, et y insérer des commandes
+        # que le robot composera sur la carte SIM.
+        #
+        # L'application du téléphone REFUSE déjà une adresse non chiffrée, à
+        # la compilation comme à l'exécution — et elle, elle ne transporte
+        # qu'un mot de passe. L'adresse qui porte la clé maîtresse n'avait,
+        # elle, aucun garde-fou. On la refuse plutôt que de s'y fier.
+        if self.url and not self.url.startswith("https://"):
+            # Le « localhost » des essais reste admis : les harnais montent un
+            # faux nuage sur la machine même, où rien ne traverse le réseau.
+            local = self.url.startswith(("http://127.0.0.1", "http://localhost",
+                                         "http://[::1]"))
+            if not local:
+                if journal is not None:
+                    journal.evenement(t(
+                        "Cloud address refused: it is not https — the service "
+                        "key would travel in the clear. Fix [cloud] url.",
+                        "Adresse du cloud refusée : elle n'est pas en https — "
+                        "la clé de service voyagerait en clair. Corrigez "
+                        "[cloud] url."))
+                self.url = ""
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
         # Les numéros de NOS puces, fournis par le robot : c'est ce qui permet

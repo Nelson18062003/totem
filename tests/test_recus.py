@@ -1065,3 +1065,45 @@ class TestLesMarquesNeDerivent_pas(unittest.TestCase):
             compte=MOI))
         poses = [c for _, _, c in gabarit.page.empreintes]
         self.assertIn("Camtel Money", poses)
+
+
+class TestReferenceEnDoubleNeSertPasLeRecuDunAutre(unittest.TestCase):
+    """Deux messages, une même référence — et le reçu d'un inconnu.
+
+    Le lecteur a déjà produit deux fois la même référence pour deux transferts
+    différents. L'unicité de la base refusait alors le second reçu, on ne
+    faisait rien, et l'on renvoyait le numéro trouvé PAR LA RÉFÉRENCE :
+    celui du premier. Le propriétaire lisait « Reçu … en fabrication », la
+    plateforme lui servait le PDF d'un AUTRE paiement — autre montant, autre
+    client — et le vrai message n'obtenait jamais de reçu.
+    """
+
+    def journal(self):
+        from totem.storage import Journal
+        return Journal(":memory:")
+
+    def test_le_second_recu_a_son_propre_numero(self):
+        j = self.journal()
+        a = j.sms("MoMo", "Vous avez recu 20 000 FCFA de A. Ref: PP1", "MTN")
+        b = j.sms("MoMo", "Vous avez recu 90 000 FCFA de B. Ref: PP1", "MTN")
+        n1 = j.programmer_recu(a, "encaissement", "TM-2026-0831-0001",
+                               reference="PP1")
+        n2 = j.programmer_recu(b, "encaissement", "TM-2026-0831-0002",
+                               reference="PP1")
+        self.assertIsNotNone(n1)
+        # Le second obtient SON reçu — jamais le numéro du premier.
+        self.assertIsNotNone(n2, "le second message n'a obtenu aucun reçu")
+        self.assertNotEqual(n2, n1, "le reçu d'un AUTRE paiement a été servi")
+
+    def test_chaque_message_garde_son_propre_document(self):
+        j = self.journal()
+        a = j.sms("MoMo", "Vous avez recu 20 000 FCFA de A. Ref: PP2", "MTN")
+        b = j.sms("MoMo", "Vous avez recu 90 000 FCFA de B. Ref: PP2", "MTN")
+        j.programmer_recu(a, "encaissement", "TM-2026-0831-0003",
+                          reference="PP2")
+        j.programmer_recu(b, "encaissement", "TM-2026-0831-0004",
+                          reference="PP2")
+        lignes = j.conn.execute(
+            "SELECT source_id, numero FROM recus ORDER BY source_id").fetchall()
+        self.assertEqual(len(lignes), 2, "un des deux messages n'a pas de reçu")
+        self.assertNotEqual(lignes[0][1], lignes[1][1])
