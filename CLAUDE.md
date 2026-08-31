@@ -51,6 +51,7 @@ cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en enti
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
 cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
+cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
@@ -153,6 +154,19 @@ cédait — « strict-dynamic » autorise délibérément un script créé par d
 déjà en confiance, c'est ainsi que Next charge ses morceaux. Il fallait
 l'injecter là où une vraie faille l'injecte : dans le HTML, pour que
 l'analyseur de la page le rencontre.
+
+`verifier-le-journal` garde la page « Ce qui s'est passé ». Le terminal tenait
+son journal depuis toujours — modem redémarré, SMS illisible — et le poussait
+dans la base ; **personne ne le lisait**, aucun écran ne l'affichait : on
+collectait pour jeter. La plateforme, elle, n'écrivait rien du tout. Le
+harnais exige que la page montre ce que la base porte (un journal vide est
+indiscernable d'un journal cassé), qu'elle distingue le terminal de la
+plateforme, qu'elle reste derrière le verrou, et **qu'aucune donnée
+personnelle n'y entre** — un journal se garde longtemps et se lit à
+plusieurs. Cette dernière règle se tient du côté de l'ÉCRITURE : un premier
+essai la cherchait sur la page (« aucune suite de 4 à 8 chiffres ») et se
+déclenchait sur les montants et les années. La page montre fidèlement ce
+qu'on lui donne ; c'est ce qu'on lui donne qu'il faut garder.
 
 `verifier-les-regles.sh` monte un PostgreSQL neuf, y joue le schéma et TOUTES
 les migrations dans l'ordre, puis attaque : il essaie vraiment de créer un

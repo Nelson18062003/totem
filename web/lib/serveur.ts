@@ -99,6 +99,10 @@ async function lire<T>(chemin: string): Promise<T[]> {
     }
     return (await r.json()) as T[];
   } catch (e) {
+    // On ne NOTE pas cette panne-là dans la base : la base est justement ce
+    // qui ne répond pas. Écrire ici demanderait un second aller-retour, qui
+    // échouerait pareillement — et une panne qui se raconte deux fois reste
+    // une panne. C'est l'écran qui le dit à la personne, tout de suite.
     console.error(`Supabase injoignable : ${String(e)}`);
     return [];
   }
@@ -657,6 +661,81 @@ export async function compterUnEssai(
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// LE JOURNAL DES INCIDENTS
+//
+// Le terminal tient le sien depuis toujours — modem redémarré, SMS illisible,
+// nuage injoignable — et il le pousse dans « evenements ». Personne ne le
+// lisait : aucun écran ne l'affichait. On collectait pour jeter.
+//
+// La plateforme, elle, n'écrivait rien : ses pannes partaient dans la sortie
+// d'erreur de l'hébergeur, que le propriétaire n'ouvrira jamais. Quand
+// quelque chose casse un dimanche à Douala, il faut qu'il reste quelque
+// chose à lire — par lui, pas par un informaticien.
+// ---------------------------------------------------------------------------
+
+/**
+ * Note un incident de la plateforme.
+ *
+ * CE QUI PEUT ENTRER ICI : une phrase écrite PAR NOUS, en français, qui décrit
+ * ce qui s'est passé. « La base n'a pas répondu. » « Un bilan a été coupé à
+ * 20 000 lignes. »
+ *
+ * CE QUI NE PEUT PAS Y ENTRER, jamais : un code PIN, un mot de passe, un
+ * courriel, un code à usage unique, le texte d'un SMS. Un journal se garde
+ * longtemps et se lit à plusieurs — c'est exactement l'endroit où une donnée
+ * personnelle survit à tout le reste. Les valeurs de requête sont déjà
+ * effacées des messages d'erreur (`sansValeurs`) pour cette raison.
+ *
+ * Elle n'attend pas et n'échoue jamais bruyamment : noter un incident ne doit
+ * pas pouvoir causer un second incident. Si la base ne répond pas, il n'y a
+ * rien à faire de plus — et c'est précisément le cas où elle ne répondra pas.
+ */
+export function noterIncident(texte: string): void {
+  if (!relie || !texte) return;
+  void fetch(`${url}/rest/v1/evenements`, {
+    method: "POST",
+    headers: {
+      apikey: cle!, authorization: `Bearer ${cle}`,
+      "content-type": "application/json",
+      prefer: "return=minimal",
+    },
+    body: JSON.stringify([{
+      terminal: null,
+      // La plateforme n'a pas de journal local à numéroter : l'instant fait
+      // l'affaire, et la contrainte d'unicité ne porte que sur les lignes
+      // qui ont un terminal.
+      source_id: Date.now(),
+      texte: texte.slice(0, 500),
+      survenu_le: new Date().toISOString(),
+    }]),
+    cache: "no-store",
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => { /* un journal muet vaut mieux qu'une panne de plus */ });
+}
+
+export type Incident = {
+  id: number;
+  quand: string;
+  /** « Le terminal » ou « La plateforme » — l'objet, pas la technique. */
+  qui: string;
+  texte: string;
+};
+
+/** Les derniers incidents, du plus récent au plus ancien. */
+export async function lireIncidents(limite = 100): Promise<Incident[]> {
+  const lignes = await lire<{
+    id: number; terminal: string | null; texte: string; survenu_le: string;
+  }>(`evenements?select=id,terminal,texte,survenu_le`
+     + `&order=survenu_le.desc&limit=${Math.min(Math.max(1, limite), 500)}`);
+  return lignes.map((l) => ({
+    id: l.id,
+    quand: l.survenu_le,
+    qui: l.terminal ?? "",
+    texte: l.texte,
+  }));
 }
 
 export async function lireCommande(

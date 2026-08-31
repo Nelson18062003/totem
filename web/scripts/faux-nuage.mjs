@@ -128,7 +128,23 @@ const tables = () => ({
     { operateur: "MTN", nom: "transfert", libelle: "Transfert", etapes: "*126#,1,2" },
     { operateur: "Orange", nom: "solde", libelle: "Solde", etapes: "#150*1#" },
   ],
-  evenements: [],
+  // CE QUE LE TERMINAL A REMARQUÉ. La table existait ici, vide : rien ne
+  // pouvait donc éprouver l'écran qui la montre. Un contrôle qui regarde une
+  // liste vide passe au vert sans rien voir.
+  evenements: [
+    { id: 3, terminal: "douala-faux", source_id: 3,
+      texte: "Le modem ne répondait plus : il a été redémarré.",
+      survenu_le: il_y_a(90), cree_le: il_y_a(90) },
+    { id: 2, terminal: "douala-faux", source_id: 2,
+      texte: "SMS d'argent illisible (MTNMobileMoney) : lecture incomplète, "
+           + "opération comptée nulle part",
+      survenu_le: il_y_a(240), cree_le: il_y_a(240) },
+    // Un incident SANS terminal : c'est la plateforme qui parle.
+    { id: 1, terminal: null, source_id: 1,
+      texte: "Un bilan de 90 jours a été coupé : la caisse porte plus de "
+           + "20 000 messages sur cette période.",
+      survenu_le: il_y_a(1500), cree_le: il_y_a(1500) },
+  ],
 });
 
 // --- Le robot joué : une commande reçoit sa réponse d'opérateur -------------

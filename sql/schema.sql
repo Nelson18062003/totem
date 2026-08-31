@@ -148,7 +148,10 @@ comment on column paiements.texte is
 -- --- Événements : la vie du terminal ---------------------------------------
 create table if not exists evenements (
   id          bigint generated always as identity primary key,
-  terminal    text not null references terminaux(id) on delete cascade,
+  -- Le terminal concerné, ou RIEN quand c'est la plateforme qui parle : la
+  -- base injoignable, une session refusée, un bilan coupé n'appartiennent à
+  -- aucun terminal. Voir migrations/20260831_le-journal-des-incidents.sql.
+  terminal    text references terminaux(id) on delete cascade,
   source_id   bigint not null,
   texte       text not null,
   survenu_le  timestamptz not null,
@@ -529,6 +532,8 @@ alter table commandes  enable row level security;
 alter table recus      enable row level security;
 alter table raccourcis enable row level security;
 alter table appareils  enable row level security;
+alter table evenements alter column terminal drop not null;
+
 alter table utilisateurs enable row level security;
 alter table freins   enable row level security;
 

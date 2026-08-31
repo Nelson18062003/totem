@@ -1,4 +1,4 @@
-import { chargerDonnees, relie } from "@/lib/serveur";
+import { chargerDonnees, noterIncident, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { jourLocal, type Paiement } from "@noyau/types";
@@ -116,8 +116,13 @@ export async function GET(req: Request) {
   // La ligne est en tête, avant les colonnes : c'est la première chose que
   // le tableur montre, et personne ne fait défiler un export jusqu'en bas.
   if (smsTronques) {
-    console.warn(
-      `bilan : ${jours} jours demandés, plafond de ${LIGNES_MAX} lignes atteint`);
+    // Au journal, pas seulement dans la sortie de l'hébergeur : c'est un
+    // bilan comptable amputé, et le propriétaire doit pouvoir le retrouver
+    // le jour où son comptable lui dit que les chiffres ne tombent pas.
+    noterIncident(
+      `Un bilan de ${jours} jours a été coupé : la caisse porte plus de `
+      + `${LIGNES_MAX} messages sur cette période. Le fichier le dit en `
+      + "première ligne.");
     rangs.unshift([langue === "en"
       ? `INCOMPLETE REPORT — the till holds more than ${LIGNES_MAX} messages `
         + "over this period; only the most recent ones are listed below."

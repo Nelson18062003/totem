@@ -2,6 +2,7 @@ import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesReglages } from "@noyau/textes/reglages";
+import { journalPour } from "@noyau/textes/journal";
 import { IconWallet } from "../icons";
 import {
   BoutonDeconnexion,
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function Reglages() {
   const langue = await langueServeur();
   const t = textesReglages[langue];
+  const tj = journalPour(langue);
   const { terminal, sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });
   // Une section de codes PAR OPÉRATEUR présent — les cartes en place
   // d'abord. Le repli « Orange » d'autrefois mentait dès qu'une MTN était
@@ -178,6 +180,22 @@ export default async function Reglages() {
       {/* Qui peut se connecter — la section ne s'affiche que pour le
           propriétaire ; elle se tait d'elle-même pour les autres. */}
       <SectionQui />
+
+      {/* CE QUI S'EST PASSÉ. Le terminal tenait son journal depuis toujours
+          et personne ne le lisait : aucun écran ne l'affichait. Il est ici,
+          là où l'on va quand quelque chose ne va pas. */}
+      <section>
+        <Link
+          href="/journal"
+          className="flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4 transition hover:border-ink-faint"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-body font-medium">{tj.voirLeJournal}</p>
+            <p className="mt-0.5 text-small text-ink-faint">{tj.voirLeJournalSous}</p>
+          </div>
+          <span aria-hidden className="text-ink-faint">›</span>
+        </Link>
+      </section>
 
       {/* Sécurité */}
       <section>
