@@ -1,10 +1,15 @@
 // L'analyse : la semaine, les meilleurs jours, les principaux clients.
 //
-// Le pendant mobile de `web/app/analyse/page.tsx` — mêmes calculs, sur les
-// vrais paiements : aucun chiffre n'est écrit à la main. Les jours se
-// découpent dans le fuseau DU TERMINAL (envoyé par la plateforme) : la
-// caisse peut être à Douala et le téléphone à Paris, un encaissement de
-// 23 h reste dans son jour.
+// Le pendant mobile de `web/app/analyse/page.tsx`. Les deux écrans ne
+// calculent plus rien : ils demandent les chiffres à `noyau/analyse.ts` et
+// les montrent. Tant que le calcul était écrit des deux côtés, les deux
+// copies se sont trompées ENSEMBLE — et personne ne pouvait le voir, puisque
+// le propriétaire regarde la page ou le téléphone, jamais les deux côte à
+// côte.
+//
+// Les jours se découpent dans le fuseau DU TERMINAL (envoyé par la
+// plateforme) : la caisse peut être à Douala et le téléphone à Paris, un
+// encaissement de 23 h reste dans son jour.
 //
 // L'export CSV passe par le navigateur du système, muni d'un lien signé :
 // c'est lui qui sait TÉLÉCHARGER un fichier — l'application ne sait que
@@ -26,47 +31,9 @@ import { useLangue } from "@/langue";
 import { lienBilan } from "@/api/guichet";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { textesUssd } from "@noyau/textes/ussd";
-import { fcfa, jourLocal, nombre, FUSEAU_DEFAUT, type Paiement } from "@noyau/types";
+import { resumeSemaine } from "@noyau/analyse";
 import type { Langue } from "@noyau/langue";
-
-/** Les encaissements des 7 derniers jours, jour par jour.
- *
- *  Le jour de CHAQUE paiement se calcule UNE fois, dans une table — pas à
- *  chaque jour de la semaine : `jourLocal` construit un Intl.DateTimeFormat,
- *  et 7 jours × 1000 paiements en fabriquaient sept mille par rendu — des
- *  secondes de gel sur un petit Android. */
-function septDerniersJours(paiements: Paiement[], langue: Langue, fuseau: string) {
-  const parJour = new Map<string, number>();
-  for (const p of paiements) {
-    if (p.sens !== "in" || p.montant == null) continue;
-    const cle = jourLocal(new Date(p.recuLe), fuseau);
-    parJour.set(cle, (parJour.get(cle) ?? 0) + p.montant);
-  }
-  const jours: { jour: string; montant: number }[] = [];
-  const present = Date.now();
-  const locale = langue === "en" ? "en-GB" : "fr-FR";
-  const nomDuJour = new Intl.DateTimeFormat(locale,
-    { timeZone: fuseau, weekday: "short" });
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(present - i * 86_400_000);
-    const montant = parJour.get(jourLocal(d, fuseau)) ?? 0;
-    const nom = nomDuJour.format(d).replace(".", "");
-    jours.push({ jour: nom.charAt(0).toUpperCase() + nom.slice(1), montant });
-  }
-  return jours;
-}
-
-/** Le total encaissé entre deux bornes, en jours avant maintenant. */
-function semaine(paiements: Paiement[], debut: number, fin: number) {
-  const present = Date.now();
-  return paiements
-    .filter((p) => {
-      const t = new Date(p.recuLe).getTime();
-      return p.sens === "in" && p.montant != null
-             && t > present - debut * 86_400_000 && t <= present - fin * 86_400_000;
-    })
-    .reduce((s, p) => s + (p.montant ?? 0), 0);
-}
+import { fcfa, nombre, FUSEAU_DEFAUT } from "@noyau/types";
 
 export default function Analyse() {
   const langue = useLangue();
@@ -83,36 +50,10 @@ export default function Analyse() {
   // Tout le comptage d'un coup, UNE fois par jeu de données — pas à chaque
   // rendu : mille paiements se reclassent vite, mais pas au point de le
   // refaire pour un simple changement d'état d'écran.
-  const { septJours, total, moyenne, meilleur, max, evolution, topClients } =
-    useMemo(() => {
-      const septJours = septDerniersJours(paiements, langue, fuseau);
-      const total = septJours.reduce((s, d) => s + d.montant, 0);
-      const moyenne = Math.round(total / 7);
-      const meilleur = septJours.reduce((a, b) => (b.montant > a.montant ? b : a));
-      const max = Math.max(...septJours.map((d) => d.montant), 1);
-
-      // La semaine précédente, pour situer celle-ci — calculée, pas décrétée.
-      const precedente = semaine(paiements, 14, 7);
-      const evolution = precedente > 0
-        ? Math.round(((total - precedente) / precedente) * 100) : null;
-
-      // Les clients qui reviennent, sur tout l'historique chargé. Le client,
-      // c'est « tiers » — la personne qui a payé ; « nom » est l'expéditeur
-      // du SMS, le même pour tout un opérateur (voir web/app/analyse).
-      const parClient = new Map<string, { nb: number; total: number }>();
-      for (const p of paiements.filter((x) => x.sens === "in" && x.montant != null)) {
-        const cle = p.tiers || p.nom;
-        const c = parClient.get(cle) ?? { nb: 0, total: 0 };
-        c.nb += 1; c.total += p.montant ?? 0;
-        parClient.set(cle, c);
-      }
-      const topClients = [...parClient.entries()]
-        .map(([nom, v]) => ({ nom, ...v }))
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5);
-
-      return { septJours, total, moyenne, meilleur, max, evolution, topClients };
-    }, [paiements, langue, fuseau]);
+  const { jours: septJours, total, moyenne, meilleur, max, evolution,
+          clients: topClients } =
+    useMemo(() => resumeSemaine(paiements, langue, fuseau),
+            [paiements, langue, fuseau]);
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
