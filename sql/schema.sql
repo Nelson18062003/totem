@@ -393,11 +393,35 @@ create index if not exists appareils_vu_le on appareils (vu_le desc);
 create index if not exists utilisateurs_courriel on utilisateurs (lower(courriel));
 
 -- ---------------------------------------------------------------------------
--- Sécurité : personne ne lit sans être connecté.
+-- Sécurité : PERSONNE ne lit cette base directement.
 --
--- Le Pi écrit avec la clé « service_role », qui contourne ces règles — c'est
--- pour cela qu'elle ne doit jamais quitter le fichier de configuration du Pi.
--- L'application web lit avec la clé publique, et n'obtient rien sans session.
+-- CE COMMENTAIRE A DÉJÀ MENTI, et cela a compté. Il disait « l'application
+-- web lit avec la clé publique, et n'obtient rien sans session » — c'était
+-- vrai d'une architecture qui n'a jamais vu le jour. La plateforme lit avec
+-- la CLÉ DE SERVICE (web/lib/serveur.ts), comme le robot. Cette clé
+-- contourne toutes les règles ci-dessous, par nature.
+--
+-- Ce qu'il faut en retenir, et qui commande tout le reste : LA BASE NE
+-- PROTÈGE RIEN. Toute l'autorisation est du code, dans la plateforme —
+-- `middleware.ts` pour le verrou du bord, `lib/garde.ts` pour la relecture
+-- des comptes derrière lui. Qui lit `schema.sql` en croyant y trouver une
+-- deuxième ligne de défense se trompe de fichier.
+--
+-- Aucune politique n'est donc créée : RLS est active partout, sans porte.
+-- Une table dont RLS est active et qui n'a aucune politique ne laisse passer
+-- personne — sauf la clé de service. C'est exactement ce qu'on veut.
+--
+-- Il y en avait, avant : « for select to authenticated using (true) », c'est
+-- à dire « tout compte connecté à la base lit tout ». Elles ne gardaient
+-- rien, puisque personne n'endosse ce rôle — mais elles attendaient le jour
+-- où quelqu'un obtiendrait la clé publique, qui est publique par
+-- construction. Retirées le 31 août 2026 : voir
+-- `migrations/20260831_regles_dormantes.sql`, qui explique le raisonnement
+-- au long, et `docs/SECURITE-CONSTATS.md` (SEC-03).
+--
+-- Le jour où l'on voudra vraiment Supabase Auth, on réécrira des politiques —
+-- nommées, cadrées, et jamais « using (true) » sur une table qui porte de
+-- l'argent.
 -- ---------------------------------------------------------------------------
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;
@@ -410,38 +434,29 @@ alter table raccourcis enable row level security;
 alter table appareils  enable row level security;
 alter table utilisateurs enable row level security;
 
+-- Aucune politique, sur aucune table. Sur une base NEUVE il n'y a donc rien
+-- à retirer ; sur une base déjà en service, c'est
+-- `migrations/20260831_regles_dormantes.sql` qui fait le ménage.
+--
+-- On retire ici ce qui aurait pu être posé par une version antérieure de ce
+-- même fichier : il doit être rejouable et laisser toujours le même état.
 do $$
 declare t text;
 begin
   foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus','raccourcis']
   loop
-    execute format(
-      'drop policy if exists "lecture connectee" on %I; '
-      'create policy "lecture connectee" on %I for select to authenticated using (true);',
-      t, t);
+    execute format('drop policy if exists "lecture connectee" on %I', t);
   end loop;
 end $$;
-
--- « appareils » et « utilisateurs » ne sont PAS dans cette liste, et c'est
--- délibéré : aucune politique n'est créée pour ces tables, donc personne ne
--- passe. Ni le navigateur ni le téléphone n'ont à lire la liste des appareils
--- inscrits, et une table d'empreintes de mots de passe encore moins. Seules
--- la plateforme (côté serveur) et le robot y touchent, avec la clé de service
--- — qui contourne ces règles par nature.
-
--- Seule exception en écriture : un utilisateur connecté peut demander une
--- commande (appuyer sur un bouton). Il ne peut pas modifier l'historique.
 drop policy if exists "demander une commande" on commandes;
-create policy "demander une commande" on commandes
-  for insert to authenticated with check (true);
 
 -- ---------------------------------------------------------------------------
 -- Le compartiment de stockage des reçus
 --
 -- Les PDF n'ont pas à s'accumuler sur la carte SD du Pi : le terminal les
 -- fabrique en mémoire, les envoie sur Telegram, puis les dépose ici. Le
--- compartiment est privé — on y accède en étant connecté, ou avec la clé de
--- service, qui ne quitte jamais le Pi.
+-- compartiment est privé, et on n'y accède qu'avec la clé de service — celle
+-- du Pi, ou celle de la plateforme, qui sert les PDF sous son propre verrou.
 --
 -- Le bloc ne fait rien sur une base PostgreSQL ordinaire, où le schéma
 -- « storage » n'existe pas : ce fichier doit rester exécutable partout.
@@ -454,8 +469,8 @@ begin
     values ('recus', 'recus', false)
     on conflict (id) do nothing;
 
+    -- Aucune politique non plus : les PDF sont servis par la plateforme, qui
+    -- les va chercher avec la clé de service (web/lib/serveur.ts).
     execute $p$drop policy if exists "recus lecture connectee" on storage.objects$p$;
-    execute $p$create policy "recus lecture connectee" on storage.objects
-              for select to authenticated using (bucket_id = 'recus')$p$;
   end if;
 end $$;

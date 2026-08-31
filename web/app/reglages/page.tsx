@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
+import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesReglages } from "@noyau/textes/reglages";
 import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
@@ -17,6 +18,8 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Reglages() {
+  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
+  await exigerEcran();
   const langue = await langueServeur();
   const t = textesReglages[langue];
   const { terminal, sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });

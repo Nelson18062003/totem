@@ -13,6 +13,10 @@ const en = {
   nonRelieeBase: "platform not connected to the database",
   depotImpossible: "the request could not be submitted",
   identifiantInvalide: "invalid identifier",
+  // Le refus du verrou, et celui du garde qui relit la base derrière lui :
+  // un seul texte, pour que les deux portes disent la même chose.
+  connexionRequise: "sign-in required",
+  plateformeInjoignable: "platform unreachable",
   demandeIntrouvable: "request not found",
   natureInconnue: "unknown type",
   natureNonEnregistree: "the type could not be saved",
@@ -56,6 +60,8 @@ const fr: typeof en = {
   nonRelieeBase: "plateforme non reliée à la base",
   depotImpossible: "la demande n’a pas pu être déposée",
   identifiantInvalide: "identifiant invalide",
+  connexionRequise: "connexion requise",
+  plateformeInjoignable: "plateforme injoignable",
   demandeIntrouvable: "demande introuvable",
   natureInconnue: "nature inconnue",
   natureNonEnregistree: "la nature n’a pas pu être enregistrée",

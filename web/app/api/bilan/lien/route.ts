@@ -1,6 +1,7 @@
 import { signerLien } from "@/lib/lien-signe";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
+import { exigerSession, refusApi } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const langue = await langueDemandee(req);
+  const moi = await exigerSession(req);
+  if (!moi.ok) return refusApi(moi.statut, langue);
   const u = new URL(req.url);
   const jours = u.searchParams.get("jours") ?? "7";
   // Un entier de 1 à 90, comme la route du bilan elle-même.

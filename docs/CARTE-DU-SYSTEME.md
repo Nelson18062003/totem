@@ -1,7 +1,7 @@
 # La carte du système — ce qu'il y a à défendre
 
-*Établie le 31 août 2026. À relire à chaque tour d'audit : une carte périmée
-fait chercher au mauvais endroit.*
+*Établie le 31 août 2026, mise à jour au tour 1. À relire à chaque tour
+d'audit : une carte périmée fait chercher au mauvais endroit.*
 
 Ce document ne décrit pas ce que TOTEM fait pour le propriétaire — c'est le
 `README`. Il décrit **par où l'on entre**, **ce qu'on y trouve**, et **ce qui
@@ -63,10 +63,13 @@ veut dans le grand livre.
 
 ## 3. Ce qui tient la porte
 
-Un seul verrou, dans `web/middleware.ts` :
+**Deux lignes**, depuis le tour 1 — il n'y en avait qu'une.
 
-1. **Sans `SESSION_SECRET`, il n'y a AUCUN verrou** (`middleware.ts:47`) — tout
-   est ouvert, sans le moindre signal. Voulu pour le développement local.
+### La première : le verrou du bord (`web/middleware.ts`)
+
+1. **Sans `SESSION_SECRET`** : en développement, tout est ouvert (voulu). **En
+   production, plus rien ne passe** — les écrans ouverts exceptés, pour que la
+   plateforme puisse dire qu'elle n'est pas configurée.
 2. Une liste `OUVERT` : `/connexion`, `/inscription`, `/confidentialite`,
    `/suppression`, `/api/connexion`, `/api/deconnexion`, `/api/inscription`,
    `/api/session`, `/api/plateforme`.
@@ -79,10 +82,33 @@ Le jeton (`web/lib/session.ts`) : `sujet.échéance.HMAC-SHA256`, **un mois**,
 sans état côté serveur. Les sujets : `c:<id>`, `secours`, et les anciens
 `proprietaire` / `telephone`.
 
-Deux niveaux seulement : **entrer** (n'importe quel compte approuvé) et
-**administrer** (`estProprietaire`, `web/lib/qui.ts:60`). Il n'y a pas de
-cloisonnement par locataire : tout compte approuvé voit tout l'argent. C'est
-assumé — une seule caisse, un seul propriétaire.
+Le verrou du bord est rapide et ne réveille pas la base. C'est sa force. Mais
+il ne regarde QUE la signature : il ne peut pas savoir qu'un compte a été
+fermé depuis. D'où la seconde ligne.
+
+### La seconde : le garde (`web/lib/garde.ts`)
+
+Appelé en tête de **toute** porte fermée — 24 en tout, routes et écrans
+compris. Il refait la vérification de signature, puis **relit l'état du compte
+en base** (cache de dix secondes, sursis de cinq minutes si la base se tait).
+C'est lui qui fait qu'un jeton se reprend.
+
+Trois formes, selon la porte :
+`exigerSession` · `exigerProprietaire` · `exigerSessionOuLien` (les documents,
+qui acceptent aussi leur lien signé) · `exigerEcran` (les pages, qui
+renvoient vers la connexion au lieu de rendre un JSON).
+
+**Ce qui empêche d'en oublier une.** Le garde se pose porte par porte : rien
+n'obligerait la route de demain à y penser. `scripts/verifier-le-verrou.mjs`
+lit donc la liste `OUVERT` du middleware, parcourt tous les `route.ts` et
+`page.tsx`, et **échoue** si l'un d'eux n'appelle aucun garde.
+
+### Les niveaux
+
+Deux seulement : **entrer** (tout compte approuvé) et **administrer**
+(`proprietaire`, ou la clé de secours). Il n'y a pas de cloisonnement par
+locataire : tout compte approuvé voit tout l'argent. C'est assumé — une seule
+caisse, un seul propriétaire.
 
 ## 4. La surface d'attaque, porte par porte
 
@@ -104,8 +130,8 @@ Légende : **O** = ouverte · **S** = session requise · **P** = propriétaire �
 | `GET /api/recu/[n]/lien` | S | non | fabrique un lien signé |
 | `GET /api/coordonnees/[i]` | S + L | non | le PDF « RIB » |
 | `GET /api/coordonnees/[i]/lien` | S | non | fabrique un lien signé |
-| `POST /api/lu` | **S** | **oui** | marque un SMS lu |
-| `POST /api/nature` | **S** | **oui** | **reclasse un paiement** |
+| `POST /api/lu` | **P** | **oui** | marque un SMS lu |
+| `POST /api/nature` | **P** | **oui** | **reclasse un paiement** |
 | `POST /api/appareil` | S | **oui** | inscrit un téléphone aux notifications |
 | `POST /api/commande` | **P** | **oui** | **compose sur une vraie SIM** |
 | `POST /api/essai-notification` | **P** | oui | fait sonner les téléphones |
@@ -113,8 +139,14 @@ Légende : **O** = ouverte · **S** = session requise · **P** = propriétaire �
 | `POST /api/comptes` | **P** | **oui** | crée / approuve / ferme / supprime |
 | `GET /api/commande/[id]` | S | non | l'état d'une demande |
 
-Les deux lignes en gras de la colonne « verrou » — `/api/lu` et `/api/nature` —
-sont les seules écritures qu'un **invité** peut faire. Voir SEC-06.
+Toutes ces portes appellent un garde depuis le tour 1. `/api/lu` et
+`/api/nature` étaient les deux seules écritures qu'un **invité** pouvait
+faire ; elles sont passées en **P** (voir SEC-06).
+
+Les six pages qui affichent des chiffres — accueil, actions, analyse, cartes,
+encaissements, réglages, ussd — sont gardées de la même façon, et la coquille
+(`layout.tsx`) ne charge plus l'état du terminal pour qui n'est pas connecté :
+elle enveloppe aussi l'écran de connexion.
 
 ## 5. Ce qui vaut de l'argent
 

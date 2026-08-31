@@ -1,6 +1,6 @@
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
-import { compteConnecte, estProprietaire } from "@/lib/qui";
+import { exigerProprietaire, oublierLeVerdict, refusApi } from "@/lib/garde";
 import {
   definirApprobation, listerUtilisateurs, relie, supprimerUtilisateur,
 } from "@/lib/serveur";
@@ -20,10 +20,8 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const langue = await langueDemandee(req);
-  if (!(await estProprietaire(req))) {
-    return Response.json(
-      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
-  }
+  const moi = await exigerProprietaire(req);
+  if (!moi.ok) return refusApi(moi.statut, langue);
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
@@ -32,10 +30,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const langue = await langueDemandee(req);
-  if (!(await estProprietaire(req))) {
-    return Response.json(
-      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
-  }
+  const moi = await exigerProprietaire(req);
+  if (!moi.ok) return refusApi(moi.statut, langue);
 
   const corps = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const geste = corps?.geste;
@@ -62,8 +58,7 @@ export async function POST(req: Request) {
   // On ne se ferme pas la porte à soi-même, et on ne se supprime pas : ce
   // serait le seul geste irréversible de cet écran, et il laisserait la
   // plateforme sans propriétaire.
-  const moi = await compteConnecte(req);
-  if (moi && moi.id === id) {
+  if (moi.compte !== null && moi.compte === id) {
     return Response.json({ erreur: erreurApi(langue, "pasSoiMeme") }, { status: 400 });
   }
 
@@ -76,6 +71,13 @@ export async function POST(req: Request) {
     return Response.json(
       { erreur: erreurApi(langue, "demandeInconnue") }, { status: 400 });
   }
+  // Le garde relit la base, mais il garde son verdict dix secondes. Approuver
+  // ou fermer quelqu'un doit valoir TOUT DE SUITE : on efface son verdict
+  // plutôt que de laisser une session fermée vivre un dernier quart de
+  // minute. Ce sont exactement les dix secondes qu'un propriétaire inquiet
+  // passerait à recharger l'écran en se demandant si son geste a pris.
+  oublierLeVerdict(id);
+
   return ok
     ? Response.json({ ok: true })
     : Response.json({ erreur: erreurApi(langue, "nonEnregistre") }, { status: 502 });

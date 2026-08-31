@@ -1,4 +1,5 @@
 import { langueServeur } from "@/lib/langue-serveur";
+import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import { ListeEncaissements } from "./liste";
 
@@ -9,6 +10,8 @@ export default async function Encaissements({
 }: {
   searchParams: Promise<{ recherche?: string | string[] }>;
 }) {
+  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
+  await exigerEcran();
   const langue = await langueServeur();
   const [{ paiements, terminal }, { recherche }] = await Promise.all([
     chargerDonnees(langue),

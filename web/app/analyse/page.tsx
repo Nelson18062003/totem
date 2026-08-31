@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
+import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import type { Langue } from "@noyau/langue";
 import { textesAnalyse } from "@noyau/textes/analyse";
@@ -47,6 +48,8 @@ function semaine(paiements: Paiement[], debut: number, fin: number) {
 }
 
 export default async function Analyse() {
+  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
+  await exigerEcran();
   const langue = await langueServeur();
   const t = textesAnalyse[langue];
   const { paiements } = await chargerDonnees(langue);

@@ -219,6 +219,24 @@ try {
                                     { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
 
+  // Classer un paiement n'est pas un geste d'affichage : la nature choisie
+  // DÉCLENCHE l'établissement du reçu. Un invité qui reclasse fait donc
+  // fabriquer — ou refabriquer — des reçus sur des opérations réelles.
+  // Marquer lu, de son côté, éteint la pastille qui prévient le
+  // propriétaire qu'un SMS l'attend.
+  const rNature = await poste("/api/nature", { id: 1, nature: "depot" },
+                              { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne reclasse pas un paiement", rNature.status, 403);
+  const rLu = await poste("/api/lu", { id: 1 },
+                          { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne marque pas les SMS lus", rLu.status, 403);
+  const rNatureProprio = await poste("/api/nature", { id: 1, nature: "depot" },
+                                     { authorization: `Bearer ${jetonProprio}` });
+  verifier("le propriétaire, lui, classe", rNatureProprio.status !== 403, true);
+  const rLuProprio = await poste("/api/lu", { id: 1 },
+                                 { authorization: `Bearer ${jetonProprio}` });
+  verifier("et marque lu", rLuProprio.status !== 403, true);
+
   console.log("\nLe propriétaire crée un compte lui-même");
   // L'inscription libre est fermée et le reste. C'est désormais le SEUL
   // chemin pour faire entrer quelqu'un — et il en fallait un : Google exige
@@ -268,6 +286,42 @@ try {
               { authorization: `Bearer ${jetonProprio}` });
   const rRefuse = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
   verifier("l'invité ne rentre plus", rRefuse.status, 403);
+
+  // ET LA SESSION DÉJÀ OUVERTE ? C'est la vraie question, et elle a
+  // longtemps été sans réponse. Refuser une NOUVELLE connexion ne sert à
+  // rien si le jeton d'hier ouvre encore : il est signé, il vaut un mois, et
+  // le verrou du bord ne regarde que la signature. Un invité mis dehors
+  // gardait ainsi trente jours l'accès à tout l'argent — et le propriétaire
+  // n'avait aucun geste contre un téléphone volé.
+  //
+  // On rejoue donc LE MÊME jeton, celui d'avant la fermeture, sur les trois
+  // portes qui donnent l'argent.
+  const avecAmi = { authorization: `Bearer ${jetonAmi}` };
+  verifier("son jeton n'ouvre plus les données",
+           (await fetch(B + "/api/donnees", { headers: avecAmi })).status, 401);
+  verifier("ni le bilan",
+           (await fetch(B + "/api/bilan?jours=90", { headers: avecAmi })).status, 401);
+  verifier("ni le pouls de la plateforme",
+           (await fetch(B + "/api/actualite", { headers: avecAmi })).status, 401);
+  verifier("ni un reçu",
+           (await fetch(B + "/api/recu/essai-1", { headers: avecAmi })).status, 401);
+  verifier("et il ne fabrique plus de laissez-passer",
+           (await fetch(B + "/api/recu/essai-1/lien", { headers: avecAmi })).status, 401);
+
+  console.log("\nUn compte rouvert retrouve sa session");
+  // La révocation n'est pas une condamnation : rouvrir doit rouvrir. Sans
+  // cela le propriétaire n'oserait plus fermer, de peur de casser quelque
+  // chose sans retour.
+  await poste("/api/comptes", { id: idAmi, geste: "approuver" },
+              { authorization: `Bearer ${jetonProprio}` });
+  verifier("le même jeton ouvre de nouveau",
+           (await fetch(B + "/api/donnees", { headers: avecAmi })).status, 200);
+
+  console.log("\nUn compte supprimé n'a plus de session non plus");
+  await poste("/api/comptes", { id: idAmi, geste: "supprimer" },
+              { authorization: `Bearer ${jetonProprio}` });
+  verifier("le jeton d'un compte effacé ne vaut rien",
+           (await fetch(B + "/api/donnees", { headers: avecAmi })).status, 401);
 
   console.log("\nOn ne se ferme pas la porte à soi-même");
   const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === "nelson@exemple.cm").id;

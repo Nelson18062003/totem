@@ -1,4 +1,5 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
+import { exigerSessionOuLien, refusApi } from "@/lib/garde";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { jourLocal, type Paiement } from "@noyau/types";
@@ -49,11 +50,22 @@ const SENS: Record<Langue, Record<Paiement["sens"], string>> = {
 
 export async function GET(req: Request) {
   const langue = await langueServeur();
+
+  // LE GARDE. Cette route sert TOUT l'historique, en un fichier qu'on
+  // télécharge : c'est la porte la plus généreuse de la plateforme. Une
+  // session vivante l'ouvre — ou un lien signé pour CE nombre de jours, car
+  // le navigateur du téléphone n'a ni cookie ni jeton (lib/lien-signe.ts).
+  // Le lien est signé sur la chaîne telle qu'elle a été demandée : on la lit
+  // donc ici comme le middleware la lit, sans la retoucher.
+  const jourDemande = new URL(req.url).searchParams.get("jours");
+  const moi = await exigerSessionOuLien(req, "bilan", jourDemande ?? "");
+  if (!moi.ok) return refusApi(moi.statut, langue);
+
   if (!relie) {
     return new Response(erreurApi(langue, "nonRelieeBase"), { status: 503 });
   }
 
-  const demande = Number(new URL(req.url).searchParams.get("jours"));
+  const demande = Number(jourDemande);
   const jours = Number.isFinite(demande) && demande >= 1
     ? Math.min(Math.round(demande), JOURS_MAX)
     : JOURS_DEFAUT;

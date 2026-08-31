@@ -1,4 +1,5 @@
 import { langueServeur } from "@/lib/langue-serveur";
+import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesUssd } from "@noyau/textes/ussd";
 import { Vide } from "../vide";
@@ -11,6 +12,8 @@ export default async function CodeUssd({
 }: {
   searchParams: Promise<{ code?: string }>;
 }) {
+  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
+  await exigerEcran();
   const langue = await langueServeur();
   const t = textesUssd[langue];
   const [{ sims, raccourcis }, { code }] = await Promise.all([

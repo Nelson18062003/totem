@@ -1,6 +1,14 @@
 # Le registre des constats de sécurité
 
-*Tour 0 — 31 août 2026. Ouvert : 9. Corrigé : 0.*
+*Tour 1 — 31 août 2026. Corrigé : 8. Ouvert : 1 (à appliquer par le
+propriétaire). Classé : 1.*
+
+**Ce que le tour 1 a changé.** Les trois P1 sont traités, les trois P2 aussi,
+et deux constats qui étaient RAISONNÉS sont devenus MESURÉS avant d'être
+corrigés — SEC-01 et SEC-04 ont d'abord été vus rouges dans un vrai serveur.
+Un seul constat reste ouvert, SEC-03 : le correctif est écrit et vérifiable,
+mais il s'applique à la base EN SERVICE, et cela n'appartient pas à un
+audit.
 
 **Comment lire.** `CONFIRMÉ` = prouvé, avec le fichier et la ligne, ou une
 requête jouée contre la base. `THÉORIQUE` = raisonné, pas encore éprouvé — et
@@ -9,16 +17,20 @@ attaquant obtient, pas à quel point c'est agaçant.
 
 | # | Gravité | Sujet | État | Statut |
 |---|---|---|---|---|
-| SEC-01 | **P1** | Une session ne se révoque jamais | CONFIRMÉ | ouvert |
-| SEC-02 | **P1** | Toute l'autorisation tient à un seul fichier | CONFIRMÉ | ouvert |
-| SEC-03 | **P1** | Les règles de la base ouvrent le grand livre | CONFIRMÉ | ouvert |
-| SEC-04 | P2 | Le frein se contourne avec un en-tête | THÉORIQUE | ouvert |
-| SEC-05 | P2 | Aucun en-tête de sécurité | CONFIRMÉ | ouvert |
-| SEC-06 | P2 | Un invité peut reclasser un paiement | CONFIRMÉ | ouvert |
-| SEC-07 | P3 | Un nom de fichier non échappé | CONFIRMÉ | ouvert |
-| SEC-08 | P3 | Le courriel entre dans les journaux | CONFIRMÉ | ouvert |
-| SEC-09 | P3 | Dépendances à mettre à jour | CONFIRMÉ | ouvert |
+| SEC-01 | **P1** | Une session ne se révoque jamais | MESURÉ | **corrigé** |
+| SEC-02 | **P1** | Toute l'autorisation tient à un seul fichier | CONFIRMÉ | **corrigé** |
+| SEC-03 | **P1** | Les règles de la base ouvrent le grand livre | CONFIRMÉ | **à appliquer** |
+| SEC-04 | P2 | Le frein se contourne avec un en-tête | MESURÉ | **corrigé** |
+| SEC-05 | P2 | Aucun en-tête de sécurité | CONFIRMÉ | **corrigé** |
+| SEC-06 | P2 | Un invité peut reclasser un paiement | MESURÉ | **corrigé** |
+| SEC-07 | P3 | Un nom de fichier non échappé | CONFIRMÉ | **corrigé** |
+| SEC-08 | P3 | Le courriel entre dans les journaux | CONFIRMÉ | **corrigé** |
+| SEC-09 | P3 | Dépendances à mettre à jour | CONFIRMÉ | **corrigé en partie** |
 | SEC-10 | — | `rls_auto_enable` : fausse alerte | CONFIRMÉ | classé |
+
+**MESURÉ** veut dire quelque chose de précis ici : l'essai a d'abord été écrit,
+lancé, et vu ÉCHOUER contre le défaut — avant toute correction. Un essai qu'on
+n'a jamais vu rouge ne prouve rien quand il est vert.
 
 ---
 
@@ -60,10 +72,27 @@ vérification *et* relit l'état du compte en base. Le verrou du bord reste le
 premier filtre rapide ; il cesse d'être le seul juge. Coût : une lecture par
 requête, à mettre en cache quelques secondes.
 
-**Comment on saura que c'est réparé.** Un essai qui : ouvre une session
-d'invité, la vérifie bonne, ferme le compte, rejoue **le même jeton** sur
-`/api/donnees`, `/api/bilan` et `/api/recu/<n>`, et exige un 401 sur les trois.
-À ajouter à `scripts/verifier-les-comptes.mjs`.
+**CORRIGÉ.** `web/lib/garde.ts` — un garde partagé qui refait la vérification
+de signature *et* relit l'état du compte en base, avec un cache de dix
+secondes. Une session fermée met donc au plus dix secondes à mourir partout,
+et le geste du propriétaire efface le verdict tout de suite
+(`comptes/route.ts`, `oublierLeVerdict`). Le verrou du bord reste : il cesse
+d'être le seul juge.
+
+Le point délicat était la panne : mettre tout le monde dehors parce que
+Supabase hoquette transformerait une panne en verrou sur sa propre maison.
+D'où `etatDuCompte` (`lib/serveur.ts`), qui distingue « fermé » de « je ne
+sais pas », et un **sursis de cinq minutes** sur le dernier verdict connu.
+Passé ce délai, plus personne — et la clé de secours, qui ne demande rien à
+la base, reste ouverte.
+
+**MESURÉ.** L'essai a d'abord été vu ROUGE : un jeton d'un compte fermé
+ouvrait encore `/api/donnees` (200), `/api/bilan` (200), `/api/actualite`
+(200) et la fabrique de liens (200) ; un jeton de compte **supprimé** aussi
+(200). Après correction : 401 sur les cinq. Et deux essais de plus, parce
+qu'une révocation qui ne se défait pas serait un autre défaut — un compte
+rouvert retrouve sa session (200), le même jeton. Voir
+`web/scripts/verifier-les-comptes.mjs`, section « Le propriétaire referme ».
 
 ---
 
@@ -105,8 +134,37 @@ leçon : il n'y a pas de deuxième ligne. (La mise à jour, elle, est en SEC-09.
 - **refuser de démarrer** en production sans `SESSION_SECRET`, au lieu de
   s'ouvrir. Le développement local garde son passe-droit ; la production, non.
 
-**Comment on saura.** Un essai qui appelle `/api/bilan` et `/api/donnees` avec
-un middleware neutralisé, et exige un 401 quand même.
+**CORRIGÉ**, en trois gestes.
+
+1. **Toute porte fermée appelle désormais un garde** — 24 portes, routes et
+   écrans compris, y compris celles qui n'en avaient jamais eu
+   (`/api/bilan`, `/api/donnees`, `/api/actualite`, les reçus, les
+   coordonnées, et les six pages qui affichent des chiffres). Les documents
+   acceptent aussi leur lien signé (`exigerSessionOuLien`) : la brèche
+   volontaire reste ouverte, telle qu'elle était.
+
+2. **La production refuse de servir sans `SESSION_SECRET`** au lieu de
+   s'ouvrir (`middleware.ts`). Les écrans ouverts restent atteignables — il
+   faut pouvoir dire « cette plateforme n'est pas configurée », et
+   `/api/plateforme` doit pouvoir le répondre au téléphone. Tout le reste :
+   503. Mesuré : `/api/donnees`, `/api/bilan`, `/api/actualite`,
+   `/api/recu/x`, `/api/comptes`, `/api/lu` → 503 ;
+   `/api/plateforme`, `/connexion`, `/confidentialite`, `/suppression` →
+   200 ; `/` → 307 vers la connexion.
+
+3. **Un relevé qui interdit d'oublier la prochaine.** C'est le geste qui
+   compte le plus, parce que le garde se pose porte par porte : rien
+   n'obligerait la route de demain à y penser — c'est exactement ainsi que
+   `/api/nature` et `/api/lu` sont restées ouvertes (SEC-06).
+   `verifier-le-verrou.mjs` lit maintenant la liste `OUVERT` du middleware,
+   parcourt tous les `route.ts` et `page.tsx`, et **échoue** si l'un d'eux
+   n'appelle aucun garde. Il a immédiatement trouvé `app/sms/page.tsx`, que
+   j'avais laissée de côté ; elle est gardée aussi, sans exception — une
+   liste d'exceptions est l'endroit exact où la prochaine porte oubliée irait
+   se ranger sans qu'on la voie.
+
+Sur le défaut du cadre lui-même : `next` est passé en **16.2.11**, hors de la
+plage touchée (voir SEC-09).
 
 ---
 
@@ -158,9 +216,25 @@ choisie, et expliquée, pour `utilisateurs` et `appareils`
 (`sql/schema.sql:424-429`). Et corriger le commentaire de `schema.sql`, qui
 décrit une architecture abandonnée.
 
-**Comment on saura.** Rejouer `pg_policies` : plus une seule ligne
-`authenticated` sur `public` ni sur le compartiment `recus`. Puis la batterie
-complète, pour prouver que la plateforme (clé de service) n'a rien perdu.
+**ÉCRIT, PAS APPLIQUÉ — et c'est délibéré.**
+
+Le correctif est `migrations/20260831_regles_dormantes.sql` : il retire les
+politiques, s'assure que RLS reste active partout, et porte son propre bloc
+de vérification. `sql/schema.sql` ne les recrée plus sur une base neuve, et
+son commentaire — qui décrivait une architecture abandonnée, et affirmait que
+« l'application web lit avec la clé publique » — dit maintenant la vérité :
+la base ne protège rien, toute l'autorisation est du code.
+
+**Ce qui reste à faire, et par qui.** Appliquer ce fichier dans l'éditeur SQL
+de Supabase. Je ne l'ai pas fait moi-même : c'est la base EN SERVICE, celle
+qui porte 302 paiements réels, et un audit n'écrit pas dans la production.
+Le fichier est rejouable, ne touche aucune donnée, et son bloc (a) doit
+rendre **zéro ligne**, (b) **zéro ligne**, (c) les mêmes comptes qu'avant.
+
+**À vérifier au passage** [À VÉRIFIER] : l'inscription Supabase Auth est-elle
+ouverte sur le projet (Authentication → Providers) ? Après cette migration,
+la réponse n'a plus d'importance pour l'argent — mais elle vaut d'être
+connue.
 
 ---
 
@@ -193,10 +267,27 @@ attesté par la plateforme (`x-vercel-forwarded-for`, `x-real-ip`) plutôt que
 celui du client ; et garder un compteur global, non indexé sur une valeur
 fournie par le visiteur, comme filet.
 
-**Comment on saura.** Un harnais qui envoie 200 essais avec 200 valeurs
-`X-Forwarded-For` différentes et exige que le frein morde quand même. **À
-écrire et à jouer avant toute correction** — pour l'instant ce constat est
-raisonné, pas prouvé.
+**MESURÉ, PUIS CORRIGÉ.** Le harnais a été écrit d'abord, et il a pris le
+frein en défaut : vingt essais sous vingt adresses inventées, puis un
+vingt-et-unième qui repartait en **6 ms** — là où un essai vraiment freiné en
+prend 2006. Le frein comptait jusqu'à un, indéfiniment.
+
+Le correctif (`lib/frein.ts`) ajoute un **second seau, commun**, qui ne
+dépend d'aucune valeur fournie par le visiteur : aucun en-tête ne le remet à
+zéro. Il est large — vingt essais libres — pour qu'un propriétaire distrait ne
+le sente jamais. Le délai retenu est le plus sévère des deux. Et
+`cleDeFrein` préfère désormais un en-tête que la plateforme pose elle-même
+(`x-vercel-forwarded-for`, `x-real-ip`) à celui que le client écrit.
+
+Après correction, même essai : **6007 ms** au vingt-et-unième. Et la
+vérification qui comptait autant — « une adresse innocente reste libre » —
+tient toujours à 6 ms : le frein mord sur la cadence, pas sur tout le monde.
+
+**Ce qui n'est PAS réglé, et reste vrai :** le seau vit dans la mémoire d'une
+instance. Sur Vercel, chaque instance froide repart à zéro. Un frein
+réellement partagé demanderait un compteur hors du serveur (Upstash, ou une
+table). Noté pour un tour suivant ; ce n'est plus un contournement d'un
+en-tête, c'est une limite d'architecture.
 
 ---
 
@@ -213,8 +304,25 @@ Ce que ça coûte concrètement : la plateforme peut être mise dans un cadre
 invisible chez quelqu'un d'autre (détournement de clic sur des boutons qui
 font bouger de l'argent), et le moindre défaut d'échappement n'a aucun filet.
 
-C'est le seul constat que je peux corriger **sans rien changer au
-comportement**. Je le propose en premier au tour 1.
+**CORRIGÉ.** Les cinq en-têtes fixes vivent dans `next.config.ts` ; la
+politique de contenu, qui porte un nonce tiré à chaque requête, vit dans
+`middleware.ts` — le nonce évite le `unsafe-inline` habituel sur les scripts.
+`frame-ancestors 'none'` ferme le détournement de clic.
+
+`preload` n'est **pas** posé sur HSTS : il engage le domaine sur une liste
+tenue par les navigateurs, dont on ne se retire pas d'un geste. C'est au
+propriétaire de le décider.
+
+**Vérifié sur le fil, et dans un vrai navigateur** — parce qu'une politique de
+contenu mal posée ne casse pas la compilation, elle casse l'écran, en
+silence. `curl -I` montre les six en-têtes ; Chromium charge l'écran de
+connexion avec **0 refus de la politique**, les 15 balises `<script>` de Next
+portent toutes le nonce, et la saisie dans un champ est relue correctement —
+ce qui prouve que l'hydratation a bien eu lieu.
+
+**Résidu :** `style-src` garde `unsafe-inline`. Next et Tailwind posent des
+styles en ligne ; un style ne fait pas partir de données, et le fermer
+demanderait un nonce sur les styles aussi. Assumé.
 
 ---
 
@@ -243,9 +351,13 @@ quel identifiant entier passe.
 `estProprietaire` que les deux autres routes, avec la même clause « sans
 `SESSION_SECRET`, on ne fait pas semblant ».
 
-**Comment on saura.** Un essai qui, avec une session d'invité, appelle
-`/api/nature` et `/api/lu` et exige un 403 ; puis les mêmes appels en
-propriétaire, et exige que ça marche.
+**MESURÉ, PUIS CORRIGÉ.** Vus rouges d'abord : un invité obtenait **200** sur
+`/api/nature` et **200** sur `/api/lu`. Les deux routes appellent maintenant
+`exigerProprietaire`, comme leurs deux voisines. Après correction : **403**
+pour l'invité, et le propriétaire passe toujours.
+
+Le relevé statique de SEC-02 est ce qui empêche la prochaine porte de
+répéter l'oubli.
 
 ---
 
@@ -269,7 +381,8 @@ signé n'accepte que `[\w.-]{1,64}` (`middleware.ts:69`), et un retour à la
 ligne ferait échouer la construction de la réponse. C'est de l'hygiène — mais
 la validation existe déjà à côté, et son absence ici est un oubli.
 
-**Correction (sûre).** La même validation qu'à la ligne 28 de la route sœur.
+**CORRIGÉ.** La même règle des deux côtés : `/^[\w.-]{1,64}$/` avant tout
+le reste, et un 400 sinon.
 
 ---
 
@@ -288,8 +401,9 @@ Sur le chemin de connexion, `chemin` porte le courriel
 le courriel du compte part dans les journaux Vercel — que la plateforme n'a
 aucune raison de garder.
 
-**Correction (sûre).** Journaliser la table et le code, jamais la requête
-filtrée.
+**CORRIGÉ.** `lib/serveur.ts` journalise la TABLE et le code
+(`table(chemin)`), jamais le chemin filtré. Le courriel ne peut plus tomber
+dans les journaux de l'hébergeur par une erreur de la base.
 
 ---
 
@@ -312,8 +426,25 @@ filtrée.
 (`@expo/config`, `@expo/config-plugins`). Rien dans ce qui entre dans le
 paquet installé. À traiter avec la prochaine montée d'Expo, pas en urgence.
 
-**Correction (sûre, mais à vérifier).** La montée de `next` demande la batterie
-complète — c'est le cadre lui-même. Rien ne s'annonce sans l'avoir jouée.
+**CORRIGÉ EN PARTIE.** `next` est en **16.2.11** (épinglé exactement) et
+`nanoid` en **3.3.18**. La batterie complète a été jouée après la montée.
+
+**Ce qui reste, et pourquoi je m'arrête là.** `npm audit` signale encore trois
+avis de gravité haute, tous dans des dépendances **de `next` lui-même** :
+`postcss` (≤ 8.5.22) et `sharp` (< 0.35.0). Les fermer demande
+**`next@16.3.3`**, une montée mineure hors de la plage actuelle.
+
+Ni l'un ni l'autre n'est atteignable ici, et c'est vérifié plutôt que
+supposé :
+  · `postcss` ne traite que la feuille de style du projet, à la compilation —
+    aucune CSS fournie par un visiteur ne l'atteint ;
+  · les avis `sharp`/libvips passent par l'optimisation d'images, et
+    **`next/image` n'est utilisé nulle part** dans ce dépôt (`grep` : aucun).
+
+Une montée mineure du cadre, juste après un changement d'autorisation aussi
+large, brouillerait le diff pour fermer des avis qui n'ont pas de support
+ici. Elle mérite son propre passage, avec sa propre batterie. **À faire au
+tour suivant**, ou tout de suite si le propriétaire préfère.
 
 ---
 
@@ -376,6 +507,29 @@ prochain tour.
   toutes les écritures sont des `POST` en `application/json`, qu'un formulaire
   d'un autre site ne sait pas fabriquer.
 
+## Le résidu — ce qui reste vrai après le tour 1
+
+À écrire, sinon « corrigé » finit par vouloir dire « on n'y pense plus ».
+
+- **Le frein ne vit que dans une instance.** Il mord sur la cadence d'une
+  instance chaude ; sur Vercel, une instance froide repart à zéro. Un frein
+  réellement partagé demande un compteur hors du serveur.
+- **Le garde relit la base toutes les dix secondes.** Une session fermée peut
+  donc vivre dix secondes de plus — sauf si c'est le propriétaire qui vient de
+  la fermer, auquel cas l'effet est immédiat. Ce n'est plus trente jours.
+- **Le sursis de cinq minutes.** Si la base se tait, un compte vu approuvé il
+  y a quatre minutes passe encore. C'est un choix : l'inverse ferait d'une
+  panne de Supabase un verrou sur sa propre maison.
+- **`style-src` garde `unsafe-inline`.** Voir SEC-05.
+- **`next` reste en 16.2.11**, avec trois avis non atteignables dans ses
+  propres dépendances. Voir SEC-09.
+- **SEC-03 n'est pas appliqué** sur la base en service. Tant que ce n'est pas
+  fait, les politiques `using (true)` sont toujours là.
+- **Un seul niveau de lecture.** Tout compte approuvé voit tout l'argent. Ce
+  n'est pas un défaut, c'est le modèle — une caisse, un propriétaire — mais
+  cela cesserait d'en être un le jour où de vraies personnes seraient
+  invitées.
+
 ## Ce qui n'a pas encore été regardé
 
 - TLS et en-têtes en service (`testssl.sh`, `curl -I` sur le domaine réel) —
@@ -384,3 +538,4 @@ prochain tour.
 - Le côté Python (`totem/`) : le robot, Telegram, le PIN, les codes USSD.
 - Le mode de reprise des SMS et le canal `commandes`, du côté du Pi.
 - Semgrep / CodeQL — pas encore joués.
+- Le frein hors mémoire d'instance (voir le résidu).

@@ -1,4 +1,6 @@
 import { chargerFicheRecu } from "@/lib/serveur";
+import { exigerSession, refusApi } from "@/lib/garde";
+import { langueDemandee } from "@/lib/langue-serveur";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +10,11 @@ export const dynamic = "force-dynamic";
  * est en place, au lieu de le promettre sur un minuteur.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
+  const moi = await exigerSession(req);
+  if (!moi.ok) return refusApi(moi.statut, await langueDemandee(req));
   const { numero } = await params;
   const fiche = await chargerFicheRecu(numero);
   return Response.json(fiche ?? { etabliLe: null }, {

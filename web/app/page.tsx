@@ -7,14 +7,15 @@ import { DerniersSms } from "./derniers-sms";
 import { BasculeLangue } from "./langue";
 import { IconChevron, IconSettings } from "./icons";
 import { salutation } from "@noyau/salutation";
-import { compteConnecte } from "@/lib/qui";
+import { exigerEcran } from "@/lib/ecran";
 
 export const dynamic = "force-dynamic";
 
 export default async function Accueil() {
   const langue = await langueServeur();
-  // Uniquement pour la salutation : on lit qui est connecté.
-  const moi = await compteConnecte();
+  // Le garde d'abord — une page sert les mêmes chiffres qu'une API. Le
+  // courriel qui en revient ne sert qu'à la salutation.
+  const moi = await exigerEcran();
   const t = textesAccueil[langue];
   const { terminal, sims, paiements, raccourcis } = await chargerDonnees(langue, { sms: 30, recus: 60 });
   // TOUTES les cartes en place — Orange ET MTN, chacune avec son solde. Si

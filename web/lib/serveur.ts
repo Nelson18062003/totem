@@ -31,22 +31,44 @@ export const relie = Boolean(url && cle);
 // journées : c'est la caisse qui décide de ce qu'est « aujourd'hui ».
 import { FUSEAU } from "./fuseau";
 
-async function lire<T>(chemin: string): Promise<T[]> {
-  if (!relie) return [];
+/** La TABLE visée par un chemin PostgREST, pour les journaux.
+ *
+ *  On ne journalise JAMAIS le chemin entier : il porte les filtres, et sur
+ *  le chemin de connexion le filtre EST le courriel du compte
+ *  (« utilisateurs?courriel=eq.… »). Une erreur de la base suffisait donc à
+ *  déposer l'adresse de quelqu'un dans les journaux de l'hébergeur, qui
+ *  n'ont aucune raison de la garder. La table et le code disent tout ce
+ *  qu'il faut pour comprendre la panne. */
+const table = (chemin: string): string => chemin.split(/[?&]/)[0];
+
+/** Une lecture qui SAIT dire pourquoi elle rend peu.
+ *
+ *  `lire` rend `[]` aussi bien pour « la table est vide » que pour « la base
+ *  n'a pas répondu ». Cette confusion est sans importance pour un écran —
+ *  il affiche « rien » dans les deux cas — mais elle ne l'est pas du tout
+ *  pour le garde : croire qu'un compte a disparu parce que Supabase a
+ *  hoqueté mettrait le propriétaire dehors en pleine journée. D'où cette
+ *  variante, qui rend `null` quand elle n'a pas pu savoir. */
+async function lireOuNull<T>(chemin: string): Promise<T[] | null> {
+  if (!relie) return null;
   try {
     const r = await fetch(`${url}/rest/v1/${chemin}`, {
       headers: { apikey: cle!, authorization: `Bearer ${cle}` },
       cache: "no-store",
     });
     if (!r.ok) {
-      console.error(`Supabase : ${chemin} → ${r.status}`);
-      return [];
+      console.error(`Supabase : ${table(chemin)} → ${r.status}`);
+      return null;
     }
     return (await r.json()) as T[];
   } catch (e) {
-    console.error(`Supabase injoignable : ${String(e)}`);
-    return [];
+    console.error(`Supabase injoignable (${table(chemin)}) : ${String(e)}`);
+    return null;
   }
+}
+
+async function lire<T>(chemin: string): Promise<T[]> {
+  return (await lireOuNull<T>(chemin)) ?? [];
 }
 
 // --- Ce que le robot écrit (colonnes de sql/schema.sql) ----------------------
@@ -623,6 +645,46 @@ export async function utilisateurParId(id: number): Promise<Utilisateur | null> 
   const lignes = await lire<LigneUtilisateur>(
     `utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le&id=eq.${id}&limit=1`);
   return lignes[0] ? versUtilisateur(lignes[0] as LigneUtilisateur) : null;
+}
+
+/**
+ * L'ÉTAT d'un compte — ce que le garde a besoin de savoir à chaque requête.
+ *
+ * Pourquoi ce n'est pas `utilisateurParId`. Celle-là rend `null` dans trois
+ * situations que rien ne distingue : le compte n'existe pas, la base n'a pas
+ * répondu, la plateforme n'est pas reliée. Le garde, lui, doit les traiter
+ * différemment — mettre quelqu'un dehors parce que Supabase a hoqueté serait
+ * une panne, pas une sécurité.
+ *
+ *   « actif »       le compte existe et il est approuvé : il entre ;
+ *   « ferme »       il existe, il n'est pas approuvé : il n'entre plus,
+ *                   même avec un jeton signé d'hier ;
+ *   « inconnu »     il n'existe pas — supprimé, ou jamais créé ;
+ *   « injoignable » on ne sait pas. Ce n'est NI un oui NI un non : c'est au
+ *                   garde de décider quoi en faire (il a un sursis).
+ */
+export type EtatCompte =
+  | { etat: "actif"; role: "proprietaire" | "invite"; courriel: string }
+  | { etat: "ferme" }
+  | { etat: "inconnu" }
+  | { etat: "injoignable" };
+
+export async function etatDuCompte(id: number): Promise<EtatCompte> {
+  if (!Number.isInteger(id) || id <= 0) return { etat: "inconnu" };
+  if (!relie) return { etat: "injoignable" };
+  const lignes = await lireOuNull<LigneUtilisateur>(
+    `utilisateurs?select=id,courriel,role,approuve&id=eq.${id}&limit=1`);
+  if (lignes === null) return { etat: "injoignable" };
+  // On revérifie l'identifiant nous-mêmes : la ligne servie ne dépend jamais
+  // de ce que le service distant a bien voulu filtrer.
+  const l = lignes.find((x) => x.id === id);
+  if (!l) return { etat: "inconnu" };
+  if (!l.approuve) return { etat: "ferme" };
+  return {
+    etat: "actif",
+    role: l.role === "proprietaire" ? "proprietaire" : "invite",
+    courriel: l.courriel,
+  };
 }
 
 /** Crée un compte. Rend `null` si le courriel est déjà pris, ou si la base

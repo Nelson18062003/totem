@@ -2,7 +2,7 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { textesReglages } from "@noyau/textes/reglages";
 import { listerAppareils, oublierAppareil, relie } from "@/lib/serveur";
-import { estProprietaire } from "@/lib/qui";
+import { exigerProprietaire, refusApi } from "@/lib/garde";
 import { pousser } from "@/lib/pousser";
 
 export const dynamic = "force-dynamic";
@@ -31,10 +31,8 @@ export async function POST(req: Request) {
   // ménage des jetons se déclenchait sur ses essais. Le commentaire d'en
   // haut le disait déjà : ce n'est pas un geste que l'on offre.
   // (Sans SESSION_SECRET, aucun verrou n'existe : on ne fait pas semblant.)
-  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
-    return Response.json(
-      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
-  }
+  const moi = await exigerProprietaire(req);
+  if (!moi.ok) return refusApi(moi.statut, langue);
 
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });

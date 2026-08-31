@@ -2,7 +2,7 @@ import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { estProprietaire } from "@/lib/qui";
+import { exigerProprietaire, refusApi } from "@/lib/garde";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +33,9 @@ export async function POST(req: Request) {
   // Sans SESSION_SECRET, la plateforme n'a AUCUN verrou : le middleware
   // laisse tout passer. Refuser ici donnerait l'illusion d'une porte fermée
   // devant une maison ouverte, et casserait le développement local pour rien.
-  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
-    return Response.json(
-      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
-  }
+  // C'est le garde lui-même qui le sait, et qui laisse alors passer.
+  const moi = await exigerProprietaire(req);
+  if (!moi.ok) return refusApi(moi.statut, langue);
   const corps = await req.json().catch(() => null);
   const genre = typeof corps?.type === "string" ? corps.type : "";
   if (!GENRES.has(genre)) {
