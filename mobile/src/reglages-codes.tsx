@@ -18,6 +18,7 @@ import { Pressable, TextInput, View } from "react-native";
 import { Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
+import { useGesteUnique } from "@/geste";
 import { deposerCommande } from "@/api/guichet";
 import { attendreCommande } from "@/reglages-cartes";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -168,14 +169,20 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
   const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
   const [message, setMessage] = useState("");
 
-  const poser = async (action: "definir" | "supprimer", corps: string[]) => {
+  // Un appui, une demande. L'état React ne se ferme qu'au rendu suivant :
+  // deux appuis rapprochés partaient tous les deux.
+  const geste = useGesteUnique();
+
+  const poser = (action: "definir" | "supprimer", corps: string[]) =>
+    geste.lancer(async (cleIntention) => {
     setEtat("envoi");
     setMessage("");
     try {
       const cle = rang ? rang.cle : deriverCle(nom);
       const libelle = rang ? rang.libelle : nom.trim();
       const { id } = await deposerCommande("raccourci",
-        { operateur, cle, libelle, etapes: corps, action }, terminal);
+        { operateur, cle, libelle, etapes: corps, action }, terminal,
+        cleIntention);
       const resultat = await attendreCommande(id);
       if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return; }
       if (resultat.etat !== "faite") {
@@ -191,7 +198,7 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
       setEtat("erreur");
       setMessage(t.pasPartie);
     }
-  };
+  });
 
   const enregistrer = () => {
     const corps = decouperEtapes(etapes);

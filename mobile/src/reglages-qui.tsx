@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, TextInput, View } from "react-native";
 
 import { Carte, Filet, Texte } from "@/ui";
+import { useGesteUnique } from "@/geste";
 import { agirSurCompte, ErreurGuichet, listerComptes,
          type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -101,8 +102,15 @@ export function SectionQui({ langue }: { langue: Langue }) {
     await faire();
   };
 
-  const creer = async () => {
-    if (creation || !courriel || motdepasse.length < 12) return;
+  // `if (creation)` ne garde rien : l'état React ne se ferme qu'au rendu
+  // suivant. Deux appuis rapprochés partaient tous les deux ; la base n'en
+  // gardait qu'un — c'est elle qui tient la règle — mais le second revenait
+  // avec « un compte existe déjà avec ce courriel », juste après une création
+  // réussie. Le propriétaire lisait un échec là où tout s'était bien passé.
+  const gesteCreer = useGesteUnique();
+
+  const creer = () => gesteCreer.lancer(async () => {
+    if (!courriel || motdepasse.length < 12) return;
     setCreation(true);
     setMot(null);
     try {
@@ -120,7 +128,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
     } finally {
       setCreation(false);
     }
-  };
+  });
 
   // Pas le propriétaire : la section se tait, comme au web.
   if (permis === false) return null;

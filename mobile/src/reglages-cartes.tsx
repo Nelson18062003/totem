@@ -16,6 +16,7 @@ import { Pressable, TextInput, View } from "react-native";
 import { Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
+import { useGesteUnique } from "@/geste";
 import { deposerCommande, lireCommande } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
@@ -113,8 +114,13 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
   const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
   const [message, setMessage] = useState("");
 
-  const enregistrer = async () => {
-    if (etat === "envoi") return;
+  // `if (etat === "envoi") return` ne garde rien contre un double appui :
+  // l'état React ne change qu'au rendu SUIVANT, et deux appuis rapprochés
+  // lisent tous les deux « repos ». Le verrou de `useGesteUnique`, lui, se
+  // ferme à l'instant de l'appui.
+  const geste = useGesteUnique();
+
+  const enregistrer = () => geste.lancer(async (cleIntention) => {
     const nomPropre = nom.trim().replace(/\s+/g, " ");
     const numeroPropre = numero.replace(/\D/g, "");
     if (nomPropre && nomPropre.length < 2) {
@@ -132,7 +138,8 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
     setEtat("envoi");
     setMessage("");
     try {
-      const { id } = await deposerCommande("identite", parametres, terminal);
+      const { id } = await deposerCommande("identite", parametres, terminal,
+                                           cleIntention);
       const resultat = await attendreCommande(id);
       if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return; }
       if (resultat.etat === "faite") {
@@ -148,7 +155,7 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
       setEtat("erreur");
       setMessage(t.pasPartie);
     }
-  };
+  });
 
   return (
     <Feuille

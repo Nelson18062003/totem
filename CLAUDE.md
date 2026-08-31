@@ -55,6 +55,7 @@ sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécu
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
+cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
@@ -179,6 +180,16 @@ Une mise à jour à distance arrive sur des téléphones EN SERVICE, en quelques
 secondes, sans que personne ne l'installe ni ne la relise. Un écran cassé
 poussé ainsi est cassé partout, tout de suite : la batterie se lance AVANT de
 publier, jamais après.
+
+`verifier-les-gestes` exige qu'un geste d'argent parte UNE fois. Les écrans
+se gardaient tous d'un état React — `disabled={etat === "envoi"}` — qui ne se
+ferme qu'au rendu SUIVANT : deux appuis rapprochés lisaient tous les deux
+« repos » et partaient tous les deux. Sur un téléphone, deux appuis
+rapprochés ne sont pas une acrobatie : c'est ce que fait n'importe qui devant
+un bouton qui ne réagit pas tout de suite, et à Douala un bouton ne réagit
+pas tout de suite. Il faut donc un verrou SYNCHRONE (`useGesteUnique`) et une
+clé d'intention — le verrou pare le double appui, la clé pare la réponse
+perdue en route où la personne recommence de bonne foi.
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
