@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
-                          solde_annonce)
+                          masquer_le_code, solde_annonce)
 from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
                           motif_du_sms, motif_selon_nature, raison_du_refus)
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
@@ -547,7 +547,7 @@ class Robot:
             elif commande in ("raccourcis", "boutons"):
                 self._lister_raccourcis(canal)
             elif commande == "sms":
-                self._derniers_sms(canal)
+                self._derniers_sms(canal, prive=entrant.prive)
             elif commande == "rapport":
                 self._rapport(canal=canal, manuel=True)
             elif commande == "diagnostic":
@@ -1440,7 +1440,15 @@ class Robot:
         boutons = self._rangees_comptes() + [[("🏠 Menu", "c:menu")]]
         self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
 
-    def _derniers_sms(self, canal=None):
+    def _derniers_sms(self, canal=None, prive=True):
+        """Les cinq derniers SMS, tels qu'ils sont arrivés.
+
+        DANS UN GROUPE, LES CODES SONT MASQUÉS. La commande n'est pas réservée
+        aux administrateurs — un observateur doit pouvoir suivre la caisse —
+        mais « suivre la caisse » n'a jamais voulu dire lire les codes de
+        confirmation du propriétaire. Dans son chat privé, il les lit entiers :
+        ils sont à lui.
+        """
         lignes = self.journal.derniers_sms(5, self._cartes_en_place())
         if not lignes:
             self.transport.envoyer(t("No text messages on record yet.",
@@ -1450,8 +1458,9 @@ class Robot:
         blocs = []
         for date, expediteur, texte, compte in lignes:
             etiquette = f"[{echap(compte)}] " if self.multi and compte else ""
+            lisible = texte if prive else masquer_le_code(texte)
             blocs.append(f"📥 {etiquette}{echap(date.replace('T', ' '))} — "
-                         f"{gras(expediteur)}\n{echap(texte)}")
+                         f"{gras(expediteur)}\n{echap(lisible)}")
         self.transport.envoyer("\n\n".join(blocs), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
 
@@ -2439,8 +2448,23 @@ class Robot:
                 self._noter(f"SMS d'argent illisible ({expediteur}) : "
                             "lecture incomplète, opération comptée nulle part")
 
-        self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
-        self._faire_sonner(expediteur, compte.libelle, texte)
+        # LE CODE NE PART PAS DANS LE GROUPE. Chaque SMS reçu est annoncé
+        # tout seul, sans que personne ne le demande — et « encaissements »
+        # est le GROUPE dès qu'il y en a un. Le propriétaire y invite qui
+        # suit la caisse ; un SMS « Votre code de confirmation est 483921. Ne
+        # le communiquez a personne. » y arrivait entier, à chaque fois. Le
+        # robot communiquait donc le code à tout le monde, tout seul.
+        #
+        # Dans le chat privé du propriétaire, rien ne change : le message est
+        # à lui, code compris, et le lui cacher le rendrait inutilisable.
+        partage = getattr(self.transport, "partage", False)
+        self.facteur.poster(
+            f"{entete}\n{echap(masquer_le_code(texte) if partage else texte)}",
+            canal="encaissements")
+        # Les téléphones inscrits ne sont pas tous celui du propriétaire : un
+        # invité approuvé en a un, et un aperçu s'affiche sur un écran
+        # VERROUILLÉ, que n'importe qui peut lire par-dessus une épaule.
+        self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte))
 
     def _faire_sonner(self, expediteur, libelle, texte):
         """Fait sonner les téléphones qui se sont inscrits.

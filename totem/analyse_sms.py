@@ -1060,13 +1060,46 @@ def code_a_usage_unique(texte):
     return analyser(texte) is None
 
 
-# Le SMS n'est JAMAIS modifié : il appartient au propriétaire, codes compris.
-# `masquer_secrets`, qui remplaçait le code par des points avant l'écriture au
-# journal, a été retiré — cacher au propriétaire son propre code de connexion
-# l'empêchait de s'en servir. `code_a_usage_unique` demeure : il ne cache
-# rien, il sert seulement à ranger le SMS dans la catégorie « code » (une
-# icône, pas de reçu) et se lit en entier comme les autres.
+# Le SMS n'est JAMAIS modifié EN MÉMOIRE : il appartient au propriétaire,
+# codes compris. `masquer_secrets`, qui remplaçait le code par des points
+# avant l'écriture au journal, a été retiré — cacher au propriétaire son
+# propre code de connexion l'empêchait de s'en servir. Cela reste vrai : au
+# journal, sur la plateforme, dans le chat privé du propriétaire, le message
+# se lit entier.
+
+
+def masquer_le_code(texte):
+    """Le même SMS, son code à usage unique remplacé par des points.
+
+    POUR QUI, ET SEULEMENT POUR EUX. Pas pour le propriétaire : son code lui
+    appartient, et le lui cacher le rendrait inutilisable — c'est très
+    exactement pour cela que le masquage général avait été retiré. Celui-ci
+    ne sert QUE lorsque le message part vers un endroit où le propriétaire
+    n'est PAS SEUL :
+
+      — un groupe Telegram, où il a invité quelqu'un pour suivre la caisse ;
+      — l'écran verrouillé d'un téléphone qui n'est pas forcément le sien.
+
+    Un SMS de code dit souvent « ne le communiquez à personne ». Le robot le
+    communiquait au groupe entier, tout seul, à chaque réception.
+
+    Le message n'est pas tronqué : on le lit encore en entier, on voit qu'un
+    code est arrivé et de qui. Seuls les chiffres s'en vont — c'est-à-dire la
+    seule chose qui serve à quelqu'un d'autre.
+
+    Le code se REPÈRE sur la forme normalisée (sans accents, en minuscules,
+    pour attraper « CODE » comme « code ») et se REMPLACE dans le texte
+    d'origine, qui ne bouge pas autrement.
+    """
+    if not code_a_usage_unique(texte):
+        return texte
+    trouve = RE_CODE_UNIQUE.search(_normaliser(texte))
+    if not trouve:
+        return texte
+    chiffres = trouve.group(1)
+    return texte.replace(chiffres, "•" * len(chiffres))
 
 
 __all__ = ["Paiement", "Partie", "analyser", "solde_annonce", "categoriser",
-           "code_a_usage_unique", "est_echec", "formater_montant"]
+           "code_a_usage_unique", "masquer_le_code", "est_echec",
+           "formater_montant"]

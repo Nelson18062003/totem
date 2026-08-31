@@ -162,5 +162,11 @@ Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
   `brand/generer.py`. Tout le reste en découle. Voir `docs/IDENTITE.md`.
 - **Le code PIN** n'est jamais stocké, jamais écrit dans un message, jamais
   journalisé autrement que `****`.
+- **Un SMS appartient au propriétaire, codes compris** — il se lit ENTIER
+  dans son chat privé, sur la plateforme, au journal. Mais un GROUPE Telegram
+  n'est pas le propriétaire : ce qui y part est lu par tous ses membres, et le
+  robot y annonçait chaque SMS tout seul, « Votre code de confirmation est
+  483921 » compris. Vers un groupe, ou vers l'écran verrouillé d'un téléphone,
+  les chiffres du code s'en vont (`masquer_le_code`) — et rien d'autre.
 - **Un SMS mal compris** vaut mieux qu'un SMS mal interprété : `analyse_sms.py`
   renvoie `None` dans le doute, et n'invente jamais un montant.

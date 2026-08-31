@@ -21,3 +21,9 @@ class Entrant:
     bouton: bool = False       # provient d'un clic plutôt que d'une frappe
     callback_id: str = ""      # à accuser sous 10 s sinon le bouton tourne
     origine_id: int = 0        # message porteur du clavier cliqué
+    # LA CONVERSATION EST-ELLE PRIVÉE ? Telegram le dit lui-même — on ne le
+    # devine pas d'après l'identifiant. Ce qui s'affiche dans un GROUPE se lit
+    # par tous ses membres, observateurs compris : un code à usage unique n'y
+    # a pas sa place. Vrai par défaut : la console et les scénarios d'essai
+    # parlent au propriétaire, seul.
+    prive: bool = True

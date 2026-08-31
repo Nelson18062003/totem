@@ -49,6 +49,13 @@ class TransportTelegram:
         self.chats_autorises = {self.chat_id}
         if self.groupe:
             self.chats_autorises.add(self.groupe)
+        # LE PROPRIÉTAIRE EST-IL SEUL À LIRE ? Dès qu'un groupe est configuré,
+        # les annonces automatiques (« encaissements », « alertes ») y vont, et
+        # tout membre du groupe les lit — y compris un simple observateur, qui
+        # n'a pas le droit de piloter les SIM mais voit tout ce qui s'affiche.
+        # Ce qui part vers un groupe ne doit donc pas porter de code à usage
+        # unique. Voir `analyse_sms.masquer_le_code`.
+        self.partage = self.groupe is not None
         self.decalage = 0
         self.conflit = False           # un autre robot utilise le même jeton
         self._verrou_debit = threading.Lock()
@@ -346,9 +353,14 @@ class TransportTelegram:
         if chat not in self.chats_autorises:
             return None  # conversation non autorisée : ignorée en silence
         auteur = (clic or msg).get("from", {})
+        # Telegram dit lui-même de quel genre de conversation il s'agit :
+        # « private », « group », « supergroup », « channel ». On ne le devine
+        # pas d'après l'identifiant — un chat_id de groupe est un identifiant
+        # comme un autre, et se tromper enverrait un code à un groupe.
         commun = dict(utilisateur=auteur.get("id", 0),
                       nom=auteur.get("first_name", ""), chat=chat,
-                      sujet=msg.get("message_thread_id", 0) or 0)
+                      sujet=msg.get("message_thread_id", 0) or 0,
+                      prive=msg.get("chat", {}).get("type") == "private")
         if clic:
             return Entrant(texte=clic.get("data", ""), bouton=True,
                            callback_id=clic.get("id", ""),
