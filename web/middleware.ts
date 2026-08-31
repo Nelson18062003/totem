@@ -21,6 +21,9 @@ import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 // justement en demander un. Ce qui les rend sûres n'est pas une porte fermée,
 // c'est qu'un compte neuf n'ouvre RIEN tant que le propriétaire ne l'a pas
 // approuvé (voir lib/porte.ts).
+// « /decouvrir » est la vitrine : la page qui présente TOTEM à un visiteur
+// sans compte. Elle ne contient aucune donnée — pas un solde, pas un nom —
+// seulement ce que le produit fait, et la porte de la connexion.
 // « /confidentialite » est ouverte parce que Google Play l'exige à une
 // adresse publique : un examinateur l'ouvre sans compte, depuis un lien collé
 // dans un formulaire. Derrière le verrou, l'application serait refusée sans
@@ -29,7 +32,7 @@ import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 // « Sécurité des données » du magasin exige une adresse publique où lire
 // comment faire effacer son compte, et l'ouvre lui aussi sans compte.
 const OUVERT = ["/connexion", "/inscription", "/confidentialite",
-                "/suppression",
+                "/suppression", "/decouvrir",
                 "/api/connexion", "/api/deconnexion", "/api/inscription",
                 "/api/session", "/api/plateforme"];
 

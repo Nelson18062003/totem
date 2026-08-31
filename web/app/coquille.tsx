@@ -28,6 +28,11 @@ export function Coquille({
   const path = usePathname();
   const langue = useLangue();
   const t = textesCharpente[langue];
+
+  // La vitrine se déploie pleine largeur : elle peint ses propres fonds
+  // d'un bord à l'autre de l'écran, la colonne centrée la briderait.
+  if (path.startsWith("/decouvrir")) return <>{children}</>;
+
   const nu = PLEIN_ECRAN.some((p) => path.startsWith(p));
 
   if (nu) {

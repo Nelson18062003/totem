@@ -21,6 +21,9 @@ const en = {
     "The Mobile Money PIN is never asked for here. It is only entered " +
     "during an operation, and is never stored anywhere.",
   langue: "Language",
+  // La porte de la vitrine : celui qui arrive ici sans compte doit pouvoir
+  // lire ce qu'est TOTEM ailleurs que sur un formulaire.
+  decouvrir: "Discover what TOTEM does",
 
   // L'adresse de la plateforme — seulement sur le téléphone. Le navigateur
   // EST déjà sur la plateforme : il n'a rien à chercher.
@@ -92,6 +95,7 @@ const fr: typeof en = {
     "Le code PIN Mobile Money n’est jamais demandé ici. Il ne se saisit " +
     "qu’au moment d’une opération, et n’est enregistré nulle part.",
   langue: "Langue",
+  decouvrir: "Découvrir ce que fait TOTEM",
 
   plateforme: "Plateforme",
   plateformeCherche: "Recherche de la plateforme…",

@@ -180,3 +180,113 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .entree, .voile, .surgit { animation: none; }
 }
+
+/* --- La vitrine « /decouvrir » ---------------------------------------------
+   La seule page qui parle DE TOTEM à un visiteur sans compte. C'est une
+   surface de marque : l'encre, la latérite et le sable y ont droit de cité,
+   et le mouvement y est plus ample que dans l'application — mais toujours
+   coupé net pour qui préfère les interfaces immobiles. Tout reste mat : les
+   plans se séparent par les fonds et les bordures, jamais par une ombre. */
+
+.vitrine { background: #141414; color: #f5f5f5; }
+.vitrine ::selection { background: var(--color-laterite); color: #fff; }
+
+/* Les nuances de l'encre — un cran au-dessus du fond, comme la carte de
+   LA caisse (.acct-marque) au-dessus des autres. */
+.vitrine-carte { background: #1d1c1b; border: 1px solid #33302d; }
+.vitrine-texte-doux { color: #b9b2ab; }   /* secondaire sur encre — 7,8:1 */
+.vitrine-ligne { border-color: #33302d; }
+
+/* La lueur du foyer : un FOND, pas une ombre — la latérite qui chauffe
+   l'encre derrière le monolithe. */
+.vitrine-foyer {
+  background:
+    radial-gradient(42rem 30rem at 72% 30%, rgba(154, 75, 46, 0.30), transparent 65%),
+    radial-gradient(30rem 22rem at 12% 90%, rgba(154, 75, 46, 0.12), transparent 70%);
+}
+
+/* La claustra sur le sable, en voile : le tressage à pleine densité rendait
+   le texte illisible — ici il se devine, il ne recouvre pas. */
+.claustra-sable {
+  position: relative;
+  background: var(--color-sable);
+}
+.claustra-sable::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/motif.svg");
+  background-repeat: repeat;
+  background-size: 56px auto;
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+/* La claustra sur l'encre : le même tressage, posé en voile discret. */
+.claustra-encre { position: relative; }
+.claustra-encre::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/motif.svg");
+  background-repeat: repeat;
+  background-size: 56px auto;
+  opacity: 0.09;
+  pointer-events: none;
+}
+
+/* La tresse qui se tisse : chaque brin se trace de haut en bas. Le réglage
+   tient d'un seul chiffre parce que les tracés portent pathLength=1. */
+.tresse-tracee path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: tresse-tisse 1.8s cubic-bezier(0.4, 0, 0.2, 1) 0.4s forwards;
+}
+@keyframes tresse-tisse { to { stroke-dashoffset: 0; } }
+
+/* L'apparition au défilement : la section se lève de quelques pas quand elle
+   entre à l'écran (la classe « vu » est posée par la page). */
+.revele {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.revele.vu { opacity: 1; transform: none; }
+
+/* Le bandeau qui défile — deux copies de la même liste, décalées d'une
+   moitié : la boucle ne se voit pas. */
+.bandeau-defile { overflow: hidden; }
+.bandeau-defile > div {
+  display: flex;
+  width: max-content;
+  animation: bandeau-defile 36s linear infinite;
+}
+@keyframes bandeau-defile { to { transform: translateX(-50%); } }
+
+/* Le monolithe : un volume en vraie perspective, qui tourne lentement sur
+   lui-même et s'incline sous le pointeur. */
+.monolithe-scene { perspective: 1200px; }
+.monolithe-inclinaison {
+  transform-style: preserve-3d;
+  transform: rotateX(var(--inclinaison-x, 0deg)) rotateY(var(--inclinaison-y, 0deg));
+  transition: transform 0.35s ease-out;
+}
+.monolithe {
+  position: relative;
+  width: 15rem;
+  height: 20rem;
+  transform-style: preserve-3d;
+  animation: monolithe-tourne 30s linear infinite;
+}
+@keyframes monolithe-tourne {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tresse-tracee path { animation: none; stroke-dashoffset: 0; }
+  .revele { opacity: 1; transform: none; transition: none; }
+  .bandeau-defile > div { animation: none; }
+  .monolithe { animation: none; transform: rotateY(-24deg); }
+  .monolithe-inclinaison { transition: none; transform: none; }
+}

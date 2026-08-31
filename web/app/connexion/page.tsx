@@ -145,6 +145,11 @@ export default function Connexion() {
             {t.creerUnCompte}
           </a>
         )}
+        {/* La vitrine : la seule page qui raconte TOTEM à qui n'a pas de
+            compte. Discrète — la plupart des visiteurs viennent entrer. */}
+        <a href="/decouvrir" className="text-ink-soft underline underline-offset-4 transition hover:text-ink">
+          {t.decouvrir}
+        </a>
         {/* La clé de secours ne s'annonce pas plus fort que cela : ce n'est
             pas le chemin de tous les jours. */}
         <button
