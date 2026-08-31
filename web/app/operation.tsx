@@ -63,6 +63,16 @@ export function OperationPopup({
   const [fil, setFil] = useState<Msg[]>([]);
   const [attente, setAttente] = useState(false);
   const [enSession, setEnSession] = useState(false);
+  // LA CLÉ D'INTENTION DE CETTE OPÉRATION — tirée une fois, à l'ouverture.
+  // Le premier code composé porte le bénéficiaire ET le montant : le
+  // composer deux fois, c'est transférer deux fois. Cette clé accompagne ce
+  // premier envoi ; si le même geste repart (un rendu joué deux fois, un
+  // appui recompté, une requête reprise après un délai), la base reconnaît
+  // la clé et rend la demande DÉJÀ créée au lieu d'en ouvrir une seconde.
+  const cleOperation = useRef<string>(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   // Un raccrochage est-il DÛ ? (session ouverte, pas encore close.) Un
   // `ref` synchrone, lisible depuis le nettoyage de démontage — l'état
   // React n'y serait plus à jour.
@@ -82,6 +92,8 @@ export function OperationPopup({
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
+    // Jointe au seul envoi qui peut porter un transfert complet : l'ouverture.
+    cle?: string,
   ): Promise<string | null> => {
     setAttente(true);
     setErreur(null);
@@ -90,7 +102,7 @@ export function OperationPopup({
       const r = await fetch("/api/commande", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: genre, parametres }),
+        body: JSON.stringify({ type: genre, parametres, cle }),
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
@@ -164,7 +176,8 @@ export function OperationPopup({
       operation.carte
         ? { code: etapes[0], carte: operation.carte }
         : { code: etapes[0] },
-      { de: "vous", texte: etapes[0] });
+      { de: "vous", texte: etapes[0] },
+      cleOperation.current);
     for (const e of etapes.slice(1)) {
       if (texte == null) return;
       texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });

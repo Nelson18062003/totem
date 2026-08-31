@@ -185,9 +185,29 @@ create table if not exists commandes (
   etat        text not null default 'en_attente'
                 check (etat in ('en_attente', 'en_cours', 'faite', 'echouee')),
   resultat    text,
+  -- LA CLÉ D'INTENTION — celle qui empêche d'envoyer l'argent DEUX FOIS.
+  --
+  -- Un code USSD complet porte le bénéficiaire ET le montant
+  -- (« *126*1*677123456*5000# ») : le composer deux fois, c'est transférer
+  -- deux fois. Or une demande peut être présentée deux fois sans que personne
+  -- l'ait voulu — un appui compté double, un onglet resté ouvert, une requête
+  -- abandonnée par un délai côté téléphone alors qu'elle a bien abouti côté
+  -- serveur, et le propriétaire qui recommence.
+  --
+  -- L'écran tire une clé au hasard PAR GESTE et la joint à sa demande. Deux
+  -- envois de la MÊME clé sont le même geste : le second ne crée pas de
+  -- seconde ligne, il retrouve la première. Deux gestes distincts ont deux
+  -- clés, donc deux lignes — c'est ce qui permet de répondre « 1 » à deux
+  -- questions successives d'un menu sans que rien ne soit confondu.
+  --
+  -- Nulle pour les demandes d'avant : l'index est partiel, elles cohabitent.
+  cle         text,
   demandee_le timestamptz not null default now(),
   traitee_le  timestamptz
 );
+
+create unique index if not exists commandes_cle_unique
+  on commandes (terminal, cle) where cle is not null;
 
 -- --- Raccourcis : les boutons USSD appris, par opérateur --------------------
 -- Les codes USSD appartiennent au réseau, pas à une carte : « *126# puis 5 »

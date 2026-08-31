@@ -190,6 +190,21 @@ const serveur = createServer(async (req, res) => {
     let brut = "";
     for await (const m of req) brut += m;
     const c = JSON.parse(brut || "{}");
+    // L'INDEX D'UNICITÉ, imité. La vraie base porte un index partiel sur
+    // (terminal, cle) : deux demandes de même clé ne peuvent pas coexister, et
+    // PostgREST répond 409. Sans cette imitation, le faux nuage acceptait tout
+    // et l'on ne pouvait pas éprouver l'idempotence — un harnais qui ne peut
+    // pas voir la faute ne mesure rien.
+    if (c.cle) {
+      const jumelle = [...commandes.values()].find(
+        (x) => x.cle === c.cle && x.terminal === c.terminal);
+      if (jumelle) {
+        res.writeHead(409, { "content-type": "application/json" });
+        return res.end(JSON.stringify({
+          code: "23505", message: "duplicate key value violates unique constraint",
+        }));
+      }
+    }
     const id = prochainId++;
     // Le tour compte les réponses déjà données dans CETTE session.
     const tour = [...commandes.values()].filter(
@@ -206,6 +221,14 @@ const serveur = createServer(async (req, res) => {
 
   // Lecture d'une commande.
   if (chemin === "/rest/v1/commandes") {
+    // Retrouver une demande PAR SA CLÉ : c'est ce que fait la plateforme après
+    // un 409, pour rendre la demande déjà créée au lieu d'un échec.
+    const parCle = url.searchParams.get("cle");
+    if (parCle) {
+      const cle = parCle.replace("eq.", "");
+      const c = [...commandes.values()].find((x) => x.cle === cle);
+      return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+    }
     const eq = url.searchParams.get("id");
     const id = eq ? Number(eq.replace("eq.", "")) : null;
     const c = commandes.get(id);

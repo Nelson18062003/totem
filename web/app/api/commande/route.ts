@@ -81,6 +81,15 @@ export async function POST(req: Request) {
   const terminalCible = typeof corps?.terminal === "string"
     ? corps.terminal.replace(/[^\w.-]/g, "").slice(0, 64)
     : null;
+  // LA CLÉ D'INTENTION — un geste, une clé. Deux envois de la même clé sont
+  // le même geste : la base n'enregistre qu'une demande, et l'écran suit
+  // celle-là. C'est ce qui empêche qu'un code complet (bénéficiaire ET
+  // montant) soit composé deux fois, donc que l'argent parte deux fois,
+  // quand une requête est présentée deux fois sans que personne l'ait voulu.
+  // Bornée et nettoyée comme le reste : elle finit dans une requête.
+  const cleIntention = typeof corps?.cle === "string"
+    ? corps.cle.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64) || null
+    : null;
   // Réglage de l'identité d'une carte : l'ICCID vise la puce, le numéro et le
   // nom sont nettoyés ici puis revérifiés par le terminal, qui reste juge.
   if (typeof brut.iccid === "string") {
@@ -167,7 +176,8 @@ export async function POST(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
-  const id = await creerCommande(genre, parametres, terminalCible);
+  const id = await creerCommande(genre, parametres, terminalCible,
+                                 cleIntention);
   if (id == null) {
     return Response.json({ erreur: erreurApi(langue, "depotImpossible") }, { status: 502 });
   }

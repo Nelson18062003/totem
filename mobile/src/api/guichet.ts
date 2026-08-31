@@ -313,10 +313,15 @@ export function deposerCommande(
   genre: string,
   parametres: Record<string, unknown>,
   terminal?: string | null,
+  // LA CLÉ D'INTENTION — un geste, une clé. Un code USSD complet porte le
+  // bénéficiaire ET le montant : le composer deux fois, c'est transférer deux
+  // fois. Deux envois de la même clé sont le même geste, et la plateforme ne
+  // crée alors qu'UNE demande. Facultative : sans elle, rien ne change.
+  cle?: string,
 ): Promise<{ id: number }> {
   return demander<{ id: number }>("/api/commande", {
     method: "POST",
-    body: JSON.stringify({ type: genre, parametres, terminal }),
+    body: JSON.stringify({ type: genre, parametres, terminal, cle }),
   });
 }
 

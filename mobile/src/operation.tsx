@@ -70,6 +70,13 @@ export function OperationPopup({
   const [fil, setFil] = useState<Msg[]>([]);
   const [attente, setAttente] = useState(false);
   const [enSession, setEnSession] = useState(false);
+  // LA CLÉ D'INTENTION DE CETTE OPÉRATION — tirée une fois, à l'ouverture.
+  // Elle accompagne le premier code composé, celui qui peut porter le
+  // bénéficiaire et le montant. Si ce geste repart (un appui recompté, une
+  // requête reprise après un délai), la plateforme reconnaît la clé et rend
+  // la demande déjà créée : l'argent ne part pas deux fois.
+  const cleOperation = useRef<string>(
+    `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [reponseLibre, setReponseLibre] = useState("");
@@ -104,12 +111,15 @@ export function OperationPopup({
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
+    // Jointe au seul envoi qui peut porter un transfert complet : l'ouverture.
+    cle?: string,
   ): Promise<string | null> => {
     setAttente(true);
     setErreur(null);
     if (bulle) setFil((f) => [...f, bulle]);
     try {
-      const { id } = await deposerCommande(genre, parametres, operation.terminal);
+      const { id } = await deposerCommande(genre, parametres,
+                                           operation.terminal, cle);
       for (let i = 0; i < TOURS; i++) {
         await new Promise((r) => setTimeout(r, PAUSE_MS));
         if (!vivant.current) return null;
@@ -180,7 +190,8 @@ export function OperationPopup({
     let texte = await envoyer(
       "ussd",
       operation.carte ? { code: etapes[0], carte: operation.carte } : { code: etapes[0] },
-      { de: "vous", texte: etapes[0] });
+      { de: "vous", texte: etapes[0] },
+      cleOperation.current);
     for (const e of etapes.slice(1)) {
       if (texte == null) return;
       texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });

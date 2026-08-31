@@ -385,10 +385,19 @@ export async function creerCommande(
   // dernier qui a donné signe de vie », qui, avec deux boîtiers, chercherait
   // le message dans le mauvais journal et fabriquerait le reçu d'un autre.
   terminalCible?: string | null,
+  // LA CLÉ D'INTENTION. Tirée au hasard par l'écran, UNE par geste. Deux
+  // envois de la même clé sont le même geste : le second ne crée pas de
+  // seconde demande, il retrouve la première. C'est ce qui empêche qu'un code
+  // USSD complet — bénéficiaire et montant compris — soit composé deux fois,
+  // et donc que l'argent parte deux fois, quand une requête est présentée
+  // deux fois sans que personne l'ait voulu.
+  cleIntention?: string | null,
 ): Promise<number | null> {
   if (!relie) return null;
   const terminal = terminalCible || (await terminalVise());
   if (!terminal) return null;
+  const ligne: Record<string, unknown> = { terminal, type: genre, parametres };
+  if (cleIntention) ligne.cle = cleIntention;
   try {
     const r = await fetch(`${url}/rest/v1/commandes`, {
       method: "POST",
@@ -396,12 +405,23 @@ export async function creerCommande(
         apikey: cle!, authorization: `Bearer ${cle}`,
         "content-type": "application/json", prefer: "return=representation",
       },
-      body: JSON.stringify({ terminal, type: genre, parametres }),
+      body: JSON.stringify(ligne),
       cache: "no-store",
     });
-    if (!r.ok) return null;
-    const lignes = (await r.json()) as { id: number }[];
-    return lignes[0]?.id ?? null;
+    if (r.ok) {
+      const lignes = (await r.json()) as { id: number }[];
+      return lignes[0]?.id ?? null;
+    }
+    // 409 = l'index d'unicité a parlé : ce geste a DÉJÀ sa demande. On rend
+    // la première plutôt qu'un échec — l'écran suit alors la commande qui
+    // existe, exactement comme s'il n'avait envoyé qu'une fois.
+    if (r.status === 409 && cleIntention) {
+      const deja = await lire<{ id: number }>(
+        `commandes?select=id&terminal=eq.${encodeURIComponent(terminal)}`
+        + `&cle=eq.${encodeURIComponent(cleIntention)}&limit=1`);
+      return deja[0]?.id ?? null;
+    }
+    return null;
   } catch {
     return null;
   }

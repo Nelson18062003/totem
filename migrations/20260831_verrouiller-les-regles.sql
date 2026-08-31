@@ -126,7 +126,32 @@ alter table comptes add column if not exists solde_maj timestamptz;
 
 
 -- ===========================================================================
--- 5. LE CONTRÔLE — et il PARLE
+-- 5. LA CLÉ D'INTENTION — pour ne pas envoyer l'argent deux fois
+--
+-- Un code USSD complet porte le bénéficiaire ET le montant
+-- (« *126*1*677123456*5000# ») : le composer deux fois, c'est transférer deux
+-- fois. Rien n'empêchait qu'une même demande soit enregistrée deux fois — un
+-- appui compté double, un onglet resté ouvert, une requête abandonnée par un
+-- délai alors qu'elle avait abouti côté serveur, et le propriétaire qui
+-- recommence. Le robot relève alors DEUX lignes et compose DEUX fois.
+--
+-- L'écran tire désormais une clé au hasard par geste. Deux envois de la même
+-- clé sont le même geste : le second retrouve la première ligne au lieu d'en
+-- créer une seconde. Deux gestes distincts gardent deux clés — répondre « 1 »
+-- à deux questions successives d'un menu reste donc possible.
+--
+-- L'index est PARTIEL (« where cle is not null ») : les demandes déjà en base,
+-- qui n'ont pas de clé, ne se gênent pas entre elles.
+-- ===========================================================================
+
+alter table commandes add column if not exists cle text;
+
+create unique index if not exists commandes_cle_unique
+  on commandes (terminal, cle) where cle is not null;
+
+
+-- ===========================================================================
+-- 6. LE CONTRÔLE — et il PARLE
 --
 -- Une migration silencieuse ne prouve rien. Celle-ci compte ce qui reste et
 -- s'interrompt s'il reste la moindre politique sur ces dix tables. Mieux

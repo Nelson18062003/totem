@@ -337,6 +337,32 @@ try {
   const rSecFaux = await poste("/api/session", { motdepasse: "pas-la-cle" });
   verifier("une fausse clé ne passe pas", rSecFaux.status, 401);
 
+  // LA CLÉ D'INTENTION — l'argent ne part pas deux fois.
+  //
+  // Un code USSD complet porte le bénéficiaire ET le montant : le composer
+  // deux fois, c'est transférer deux fois. Une même demande peut être
+  // présentée deux fois sans que personne l'ait voulu — un appui recompté,
+  // une requête reprise après un délai côté téléphone alors qu'elle avait
+  // abouti. La clé rend le geste idempotent, côté SERVEUR : l'écran ne se
+  // garde pas tout seul.
+  console.log("\nLa clé d'intention : un geste, une seule demande");
+  const CODE = { code: "*126*1*677123456*5000#" };
+  const commande = async (corps) => {
+    const r = await poste("/api/commande", corps,
+                          { authorization: `Bearer ${jetonProprio}` });
+    return r.json().catch(() => ({}));
+  };
+  const idem1 = await commande({ type: "ussd", parametres: CODE, cle: "essai-A" });
+  const idem2 = await commande({ type: "ussd", parametres: CODE, cle: "essai-A" });
+  verifier("le même geste ne crée qu'UNE demande", Boolean(idem1.id) && idem1.id === idem2.id, true);
+  const idemAutre = await commande({ type: "ussd", parametres: CODE, cle: "essai-B" });
+  verifier("un geste distinct garde sa demande", Boolean(idemAutre.id) && idemAutre.id !== idem1.id, true);
+  // Naviguer dans un menu répond souvent « 1 » plusieurs fois : deux gestes
+  // distincts doivent rester deux demandes, sinon la navigation casse.
+  const idemR1 = await commande({ type: "ussd_reponse", parametres: { texte: "1" }, cle: "essai-C1" });
+  const idemR2 = await commande({ type: "ussd_reponse", parametres: { texte: "1" }, cle: "essai-C2" });
+  verifier("répondre « 1 » deux fois reste possible", Boolean(idemR1.id) && idemR1.id !== idemR2.id, true);
+
   console.log("\nCe qu'on refuse d'enregistrer");
   // La forme est vérifiée AVANT la porte : un mot de passe trop court est
   // refusé pour ce qu'il est, sur une plateforme neuve comme sur celle-ci.
