@@ -18,6 +18,31 @@ import type { Langue } from "@noyau/langue";
 // toucher au code.
 import Constants from "expo-constants";
 
+// UN DÉLAI MAXIMAL SUR CHAQUE REQUÊTE — sinon l'application se fige en
+// silence. À Douala, une connexion à demi ouverte (le TCP tient, plus rien ne
+// revient) laisse `fetch` en suspens POUR TOUJOURS : ni succès, ni échec. Le
+// bouton reste sur « Vérification… », le tourniquet tourne sans fin, et le
+// message honnête « réseau en panne » ne s'affiche jamais — car il vit dans
+// le `catch` d'une promesse qui ne rejette pas. React Native ne met aucun
+// délai par défaut ; on en pose un.
+//
+// Quinze secondes : large pour un réseau lent, assez court pour qu'une
+// coupure se dise plutôt que de se taire. Au-delà, `fetch` rejette comme une
+// panne réseau ordinaire, et tout le code d'erreur existant s'applique.
+const DELAI_MS = 15000;
+
+async function avecDelai(
+  url: string, options: RequestInit = {},
+): Promise<Response> {
+  const minuteur = new AbortController();
+  const stop = setTimeout(() => minuteur.abort(), DELAI_MS);
+  try {
+    return await fetch(url, { ...options, signal: minuteur.signal });
+  } finally {
+    clearTimeout(stop);
+  }
+}
+
 // L'ADRESSE DE LA PLATEFORME — et pourquoi elle n'est plus une constante.
 //
 // Elle l'était, et cela s'est mal passé : l'adresse écrite ici était un
@@ -137,7 +162,7 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
   const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
   if (!adresseValable(base)) return "absente";
   try {
-    const r = await fetch(`${base}/api/plateforme`, {
+    const r = await avecDelai(`${base}/api/plateforme`, {
       method: "GET",
       headers: { accept: "application/json" },
     });
@@ -191,7 +216,7 @@ export async function ouvrirSession(
   courriel: string, motdepasse: string, langue: Langue,
 ): Promise<void> {
   const base = await adressePlateforme();
-  const r = await fetch(`${base}/api/session?langue=${langue}`, {
+  const r = await avecDelai(`${base}/api/session?langue=${langue}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(
@@ -222,7 +247,7 @@ export async function creerCompte(
   courriel: string, motdepasse: string, langue: Langue,
 ): Promise<Inscription> {
   const base = await adressePlateforme();
-  const r = await fetch(`${base}/api/inscription?langue=${langue}`, {
+  const r = await avecDelai(`${base}/api/inscription?langue=${langue}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ courriel, motdepasse }),
@@ -250,7 +275,7 @@ async function demander<T>(chemin: string, options: RequestInit = {}): Promise<T
   if (!jeton) throw new ErreurGuichet("session absente", 401);
 
   const base = await adressePlateforme();
-  const r = await fetch(`${base}${chemin}`, {
+  const r = await avecDelai(`${base}${chemin}`, {
     ...options,
     headers: {
       ...options.headers,

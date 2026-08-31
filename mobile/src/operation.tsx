@@ -183,20 +183,45 @@ export function OperationPopup({
     }
   }, []);
 
+  // UNE RÉPONSE PART UNE SEULE FOIS — le code secret surtout.
+  //
+  // `lancer` a son verrou synchrone ; `secret` et `repondre` n'en avaient
+  // pas, et s'en remettaient à l'état asynchrone `attente` pour cacher le
+  // déclencheur. Or le re-rendu qui cache le pavé arrive APRÈS l'appel : un
+  // double-appui rapide sur « Valider » envoyait donc DEUX fois
+  // « ussd_reponse … secret:true » dans la session USSD vivante — le code
+  // secret joué deux fois, exactement ce que le verrou de `lancer` empêche
+  // sur son chemin. Un drapeau synchrone, partagé, ferme cette porte ; il se
+  // relève quand la requête est finie, pour qu'une vraie seconde réponse
+  // (une autre question du réseau) reste possible.
+  const repondEnCours = useRef(false);
+
   const secret = async (code: string) => {
-    // La bulle affichée n'est PAS le code : quatre points. Le code ne
-    // traverse que la requête, et le robot le masque en base sitôt lu.
-    const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
-                                { de: "vous", texte: "••••" });
-    if (texte) { setFini(true); onTermine?.(); }
+    if (repondEnCours.current) return;
+    repondEnCours.current = true;
+    try {
+      // La bulle affichée n'est PAS le code : quatre points. Le code ne
+      // traverse que la requête, et le robot le masque en base sitôt lu.
+      const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
+                                  { de: "vous", texte: "••••" });
+      if (texte) { setFini(true); onTermine?.(); }
+    } finally {
+      repondEnCours.current = false;
+    }
   };
 
   const repondre = async (brut: string) => {
     const valeur = brut.trim();
     if (!valeur) return;
+    if (repondEnCours.current) return;
+    repondEnCours.current = true;
     setReponseLibre("");
-    await derouler(await envoyer("ussd_reponse", { texte: valeur },
-                                 { de: "vous", texte: valeur }));
+    try {
+      await derouler(await envoyer("ussd_reponse", { texte: valeur },
+                                   { de: "vous", texte: valeur }));
+    } finally {
+      repondEnCours.current = false;
+    }
   };
 
   /** L'ordre de raccrochage, sans faire attendre l'écran. */
