@@ -191,6 +191,20 @@ class TestRefusAnglais(unittest.TestCase):
         ):
             self.assertIsNone(motif_du_menu(reponse), reponse)
 
+    def test_une_heure_en_tete_ne_fait_pas_refuser_le_recu_de_solde(self):
+        # « 10:44 » a la forme d'un choix de menu ; une seule ligne numérotée
+        # aussi. Ni l'un ni l'autre n'est un menu, et le relevé qui les porte
+        # mérite son reçu de solde.
+        for reponse in (
+                "10:44 Votre solde est de 5000 FCFA",
+                "12-05-2026 Solde: 5000 FCFA",
+                "1. Votre solde est de 5000 FCFA"):
+            motif = motif_du_menu(reponse)
+            self.assertIsNotNone(motif, reponse)
+            self.assertEqual(motif.genre, SOLDE)
+        # Mais un VRAI menu — au moins deux options — reste refusé.
+        self.assertIsNone(motif_du_menu("1. Solde\n2. Retrait\n3. Retour"))
+
     def test_le_solde_ussd_anglais_donne_un_recu(self):
         motif = motif_du_menu("Your balance is 5000.5 FCFA")
         self.assertIsNotNone(motif)
