@@ -10,34 +10,10 @@ import type { NextConfig } from "next";
 // invisible, place son propre bouton par-dessus, et le propriétaire clique
 // sans le savoir sur « Lancer ». Rien ne l'empêchait.
 //
-// Ce que la plateforme demande VRAIMENT au navigateur, vérifié : rien. Les
-// seules adresses extérieures du dépôt (Supabase, le guichet d'Expo) sont
-// appelées depuis le SERVEUR ; le navigateur, lui, ne parle qu'à sa propre
-// origine. Les polices sont rapatriées à la compilation par `next/font`. La
-// politique peut donc être fermée : tout vient de « self ».
-//
-// SUR « unsafe-inline » DANS script-src, et il faut être honnête : Next
-// diffuse le rendu par des balises <script> EN LIGNE (le flux RSC). Sans
-// cette permission, la page ne s'hydrate pas. La parade propre est un
-// « nonce » par requête, posé dans le middleware — un chantier à part, sur un
-// fichier déjà critique. En attendant, ce qui est acquis n'est pas rien : plus
-// aucun script d'une AUTRE origine ne se charge, aucune donnée ne part vers
-// une autre origine (connect-src), aucun formulaire ne se soumet ailleurs
-// (form-action), et l'audit du code n'a trouvé AUCUN point d'injection HTML
-// (pas un seul `dangerouslySetInnerHTML` dans tout le dépôt).
-const CSP = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",        // le cadre : la parade au clic détourné
-  "object-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  "connect-src 'self'",
-].join("; ");
-
+// LA POLITIQUE DE CONTENU N'EST PLUS ICI : elle est passée dans le middleware
+// (voir `lib/csp.ts`). Elle porte maintenant un NONCE, tiré au hasard à
+// chaque requête, et un fichier de configuration est lu une fois pour toutes
+// au démarrage. Les en-têtes ci-dessous ne changent jamais : ils restent.
 const enProduction = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
@@ -45,7 +21,6 @@ const nextConfig: NextConfig = {
     return [{
       source: "/:chemin*",
       headers: [
-        { key: "Content-Security-Policy", value: CSP },
         // Redondant avec `frame-ancestors` pour les navigateurs anciens, qui
         // ignorent la CSP mais respectent celui-ci.
         { key: "X-Frame-Options", value: "DENY" },

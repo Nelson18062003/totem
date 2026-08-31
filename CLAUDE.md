@@ -48,6 +48,7 @@ cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
+cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
@@ -107,6 +108,17 @@ que le fichier DISE quand il est coupé. Pour qu'il puisse prendre en défaut, l
 faux nuage a d'abord dû apprendre à mentir comme la vraie base : il rendait le
 total APRÈS avoir appliqué la limite — « mille lignes sur mille » quand elle en
 avait deux mille quatre cents.
+
+`verifier-la-politique` ouvre un vrai Chromium et GLISSE un script dans le
+HTML de la page, comme le ferait un nom d'expéditeur piégé. Une politique de
+contenu se lit très bien et ne prouve rien : elle peut être parfaite et la
+page ne plus s'afficher, ou avoir l'air stricte et ne rien bloquer. Le premier
+essai écrit ici posait le script avec `document.createElement` : il s'est
+exécuté alors que l'en-tête était juste. Ce n'était pas la politique qui
+cédait — « strict-dynamic » autorise délibérément un script créé par du code
+déjà en confiance, c'est ainsi que Next charge ses morceaux. Il fallait
+l'injecter là où une vraie faille l'injecte : dans le HTML, pour que
+l'analyseur de la page le rencontre.
 
 `verifier-les-regles.sh` monte un PostgreSQL neuf, y joue le schéma et TOUTES
 les migrations dans l'ordre, puis attaque : il essaie vraiment de créer un

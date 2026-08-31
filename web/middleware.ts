@@ -3,6 +3,7 @@ import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
 import { compteEncoreOuvert } from "@/lib/session-vivante";
 import { verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
+import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 
 // Le verrou de la plateforme. Tant que `SESSION_SECRET` n'est pas défini, il
 // n'y a AUCUN verrou (utile en développement local) — mais dès qu'on le pose
@@ -46,6 +47,37 @@ export async function middleware(req: NextRequest) {
   const secret = process.env.SESSION_SECRET || "";
   const { pathname } = req.nextUrl;
 
+  // LE NONCE DE LA PAGE — un jeton tiré au hasard, valable pour cette requête
+  // et pour elle seule. C'est lui qui distingue les scripts de la plateforme
+  // de tous les autres : sans lui, un script en ligne ne s'exécute pas.
+  //
+  // Il se pose ICI parce que le middleware est le seul endroit traversé par
+  // toutes les réponses, et parce qu'un nonce doit changer à chaque page — un
+  // fichier de configuration, lui, est lu une fois au démarrage.
+  //
+  // Next le trouve dans la CSP portée par la REQUÊTE : c'est ainsi qu'il sait
+  // quel nonce apposer sur ses propres balises de rendu. Sans cette
+  // transmission, la politique serait juste et la page ne s'afficherait pas.
+  const nonce = nonceNeuf();
+  const csp = politiqueCsp(nonce, process.env.NODE_ENV !== "production");
+
+  /** Laisser passer, en emportant le nonce dans les deux sens. */
+  const passer = () => {
+    const entetes = new Headers(req.headers);
+    entetes.set("x-nonce", nonce);
+    entetes.set("content-security-policy", csp);
+    const reponse = NextResponse.next({ request: { headers: entetes } });
+    reponse.headers.set("content-security-policy", csp);
+    return reponse;
+  };
+
+  /** Une réponse qui ne traverse pas l'application porte la politique aussi :
+   *  une page de refus ou une redirection reste une page. */
+  const avecCsp = (reponse: NextResponse) => {
+    reponse.headers.set("content-security-policy", csp);
+    return reponse;
+  };
+
   // SANS CLÉ, PAS DE VERROU — et c'est une commodité de DÉVELOPPEMENT, pas un
   // mode d'exploitation. En production, l'absence de `SESSION_SECRET` ouvrait
   // la plateforme entière : les SMS, les soldes, le bilan, et jusqu'à
@@ -64,18 +96,18 @@ export async function middleware(req: NextRequest) {
   // injoignable, qu'on répare en posant la clé, qu'une plateforme ouverte
   // dont personne ne sait qu'elle l'est.
   if (!secret) {
-    if (process.env.NODE_ENV !== "production") return NextResponse.next();
+    if (process.env.NODE_ENV !== "production") return passer();
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json(
-        { erreur: "plateforme non configurée" }, { status: 503 });
+      return avecCsp(NextResponse.json(
+        { erreur: "plateforme non configurée" }, { status: 503 }));
     }
-    return new NextResponse(
+    return avecCsp(new NextResponse(
       "TOTEM n'est pas configuré : la clé de session manque.",
-      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }));
   }
 
   if (OUVERT.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
-    return NextResponse.next();
+    return passer();
   }
 
   // UN DOCUMENT AU PORTEUR D'UN LIEN SIGNÉ. Le navigateur du téléphone n'a
@@ -89,13 +121,13 @@ export async function middleware(req: NextRequest) {
   if (recu && await verifierLien(
         secret, "recu", recu[1],
         req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
-    return NextResponse.next();
+    return passer();
   }
   const coordonnees = pathname.match(/^\/api\/coordonnees\/(\w{1,32})$/);
   if (coordonnees && await verifierLien(
         secret, "coordonnees", coordonnees[1],
         req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
-    return NextResponse.next();
+    return passer();
   }
   // Le bilan CSV : la signature couvre le NOMBRE DE JOURS demandé — un lien
   // signé pour la semaine n'ouvre pas le trimestre.
@@ -103,7 +135,7 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/api/bilan" && jours && /^\d{1,2}$/.test(jours)
       && await verifierLien(secret, "bilan", jours,
            req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
-    return NextResponse.next();
+    return passer();
   }
 
   // Deux façons de présenter la MÊME session, selon qui frappe :
@@ -129,7 +161,7 @@ export async function middleware(req: NextRequest) {
     // donc rien à y relire — la clé de secours existe justement pour le jour
     // où la base des comptes est injoignable.
     const id = compteDuSujet(sujet);
-    if (id === null || await compteEncoreOuvert(id)) return NextResponse.next();
+    if (id === null || await compteEncoreOuvert(id)) return passer();
   }
 
   // Une API répond « connexion requise » (le navigateur gère) ; une page
@@ -137,12 +169,12 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/api/")) {
     const langue = langueDe(req.cookies.get(COOKIE_LANGUE)?.value);
     const erreur = langue === "en" ? "sign-in required" : "connexion requise";
-    return NextResponse.json({ erreur }, { status: 401 });
+    return avecCsp(NextResponse.json({ erreur }, { status: 401 }));
   }
   const versConnexion = req.nextUrl.clone();
   versConnexion.pathname = "/connexion";
   versConnexion.search = "";
-  return NextResponse.redirect(versConnexion);
+  return avecCsp(NextResponse.redirect(versConnexion));
 }
 
 // On protège tout, sauf les fichiers statiques de Next et les icônes.
