@@ -341,6 +341,15 @@ const serveur = createServer(async (req, res) => {
         if ([...utilisateurs.values()].some((x) => x.courriel === u.courriel)) {
           return repondre({ code: "23505", message: "duplicate key" }, 409);
         }
+        // IL N'Y A QU'UN PROPRIÉTAIRE, et c'est la BASE qui le tient — index
+        // « utilisateurs_un_seul_proprietaire ». Sans cette règle ici, trois
+        // inscriptions lancées ensemble donnaient trois propriétaires, et
+        // aucun harnais n'aurait pu voir la course.
+        if (u.role === "proprietaire"
+            && [...utilisateurs.values()].some((x) => x.role === "proprietaire")) {
+          return repondre({ code: "23505", message: "duplicate key value violates "
+            + "unique constraint \"utilisateurs_un_seul_proprietaire\"" }, 409);
+        }
         const ligne = {
           id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
           role: u.role ?? "invite", approuve: Boolean(u.approuve),

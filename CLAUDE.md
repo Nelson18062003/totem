@@ -77,6 +77,15 @@ doit attendre, l'approbation, la fermeture, la clé de secours. Il cherche
 surtout à prendre en défaut — un compte non approuvé qui entrerait, un invité
 qui administrerait, un message qui dirait si un courriel a un compte ici.
 
+Il lance aussi TROIS inscriptions ENSEMBLE sur une plateforme neuve. Elles
+donnaient trois propriétaires : la plateforme comptait les comptes, voyait
+zéro, puis créait — et entre les deux il s'écoule un aller-retour vers la base
+plus le calcul de l'empreinte, lent à dessein. **Une vérification faite avant
+une écriture ne garantit rien** : entre les deux, quelqu'un a pu écrire. Seule
+tient une règle que la BASE fait respecter au moment de l'écriture (ici,
+l'index `utilisateurs_un_seul_proprietaire`). Le faux nuage a dû apprendre la
+règle pour que le harnais puisse voir la course.
+
 `verifier-le-parcours` déroule ce que le propriétaire FAIT : il se connecte,
 compose un code complet, le réseau réclame le code secret, il le tape. Le
 harnais écoute alors CE QUI PART SUR LE RÉSEAU — pas seulement l'écran — et

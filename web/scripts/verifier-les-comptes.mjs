@@ -85,12 +85,47 @@ try {
     await attendre(500);
   }
 
+  console.log("\nTROIS INSCRIPTIONS LANCÉES ENSEMBLE : un seul propriétaire");
+  // LA COURSE. La plateforme comptait les comptes, voyait zéro, puis créait
+  // un propriétaire. Entre les deux : un aller-retour vers la base, plus le
+  // calcul de l'empreinte du mot de passe — lent à dessein, 210 000 tours.
+  // Une fenêtre d'un cinquième de seconde, largement de quoi s'y glisser.
+  //
+  // Ce harnais a montré TROIS propriétaires, trois sessions ouvertes, trois
+  // comptes approuvés : chacun pouvait lire tous les SMS, faire composer des
+  // codes par le terminal, et fermer le compte des deux autres — dont celui
+  // du vrai propriétaire. C'est la base qui tranche désormais (index
+  // « utilisateurs_un_seul_proprietaire »), au moment de l'écriture : une
+  // vérification faite AVANT une écriture ne garantit jamais rien.
+  const course = await Promise.all([
+    poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "intrus@exemple.cm", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "intrus2@exemple.cm", motdepasse: MDP }),
+  ]);
+  const corpsCourse = await Promise.all(course.map((r) => r.json()));
+  const proprios = corpsCourse.filter((c) => c.proprietaire === true);
+  verifier("un seul propriétaire sort de la course", proprios.length, 1);
+  verifier("une seule session est ouverte",
+    corpsCourse.filter((c) => Boolean(c.jeton)).length, 1);
+  // Les perdants n'apprennent RIEN de ce qui s'est passé : ils reçoivent le
+  // refus de toute inscription tardive. « Vous avez perdu une course » dirait
+  // qu'un compte vient d'être créé, et à quelle seconde.
+  verifier("les perdants reçoivent le refus ordinaire",
+    course.filter((r) => r.status === 403).length, 2);
+  verifier("aucun ne dit qu'il y a eu une course",
+    corpsCourse.some((c) => /course|simultan|concurrent/i.test(c.erreur ?? "")), false);
+
   console.log("\nLa première inscription : celle du propriétaire");
-  const r1 = await poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP });
-  const c1 = await r1.json();
-  verifier("le premier compte est créé", r1.status, 200);
+  const r1 = course.find((r, i) => corpsCourse[i].proprietaire === true);
+  const c1 = corpsCourse.find((c) => c.proprietaire === true) ?? {};
+  verifier("le premier compte est créé", r1?.status, 200);
   verifier("il est propriétaire", c1.proprietaire, true);
   verifier("il repart avec une session", Boolean(c1.jeton), true);
+  // C'est le PREMIER courriel qui a gagné : l'ordre de la course n'est pas
+  // garanti, mais celui-là est le seul dont le harnais connaît le mot de
+  // passe pour la suite — s'il a perdu, tout ce qui suit est faux.
+  verifier("c'est bien le courriel du propriétaire qui a gagné",
+    corpsCourse[0].proprietaire === true, true);
   const jetonProprio = c1.jeton;
 
   console.log("\nLe courriel est rangé sous une seule forme");

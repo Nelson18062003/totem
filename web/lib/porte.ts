@@ -184,6 +184,17 @@ export async function inscrire(
 
   const compte = await creerUtilisateur(
     courriel, await empreinter(motdepasse), "proprietaire", true);
+
+  // LA BASE A LE DERNIER MOT, ET C'EST TOUT L'INTÉRÊT. Le comptage ci-dessus
+  // ne prouve rien : entre lui et cette écriture, il s'est écoulé le temps
+  // d'un aller-retour et celui du calcul de l'empreinte, lent à dessein.
+  // Trois inscriptions lancées ensemble sur une plateforme neuve donnaient
+  // TROIS propriétaires — trois sessions ouvertes, trois comptes approuvés,
+  // chacun pouvant fermer celui des autres. La base refuse maintenant la
+  // seconde (index « un seul propriétaire »), et on répond ici exactement ce
+  // qu'on répond à toute inscription tardive : la porte est fermée. Ni le
+  // mot « déjà » ni le mot « course » : celui qui a perdu n'apprend rien.
+  if (compte === "refuse") return refus(langue, "inscriptionsFermees", 403);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
   // Le propriétaire entre tout de suite : il vient de créer la maison.
   const sujet = sujetDuCompte(compte.id);
@@ -229,6 +240,11 @@ export async function creerParLeProprietaire(
 
   const compte = await creerUtilisateur(
     courriel, await empreinter(motdepasse), "invite", true);
+  // Deux créations lancées ensemble pour la même adresse : la vérification
+  // faite plus haut a vu « libre » des deux côtés, la base n'en garde qu'une.
+  // Ici le propriétaire parle à sa propre plateforme — on peut lui dire ce
+  // qui s'est passé.
+  if (compte === "refuse") return refus(langue, "courrielDejaPris", 409);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
 
   // Aucune session n'est rendue : le propriétaire crée un compte POUR

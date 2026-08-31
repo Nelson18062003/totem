@@ -422,6 +422,20 @@ create index if not exists commandes_attente_idx
 create index if not exists appareils_vu_le on appareils (vu_le desc);
 -- La connexion cherche par courriel, à chaque tentative.
 create index if not exists utilisateurs_courriel on utilisateurs (lower(courriel));
+-- IL N'Y A QU'UN PROPRIÉTAIRE, et c'est la BASE qui le tient.
+--
+-- La plateforme comptait les comptes, voyait zéro, puis créait un
+-- propriétaire. Entre les deux il se passe un temps — un aller-retour vers la
+-- base, plus le calcul de l'empreinte du mot de passe, lent à dessein. Trois
+-- inscriptions lancées ensemble contre un vrai serveur ont donné TROIS
+-- propriétaires, trois sessions ouvertes : chacun pouvait lire tous les SMS,
+-- faire composer des codes par le terminal, et fermer le compte des autres.
+--
+-- Une vérification faite AVANT une écriture ne garantit rien : entre les
+-- deux, quelqu'un a pu écrire. Seule une règle que la base fait respecter au
+-- moment de l'écriture tient. Voir migrations/20260831_un-seul-proprietaire.sql.
+create unique index if not exists utilisateurs_un_seul_proprietaire
+  on utilisateurs (role) where role = 'proprietaire';
 
 -- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit la base en direct. Personne.

@@ -741,16 +741,35 @@ export async function utilisateurParId(id: number): Promise<Utilisateur | null> 
   return lignes[0] ? versUtilisateur(lignes[0] as LigneUtilisateur) : null;
 }
 
-/** Crée un compte. Rend `null` si le courriel est déjà pris, ou si la base
- *  n'a pas répondu — jamais un compte à moitié créé. */
+/**
+ * Crée un compte.
+ *
+ * Trois réponses, et la distinction compte :
+ *   — le compte,   quand il est né ;
+ *   — « refuse »,  quand la BASE a dit non : le courriel est déjà pris, ou
+ *                  un propriétaire existe déjà. C'est une règle, pas une
+ *                  panne — et la seule qui tienne, puisqu'elle s'applique au
+ *                  moment de l'écriture (voir l'index du propriétaire unique
+ *                  dans sql/schema.sql) ;
+ *   — null,        quand la base n'a pas répondu du tout.
+ *
+ * Confondre les deux derniers ferait répondre « réessayez » à quelqu'un dont
+ * la demande ne pourra jamais aboutir — et « impossible » à quelqu'un qu'un
+ * simple hoquet du réseau a écarté.
+ *
+ * Jamais un compte à moitié créé : PostgREST écrit la ligne ou ne l'écrit pas.
+ */
 export async function creerUtilisateur(
   courriel: string, empreinte: string,
   role: "proprietaire" | "invite", approuve: boolean,
-): Promise<Utilisateur | null> {
+): Promise<Utilisateur | "refuse" | null> {
   const r = await ecrire("utilisateurs", "POST", [{
     courriel, empreinte, role, approuve,
   }]);
-  if (!r || !r.ok) return null;
+  if (!r) return null;
+  // 409 : une contrainte d'unicité a parlé (code Postgres 23505).
+  if (r.status === 409) return "refuse";
+  if (!r.ok) return null;
   const lignes = (await r.json().catch(() => [])) as LigneUtilisateur[];
   return lignes[0] ? versUtilisateur(lignes[0]) : null;
 }
