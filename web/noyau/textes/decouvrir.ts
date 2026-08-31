@@ -22,13 +22,19 @@ const en = {
   heroVoir: "See how it works",
   heroAvec: "Works with",
 
-  // La grande grille sous le héros
+  // La grande grille sous le héros. Chaque carte MONTRE son idée : les mots
+  // se comptent, la vignette fait le reste.
   mosaiqueLegende: "One terminal at the office. Every operation in your hand.",
-  mosaique: [
-    { titre: "Three ways in", texte: "Telegram, the web, the phone app." },
-    { titre: "Menus become buttons", texte: "No more dialing *126# blind." },
-    { titre: "Every SMS, live", texte: "Payments land the second they arrive." },
-  ],
+  cartePortesTitre: "Three ways in",
+  portes: ["Telegram", "Web", "Phone"],
+  carteUssdTitre: "Menus become buttons",
+  ussdChoix: ["Balance", "Send", "Withdraw"],
+  carteSmsTitre: "Every SMS, live",
+
+  // Les écrans du produit, tels que publiés sur le magasin
+  ecransSur: "The phone app",
+  ecransTitre: "The counter, in your pocket",
+  ecransTexte: "The same figures as the web, receipts included.",
 
   // Les gestes du guichet
   gestesTitre: "Made for the counter",
@@ -89,11 +95,15 @@ const fr: typeof en = {
   heroAvec: "Fonctionne avec",
 
   mosaiqueLegende: "Un terminal au bureau. Chaque opération dans votre main.",
-  mosaique: [
-    { titre: "Trois portes", texte: "Telegram, le web, l'application du téléphone." },
-    { titre: "Les menus deviennent des boutons", texte: "Fini le *126# composé à l'aveugle." },
-    { titre: "Chaque SMS, en direct", texte: "Les paiements arrivent à la seconde." },
-  ],
+  cartePortesTitre: "Trois portes",
+  portes: ["Telegram", "Web", "Téléphone"],
+  carteUssdTitre: "Les menus deviennent des boutons",
+  ussdChoix: ["Solde", "Envoyer", "Retrait"],
+  carteSmsTitre: "Chaque SMS, en direct",
+
+  ecransSur: "L'application du téléphone",
+  ecransTitre: "Le guichet, dans la poche",
+  ecransTexte: "Les mêmes chiffres que le web, reçus compris.",
 
   gestesTitre: "Pensé pour le guichet",
   gestes: [

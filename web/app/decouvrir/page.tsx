@@ -8,7 +8,10 @@ import {
 import { textesDecouvrir } from "@noyau/textes/decouvrir";
 import { BasculeLangue, useLangue } from "@/app/langue";
 import { Symbole } from "../marque";
-import { IconChevron, IconDoc, IconGrid, IconLock, IconRefresh } from "../icons";
+import {
+  IconArrowDown, IconArrowUp, IconChevron, IconDoc, IconGrid, IconLock,
+  IconRefresh,
+} from "../icons";
 import { LogoMtn, LogoOrange } from "../logos-operateurs";
 
 /**
@@ -195,6 +198,18 @@ function Monolithe() {
   );
 }
 
+/** Un écran du produit dans son cadre de téléphone : un bord d'encre épais,
+ *  des angles très ronds, l'image telle que publiée sur le magasin. */
+function Telephone({ src, className }: { src: string; className?: string }) {
+  return (
+    <div
+      className={`w-60 shrink-0 overflow-hidden rounded-[2.4rem] border-[7px] border-[#1b1a19] bg-[#1b1a19] ${className ?? ""}`}
+    >
+      <img src={src} alt="" className="block w-full rounded-[1.9rem]" />
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------------- */
 /* La page                                                                   */
 
@@ -244,7 +259,7 @@ export default function Decouvrir() {
                 <span className="size-1.5 rounded-full bg-laterite" />
                 {t.heroPuce}
               </p>
-              <h1 className="mx-auto mt-7 max-w-5xl text-balance text-[clamp(2.4rem,1.5rem+3.8vw,4.4rem)] font-semibold leading-[1.06] tracking-tight">
+              <h1 className="mx-auto mt-7 max-w-5xl text-balance text-[clamp(2.4rem,1.5rem+3.8vw,4.5rem)] font-bold leading-[1.04] tracking-[-0.03em]">
                 {t.heroTitre1}
                 <br />
                 {t.heroTitre2}
@@ -296,15 +311,93 @@ export default function Decouvrir() {
               </div>
             </Revele>
             <div className="grid gap-5">
-              {t.mosaique.map((carte, i) => (
-                <Revele key={carte.titre} delai={i * 90} className="h-full">
-                  <div className="flex h-full flex-col justify-center rounded-[2rem] bg-[#f6f5f3] px-8 py-10">
-                    <h2 className="text-title font-semibold tracking-tight">{carte.titre}</h2>
-                    <p className="mt-2 text-body text-ink-soft">{carte.texte}</p>
+              {/* Trois portes : les mots suffisent, en pilules */}
+              <Revele className="h-full">
+                <div className="flex h-full flex-col justify-center rounded-[2rem] bg-[#f6f5f3] px-8 py-9">
+                  <h2 className="text-title font-bold tracking-tight">{t.cartePortesTitre}</h2>
+                  <div className="mt-4 flex flex-wrap gap-2.5" aria-hidden>
+                    {t.portes.map((porte) => (
+                      <span
+                        key={porte}
+                        className="rounded-full border border-line bg-white px-4 py-2 text-small font-medium"
+                      >
+                        {porte}
+                      </span>
+                    ))}
                   </div>
-                </Revele>
-              ))}
+                </div>
+              </Revele>
+              {/* Le menu USSD, montré : le code, puis des choix qui se
+                  touchent au lieu de se composer */}
+              <Revele delai={90} className="h-full">
+                <div className="flex h-full flex-col justify-center rounded-[2rem] bg-[#f6f5f3] px-8 py-9">
+                  <h2 className="text-title font-bold tracking-tight">{t.carteUssdTitre}</h2>
+                  <div className="mt-4 flex flex-wrap items-center gap-2.5" aria-hidden>
+                    <span className="rounded-full bg-ink px-4 py-2 text-small font-semibold tabnums text-white">
+                      *126#
+                    </span>
+                    {t.ussdChoix.map((choix) => (
+                      <span
+                        key={choix}
+                        className="rounded-full border border-line bg-white px-4 py-2 text-small font-medium"
+                      >
+                        {choix}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </Revele>
+              {/* Les SMS, montrés : deux lignes comme dans l'application,
+                  sans un montant inventé */}
+              <Revele delai={180} className="h-full">
+                <div className="flex h-full flex-col justify-center rounded-[2rem] bg-[#f6f5f3] px-8 py-9">
+                  <h2 className="text-title font-bold tracking-tight">{t.carteSmsTitre}</h2>
+                  <div className="mt-4 space-y-2" aria-hidden>
+                    <div className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3">
+                      <span className="inline-flex size-8 items-center justify-center rounded-lg bg-[#e9f6ee] text-positive">
+                        <IconArrowDown size={15} />
+                      </span>
+                      <LogoMtn size={20} />
+                      <span className="h-2 w-24 rounded-full bg-surface-2" />
+                      <span className="ml-auto h-2 w-10 rounded-full bg-[#bfe3cd]" />
+                    </div>
+                    <div className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3">
+                      <span className="inline-flex size-8 items-center justify-center rounded-lg bg-surface-2 text-ink-soft">
+                        <IconArrowUp size={15} />
+                      </span>
+                      <LogoOrange size={20} />
+                      <span className="h-2 w-16 rounded-full bg-surface-2" />
+                      <span className="ml-auto h-2 w-10 rounded-full bg-surface-2" />
+                    </div>
+                  </div>
+                </div>
+              </Revele>
             </div>
+          </div>
+        </section>
+
+        {/* Les écrans du produit : les captures publiées sur le magasin,
+            dans des cadres de téléphone qui filent sous le bord de la carte */}
+        <section className="px-4 pt-20 sm:pt-28">
+          <div className="mx-auto max-w-6xl">
+            <Revele>
+              <p className="text-center text-small font-medium uppercase tracking-[0.14em] text-laterite">
+                {t.ecransSur}
+              </p>
+              <h2 className="mt-3 text-balance text-center text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-bold leading-tight tracking-[-0.02em]">
+                {t.ecransTitre}
+              </h2>
+              <p className="mt-3 text-center text-body text-ink-soft">{t.ecransTexte}</p>
+            </Revele>
+            <Revele delai={120}>
+              <div className="mt-10 h-[24rem] overflow-hidden rounded-[2.5rem] bg-sable px-6 sm:h-[30rem]">
+                <div className="flex items-start justify-center gap-8 pt-12 sm:pt-14" aria-hidden>
+                  <Telephone src="/vitrine/encaissements.png" className="mt-10 hidden sm:block" />
+                  <Telephone src="/vitrine/caisses.png" />
+                  <Telephone src="/vitrine/cartes.png" className="mt-10 hidden sm:block" />
+                </div>
+              </div>
+            </Revele>
           </div>
         </section>
 
@@ -312,7 +405,7 @@ export default function Decouvrir() {
         <section className="px-4 pt-20 sm:pt-28">
           <div className="mx-auto max-w-6xl">
             <Revele>
-              <h2 className="text-balance text-center text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-semibold leading-tight tracking-tight">
+              <h2 className="text-balance text-center text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-bold leading-tight tracking-[-0.02em]">
                 {t.gestesTitre}
               </h2>
             </Revele>
@@ -345,7 +438,7 @@ export default function Decouvrir() {
             <div className="claustra-sable mx-auto max-w-6xl overflow-hidden rounded-[2.5rem]">
               <div className="relative px-6 py-16 text-center sm:py-20">
                 <Symbole size={40} className="mx-auto text-laterite" />
-                <h2 className="mt-6 text-balance text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-semibold leading-tight tracking-tight">
+                <h2 className="mt-6 text-balance text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-bold leading-tight tracking-[-0.02em]">
                   {t.securiteTitre}
                   <br />
                   {t.securiteSousTitre}
@@ -366,7 +459,7 @@ export default function Decouvrir() {
         {/* L'invitation finale */}
         <section className="px-4 py-24 text-center sm:py-32">
           <Revele>
-            <h2 className="text-balance text-[clamp(2.2rem,1.5rem+3vw,4rem)] font-semibold leading-tight tracking-tight">
+            <h2 className="text-balance text-[clamp(2.2rem,1.5rem+3vw,4rem)] font-bold leading-tight tracking-[-0.03em]">
               {t.finTitre}
             </h2>
             <Link
