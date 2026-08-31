@@ -1,0 +1,172 @@
+<title>TOTEM — la fondation proposée</title>
+<style>
+:root{
+  --surface:#f5f5f5; --surface-haute:#fff; --surface-2:#e6e6e6; --surface-3:#d9d9d9;
+  --encre:#1e1e1e; --encre-douce:#444; --trait:#d9d9d9;
+  --encre-pale-actuel:#767676; --encre-pale-propose:#666666;
+  --laterite:#9a4b2e; --positif:#02542d; --negatif:#c00f0c; --alerte:#975102;
+  --vif-actuel:#14ae5c; --vif-propose:#0f9e50;
+  --r:8px; --rs:4px;
+  --h-sm:32px; --h-md:40px; --h-lg:48px;
+}
+@media (pointer:coarse){ :root{ --h-sm:44px; --h-md:44px; --h-lg:48px; } }
+*{box-sizing:border-box}
+body{background:var(--surface);color:var(--encre);font:16px/1.5 Inter,-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;margin:0;padding:32px 20px 64px}
+.page{max-width:944px;margin:0 auto}
+h1{font-size:2rem;margin:0 0 4px;letter-spacing:-.02em}
+h2{font-size:1.25rem;margin:48px 0 4px;padding-top:24px;border-top:1px solid var(--trait)}
+h3{font-size:1rem;margin:24px 0 8px;color:var(--encre-douce)}
+p{margin:4px 0 16px;color:var(--encre-douce);max-width:68ch}
+.chapeau{color:var(--encre-douce);font-size:.875rem}
+.carte{background:var(--surface-haute);border:1px solid var(--trait);border-radius:var(--r);padding:20px;margin:16px 0}
+table{border-collapse:collapse;width:100%;font-size:.875rem;margin:8px 0}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--trait);vertical-align:middle}
+th{font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--encre-douce)}
+code{font:.8125rem ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--surface-2);padding:1px 5px;border-radius:var(--rs)}
+.rangee{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0}
+.echoue{color:var(--negatif);font-weight:600}
+.passe{color:var(--positif);font-weight:600}
+.demo{background:var(--surface);border:1px solid var(--trait);border-radius:var(--r);padding:16px;margin:8px 0}
+.etiq{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--encre-douce);margin-bottom:8px}
+
+/* ---- LES COMPOSANTS PROPOSÉS ---- */
+.b{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+   height:var(--h-md);padding:0 16px;border-radius:var(--r);
+   font:500 .875rem/1 inherit;font-family:inherit;cursor:pointer;
+   border:1px solid transparent;transition:background .15s,border-color .15s,color .15s}
+.b:focus-visible{outline:2px solid var(--encre);outline-offset:2px}
+.b[disabled]{opacity:.4;cursor:not-allowed}          /* UNE valeur, partout */
+.b-1{background:var(--encre);color:#fff}
+.b-1:hover:not([disabled]){background:#000}
+.b-2{background:var(--surface-haute);color:var(--encre);border-color:var(--trait)}
+.b-2:hover:not([disabled]){border-color:var(--encre-douce)}
+.b-3{background:transparent;color:var(--encre-douce)}
+.b-3:hover:not([disabled]){background:var(--surface-2);color:var(--encre)}
+.b-sm{height:var(--h-sm);padding:0 12px;font-size:.8125rem}
+.b-lg{height:var(--h-lg);padding:0 20px;font-size:1rem;width:100%}
+.champ{height:var(--h-md);width:100%;padding:0 12px;border:1px solid var(--trait);
+   border-radius:var(--r);background:var(--surface-haute);font:1rem/1 inherit;color:var(--encre)}
+.champ:focus{outline:none;border-color:var(--encre)}
+.champ::placeholder{color:var(--encre-pale-propose)}
+.puce{display:inline-flex;align-items:center;gap:6px;height:var(--h-sm);padding:0 12px;
+   border-radius:999px;border:1px solid var(--trait);background:var(--surface-haute);
+   font:500 .875rem/1 inherit;cursor:pointer;color:var(--encre-douce)}
+.puce[aria-pressed=true]{background:var(--encre);border-color:var(--encre);color:#fff}
+.pt{width:8px;height:8px;border-radius:999px;display:inline-block}
+
+.cible{position:relative;outline:1px dashed var(--negatif);outline-offset:0}
+.mesure{font:.75rem ui-monospace,monospace;color:var(--encre-douce)}
+.avant,.apres{padding:14px;border-radius:var(--r)}
+.avant{background:var(--surface);border:1px solid var(--trait)}
+.apres{background:var(--surface);border:1px solid var(--encre)}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:700px){.duo{grid-template-columns:1fr}}
+.pale-avant{color:var(--encre-pale-actuel)}
+.pale-apres{color:var(--encre-pale-propose)}
+</style>
+
+<div class="page">
+<h1>La fondation proposée</h1>
+<p class="chapeau">Trois corrections, mesurées. Rien n'est encore appliqué au code — cette page est là pour être approuvée d'abord.</p>
+
+<h2>1 · Le texte tertiaire repasse AA</h2>
+<p>Le jeton actuel a été vérifié sur du blanc. Le fond de page n'est pas blanc — il est <code>#f5f5f5</code>. Sur le vrai fond, il échoue.</p>
+
+<div class="duo">
+  <div class="avant">
+    <div class="etiq">Actuel — <code>#767676</code></div>
+    <p style="margin:0 0 8px" class="pale-avant">MTN ·8901 · 10:22 · Vous avez reçu 20 000 FCFA</p>
+    <div class="mesure">sur le fond de page : <span class="echoue">4,17:1 — échoue</span></div>
+    <div class="mesure">dans une puce : <span class="echoue">3,64:1 — échoue</span></div>
+  </div>
+  <div class="apres">
+    <div class="etiq">Proposé — <code>#666666</code></div>
+    <p style="margin:0 0 8px" class="pale-apres">MTN ·8901 · 10:22 · Vous avez reçu 20 000 FCFA</p>
+    <div class="mesure">sur le fond de page : <span class="passe">5,27:1 — passe</span></div>
+    <div class="mesure">dans une puce : <span class="passe">4,60:1 — passe</span></div>
+  </div>
+</div>
+<p><strong>Un seul jeton change ; les 102 endroits qui l'emploient suivent.</strong> C'est tout l'intérêt d'avoir des jetons.</p>
+
+<h3>Et le point d'état</h3>
+<div class="carte" style="margin-top:0">
+<table>
+<tr><th>Point</th><th>Jeton</th><th>Sur blanc</th><th>Exigé (WCAG 1.4.11)</th><th></th></tr>
+<tr><td><span class="pt" style="background:var(--vif-actuel)"></span></td><td><code>#14ae5c</code> actuel</td><td>2,90:1</td><td>3:1</td><td class="echoue">échoue</td></tr>
+<tr><td><span class="pt" style="background:var(--vif-propose)"></span></td><td><code>#0f9e50</code> proposé</td><td>3,48:1</td><td>3:1</td><td class="passe">passe</td></tr>
+</table>
+</div>
+
+<h2>2 · Une couche de composants pour le web</h2>
+<p>Le téléphone a <code>mobile/src/ui.tsx</code>. Le web n'a rien : chaque bouton y est retapé à la main. D'où <strong>4 valeurs pour l'état désactivé, 3 pour le survol, 6 hauteurs de bouton</strong> — toutes dans les jetons, toutes en désaccord entre elles.</p>
+<p>Les composants ci-dessous décident ces états <strong>une fois</strong>. Survolez-les, tabulez dedans : ils sont vivants.</p>
+
+<div class="carte">
+  <div class="etiq">Bouton — trois rangs, un seul état désactivé</div>
+  <div class="rangee">
+    <button class="b b-1">Déposer</button>
+    <button class="b b-2">Retirer</button>
+    <button class="b b-3">Annuler</button>
+    <button class="b b-1" disabled>Déposer</button>
+    <button class="b b-2" disabled>Retirer</button>
+  </div>
+  <div class="rangee">
+    <button class="b b-1 b-sm">Petit</button>
+    <button class="b b-2 b-sm">Petit</button>
+  </div>
+  <button class="b b-1 b-lg">Se connecter</button>
+
+  <div class="etiq" style="margin-top:24px">Champ</div>
+  <input class="champ" placeholder="Nom, numéro, montant, texte du message">
+
+  <div class="etiq" style="margin-top:24px">Puce de filtre</div>
+  <div class="rangee">
+    <button class="puce" aria-pressed="true">Tout</button>
+    <button class="puce" aria-pressed="false">↓ Argent reçu</button>
+    <button class="puce" aria-pressed="false">↑ Argent sorti</button>
+    <button class="puce" aria-pressed="false">Solde</button>
+  </div>
+</div>
+
+<h2>3 · Les cibles tactiles atteignent 44 px</h2>
+<p>Mesuré au navigateur : <strong>32 cibles sous 44 px</strong> sur les Réglages au téléphone, <strong>41</strong> sur tablette. Le cas le moins visible est la tablette : à 834 px c'est le <em>rail de bureau</em> qui s'affiche — mais on y touche avec un doigt, et ses entrées font 40 px.</p>
+
+<div class="duo">
+  <div class="avant">
+    <div class="etiq">Actuel</div>
+    <div class="rangee">
+      <button class="b b-2 cible" style="height:30px;padding:0 12px;font-size:.75rem">Français</button>
+      <button class="b b-2 cible" style="height:31px;padding:0 12px;font-size:.875rem">Tout</button>
+      <span class="cible" style="display:inline-flex;width:40px;height:24px;border-radius:999px;background:var(--surface-3)"></span>
+    </div>
+    <div class="mesure">30 px · 31 px · 24×40 px — <span class="echoue">sous le seuil</span></div>
+  </div>
+  <div class="apres">
+    <div class="etiq">Proposé — plancher au doigt</div>
+    <div class="rangee">
+      <button class="b b-2 b-sm">Français</button>
+      <button class="puce" aria-pressed="false">Tout</button>
+      <span style="display:inline-flex;align-items:center;width:52px;height:32px;border-radius:999px;background:var(--surface-3);padding:3px">
+        <span style="width:26px;height:26px;border-radius:999px;background:#fff;border:1px solid var(--trait)"></span></span>
+    </div>
+    <div class="mesure">44 px au doigt, 32–40 px à la souris — <span class="passe">le même composant</span></div>
+  </div>
+</div>
+
+<div class="carte">
+  <div class="etiq">La règle, dans les jetons</div>
+  <table>
+    <tr><th>Jeton</th><th>Souris</th><th>Doigt <code>(pointer:coarse)</code></th><th>Emploi</th></tr>
+    <tr><td><code>--h-control-sm</code></td><td>32 px</td><td><strong>44 px</strong></td><td>puces, boutons de rang</td></tr>
+    <tr><td><code>--h-control-md</code></td><td>40 px</td><td><strong>44 px</strong></td><td>boutons, champs, rail</td></tr>
+    <tr><td><code>--h-control-lg</code></td><td>48 px</td><td>48 px</td><td>action pleine largeur</td></tr>
+  </table>
+  <p style="margin-bottom:0">Le desktop garde sa densité ; le doigt gagne sa surface. <strong>Une seule requête média, pas deux dessins.</strong></p>
+</div>
+
+<h2>Ce qui ne change pas</h2>
+<div class="carte">
+<p style="margin:0">Pas d'ombre. La latérite ne porte que la marque, jamais un état ni un bouton. L'action reste neutre et sombre. Le rayon reste à 8 px. La colonne de contenu reste plafonnée à 944 px. Les couleurs opérateur restent des données — liseré, pastille, point.</p>
+<p style="margin:12px 0 0"><strong>Aucun débordement horizontal n'a été trouvé</strong> sur 390 / 834 / 1280 / 1440 / 1920 : la couche responsive est acquise, on n'y touche pas.</p>
+</div>
+</div>
