@@ -414,6 +414,10 @@ Deux réparations de fond au passage :
 - **Un code à usage unique remasque ses chiffres à l'affichage**
   (`texteSurEcran`), même si la base a laissé passer une ligne d'avant le
   masquage du robot.
+  > **Revenu depuis (août 2026).** Ce masquage était une faute : personne ne
+  > l'avait demandé, et il privait le propriétaire de ses propres codes de
+  > connexion. `texteSurEcran` rend désormais le SMS tel quel, code compris ;
+  > la notification aussi. Voir `docs/SMS.md`.
 - **La liste se dévoile par pages de 60** au fil du défilement
   (IntersectionObserver) : mille SMS ne font plus mille lignes.
 - Le bandeau tient en deux rangées : recherche, puis UNE rangée de

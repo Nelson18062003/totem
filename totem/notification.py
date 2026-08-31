@@ -10,18 +10,30 @@ posée dans le nuage. Trois raisons, et la première suffirait :
   2. Il a déjà la file d'attente : une coupure Internet ne perd rien.
   3. Une pièce mobile de moins.
 
-CE QUI NE DOIT JAMAIS ENTRER DANS UNE NOTIFICATION
+CE QU'UNE NOTIFICATION MONTRE
 
-Une notification s'affiche sur un écran VERROUILLÉ, dans un taxi, sur une
-table de réunion. Elle se lit sans le téléphone en main. D'où trois règles :
+Le message reçu, tel qu'il est arrivé — en aperçu, comme WhatsApp ou
+l'application SMS du téléphone. C'est le message du propriétaire, sur sa
+carte : il doit pouvoir le lire depuis le volet des notifications, code
+compris, sans même ouvrir l'application. On avait un temps résumé le SMS et
+masqué ses codes « pour l'écran verrouillé » ; personne ne l'avait demandé,
+et c'était une faute — on la retire. Le propriétaire décide de ce qui
+s'affiche sur son écran verrouillé, dans les réglages de SON téléphone, comme
+pour toute autre application.
 
-  — **jamais le code secret**, ni un code à usage unique, ni les chiffres
-    d'un SMS qui en porte un. Le texte d'un tel message ne sort pas d'ici ;
-  — **jamais un montant douteux présenté comme certain.** Si le sens n'est
-    pas connu, on ne dit ni « reçu » ni « envoyé » ; si le montant n'a pas
-    été lu, on ne l'invente pas ;
-  — **jamais le SMS entier.** La notification annonce, elle ne remplace pas
-    le journal. C'est l'application qui montre le message.
+Deux choses seulement encadrent l'aperçu, et aucune ne cache le message :
+
+  — **on n'invente rien.** On montre le texte reçu ; on ne calcule pas un
+    montant ni un sens qu'on présenterait comme certains. Ce que le
+    propriétaire lit, c'est l'opérateur qui l'a écrit ;
+  — **c'est un aperçu.** Un SMS très long est coupé — le journal de
+    l'application garde le message entier. Android montre le début sur le
+    volet replié et déroule le reste quand on tire dessus.
+
+Le code SECRET que le propriétaire tape pendant une opération, lui, n'entre
+jamais nulle part : mais il n'arrive pas non plus par SMS — il vit dans les
+sessions USSD, pas dans les messages reçus. Un aperçu de SMS ne peut donc pas
+le porter.
 """
 
 import json
@@ -41,57 +53,46 @@ PAR_LOT = 100
 DELAI = 10  # secondes : au-delà, la notification n'en vaut plus la peine
 
 
-def _fcfa(montant):
-    """« 20 000 FCFA » — le nombre entier, jamais abrégé."""
-    return f"{montant:,}".replace(",", " ") + " FCFA"
+# Longueur de l'aperçu. Un SMS d'opérateur tient très largement en dessous ;
+# au-delà, on coupe, car une notification est un aperçu — le journal de
+# l'application garde le message entier. Android montre le début sur le volet
+# replié et déroule le reste quand on tire dessus : c'est là qu'on lit son
+# message sans ouvrir l'application.
+APERCU_MAX = 200
 
 
-def composer(paiement, expediteur, libelle, categorie=None, anglais=False):
+def _apercu(texte):
+    """Le message reçu, prêt pour le volet : sauts de ligne aplatis, espaces
+    normalisés, et coupé s'il est très long. On ne réécrit rien d'autre — ce
+    sont les mots reçus, pas les nôtres.
+    """
+    resume = " ".join((texte or "").split())
+    if len(resume) > APERCU_MAX:
+        resume = resume[:APERCU_MAX - 1].rstrip() + "…"
+    return resume
+
+
+def composer(expediteur, libelle, texte, anglais=False):
     """Le titre et le corps d'une notification, ou `None` s'il ne faut RIEN
     envoyer.
 
-    `paiement` est ce que `analyse_sms.analyser` a compris — souvent `None`.
-    `categorie` est ce que `categoriser` a deviné, et c'est elle qui protège
-    les codes.
+    Le titre est la carte concernée ; le corps est le MESSAGE REÇU, en aperçu,
+    tel qu'il est arrivé — code compris. C'est le message du propriétaire : il
+    le lit depuis le volet des notifications, sans ouvrir l'application. On ne
+    cache rien et on n'invente rien.
     """
     def t(en, fr):
         return en if anglais else fr
 
-    # UN CODE NE SORT PAS. Ni son texte, ni ses chiffres, ni même une
-    # allusion à sa valeur. On dit qu'il est arrivé, c'est tout : le
-    # propriétaire ouvrira l'application s'il en a besoin.
-    if categorie == "code":
-        return (libelle, t(f"A code from {expediteur}",
-                           f"Un code de {expediteur}"))
+    apercu = _apercu(texte)
+    if apercu:
+        return (libelle, apercu)
 
-    if paiement is None:
-        # Le robot n'a pas lu de mouvement. On le dit ainsi, sans montant et
-        # sans le texte du message : il peut contenir n'importe quoi.
-        if categorie == "illisible":
-            return (libelle, t(
-                f"A money message from {expediteur} I could not read",
-                f"Un message d'argent de {expediteur} que je n'ai pas su lire"))
-        return (libelle, t(f"A message from {expediteur}",
-                           f"Un message de {expediteur}"))
-
-    # Un mouvement compris, mais sans montant lu : on ne l'invente pas.
-    if paiement.montant is None:
-        return (libelle, t(f"A movement from {expediteur}, amount unread",
-                           f"Un mouvement de {expediteur}, montant non lu"))
-
-    somme = _fcfa(paiement.montant)
-    tiers = paiement.tiers
-
-    if paiement.sens == "entree":
-        return (libelle, t(f"+{somme} from {tiers}", f"+{somme} de {tiers}"))
-    if paiement.sens == "sortie":
-        return (libelle, t(f"−{somme} to {tiers}", f"−{somme} vers {tiers}"))
-
-    # Le sens n'est pas établi — Orange nomme les deux parties sans dire
-    # laquelle est la nôtre. On annonce le MOUVEMENT, sans signe : « reçu »
-    # sur un envoi serait un mensonge, et l'inverse aussi.
-    return (libelle, t(f"Movement of {somme} · {tiers}",
-                       f"Mouvement de {somme} · {tiers}"))
+    # Cas défensif : pas de texte sous la main (un SMS vide, illisible à
+    # l'octet). On annonce au moins qu'un message est arrivé, sans rien
+    # inventer de son contenu.
+    return (libelle, t(f"A message from {expediteur}",
+                       f"Un message de {expediteur}"))
 
 
 def envoyer(jetons, titre, corps, ouvrir=None):

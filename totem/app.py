@@ -2403,9 +2403,9 @@ class Robot:
                             "lecture incomplète, opération comptée nulle part")
 
         self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
-        self._faire_sonner(paiement, expediteur, compte.libelle, texte)
+        self._faire_sonner(expediteur, compte.libelle, texte)
 
-    def _faire_sonner(self, paiement, expediteur, libelle, texte):
+    def _faire_sonner(self, expediteur, libelle, texte):
         """Fait sonner les téléphones qui se sont inscrits.
 
         Rien ici ne peut retarder ni empêcher l'annonce Telegram : elle est
@@ -2414,17 +2414,12 @@ class Robot:
         répondre non. On ne veut pas de ces dix secondes dans la lecture des
         SMS, où le message suivant attend son tour.
 
-        Le tri de ce qu'on a le droit de dire n'est pas ici : il est dans
-        `notification.composer`, qui protège les codes et refuse d'inventer
-        un montant.
+        Ce qui s'affiche se décide dans `notification.composer` : le message
+        reçu, en aperçu, tel qu'il est arrivé.
         """
         if not self.nuage:
             return
-        try:
-            categorie = categoriser(texte, numeros=self._nos_numeros())
-        except Exception:
-            categorie = None
-        message = composer(paiement, expediteur, libelle, categorie,
+        message = composer(expediteur, libelle, texte,
                            anglais=langue_active() == "en")
         if not message:
             return

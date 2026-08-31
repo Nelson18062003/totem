@@ -69,8 +69,9 @@ const tables = () => ({
     { id: 4, source_id: 4, expediteur: "MTN", terminal: "douala-faux",
       compte: "MTN ·8901", carte: "89237010000000008901", sens: null,
       montant: null, tiers: null, numero: null, reference: null, solde_apres: null,
-      // Une ligne ECRITE AVANT le masquage du robot : elle porte le code en
-      // clair. C'est exactement le cas que l'ecran doit rattraper.
+      // Un SMS à code de connexion : il porte un code en clair, et il doit se
+      // lire ENTIER. C'est le message du propriétaire, sur sa carte — on n'y
+      // touche pas. L'écran l'affiche tel quel, 483921 compris.
       texte: "Votre code de confirmation est 483921. Ne le communiquez a personne.",
       categorie: "code", nature: null,
       emis_le: il_y_a(45), recu_le: il_y_a(45), lu_le: null },
