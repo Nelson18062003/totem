@@ -27,6 +27,9 @@ const en = {
   // passe est faux ». Les distinguer dirait à un inconnu quelles adresses
   // ont un compte ici — de quoi dresser une liste, puis s'acharner dessus.
   identifiantsIncorrects: "wrong email or password",
+  // 429. On ne dit pas combien de temps il reste : ce serait un chronomètre
+  // offert à qui mesure. On ne dit pas non plus si le compte existe.
+  tropDEssais: "too many attempts. Wait a few minutes and try again.",
   compteEnAttente:
     "This account is waiting for the owner's approval. It cannot open " +
     "anything yet.",
@@ -73,6 +76,7 @@ const fr: typeof en = {
   variableMalFormee: "une variable est mal écrite : écrivez-la en entier, accolades comprises — {numero}",
 
   identifiantsIncorrects: "courriel ou mot de passe incorrect",
+  tropDEssais: "trop d’essais. Attendez quelques minutes et recommencez.",
   compteEnAttente:
     "Ce compte attend l’approbation du propriétaire. Il n’ouvre encore rien.",
   courrielInvalide: "cela ne ressemble pas à une adresse de courriel",

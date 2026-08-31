@@ -49,6 +49,7 @@ cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
+cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
@@ -108,6 +109,17 @@ que le fichier DISE quand il est coupé. Pour qu'il puisse prendre en défaut, l
 faux nuage a d'abord dû apprendre à mentir comme la vraie base : il rendait le
 total APRÈS avoir appliqué la limite — « mille lignes sur mille » quand elle en
 avait deux mille quatre cents.
+
+`verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
+lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante
+essais lancés ensemble lisaient donc tous un compteur à zéro. Mesuré — 999 ms
+par essai en file, 86 ms en rafale. **Douze fois plus vite pour la seule peine
+de ne pas faire la queue**, et personne n'attaque un mot de passe en faisant
+la queue. C'est la même faute que celle du propriétaire unique : lire avant
+d'écrire ne garantit rien. Le harnais exige aussi que le mur refuse AVANT le
+calcul de l'empreinte (7 ms contre 120 ms) — sans quoi une rafale d'essais
+devient une rafale de calculs — et que le propriétaire, sur une autre adresse,
+entre encore pendant l'attaque.
 
 `verifier-la-politique` ouvre un vrai Chromium et GLISSE un script dans le
 HTML de la page, comme le ferait un nom d'expéditeur piégé. Une politique de

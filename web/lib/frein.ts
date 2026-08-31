@@ -14,18 +14,57 @@ const essais = new Map<string, { n: number; vu: number }>();
 
 const FENETRE_MS = 15 * 60 * 1000;
 const LIBRES = 5;               // essais sans délai
-const PALIER_MS = 500;          // délai ajouté par échec au-delà
+const PALIER_MS = 500;          // délai ajouté par essai au-delà
 const PLAFOND_MS = 8000;
 
-/** Le délai à observer avant de juger cette tentative-ci. */
-export function freinPour(cle: string): number {
-  const maintenant = Date.now();
+// LE MUR, au-delà du délai. Passé ce nombre d'essais depuis une MÊME adresse
+// dans la fenêtre, on refuse tout de suite, sans même regarder le mot de
+// passe. Deux raisons, et la seconde compte autant que la première :
+//
+//   1. un délai plafonné à huit secondes ne borne rien quand les essais
+//      arrivent ensemble — ils attendent tous les huit secondes EN MÊME
+//      TEMPS, puis passent tous ;
+//   2. vérifier un mot de passe coûte au SERVEUR 210 000 tours de PBKDF2,
+//      volontairement. C'est cher pour qui essaie, mais c'est cher pour nous
+//      aussi : mille essais lancés ensemble, c'est mille calculs lancés
+//      ensemble. Le refus arrive AVANT le calcul.
+//
+// Le mur est par ADRESSE, jamais global : sans quoi il suffirait d'attaquer
+// pour enfermer le propriétaire dehors.
+const MUR = 60;
+
+/** Le nombre d'essais comptés pour cette clé dans la fenêtre. */
+function compte(cle: string): number {
   const e = essais.get(cle);
-  if (!e || maintenant - e.vu > FENETRE_MS) return 0;
-  return Math.min(Math.max(0, e.n - LIBRES) * PALIER_MS, PLAFOND_MS);
+  if (!e || Date.now() - e.vu > FENETRE_MS) return 0;
+  return e.n;
 }
 
-export function noterEchec(cle: string): void {
+/** Le délai à observer, d'après un nombre d'essais déjà comptés. */
+function delaiPour(n: number, libres: number): number {
+  return Math.min(Math.max(0, n - libres) * PALIER_MS, PLAFOND_MS);
+}
+
+/** Le délai que vaut cette clé en l'état — sans rien compter. */
+export function freinPour(cle: string): number {
+  return delaiPour(compte(cle), LIBRES);
+}
+
+/**
+ * COMPTER L'ESSAI AVANT DE LE JUGER, et c'est tout le sujet.
+ *
+ * Le frein lisait le compteur, attendait, vérifiait le mot de passe, PUIS
+ * notait l'échec. Soixante essais lancés ENSEMBLE lisaient donc tous un
+ * compteur à zéro : aucun n'était ralenti. Mesuré contre un vrai serveur —
+ * 999 ms par essai en file, 86 ms par essai en rafale. Douze fois plus vite,
+ * pour la seule peine de ne pas faire la queue. Or personne n'attaque un mot
+ * de passe en faisant la queue.
+ *
+ * C'est la même faute que celle du propriétaire unique : une lecture faite
+ * avant une écriture ne garantit rien, parce que quelqu'un écrit entre les
+ * deux. Ici, la réservation et le comptage sont le MÊME geste.
+ */
+function reserverUnEssai(cle: string): void {
   const maintenant = Date.now();
   for (const k of [cle, SEAU_COMMUN]) {
     const e = essais.get(k);
@@ -36,6 +75,17 @@ export function noterEchec(cle: string): void {
   if (essais.size > 5000) {
     for (const [k, v] of essais) if (maintenant - v.vu > FENETRE_MS) essais.delete(k);
   }
+}
+
+/**
+ * L'échec est DÉJÀ compté — l'essai l'a été au moment de la réservation.
+ *
+ * Gardée comme point d'accroche : c'est ici qu'irait un journal des échecs
+ * ou une alerte. Compter une seconde fois ferait payer double au propriétaire
+ * qui se trompe une fois.
+ */
+export function noterEchec(_cle: string): void {
+  /* rien : voir `reserverUnEssai` */
 }
 
 /** Une réussite efface l'ardoise. */
@@ -99,8 +149,29 @@ function freinCommun(): number {
   return Math.min(Math.max(0, e.n - LIBRES_COMMUN) * PALIER_MS, PLAFOND_MS);
 }
 
-/** Attend le temps dû, s'il y en a un. */
-export async function attendreLeFrein(cle: string): Promise<void> {
+/**
+ * Compte cet essai, puis attend ce qu'il coûte.
+ *
+ * Rend `false` quand l'adresse a dépassé le mur : l'appelant doit alors
+ * refuser TOUT DE SUITE, sans vérifier le mot de passe — c'est ce refus
+ * précoce qui empêche une rafale de faire calculer le serveur.
+ */
+export async function attendreLeFrein(cle: string): Promise<boolean> {
+  reserverUnEssai(cle);
+  if (compte(cle) > MUR) return false;
   const attente = Math.max(freinPour(cle), freinCommun());
   if (attente) await new Promise((r) => setTimeout(r, attente));
+  return true;
 }
+
+// CE QUE CE FREIN NE FAIT PAS, et il vaut mieux l'écrire que le découvrir.
+//
+// Le seau vit dans la MÉMOIRE de l'instance. Sur un hébergement qui met
+// plusieurs instances en parallèle, chacune a le sien : une attaque répartie
+// obtient donc plusieurs fois l'allocation. Le frein casse la cadence d'un
+// attaquant ordinaire, il ne remplace pas une protection de bordure.
+//
+// Ce qui tient malgré tout, quel que soit le nombre d'instances : le mot de
+// passe est long (12 caractères au minimum), son empreinte coûte 210 000
+// tours, et un compte non approuvé n'ouvre rien. Le frein ajoute du temps ;
+// il n'est pas la seule chose entre un inconnu et la caisse.

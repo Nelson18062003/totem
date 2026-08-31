@@ -77,8 +77,16 @@ export async function ouvrirLaPorte(
   const motdepasse = typeof champs.motdepasse === "string" ? champs.motdepasse : "";
 
   // Le frein, avant tout examen : un seau partagé par les deux portes.
+  //
+  // LE REFUS ARRIVE AVANT LE CALCUL. Vérifier un mot de passe coûte au
+  // serveur 210 000 tours de PBKDF2, volontairement — cher pour qui essaie,
+  // cher pour nous aussi. Passé le mur, on répond sans rien calculer : sinon
+  // une rafale d'essais devient une rafale de calculs, et la plateforme
+  // s'écroule d'elle-même sous les tentatives.
   const cle = cleDeFrein(req);
-  await attendreLeFrein(cle);
+  if (!(await attendreLeFrein(cle))) {
+    return refus(langue, "tropDEssais", 429);
+  }
 
   if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
 
