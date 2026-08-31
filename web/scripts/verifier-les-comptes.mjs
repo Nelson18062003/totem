@@ -372,6 +372,34 @@ try {
   const rSecFaux = await poste("/api/session", { motdepasse: "pas-la-cle" });
   verifier("une fausse clé ne passe pas", rSecFaux.status, 401);
 
+  // ELLE ADMINISTRE, MAIS ELLE NE VIDE PAS LA MAISON.
+  //
+  // La clé de secours ouvre l'administration sans désigner personne : la
+  // garde « on ne se supprime pas soi-même » ne s'appliquait pas à elle, et
+  // le compte du propriétaire pouvait disparaître. Ce qui suivait, joué
+  // contre un vrai serveur : la table se vidait, la plateforme lisait
+  // « aucun compte » comme « jamais installée », et ROUVRAIT ses
+  // inscriptions. Le premier passant venu du réseau devenait propriétaire —
+  // tous les SMS, tous les soldes, et le terminal qui compose ce qu'on lui
+  // dit de composer.
+  const avecSecours = { authorization: `Bearer ${jetonSec}` };
+  const rSup = await poste("/api/comptes",
+    { id: idMoi, geste: "supprimer" }, avecSecours);
+  verifier("la clé de secours ne supprime pas le propriétaire", rSup.status, 400);
+  const rFer = await poste("/api/comptes",
+    { id: idMoi, geste: "fermer" }, avecSecours);
+  verifier("elle ne ferme pas son compte non plus", rFer.status, 400);
+
+  // Et la porte est restée fermée. C'est CELA qui compte : le reste n'était
+  // qu'un chemin pour y arriver.
+  const porte = await (await fetch(B + "/api/plateforme")).json();
+  verifier("la porte des inscriptions est restée fermée", porte.inscription, false);
+  const rPassant = await poste("/api/inscription",
+    { courriel: "passant@internet.example", motdepasse: MDP });
+  verifier("un passant ne s'inscrit toujours pas", rPassant.status, 403);
+  verifier("et il n'est surtout pas propriétaire",
+    (await rPassant.json()).proprietaire, undefined);
+
   // LA CLÉ D'INTENTION — l'argent ne part pas deux fois.
   //
   // Un code USSD complet porte le bénéficiaire ET le montant : le composer

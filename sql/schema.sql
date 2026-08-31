@@ -437,6 +437,41 @@ create index if not exists utilisateurs_courriel on utilisateurs (lower(courriel
 create unique index if not exists utilisateurs_un_seul_proprietaire
   on utilisateurs (role) where role = 'proprietaire';
 
+-- ET IL NE S'EN VA PAS. La clé de secours ouvre l'administration sans
+-- désigner personne : la garde « on ne se supprime pas soi-même » ne
+-- s'appliquait pas à elle, et le compte du propriétaire pouvait disparaître.
+-- La table se vidait, la plateforme lisait « aucun compte » comme « jamais
+-- installée », et rouvrait ses inscriptions : le premier passant venu du
+-- réseau devenait propriétaire et lisait tous les SMS.
+--
+-- « La table est vide » et « cette plateforme n'a jamais été installée » sont
+-- deux faits différents. La table ne peut plus se vider.
+-- Voir migrations/20260831_le-proprietaire-ne-se-supprime-pas.sql.
+create or replace function refuser_de_laisser_la_maison_sans_proprietaire()
+returns trigger
+language plpgsql
+as $$
+begin
+  if old.role = 'proprietaire'
+     and not exists (
+       select 1 from utilisateurs
+       where role = 'proprietaire' and id <> old.id
+     )
+  then
+    raise exception
+      'Le compte du propriétaire ne se supprime pas : la plateforme resterait '
+      'sans propriétaire, et rouvrirait ses inscriptions.'
+      using errcode = 'check_violation';
+  end if;
+  return old;
+end $$;
+
+drop trigger if exists un_proprietaire_reste on utilisateurs;
+create trigger un_proprietaire_reste
+  before delete on utilisateurs
+  for each row
+  execute function refuser_de_laisser_la_maison_sans_proprietaire();
+
 -- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit la base en direct. Personne.
 --

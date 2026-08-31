@@ -370,6 +370,19 @@ const serveur = createServer(async (req, res) => {
     }
 
     if (req.method === "DELETE") {
+      // LE DERNIER PROPRIÉTAIRE NE S'EFFACE PAS — déclencheur
+      // « un_proprietaire_reste ». Sans cette règle ici, la table se vidait,
+      // la plateforme rouvrait ses inscriptions, et un passant du réseau
+      // devenait propriétaire. Aucun harnais n'aurait pu le voir.
+      for (const u of vise()) {
+        if (u.role === "proprietaire"
+            && ![...utilisateurs.values()].some(
+                 (x) => x.role === "proprietaire" && x.id !== u.id)) {
+          return repondre({ code: "23514", message: "Le compte du propriétaire "
+            + "ne se supprime pas : la plateforme resterait sans propriétaire." },
+            400);
+        }
+      }
       for (const u of vise()) utilisateurs.delete(u.id);
       return repondre([], 204);
     }
