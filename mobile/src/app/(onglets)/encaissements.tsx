@@ -106,6 +106,24 @@ export default function Encaissements() {
   }, [paiements, recherche, carte, categorie]);
 
   // Groupés par jour, dans l'ordre où ils sont arrivés.
+  // ON NE REND PAS CE QUE PERSONNE NE REGARDE.
+  //
+  // Mesuré sur une caisse de trente jours : 201 lignes MONTÉES pour 10
+  // visibles à l'écran — vingt fois trop, et 2 386 nœuds pour dix lignes.
+  // Un `ScrollView` monte tous ses enfants, sur Android comme ici : chaque
+  // ligne construit ses icônes, ses textes, sa mise en page, et occupe la
+  // mémoire d'un téléphone qui n'en a pas beaucoup.
+  //
+  // On rend donc les premiers jours, puis les suivants À MESURE qu'on
+  // approche du bas. Personne ne le voit : c'est ce que fait déjà toute
+  // liste qui se respecte. La vraie virtualisation (`SectionList`) reste le
+  // geste juste à terme — elle démonte aussi ce qui est passé — mais elle
+  // demande de restructurer cet écran, et de l'éprouver sur un VRAI
+  // téléphone, ce qu'on ne peut pas faire d'ici.
+  const PREMIER_LOT = 4;
+  const LOT_SUIVANT = 4;
+  const [joursRendus, setJoursRendus] = useState(PREMIER_LOT);
+
   const jours = useMemo(() => {
     const par = new Map<string, { libelle: string; lignes: Paiement[] }>();
     for (const p of filtres) {
@@ -116,6 +134,11 @@ export default function Encaissements() {
     return [...par.values()];
   }, [filtres]);
 
+  // UNE NOUVELLE RECHERCHE REPART DU HAUT. Sans cela, taper trois lettres
+  // après avoir descendu la liste laissait vingt jours rendus pour trois
+  // résultats — et le bas de l'écran se remplissait de vide.
+  useEffect(() => { setJoursRendus(PREMIER_LOT); }, [filtres]);
+
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
       {/* Bord à bord : le clavier ne pousse rien tout seul (voir
@@ -125,6 +148,18 @@ export default function Encaissements() {
       <ScrollView
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: 108 }}
         keyboardShouldPersistTaps="handled"
+        // On allonge la liste AVANT d'arriver au bout — un écran et demi
+        // d'avance : la suite est déjà là quand le doigt y arrive, et rien
+        // ne clignote.
+        scrollEventThrottle={80}
+        onScroll={({ nativeEvent: n }) => {
+          const restant = n.contentSize.height
+            - (n.contentOffset.y + n.layoutMeasurement.height);
+          if (restant < n.layoutMeasurement.height * 1.5) {
+            setJoursRendus((rendus) =>
+              rendus >= jours.length ? rendus : rendus + LOT_SUIVANT);
+          }
+        }}
         refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger}
                                         tintColor={couleurs.encrePale} />}
       >
@@ -210,7 +245,7 @@ export default function Encaissements() {
           </Carte>
         ) : null}
 
-        {jours.map((j, k) => (
+        {jours.slice(0, joursRendus).map((j, k) => (
           <Entree key={j.libelle} delai={180 + k * 40}>
             <View style={{ gap: espaces.sm }}>
               <Texte taille={textes.legende} ton="pale"

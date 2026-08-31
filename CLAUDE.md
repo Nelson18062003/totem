@@ -60,6 +60,7 @@ cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
 cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
+cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
 #   (même chaîne que verifier-les-formats — voir l'en-tête du script)
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
@@ -262,6 +263,21 @@ pastilles, surfaces d'appui : le premier comptage attribuait donc sept formes
 à l'écran des Actions, qui n'en a aucune. Chaque onglet annonce maintenant
 COMBIEN il doit en montrer, et le nombre est celui des composants : un écart
 signale une forme perdue autant qu'une forme de trop.
+
+`verifier-les-listes` tient DEUX moitiés, et la seconde compte autant que la
+première : une liste ne monte pas ce que personne ne regarde, **et rien ne
+devient inatteignable**. Mesuré sur trente jours de caisse : 201 lignes
+montées pour 10 visibles, 2 386 nœuds pour dix lignes. Une liste qui
+s'arrêterait au quatrième jour ne serait pas rapide, elle serait cassée.
+
+Il demande à la PLATEFORME combien elle porte, au lieu de s'en remettre à
+l'écran : sans cette vérité indépendante, « la liste s'arrête à 88 » et « la
+caisse n'a que 88 lignes » se ressemblent — et le harnais accusait la caisse
+d'être vide pendant que l'écran perdait des encaissements.
+
+Il descend à la MOLETTE, jamais en réglant `scrollTop` : régler la propriété
+ne déclenche pas le gestionnaire de react-native-web, et le harnais concluait
+« la liste s'arrête » sur une liste qui marchait.
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
