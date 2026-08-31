@@ -19,6 +19,7 @@ import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
 import { Entree } from "@/animations";
+import { SqueletteListe } from "@/squelettes";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
@@ -192,6 +193,12 @@ export default function Encaissements() {
         </Entree>
 
         {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+
+        {jours.length === 0 && chargement && !erreur ? (
+          // L'écran le plus long à charger de l'application : c'est celui qui
+          // avait le plus besoin de dire qu'il travaille.
+          <SqueletteListe lignes={6} />
+        ) : null}
 
         {jours.length === 0 && !chargement && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>

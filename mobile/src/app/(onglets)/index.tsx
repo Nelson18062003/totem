@@ -20,6 +20,7 @@ import { Accroc, Carte, Filet, Pastille, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
+import { SqueletteCaisse, SqueletteGestes, SqueletteListe } from "@/squelettes";
 import { OperationPopup, type Operation } from "@/operation";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
@@ -109,7 +110,12 @@ export default function Accueil() {
         <Entree delai={60}>
           <Caisse carte={active} langue={langue} soldeCache={soldeCache} />
         </Entree>
-      ) : !chargement ? (
+      ) : chargement ? (
+        // PENDANT L'ATTENTE, UNE FORME — pas le vide. L'écran ne montrait
+        // RIEN tant que les chiffres n'étaient pas là : le propriétaire ne
+        // pouvait pas distinguer « ça arrive » de « c'est cassé ».
+        <SqueletteCaisse />
+      ) : (
         <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                         borderStyle: "dashed" }}>
           {/* Le premier écran d'un propriétaire tout neuf : ni carte, ni SMS.
@@ -126,7 +132,7 @@ export default function Accueil() {
             {t.aucuneCarteDetail}
           </Texte>
         </Carte>
-      ) : null}
+      )}
 
       {/* Les commandes de la carte, HORS de la carte : masquer le solde,
           l'actualiser, partager ses coordonnées. Trois cercles, aucun mot —
@@ -171,7 +177,9 @@ export default function Accueil() {
             ))}
           </View>
         </Entree>
-      ) : active?.enPlace && !chargement ? (
+      ) : chargement ? (
+        <SqueletteGestes />
+      ) : active?.enPlace ? (
         // Aucun code relevé pour cet opérateur : le web le DIT et mène aux
         // Réglages ; ici les gestes disparaissaient sans un mot, comme si
         // l'application était en panne.
@@ -220,6 +228,13 @@ export default function Accueil() {
             </Carte>
           </View>
         </Entree>
+      ) : chargement ? (
+        // Le titre PUIS les formes : l'écran se compose dans le bon ordre, et
+        // « Derniers SMS » est déjà lisible pendant que les lignes arrivent.
+        <View style={{ gap: espaces.sm }}>
+          <Texte taille={textes.intertitre} poids="demi">{t.derniersSms}</Texte>
+          <SqueletteListe lignes={4} />
+        </View>
       ) : null}
 
       {donnees?.terminal ? (

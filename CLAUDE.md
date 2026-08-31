@@ -59,6 +59,8 @@ cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
 cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
+cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
+#   (même chaîne que verifier-les-formats — voir l'en-tête du script)
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
@@ -236,6 +238,23 @@ d'opérateur coupée ne sert à rien — c'est le numéro qu'on recopie pour
 réclamer chez MTN — et elle donne l'illusion de l'avoir. Un courriel n'est
 jamais coupé non plus : c'est sur lui qu'on décide d'ouvrir la caisse à
 quelqu'un, et « jean@exemp… » ressemble beaucoup à « jean@exemple-piege.cm ».
+
+`verifier-l-attente` garde ce que l'écran montre PENDANT qu'il charge. Les
+écrans principaux ne rendaient rien : un écran blanc, sans un mot, pendant
+une à trois secondes — le propriétaire ne peut pas distinguer « ça arrive »
+de « c'est cassé ». Des formes grises à la bonne place répondent aux deux
+questions d'un coup.
+
+**Mais une forme à la mauvaise hauteur est pire que pas de forme** : l'écran
+SAUTE au moment de la substitution, et il saute juste quand le doigt
+s'approche d'un bouton. Premier essai : 72 points de saut, parce que la forme
+oubliait les trois commandes rondes sous la carte. À l'œil, on ne l'aurait pas
+vu — le harnais ralentit le réseau, mesure un repère placé sous la carte
+avant et après, et refuse plus de 20 points d'écart.
+
+Il attend un ÉTAT, jamais une durée : un délai fixe après le clic paraît
+marcher, puis la connexion prend une seconde de plus et le harnais mesure
+l'écran de connexion en annonçant « rien à l'écran ».
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une

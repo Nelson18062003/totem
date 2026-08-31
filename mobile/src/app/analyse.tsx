@@ -24,6 +24,7 @@ import * as Navigateur from "expo-web-browser";
 import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Entree } from "@/animations";
+import { SqueletteAnalyse } from "@/squelettes";
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
@@ -80,7 +81,9 @@ export default function Analyse() {
 
         {erreur ? (
           <Accroc message={erreur} onReessayer={recharger} />
-        ) : paiements.length === 0 && !chargement ? (
+        ) : paiements.length === 0 && chargement ? (
+          <SqueletteAnalyse />
+        ) : paiements.length === 0 ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.rienTitre}</Texte>

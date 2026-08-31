@@ -12,6 +12,7 @@ import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree } from "@/animations";
+import { SqueletteCartes } from "@/squelettes";
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
@@ -60,6 +61,10 @@ export default function Comptes() {
             ligne montrait « aucune carte » — une connexion en panne déguisée
             en terminal vide. */}
         {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+
+        {enPlace.length === 0 && chargement && !erreur ? (
+          <SqueletteCartes combien={2} />
+        ) : null}
 
         {enPlace.length === 0 && !chargement && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,

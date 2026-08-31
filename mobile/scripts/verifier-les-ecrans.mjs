@@ -15,6 +15,13 @@
 // Comme le harnais du clavier : il lit le code, pas l'écran. Il garantit
 // que la vérité est BRANCHÉE, pas qu'elle s'affiche au bon endroit — cela
 // reste l'affaire des photos et de l'œil.
+//
+// SECOND CONTRAT : L'ATTENTE SE MONTRE. Pendant le premier chargement, les
+// écrans principaux ne rendaient RIEN — `!chargement ? (contenu) : null`. Un
+// écran blanc, sans un mot : le propriétaire ne peut pas distinguer « ça
+// arrive » de « c'est cassé », et la seule chose qu'il puisse faire est de
+// relancer l'application. Tout écran qui LIT des données doit donc montrer
+// une forme d'attente (`Squelette…`) tant qu'elles ne sont pas là.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -41,6 +48,15 @@ for (const chemin of fichiers(RACINE)) {
   const manques = [];
   if (!/\berreur\b/.test(code)) manques.push("ne récupère pas « erreur »");
   if (!/<Accroc/.test(code)) manques.push("ne rend pas l'Accroc");
+  // L'ATTENTE SE MONTRE. Un écran qui lit des données et n'affiche RIEN
+  // pendant qu'elles arrivent est indiscernable d'un écran cassé. Les écrans
+  // qui ne lisent QUE l'état du terminal (`sms: 0, recus: 0`) chargent en un
+  // aller-retour minuscule et n'ont rien à faire attendre : on ne leur
+  // demande pas de forme.
+  const lourd = /useDonnees\(\s*\{[^}]*sms:\s*[1-9]/.test(code);
+  if (lourd && !/Squelette/.test(code)) {
+    manques.push("ne montre RIEN pendant le chargement (pas de Squelette)");
+  }
   if (manques.length) {
     rate++;
     console.error(`  ✗ ${court} — ${manques.join(" ; ")} : hors ligne, ` +
