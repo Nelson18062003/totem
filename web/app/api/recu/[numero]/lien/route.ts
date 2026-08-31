@@ -1,7 +1,6 @@
 import { signerLienRecu } from "@/lib/lien-signe";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
-import { exigerSession, refusApi } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +20,6 @@ export async function GET(
   { params }: { params: Promise<{ numero: string }> },
 ) {
   const langue = await langueDemandee(req);
-  const moi = await exigerSession(req);
-  if (!moi.ok) return refusApi(moi.statut, langue);
   const { numero } = await params;
   // La forme d'un numéro de reçu, rien d'autre : pas de « / », pas de « ? »,
   // rien qui puisse voyager dans une adresse et y changer de sens. AVANT la

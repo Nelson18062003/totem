@@ -61,15 +61,18 @@ catégories, détectées à partir du texte (`analyse_sms.py`) :
 | `retrait` | « Retrait de … » | oui |
 | `solde` | « Le solde de votre compte est de … » | oui |
 | `echec` | « Transfert … échoué », « Opération annulée » | non — rien ne s'est passé |
-| `code` | « Le code de … est : 515318 » | non (masqué) |
+| `code` | « Le code de … est : 515318 » | non — pas de reçu, mais le SMS se lit en entier |
 | `publicite` | « 2 millions à gagner avec Orange Money ! » | non |
 | `illisible` | parle d'argent, mais le robot n'a pas tout compris | non — à classer à la main |
 | `message` | un SMS de n'importe qui, sans rapport | non |
 | `inconnu` | compris à moitié : on l'affiche tel quel | non |
 
 La catégorie n'est qu'une **aide** : le SMS reste toujours lisible en entier,
-quelle que soit sa catégorie. Un code à usage unique est la seule exception —
-son chiffre est masqué (`••••••`) partout, dès la lecture.
+quelle que soit sa catégorie — **codes compris**. On a un temps masqué les
+codes à usage unique (`••••••`) « pour la forme » ; personne ne l'avait
+demandé, c'était une faute, retirée. Le message du propriétaire, sur sa carte,
+s'affiche tel qu'il est arrivé — dans la liste, sur la fiche, et jusque dans la
+notification (voir `docs/MOBILE.md`).
 
 Deux catégories disent une lecture qui n'a pas abouti, et c'est voulu :
 

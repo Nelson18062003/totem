@@ -8,11 +8,13 @@
 // l'a reçu. Le traduire serait le trahir.
 
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, TextInput, View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -53,7 +55,7 @@ function plierLesSoldes(items: Paiement[]): Rangee2[] {
 export default function Encaissements() {
   const langue = useLangue();
   const t = textesSms[langue];
-  const { donnees, chargement, recharger } = useDonnees({ sms: 200 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 200 });
 
   const [recherche, setRecherche] = useState("");
   const [carte, setCarte] = useState<string | null>(null);       // null = toutes
@@ -86,7 +88,13 @@ export default function Encaissements() {
     const q = recherche.trim().toLowerCase();
     return paiements.filter((p) => {
       if (carte && p.sim !== carte) return false;
-      if (categorie && p.categorie !== categorie) return false;
+      // La nature CHOISIE par le propriétaire l'emporte sur la catégorie
+      // devinée — comme la couleur, l'icône et le pli des soldes de cet
+      // écran (`p.nature ?? p.categorie`), et comme le web (`catDe`). Sans
+      // cela, un SMS reclassé en « publicité » s'affichait en publicité mais
+      // le filtre « Publicité » le cachait, et « Encaissement » le montrait
+      // encore : le filtre contredisait l'écran.
+      if (categorie && (p.nature ?? p.categorie) !== categorie) return false;
       if (!q) return true;
       // On cherche dans tout ce qui est lisible : le nom, le numéro, le
       // montant, et le message entier.
@@ -109,6 +117,10 @@ export default function Encaissements() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      {/* Bord à bord : le clavier ne pousse rien tout seul (voir
+          feuille.tsx). La recherche vit en haut, mais un téléphone couché
+          n'a que quelques lignes au-dessus du clavier. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: 108 }}
         keyboardShouldPersistTaps="handled"
@@ -179,7 +191,9 @@ export default function Encaissements() {
           </View>
         </Entree>
 
-        {jours.length === 0 && !chargement ? (
+        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+
+        {jours.length === 0 && !chargement && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
             <Texte poids="demi">
               {recherche || carte || categorie ? t.aucunResultatTitre : t.aucunSmsTitre}
@@ -251,6 +265,7 @@ export default function Encaissements() {
           </Entree>
         ))}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {ouvert ? (
         <FicheSms paiement={ouvert} onFermer={() => setOuvert(null)}

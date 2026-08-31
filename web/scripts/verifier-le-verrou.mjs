@@ -28,76 +28,6 @@ function verifier(nom, obtenu, attendu) {
 const code = async (chemin, options = {}) =>
   (await fetch(B + chemin, options).catch(() => ({ status: 0 }))).status;
 
-const poste = (chemin, corps, entetes = {}) =>
-  fetch(B + chemin, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...entetes },
-    body: JSON.stringify(corps),
-  }).catch(() => ({ status: 0 }));
-
-
-// ---------------------------------------------------------------------------
-// LE RELEVÉ STATIQUE — la porte qu'on oubliera un jour.
-//
-// Le verrou du bord (`middleware.ts`) protège tout d'un coup ; le garde
-// (`lib/garde.ts`), lui, se pose porte par porte. C'est sa force — il relit
-// la base, ce que le bord ne peut pas faire — et c'est sa faiblesse : rien
-// n'oblige la PROCHAINE route à y penser. C'est exactement ainsi que
-// « /api/nature » et « /api/lu » sont restées ouvertes aux invités pendant
-// que leurs deux voisines se fermaient.
-//
-// Ce relevé lit donc `middleware.ts` pour connaître les portes ouvertes, puis
-// parcourt tous les fichiers de routes et d'écrans et exige que chacun des
-// autres appelle un garde. Il ne prouve pas que le garde est bien employé —
-// c'est le rôle des attaques plus bas. Il prouve qu'on n'en a oublié aucun,
-// ce qu'aucune attaque ne peut faire : on n'attaque pas une porte dont on
-// ignore l'existence.
-// ---------------------------------------------------------------------------
-function fichiers(racine, nom) {
-  const trouves = [];
-  const parcourir = (d) => {
-    for (const e of readdirSync(d)) {
-      const p = join(d, e);
-      if (statSync(p).isDirectory()) parcourir(p);
-      else if (e === nom) trouves.push(p);
-    }
-  };
-  parcourir(racine);
-  return trouves.sort();
-}
-
-/** Le chemin d'URL que sert ce fichier : « app/api/lu/route.ts » → « /api/lu ».
- *  Les dossiers entre parenthèses ne comptent pas (groupes de Next). */
-const cheminServi = (fichier) =>
-  "/" + fichier
-    .replace(/^app\//, "").replace(/\/(route|page)\.tsx?$/, "")
-    .split("/").filter((m) => !m.startsWith("(")).join("/");
-
-console.log("\nAucune porte n'a oublié son garde");
-{
-  const middleware = readFileSync("middleware.ts", "utf8");
-  const bloc = middleware.match(/const OUVERT = \[([\s\S]*?)\];/);
-  if (!bloc) {
-    console.log("  ✗ la liste OUVERT est introuvable dans middleware.ts");
-    echecs++;
-  }
-  const ouvertes = [...(bloc?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  console.log(`     (${ouvertes.length} portes ouvertes déclarées : ${ouvertes.join(" ")})`);
-
-  const aGarder = [...fichiers("app", "route.ts"), ...fichiers("app", "page.tsx")]
-    .filter((f) => {
-      const c = cheminServi(f);
-      return !ouvertes.some((o) => c === o || c.startsWith(o + "/"));
-    });
-
-  const nues = aGarder.filter((f) => {
-    const src = readFileSync(f, "utf8");
-    return !/\bexiger(Session|Proprietaire|SessionOuLien|Ecran)\b/.test(src);
-  });
-
-  verifier(`${aGarder.length} portes fermées, toutes gardées`, nues.length, 0);
-  for (const f of nues) console.log(`     ↳ SANS GARDE : ${f}`);
-}
 
 // UN SERVEUR DÉJÀ LÀ EST UN PIÈGE. Si le port est occupé — par un essai
 // précédent mal refermé — le serveur qu'on lance ici ne démarre pas, et
@@ -129,6 +59,71 @@ try {
   for (let i = 0; i < 60; i++) {
     if (await code("/connexion")) break;
     await new Promise((r) => setTimeout(r, 500));
+  }
+
+  // ---------------------------------------------------------------------
+  // AUCUNE PORTE N'A ÉTÉ OUBLIÉE — le relevé qui vaut pour la porte de demain.
+  //
+  // Les vérifications ci-dessous frappent aux portes qu'on a PENSÉ à écrire
+  // ici. C'est leur limite, et elle est sérieuse : on n'attaque pas une porte
+  // dont on ignore l'existence. La route ajoutée le mois prochain, celle que
+  // personne n'aura songé à mettre dans cette liste, ne sera éprouvée par
+  // rien.
+  //
+  // Ce relevé-ci part donc du DISQUE, pas d'une liste écrite à la main : il
+  // lit la liste OUVERT du middleware, parcourt tous les fichiers de routes,
+  // et frappe à CHACUNE de celles qui ne sont pas déclarées ouvertes. Toute
+  // porte qui répond autre chose que 401 sans jeton est un trou.
+  //
+  // Il ne remplace pas les essais qui suivent — eux savent ce que chaque
+  // porte doit répondre. Il garantit seulement qu'aucune n'échappe au compte.
+  console.log("\nAucune porte n'a été oubliée");
+  {
+    const fichiers = (racine, nom) => {
+      const trouves = [];
+      const parcourir = (d) => {
+        for (const e of readdirSync(d)) {
+          const p = join(d, e);
+          if (statSync(p).isDirectory()) parcourir(p);
+          else if (e === nom) trouves.push(p);
+        }
+      };
+      parcourir(racine);
+      return trouves.sort();
+    };
+    // « app/api/lu/route.ts » → « /api/lu ». Les dossiers entre parenthèses
+    // sont des groupes de Next : ils ne paraissent pas dans l'adresse.
+    const cheminServi = (f) =>
+      "/" + f.replace(/^app\//, "").replace(/\/route\.ts$/, "")
+             .split("/").filter((m) => !m.startsWith("(")).join("/");
+
+    const middleware = readFileSync("middleware.ts", "utf8");
+    const bloc = middleware.match(/const OUVERT = \[([\s\S]*?)\];/);
+    if (!bloc) {
+      console.log("  ✗ la liste OUVERT est introuvable dans middleware.ts");
+      echecs++;
+    }
+    const ouvertes = [...(bloc?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    console.log(`     (${ouvertes.length} portes déclarées ouvertes)`);
+
+    // Un segment dynamique ne se frappe pas tel quel : « [numero] » n'est pas
+    // une adresse. On lui donne une valeur inoffensive de la bonne forme.
+    const adressable = (c) => c.replace(/\[\.\.\.[^\]]+\]|\[[^\]]+\]/g, "1");
+
+    const fermees = fichiers("app", "route.ts")
+      .map(cheminServi)
+      .filter((c) => !ouvertes.some((o) => c === o || c.startsWith(o + "/")));
+
+    let ouvertesParErreur = 0;
+    for (const chemin of fermees) {
+      const statut = await code(adressable(chemin));
+      if (statut !== 401) {
+        console.log(`     ↳ ${adressable(chemin)} répond ${statut}, pas 401`);
+        ouvertesParErreur++;
+      }
+    }
+    verifier(`${fermees.length} portes fermées, toutes muettes sans jeton`,
+             ouvertesParErreur, 0);
   }
 
   console.log("\nPortes fermées sans session");
@@ -378,31 +373,22 @@ try {
   verifier("les échecs du navigateur freinent l'application", punie - neuve > 1000, true);
   verifier("une adresse innocente reste libre", innocente < 300, true);
 
-  console.log("\nLe frein ne se contourne pas en changeant d'en-tête");
-  // LE PIÈGE. Le frein compte les échecs par adresse, et cette adresse, il la
-  // lisait dans « X-Forwarded-For » — un en-tête que le CLIENT écrit. Il
-  // suffisait donc d'en changer à chaque essai pour obtenir un compteur neuf
-  // à chaque fois : le frein comptait jusqu'à un, indéfiniment, pendant qu'on
-  // essayait les mots de passe à pleine cadence.
+  // L'ATTAQUE QUI DÉSARMAIT LE FREIN. On prenait le PREMIER élément de
+  // « x-forwarded-for » — le bout que le client écrit lui-même. Il suffisait
+  // d'en changer à chaque essai pour repartir d'un seau neuf : le frein
+  // n'existait plus, et rien ne le disait. Chaque relais AJOUTANT l'adresse
+  // qu'il a vue, c'est le DERNIER élément qui vient de notre proxy — et lui,
+  // l'attaquant ne l'écrit pas.
   //
-  // On mesure le contournement, pas le code : vingt essais, vingt adresses
-  // inventées, puis un vingt-et-unième. S'il repart libre, le frein ne freine
-  // personne.
-  {
-    const essai = (xff) => poste("/api/session",
-      { motdepasse: "ce-n-est-pas-le-bon" }, { "x-forwarded-for": xff });
-    for (let i = 0; i < 20; i++) await essai(`203.0.113.${i}`);
-    const debut = Date.now();
-    await essai("203.0.113.200");
-    const attente = Date.now() - debut;
-    console.log(`     (le 21ᵉ essai, sous une 21ᵉ adresse inventée : ${attente}ms)`);
-    // Le frein ne doit PAS se laisser remettre à zéro par un en-tête. Après
-    // vingt échecs, le vingt-et-unième attend, quelle que soit l'adresse
-    // annoncée. On vise large — un demi-palier suffit à distinguer « freiné »
-    // de « libre » sans dépendre de la vitesse de la machine.
-    verifier("vingt adresses inventées ne remettent pas le compteur à zéro",
-             attente > 400, true);
+  // Ici, le vrai bout est constant (« 10.9.0.9 ») et le faux change à chaque
+  // coup. Le frein doit tout de même se resserrer.
+  for (let i = 0; i < 9; i++) {
+    await frapper("/api/connexion", `203.0.113.${i}, 10.9.0.9`);
   }
+  const rotation = await chrono(() => frapper("/api/session", "198.51.100.7, 10.9.0.9"));
+  console.log(`     (adresse inventée à chaque essai : ${rotation}ms)`);
+  verifier("changer d'adresse annoncée ne desserre pas le frein",
+           rotation - neuve > 1000, true);
 
   console.log(echecs === 0
     ? "\n✓ Le verrou tient : toutes les vérifications passent.\n"

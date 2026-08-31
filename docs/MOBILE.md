@@ -180,32 +180,38 @@ SMS reçu à Douala
 
 **C'est le robot qui envoie, pas le nuage.** On avait d'abord imaginé une
 fonction posée dans Supabase, déclenchée à l'écriture. C'était une mauvaise
-idée, pour une raison qui tranche : le robot est le SEUL à savoir ce qu'il
-n'a **pas** compris. `analyse_sms.py` rend `None` dans le doute, et cette
-ignorance-là est la matière première d'une notification honnête. Une fonction
-du nuage ne verrait que la ligne écrite en base, sans savoir ce qui a été
-perdu en chemin. Deux avantages en prime : le robot a déjà sa file d'attente
-(une coupure Internet ne perd rien), et c'est une pièce mobile de moins.
+idée, pour une raison qui tranche : le robot tient le SMS **exactement tel
+qu'il est arrivé**, à l'octet près, et c'est cela que la notification montre.
+Il a aussi déjà sa file d'attente (une coupure Internet ne perd rien), et
+c'est une pièce mobile de moins. Une fonction du nuage, elle, arriverait après
+coup, sur une ligne relue en base.
 
 Les fichiers : `totem/notification.py` compose le texte, `totem/nuage.py`
 (`appareils()`) va lire à qui, `totem/app.py` (`_faire_sonner`) déclenche —
 dans un fil à part, pour qu'un guichet lent ne retarde jamais la lecture du
 SMS suivant.
 
-### Trois règles, non négociables
+### Ce que la notification montre
 
-- **Le code secret n'apparaît jamais** dans une notification. Ni en clair, ni
-  masqué, ni « en attente de code ». Une notification s'affiche sur un écran
-  verrouillé, dans un taxi. Un SMS reconnu comme portant un code sort d'ici
-  en « Un code de MTN », sans un chiffre.
-- **Un montant douteux ne s'annonce pas comme un montant.** Sans montant lu,
-  la notification dit « montant non lu ». Sans sens établi (Orange nomme les
-  deux parties sans dire laquelle est la nôtre), elle dit « Mouvement de… »
-  sans signe : « reçu » sur un envoi serait un mensonge, et l'inverse aussi.
-- **Le téléphone ne remplace pas le journal.** Une notification peut se
-  perdre — réseau, batterie, système. La liste des SMS reste la vérité.
+- **Le message reçu, en aperçu.** Comme WhatsApp ou l'application SMS du
+  téléphone : le propriétaire lit son message depuis le volet des
+  notifications, tel qu'il est arrivé — **code compris** —, sans ouvrir
+  l'application. On avait un temps résumé le SMS et masqué ses codes « pour
+  l'écran verrouillé » ; personne ne l'avait demandé, c'était une faute,
+  retirée. Ce qui s'affiche sur l'écran verrouillé est le choix du
+  propriétaire, dans les réglages de SON téléphone.
+- **On n'invente rien.** On montre le texte reçu ; on ne calcule pas un
+  montant ni un sens qu'on présenterait comme certains. Ce que le propriétaire
+  lit, ce sont les mots de l'opérateur.
+- **C'est un aperçu, pas le journal.** Un SMS très long est coupé
+  (`APERCU_MAX`, 200 caractères) ; la liste des SMS garde le message entier et
+  reste la vérité — une notification peut d'ailleurs se perdre (réseau,
+  batterie, système).
 
-Ces trois règles sont gardées par `tests/test_notification.py`.
+Le code secret que le propriétaire tape pendant une opération n'entre jamais
+dans une notification — mais il n'arrive pas non plus par SMS : il vit dans les
+sessions USSD, pas dans les messages reçus. Ces règles sont gardées par
+`tests/test_notification.py`.
 
 ### Vérifier que ça sonne, sans attendre un vrai paiement
 
@@ -234,9 +240,9 @@ désinstallé répond « DeviceNotRegistered » : son jeton est alors retiré de
 base. Sans cette lecture, il y resterait pour toujours, et le compte des
 appareils servis mentirait.
 
-Aucun contenu de paiement ne traverse cet essai — le message ne parle que de
-lui-même. Les trois règles qui protègent les notifications restent donc
-entièrement chez le robot, à un seul endroit.
+Aucun contenu de SMS ne traverse cet essai — le message ne parle que de
+lui-même. Ce qu'une vraie notification montre — le message reçu, en aperçu —
+se décide chez le robot, à un seul endroit.
 
 ### L'inscription d'un téléphone
 

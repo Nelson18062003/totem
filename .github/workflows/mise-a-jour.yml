@@ -57,6 +57,13 @@ on:
         required: false
         default: ""
 
+# Le jeton de l'action ne sert qu'à LIRE le dépôt. Sans ce bloc, il hérite du
+# réglage par défaut de l'organisation — souvent l'écriture sur tous les
+# domaines — dans un travail qui installe des centaines de paquets et détient
+# de quoi publier sur tous les téléphones. On le réduit à ce qui sert.
+permissions:
+  contents: read
+
 jobs:
   publier:
     name: Publier sur « ${{ inputs.canal }} »
@@ -129,6 +136,34 @@ jobs:
         env:
           ADRESSE: ${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}
         run: node scripts/poser-l-adresse.mjs "$ADRESSE"
+
+      # LA BATTERIE AVANT DE PUBLIER, JAMAIS APRÈS.
+      #
+      # Une mise à jour à distance arrive sur des téléphones EN SERVICE, en
+      # quelques secondes, sans que personne ne l'installe ni ne la relise.
+      # Ce qui part d'ici est irrattrapable : un écran cassé est cassé
+      # partout, tout de suite, et un secret parti est public pour toujours.
+      #
+      # Or c'était le SEUL chemin vers les téléphones qui ne vérifiait pas ce
+      # que le paquet emporte — la compilation Android, elle, le faisait
+      # depuis toujours. Le chemin le plus rapide était le moins gardé.
+      #
+      # `verifier-le-paquet` compile le bundle et regarde DEDANS : le noyau
+      # partagé doit y être, aucun secret ne doit y être. C'est le même
+      # bundle que celui publié ci-dessous.
+      - name: Vérifier ce que le paquet emporte
+        working-directory: mobile
+        run: node scripts/verifier-le-paquet.mjs
+
+      # Les deux défauts nés de rapports du propriétaire : un clavier qui
+      # cache le champ qu'on remplit, un écran qui se tait quand le réseau
+      # tombe. Statiques et immédiats — aucune raison de s'en priver sur le
+      # chemin qui atteint les téléphones le plus vite.
+      - name: Vérifier le clavier et les écrans
+        working-directory: mobile
+        run: |
+          node scripts/verifier-le-clavier.mjs
+          node scripts/verifier-les-ecrans.mjs
 
       - name: Publier la mise à jour
         working-directory: mobile

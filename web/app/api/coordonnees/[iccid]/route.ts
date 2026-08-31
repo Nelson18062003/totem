@@ -3,7 +3,6 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { pdfCoordonnees } from "@/lib/pdf-rib";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { erreurApi } from "@noyau/textes/api";
-import { exigerSessionOuLien, refusApi } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +33,6 @@ export async function GET(
     return Response.json(
       { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
   }
-
-  // Une session vivante, ou le laissez-passer signé pour CETTE carte.
-  const moi = await exigerSessionOuLien(req, "coordonnees", iccid);
-  if (!moi.ok) return refusApi(moi.statut, langue);
-
   const { sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
   const carte = sims.find((s) => s.iccid === iccid);
   if (!carte) {

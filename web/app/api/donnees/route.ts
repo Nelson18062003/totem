@@ -1,5 +1,5 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
-import { exigerSession, refusApi } from "@/lib/garde";
+import { compteConnecte } from "@/lib/qui";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -39,13 +39,6 @@ function borne(valeur: string | null, defaut: number, plafond: number): number {
 export async function GET(req: Request) {
   const langue = await langueDemandee(req);
 
-  // LE GARDE, AVANT DE LIRE QUOI QUE CE SOIT. Cette route sert TOUT : les
-  // paiements, les soldes, les cartes, les reçus. Elle ne vérifiait rien et
-  // s'en remettait au verrou du bord ; un jeton d'un compte fermé la faisait
-  // encore parler. Voir lib/garde.ts.
-  const moi = await exigerSession(req);
-  if (!moi.ok) return refusApi(moi.statut, langue);
-
   if (!relie) {
     return Response.json(
       { erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
@@ -60,7 +53,10 @@ export async function GET(req: Request) {
     recus: borne(params.get("recus"), 200, MAX_RECUS),
   });
 
-  // Le courriel ne sert qu'à saluer par son prénom. Il ne sort pas d'ici
-  // autrement : ni chez Expo, ni dans une notification, ni dans un journal.
-  return Response.json({ ...donnees, courriel: moi.courriel });
+  // Qui regarde ? Uniquement pour le saluer par son prénom. Le courriel ne
+  // sort pas d'ici autrement : il ne part ni chez Expo, ni dans une
+  // notification, ni dans un journal.
+  const moi = await compteConnecte(req);
+
+  return Response.json({ ...donnees, courriel: moi?.courriel ?? null });
 }

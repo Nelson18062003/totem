@@ -565,6 +565,43 @@ class Pilotage:
         return reponse
 
     def _repondre(self, identifiant, parametres, langue=None):
+        texte = str(parametres.get("texte") or "")
+        # L'EFFACEMENT D'ABORD, LE REFUS ENSUITE.
+        #
+        # Cet effacement venait APRÈS le contrôle de session. Or c'est
+        # précisément quand la session a disparu que la commande est refusée :
+        # coupure de courant à Douala et robot redémarré (`_session` repart
+        # TOUJOURS à None), session expirée, main rendue à Telegram. Le code
+        # secret était alors refusé ET conservé — en clair, dans la base, pour
+        # toujours, sans même avoir été composé. Le pire des deux mondes, et
+        # sur la panne la plus banale de toutes.
+        #
+        # On efface donc avant de juger quoi que ce soit d'autre : un refus
+        # n'est jamais une raison de garder un code secret.
+        if parametres.get("secret"):
+            # Le code confidentiel : effacé de la base AVANT d'être composé.
+            # S'il ne devait rester qu'une règle, ce serait celle-là — alors
+            # on VÉRIFIE que l'effacement a pris. « commande_maj » rend faux
+            # si le nuage n'a pas répondu (une coupure à Douala, justement) ;
+            # l'ignorer laissait le code EN CLAIR dans le nuage, pour
+            # toujours, pendant qu'on le composait quand même. On réessaie ;
+            # et si l'effacement ne prend pas, on REFUSE de composer. Mieux
+            # vaut une opération échouée, à reprendre, qu'un code secret qui
+            # traîne dans la base.
+            efface = False
+            for _ in range(3):
+                if self.nuage.commande_maj(
+                        identifiant, {"parametres": {"secret": True}}):
+                    efface = True
+                    break
+                time.sleep(0.5)
+            if not efface:
+                raise RefusPoli(t(
+                    "The secret code could not be secured — it was not "
+                    "dialled. Check the connection and try again.",
+                    "Le code secret n'a pas pu être sécurisé — il n'a pas "
+                    "été composé. Vérifiez la connexion, puis réessayez.",
+                    langue=langue))
         # On fige la session dans une variable locale : le fil Telegram peut
         # la remettre à None (ceder) entre le test et la lecture. Sans ce
         # cliché, « self._session["compte"] » lèverait par intermittence.
@@ -575,36 +612,6 @@ class Pilotage:
                 "Aucune session en cours : composez d'abord un code.",
                 langue=langue))
         compte = session["compte"]
-        texte = str(parametres.get("texte") or "")
-        if parametres.get("secret"):
-            # LE CODE CONFIDENTIEL : effacé de la base AVANT d'être composé.
-            # S'il ne devait rester qu'une règle, ce serait celle-là.
-            #
-            # Et jusqu'ici elle n'était qu'à moitié tenue : l'effacement
-            # était DEMANDÉ, jamais VÉRIFIÉ. `commande_maj` rend False quand
-            # elle n'a pas abouti — réseau coupé, Supabase en panne — et
-            # cette réponse partait à la poubelle. Le code partait alors sur
-            # le réseau en laissant sa copie EN CLAIR dans la table des
-            # commandes, pour toujours.
-            #
-            # Ce qu'il faut faire dans ce cas est le contraire de ce qui se
-            # faisait : NE PAS COMPOSER. Un transfert manqué se refait d'un
-            # geste, et le propriétaire voit le refus tout de suite. Un code
-            # confidentiel qui a fui ne se reprend pas — il faut aller le
-            # changer chez l'opérateur, en supposant qu'on ait remarqué.
-            #
-            # (L'essai du dépôt validait ce chemin contre un faux nuage qui
-            # répondait toujours oui : il mesurait le cas où il n'y a rien à
-            # craindre. C'est l'autre qui compte.)
-            if not self.nuage.commande_maj(
-                    identifiant, {"parametres": {"secret": True}}):
-                raise RefusPoli(t(
-                    "The platform is unreachable: your code has NOT been "
-                    "dialled, so that no copy of it stays in the database. "
-                    "Try again in a moment.",
-                    "La plateforme est injoignable : votre code n'a PAS été "
-                    "composé, pour qu'aucune copie n'en reste dans la base. "
-                    "Réessayez dans un instant.", langue=langue))
         if not texte:
             raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
         reponse = compte.ussd_repondre(texte)

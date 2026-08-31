@@ -12,7 +12,7 @@ Lancer :  python3 -m unittest discover -s tests
 import unittest
 
 from totem.analyse_sms import (analyser, categoriser, code_a_usage_unique,
-                               formater_montant, masquer_secrets, solde_annonce)
+                               formater_montant, solde_annonce)
 
 # Le vrai SMS d'Orange Money, relevé sur les captures du propriétaire en
 # juillet 2026. Il sert de référence à tout ce fichier : c'est lui qu'il faut
@@ -460,10 +460,13 @@ class TestBruitAnglais(unittest.TestCase):
         self.assertIsNone(analyser(pub))
         self.assertEqual(categoriser(pub), "publicite")
 
-    def test_le_code_anglais_est_masque(self):
+    def test_le_code_anglais_est_range_mais_jamais_modifie(self):
+        # Un code à usage unique est RANGÉ dans la catégorie « code » (une
+        # icône, pas de reçu). Mais le SMS n'est PAS modifié : le
+        # propriétaire reçoit son code en entier — c'est le sien.
         code = "Your one-time password is 481516. Do not share it."
         self.assertEqual(categoriser(code), "code")
-        self.assertNotIn("481516", masquer_secrets(code))
+        self.assertTrue(code_a_usage_unique(code))
 
     def test_une_entreprise_nommee_win_paie_quand_meme(self):
         """« win » est un mot de réclame, mais WIN TELECOM est un client :
@@ -550,19 +553,20 @@ class TestCodeAUsageUnique(unittest.TestCase):
     def test_nest_pas_un_paiement(self):
         self.assertIsNone(analyser(self.CODE))
 
-    def test_masque(self):
-        masque = masquer_secrets(self.CODE)
-        self.assertNotIn("515318", masque)
-        self.assertIn("696103864", masque)     # le numéro n'est pas un secret
-        self.assertIn("•", masque)
+    def test_le_code_est_reconnu_mais_le_sms_reste_entier(self):
+        # On ne masque plus RIEN : le SMS du propriétaire, code compris, se
+        # lit tel qu'il est arrivé. `code_a_usage_unique` sert seulement à le
+        # RANGER (catégorie « code », pas de reçu), jamais à le cacher.
+        self.assertTrue(code_a_usage_unique(self.CODE))
+        self.assertEqual(categoriser(self.CODE), "code")
 
-    def test_un_vrai_paiement_nest_jamais_masque(self):
-        """Un encaissement qui contiendrait le mot « code » doit rester
-        lisible en entier : le masquage ne s'applique qu'aux secrets."""
+    def test_un_encaissement_avec_le_mot_code_reste_un_paiement(self):
+        """Un encaissement qui contient le mot « code » (« Code marchand »)
+        n'est pas pris pour un code à usage unique : il reste un paiement,
+        lisible en entier."""
         sms = ("Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
                "Code marchand: 4455. Nouveau solde: 872 500 FCFA.")
         self.assertFalse(code_a_usage_unique(sms))
-        self.assertEqual(masquer_secrets(sms), sms)
         self.assertEqual(analyser(sms).montant, 25000)
 
     def test_autres_tournures(self):
@@ -818,3 +822,115 @@ class TestCarnetAgentMtn(unittest.TestCase):
     def test_un_echec_avec_solde_courant_reste_un_echec(self):
         self.assertIsNone(solde_annonce(
             "Transaction failed. Current balance: 8910 FCFA."))
+
+
+class TestSoldeEtrangerAuPorteMonnaie(unittest.TestCase):
+    """Un solde n'est pas l'autre : le crédit d'appel n'est pas l'argent.
+
+    MTN glisse « Airtime balance » AVANT « New balance » dans ses SMS
+    d'opération. Le lecteur prenait le premier « balance » venu — le crédit
+    téléphonique s'affichait donc comme le solde après opération, et l'alerte
+    de solde bas s'en nourrissait.
+    """
+
+    TRANSFERT = ("Transfer of 5,000 FCFA to 677123456 NGONO Marie completed. "
+                 "Fee: 100 FCFA. Airtime balance: 7,943 FCFA. "
+                 "New balance: 8,910 FCFA. Financial Transaction Id: 123456789.")
+
+    def test_le_solde_apres_saute_le_credit_dappel(self):
+        p = analyser(self.TRANSFERT)
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+        self.assertEqual(p.solde_apres, 8910)   # et non 7943, le crédit d'appel
+
+    def test_un_releve_de_credit_dappel_seul_nannonce_aucun_solde(self):
+        # Mieux vaut aucun solde qu'un solde faux : ce message ne dit rien de
+        # l'argent du compte.
+        self.assertIsNone(solde_annonce("Airtime balance: 7,943 FCFA."))
+
+    def test_les_soldes_etiquetes_restent_lus_dans_les_deux_ordres(self):
+        for texte in ("Mobile Money Balance: 12000 FCFA. Airtime balance: 7,943 FCFA.",
+                      "Airtime balance: 7,943 FCFA. Mobile Money Balance: 12000 FCFA."):
+            self.assertEqual(solde_annonce(texte), 12000, texte)
+
+    def test_un_solde_nul_reste_nul(self):
+        # 0 est une réponse, pas une absence de réponse.
+        self.assertEqual(
+            solde_annonce("Mobile Money Balance: 0 FCFA. Airtime balance: 7,943 FCFA."),
+            0)
+
+
+class TestFraisJamaisPrisPourLeMontant(unittest.TestCase):
+    """« Fee amount » porte le mot « amount » sans être le montant.
+
+    On lisait le prix du service à la place de la somme : un retrait passait
+    pour un mouvement de 100 FCFA, et le même nombre paraissait en montant ET
+    en frais.
+    """
+
+    def test_fee_amount_ne_devient_pas_le_montant(self):
+        p = analyser("Cash Out completed from 677123456 NGONO Marie. "
+                     "Fee amount: 100 FCFA. New balance: 5000 FCFA.")
+        # Aucun montant d'opération n'est annoncé : on refuse plutôt que
+        # d'annoncer les frais comme la somme.
+        self.assertIsNone(p)
+
+    def test_des_frais_ecrits_avant_le_montant_ne_le_masquent_pas(self):
+        p = analyser("Depot reussi. Frais: 100 FCFA. Montant: 5000 FCFA. "
+                     "vers 677123456 NGONO Marie. Nouveau solde: 20000 FCFA.")
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 5000)
+
+    def test_un_depot_ordinaire_garde_montant_et_frais(self):
+        p = analyser("Depot de 50000 FCFA vers 677123456 NGONO Marie reussi. "
+                     "Frais: 100 FCFA. Nouveau solde: 150000 FCFA.")
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 50000)
+        self.assertEqual(p.frais, 100)
+        self.assertEqual(p.solde_apres, 150000)
+
+
+class TestChiffresEtrangers(unittest.TestCase):
+    """Un montant qui n'est pas celui qu'on lit — trouvé en fuzzant.
+
+    Python voit un chiffre dans bien plus que « 0 » à « 9 » : l'arabe-indien
+    (« \u0665 »), la pleine chasse (« \uff15 »), et une douzaine d'autres
+    écritures. `\d` les capture et `int()` les convertit SANS RIEN DIRE.
+
+    « Depot de 5\u0665\u0660\u0660\u06600000 FCFA » était donc lu 550 000 000 FCFA — un nombre
+    que personne ne lit dans le message. Et comme le SMS s'affiche tel qu'il
+    est arrivé, l'écart restait invisible : la liste montrait le texte reçu,
+    le bilan et le reçu portaient l'autre nombre.
+
+    N'importe qui connaissant le numéro de la SIM peut envoyer un tel SMS ;
+    un opérateur camerounais, jamais.
+    """
+
+    ARABE = "\u0665\u0660\u0660\u0660"          # « 5000 » en arabe-indien
+    PLEINE = "\uff15\uff10\uff10\uff10"         # « 5000 » en pleine chasse
+
+    def test_un_montant_en_chiffres_etrangers_ne_se_lit_pas(self):
+        from totem.analyse_sms import _nombre
+        for faux in (self.ARABE, self.PLEINE, "5" + self.ARABE + "0000"):
+            self.assertIsNone(_nombre(faux), faux)
+
+    def test_les_chiffres_arabes_ne_font_pas_un_paiement(self):
+        p = analyser(f"Depot de 5{self.ARABE}0000 FCFA vers 677123456 "
+                     "NGONO Marie reussi.")
+        # Mieux vaut aucun montant qu'un montant que personne ne lit.
+        self.assertTrue(p is None or p.montant is None)
+
+    def test_un_solde_en_chiffres_etrangers_ne_s_annonce_pas(self):
+        self.assertIsNone(
+            solde_annonce(f"Le solde de votre compte est de {self.ARABE}FCFA."))
+
+    def test_les_vrais_montants_se_lisent_toujours(self):
+        # Le garde-fou ne doit rien coûter aux messages ordinaires.
+        from totem.analyse_sms import _nombre
+        self.assertEqual(_nombre("20 000"), 20000)
+        self.assertEqual(_nombre("2784137.6"), 2784137.6)
+        self.assertEqual(_nombre("1.250.000"), 1250000)
+        p = analyser("Vous avez recu 20 000 FCFA de NGONO Marie (677123456). "
+                     "Nouveau solde: 412 500 FCFA.")
+        self.assertEqual(p.montant, 20000)
+        self.assertEqual(p.solde_apres, 412500)

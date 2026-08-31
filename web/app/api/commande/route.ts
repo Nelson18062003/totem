@@ -2,7 +2,7 @@ import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
 import { creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { exigerProprietaire, refusApi } from "@/lib/garde";
+import { estProprietaire } from "@/lib/qui";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -33,9 +33,10 @@ export async function POST(req: Request) {
   // Sans SESSION_SECRET, la plateforme n'a AUCUN verrou : le middleware
   // laisse tout passer. Refuser ici donnerait l'illusion d'une porte fermée
   // devant une maison ouverte, et casserait le développement local pour rien.
-  // C'est le garde lui-même qui le sait, et qui laisse alors passer.
-  const moi = await exigerProprietaire(req);
-  if (!moi.ok) return refusApi(moi.statut, langue);
+  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+    return Response.json(
+      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+  }
   const corps = await req.json().catch(() => null);
   const genre = typeof corps?.type === "string" ? corps.type : "";
   if (!GENRES.has(genre)) {
@@ -79,6 +80,15 @@ export async function POST(req: Request) {
   // vie — juste avec deux boîtiers, `source_id` viserait le mauvais journal.
   const terminalCible = typeof corps?.terminal === "string"
     ? corps.terminal.replace(/[^\w.-]/g, "").slice(0, 64)
+    : null;
+  // LA CLÉ D'INTENTION — un geste, une clé. Deux envois de la même clé sont
+  // le même geste : la base n'enregistre qu'une demande, et l'écran suit
+  // celle-là. C'est ce qui empêche qu'un code complet (bénéficiaire ET
+  // montant) soit composé deux fois, donc que l'argent parte deux fois,
+  // quand une requête est présentée deux fois sans que personne l'ait voulu.
+  // Bornée et nettoyée comme le reste : elle finit dans une requête.
+  const cleIntention = typeof corps?.cle === "string"
+    ? corps.cle.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64) || null
     : null;
   // Réglage de l'identité d'une carte : l'ICCID vise la puce, le numéro et le
   // nom sont nettoyés ici puis revérifiés par le terminal, qui reste juge.
@@ -166,7 +176,8 @@ export async function POST(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
-  const id = await creerCommande(genre, parametres, terminalCible);
+  const id = await creerCommande(genre, parametres, terminalCible,
+                                 cleIntention);
   if (id == null) {
     return Response.json({ erreur: erreurApi(langue, "depotImpossible") }, { status: 502 });
   }

@@ -24,11 +24,17 @@ class FauxSupabase(BaseHTTPRequestHandler):
     supprimes = []      # les chemins des DELETE reçus (ménage des raccourcis)
     en_panne = False
     refuser_texte = None  # sous-chaîne : tout lot la contenant est rejeté (400)
+    code_refus = None   # la base refuse TOUT avec ce code (401, 403, 429…)
     colonnes_absentes = set()  # colonnes que la base n'a pas (défaut PGRST204)
 
     def do_POST(self):
         if FauxSupabase.en_panne:
             self.send_error(503)
+            return
+        if FauxSupabase.code_refus is not None:
+            # Une clé changée, une règle d'accès qui refuse, un débit trop
+            # rapide : la base dit non à TOUT, quelle que soit la ligne.
+            self.send_error(FauxSupabase.code_refus, "acces refuse")
             return
         taille = int(self.headers.get("Content-Length", 0))
         corps = json.loads(self.rfile.read(taille) or b"[]")
@@ -115,6 +121,7 @@ class TestNuage(unittest.TestCase):
         FauxSupabase.deja_prises = set()
         FauxSupabase.en_panne = False
         FauxSupabase.refuser_texte = None
+        FauxSupabase.code_refus = None
         FauxSupabase.colonnes_absentes = set()
         self.journal = Journal(":memory:")
         self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",
@@ -302,6 +309,33 @@ class TestNuage(unittest.TestCase):
         self.assertIn("1000 FCFA", textes)
         self.assertIn("3000 FCFA", textes)
         self.assertNotIn("EMPOISONNE", textes)               # le fautif n'est pas passé
+
+    def test_une_cle_refusee_ne_JETTE_PAS_les_paiements(self):
+        """La panne qui effaçait la recette du jour, en silence.
+
+        « refusé » voulait dire « cette ligne ne passera jamais » : on la
+        marquait envoyée, donc on ne la représentait plus JAMAIS. Or une clé
+        changée (401) ou une règle d'accès qui refuse (403) ne dit rien de la
+        ligne — elle dit que la porte est fermée, pour tout le monde, et que
+        ça se répare. Chaque paiement de la journée partait à la poubelle,
+        cent par cycle, pendant que le propriétaire lisait « rien n'est
+        perdu ».
+        """
+        for code in (401, 403, 429):
+            with self.subTest(code=code):
+                self.journal.sms("MoMo", f"Vous avez recu {code}0 FCFA de 677000111",
+                                 "MTN")
+                FauxSupabase.code_refus = code
+                self.assertEqual(self.nuage.pousser_paiements(), 0)
+                # RIEN n'est jeté : tout attend encore son tour.
+                self.assertNotEqual(self.journal.sms_non_envoyes(100), [])
+
+                # La porte rouvre : le paiement passe, entier.
+                FauxSupabase.code_refus = None
+                self.assertEqual(self.nuage.pousser_paiements(), 1)
+                self.assertEqual(self.journal.sms_non_envoyes(100), [])
+                textes = " ".join(l["texte"] for l in self._lignes("paiements"))
+                self.assertIn(f"{code}0 FCFA", textes)
 
     def test_le_paiement_refuse_est_signale_avec_l_erreur(self):
         self.journal.sms("MoMo", "SMS EMPOISONNE", "MTN")
@@ -519,6 +553,7 @@ class TestRaccourcisVersLeCloud(unittest.TestCase):
         FauxSupabase.supprimes = []
         FauxSupabase.en_panne = False
         FauxSupabase.refuser_texte = None
+        FauxSupabase.code_refus = None
         FauxSupabase.colonnes_absentes = set()
         self.journal = Journal(":memory:")
         self.nuage = Nuage(f"http://127.0.0.1:{self.port}", "fausse-cle",

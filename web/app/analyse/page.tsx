@@ -1,55 +1,27 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
-import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
-import type { Langue } from "@noyau/langue";
 import { textesAnalyse } from "@noyau/textes/analyse";
-import { fcfa, jourLocal, nombre, type Paiement } from "@noyau/types";
+import { resumeSemaine } from "@noyau/analyse";
+import { fcfa, nombre } from "@noyau/types";
 import { FUSEAU } from "@/lib/fuseau";
 import { IconDoc } from "../icons";
 import { Vide } from "../vide";
 
 export const dynamic = "force-dynamic";
 
-// Les jours se découpent dans le fuseau DU TERMINAL, exactement
-// comme la liste des SMS (lib/serveur.ts). Sans cela, un encaissement de
-// minuit au terminal tombait, ici, dans le jour de la veille (fuseau du serveur
-// de rendu) — et la liste et le graphe montraient deux jours différents.
-
-// Les encaissements des 7 derniers jours, calculés sur les vrais paiements —
-// aucun chiffre n'est écrit à la main. Les noms de jours suivent la langue.
-function septDerniersJours(paiements: Paiement[], langue: Langue) {
-  const jours: { jour: string; montant: number }[] = [];
-  const present = Date.now();
-  const locale = langue === "en" ? "en-GB" : "fr-FR";
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(present - i * 86_400_000);
-    const cle = jourLocal(d, FUSEAU);
-    const montant = paiements
-      .filter((p) => p.sens === "in" && p.montant != null && jourLocal(new Date(p.recuLe), FUSEAU) === cle)
-      .reduce((s, p) => s + (p.montant ?? 0), 0);
-    // « lun. » devient « Lun », « Mon » reste « Mon » : sans point, une
-    // majuscule initiale dans les deux langues.
-    const nom = new Intl.DateTimeFormat(locale, { timeZone: FUSEAU, weekday: "short" })
-      .format(d).replace(".", "");
-    jours.push({ jour: nom.charAt(0).toUpperCase() + nom.slice(1), montant });
-  }
-  return jours;
-}
-
-function semaine(paiements: Paiement[], debut: number, fin: number) {
-  const present = Date.now();
-  return paiements
-    .filter((p) => {
-      const t = new Date(p.recuLe).getTime();
-      return p.sens === "in" && p.montant != null && t > present - debut * 86_400_000 && t <= present - fin * 86_400_000;
-    })
-    .reduce((s, p) => s + (p.montant ?? 0), 0);
-}
+// Le calcul lui-même vit dans `noyau/analyse.ts` — le même que celui du
+// téléphone, au caractère près. Il l'était déjà « à la virgule près » quand
+// il était écrit deux fois : c'est ainsi que les deux copies se sont
+// trompées ensemble sur la comparaison des semaines. Cette page ne fait plus
+// que MONTRER ; les chiffres, elle les demande.
+//
+// Les jours se découpent dans le fuseau DU TERMINAL, exactement comme la
+// liste des SMS (lib/serveur.ts). Sans cela, un encaissement de minuit au
+// terminal tombait, ici, dans le jour de la veille (fuseau du serveur de
+// rendu) — et la liste et le graphe montraient deux jours différents.
 
 export default async function Analyse() {
-  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
-  await exigerEcran();
   const langue = await langueServeur();
   const t = textesAnalyse[langue];
   const { paiements } = await chargerDonnees(langue);
@@ -66,34 +38,8 @@ export default async function Analyse() {
     );
   }
 
-  const septJours = septDerniersJours(paiements, langue);
-  const total = septJours.reduce((s, d) => s + d.montant, 0);
-  const moyenne = Math.round(total / 7);
-  const meilleur = septJours.reduce((a, b) => (b.montant > a.montant ? b : a));
-  const max = Math.max(...septJours.map((d) => d.montant), 1);
-
-  // La semaine précédente, pour situer celle-ci — calculée, pas décrétée.
-  const precedente = semaine(paiements, 14, 7);
-  const evolution = precedente > 0 ? Math.round(((total - precedente) / precedente) * 100) : null;
-
-  // Les clients qui reviennent, sur tout l'historique chargé.
-  //
-  // LE CLIENT, C'EST « tiers » — la personne qui a payé. « nom » est
-  // l'EXPÉDITEUR du SMS (« MTNMobileMoney »), le même pour tous les
-  // encaissements d'un opérateur : grouper dessus fondait tous les clients
-  // en une seule ligne au nom de l'opérateur. Le faux nuage l'a montré dès
-  // qu'il a porté plusieurs clients.
-  const parClient = new Map<string, { nb: number; total: number }>();
-  for (const p of paiements.filter((x) => x.sens === "in" && x.montant != null)) {
-    const cle = p.tiers || p.nom;
-    const c = parClient.get(cle) ?? { nb: 0, total: 0 };
-    c.nb += 1; c.total += p.montant ?? 0;
-    parClient.set(cle, c);
-  }
-  const topClients = [...parClient.entries()]
-    .map(([nom, v]) => ({ nom, ...v }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+  const { jours: septJours, total, moyenne, meilleur, max, evolution,
+          clients: topClients } = resumeSemaine(paiements, langue, FUSEAU);
 
   return (
     // Grand écran : les chiffres et le graphique à gauche, les clients à droite.

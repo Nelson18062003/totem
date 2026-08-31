@@ -18,7 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Symbole } from "@/marque";
-import { LogoOperateur, couleurOperateur } from "@/logos-operateurs";
+import { LogoOperateur, couleurOperateur, operateurReconnu } from "@/logos-operateurs";
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
@@ -146,24 +146,51 @@ export function Caisse({ carte, langue, soldeCache }: {
         {/* En haut : l'opérateur d'un côté, le signal de l'autre. Aucun mot. */}
         <View style={{ flexDirection: "row", alignItems: "center",
                        justifyContent: "space-between" }}>
-          <LogoOperateur operateur={carte.operateur} taille={Math.round(hauteur * 0.115)} />
+          {/* UNE CARTE SANS NOM. `LogoOperateur` ne dessine RIEN hors MTN et
+              Orange — et la plateforme range en « ? » tout opérateur qu'elle
+              ne reconnaît pas. La caisse devenait alors un rectangle noir
+              anonyme : le numéro est masqué tant qu'il n'est pas déclaré, le
+              nom aussi, et la rangée de pastilles disparaît quand il n'y a
+              qu'une carte. Plus rien ne disait à QUELLE caisse appartenait le
+              solde affiché. L'onglet Comptes traite déjà ce cas ; on fait
+              pareil ici, avec le libellé (« ·8901 »), qui existe toujours. */}
+          <View style={{ flexDirection: "row", alignItems: "center",
+                         gap: espaces.xs, flex: 1, minWidth: 0 }}>
+            <LogoOperateur operateur={carte.operateur} taille={Math.round(hauteur * 0.115)} />
+            {!operateurReconnu(carte.operateur) ? (
+              <Texte taille={textes.legende} numberOfLines={1}
+                     style={{ color: "rgba(255,255,255,0.75)",
+                              textTransform: "uppercase",
+                              letterSpacing: 0.8 }}>
+                {carte.libelle}
+              </Texte>
+            ) : null}
+          </View>
           {carte.signal != null ? <BarresSignal niveau={carte.signal} /> : null}
         </View>
 
-        {/* Au milieu : le solde. C'est ce qu'on vient voir. */}
+        {/* Au milieu : le solde. C'est ce qu'on vient voir.
+            « allowFontScaling={false} » sur les TROIS morceaux : le corps est
+            DÉJÀ calculé pour remplir la largeur de la carte. Le laisser
+            grossir avec le réglage « grand texte » d'Android multiplierait
+            cette taille calculée, le nombre déborderait sa ligne, et
+            « numberOfLines={1} » le tronquerait — « 412,5… ». Un montant
+            tronqué est un montant faux, ici déclenché par un réglage
+            d'accessibilité. La taille reste donc fixe et lisible ; les autres
+            textes de l'application, eux, suivent le réglage. */}
         <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-          <Texte poids="demi" chiffresAlignes numberOfLines={1}
+          <Texte poids="demi" chiffresAlignes numberOfLines={1} allowFontScaling={false}
                  style={{ fontSize: corps, lineHeight: corps * 1.05,
                           color: "#ffffff", letterSpacing: -corps * 0.025 }}>
             {entier}
           </Texte>
           {decimales != null ? (
-            <Texte poids="demi" chiffresAlignes
+            <Texte poids="demi" chiffresAlignes allowFontScaling={false}
                    style={{ fontSize: corps * 0.5, color: "rgba(255,255,255,0.7)" }}>
               {langue === "en" ? "." : ","}{decimales}
             </Texte>
           ) : null}
-          <Texte poids="moyen" style={{
+          <Texte poids="moyen" allowFontScaling={false} style={{
             fontSize: Math.max(11, corps * 0.26), marginLeft: 6,
             color: "rgba(255,255,255,0.6)",
           }}>
@@ -200,16 +227,27 @@ export function Caisse({ carte, langue, soldeCache }: {
                      marginTop: espaces.sm, paddingHorizontal: espaces.xs }}>
         {!carte.enPlace ? (
           <>
+            {/* UNE DATE NUE NE PRÉVIENT PERSONNE. Cette ligne n'affichait
+                que « 28 juil. 2026 » à côté d'une croix, sous un solde
+                présenté en grand comme s'il était vivant. Le propriétaire
+                lisait donc l'argent d'il y a trois jours comme celui
+                d'aujourd'hui — et c'est le seul chiffre pour lequel il
+                ouvre l'application. La plateforme web, elle, écrit la
+                phrase entière depuis toujours (`carteMuette`) : on la dit
+                ici aussi, et on ne la coupe pas. */}
             <Icone nom="Close" taille={13} couleur={couleurs.alerte} />
-            <Texte taille={textes.legende} ton="alerte" numberOfLines={1}>
-              {carte.derniereVue}
+            <Texte taille={textes.legende} ton="alerte" style={{ flex: 1 }}>
+              {t.carteMuette(carte.derniereVue)}
             </Texte>
           </>
         ) : carte.soldeMaj ? (
           <>
             <Icone nom="Refresh" taille={13} couleur={couleurs.encrePale} />
-            <Texte taille={textes.legende} ton="pale" chiffresAlignes>
-              {carte.soldeMaj}
+            <Texte taille={textes.legende} ton="pale" style={{ flex: 1 }}>
+              {/* « 09:47 » tout seul ne dit pas ce qu'est cette heure. Le
+                  reste de l'application l'habille d'une phrase ; ici on
+                  l'affichait nue. */}
+              {t.soldeMaj(carte.soldeMaj)}
             </Texte>
           </>
         ) : (

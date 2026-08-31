@@ -93,8 +93,11 @@ export const variablesInconnues = (etapes: string[]) =>
 // Le champ qui répond à une variable. « {numero} » et « {point} » désignent
 // tous deux un numéro de téléphone : selon le geste, le formulaire l'appelle
 // l'un ou l'autre — on accepte les deux plutôt que d'exiger le bon mot.
-function sourcePour(nom: string, valeurs: Record<string, string>) {
-  const candidats = nom === "numero" ? ["numero", "point"]
+function sourcePour(
+  nom: string, valeurs: Record<string, string>, fratrie = true,
+) {
+  const candidats = !fratrie ? [nom]
+    : nom === "numero" ? ["numero", "point"]
     : nom === "point" ? ["point", "numero"]
     : [nom];
   for (const cle of candidats) {
@@ -118,17 +121,38 @@ export function remplirVariables(
 ): { etapes: string[]; consommees: string[]; manquantes: string[] } {
   const consommees: string[] = [];
   const manquantes: string[] = [];
+  // DEUX TROUS DISTINCTS NE PARTAGENT PAS UNE VALEUR.
+  //
+  // « {numero} » et « {point} » se remplacent l'un l'autre quand le parcours
+  // n'en porte QU'UN : c'est le confort qui évite d'exiger le bon mot. Mais
+  // quand le parcours porte LES DEUX, ce secours envoyait la même valeur dans
+  // les deux fentes — le numéro de l'AGENT partait aussi dans la case du
+  // BÉNÉFICIAIRE. Rien ne s'arrêtait (`manquantes` restait vide), et l'aperçu
+  // des Réglages montrait, lui, deux numéros différents : le propriétaire
+  // validait un code sur un aperçu qui montrait exactement ce qui n'allait
+  // pas se produire. L'argent partait au mauvais endroit.
+  //
+  // Quand les deux trous coexistent, chacun n'accepte donc que SON champ ; le
+  // second devient « manquant », l'appelant s'arrête et dit lequel.
+  const noms = new Set(variablesDe(etapes));
+  const fratrie = !(noms.has("numero") && noms.has("point"));
   const remplies = etapes.map((e) =>
     e.replace(RE_VARIABLE, (tout, nom: string) => {
-      const source = sourcePour(nom, valeurs);
-      if (!source) {
+      const source = sourcePour(nom, valeurs, fratrie);
+      // Seuls les chiffres entrent dans un code : un espace ou un « + »
+      // couperait la chaîne AT côté modem.
+      const chiffres = source ? source.valeur.replace(/\D/g, "") : "";
+      // Une valeur qui ne laisse AUCUN chiffre (« abc », « + », « — ») est un
+      // TROU, pas une réponse. La marquer consommée composait un code amputé
+      // — « *126*1**# », le montant absent — en silence, ce que le docstring
+      // promet justement de ne jamais faire. On la déclare manquante :
+      // l'appelant s'arrête et dit lequel manque.
+      if (!chiffres) {
         if (!manquantes.includes(nom)) manquantes.push(nom);
         return tout;
       }
-      if (!consommees.includes(source.cle)) consommees.push(source.cle);
-      // Seuls les chiffres entrent dans un code : un espace ou un « + »
-      // couperait la chaîne AT côté modem.
-      return source.valeur.replace(/\D/g, "");
+      if (source && !consommees.includes(source.cle)) consommees.push(source.cle);
+      return chiffres;
     }));
   return { etapes: remplies, consommees, manquantes };
 }

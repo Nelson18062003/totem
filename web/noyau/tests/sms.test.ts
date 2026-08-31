@@ -1,8 +1,10 @@
 // Les règles de lecture d'un SMS, mises à l'épreuve.
 //
-// Le masquage des codes à usage unique est une DÉFENSE : ces tests-là
-// gardent le fait qu'un code ne s'affiche jamais en clair, même si la base
-// en renvoie un — et même si le propriétaire a posé une nature dessus.
+// LE SMS NE SE MODIFIE PAS. Le texte affiché est celui reçu, à l'octet près —
+// codes compris. Ce sont les messages du propriétaire, sur sa carte ; un code
+// de connexion reçu par SMS, il doit pouvoir le lire. On a un temps masqué
+// ces codes ; c'était une faute, retirée. Ces tests gardent le contraire de
+// jadis : le texte remonte ENTIER, quelle que soit la catégorie ou la nature.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +19,9 @@ const sms = (p: Partial<Paiement>): Paiement => ({
   nonLu: false, ...p,
 });
 
-test("un code à usage unique ne s'affiche JAMAIS en clair", () => {
+test("un SMS à code s'affiche ENTIER — le code se lit", () => {
+  // Jadis on masquait ; on ne touche plus au texte. Le propriétaire doit
+  // lire son propre code de connexion, c'est à ça qu'il sert.
   const cas = [
     "Votre code est 123456. Ne le communiquez a personne.",
     "Your OTP: 45 67 89",
@@ -25,19 +29,17 @@ test("un code à usage unique ne s'affiche JAMAIS en clair", () => {
   ];
   for (const texte of cas) {
     const vu = texteSurEcran(sms({ categorie: "code", smsBrut: texte }));
-    assert.ok(vu.includes("••••••"), texte);
-    assert.ok(!/\d{4,}/.test(vu.replace(/\d{1,3}(?!\d)/g, "")), `chiffres restants : ${vu}`);
+    assert.equal(vu, texte, texte);           // à l'octet près
+    assert.ok(!vu.includes("•"), `un point de masque subsiste : ${vu}`);
   }
 });
 
-test("une nature posée à la main ne déshabille pas un code", () => {
-  // Le piège : le propriétaire classe un code comme « depot ». La catégorie
-  // devinée reste « code », et le masque doit tenir malgré tout.
+test("une nature posée à la main ne change rien au texte non plus", () => {
   const p = sms({ categorie: "code", nature: "depot", smsBrut: "Code: 987654" });
-  assert.ok(texteSurEcran(p).includes("••••••"));
+  assert.equal(texteSurEcran(p), "Code: 987654");
 });
 
-test("un SMS ordinaire n'est pas masqué", () => {
+test("un SMS ordinaire s'affiche tel quel", () => {
   const texte = "Vous avez recu 20 000 FCFA de NKENGAFAC M. Solde: 412 500 FCFA.";
   assert.equal(texteSurEcran(sms({ categorie: "encaissement", smsBrut: texte })), texte);
 });

@@ -70,6 +70,13 @@ export function OperationPopup({
   const [fil, setFil] = useState<Msg[]>([]);
   const [attente, setAttente] = useState(false);
   const [enSession, setEnSession] = useState(false);
+  // LA CLÉ D'INTENTION DE CETTE OPÉRATION — tirée une fois, à l'ouverture.
+  // Elle accompagne le premier code composé, celui qui peut porter le
+  // bénéficiaire et le montant. Si ce geste repart (un appui recompté, une
+  // requête reprise après un délai), la plateforme reconnaît la clé et rend
+  // la demande déjà créée : l'argent ne part pas deux fois.
+  const cleOperation = useRef<string>(
+    `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [reponseLibre, setReponseLibre] = useState("");
@@ -79,7 +86,21 @@ export function OperationPopup({
   // L'écran est-il encore monté ? Une session peut répondre après la
   // fermeture ; on ne veut pas écrire dans un composant démonté.
   const vivant = useRef(true);
-  useEffect(() => () => { vivant.current = false; }, []);
+  // Un raccrochage est-il DÛ au démontage ? Le nettoyage ci-dessous le lit ;
+  // il est tenu à jour plus bas, dès que la session vit ou se termine.
+  const raccrochageDu = useRef(false);
+  useEffect(() => () => {
+    vivant.current = false;
+    // QUITTER SANS RACCROCHER LAISSE LA SIM EN LIGNE. Les boutons raccrochent
+    // déjà ; ce qui manquait, c'est le départ AUTREMENT — un balayage arrière,
+    // la navigation, l'application mise en fond. La fiche se démonte alors
+    // sans un mot, et la session reste ouverte sur la vraie carte, à Douala :
+    // l'opération suivante peut échouer parce que la carte est encore sur un
+    // menu. On raccroche.
+    if (raccrochageDu.current) {
+      void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {});
+    }
+  }, [operation.terminal]);
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
   const complet = operation.champs.every((c) => (valeurs[c.cle] ?? "").trim());
@@ -90,12 +111,15 @@ export function OperationPopup({
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
+    // Jointe au seul envoi qui peut porter un transfert complet : l'ouverture.
+    cle?: string,
   ): Promise<string | null> => {
     setAttente(true);
     setErreur(null);
     if (bulle) setFil((f) => [...f, bulle]);
     try {
-      const { id } = await deposerCommande(genre, parametres, operation.terminal);
+      const { id } = await deposerCommande(genre, parametres,
+                                           operation.terminal, cle);
       for (let i = 0; i < TOURS; i++) {
         await new Promise((r) => setTimeout(r, PAUSE_MS));
         if (!vivant.current) return null;
@@ -131,7 +155,17 @@ export function OperationPopup({
     }
   };
 
+  // UNE SEULE SESSION, JAMAIS DEUX. `setEtape` est asynchrone : un
+  // double-appui sur « Lancer » rappelle `lancer` avant que le pied ne se
+  // redessine, et déposait DEUX commandes « ussd » pour la même carte — deux
+  // sessions ouvertes sur la SIM, une opération d'argent jouée deux fois. Le
+  // verrou synchrone (un drapeau, pas un état) ferme cette porte, comme
+  // partout ailleurs dans le code. `lancer` est à usage unique de toute
+  // façon : une fois lancée, l'écran quitte l'étape « saisie ».
+  const lance = useRef(false);
   const lancer = async () => {
+    if (lance.current) return;
+    lance.current = true;
     setEtape("session");
     restants.current = [...operation.champs];
     const brutes = operation.etapes?.length ? operation.etapes : [operation.code];
@@ -156,7 +190,8 @@ export function OperationPopup({
     let texte = await envoyer(
       "ussd",
       operation.carte ? { code: etapes[0], carte: operation.carte } : { code: etapes[0] },
-      { de: "vous", texte: etapes[0] });
+      { de: "vous", texte: etapes[0] },
+      cleOperation.current);
     for (const e of etapes.slice(1)) {
       if (texte == null) return;
       texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });
@@ -173,24 +208,52 @@ export function OperationPopup({
     }
   }, []);
 
+  // UNE RÉPONSE PART UNE SEULE FOIS — le code secret surtout.
+  //
+  // `lancer` a son verrou synchrone ; `secret` et `repondre` n'en avaient
+  // pas, et s'en remettaient à l'état asynchrone `attente` pour cacher le
+  // déclencheur. Or le re-rendu qui cache le pavé arrive APRÈS l'appel : un
+  // double-appui rapide sur « Valider » envoyait donc DEUX fois
+  // « ussd_reponse … secret:true » dans la session USSD vivante — le code
+  // secret joué deux fois, exactement ce que le verrou de `lancer` empêche
+  // sur son chemin. Un drapeau synchrone, partagé, ferme cette porte ; il se
+  // relève quand la requête est finie, pour qu'une vraie seconde réponse
+  // (une autre question du réseau) reste possible.
+  const repondEnCours = useRef(false);
+
   const secret = async (code: string) => {
-    // La bulle affichée n'est PAS le code : quatre points. Le code ne
-    // traverse que la requête, et le robot le masque en base sitôt lu.
-    const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
-                                { de: "vous", texte: "••••" });
-    if (texte) { setFini(true); onTermine?.(); }
+    if (repondEnCours.current) return;
+    repondEnCours.current = true;
+    try {
+      // La bulle affichée n'est PAS le code : quatre points. Le code ne
+      // traverse que la requête, et le robot le masque en base sitôt lu.
+      const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
+                                  { de: "vous", texte: "••••" });
+      if (texte) { setFini(true); onTermine?.(); }
+    } finally {
+      repondEnCours.current = false;
+    }
   };
 
   const repondre = async (brut: string) => {
     const valeur = brut.trim();
     if (!valeur) return;
+    if (repondEnCours.current) return;
+    repondEnCours.current = true;
     setReponseLibre("");
-    await derouler(await envoyer("ussd_reponse", { texte: valeur },
-                                 { de: "vous", texte: valeur }));
+    try {
+      await derouler(await envoyer("ussd_reponse", { texte: valeur },
+                                   { de: "vous", texte: valeur }));
+    } finally {
+      repondEnCours.current = false;
+    }
   };
 
   /** L'ordre de raccrochage, sans faire attendre l'écran. */
-  const posterFin = () => { void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {}); };
+  const posterFin = () => {
+    raccrochageDu.current = false;   // c'est fait : le démontage ne refait rien
+    void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {});
+  };
 
   const raccrocher = () => { posterFin(); onFermer(); };
 
@@ -201,6 +264,9 @@ export function OperationPopup({
     if (attente && !fini) posterFin();
     onFermer();
   };
+
+  // Une session vivante et non finie devra être raccrochée si l'on quitte.
+  useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
 
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const pave = enSession && !attente && !fini && demandeUnCode(dernier);

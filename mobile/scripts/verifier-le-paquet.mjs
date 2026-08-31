@@ -64,10 +64,71 @@ console.log("\nL'application ne parle qu'à la plateforme");
 doitEtre(true, "u.expo.dev");
 
 console.log("\nAUCUN SECRET N'A FUI");
+
+// Ces sept-là sont des NOMS de variables. Un secret qui fuit, lui, fuit par
+// sa VALEUR : personne n'écrit « SUPABASE_CLE » à côté de la clé dans un
+// paquet compilé. On garde les noms — ils attrapent un fichier .env recopié
+// par mégarde — mais ils ne suffisent pas.
 [
   "SUPABASE_CLE", "SUPABASE_URL", "service_role", "supabase.co",
   "eyJhbGciOi", "SESSION_SECRET", "TOTEM_MOT_DE_PASSE",
 ].forEach((s) => doitEtre(false, s));
+
+// LES FORMES, maintenant. Un secret se reconnaît à sa tête, pas à son
+// étiquette. Chacune de celles-ci passait le contrôle sans être vue :
+const FORMES = [
+  // Les clés Supabase d'aujourd'hui : « eyJhbGciOi » ne voit que les
+  // anciennes, au format JWT.
+  [/\bsb_secret_[A-Za-z0-9_-]{10,}/, "une clé secrète Supabase (sb_secret_…)"],
+  [/\bsb_publishable_[A-Za-z0-9_-]{10,}/, "une clé Supabase (sb_publishable_…)"],
+  // Un domaine Supabase personnalisé : « supabase.co » ne l'attrape pas.
+  [/\bdb\.[a-z0-9-]+\.[a-z]{2,}\/rest\/v1\b/, "une base joignable en direct"],
+  // Le jeton qui publie les mises à jour sur TOUS les téléphones installés :
+  // le secret le plus précieux de la chaîne.
+  [/\bEXPO_TOKEN\b|\bexpo_[A-Za-z0-9]{24,}/, "le jeton de publication Expo"],
+  // La clé de compte de service Google Play, écrite dans `mobile/` au moment
+  // de la compilation du magasin.
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "une clé privée"],
+  [/"private_key"\s*:/, "une clé privée de compte de service"],
+  [/[a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com/, "un compte de service Google"],
+  // Firebase : `google-services.json` est recopié dans le projet à la
+  // compilation.
+  // Sans borne de fin : Hermes colle les chaînes bout à bout, et exiger une
+  // fin de mot après les 35 caractères laissait passer une clé suivie d'un
+  // voisin. Une clé Google en fait 35 après « AIza » — au moins.
+  [/\bAIza[0-9A-Za-z_-]{35,}/, "une clé d'API Google (AIza…)"],
+  // Le jeton du robot Telegram — la couronne du Pi, à un copier-coller près.
+  [/\b\d{8,10}:AA[A-Za-z0-9_-]{30,}/, "le jeton du robot Telegram"],
+];
+const texte = octets.toString("latin1") + octets.toString("utf16le");
+for (const [motif, quoi] of FORMES) {
+  const trouve = motif.test(texte);
+  console.log(`  ${trouve ? "✗ PRÉSENT" : "✓ absent  "}   ${quoi}`);
+  if (trouve) echecs++;
+}
+
+// Les variables « EXPO_PUBLIC_… » sont inlinées dans le paquet PAR NATURE :
+// tout ce qui porte ce préfixe est public pour toujours. On liste donc celles
+// qu'on y trouve, pour qu'une nouvelle ne s'y glisse pas sans qu'on la voie.
+const publiques = [...new Set(
+  (texte.match(/EXPO_PUBLIC_[A-Z0-9_]+/g) ?? []))].sort();
+// Les nôtres, plus les drapeaux internes d'Expo (« USE_RN_… »), qui viennent
+// du cadre et non du projet. On compare par PRÉFIXE : Hermes range les
+// chaînes bout à bout, si bien qu'un nom absorbe le début du voisin
+// (« …ENABLED » + « MS ») — comparer à l'identique ferait crier le contrôle
+// à chaque version d'Expo.
+const ATTENDUES = ["EXPO_PUBLIC_ADRESSE", "EXPO_PUBLIC_APERCU",
+                   "EXPO_PUBLIC_USE_RN_"];
+const inattendues = publiques.filter(
+  (v) => !ATTENDUES.some((a) => v.startsWith(a)));
+console.log(`\n  variables publiques embarquées : ${publiques.join(", ") || "aucune"}`);
+if (inattendues.length) {
+  console.log(`  ✗ NOUVELLE(S) : ${inattendues.join(", ")}`);
+  console.log("    Une « EXPO_PUBLIC_… » est publique pour toujours. Si elle");
+  console.log("    porte un secret, il est déjà perdu ; sinon, ajoutez-la à");
+  console.log("    la liste attendue de ce script.");
+  echecs++;
+}
 
 console.log(echecs === 0
   ? "\n✓ Le paquet est propre.\n"

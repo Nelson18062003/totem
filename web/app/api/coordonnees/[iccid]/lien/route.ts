@@ -1,7 +1,6 @@
 import { signerLien } from "@/lib/lien-signe";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
-import { exigerSession, refusApi } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +17,6 @@ export async function GET(
   { params }: { params: Promise<{ iccid: string }> },
 ) {
   const langue = await langueDemandee(req);
-  const moi = await exigerSession(req);
-  if (!moi.ok) return refusApi(moi.statut, langue);
   const { iccid } = await params;
   if (!/^\w{1,32}$/.test(iccid)) {
     return Response.json(

@@ -230,15 +230,14 @@ for (const [nom, w, h] of FORMATS) {
     texte: document.body.innerText,
   }));
   const cls = w >= 840 ? "étendue" : w >= 600 ? "moyenne" : "compacte";
-  // LA GARDE. Le faux nuage sert un SMS portant « 483921 » en clair —
-  // une ligne écrite avant que le robot n'apprenne à masquer. Aucun écran ne
-  // doit le montrer : ni la fiche, ni la LISTE. Le masque a déjà manqué une
-  // fois à la liste ; ce contrôle est là pour que ça ne repasse pas.
-  const codeNu = m.texte.includes("483921");
-  const ok = !m.debord && !m.coupe && !m.tronque.length && !codeNu;
+  // On NE contrôle plus le masquage d'un code : le SMS s'affiche entier, code
+  // compris — c'est le message du propriétaire, il le lit tel qu'il est
+  // arrivé (le masquage a été retiré). Ce harnais garde ce qui le regarde :
+  // la mise en page à huit tailles, sans débord, sans texte coupé.
+  const ok = !m.debord && !m.coupe && !m.tronque.length;
   console.log(`  ${nom.padEnd(16)} ${String(w).padStart(4)}×${String(h).padEnd(4)} ${cls.padEnd(9)}` +
     ` débord ${m.debord}  hors-cadre ${m.coupe}  coupé ${m.tronque.length}` +
-    `  code nu ${codeNu ? "⚠️ OUI" : "non"}  ${ok ? "✓" : "⚠️"}` +
+    `  ${ok ? "✓" : "⚠️"}` +
     (m.tronque.length ? ` → ${m.tronque.slice(0, 3).join(" | ")}` : "") +
     (soucis.length ? ` ERREUR ${soucis[0]}` : ""));
   await page.close();

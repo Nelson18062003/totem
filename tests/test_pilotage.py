@@ -280,6 +280,29 @@ class TestGuichet(unittest.TestCase):
         self.assertEqual(len(nuage.limites_demandees), 1)
         from datetime import datetime
         datetime.fromisoformat(nuage.limites_demandees[0])
+    def test_le_code_secret_est_efface_MEME_quand_la_session_a_disparu(self):
+        """La panne la plus banale de Douala : le courant saute.
+
+        Au redémarrage, `_session` repart à None. La réponse au code secret,
+        elle, attend toujours dans la base. On la refusait — à raison, il n'y
+        a plus de session — mais SANS effacer le code : il restait en clair
+        dans le nuage, pour toujours, sans même avoir été composé. Le pire des
+        deux mondes. L'effacement passe donc avant tout refus.
+        """
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        p._session = None               # le robot vient de redémarrer
+        p._traiter({"id": 3, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True}})
+
+        ecritures = [c for i, c in nuage.maj if i == 3]
+        # La commande est bien refusée…
+        self.assertEqual(ecritures[-1]["etat"], "echouee")
+        # … et le code a QUAND MÊME été effacé de la base.
+        self.assertIn({"parametres": {"secret": True}}, ecritures)
+        self.assertNotIn("1234", str(ecritures))
+        # Rien n'a été composé sur le réseau : il n'y avait plus de session.
+        self.assertEqual(compte.recu, [])
 
     def test_un_solde_annonce_est_publie(self):
         compte = FauxCompte([

@@ -76,6 +76,17 @@ create table if not exists comptes (
   -- la plateforme afficherait un solde que l'opérateur n'a jamais annoncé.
   solde       numeric,                   -- en FCFA, tel que l'opérateur l'annonce
   signal      int,                       -- 0..31
+  -- « maj » = cette LIGNE a été touchée (signe de vie, toutes les minutes).
+  -- « solde_maj » = ce SOLDE-LÀ a été annoncé par l'opérateur. Les deux ont
+  -- longtemps été confondus dans « maj », et cela coûtait deux fois :
+  --   — un solde annoncé par SMS n'était écrit que si « maj » lui était
+  --     antérieur ; or le signe de vie remettait « maj » à l'heure toutes
+  --     les soixante secondes, donc la condition échouait presque toujours
+  --     et le solde frais était jeté EN SILENCE ;
+  --   — l'écran affichait « D'après l'interrogation de 09:47 » en lisant
+  --     « maj » : l'heure du dernier signe de vie, pas celle du solde. Le
+  --     solde paraissait donc toujours frais, même vieux de plusieurs heures.
+  solde_maj   timestamptz,
   maj         timestamptz not null default now(),
   unique (terminal, iccid)
 );
@@ -137,7 +148,10 @@ comment on column paiements.texte is
 -- --- Événements : la vie du terminal ---------------------------------------
 create table if not exists evenements (
   id          bigint generated always as identity primary key,
-  terminal    text not null references terminaux(id) on delete cascade,
+  -- Le terminal concerné, ou RIEN quand c'est la plateforme qui parle : la
+  -- base injoignable, une session refusée, un bilan coupé n'appartiennent à
+  -- aucun terminal. Voir migrations/20260831_consolidation.sql.
+  terminal    text references terminaux(id) on delete cascade,
   source_id   bigint not null,
   texte       text not null,
   survenu_le  timestamptz not null,
@@ -174,9 +188,29 @@ create table if not exists commandes (
   etat        text not null default 'en_attente'
                 check (etat in ('en_attente', 'en_cours', 'faite', 'echouee')),
   resultat    text,
+  -- LA CLÉ D'INTENTION — celle qui empêche d'envoyer l'argent DEUX FOIS.
+  --
+  -- Un code USSD complet porte le bénéficiaire ET le montant
+  -- (« *126*1*677123456*5000# ») : le composer deux fois, c'est transférer
+  -- deux fois. Or une demande peut être présentée deux fois sans que personne
+  -- l'ait voulu — un appui compté double, un onglet resté ouvert, une requête
+  -- abandonnée par un délai côté téléphone alors qu'elle a bien abouti côté
+  -- serveur, et le propriétaire qui recommence.
+  --
+  -- L'écran tire une clé au hasard PAR GESTE et la joint à sa demande. Deux
+  -- envois de la MÊME clé sont le même geste : le second ne crée pas de
+  -- seconde ligne, il retrouve la première. Deux gestes distincts ont deux
+  -- clés, donc deux lignes — c'est ce qui permet de répondre « 1 » à deux
+  -- questions successives d'un menu sans que rien ne soit confondu.
+  --
+  -- Nulle pour les demandes d'avant : l'index est partiel, elles cohabitent.
+  cle         text,
   demandee_le timestamptz not null default now(),
   traitee_le  timestamptz
 );
+
+create unique index if not exists commandes_cle_unique
+  on commandes (terminal, cle) where cle is not null;
 
 -- --- Raccourcis : les boutons USSD appris, par opérateur --------------------
 -- Les codes USSD appartiennent au réseau, pas à une carte : « *126# puis 5 »
@@ -232,43 +266,6 @@ create table if not exists appareils (
 comment on table appareils is
   'Les téléphones à qui le robot fait sonner une notification. Le jeton '
   'identifie un appareil, jamais une personne, et n''ouvre l''accès à rien.';
-
--- L'ardoise du frein aux mots de passe.
---
--- POURQUOI ELLE EST EN BASE ET NON EN MÉMOIRE. Le frein comptait les échecs
--- dans la mémoire du serveur. Sur Vercel, chaque instance froide repart à
--- zéro : il suffisait d'insister pour tomber sur une neuve et retrouver ses
--- essais libres. Mesuré — une seconde instance, mémoire vierge, répondait en
--- 36 ms là où la première faisait attendre huit secondes.
---
--- POURQUOI ELLE EST BÊTE, ET C'EST VOULU. On AJOUTE une ligne par échec, on
--- ne modifie jamais rien : pas de lecture-puis-écriture, donc pas de comptage
--- perdu entre deux instances qui écrivent en même temps. Compter les lignes
--- de la fenêtre suffit.
---
--- ELLE NE FERME JAMAIS LA PORTE À ELLE SEULE. Si la base ne répond pas, la
--- plateforme retombe sur sa mémoire locale (voir web/lib/frein.ts). Faire
--- dépendre la connexion d'une base joignable serait exactement ce que la clé
--- de secours existe pour éviter.
---
--- ELLE NE PORTE AUCUN SECRET : ni courriel, ni mot de passe, ni jeton. Une
--- adresse vue par le serveur, et une heure.
-create table if not exists freins (
-  id     bigserial primary key,
-  -- L'identité freinée : « s:<adresse attestée> », « d:<adresse annoncée> »,
-  -- ou le seau commun. Jamais une personne, jamais un courriel.
-  cle    text        not null,
-  vu_le  timestamptz not null default now()
-);
-
--- Les deux seules lectures faites dessus : compter par clé sur une fenêtre,
--- et faire le ménage des vieilles lignes.
-create index if not exists freins_cle_vu on freins (cle, vu_le desc);
-
-comment on table freins is
-  'Les échecs de connexion récents, pour que le frein soit le même sur '
-  'toutes les instances. Aucun secret, aucune identité : une adresse et une '
-  'heure, effacées au bout d''un quart d''heure.';
 
 -- Les comptes qui ouvrent la plateforme.
 --
@@ -428,37 +425,120 @@ create index if not exists commandes_attente_idx
 create index if not exists appareils_vu_le on appareils (vu_le desc);
 -- La connexion cherche par courriel, à chaque tentative.
 create index if not exists utilisateurs_courriel on utilisateurs (lower(courriel));
+-- IL N'Y A QU'UN PROPRIÉTAIRE, et c'est la BASE qui le tient.
+--
+-- La plateforme comptait les comptes, voyait zéro, puis créait un
+-- propriétaire. Entre les deux il se passe un temps — un aller-retour vers la
+-- base, plus le calcul de l'empreinte du mot de passe, lent à dessein. Trois
+-- inscriptions lancées ensemble contre un vrai serveur ont donné TROIS
+-- propriétaires, trois sessions ouvertes : chacun pouvait lire tous les SMS,
+-- faire composer des codes par le terminal, et fermer le compte des autres.
+--
+-- Une vérification faite AVANT une écriture ne garantit rien : entre les
+-- deux, quelqu'un a pu écrire. Seule une règle que la base fait respecter au
+-- moment de l'écriture tient. Voir migrations/20260831_consolidation.sql.
+create unique index if not exists utilisateurs_un_seul_proprietaire
+  on utilisateurs (role) where role = 'proprietaire';
+
+-- ET IL NE S'EN VA PAS. La clé de secours ouvre l'administration sans
+-- désigner personne : la garde « on ne se supprime pas soi-même » ne
+-- s'appliquait pas à elle, et le compte du propriétaire pouvait disparaître.
+-- La table se vidait, la plateforme lisait « aucun compte » comme « jamais
+-- installée », et rouvrait ses inscriptions : le premier passant venu du
+-- réseau devenait propriétaire et lisait tous les SMS.
+--
+-- « La table est vide » et « cette plateforme n'a jamais été installée » sont
+-- deux faits différents. La table ne peut plus se vider.
+-- Voir migrations/20260831_consolidation.sql.
+create or replace function refuser_de_laisser_la_maison_sans_proprietaire()
+returns trigger
+language plpgsql
+as $$
+begin
+  if old.role = 'proprietaire'
+     and not exists (
+       select 1 from utilisateurs
+       where role = 'proprietaire' and id <> old.id
+     )
+  then
+    raise exception
+      'Le compte du propriétaire ne se supprime pas : la plateforme resterait '
+      'sans propriétaire, et rouvrirait ses inscriptions.'
+      using errcode = 'check_violation';
+  end if;
+  return old;
+end $$;
+
+drop trigger if exists un_proprietaire_reste on utilisateurs;
+create trigger un_proprietaire_reste
+  before delete on utilisateurs
+  for each row
+  execute function refuser_de_laisser_la_maison_sans_proprietaire();
 
 -- ---------------------------------------------------------------------------
--- Sécurité : PERSONNE ne lit cette base directement.
+-- LE FREIN AUX ESSAIS DE MOT DE PASSE, partagé par toutes les instances.
 --
--- CE COMMENTAIRE A DÉJÀ MENTI, et cela a compté. Il disait « l'application
--- web lit avec la clé publique, et n'obtient rien sans session » — c'était
--- vrai d'une architecture qui n'a jamais vu le jour. La plateforme lit avec
--- la CLÉ DE SERVICE (web/lib/serveur.ts), comme le robot. Cette clé
--- contourne toutes les règles ci-dessous, par nature.
+-- Il vivait dans la MÉMOIRE du serveur. Un hébergement qui met plusieurs
+-- instances en parallèle donnait à chacune son propre seau : une attaque
+-- répartie obtenait l'allocation autant de fois qu'il y avait d'instances.
 --
--- Ce qu'il faut en retenir, et qui commande tout le reste : LA BASE NE
--- PROTÈGE RIEN. Toute l'autorisation est du code, dans la plateforme —
--- `middleware.ts` pour le verrou du bord, `lib/garde.ts` pour la relecture
--- des comptes derrière lui. Qui lit `schema.sql` en croyant y trouver une
--- deuxième ligne de défense se trompe de fichier.
+-- Le comptage tient en UNE instruction. Lire puis écrire aurait reproduit un
+-- cran plus bas la faute corrigée un cran plus haut : entre les deux,
+-- soixante essais passent.
+-- Voir migrations/20260831_consolidation.sql.
+-- ---------------------------------------------------------------------------
+create table if not exists freins (
+  -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
+  -- une table d'adresses ne doit pas devenir une liste de qui a un compte.
+  cle    text,
+  n      integer not null default 0,
+  vu     timestamptz not null default now()
+);
+
+-- « create table if not exists » ne vérifie que le NOM, jamais la FORME : une
+-- table homonyme déjà présente ferait sauter la création en silence, et tout
+-- ce qui suit supposerait des colonnes absentes. C'est arrivé en service.
+alter table freins add column if not exists cle text;
+alter table freins add column if not exists n   integer not null default 0;
+alter table freins add column if not exists vu  timestamptz not null default now();
+
+-- L'UNICITÉ EST POSÉE À PART, et pas comme clé primaire dans la création.
 --
--- Aucune politique n'est donc créée : RLS est active partout, sans porte.
--- Une table dont RLS est active et qui n'a aucune politique ne laisse passer
--- personne — sauf la clé de service. C'est exactement ce qu'on veut.
+-- « on conflict (cle) » exige un index unique sur « cle » : sans lui, le
+-- comptage échoue sur « no unique or exclusion constraint matching ». Une
+-- table déjà présente n'en a pas forcément. En sortant l'index de la
+-- création, les deux chemins — base neuve et base déjà là — aboutissent
+-- exactement au même index, portant le même nom.
+create unique index if not exists freins_cle_unique on freins (cle);
+
+create index if not exists freins_vu on freins (vu);
+
+create or replace function compter_un_essai(la_cle text, fenetre_s integer)
+returns integer
+language sql
+set search_path = public
+as $$
+  insert into public.freins (cle, n, vu)
+  values (la_cle, 1, now())
+  on conflict (cle) do update
+    set n = case
+              when freins.vu > now() - make_interval(secs => fenetre_s)
+              then freins.n + 1
+              else 1
+            end,
+        vu = now()
+  returning n;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Sécurité : personne ne lit la base en direct. Personne.
 --
--- Il y en avait, avant : « for select to authenticated using (true) », c'est
--- à dire « tout compte connecté à la base lit tout ». Elles ne gardaient
--- rien, puisque personne n'endosse ce rôle — mais elles attendaient le jour
--- où quelqu'un obtiendrait la clé publique, qui est publique par
--- construction. Retirées le 31 août 2026 : voir
--- `migrations/20260831_regles_dormantes.sql`, qui explique le raisonnement
--- au long, et `docs/SECURITE-CONSTATS.md` (SEC-03).
---
--- Le jour où l'on voudra vraiment Supabase Auth, on réécrira des politiques —
--- nommées, cadrées, et jamais « using (true) » sur une table qui porte de
--- l'argent.
+-- Le Pi écrit avec la clé « service_role », qui contourne ces règles — c'est
+-- pour cela qu'elle ne doit jamais quitter le fichier de configuration du Pi.
+-- La plateforme web lit avec cette même clé, mais depuis le SERVEUR
+-- uniquement (`SUPABASE_CLE`, sans `NEXT_PUBLIC_`) : le navigateur et le
+-- téléphone ne parlent qu'à la plateforme, jamais à Supabase.
+-- Aucune clé publique n'ouvre donc quoi que ce soit — voir plus bas.
 -- ---------------------------------------------------------------------------
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;
@@ -469,32 +549,52 @@ alter table commandes  enable row level security;
 alter table recus      enable row level security;
 alter table raccourcis enable row level security;
 alter table appareils  enable row level security;
-alter table utilisateurs enable row level security;
-alter table freins       enable row level security;
+alter table evenements alter column terminal drop not null;
 
--- Aucune politique, sur aucune table. Sur une base NEUVE il n'y a donc rien
--- à retirer ; sur une base déjà en service, c'est
--- `migrations/20260831_regles_dormantes.sql` qui fait le ménage.
+alter table utilisateurs enable row level security;
+alter table freins   enable row level security;
+
+-- AUCUNE POLITIQUE. Sur AUCUNE table. C'est le but, pas un oubli.
 --
--- On retire ici ce qui aurait pu être posé par une version antérieure de ce
--- même fichier : il doit être rejouable et laisser toujours le même état.
-do $$
-declare t text;
-begin
-  foreach t in array array['terminaux','cartes','comptes','paiements','evenements','commandes','recus','raccourcis']
-  loop
-    execute format('drop policy if exists "lecture connectee" on %I', t);
-  end loop;
-end $$;
-drop policy if exists "demander une commande" on commandes;
+-- « Row level security » active et zéro politique = personne ne passe, sauf
+-- la clé de SERVICE, qui n'est pas soumise à ces règles et que seuls le
+-- serveur de la plateforme et le robot détiennent. Ni le navigateur ni le
+-- téléphone ne parlent jamais à Supabase directement : ils parlent à la
+-- plateforme, qui, elle, a la clé.
+--
+-- CE QU'IL Y AVAIT ICI, et pourquoi c'est parti. Huit tables accordaient la
+-- lecture au rôle `authenticated`, et `commandes` y ajoutait l'écriture :
+--
+--     create policy "lecture connectee" on paiements
+--       for select to authenticated using (true);
+--     create policy "demander une commande" on commandes
+--       for insert to authenticated with check (true);
+--
+-- Ces règles attendaient une application web qui lirait la base avec la clé
+-- publique. Elle n'a jamais existé — la plateforme utilise la clé de service,
+-- côté serveur — et aucun code du dépôt n'ouvre de session Supabase. Le rôle
+-- `authenticated` n'avait donc plus aucun usage ici, sinon pour un tiers :
+-- c'est « toute personne ayant ouvert un compte sur le projet », inscription
+-- ouverte par défaut avec la clé `anon`, qui est publique par construction.
+--
+-- Avec cette seule clé publique, on lisait chaque SMS en entier, chaque
+-- montant, chaque solde, chaque numéro de client. Et sur `commandes`, on
+-- ÉCRIVAIT : le robot relève cette table et compose ce qu'il y trouve sur la
+-- carte SIM. Sur une ligne Mobile Money, l'USSD est l'interface de transfert.
+-- Une ligne insérée depuis n'importe où faisait composer un transfert avec le
+-- vrai argent. (Voir `migrations/20260831_consolidation.sql`.)
+--
+-- Si un jour le navigateur doit lire la base en direct, cela se rouvrira
+-- table par table, avec une politique qui nomme SON propriétaire — jamais un
+-- « using (true) » posé sur un rôle que le monde entier peut endosser.
 
 -- ---------------------------------------------------------------------------
 -- Le compartiment de stockage des reçus
 --
 -- Les PDF n'ont pas à s'accumuler sur la carte SD du Pi : le terminal les
 -- fabrique en mémoire, les envoie sur Telegram, puis les dépose ici. Le
--- compartiment est privé, et on n'y accède qu'avec la clé de service — celle
--- du Pi, ou celle de la plateforme, qui sert les PDF sous son propre verrou.
+-- compartiment est privé — on y accède en étant connecté, ou avec la clé de
+-- service, qui ne quitte jamais le Pi.
 --
 -- Le bloc ne fait rien sur une base PostgreSQL ordinaire, où le schéma
 -- « storage » n'existe pas : ce fichier doit rester exécutable partout.
@@ -507,8 +607,8 @@ begin
     values ('recus', 'recus', false)
     on conflict (id) do nothing;
 
-    -- Aucune politique non plus : les PDF sont servis par la plateforme, qui
-    -- les va chercher avec la clé de service (web/lib/serveur.ts).
     execute $p$drop policy if exists "recus lecture connectee" on storage.objects$p$;
+    execute $p$create policy "recus lecture connectee" on storage.objects
+              for select to authenticated using (bucket_id = 'recus')$p$;
   end if;
 end $$;

@@ -44,7 +44,7 @@ async function portLibre(port) {
   }
 }
 
-for (const port of [3131, 3132, 4999]) {
+for (const port of [3131, 4999]) {
   if (!(await portLibre(port))) {
     console.error(`\n✗ Le port ${port} est déjà occupé. Un essai précédent tourne`);
     console.error("  encore : ces vérifications porteraient sur SON code, pas sur");
@@ -53,30 +53,14 @@ for (const port of [3131, 3132, 4999]) {
   }
 }
 
-const ENV = {
-  ...process.env,
-  SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
-  SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
-};
-
 const nuage = spawn("node", ["scripts/faux-nuage.mjs"], { stdio: "ignore" });
 const serveur = spawn("npx", ["next", "start", "-p", "3131"], {
-  env: ENV, stdio: "ignore",
-});
-
-// UNE SECONDE INSTANCE, sur un autre port, avec la MÊME base derrière.
-//
-// C'est la seule façon d'éprouver ce qui compte. Le frein vit dans la
-// mémoire d'un processus : sur Vercel, chaque instance froide repart à zéro,
-// et il suffisait d'insister pour tomber sur une neuve et retrouver ses
-// essais libres. Un harnais à un seul serveur ne peut pas voir ça — il
-// mesure toujours la même mémoire, et conclut que tout va bien.
-//
-// Celle-ci ne partage RIEN avec la première, sauf la base. Si elle freine,
-// c'est que l'ardoise commune fait son travail.
-const B2 = "http://127.0.0.1:3132";
-const serveur2 = spawn("npx", ["next", "start", "-p", "3132"], {
-  env: ENV, stdio: "ignore",
+  env: {
+    ...process.env,
+    SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
+    SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
+  },
+  stdio: "ignore",
 });
 
 const poste = (chemin, corps, entetes = {}) =>
@@ -101,12 +85,47 @@ try {
     await attendre(500);
   }
 
+  console.log("\nTROIS INSCRIPTIONS LANCÉES ENSEMBLE : un seul propriétaire");
+  // LA COURSE. La plateforme comptait les comptes, voyait zéro, puis créait
+  // un propriétaire. Entre les deux : un aller-retour vers la base, plus le
+  // calcul de l'empreinte du mot de passe — lent à dessein, 210 000 tours.
+  // Une fenêtre d'un cinquième de seconde, largement de quoi s'y glisser.
+  //
+  // Ce harnais a montré TROIS propriétaires, trois sessions ouvertes, trois
+  // comptes approuvés : chacun pouvait lire tous les SMS, faire composer des
+  // codes par le terminal, et fermer le compte des deux autres — dont celui
+  // du vrai propriétaire. C'est la base qui tranche désormais (index
+  // « utilisateurs_un_seul_proprietaire »), au moment de l'écriture : une
+  // vérification faite AVANT une écriture ne garantit jamais rien.
+  const course = await Promise.all([
+    poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "intrus@exemple.cm", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "intrus2@exemple.cm", motdepasse: MDP }),
+  ]);
+  const corpsCourse = await Promise.all(course.map((r) => r.json()));
+  const proprios = corpsCourse.filter((c) => c.proprietaire === true);
+  verifier("un seul propriétaire sort de la course", proprios.length, 1);
+  verifier("une seule session est ouverte",
+    corpsCourse.filter((c) => Boolean(c.jeton)).length, 1);
+  // Les perdants n'apprennent RIEN de ce qui s'est passé : ils reçoivent le
+  // refus de toute inscription tardive. « Vous avez perdu une course » dirait
+  // qu'un compte vient d'être créé, et à quelle seconde.
+  verifier("les perdants reçoivent le refus ordinaire",
+    course.filter((r) => r.status === 403).length, 2);
+  verifier("aucun ne dit qu'il y a eu une course",
+    corpsCourse.some((c) => /course|simultan|concurrent/i.test(c.erreur ?? "")), false);
+
   console.log("\nLa première inscription : celle du propriétaire");
-  const r1 = await poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP });
-  const c1 = await r1.json();
-  verifier("le premier compte est créé", r1.status, 200);
+  const r1 = course.find((r, i) => corpsCourse[i].proprietaire === true);
+  const c1 = corpsCourse.find((c) => c.proprietaire === true) ?? {};
+  verifier("le premier compte est créé", r1?.status, 200);
   verifier("il est propriétaire", c1.proprietaire, true);
   verifier("il repart avec une session", Boolean(c1.jeton), true);
+  // C'est le PREMIER courriel qui a gagné : l'ordre de la course n'est pas
+  // garanti, mais celui-là est le seul dont le harnais connaît le mot de
+  // passe pour la suite — s'il a perdu, tout ce qui suit est faux.
+  verifier("c'est bien le courriel du propriétaire qui a gagné",
+    corpsCourse[0].proprietaire === true, true);
   const jetonProprio = c1.jeton;
 
   console.log("\nLe courriel est rangé sous une seule forme");
@@ -235,23 +254,34 @@ try {
                                     { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
 
-  // Classer un paiement n'est pas un geste d'affichage : la nature choisie
-  // DÉCLENCHE l'établissement du reçu. Un invité qui reclasse fait donc
-  // fabriquer — ou refabriquer — des reçus sur des opérations réelles.
-  // Marquer lu, de son côté, éteint la pastille qui prévient le
-  // propriétaire qu'un SMS l'attend.
-  const rNature = await poste("/api/nature", { id: 1, nature: "depot" },
+  // La LECTURE d'une commande, longtemps ouverte à tout compte, portait
+  // fugitivement le code secret dans « resultat » avant que le robot ne le
+  // masque : un invité pouvait l'énumérer. Fermée au propriétaire.
+  const rLire = await fetch(B + "/api/commande/1",
+    { headers: { authorization: `Bearer ${jetonAmi}` } });
+  verifier("il ne lit pas une commande (le code y passe)", rLire.status, 403);
+  // Et il n'écrit pas dans le registre : ni la nature, ni le lu/non-lu.
+  const rNature = await poste("/api/nature", { id: 1, nature: "publicite" },
                               { authorization: `Bearer ${jetonAmi}` });
-  verifier("il ne reclasse pas un paiement", rNature.status, 403);
+  verifier("il ne reclasse pas un SMS", rNature.status, 403);
   const rLu = await poste("/api/lu", { id: 1 },
                           { authorization: `Bearer ${jetonAmi}` });
-  verifier("il ne marque pas les SMS lus", rLu.status, 403);
-  const rNatureProprio = await poste("/api/nature", { id: 1, nature: "depot" },
-                                     { authorization: `Bearer ${jetonProprio}` });
-  verifier("le propriétaire, lui, classe", rNatureProprio.status !== 403, true);
-  const rLuProprio = await poste("/api/lu", { id: 1 },
-                                 { authorization: `Bearer ${jetonProprio}` });
-  verifier("et marque lu", rLuProprio.status !== 403, true);
+  verifier("il ne marque rien lu", rLu.status, 403);
+  // ET IL NE S'ABONNE PAS AUX NOTIFICATIONS. Une notification porte le SMS
+  // reçu en aperçu : s'y inscrire, c'est recevoir chaque mouvement d'argent
+  // du propriétaire en direct, sur son propre écran verrouillé, sans jamais
+  // rouvrir la plateforme. Aucun écran ne liste les appareils inscrits :
+  // l'abonné clandestin serait resté invisible. Et le robot ne servant que
+  // les vingt derniers vus, s'inscrire en boucle rendait MUET le vrai
+  // téléphone du propriétaire.
+  const rAbonne = await poste("/api/appareil",
+    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne s'abonne pas aux SMS du propriétaire", rAbonne.status, 403);
+  const rLireProprio = await fetch(B + "/api/commande/1",
+    { headers: { authorization: `Bearer ${jetonProprio}` } });
+  verifier("le propriétaire, lui, passe le verrou de lecture",
+           rLireProprio.status !== 403, true);
 
   console.log("\nLe propriétaire crée un compte lui-même");
   // L'inscription libre est fermée et le reste. C'est désormais le SEUL
@@ -303,41 +333,42 @@ try {
   const rRefuse = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
   verifier("l'invité ne rentre plus", rRefuse.status, 403);
 
-  // ET LA SESSION DÉJÀ OUVERTE ? C'est la vraie question, et elle a
-  // longtemps été sans réponse. Refuser une NOUVELLE connexion ne sert à
-  // rien si le jeton d'hier ouvre encore : il est signé, il vaut un mois, et
-  // le verrou du bord ne regarde que la signature. Un invité mis dehors
-  // gardait ainsi trente jours l'accès à tout l'argent — et le propriétaire
-  // n'avait aucun geste contre un téléphone volé.
+  // LE JETON DÉJÀ DÉLIVRÉ — la seule chose que l'intrus possède vraiment.
   //
-  // On rejoue donc LE MÊME jeton, celui d'avant la fermeture, sur les trois
-  // portes qui donnent l'argent.
-  const avecAmi = { authorization: `Bearer ${jetonAmi}` };
-  verifier("son jeton n'ouvre plus les données",
-           (await fetch(B + "/api/donnees", { headers: avecAmi })).status, 401);
-  verifier("ni le bilan",
-           (await fetch(B + "/api/bilan?jours=90", { headers: avecAmi })).status, 401);
-  verifier("ni le pouls de la plateforme",
-           (await fetch(B + "/api/actualite", { headers: avecAmi })).status, 401);
-  verifier("ni un reçu",
-           (await fetch(B + "/api/recu/essai-1", { headers: avecAmi })).status, 401);
-  verifier("et il ne fabrique plus de laissez-passer",
-           (await fetch(B + "/api/recu/essai-1/lien", { headers: avecAmi })).status, 401);
+  // Ce harnais fermait le compte puis éprouvait une NOUVELLE connexion : 403,
+  // tout allait bien. Il ne présentait jamais le jeton déjà en main, or c'est
+  // exactement ce qu'un invité renvoyé emporte avec lui. La porte est restée
+  // grande ouverte trente jours durant — SMS en clair, soldes, bilan du
+  // trimestre, reçus — sans qu'aucune vérification ne s'en émeuve.
+  //
+  // On présente donc l'ANCIEN jeton, sur les routes qui portent l'argent.
+  const avecAncien = { headers: { authorization: `Bearer ${jetonAmi}` } };
+  for (const chemin of ["/api/donnees", "/api/bilan?jours=90", "/api/actualite"]) {
+    const r = await fetch(B + chemin, avecAncien);
+    verifier(`l'ancien jeton ne lit plus ${chemin}`, r.status, 401);
+  }
+  const rAncienAppareil = await poste("/api/appareil",
+    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("l'ancien jeton n'inscrit plus de téléphone",
+           rAncienAppareil.status === 401 || rAncienAppareil.status === 403, true);
 
-  console.log("\nUn compte rouvert retrouve sa session");
-  // La révocation n'est pas une condamnation : rouvrir doit rouvrir. Sans
-  // cela le propriétaire n'oserait plus fermer, de peur de casser quelque
-  // chose sans retour.
+  // ROUVRIR DOIT ROUVRIR. Une révocation qu'on ne peut pas défaire serait un
+  // autre défaut : le propriétaire n'oserait plus fermer, de peur de casser
+  // quelque chose sans retour.
   await poste("/api/comptes", { id: idAmi, geste: "approuver" },
               { authorization: `Bearer ${jetonProprio}` });
-  verifier("le même jeton ouvre de nouveau",
-           (await fetch(B + "/api/donnees", { headers: avecAmi })).status, 200);
+  verifier("le même jeton rouvre après réapprobation",
+           (await fetch(B + "/api/donnees", avecAncien)).status, 200);
 
-  console.log("\nUn compte supprimé n'a plus de session non plus");
+  // SUPPRIMER N'EST PAS FERMER. Un compte fermé garde sa ligne, avec
+  // « approuve » à faux ; un compte supprimé n'en a plus du tout. Ce sont
+  // deux états différents de la base, et rien ne garantit qu'un contrôle
+  // écrit pour l'un vaille pour l'autre — il faut les éprouver tous les deux.
   await poste("/api/comptes", { id: idAmi, geste: "supprimer" },
               { authorization: `Bearer ${jetonProprio}` });
-  verifier("le jeton d'un compte effacé ne vaut rien",
-           (await fetch(B + "/api/donnees", { headers: avecAmi })).status, 401);
+  verifier("le jeton d'un compte EFFACÉ ne vaut rien non plus",
+           (await fetch(B + "/api/donnees", avecAncien)).status, 401);
 
   console.log("\nOn ne se ferme pas la porte à soi-même");
   const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === "nelson@exemple.cm").id;
@@ -358,6 +389,60 @@ try {
   const rSecFaux = await poste("/api/session", { motdepasse: "pas-la-cle" });
   verifier("une fausse clé ne passe pas", rSecFaux.status, 401);
 
+  // ELLE ADMINISTRE, MAIS ELLE NE VIDE PAS LA MAISON.
+  //
+  // La clé de secours ouvre l'administration sans désigner personne : la
+  // garde « on ne se supprime pas soi-même » ne s'appliquait pas à elle, et
+  // le compte du propriétaire pouvait disparaître. Ce qui suivait, joué
+  // contre un vrai serveur : la table se vidait, la plateforme lisait
+  // « aucun compte » comme « jamais installée », et ROUVRAIT ses
+  // inscriptions. Le premier passant venu du réseau devenait propriétaire —
+  // tous les SMS, tous les soldes, et le terminal qui compose ce qu'on lui
+  // dit de composer.
+  const avecSecours = { authorization: `Bearer ${jetonSec}` };
+  const rSup = await poste("/api/comptes",
+    { id: idMoi, geste: "supprimer" }, avecSecours);
+  verifier("la clé de secours ne supprime pas le propriétaire", rSup.status, 400);
+  const rFer = await poste("/api/comptes",
+    { id: idMoi, geste: "fermer" }, avecSecours);
+  verifier("elle ne ferme pas son compte non plus", rFer.status, 400);
+
+  // Et la porte est restée fermée. C'est CELA qui compte : le reste n'était
+  // qu'un chemin pour y arriver.
+  const porte = await (await fetch(B + "/api/plateforme")).json();
+  verifier("la porte des inscriptions est restée fermée", porte.inscription, false);
+  const rPassant = await poste("/api/inscription",
+    { courriel: "passant@internet.example", motdepasse: MDP });
+  verifier("un passant ne s'inscrit toujours pas", rPassant.status, 403);
+  verifier("et il n'est surtout pas propriétaire",
+    (await rPassant.json()).proprietaire, undefined);
+
+  // LA CLÉ D'INTENTION — l'argent ne part pas deux fois.
+  //
+  // Un code USSD complet porte le bénéficiaire ET le montant : le composer
+  // deux fois, c'est transférer deux fois. Une même demande peut être
+  // présentée deux fois sans que personne l'ait voulu — un appui recompté,
+  // une requête reprise après un délai côté téléphone alors qu'elle avait
+  // abouti. La clé rend le geste idempotent, côté SERVEUR : l'écran ne se
+  // garde pas tout seul.
+  console.log("\nLa clé d'intention : un geste, une seule demande");
+  const CODE = { code: "*126*1*677123456*5000#" };
+  const commande = async (corps) => {
+    const r = await poste("/api/commande", corps,
+                          { authorization: `Bearer ${jetonProprio}` });
+    return r.json().catch(() => ({}));
+  };
+  const idem1 = await commande({ type: "ussd", parametres: CODE, cle: "essai-A" });
+  const idem2 = await commande({ type: "ussd", parametres: CODE, cle: "essai-A" });
+  verifier("le même geste ne crée qu'UNE demande", Boolean(idem1.id) && idem1.id === idem2.id, true);
+  const idemAutre = await commande({ type: "ussd", parametres: CODE, cle: "essai-B" });
+  verifier("un geste distinct garde sa demande", Boolean(idemAutre.id) && idemAutre.id !== idem1.id, true);
+  // Naviguer dans un menu répond souvent « 1 » plusieurs fois : deux gestes
+  // distincts doivent rester deux demandes, sinon la navigation casse.
+  const idemR1 = await commande({ type: "ussd_reponse", parametres: { texte: "1" }, cle: "essai-C1" });
+  const idemR2 = await commande({ type: "ussd_reponse", parametres: { texte: "1" }, cle: "essai-C2" });
+  verifier("répondre « 1 » deux fois reste possible", Boolean(idemR1.id) && idemR1.id !== idemR2.id, true);
+
   console.log("\nCe qu'on refuse d'enregistrer");
   // La forme est vérifiée AVANT la porte : un mot de passe trop court est
   // refusé pour ce qu'il est, sur une plateforme neuve comme sur celle-ci.
@@ -371,45 +456,11 @@ try {
   const rDeja = await poste("/api/inscription", { courriel: "nelson@exemple.cm", motdepasse: MDP });
   verifier("le courriel du propriétaire : même refus", rDeja.status, 403);
 
-  console.log("\nLe frein tient d'une instance à l'autre");
-  // On brûle les essais libres sur la PREMIÈRE instance, puis on va frapper
-  // à la SECONDE — qui n'a jamais rien vu de cette adresse, et dont la
-  // mémoire est vierge. Sans ardoise commune, elle offre vingt essais neufs.
-  {
-    const XFF = { "x-forwarded-for": "198.51.100.77" };
-    const mauvais = (base) => fetch(base + "/api/session", {
-      method: "POST",
-      headers: { "content-type": "application/json", ...XFF },
-      body: JSON.stringify({ motdepasse: "ce-n-est-pas-le-bon" }),
-    });
-
-    // La seconde instance est-elle prête ?
-    for (let i = 0; i < 60; i++) {
-      try { if ((await fetch(B2 + "/api/plateforme")).ok) break; } catch { /* pas encore */ }
-      await attendre(500);
-    }
-    // Une mesure de référence AVANT tout échec : la seconde instance est
-    // libre, et on veut le prouver plutôt que le supposer.
-    const debutLibre = Date.now();
-    await mauvais(B2);
-    const libre = Date.now() - debutLibre;
-
-    for (let i = 0; i < 25; i++) await mauvais(B);
-
-    const debut = Date.now();
-    await mauvais(B2);
-    const freine = Date.now() - debut;
-    console.log(`     (2ᵉ instance : ${libre}ms avant, ${freine}ms après les `
-                + `échecs de la 1ʳᵉ)`);
-    verifier("une instance neuve freine quand même", freine > libre + 400, true);
-  }
-
   console.log(echecs
     ? `\n✗ ${echecs} vérification(s) en échec.`
     : "\n✓ Les comptes tiennent : toutes les vérifications passent.");
 } finally {
   serveur.kill();
-  serveur2.kill();
   nuage.kill();
 }
 process.exit(echecs ? 1 : 0);

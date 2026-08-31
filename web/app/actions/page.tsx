@@ -1,5 +1,4 @@
 import { langueServeur } from "@/lib/langue-serveur";
-import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { Vide } from "../vide";
@@ -8,8 +7,6 @@ import { Guichet } from "./guichet";
 export const dynamic = "force-dynamic";
 
 export default async function Operations() {
-  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
-  await exigerEcran();
   const langue = await langueServeur();
   const t = textesGuichet[langue];
   const { sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });

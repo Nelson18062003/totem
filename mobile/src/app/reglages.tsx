@@ -9,12 +9,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Linking, ScrollView, View, Pressable, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Linking, ScrollView, View,
+  Pressable, Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
+import { Accroc, Carte, Filet, MotTotem, Pastille, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { SectionCartes } from "@/reglages-cartes";
 import { SectionCodes } from "@/reglages-codes";
@@ -38,7 +39,7 @@ export default function Reglages() {
   const t = textesReglages[langue];
   const c = textesCharpente[langue];
   const { fermer } = useSession();
-  const { donnees, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
   const terminal = donnees?.terminal ?? null;
   // Les cartes en place d'abord — c'est elles qu'on vient régler.
   const sims = [...(donnees?.sims ?? [])]
@@ -61,7 +62,14 @@ export default function Reglages() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-      <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}>
+      {/* Le clavier ne couvre pas le formulaire de création de compte, qui
+          vit au milieu de la page : bord à bord, Android ne redimensionne
+          rien tout seul (voir feuille.tsx). Et « handled » : un appui sur
+          « Créer » pendant que le clavier est levé COMPTE — sans lui, le
+          premier toucher ne faisait que ranger le clavier. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+                  keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
           <Pressable onPress={() => router.back()} hitSlop={12}
                      accessibilityLabel={t.annuler}>
@@ -71,6 +79,10 @@ export default function Reglages() {
           </Pressable>
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
+
+        {/* La panne se dit : sans cela, un terminal et des cartes
+            absents ressemblaient à un compte vide. */}
+        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
 
         {/* La langue */}
         <View style={{ gap: espaces.sm }}>
@@ -123,7 +135,14 @@ export default function Reglages() {
                   <Rangee libelle={t.version} valeur={terminal.version} />
                 ) : null}
               </>
-            ) : (
+            ) : chargement ? null : (
+              // « Aucun terminal ne s'est encore annoncé » veut dire, pour le
+              // propriétaire, que son boîtier de Douala a disparu. Les
+              // Réglages étant un écran de pile, ils se remontent à CHAQUE
+              // visite : la phrase s'affichait donc systématiquement, le
+              // temps de la requête. À force de la voir à tort, on ne la
+              // croit plus — et c'est le jour où elle est vraie qu'on
+              // l'ignore. Pendant le chargement, on ne dit rien.
               <Texte ton="doux">{c.aucunTerminal}</Texte>
             )}
           </Carte>
@@ -187,6 +206,7 @@ export default function Reglages() {
           <Texte taille={textes.legende} ton="pale">{t.proprietaire}</Texte>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

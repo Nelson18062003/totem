@@ -56,6 +56,13 @@ on:
         default: false
         type: boolean
 
+# Le jeton de l'action ne sert qu'à LIRE le dépôt. Sans ce bloc, il hérite du
+# réglage par défaut de l'organisation — souvent l'écriture sur tous les
+# domaines — dans un travail qui installe des centaines de paquets et détient
+# de quoi publier sur tous les téléphones. On le réduit à ce qui sert.
+permissions:
+  contents: read
+
 # POURQUOI DES EMPREINTES ET NON DES ÉTIQUETTES (« @v4 »).
 #
 # Une étiquette n'est pas un contenu : c'est un nom, et celui qui contrôle le

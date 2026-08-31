@@ -13,6 +13,7 @@ import { Pressable, ScrollView, View } from "react-native";
 
 import { Feuille } from "@/feuille";
 import { Carte, Filet, Texte } from "@/ui";
+import { useGesteUnique } from "@/geste";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import * as Navigateur from "expo-web-browser";
@@ -66,7 +67,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
 
   const cat = categorieDe({ ...p, nature });
   const argent = estArgent({ ...p, nature });
-  // Le masque des codes se pose ICI, à l'affichage — pas seulement en base.
+  // Le texte du SMS, tel qu'il est arrivé — codes compris, rien de masqué.
   const texte = texteSurEcran(p);
   const long = texte.length > LONG_MESSAGE;
   const schema = couleursCategorie(cat);
@@ -117,14 +118,23 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
 
   // La nature VOULUE voyage explicitement quand elle vient d'être choisie :
   // l'état React de ce rendu porte encore l'ancienne valeur.
-  const etablirRecu = async (natureVoulue?: Categorie) => {
+  // UN SEUL REÇU PAR APPUI. Le bouton se grisait sur un état React, qui ne
+  // change qu'au rendu SUIVANT : deux appuis rapprochés lisaient tous les
+  // deux « repos » et déposaient tous les deux leur commande. Deux reçus pour
+  // un seul encaissement, deux numéros de référence — et les numéros de reçu
+  // se cognent. Le verrou de `useGesteUnique` se ferme à l'instant de
+  // l'appui ; la clé d'intention pare l'autre cas, celui où la réponse s'est
+  // perdue et où la personne recommence de bonne foi.
+  const gesteRecu = useGesteUnique();
+
+  const etablirRecu = (natureVoulue?: Categorie) => gesteRecu.lancer(async (cle) => {
     if (p.sourceId == null) return;
     const natureDemandee = natureVoulue ?? nature;
     setEtabli("envoi");
     try {
       const { id } = await deposerCommande(
         "recu", { source_id: p.sourceId, nature: natureDemandee ?? undefined },
-        p.terminal);
+        p.terminal, cle);
       for (let i = 0; i < 25; i++) {
         await new Promise((r) => setTimeout(r, 1200));
         const c = await lireCommande(id).catch(() => null);
@@ -135,7 +145,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
     } catch {
       setEtabli("refus");
     }
-  };
+  });
 
   return (
     <Feuille
@@ -171,9 +181,18 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 c'est ce que ce bouton ne savait pas faire : il redemandait
                 la fabrication au terminal, et le PDF restait inaccessible.
                 Sans reçu, on l'ÉTABLIT, comme avant. */}
+            {/* LE SUCCÈS SE DISAIT PAR RIEN DU TOUT. `p` est un cliché :
+                après « faite », le rafraîchissement met à jour la LISTE,
+                mais la fiche ouverte garde l'ancien paiement, donc `p.recu`
+                reste nul. Le bouton reprenait donc son libellé « Établir le
+                reçu » après trente secondes d'attente — indiscernable d'un
+                échec, sauf qu'un échec, lui, affiche une ligne rouge. Et
+                comme il restait actif, le geste naturel — réappuyer —
+                déposait une SECONDE commande pour le même SMS. */}
             <Pressable
               onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
-              disabled={ouverture === "envoi" || etabli === "envoi"}
+              disabled={ouverture === "envoi" || etabli === "envoi"
+                        || gesteRecu.occupe || (!p.recu && etabli === "fait")}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
                 gap: espaces.sm, paddingVertical: espaces.md,
@@ -186,7 +205,9 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                      style={{ color: couleurs.surfaceHaute }}>
                 {p.recu
                   ? (ouverture === "envoi" ? t.ouvertureRecu : t.ouvrirRecu)
-                  : (etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu)}
+                  : etabli === "envoi" ? t.demandeAuTerminal
+                  : etabli === "fait" ? t.recuEtabli
+                  : t.etablirRecu}
               </Texte>
             </Pressable>
 
@@ -195,7 +216,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
             {p.recu && p.sourceId != null ? (
               <Pressable
                 onPress={() => void etablirRecu()}
-                disabled={etabli === "envoi"}
+                disabled={etabli === "envoi" || gesteRecu.occupe}
                 style={({ pressed }) => ({
                   flexDirection: "row", alignItems: "center", justifyContent: "center",
                   gap: espaces.sm, paddingVertical: espaces.md,

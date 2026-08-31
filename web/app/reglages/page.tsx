@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
-import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesReglages } from "@noyau/textes/reglages";
-import { IconChevron, IconLock, IconPhone, IconWallet } from "../icons";
+import { journalPour } from "@noyau/textes/journal";
+import { IconWallet } from "../icons";
 import {
-  Bascule,
   BoutonDeconnexion,
   ReglageNom,
   ReglageNumero,
@@ -18,10 +17,9 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Reglages() {
-  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
-  await exigerEcran();
   const langue = await langueServeur();
   const t = textesReglages[langue];
+  const tj = journalPour(langue);
   const { terminal, sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });
   // Une section de codes PAR OPÉRATEUR présent — les cartes en place
   // d'abord. Le repli « Orange » d'autrefois mentait dès qu'une MTN était
@@ -76,11 +74,6 @@ export default async function Reglages() {
               {t.aucunTerminal}
             </p>
           )}
-          <div className="border-t border-line p-3">
-            <button className="w-full rounded-btn border border-line py-2.5 text-small font-medium transition hover:border-ink-faint">
-              {t.redemarrer}
-            </button>
-          </div>
         </div>
       </section>
 
@@ -150,10 +143,15 @@ export default async function Reglages() {
       {/* Notifications */}
       <section>
         <h2 className="mb-3 text-heading font-semibold">{t.notifications}</h2>
-        <div className="divide-hair rounded-card border border-line bg-surface-raised px-4">
-          <Bascule t={t.notifPaiement} defaut />
-          <Bascule t={t.notifRapport} defaut />
-          <Bascule t={t.notifCourant} defaut />
+        {/* Trois interrupteurs vivaient ici : ils ne commandaient RIEN — un
+            état local qui se remettait à zéro au rechargement. Un contrôle qui
+            rassure sans agir est pire que pas de contrôle. À la place, ce qui
+            est vrai : le terminal notifie chaque mouvement, et l'affichage se
+            règle sur le téléphone. L'essai, juste dessous, le prouve. */}
+        <div className="rounded-card border border-line bg-surface-raised px-4 py-3.5">
+          <p className="text-small leading-relaxed text-ink-soft">
+            {t.notifExplique}
+          </p>
         </div>
       </section>
 
@@ -183,16 +181,35 @@ export default async function Reglages() {
           propriétaire ; elle se tait d'elle-même pour les autres. */}
       <SectionQui />
 
+      {/* CE QUI S'EST PASSÉ. Le terminal tenait son journal depuis toujours
+          et personne ne le lisait : aucun écran ne l'affichait. Il est ici,
+          là où l'on va quand quelque chose ne va pas. */}
+      <section>
+        <Link
+          href="/journal"
+          className="flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4 transition hover:border-ink-faint"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-body font-medium">{tj.voirLeJournal}</p>
+            <p className="mt-0.5 text-small text-ink-faint">{tj.voirLeJournalSous}</p>
+          </div>
+          <span aria-hidden className="text-ink-faint">›</span>
+        </Link>
+      </section>
+
       {/* Sécurité */}
       <section>
         <h2 className="mb-3 text-heading font-semibold">{t.securite}</h2>
-        <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
-          <Rangee t={t.motDePasse} Icone={IconLock} />
-          <Rangee t={t.doubleAuth} Icone={IconPhone} valeur={t.activee} />
-        </ul>
-        <p className="mt-2 text-caption leading-relaxed text-ink-faint">
-          {t.notePin}
-        </p>
+        {/* Deux rangées vivaient ici : « Mot de passe » (sans action) et
+            « Double auth · Activée » — qui AFFIRMAIT une double
+            authentification INEXISTANTE. Annoncer une protection qu'on n'a
+            pas est le pire des mensonges de sécurité. Retirées. Reste ce qui
+            est vrai, et qui compte : le code secret ne se garde nulle part. */}
+        <div className="rounded-card border border-line bg-surface-raised px-4 py-3.5">
+          <p className="text-small leading-relaxed text-ink-soft">
+            {t.notePin}
+          </p>
+        </div>
       </section>
       </div>
       </div>
@@ -211,23 +228,3 @@ function Ligne({ t, v }: { t: string; v: string }) {
   );
 }
 
-function Rangee({
-  t,
-  Icone,
-  valeur,
-}: {
-  t: string;
-  Icone: (p: { size?: number; className?: string }) => React.ReactElement;
-  valeur?: string;
-}) {
-  return (
-    <li>
-      <button className="flex w-full items-center gap-3 py-3.5 text-left transition hover:opacity-70">
-        <Icone size={18} className="shrink-0 text-ink-soft" />
-        <span className="flex-1 text-body">{t}</span>
-        {valeur && <span className="text-small text-ink-faint">{valeur}</span>}
-        <IconChevron size={16} className="text-ink-faint" />
-      </button>
-    </li>
-  );
-}

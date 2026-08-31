@@ -9,11 +9,16 @@
 // ICI est le seul chemin pour faire entrer quelqu'un. L'avertissement vient
 // AVANT les champs — un compte approuvé voit tout, le dire après serait
 // trop tard.
+//
+// clavier : protégé par app/reglages.tsx — la section vit dans l'écran des
+// réglages, dont le KeyboardAvoidingView pousse le formulaire au-dessus du
+// clavier (vérifié par scripts/verifier-le-clavier.mjs).
 
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, TextInput, View } from "react-native";
 
 import { Carte, Filet, Texte } from "@/ui";
+import { useGesteUnique } from "@/geste";
 import { agirSurCompte, ErreurGuichet, listerComptes,
          type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -82,11 +87,30 @@ export function SectionQui({ langue }: { langue: Langue }) {
       ]);
       return;
     }
+    // FERMER AUSSI SE CONFIRME. « Supprimer » demandait confirmation,
+    // « Fermer » partait au premier appui — alors que les deux retirent
+    // l'accès à quelqu'un, et que les boutons se touchent. Un doigt qui
+    // dérape mettait un associé dehors, sans un mot et sans retour possible
+    // depuis cet écran.
+    if (geste === "fermer") {
+      Alert.alert(t.fermerSur, c.courriel, [
+        { text: t.annuler, style: "cancel" },
+        { text: t.fermer, style: "destructive", onPress: () => void faire() },
+      ]);
+      return;
+    }
     await faire();
   };
 
-  const creer = async () => {
-    if (creation || !courriel || motdepasse.length < 12) return;
+  // `if (creation)` ne garde rien : l'état React ne se ferme qu'au rendu
+  // suivant. Deux appuis rapprochés partaient tous les deux ; la base n'en
+  // gardait qu'un — c'est elle qui tient la règle — mais le second revenait
+  // avec « un compte existe déjà avec ce courriel », juste après une création
+  // réussie. Le propriétaire lisait un échec là où tout s'était bien passé.
+  const gesteCreer = useGesteUnique();
+
+  const creer = () => gesteCreer.lancer(async () => {
+    if (!courriel || motdepasse.length < 12) return;
     setCreation(true);
     setMot(null);
     try {
@@ -104,7 +128,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
     } finally {
       setCreation(false);
     }
-  };
+  });
 
   // Pas le propriétaire : la section se tait, comme au web.
   if (permis === false) return null;
@@ -277,8 +301,14 @@ function Petit({ libelle, onPress, occupe, danger, accent }: {
     <Pressable
       onPress={onPress}
       disabled={occupe}
+      // 26 dp de haut, sans marge de touche, entre deux gestes irréversibles.
+      // Le reste de l'application respecte le plancher — les onglets font 44,
+      // les commandes rondes 46, les icônes portent toutes un `hitSlop`. Ce
+      // bouton-ci faisait la moitié du minimum.
+      hitSlop={10}
       style={({ pressed }) => ({
-        paddingHorizontal: espaces.md, paddingVertical: espaces.xs + 2,
+        paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+        minHeight: 44, justifyContent: "center",
         borderRadius: rayons.bouton,
         borderWidth: accent ? 0 : 1,
         borderColor: danger ? couleurs.negatif : couleurs.trait,

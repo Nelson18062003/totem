@@ -1,6 +1,44 @@
 # Le registre des constats de sécurité
 
-*Tour 3 — 31 août 2026. Corrigé : 17. Ouvert : 0. Classé : 2.*
+*Tour 4 — 31 août 2026, après fusion avec `main`. Corrigé : 17. Ouvert : 0.
+Classé : 2.*
+
+## AVERTISSEMENT — CE REGISTRE A ÉTÉ ÉCRIT AVANT LA FUSION
+
+Pendant que cet audit se déroulait sur sa branche, **`main` a corrigé de son
+côté la plupart des mêmes défauts**, sans le savoir : trente-huit commits,
+sept harnais de plus. Les constats ci-dessous restent vrais dans leur
+DIAGNOSTIC — le défaut existait, il a été mesuré — mais la CORRECTION qui
+tient aujourd'hui est le plus souvent celle de `main`, pas celle décrite ici.
+
+Là où les deux existaient, on a gardé celle de `main`, et deux fois parce
+qu'elle était meilleure :
+
+| constat | qui l'a corrigé | pourquoi |
+|---|---|---|
+| SEC-01 révocation | `main` (`session-vivante.ts`) | vérifie dans le middleware, donc partout d'un coup |
+| SEC-02 défense en profondeur | `main` | plus le relevé des portes venu d'ici |
+| SEC-03 règles dormantes | les deux | même correctif ; appliqué en base depuis |
+| SEC-04 frein | **`main`, meilleur** | il refuse AVANT les 210 000 tours de PBKDF2 — une rafale ne fait plus calculer le serveur. Ce point m'avait échappé |
+| SEC-05 en-têtes / politique | `main` (`csp.ts`) | équivalent |
+| SEC-06 nature/lu | les deux | même correctif |
+| SEC-07, SEC-08 | `main` | `sansValeurs` garde les filtres et n'efface que les valeurs : plus lisible que ma version |
+| SEC-09 dépendances | les deux | même version |
+| SEC-11 code secret | **`main`, meilleur** | il RÉESSAIE trois fois avant de refuser ; le mien renonçait au premier échec |
+| SEC-12 double exécution | **ici** | `main` a posé la clé d'intention côté écran ; le ROBOT réclamait toujours sans condition. Voir plus bas |
+| SEC-13, SEC-14, SEC-16 | **ici** | `main` ne les avait pas |
+
+**Ce que cette branche apporte encore**, après fusion : SEC-12 (la réclamation
+atomique côté robot), SEC-13 (l'injection dans les workflows), SEC-14
+(l'épinglage des actions), SEC-16 (les droits des fichiers du Pi), la reprise
+des demandes orphelines, deux vérifications de plus sur les comptes, le relevé
+des portes, et ces trois documents.
+
+**Ce qui a été retiré à la fusion** : mes `garde.ts`, `ecran.ts`, mon frein
+partagé et mes deux migrations — tous rendus inutiles, ou nuisibles, par le
+travail de `main`. Les migrations, en particulier, CASSAIENT la chaîne sur une
+base neuve (« column "vu_le" does not exist »), ce que `sql/verifier-les-regles.sh`
+a montré.
 
 **Plus rien n'est en attente.** Les deux constats laissés au propriétaire ont
 été traités : la migration des règles dormantes est APPLIQUÉE sur la base en

@@ -36,6 +36,11 @@ const en = {
     "No TOTEM at this address. The password will not be sent there.",
   plateformeInjoignable:
     "This address does not answer. Check your connection, then the address.",
+  // La panne vue des écrans de données : sans cette phrase, c'est le
+  // message BRUT du réseau qui s'affichait — « Failed to fetch », en
+  // anglais quel que soit l'écran.
+  reseauEnPanne:
+    "The platform is not answering. Check the connection, then try again.",
   // Sans nommer les variables d'environnement : leurs noms sont du jargon
   // pour le propriétaire, ET les écrire ici les ferait entrer dans le paquet
   // de l'application, où le contrôle des secrets les attend au tournant. La
@@ -100,6 +105,8 @@ const fr: typeof en = {
     "Aucun TOTEM à cette adresse. Le mot de passe n’y sera pas envoyé.",
   plateformeInjoignable:
     "Cette adresse ne répond pas. Vérifiez la connexion, puis l’adresse.",
+  reseauEnPanne:
+    "La plateforme ne répond pas. Vérifiez la connexion, puis réessayez.",
   plateformeNonConfiguree:
     "Le TOTEM est bien là, mais la connexion n’y est pas encore configurée. " +
     "Aucun mot de passe ne peut marcher tant que les réglages de la " +

@@ -962,3 +962,110 @@ class VarianteFrancaise(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class BoutonReglagesReserveALAdmin(unittest.TestCase):
+    """Le bouton « Réglages » ouvre l'écran des numéros et noms de carte. Sa
+    version texte (« /reglages ») est réservée à l'administrateur ; le bouton
+    doit l'être aussi. Dans un groupe, un observateur voyant le menu de
+    l'administrateur pouvait sinon cliquer et lire ces coordonnées.
+    """
+
+    def test_un_observateur_ne_peut_pas_ouvrir_les_reglages(self):
+        r, transport, _ = robot(admins=(1,))
+        avant = len(transport.envois) + len(transport.editions)
+        clic(r, "c:reglages", utilisateur=2)      # 2 n'est pas admin
+        # Aucun écran de réglages ne s'affiche : soit rien, soit un refus.
+        vu = " ".join(e[0] for e in transport.envois) \
+             + " ".join(x[1] for x in transport.editions)
+        # L'écran des réglages porte cet en-tête (« ⚙️ Settings / Réglages ») :
+        # rien de tel ne doit paraître pour un observateur.
+        self.assertNotIn("Settings", vu)
+        self.assertNotIn("Réglages", vu)
+
+    def test_l_administrateur_ouvre_bien_les_reglages(self):
+        r, transport, _ = robot(admins=(1,))
+        clic(r, "c:reglages", utilisateur=1)      # 1 est admin
+        vu = transport.dernier_texte()
+        self.assertIsNotNone(vu)
+
+
+class TestLeCodeNeSortPasDuPrive(unittest.TestCase):
+    """Un code à usage unique ne part pas dans un groupe.
+
+    CE QUI SE PASSAIT. Chaque SMS reçu est annoncé tout seul dans le canal
+    « encaissements » — qui EST le groupe dès qu'il y en a un. Un SMS
+    « Votre code de confirmation est 483921. Ne le communiquez a personne. »
+    y arrivait entier, à chaque réception, sans que personne ne demande rien.
+    Le propriétaire invite dans ce groupe qui suit la caisse : un employé, un
+    associé. Le robot leur communiquait donc le code, tout seul, en boucle.
+
+    Et « /sms » n'est pas réservé aux administrateurs — c'est voulu, un
+    observateur doit pouvoir suivre la caisse. Mais suivre la caisse n'a
+    jamais voulu dire lire les codes de confirmation de quelqu'un d'autre.
+
+    CE QUI NE DOIT PAS CHANGER : dans son chat privé, le propriétaire lit tout
+    en entier. Le code est à lui ; le lui cacher le rendrait inutilisable.
+    C'est la raison pour laquelle le masquage général avait été retiré, et
+    elle tient toujours.
+    """
+
+    CODE = "Votre code de confirmation est 483921. Ne le communiquez a personne."
+    PAIEMENT = ("Vous avez recu 20 000 FCFA de NKENGAFAC M. (677998877). "
+                "Nouveau solde: 412 500 FCFA.")
+
+    def test_le_prive_montre_le_code_entier(self):
+        r, transport, _ = robot()
+        r.journal.sms("MTN", self.CODE, compte="MTN")
+        r._derniers_sms(canal=1, prive=True)
+        self.assertIn("483921", transport.dernier_texte())
+
+    def test_le_groupe_ne_montre_pas_le_code(self):
+        r, transport, _ = robot()
+        r.journal.sms("MTN", self.CODE, compte="MTN")
+        r._derniers_sms(canal=-100, prive=False)
+        texte = transport.dernier_texte()
+        self.assertNotIn("483921", texte)
+        # Le message reste lisible : on voit qu'un code est arrivé, et de qui.
+        self.assertIn("code de confirmation", texte)
+        self.assertIn("••••••", texte)
+
+    def test_un_encaissement_reste_entier_dans_le_groupe(self):
+        """Le masquage ne doit pas manger les montants ni les numéros."""
+        r, transport, _ = robot()
+        r.journal.sms("MTNMobileMoney", self.PAIEMENT, compte="MTN")
+        r._derniers_sms(canal=-100, prive=False)
+        texte = transport.dernier_texte()
+        self.assertIn("20 000", texte)
+        self.assertIn("677998877", texte)
+        self.assertIn("412 500", texte)
+
+    def test_telegram_lit_le_genre_de_conversation(self):
+        """« privé » se lit dans la réponse de Telegram, il ne se devine pas.
+
+        Deviner d'après l'identifiant enverrait un jour un code à un groupe :
+        un identifiant de groupe est un nombre comme un autre.
+        """
+        t = TransportTelegram.__new__(TransportTelegram)
+        t.chat_id = 42
+        t.groupe = -100
+        t.chats_autorises = {42, -100}
+        prive = t._lire({"update_id": 1, "message": {
+            "message_id": 5, "text": "/sms", "from": {"id": 42, "first_name": "N"},
+            "chat": {"id": 42, "type": "private"}}})
+        groupe = t._lire({"update_id": 2, "message": {
+            "message_id": 6, "text": "/sms", "from": {"id": 9, "first_name": "X"},
+            "chat": {"id": -100, "type": "supergroup"}}})
+        self.assertTrue(prive.prive)
+        self.assertFalse(groupe.prive)
+
+    def test_une_conversation_inconnue_est_ignoree(self):
+        """Le filtre de conversation reste la première barrière."""
+        t = TransportTelegram.__new__(TransportTelegram)
+        t.chat_id = 42
+        t.groupe = None
+        t.chats_autorises = {42}
+        self.assertIsNone(t._lire({"update_id": 3, "message": {
+            "message_id": 7, "text": "/sauvegarde",
+            "from": {"id": 999, "first_name": "Intrus"},
+            "chat": {"id": 999, "type": "private"}}}))

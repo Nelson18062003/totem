@@ -191,6 +191,20 @@ class TestRefusAnglais(unittest.TestCase):
         ):
             self.assertIsNone(motif_du_menu(reponse), reponse)
 
+    def test_une_heure_en_tete_ne_fait_pas_refuser_le_recu_de_solde(self):
+        # « 10:44 » a la forme d'un choix de menu ; une seule ligne numérotée
+        # aussi. Ni l'un ni l'autre n'est un menu, et le relevé qui les porte
+        # mérite son reçu de solde.
+        for reponse in (
+                "10:44 Votre solde est de 5000 FCFA",
+                "12-05-2026 Solde: 5000 FCFA",
+                "1. Votre solde est de 5000 FCFA"):
+            motif = motif_du_menu(reponse)
+            self.assertIsNotNone(motif, reponse)
+            self.assertEqual(motif.genre, SOLDE)
+        # Mais un VRAI menu — au moins deux options — reste refusé.
+        self.assertIsNone(motif_du_menu("1. Solde\n2. Retrait\n3. Retour"))
+
     def test_le_solde_ussd_anglais_donne_un_recu(self):
         motif = motif_du_menu("Your balance is 5000.5 FCFA")
         self.assertIsNotNone(motif)
@@ -373,17 +387,21 @@ class TestLaChaine(unittest.TestCase):
         _distribuer(robot, journal)
         self.assertEqual(len(robot.transport.fichiers), 1)
 
-    def test_le_code_ne_produit_rien_et_ne_sarchive_pas_en_clair(self):
+    def test_le_code_ne_produit_pas_de_recu_mais_sarchive_entier(self):
+        # Un code à usage unique n'est pas un paiement : AUCUN reçu. Mais le
+        # SMS appartient au propriétaire — il s'archive et se transmet
+        # ENTIER, code compris. On ne modifie pas un SMS : le propriétaire
+        # doit pouvoir lire son propre code de connexion.
         robot, compte, modem, journal = _robot()
         modem.sms_en_attente.append((1, "OrangeMoney", CODE_ORANGE))
         robot._relever_sms(compte)
         _distribuer(robot, journal)
 
-        self.assertEqual(robot.transport.fichiers, [])
+        self.assertEqual(robot.transport.fichiers, [])        # pas de reçu
         self.assertEqual(journal.recus_en_attente(), 0)
         _, _, garde, _ = journal.derniers_sms(1)[0]
-        self.assertNotIn("515318", garde)
-        self.assertNotIn("515318", robot.transport.messages[0])
+        self.assertIn("515318", garde)                        # archivé en clair
+        self.assertIn("515318", robot.transport.messages[0])  # transmis en clair
 
     def test_un_sms_incompris_ne_produit_rien(self):
         robot, compte, modem, journal = _robot()
@@ -1061,3 +1079,45 @@ class TestLesMarquesNeDerivent_pas(unittest.TestCase):
             compte=MOI))
         poses = [c for _, _, c in gabarit.page.empreintes]
         self.assertIn("Camtel Money", poses)
+
+
+class TestReferenceEnDoubleNeSertPasLeRecuDunAutre(unittest.TestCase):
+    """Deux messages, une même référence — et le reçu d'un inconnu.
+
+    Le lecteur a déjà produit deux fois la même référence pour deux transferts
+    différents. L'unicité de la base refusait alors le second reçu, on ne
+    faisait rien, et l'on renvoyait le numéro trouvé PAR LA RÉFÉRENCE :
+    celui du premier. Le propriétaire lisait « Reçu … en fabrication », la
+    plateforme lui servait le PDF d'un AUTRE paiement — autre montant, autre
+    client — et le vrai message n'obtenait jamais de reçu.
+    """
+
+    def journal(self):
+        from totem.storage import Journal
+        return Journal(":memory:")
+
+    def test_le_second_recu_a_son_propre_numero(self):
+        j = self.journal()
+        a = j.sms("MoMo", "Vous avez recu 20 000 FCFA de A. Ref: PP1", "MTN")
+        b = j.sms("MoMo", "Vous avez recu 90 000 FCFA de B. Ref: PP1", "MTN")
+        n1 = j.programmer_recu(a, "encaissement", "TM-2026-0831-0001",
+                               reference="PP1")
+        n2 = j.programmer_recu(b, "encaissement", "TM-2026-0831-0002",
+                               reference="PP1")
+        self.assertIsNotNone(n1)
+        # Le second obtient SON reçu — jamais le numéro du premier.
+        self.assertIsNotNone(n2, "le second message n'a obtenu aucun reçu")
+        self.assertNotEqual(n2, n1, "le reçu d'un AUTRE paiement a été servi")
+
+    def test_chaque_message_garde_son_propre_document(self):
+        j = self.journal()
+        a = j.sms("MoMo", "Vous avez recu 20 000 FCFA de A. Ref: PP2", "MTN")
+        b = j.sms("MoMo", "Vous avez recu 90 000 FCFA de B. Ref: PP2", "MTN")
+        j.programmer_recu(a, "encaissement", "TM-2026-0831-0003",
+                          reference="PP2")
+        j.programmer_recu(b, "encaissement", "TM-2026-0831-0004",
+                          reference="PP2")
+        lignes = j.conn.execute(
+            "SELECT source_id, numero FROM recus ORDER BY source_id").fetchall()
+        self.assertEqual(len(lignes), 2, "un des deux messages n'a pas de reçu")
+        self.assertNotEqual(lignes[0][1], lignes[1][1])

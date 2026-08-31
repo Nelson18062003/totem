@@ -1,5 +1,4 @@
 import { langueServeur } from "@/lib/langue-serveur";
-import { exigerEcran } from "@/lib/ecran";
 import { chargerDonnees } from "@/lib/serveur";
 import { textesCartes } from "@noyau/textes/cartes";
 import { fcfa, nombre } from "@noyau/types";
@@ -10,8 +9,6 @@ import { Vide } from "../vide";
 export const dynamic = "force-dynamic";
 
 export default async function Comptes() {
-  // Le garde d'abord : cet écran sert les mêmes chiffres qu'une API.
-  await exigerEcran();
   const langue = await langueServeur();
   const t = textesCartes[langue];
   // Les SMS restent chargés : le bilan des cartes retirées se compte dessus.

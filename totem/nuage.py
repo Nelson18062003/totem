@@ -71,6 +71,33 @@ class Nuage:
         self.terminal = terminal or "totem"
         self.journal = journal
         self.pause = pause
+        # HTTPS, OU RIEN. Cette adresse se tape à la main dans
+        # `/boot/firmware/totem.conf`, souvent depuis un PC Windows, sur une
+        # partition FAT. Un « http:// » — une faute de frappe, un copier-coller
+        # d'un vieux mémo — enverrait la CLÉ DE SERVICE en clair sur le réseau
+        # mobile camerounais, toutes les soixante secondes. Cette clé-là
+        # contourne toutes les règles d'accès : la lire, c'est pouvoir lire,
+        # modifier et effacer le registre entier, et y insérer des commandes
+        # que le robot composera sur la carte SIM.
+        #
+        # L'application du téléphone REFUSE déjà une adresse non chiffrée, à
+        # la compilation comme à l'exécution — et elle, elle ne transporte
+        # qu'un mot de passe. L'adresse qui porte la clé maîtresse n'avait,
+        # elle, aucun garde-fou. On la refuse plutôt que de s'y fier.
+        if self.url and not self.url.startswith("https://"):
+            # Le « localhost » des essais reste admis : les harnais montent un
+            # faux nuage sur la machine même, où rien ne traverse le réseau.
+            local = self.url.startswith(("http://127.0.0.1", "http://localhost",
+                                         "http://[::1]"))
+            if not local:
+                if journal is not None:
+                    journal.evenement(t(
+                        "Cloud address refused: it is not https — the service "
+                        "key would travel in the clear. Fix [cloud] url.",
+                        "Adresse du cloud refusée : elle n'est pas en https — "
+                        "la clé de service voyagerait en clair. Corrigez "
+                        "[cloud] url."))
+                self.url = ""
         self.actif = bool(self.url and self.cle)
         self.derniere_erreur = None
         # Les numéros de NOS puces, fournis par le robot : c'est ce qui permet
@@ -166,6 +193,22 @@ class Nuage:
                 corps = self._lire_corps(e)
                 self.derniere_erreur = f"{e.code} {corps}".strip()
                 if not 400 <= e.code < 500:
+                    return "reseau"
+                # UNE CLÉ REFUSÉE N'EST PAS UNE LIGNE REFUSÉE.
+                #
+                # « refuse » veut dire « cette ligne-là ne passera jamais » :
+                # on la met de côté et on la marque envoyée, donc on ne la
+                # REPRÉSENTE PLUS JAMAIS. C'est juste pour une ligne malformée.
+                # Mais 401 (clé changée ou expirée), 403 (une règle d'accès
+                # refuse) et 429 (trop de demandes) ne disent rien de la ligne :
+                # ils disent que la PORTE est fermée, pour tout le monde, et
+                # que ça se répare. Les classer « refuse » jetait chaque
+                # paiement de la journée, définitivement, cent par cycle —
+                # pendant que le propriétaire lisait « rien n'est perdu ».
+                #
+                # Ces trois-là valent donc « reseau » : on s'arrête, on garde
+                # tout, et on réessaiera quand la porte sera rouverte.
+                if e.code in (401, 403, 429):
                     return "reseau"
                 if not self._defaut_de_schema(corps):
                     return "refuse"
@@ -679,15 +722,39 @@ class Nuage:
         # terminal ou un ICCID malformé ne peut pas déborder le filtre.
         chemin = (f"comptes?terminal=eq.{urllib.parse.quote(self.terminal, safe='')}"
                   f"&iccid=eq.{urllib.parse.quote(str(iccid), safe='')}")
+        # LA BONNE HORLOGE. On comparait à « maj », qui dit « cette ligne a été
+        # touchée » — et le signe de vie la remet à l'heure toutes les soixante
+        # secondes. Comme l'heure d'un SMS est forcément dans le passé, la
+        # condition « maj < heure du SMS » échouait presque toujours : le
+        # PATCH ne trouvait aucune ligne, n'écrivait rien, et rendait quand
+        # même « c'est fait ». Le solde frais était jeté en silence — c'est
+        # exactement ce que cette fonction existe pour éviter.
+        #
+        # « solde_maj » ne parle que du SOLDE. Nulle au départ (aucun solde
+        # encore annoncé) : on accepte donc aussi ce cas.
+        filtre = ""
         if moment:
-            chemin += f"&maj=lt.{urllib.parse.quote(quand, safe='')}"
+            echappe = urllib.parse.quote(quand, safe='')
+            filtre = f"&or=(solde_maj.is.null,solde_maj.lt.{echappe})"
         try:
-            self._requete("PATCH", chemin, {"solde": solde, "maj": quand})
+            self._requete("PATCH", chemin + filtre,
+                          {"solde": solde, "maj": quand, "solde_maj": quand})
             self.derniere_erreur = None
             return True
         except Exception as e:
             self.derniere_erreur = str(e)
-            return False
+            # Base pas encore migrée : la colonne « solde_maj » n'existe pas.
+            # On écrit alors le solde sans elle, plutôt que de le perdre — on
+            # renonce seulement à la protection contre un relevé rejoué dans
+            # le désordre, ce qui reste très au-dessus de l'ancien comportement
+            # (où le solde n'arrivait jamais).
+            try:
+                self._requete("PATCH", chemin, {"solde": solde, "maj": quand})
+                self.derniere_erreur = None
+                return True
+            except Exception as e2:
+                self.derniere_erreur = str(e2)
+                return False
 
     # ---- boucle -----------------------------------------------------------
     def demarrer(self, comptes=None, sante=None):

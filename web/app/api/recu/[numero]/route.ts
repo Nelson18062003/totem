@@ -1,7 +1,6 @@
 import { chargerRecu } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
-import { exigerSessionOuLien, refusApi } from "@/lib/garde";
 
 export const dynamic = "force-dynamic";
 
@@ -11,26 +10,19 @@ export const dynamic = "force-dynamic";
  * La clé d'accès reste côté serveur ; le navigateur ne voit que le document.
  */
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
   const langue = await langueServeur();
   const { numero } = await params;
-
-  // LA FORME D'UN NUMÉRO DE REÇU, avant tout le reste. La route sœur qui
-  // fabrique les liens validait déjà exactement ceci ; celle qui SERT le
-  // document, non — et c'est pourtant elle qui recopiait le numéro brut dans
-  // l'en-tête « content-disposition », où un guillemet déforme le nom du
-  // fichier annoncé au navigateur. La même règle des deux côtés.
+  // La forme d'un numéro de reçu, rien d'autre — comme la fabrique du lien
+  // signé (…/lien). `chargerRecu` nettoie déjà pour la base, et Node
+  // assainit l'en-tête ; cette garde n'ajoute qu'une seconde barrière, pour
+  // que le numéro qui atterrit dans « Content-Disposition » soit toujours
+  // propre, quelle que soit la porte d'entrée.
   if (!/^[\w.-]{1,64}$/.test(numero)) {
-    return new Response(erreurApi(langue, "identifiantInvalide"), { status: 400 });
+    return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   }
-
-  // Une session vivante, ou le laissez-passer signé de dix minutes pour CE
-  // reçu-là — le navigateur du téléphone n'a ni cookie ni jeton.
-  const moi = await exigerSessionOuLien(req, "recu", numero);
-  if (!moi.ok) return refusApi(moi.statut, langue);
-
   const pdf = await chargerRecu(numero);
   if (!pdf) return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   return new Response(pdf, {
