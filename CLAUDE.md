@@ -256,6 +256,13 @@ Il attend un ÉTAT, jamais une durée : un délai fixe après le clic paraît
 marcher, puis la connexion prend une seconde de plus et le harnais mesure
 l'écran de connexion en annonçant « rien à l'écran ».
 
+Il compte les formes PAR LEUR MARQUE, jamais par leur couleur. Le gris des
+squelettes est `surface2`, employé à trente-trois endroits du thème — champs,
+pastilles, surfaces d'appui : le premier comptage attribuait donc sept formes
+à l'écran des Actions, qui n'en a aucune. Chaque onglet annonce maintenant
+COMBIEN il doit en montrer, et le nombre est celui des composants : un écart
+signale une forme perdue autant qu'une forme de trop.
+
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
 application installée se démonte — tout ce qui entre dans ce fichier est

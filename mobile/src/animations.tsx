@@ -110,6 +110,12 @@ export { Animated };
  *
  * Qui a demandé « moins d'animations » voit la forme, immobile.
  */
+// `dataSet` est une propriété de react-native-web, absente des types de
+// React Native : on la passe par un objet à part plutôt que d'affaiblir le
+// typage de tout le composant. Sur Android elle n'existe pas et n'est pas
+// transmise à la vue native.
+const MARQUE_HARNAIS = { dataSet: { squelette: "1" } } as object;
+
 export function Squelette({
   largeur = "100%", hauteur = 16, rayon = 8, style, ...reste
 }: ViewProps & {
@@ -137,6 +143,17 @@ export function Squelette({
       // Une forme d'attente n'est pas un contenu : les lecteurs d'écran
       // n'ont rien à y lire, et l'annoncer serait pire que de se taire.
       importantForAccessibility="no-hide-descendants"
+      // UNE MARQUE POUR LES HARNAIS, et elle a une raison d'être précise.
+      // Le gris de ces formes est `surface2` — le même que les champs, les
+      // pastilles et les surfaces d'appui, employé à trente-trois endroits.
+      // Un contrôle qui comptait « les blocs de cette couleur » comptait donc
+      // aussi l'interface ordinaire : l'écran des Actions, qui n'a AUCUNE
+      // forme d'attente, en annonçait sept. Le vert ne voulait rien dire.
+      //
+      // `dataSet` n'existe que sur le web (react-native-web le rend en
+      // « data-squelette ») ; sur Android il est simplement ignoré. Rien
+      // n'est embarqué dans le paquet du magasin.
+      {...MARQUE_HARNAIS}
       {...reste}
       style={[
         { width: largeur, height: hauteur, borderRadius: rayon,
