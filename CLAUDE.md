@@ -48,6 +48,7 @@ cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
+sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
@@ -106,6 +107,16 @@ que le fichier DISE quand il est coupé. Pour qu'il puisse prendre en défaut, l
 faux nuage a d'abord dû apprendre à mentir comme la vraie base : il rendait le
 total APRÈS avoir appliqué la limite — « mille lignes sur mille » quand elle en
 avait deux mille quatre cents.
+
+`verifier-les-regles.sh` monte un PostgreSQL neuf, y joue le schéma et TOUTES
+les migrations dans l'ordre, puis attaque : il essaie vraiment de créer un
+second propriétaire, de promouvoir un invité, d'effacer le propriétaire, de
+déposer deux fois la même intention. Les règles les plus importantes de TOTEM
+ne sont pas dans le code — ce sont des index et des déclencheurs — et elles
+n'avaient jamais été EXÉCUTÉES : tous les autres harnais parlent au faux
+nuage, une imitation écrite ici même, qui ne peut pas prendre en défaut du SQL
+qu'elle n'exécute pas. Retirer l'index du propriétaire unique fait échouer la
+migration elle-même, qui refuse de se déclarer en place.
 
 **Un contrôle qui passe sans rien regarder est pire que pas de contrôle : il
 rassure.** Le harnais des formats a mesuré l'écran de connexion aux huit
