@@ -182,27 +182,21 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 }
 
 /* --- La vitrine « /decouvrir » ---------------------------------------------
-   La seule page qui parle DE TOTEM à un visiteur sans compte. C'est une
-   surface de marque : l'encre, la latérite et le sable y ont droit de cité,
-   et le mouvement y est plus ample que dans l'application — mais toujours
-   coupé net pour qui préfère les interfaces immobiles. Tout reste mat : les
-   plans se séparent par les fonds et les bordures, jamais par une ombre. */
+   La seule page qui parle DE TOTEM à un visiteur sans compte. Elle est
+   claire et silencieuse : du blanc, de grands titres à l'encre, le sable en
+   fond de carte, la latérite en petites touches. Le mouvement y est plus
+   ample que dans l'application, mais toujours coupé net pour qui préfère
+   les interfaces immobiles. Tout reste mat : les plans se séparent par les
+   fonds et les bordures, jamais par une ombre. */
 
-.vitrine { background: #141414; color: #f5f5f5; }
+.vitrine { background: #ffffff; color: var(--color-ink); }
 .vitrine ::selection { background: var(--color-laterite); color: #fff; }
 
-/* Les nuances de l'encre — un cran au-dessus du fond, comme la carte de
-   LA caisse (.acct-marque) au-dessus des autres. */
-.vitrine-carte { background: #1d1c1b; border: 1px solid #33302d; }
-.vitrine-texte-doux { color: #b9b2ab; }   /* secondaire sur encre — 7,8:1 */
-.vitrine-ligne { border-color: #33302d; }
-
-/* La lueur du foyer : un FOND, pas une ombre — la latérite qui chauffe
-   l'encre derrière le monolithe. */
-.vitrine-foyer {
+/* Le halo du héros : le sable qui chauffe le blanc. Un FOND, pas une ombre. */
+.hero-halo {
   background:
-    radial-gradient(42rem 30rem at 72% 30%, rgba(154, 75, 46, 0.30), transparent 65%),
-    radial-gradient(30rem 22rem at 12% 90%, rgba(154, 75, 46, 0.12), transparent 70%);
+    radial-gradient(52rem 30rem at 50% -6rem, #f4efe9 0%, rgba(244, 239, 233, 0.55) 55%, transparent 78%),
+    radial-gradient(26rem 14rem at 50% 105%, rgba(208, 138, 99, 0.14), transparent 70%);
 }
 
 /* La claustra sur le sable, en voile : le tressage à pleine densité rendait
@@ -219,19 +213,6 @@ html[data-rail="replie"] { --rail: 4.5rem; }
   background-repeat: repeat;
   background-size: 56px auto;
   opacity: 0.14;
-  pointer-events: none;
-}
-
-/* La claustra sur l'encre : le même tressage, posé en voile discret. */
-.claustra-encre { position: relative; }
-.claustra-encre::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: url("/motif.svg");
-  background-repeat: repeat;
-  background-size: 56px auto;
-  opacity: 0.09;
   pointer-events: none;
 }
 
@@ -252,16 +233,6 @@ html[data-rail="replie"] { --rail: 4.5rem; }
   transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 .revele.vu { opacity: 1; transform: none; }
-
-/* Le bandeau qui défile — deux copies de la même liste, décalées d'une
-   moitié : la boucle ne se voit pas. */
-.bandeau-defile { overflow: hidden; }
-.bandeau-defile > div {
-  display: flex;
-  width: max-content;
-  animation: bandeau-defile 36s linear infinite;
-}
-@keyframes bandeau-defile { to { transform: translateX(-50%); } }
 
 /* Le monolithe : un volume en vraie perspective, qui tourne lentement sur
    lui-même et s'incline sous le pointeur. */
@@ -286,7 +257,6 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .tresse-tracee path { animation: none; stroke-dashoffset: 0; }
   .revele { opacity: 1; transform: none; transition: none; }
-  .bandeau-defile > div { animation: none; }
   .monolithe { animation: none; transform: rotateY(-24deg); }
   .monolithe-inclinaison { transition: none; transform: none; }
 }

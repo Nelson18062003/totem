@@ -2,30 +2,26 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
-import { LANGUES } from "@noyau/langue";
 import {
   BRIN_A, BRIN_B, COUPE, CROISEMENTS, EPAISSEUR, VUE_BOITE,
 } from "@noyau/marque";
 import { textesDecouvrir } from "@noyau/textes/decouvrir";
-import { changerLangue, useLangue } from "@/app/langue";
+import { BasculeLangue, useLangue } from "@/app/langue";
 import { Symbole } from "../marque";
-import {
-  IconBubble, IconChevron, IconDoc, IconEyeOff, IconGrid, IconHash,
-  IconIdentite, IconInbox, IconLock, IconRefresh,
-} from "../icons";
+import { IconChevron, IconDoc, IconGrid, IconLock, IconRefresh } from "../icons";
+import { LogoMtn, LogoOrange } from "../logos-operateurs";
 
 /**
  * La vitrine — la seule page qui présente TOTEM à un visiteur sans compte.
  *
- * C'est une surface de marque au sens de docs/IDENTITE.md : l'encre, la
- * latérite et le sable y ont droit de cité, et le mouvement y est plus ample
- * que dans l'application. Trois gestes de plus que d'habitude, pas dix :
- * la tresse se tisse, le monolithe tourne, les sections se lèvent au
- * défilement — et tout se fige pour qui préfère les interfaces immobiles.
+ * Elle est claire et silencieuse : de grands titres, une phrase par carte,
+ * beaucoup d'air. Le seul objet qui bouge est le monolithe, un volume tissé
+ * qui tourne lentement et s'incline sous le pointeur ; la tresse se tisse à
+ * l'arrivée. Tout se fige pour qui préfère les interfaces immobiles.
  *
  * Elle ne montre AUCUNE donnée : pas un solde, pas un chiffre inventé, pas
- * un témoignage fabriqué. Elle dit ce que le produit fait, avec les mots du
- * README, et tend la porte de la connexion.
+ * un témoignage fabriqué. Elle dit ce que le produit fait, et tend la porte
+ * de la connexion.
  */
 
 /* ------------------------------------------------------------------------- */
@@ -64,38 +60,9 @@ function Revele({
   );
 }
 
-/** La bascule de langue, en habit d'encre — même geste que partout ailleurs. */
-function BasculeSombre({ etiquette }: { etiquette: string }) {
-  const langue = useLangue();
-  return (
-    <div
-      role="group"
-      aria-label={etiquette}
-      className="inline-flex shrink-0 overflow-hidden rounded-full border vitrine-ligne"
-    >
-      {LANGUES.map(({ code, libelle, bascule }) => (
-        <button
-          key={code}
-          lang={code}
-          onClick={() => code !== langue && changerLangue(code)}
-          aria-pressed={code === langue}
-          title={code === langue ? undefined : bascule}
-          className={`px-3 py-1.5 text-caption font-medium transition ${
-            code === langue
-              ? "bg-[#f5f5f5] text-[#141414]"
-              : "vitrine-texte-doux hover:text-white"
-          }`}
-        >
-          {libelle}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** La Tresse qui se tisse : le même symbole que partout, mais chaque brin se
  *  trace de haut en bas à l'arrivée. La géométrie reste celle de
- *  `@noyau/marque` — on ne redessine rien, on anime le rendu. */
+ *  `@noyau/marque` : on ne redessine rien, on anime le rendu. */
 function TresseTracee({ size, className }: { size: number; className?: string }) {
   const id = useId();
   const brin = {
@@ -140,7 +107,7 @@ function TresseTracee({ size, className }: { size: number; className?: string })
         ))}
       </defs>
       {/* pathLength=1 : la longueur du tracé vaut « 1 », quelle que soit sa
-          longueur réelle — le tissage s'anime alors d'un seul réglage. */}
+          longueur réelle ; le tissage s'anime alors d'un seul réglage. */}
       <path d={BRIN_A} pathLength={1} {...brin} mask={`url(#${id}-a)`} />
       <path d={BRIN_B} pathLength={1} {...brin} mask={`url(#${id}-b)`} />
     </svg>
@@ -148,9 +115,9 @@ function TresseTracee({ size, className }: { size: number; className?: string })
 }
 
 /** Le monolithe : un volume qui tourne lentement sur lui-même et s'incline
- *  sous le pointeur. Le tissage fait le tour de l'objet — la tresse sur les
- *  faces d'encre, la claustra sur les tranches de sable. C'est le totem,
- *  debout, qu'on regarde sans pouvoir le toucher. */
+ *  sous le pointeur. Le tissage fait le tour de l'objet : la tresse sur les
+ *  faces d'encre, la claustra sur les tranches. C'est le totem, debout,
+ *  qu'on regarde sans pouvoir le toucher. */
 function Monolithe() {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -185,7 +152,7 @@ function Monolithe() {
         <div className="monolithe">
           {/* Devant : l'encre, et la tresse qui se tisse à l'arrivée */}
           <div
-            className={`${face} inset-0 flex-col gap-5 rounded-card border border-[#3d332c] bg-[#1b1a19]`}
+            className={`${face} inset-0 flex-col gap-5 rounded-card bg-[#1b1a19]`}
             style={{ transform: "translateZ(3rem)" }}
           >
             <TresseTracee size={132} className="text-laterite-clair" />
@@ -195,7 +162,7 @@ function Monolithe() {
           </div>
           {/* Derrière : la même face, le tissage déjà posé */}
           <div
-            className={`${face} inset-0 flex-col gap-5 rounded-card border border-[#3d332c] bg-[#1b1a19]`}
+            className={`${face} inset-0 flex-col gap-5 rounded-card bg-[#1b1a19]`}
             style={{ transform: "rotateY(180deg) translateZ(3rem)" }}
           >
             <Symbole size={132} className="text-laterite-clair" />
@@ -203,9 +170,8 @@ function Monolithe() {
               Totem
             </span>
           </div>
-          {/* Les tranches : la claustra — le mur ajouré fait le tour */}
-          {/* Le motif se resserre sur la tranche : à 56 px il lirait trop
-              gros sur une face de 6 rem. */}
+          {/* Les tranches : la claustra, le mur ajouré fait le tour.
+              Le motif se resserre : à 56 px il lirait trop gros ici. */}
           <div
             className={`${face} claustra inset-y-0 w-24 rounded-card`}
             style={{ left: "calc(50% - 3rem)", transform: "rotateY(-90deg) translateZ(7.5rem)", backgroundSize: "34px auto" }}
@@ -232,8 +198,7 @@ function Monolithe() {
 /* ------------------------------------------------------------------------- */
 /* La page                                                                   */
 
-const ICONES_GESTES = [IconHash, IconInbox, IconLock, IconDoc, IconGrid, IconRefresh];
-const ICONES_VERROU = [IconLock, IconIdentite, IconEyeOff, IconBubble];
+const ICONES_GESTES = [IconLock, IconDoc, IconGrid, IconRefresh];
 
 export default function Decouvrir() {
   const langue = useLangue();
@@ -241,28 +206,28 @@ export default function Decouvrir() {
 
   return (
     <div className="vitrine min-h-dvh">
-      {/* L'en-tête — la marque, la langue, la porte */}
-      <header className="sticky top-0 z-40 border-b vitrine-ligne bg-[#141414]/85 backdrop-blur">
+      {/* L'en-tête : la marque, deux liens, la langue, la porte */}
+      <header className="sticky top-0 z-40 border-b border-line bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3.5">
           <span className="inline-flex items-center gap-2.5">
-            <Symbole size={22} className="text-laterite-clair" />
+            <Symbole size={22} className="text-laterite" />
             <span className="font-marque text-body font-bold uppercase tracking-marque">
               Totem
             </span>
           </span>
-          <nav className="hidden items-center gap-6 text-small vitrine-texte-doux md:flex">
-            <a href="#fonctionnement" className="transition hover:text-white">
+          <nav className="hidden items-center gap-6 text-small text-ink-soft md:flex">
+            <a href="#fonctionnement" className="transition hover:text-ink">
               {t.navFonctionnement}
             </a>
-            <a href="#securite" className="transition hover:text-white">
+            <a href="#securite" className="transition hover:text-ink">
               {t.navSecurite}
             </a>
           </nav>
           <div className="flex items-center gap-3">
-            <BasculeSombre etiquette={t.piedLangue} />
+            <BasculeLangue />
             <Link
               href="/connexion"
-              className="hidden rounded-full bg-laterite px-4 py-1.5 text-small font-medium text-white transition hover:bg-laterite-clair hover:text-[#141414] sm:block"
+              className="hidden rounded-full bg-ink px-4 py-1.5 text-small font-medium text-white transition hover:opacity-90 sm:block"
             >
               {t.navEntrer}
             </Link>
@@ -271,151 +236,101 @@ export default function Decouvrir() {
       </header>
 
       <main>
-        {/* Le grand écran d'ouverture */}
-        <section className="vitrine-foyer relative overflow-hidden">
-          <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-16 pt-14 lg:grid-cols-[1.05fr_0.95fr] lg:pb-24 lg:pt-20">
-            <div>
-              <Revele>
-                <p className="text-small font-medium uppercase tracking-[0.14em] text-laterite-clair">
-                  {t.heroSur}
-                </p>
-                <h1 className="mt-4 text-balance text-[clamp(2.4rem,1.6rem+3.4vw,4.2rem)] font-semibold leading-[1.05] tracking-tight">
-                  {t.heroTitre1}
-                  <br />
-                  <span className="text-laterite-clair">{t.heroTitre2}</span>
-                </h1>
-                <p className="mt-6 max-w-xl text-pretty text-heading font-normal leading-relaxed vitrine-texte-doux">
-                  {t.heroSousTitre}
-                </p>
-              </Revele>
-              <Revele delai={140}>
-                <div className="mt-9 flex flex-wrap items-center gap-4">
-                  <Link
-                    href="/connexion"
-                    className="rounded-btn bg-laterite px-6 py-3.5 text-body font-medium text-white transition hover:bg-laterite-clair hover:text-[#141414]"
-                  >
-                    {t.heroEntrer}
-                  </Link>
-                  <a
-                    href="#fonctionnement"
-                    className="inline-flex items-center gap-1.5 rounded-btn border vitrine-ligne px-6 py-3.5 text-body font-medium transition hover:border-laterite-clair"
-                  >
-                    {t.heroVoir} <IconChevron size={16} />
-                  </a>
-                </div>
-                <p className="mt-6 flex items-center gap-2 text-small vitrine-texte-doux">
-                  <IconLock size={15} className="shrink-0 text-laterite-clair" />
-                  {t.heroNote}
-                </p>
-              </Revele>
-            </div>
-            <Revele delai={200} className="hidden sm:block">
-              <Monolithe />
-            </Revele>
-          </div>
-        </section>
-
-        {/* Le bandeau qui défile — ce qui passe par le totem */}
-        <div className="bandeau-defile border-y vitrine-ligne py-5" aria-hidden>
-          <div>
-            {[0, 1].map((moitie) => (
-              <ul key={moitie} className="flex items-center gap-8 pr-8">
-                {t.bandeau.map((mot) => (
-                  <li key={mot} className="flex items-center gap-8 whitespace-nowrap">
-                    <span className="text-heading font-medium text-[#6d6862]">{mot}</span>
-                    <span className="text-caption text-laterite">◆</span>
-                  </li>
-                ))}
-              </ul>
-            ))}
-          </div>
-        </div>
-
-        {/* Les trois traits — planté, traversé, double */}
-        <section id="fonctionnement" className="scroll-mt-20">
-          <div className="mx-auto max-w-6xl px-5 py-20 lg:py-28">
+        {/* Le grand écran d'ouverture : centré, clair, une seule invitation */}
+        <section className="px-4 pt-6 sm:pt-10">
+          <div className="hero-halo mx-auto max-w-6xl rounded-[2.5rem] px-6 pb-16 pt-16 text-center sm:pb-20 sm:pt-24">
             <Revele>
-              <h2 className="max-w-2xl text-balance text-[clamp(1.8rem,1.3rem+2vw,2.8rem)] font-semibold leading-tight tracking-tight">
-                {t.traitsTitre}
-              </h2>
-              <p className="mt-4 max-w-2xl text-body leading-relaxed vitrine-texte-doux">
-                {t.traitsSousTitre}
+              <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-line bg-white px-4 py-1.5 text-caption font-medium text-ink-soft">
+                <span className="size-1.5 rounded-full bg-laterite" />
+                {t.heroPuce}
+              </p>
+              <h1 className="mx-auto mt-7 max-w-5xl text-balance text-[clamp(2.4rem,1.5rem+3.8vw,4.4rem)] font-semibold leading-[1.06] tracking-tight">
+                {t.heroTitre1}
+                <br />
+                {t.heroTitre2}
+              </h1>
+              <p className="mx-auto mt-6 max-w-md text-pretty text-body leading-relaxed text-ink-soft sm:text-heading sm:font-normal">
+                {t.heroSousTitre}
               </p>
             </Revele>
-            <div className="mt-12 grid gap-5 md:grid-cols-3">
-              {t.traits.map((trait, i) => (
-                <Revele key={trait.titre} delai={i * 90}>
-                  <article className="vitrine-carte h-full rounded-card p-6 transition hover:border-laterite">
-                    <Symbole size={26} className="text-laterite-clair" />
-                    <h3 className="mt-5 text-heading font-semibold">{trait.titre}</h3>
-                    <p className="mt-2.5 text-small leading-relaxed vitrine-texte-doux">
-                      {trait.texte}
-                    </p>
-                  </article>
+            <Revele delai={120}>
+              <div className="mt-9 flex flex-col items-center gap-5">
+                <Link
+                  href="/connexion"
+                  className="inline-flex items-center gap-2 rounded-full bg-ink px-7 py-3.5 text-body font-medium text-white transition hover:opacity-90"
+                >
+                  {t.heroEntrer} <IconChevron size={16} />
+                </Link>
+                <a
+                  href="#fonctionnement"
+                  className="text-small font-medium text-ink-soft transition hover:text-ink"
+                >
+                  {t.heroVoir}
+                </a>
+              </div>
+            </Revele>
+          </div>
+
+          {/* La ligne de confiance : les marques que le totem écoute */}
+          <Revele delai={200}>
+            <div className="mx-auto mt-10 flex max-w-6xl flex-wrap items-center justify-center gap-x-7 gap-y-3 px-6">
+              <span className="text-caption font-medium uppercase tracking-[0.14em] text-ink-faint">
+                {t.heroAvec}
+              </span>
+              <LogoMtn size={26} />
+              <LogoOrange size={26} />
+              <span className="text-small font-semibold text-ink-soft">Telegram</span>
+            </div>
+          </Revele>
+        </section>
+
+        {/* La grande grille : le monolithe et trois idées, une phrase chacune */}
+        <section id="fonctionnement" className="scroll-mt-20 px-4 pt-16 sm:pt-24">
+          <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-2">
+            <Revele className="h-full">
+              <div className="flex h-full flex-col items-center justify-center gap-6 rounded-[2rem] bg-sable px-8 py-14">
+                <Monolithe />
+                <p className="max-w-xs text-center text-body font-medium text-ink">
+                  {t.mosaiqueLegende}
+                </p>
+              </div>
+            </Revele>
+            <div className="grid gap-5">
+              {t.mosaique.map((carte, i) => (
+                <Revele key={carte.titre} delai={i * 90} className="h-full">
+                  <div className="flex h-full flex-col justify-center rounded-[2rem] bg-[#f6f5f3] px-8 py-10">
+                    <h2 className="text-title font-semibold tracking-tight">{carte.titre}</h2>
+                    <p className="mt-2 text-body text-ink-soft">{carte.texte}</p>
+                  </div>
                 </Revele>
               ))}
             </div>
           </div>
         </section>
 
-        {/* Les gestes — sur le clair, comme l'application elle-même */}
-        <section className="bg-surface text-ink">
-          <div className="mx-auto max-w-6xl px-5 py-20 lg:py-28">
+        {/* Les gestes du guichet : quatre cartes, une idée chacune */}
+        <section className="px-4 pt-20 sm:pt-28">
+          <div className="mx-auto max-w-6xl">
             <Revele>
-              <h2 className="max-w-2xl text-balance text-[clamp(1.8rem,1.3rem+2vw,2.8rem)] font-semibold leading-tight tracking-tight">
+              <h2 className="text-balance text-center text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-semibold leading-tight tracking-tight">
                 {t.gestesTitre}
               </h2>
-              <p className="mt-4 max-w-2xl text-body leading-relaxed text-ink-soft">
-                {t.gestesSousTitre}
-              </p>
             </Revele>
-            <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-10 grid gap-5 sm:grid-cols-2">
               {t.gestes.map((geste, i) => {
                 const Icone = ICONES_GESTES[i];
                 return (
-                  <Revele key={geste.titre} delai={(i % 3) * 90}>
-                    <article className="h-full rounded-card border border-line bg-surface-raised p-6 transition hover:border-laterite">
-                      <span className="inline-flex size-11 items-center justify-center rounded-card bg-sable text-laterite">
+                  <Revele key={geste.titre} delai={(i % 2) * 90} className="h-full">
+                    <div className="flex h-full flex-col items-center rounded-[2rem] bg-[#f6f5f3] px-8 py-12 text-center">
+                      <span className="inline-flex size-12 items-center justify-center rounded-full bg-white text-laterite">
                         <Icone size={22} />
                       </span>
-                      <h3 className="mt-5 text-body font-semibold">{geste.titre}</h3>
-                      <p className="mt-2 text-small leading-relaxed text-ink-soft">
+                      <h3 className="mt-5 max-w-xs text-heading font-semibold tracking-tight">
+                        {geste.titre}
+                      </h3>
+                      <p className="mt-2 max-w-xs text-small leading-relaxed text-ink-soft">
                         {geste.texte}
                       </p>
-                    </article>
-                  </Revele>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* Le verrou — l'encre, la claustra en voile */}
-        <section id="securite" className="claustra-encre scroll-mt-20 border-y vitrine-ligne">
-          <div className="relative mx-auto max-w-6xl px-5 py-20 lg:py-28">
-            <Revele>
-              <h2 className="max-w-2xl text-balance text-[clamp(1.8rem,1.3rem+2vw,2.8rem)] font-semibold leading-tight tracking-tight">
-                {t.securiteTitre}
-              </h2>
-              <p className="mt-4 max-w-2xl text-body leading-relaxed vitrine-texte-doux">
-                {t.securiteSousTitre}
-              </p>
-            </Revele>
-            <div className="mt-12 grid gap-x-10 gap-y-9 sm:grid-cols-2">
-              {t.securite.map((point, i) => {
-                const Icone = ICONES_VERROU[i];
-                return (
-                  <Revele key={point.titre} delai={(i % 2) * 90}>
-                    <div className="flex items-start gap-4">
-                      <span className="mt-0.5 inline-flex size-11 shrink-0 items-center justify-center rounded-card border vitrine-ligne bg-[#1b1a19] text-laterite-clair">
-                        <Icone size={22} />
-                      </span>
-                      <div>
-                        <h3 className="text-body font-semibold">{point.titre}</h3>
-                        <p className="mt-1.5 text-small leading-relaxed vitrine-texte-doux">
-                          {point.texte}
-                        </p>
-                      </div>
                     </div>
                   </Revele>
                 );
@@ -424,84 +339,73 @@ export default function Decouvrir() {
           </div>
         </section>
 
-        {/* Les trois portes — le sable, comme une surface de marque */}
-        <section className="bg-sable text-ink">
-          <div className="mx-auto max-w-6xl px-5 py-20 lg:py-28">
-            <Revele>
-              <h2 className="max-w-2xl text-balance text-[clamp(1.8rem,1.3rem+2vw,2.8rem)] font-semibold leading-tight tracking-tight">
-                {t.surfacesTitre}
-              </h2>
-              <p className="mt-4 max-w-2xl text-body leading-relaxed text-ink-soft">
-                {t.surfacesSousTitre}
-              </p>
-            </Revele>
-            <div className="mt-12 grid gap-10 md:grid-cols-3">
-              {t.surfaces.map((surface, i) => (
-                <Revele key={surface.titre} delai={i * 90}>
-                  <div className="border-t-2 border-laterite pt-5">
-                    <p className="text-caption font-medium tabnums text-laterite">
-                      {String(i + 1).padStart(2, "0")}
-                    </p>
-                    <h3 className="mt-2 text-heading font-semibold">{surface.titre}</h3>
-                    <p className="mt-2.5 text-small leading-relaxed text-ink-soft">
-                      {surface.texte}
-                    </p>
-                  </div>
-                </Revele>
-              ))}
+        {/* Le verrou : une seule grande carte, quatre phrases */}
+        <section id="securite" className="scroll-mt-20 px-4 pt-20 sm:pt-28">
+          <Revele>
+            <div className="claustra-sable mx-auto max-w-6xl overflow-hidden rounded-[2.5rem]">
+              <div className="relative px-6 py-16 text-center sm:py-20">
+                <Symbole size={40} className="mx-auto text-laterite" />
+                <h2 className="mt-6 text-balance text-[clamp(1.9rem,1.3rem+2.4vw,3rem)] font-semibold leading-tight tracking-tight">
+                  {t.securiteTitre}
+                  <br />
+                  {t.securiteSousTitre}
+                </h2>
+                <ul className="mx-auto mt-10 grid max-w-3xl gap-x-10 gap-y-5 text-left sm:grid-cols-2">
+                  {t.securite.map((point) => (
+                    <li key={point} className="flex items-start gap-3">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-laterite" />
+                      <span className="text-body leading-relaxed text-ink">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-          </div>
+          </Revele>
         </section>
 
-        {/* L'invitation — la claustra pleine, la porte au milieu */}
-        <section className="claustra-sable text-ink">
-          <div className="relative mx-auto max-w-6xl px-5 py-24 text-center lg:py-32">
-            <Revele>
-              <Symbole size={56} className="mx-auto text-laterite" />
-              <h2 className="mt-7 text-balance text-[clamp(2rem,1.4rem+2.6vw,3.4rem)] font-semibold leading-tight tracking-tight">
-                {t.finTitre}
-              </h2>
-              <p className="mt-4 text-heading font-normal text-ink-soft">
-                {t.finSousTitre}
-              </p>
-              <Link
-                href="/connexion"
-                className="mt-9 inline-block rounded-btn bg-ink px-7 py-3.5 text-body font-medium text-white transition hover:opacity-90"
-              >
-                {t.finEntrer}
-              </Link>
-            </Revele>
-          </div>
+        {/* L'invitation finale */}
+        <section className="px-4 py-24 text-center sm:py-32">
+          <Revele>
+            <h2 className="text-balance text-[clamp(2.2rem,1.5rem+3vw,4rem)] font-semibold leading-tight tracking-tight">
+              {t.finTitre}
+            </h2>
+            <Link
+              href="/connexion"
+              className="mt-8 inline-flex items-center gap-2 rounded-full bg-ink px-7 py-3.5 text-body font-medium text-white transition hover:opacity-90"
+            >
+              {t.finEntrer} <IconChevron size={16} />
+            </Link>
+          </Revele>
         </section>
       </main>
 
       {/* Le pied de page */}
-      <footer className="border-t vitrine-ligne">
+      <footer className="border-t border-line">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-12 md:flex-row md:items-start md:justify-between">
           <div className="max-w-sm">
             <span className="inline-flex items-center gap-2.5">
-              <Symbole size={22} className="text-laterite-clair" />
+              <Symbole size={22} className="text-laterite" />
               <span className="font-marque text-body font-bold uppercase tracking-marque">
                 Totem
               </span>
             </span>
-            <p className="mt-3 text-small leading-relaxed vitrine-texte-doux">
+            <p className="mt-3 text-small leading-relaxed text-ink-soft">
               {t.piedDevise}
             </p>
           </div>
           <div className="flex flex-col items-start gap-5 md:items-end">
-            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-small vitrine-texte-doux">
-              <Link href="/connexion" className="transition hover:text-white">
+            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-small text-ink-soft">
+              <Link href="/connexion" className="transition hover:text-ink">
                 {t.piedConnexion}
               </Link>
-              <Link href="/confidentialite" className="transition hover:text-white">
+              <Link href="/confidentialite" className="transition hover:text-ink">
                 {t.piedConfidentialite}
               </Link>
-              <Link href="/suppression" className="transition hover:text-white">
+              <Link href="/suppression" className="transition hover:text-ink">
                 {t.piedSuppression}
               </Link>
             </nav>
-            <BasculeSombre etiquette={t.piedLangue} />
+            <BasculeLangue />
           </div>
         </div>
       </footer>
