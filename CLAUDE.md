@@ -44,6 +44,7 @@ cd web && npm test                        # les règles partagées (noyau)
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
+python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
@@ -73,6 +74,19 @@ ce qu'il écrit décide de ce qui entre au bilan. Le harnais a trouvé du premie
 coup ce qu'aucun test n'avait vu : « Depot de 5٥٠٠٠0000 FCFA » se lisait
 550 000 000 FCFA, parce que Python voit un chiffre dans « ٥ » comme dans « 5 »
 — et le SMS s'affichant tel qu'il est arrivé, l'écart était invisible.
+
+`eprouver-la-chaine` part des OCTETS du modem et va jusqu'à l'écran :
+décodage PDU, recollage d'un message long, lecture du montant, journal du Pi,
+montée au nuage, relecture par la plateforme. Chaque maillon avait ses tests ;
+personne ne parcourait le trajet entier — et le dernier pas, ce que le robot
+ÉCRIT dans la base, n'était parcouru par rien : le faux nuage ne savait même
+pas recevoir une écriture du robot. C'est pourtant là qu'est la question :
+**le robot et la plateforme lisent le même SMS deux fois, chacun dans son
+langage**, et rien ne vérifiait qu'ils tombent d'accord sur le montant. Le
+harnais rejoue aussi la coupure de courant — le robot journalise AVANT
+d'effacer dans le modem, donc un SMS peut être relu au redémarrage : il doit
+être reconnu, pas recompté. Aveugler le garde-fou fait passer 157 500 F à
+315 000 F.
 
 `verifier-les-comptes` déroule la vie entière d'un compte contre un vrai
 serveur : la première inscription (celle du propriétaire), une deuxième qui

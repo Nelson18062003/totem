@@ -410,6 +410,36 @@ const serveur = createServer(async (req, res) => {
     }
   }
 
+  // --- CE QUE LE ROBOT ÉCRIT ---------------------------------------------
+  //
+  // Le terminal de Douala POUSSE ses SMS ici (« POST /rest/v1/paiements » avec
+  // « on_conflict=terminal,source_id »). Le faux nuage ne savait pas les
+  // recevoir : la dernière étape de la chaîne — du modem jusqu'à l'écran —
+  // n'avait donc jamais été parcourue par personne. Le robot d'un côté, la
+  // plateforme de l'autre, et rien au milieu pour vérifier qu'ils parlent du
+  // MÊME message.
+  //
+  // « merge-duplicates » : un SMS retransmis met à jour sa ligne au lieu d'en
+  // créer une seconde. C'est ce qui permet au robot de relire ses messages
+  // passés quand son lecteur s'améliore — et c'est aussi ce qui empêche un
+  // paiement d'être compté deux fois après une coupure de courant.
+  const ecriture = /^\/rest\/v1\/(\w+)$/.exec(chemin);
+  if (req.method === "POST" && ecriture && tables()[ecriture[1]]) {
+    const nom = ecriture[1];
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const entrantes = [].concat(JSON.parse(brut || "[]"));
+    const cles = (url.searchParams.get("on_conflict") || "").split(",")
+                    .map((c) => c.trim()).filter(Boolean);
+    const memeLigne = (a, b) => cles.every((c) => String(a[c]) === String(b[c]));
+    for (const ligne of entrantes) {
+      const deja = cles.length ? smsEnPlus.find((x) => memeLigne(x, ligne)) : null;
+      if (deja) Object.assign(deja, ligne);
+      else smsEnPlus.push({ id: 700000 + smsEnPlus.length, lu_le: null, ...ligne });
+    }
+    return repondre([], 201);
+  }
+
   // Les tables ordinaires.
   //
   // CE FAUX NUAGE DOIT SAVOIR TRONQUER, ET LE DIRE. Il rendait autrefois le
