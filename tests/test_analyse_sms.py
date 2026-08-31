@@ -888,3 +888,49 @@ class TestFraisJamaisPrisPourLeMontant(unittest.TestCase):
         self.assertEqual(p.montant, 50000)
         self.assertEqual(p.frais, 100)
         self.assertEqual(p.solde_apres, 150000)
+
+
+class TestChiffresEtrangers(unittest.TestCase):
+    """Un montant qui n'est pas celui qu'on lit — trouvé en fuzzant.
+
+    Python voit un chiffre dans bien plus que « 0 » à « 9 » : l'arabe-indien
+    (« \u0665 »), la pleine chasse (« \uff15 »), et une douzaine d'autres
+    écritures. `\d` les capture et `int()` les convertit SANS RIEN DIRE.
+
+    « Depot de 5\u0665\u0660\u0660\u06600000 FCFA » était donc lu 550 000 000 FCFA — un nombre
+    que personne ne lit dans le message. Et comme le SMS s'affiche tel qu'il
+    est arrivé, l'écart restait invisible : la liste montrait le texte reçu,
+    le bilan et le reçu portaient l'autre nombre.
+
+    N'importe qui connaissant le numéro de la SIM peut envoyer un tel SMS ;
+    un opérateur camerounais, jamais.
+    """
+
+    ARABE = "\u0665\u0660\u0660\u0660"          # « 5000 » en arabe-indien
+    PLEINE = "\uff15\uff10\uff10\uff10"         # « 5000 » en pleine chasse
+
+    def test_un_montant_en_chiffres_etrangers_ne_se_lit_pas(self):
+        from totem.analyse_sms import _nombre
+        for faux in (self.ARABE, self.PLEINE, "5" + self.ARABE + "0000"):
+            self.assertIsNone(_nombre(faux), faux)
+
+    def test_les_chiffres_arabes_ne_font_pas_un_paiement(self):
+        p = analyser(f"Depot de 5{self.ARABE}0000 FCFA vers 677123456 "
+                     "NGONO Marie reussi.")
+        # Mieux vaut aucun montant qu'un montant que personne ne lit.
+        self.assertTrue(p is None or p.montant is None)
+
+    def test_un_solde_en_chiffres_etrangers_ne_s_annonce_pas(self):
+        self.assertIsNone(
+            solde_annonce(f"Le solde de votre compte est de {self.ARABE}FCFA."))
+
+    def test_les_vrais_montants_se_lisent_toujours(self):
+        # Le garde-fou ne doit rien coûter aux messages ordinaires.
+        from totem.analyse_sms import _nombre
+        self.assertEqual(_nombre("20 000"), 20000)
+        self.assertEqual(_nombre("2784137.6"), 2784137.6)
+        self.assertEqual(_nombre("1.250.000"), 1250000)
+        p = analyser("Vous avez recu 20 000 FCFA de NGONO Marie (677123456). "
+                     "Nouveau solde: 412 500 FCFA.")
+        self.assertEqual(p.montant, 20000)
+        self.assertEqual(p.solde_apres, 412500)

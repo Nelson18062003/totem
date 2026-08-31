@@ -83,8 +83,23 @@ def _nombre(brut):
     """
     if not brut:
         return None
+    # SEULS LES CHIFFRES 0-9 COMPTENT — et c'est une question d'argent.
+    #
+    # Python voit un chiffre dans BIEN PLUS que « 0 » à « 9 » : « \u0665 »
+    # (arabe-indien), « \uff15 » (pleine chasse) et une douzaine d'autres
+    # écritures. `\d` les capture, et `int()` les convertit SANS RIEN DIRE.
+    # Un message mêlant les écritures — « 5\u0665\u0660\u0660\u06600000 FCFA » — était donc lu
+    # 550 000 000 FCFA, un nombre que personne ne lit dans le message. Et
+    # comme le SMS s'affiche tel quel, l'écart était invisible : la liste
+    # montrait le texte reçu, le bilan et le reçu portaient l'autre nombre.
+    #
+    # N'importe qui connaissant le numéro de la SIM peut envoyer un tel SMS.
+    # Un opérateur camerounais, jamais. Dans le doute, on ne lit rien : c'est
+    # la règle de la maison, et elle vaut ici plus qu'ailleurs.
+    if any(c.isdigit() and not c.isascii() for c in brut):
+        return None
     # L'espace ne sépare jamais que des milliers ; on le retire d'office.
-    t = re.sub(r"[^\d.,]", "", brut).strip(".,")
+    t = re.sub(r"[^0-9.,]", "", brut).strip(".,")
     if not t:
         return None
 
@@ -142,7 +157,10 @@ def _neuf_derniers(numero):
 # --- Motifs --------------------------------------------------------------
 # Un montant : suite de chiffres pouvant contenir séparateurs, suivie de la
 # devise sous l'une de ses formes (FCFA, F CFA, XAF, CFA, F).
-MONTANT = r"([\d][\d\s.,]*)\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)"
+# `[0-9]` et non `\d` : ce dernier accepte les chiffres de toutes les
+# écritures du monde (voir `_nombre`). Un montant Mobile Money s'écrit en
+# chiffres arabes ; le reste n'est pas un montant.
+MONTANT = r"([0-9][0-9\s.,]*)\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)"
 
 RE_RECU = re.compile(
     r"\b(?:recu|receive[sd]?|credite[d]?|cash\s*in)\b.{0,20}?" + MONTANT, re.S)
@@ -239,8 +257,8 @@ def _echec_constate(norme):
 # chiffres démesurée. Le nom viendra après, sans contrainte de forme.
 RE_PARTIE = re.compile(
     r"\b(?P<role>from|de|par|by|to|vers)\s+"
-    r"(?P<numero>\+?\d{7,14})(?!\d)"
-    r"(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)|[.,]\d)")
+    r"(?P<numero>\+?[0-9]{7,14})(?![0-9])"
+    r"(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)|[.,][0-9])")
 
 # Où s'arrête un nom : à la ponctuation, au prochain mot-charnière, au mot de
 # réussite ou d'échec. Entre ces bornes, TOUT est permis — chiffres,
@@ -263,8 +281,8 @@ RE_CHAMP_ARGENT = re.compile(
 RE_TIERS = re.compile(
     r"\b(?:de|from|by|a|to|vers|chez)\s+"
     r"(?P<nom>[^().,;:\n]{2,40}?)?\s*"
-    r"(?:\(\s*(?P<num1>[+\d][\d\s]{6,20})\s*\)"
-    r"|(?P<num2>\b[+\d][\d\s]{7,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
+    r"(?:\(\s*(?P<num1>[+0-9][0-9\s]{6,20})\s*\)"
+    r"|(?P<num2>\b[+0-9][0-9\s]{7,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
 
 # Les libellés les plus longs d'abord : « ID transaction » avant « id ».
 #
@@ -426,7 +444,7 @@ RE_CODE_UNIQUE = re.compile(
     r"\b(?:code|otp|mot\s+de\s+passe|password|pin)\b(?!\s*marchand)"
     r"[^\n.]{0,40}?"
     r"(?:\best\b|\bis\b|:)\s*:?\s*"
-    r"(\d{4,10})\b")
+    r"([0-9]{4,10})\b")
 
 
 # --- Les guichets de l'AGENT MTN, relevés sur le terrain ------------------
@@ -600,7 +618,7 @@ def _nettoyer_nom(brut):
     nom = re.sub(r"\s+", " ", brut).strip(" .,;:-'\"")
     if len(nom) < 2 or len(nom) > 40:
         return None
-    if re.fullmatch(r"[\d\s+]+", nom):      # ce n'est qu'un numéro
+    if re.fullmatch(r"[0-9\s+]+", nom):      # ce n'est qu'un numéro
         return None
     mots_vides = {"votre", "vous", "la part", "compte", "le compte", "part"}
     if _normaliser(nom) in mots_vides:

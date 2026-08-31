@@ -43,6 +43,7 @@ cd web && npx next build                  # l'application web
 cd web && npm test                        # les règles partagées (noyau)
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
+python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
@@ -57,6 +58,16 @@ cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 avec un jeton forgé, avec une échéance repoussée. « Ça compile » ne dit rien
 d'un verrou. À relancer dès qu'on touche au middleware, aux sessions ou au
 frein.
+
+`attaquer-le-lecteur` envoie au lecteur de SMS des dizaines de milliers de
+messages qu'on n'a PAS imaginés — de vrais SMS d'opérateurs, mutés — et
+vérifie ses quatre promesses : il ne lève jamais, il n'invente ni montant ni
+solde, il range toujours dans une catégorie connue. C'est la surface la plus
+exposée de TOTEM : quiconque connaît le numéro de la SIM peut lui écrire, et
+ce qu'il écrit décide de ce qui entre au bilan. Le harnais a trouvé du premier
+coup ce qu'aucun test n'avait vu : « Depot de 5٥٠٠٠0000 FCFA » se lisait
+550 000 000 FCFA, parce que Python voit un chiffre dans « ٥ » comme dans « 5 »
+— et le SMS s'affichant tel qu'il est arrivé, l'écart était invisible.
 
 `verifier-les-comptes` déroule la vie entière d'un compte contre un vrai
 serveur : la première inscription (celle du propriétaire), une deuxième qui
