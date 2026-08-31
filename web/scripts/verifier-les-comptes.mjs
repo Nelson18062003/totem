@@ -353,6 +353,23 @@ try {
   verifier("l'ancien jeton n'inscrit plus de téléphone",
            rAncienAppareil.status === 401 || rAncienAppareil.status === 403, true);
 
+  // ROUVRIR DOIT ROUVRIR. Une révocation qu'on ne peut pas défaire serait un
+  // autre défaut : le propriétaire n'oserait plus fermer, de peur de casser
+  // quelque chose sans retour.
+  await poste("/api/comptes", { id: idAmi, geste: "approuver" },
+              { authorization: `Bearer ${jetonProprio}` });
+  verifier("le même jeton rouvre après réapprobation",
+           (await fetch(B + "/api/donnees", avecAncien)).status, 200);
+
+  // SUPPRIMER N'EST PAS FERMER. Un compte fermé garde sa ligne, avec
+  // « approuve » à faux ; un compte supprimé n'en a plus du tout. Ce sont
+  // deux états différents de la base, et rien ne garantit qu'un contrôle
+  // écrit pour l'un vaille pour l'autre — il faut les éprouver tous les deux.
+  await poste("/api/comptes", { id: idAmi, geste: "supprimer" },
+              { authorization: `Bearer ${jetonProprio}` });
+  verifier("le jeton d'un compte EFFACÉ ne vaut rien non plus",
+           (await fetch(B + "/api/donnees", avecAncien)).status, 401);
+
   console.log("\nOn ne se ferme pas la porte à soi-même");
   const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === "nelson@exemple.cm").id;
   const rSoi = await poste("/api/comptes", { id: idMoi, geste: "supprimer" },

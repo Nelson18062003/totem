@@ -63,6 +63,22 @@ on:
 permissions:
   contents: read
 
+# POURQUOI DES EMPREINTES ET NON DES ÉTIQUETTES (« @v4 »).
+#
+# Une étiquette n'est pas un contenu : c'est un nom, et celui qui contrôle le
+# dépôt peut le faire pointer ailleurs, sans que rien ne change ici. Ces
+# travaux-ci tiennent le jeton Expo et la clé du Play Store, et « Mise à jour »
+# publie du code vers des téléphones EN SERVICE. Une action détournée
+# obtiendrait les deux.
+#
+# L'empreinte, elle, désigne un contenu et un seul. La version lisible reste
+# en commentaire à côté — sans quoi plus personne ne sait ce qui tourne.
+#
+# CE QUE CELA COÛTE, et c'est réel : ces actions ne montent plus toutes
+# seules, corrections de sécurité comprises. D'où « .github/dependabot.yml »,
+# qui ouvre une pull request quand une nouvelle version paraît. On relit, on
+# fusionne : le choix reste à nous, mais l'information vient à nous.
+
 jobs:
   fabriquer:
     name: Fabriquer (${{ inputs.profil }})
@@ -79,17 +95,17 @@ jobs:
           exit 1
 
       - name: Récupérer le dépôt
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
 
       - name: Installer Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
       - name: Installer les outils d'Expo
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e   # 8.2.1
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
@@ -127,9 +143,20 @@ jobs:
       #
       # Rien n'échoue si elle n'est pas posée : l'application demandera
       # l'adresse à l'écran, comme avant. Moins bien, pas cassé.
+      # L'adresse passe par « env », jamais collée dans la ligne de commande.
+      #
+      # Ce n'est pas une précaution de principe. « ${{ … }} » est remplacé
+      # AVANT que le shell ne lise la ligne : une adresse contenant un
+      # guillemet et un point-virgule deviendrait une commande à exécuter, ici,
+      # sur une machine qui tient le jeton Expo et la clé du Play Store.
+      # Il faut déjà pouvoir lancer ce travail pour en arriver là — mais la
+      # défense ne coûte rien, et le jour où ce déclencheur change, elle est
+      # déjà en place.
       - name: Poser l'adresse de la plateforme
         working-directory: mobile
-        run: node scripts/poser-l-adresse.mjs "${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}"
+        env:
+          ADRESSE: ${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}
+        run: node scripts/poser-l-adresse.mjs "$ADRESSE"
 
       # La PREMIÈRE fois seulement : rattacher le projet à l'organisation.
       #
@@ -231,7 +258,9 @@ jobs:
       - name: Compiler
         if: ${{ !inputs.sans_compiler }}
         working-directory: mobile
-        run: eas build --platform android --profile ${{ inputs.profil }} --non-interactive --wait
+        env:
+          PROFIL: ${{ inputs.profil }}
+        run: eas build --platform android --profile "$PROFIL" --non-interactive --wait
 
       # LE DÉPÔT AU MAGASIN, sans passer par les mains du propriétaire.
       #
@@ -247,7 +276,9 @@ jobs:
       - name: Déposer au magasin
         if: inputs.profil != 'apercu' && steps.cle.outputs.posee == 'oui'
         working-directory: mobile
-        run: eas submit --platform android --profile ${{ inputs.profil }} --latest --non-interactive
+        env:
+          PROFIL: ${{ inputs.profil }}
+        run: eas submit --platform android --profile "$PROFIL" --latest --non-interactive
 
       # La clé ne survit pas au travail. `always()` : même si la compilation
       # ou le dépôt a échoué — surtout dans ce cas.
@@ -258,8 +289,11 @@ jobs:
 
       - name: Où trouver le paquet
         working-directory: mobile
+        env:
+          PROFIL: ${{ inputs.profil }}
+          SANS_COMPILER: ${{ inputs.sans_compiler }}
         run: |
-          echo "### Paquet Android — profil \`${{ inputs.profil }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### Paquet Android — profil \`$PROFIL\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           eas build:list --platform android --limit 1 --json --non-interactive \
             | node -e "
@@ -270,16 +304,16 @@ jobs:
                 if (b.appVersion) console.log('- version : ' + b.appVersion);
               });" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ inputs.sans_compiler }}" = "true" ]; then
+          if [ "$SANS_COMPILER" = "true" ]; then
             echo "_Aucune compilation : c'est le dernier paquet déjà fabriqué_" >> $GITHUB_STEP_SUMMARY
             echo "_qui vient d'être déposé._" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          if [ "${{ inputs.profil }}" = "apercu" ]; then
+          if [ "$PROFIL" = "apercu" ]; then
             echo "APK à installer directement : ni magasin, ni compte." >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.cle.outputs.posee }}" = "oui" ]; then
             echo "✅ **Déposé au magasin tout seul.** Rien à télécharger." >> $GITHUB_STEP_SUMMARY
-            if [ "${{ inputs.profil }}" = "essai" ]; then
+            if [ "$PROFIL" = "essai" ]; then
               echo "La version est sur la piste d'essai interne, disponible pour" >> $GITHUB_STEP_SUMMARY
               echo "les testeurs de la liste." >> $GITHUB_STEP_SUMMARY
             else

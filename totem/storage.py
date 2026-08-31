@@ -26,6 +26,7 @@ attribuée.
 
 import csv
 import io
+import os
 import re
 import sqlite3
 import threading
@@ -97,12 +98,40 @@ class JournalInaccessible(Exception):
     dit ni quel fichier, ni quoi faire."""
 
 
+def refermer(chemin):
+    """Ne laisser lire ce fichier qu'à son propriétaire (0600).
+
+    POURQUOI IL FAUT LE FAIRE À LA MAIN. SQLite crée ses fichiers selon le
+    « umask » du processus, qui vaut 022 sur un Raspberry Pi : le journal
+    naissait donc en 0644. Or ce fichier porte TOUT — les montants, les
+    tiers, les numéros de téléphone, les soldes. Un Pi n'est pas une machine
+    à un seul utilisateur : il a un compte « pi », souvent un accès SSH
+    partagé pour la maintenance, parfois un second compte pour quelqu'un du
+    bureau. En 0644, tous lisaient la caisse.
+
+    On ne touche pas au propriétaire du fichier — `install.sh` le donne au
+    compte qui a lancé l'installation, pour qu'un diagnostic à la main reste
+    possible. On ferme seulement aux AUTRES.
+
+    Un échec n'empêche pas de travailler : sur une partition FAT (une clé
+    USB, la partition de démarrage), `chmod` n'a aucun effet et lève parfois.
+    Le journal doit s'ouvrir quand même — mais voir `config.avertissements_droits`,
+    qui le dit alors à voix haute.
+    """
+    try:
+        os.chmod(chemin, 0o600)
+    except OSError:
+        pass
+
+
 class Journal:
     def __init__(self, chemin="totem.db"):
         try:
             self.conn = sqlite3.connect(chemin, check_same_thread=False)
         except sqlite3.OperationalError as e:
             raise JournalInaccessible(_conseil(chemin, e))
+        # Aussitôt ouvert, aussitôt refermé aux autres.
+        refermer(chemin)
         self.verrou = threading.Lock()
         try:
             self._creer_tables()
@@ -833,6 +862,11 @@ class Journal:
         """Copie cohérente du journal, même pendant que le robot écrit.
         Envoyée dans Telegram, elle constitue la seule copie hors du Pi."""
         destination = sqlite3.connect(chemin)
+        # La copie porte exactement ce que porte l'original : elle se referme
+        # de la même façon, et AVANT d'être remplie. Une sauvegarde laissée
+        # en 0644 le temps du transfert annulerait le soin pris sur le
+        # journal lui-même.
+        refermer(chemin)
         try:
             with self.verrou:
                 self.conn.backup(destination)

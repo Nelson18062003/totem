@@ -10,6 +10,8 @@
 // « Ça compile » ne dit rien d'un verrou : seul un serveur qu'on attaque le dit.
 
 import { spawn } from "node:child_process";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 const PORT = 3199;
 const B = `http://127.0.0.1:${PORT}`;
@@ -57,6 +59,71 @@ try {
   for (let i = 0; i < 60; i++) {
     if (await code("/connexion")) break;
     await new Promise((r) => setTimeout(r, 500));
+  }
+
+  // ---------------------------------------------------------------------
+  // AUCUNE PORTE N'A ÉTÉ OUBLIÉE — le relevé qui vaut pour la porte de demain.
+  //
+  // Les vérifications ci-dessous frappent aux portes qu'on a PENSÉ à écrire
+  // ici. C'est leur limite, et elle est sérieuse : on n'attaque pas une porte
+  // dont on ignore l'existence. La route ajoutée le mois prochain, celle que
+  // personne n'aura songé à mettre dans cette liste, ne sera éprouvée par
+  // rien.
+  //
+  // Ce relevé-ci part donc du DISQUE, pas d'une liste écrite à la main : il
+  // lit la liste OUVERT du middleware, parcourt tous les fichiers de routes,
+  // et frappe à CHACUNE de celles qui ne sont pas déclarées ouvertes. Toute
+  // porte qui répond autre chose que 401 sans jeton est un trou.
+  //
+  // Il ne remplace pas les essais qui suivent — eux savent ce que chaque
+  // porte doit répondre. Il garantit seulement qu'aucune n'échappe au compte.
+  console.log("\nAucune porte n'a été oubliée");
+  {
+    const fichiers = (racine, nom) => {
+      const trouves = [];
+      const parcourir = (d) => {
+        for (const e of readdirSync(d)) {
+          const p = join(d, e);
+          if (statSync(p).isDirectory()) parcourir(p);
+          else if (e === nom) trouves.push(p);
+        }
+      };
+      parcourir(racine);
+      return trouves.sort();
+    };
+    // « app/api/lu/route.ts » → « /api/lu ». Les dossiers entre parenthèses
+    // sont des groupes de Next : ils ne paraissent pas dans l'adresse.
+    const cheminServi = (f) =>
+      "/" + f.replace(/^app\//, "").replace(/\/route\.ts$/, "")
+             .split("/").filter((m) => !m.startsWith("(")).join("/");
+
+    const middleware = readFileSync("middleware.ts", "utf8");
+    const bloc = middleware.match(/const OUVERT = \[([\s\S]*?)\];/);
+    if (!bloc) {
+      console.log("  ✗ la liste OUVERT est introuvable dans middleware.ts");
+      echecs++;
+    }
+    const ouvertes = [...(bloc?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    console.log(`     (${ouvertes.length} portes déclarées ouvertes)`);
+
+    // Un segment dynamique ne se frappe pas tel quel : « [numero] » n'est pas
+    // une adresse. On lui donne une valeur inoffensive de la bonne forme.
+    const adressable = (c) => c.replace(/\[\.\.\.[^\]]+\]|\[[^\]]+\]/g, "1");
+
+    const fermees = fichiers("app", "route.ts")
+      .map(cheminServi)
+      .filter((c) => !ouvertes.some((o) => c === o || c.startsWith(o + "/")));
+
+    let ouvertesParErreur = 0;
+    for (const chemin of fermees) {
+      const statut = await code(adressable(chemin));
+      if (statut !== 401) {
+        console.log(`     ↳ ${adressable(chemin)} répond ${statut}, pas 401`);
+        ouvertesParErreur++;
+      }
+    }
+    verifier(`${fermees.length} portes fermées, toutes muettes sans jeton`,
+             ouvertesParErreur, 0);
   }
 
   console.log("\nPortes fermées sans session");

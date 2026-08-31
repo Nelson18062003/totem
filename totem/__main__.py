@@ -203,6 +203,16 @@ def principal():
     from .textes import definir_langue
     definir_langue(cfg.get("langue"))
 
+    # LES SECRETS SONT-ILS À L'ABRI SUR CETTE MACHINE ? Le fichier de
+    # configuration porte le jeton du robot — qui permet de parler à sa
+    # place, donc de piloter la SIM — et la clé de service de la base, qui
+    # contourne toutes ses règles. S'il est lisible par d'autres comptes du
+    # Pi, on le dit ICI, au démarrage, là où le propriétaire regarde quand il
+    # installe. Un avertissement rangé dans un journal que personne n'ouvre
+    # n'avertit personne.
+    for phrase in cfg.get("avertissements") or []:
+        print(t(f"WARNING: {phrase}", f"ATTENTION : {phrase}"), file=sys.stderr)
+
     transport = TransportTelegram(cfg["jeton"], cfg["chat_id"], groupe=cfg["groupe"],
                                   admins=cfg["admins"], sujets=cfg["sujets"])
 

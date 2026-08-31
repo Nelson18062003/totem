@@ -70,17 +70,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Récupérer le dépôt
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
 
       - name: Installer Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
       - name: Installer les outils d'Expo
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e   # 8.2.1
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
@@ -125,9 +125,17 @@ jobs:
       #
       # Rien n'échoue si elle n'est pas posée : l'application demandera
       # l'adresse à l'écran, comme avant. Moins bien, pas cassé.
+      # L'adresse passe par « env », jamais collée dans la ligne de commande.
+      # Voir le même geste dans « application-android.yml » : « ${{ … }} » est
+      # remplacé AVANT que le shell ne lise la ligne, si bien qu'une valeur
+      # bien choisie y devient du code. Ce travail-ci pousse du code vers des
+      # téléphones EN SERVICE : c'est le dernier endroit où l'on veut d'une
+      # ligne de commande qu'on assemble à la main.
       - name: Poser l'adresse de la plateforme
         working-directory: mobile
-        run: node scripts/poser-l-adresse.mjs "${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}"
+        env:
+          ADRESSE: ${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}
+        run: node scripts/poser-l-adresse.mjs "$ADRESSE"
 
       # LA BATTERIE AVANT DE PUBLIER, JAMAIS APRÈS.
       #
@@ -159,19 +167,24 @@ jobs:
 
       - name: Publier la mise à jour
         working-directory: mobile
+        env:
+          MESSAGE_DEMANDE: ${{ inputs.message }}
+          CANAL: ${{ inputs.canal }}
         run: |
-          MESSAGE="${{ inputs.message }}"
+          MESSAGE="$MESSAGE_DEMANDE"
           # Sans message, on prend celui du dernier commit : mieux vaut la
           # vraie raison du changement qu'une ligne vide dans l'historique.
           if [ -z "$MESSAGE" ]; then
             MESSAGE="$(git log -1 --pretty=%s)"
           fi
-          eas update --channel "${{ inputs.canal }}" --message "$MESSAGE" --non-interactive
+          eas update --channel "$CANAL" --message "$MESSAGE" --non-interactive
 
       - name: Ce qui est parti
         working-directory: mobile
+        env:
+          CANAL: ${{ inputs.canal }}
         run: |
-          echo "### Mise à jour publiée sur \`${{ inputs.canal }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### Mise à jour publiée sur \`$CANAL\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Les téléphones la prendront **au prochain démarrage** de" >> $GITHUB_STEP_SUMMARY
           echo "l'application. Rien à réinstaller." >> $GITHUB_STEP_SUMMARY
@@ -181,7 +194,7 @@ jobs:
           echo "Une brique native a changé depuis la dernière compilation ?" >> $GITHUB_STEP_SUMMARY
           echo "Alors il fallait monter ce numéro et recompiler d'abord." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          eas update:list --branch "${{ inputs.canal }}" --limit 1 --json --non-interactive \
+          eas update:list --branch "$CANAL" --limit 1 --json --non-interactive \
             | node -e "
               let e='';process.stdin.on('data',d=>e+=d).on('end',()=>{
                 try {

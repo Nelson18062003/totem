@@ -133,6 +133,26 @@ class Nuage:
         with urllib.request.urlopen(req, timeout=DELAI) as rep:
             return rep.status
 
+    def _requete_corps(self, methode, chemin, corps=None, entetes=None):
+        """Comme `_requete`, mais on LIT la réponse.
+
+        `_requete` demande « return=minimal » : la base ne dit alors pas
+        quelles lignes ont bougé. Pour une prise en charge conditionnelle,
+        c'est précisément ce qu'il faut savoir — une liste vide veut dire
+        « personne n'a bougé, un autre était là avant toi ».
+        """
+        url = f"{self.url}/rest/v1/{chemin}"
+        donnees = json.dumps(corps).encode() if corps is not None else None
+        req = urllib.request.Request(url, data=donnees, method=methode)
+        req.add_header("apikey", self.cle)
+        req.add_header("Authorization", f"Bearer {self.cle}")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Prefer", "return=representation")
+        for nom, valeur in (entetes or {}).items():
+            req.add_header(nom, valeur)
+        with urllib.request.urlopen(req, timeout=DELAI) as rep:
+            return json.loads(rep.read().decode() or "[]")
+
     def _tenter_insert(self, table, lignes, cle_unicite,
                        resolution="ignore-duplicates"):
         """Insertion rejouable qui DIT ce qui s'est passé :
@@ -579,6 +599,34 @@ class Nuage:
             self.derniere_erreur = str(e)
             return []
 
+    def commandes_abandonnees(self, avant):
+        """Les demandes prises en charge et jamais terminées.
+
+        POURQUOI IL EN EXISTE. Une demande se RÉCLAME avant d'être exécutée
+        (voir `reclamer`), et son résultat s'écrit après. Entre les deux, le
+        robot peut être coupé — courant, redémarrage, plantage. La ligne
+        reste alors « en cours » pour toujours : l'écran attend une réponse
+        qui ne viendra pas, et le propriétaire ne sait pas si son opération
+        est passée.
+
+        POURQUOI ON NE LES REMET PAS « EN ATTENTE ». Ce serait les faire
+        rejouer — et on ne sait justement PAS si le code a été composé avant
+        la coupure. Sur un transfert, c'est le doute qu'il faut lever, pas
+        l'argent qu'il faut renvoyer. On les marque échouées, avec un mot qui
+        dit ce qu'on ne sait pas.
+        """
+        if not self.actif:
+            return []
+        try:
+            lignes = self._lire(
+                f"commandes?terminal=eq.{self.terminal}&etat=eq.en_cours"
+                f"&demandee_le=lt.{urllib.parse.quote(avant)}&limit=20")
+            self.derniere_erreur = None
+            return lignes
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return []
+
     def appareils(self):
         """Les téléphones qui ont demandé à être prévenus.
 
@@ -601,8 +649,50 @@ class Nuage:
             self.derniere_erreur = str(e)
             return []
 
+    def reclamer(self, identifiant):
+        """PRENDRE une demande pour soi — ou constater qu'un autre l'a prise.
+
+        POURQUOI CE N'EST PAS UN SIMPLE « mets-la en cours ». C'en était un,
+        et il ne demandait rien : il ORDONNAIT. Deux robots sur le même
+        terminal — un second Pi branché, un redémarrage qui chevauche
+        l'ancien — lisaient donc la même ligne « en attente » et la
+        composaient tous les deux. Sur un transfert, c'est deux fois
+        l'argent, et la seconde fois personne ne l'a demandée.
+
+        La condition « et elle est encore en attente » est ce qui manque, et
+        c'est la base qui doit la trancher : elle seule voit les deux robots.
+        PostgREST le fait en une requête — le filtre `etat=eq.en_attente`
+        fait partie du PATCH, donc du même verrou de ligne. Celui qui arrive
+        second ne modifie AUCUNE ligne, et le sait.
+
+        C'est aussi ce qui répare le cas d'un seul robot : si l'écriture
+        échouait, la ligne restait « en attente » et le tour suivant la
+        reprenait — après l'avoir déjà exécutée. Ici, on ne commence pas
+        tant qu'on n'a pas gagné la ligne.
+
+        Rend True seulement si la ligne était bien à prendre ET qu'on l'a
+        prise. Dans le doute — réseau coupé, réponse illisible — c'est False :
+        ne rien faire est toujours rattrapable, composer deux fois ne l'est
+        pas.
+        """
+        try:
+            lignes = self._requete_corps(
+                "PATCH",
+                f"commandes?id=eq.{int(identifiant)}&etat=eq.en_attente",
+                {"etat": "en_cours"})
+            self.derniere_erreur = None
+            return bool(lignes)
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return False
+
     def commande_maj(self, identifiant, champs):
-        """Fait avancer une demande : prise en charge, résultat, échec."""
+        """Fait avancer une demande : résultat, échec, effacement du secret.
+
+        Rend False si l'écriture n'a pas abouti — et cette réponse SE REGARDE.
+        Elle était ignorée partout, y compris là où elle efface un code
+        confidentiel (voir `pilotage._repondre`).
+        """
         try:
             self._requete(
                 "PATCH", f"commandes?id=eq.{int(identifiant)}", champs)

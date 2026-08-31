@@ -21,15 +21,42 @@ class FauxNuage:
         self.soldes = []            # (iccid, solde)
         self.republies = 0
         self.reveils = 0
+        # CE QUE LE FAUX NUAGE NE SAVAIT PAS FAIRE : échouer.
+        #
+        # `commande_maj` rendait toujours True, si bien que l'essai du code
+        # secret masqué mesurait un nuage qui répond toujours — c'est-à-dire
+        # le cas où il n'y a rien à craindre. Or c'est l'AUTRE cas qui
+        # compte : celui où l'effacement du code n'aboutit pas.
+        self.echouer_maj = False    # toute écriture échoue
+        self.reclamations = []      # les demandes qu'on a tenté de réclamer
+        self.reclamation_perdue = False   # un autre robot l'a prise
+        self.orphelines = []              # prises en charge, jamais finies
+        self.limites_demandees = []
 
     def commandes_en_attente(self):
         return []
+
+    def commandes_abandonnees(self, avant):
+        self.limites_demandees.append(avant)
+        return list(self.orphelines)
 
     def reveiller(self):
         self.reveils += 1
 
     def commande_maj(self, identifiant, champs):
+        if self.echouer_maj:
+            return False        # réseau coupé, Supabase en panne, 5xx…
         self.maj.append((identifiant, dict(champs)))
+        return True
+
+    def reclamer(self, identifiant):
+        """Prendre une demande pour soi — ou constater qu'un autre l'a prise."""
+        self.reclamations.append(identifiant)
+        if self.reclamation_perdue:
+            return False
+        if self.echouer_maj:
+            return False
+        self.maj.append((identifiant, {"etat": "en_cours"}))
         return True
 
     def publier_solde(self, iccid, solde):
@@ -139,6 +166,120 @@ class TestGuichet(unittest.TestCase):
         # Le réseau, lui, a bien reçu le code — c'est tout l'intérêt.
         self.assertEqual(compte.recu[-1], "1234")
 
+    def test_le_code_secret_n_est_pas_compose_si_l_effacement_echoue(self):
+        """LA RÈGLE QUI PASSE AVANT TOUTES LES AUTRES.
+
+        « Le code PIN n'est jamais stocké » — c'est écrit dans les consignes
+        du dépôt, et le commentaire du pilotage le redit : « s'il ne devait
+        rester qu'une règle, ce serait celle-là ».
+
+        Or l'effacement était demandé au nuage sans jamais regarder s'il
+        avait abouti. Un réseau coupé, un 5xx de Supabase, et le code partait
+        quand même sur le réseau — en laissant sa copie EN CLAIR dans la
+        table des commandes, pour toujours.
+
+        Ce que le robot doit faire dans ce cas est le contraire de ce qu'il
+        faisait : NE PAS composer. Un transfert manqué se refait d'un geste ;
+        un code confidentiel qui a fui ne se reprend pas.
+        """
+        compte = FauxCompte([
+            ("ouverte", "Entrez votre code secret"),
+            ("fermee", "Le solde de votre compte est de 2784137.6FCFA."),
+        ])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 1, "type": "ussd", "parametres": {"code": "#148*5#"}})
+        compose_avant = list(compte.recu)
+
+        nuage.echouer_maj = True          # le nuage ne répond plus
+        p._traiter({"id": 2, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True}})
+
+        # Le code n'a PAS été composé : il n'y a rien de plus sur le réseau.
+        self.assertEqual(compte.recu, compose_avant)
+        self.assertNotIn("1234", str(compte.recu))
+
+        # ET LE CODE NE RESTE PAS DANS LA BASE. Refuser de composer met à
+        # l'abri du pire — composer ET garder une copie — mais n'efface
+        # rien tout seul. L'effacement repart donc avec l'écriture finale,
+        # qui a lieu de toute façon : dès que le nuage répond de nouveau,
+        # le code s'en va.
+        nuage.echouer_maj = False
+        p._traiter({"id": 3, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True}})
+        self.assertNotIn("1234", str(nuage.maj))
+        derniere = nuage.maj[-1][1]
+        self.assertEqual(derniere.get("parametres"), {"secret": True})
+
+    def test_une_demande_deja_prise_n_est_pas_rejouee(self):
+        """Deux robots, une seule demande — et de l'argent au bout.
+
+        La prise en charge était un PATCH sans condition : « mets cette
+        demande en cours ». Elle ne demandait pas « SI elle est encore en
+        attente ». Deux robots sur le même terminal — un second Pi, ou un
+        redémarrage qui chevauche l'ancien — lisaient donc la même ligne et
+        composaient tous les deux. Sur un transfert, c'est deux fois
+        l'argent.
+
+        La même chose arrivait avec un seul robot : si l'écriture « en
+        cours » échouait, la ligne restait « en attente » et le tour suivant
+        la reprenait — après l'avoir déjà exécutée une fois.
+        """
+        compte = FauxCompte([("ouverte", "Orange Money\n1) Transfert")])
+        p, nuage = pilote(compte)
+        nuage.reclamation_perdue = True   # un autre robot a été plus rapide
+
+        p._traiter({"id": 9, "type": "ussd",
+                    "parametres": {"code": "*126*1*696000000*50000#"}})
+
+        # Rien n'a été composé, et rien n'a été écrit comme résultat : la
+        # demande appartient à l'autre.
+        self.assertEqual(compte.recu, [])
+        self.assertEqual([c for i, c in nuage.maj if i == 9], [])
+        self.assertEqual(nuage.reclamations, [9])
+
+    def test_une_demande_libre_est_bien_reclamee_puis_faite(self):
+        """Le pendant du précédent : sans concurrence, rien ne change."""
+        compte = FauxCompte([("ouverte", "Orange Money\n1) Transfert")])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 10, "type": "ussd", "parametres": {"code": "#148#"}})
+        self.assertEqual(nuage.reclamations, [10])
+        etats = [c.get("etat") for i, c in nuage.maj if i == 10 and "etat" in c]
+        self.assertEqual(etats, ["en_cours", "faite"])
+        self.assertEqual(compte.recu, ["#148#"])
+
+    def test_une_demande_coupee_en_plein_vol_ne_reste_pas_en_suspens(self):
+        """Le robot peut être arrêté entre la prise en charge et le résultat.
+
+        La ligne restait alors « en cours » pour toujours : l'écran attendait
+        une réponse qui ne viendrait jamais, et le propriétaire ne savait pas
+        si son opération était passée.
+
+        On la marque ÉCHOUÉE — jamais « en attente ». La remettre en file la
+        ferait rejouer, alors qu'on ne sait justement pas si le code a été
+        composé avant la coupure. Sur un transfert, c'est le doute qu'il faut
+        lever, pas l'argent qu'il faut renvoyer.
+        """
+        compte = FauxCompte([])
+        p, nuage = pilote(compte)
+        nuage.orphelines = [{"id": 77, "type": "ussd", "etat": "en_cours"}]
+
+        p._abandonner_les_orphelines()
+
+        self.assertEqual(len(nuage.maj), 1)
+        identifiant, champs = nuage.maj[0]
+        self.assertEqual(identifiant, 77)
+        self.assertEqual(champs["etat"], "echouee")
+        # Le message renvoie au SOLDE, qui fait foi — dans la langue du robot,
+        # quelle qu'elle soit. On n'ancre pas un essai sur une langue : le
+        # robot parle anglais par défaut et français sur demande.
+        dit = champs["resultat"].lower()
+        self.assertTrue("balance" in dit or "solde" in dit, dit)
+        # Rien n'a été composé : on ne rejoue pas ce qu'on ne comprend pas.
+        self.assertEqual(compte.recu, [])
+        # Et la limite demandée est bien une date, pas un nombre de secondes.
+        self.assertEqual(len(nuage.limites_demandees), 1)
+        from datetime import datetime
+        datetime.fromisoformat(nuage.limites_demandees[0])
     def test_le_code_secret_est_efface_MEME_quand_la_session_a_disparu(self):
         """La panne la plus banale de Douala : le courant saute.
 
