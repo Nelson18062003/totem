@@ -205,6 +205,30 @@ export function OperationPopup({
   useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
   useEffect(() => () => { if (raccrochageDu.current) posterFin(); }, []);
 
+  // FERMER L'ONGLET NE DOIT PAS LAISSER LA SIM EN LIGNE.
+  //
+  // Le nettoyage de démontage de React ne s'exécute QUE si le composant est
+  // démonté par l'application : fermer l'onglet, recharger, taper une autre
+  // adresse ou revenir en arrière hors du site déchargent la page sans qu'il
+  // soit appelé — et la session reste ouverte sur la vraie carte, à Douala.
+  //
+  // `sendBeacon` est fait pour ce moment précis : le navigateur garde la
+  // requête en charge APRÈS la disparition de la page. On l'accroche à
+  // « pagehide », que tous les navigateurs déclenchent (y compris sur mobile,
+  // où « beforeunload » est ignoré).
+  useEffect(() => {
+    const enPartant = () => {
+      if (!raccrochageDu.current) return;
+      raccrochageDu.current = false;
+      navigator.sendBeacon?.(
+        "/api/commande",
+        new Blob([JSON.stringify({ type: "ussd_fin", parametres: {} })],
+                 { type: "application/json" }));
+    };
+    window.addEventListener("pagehide", enPartant);
+    return () => window.removeEventListener("pagehide", enPartant);
+  }, []);
+
   const secret = async (code: string) => {
     const texte = await envoyer("ussd_reponse", { texte: code, secret: true }, { de: "vous", texte: "••••" });
     if (texte) { setFini(true); onTermine?.(); }

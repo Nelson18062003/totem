@@ -31,6 +31,24 @@ export const relie = Boolean(url && cle);
 // journées : c'est la caisse qui décide de ce qu'est « aujourd'hui ».
 import { FUSEAU } from "./fuseau";
 
+/**
+ * Le chemin d'une requête, SANS ce qu'elle cherchait — pour le journal.
+ *
+ * Un chemin porte parfois une donnée personnelle : la recherche d'un compte
+ * s'écrit « utilisateurs?courriel=eq.nom@exemple.cm ». Journalisé tel quel, à
+ * la moindre erreur de la base, le courriel du propriétaire (ou d'un invité)
+ * se retrouvait écrit dans les journaux du serveur, qui se gardent longtemps
+ * et se lisent à plusieurs.
+ *
+ * On garde ce qui sert à comprendre la panne — la table, les filtres employés
+ * — et on retire les valeurs. Un journal doit dire QUELLE requête a échoué,
+ * pas ce qu'elle cherchait.
+ */
+function sansValeurs(chemin: string): string {
+  return chemin.replace(
+    /(=(?:eq|neq|ilike|like|lt|lte|gt|gte|in|is)\.)[^&]*/gi, "$1…");
+}
+
 async function lire<T>(chemin: string): Promise<T[]> {
   if (!relie) return [];
   try {
@@ -39,7 +57,7 @@ async function lire<T>(chemin: string): Promise<T[]> {
       cache: "no-store",
     });
     if (!r.ok) {
-      console.error(`Supabase : ${chemin} → ${r.status}`);
+      console.error(`Supabase : ${sansValeurs(chemin)} → ${r.status}`);
       return [];
     }
     return (await r.json()) as T[];

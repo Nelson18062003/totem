@@ -46,6 +46,7 @@ python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
+cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
@@ -74,6 +75,16 @@ serveur : la première inscription (celle du propriétaire), une deuxième qui
 doit attendre, l'approbation, la fermeture, la clé de secours. Il cherche
 surtout à prendre en défaut — un compte non approuvé qui entrerait, un invité
 qui administrerait, un message qui dirait si un courriel a un compte ici.
+
+`verifier-le-parcours` déroule ce que le propriétaire FAIT : il se connecte,
+compose un code complet, le réseau réclame le code secret, il le tape. Le
+harnais écoute alors CE QUI PART SUR LE RÉSEAU — pas seulement l'écran — et
+exige cinq choses : le pavé s'ouvre, le code ne s'affiche jamais en clair, il
+part avec son drapeau « secret » (sans quoi le robot ne l'efface pas de la
+base), l'ouverture porte une clé d'intention (sans quoi un geste rejoué
+composerait le transfert deux fois), et quitter l'écran raccroche la session.
+Il RECOMPILE avant de mesurer : `next start` sert « .next », pas le disque —
+sans cela le parcours passerait en vert contre du code d'hier.
 
 **Un contrôle qui passe sans rien regarder est pire que pas de contrôle : il
 rassure.** Le harnais des formats a mesuré l'écran de connexion aux huit
