@@ -579,26 +579,6 @@ export function BoutonDeconnexion() {
   );
 }
 
-export function Bascule({ t, defaut }: { t: string; defaut?: boolean }) {
-  const [actif, setActif] = useState(Boolean(defaut));
-  return (
-    <div className="flex items-center justify-between py-3">
-      <span className="pr-4 text-body">{t}</span>
-      <button
-        onClick={() => setActif((a) => !a)}
-        role="switch"
-        aria-checked={actif}
-        aria-label={t}
-        className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${
-          actif ? "justify-end bg-ink" : "justify-start bg-surface-3"
-        }`}
-      >
-        <span className="size-5 rounded-full bg-white" />
-      </button>
-    </div>
-  );
-}
-
 /**
  * QUI PEUT SE CONNECTER — réservé au propriétaire.
  *
@@ -620,6 +600,9 @@ export function SectionQui() {
   }[] | null>(null);
   const [permis, setPermis] = useState<boolean | null>(null);
   const [occupe, setOccupe] = useState<number | null>(null);
+  // L'échec d'une action de compte, à dire au propriétaire : fermer un
+  // accès qui n'aboutit pas ne doit jamais passer pour un succès.
+  const [rateAction, setRateAction] = useState(false);
   // La création d'un compte : ouverte à la demande, pas affichée d'office.
   // Ce n'est pas un geste de tous les jours.
   const [ouvrirCreation, setOuvrirCreation] = useState(false);
@@ -646,13 +629,21 @@ export function SectionQui() {
   async function agir(id: number, geste: "approuver" | "fermer" | "supprimer") {
     if (geste === "supprimer" && !confirm(t.supprimerSur)) return;
     setOccupe(id);
+    setRateAction(false);
     try {
-      await fetch("/api/comptes", {
+      // ON REGARDE SI ÇA A ABOUTI. Sans ce contrôle, un 403, une coupure
+      // réseau ou une panne serveur repassaient inaperçus : la liste se
+      // réaffichait inchangée et le propriétaire croyait avoir fermé un accès
+      // qui, lui, tenait toujours. Le frère `creer` vérifie déjà `r.ok`.
+      const r = await fetch("/api/comptes", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, geste }),
       });
+      if (!r.ok) { setRateAction(true); return; }
       await charger();
+    } catch {
+      setRateAction(true);
     } finally {
       setOccupe(null);
     }
@@ -696,6 +687,11 @@ export function SectionQui() {
       <h2 className="mb-1 text-heading font-semibold">{t.qui}</h2>
       <p className="mb-3 text-caption leading-relaxed text-ink-faint">{t.quiAide}</p>
       <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
+        {rateAction && (
+          <li className="py-3 text-caption text-negative" role="alert">
+            {t.actionRatee}
+          </li>
+        )}
         {comptes.map((c) => (
           <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
             <div className="min-w-0 flex-1">

@@ -61,6 +61,11 @@ const en = {
   notifPaiement: "Every payment received",
   notifRapport: "Daily report (9 pm)",
   notifCourant: "Power cuts and low voltage",
+  // Ce qui est VRAI, à la place d'interrupteurs qui ne commandaient rien :
+  // le terminal notifie chaque mouvement d'argent ; l'affichage sur le
+  // téléphone se règle dans les réglages du téléphone lui-même.
+  notifExplique:
+    "Your phone is notified the moment money moves on a card. What shows — and on the lock screen — is set in your phone's own settings, like any app.",
 
   // --- Les codes USSD
   codesUssd: "USSD codes",
@@ -160,6 +165,10 @@ const en = {
   creerBouton: "Create",
   creerEnCours: "Creating…",
   creerFait: "Account created. It can sign in right away.",
+  // Une action de compte (approuver/fermer/supprimer) qui n'aboutit pas.
+  // Sans ce message, fermer un accès pouvait échouer en silence, et le
+  // propriétaire croire qu'il avait coupé quelqu'un alors que non.
+  actionRatee: "Action failed — nothing changed. Check the connection and try again.",
   // L'avertissement qui compte : tant que rattacher une SIM à une personne
   // n'existe pas, un compte approuvé voit TOUT.
   creerAvertissement:
@@ -282,6 +291,8 @@ const fr: typeof en = {
   notifPaiement: "Chaque paiement reçu",
   notifRapport: "Rapport quotidien (21 h)",
   notifCourant: "Coupure de courant et sous-tension",
+  notifExplique:
+    "Le téléphone est prévenu dès qu'un mouvement d'argent a lieu sur une carte. Ce qui s'affiche — et sur l'écran verrouillé — se règle dans les réglages du téléphone, comme pour toute application.",
 
   codesUssd: "Codes USSD",
   carteEnPlace: (op) => `${op} · carte en place`,
@@ -368,6 +379,7 @@ const fr: typeof en = {
   creerBouton: "Créer",
   creerEnCours: "Création…",
   creerFait: "Compte créé. Il peut se connecter tout de suite.",
+  actionRatee: "L'action n'a pas abouti — rien n'a changé. Vérifiez la connexion et réessayez.",
   creerAvertissement:
     "Ce compte verra tout ce que vous voyez — chaque carte, chaque message, " +
     "chaque montant. Rattacher des SIM précises à une personne n’existe pas " +
