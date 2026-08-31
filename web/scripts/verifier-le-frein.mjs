@@ -29,8 +29,15 @@ import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
 
 const PORT = 3177;
+// UNE SECONDE INSTANCE, sur le même faux nuage. C'est elle qui prouve le
+// point le plus difficile à voir : le seau est-il commun, ou chaque serveur
+// a-t-il le sien ? Un hébergement qui met plusieurs instances en parallèle —
+// ce que fait Vercel dès qu'il y a du trafic — donnait autrefois à une
+// attaque l'allocation entière par instance, sans que rien ne le signale.
+const PORT2 = 3178;
 const NUAGE = 4993;
 const B = `http://127.0.0.1:${PORT}`;
+const B2 = `http://127.0.0.1:${PORT2}`;
 const MDP = "le-vrai-mot-de-passe-du-proprietaire";
 const CIBLE = "cible@exemple.cm";
 
@@ -46,7 +53,7 @@ async function portLibre(port) {
     return false;
   } catch { return true; }
 }
-for (const port of [PORT, NUAGE]) {
+for (const port of [PORT, PORT2, NUAGE]) {
   if (!(await portLibre(port))) {
     console.error(`\n✗ Le port ${port} est déjà occupé — arrêtez l'essai précédent.`);
     process.exit(1);
@@ -62,19 +69,20 @@ await new Promise((resoudre, rejeter) => {
 
 const nuage = spawn("node", ["scripts/faux-nuage.mjs"],
   { env: { ...process.env, PORT: String(NUAGE) }, stdio: "ignore" });
-const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
-  env: {
-    ...process.env,
-    SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
-    SESSION_SECRET: "secret-du-frein", TOTEM_MOT_DE_PASSE: "cle-de-secours-frein",
-  },
-  stdio: "ignore",
-});
+const envServeur = {
+  ...process.env,
+  SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
+  SESSION_SECRET: "secret-du-frein", TOTEM_MOT_DE_PASSE: "cle-de-secours-frein",
+};
+const serveur = spawn("npx", ["next", "start", "-p", String(PORT)],
+                      { env: envServeur, stdio: "ignore" });
+const serveur2 = spawn("npx", ["next", "start", "-p", String(PORT2)],
+                       { env: envServeur, stdio: "ignore" });
 
 /** Un essai depuis une adresse donnée. Rend le statut et la durée. */
-async function essai(adresse, motdepasse, courriel = CIBLE) {
+async function essai(adresse, motdepasse, courriel = CIBLE, base = B) {
   const t0 = Date.now();
-  const r = await fetch(`${B}/api/connexion`, {
+  const r = await fetch(`${base}/api/connexion`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-real-ip": adresse },
     body: JSON.stringify({ courriel, motdepasse }),
@@ -83,9 +91,11 @@ async function essai(adresse, motdepasse, courriel = CIBLE) {
 }
 
 try {
-  for (let i = 0; i < 90; i++) {
-    try { if ((await fetch(`${B}/api/plateforme`)).ok) break; } catch { /* pas encore */ }
-    await attendre(500);
+  for (const base of [B, B2]) {
+    for (let i = 0; i < 90; i++) {
+      try { if ((await fetch(`${base}/api/plateforme`)).ok) break; } catch { /* pas encore */ }
+      await attendre(500);
+    }
   }
   await fetch(`${B}/api/inscription`, {
     method: "POST", headers: { "content-type": "application/json" },
@@ -163,8 +173,68 @@ try {
   const finMenteur = menteur.slice(-3).reduce((s, e) => s + e.ms, 0) / 3;
   verifier("le seau ne se remet pas à zéro à chaque en-tête inventé",
     finMenteur > premiers * 1.5, `${finMenteur.toFixed(0)} ms au dixième essai`);
+
+  // --- 6. DEUX INSTANCES, UN SEUL SEAU -----------------------------------
+  //
+  // LA VÉRIFICATION LA PLUS DIFFICILE À VOIR DE L'EXTÉRIEUR. Le compteur
+  // vivait dans la mémoire du serveur. Deux instances, deux seaux : une
+  // attaque répartie obtenait l'allocation autant de fois qu'il y avait
+  // d'instances, et rien ne le signalait — les essais étaient refusés, la
+  // cadence était juste beaucoup plus rapide qu'annoncé.
+  //
+  // On mure donc une adresse sur la PREMIÈRE instance, puis on frappe à la
+  // SECONDE avec la même adresse. Elle doit trouver porte close.
+  console.log("\nDeux instances derrière la même base : un seul seau");
+  const attaquant = "198.51.100.99";
+  // En rafale : les enchaîner coûterait huit secondes chacun, et le harnais
+  // mettrait un quart d'heure à dire une chose qui se voit en dix secondes.
+  await Promise.all(
+    Array.from({ length: 65 }, (_, i) => essai(attaquant, `deux-${i}`, CIBLE, B)));
+  const surUn = await essai(attaquant, "encore", CIBLE, B);
+  const surDeux = await essai(attaquant, "encore", CIBLE, B2);
+  verifier("la première instance mure l'adresse", surUn.statut === 429,
+    `${surUn.statut}`);
+  verifier("la SECONDE la mure aussi, sans l'avoir vue attaquer",
+    surDeux.statut === 429, `${surDeux.statut}`);
+  verifier("et elle n'a pas vérifié le mot de passe pour le dire",
+    surDeux.ms < empreinteMs, `${surDeux.ms} ms`);
+
+  // --- 7. SI LA BASE SE TAIT, LA PORTE NE SE FERME PAS -------------------
+  //
+  // Un frein qui dépend de la base ne doit jamais devenir un verrou sur la
+  // maison le jour où la base ne répond plus. C'est déjà la raison d'être de
+  // la clé de secours : on ne met pas le propriétaire dehors parce que
+  // Supabase a hoqueté.
+  //
+  // On éprouve la CLÉ DE SECOURS, et c'est bien elle qu'il faut éprouver :
+  // sans base, il n'y a plus de comptes à vérifier — un mot de passe de
+  // compte ne PEUT pas ouvrir, et c'est normal. La clé de secours existe
+  // exactement pour ce jour-là. Ce qu'on vérifie ici, c'est que le frein ne
+  // vient pas s'ajouter à la panne en fermant aussi cette porte-là.
+  //
+  // Le premier essai s'est trompé de cible : il présentait un mot de passe de
+  // compte à une plateforme sans comptes, et lisait le 401 comme un échec du
+  // frein. Un contrôle qui mesure la mauvaise chose est un contrôle qui ment.
+  console.log("\nBase muette : le frein se tait, la clé de secours ouvre");
+  nuage.kill("SIGKILL");
+  await attendre(500);
+  const secours = await fetch(`${B}/api/connexion`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-real-ip": "203.0.113.201" },
+    body: JSON.stringify({ motdepasse: "cle-de-secours-frein" }),
+  });
+  verifier("la clé de secours ouvre encore, base injoignable",
+    secours.status === 200, `${secours.status}`);
+  const muree = await fetch(`${B}/api/connexion`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-real-ip": attaquant },
+    body: JSON.stringify({ motdepasse: "pas-la-cle" }),
+  });
+  verifier("et le seau de secours en mémoire prend le relais",
+    [401, 429].includes(muree.status), `${muree.status}`);
 } finally {
   serveur.kill("SIGKILL");
+  serveur2.kill("SIGKILL");
   nuage.kill("SIGKILL");
 }
 

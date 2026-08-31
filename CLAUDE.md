@@ -121,6 +121,13 @@ calcul de l'empreinte (7 ms contre 120 ms) — sans quoi une rafale d'essais
 devient une rafale de calculs — et que le propriétaire, sur une autre adresse,
 entre encore pendant l'attaque.
 
+Le compteur vit dans la BASE, pas dans la mémoire du serveur : deux instances
+derrière le même hébergement partagent un seul seau. Le harnais lance DEUX
+serveurs et mure une adresse sur le premier — le second doit la refuser sans
+l'avoir vue attaquer. Si la base se tait, le seau mémoire reprend la main et
+la clé de secours ouvre toujours : un frein ne devient jamais un verrou sur
+sa propre maison.
+
 `verifier-la-politique` ouvre un vrai Chromium et GLISSE un script dans le
 HTML de la page, comme le ferait un nom d'expéditeur piégé. Une politique de
 contenu se lit très bien et ne prouve rien : elle peut être parfaite et la

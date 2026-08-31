@@ -10,9 +10,19 @@
 // mais il suffit à casser la cadence d'une attaque par force brute. Le
 // propriétaire, qui se trompe une fois ou deux, ne le sent pas.
 
+import { compterUnEssai } from "@/lib/serveur";
+
+// LE SEAU DE SECOURS, en mémoire. Le vrai compteur est dans la BASE, partagé
+// par toutes les instances (voir `compter_un_essai` dans sql/schema.sql) ;
+// celui-ci prend le relais quand elle ne répond pas.
+//
+// Il ne compte alors que pour CETTE instance — c'est moins bien, et c'est
+// tout de même mieux que rien : une base injoignable ne doit pas ouvrir la
+// porte en grand, ni la fermer au propriétaire.
 const essais = new Map<string, { n: number; vu: number }>();
 
 const FENETRE_MS = 15 * 60 * 1000;
+const FENETRE_S = FENETRE_MS / 1000;
 const LIBRES = 5;               // essais sans délai
 const PALIER_MS = 500;          // délai ajouté par essai au-delà
 const PLAFOND_MS = 8000;
@@ -157,21 +167,48 @@ function freinCommun(): number {
  * précoce qui empêche une rafale de faire calculer le serveur.
  */
 export async function attendreLeFrein(cle: string): Promise<boolean> {
-  reserverUnEssai(cle);
-  if (compte(cle) > MUR) return false;
-  const attente = Math.max(freinPour(cle), freinCommun());
+  // LE COMPTEUR EST DANS LA BASE — une instruction, sous le verrou de la
+  // ligne. En mémoire, il ne comptait que pour l'instance qui l'hébergeait :
+  // un hébergement qui en met plusieurs en parallèle donnait à une attaque
+  // répartie l'allocation autant de fois qu'il y avait d'instances, et
+  // personne ne pouvait le voir depuis l'extérieur.
+  //
+  // Les deux seaux sont comptés du même geste : celui de l'adresse et le
+  // commun. On les demande ensemble, pour ne pas payer deux allers-retours.
+  const [nAdresse, nCommun] = await Promise.all([
+    compterUnEssai(cle, FENETRE_S),
+    compterUnEssai(SEAU_COMMUN, FENETRE_S),
+  ]);
+
+  // La base n'a pas répondu : on retombe sur la mémoire de cette instance.
+  // Un frein muet vaut mieux qu'une porte fermée au propriétaire.
+  if (nAdresse === null || nCommun === null) {
+    reserverUnEssai(cle);
+    if (compte(cle) > MUR) return false;
+    const attenteLocale = Math.max(freinPour(cle), freinCommun());
+    if (attenteLocale) await new Promise((r) => setTimeout(r, attenteLocale));
+    return true;
+  }
+
+  if (nAdresse > MUR) return false;
+  const attente = Math.max(delaiPour(nAdresse, LIBRES),
+                           delaiPour(nCommun, LIBRES_COMMUN));
   if (attente) await new Promise((r) => setTimeout(r, attente));
   return true;
 }
 
-// CE QUE CE FREIN NE FAIT PAS, et il vaut mieux l'écrire que le découvrir.
+// CE QUE CE FREIN FAIT, ET CE QU'IL NE FAIT PAS.
 //
-// Le seau vit dans la MÉMOIRE de l'instance. Sur un hébergement qui met
-// plusieurs instances en parallèle, chacune a le sien : une attaque répartie
-// obtient donc plusieurs fois l'allocation. Le frein casse la cadence d'un
-// attaquant ordinaire, il ne remplace pas une protection de bordure.
+// Il compte dans la BASE : toutes les instances partagent le même seau, et
+// une attaque répartie sur plusieurs instances ne gagne plus rien. Elle
+// gagnait autrefois l'allocation entière par instance, sans que rien ne le
+// signale.
 //
-// Ce qui tient malgré tout, quel que soit le nombre d'instances : le mot de
-// passe est long (12 caractères au minimum), son empreinte coûte 210 000
-// tours, et un compte non approuvé n'ouvre rien. Le frein ajoute du temps ;
-// il n'est pas la seule chose entre un inconnu et la caisse.
+// Il ne remplace pas une protection de bordure : il ajoute du temps et un
+// mur, il n'empêche pas les requêtes d'arriver. Et si la base se tait, il
+// retombe sur la mémoire d'une seule instance — moins bon, jamais fermé.
+//
+// Ce qui tient de toute façon, frein ou pas : le mot de passe fait douze
+// caractères au minimum, son empreinte coûte 210 000 tours, et un compte non
+// approuvé n'ouvre rien. Le frein n'est pas la seule chose entre un inconnu
+// et la caisse.

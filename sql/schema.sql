@@ -473,6 +473,44 @@ create trigger un_proprietaire_reste
   execute function refuser_de_laisser_la_maison_sans_proprietaire();
 
 -- ---------------------------------------------------------------------------
+-- LE FREIN AUX ESSAIS DE MOT DE PASSE, partagé par toutes les instances.
+--
+-- Il vivait dans la MÉMOIRE du serveur. Un hébergement qui met plusieurs
+-- instances en parallèle donnait à chacune son propre seau : une attaque
+-- répartie obtenait l'allocation autant de fois qu'il y avait d'instances.
+--
+-- Le comptage tient en UNE instruction. Lire puis écrire aurait reproduit un
+-- cran plus bas la faute corrigée un cran plus haut : entre les deux,
+-- soixante essais passent.
+-- Voir migrations/20260831_le-frein-partage.sql.
+-- ---------------------------------------------------------------------------
+create table if not exists freins (
+  -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
+  -- une table d'adresses ne doit pas devenir une liste de qui a un compte.
+  cle    text primary key,
+  n      integer not null default 0,
+  vu     timestamptz not null default now()
+);
+
+create index if not exists freins_vu on freins (vu);
+
+create or replace function compter_un_essai(la_cle text, fenetre_s integer)
+returns integer
+language sql
+as $$
+  insert into freins (cle, n, vu)
+  values (la_cle, 1, now())
+  on conflict (cle) do update
+    set n = case
+              when freins.vu > now() - make_interval(secs => fenetre_s)
+              then freins.n + 1
+              else 1
+            end,
+        vu = now()
+  returning n;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit la base en direct. Personne.
 --
 -- Le Pi écrit avec la clé « service_role », qui contourne ces règles — c'est
@@ -492,6 +530,7 @@ alter table recus      enable row level security;
 alter table raccourcis enable row level security;
 alter table appareils  enable row level security;
 alter table utilisateurs enable row level security;
+alter table freins   enable row level security;
 
 -- AUCUNE POLITIQUE. Sur AUCUNE table. C'est le but, pas un oubli.
 --

@@ -152,6 +152,8 @@ const appareils = new Map();
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
+// Les essais de mot de passe comptés, comme la table « freins ».
+const freins = new Map();
 
 function reponsePour(commande) {
   const { type, parametres } = commande;
@@ -307,6 +309,26 @@ const serveur = createServer(async (req, res) => {
       return repondre([], 204);
     }
     return repondre([...appareils.values()]);
+  }
+
+  // --- LE FREIN, COMPTÉ COMME LA VRAIE BASE LE COMPTE --------------------
+  //
+  // La plateforme demande à la BASE de compter ses essais de mot de passe :
+  // c'est le seul moyen que toutes les instances partagent un seau. Sans
+  // cette imitation ici, le harnais du frein mesurerait le seau de secours en
+  // mémoire — c'est-à-dire pas ce qui tourne en production.
+  //
+  // Le comptage est fait D'UN SEUL GESTE, comme le « insert … on conflict »
+  // de la vraie base : lire puis écrire laisserait passer une rafale.
+  if (req.method === "POST" && chemin === "/rest/v1/rpc/compter_un_essai") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const { la_cle: cle, fenetre_s: fenetre } = JSON.parse(brut || "{}");
+    const present = Date.now();
+    const e = freins.get(cle);
+    const n = e && present - e.vu <= fenetre * 1000 ? e.n + 1 : 1;
+    freins.set(cle, { n, vu: present });
+    return repondre(n);
   }
 
   // --- LES COMPTES -------------------------------------------------------

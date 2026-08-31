@@ -623,6 +623,42 @@ export async function enregistrerAppareil(
   }
 }
 
+/**
+ * Compte un essai de mot de passe, dans la BASE, et rend le total.
+ *
+ * `null` quand la base ne répond pas — et ce `null` compte : le frein doit
+ * alors retomber sur son seau en mémoire, jamais fermer la porte. Une base
+ * injoignable ne doit pas être un verrou sur sa propre maison ; c'est déjà la
+ * raison d'être de la clé de secours.
+ *
+ * Le comptage est fait par la base en UNE instruction (voir
+ * `compter_un_essai` dans sql/schema.sql) : lire ici puis écrire là
+ * reproduirait exactement la course qu'on veut fermer.
+ */
+export async function compterUnEssai(
+  seau: string, fenetreS: number,
+): Promise<number | null> {
+  if (!relie) return null;
+  try {
+    const r = await fetch(`${url}/rest/v1/rpc/compter_un_essai`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ la_cle: seau, fenetre_s: fenetreS }),
+      cache: "no-store",
+      // Un frein ne doit jamais faire attendre plus que ce qu'il freine.
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!r.ok) return null;
+    const n = await r.json();
+    return typeof n === "number" && Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function lireCommande(
   id: number,
 ): Promise<{ etat: string; resultat: string | null } | null> {

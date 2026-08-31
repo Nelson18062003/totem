@@ -183,6 +183,42 @@ accepter "une demande sans intention passe (le robot, les vieux écrans)" \
            ('douala', 'ussd', '{}'::jsonb, 'en_attente', null);"
 
 # ---------------------------------------------------------------------------
+# LE FREIN COMPTE JUSTE, MÊME QUAND TOUT ARRIVE EN MÊME TEMPS.
+#
+# C'est la seule chose qui compte ici. Un compteur qui se LIT puis s'ÉCRIT
+# reproduirait un cran plus bas la faute corrigée un cran plus haut : entre la
+# lecture et l'écriture, les autres essais passent. On lance donc quarante
+# comptages VRAIMENT EN MÊME TEMPS, depuis quarante connexions distinctes, et
+# on exige quarante.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Le frein compte juste sous une rafale"
+$P -d totem -c "delete from freins where cle = 'rafale';" >/dev/null 2>&1
+i=0
+while [ $i -lt 40 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select compter_un_essai('rafale', 900);" >/dev/null 2>&1 &
+  i=$((i + 1))
+done
+wait
+compte=$($P -d totem -tAc "select n from freins where cle = 'rafale';")
+if [ "$compte" = "40" ]; then
+  echo "  ✓ quarante essais lancés ensemble comptent quarante"
+else
+  echo "  ✗ quarante essais lancés ensemble ont compté $compte"
+  echecs=$((echecs + 1))
+fi
+
+# Hors fenêtre, on repart de un : on ne traîne pas les fautes d'hier.
+horsFenetre=$($P -d totem -tAc "select compter_un_essai('rafale', 0);")
+if [ "$horsFenetre" = "1" ]; then
+  echo "  ✓ passé la fenêtre, le compteur repart de un"
+else
+  echo "  ✗ passé la fenêtre, le compteur rend $horsFenetre au lieu de 1"
+  echecs=$((echecs + 1))
+fi
+
+# ---------------------------------------------------------------------------
 # PERSONNE NE LIT LA BASE EN DIRECT.
 # ---------------------------------------------------------------------------
 echo ""
