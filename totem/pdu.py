@@ -213,7 +213,7 @@ def decoder(pdu_hexa):
 
 
 # ---- recollage -------------------------------------------------------------
-def recoller(morceaux, maintenant=None):
+def recoller(morceaux, maintenant=None, premiere_vue=None):
     """[(index_pdu, Morceau)] → [(indices, expéditeur, texte, complet)].
 
     Les morceaux d'un même message sont réunis dans l'ordre. Un message dont
@@ -223,6 +223,18 @@ def recoller(morceaux, maintenant=None):
 
     `indices` liste TOUS les emplacements à effacer dans le modem, pour qu'un
     morceau ne reste jamais orphelin.
+
+    `premiere_vue` : une carte { (expéditeur, référence, total) → instant }
+    que l'APPELANT conserve d'un tour de relève à l'autre. Elle répond au seul
+    cas que l'horodatage réseau ne couvre pas — un morceau dont le TP-SCTS est
+    corrompu (`horodatage` à None) : sans elle, un tel groupe incomplet
+    n'atteignait JAMAIS la limite de patience, n'était donc jamais livré ni
+    effacé, et son emplacement modem restait pris à chaque tour. Quelques-uns
+    saturent une mémoire de vingt emplacements, et le réseau ne peut plus y
+    déposer les SMS suivants — les encaissements se perdent alors sans trace.
+    En notant quand on a vu un groupe pour la PREMIÈRE fois, on peut le faire
+    vieillir même sans horodatage. Omise, le comportement d'avant demeure
+    (utile aux tests) ; le modem, lui, en fournit toujours une.
     """
     maintenant = maintenant or datetime.now(timezone.utc)
     seuls, groupes = [], {}
@@ -234,15 +246,24 @@ def recoller(morceaux, maintenant=None):
             cle = (morceau.expediteur, morceau.reference, morceau.total)
             groupes.setdefault(cle, []).append((index, morceau))
 
-    for (expediteur, _, total), parties in groupes.items():
+    livres = set()
+    for cle, parties in groupes.items():
+        expediteur, _, total = cle
         parties.sort(key=lambda p: p[1].position)
         indices = [index for index, _ in parties]
         recus = {m.position for _, m in parties}
         complet = len(recus) == total
 
-        if not complet and not _trop_vieux(parties, maintenant):
+        # Depuis quand attend-on ce groupe ? On retient la première fois qu'on
+        # l'a croisé, pour les cas où l'horodatage réseau manque.
+        if premiere_vue is not None and not complet:
+            premiere_vue.setdefault(cle, maintenant)
+        depuis = premiere_vue.get(cle) if premiere_vue is not None else None
+
+        if not complet and not _trop_vieux(parties, maintenant, depuis):
             continue                             # on attend encore la suite
 
+        livres.add(cle)
         texte = "".join(m.texte for _, m in parties)
         if not complet:
             manquants = sorted(set(range(1, total + 1)) - recus)
@@ -251,12 +272,29 @@ def recoller(morceaux, maintenant=None):
                       f"jamais reçu(s)]")
         seuls.append((indices, expediteur, texte, complet))
 
+    # Ménage : un groupe livré (ou complété) ne doit pas garder sa trace, sinon
+    # la carte enfle sans fin. On oublie aussi ceux qu'on ne voit plus du tout.
+    if premiere_vue is not None:
+        for cle in [c for c in premiere_vue
+                    if c in livres or c not in groupes]:
+            premiere_vue.pop(cle, None)
+
     return seuls
 
 
-def _trop_vieux(parties, maintenant):
-    """A-t-on assez attendu les morceaux manquants ?"""
+def _trop_vieux(parties, maintenant, premiere_vue=None):
+    """A-t-on assez attendu les morceaux manquants ?
+
+    Deux horloges, et l'on retient la plus ANCIENNE échéance atteinte :
+      — l'heure RÉSEAU des morceaux reçus (TP-SCTS), quand elle existe ;
+      — à défaut, l'instant où l'on a vu le groupe pour la première fois
+        (`premiere_vue`), fourni par l'appelant qui le conserve d'un tour à
+        l'autre. C'est ce second recours qui évite qu'un morceau au SCTS
+        corrompu bloque son emplacement pour toujours.
+    """
     dates = [m.horodatage for _, m in parties if m.horodatage]
-    if not dates:
-        return False          # sans date, on préfère attendre le tour suivant
-    return maintenant - max(dates) > PATIENCE_MORCEAUX
+    if dates:
+        return maintenant - max(dates) > PATIENCE_MORCEAUX
+    if premiere_vue is not None:
+        return maintenant - premiere_vue > PATIENCE_MORCEAUX
+    return False          # sans aucune horloge, on attend (comportement d'avant)

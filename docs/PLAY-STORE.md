@@ -227,9 +227,10 @@ nothing is invented: when an operator message cannot be read with certainty,
 TOTEM says so rather than guessing.
 
 Your Mobile Money PIN is never stored, never logged, never put in a message.
-It is typed at the moment of an operation and kept nowhere afterwards. A
-one-time code arriving by SMS never appears in a notification — your locked
-screen says "a code arrived", without a single digit.
+It is typed at the moment of an operation and kept nowhere afterwards. Every
+message you receive stays yours to read in full — in the list, on its card,
+and in the notification itself, at a glance, the way your messaging app shows
+one. What shows on your locked screen is your choice, in your phone's settings.
 
 WHAT TOTEM IS NOT
 
@@ -278,9 +279,11 @@ se perd, et rien ne s'invente : quand un message d'opérateur ne peut pas
 
 Votre code PIN Mobile Money n'est jamais enregistré, jamais journalisé,
 jamais mis dans un message. Il se saisit au moment d'une opération et n'est
-conservé nulle part ensuite. Un code à usage unique reçu par SMS n'apparaît
-jamais dans une notification — votre écran verrouillé affiche « un code est
-arrivé », sans un chiffre.
+conservé nulle part ensuite. Chaque message que vous recevez reste à vous, à
+lire en entier — dans la liste, sur sa fiche, et jusque dans la notification,
+d'un coup d'œil, comme le fait votre application de messages. Ce qui s'affiche
+sur votre écran verrouillé est votre choix, dans les réglages de votre
+téléphone.
 
 CE QUE TOTEM N'EST PAS
 

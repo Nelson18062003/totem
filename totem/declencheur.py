@@ -85,9 +85,16 @@ class Motif:
         return f"<Motif {self.genre}>"
 
 
-# Une option numérotée : « 1. Consulter le solde », « 2) Retrait ». Leur
-# présence dit qu'on est devant un menu, pas devant une réponse.
-RE_OPTION = re.compile(r"^\s*\d{1,2}\s*[.):\-]\s*\S", re.M)
+# Une option numérotée : « 1. Consulter le solde », « 2) Retrait ». Le « : »
+# est admis, mais il sépare aussi les heures : « 10:44 » n'est pas un choix.
+# Et un menu a AU MOINS DEUX options — une seule ligne numérotée (ou un
+# horodatage en tête d'un relevé) ne doit pas faire refuser le reçu de solde.
+RE_OPTION = re.compile(r"^[ \t]*\d{1,2}[ \t]*[.):\-][ \t]*(?!\d{2}(?:\D|$))\S", re.M)
+
+
+def _est_un_menu(texte):
+    """Au moins deux lignes numérotées : c'est un menu, pas une réponse."""
+    return len(RE_OPTION.findall(texte)) >= 2
 
 # Ce qui attend une saisie : on n'établit pas de document sur une question.
 RE_ATTENTE = re.compile(
@@ -113,7 +120,7 @@ def motif_du_menu(reponse):
     """
     if not reponse or not reponse.strip():
         return None
-    if RE_OPTION.search(reponse):
+    if _est_un_menu(reponse):
         return None
     norme = _normaliser(reponse)
     if RE_ATTENTE.search(norme) or RE_ECHEC.search(norme):

@@ -289,12 +289,35 @@ class Journal:
                               (self._maintenant(), texte))
             self.conn.commit()
 
-    def sms_existe(self, expediteur, texte, compte="", secondes=900):
-        """Ce SMS a-t-il déjà été enregistré récemment ? Garde-fou contre les
-        doublons quand l'effacement dans le modem a échoué au tour précédent."""
-        depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(
-            timespec="seconds")
+    def sms_existe(self, expediteur, texte, compte="", secondes=900,
+                   emis_le=None):
+        """Ce SMS a-t-il déjà été enregistré ? Garde-fou contre les doublons
+        quand l'effacement dans le modem a échoué au tour précédent.
+
+        L'HEURE RÉSEAU EST UNE IDENTITÉ, pas une approximation. Deux SMS
+        distincts n'ont jamais le même TP-SCTS avec le même expéditeur, le
+        même texte et la même carte. Quand on la connaît, on s'en sert — et
+        AUCUNE fenêtre de temps n'est alors nécessaire.
+
+        C'est ce qui manquait. La fenêtre de quinze minutes est plus courte
+        qu'une coupure de courant à Douala : au redémarrage, le SMS resté dans
+        le modem était relu, la fenêtre répondait « jamais vu », et le paiement
+        était compté DEUX FOIS — au bilan du jour, sur Telegram, et poussé au
+        nuage sous un nouveau `source_id` que la clé d'unicité ne rattrapait
+        pas. Même effet, sans panne, si un emplacement du modem refuse
+        obstinément de s'effacer : quatre paiements fantômes par heure.
+
+        Sans heure réseau (Orange ne date pas ses SMS), on retombe sur la
+        fenêtre : c'est tout ce qu'on a.
+        """
         with self.verrou:
+            if emis_le:
+                return self.conn.execute(
+                    "SELECT 1 FROM sms WHERE expediteur = ? AND texte = ? "
+                    "AND COALESCE(compte, '') = ? AND emis_le = ? LIMIT 1",
+                    (expediteur, texte, compte, emis_le)).fetchone() is not None
+            depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(
+                timespec="seconds")
             return self.conn.execute(
                 "SELECT 1 FROM sms WHERE date >= ? AND expediteur = ? AND texte = ? "
                 "AND COALESCE(compte, '') = ? LIMIT 1",
@@ -602,6 +625,39 @@ class Journal:
                     "SELECT genre, nature FROM recus "
                     "WHERE source = ? AND source_id = ?",
                     (source, source_id)).fetchone()
+                if existante is None:
+                    # LA RÉFÉRENCE D'UN AUTRE MESSAGE — et le reçu d'un
+                    # inconnu servi à la place du bon.
+                    #
+                    # Aucune ligne n'existe pour CE message : le refus vient
+                    # donc de l'unicité de la `reference`, qu'un AUTRE
+                    # paiement détient déjà. Le lecteur a produit deux fois la
+                    # même référence — c'est arrivé (voir `test_analyse_sms`).
+                    #
+                    # On ne faisait alors rien du tout, et l'on renvoyait le
+                    # numéro trouvé PAR LA RÉFÉRENCE : celui du jumeau. Le
+                    # propriétaire lisait « Reçu TM-…-0041 en fabrication »,
+                    # la plateforme lui servait le PDF d'un AUTRE paiement —
+                    # autre montant, autre client — et le vrai message
+                    # n'obtenait jamais de reçu.
+                    #
+                    # Un document sans référence vaut mieux qu'un document qui
+                    # en porte une fausse : on réinsère sans elle. La
+                    # référence n'est qu'un champ du reçu ; le montant, la
+                    # date et la partie, eux, restent exacts.
+                    try:
+                        self.conn.execute(
+                            "INSERT INTO recus(source, source_id, genre, "
+                            "numero, reference, date, nature, langue) "
+                            "VALUES(?,?,?,?,NULL,?,?,?)",
+                            (source, source_id, genre, numero, quand,
+                             nature or None, langue or None))
+                        self.conn.commit()
+                        return numero
+                    except sqlite3.IntegrityError:
+                        # Même sans référence, la base refuse : on ne devine
+                        # pas. Aucun reçu vaut mieux que celui d'un autre.
+                        return None
                 if existante is not None:
                     genre_avant, nature_avant = existante
                     # Le document CHANGE (autre genre, ou autre nature — donc
@@ -646,14 +702,16 @@ class Journal:
                 # jamais celui recalculé du jour, qui peut différer si le
                 # reçu se redemande un autre jour. À défaut, celui du
                 # document jumeau qui tient déjà cette référence.
+                # Le numéro EN VIGUEUR est celui de la ligne de CE message,
+                # et seulement celui-là. On cherchait naguère, à défaut, le
+                # numéro portant la même référence — c'est-à-dire celui d'un
+                # AUTRE paiement. Ce repli est retiré : il ne se déclenchait
+                # que dans le cas traité plus haut, et il y servait un reçu
+                # étranger.
                 ligne = self.conn.execute(
                     "SELECT numero FROM recus "
                     "WHERE source = ? AND source_id = ?",
                     (source, source_id)).fetchone()
-                if ligne is None and reference:
-                    ligne = self.conn.execute(
-                        "SELECT numero FROM recus WHERE reference = ?",
-                        (reference,)).fetchone()
             return ligne[0] if ligne else None
 
     def recus_a_relire(self):

@@ -27,6 +27,9 @@ const en = {
   // passe est faux ». Les distinguer dirait à un inconnu quelles adresses
   // ont un compte ici — de quoi dresser une liste, puis s'acharner dessus.
   identifiantsIncorrects: "wrong email or password",
+  // 429. On ne dit pas combien de temps il reste : ce serait un chronomètre
+  // offert à qui mesure. On ne dit pas non plus si le compte existe.
+  tropDEssais: "too many attempts. Wait a few minutes and try again.",
   compteEnAttente:
     "This account is waiting for the owner's approval. It cannot open " +
     "anything yet.",
@@ -41,6 +44,13 @@ const en = {
   inscriptionImpossible: "the account could not be created",
   reserveAuProprietaire: "only the owner can do this",
   pasSoiMeme: "you cannot do this to your own account",
+  // Le compte du propriétaire ne se ferme ni ne se supprime — par personne,
+  // pas même avec la clé de secours. Une plateforme sans propriétaire
+  // ROUVRAIT ses inscriptions au monde entier : le premier passant venu
+  // devenait propriétaire, et lisait tous les SMS.
+  pasLeProprietaire:
+    "the owner's account cannot be closed or deleted — the platform would be "
+    + "left without an owner.",
   // Un « refus » qui n'en est pas un : le compte EST créé. La porte
   // rend toujours une décision, et celle-ci se lit « c'est fait ».
   compteCree: "account created",
@@ -66,6 +76,7 @@ const fr: typeof en = {
   variableMalFormee: "une variable est mal écrite : écrivez-la en entier, accolades comprises — {numero}",
 
   identifiantsIncorrects: "courriel ou mot de passe incorrect",
+  tropDEssais: "trop d’essais. Attendez quelques minutes et recommencez.",
   compteEnAttente:
     "Ce compte attend l’approbation du propriétaire. Il n’ouvre encore rien.",
   courrielInvalide: "cela ne ressemble pas à une adresse de courriel",
@@ -77,6 +88,9 @@ const fr: typeof en = {
   inscriptionImpossible: "le compte n’a pas pu être créé",
   reserveAuProprietaire: "seul le propriétaire peut faire cela",
   pasSoiMeme: "vous ne pouvez pas faire cela à votre propre compte",
+  pasLeProprietaire:
+    "le compte du propriétaire ne se ferme ni ne se supprime — la plateforme "
+    + "resterait sans propriétaire.",
   compteCree: "compte créé",
 };
 

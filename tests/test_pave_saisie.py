@@ -194,3 +194,57 @@ def _lignes_ussd(r):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLHorodatageNeFermePasLePave(unittest.TestCase):
+    """La troisième fuite du code secret, et la même racine que les deux
+    autres : une SEULE ligne ressemblant à un choix de menu suffisait à
+    déclarer « c'est un menu, donc pas une demande de code ».
+
+    Or l'heure en tête d'un message d'opérateur — « 10:44 » — a la forme
+    exacte d'une option numérotée, et « 1. Entrez votre code PIN » aussi. Le
+    pavé ne s'ouvrait donc pas : le code se tapait dans la conversation,
+    s'affichait en clair sur la carte de session, et s'inscrivait tel quel
+    dans la table `ussd` — qui part ensuite dans le fichier de sauvegarde
+    posté sur Telegram. Un menu, c'est au moins DEUX choix.
+    """
+
+    def test_une_heure_en_tete_laisse_le_pave_s_ouvrir(self):
+        from totem.app import Robot
+        for menu in ("10:44\nEntrez votre code secret",
+                     "12-05-2026 10:44\nSaisissez votre code PIN",
+                     "1. Entrez votre code PIN pour confirmer"):
+            self.assertTrue(Robot._demande_un_code(menu), menu)
+
+    def test_un_vrai_menu_garde_le_pave_ferme(self):
+        from totem.app import Robot
+        for menu in ("1) Transfert\n2) Solde\n5) Gerer mon code secret",
+                     "1. Envoyer\n2. Retirer\n3. Mon code secret"):
+            self.assertFalse(Robot._demande_un_code(menu), menu)
+
+    def test_une_heure_ne_devient_pas_un_bouton(self):
+        # Même cause, autre effet : l'horodatage se changeait en option
+        # cliquable dans le pavé de navigation.
+        from totem.app import Robot
+        entete, options = Robot._analyser_menu("10:44\nVotre solde est de 100 FCFA")
+        self.assertEqual(options, [])
+        self.assertIn("10:44", " ".join(entete))
+
+
+class TestNIPOuvreLePave(unittest.TestCase):
+    """« NIP » — Numéro d'Identification Personnel — est le mot le plus courant
+    pour le code secret Mobile Money en Afrique francophone. Il manquait à la
+    détection : « Veuillez saisir votre NIP » n'ouvrait pas le pavé, le code se
+    tapait dans la conversation, en clair, et s'inscrivait dans la table `ussd`
+    — qui part dans la sauvegarde postée sur Telegram. La quatrième fuite.
+    """
+
+    def test_le_NIP_ouvre_le_pave(self):
+        from totem.app import Robot
+        for prompt in ("Veuillez saisir votre NIP:", "Entrez votre NIP",
+                       "Entrer votre N.I.P.", "Confirmez avec votre NIP"):
+            self.assertTrue(Robot._demande_un_code(prompt), prompt)
+
+    def test_pas_de_faux_positif_sur_un_numero(self):
+        from totem.app import Robot
+        self.assertFalse(Robot._demande_un_code("Entrez le numero du beneficiaire"))

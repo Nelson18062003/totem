@@ -57,6 +57,10 @@ const en = {
     "The terminal is rebuilding the document with today's reading — about "
     + "twenty seconds, then open the PDF again.",
   regenerationFaite: "Document rebuilt — open the PDF: it is the new one.",
+  // Le reçu vient d'être fabriqué. La fiche ouverte porte encore
+  // l'ancienne version du paiement : on le DIT, plutôt que de laisser le
+  // bouton reprendre son libellé d'avant comme si rien ne s'était passé.
+  recuEtabli: "Receipt created — reopen this message to open the PDF.",
   regenerationLente:
     "The terminal is taking longer than expected. The PDF will be replaced "
     + "as soon as it finishes — try opening it again in a minute.",
@@ -142,6 +146,7 @@ const fr: typeof en = {
     "Le terminal refait le document avec la lecture du jour — une vingtaine "
     + "de secondes, puis rouvrez le PDF.",
   regenerationFaite: "Document refait — ouvrez le PDF : c'est le nouveau.",
+  recuEtabli: "Reçu établi — rouvrez ce message pour ouvrir le PDF.",
   regenerationLente:
     "Le terminal prend plus de temps que prévu. Le PDF sera remplacé dès "
     + "qu'il aura fini — réessayez de l'ouvrir dans une minute.",

@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
-                          masquer_secrets, solde_annonce)
+                          masquer_le_code, solde_annonce)
 from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
                           motif_du_sms, motif_selon_nature, raison_du_refus)
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
@@ -57,12 +57,25 @@ RE_CIBLE_USSD = re.compile(r"^(\w[\w\s]{0,14}?)\s+([\*#][\d\*#]+#)$")
 # On masque donc au moindre doute. « Entrez votre code », « Enter your Orange
 # Money code », « Veuillez entrer votre MDP » doivent tous déclencher le pavé.
 RE_DEMANDE_CODE = re.compile(
-    r"\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|mot\s+de\s+passe|password"
-    r"|passcode|passphrase",
+    # « NIP » — Numéro d'Identification Personnel — est le mot COURANT pour le
+    # code secret Mobile Money en Afrique francophone, plus courant que « PIN »
+    # ou « code secret ». Il manquait : « Veuillez saisir votre NIP » n'ouvrait
+    # donc pas le pavé sécurisé, le code se tapait dans la conversation, en
+    # clair, et s'inscrivait tel quel dans la table `ussd` — laquelle part dans
+    # le fichier de sauvegarde posté sur Telegram. La quatrième fuite du code
+    # secret, et par le mot le plus banal de tous.
+    r"\bn\.?i\.?p\.?\b|\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel"
+    r"|mot\s+de\s+passe|password|passcode|passphrase",
     re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$")
+# Le « : » est admis — des opérateurs l'emploient — mais il sépare AUSSI les
+# heures : « 10:44 » n'est pas un choix de menu. On écarte donc ce qui a la
+# forme d'un horodatage, faute de quoi l'heure en tête d'un message d'opérateur
+# se change en bouton, et surtout désarme la garde du code secret ci-dessous.
+RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(?!\d{2}(?:\D|$))(\S.*)$")
+# UN MENU A AU MOINS DEUX CHOIX. Une seule ligne numérotée ne fait pas un menu.
+MENU_MINIMUM = 2
 # Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
 # permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
 RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount|how\s+much|\bsum\b", re.I)
@@ -534,7 +547,7 @@ class Robot:
             elif commande in ("raccourcis", "boutons"):
                 self._lister_raccourcis(canal)
             elif commande == "sms":
-                self._derniers_sms(canal)
+                self._derniers_sms(canal, prive=entrant.prive)
             elif commande == "rapport":
                 self._rapport(canal=canal, manuel=True)
             elif commande == "diagnostic":
@@ -663,15 +676,26 @@ class Robot:
             self._demander_identite(champ, iccid, canal)
             return
 
+        # « c:reglages » ouvre l'écran qui montre le numéro et le nom déclarés
+        # de chaque carte. Sa version TEXTE (« /reglages ») est réservée à
+        # l'administrateur ; le bouton, lui, ne l'était pas. Dans un groupe
+        # d'équipe, un simple observateur qui voit le menu de l'administrateur
+        # pouvait donc cliquer et lire ces coordonnées. On aligne le bouton sur
+        # la commande : même écran, même porte.
+        if genre == "c" and valeur == "reglages":
+            if not self._verifier_admin(role, entrant, canal):
+                return
+            self._reglages(canal)
+            return
+
         if genre == "c" and valeur in ("menu", "statut", "sms", "rapport",
                                        "export", "aide", "comptes",
-                                       "diagnostic", "sims", "reglages"):
+                                       "diagnostic", "sims"):
             {"menu": lambda: self._accueil(canal, role),
              "aide": lambda: self.transport.envoyer(self._aide(), canal=canal),
              "statut": lambda: self._statut(canal),
              "comptes": lambda: self._lister_comptes(canal, role),
              "sims": lambda: self._lister_cartes(canal),
-             "reglages": lambda: self._reglages(canal),
              "sms": lambda: self._derniers_sms(canal),
              "rapport": lambda: self._rapport(canal=canal, manuel=True),
              "diagnostic": lambda: self._diagnostic(canal),
@@ -884,9 +908,17 @@ class Robot:
         Un menu qui se contente de *parler* du code (« 5) Gerer mon code
         secret ») porte des options numérotées : c'est une navigation, pas une
         saisie. Chercher le seul mot « PIN » faisait apparaître le pavé au
-        mauvais moment."""
+        mauvais moment.
+
+        MAIS UNE SEULE LIGNE NUMÉROTÉE NE FAIT PAS UN MENU, et c'est par là
+        que le code fuyait. « 10:44 » en tête d'un message d'opérateur a la
+        forme exacte d'une option ; « 1. Entrez votre code PIN » aussi. Le
+        pavé ne s'ouvrait donc pas, le code se tapait dans la conversation,
+        s'affichait en clair sur la carte de session, et s'inscrivait tel quel
+        dans la table `ussd` — laquelle part ensuite dans le fichier de
+        sauvegarde posté sur Telegram. Un menu, c'est au moins DEUX choix."""
         _, options = cls._analyser_menu(menu)
-        return not options and bool(RE_DEMANDE_CODE.search(menu))
+        return len(options) < MENU_MINIMUM and bool(RE_DEMANDE_CODE.search(menu))
 
     @staticmethod
     def _analyser_menu(menu):
@@ -1408,7 +1440,15 @@ class Robot:
         boutons = self._rangees_comptes() + [[("🏠 Menu", "c:menu")]]
         self.transport.envoyer("\n".join(lignes), canal=canal, boutons=boutons)
 
-    def _derniers_sms(self, canal=None):
+    def _derniers_sms(self, canal=None, prive=True):
+        """Les cinq derniers SMS, tels qu'ils sont arrivés.
+
+        DANS UN GROUPE, LES CODES SONT MASQUÉS. La commande n'est pas réservée
+        aux administrateurs — un observateur doit pouvoir suivre la caisse —
+        mais « suivre la caisse » n'a jamais voulu dire lire les codes de
+        confirmation du propriétaire. Dans son chat privé, il les lit entiers :
+        ils sont à lui.
+        """
         lignes = self.journal.derniers_sms(5, self._cartes_en_place())
         if not lignes:
             self.transport.envoyer(t("No text messages on record yet.",
@@ -1418,8 +1458,9 @@ class Robot:
         blocs = []
         for date, expediteur, texte, compte in lignes:
             etiquette = f"[{echap(compte)}] " if self.multi and compte else ""
+            lisible = texte if prive else masquer_le_code(texte)
             blocs.append(f"📥 {etiquette}{echap(date.replace('T', ' '))} — "
-                         f"{gras(expediteur)}\n{echap(texte)}")
+                         f"{gras(expediteur)}\n{echap(lisible)}")
         self.transport.envoyer("\n\n".join(blocs), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
 
@@ -1979,23 +2020,30 @@ class Robot:
             # tant qu'il n'a pas été journalisé : sinon un encaissement
             # disparaîtrait sans laisser de trace.
             try:
-                # Un code à usage unique ne doit survivre nulle part : ni au
-                # journal, ni dans la sauvegarde hors du Pi, ni sur Telegram.
-                # On le masque ici, une fois, et tout ce qui suit ne voit plus
-                # que la version sûre.
-                texte = masquer_secrets(texte)
-                if not self.journal.sms_existe(expediteur, texte, compte.libelle):
-                    # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
-                    # vraie de l'opération, distincte de l'heure de relève —
-                    # elles divergent après une coupure, et c'est la réseau qui
-                    # fait foi pour l'ordre et les reçus.
-                    # Garde-fou : quoi que le maillon d'avant ait mis dans
-                    # `emis_le`, le SMS passe. Une heure réseau perdue est un
-                    # détail ; un SMS bloqué en boucle est la panne totale —
-                    # c'est arrivé (un booléen à la place de l'heure, et plus
-                    # RIEN n'arrivait, ni Telegram ni plateforme).
-                    heure_reseau = (emis_le.isoformat()
-                                    if hasattr(emis_le, "isoformat") else None)
+                # Le SMS est enregistré et transmis TEL QUEL — y compris les
+                # codes qu'il porte. Ce sont les messages du propriétaire, sur
+                # sa carte : il les reçoit entiers, pour lire un code de
+                # connexion comme le reste. On ne modifie pas un SMS.
+                # (Le code SECRET Mobile Money que le propriétaire TAPE
+                # pendant une opération n'entre jamais par ici : il n'est
+                # jamais reçu par SMS. Il reste protégé, ailleurs.)
+                # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
+                # vraie de l'opération, distincte de l'heure de relève — elles
+                # divergent après une coupure, et c'est la réseau qui fait foi
+                # pour l'ordre et les reçus.
+                # Garde-fou : quoi que le maillon d'avant ait mis dans
+                # `emis_le`, le SMS passe. Une heure réseau perdue est un
+                # détail ; un SMS bloqué en boucle est la panne totale —
+                # c'est arrivé (un booléen à la place de l'heure, et plus
+                # RIEN n'arrivait, ni Telegram ni plateforme).
+                heure_reseau = (emis_le.isoformat()
+                                if hasattr(emis_le, "isoformat") else None)
+                # Elle sert AUSSI à reconnaître un doublon : c'est une
+                # identité réseau, que la coupure de courant la plus longue
+                # n'altère pas — là où une fenêtre de quinze minutes laissait
+                # recompter un paiement au redémarrage.
+                if not self.journal.sms_existe(expediteur, texte, compte.libelle,
+                                               emis_le=heure_reseau):
                     sms_id = self.journal.sms(
                         expediteur, texte, compte.libelle, compte.carte.iccid,
                         emis_le=heure_reseau)
@@ -2400,10 +2448,25 @@ class Robot:
                 self._noter(f"SMS d'argent illisible ({expediteur}) : "
                             "lecture incomplète, opération comptée nulle part")
 
-        self.facteur.poster(f"{entete}\n{echap(texte)}", canal="encaissements")
-        self._faire_sonner(paiement, expediteur, compte.libelle, texte)
+        # LE CODE NE PART PAS DANS LE GROUPE. Chaque SMS reçu est annoncé
+        # tout seul, sans que personne ne le demande — et « encaissements »
+        # est le GROUPE dès qu'il y en a un. Le propriétaire y invite qui
+        # suit la caisse ; un SMS « Votre code de confirmation est 483921. Ne
+        # le communiquez a personne. » y arrivait entier, à chaque fois. Le
+        # robot communiquait donc le code à tout le monde, tout seul.
+        #
+        # Dans le chat privé du propriétaire, rien ne change : le message est
+        # à lui, code compris, et le lui cacher le rendrait inutilisable.
+        partage = getattr(self.transport, "partage", False)
+        self.facteur.poster(
+            f"{entete}\n{echap(masquer_le_code(texte) if partage else texte)}",
+            canal="encaissements")
+        # Les téléphones inscrits ne sont pas tous celui du propriétaire : un
+        # invité approuvé en a un, et un aperçu s'affiche sur un écran
+        # VERROUILLÉ, que n'importe qui peut lire par-dessus une épaule.
+        self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte))
 
-    def _faire_sonner(self, paiement, expediteur, libelle, texte):
+    def _faire_sonner(self, expediteur, libelle, texte):
         """Fait sonner les téléphones qui se sont inscrits.
 
         Rien ici ne peut retarder ni empêcher l'annonce Telegram : elle est
@@ -2412,17 +2475,12 @@ class Robot:
         répondre non. On ne veut pas de ces dix secondes dans la lecture des
         SMS, où le message suivant attend son tour.
 
-        Le tri de ce qu'on a le droit de dire n'est pas ici : il est dans
-        `notification.composer`, qui protège les codes et refuse d'inventer
-        un montant.
+        Ce qui s'affiche se décide dans `notification.composer` : le message
+        reçu, en aperçu, tel qu'il est arrivé.
         """
         if not self.nuage:
             return
-        try:
-            categorie = categoriser(texte, numeros=self._nos_numeros())
-        except Exception:
-            categorie = None
-        message = composer(paiement, expediteur, libelle, categorie,
+        message = composer(expediteur, libelle, texte,
                            anglais=langue_active() == "en")
         if not message:
             return

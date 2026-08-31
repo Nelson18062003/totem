@@ -77,8 +77,16 @@ export async function ouvrirLaPorte(
   const motdepasse = typeof champs.motdepasse === "string" ? champs.motdepasse : "";
 
   // Le frein, avant tout examen : un seau partagé par les deux portes.
+  //
+  // LE REFUS ARRIVE AVANT LE CALCUL. Vérifier un mot de passe coûte au
+  // serveur 210 000 tours de PBKDF2, volontairement — cher pour qui essaie,
+  // cher pour nous aussi. Passé le mur, on répond sans rien calculer : sinon
+  // une rafale d'essais devient une rafale de calculs, et la plateforme
+  // s'écroule d'elle-même sous les tentatives.
   const cle = cleDeFrein(req);
-  await attendreLeFrein(cle);
+  if (!(await attendreLeFrein(cle))) {
+    return refus(langue, "tropDEssais", 429);
+  }
 
   if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
 
@@ -184,6 +192,17 @@ export async function inscrire(
 
   const compte = await creerUtilisateur(
     courriel, await empreinter(motdepasse), "proprietaire", true);
+
+  // LA BASE A LE DERNIER MOT, ET C'EST TOUT L'INTÉRÊT. Le comptage ci-dessus
+  // ne prouve rien : entre lui et cette écriture, il s'est écoulé le temps
+  // d'un aller-retour et celui du calcul de l'empreinte, lent à dessein.
+  // Trois inscriptions lancées ensemble sur une plateforme neuve donnaient
+  // TROIS propriétaires — trois sessions ouvertes, trois comptes approuvés,
+  // chacun pouvant fermer celui des autres. La base refuse maintenant la
+  // seconde (index « un seul propriétaire »), et on répond ici exactement ce
+  // qu'on répond à toute inscription tardive : la porte est fermée. Ni le
+  // mot « déjà » ni le mot « course » : celui qui a perdu n'apprend rien.
+  if (compte === "refuse") return refus(langue, "inscriptionsFermees", 403);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
   // Le propriétaire entre tout de suite : il vient de créer la maison.
   const sujet = sujetDuCompte(compte.id);
@@ -229,6 +248,11 @@ export async function creerParLeProprietaire(
 
   const compte = await creerUtilisateur(
     courriel, await empreinter(motdepasse), "invite", true);
+  // Deux créations lancées ensemble pour la même adresse : la vérification
+  // faite plus haut a vu « libre » des deux côtés, la base n'en garde qu'une.
+  // Ici le propriétaire parle à sa propre plateforme — on peut lui dire ce
+  // qui s'est passé.
+  if (compte === "refuse") return refus(langue, "courrielDejaPris", 409);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
 
   // Aucune session n'est rendue : le propriétaire crée un compte POUR

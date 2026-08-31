@@ -1,5 +1,6 @@
 import { enregistrerAppareil, relie } from "@/lib/serveur";
 import { langueDemandee } from "@/lib/langue-serveur";
+import { estProprietaire } from "@/lib/qui";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -7,15 +8,31 @@ export const dynamic = "force-dynamic";
 /**
  * Le téléphone s'inscrit pour recevoir les notifications.
  *
- * Cette route est DERRIÈRE le verrou (elle n'est pas dans la liste `OUVERT`
- * du middleware) : seul un appareil déjà connecté peut s'inscrire. Sans
- * cela, n'importe qui pourrait faire sonner le téléphone du propriétaire.
+ * RÉSERVÉE AU PROPRIÉTAIRE, et ce n'est pas un excès de prudence.
+ *
+ * Cette route est derrière le verrou, mais « derrière le verrou » ne voulait
+ * dire que « connecté » — un compte INVITÉ passait donc, y compris celui
+ * qu'on crée pour l'examinateur du magasin. Or ce qui est inscrit ici reçoit
+ * les notifications du robot, et une notification porte désormais le SMS
+ * REÇU en aperçu : un invité pouvait donc s'abonner à chaque message d'argent
+ * du propriétaire — montants, tiers, soldes — en direct sur son propre écran
+ * verrouillé, sans jamais rouvrir la plateforme. La table des appareils ne
+ * porte aucune colonne de propriétaire et aucun écran ne la liste : l'abonné
+ * clandestin restait invisible.
+ *
+ * Le robot ne sert par ailleurs que les 20 appareils vus le plus récemment :
+ * en s'inscrivant en boucle, un invité poussait dehors le vrai téléphone du
+ * propriétaire, qui devenait muet pendant que l'argent bougeait.
  *
  * Ce qui entre est borné et nettoyé : un jeton d'Expo a une forme connue, et
  * le nom de l'appareil n'est qu'un libellé d'affichage.
  */
 export async function POST(req: Request) {
   const langue = await langueDemandee(req);
+  if (!(await estProprietaire(req))) {
+    return Response.json(
+      { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+  }
   const corps = await req.json().catch(() => null);
 
   const jeton = typeof corps?.jeton === "string" ? corps.jeton.trim() : "";

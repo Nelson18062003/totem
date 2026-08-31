@@ -11,11 +11,13 @@
 // le tape sur la carte, et la réponse de l'opérateur revient telle quelle.
 
 import { useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, Pressable, ScrollView, TextInput, View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -27,7 +29,7 @@ import { textesUssd } from "@noyau/textes/ussd";
 export default function CadranUssd() {
   const langue = useLangue();
   const t = textesUssd[langue];
-  const { donnees } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const cartes = (donnees?.sims ?? []).filter((s) => s.enPlace);
   const [choisie, setChoisie] = useState<string | null>(null);
@@ -57,6 +59,10 @@ export default function CadranUssd() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      {/* Bord à bord : le clavier ne pousse rien tout seul (voir
+          feuille.tsx). Le cadran vit en haut, mais un téléphone couché n'a
+          que quelques lignes au-dessus du clavier. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
@@ -69,7 +75,12 @@ export default function CadranUssd() {
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
 
-        {!carte ? (
+        {/* Le chargement ne s'annonce pas comme une panne : au premier rendu
+            `donnees` est nul, et cet écran déclarait « Aucune carte dans le
+            terminal » le temps de la requête, à chaque ouverture. */}
+        {erreur && !carte ? (
+          <Accroc message={erreur} onReessayer={recharger} />
+        ) : !carte && chargement ? null : !carte ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.aucuneCarte}</Texte>
@@ -214,6 +225,7 @@ export default function CadranUssd() {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {operation ? (
         <OperationPopup operation={operation} onFermer={() => setOperation(null)} />

@@ -85,12 +85,47 @@ try {
     await attendre(500);
   }
 
+  console.log("\nTROIS INSCRIPTIONS LANCÉES ENSEMBLE : un seul propriétaire");
+  // LA COURSE. La plateforme comptait les comptes, voyait zéro, puis créait
+  // un propriétaire. Entre les deux : un aller-retour vers la base, plus le
+  // calcul de l'empreinte du mot de passe — lent à dessein, 210 000 tours.
+  // Une fenêtre d'un cinquième de seconde, largement de quoi s'y glisser.
+  //
+  // Ce harnais a montré TROIS propriétaires, trois sessions ouvertes, trois
+  // comptes approuvés : chacun pouvait lire tous les SMS, faire composer des
+  // codes par le terminal, et fermer le compte des deux autres — dont celui
+  // du vrai propriétaire. C'est la base qui tranche désormais (index
+  // « utilisateurs_un_seul_proprietaire »), au moment de l'écriture : une
+  // vérification faite AVANT une écriture ne garantit jamais rien.
+  const course = await Promise.all([
+    poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "intrus@exemple.cm", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "intrus2@exemple.cm", motdepasse: MDP }),
+  ]);
+  const corpsCourse = await Promise.all(course.map((r) => r.json()));
+  const proprios = corpsCourse.filter((c) => c.proprietaire === true);
+  verifier("un seul propriétaire sort de la course", proprios.length, 1);
+  verifier("une seule session est ouverte",
+    corpsCourse.filter((c) => Boolean(c.jeton)).length, 1);
+  // Les perdants n'apprennent RIEN de ce qui s'est passé : ils reçoivent le
+  // refus de toute inscription tardive. « Vous avez perdu une course » dirait
+  // qu'un compte vient d'être créé, et à quelle seconde.
+  verifier("les perdants reçoivent le refus ordinaire",
+    course.filter((r) => r.status === 403).length, 2);
+  verifier("aucun ne dit qu'il y a eu une course",
+    corpsCourse.some((c) => /course|simultan|concurrent/i.test(c.erreur ?? "")), false);
+
   console.log("\nLa première inscription : celle du propriétaire");
-  const r1 = await poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP });
-  const c1 = await r1.json();
-  verifier("le premier compte est créé", r1.status, 200);
+  const r1 = course.find((r, i) => corpsCourse[i].proprietaire === true);
+  const c1 = corpsCourse.find((c) => c.proprietaire === true) ?? {};
+  verifier("le premier compte est créé", r1?.status, 200);
   verifier("il est propriétaire", c1.proprietaire, true);
   verifier("il repart avec une session", Boolean(c1.jeton), true);
+  // C'est le PREMIER courriel qui a gagné : l'ordre de la course n'est pas
+  // garanti, mais celui-là est le seul dont le harnais connaît le mot de
+  // passe pour la suite — s'il a perdu, tout ce qui suit est faux.
+  verifier("c'est bien le courriel du propriétaire qui a gagné",
+    corpsCourse[0].proprietaire === true, true);
   const jetonProprio = c1.jeton;
 
   console.log("\nLe courriel est rangé sous une seule forme");
@@ -219,6 +254,35 @@ try {
                                     { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
 
+  // La LECTURE d'une commande, longtemps ouverte à tout compte, portait
+  // fugitivement le code secret dans « resultat » avant que le robot ne le
+  // masque : un invité pouvait l'énumérer. Fermée au propriétaire.
+  const rLire = await fetch(B + "/api/commande/1",
+    { headers: { authorization: `Bearer ${jetonAmi}` } });
+  verifier("il ne lit pas une commande (le code y passe)", rLire.status, 403);
+  // Et il n'écrit pas dans le registre : ni la nature, ni le lu/non-lu.
+  const rNature = await poste("/api/nature", { id: 1, nature: "publicite" },
+                              { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne reclasse pas un SMS", rNature.status, 403);
+  const rLu = await poste("/api/lu", { id: 1 },
+                          { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne marque rien lu", rLu.status, 403);
+  // ET IL NE S'ABONNE PAS AUX NOTIFICATIONS. Une notification porte le SMS
+  // reçu en aperçu : s'y inscrire, c'est recevoir chaque mouvement d'argent
+  // du propriétaire en direct, sur son propre écran verrouillé, sans jamais
+  // rouvrir la plateforme. Aucun écran ne liste les appareils inscrits :
+  // l'abonné clandestin serait resté invisible. Et le robot ne servant que
+  // les vingt derniers vus, s'inscrire en boucle rendait MUET le vrai
+  // téléphone du propriétaire.
+  const rAbonne = await poste("/api/appareil",
+    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne s'abonne pas aux SMS du propriétaire", rAbonne.status, 403);
+  const rLireProprio = await fetch(B + "/api/commande/1",
+    { headers: { authorization: `Bearer ${jetonProprio}` } });
+  verifier("le propriétaire, lui, passe le verrou de lecture",
+           rLireProprio.status !== 403, true);
+
   console.log("\nLe propriétaire crée un compte lui-même");
   // L'inscription libre est fermée et le reste. C'est désormais le SEUL
   // chemin pour faire entrer quelqu'un — et il en fallait un : Google exige
@@ -269,6 +333,26 @@ try {
   const rRefuse = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
   verifier("l'invité ne rentre plus", rRefuse.status, 403);
 
+  // LE JETON DÉJÀ DÉLIVRÉ — la seule chose que l'intrus possède vraiment.
+  //
+  // Ce harnais fermait le compte puis éprouvait une NOUVELLE connexion : 403,
+  // tout allait bien. Il ne présentait jamais le jeton déjà en main, or c'est
+  // exactement ce qu'un invité renvoyé emporte avec lui. La porte est restée
+  // grande ouverte trente jours durant — SMS en clair, soldes, bilan du
+  // trimestre, reçus — sans qu'aucune vérification ne s'en émeuve.
+  //
+  // On présente donc l'ANCIEN jeton, sur les routes qui portent l'argent.
+  const avecAncien = { headers: { authorization: `Bearer ${jetonAmi}` } };
+  for (const chemin of ["/api/donnees", "/api/bilan?jours=90", "/api/actualite"]) {
+    const r = await fetch(B + chemin, avecAncien);
+    verifier(`l'ancien jeton ne lit plus ${chemin}`, r.status, 401);
+  }
+  const rAncienAppareil = await poste("/api/appareil",
+    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("l'ancien jeton n'inscrit plus de téléphone",
+           rAncienAppareil.status === 401 || rAncienAppareil.status === 403, true);
+
   console.log("\nOn ne se ferme pas la porte à soi-même");
   const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === "nelson@exemple.cm").id;
   const rSoi = await poste("/api/comptes", { id: idMoi, geste: "supprimer" },
@@ -287,6 +371,60 @@ try {
   verifier("et elle administre", rSecAdmin.status, 200);
   const rSecFaux = await poste("/api/session", { motdepasse: "pas-la-cle" });
   verifier("une fausse clé ne passe pas", rSecFaux.status, 401);
+
+  // ELLE ADMINISTRE, MAIS ELLE NE VIDE PAS LA MAISON.
+  //
+  // La clé de secours ouvre l'administration sans désigner personne : la
+  // garde « on ne se supprime pas soi-même » ne s'appliquait pas à elle, et
+  // le compte du propriétaire pouvait disparaître. Ce qui suivait, joué
+  // contre un vrai serveur : la table se vidait, la plateforme lisait
+  // « aucun compte » comme « jamais installée », et ROUVRAIT ses
+  // inscriptions. Le premier passant venu du réseau devenait propriétaire —
+  // tous les SMS, tous les soldes, et le terminal qui compose ce qu'on lui
+  // dit de composer.
+  const avecSecours = { authorization: `Bearer ${jetonSec}` };
+  const rSup = await poste("/api/comptes",
+    { id: idMoi, geste: "supprimer" }, avecSecours);
+  verifier("la clé de secours ne supprime pas le propriétaire", rSup.status, 400);
+  const rFer = await poste("/api/comptes",
+    { id: idMoi, geste: "fermer" }, avecSecours);
+  verifier("elle ne ferme pas son compte non plus", rFer.status, 400);
+
+  // Et la porte est restée fermée. C'est CELA qui compte : le reste n'était
+  // qu'un chemin pour y arriver.
+  const porte = await (await fetch(B + "/api/plateforme")).json();
+  verifier("la porte des inscriptions est restée fermée", porte.inscription, false);
+  const rPassant = await poste("/api/inscription",
+    { courriel: "passant@internet.example", motdepasse: MDP });
+  verifier("un passant ne s'inscrit toujours pas", rPassant.status, 403);
+  verifier("et il n'est surtout pas propriétaire",
+    (await rPassant.json()).proprietaire, undefined);
+
+  // LA CLÉ D'INTENTION — l'argent ne part pas deux fois.
+  //
+  // Un code USSD complet porte le bénéficiaire ET le montant : le composer
+  // deux fois, c'est transférer deux fois. Une même demande peut être
+  // présentée deux fois sans que personne l'ait voulu — un appui recompté,
+  // une requête reprise après un délai côté téléphone alors qu'elle avait
+  // abouti. La clé rend le geste idempotent, côté SERVEUR : l'écran ne se
+  // garde pas tout seul.
+  console.log("\nLa clé d'intention : un geste, une seule demande");
+  const CODE = { code: "*126*1*677123456*5000#" };
+  const commande = async (corps) => {
+    const r = await poste("/api/commande", corps,
+                          { authorization: `Bearer ${jetonProprio}` });
+    return r.json().catch(() => ({}));
+  };
+  const idem1 = await commande({ type: "ussd", parametres: CODE, cle: "essai-A" });
+  const idem2 = await commande({ type: "ussd", parametres: CODE, cle: "essai-A" });
+  verifier("le même geste ne crée qu'UNE demande", Boolean(idem1.id) && idem1.id === idem2.id, true);
+  const idemAutre = await commande({ type: "ussd", parametres: CODE, cle: "essai-B" });
+  verifier("un geste distinct garde sa demande", Boolean(idemAutre.id) && idemAutre.id !== idem1.id, true);
+  // Naviguer dans un menu répond souvent « 1 » plusieurs fois : deux gestes
+  // distincts doivent rester deux demandes, sinon la navigation casse.
+  const idemR1 = await commande({ type: "ussd_reponse", parametres: { texte: "1" }, cle: "essai-C1" });
+  const idemR2 = await commande({ type: "ussd_reponse", parametres: { texte: "1" }, cle: "essai-C2" });
+  verifier("répondre « 1 » deux fois reste possible", Boolean(idemR1.id) && idemR1.id !== idemR2.id, true);
 
   console.log("\nCe qu'on refuse d'enregistrer");
   // La forme est vérifiée AVANT la porte : un mot de passe trop court est

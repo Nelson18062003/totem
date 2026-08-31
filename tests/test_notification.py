@@ -1,8 +1,12 @@
-"""Ce qu'une notification a le droit de dire — et ce qu'elle ne dira jamais.
+"""Ce qu'une notification montre : le message reçu, en aperçu.
 
-Une notification s'affiche sur un écran VERROUILLÉ, dans un taxi, sur une
-table de réunion. Ces tests gardent les trois règles de la maison à cet
-endroit précis : pas de code, pas de montant inventé, pas le SMS entier.
+Une notification, c'est comme WhatsApp ou l'application SMS : on lit le
+message depuis le volet, sans ouvrir l'application. On a un temps résumé le
+SMS et masqué ses codes « pour l'écran verrouillé » ; personne ne l'avait
+demandé, c'était une faute, retirée. Ces tests gardent le contraire de
+jadis : le corps porte le texte REÇU, code compris. Deux garde-fous
+demeurent, et aucun ne cache le message — on n'invente rien, et un SMS très
+long est coupé (c'est un aperçu ; le journal garde l'entier).
 """
 
 import json
@@ -11,82 +15,54 @@ import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import totem.app
-from totem.analyse_sms import analyser
 from totem.app import Robot
-from totem.notification import composer, envoyer
+from totem.notification import APERCU_MAX, composer, envoyer
 from totem.nuage import Nuage
 
 
 class TexteDeLaNotification(unittest.TestCase):
 
-    def test_encaissement_dit_le_montant_et_qui(self):
+    def test_le_corps_est_le_message_recu(self):
         sms = ("Vous avez recu 20 000 FCFA de NGONO Marie (677123456). "
                "Ref: PP240829. Nouveau solde: 412 500 FCFA.")
-        titre, corps = composer(analyser(sms), "MTNMobileMoney", "MTN ·8901")
-        self.assertEqual(titre, "MTN ·8901")
-        self.assertIn("20 000 FCFA", corps)
-        self.assertIn("NGONO Marie", corps)
-        self.assertTrue(corps.startswith("+"), corps)
+        titre, corps = composer("MTNMobileMoney", "MTN ·8901", sms)
+        self.assertEqual(titre, "MTN ·8901")   # la carte concernée
+        self.assertEqual(corps, sms)           # le message, tel quel
 
-    def test_un_code_ne_sort_JAMAIS(self):
-        # La règle la plus importante du fichier. Un code à usage unique
-        # s'afficherait sur l'écran verrouillé, à la vue de quiconque passe.
-        for sms in ("Votre code est 483921. Ne le communiquez a personne.",
-                    "Your OTP: 45 67 89",
-                    "Code de confirmation : 12-34-56"):
-            titre, corps = composer(analyser(sms), "MTN", "MTN ·8901",
-                                    categorie="code")
-            # Ni le code, ni le texte du message, ni aucune suite de chiffres.
-            self.assertNotIn("483921", corps)
-            self.assertNotIn("45 67 89", corps)
-            self.assertNotIn("12-34-56", corps)
-            self.assertNotIn(sms, corps)
-            self.assertRegex(corps, r"^Un code de ")
+    def test_un_code_se_LIT_dans_la_notification(self):
+        # Jadis on le masquait ici ; c'était la faute. Le propriétaire doit
+        # pouvoir lire son code depuis le volet, comme avec WhatsApp.
+        for sms, code in (
+                ("Votre code est 483921. Ne le communiquez a personne.", "483921"),
+                ("Your OTP: 45 67 89", "45 67 89"),
+                ("Code de confirmation : 12-34-56", "12-34-56")):
+            _, corps = composer("MTN", "MTN ·8901", sms)
+            self.assertEqual(corps, sms)        # rien n'est retiré
+            self.assertIn(code, corps)          # le code se lit
+            self.assertNotIn("•", corps)        # aucun point de masque
 
-    def test_le_SMS_entier_ne_part_jamais(self):
-        # La notification annonce ; elle ne remplace pas le journal.
-        sms = ("Vous avez recu 20 000 FCFA de NGONO Marie (677123456). "
-               "Ref: PP240829. Nouveau solde: 412 500 FCFA.")
-        _, corps = composer(analyser(sms), "MTNMobileMoney", "MTN ·8901")
-        self.assertNotIn(sms, corps)
-        self.assertNotIn("Ref:", corps)
-        self.assertLess(len(corps), 120, "une notification reste courte")
+    def test_un_SMS_tres_long_est_coupe_en_apercu(self):
+        # Un aperçu, pas le journal : au-delà de la borne, on coupe, et on le
+        # signale par une ellipse. C'est le SEUL raccourci qui subsiste.
+        sms = "Detail. " * 60                    # bien au-delà de APERCU_MAX
+        _, corps = composer("MTN", "MTN ·8901", sms)
+        self.assertLessEqual(len(corps), APERCU_MAX)
+        self.assertTrue(corps.endswith("…"), corps)
+        self.assertTrue(sms.startswith(corps[:-1].rstrip()), corps)
 
-    def test_un_sens_inconnu_ne_se_devine_pas(self):
-        # Orange nomme les deux parties sans dire laquelle est la nôtre :
-        # « reçu » sur un envoi serait un mensonge, et l'inverse aussi.
-        class Faux:
-            montant = 20000
-            sens = None
-            tiers = "A → B"
-        _, corps = composer(Faux(), "OrangeMoney", "Orange ·4432")
-        self.assertNotIn("+", corps)
-        self.assertNotIn("−", corps)
-        self.assertIn("20 000 FCFA", corps)
+    def test_les_sauts_de_ligne_sont_aplatis(self):
+        # Le volet tient sur peu de lignes : on met le message à plat sans
+        # rien retirer de ses mots.
+        _, corps = composer("MTN", "MTN ·8901", "Ligne un.\n\nLigne deux.")
+        self.assertEqual(corps, "Ligne un. Ligne deux.")
 
-    def test_un_montant_non_lu_ne_s_invente_pas(self):
-        class Faux:
-            montant = None
-            sens = "entree"
-            tiers = "quelqu'un"
-        _, corps = composer(Faux(), "MTN", "MTN ·8901")
-        self.assertNotRegex(corps, r"\d")
-        self.assertIn("non lu", corps)
-
-    def test_un_message_incompris_le_dit(self):
-        _, corps = composer(None, "MTN", "MTN ·8901", categorie="illisible")
-        self.assertIn("pas su lire", corps)
-
-    def test_un_message_ordinaire_reste_sobre(self):
-        _, corps = composer(None, "MTN", "MTN ·8901", categorie="publicite")
-        self.assertEqual(corps, "Un message de MTN")
-
-    def test_les_deux_langues(self):
-        sms = "Vous avez recu 20 000 FCFA de NGONO Marie (677123456)"
-        _, fr = composer(analyser(sms), "MTN", "MTN ·8901")
-        _, en = composer(analyser(sms), "MTN", "MTN ·8901", anglais=True)
-        self.assertIn("de NGONO Marie", fr)
-        self.assertIn("from NGONO Marie", en)
+    def test_sans_texte_on_annonce_au_moins_l_arrivee(self):
+        # Cas défensif : un SMS vide. On n'invente pas son contenu, mais on
+        # dit qu'un message est arrivé.
+        _, fr = composer("MTN", "MTN ·8901", "")
+        _, en = composer("MTN", "MTN ·8901", None, anglais=True)
+        self.assertEqual(fr, "Un message de MTN")
+        self.assertEqual(en, "A message from MTN")
 
 
 class EnvoiDesNotifications(unittest.TestCase):
@@ -212,18 +188,13 @@ class FaireSonnerLeTelephone(unittest.TestCase):
         class FauxRobot:
             nuage = FauxNuage()
 
-            @staticmethod
-            def _nos_numeros():
-                return ()
-
         self.robot = FauxRobot()
 
     def tearDown(self):
         totem.app.envoyer = self._vrai_envoyer
 
     def _sonner(self, texte):
-        Robot._faire_sonner(self.robot, analyser(texte), "MTN",
-                            "MTN ·8901", texte)
+        Robot._faire_sonner(self.robot, "MTN", "MTN ·8901", texte)
         self.parti.wait(3)
 
     def test_un_encaissement_fait_sonner(self):
@@ -234,18 +205,17 @@ class FaireSonnerLeTelephone(unittest.TestCase):
         self.assertEqual(titre, "MTN ·8901")
         self.assertIn("20 000 FCFA", corps)
 
-    def test_un_code_recu_ne_montre_pas_ses_chiffres(self):
-        # Le branchement doit passer la catégorie, sinon la règle qui
-        # protège les codes ne s'applique jamais en vrai.
+    def test_un_code_recu_se_LIT_dans_la_notification(self):
+        # Le chemin complet : le SMS arrive, le code se lit sur le volet.
         self._sonner("Votre code est 483921. Ne le communiquez a personne.")
         self.assertEqual(len(self.envois), 1)
         _, _, corps = self.envois[0]
-        self.assertNotIn("483921", corps)
-        self.assertNotRegex(corps, r"\d")
+        self.assertIn("483921", corps)
+        self.assertNotIn("•", corps)
 
     def test_sans_nuage_rien_ne_part(self):
         self.robot.nuage = None
-        Robot._faire_sonner(self.robot, None, "MTN", "MTN ·8901", "coucou")
+        Robot._faire_sonner(self.robot, "MTN", "MTN ·8901", "coucou")
         self.assertFalse(self.parti.wait(0.2))
         self.assertEqual(self.envois, [])
 

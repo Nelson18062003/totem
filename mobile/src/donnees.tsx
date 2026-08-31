@@ -35,6 +35,7 @@ import { AppState } from "react-native";
 import * as Notifications from "expo-notifications";
 import { chargerDonnees, ErreurGuichet } from "@/api/guichet";
 import { useLangue } from "@/langue";
+import { textesConnexion } from "@noyau/textes/connexion";
 import { useSession } from "@/session";
 import type { Donnees } from "@noyau/types";
 
@@ -80,7 +81,16 @@ export function useDonnees(bornes?: { sms?: number; recus?: number }): Etat {
       // est déjà à l'écran ni afficher une erreur : le réseau tombe souvent,
       // et l'écran resterait rouge pour une coupure de trois secondes. La
       // prochaine notification ou le prochain retour à l'écran rechargera.
-      if (!discret) setErreur(e instanceof Error ? e.message : String(e));
+      //
+      // Le guichet parle déjà la langue de l'écran ; une panne de RÉSEAU,
+      // elle, jette un message brut du système (« Failed to fetch »,
+      // « Network request failed ») — en anglais quel que soit l'écran.
+      // On lui substitue la phrase du dictionnaire.
+      if (!discret) {
+        setErreur(e instanceof ErreurGuichet && e.message
+          ? e.message
+          : textesConnexion[langue].reseauEnPanne);
+      }
     } finally {
       if (!discret) setChargement(false);
     }

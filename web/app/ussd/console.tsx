@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { aDesVariables, codesUssd } from "@noyau/codes";
+import { demandeUnCode } from "@noyau/ussd";
 import { textesUssd } from "@noyau/textes/ussd";
 import type { RaccourciAppris, Sim } from "@noyau/types";
 import { BarreArret, BoutonFermer } from "../feuille";
@@ -26,20 +27,13 @@ import { PaveSecret } from "../pave-secret";
 
 type Msg = { de: "reseau" | "vous"; texte: string };
 
-// « 1) Transfert » — une ligne d'option numérotée du menu de l'opérateur.
-const RE_OPTION = /^\s*(\d{1,2})\s*[.):\-]\s*(\S.*)$/;
-
-// Le réseau attend-il le code secret ? (même règle que le robot : un menu
-// qui PARLE du code sans rien demander porte des options numérotées.)
-// Le motif lit du texte opérateur, écrit en français comme en anglais.
-function demandeUnCode(texte: string): boolean {
-  const porteOptions = (texte || "")
-    .split(/\r\n|\r|\n/)
-    .some((l) => RE_OPTION.test(l.trim()));
-  return !porteOptions &&
-    /\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel|confidential|mot\s+de\s+passe|password|passcode/i.test(texte);
-}
-
+// « Le réseau attend-il le code secret ? » se lit dans le NOYAU, jamais ici.
+//
+// Cet écran en gardait sa propre copie, et les deux ne s'accordaient déjà
+// plus : sur « 3)\nEntrez votre code PIN », le noyau disait non et cette
+// console disait oui. Même texte d'opérateur, décision opposée sur
+// l'ouverture du pavé, dans la même plateforme — et c'est la décision qui
+// détermine si le code part masqué ou en clair. Une seule lecture, partagée.
 type CarteConsole = Pick<Sim, "libelle" | "operateur" | "iccid">;
 
 export function ConsoleUssd({
@@ -69,6 +63,26 @@ export function ConsoleUssd({
   // réponse d'une génération passée est jetée — un écran refermé ne se
   // rouvre pas tout seul sur une réponse tardive.
   const generation = useRef(0);
+  // Une session vivante à raccrocher ? Lu depuis le nettoyage de démontage,
+  // d'où un `ref` synchrone plutôt que l'état React.
+  const aRaccrocher = useRef(false);
+  // UN ENVOI À LA FOIS, ET SYNCHRONE. `attente` est un état React : il ne
+  // devient vrai qu'au re-rendu SUIVANT. Deux appuis rapides sur « Entrée »
+  // passaient donc tous les deux, et un code complet — bénéficiaire et
+  // montant compris — partait DEUX fois. Un drapeau synchrone ferme la
+  // porte à l'instant même, comme ailleurs dans l'application.
+  const envoiEnCours = useRef(false);
+
+  // L'ordre de raccrochage, à un seul endroit : il marque aussi que c'est
+  // fait, pour que le démontage ne le renvoie pas une seconde fois.
+  const posterFin = useCallback(() => {
+    aRaccrocher.current = false;
+    fetch("/api/commande", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+    }).catch(() => {});
+  }, []);
 
   // Rend la réponse du réseau quand la demande aboutit, null sinon : c'est
   // ce qui permet de rejouer un bouton appris étape par étape, en s'arrêtant
@@ -77,8 +91,12 @@ export function ConsoleUssd({
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
+    // Jointe à la composition : le cadran accepte un code complet tapé à la
+    // main — donc un transfert entier, qu'on ne veut pas jouer deux fois.
+    cle?: string,
   ): Promise<string | null> => {
-    if (attente) return null;
+    if (attente || envoiEnCours.current) return null;
+    envoiEnCours.current = true;
     const gen = generation.current;
     setAttente(true);
     setErreur(null);
@@ -87,7 +105,7 @@ export function ConsoleUssd({
       const r = await fetch("/api/commande", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: genre, parametres }),
+        body: JSON.stringify({ type: genre, parametres, cle }),
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
@@ -118,6 +136,8 @@ export function ConsoleUssd({
       setErreur(e instanceof Error ? e.message : t.accroc);
       setAttente(false);
       return null;
+    } finally {
+      envoiEnCours.current = false;
     }
   };
 
@@ -128,7 +148,8 @@ export function ConsoleUssd({
     setSaisie("");
     // L'ICCID voyage avec le code : le robot compose sur CETTE carte,
     // jamais sur « la première venue ».
-    void envoyer("ussd", { code: c, carte: carte.iccid }, { de: "vous", texte: c });
+    void envoyer("ussd", { code: c, carte: carte.iccid }, { de: "vous", texte: c },
+      `cadran-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   };
 
   // Rejouer un bouton appris : le code d'entrée, puis chaque réponse retenue,
@@ -166,29 +187,19 @@ export function ConsoleUssd({
   // attendre l'écran — la carte se replie sur-le-champ.
   const raccrocher = useCallback(() => {
     generation.current++;
-    fetch("/api/commande", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
-    }).catch(() => {});
+    posterFin();
     setFil([]); setEnSession(false); setErreur(null);
     setAttente(false); setConfirme(false);
-  }, []);
+  }, [posterFin]);
 
   // Fermer l'écran quand rien ne vit : immédiat, sans aller-retour. Si une
   // commande est encore EN VOL, on raccroche défensivement — une session qui
   // s'ouvrirait après la fermeture ne doit jamais rester pendue sur la carte.
   const fermerEcran = useCallback(() => {
-    if (attente) {
-      fetch("/api/commande", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
-      }).catch(() => {});
-    }
+    if (attente) posterFin();
     generation.current++;
     setFil([]); setErreur(null); setAttente(false); setConfirme(false);
-  }, [attente]);
+  }, [attente, posterFin]);
 
   // LA porte de sortie : libre quand la session est finie, retenue par la
   // confirmation quand elle est vivante — croix, voile et Échap, même porte.
@@ -198,6 +209,38 @@ export function ConsoleUssd({
   }, [enSession, fermerEcran]);
 
   const visible = fil.length > 0 || attente;
+
+  // QUITTER LA PAGE NE DOIT PAS LAISSER LA SIM EN LIGNE. Les boutons
+  // raccrochent déjà ; ce qui manquait, c'est le départ AUTREMENT — la
+  // navigation, le « précédent » du navigateur. La console est une carte de
+  // la page /ussd : en quitter la page la démonte, et sans ce nettoyage la
+  // session restait ouverte sur la vraie carte, à Douala.
+  useEffect(() => { aRaccrocher.current = enSession; }, [enSession]);
+  useEffect(() => () => { if (aRaccrocher.current) posterFin(); }, [posterFin]);
+
+  // FERMER L'ONGLET NE DOIT PAS LAISSER LA SIM EN LIGNE.
+  //
+  // Le nettoyage de démontage de React ne s'exécute QUE si le composant est
+  // démonté par l'application : fermer l'onglet, recharger, taper une autre
+  // adresse ou revenir en arrière hors du site déchargent la page sans qu'il
+  // soit appelé — et la session reste ouverte sur la vraie carte, à Douala.
+  //
+  // `sendBeacon` est fait pour ce moment précis : le navigateur garde la
+  // requête en charge APRÈS la disparition de la page. On l'accroche à
+  // « pagehide », que tous les navigateurs déclenchent (y compris sur mobile,
+  // où « beforeunload » est ignoré).
+  useEffect(() => {
+    const enPartant = () => {
+      if (!aRaccrocher.current) return;
+      aRaccrocher.current = false;
+      navigator.sendBeacon?.(
+        "/api/commande",
+        new Blob([JSON.stringify({ type: "ussd_fin", parametres: {} })],
+                 { type: "application/json" }));
+    };
+    window.addEventListener("pagehide", enPartant);
+    return () => window.removeEventListener("pagehide", enPartant);
+  }, []);
 
   // Échap sort — la même porte qu'au doigt.
   useEffect(() => {

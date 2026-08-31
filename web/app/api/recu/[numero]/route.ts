@@ -15,6 +15,14 @@ export async function GET(
 ) {
   const langue = await langueServeur();
   const { numero } = await params;
+  // La forme d'un numéro de reçu, rien d'autre — comme la fabrique du lien
+  // signé (…/lien). `chargerRecu` nettoie déjà pour la base, et Node
+  // assainit l'en-tête ; cette garde n'ajoute qu'une seconde barrière, pour
+  // que le numéro qui atterrit dans « Content-Disposition » soit toujours
+  // propre, quelle que soit la porte d'entrée.
+  if (!/^[\w.-]{1,64}$/.test(numero)) {
+    return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
+  }
   const pdf = await chargerRecu(numero);
   if (!pdf) return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   return new Response(pdf, {

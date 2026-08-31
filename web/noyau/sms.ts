@@ -43,22 +43,21 @@ export const estArgent = (p: Paiement): boolean =>
   p.montant != null || ARGENT.includes(categorieDe(p));
 
 /**
- * LE TEXTE TEL QU'ON OSE L'AFFICHER.
+ * LE TEXTE DU SMS, TEL QU'IL EST ARRIVÉ. Sans retouche.
  *
- * Le robot masque déjà les codes à usage unique avant de les transmettre.
- * L'écran ne lui fait pourtant pas aveuglément confiance : une ligne écrite
- * AVANT le masquage dort peut-être encore en base, et elle remonterait en
- * clair. On remasque donc à l'affichage — c'est une seconde ligne de
- * défense, pas une redite.
+ * Le propriétaire reçoit ses messages ENTIERS — y compris les codes qu'ils
+ * portent. Ce sont SES SMS, sur SA carte ; un code de connexion reçu par
+ * SMS, il doit pouvoir le lire, c'est même à ça qu'il sert. On a un temps
+ * masqué ces codes par excès de prudence — c'était une faute : cacher au
+ * propriétaire son propre code l'empêchait de s'en servir. On ne touche
+ * plus au texte. Un SMS ne se modifie pas.
  *
- * Et c'est la catégorie DEVINÉE qui déclenche le masque, pas la nature
- * choisie : une nature posée à la main ne doit jamais déshabiller un code.
- * Une défense ne se retire pas d'un geste d'interface.
+ * À NE PAS CONFONDRE avec le code SECRET Mobile Money que le propriétaire
+ * TAPE pendant une opération USSD : celui-là n'apparaît jamais à l'écran et
+ * n'entre pas par cette porte — il n'est jamais reçu par SMS, il vit dans le
+ * pavé le temps d'un geste. Rien de tout cela ne change ici.
  */
-export const texteSurEcran = (p: Paiement): string =>
-  p.categorie === "code" || categorieDe(p) === "code"
-    ? p.smsBrut.replace(/\d(?:[\s.-]?\d){2,9}/g, "••••••")
-    : p.smsBrut;
+export const texteSurEcran = (p: Paiement): string => p.smsBrut;
 
 /** Au-delà de cette taille, l'écran replie le message : la preuve reste à un
  *  geste, mais elle ne chasse plus les détails. */

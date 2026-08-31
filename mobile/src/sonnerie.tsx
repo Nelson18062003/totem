@@ -12,9 +12,9 @@
 //   3. Il récupère le JETON de cet appareil auprès d'Expo, et l'inscrit
 //      auprès de la plateforme.
 //
-// CE QU'IL NE FAIT PAS : décider du texte. Ce que la notification a le droit
-// de dire est tranché à Douala, dans `totem/notification.py` — c'est là que
-// vit la règle « un code ne sort jamais ». Le téléphone ne fait qu'afficher.
+// CE QU'IL NE FAIT PAS : décider du texte. Le corps de la notification est
+// composé à Douala, dans `totem/notification.py` — c'est le message REÇU, en
+// aperçu, tel qu'il est arrivé, code compris. Le téléphone ne fait qu'afficher.
 //
 // Un refus n'est jamais une panne : l'application marche exactement pareil
 // sans notification, on la consulte simplement soi-même.
@@ -54,9 +54,9 @@ async function declarerLeCanal(): Promise<void> {
     // comme la marque.
     lightColor: couleurs.laterite,
     // L'écran verrouillé montre le message. C'est tout l'intérêt : le
-    // propriétaire voit l'encaissement sans déverrouiller. Ce qui s'y
-    // affiche a déjà été filtré à Douala — jamais un code, jamais un
-    // montant inventé.
+    // propriétaire lit son SMS depuis le volet, sans déverrouiller — comme
+    // WhatsApp ou l'application SMS. S'il veut cacher le contenu sur l'écran
+    // verrouillé, c'est SON choix, dans les réglages du téléphone.
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
   });
 }

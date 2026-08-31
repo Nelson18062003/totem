@@ -21,10 +21,10 @@
 //     dernier kilomètre, mais le premier — le modem, la lecture du SMS,
 //     l'analyse — n'est pas touché ici.
 //
-// Aucun contenu de paiement ne passe par là : le message d'essai ne parle
-// que de lui-même. Les trois règles qui protègent les notifications (jamais
-// un code, jamais un montant inventé, jamais le SMS entier) restent donc
-// entièrement chez le robot, à un seul endroit.
+// Aucun contenu de SMS ne passe par là : le message d'essai ne parle que de
+// lui-même. Ce qu'une vraie notification montre — le message reçu, en aperçu,
+// tel qu'il est arrivé — se décide chez le robot (`totem/notification.py`), à
+// un seul endroit.
 
 const GUICHET_EXPO = "https://exp.host/--/api/v2/push/send";
 const DELAI_MS = 10_000;

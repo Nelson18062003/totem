@@ -69,8 +69,9 @@ const tables = () => ({
     { id: 4, source_id: 4, expediteur: "MTN", terminal: "douala-faux",
       compte: "MTN ·8901", carte: "89237010000000008901", sens: null,
       montant: null, tiers: null, numero: null, reference: null, solde_apres: null,
-      // Une ligne ECRITE AVANT le masquage du robot : elle porte le code en
-      // clair. C'est exactement le cas que l'ecran doit rattraper.
+      // Un SMS à code de connexion : il porte un code en clair, et il doit se
+      // lire ENTIER. C'est le message du propriétaire, sur sa carte — on n'y
+      // touche pas. L'écran l'affiche tel quel, 483921 compris.
       texte: "Votre code de confirmation est 483921. Ne le communiquez a personne.",
       categorie: "code", nature: null,
       emis_le: il_y_a(45), recu_le: il_y_a(45), lu_le: null },
@@ -127,7 +128,23 @@ const tables = () => ({
     { operateur: "MTN", nom: "transfert", libelle: "Transfert", etapes: "*126#,1,2" },
     { operateur: "Orange", nom: "solde", libelle: "Solde", etapes: "#150*1#" },
   ],
-  evenements: [],
+  // CE QUE LE TERMINAL A REMARQUÉ. La table existait ici, vide : rien ne
+  // pouvait donc éprouver l'écran qui la montre. Un contrôle qui regarde une
+  // liste vide passe au vert sans rien voir.
+  evenements: [
+    { id: 3, terminal: "douala-faux", source_id: 3,
+      texte: "Le modem ne répondait plus : il a été redémarré.",
+      survenu_le: il_y_a(90), cree_le: il_y_a(90) },
+    { id: 2, terminal: "douala-faux", source_id: 2,
+      texte: "SMS d'argent illisible (MTNMobileMoney) : lecture incomplète, "
+           + "opération comptée nulle part",
+      survenu_le: il_y_a(240), cree_le: il_y_a(240) },
+    // Un incident SANS terminal : c'est la plateforme qui parle.
+    { id: 1, terminal: null, source_id: 1,
+      texte: "Un bilan de 90 jours a été coupé : la caisse porte plus de "
+           + "20 000 messages sur cette période.",
+      survenu_le: il_y_a(1500), cree_le: il_y_a(1500) },
+  ],
 });
 
 // --- Le robot joué : une commande reçoit sa réponse d'opérateur -------------
@@ -151,6 +168,8 @@ const appareils = new Map();
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
+// Les essais de mot de passe comptés, comme la table « freins ».
+const freins = new Map();
 
 function reponsePour(commande) {
   const { type, parametres } = commande;
@@ -189,6 +208,21 @@ const serveur = createServer(async (req, res) => {
     let brut = "";
     for await (const m of req) brut += m;
     const c = JSON.parse(brut || "{}");
+    // L'INDEX D'UNICITÉ, imité. La vraie base porte un index partiel sur
+    // (terminal, cle) : deux demandes de même clé ne peuvent pas coexister, et
+    // PostgREST répond 409. Sans cette imitation, le faux nuage acceptait tout
+    // et l'on ne pouvait pas éprouver l'idempotence — un harnais qui ne peut
+    // pas voir la faute ne mesure rien.
+    if (c.cle) {
+      const jumelle = [...commandes.values()].find(
+        (x) => x.cle === c.cle && x.terminal === c.terminal);
+      if (jumelle) {
+        res.writeHead(409, { "content-type": "application/json" });
+        return res.end(JSON.stringify({
+          code: "23505", message: "duplicate key value violates unique constraint",
+        }));
+      }
+    }
     const id = prochainId++;
     // Le tour compte les réponses déjà données dans CETTE session.
     const tour = [...commandes.values()].filter(
@@ -205,6 +239,14 @@ const serveur = createServer(async (req, res) => {
 
   // Lecture d'une commande.
   if (chemin === "/rest/v1/commandes") {
+    // Retrouver une demande PAR SA CLÉ : c'est ce que fait la plateforme après
+    // un 409, pour rendre la demande déjà créée au lieu d'un échec.
+    const parCle = url.searchParams.get("cle");
+    if (parCle) {
+      const cle = parCle.replace("eq.", "");
+      const c = [...commandes.values()].find((x) => x.cle === cle);
+      return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+    }
     const eq = url.searchParams.get("id");
     const id = eq ? Number(eq.replace("eq.", "")) : null;
     const c = commandes.get(id);
@@ -232,6 +274,41 @@ const serveur = createServer(async (req, res) => {
     return repondre({ ajoutes: smsEnPlus.length });
   }
 
+  // Une caisse qui TOURNE DEPUIS DES MOIS. Les cinq encaissements semés plus
+  // haut suffisent à remplir un écran ; ils ne suffisent pas à éprouver ce
+  // qui casse sur une vraie caisse : une période plus large que ce qu'une
+  // lecture rapporte, et un bilan qui s'arrête sans le dire.
+  //
+  //     curl -X POST "http://127.0.0.1:4999/essai/semer?jours=120&parJour=20"
+  if (req.method === "POST" && chemin === "/essai/semer") {
+    const jours = Number(url.searchParams.get("jours") || 120);
+    const parJour = Number(url.searchParams.get("parJour") || 20);
+    // Un encaissement par tranche d'heures, à heure FIXE : le harnais doit
+    // pouvoir dire, sans deviner, lequel tombe dans la fenêtre et lequel non.
+    const pas = Math.floor((20 * 3600000) / Math.max(1, parJour));
+    for (let j = 0; j < jours; j++) {
+      for (let k = 0; k < parJour; k++) {
+        // 02 h 00 + k × pas, en remontant de j jours.
+        const t = new Date(Date.now() - j * 86400000);
+        t.setUTCHours(2, 0, 0, 0);
+        const quand = new Date(t.getTime() + k * pas);
+        if (quand.getTime() > Date.now()) continue;
+        const iso = quand.toISOString();
+        smsEnPlus.push({
+          id: 500000 + smsEnPlus.length, source_id: 500 + smsEnPlus.length,
+          terminal: "douala-faux",
+          compte: "MTN ·8901", carte: "89237010000000008901",
+          expediteur: "MTNMobileMoney", categorie: "encaissement",
+          sens: "entree", montant: 1000, tiers: "SEMEUR", numero: "677000001",
+          reference: null, solde_apres: null,
+          texte: "Vous avez recu 1 000 FCFA de SEMEUR (677000001).",
+          nature: null, emis_le: iso, recu_le: iso, moment: iso, lu_le: null,
+        });
+      }
+    }
+    return repondre({ semes: smsEnPlus.length });
+  }
+
   // --- LES APPAREILS (les téléphones à faire sonner) ----------------------
   if (chemin === "/rest/v1/appareils") {
     if (req.method === "POST") {
@@ -248,6 +325,26 @@ const serveur = createServer(async (req, res) => {
       return repondre([], 204);
     }
     return repondre([...appareils.values()]);
+  }
+
+  // --- LE FREIN, COMPTÉ COMME LA VRAIE BASE LE COMPTE --------------------
+  //
+  // La plateforme demande à la BASE de compter ses essais de mot de passe :
+  // c'est le seul moyen que toutes les instances partagent un seau. Sans
+  // cette imitation ici, le harnais du frein mesurerait le seau de secours en
+  // mémoire — c'est-à-dire pas ce qui tourne en production.
+  //
+  // Le comptage est fait D'UN SEUL GESTE, comme le « insert … on conflict »
+  // de la vraie base : lire puis écrire laisserait passer une rafale.
+  if (req.method === "POST" && chemin === "/rest/v1/rpc/compter_un_essai") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const { la_cle: cle, fenetre_s: fenetre } = JSON.parse(brut || "{}");
+    const present = Date.now();
+    const e = freins.get(cle);
+    const n = e && present - e.vu <= fenetre * 1000 ? e.n + 1 : 1;
+    freins.set(cle, { n, vu: present });
+    return repondre(n);
   }
 
   // --- LES COMPTES -------------------------------------------------------
@@ -282,6 +379,15 @@ const serveur = createServer(async (req, res) => {
         if ([...utilisateurs.values()].some((x) => x.courriel === u.courriel)) {
           return repondre({ code: "23505", message: "duplicate key" }, 409);
         }
+        // IL N'Y A QU'UN PROPRIÉTAIRE, et c'est la BASE qui le tient — index
+        // « utilisateurs_un_seul_proprietaire ». Sans cette règle ici, trois
+        // inscriptions lancées ensemble donnaient trois propriétaires, et
+        // aucun harnais n'aurait pu voir la course.
+        if (u.role === "proprietaire"
+            && [...utilisateurs.values()].some((x) => x.role === "proprietaire")) {
+          return repondre({ code: "23505", message: "duplicate key value violates "
+            + "unique constraint \"utilisateurs_un_seul_proprietaire\"" }, 409);
+        }
         const ligne = {
           id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
           role: u.role ?? "invite", approuve: Boolean(u.approuve),
@@ -302,30 +408,118 @@ const serveur = createServer(async (req, res) => {
     }
 
     if (req.method === "DELETE") {
+      // LE DERNIER PROPRIÉTAIRE NE S'EFFACE PAS — déclencheur
+      // « un_proprietaire_reste ». Sans cette règle ici, la table se vidait,
+      // la plateforme rouvrait ses inscriptions, et un passant du réseau
+      // devenait propriétaire. Aucun harnais n'aurait pu le voir.
+      for (const u of vise()) {
+        if (u.role === "proprietaire"
+            && ![...utilisateurs.values()].some(
+                 (x) => x.role === "proprietaire" && x.id !== u.id)) {
+          return repondre({ code: "23514", message: "Le compte du propriétaire "
+            + "ne se supprime pas : la plateforme resterait sans propriétaire." },
+            400);
+        }
+      }
       for (const u of vise()) utilisateurs.delete(u.id);
       return repondre([], 204);
     }
   }
 
+  // --- CE QUE LE ROBOT ÉCRIT ---------------------------------------------
+  //
+  // Le terminal de Douala POUSSE ses SMS ici (« POST /rest/v1/paiements » avec
+  // « on_conflict=terminal,source_id »). Le faux nuage ne savait pas les
+  // recevoir : la dernière étape de la chaîne — du modem jusqu'à l'écran —
+  // n'avait donc jamais été parcourue par personne. Le robot d'un côté, la
+  // plateforme de l'autre, et rien au milieu pour vérifier qu'ils parlent du
+  // MÊME message.
+  //
+  // « merge-duplicates » : un SMS retransmis met à jour sa ligne au lieu d'en
+  // créer une seconde. C'est ce qui permet au robot de relire ses messages
+  // passés quand son lecteur s'améliore — et c'est aussi ce qui empêche un
+  // paiement d'être compté deux fois après une coupure de courant.
+  const ecriture = /^\/rest\/v1\/(\w+)$/.exec(chemin);
+  if (req.method === "POST" && ecriture && tables()[ecriture[1]]) {
+    const nom = ecriture[1];
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const entrantes = [].concat(JSON.parse(brut || "[]"));
+    const cles = (url.searchParams.get("on_conflict") || "").split(",")
+                    .map((c) => c.trim()).filter(Boolean);
+    const memeLigne = (a, b) => cles.every((c) => String(a[c]) === String(b[c]));
+    for (const ligne of entrantes) {
+      const deja = cles.length ? smsEnPlus.find((x) => memeLigne(x, ligne)) : null;
+      if (deja) Object.assign(deja, ligne);
+      else smsEnPlus.push({ id: 700000 + smsEnPlus.length, lu_le: null, ...ligne });
+    }
+    return repondre([], 201);
+  }
+
   // Les tables ordinaires.
+  //
+  // CE FAUX NUAGE DOIT SAVOIR TRONQUER, ET LE DIRE. Il rendait autrefois le
+  // total APRÈS avoir appliqué la limite : « 1000 lignes sur 1000 » quand la
+  // base en avait 1834. Un contrôle qui ne peut pas voir la troncature ne
+  // garde rien — et c'est exactement la panne qu'on cherchait ici (un bilan
+  // de trimestre amputé sans un mot). Le vrai PostgREST compte AVANT.
   const m = /^\/rest\/v1\/(\w+)$/.exec(chemin);
   const T = tables();
   if (m && T[m[1]]) {
     let lignes = T[m[1]];
-    if (url.searchParams.get("lu_le") === "is.null") {
-      lignes = lignes.filter((l) => l.lu_le === null);
+
+    // Les filtres de colonne : « recu_le=gte.2026-08-01 », « lu_le=is.null »…
+    for (const [champ, brut] of url.searchParams) {
+      if (["select", "order", "limit", "offset", "or"].includes(champ)) continue;
+      const [op, ...reste] = brut.split(".");
+      const valeur = reste.join(".");
+      lignes = lignes.filter((l) => {
+        const v = l[champ];
+        switch (op) {
+          case "is": return valeur === "null" ? v == null : v != null;
+          case "eq": return String(v) === valeur;
+          case "neq": return String(v) !== valeur;
+          case "gte": return v != null && String(v) >= valeur;
+          case "gt": return v != null && String(v) > valeur;
+          case "lte": return v != null && String(v) <= valeur;
+          case "lt": return v != null && String(v) < valeur;
+          default: return true;
+        }
+      });
     }
+
+    // L'ordre demandé : « recu_le.desc », « id.asc »…
+    const tri = url.searchParams.get("order");
+    if (tri) {
+      const [col, ...options] = tri.split(",")[0].split(".");
+      const descendant = options.includes("desc");
+      lignes = [...lignes].sort((a, b) => {
+        const x = a[col], y = b[col];
+        if (x === y) return 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        return (x < y ? -1 : 1) * (descendant ? -1 : 1);
+      });
+    }
+
+    // Le total se compte AVANT la limite : c'est lui qui révèle la coupe.
+    const total = lignes.length;
     const limite = Number(url.searchParams.get("limit") || 0);
     if (limite) lignes = lignes.slice(0, limite);
     return repondre(lignes, 200,
-      { "content-range": `0-${Math.max(0, lignes.length - 1)}/${lignes.length}` });
+      { "content-range": `0-${Math.max(0, lignes.length - 1)}/${total}` });
   }
 
   return repondre({ message: "table inconnue (faux nuage)" }, 404);
 });
 
-serveur.listen(4999, "127.0.0.1", () => {
-  console.log("faux nuage sur http://127.0.0.1:4999");
+// Le port se règle : deux harnais lancés à la suite ne doivent pas se
+// disputer la même écoute — et surtout, aucun ne doit mesurer le faux nuage
+// de l'autre.
+const PORT_NUAGE = Number(process.env.PORT || 4999);
+
+serveur.listen(PORT_NUAGE, "127.0.0.1", () => {
+  console.log(`faux nuage sur http://127.0.0.1:${PORT_NUAGE}`);
   console.log("  2 cartes, 3 SMS, des raccourcis MTN et Orange");
   console.log("  les commandes reçoivent une réponse d'opérateur après ~0,7 s");
 });

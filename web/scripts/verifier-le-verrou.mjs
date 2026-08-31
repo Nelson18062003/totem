@@ -306,6 +306,23 @@ try {
   verifier("les échecs du navigateur freinent l'application", punie - neuve > 1000, true);
   verifier("une adresse innocente reste libre", innocente < 300, true);
 
+  // L'ATTAQUE QUI DÉSARMAIT LE FREIN. On prenait le PREMIER élément de
+  // « x-forwarded-for » — le bout que le client écrit lui-même. Il suffisait
+  // d'en changer à chaque essai pour repartir d'un seau neuf : le frein
+  // n'existait plus, et rien ne le disait. Chaque relais AJOUTANT l'adresse
+  // qu'il a vue, c'est le DERNIER élément qui vient de notre proxy — et lui,
+  // l'attaquant ne l'écrit pas.
+  //
+  // Ici, le vrai bout est constant (« 10.9.0.9 ») et le faux change à chaque
+  // coup. Le frein doit tout de même se resserrer.
+  for (let i = 0; i < 9; i++) {
+    await frapper("/api/connexion", `203.0.113.${i}, 10.9.0.9`);
+  }
+  const rotation = await chrono(() => frapper("/api/session", "198.51.100.7, 10.9.0.9"));
+  console.log(`     (adresse inventée à chaque essai : ${rotation}ms)`);
+  verifier("changer d'adresse annoncée ne desserre pas le frein",
+           rotation - neuve > 1000, true);
+
   console.log(echecs === 0
     ? "\n✓ Le verrou tient : toutes les vérifications passent.\n"
     : `\n✗ ${echecs} vérification(s) en échec.\n`);

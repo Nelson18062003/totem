@@ -31,6 +31,61 @@ export const relie = Boolean(url && cle);
 // journées : c'est la caisse qui décide de ce qu'est « aujourd'hui ».
 import { FUSEAU } from "./fuseau";
 
+/**
+ * Le chemin d'une requête, SANS ce qu'elle cherchait — pour le journal.
+ *
+ * Un chemin porte parfois une donnée personnelle : la recherche d'un compte
+ * s'écrit « utilisateurs?courriel=eq.nom@exemple.cm ». Journalisé tel quel, à
+ * la moindre erreur de la base, le courriel du propriétaire (ou d'un invité)
+ * se retrouvait écrit dans les journaux du serveur, qui se gardent longtemps
+ * et se lisent à plusieurs.
+ *
+ * On garde ce qui sert à comprendre la panne — la table, les filtres employés
+ * — et on retire les valeurs. Un journal doit dire QUELLE requête a échoué,
+ * pas ce qu'elle cherchait.
+ */
+function sansValeurs(chemin: string): string {
+  return chemin.replace(
+    /(=(?:eq|neq|ilike|like|lt|lte|gt|gte|in|is)\.)[^&]*/gi, "$1…");
+}
+
+/**
+ * Une lecture qui dit AUSSI combien de lignes la base avait à donner.
+ *
+ * PostgREST répond « content-range: 0-999/1834 » quand on le lui demande :
+ * mille lignes rendues, mille huit cent trente-quatre disponibles. Sans ce
+ * total, une lecture plafonnée est indiscernable d'une lecture complète — le
+ * bilan d'un trimestre s'arrêtait à mille lignes et ne le disait à personne.
+ *
+ * Le comptage exact coûte un parcours à la base : il ne se demande que là où
+ * la troncature serait un mensonge (l'export comptable), pas à chaque page.
+ */
+async function lireEtCompter<T>(chemin: string): Promise<{ lignes: T[]; total: number | null }> {
+  if (!relie) return { lignes: [], total: null };
+  try {
+    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        prefer: "count=exact",
+      },
+      cache: "no-store",
+    });
+    if (!r.ok) {
+      console.error(`Supabase : ${sansValeurs(chemin)} → ${r.status}`);
+      return { lignes: [], total: null };
+    }
+    const lignes = (await r.json()) as T[];
+    // « 0-999/1834 », ou « */1834 », ou rien du tout si la base ne compte pas.
+    const brut = r.headers.get("content-range") ?? "";
+    const apres = brut.slice(brut.indexOf("/") + 1);
+    const total = /^\d+$/.test(apres) ? Number(apres) : null;
+    return { lignes, total };
+  } catch (e) {
+    console.error(`Supabase injoignable : ${String(e)}`);
+    return { lignes: [], total: null };
+  }
+}
+
 async function lire<T>(chemin: string): Promise<T[]> {
   if (!relie) return [];
   try {
@@ -39,11 +94,15 @@ async function lire<T>(chemin: string): Promise<T[]> {
       cache: "no-store",
     });
     if (!r.ok) {
-      console.error(`Supabase : ${chemin} → ${r.status}`);
+      console.error(`Supabase : ${sansValeurs(chemin)} → ${r.status}`);
       return [];
     }
     return (await r.json()) as T[];
   } catch (e) {
+    // On ne NOTE pas cette panne-là dans la base : la base est justement ce
+    // qui ne répond pas. Écrire ici demanderait un second aller-retour, qui
+    // échouerait pareillement — et une panne qui se raconte deux fois reste
+    // une panne. C'est l'écran qui le dit à la personne, tout de suite.
     console.error(`Supabase injoignable : ${String(e)}`);
     return [];
   }
@@ -64,6 +123,9 @@ type LigneCompte = {
   iccid: string | null; libelle: string; operateur: string | null;
   reseau: string | null; itinerance: boolean; numero: string | null;
   solde: number | null; signal: number | null; maj: string;
+  // L'heure du SOLDE, distincte de « maj » qui date la LIGNE. Optionnelle :
+  // une base pas encore migrée ne la porte pas.
+  solde_maj?: string | null;
 };
 type LigneRecu = {
   numero: string; reference: string | null; chemin: string;
@@ -164,22 +226,45 @@ export async function chargerDonnees(
   // d'en charger 1000. `sms: 0` saute la requête entièrement. ATTENTION :
   // les compteurs des cartes (nbPaiements, totalRecu) ne comptent que ce qui
   // est chargé — la page qui les affiche (Comptes) charge donc tout.
-  bornes?: { sms?: number; recus?: number },
+  //
+  // `depuis` : ne rapporter que les SMS relevés à partir de cet instant (ISO).
+  // Le découpage d'une PÉRIODE se fait dans la BASE, pas après coup sur une
+  // page arbitraire : le bilan CSV chargeait les mille derniers SMS puis
+  // écartait ce qui dépassait — sur une caisse active, un trimestre demandé
+  // rendait cinq semaines, sans un mot.
+  //
+  // `compter` : demander AUSSI à la base combien de lignes elle avait. Le
+  // comptage exact lui coûte un parcours complet — il ne se paie que là où
+  // ignorer une troncature serait un mensonge (l'export comptable), pas à
+  // chaque ouverture d'écran.
+  bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
+  // Le filtre porte sur `recu_le` — la seule colonne d'heure qui ne manque
+  // jamais (l'heure réseau, elle, est absente de la moitié des SMS). Un SMS
+  // relevé en retard après une coupure porte donc une heure de relève
+  // postérieure à son heure d'émission : la borne est prise LARGE, et le
+  // tri fin se fait ensuite sur l'heure qui fait foi.
+  const filtreDate = bornes?.depuis
+    ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "";
   // « select=* » à dessein : exiger une colonne par son nom rend l'écran
   // VIDE quand la base a une migration de retard (la requête entière est
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
   // moins riche — jamais une liste vide. Les champs du type non présents
   // arrivent à undefined, que chaque lecture traite déjà comme null.
-  const [terminaux, cartes, comptes, lignes, recus, boutons] = await Promise.all([
+  const [terminaux, cartes, comptes, releve, recus, boutons] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
     lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
     lire<LigneCompte>("comptes?select=*"),
     nSms > 0
-      ? lire<LignePaiement>(`paiements?select=*&order=recu_le.desc&limit=${nSms}`)
-      : Promise.resolve([] as LignePaiement[]),
+      ? (bornes?.compter
+          ? lireEtCompter<LignePaiement>(
+              `paiements?select=*${filtreDate}&order=recu_le.desc&limit=${nSms}`)
+          : lire<LignePaiement>(
+              `paiements?select=*${filtreDate}&order=recu_le.desc&limit=${nSms}`)
+              .then((lignes) => ({ lignes, total: null as number | null })))
+      : Promise.resolve({ lignes: [] as LignePaiement[], total: null as number | null }),
     nRecus > 0
       ? lire<LigneRecu>(`recus?select=*&order=etabli_le.desc&limit=${nRecus}`)
       : Promise.resolve([] as LigneRecu[]),
@@ -187,6 +272,12 @@ export async function chargerDonnees(
     // `lire` rend [] sans bruit — les écrans montrent juste moins de boutons.
     lire<LigneRaccourci>("raccourcis?select=*&order=id"),
   ]);
+
+  const lignes = releve.lignes;
+  // La base avait-elle plus à donner que ce qu'on a demandé ? La réponse
+  // n'intéresse que l'export comptable — mais elle ne peut se calculer QUE
+  // ici, au moment de la lecture.
+  const smsTronques = releve.total != null && releve.total > lignes.length;
 
   const terminal = versTerminal(terminaux[0], langue);
 
@@ -283,7 +374,15 @@ export async function chargerDonnees(
     // relevé envoyé par l'opérateur (MTN répond ainsi en itinérance).
     // Toujours l'annonce de l'opérateur — jamais un calcul à nous.
     const solde = compte?.solde == null ? null : Number(compte.solde);
-    const soldeMaj = solde != null && compte ? heure(compte.maj) : null;
+    // « D'après l'interrogation de 09:47 » lisait « maj » — l'heure à laquelle
+    // la LIGNE a été touchée, que le signe de vie du robot remet à jour toutes
+    // les soixante secondes. Le solde paraissait donc toujours frais, même
+    // vieux de plusieurs heures : la phrase qui devait rassurer sur son âge
+    // était précisément celle qui le masquait. « solde_maj » date le solde
+    // lui-même ; à défaut (base pas encore migrée), on retombe sur « maj »,
+    // comme avant.
+    const soldeMaj = solde != null && compte
+      ? heure(compte.solde_maj ?? compte.maj) : null;
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );
@@ -316,7 +415,8 @@ export async function chargerDonnees(
     });
   }
 
-  return { relie, terminal, sims, paiements, raccourcis, fuseau: FUSEAU };
+  return { relie, terminal, sims, paiements, raccourcis, fuseau: FUSEAU,
+           smsTronques };
 }
 
 /** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque
@@ -374,10 +474,19 @@ export async function creerCommande(
   // dernier qui a donné signe de vie », qui, avec deux boîtiers, chercherait
   // le message dans le mauvais journal et fabriquerait le reçu d'un autre.
   terminalCible?: string | null,
+  // LA CLÉ D'INTENTION. Tirée au hasard par l'écran, UNE par geste. Deux
+  // envois de la même clé sont le même geste : le second ne crée pas de
+  // seconde demande, il retrouve la première. C'est ce qui empêche qu'un code
+  // USSD complet — bénéficiaire et montant compris — soit composé deux fois,
+  // et donc que l'argent parte deux fois, quand une requête est présentée
+  // deux fois sans que personne l'ait voulu.
+  cleIntention?: string | null,
 ): Promise<number | null> {
   if (!relie) return null;
   const terminal = terminalCible || (await terminalVise());
   if (!terminal) return null;
+  const ligne: Record<string, unknown> = { terminal, type: genre, parametres };
+  if (cleIntention) ligne.cle = cleIntention;
   try {
     const r = await fetch(`${url}/rest/v1/commandes`, {
       method: "POST",
@@ -385,12 +494,23 @@ export async function creerCommande(
         apikey: cle!, authorization: `Bearer ${cle}`,
         "content-type": "application/json", prefer: "return=representation",
       },
-      body: JSON.stringify({ terminal, type: genre, parametres }),
+      body: JSON.stringify(ligne),
       cache: "no-store",
     });
-    if (!r.ok) return null;
-    const lignes = (await r.json()) as { id: number }[];
-    return lignes[0]?.id ?? null;
+    if (r.ok) {
+      const lignes = (await r.json()) as { id: number }[];
+      return lignes[0]?.id ?? null;
+    }
+    // 409 = l'index d'unicité a parlé : ce geste a DÉJÀ sa demande. On rend
+    // la première plutôt qu'un échec — l'écran suit alors la commande qui
+    // existe, exactement comme s'il n'avait envoyé qu'une fois.
+    if (r.status === 409 && cleIntention) {
+      const deja = await lire<{ id: number }>(
+        `commandes?select=id&terminal=eq.${encodeURIComponent(terminal)}`
+        + `&cle=eq.${encodeURIComponent(cleIntention)}&limit=1`);
+      return deja[0]?.id ?? null;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -505,6 +625,117 @@ export async function enregistrerAppareil(
   } catch {
     return false;
   }
+}
+
+/**
+ * Compte un essai de mot de passe, dans la BASE, et rend le total.
+ *
+ * `null` quand la base ne répond pas — et ce `null` compte : le frein doit
+ * alors retomber sur son seau en mémoire, jamais fermer la porte. Une base
+ * injoignable ne doit pas être un verrou sur sa propre maison ; c'est déjà la
+ * raison d'être de la clé de secours.
+ *
+ * Le comptage est fait par la base en UNE instruction (voir
+ * `compter_un_essai` dans sql/schema.sql) : lire ici puis écrire là
+ * reproduirait exactement la course qu'on veut fermer.
+ */
+export async function compterUnEssai(
+  seau: string, fenetreS: number,
+): Promise<number | null> {
+  if (!relie) return null;
+  try {
+    const r = await fetch(`${url}/rest/v1/rpc/compter_un_essai`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ la_cle: seau, fenetre_s: fenetreS }),
+      cache: "no-store",
+      // Un frein ne doit jamais faire attendre plus que ce qu'il freine.
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!r.ok) return null;
+    const n = await r.json();
+    return typeof n === "number" && Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LE JOURNAL DES INCIDENTS
+//
+// Le terminal tient le sien depuis toujours — modem redémarré, SMS illisible,
+// nuage injoignable — et il le pousse dans « evenements ». Personne ne le
+// lisait : aucun écran ne l'affichait. On collectait pour jeter.
+//
+// La plateforme, elle, n'écrivait rien : ses pannes partaient dans la sortie
+// d'erreur de l'hébergeur, que le propriétaire n'ouvrira jamais. Quand
+// quelque chose casse un dimanche à Douala, il faut qu'il reste quelque
+// chose à lire — par lui, pas par un informaticien.
+// ---------------------------------------------------------------------------
+
+/**
+ * Note un incident de la plateforme.
+ *
+ * CE QUI PEUT ENTRER ICI : une phrase écrite PAR NOUS, en français, qui décrit
+ * ce qui s'est passé. « La base n'a pas répondu. » « Un bilan a été coupé à
+ * 20 000 lignes. »
+ *
+ * CE QUI NE PEUT PAS Y ENTRER, jamais : un code PIN, un mot de passe, un
+ * courriel, un code à usage unique, le texte d'un SMS. Un journal se garde
+ * longtemps et se lit à plusieurs — c'est exactement l'endroit où une donnée
+ * personnelle survit à tout le reste. Les valeurs de requête sont déjà
+ * effacées des messages d'erreur (`sansValeurs`) pour cette raison.
+ *
+ * Elle n'attend pas et n'échoue jamais bruyamment : noter un incident ne doit
+ * pas pouvoir causer un second incident. Si la base ne répond pas, il n'y a
+ * rien à faire de plus — et c'est précisément le cas où elle ne répondra pas.
+ */
+export function noterIncident(texte: string): void {
+  if (!relie || !texte) return;
+  void fetch(`${url}/rest/v1/evenements`, {
+    method: "POST",
+    headers: {
+      apikey: cle!, authorization: `Bearer ${cle}`,
+      "content-type": "application/json",
+      prefer: "return=minimal",
+    },
+    body: JSON.stringify([{
+      terminal: null,
+      // La plateforme n'a pas de journal local à numéroter : l'instant fait
+      // l'affaire, et la contrainte d'unicité ne porte que sur les lignes
+      // qui ont un terminal.
+      source_id: Date.now(),
+      texte: texte.slice(0, 500),
+      survenu_le: new Date().toISOString(),
+    }]),
+    cache: "no-store",
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => { /* un journal muet vaut mieux qu'une panne de plus */ });
+}
+
+export type Incident = {
+  id: number;
+  quand: string;
+  /** « Le terminal » ou « La plateforme » — l'objet, pas la technique. */
+  qui: string;
+  texte: string;
+};
+
+/** Les derniers incidents, du plus récent au plus ancien. */
+export async function lireIncidents(limite = 100): Promise<Incident[]> {
+  const lignes = await lire<{
+    id: number; terminal: string | null; texte: string; survenu_le: string;
+  }>(`evenements?select=id,terminal,texte,survenu_le`
+     + `&order=survenu_le.desc&limit=${Math.min(Math.max(1, limite), 500)}`);
+  return lignes.map((l) => ({
+    id: l.id,
+    quand: l.survenu_le,
+    qui: l.terminal ?? "",
+    texte: l.texte,
+  }));
 }
 
 export async function lireCommande(
@@ -625,16 +856,35 @@ export async function utilisateurParId(id: number): Promise<Utilisateur | null> 
   return lignes[0] ? versUtilisateur(lignes[0] as LigneUtilisateur) : null;
 }
 
-/** Crée un compte. Rend `null` si le courriel est déjà pris, ou si la base
- *  n'a pas répondu — jamais un compte à moitié créé. */
+/**
+ * Crée un compte.
+ *
+ * Trois réponses, et la distinction compte :
+ *   — le compte,   quand il est né ;
+ *   — « refuse »,  quand la BASE a dit non : le courriel est déjà pris, ou
+ *                  un propriétaire existe déjà. C'est une règle, pas une
+ *                  panne — et la seule qui tienne, puisqu'elle s'applique au
+ *                  moment de l'écriture (voir l'index du propriétaire unique
+ *                  dans sql/schema.sql) ;
+ *   — null,        quand la base n'a pas répondu du tout.
+ *
+ * Confondre les deux derniers ferait répondre « réessayez » à quelqu'un dont
+ * la demande ne pourra jamais aboutir — et « impossible » à quelqu'un qu'un
+ * simple hoquet du réseau a écarté.
+ *
+ * Jamais un compte à moitié créé : PostgREST écrit la ligne ou ne l'écrit pas.
+ */
 export async function creerUtilisateur(
   courriel: string, empreinte: string,
   role: "proprietaire" | "invite", approuve: boolean,
-): Promise<Utilisateur | null> {
+): Promise<Utilisateur | "refuse" | null> {
   const r = await ecrire("utilisateurs", "POST", [{
     courriel, empreinte, role, approuve,
   }]);
-  if (!r || !r.ok) return null;
+  if (!r) return null;
+  // 409 : une contrainte d'unicité a parlé (code Postgres 23505).
+  if (r.status === 409) return "refuse";
+  if (!r.ok) return null;
   const lignes = (await r.json().catch(() => [])) as LigneUtilisateur[];
   return lignes[0] ? versUtilisateur(lignes[0]) : null;
 }

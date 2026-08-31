@@ -8,7 +8,7 @@
 import { RefreshControl, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree } from "@/animations";
@@ -27,7 +27,7 @@ export default function Comptes() {
   // Le bilan des cartes retirées (nombre de paiements, total reçu) se
   // compte sur les SMS : la même profondeur que la page web (1000 lignes),
   // sinon le téléphone et le web affichent deux totaux différents.
-  const { donnees, chargement, recharger } = useDonnees({ sms: 1000, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 1000, recus: 0 });
 
   const sims = donnees?.sims ?? [];
   const enPlace = sims.filter((s) => s.enPlace);
@@ -49,7 +49,12 @@ export default function Comptes() {
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </Entree>
 
-        {enPlace.length === 0 && !chargement ? (
+        {/* La panne se dit AVANT l'état vide : sans cela, un téléphone hors
+            ligne montrait « aucune carte » — une connexion en panne déguisée
+            en terminal vide. */}
+        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+
+        {enPlace.length === 0 && !chargement && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.videTitre}</Texte>
@@ -207,7 +212,11 @@ function CarteCompte({ sim: s, tete, langue, t }: {
       </View>
 
       <View style={{ gap: 2 }}>
-        <Texte poids="demi" chiffresAlignes numberOfLines={1}
+        {/* « adjustsFontSizeToFit » : le solde RÉTRÉCIT pour tenir sur sa
+            ligne au lieu de se tronquer — que la pression vienne d'un nombre
+            très long OU du réglage « grand texte » d'Android. Sans lui,
+            numberOfLines={1} coupait, et un solde coupé est un solde faux. */}
+        <Texte poids="demi" chiffresAlignes numberOfLines={1} adjustsFontSizeToFit
                taille={long ? textes.intertitre : textes.display}
                style={{ color: encre, letterSpacing: -0.5 }}>
           {s.solde == null ? "—" : fcfa(s.solde, langue)}

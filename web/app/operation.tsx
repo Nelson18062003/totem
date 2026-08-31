@@ -63,6 +63,20 @@ export function OperationPopup({
   const [fil, setFil] = useState<Msg[]>([]);
   const [attente, setAttente] = useState(false);
   const [enSession, setEnSession] = useState(false);
+  // LA CLÉ D'INTENTION DE CETTE OPÉRATION — tirée une fois, à l'ouverture.
+  // Le premier code composé porte le bénéficiaire ET le montant : le
+  // composer deux fois, c'est transférer deux fois. Cette clé accompagne ce
+  // premier envoi ; si le même geste repart (un rendu joué deux fois, un
+  // appui recompté, une requête reprise après un délai), la base reconnaît
+  // la clé et rend la demande DÉJÀ créée au lieu d'en ouvrir une seconde.
+  const cleOperation = useRef<string>(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  // Un raccrochage est-il DÛ ? (session ouverte, pas encore close.) Un
+  // `ref` synchrone, lisible depuis le nettoyage de démontage — l'état
+  // React n'y serait plus à jour.
+  const raccrochageDu = useRef(false);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [reponseLibre, setReponseLibre] = useState("");
@@ -78,6 +92,8 @@ export function OperationPopup({
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
+    // Jointe au seul envoi qui peut porter un transfert complet : l'ouverture.
+    cle?: string,
   ): Promise<string | null> => {
     setAttente(true);
     setErreur(null);
@@ -86,7 +102,7 @@ export function OperationPopup({
       const r = await fetch("/api/commande", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: genre, parametres }),
+        body: JSON.stringify({ type: genre, parametres, cle }),
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
@@ -160,7 +176,8 @@ export function OperationPopup({
       operation.carte
         ? { code: etapes[0], carte: operation.carte }
         : { code: etapes[0] },
-      { de: "vous", texte: etapes[0] });
+      { de: "vous", texte: etapes[0] },
+      cleOperation.current);
     for (const e of etapes.slice(1)) {
       if (texte == null) return;
       texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });
@@ -178,6 +195,40 @@ export function OperationPopup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Le drapeau suit l'état : une session vivante et non finie DOIT être
+  // raccrochée. Les boutons de fermeture le font déjà ; ce qui manquait,
+  // c'est le cas où l'on QUITTE l'écran autrement — un appui sur la
+  // navigation, le bouton « précédent » du navigateur. Le composant se
+  // démonte alors sans un mot, et la session reste ouverte sur la vraie SIM,
+  // à Douala : l'opération suivante peut échouer parce que la carte est
+  // encore « en ligne » sur un menu. Le nettoyage de démontage raccroche.
+  useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
+  useEffect(() => () => { if (raccrochageDu.current) posterFin(); }, []);
+
+  // FERMER L'ONGLET NE DOIT PAS LAISSER LA SIM EN LIGNE.
+  //
+  // Le nettoyage de démontage de React ne s'exécute QUE si le composant est
+  // démonté par l'application : fermer l'onglet, recharger, taper une autre
+  // adresse ou revenir en arrière hors du site déchargent la page sans qu'il
+  // soit appelé — et la session reste ouverte sur la vraie carte, à Douala.
+  //
+  // `sendBeacon` est fait pour ce moment précis : le navigateur garde la
+  // requête en charge APRÈS la disparition de la page. On l'accroche à
+  // « pagehide », que tous les navigateurs déclenchent (y compris sur mobile,
+  // où « beforeunload » est ignoré).
+  useEffect(() => {
+    const enPartant = () => {
+      if (!raccrochageDu.current) return;
+      raccrochageDu.current = false;
+      navigator.sendBeacon?.(
+        "/api/commande",
+        new Blob([JSON.stringify({ type: "ussd_fin", parametres: {} })],
+                 { type: "application/json" }));
+    };
+    window.addEventListener("pagehide", enPartant);
+    return () => window.removeEventListener("pagehide", enPartant);
+  }, []);
+
   const secret = async (code: string) => {
     const texte = await envoyer("ussd_reponse", { texte: code, secret: true }, { de: "vous", texte: "••••" });
     if (texte) { setFini(true); onTermine?.(); }
@@ -192,6 +243,7 @@ export function OperationPopup({
 
   // L'ordre de raccrochage, sans faire attendre l'écran.
   const posterFin = () => {
+    raccrochageDu.current = false;      // c'est fait : le démontage ne refera rien
     fetch("/api/commande", {
       method: "POST",
       headers: { "content-type": "application/json" },
