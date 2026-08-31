@@ -42,10 +42,16 @@ export default function Actions() {
         >
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
           {/* La panne AVANT l'état vide : hors ligne, « aucune carte »
-              serait un mensonge. */}
+              serait un mensonge. ET LE CHARGEMENT AVANT LES DEUX : au
+              premier rendu, `donnees` est nul et `chargement` vrai, si bien
+              que l'écran annonçait « Aucune carte dans le terminal » à
+              chaque ouverture, le temps de la requête. Pour un propriétaire,
+              cette phrase parle d'un boîtier à 300 km — l'afficher par
+              défaut apprend à ne plus la croire, et c'est justement le jour
+              où elle sera vraie qu'on l'ignorera. */}
           {erreur ? (
             <Accroc message={erreur} onReessayer={recharger} />
-          ) : (
+          ) : chargement ? null : (
             <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
               <Texte poids="demi">{t.aucuneCarte}</Texte>
               <Texte ton="doux" taille={textes.petit} style={{ textAlign: "center", lineHeight: 20 }}>

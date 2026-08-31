@@ -99,7 +99,7 @@ class JournalTemoin:
         self.lignes = []
         self.notes = []
 
-    def sms_existe(self, *_):
+    def sms_existe(self, *_, **__):
         return False
 
     def sms(self, expediteur, texte, compte, iccid, emis_le=None):

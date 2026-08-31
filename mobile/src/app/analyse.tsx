@@ -205,7 +205,18 @@ export default function Analyse() {
                     const fort = d.montant === meilleur.montant && d.montant > 0;
                     return (
                       <View key={i} style={{ flex: 1, alignItems: "center", gap: espaces.xs }}>
+                        {/* UN MONTANT TRONQUÉ EST UN MONTANT FAUX — la règle
+                            de la maison, que ce graphique enfreignait. Sept
+                            colonnes égales sur un écran de 320 dp font 38 dp
+                            chacune : « 287 000 » n'y tient déjà pas, et sous
+                            le réglage « grand texte » d'Android tout se
+                            coupait en « 1 23… ». Comme la caisse, on refuse
+                            l'agrandissement système et on laisse le chiffre
+                            se réduire pour rester ENTIER. */}
                         <Texte taille={10} chiffresAlignes numberOfLines={1}
+                               allowFontScaling={false}
+                               adjustsFontSizeToFit
+                               minimumFontScale={0.6}
                                poids={fort ? "moyen" : "normal"}
                                ton={fort ? "normal" : "pale"}>
                           {d.montant > 0 ? nombre(d.montant, langue) : ""}

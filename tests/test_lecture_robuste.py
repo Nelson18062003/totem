@@ -579,3 +579,57 @@ class TestExportCsvSansFormule(unittest.TestCase):
             j.sms("MoMo", piege, "MTN")
             csv = j.export_csv(7).decode("utf-8")
             self.assertNotIn(f";{piege}", csv)
+
+
+class TestDoublonApresUneCoupure(unittest.TestCase):
+    """Un paiement compté deux fois, à cause d'une coupure de courant.
+
+    Le garde-fou anti-doublon ne regardait que les quinze dernières minutes.
+    Or une coupure à Douala dure plus longtemps que ça. Au redémarrage, le SMS
+    resté dans le modem (l'effacement n'avait pas abouti) était relu, la
+    fenêtre répondait « jamais vu », et l'encaissement était compté DEUX FOIS :
+    au bilan du jour, sur Telegram, et dans le nuage sous un nouveau
+    `source_id` que la clé d'unicité ne rattrapait pas.
+
+    L'heure RÉSEAU du SMS (TP-SCTS) est une identité : elle ne bouge pas,
+    quelle que soit la durée de la panne.
+    """
+
+    RECU = ("Vous avez recu 20 000 FCFA de NGONO Marie (677123456). "
+            "Ref: PP240829. Nouveau solde: 412 500 FCFA.")
+    RESEAU = "2026-08-31T09:15:00"
+
+    def journal(self):
+        from totem.storage import Journal
+        return Journal(":memory:")
+
+    def test_l_heure_reseau_reconnait_le_doublon_hors_fenetre(self):
+        j = self.journal()
+        j.sms("MoMo", self.RECU, "MTN ·8901", "8923", emis_le=self.RESEAU)
+        # Une heure plus tard — bien au-delà des quinze minutes — le même SMS
+        # est relu dans le modem. Il doit être reconnu.
+        self.assertTrue(
+            j.sms_existe("MoMo", self.RECU, "MTN ·8901", secondes=1,
+                         emis_le=self.RESEAU))
+
+    def test_sans_heure_reseau_la_fenetre_sert_encore(self):
+        # Orange ne date pas ses SMS : la fenêtre reste tout ce qu'on a.
+        j = self.journal()
+        j.sms("MoMo", self.RECU, "MTN ·8901", "8923")
+        self.assertTrue(j.sms_existe("MoMo", self.RECU, "MTN ·8901"))
+
+    def test_deux_paiements_DIFFERENTS_passent_tous_les_deux(self):
+        # Le garde-fou ne doit jamais avaler un vrai second encaissement.
+        j = self.journal()
+        autre = self.RECU.replace("PP240829", "PP240830")
+        j.sms("MoMo", self.RECU, "MTN ·8901", "8923", emis_le=self.RESEAU)
+        self.assertFalse(
+            j.sms_existe("MoMo", autre, "MTN ·8901", emis_le="2026-08-31T09:16:00"))
+
+    def test_le_meme_texte_a_une_heure_reseau_differente_est_un_autre_SMS(self):
+        # Deux versements identiques, à deux instants : deux paiements.
+        j = self.journal()
+        j.sms("MoMo", self.RECU, "MTN ·8901", "8923", emis_le=self.RESEAU)
+        self.assertFalse(
+            j.sms_existe("MoMo", self.RECU, "MTN ·8901",
+                         emis_le="2026-08-31T14:02:00"))

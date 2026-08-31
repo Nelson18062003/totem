@@ -1986,18 +1986,23 @@ class Robot:
                 # (Le code SECRET Mobile Money que le propriétaire TAPE
                 # pendant une opération n'entre jamais par ici : il n'est
                 # jamais reçu par SMS. Il reste protégé, ailleurs.)
-                if not self.journal.sms_existe(expediteur, texte, compte.libelle):
-                    # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
-                    # vraie de l'opération, distincte de l'heure de relève —
-                    # elles divergent après une coupure, et c'est la réseau qui
-                    # fait foi pour l'ordre et les reçus.
-                    # Garde-fou : quoi que le maillon d'avant ait mis dans
-                    # `emis_le`, le SMS passe. Une heure réseau perdue est un
-                    # détail ; un SMS bloqué en boucle est la panne totale —
-                    # c'est arrivé (un booléen à la place de l'heure, et plus
-                    # RIEN n'arrivait, ni Telegram ni plateforme).
-                    heure_reseau = (emis_le.isoformat()
-                                    if hasattr(emis_le, "isoformat") else None)
+                # emis_le : l'heure RÉSEAU du SMS (TP-SCTS). C'est l'heure
+                # vraie de l'opération, distincte de l'heure de relève — elles
+                # divergent après une coupure, et c'est la réseau qui fait foi
+                # pour l'ordre et les reçus.
+                # Garde-fou : quoi que le maillon d'avant ait mis dans
+                # `emis_le`, le SMS passe. Une heure réseau perdue est un
+                # détail ; un SMS bloqué en boucle est la panne totale —
+                # c'est arrivé (un booléen à la place de l'heure, et plus
+                # RIEN n'arrivait, ni Telegram ni plateforme).
+                heure_reseau = (emis_le.isoformat()
+                                if hasattr(emis_le, "isoformat") else None)
+                # Elle sert AUSSI à reconnaître un doublon : c'est une
+                # identité réseau, que la coupure de courant la plus longue
+                # n'altère pas — là où une fenêtre de quinze minutes laissait
+                # recompter un paiement au redémarrage.
+                if not self.journal.sms_existe(expediteur, texte, compte.libelle,
+                                               emis_le=heure_reseau):
                     sms_id = self.journal.sms(
                         expediteur, texte, compte.libelle, compte.carte.iccid,
                         emis_le=heure_reseau)

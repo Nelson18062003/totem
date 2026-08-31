@@ -289,12 +289,35 @@ class Journal:
                               (self._maintenant(), texte))
             self.conn.commit()
 
-    def sms_existe(self, expediteur, texte, compte="", secondes=900):
-        """Ce SMS a-t-il déjà été enregistré récemment ? Garde-fou contre les
-        doublons quand l'effacement dans le modem a échoué au tour précédent."""
-        depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(
-            timespec="seconds")
+    def sms_existe(self, expediteur, texte, compte="", secondes=900,
+                   emis_le=None):
+        """Ce SMS a-t-il déjà été enregistré ? Garde-fou contre les doublons
+        quand l'effacement dans le modem a échoué au tour précédent.
+
+        L'HEURE RÉSEAU EST UNE IDENTITÉ, pas une approximation. Deux SMS
+        distincts n'ont jamais le même TP-SCTS avec le même expéditeur, le
+        même texte et la même carte. Quand on la connaît, on s'en sert — et
+        AUCUNE fenêtre de temps n'est alors nécessaire.
+
+        C'est ce qui manquait. La fenêtre de quinze minutes est plus courte
+        qu'une coupure de courant à Douala : au redémarrage, le SMS resté dans
+        le modem était relu, la fenêtre répondait « jamais vu », et le paiement
+        était compté DEUX FOIS — au bilan du jour, sur Telegram, et poussé au
+        nuage sous un nouveau `source_id` que la clé d'unicité ne rattrapait
+        pas. Même effet, sans panne, si un emplacement du modem refuse
+        obstinément de s'effacer : quatre paiements fantômes par heure.
+
+        Sans heure réseau (Orange ne date pas ses SMS), on retombe sur la
+        fenêtre : c'est tout ce qu'on a.
+        """
         with self.verrou:
+            if emis_le:
+                return self.conn.execute(
+                    "SELECT 1 FROM sms WHERE expediteur = ? AND texte = ? "
+                    "AND COALESCE(compte, '') = ? AND emis_le = ? LIMIT 1",
+                    (expediteur, texte, compte, emis_le)).fetchone() is not None
+            depuis = (datetime.now() - timedelta(seconds=secondes)).isoformat(
+                timespec="seconds")
             return self.conn.execute(
                 "SELECT 1 FROM sms WHERE date >= ? AND expediteur = ? AND texte = ? "
                 "AND COALESCE(compte, '') = ? LIMIT 1",

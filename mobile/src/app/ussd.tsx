@@ -29,7 +29,7 @@ import { textesUssd } from "@noyau/textes/ussd";
 export default function CadranUssd() {
   const langue = useLangue();
   const t = textesUssd[langue];
-  const { donnees, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const cartes = (donnees?.sims ?? []).filter((s) => s.enPlace);
   const [choisie, setChoisie] = useState<string | null>(null);
@@ -75,9 +75,12 @@ export default function CadranUssd() {
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
 
+        {/* Le chargement ne s'annonce pas comme une panne : au premier rendu
+            `donnees` est nul, et cet écran déclarait « Aucune carte dans le
+            terminal » le temps de la requête, à chaque ouverture. */}
         {erreur && !carte ? (
           <Accroc message={erreur} onReessayer={recharger} />
-        ) : !carte ? (
+        ) : !carte && chargement ? null : !carte ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.aucuneCarte}</Texte>

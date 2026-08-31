@@ -147,6 +147,22 @@ class Nuage:
                 self.derniere_erreur = f"{e.code} {corps}".strip()
                 if not 400 <= e.code < 500:
                     return "reseau"
+                # UNE CLÉ REFUSÉE N'EST PAS UNE LIGNE REFUSÉE.
+                #
+                # « refuse » veut dire « cette ligne-là ne passera jamais » :
+                # on la met de côté et on la marque envoyée, donc on ne la
+                # REPRÉSENTE PLUS JAMAIS. C'est juste pour une ligne malformée.
+                # Mais 401 (clé changée ou expirée), 403 (une règle d'accès
+                # refuse) et 429 (trop de demandes) ne disent rien de la ligne :
+                # ils disent que la PORTE est fermée, pour tout le monde, et
+                # que ça se répare. Les classer « refuse » jetait chaque
+                # paiement de la journée, définitivement, cent par cycle —
+                # pendant que le propriétaire lisait « rien n'est perdu ».
+                #
+                # Ces trois-là valent donc « reseau » : on s'arrête, on garde
+                # tout, et on réessaiera quand la porte sera rouverte.
+                if e.code in (401, 403, 429):
+                    return "reseau"
                 if not self._defaut_de_schema(corps):
                     return "refuse"
                 # Défaut de schéma : peut-on sauver le SMS en laissant tomber la

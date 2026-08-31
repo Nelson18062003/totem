@@ -119,7 +119,14 @@ export default function Accueil() {
       {/* Les commandes de la carte, HORS de la carte : masquer le solde,
           l'actualiser, partager ses coordonnées. Trois cercles, aucun mot —
           la carte reste nette. */}
-      {active ? (
+      {/* RIEN À COMPOSER SUR UNE CARTE ABSENTE. Quand aucune puce n'est dans
+          le terminal, l'écran retombe sur les cartes RETIRÉES (voir plus
+          haut) pour montrer leur dernier solde connu — c'est utile. Mais les
+          boutons restaient armés : interroger le solde ou lancer un geste
+          partait vers une puce qui n'est pas dans le boîtier, et échouait
+          sans qu'on comprenne pourquoi. On les retire ; la carte, elle,
+          reste affichée avec sa phrase d'avertissement. */}
+      {active?.enPlace ? (
         <Entree delai={120}>
           <View style={{ flexDirection: "row", justifyContent: "center", gap: espaces.lg }}>
             {active.solde != null ? (
@@ -139,7 +146,7 @@ export default function Accueil() {
 
       {/* Les gestes. Deux par ligne sur téléphone, quatre dès qu'il y a la
           place — la grille suit la fenêtre, pas l'appareil. */}
-      {gestes.length && active ? (
+      {gestes.length && active?.enPlace ? (
         <Entree delai={180}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
             {gestes.map((g) => (
@@ -152,7 +159,7 @@ export default function Accueil() {
             ))}
           </View>
         </Entree>
-      ) : active && !chargement ? (
+      ) : active?.enPlace && !chargement ? (
         // Aucun code relevé pour cet opérateur : le web le DIT et mène aux
         // Réglages ; ici les gestes disparaissaient sans un mot, comme si
         // l'application était en panne.

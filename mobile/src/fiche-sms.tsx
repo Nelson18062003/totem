@@ -171,9 +171,18 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 c'est ce que ce bouton ne savait pas faire : il redemandait
                 la fabrication au terminal, et le PDF restait inaccessible.
                 Sans reçu, on l'ÉTABLIT, comme avant. */}
+            {/* LE SUCCÈS SE DISAIT PAR RIEN DU TOUT. `p` est un cliché :
+                après « faite », le rafraîchissement met à jour la LISTE,
+                mais la fiche ouverte garde l'ancien paiement, donc `p.recu`
+                reste nul. Le bouton reprenait donc son libellé « Établir le
+                reçu » après trente secondes d'attente — indiscernable d'un
+                échec, sauf qu'un échec, lui, affiche une ligne rouge. Et
+                comme il restait actif, le geste naturel — réappuyer —
+                déposait une SECONDE commande pour le même SMS. */}
             <Pressable
               onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
-              disabled={ouverture === "envoi" || etabli === "envoi"}
+              disabled={ouverture === "envoi" || etabli === "envoi"
+                        || (!p.recu && etabli === "fait")}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
                 gap: espaces.sm, paddingVertical: espaces.md,
@@ -186,7 +195,9 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                      style={{ color: couleurs.surfaceHaute }}>
                 {p.recu
                   ? (ouverture === "envoi" ? t.ouvertureRecu : t.ouvrirRecu)
-                  : (etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu)}
+                  : etabli === "envoi" ? t.demandeAuTerminal
+                  : etabli === "fait" ? t.recuEtabli
+                  : t.etablirRecu}
               </Texte>
             </Pressable>
 

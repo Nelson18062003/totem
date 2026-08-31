@@ -39,7 +39,7 @@ export default function Reglages() {
   const t = textesReglages[langue];
   const c = textesCharpente[langue];
   const { fermer } = useSession();
-  const { donnees, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
   const terminal = donnees?.terminal ?? null;
   // Les cartes en place d'abord — c'est elles qu'on vient régler.
   const sims = [...(donnees?.sims ?? [])]
@@ -135,7 +135,14 @@ export default function Reglages() {
                   <Rangee libelle={t.version} valeur={terminal.version} />
                 ) : null}
               </>
-            ) : (
+            ) : chargement ? null : (
+              // « Aucun terminal ne s'est encore annoncé » veut dire, pour le
+              // propriétaire, que son boîtier de Douala a disparu. Les
+              // Réglages étant un écran de pile, ils se remontent à CHAQUE
+              // visite : la phrase s'affichait donc systématiquement, le
+              // temps de la requête. À force de la voir à tort, on ne la
+              // croit plus — et c'est le jour où elle est vraie qu'on
+              // l'ignore. Pendant le chargement, on ne dit rien.
               <Texte ton="doux">{c.aucunTerminal}</Texte>
             )}
           </Carte>
