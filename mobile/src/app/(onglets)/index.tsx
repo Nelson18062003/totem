@@ -112,7 +112,19 @@ export default function Accueil() {
       ) : !chargement ? (
         <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                         borderStyle: "dashed" }}>
+          {/* Le premier écran d'un propriétaire tout neuf : ni carte, ni SMS.
+              Il n'y lisait qu'un titre — « Aucune carte dans le terminal » —
+              et rien d'autre : pas de suite, pas d'explication, la liste des
+              SMS et les gestes étant tous masqués faute de carte. La phrase
+              qui dit quoi attendre existait déjà, et TOUS les autres écrans
+              l'affichent (Opérations, USSD, et l'accueil du web) ; seul
+              l'accueil du téléphone — celui qui s'ouvre en premier — ne la
+              disait pas. */}
           <Texte poids="demi">{t.aucuneCarte}</Texte>
+          <Texte ton="doux" taille={textes.petit}
+                 style={{ textAlign: "center", lineHeight: 20 }}>
+            {t.aucuneCarteDetail}
+          </Texte>
         </Carte>
       ) : null}
 

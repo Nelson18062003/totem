@@ -632,15 +632,39 @@ class Nuage:
         # terminal ou un ICCID malformé ne peut pas déborder le filtre.
         chemin = (f"comptes?terminal=eq.{urllib.parse.quote(self.terminal, safe='')}"
                   f"&iccid=eq.{urllib.parse.quote(str(iccid), safe='')}")
+        # LA BONNE HORLOGE. On comparait à « maj », qui dit « cette ligne a été
+        # touchée » — et le signe de vie la remet à l'heure toutes les soixante
+        # secondes. Comme l'heure d'un SMS est forcément dans le passé, la
+        # condition « maj < heure du SMS » échouait presque toujours : le
+        # PATCH ne trouvait aucune ligne, n'écrivait rien, et rendait quand
+        # même « c'est fait ». Le solde frais était jeté en silence — c'est
+        # exactement ce que cette fonction existe pour éviter.
+        #
+        # « solde_maj » ne parle que du SOLDE. Nulle au départ (aucun solde
+        # encore annoncé) : on accepte donc aussi ce cas.
+        filtre = ""
         if moment:
-            chemin += f"&maj=lt.{urllib.parse.quote(quand, safe='')}"
+            echappe = urllib.parse.quote(quand, safe='')
+            filtre = f"&or=(solde_maj.is.null,solde_maj.lt.{echappe})"
         try:
-            self._requete("PATCH", chemin, {"solde": solde, "maj": quand})
+            self._requete("PATCH", chemin + filtre,
+                          {"solde": solde, "maj": quand, "solde_maj": quand})
             self.derniere_erreur = None
             return True
         except Exception as e:
             self.derniere_erreur = str(e)
-            return False
+            # Base pas encore migrée : la colonne « solde_maj » n'existe pas.
+            # On écrit alors le solde sans elle, plutôt que de le perdre — on
+            # renonce seulement à la protection contre un relevé rejoué dans
+            # le désordre, ce qui reste très au-dessus de l'ancien comportement
+            # (où le solde n'arrivait jamais).
+            try:
+                self._requete("PATCH", chemin, {"solde": solde, "maj": quand})
+                self.derniere_erreur = None
+                return True
+            except Exception as e2:
+                self.derniere_erreur = str(e2)
+                return False
 
     # ---- boucle -----------------------------------------------------------
     def demarrer(self, comptes=None, sante=None):

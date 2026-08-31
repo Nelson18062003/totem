@@ -64,6 +64,9 @@ type LigneCompte = {
   iccid: string | null; libelle: string; operateur: string | null;
   reseau: string | null; itinerance: boolean; numero: string | null;
   solde: number | null; signal: number | null; maj: string;
+  // L'heure du SOLDE, distincte de « maj » qui date la LIGNE. Optionnelle :
+  // une base pas encore migrée ne la porte pas.
+  solde_maj?: string | null;
 };
 type LigneRecu = {
   numero: string; reference: string | null; chemin: string;
@@ -283,7 +286,15 @@ export async function chargerDonnees(
     // relevé envoyé par l'opérateur (MTN répond ainsi en itinérance).
     // Toujours l'annonce de l'opérateur — jamais un calcul à nous.
     const solde = compte?.solde == null ? null : Number(compte.solde);
-    const soldeMaj = solde != null && compte ? heure(compte.maj) : null;
+    // « D'après l'interrogation de 09:47 » lisait « maj » — l'heure à laquelle
+    // la LIGNE a été touchée, que le signe de vie du robot remet à jour toutes
+    // les soixante secondes. Le solde paraissait donc toujours frais, même
+    // vieux de plusieurs heures : la phrase qui devait rassurer sur son âge
+    // était précisément celle qui le masquait. « solde_maj » date le solde
+    // lui-même ; à défaut (base pas encore migrée), on retombe sur « maj »,
+    // comme avant.
+    const soldeMaj = solde != null && compte
+      ? heure(compte.solde_maj ?? compte.maj) : null;
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );

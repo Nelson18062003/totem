@@ -138,6 +138,10 @@ const en = {
   fermer: "Block",
   supprimer: "Delete",
   supprimerSur: "Delete this account for good?",
+  // Fermer un compte retire l'accès à quelqu'un, tout de suite. Le geste
+  // se demandait sans un mot, sur un bouton haut de 26 dp coincé entre
+  // « Approuver » et « Supprimer ».
+  fermerSur: "Close this account's access?",
   jamaisVenu: "Never signed in",
   vuLe: "Last signed in",
   aucunAutreCompte: "No other account yet.",
@@ -348,6 +352,7 @@ const fr: typeof en = {
   fermer: "Bloquer",
   supprimer: "Supprimer",
   supprimerSur: "Supprimer ce compte définitivement ?",
+  fermerSur: "Fermer l'accès de ce compte ?",
   jamaisVenu: "Jamais connecté",
   vuLe: "Dernière connexion",
   aucunAutreCompte: "Aucun autre compte pour l’instant.",

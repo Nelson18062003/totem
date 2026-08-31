@@ -86,6 +86,18 @@ export function SectionQui({ langue }: { langue: Langue }) {
       ]);
       return;
     }
+    // FERMER AUSSI SE CONFIRME. « Supprimer » demandait confirmation,
+    // « Fermer » partait au premier appui — alors que les deux retirent
+    // l'accès à quelqu'un, et que les boutons se touchent. Un doigt qui
+    // dérape mettait un associé dehors, sans un mot et sans retour possible
+    // depuis cet écran.
+    if (geste === "fermer") {
+      Alert.alert(t.fermerSur, c.courriel, [
+        { text: t.annuler, style: "cancel" },
+        { text: t.fermer, style: "destructive", onPress: () => void faire() },
+      ]);
+      return;
+    }
     await faire();
   };
 
@@ -281,8 +293,14 @@ function Petit({ libelle, onPress, occupe, danger, accent }: {
     <Pressable
       onPress={onPress}
       disabled={occupe}
+      // 26 dp de haut, sans marge de touche, entre deux gestes irréversibles.
+      // Le reste de l'application respecte le plancher — les onglets font 44,
+      // les commandes rondes 46, les icônes portent toutes un `hitSlop`. Ce
+      // bouton-ci faisait la moitié du minimum.
+      hitSlop={10}
       style={({ pressed }) => ({
-        paddingHorizontal: espaces.md, paddingVertical: espaces.xs + 2,
+        paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+        minHeight: 44, justifyContent: "center",
         borderRadius: rayons.bouton,
         borderWidth: accent ? 0 : 1,
         borderColor: danger ? couleurs.negatif : couleurs.trait,

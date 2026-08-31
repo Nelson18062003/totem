@@ -76,6 +76,17 @@ create table if not exists comptes (
   -- la plateforme afficherait un solde que l'opérateur n'a jamais annoncé.
   solde       numeric,                   -- en FCFA, tel que l'opérateur l'annonce
   signal      int,                       -- 0..31
+  -- « maj » = cette LIGNE a été touchée (signe de vie, toutes les minutes).
+  -- « solde_maj » = ce SOLDE-LÀ a été annoncé par l'opérateur. Les deux ont
+  -- longtemps été confondus dans « maj », et cela coûtait deux fois :
+  --   — un solde annoncé par SMS n'était écrit que si « maj » lui était
+  --     antérieur ; or le signe de vie remettait « maj » à l'heure toutes
+  --     les soixante secondes, donc la condition échouait presque toujours
+  --     et le solde frais était jeté EN SILENCE ;
+  --   — l'écran affichait « D'après l'interrogation de 09:47 » en lisant
+  --     « maj » : l'heure du dernier signe de vie, pas celle du solde. Le
+  --     solde paraissait donc toujours frais, même vieux de plusieurs heures.
+  solde_maj   timestamptz,
   maj         timestamptz not null default now(),
   unique (terminal, iccid)
 );

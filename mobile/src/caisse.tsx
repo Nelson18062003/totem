@@ -18,7 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Symbole } from "@/marque";
-import { LogoOperateur, couleurOperateur } from "@/logos-operateurs";
+import { LogoOperateur, couleurOperateur, operateurReconnu } from "@/logos-operateurs";
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
@@ -146,7 +146,26 @@ export function Caisse({ carte, langue, soldeCache }: {
         {/* En haut : l'opérateur d'un côté, le signal de l'autre. Aucun mot. */}
         <View style={{ flexDirection: "row", alignItems: "center",
                        justifyContent: "space-between" }}>
-          <LogoOperateur operateur={carte.operateur} taille={Math.round(hauteur * 0.115)} />
+          {/* UNE CARTE SANS NOM. `LogoOperateur` ne dessine RIEN hors MTN et
+              Orange — et la plateforme range en « ? » tout opérateur qu'elle
+              ne reconnaît pas. La caisse devenait alors un rectangle noir
+              anonyme : le numéro est masqué tant qu'il n'est pas déclaré, le
+              nom aussi, et la rangée de pastilles disparaît quand il n'y a
+              qu'une carte. Plus rien ne disait à QUELLE caisse appartenait le
+              solde affiché. L'onglet Comptes traite déjà ce cas ; on fait
+              pareil ici, avec le libellé (« ·8901 »), qui existe toujours. */}
+          <View style={{ flexDirection: "row", alignItems: "center",
+                         gap: espaces.xs, flex: 1, minWidth: 0 }}>
+            <LogoOperateur operateur={carte.operateur} taille={Math.round(hauteur * 0.115)} />
+            {!operateurReconnu(carte.operateur) ? (
+              <Texte taille={textes.legende} numberOfLines={1}
+                     style={{ color: "rgba(255,255,255,0.75)",
+                              textTransform: "uppercase",
+                              letterSpacing: 0.8 }}>
+                {carte.libelle}
+              </Texte>
+            ) : null}
+          </View>
           {carte.signal != null ? <BarresSignal niveau={carte.signal} /> : null}
         </View>
 

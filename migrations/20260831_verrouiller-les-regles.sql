@@ -103,7 +103,30 @@ alter table utilisateurs enable row level security;
 
 
 -- ===========================================================================
--- 4. LE CONTRÔLE — et il PARLE
+-- 4. L'HEURE DU SOLDE, distincte de l'heure de la ligne
+--
+-- « maj » disait « cette ligne a été touchée » — et le signe de vie du robot
+-- la remettait à l'heure toutes les soixante secondes. Deux dégâts :
+--
+--   — un solde annoncé par SMS n'était écrit que si « maj » lui était
+--     ANTÉRIEUR. Comme « maj » valait presque toujours « il y a moins d'une
+--     minute » et que l'heure du SMS est dans le passé, la condition
+--     échouait : le solde frais était jeté, en silence, et la fonction
+--     répondait quand même « c'est fait » ;
+--   — l'écran lisait « maj » pour écrire « D'après l'interrogation de
+--     09:47 ». Il affichait donc l'heure du dernier signe de vie : le solde
+--     semblait frais même vieux de plusieurs heures.
+--
+-- Une colonne pour chaque chose. Sans valeur au départ : le premier solde
+-- annoncé la remplira, et l'écran retombe entre-temps sur « maj », comme
+-- avant.
+-- ===========================================================================
+
+alter table comptes add column if not exists solde_maj timestamptz;
+
+
+-- ===========================================================================
+-- 5. LE CONTRÔLE — et il PARLE
 --
 -- Une migration silencieuse ne prouve rien. Celle-ci compte ce qui reste et
 -- s'interrompt s'il reste la moindre politique sur ces dix tables. Mieux
