@@ -43,6 +43,18 @@ const APERCU = "http://127.0.0.1:3210";
 const COURRIEL = "essai@totem.test";
 const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
+// LE PLAFOND, quelle que soit la distance parcourue. C'est la seconde
+// promesse, et elle ne se voyait pas dans le premier affichage : rendre par
+// lots bornait le DÉPART, et rien d'autre. Mesuré, après avoir descendu un
+// mois : 201 lignes montées, 2 161 nœuds — et toujours 201 une fois remonté
+// tout en haut. Un serveur qui dresse les tables à mesure, mais ne débarrasse
+// jamais. Depuis que les jours loin derrière sont reposés : 89 au plus fort.
+const PLAFOND_MAX = 120;
+// Un décalage qu'on ne voit pas. Comme dans `verifier-l-attente` : au-delà,
+// l'écran bouge sous le doigt. Mesuré à 0,0 pt — les hauteurs viennent de la
+// mesure, pas d'une estimation.
+const SAUT_TOLERE = 20;
+
 // Ce qu'on tolère au premier affichage. Au-delà, la liste monte trop.
 //
 // Le budget de l'écran est de 40 rangées ; mesuré à 41 sur une caisse à
@@ -111,6 +123,13 @@ const compter = () => {
     && ![...e.querySelectorAll("div")].some((f) => montant.test(f.textContent || ""))).length;
 };
 
+/** L'identité d'une ligne. Le TEXTE ne convient pas : sur une caisse
+ *  d'essai, deux encaissements se ressemblent au caractère près, et deux
+ *  cents lignes se réduisaient à neuf. L'écran pose donc `data-ligne` sur
+ *  chaque rangée — la même poignée que `data-squelette`, web seulement. */
+const identites = () =>
+  [...document.querySelectorAll("[data-ligne]")].map((e) => e.getAttribute("data-ligne"));
+
 console.log("");
 try {
   await page.goto(APERCU, { waitUntil: "networkidle" });
@@ -145,19 +164,81 @@ try {
   // ON DESCEND À LA MOLETTE, jamais en réglant `scrollTop` : régler la
   // propriété ne déclenche pas le gestionnaire de react-native-web, et le
   // harnais concluait « la liste s'arrête » sur une liste qui marchait.
-  let atteintes = auDepart, stable = 0;
-  for (let i = 0; i < 10 && stable < 2; i++) {
+  //
+  // ON COMPTE CE QU'ON A VU, PAS CE QUI EST MONTÉ. C'était le même chiffre
+  // tant que la liste ne relâchait rien : tout ce qu'on avait atteint était
+  // encore là. Depuis qu'elle repose ce qui est loin derrière, le nombre de
+  // lignes montées ne dit plus RIEN de ce qu'on peut atteindre — il dit le
+  // contraire. On retient donc l'IDENTITÉ de chaque ligne croisée.
+  // ON REGARDE À CHAQUE CRAN, et il a fallu se tromper pour le comprendre :
+  // un premier essai ne relevait les lignes qu'une fois tous les douze crans
+  // — treize écrans — et concluait « 125 sur 200, 75 hors de portée ». Rien
+  // n'était hors de portée : les lignes passaient ENTRE deux coups d'œil, et
+  // se reposaient avant qu'on les regarde. Tant que la liste ne relâchait
+  // rien, la faute ne se voyait pas : tout ce qu'on avait dépassé était
+  // encore là à la fin.
+  const vues = new Set(await page.evaluate(identites));
+  let plafond = auDepart, stable = 0, avant = 0;
+  for (let i = 0; i < 14 && stable < 3; i++) {
     await page.mouse.move(195, 500);
-    for (let r = 0; r < 12; r++) { await page.mouse.wheel(0, 900); await attendre(60); }
+    for (let r = 0; r < 12; r++) {
+      await page.mouse.wheel(0, 900);
+      await attendre(120);
+      for (const id of await page.evaluate(identites)) vues.add(id);
+    }
     await attendre(700);
-    const maintenant = await page.evaluate(compter);
-    stable = maintenant === atteintes ? stable + 1 : 0;
-    atteintes = maintenant;
+    for (const id of await page.evaluate(identites)) vues.add(id);
+    plafond = Math.max(plafond, await page.evaluate(compter));
+    stable = vues.size === avant ? stable + 1 : 0;
+    avant = vues.size;
+  }
+  const atteintes = vues.size;
+  const enFin = await page.evaluate(compter);
+  const noeudsEnFin = await page.evaluate(() => document.querySelectorAll("div").length);
+
+  // ── ET L'ÉCRAN NE SAUTE PAS QUAND ELLE REPOSE ─────────────────────────
+  //
+  // C'est la condition de tout le reste. À la place d'un jour reposé, on
+  // laisse un vide de la hauteur EXACTE qu'il occupait — mesurée, jamais
+  // devinée. Si cette hauteur est fausse d'un point, l'écran se décale sous
+  // le doigt, et il se décale juste quand le doigt approche d'une ligne
+  // qu'on va ouvrir. La leçon de `verifier-l-attente`, à un autre endroit :
+  // une forme à la mauvaise hauteur est pire que pas de forme.
+  //
+  // On remonte en haut, puis on suit UNE ligne précise pendant qu'on
+  // redescend : elle ne doit bouger que de ce qu'on a fait défiler.
+  await page.mouse.move(195, 500);
+  for (let r = 0; r < 260; r++) { await page.mouse.wheel(0, -900); }
+  await attendre(1500);
+
+  const etat = () => ({
+    id: document.querySelector("[data-ligne]")?.getAttribute("data-ligne") ?? null,
+    y: document.querySelector("[data-ligne]")?.getBoundingClientRect().top ?? null,
+    reposes: document.querySelectorAll('[data-repose="1"]').length,
+  });
+  let pireEcart = 0, relachements = 0;
+  for (let i = 0; i < 45; i++) {
+    const a = await page.evaluate(etat);
+    if (!a.id || a.y == null) break;
+    await page.mouse.move(195, 500);
+    await page.mouse.wheel(0, 300);
+    await attendre(220);
+    const b = await page.evaluate(etat);
+    const apres = await page.evaluate((id) =>
+      document.querySelector(`[data-ligne="${id}"]`)?.getBoundingClientRect().top ?? null, a.id);
+    // Rien à conclure si la ligne suivie vient elle-même d'être reposée, ou
+    // si la liste est au bout et n'a pas pu défiler des 300 points demandés.
+    if (apres == null) continue;
+    if (b.reposes === a.reposes) continue;
+    relachements++;
+    pireEcart = Math.max(pireEcart, Math.abs(apres - (a.y - 300)));
   }
 
   console.log(`  au premier affichage : ${auDepart} lignes montées, `
     + `${visibles} visibles, ${noeuds} nœuds`);
   console.log(`  après avoir descendu : ${atteintes} lignes atteintes`);
+  console.log(`  et il en reste montées : ${enFin} (${noeudsEnFin} nœuds),`
+    + ` au plus fort ${plafond}`);
 
   console.log(`  la plateforme en porte : ${enBase}`);
 
@@ -171,7 +252,23 @@ try {
     console.log(`  ✗ la liste S'ARRÊTE : ${atteintes} lignes atteintes sur `
       + `${enBase} — ${enBase - atteintes} encaissements hors de portée`);
     echecs++;
+  } else if (relachements === 0) {
+    console.log("  ✗ aucun relâchement observé en redescendant : le harnais"
+      + " n'a pas mesuré ce qu'il prétend mesurer.");
+    echecs++;
+  } else if (pireEcart > SAUT_TOLERE) {
+    console.log(`  ✗ l'écran se décale de ${pireEcart.toFixed(1)} pt quand la`
+      + ` liste repose un jour (${SAUT_TOLERE} pt tolérés).`);
+    echecs++;
+  } else if (plafond > PLAFOND_MAX) {
+    console.log(`  ✗ la liste a tenu ${plafond} lignes d'un coup `
+      + `(${PLAFOND_MAX} tolérées) : elle ne repose pas ce qu'on a dépassé.`);
+    echecs++;
   } else {
+    console.log(`  ✓ elle n'a jamais tenu plus de ${plafond} lignes à la fois,`
+      + ` si loin qu'on descende.`);
+    console.log(`  ✓ et l'écran ne bouge pas quand elle repose un jour`
+      + ` (${relachements} relâchements, pire écart ${pireEcart.toFixed(1)} pt).`);
     const sobre = auDepart <= MONTEES_MAX;
     if (!sobre) echecs++;
     console.log(`  ${sobre ? "✓" : "✗"} la liste ne monte pas tout d'un coup `

@@ -340,16 +340,42 @@ pastilles, surfaces d'appui : le premier comptage attribuait donc sept formes
 COMBIEN il doit en montrer, et le nombre est celui des composants : un écart
 signale une forme perdue autant qu'une forme de trop.
 
-`verifier-les-listes` tient DEUX moitiés, et la seconde compte autant que la
-première : une liste ne monte pas ce que personne ne regarde, **et rien ne
-devient inatteignable**. Mesuré sur trente jours de caisse : 201 lignes
-montées pour 10 visibles, 2 386 nœuds pour dix lignes. Une liste qui
-s'arrêterait au quatrième jour ne serait pas rapide, elle serait cassée.
+`verifier-les-listes` tient TROIS promesses, et la troisième est la
+condition des deux autres : une liste ne monte pas ce que personne ne
+regarde, **rien ne devient inatteignable**, et **l'écran ne saute pas**.
+
+Rendre par lots bornait le PREMIER affichage, et rien d'autre. Mesuré après
+avoir descendu un mois : **201 lignes montées, 2 161 nœuds — et toujours 201
+une fois remonté tout en haut**. Un serveur qui dresse les tables à mesure et
+ne débarrasse jamais. Les jours loin derrière sont maintenant reposés :
+**89 au plus fort, 37 à l'arrivée**.
+
+À leur place, un vide de la hauteur EXACTE qu'ils occupaient, prise par
+`onLayout`. Le premier essai posait cette mesure sur la vue INTÉRIEURE : à
+l'intérieur de `Entree`, `layout.y` vaut zéro pour tous les jours. Tous se
+croyaient donc en haut de la liste et se relâchaient TOUS dès qu'on
+descendait — **un beau chiffre pour une raison fausse**. La mesure se prend
+sur l'enveloppe.
+
+Il exige donc aussi que l'écran ne bouge pas quand un jour est reposé :
+7 relâchements, **0,0 point d'écart**. Une hauteur fausse d'un point décale
+l'écran sous le doigt, au moment précis où le doigt vise une ligne.
 
 Il demande à la PLATEFORME combien elle porte, au lieu de s'en remettre à
 l'écran : sans cette vérité indépendante, « la liste s'arrête à 88 » et « la
 caisse n'a que 88 lignes » se ressemblent — et le harnais accusait la caisse
 d'être vide pendant que l'écran perdait des encaissements.
+
+**Depuis qu'elle relâche, compter les lignes MONTÉES ne dit plus rien de ce
+qu'on peut ATTEINDRE — il dit le contraire.** Le harnais retient l'identité
+de chaque ligne croisée (`data-ligne`, comme `data-squelette` : web
+seulement). Deux corrections ont été nécessaires, et chacune accusait
+l'application à tort : le TEXTE ne distingue pas deux encaissements d'une
+caisse d'essai (200 lignes se réduisaient à 9), et relever les lignes une
+fois tous les douze crans — treize écrans — les laissait passer ENTRE deux
+coups d'œil (« 125 sur 200, 75 hors de portée »). Tant que la liste ne
+relâchait rien, ces deux fautes ne se voyaient pas : tout ce qu'on avait
+dépassé était encore là à la fin.
 
 Il descend à la MOLETTE, jamais en réglant `scrollTop` : régler la propriété
 ne déclenche pas le gestionnaire de react-native-web, et le harnais concluait

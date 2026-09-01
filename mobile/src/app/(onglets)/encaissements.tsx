@@ -7,7 +7,7 @@
 // Le texte de l'opérateur s'affiche mot pour mot, dans la langue où la SIM
 // l'a reçu. Le traduire serait le trahir.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, TextInput, View,
 } from "react-native";
@@ -52,6 +52,19 @@ function plierLesSoldes(items: Paiement[]): Rangee2[] {
   }
   return rangees;
 }
+
+// `dataSet` est une propriété de react-native-web, absente des types de
+// React Native : elle pose un attribut `data-…` sur le web, et rien du tout
+// sur le téléphone. C'est la poignée du harnais, pas une décoration.
+const MARQUE_REPOSE = { dataSet: { repose: "1" } } as object;
+
+/** L'identité d'une ligne, pour le harnais seul. Sans elle, il ne peut pas
+ *  répondre à « a-t-on atteint TOUTE la caisse ? » : depuis que la liste
+ *  repose ce qui est loin derrière, compter les lignes montées ne dit plus
+ *  rien de ce qu'on peut atteindre. Et le texte ne suffit pas — sur une
+ *  caisse d'essai, deux encaissements se ressemblent au caractère près.
+ *  Comme `data-squelette`, cet attribut n'existe que sur le web. */
+const marqueLigne = (id: string) => ({ dataSet: { ligne: id } } as object);
 
 export default function Encaissements() {
   const langue = useLangue();
@@ -169,6 +182,28 @@ export default function Encaissements() {
     setBudget((b) => (b >= rangeesEnTout ? b : b + LIGNES_LOT_SUIVANT));
   }, [rangeesEnTout]);
 
+  // ── CE QU'ON RELÂCHE DERRIÈRE SOI ──────────────────────────────────────
+  //
+  // Rendre par lots borne le PREMIER affichage, et rien d'autre : mesuré,
+  // après avoir descendu un mois, la liste tenait 201 lignes et 2 161 nœuds
+  // — et les tenait ENCORE une fois remonté tout en haut. Un serveur qui
+  // dresse les tables au fur et à mesure, mais ne débarrasse jamais.
+  //
+  // On repose donc les jours qui sont loin AU-DESSUS de ce qu'on regarde. À
+  // leur place, un vide de la hauteur EXACTE qu'ils occupaient — mesurée par
+  // `onLayout`, jamais devinée. C'est la leçon de `verifier-l-attente` : une
+  // forme à la mauvaise hauteur fait sauter l'écran, et c'est pire que de ne
+  // rien faire. Ici, comme la hauteur vient de la mesure, rien ne bouge.
+  //
+  // Redescendre les remonte. Le contenu n'est jamais perdu : il est déjà en
+  // mémoire, seul son affichage est reposé.
+  const places = useRef(new Map<string, { y: number; h: number }>());
+  const [defilement, setDefilement] = useState(0);
+  // Une marge d'un écran de chaque côté : on ne relâche que ce qui est
+  // franchement hors de vue, sans quoi un petit va-et-vient du doigt
+  // ferait clignoter le haut de l'écran.
+  const MARGE = 1;
+
   // UNE NOUVELLE RECHERCHE REPART DU HAUT. Sans cela, taper trois lettres
   // après avoir descendu la liste laissait vingt jours rendus pour trois
   // résultats — et le bas de l'écran se remplissait de vide.
@@ -191,6 +226,13 @@ export default function Encaissements() {
           const restant = n.contentSize.height
             - (n.contentOffset.y + n.layoutMeasurement.height);
           if (restant < n.layoutMeasurement.height * 1.5) allonger();
+          // On ne retient la position que par PALIERS d'un demi-écran :
+          // suivre le pixel ferait un rendu de toute la liste à chaque
+          // image du défilement, ce qui coûterait plus cher que ce qu'on
+          // cherche à économiser.
+          const pas = Math.max(200, n.layoutMeasurement.height / 2);
+          const palier = Math.floor(n.contentOffset.y / pas) * pas;
+          setDefilement((avant) => (avant === palier ? avant : palier));
         }}
         // UNE LISTE TROP COURTE NE DÉFILE PAS, DONC NE S'ALLONGE JAMAIS.
         // Si le lot rendu ne remplit pas deux écrans, aucun geste ne peut
@@ -285,8 +327,38 @@ export default function Encaissements() {
           </Carte>
         ) : null}
 
-        {rendus.map((j, k) => (
-          <Entree key={j.libelle} delai={180 + k * 40}>
+        {rendus.map((j, k) => {
+          const place = places.current.get(j.libelle);
+          // Reposé s'il est franchement HORS de ce qu'on regarde — au-dessus
+          // comme en dessous — et seulement si on a DÉJÀ mesuré sa hauteur.
+          // Sans mesure, on rend : mieux vaut peser trop que sauter.
+          //
+          // LES DEUX CÔTÉS, et il a fallu le mesurer pour le voir : ne
+          // relâcher que le dessus donnait 4 lignes en bas de liste, puis
+          // 202 une fois remonté en haut — tout se remontait au passage et
+          // plus rien ne redescendait.
+          const dessus = !!place && place.y + place.h < defilement - hauteurVue * MARGE;
+          const dessous = !!place && place.y > defilement + hauteurVue * (1 + MARGE);
+          const repose = hauteurVue > 0 && (dessus || dessous);
+          if (repose) {
+            // La marque sert au harnais, comme celle des squelettes :
+            // `dataSet` n'existe que sur le web et ne part pas dans le
+            // paquet Android. Sans elle, un jour reposé et un jour absent se
+            // ressemblent, et on ne saurait pas ce qu'on mesure.
+            return <View key={j.libelle} style={{ height: place!.h }}
+                         {...MARQUE_REPOSE} />;
+          }
+          return (
+          // LA MESURE SE PREND SUR L'ENVELOPPE, PAS DEDANS. Posée sur la vue
+          // intérieure, `onLayout` rend une position relative à `Entree` —
+          // c'est-à-dire zéro pour tous les jours. Tous se croyaient alors en
+          // haut de la liste : ils se relâchaient TOUS dès qu'on descendait,
+          // ce qui donnait un beau chiffre pour une raison fausse.
+          <Entree key={j.libelle} delai={180 + k * 40}
+                  onLayout={({ nativeEvent: n }) => {
+                    places.current.set(j.libelle,
+                                       { y: n.layout.y, h: n.layout.height });
+                  }}>
             <View style={{ gap: espaces.sm }}>
               <Texte taille={textes.legende} ton="pale"
                      style={{ textTransform: "uppercase", letterSpacing: 0.8 }}>
@@ -345,7 +417,8 @@ export default function Encaissements() {
               </Carte>
             </View>
           </Entree>
-        ))}
+          );
+        })}
       </ScrollView>
       </KeyboardAvoidingView>
 
@@ -417,6 +490,7 @@ function Ligne({ paiement: p, langue, onPress }: {
   return (
     <Pressable
                accessibilityRole="button" onPress={onPress}
+               {...marqueLigne(p.id)}
                style={({ pressed }) => ({
                  flexDirection: "row", gap: espaces.md, padding: espaces.lg,
                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
