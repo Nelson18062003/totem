@@ -1,0 +1,781 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — galerie des composants</title>
+<style>
+/* ==========================================================================
+   TOTEM ADMIN — système de design commun.
+   Chaque valeur vient de NORMES.md. On n'écrit pas de dimension en dur
+   dans un écran : on utilise ces classes. Toute exception se justifie.
+   ========================================================================== */
+
+/* La police de marque livrée n'expose AUCUNE fonction « tnum » : son « 1 » fait
+   312 unités contre 684 pour le « 0 ». Déclarer font-variant-numeric ne changeait
+   donc rien, et aucune colonne de chiffres n'était réellement alignée.
+   On dérive ici, depuis la police de marque elle-même, une version dont les dix
+   chiffres partagent la même chasse et sont recentrés dans leur nouvelle largeur.
+   Le dessin des lettres est intact : c'est la même police, aux chiffres près. */
+@font-face{font-family:'DM Sans';src:url('file:///tmp/claude-0/-home-user-totem/fb61f3f9-bcef-57b0-8fbd-bfd6b9054382/scratchpad/admin/v2/polices/dmsans-400-chasse-fixe.ttf') format('truetype');font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:'DM Sans';src:url('file:///tmp/claude-0/-home-user-totem/fb61f3f9-bcef-57b0-8fbd-bfd6b9054382/scratchpad/admin/v2/polices/dmsans-700-chasse-fixe.ttf') format('truetype');font-weight:700;font-style:normal;font-display:block}
+
+:root{
+  /* — couleurs — */
+  --fond:#fbfaf9; --carte:#ffffff; --fond2:#f4f2f0; --plein:#ebe8e5; --trait:#e8e5e1;
+  /* Deux traits, et la différence n'est pas décorative.
+     --trait sépare : filets de tableau, bord de carte, tige d'une frise. Rien
+     ne se perd s'il s'efface, et à 1,26:1 sur blanc il est fait pour être calme.
+     --trait-controle DÉLIMITE : c'est le bord d'un champ vide, d'un bouton
+     secondaire, d'une pastille. Là, le trait EST le contrôle — s'il s'efface,
+     le champ n'existe plus. WCAG 2.2 §1.4.11 exige 3:1, et ce ton chaud tient
+     3,38:1 sur la carte blanche et 3,25:1 sur le fond sable. */
+  --trait-controle:#908b83;
+  /* Chaque encre est vérifiée par calcul sur le PIRE fond où elle se pose :
+     4,5:1 minimum (WCAG 2.2 §1.4.3). Aucune n'est choisie à l'œil. */
+  --encre:#16171a; --secondaire:#62605c; --tertiaire:#706b65;
+  --laterite:#9a4b2e; --sable:#f4efe9;
+  --positif:#17603f; --negatif:#8a2020; --alerte:#84681e;
+  --positif-fond:#e9f2ec; --negatif-fond:#f7eaea; --alerte-fond:#f7f0dd;
+  --orange-fond:#f9ece4; --orange-encre:#a14e1f;
+  --mtn-fond:#fdf6dc; --mtn-encre:#7a6414;
+  /* — élévation : une seule pile, deux niveaux — */
+  /* Lumière en haut à gauche, décalage vertical = 2× l'horizontal, teinte du
+     fond et non noir pur. Trois couches pour une carte, cinq pour un flottant. */
+  --ombre:0 0 0 1px rgba(38,32,26,.07),
+          0 .5px 1px rgba(38,32,26,.045),
+          0 1px 2px -1px rgba(38,32,26,.045);
+  --ombre-flottante:0 0 0 1px rgba(38,32,26,.08),
+          0 1px 2px rgba(38,32,26,.04),
+          0 2px 4px rgba(38,32,26,.04),
+          0 4px 8px rgba(38,32,26,.04),
+          0 8px 16px -4px rgba(38,32,26,.05);
+  --hairline:rgba(22,23,26,.07);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{
+  font-family:'DM Sans',system-ui,sans-serif; font-synthesis:none;
+  font-size:13px; line-height:20px; font-weight:400;
+  color:var(--encre); background:var(--fond);
+  font-variant-numeric:tabular-nums;
+}
+svg{display:block; fill:none; stroke-linecap:round; stroke-linejoin:round}
+/* Piège de flexbox : une phrase contenant du gras placée directement dans un
+   conteneur flex est découpée en plusieurs éléments, et l'écart du conteneur
+   s'insère au milieu des mots. Une phrase est toujours enveloppée. */
+/* Recadre la boîte de texte sur la hauteur de capitale : un libellé se centre
+   alors vraiment dans son bouton. Ignoré par les moteurs anciens, sans dégât. */
+.btn,.onglet,.chip,.bascule a,.bascule button,.tbl th,.surtitre,.kpi .l,.carte-tete h2,.bloc>h3{
+  text-box:trim-both cap alphabetic}
+/* Titres équilibrés, textes longs sans orpheline — amélioration progressive. */
+h1,h2,h3,.titre,.vide .t{text-wrap:balance}
+p,.d,.s,.note,.sous{text-wrap:pretty}
+/* Un lien ne s'annonce jamais par la couleur du navigateur : il porte le style
+   de ce qu'il est (une carte, une ligne, un onglet). */
+a{color:inherit;text-decoration:none}
+b,strong{font-weight:700}
+em{font-style:normal}
+
+/* — échelle typographique (les 7 seules tailles) — */
+.t11{font-size:11px;line-height:16px}
+.t12{font-size:12px;line-height:16px}
+.t13{font-size:13px;line-height:20px}
+.t14{font-size:14px;line-height:20px}
+.t16{font-size:16px;line-height:24px;letter-spacing:-.01em}
+.t20{font-size:20px;line-height:28px;letter-spacing:-.015em;font-weight:700}
+.t28{font-size:28px;line-height:32px;letter-spacing:-.02em;font-weight:700}
+.surtitre{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--tertiaire)}
+.doux{color:var(--secondaire)} .pale{color:var(--tertiaire)}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.mono{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;letter-spacing:normal}
+
+/* ==========================================================================
+   CHROME : rail + barre haute + page
+   ========================================================================== */
+.app{display:grid;grid-template-columns:220px 1fr;min-height:940px}
+
+.rail{background:var(--fond);border-right:1px solid var(--trait);
+  display:flex;flex-direction:column;padding:20px 12px 16px}
+.bloc-marque{display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+  padding:0 8px;margin-bottom:24px}
+/* Le verrouillage officiel (brand/totem-logo.svg). Sa hauteur EST celle du
+   symbole. À 24px le jour du tressage ne ferait qu'un pixel : on tient la
+   marque à 32px, la taille où la tresse se lit vraiment. Sous 22px la charte
+   impose la variante fondue — cette console n'y descend jamais. */
+.bloc-marque .logo{height:28px;width:148px;display:block}
+.bloc-marque .badge{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.14em;
+  color:var(--laterite);box-shadow:inset 0 0 0 1px var(--laterite);
+  border-radius:6px;padding:0 6px;margin-left:2px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;
+  border-radius:6px;font-size:13px;color:var(--secondaire);text-decoration:none;position:relative}
+.nav a svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.5;flex:none;opacity:.75}
+.nav a:hover{background:var(--fond2);color:var(--encre)}
+.nav a.on{background:var(--plein);color:var(--encre);font-weight:700}
+.nav a.on svg{opacity:1;stroke:var(--laterite)}
+.nav a .pastille-nav{margin-left:auto;width:6px;height:6px;border-radius:999px;background:var(--laterite)}
+.rail-pied{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--trait);
+  font-size:12px;line-height:16px;color:var(--tertiaire)}
+.rail-pied b{color:var(--secondaire)}
+
+.barre{height:60px;display:flex;align-items:center;gap:16px;
+  padding:0 32px;border-bottom:1px solid var(--trait);background:var(--carte)}
+.barre h1{font-size:20px;line-height:28px;letter-spacing:-.015em;font-weight:700}
+.barre .ariane{font-size:13px;color:var(--tertiaire);margin-right:auto}
+/* L'ACTION de l'écran vit ici, en haut à droite, sur les sept écrans — jamais
+   dans un panneau de détail : un panneau se referme, l'action doit rester. */
+.barre .action-page{display:flex;align-items:center;gap:8px}
+.barre .sep{width:1px;height:24px;background:var(--trait);flex:none}
+.barre .droite{display:flex;align-items:center;gap:12px}
+
+.recherche{position:relative;width:320px}
+.recherche input{width:100%;height:32px;padding:0 12px 0 32px;border:none;
+  border-radius:6px;background:var(--fond2);box-shadow:inset 0 0 0 1px transparent;
+  font:400 13px/20px 'DM Sans';color:var(--encre)}
+.recherche input::placeholder{color:var(--tertiaire)}
+.recherche svg{position:absolute;left:10px;top:8px;width:16px;height:16px;
+  stroke:var(--tertiaire);stroke-width:1.5}
+
+/* bascule de langue — TOUJOURS en toutes lettres */
+.bascule{display:inline-flex;height:32px;border-radius:999px;
+  box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte)}
+.bascule a,.bascule button{display:inline-flex;align-items:center;height:32px;padding:0 14px;
+  border:none;background:transparent;border-radius:999px;
+  font:400 13px/20px 'DM Sans';color:var(--secondaire);cursor:pointer}
+.bascule [aria-current]{background:var(--encre);color:#fff;font-weight:700}
+.bascule a:focus-visible,.bascule button:focus-visible{outline:2px solid var(--laterite);outline-offset:2px}
+.avatar{width:32px;height:32px;border-radius:999px;background:var(--sable);
+  color:var(--laterite);display:grid;place-items:center;font-size:12px;font-weight:700}
+
+.page{padding:24px 32px;display:flex;flex-direction:column;gap:24px}
+.page-tete{display:flex;align-items:center;gap:12px}
+.page-tete .actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+/* ==========================================================================
+   CARTES
+   ========================================================================== */
+.carte{background:var(--carte);border-radius:10px;box-shadow:var(--ombre)}
+.carte-tete{display:flex;align-items:center;gap:12px;height:48px;padding:0 20px;
+  border-bottom:1px solid var(--hairline)}
+.carte-tete h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--tertiaire)}
+.carte-tete .a-droite{margin-left:auto;display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--tertiaire)}
+.carte-corps{padding:20px}
+.carte-corps.serre{padding:16px}
+.carte-pied{padding:12px 20px;border-top:1px solid var(--hairline);
+  display:flex;align-items:center;font-size:12px;color:var(--tertiaire)}
+.carte-pied .a-droite{margin-left:auto}
+
+/* — rangée de KPI : 3 à 5 cartes, jamais 6 — */
+/* Plancher de 230px et remplissage : les cartes ne s'étirent plus jusqu'à 395px
+   pour trois nombres à un chiffre, et aucune ne retombe seule à la ligne. */
+.kpis{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.kpi{background:var(--carte);border-radius:10px;box-shadow:var(--ombre);padding:16px 20px}
+.kpi .l{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--tertiaire)}
+.kpi .v{display:flex;align-items:baseline;gap:8px;margin-top:4px;
+  font-size:28px;line-height:32px;font-weight:700;letter-spacing:-.02em}
+.kpi .v .unite{font-size:13px;line-height:20px;font-weight:400;letter-spacing:normal;color:var(--tertiaire)}
+.kpi .s{margin-top:12px;font-size:12px;line-height:16px;color:var(--secondaire)}
+.kpi .haut{display:flex;align-items:flex-start;gap:12px}
+.kpi .haut .spark{margin-left:auto}
+
+/* ==========================================================================
+   BOUTONS — un seul plein par écran
+   ========================================================================== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  height:32px;padding:0 12px;border:none;border-radius:6px;
+  font:400 13px/20px 'DM Sans';font-variant-numeric:tabular-nums;color:var(--encre);background:transparent;
+  cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5;flex:none}
+.btn--sm{height:28px;padding:0 10px;font-size:12px}
+.btn--lg{height:40px;padding:0 16px;font-size:14px}
+.btn--primaire{background:var(--encre);color:#fff;font-weight:700}
+.btn--secondaire{box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte)}
+.btn--fantome{color:var(--secondaire)}
+.btn--fantome:hover{background:var(--fond2);color:var(--encre)}
+.btn--danger{box-shadow:inset 0 0 0 1px #bc4e4e;color:var(--negatif);background:var(--carte)}
+.btn--accent{background:var(--laterite);color:#fff;font-weight:700}
+.btn--icone{width:32px;height:32px;padding:0;box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte)}
+.btn[disabled],.btn.inactif{color:var(--tertiaire);background:var(--fond2);box-shadow:none}
+:where(a,button,input,select,[role=button],[role=switch],[role=tab]):focus-visible{
+  outline:2px solid var(--laterite);outline-offset:2px;border-radius:6px}
+.actions-groupe{display:inline-flex;align-items:center;gap:8px}
+
+/* — onglets / filtres — */
+.onglets{display:inline-flex;align-items:center;gap:8px}
+.onglet{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;
+  border-radius:999px;box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte);
+  font-size:13px;color:var(--secondaire);text-decoration:none}
+.onglet .compte{font-size:12px;color:var(--tertiaire)}
+.onglet.on{background:var(--encre);color:#fff;font-weight:700;box-shadow:none}
+.onglet.on .compte{color:rgba(255,255,255,.6)}
+
+/* ==========================================================================
+   PILULES, PASTILLES, ÉTATS
+   (aucun nom de modificateur ne doit exister ailleurs : « .marque » est le
+    bloc de marque du rail — une pilule ne peut pas porter ce nom.)
+   ========================================================================== */
+/* Débord optique : à cote égale, un rond paraît plus petit qu'un carré.
+   8px nominal → 8,5px réel (Karow : +2 à 3 %). */
+.pastille{display:inline-block;width:8.5px;height:8.5px;border-radius:999px;flex:none}
+.pastille.ok{background:#8fae9c} .pastille.attention{background:var(--alerte)}
+.pastille.danger{background:var(--negatif)} .pastille.muet{background:#bdb8b2}
+.etat{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700}
+/* Affichage par exception : « tout va bien » n'a pas à crier. Le vert est
+   réservé au fait qu'on VÉRIFIE, pas à l'état courant — sinon l'ambre et le
+   rouge perdent leur pouvoir d'alerte au milieu d'un écran déjà coloré. */
+.etat.ok{color:var(--secondaire);font-weight:400} .etat.attention{color:var(--alerte)}
+.etat.danger{color:var(--negatif)} .etat.muet{color:var(--tertiaire);font-weight:400}
+
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;
+  border-radius:999px;background:var(--fond2);color:var(--secondaire);
+  font-size:12px;line-height:16px;white-space:nowrap}
+.chip.carree{border-radius:6px}
+.chip.orange{background:var(--orange-fond);color:var(--orange-encre)}
+.chip.mtn{background:var(--mtn-fond);color:var(--mtn-encre)}
+.chip.version{font-family:ui-monospace,Menlo,monospace;font-size:12px;
+  background:var(--positif-fond);color:var(--positif)}
+.chip.ok{background:var(--positif-fond);color:var(--positif)}
+.chip.attention{background:var(--alerte-fond);color:#6d5616}
+.chip.danger{background:var(--negatif-fond);color:var(--negatif)}
+.chip.accent{background:var(--sable);color:var(--laterite)}
+
+/* ==========================================================================
+   TABLES — lignes rigoureusement égales
+   ========================================================================== */
+.tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tbl th{height:36px;padding:0 12px;text-align:left;vertical-align:middle;
+  font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--tertiaire);
+  border-bottom:1px solid var(--hairline);white-space:nowrap}
+.tbl td{height:44px;padding:0 12px;vertical-align:middle;
+  border-bottom:1px solid var(--hairline);font-size:13px;line-height:20px}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl th:first-child,.tbl td:first-child{padding-left:20px}
+.tbl th:last-child,.tbl td:last-child{padding-right:20px}
+.tbl th.num,.tbl td.num{text-align:right}
+.tbl tbody tr[data-vers]{cursor:pointer}
+.tbl tbody tr[data-vers] .cellule-double .p{text-decoration:underline;
+  text-decoration-color:transparent;text-underline-offset:2px}
+.tbl tr.survol td{background:#faf9f8}
+.tbl tr.survol .cellule-double .p{text-decoration-color:var(--tertiaire)}
+.tbl tr.choisie td{background:#f8f5f2}
+.tbl tr.choisie .pale,.tbl tr.choisie .s,.tbl tr.choisie .m{color:var(--secondaire)}
+.tbl tr.choisie td:first-child{box-shadow:inset 2px 0 0 var(--laterite)}
+.tbl--dense td{height:36px}
+.cellule-double{display:flex;flex-direction:column;justify-content:center;gap:1px}
+.cellule-double .p{font-size:13px;line-height:20px;font-weight:700}
+.cellule-double .s{font-size:12px;line-height:16px;color:var(--tertiaire)}
+.cellule-ligne{display:flex;align-items:center;gap:8px}
+
+/* ==========================================================================
+   PANNEAU LATÉRAL (détail) — 400px
+   ========================================================================== */
+.panneau{width:400px;flex:none;background:var(--carte);border-radius:10px;
+  box-shadow:var(--ombre);display:flex;flex-direction:column;align-self:flex-start}
+.panneau-tete{display:flex;align-items:center;gap:12px;height:48px;padding:0 20px;
+  border-bottom:1px solid var(--hairline)}
+.panneau-tete .titre{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--tertiaire)}
+.panneau-tete .sous{font-size:12px;line-height:16px;color:var(--tertiaire);margin-left:auto;text-align:right}
+.bloc{padding:16px 20px;border-bottom:1px solid var(--hairline)}
+.bloc:last-child{border-bottom:none}
+.bloc>h3{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--tertiaire);margin-bottom:12px}
+.dl{display:flex;flex-direction:column;gap:8px}
+.dl .r{display:flex;align-items:baseline;gap:16px}
+.dl .r .l{font-size:13px;color:var(--tertiaire);width:104px;flex:none}
+.dl .r .v{font-size:13px;margin-left:auto;text-align:right}
+.dl .r .v.fort{font-weight:700}
+
+/* ==========================================================================
+   FIL D'ÉVÉNEMENTS
+   ========================================================================== */
+.fil{display:flex;flex-direction:column}
+.fil .ev{display:grid;grid-template-columns:44px 24px 1fr;gap:12px;
+  padding:12px 0;border-bottom:1px solid var(--hairline)}
+.fil .ev:last-child{border-bottom:none}
+.fil .ev .h{font-size:12px;line-height:16px;color:var(--tertiaire);text-align:right}
+.fil .ev .ic{width:24px;height:24px;border-radius:999px;background:var(--fond2);
+  display:grid;place-items:center}
+.fil .ev .ic svg{width:16px;height:16px;stroke:var(--secondaire);stroke-width:1.5}
+.fil .ev .ic.ok{background:var(--positif-fond)} .fil .ev .ic.ok svg{stroke:var(--positif)}
+.fil .ev .ic.attention{background:var(--alerte-fond)} .fil .ev .ic.attention svg{stroke:var(--alerte)}
+.fil .ev .ic.accent{background:var(--sable)} .fil .ev .ic.accent svg{stroke:var(--laterite)}
+.fil .ev .c .t{font-size:13px;line-height:20px;font-weight:700;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fil .ev .c .d{font-size:12px;line-height:16px;color:var(--secondaire);margin-top:2px}
+/* fil vertical relié (incident minute par minute) */
+.fil.relie .ev{grid-template-columns:56px 28px 1fr;position:relative;padding:14px 0}
+.fil.relie .ev:not(:last-child)::before{content:"";position:absolute;left:68px;top:42px;
+  bottom:-14px;width:2px;background:var(--trait);border-radius:999px}
+.fil.relie .ev{border-bottom:none}
+
+/* ==========================================================================
+   INSTRUMENTS
+   ========================================================================== */
+.signal{display:inline-flex;align-items:center;gap:8px}
+.signal svg{width:20px;height:13px}
+.signal em{font-size:12px;color:var(--secondaire)}
+.jauge{height:6px;border-radius:999px;background:var(--plein);overflow:hidden}
+.jauge>span{display:block;height:6px;border-radius:999px;background:var(--positif)}
+.jauge.attention>span{background:var(--alerte)}
+.jauge.danger>span{background:var(--negatif)}
+.spark{width:100px;height:32px}
+
+/* — interrupteur — */
+.interrupteur{width:36px;height:20px;border-radius:999px;background:var(--plein);
+  position:relative;flex:none}
+.interrupteur.on{background:var(--positif)}
+.interrupteur::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.interrupteur.on::after{left:18px}
+
+/* — bandeau d'information — */
+.bandeau{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;
+  background:var(--sable);box-shadow:inset 0 0 0 1px #ece4d9;font-size:13px}
+.bandeau .a-droite{margin-left:auto;display:flex;align-items:center;gap:12px}
+
+/* — état vide honnête — */
+.vide{padding:32px 20px;text-align:center}
+.vide .t{font-size:14px;line-height:20px;font-weight:700}
+.vide .d{font-size:13px;line-height:20px;color:var(--tertiaire);margin-top:4px}
+.vide .btn{margin-top:16px}
+
+/* — infobulle visible (état de survol simulé) — */
+.infobulle{position:absolute;z-index:5;padding:8px 12px;border-radius:6px;
+  background:var(--encre);color:#fff;font-size:12px;line-height:16px;
+  box-shadow:var(--ombre-flottante);white-space:nowrap}
+.infobulle::after{content:"";position:absolute;left:20px;bottom:-4px;width:8px;height:8px;
+  background:var(--encre);transform:rotate(45deg)}
+
+/* — mise en page à deux colonnes (liste + panneau) — */
+.duo{display:flex;gap:16px;align-items:flex-start}
+.colonne{gap:24px !important}
+.duo>.principal{flex:1;min-width:0}
+.colonnes{display:grid;gap:16px}
+.colonnes.c2{grid-template-columns:1fr 1fr}
+.colonnes.c3{grid-template-columns:repeat(3,1fr)}
+.colonnes.c4{grid-template-columns:repeat(4,1fr)}
+
+/* — corps d'icônes : 16 dans les contrôles, 20 en navigation, 24 en tête de bloc — */
+.ic16{width:16px;height:16px;stroke:currentColor;stroke-width:1.5;flex:none}
+.ic20{width:20px;height:20px;stroke:currentColor;stroke-width:1.5;flex:none}
+.ic24{width:24px;height:24px;stroke:currentColor;stroke-width:1.5;flex:none}
+
+/* — l'écran actif s'annonce sur <body lang="en" data-ecran="…"> : le rail est identique partout — */
+.nav a .pastille-nav{display:none}
+[data-ecran=fleet] .nav [data-nav=fleet],[data-ecran=terminals] .nav [data-nav=terminals],
+[data-ecran=sims] .nav [data-nav=sims],[data-ecran=clients] .nav [data-nav=clients],
+[data-ecran=releases] .nav [data-nav=releases],[data-ecran=audit] .nav [data-nav=audit],
+[data-ecran=alerts] .nav [data-nav=alerts],[data-ecran=settings] .nav [data-nav=settings]
+{background:var(--plein);color:var(--encre);font-weight:700}
+[data-ecran=fleet] .nav [data-nav=fleet] svg,[data-ecran=terminals] .nav [data-nav=terminals] svg,
+[data-ecran=sims] .nav [data-nav=sims] svg,[data-ecran=clients] .nav [data-nav=clients] svg,
+[data-ecran=releases] .nav [data-nav=releases] svg,[data-ecran=audit] .nav [data-nav=audit] svg,
+[data-ecran=alerts] .nav [data-nav=alerts] svg,[data-ecran=settings] .nav [data-nav=settings] svg
+{opacity:1;stroke:var(--laterite)}
+[data-ecran=fleet] .nav [data-nav=fleet] .pastille-nav,[data-ecran=terminals] .nav [data-nav=terminals] .pastille-nav,
+[data-ecran=sims] .nav [data-nav=sims] .pastille-nav,[data-ecran=clients] .nav [data-nav=clients] .pastille-nav,
+[data-ecran=releases] .nav [data-nav=releases] .pastille-nav,[data-ecran=audit] .nav [data-nav=audit] .pastille-nav,
+[data-ecran=alerts] .nav [data-nav=alerts] .pastille-nav,[data-ecran=settings] .nav [data-nav=settings] .pastille-nav
+{display:block}
+.rail-pied div+div{margin-top:2px}
+
+/* — mesure étiquetée : libellé, jauge courte, valeur — jamais une barre pleine largeur — */
+.mesure{display:flex;align-items:center;gap:12px}
+.mesure .l{font-size:12px;line-height:16px;color:var(--tertiaire);width:88px;flex:none}
+.mesure .jauge{width:140px;flex:none}
+.mesure .v{font-size:12px;line-height:16px;font-weight:700;margin-left:auto}
+.kpi .v.petite{font-size:20px;line-height:28px;letter-spacing:-.015em}
+
+/* Un contenu trop large doit se voir DANS sa carte, jamais pousser la page :
+   sans ceci, une colonne de grille refuse de descendre sous sa largeur minimale. */
+.app>main{min-width:0}
+
+/* Un filet d'un pixel PHYSIQUE sur écran dense. Le repli 1px n'est pas
+   optionnel : un moteur qui arrondit 0.5 à 0 efface toutes les lignes. */
+@media (min-resolution:192dpi),(-webkit-min-device-pixel-ratio:2){
+  .rail{border-right-width:.5px}
+  .barre{border-bottom-width:.5px}
+}
+
+/* ==========================================================================
+   LA PORTE — écrans d'entrée. Pas de rail, pas de barre : rien d'autre à faire
+   que d'entrer. La charte autorise ici la claustra (docs/IDENTITE.md §3) :
+   c'est un écran qui parle de TOTEM, pas un écran qui porte un montant.
+   ========================================================================== */
+.porte{display:grid;grid-template-columns:600px 1fr;min-height:940px}
+.porte-marque{background:var(--sable);position:relative;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:space-between;padding:48px}
+.porte-marque::before{content:"";position:absolute;inset:0;opacity:.10;
+  background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDguMDAgNTQuMTMiIHdpZHRoPSI1MTIiIGhlaWdodD0iMjU3IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IlRPVEVNIj4KICAKICA8cmVjdCB3aWR0aD0iMTA4LjAwIiBoZWlnaHQ9IjU0LjEzIiBmaWxsPSIjZjRlZmU5Ii8+CiAgPGRlZnM+PG1hc2sgaWQ9Im0wYSIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iLTIuNDAiIHk9Ii0xMi41MyIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIj48cmVjdCB4PSItMi40MCIgeT0iLTEyLjUzIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg5LjAwLDEyLjE1KSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDkuMDAsMzIuMDQpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOS4wMCw1MS45Mikgcm90YXRlKDE0My4wMSkiLz48L21hc2s+PG1hc2sgaWQ9Im0wYiIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iLTIuNDAiIHk9Ii0xMi41MyIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIj48cmVjdCB4PSItMi40MCIgeT0iLTEyLjUzIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg5LjAwLDIuMjEpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOS4wMCwyMi4xMCkgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg5LjAwLDQxLjk4KSByb3RhdGUoMTQzLjAxKSIvPjwvbWFzaz48L2RlZnM+CiAgPHBhdGggZD0iTTkuMDAwIC03LjczM0MxMC41NDAgLTYuNTczIDE1LjYwMCAtNS4wODIgMTUuNjAwIC0yLjc2MkMxNS42MDAgLTAuNDQyIDEyLjA4MCAtMC4xMTAgOS4wMDAgMi4yMTBDNS45MjAgNC41MzAgMi40MDAgNC44NjEgMi40MDAgNy4xODFDMi40MDAgOS41MDEgNS45MjAgOS44MzIgOS4wMDAgMTIuMTUyQzEyLjA4MCAxNC40NzIgMTUuNjAwIDE0LjgwNCAxNS42MDAgMTcuMTI0QzE1LjYwMCAxOS40NDQgMTIuMDgwIDE5Ljc3NSA5LjAwMCAyMi4wOTVDNS45MjAgMjQuNDE1IDIuNDAwIDI0Ljc0NyAyLjQwMCAyNy4wNjdDMi40MDAgMjkuMzg3IDUuOTIwIDI5LjcxOCA5LjAwMCAzMi4wMzhDMTIuMDgwIDM0LjM1OCAxNS42MDAgMzQuNjkwIDE1LjYwMCAzNy4wMTBDMTUuNjAwIDM5LjMzMCAxMi4wODAgMzkuNjYxIDkuMDAwIDQxLjk4MUM1LjkyMCA0NC4zMDEgMi40MDAgNDQuNjMyIDIuNDAwIDQ2Ljk1MkMyLjQwMCA0OS4yNzIgNS45MjAgNDkuNjA0IDkuMDAwIDUxLjkyNEMxMi4wODAgNTQuMjQ0IDE1LjYwMCA1NC41NzUgMTUuNjAwIDU2Ljg5NUMxNS42MDAgNTkuMjE1IDEwLjU0MCA2MC43MDcgOS4wMDAgNjEuODY3IiBmaWxsPSJub25lIiBzdHJva2U9IiM5YTRiMmUiIHN0cm9rZS13aWR0aD0iNC44IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIG1hc2s9InVybCgjbTBhKSIvPgogIDxwYXRoIGQ9Ik05LjAwMCAtNy43MzNDNy40NjAgLTYuNTczIDIuNDAwIC01LjA4MiAyLjQwMCAtMi43NjJDMi40MDAgLTAuNDQyIDUuOTIwIC0wLjExMCA5LjAwMCAyLjIxMEMxMi4wODAgNC41MzAgMTUuNjAwIDQuODYxIDE1LjYwMCA3LjE4MUMxNS42MDAgOS41MDEgMTIuMDgwIDkuODMyIDkuMDAwIDEyLjE1MkM1LjkyMCAxNC40NzIgMi40MDAgMTQuODA0IDIuNDAwIDE3LjEyNEMyLjQwMCAxOS40NDQgNS45MjAgMTkuNzc1IDkuMDAwIDIyLjA5NUMxMi4wODAgMjQuNDE1IDE1LjYwMCAyNC43NDcgMTUuNjAwIDI3LjA2N0MxNS42MDAgMjkuMzg3IDEyLjA4MCAyOS43MTggOS4wMDAgMzIuMDM4QzUuOTIwIDM0LjM1OCAyLjQwMCAzNC42OTAgMi40MDAgMzcuMDEwQzIuNDAwIDM5LjMzMCA1LjkyMCAzOS42NjEgOS4wMDAgNDEuOTgxQzEyLjA4MCA0NC4zMDEgMTUuNjAwIDQ0LjYzMiAxNS42MDAgNDYuOTUyQzE1LjYwMCA0OS4yNzIgMTIuMDgwIDQ5LjYwNCA5LjAwMCA1MS45MjRDNS45MjAgNTQuMjQ0IDIuNDAwIDU0LjU3NSAyLjQwMCA1Ni44OTVDMi40MDAgNTkuMjE1IDcuNDYwIDYwLjcwNyA5LjAwMCA2MS44NjciIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzlhNGIyZSIgc3Ryb2tlLXdpZHRoPSI0LjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgbWFzaz0idXJsKCNtMGIpIi8+CiAgPGRlZnM+PG1hc2sgaWQ9Im0xYSIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iMTUuNjAiIHk9Ii0xNi40MCIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIj48cmVjdCB4PSIxNS42MCIgeT0iLTE2LjQwIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgyNy4wMCw4LjI5KSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI3LjAwLDI4LjE3KSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI3LjAwLDQ4LjA2KSByb3RhdGUoMTQzLjAxKSIvPjwvbWFzaz48bWFzayBpZD0ibTFiIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIxNS42MCIgeT0iLTE2LjQwIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiPjxyZWN0IHg9IjE1LjYwIiB5PSItMTYuNDAiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI3LjAwLC0xLjY2KSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI3LjAwLDE4LjIzKSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI3LjAwLDM4LjExKSByb3RhdGUoMTQzLjAxKSIvPjwvbWFzaz48L2RlZnM+CiAgPHBhdGggZD0iTTI3LjAwMCAtMTEuNjAwQzI4LjU0MCAtMTAuNDQwIDMzLjYwMCAtOC45NDkgMzMuNjAwIC02LjYyOUMzMy42MDAgLTQuMzA5IDMwLjA4MCAtMy45NzcgMjcuMDAwIC0xLjY1N0MyMy45MjAgMC42NjMgMjAuNDAwIDAuOTk0IDIwLjQwMCAzLjMxNEMyMC40MDAgNS42MzQgMjMuOTIwIDUuOTY2IDI3LjAwMCA4LjI4NkMzMC4wODAgMTAuNjA2IDMzLjYwMCAxMC45MzcgMzMuNjAwIDEzLjI1N0MzMy42MDAgMTUuNTc3IDMwLjA4MCAxNS45MDkgMjcuMDAwIDE4LjIyOUMyMy45MjAgMjAuNTQ5IDIwLjQwMCAyMC44ODAgMjAuNDAwIDIzLjIwMEMyMC40MDAgMjUuNTIwIDIzLjkyMCAyNS44NTEgMjcuMDAwIDI4LjE3MUMzMC4wODAgMzAuNDkxIDMzLjYwMCAzMC44MjMgMzMuNjAwIDMzLjE0M0MzMy42MDAgMzUuNDYzIDMwLjA4MCAzNS43OTQgMjcuMDAwIDM4LjExNEMyMy45MjAgNDAuNDM0IDIwLjQwMCA0MC43NjYgMjAuNDAwIDQzLjA4NkMyMC40MDAgNDUuNDA2IDIzLjkyMCA0NS43MzcgMjcuMDAwIDQ4LjA1N0MzMC4wODAgNTAuMzc3IDMzLjYwMCA1MC43MDkgMzMuNjAwIDUzLjAyOUMzMy42MDAgNTUuMzQ5IDI4LjU0MCA1Ni44NDAgMjcuMDAwIDU4LjAwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWE0YjJlIiBzdHJva2Utd2lkdGg9IjQuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBtYXNrPSJ1cmwoI20xYSkiLz4KICA8cGF0aCBkPSJNMjcuMDAwIC0xMS42MDBDMjUuNDYwIC0xMC40NDAgMjAuNDAwIC04Ljk0OSAyMC40MDAgLTYuNjI5QzIwLjQwMCAtNC4zMDkgMjMuOTIwIC0zLjk3NyAyNy4wMDAgLTEuNjU3QzMwLjA4MCAwLjY2MyAzMy42MDAgMC45OTQgMzMuNjAwIDMuMzE0QzMzLjYwMCA1LjYzNCAzMC4wODAgNS45NjYgMjcuMDAwIDguMjg2QzIzLjkyMCAxMC42MDYgMjAuNDAwIDEwLjkzNyAyMC40MDAgMTMuMjU3QzIwLjQwMCAxNS41NzcgMjMuOTIwIDE1LjkwOSAyNy4wMDAgMTguMjI5QzMwLjA4MCAyMC41NDkgMzMuNjAwIDIwLjg4MCAzMy42MDAgMjMuMjAwQzMzLjYwMCAyNS41MjAgMzAuMDgwIDI1Ljg1MSAyNy4wMDAgMjguMTcxQzIzLjkyMCAzMC40OTEgMjAuNDAwIDMwLjgyMyAyMC40MDAgMzMuMTQzQzIwLjQwMCAzNS40NjMgMjMuOTIwIDM1Ljc5NCAyNy4wMDAgMzguMTE0QzMwLjA4MCA0MC40MzQgMzMuNjAwIDQwLjc2NiAzMy42MDAgNDMuMDg2QzMzLjYwMCA0NS40MDYgMzAuMDgwIDQ1LjczNyAyNy4wMDAgNDguMDU3QzIzLjkyMCA1MC4zNzcgMjAuNDAwIDUwLjcwOSAyMC40MDAgNTMuMDI5QzIwLjQwMCA1NS4zNDkgMjUuNDYwIDU2Ljg0MCAyNy4wMDAgNTguMDAwIiBmaWxsPSJub25lIiBzdHJva2U9IiM5YTRiMmUiIHN0cm9rZS13aWR0aD0iNC44IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIG1hc2s9InVybCgjbTFiKSIvPgogIDxkZWZzPjxtYXNrIGlkPSJtMmEiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjMzLjYwIiB5PSItMTIuNTMiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCI+PHJlY3QgeD0iMzMuNjAiIHk9Ii0xMi41MyIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIiBmaWxsPSIjZmZmIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDUuMDAsMTIuMTUpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDUuMDAsMzIuMDQpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDUuMDAsNTEuOTIpIHJvdGF0ZSgxNDMuMDEpIi8+PC9tYXNrPjxtYXNrIGlkPSJtMmIiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjMzLjYwIiB5PSItMTIuNTMiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCI+PHJlY3QgeD0iMzMuNjAiIHk9Ii0xMi41MyIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIiBmaWxsPSIjZmZmIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDUuMDAsMi4yMSkgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg0NS4wMCwyMi4xMCkgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg0NS4wMCw0MS45OCkgcm90YXRlKDE0My4wMSkiLz48L21hc2s+PC9kZWZzPgogIDxwYXRoIGQ9Ik00NS4wMDAgLTcuNzMzQzQ2LjU0MCAtNi41NzMgNTEuNjAwIC01LjA4MiA1MS42MDAgLTIuNzYyQzUxLjYwMCAtMC40NDIgNDguMDgwIC0wLjExMCA0NS4wMDAgMi4yMTBDNDEuOTIwIDQuNTMwIDM4LjQwMCA0Ljg2MSAzOC40MDAgNy4xODFDMzguNDAwIDkuNTAxIDQxLjkyMCA5LjgzMiA0NS4wMDAgMTIuMTUyQzQ4LjA4MCAxNC40NzIgNTEuNjAwIDE0LjgwNCA1MS42MDAgMTcuMTI0QzUxLjYwMCAxOS40NDQgNDguMDgwIDE5Ljc3NSA0NS4wMDAgMjIuMDk1QzQxLjkyMCAyNC40MTUgMzguNDAwIDI0Ljc0NyAzOC40MDAgMjcuMDY3QzM4LjQwMCAyOS4zODcgNDEuOTIwIDI5LjcxOCA0NS4wMDAgMzIuMDM4QzQ4LjA4MCAzNC4zNTggNTEuNjAwIDM0LjY5MCA1MS42MDAgMzcuMDEwQzUxLjYwMCAzOS4zMzAgNDguMDgwIDM5LjY2MSA0NS4wMDAgNDEuOTgxQzQxLjkyMCA0NC4zMDEgMzguNDAwIDQ0LjYzMiAzOC40MDAgNDYuOTUyQzM4LjQwMCA0OS4yNzIgNDEuOTIwIDQ5LjYwNCA0NS4wMDAgNTEuOTI0QzQ4LjA4MCA1NC4yNDQgNTEuNjAwIDU0LjU3NSA1MS42MDAgNTYuODk1QzUxLjYwMCA1OS4yMTUgNDYuNTQwIDYwLjcwNyA0NS4wMDAgNjEuODY3IiBmaWxsPSJub25lIiBzdHJva2U9IiM5YTRiMmUiIHN0cm9rZS13aWR0aD0iNC44IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIG1hc2s9InVybCgjbTJhKSIvPgogIDxwYXRoIGQ9Ik00NS4wMDAgLTcuNzMzQzQzLjQ2MCAtNi41NzMgMzguNDAwIC01LjA4MiAzOC40MDAgLTIuNzYyQzM4LjQwMCAtMC40NDIgNDEuOTIwIC0wLjExMCA0NS4wMDAgMi4yMTBDNDguMDgwIDQuNTMwIDUxLjYwMCA0Ljg2MSA1MS42MDAgNy4xODFDNTEuNjAwIDkuNTAxIDQ4LjA4MCA5LjgzMiA0NS4wMDAgMTIuMTUyQzQxLjkyMCAxNC40NzIgMzguNDAwIDE0LjgwNCAzOC40MDAgMTcuMTI0QzM4LjQwMCAxOS40NDQgNDEuOTIwIDE5Ljc3NSA0NS4wMDAgMjIuMDk1QzQ4LjA4MCAyNC40MTUgNTEuNjAwIDI0Ljc0NyA1MS42MDAgMjcuMDY3QzUxLjYwMCAyOS4zODcgNDguMDgwIDI5LjcxOCA0NS4wMDAgMzIuMDM4QzQxLjkyMCAzNC4zNTggMzguNDAwIDM0LjY5MCAzOC40MDAgMzcuMDEwQzM4LjQwMCAzOS4zMzAgNDEuOTIwIDM5LjY2MSA0NS4wMDAgNDEuOTgxQzQ4LjA4MCA0NC4zMDEgNTEuNjAwIDQ0LjYzMiA1MS42MDAgNDYuOTUyQzUxLjYwMCA0OS4yNzIgNDguMDgwIDQ5LjYwNCA0NS4wMDAgNTEuOTI0QzQxLjkyMCA1NC4yNDQgMzguNDAwIDU0LjU3NSAzOC40MDAgNTYuODk1QzM4LjQwMCA1OS4yMTUgNDMuNDYwIDYwLjcwNyA0NS4wMDAgNjEuODY3IiBmaWxsPSJub25lIiBzdHJva2U9IiM5YTRiMmUiIHN0cm9rZS13aWR0aD0iNC44IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIG1hc2s9InVybCgjbTJiKSIvPgogIDxkZWZzPjxtYXNrIGlkPSJtM2EiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjUxLjYwIiB5PSItMTYuNDAiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCI+PHJlY3QgeD0iNTEuNjAiIHk9Ii0xNi40MCIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIiBmaWxsPSIjZmZmIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNjMuMDAsOC4yOSkgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2My4wMCwyOC4xNykgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2My4wMCw0OC4wNikgcm90YXRlKDE0My4wMSkiLz48L21hc2s+PG1hc2sgaWQ9Im0zYiIgbWFza1VuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeD0iNTEuNjAiIHk9Ii0xNi40MCIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIj48cmVjdCB4PSI1MS42MCIgeT0iLTE2LjQwIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2My4wMCwtMS42Nikgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2My4wMCwxOC4yMykgcm90YXRlKDE0My4wMSkiLz48cmVjdCB4PSItNy42OCIgeT0iLTMuNTUiIHdpZHRoPSIxNS4zNiIgaGVpZ2h0PSI3LjEwIiBmaWxsPSIjMDAwIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2My4wMCwzOC4xMSkgcm90YXRlKDE0My4wMSkiLz48L21hc2s+PC9kZWZzPgogIDxwYXRoIGQ9Ik02My4wMDAgLTExLjYwMEM2NC41NDAgLTEwLjQ0MCA2OS42MDAgLTguOTQ5IDY5LjYwMCAtNi42MjlDNjkuNjAwIC00LjMwOSA2Ni4wODAgLTMuOTc3IDYzLjAwMCAtMS42NTdDNTkuOTIwIDAuNjYzIDU2LjQwMCAwLjk5NCA1Ni40MDAgMy4zMTRDNTYuNDAwIDUuNjM0IDU5LjkyMCA1Ljk2NiA2My4wMDAgOC4yODZDNjYuMDgwIDEwLjYwNiA2OS42MDAgMTAuOTM3IDY5LjYwMCAxMy4yNTdDNjkuNjAwIDE1LjU3NyA2Ni4wODAgMTUuOTA5IDYzLjAwMCAxOC4yMjlDNTkuOTIwIDIwLjU0OSA1Ni40MDAgMjAuODgwIDU2LjQwMCAyMy4yMDBDNTYuNDAwIDI1LjUyMCA1OS45MjAgMjUuODUxIDYzLjAwMCAyOC4xNzFDNjYuMDgwIDMwLjQ5MSA2OS42MDAgMzAuODIzIDY5LjYwMCAzMy4xNDNDNjkuNjAwIDM1LjQ2MyA2Ni4wODAgMzUuNzk0IDYzLjAwMCAzOC4xMTRDNTkuOTIwIDQwLjQzNCA1Ni40MDAgNDAuNzY2IDU2LjQwMCA0My4wODZDNTYuNDAwIDQ1LjQwNiA1OS45MjAgNDUuNzM3IDYzLjAwMCA0OC4wNTdDNjYuMDgwIDUwLjM3NyA2OS42MDAgNTAuNzA5IDY5LjYwMCA1My4wMjlDNjkuNjAwIDU1LjM0OSA2NC41NDAgNTYuODQwIDYzLjAwMCA1OC4wMDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzlhNGIyZSIgc3Ryb2tlLXdpZHRoPSI0LjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgbWFzaz0idXJsKCNtM2EpIi8+CiAgPHBhdGggZD0iTTYzLjAwMCAtMTEuNjAwQzYxLjQ2MCAtMTAuNDQwIDU2LjQwMCAtOC45NDkgNTYuNDAwIC02LjYyOUM1Ni40MDAgLTQuMzA5IDU5LjkyMCAtMy45NzcgNjMuMDAwIC0xLjY1N0M2Ni4wODAgMC42NjMgNjkuNjAwIDAuOTk0IDY5LjYwMCAzLjMxNEM2OS42MDAgNS42MzQgNjYuMDgwIDUuOTY2IDYzLjAwMCA4LjI4NkM1OS45MjAgMTAuNjA2IDU2LjQwMCAxMC45MzcgNTYuNDAwIDEzLjI1N0M1Ni40MDAgMTUuNTc3IDU5LjkyMCAxNS45MDkgNjMuMDAwIDE4LjIyOUM2Ni4wODAgMjAuNTQ5IDY5LjYwMCAyMC44ODAgNjkuNjAwIDIzLjIwMEM2OS42MDAgMjUuNTIwIDY2LjA4MCAyNS44NTEgNjMuMDAwIDI4LjE3MUM1OS45MjAgMzAuNDkxIDU2LjQwMCAzMC44MjMgNTYuNDAwIDMzLjE0M0M1Ni40MDAgMzUuNDYzIDU5LjkyMCAzNS43OTQgNjMuMDAwIDM4LjExNEM2Ni4wODAgNDAuNDM0IDY5LjYwMCA0MC43NjYgNjkuNjAwIDQzLjA4NkM2OS42MDAgNDUuNDA2IDY2LjA4MCA0NS43MzcgNjMuMDAwIDQ4LjA1N0M1OS45MjAgNTAuMzc3IDU2LjQwMCA1MC43MDkgNTYuNDAwIDUzLjAyOUM1Ni40MDAgNTUuMzQ5IDYxLjQ2MCA1Ni44NDAgNjMuMDAwIDU4LjAwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWE0YjJlIiBzdHJva2Utd2lkdGg9IjQuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBtYXNrPSJ1cmwoI20zYikiLz4KICA8ZGVmcz48bWFzayBpZD0ibTRhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI2OS42MCIgeT0iLTEyLjUzIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiPjxyZWN0IHg9IjY5LjYwIiB5PSItMTIuNTMiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDgxLjAwLDEyLjE1KSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDgxLjAwLDMyLjA0KSByb3RhdGUoMTQzLjAxKSIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDgxLjAwLDUxLjkyKSByb3RhdGUoMTQzLjAxKSIvPjwvbWFzaz48bWFzayBpZD0ibTRiIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI2OS42MCIgeT0iLTEyLjUzIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiPjxyZWN0IHg9IjY5LjYwIiB5PSItMTIuNTMiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDgxLjAwLDIuMjEpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoODEuMDAsMjIuMTApIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoODEuMDAsNDEuOTgpIHJvdGF0ZSgxNDMuMDEpIi8+PC9tYXNrPjwvZGVmcz4KICA8cGF0aCBkPSJNODEuMDAwIC03LjczM0M4Mi41NDAgLTYuNTczIDg3LjYwMCAtNS4wODIgODcuNjAwIC0yLjc2MkM4Ny42MDAgLTAuNDQyIDg0LjA4MCAtMC4xMTAgODEuMDAwIDIuMjEwQzc3LjkyMCA0LjUzMCA3NC40MDAgNC44NjEgNzQuNDAwIDcuMTgxQzc0LjQwMCA5LjUwMSA3Ny45MjAgOS44MzIgODEuMDAwIDEyLjE1MkM4NC4wODAgMTQuNDcyIDg3LjYwMCAxNC44MDQgODcuNjAwIDE3LjEyNEM4Ny42MDAgMTkuNDQ0IDg0LjA4MCAxOS43NzUgODEuMDAwIDIyLjA5NUM3Ny45MjAgMjQuNDE1IDc0LjQwMCAyNC43NDcgNzQuNDAwIDI3LjA2N0M3NC40MDAgMjkuMzg3IDc3LjkyMCAyOS43MTggODEuMDAwIDMyLjAzOEM4NC4wODAgMzQuMzU4IDg3LjYwMCAzNC42OTAgODcuNjAwIDM3LjAxMEM4Ny42MDAgMzkuMzMwIDg0LjA4MCAzOS42NjEgODEuMDAwIDQxLjk4MUM3Ny45MjAgNDQuMzAxIDc0LjQwMCA0NC42MzIgNzQuNDAwIDQ2Ljk1MkM3NC40MDAgNDkuMjcyIDc3LjkyMCA0OS42MDQgODEuMDAwIDUxLjkyNEM4NC4wODAgNTQuMjQ0IDg3LjYwMCA1NC41NzUgODcuNjAwIDU2Ljg5NUM4Ny42MDAgNTkuMjE1IDgyLjU0MCA2MC43MDcgODEuMDAwIDYxLjg2NyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWE0YjJlIiBzdHJva2Utd2lkdGg9IjQuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBtYXNrPSJ1cmwoI200YSkiLz4KICA8cGF0aCBkPSJNODEuMDAwIC03LjczM0M3OS40NjAgLTYuNTczIDc0LjQwMCAtNS4wODIgNzQuNDAwIC0yLjc2MkM3NC40MDAgLTAuNDQyIDc3LjkyMCAtMC4xMTAgODEuMDAwIDIuMjEwQzg0LjA4MCA0LjUzMCA4Ny42MDAgNC44NjEgODcuNjAwIDcuMTgxQzg3LjYwMCA5LjUwMSA4NC4wODAgOS44MzIgODEuMDAwIDEyLjE1MkM3Ny45MjAgMTQuNDcyIDc0LjQwMCAxNC44MDQgNzQuNDAwIDE3LjEyNEM3NC40MDAgMTkuNDQ0IDc3LjkyMCAxOS43NzUgODEuMDAwIDIyLjA5NUM4NC4wODAgMjQuNDE1IDg3LjYwMCAyNC43NDcgODcuNjAwIDI3LjA2N0M4Ny42MDAgMjkuMzg3IDg0LjA4MCAyOS43MTggODEuMDAwIDMyLjAzOEM3Ny45MjAgMzQuMzU4IDc0LjQwMCAzNC42OTAgNzQuNDAwIDM3LjAxMEM3NC40MDAgMzkuMzMwIDc3LjkyMCAzOS42NjEgODEuMDAwIDQxLjk4MUM4NC4wODAgNDQuMzAxIDg3LjYwMCA0NC42MzIgODcuNjAwIDQ2Ljk1MkM4Ny42MDAgNDkuMjcyIDg0LjA4MCA0OS42MDQgODEuMDAwIDUxLjkyNEM3Ny45MjAgNTQuMjQ0IDc0LjQwMCA1NC41NzUgNzQuNDAwIDU2Ljg5NUM3NC40MDAgNTkuMjE1IDc5LjQ2MCA2MC43MDcgODEuMDAwIDYxLjg2NyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWE0YjJlIiBzdHJva2Utd2lkdGg9IjQuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBtYXNrPSJ1cmwoI200YikiLz4KICA8ZGVmcz48bWFzayBpZD0ibTVhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSI4Ny42MCIgeT0iLTE2LjQwIiB3aWR0aD0iMjIuODAiIGhlaWdodD0iNzkuMjAiPjxyZWN0IHg9Ijg3LjYwIiB5PSItMTYuNDAiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCIgZmlsbD0iI2ZmZiIvPjxyZWN0IHg9Ii03LjY4IiB5PSItMy41NSIgd2lkdGg9IjE1LjM2IiBoZWlnaHQ9IjcuMTAiIGZpbGw9IiMwMDAiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDk5LjAwLDguMjkpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTkuMDAsMjguMTcpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTkuMDAsNDguMDYpIHJvdGF0ZSgxNDMuMDEpIi8+PC9tYXNrPjxtYXNrIGlkPSJtNWIiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9Ijg3LjYwIiB5PSItMTYuNDAiIHdpZHRoPSIyMi44MCIgaGVpZ2h0PSI3OS4yMCI+PHJlY3QgeD0iODcuNjAiIHk9Ii0xNi40MCIgd2lkdGg9IjIyLjgwIiBoZWlnaHQ9Ijc5LjIwIiBmaWxsPSIjZmZmIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTkuMDAsLTEuNjYpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTkuMDAsMTguMjMpIHJvdGF0ZSgxNDMuMDEpIi8+PHJlY3QgeD0iLTcuNjgiIHk9Ii0zLjU1IiB3aWR0aD0iMTUuMzYiIGhlaWdodD0iNy4xMCIgZmlsbD0iIzAwMCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOTkuMDAsMzguMTEpIHJvdGF0ZSgxNDMuMDEpIi8+PC9tYXNrPjwvZGVmcz4KICA8cGF0aCBkPSJNOTkuMDAwIC0xMS42MDBDMTAwLjU0MCAtMTAuNDQwIDEwNS42MDAgLTguOTQ5IDEwNS42MDAgLTYuNjI5QzEwNS42MDAgLTQuMzA5IDEwMi4wODAgLTMuOTc3IDk5LjAwMCAtMS42NTdDOTUuOTIwIDAuNjYzIDkyLjQwMCAwLjk5NCA5Mi40MDAgMy4zMTRDOTIuNDAwIDUuNjM0IDk1LjkyMCA1Ljk2NiA5OS4wMDAgOC4yODZDMTAyLjA4MCAxMC42MDYgMTA1LjYwMCAxMC45MzcgMTA1LjYwMCAxMy4yNTdDMTA1LjYwMCAxNS41NzcgMTAyLjA4MCAxNS45MDkgOTkuMDAwIDE4LjIyOUM5NS45MjAgMjAuNTQ5IDkyLjQwMCAyMC44ODAgOTIuNDAwIDIzLjIwMEM5Mi40MDAgMjUuNTIwIDk1LjkyMCAyNS44NTEgOTkuMDAwIDI4LjE3MUMxMDIuMDgwIDMwLjQ5MSAxMDUuNjAwIDMwLjgyMyAxMDUuNjAwIDMzLjE0M0MxMDUuNjAwIDM1LjQ2MyAxMDIuMDgwIDM1Ljc5NCA5OS4wMDAgMzguMTE0Qzk1LjkyMCA0MC40MzQgOTIuNDAwIDQwLjc2NiA5Mi40MDAgNDMuMDg2QzkyLjQwMCA0NS40MDYgOTUuOTIwIDQ1LjczNyA5OS4wMDAgNDguMDU3QzEwMi4wODAgNTAuMzc3IDEwNS42MDAgNTAuNzA5IDEwNS42MDAgNTMuMDI5QzEwNS42MDAgNTUuMzQ5IDEwMC41NDAgNTYuODQwIDk5LjAwMCA1OC4wMDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzlhNGIyZSIgc3Ryb2tlLXdpZHRoPSI0LjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgbWFzaz0idXJsKCNtNWEpIi8+CiAgPHBhdGggZD0iTTk5LjAwMCAtMTEuNjAwQzk3LjQ2MCAtMTAuNDQwIDkyLjQwMCAtOC45NDkgOTIuNDAwIC02LjYyOUM5Mi40MDAgLTQuMzA5IDk1LjkyMCAtMy45NzcgOTkuMDAwIC0xLjY1N0MxMDIuMDgwIDAuNjYzIDEwNS42MDAgMC45OTQgMTA1LjYwMCAzLjMxNEMxMDUuNjAwIDUuNjM0IDEwMi4wODAgNS45NjYgOTkuMDAwIDguMjg2Qzk1LjkyMCAxMC42MDYgOTIuNDAwIDEwLjkzNyA5Mi40MDAgMTMuMjU3QzkyLjQwMCAxNS41NzcgOTUuOTIwIDE1LjkwOSA5OS4wMDAgMTguMjI5QzEwMi4wODAgMjAuNTQ5IDEwNS42MDAgMjAuODgwIDEwNS42MDAgMjMuMjAwQzEwNS42MDAgMjUuNTIwIDEwMi4wODAgMjUuODUxIDk5LjAwMCAyOC4xNzFDOTUuOTIwIDMwLjQ5MSA5Mi40MDAgMzAuODIzIDkyLjQwMCAzMy4xNDNDOTIuNDAwIDM1LjQ2MyA5NS45MjAgMzUuNzk0IDk5LjAwMCAzOC4xMTRDMTAyLjA4MCA0MC40MzQgMTA1LjYwMCA0MC43NjYgMTA1LjYwMCA0My4wODZDMTA1LjYwMCA0NS40MDYgMTAyLjA4MCA0NS43MzcgOTkuMDAwIDQ4LjA1N0M5NS45MjAgNTAuMzc3IDkyLjQwMCA1MC43MDkgOTIuNDAwIDUzLjAyOUM5Mi40MDAgNTUuMzQ5IDk3LjQ2MCA1Ni44NDAgOTkuMDAwIDU4LjAwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWE0YjJlIiBzdHJva2Utd2lkdGg9IjQuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBtYXNrPSJ1cmwoI201YikiLz4KPC9zdmc+Cg==");
+  background-size:180px 90px;background-repeat:repeat}
+.porte-marque>*{position:relative}
+.porte-marque .marque-porte{display:flex;align-items:center;gap:10px}
+.porte-marque .logo{height:32px;width:169px;display:block}
+.porte-marque .badge{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.14em;
+  color:var(--laterite);box-shadow:inset 0 0 0 1px var(--laterite);border-radius:6px;padding:2px 6px}
+.porte-marque .dire{max-width:400px}
+.porte-marque .dire h2{font-size:20px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+.porte-marque .dire p{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:12px}
+.porte-marque .pied{font-size:12px;line-height:16px;color:var(--tertiaire)}
+
+.porte-corps{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:48px;position:relative}
+.porte-corps .langue{position:absolute;top:24px;right:32px}
+.feuille{width:400px}
+.feuille h1{font-size:20px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+.feuille .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+.feuille .champs{margin-top:24px;display:flex;flex-direction:column;gap:16px}
+.feuille label{display:block;font-size:11px;line-height:16px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--tertiaire);margin-bottom:8px}
+.feuille input[type=email],.feuille input[type=text]{width:100%;height:40px;padding:0 12px;
+  border:none;border-radius:6px;background:var(--carte);box-shadow:inset 0 0 0 1px var(--trait-controle);
+  font:400 14px/20px 'DM Sans';font-variant-numeric:tabular-nums;color:var(--encre)}
+.feuille input::placeholder{color:var(--tertiaire)}
+/* Le champ du code est le seul contrôle de 48px de la console : il porte six
+   chiffres en 20px et doit rester visible au bout d'un bras. Exception écrite,
+   comme l'exige NORMES §2. Un seul champ, jamais six cases : le collage, la
+   correction et les lecteurs d'écran y survivent (WCAG 2.2 §3.3.8). */
+.feuille input.code{height:48px;font-size:20px;letter-spacing:.34em;text-align:center;
+  font-weight:700}
+.feuille .aide{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:8px}
+.feuille .btn{width:100%}
+.feuille .autres{margin-top:24px;padding-top:20px;border-top:1px solid var(--hairline);
+  display:flex;flex-direction:column;gap:12px}
+/* Les autres chemins d'entrée MÈNENT quelque part : ce sont des commandes, pas
+   des phrases. Écrits en <div>, ils étaient invisibles au clavier — et le
+   super-admin qui a perdu sa boîte n'avait alors plus aucune porte. Sobres à
+   l'œil, entiers au clavier : 32px de haut, toute la largeur cliquable. */
+.feuille .autre{display:flex;align-items:center;gap:10px;width:100%;min-height:32px;
+  padding:6px 8px;margin-left:-8px;border:none;border-radius:6px;background:transparent;
+  font:400 13px/20px 'DM Sans';color:var(--secondaire);text-align:left;cursor:pointer}
+.feuille .autre:hover{background:var(--fond2);color:var(--encre)}
+.feuille .autre svg{stroke:var(--tertiaire);flex:none}
+.avis{display:flex;gap:12px;padding:12px 16px;border-radius:10px;font-size:13px;line-height:20px}
+.avis .ic{width:20px;height:20px;flex:none;margin-top:1px}
+.avis--refus{background:var(--negatif-fond);color:#6f1a1a}
+.avis--refus .ic{stroke:var(--negatif)}
+.avis--attente{background:var(--alerte-fond);color:#5c4712}
+.avis--attente .ic{stroke:#6d5616}
+.avis--calme{background:var(--fond2);color:var(--secondaire)}
+.avis--calme .ic{stroke:var(--tertiaire)}
+
+</style>
+<style>
+  .galerie{padding:24px 32px;display:flex;flex-direction:column;gap:24px}
+  .demo{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+  .reglet{display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid var(--hairline)}
+  .reglet .cote{width:104px;flex:none;font-size:11px;line-height:16px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--tertiaire)}
+</style>
+<!-- ==========================================================================
+     TOTEM ADMIN — jeu d'icônes commun. À coller TEL QUEL en tête de <body>.
+     Usage : <svg class="ic16"><use href="#i-flotte"/></svg>
+     Grille 24, trait 1.5, bouts ronds. Aucune autre icône ne doit être dessinée.
+     ========================================================================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-flotte" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M6.5 7.5h.01M6.5 16.5h.01M17.5 7.5h-3M17.5 16.5h-3"/></symbol>
+<symbol id="i-sim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><rect x="8.5" y="11" width="7" height="7" rx="1.5"/><path d="M12 11v7M8.5 14.5h7"/></symbol>
+<symbol id="i-clients" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M16 5.6a3.2 3.2 0 0 1 0 6M17.5 14.9c2 .6 3.5 2.3 3.5 4.6"/></symbol>
+<symbol id="i-releases" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.5 8.2v7.6a1.5 1.5 0 0 1-.8 1.3l-6.9 3.7a1.5 1.5 0 0 1-1.6 0l-6.9-3.7a1.5 1.5 0 0 1-.8-1.3V8.2a1.5 1.5 0 0 1 .8-1.3l6.9-3.7a1.5 1.5 0 0 1 1.6 0l6.9 3.7a1.5 1.5 0 0 1 .8 1.3Z"/><path d="M3.8 7.6 12 12l8.2-4.4M12 12v8.6"/></symbol>
+<symbol id="i-audit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 5.7l1.2 1.2L7.4 4.6M4 11.7l1.2 1.2 2.2-2.3M4 17.7l1.2 1.2 2.2-2.3"/></symbol>
+<symbol id="i-alertes" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 9a6 6 0 0 0-12 0c0 5-2 6.5-2 6.5h16S18 14 18 9Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></symbol>
+<symbol id="i-reglages" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></symbol>
+<symbol id="i-recherche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.2 2.3 3.4 5.3 3.4 8.5s-1.2 6.2-3.4 8.5c-2.2-2.3-3.4-5.3-3.4-8.5S9.8 5.8 12 3.5Z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12.5 9.5 17 19 7.5"/></symbol>
+<symbol id="i-check-cercle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.2l2.6 2.6 5-5.2"/></symbol>
+<symbol id="i-attention" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 4.2 21 19.3a1 1 0 0 1-.9 1.5H3.9a1 1 0 0 1-.9-1.5L12 4.2Z"/><path d="M12 10v4.2M12 17.3h.01"/></symbol>
+<symbol id="i-horloge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.2V12l3.2 2"/></symbol>
+<symbol id="i-prise" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3.5v5M15 3.5v5"/><path d="M6.5 8.5h11v3a5.5 5.5 0 0 1-11 0v-3Z"/><path d="M12 17v3.5"/></symbol>
+<symbol id="i-batterie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="7.5" width="16" height="9" rx="2.5"/><path d="M21 10.5v3"/><path d="M5.5 10.5h6v3h-6z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 18v-3M9.3 18v-6M14.7 18v-9M20 18V6"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20.5 4.5V10h-5.4"/></symbol>
+<symbol id="i-telecharger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3.8v10.4M8.2 10.6 12 14.4l3.8-3.8"/><path d="M4.5 16.5v2.2a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2.2"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.5 5.5 16 12l-6.5 6.5"/></symbol>
+<symbol id="i-fermer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-telephone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8.4 4.2 10 7.6 8.1 9.5a12 12 0 0 0 6.4 6.4l1.9-1.9 3.4 1.6v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 3.4 5.4a2 2 0 0 1 2-2.2h3Z"/></symbol>
+<symbol id="i-envoi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.5 3.5 3.8 10.2a.5.5 0 0 0 0 .9l6.4 2.6 2.6 6.4a.5.5 0 0 0 .9 0L20.5 3.5Z"/><path d="M20.5 3.5 10.2 13.7"/></symbol>
+<symbol id="i-cadenas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/><path d="M12 14.5v2.2"/></symbol>
+<symbol id="i-bouclier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3.2 4.5 6v6c0 4.5 3.1 7.9 7.5 9.2 4.4-1.3 7.5-4.7 7.5-9.2V6L12 3.2Z"/><path d="M9 12.2l2.1 2.1 4-4.2"/></symbol>
+<symbol id="i-puce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/></symbol>
+<symbol id="i-thermo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 13.6V5.5a2.5 2.5 0 0 0-5 0v8.1a4.5 4.5 0 1 0 5 0Z"/><path d="M11.5 8.5v6.2"/></symbol>
+<symbol id="i-reseau" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 9a13 13 0 0 1 19 0M6 12.6a8.5 8.5 0 0 1 12 0M9.4 16.2a4 4 0 0 1 5.2 0"/><path d="M12 19.7h.01"/></symbol>
+<symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3.5h7.5L19 9v11.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z"/><path d="M13.2 3.6V9H19M8.5 13h7M8.5 16.5h4.5"/></symbol>
+<symbol id="i-console" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7.5 10l2.6 2.6-2.6 2.6M13 15.4h4"/></symbol>
+<symbol id="i-etincelle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7L12 18l-1.7-5.6L4.8 10.7 10.3 9 12 3.5Z"/><path d="M18.6 16.4l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7.7-2.1Z"/></symbol>
+<symbol id="i-oeil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-lieu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21s7-5.8 7-11a7 7 0 1 0-14 0c0 5.2 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></symbol>
+<symbol id="i-fleche-hd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17 17 7M8.6 7H17v8.4"/></symbol>
+<symbol id="i-pouls" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 12.5h4L9 6.5l3.6 11 2.4-5h6.5"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+<symbol id="i-plus-cercle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M12 8.2v7.6M8.2 12h7.6"/></symbol>
+<!-- LA MARQUE — copiée telle quelle de brand/ (source unique : generer.py).
+     Ne jamais la redessiner à la main : la tresse est TISSÉE, chaque croisement
+     découpe le brin qui passe dessous. La variante fondue est réservée aux
+     tailles sous 22 px (docs/IDENTITE.md §2). -->
+<symbol id="marque-logo" viewBox="0 -4.50 153.30 29.00"><g transform="translate(-7.250,-6.571) scale(1.03571)">
+  <defs><mask id="lg-h1a" maskUnits="userSpaceOnUse" x="4.60" y="-0.40" width="22.80" height="32.80"><rect x="4.60" y="-0.40" width="22.80" height="32.80" fill="#fff"/><rect x="-7.68" y="-3.55" width="15.36" height="7.10" fill="#000" transform="translate(16.00,19.87) rotate(149.64)"/></mask><mask id="lg-h1b" maskUnits="userSpaceOnUse" x="4.60" y="-0.40" width="22.80" height="32.80"><rect x="4.60" y="-0.40" width="22.80" height="32.80" fill="#fff"/><rect x="-7.68" y="-3.55" width="15.36" height="7.10" fill="#000" transform="translate(16.00,12.13) rotate(149.64)"/></mask></defs>
+  <path d="M16.000 4.400C17.540 5.302 22.600 6.462 22.600 8.267C22.600 10.071 19.080 10.329 16.000 12.133C12.920 13.938 9.400 14.196 9.400 16.000C9.400 17.804 12.920 18.062 16.000 19.867C19.080 21.671 22.600 21.929 22.600 23.733C22.600 25.538 17.540 26.698 16.000 27.600" fill="none" stroke="#9a4b2e" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#lg-h1a)"/>
+  <path d="M16.000 4.400C14.460 5.302 9.400 6.462 9.400 8.267C9.400 10.071 12.920 10.329 16.000 12.133C19.080 13.938 22.600 14.196 22.600 16.000C22.600 17.804 19.080 18.062 16.000 19.867C12.920 21.671 9.400 21.929 9.400 23.733C9.400 25.538 14.460 26.698 16.000 27.600" fill="none" stroke="#9a4b2e" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#lg-h1b)"/>
+  </g>
+  <path fill="#16171a" transform="translate(34.24,0)" d="M6.63 20.00V3.11H0.77V0.00H16.29V3.11H10.46V20.00ZM33.40 20.34Q30.49 20.34 28.26 19.03Q26.03 17.71 24.77 15.39Q23.51 13.06 23.51 10.00Q23.51 6.94 24.77 4.61Q26.03 2.29 28.26 0.97Q30.49 -0.34 33.40 -0.34Q36.34 -0.34 38.57 0.97Q40.80 2.29 42.04 4.61Q43.29 6.94 43.29 10.00Q43.29 13.06 42.04 15.39Q40.80 17.71 38.57 19.03Q36.34 20.34 33.40 20.34ZM33.40 16.89Q35.23 16.89 36.56 16.04Q37.89 15.20 38.63 13.66Q39.37 12.11 39.37 10.00Q39.37 7.86 38.63 6.33Q37.89 4.80 36.56 3.97Q35.23 3.14 33.40 3.14Q31.60 3.14 30.26 3.97Q28.91 4.80 28.17 6.33Q27.43 7.86 27.43 10.00Q27.43 12.11 28.17 13.66Q28.91 15.20 30.26 16.04Q31.60 16.89 33.40 16.89ZM56.37 20.00V3.11H50.51V0.00H66.03V3.11H60.20V20.00ZM73.91 20.00V0.00H87.06V3.11H77.77V8.34H86.20V11.34H77.77V16.89H87.06V20.00ZM95.71 20.00V0.00H100.31L106.43 12.49L112.49 0.00H117.09V20.00H113.23V6.57L107.94 17.20H104.89L99.57 6.57V20.00Z"/></symbol>
+<symbol id="marque-symbole" viewBox="0 0 32 32"><defs><mask id="sy-s1a" maskUnits="userSpaceOnUse" x="4.60" y="-0.40" width="22.80" height="32.80"><rect x="4.60" y="-0.40" width="22.80" height="32.80" fill="#fff"/><rect x="-7.68" y="-3.55" width="15.36" height="7.10" fill="#000" transform="translate(16.00,19.87) rotate(149.64)"/></mask><mask id="sy-s1b" maskUnits="userSpaceOnUse" x="4.60" y="-0.40" width="22.80" height="32.80"><rect x="4.60" y="-0.40" width="22.80" height="32.80" fill="#fff"/><rect x="-7.68" y="-3.55" width="15.36" height="7.10" fill="#000" transform="translate(16.00,12.13) rotate(149.64)"/></mask></defs>
+  <path d="M16.000 4.400C17.540 5.302 22.600 6.462 22.600 8.267C22.600 10.071 19.080 10.329 16.000 12.133C12.920 13.938 9.400 14.196 9.400 16.000C9.400 17.804 12.920 18.062 16.000 19.867C19.080 21.671 22.600 21.929 22.600 23.733C22.600 25.538 17.540 26.698 16.000 27.600" fill="none" stroke="#9a4b2e" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#sy-s1a)"/>
+  <path d="M16.000 4.400C14.460 5.302 9.400 6.462 9.400 8.267C9.400 10.071 12.920 10.329 16.000 12.133C19.080 13.938 22.600 14.196 22.600 16.000C22.600 17.804 19.080 18.062 16.000 19.867C12.920 21.671 9.400 21.929 9.400 23.733C9.400 25.538 14.460 26.698 16.000 27.600" fill="none" stroke="#9a4b2e" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round" mask="url(#sy-s1b)"/></symbol>
+</defs></svg>
+
+
+<body data-ecran="fleet">
+<div class="app">
+  <!-- ======================= rail ======================= -->
+  <aside class="rail">
+  <div class="bloc-marque">
+    <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+    <span class="badge">ADMIN</span>
+  </div>
+  <nav class="nav">
+    <a data-nav="fleet" href="#"><svg><use href="#i-flotte"/></svg>Fleet<span class="pastille-nav"></span></a>
+    <a data-nav="terminals" href="#"><svg><use href="#i-terminal"/></svg>Terminals<span class="pastille-nav"></span></a>
+    <a data-nav="sims" href="#"><svg><use href="#i-sim"/></svg>SIM registry<span class="pastille-nav"></span></a>
+    <a data-nav="clients" href="#"><svg><use href="#i-clients"/></svg>Clients<span class="pastille-nav"></span></a>
+    <a data-nav="releases" href="#"><svg><use href="#i-releases"/></svg>Releases<span class="pastille-nav"></span></a>
+    <a data-nav="audit" href="#"><svg><use href="#i-audit"/></svg>Commands &amp; audit<span class="pastille-nav"></span></a>
+    <a data-nav="alerts" href="#"><svg><use href="#i-alertes"/></svg>Alerts<span class="pastille-nav"></span></a>
+    <a data-nav="settings" href="#"><svg><use href="#i-reglages"/></svg>Settings<span class="pastille-nav"></span></a>
+  </nav>
+  <div class="rail-pied">
+    <div>Signed in as <b>Nelson</b></div>
+    <div>Super admin · authenticator ✓</div>
+  </div>
+</aside>
+
+
+  <main>
+    <!-- ======================= barre haute ======================= -->
+    <header class="barre">
+      <h1>Component gallery</h1>
+      <span class="ariane">Design system · v2</span>
+      <div class="droite">
+  <div class="recherche"><svg><use href="#i-recherche"/></svg>
+    <input aria-label="Search" placeholder="Search terminals, SIMs, clients, events"></div>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+  <div class="avatar" title="Nelson">N</div>
+</div>
+
+    </header>
+
+    <div class="galerie">
+      <!-- échelle typographique -->
+      <section class="carte">
+        <div class="carte-tete"><h2>Type scale — seven sizes, two weights</h2>
+          <div class="a-droite">DM Sans 400 / 700 · tabular numerals</div></div>
+        <div class="carte-corps">
+          <div class="reglet"><span class="cote">11 · overline</span><span class="surtitre">Sync backlog</span></div>
+          <div class="reglet"><span class="cote">12 · meta</span><span class="t12 doux">10 in place · 1 roaming · checked 14:02</span></div>
+          <div class="reglet"><span class="cote">13 · body</span><span class="t13">The terminal writes its own journal — the same one you would read over SSH.</span></div>
+          <div class="reglet"><span class="cote">14 · emphasis</span><span class="t14"><b>douala-akwa-01</b> · Douala, Akwa</span></div>
+          <div class="reglet"><span class="cote">16 · section</span><span class="t16"><b>6,335,788.6 FCFA</b></span></div>
+          <div class="reglet"><span class="cote">20 · page</span><span class="t20">Fleet overview</span></div>
+          <div class="reglet" style="border-bottom:none"><span class="cote">28 · figure</span><span class="t28">1,412</span></div>
+        </div>
+      </section>
+
+      <!-- boutons -->
+      <section class="carte">
+        <div class="carte-tete"><h2>Actions — one filled button per screen</h2>
+          <div class="a-droite">28 · 32 · 40 px</div></div>
+        <div class="carte-corps">
+          <div class="demo">
+            <button class="btn btn--primaire"><svg><use href="#i-plus"/></svg>New client</button>
+            <button class="btn btn--secondaire"><svg><use href="#i-refresh"/></svg>Re-check balance</button>
+            <button class="btn btn--fantome">Export ledger</button>
+            <button class="btn btn--danger"><svg><use href="#i-attention"/></svg>Revoke access</button>
+            <button class="btn btn--accent"><svg><use href="#i-etincelle"/></svg>Promote to stable</button>
+            <button class="btn btn--icone"><svg><use href="#i-menu"/></svg></button>
+            <button class="btn" disabled>Re-send invite</button>
+          </div>
+          <div class="demo" style="margin-top:16px">
+            <button class="btn btn--sm btn--secondaire">Small · 28</button>
+            <button class="btn btn--secondaire">Default · 32</button>
+            <button class="btn btn--lg btn--primaire">Large · 40</button>
+            <span style="width:16px"></span>
+            <a class="onglet on" href="#">All <span class="compte">12</span></a>
+            <a class="onglet" href="#">Orange <span class="compte">8</span></a>
+            <a class="onglet" href="#">MTN <span class="compte">4</span></a>
+          </div>
+        </div>
+      </section>
+
+      <!-- états, pilules, instruments -->
+      <div class="colonnes c2">
+        <section class="carte">
+          <div class="carte-tete"><h2>States &amp; pills</h2></div>
+          <div class="carte-corps">
+            <div class="demo">
+              <span class="etat ok"><i class="pastille ok"></i>Active</span>
+              <span class="etat attention"><i class="pastille attention"></i>Roaming SIM</span>
+              <span class="etat danger"><i class="pastille danger"></i>Offline</span>
+              <span class="etat muet"><i class="pastille muet"></i>Removed</span>
+            </div>
+            <div class="demo" style="margin-top:16px">
+              <span class="chip orange">Orange ··4177</span>
+              <span class="chip mtn">MTN ··9021</span>
+              <span class="chip version">stable-2.4.2</span>
+              <span class="chip ok">resolved · 14m</span>
+              <span class="chip attention">on battery</span>
+              <span class="chip danger">2 retries</span>
+              <span class="chip accent">canary</span>
+              <span class="chip">owner</span>
+            </div>
+          </div>
+        </section>
+        <section class="carte">
+          <div class="carte-tete"><h2>Instruments</h2><div class="a-droite">drawn by hand</div></div>
+          <div class="carte-corps">
+            <div class="demo" style="gap:24px">
+              <span class="signal">
+                <svg viewBox="0 0 20 13"><g fill="currentColor" stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/>
+                  <rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/>
+                  <rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg>
+                <em>4/5</em></span>
+              <span class="signal">
+                <svg viewBox="0 0 20 13"><g fill="currentColor" stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#8a6d1f"/>
+                  <rect x="4.2" y="6" width="3" height="7" rx="1" fill="#8a6d1f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#e0dcd7"/>
+                  <rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg>
+                <em>2/5</em></span>
+              <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none">
+                <path d="M0 24 L14 21 L28 25 L42 14 L56 18 L70 9 L84 12 L98 5 L98 32 L0 32Z" fill="#9a4b2e" opacity=".10" stroke="none"/>
+                <path d="M0 24 L14 21 L28 25 L42 14 L56 18 L70 9 L84 12 L98 5" stroke="#9a4b2e" stroke-width="1.5" fill="none"/>
+                <circle cx="98" cy="5" r="2.4" fill="#9a4b2e" stroke="none"/></svg>
+              <span class="interrupteur on"></span>
+              <span class="interrupteur"></span>
+            </div>
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
+              <div class="mesure"><span class="l">Battery</span>
+                <span class="jauge attention"><span style="width:76%"></span></span><span class="v">76%</span></div>
+              <div class="mesure"><span class="l">Disk</span>
+                <span class="jauge"><span style="width:31%"></span></span><span class="v">31%</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpis k4">
+        <div class="kpi"><div class="haut"><div><div class="l">SMS this week</div>
+          <div class="v">1,412</div><div class="s">96 receipts issued</div></div>
+          <svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none">
+            <path d="M0 26 L16 22 L32 24 L48 15 L64 17 L80 8 L98 6 L98 32 L0 32Z" fill="#9a4b2e" opacity=".10" stroke="none"/>
+            <path d="M0 26 L16 22 L32 24 L48 15 L64 17 L80 8 L98 6" stroke="#9a4b2e" stroke-width="1.5"/>
+            <circle cx="98" cy="6" r="2.4" fill="#9a4b2e" stroke="none"/></svg></div></div>
+        <div class="kpi"><div class="l">Terminals</div>
+          <div class="v">7<span class="unite">/ 7 online</span></div><div class="s">all reporting</div></div>
+        <div class="kpi"><div class="l">Sync backlog</div>
+          <div class="v">0</div><div class="s" style="color:var(--positif)">everything delivered</div></div>
+        <div class="kpi"><div class="l">Release</div>
+          <div class="v petite">stable-2.4.2</div><div class="s">7/7 up to date</div></div>
+      </div>
+
+      <!-- table + panneau -->
+      <div class="duo">
+        <section class="carte principal">
+          <div class="carte-tete"><h2>Table — 44px rows, numbers right</h2>
+            <div class="a-droite"><span class="pastille ok"></span>auto-refresh · 5s</div></div>
+          <table class="tbl">
+            <thead><tr><th>Terminal</th><th>Status</th><th>Version</th><th>Signal</th>
+              <th class="num">Balance</th><th class="num">Last seen</th></tr></thead>
+            <tbody>
+              <tr><td><div class="cellule-double"><span class="p">douala-akwa-01</span><span class="s">Douala · Akwa</span></div></td>
+                <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                <td><span class="chip version">stable-2.4.2</span></td>
+                <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                <td class="num"><b>6,335,788.6</b> <span class="t12 pale">FCFA</span></td>
+                <td class="num pale">12s ago</td></tr>
+              <tr class="survol"><td><div class="cellule-double"><span class="p">yaounde-mvan-01</span><span class="s">Yaoundé · Mvan</span></div></td>
+                <td><span class="etat attention"><i class="pastille attention"></i>Roaming SIM</span></td>
+                <td><span class="chip version">stable-2.4.2</span></td>
+                <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#8a6d1f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#8a6d1f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#e0dcd7"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>2/5</em></span></td>
+                <td class="num pale">—</td>
+                <td class="num pale">19s ago</td></tr>
+              <tr class="choisie"><td><div class="cellule-double"><span class="p">bafoussam-01</span><span class="s">Bafoussam</span></div></td>
+                <td><span class="etat attention"><i class="pastille attention"></i>On battery</span></td>
+                <td><span class="chip version">stable-2.4.2</span></td>
+                <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                  <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                  <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                  <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                <td class="num pale">—</td>
+                <td class="num pale">26s ago</td></tr>
+            </tbody>
+          </table>
+          <div class="carte-pied">7 terminals · sorted by last seen<span class="a-droite">1 warning · 0 offline</span></div>
+        </section>
+
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div class="avatar">MK</div>
+            <div><div class="titre">M. Kamga</div><div class="sous">Wonder Phone · Douala, Akwa</div></div>
+            <button class="btn btn--icone" style="margin-left:auto"><svg><use href="#i-fermer"/></svg></button>
+          </div>
+          <div class="bloc"><h3>Attributed SIMs · 2</h3>
+            <div class="dl">
+              <div class="r"><span class="l"><span class="chip orange">Orange ··4177</span></span>
+                <span class="v fort">6,335,788.6 FCFA</span></div>
+              <div class="r"><span class="l"><span class="chip mtn">MTN ··9021</span></span>
+                <span class="v fort">912,400 FCFA</span></div>
+            </div>
+          </div>
+          <div class="bloc"><h3>Recent activity</h3>
+            <div class="fil">
+              <div class="ev"><span class="h">14:02</span>
+                <span class="ic accent"><svg><use href="#i-doc"/></svg></span>
+                <div class="c"><div class="t">Receipt re-issued</div>
+                  <div class="d">TM-2026-0805-0075 rebuilt as “transfer” · 18s</div></div></div>
+              <div class="ev"><span class="h">12:31</span>
+                <span class="ic ok"><svg><use href="#i-bouclier"/></svg></span>
+                <div class="c"><div class="t">Signed in</div>
+                  <div class="d">Authenticator app · Douala</div></div></div>
+            </div>
+          </div>
+          <div class="bloc" style="display:flex;gap:8px">
+            <button class="btn btn--secondaire" style="flex:1">Suspend</button>
+            <button class="btn btn--lg btn--primaire" style="flex:1">Edit attributions</button>
+          </div>
+        </aside>
+      </div>
+
+      <!-- bandeau, vide, infobulle -->
+      <div class="colonnes c2">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="bandeau"><svg class="ic20" style="color:var(--laterite)"><use href="#i-etincelle"/></svg>
+            <span><b>Canary is ahead</b> — main @ e4f21c9 has been running in Paris for 3 h 12m.</span>
+            <span class="a-droite"><button class="btn btn--sm btn--secondaire">Compare</button></span></div>
+          <div style="position:relative;height:60px">
+            <span class="infobulle" style="left:0;top:0">Last heartbeat 14:02:31 · 12s ago</span>
+          </div>
+        </div>
+        <section class="carte"><div class="carte-tete"><h2>Empty state — says the cause, offers one action</h2></div>
+          <div class="vide"><div class="t">No command is running</div>
+            <div class="d">Every gesture you send from this console lands here, with who and when.</div>
+            <button class="btn btn--secondaire">See the last 30 days</button></div></section>
+      </div>
+    </div>
+  </main>
+</div>

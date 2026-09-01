@@ -1,0 +1,69 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Sign in</title>
+<!--SYSTEME-->
+<style>
+  .rappel{display:flex;gap:12px;align-items:flex-start;margin-top:24px}
+  .rappel .ic{width:20px;height:20px;stroke:var(--laterite);flex:none;margin-top:2px}
+  .rappel .t{font-size:13px;line-height:20px;font-weight:700}
+  .rappel .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body>
+<div class="porte">
+
+  <!-- ============ le côté marque ============ -->
+  <aside class="porte-marque">
+    <div class="marque-porte">
+      <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+      <span class="badge">ADMIN</span>
+    </div>
+
+    <div class="dire">
+      <h2>The console that watches the shops, and never touches their money.</h2>
+      <p>Seven terminals in Cameroon, twelve SIM cards, four shopkeepers. From here you can see
+        everything and administer everything — but moving money stays where it belongs: with the
+        person who owns it, behind their own PIN.</p>
+    </div>
+
+    <div class="pied">totem.app/admin · Nelson · super admin</div>
+  </aside>
+
+  <!-- ============ le côté porte ============ -->
+  <main class="porte-corps">
+    <div class="langue">
+      <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+    </div>
+
+    <div class="feuille">
+      <h1>Sign in</h1>
+      <p class="sous">There is no password. Type your address, and we will send you a code —
+        or open your authenticator app.</p>
+
+      <div class="champs">
+        <div>
+          <label for="courriel">Your email address</label>
+          <input id="courriel" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <button class="btn btn--lg btn--primaire">
+          <svg><use href="#i-envoi"/></svg>Send me a code
+        </button>
+      </div>
+
+      <div class="autres">
+        <button class="autre" type="button"><svg class="ic16"><use href="#i-bouclier"/></svg>
+          Already set up an authenticator app? Enter its code instead.</button>
+        <button class="autre" type="button"><svg class="ic16"><use href="#i-cadenas"/></svg>
+          Lost your phone? Use one of your ten backup codes.</button>
+      </div>
+
+      <div class="rappel">
+        <svg class="ic"><use href="#i-cadenas"/></svg>
+        <div>
+          <div class="t">Your money PIN is never asked for here</div>
+          <div class="d">It belongs to the SIM, it is typed at the moment of an operation, and
+            it never takes part in signing in. Anyone asking you for it on this page is not us.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>

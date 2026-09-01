@@ -1,0 +1,103 @@
+<meta charset="utf-8"><title>TOTEM — Sign in</title>
+<!--SYSTEME-->
+<style>
+  /* ===== L'entrée quotidienne : l'écran le plus vu de toute la partie client.
+     Donc le plus court. Un geste, et on est dedans. Tout le reste est en
+     dessous, pour le jour où le geste ne marche pas — et ce jour-là seulement.
+     La session dure longtemps : sur un forfait où 1 Go coûte 2,4 % du revenu
+     mensuel, redemander une preuve trois fois par jour est une taxe. */
+  body{background:var(--fond);min-height:844px;position:relative}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .seuil{margin:0 16px 24px;padding:24px 20px;border-radius:12px;background:var(--sable)}
+  .seuil .ou{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--laterite)}
+  .seuil h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em;margin-top:8px}
+  .seuil .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  /* La personne attendue. Sur un comptoir partagé, c'est ce qui évite qu'on
+     entre sous le nom du patron sans même s'en apercevoir. */
+  .qui{display:flex;align-items:center;gap:12px;margin:0 16px 16px;padding:16px;
+    border-radius:12px;background:var(--carte);box-shadow:var(--ombre)}
+  .qui .rond{width:44px;height:44px;border-radius:999px;background:var(--sable);
+    display:grid;place-items:center;flex:none;font-size:15px;font-weight:700;color:var(--laterite)}
+  .qui .n{font-size:15px;line-height:20px;font-weight:700}
+  .qui .r{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .qui .chg{margin-left:auto;height:44px;padding:0 12px;border:none;background:transparent;
+    font:400 13px/20px 'DM Sans';color:var(--laterite);cursor:pointer;flex:none}
+
+  .geste{padding:0 16px}
+  .geste .btn{width:100%;height:48px;font-size:15px}
+  .geste .apres{font-size:12px;line-height:16px;color:var(--tertiaire);
+    margin-top:12px;text-align:center}
+
+  .autrement{margin:32px 16px 0;padding-top:20px;border-top:1px solid var(--hairline)}
+  .autrement h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:8px}
+  .autrement button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;
+    padding:12px 8px;margin-left:-8px;border:none;border-radius:8px;background:transparent;
+    font:400 13px/20px 'DM Sans';color:var(--secondaire);text-align:left;cursor:pointer}
+  .autrement button:hover{background:var(--fond2);color:var(--encre)}
+  .autrement button svg{width:20px;height:20px;stroke:var(--tertiaire);flex:none}
+
+  .jamais{margin:24px 16px 32px;display:flex;gap:12px;padding:16px;border-radius:12px;
+    background:var(--carte);box-shadow:inset 0 0 0 1px var(--trait)}
+  .jamais svg{width:20px;height:20px;stroke:var(--laterite);flex:none;margin-top:2px}
+  .jamais .t{font-size:12px;line-height:16px;color:var(--secondaire)}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>08:12</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="seuil claustra">
+  <div class="ou">Marché · Bafoussam</div>
+  <h1>Good morning</h1>
+  <p class="sous">The terminal has been up since 05:40, and eleven messages came in overnight.</p>
+</div>
+
+<div class="qui">
+  <span class="rond">CF</span>
+  <div><div class="n">C. Fotso</div><div class="r">viewer · last in yesterday, 19:20</div></div>
+  <button class="chg" type="button">Not you?</button>
+</div>
+
+<div class="geste">
+  <button class="btn btn--primaire"><svg><use href="#i-empreinte"/></svg>Open with my phone</button>
+  <p class="apres">Your finger, your face, or your screen code — whichever your phone asks for.</p>
+</div>
+
+<div class="autrement">
+  <h2>If that doesn't work today</h2>
+  <button type="button"><svg><use href="#i-doc"/></svg>
+    Use one code from the paper in your drawer</button>
+  <button type="button"><svg><use href="#i-envoi"/></svg>
+    Send six digits to ·· 42 18 instead</button>
+  <button type="button"><svg><use href="#i-clients"/></svg>
+    Ask Mme Fotso to let me back in</button>
+</div>
+
+<div class="jamais">
+  <svg><use href="#i-cadenas"/></svg>
+  <span class="t">TOTEM never asks for your Mobile Money PIN — not here, not anywhere, not by
+    message and not by phone.</span>
+</div>

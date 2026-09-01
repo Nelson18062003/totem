@@ -1,0 +1,150 @@
+<meta charset="utf-8"><title>TOTEM — What lands on the phone</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Ce qui arrive sur le téléphone du commerçant. =====
+     Pas des courriels : des MESSAGES. Le commerce se fait sur WhatsApp, le
+     courriel n'est jamais ouvert, et le NIST interdit de toute façon d'en
+     faire un canal d'authentification (§3.1.3.1).
+     Quatre contraintes que le courriel n'a pas :
+       — 160 signes. Au-delà, l'opérateur découpe, et un code coupé en deux
+         arrive dans le désordre.
+       — Le message se lit sur l'écran VERROUILLÉ, à côté d'autres gens. Donc
+         il ne nomme jamais un montant, et jamais le solde.
+       — Il coûte de l'argent à quelqu'un. On n'envoie pas pour envoyer.
+       — Il ne peut pas être mis en page. La hiérarchie vient de l'ordre des
+         mots, et de rien d'autre. */
+  body{background:var(--fond);min-height:844px;position:relative;padding-bottom:24px}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .titre-p{padding:4px 16px 16px}
+  .titre-p h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .titre-p .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  .msg{margin:0 16px 16px}
+  .msg .quand{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .msg .quand .q{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .msg .quand .canal{margin-left:auto;font-size:11px;line-height:16px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--laterite);
+    box-shadow:inset 0 0 0 1px var(--laterite);border-radius:6px;padding:0 6px}
+  /* La bulle telle qu'elle apparaît : coin bas-gauche carré, comme un message
+     reçu. Chasse fixe pour les chiffres, parce qu'on les recopie. */
+  .bulle{background:var(--carte);border-radius:12px 12px 12px 2px;padding:12px 16px;
+    box-shadow:var(--ombre);font-size:13px;line-height:20px;color:var(--encre);
+    max-width:300px}
+  .bulle b{font-weight:700}
+  .bulle .chiffres{font-family:ui-monospace,Menlo,monospace;font-size:17px;line-height:24px;
+    font-weight:700;letter-spacing:.16em;font-variant-numeric:tabular-nums;display:block;
+    margin:8px 0}
+  .bulle .fr{margin-top:12px;padding-top:12px;border-top:1px dashed var(--trait);
+    color:var(--secondaire)}
+  .msg .compte{font-size:11px;line-height:16px;color:var(--tertiaire);margin-top:8px}
+  .msg .pourquoi{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:8px}
+
+  .regles{margin:8px 16px 32px;padding:16px;border-radius:12px;background:var(--carte);
+    box-shadow:inset 0 0 0 1px var(--trait)}
+  .regles h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:12px}
+  .regles .l{display:flex;gap:12px;align-items:flex-start;min-height:44px;padding:4px 0}
+  .regles .l svg{width:20px;height:20px;stroke:var(--laterite);flex:none;margin-top:2px}
+  .regles .t{font-size:13px;line-height:20px;font-weight:700}
+  .regles .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>14:16</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="titre-p">
+  <h1>What lands on the phone</h1>
+  <p class="sous">Not letters — messages. They are read on a locked screen, next to other
+    people, and somebody pays for them.</p>
+</div>
+
+<!-- 1 · l'invitation : bilingue, parce que personne n'a encore choisi -->
+<div class="msg">
+  <div class="quand"><span class="q">The invitation</span><span class="canal">WhatsApp</span></div>
+  <div class="bulle">
+    Mme Fotso is giving you a key to her shop, <b>Marché, Bafoussam</b>. You will be able to
+    read the balances and download the receipts. Open: totem.app/i/QK7M
+    <div class="fr" lang="fr">Mme Fotso vous donne une clé de son commerce. Vous pourrez lire
+      les soldes et télécharger les reçus.</div>
+  </div>
+  <p class="compte">251 characters · sent as WhatsApp, where the link survives being forwarded</p>
+  <p class="pourquoi">Both languages, because the person has not chosen one yet — and will not
+    until the page opens.</p>
+</div>
+
+<!-- 2 · le code : court, sans lien, sans montant -->
+<div class="msg">
+  <div class="quand"><span class="q">Every time you sign in</span><span class="canal">SMS</span></div>
+  <div class="bulle">
+    TOTEM - your code for Marché, Bafoussam
+    <span class="chiffres">408 913</span>
+    Good 10 minutes, once. We never ask for your Mobile Money PIN.
+  </div>
+  <p class="compte">110 characters · one SMS, never two</p>
+  <p class="pourquoi">No link at all. A code and a link in the same message is exactly what a
+    fake TOTEM would send — so the real one never does.</p>
+</div>
+
+<!-- 3 · un nouvel appareil : la porte de sortie est dans le message -->
+<div class="msg">
+  <div class="quand"><span class="q">A phone we had not seen</span><span class="canal">SMS</span></div>
+  <div class="bulle">
+    TOTEM - Marché, Bafoussam was opened from a new phone in Douala at 09:12. Was that you?
+    If not, reply <b>NO</b> and everything closes.
+  </div>
+  <p class="compte">127 characters · the way out is one word, not a link</p>
+  <p class="pourquoi">Someone whose phone was just stolen cannot open a web page. They can
+    still send one word from a borrowed handset.</p>
+</div>
+
+<!-- 4 · ce que la propriétaire apprend -->
+<div class="msg">
+  <div class="quand"><span class="q">To the owner, only</span><span class="canal">SMS</span></div>
+  <div class="bulle">
+    TOTEM - 5 wrong codes were tried on J. Eyenga's key at 21:04. Nothing opened. You can
+    take his key back from the shop page.
+  </div>
+  <p class="compte">123 characters</p>
+  <p class="pourquoi">She hears about her people, never about their balances — the message goes
+    to a locked screen that other people can read.</p>
+</div>
+
+<div class="regles">
+  <h2>What every message obeys</h2>
+  <div class="l"><svg><use href="#i-cadenas"/></svg>
+    <div><div class="t">Never a code and a link together</div>
+      <div class="d">That pairing is the shape of a scam. Keeping them apart is what makes the
+        real message recognisable.</div></div></div>
+  <div class="l"><svg><use href="#i-oeil"/></svg>
+    <div><div class="t">Never a balance, never an amount</div>
+      <div class="d">It is read on a locked screen, at a counter, with people around.</div></div></div>
+  <div class="l"><svg><use href="#i-envoi"/></svg>
+    <div><div class="t">One message, not two</div>
+      <div class="d">Past 160 characters the operator cuts it in half, and half a code arrives
+        out of order. Every message here is counted.</div></div></div>
+  <div class="l"><svg><use href="#i-boutique"/></svg>
+    <div><div class="t">The shop is named, every time</div>
+      <div class="d">Somebody who works in two shops must know which door just opened.</div></div></div>
+</div>

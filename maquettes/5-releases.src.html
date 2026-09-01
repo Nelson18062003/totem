@@ -1,0 +1,216 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Releases</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .tbl td,.tbl th{white-space:nowrap}
+  .canal .haut{display:flex;align-items:center;gap:12px}
+  .canal .ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;flex:none}
+  .canal .ic.canari{background:var(--sable)} .canal .ic.canari svg{stroke:var(--laterite)}
+  .canal .ic.stable{background:var(--positif-fond)} .canal .ic.stable svg{stroke:var(--positif)}
+  .canal .nom{font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.01em}
+  .canal .ou{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  /* Colonne explicite. ATTENTION : jamais de white-space:nowrap sur un conteneur
+     flex — les espaces entre enfants deviendraient un élément fantôme. */
+  .canal .ver{margin-left:auto;flex:none;
+    display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+  .canal .ver>*{white-space:nowrap}
+  .canal .ver .ou{margin-top:0}
+  .canal .qui{min-width:0}
+  .canal .qui .ou{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .canal .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:16px}
+
+  .pipe{display:flex;align-items:flex-start}
+  .pipe .st{flex:1;position:relative;padding-right:24px}
+  .pipe .st:last-child{padding-right:0;flex:0 0 220px}
+  .pipe .st .rond{width:32px;height:32px;border-radius:999px;background:var(--positif-fond);
+    display:grid;place-items:center;position:relative;z-index:1}
+  .pipe .st .rond svg{stroke:var(--positif)}
+  .pipe .st:not(:last-child)::after{content:"";position:absolute;left:36px;right:12px;top:15px;
+    height:2px;background:var(--plein);border-radius:999px}
+  .pipe .st.attente .rond{background:var(--carte);border:2px dashed var(--laterite)}
+  .pipe .st.attente .rond svg{stroke:var(--laterite)}
+  .pipe .st .t{font-size:13px;line-height:20px;font-weight:700;margin-top:12px}
+  .pipe .st .q{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .pipe .st .d{font-size:12px;line-height:18px;color:var(--secondaire);margin-top:6px}
+
+  .garantie{display:flex;gap:12px;align-items:flex-start}
+  .garantie+.garantie{margin-top:16px}
+  .garantie .ic{width:28px;height:28px;border-radius:999px;background:var(--positif-fond);
+    display:grid;place-items:center;flex:none}
+  .garantie .ic svg{stroke:var(--positif);width:16px;height:16px}
+  .garantie .t{font-size:13px;line-height:20px;font-weight:700}
+  .garantie .d{font-size:12px;line-height:18px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="releases">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>Releases</h1>
+      <span class="ariane">2 channels · 7 terminals</span>
+      <div class="action-page">
+        <button class="btn btn--primaire"><svg><use href="#i-releases"/></svg>Send change #87 to the fleet</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <!-- ============ les deux canaux ============ -->
+      <div class="colonnes c2">
+        <section class="carte"><div class="carte-corps"><div class="canal">
+          <div class="haut">
+            <span class="ic canari"><svg class="ic16"><use href="#i-etincelle"/></svg></span>
+            <div class="qui"><div class="nom">Canary</div><div class="ou">One terminal, on Nelson’s desk in Paris</div></div>
+            <div class="ver"><span class="chip accent">main @ e4f21c9</span><div class="ou">up to date since 14:25</div></div>
+          </div>
+          <div class="d">It takes every change the moment it is merged, and runs a full night of real messages before anyone in Cameroon sees it.</div>
+        </div></div></section>
+
+        <section class="carte"><div class="carte-corps"><div class="canal">
+          <div class="haut">
+            <span class="ic stable"><svg class="ic16"><use href="#i-bouclier"/></svg></span>
+            <div class="qui"><div class="nom">Stable</div><div class="ou">The seven terminals in Cameroon</div></div>
+            <div class="ver"><span class="chip version">stable-2.4.2</span><div class="ou">7 of 7 since Tuesday 09:31</div></div>
+          </div>
+          <div class="d">Moves only when Nelson says so. Tuesday’s wave took 26 minutes end to end and interrupted no one — not a single USSD session was cut.</div>
+        </div></div></section>
+      </div>
+
+      <!-- ============ le trajet d’une correction ============ -->
+      <section class="carte">
+        <div class="carte-tete">
+          <h2>Where change #87 has got to</h2>
+          <div class="a-droite">“the shop’s trading name on receipts” · merged Monday 14:10</div>
+        </div>
+        <div class="carte-corps">
+          <div class="pipe">
+            <div class="st">
+              <span class="rond"><svg class="ic16"><use href="#i-check"/></svg></span>
+              <div class="t">Merged</div>
+              <div class="q">Monday 14:10</div>
+              <div class="d">Reviewed, tests green, 4 files touched.</div>
+            </div>
+            <div class="st">
+              <span class="rond"><svg class="ic16"><use href="#i-check"/></svg></span>
+              <div class="t">Database migrated</div>
+              <div class="q">14:12 · 1.2s</div>
+              <div class="d">One new column, applied by the pipeline. No hand on the keyboard.</div>
+            </div>
+            <div class="st">
+              <span class="rond"><svg class="ic16"><use href="#i-check"/></svg></span>
+              <div class="t">Web app published</div>
+              <div class="q">14:13</div>
+              <div class="d">The shops saw the new page before the terminals moved.</div>
+            </div>
+            <div class="st">
+              <span class="rond"><svg class="ic16"><use href="#i-check"/></svg></span>
+              <div class="t">Canary running it</div>
+              <div class="q">14:25 · 22h so far</div>
+              <div class="d">318 real messages read, 24 receipts, nothing unusual.</div>
+            </div>
+            <div class="st attente">
+              <span class="rond"><svg class="ic16"><use href="#i-horloge"/></svg></span>
+              <div class="t">Waiting on you</div>
+              <div class="q">the last step is a decision</div>
+              <div class="d">Send it to the seven terminals in Cameroon.</div>
+            </div>
+          </div>
+        </div>
+        <div class="carte-pied">
+          A change never reaches a shop the day it is written
+          <span class="a-droite">the last step is yours, top right</span>
+        </div>
+      </section>
+
+      <!-- ============ la matrice + le contrat ============ -->
+      <div class="duo">
+        <section class="carte principal">
+          <div class="carte-tete">
+            <h2>What each one runs</h2>
+            <div class="a-droite">Tuesday’s wave, terminal by terminal</div>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr><th>Terminal</th><th>Release</th><th>Took it</th>
+                <th class="num">Took</th><th>How it went</th></tr>
+            </thead>
+            <tbody>
+              <tr data-vers="douala-akwa-01"><td class="mono">douala-akwa-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 09:12</td><td class="num">3m 40s</td>
+                <td class="doux">between two customers</td></tr>
+              <tr data-vers="douala-bonaberi-01"><td class="mono">douala-bonaberi-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 09:16</td><td class="num">3m 05s</td>
+                <td class="doux">quiet hour</td></tr>
+              <tr data-vers="douala-deido-01"><td class="mono">douala-deido-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 09:19</td><td class="num">2m 51s</td>
+                <td class="doux">quiet hour</td></tr>
+              <tr class="survol" data-vers="yaounde-centre-01"><td class="mono">yaounde-centre-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 09:27</td><td class="num">4m 12s</td>
+                <td><span class="etat attention"><i class="pastille attention"></i>held the door for a customer</span></td></tr>
+              <tr data-vers="yaounde-mvan-01"><td class="mono">yaounde-mvan-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 09:23</td><td class="num">3m 18s</td>
+                <td class="doux">quiet hour</td></tr>
+              <tr data-vers="bafoussam-01"><td class="mono">bafoussam-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 09:29</td><td class="num">3m 44s</td>
+                <td class="doux">on battery, waited for mains</td></tr>
+              <tr data-vers="bafoussam-marche-01"><td class="mono">bafoussam-marche-01</td><td><span class="chip version">stable-2.4.2</span></td>
+                <td class="pale">Tue 11:51</td><td class="num">2m 30s</td>
+                <td class="doux">arrived already up to date</td></tr>
+            </tbody>
+          </table>
+          <div class="carte-pied">
+            Wave started 09:05, finished 09:31 — 26 minutes
+            <span class="a-droite">7 of 7 · 0 rolled back</span>
+          </div>
+        </section>
+
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div>
+              <div class="titre">What is promised</div>
+              <div class="sous">Every update, without exception</div>
+            </div>
+          </div>
+          <div class="bloc">
+            <div class="garantie">
+              <span class="ic"><svg><use href="#i-check"/></svg></span>
+              <div><div class="t">Never during money</div>
+                <div class="d">A terminal in the middle of an operation finishes it first, then updates. Yaoundé did exactly that on Tuesday.</div></div>
+            </div>
+            <div class="garantie">
+              <span class="ic"><svg><use href="#i-check"/></svg></span>
+              <div><div class="t">Messages are never lost</div>
+                <div class="d">Anything that arrives while a terminal restarts is kept and read afterwards, in order.</div></div>
+            </div>
+            <div class="garantie">
+              <span class="ic"><svg><use href="#i-check"/></svg></span>
+              <div><div class="t">One step backwards is always possible</div>
+                <div class="d">The previous release stays on the card. Going back takes one command and about two minutes.</div></div>
+            </div>
+            <div class="garantie">
+              <span class="ic"><svg><use href="#i-check"/></svg></span>
+              <div><div class="t">Nobody has to be there</div>
+                <div class="d">No shopkeeper has to click anything, and no one needs to open a terminal or plug in a screen.</div></div>
+            </div>
+          </div>
+          <div class="bloc">
+            <h3>If it went wrong</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Roll back to</span><span class="v fort">stable-2.4.1</span></div>
+              <div class="r"><span class="l">Kept on card</span><span class="v">2 previous releases</span></div>
+              <div class="r"><span class="l">Last rollback</span><span class="v">never used</span></div>
+            </div>
+            <button class="btn btn--danger" style="margin-top:16px">
+              <svg><use href="#i-refresh"/></svg>Go back to stable-2.4.1
+            </button>
+          </div>
+        </aside>
+      </div>
+
+    </div>
+  </main>
+</div>

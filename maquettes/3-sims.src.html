@@ -1,0 +1,246 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — SIM registry</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .filtres{display:flex;align-items:center;gap:8px}
+  .filtres .note{margin-left:auto;font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .cellule-double .p,.cellule-double .s{white-space:nowrap}
+  .sim-cell{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+  .sim-cell .qui{font-size:12px;line-height:16px;color:var(--tertiaire);white-space:nowrap}
+  .tbl td,.tbl th{white-space:nowrap}
+  tr.partie td{color:var(--tertiaire)}
+  tr.partie td:first-child{box-shadow:inset 2px 0 0 var(--laterite)}
+  .vie{display:flex;flex-direction:column}
+  .vie .etape{display:grid;grid-template-columns:56px 16px 1fr;gap:12px;padding:0 0 20px;position:relative}
+  .vie .etape:last-child{padding-bottom:0}
+  .vie .etape:not(:last-child)::before{content:"";position:absolute;left:63px;top:18px;bottom:2px;
+    width:2px;background:var(--trait);border-radius:999px}
+  .vie .etape .q{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .vie .etape .pt{width:16px;height:16px;border-radius:999px;background:var(--carte);
+    box-shadow:inset 0 0 0 2px var(--trait);margin-top:2px;z-index:1}
+  .vie .etape .pt.vif{background:var(--laterite);box-shadow:inset 0 0 0 2px var(--laterite)}
+  .vie .etape .t{font-size:13px;line-height:20px;font-weight:700}
+  .vie .etape .d{font-size:12px;line-height:18px;color:var(--secondaire);margin-top:2px}
+  .resume{display:flex;align-items:center;gap:16px;padding:12px 16px;border-radius:10px;
+    background:var(--fond2);font-size:12px;line-height:16px;color:var(--secondaire)}
+  .resume b{font-size:13px;line-height:20px}
+  .regles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .regle{display:flex;gap:12px}
+  .regle .ic{width:32px;height:32px;border-radius:10px;background:var(--sable);
+    display:grid;place-items:center;flex:none}
+  .regle .ic svg{stroke:var(--laterite)}
+  .regle .t{font-size:13px;line-height:20px;font-weight:700}
+  .regle .d{font-size:12px;line-height:18px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="sims">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>SIM registry</h1>
+      <span class="ariane">12 in service · 1 removed</span>
+      <div class="action-page">
+        <button class="btn btn--secondaire"><svg><use href="#i-telecharger"/></svg>Export the register</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <div class="filtres">
+        <a class="onglet on" href="#">Every SIM <span class="compte">13</span></a>
+        <a class="onglet" href="#">Orange <span class="compte">8</span></a>
+        <a class="onglet" href="#">MTN <span class="compte">5</span></a>
+        <a class="onglet" href="#">Removed <span class="compte">1</span></a>
+        <span class="note">Sorted by last activity · a removed SIM stays on this list forever</span>
+      </div>
+
+      <div class="duo">
+        <div class="colonne principal">
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>Every SIM</h2>
+              <div class="a-droite">balance · time it was confirmed</div>
+            </div>
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>SIM</th><th>Lives in</th><th>State</th>
+                  <th class="num">Balance</th><th class="num">Last activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-vers="sim-4177">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··4177</span><span class="qui">M. Kamga</span></div></td>
+                  <td class="mono">douala-akwa-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 26/31</span></td>
+                  <td class="num"><b>6,335,788.6</b> <span class="t12 pale">· 14:02</span></td>
+                  <td class="num pale">4m ago</td>
+                </tr>
+                <tr data-vers="sim-9021">
+                  <td><div class="sim-cell"><span class="chip mtn">MTN ··9021</span><span class="qui">M. Kamga</span></div></td>
+                  <td class="mono">douala-akwa-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 23/31</span></td>
+                  <td class="num"><b>912,400</b> <span class="t12 pale">· 13:47</span></td>
+                  <td class="num pale">19m ago</td>
+                </tr>
+                <tr data-vers="sim-5310">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··5310</span><span class="qui">M. Kamga</span></div></td>
+                  <td class="mono">douala-bonaberi-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 22/31</span></td>
+                  <td class="num"><b>1,204,300</b> <span class="t12 pale">· 13:52</span></td>
+                  <td class="num pale">14m ago</td>
+                </tr>
+                <tr data-vers="sim-7742">
+                  <td><div class="sim-cell"><span class="chip mtn">MTN ··7742</span><span class="qui">M. Kamga</span></div></td>
+                  <td class="mono">douala-bonaberi-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 20/31</span></td>
+                  <td class="num"><b>486,150</b> <span class="t12 pale">· 12:40</span></td>
+                  <td class="num pale">1h 26m ago</td>
+                </tr>
+                <tr data-vers="sim-1170">
+                  <td><div class="sim-cell"><span class="chip mtn">MTN ··1170</span><span class="qui">M. Talla</span></div></td>
+                  <td class="mono">douala-deido-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 21/31</span></td>
+                  <td class="num"><b>305,900</b> <span class="t12 pale">· 13:31</span></td>
+                  <td class="num pale">35m ago</td>
+                </tr>
+                <tr data-vers="sim-6640">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··6640</span><span class="qui">Mme Ngo</span></div></td>
+                  <td class="mono">yaounde-centre-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 27/31</span></td>
+                  <td class="num"><b>2,140,500</b> <span class="t12 pale">· 13:20</span></td>
+                  <td class="num pale">46m ago</td>
+                </tr>
+                <tr data-vers="sim-4408">
+                  <td><div class="sim-cell"><span class="chip mtn">MTN ··4408</span><span class="qui">Mme Ngo</span></div></td>
+                  <td class="mono">yaounde-centre-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 24/31</span></td>
+                  <td class="num"><b>176,300</b> <span class="t12 pale">· 11:05</span></td>
+                  <td class="num pale">3h ago</td>
+                </tr>
+                <tr class="survol" data-vers="sim-2258">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··2258</span><span class="qui">M. Talla</span></div></td>
+                  <td class="mono">yaounde-mvan-01</td>
+                  <td><span class="etat attention"><i class="pastille attention"></i>Roaming</span> <span class="t12 pale">· partner net</span></td>
+                  <td class="num"><b>861,200</b> <span class="t12 pale">· 13:44</span></td>
+                  <td class="num pale">22m ago</td>
+                </tr>
+                <tr data-vers="sim-3096">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··3096</span><span class="qui">M. Talla</span></div></td>
+                  <td class="mono">yaounde-mvan-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 18/31</span></td>
+                  <td class="num"><b>512,700</b> <span class="t12 pale">· 12:58</span></td>
+                  <td class="num pale">1h 08m ago</td>
+                </tr>
+                <tr data-vers="sim-7715">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··7715</span><span class="qui">Mme Fotso</span></div></td>
+                  <td class="mono">bafoussam-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 25/31</span></td>
+                  <td class="num"><b>233,050</b> <span class="t12 pale">· 13:12</span></td>
+                  <td class="num pale">54m ago</td>
+                </tr>
+                <tr data-vers="sim-8812">
+                  <td><div class="sim-cell"><span class="chip orange">Orange ··8812</span><span class="qui">Mme Fotso</span></div></td>
+                  <td class="mono">bafoussam-marche-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 29/31</span></td>
+                  <td class="num"><b>94,600</b> <span class="t12 pale">· 13:57</span></td>
+                  <td class="num pale">9m ago</td>
+                </tr>
+                <tr data-vers="sim-3305">
+                  <td><div class="sim-cell"><span class="chip mtn">MTN ··3305</span><span class="qui">Mme Fotso</span></div></td>
+                  <td class="mono">bafoussam-marche-01</td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>In place</span> <span class="t12 pale">· 24/31</span></td>
+                  <td class="num"><b>61,250</b> <span class="t12 pale">· 13:05</span></td>
+                  <td class="num pale">1h 01m ago</td>
+                </tr>
+                <tr class="partie">
+                  <td><div class="sim-cell"><span class="chip">Orange ··9944</span><span class="qui">was M. Eyenga</span></div></td>
+                  <td class="pale">—</td>
+                  <td><span class="etat muet"><i class="pastille muet"></i>Removed</span></td>
+                  <td class="num">45,210 <span class="t12 pale">when it left</span></td>
+                  <td class="num pale">12 Aug, 09:40</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="carte-pied">
+              A SIM is known by the number engraved on the chip — it follows the chip, never the machine
+              <span class="a-droite">13 shown of 13</span>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- ============ la vie d’une SIM ============ -->
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div>
+              <div class="titre">Orange ··9944</div>
+              <div class="sous">The whole life of one chip</div>
+            </div>
+            <span class="chip" style="margin-left:auto">removed</span>
+          </div>
+
+          <div class="bloc">
+            <div class="vie">
+              <div class="etape">
+                <div><div class="q">12 Aug</div><div class="q">09:40</div></div>
+                <span class="pt vif"></span>
+                <div>
+                  <div class="t">Taken out of douala-bonaberi-01</div>
+                  <div class="d">Balance when it left: <b>45,210 FCFA</b>. Every record it ever produced is still filed under this chip.</div>
+                </div>
+              </div>
+              <div class="etape">
+                <div><div class="q">5 Jul</div><div class="q">11:26</div></div>
+                <span class="pt"></span>
+                <div>
+                  <div class="t">Moved to douala-bonaberi-01</div>
+                  <div class="d">Pulled from douala-akwa-01, appeared 41 minutes later in the other shop. One continuous ledger — nothing was re-created.</div>
+                </div>
+              </div>
+              <div class="etape">
+                <div><div class="q">5 Jan</div><div class="q">08:15</div></div>
+                <span class="pt"></span>
+                <div>
+                  <div class="t">First seen · douala-akwa-01</div>
+                  <div class="d">Orange CM, attributed to M. Eyenga on the day the shop opened.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <div class="resume">
+              <span><b>219</b> days on record</span>
+              <span><b>2</b> terminals</span>
+              <span><b>0</b> gaps in the ledger</span>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>What it left behind</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Receipts</span><span class="v fort">1,308 · still downloadable</span></div>
+              <div class="r"><span class="l">Messages read</span><span class="v">9,461</span></div>
+              <div class="r"><span class="l">Last balance</span><span class="v">45,210 FCFA · 12 Aug 09:38</span></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--secondaire" style="flex:1"><svg><use href="#i-telecharger"/></svg>Export this SIM’s ledger</button>
+              <button class="btn btn--secondaire" style="flex:1" disabled>
+                <svg><use href="#i-clients"/></svg>Give to another shop</button>
+            </div>
+            <p class="t12 pale" style="margin-top:8px">This chip left the fleet on 12 August — it can no longer be given to anyone. Its ledger stays readable forever.</p>
+          </div>
+        </aside>
+      </div>
+
+        </div>
+  </main>
+</div>

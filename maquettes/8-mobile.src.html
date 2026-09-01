@@ -1,0 +1,268 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — on the phone</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Vue téléphone 390 px. Tout ce qui se touche fait au moins 44 px. ===== */
+  body{background:var(--fond);padding-bottom:104px;position:relative;min-height:844px}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  /* symbole seul + mot vivant : la charte l’autorise en en-tête d’application.
+     28px : au-dessus du seuil de 22px, donc la tresse reste tissée. */
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .tete .badge{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.14em;
+    color:var(--laterite);box-shadow:inset 0 0 0 1px var(--laterite);border-radius:6px;padding:0 6px}
+  /* la bascule reste en toutes lettres, et devient tactile */
+  .bascule{height:44px;margin-left:auto}
+  .bascule i{height:44px;padding:0 12px;font-size:13px}
+  .tete .avatar{width:44px;height:44px;font-size:13px}
+
+  .clair{margin:0 16px 16px;display:flex;align-items:center;gap:12px;padding:16px;
+    border-radius:12px;background:var(--sable);box-shadow:inset 0 0 0 1px #ece4d9}
+  .clair .t{font-size:15px;line-height:20px;font-weight:700;color:var(--positif)}
+  .clair .d{font-size:12px;line-height:16px;color:var(--secondaire);margin-top:2px}
+  .clair .ic{width:28px;height:28px;border-radius:999px;background:#fff;display:grid;place-items:center;flex:none}
+  .clair .ic svg{stroke:var(--positif)}
+
+  .tuiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px;margin-bottom:24px}
+  .tuiles .kpi{padding:16px}
+  .tuiles .kpi .v{font-size:28px;line-height:32px;margin-top:6px}
+  .tuiles .kpi .s{font-size:12px;line-height:16px}
+
+  .titre-section{display:flex;align-items:center;gap:8px;padding:0 16px;margin-bottom:12px}
+  .titre-section h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .titre-section .q{margin-left:auto;font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .titre-section .btn{margin-left:8px}
+
+  .liste{display:flex;flex-direction:column;gap:12px;padding:0 16px;margin-bottom:24px}
+  .terminal{display:flex;align-items:center;gap:12px;min-height:72px;padding:12px 14px;
+    background:var(--carte);border-radius:12px;box-shadow:var(--ombre)}
+  .terminal .id .n{display:flex;align-items:center;gap:8px;font-size:15px;line-height:20px;font-weight:700}
+  .terminal .id .m{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .terminal .id .m .e{font-size:12px;line-height:16px;font-weight:700}
+  .terminal .id .m .e.ok{color:var(--positif)} .terminal .id .m .e.att{color:var(--alerte)}
+  .terminal .tele{margin-left:auto;text-align:right;display:flex;align-items:center;gap:10px}
+  .terminal .tele .q{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:4px}
+  .terminal .fleche{width:16px;height:16px;stroke:var(--tertiaire);flex:none}
+
+  .alerte-carte{margin:0 16px 24px;padding:16px;background:var(--carte);border-radius:12px;box-shadow:var(--ombre)}
+  .alerte-carte .haut{display:flex;align-items:center;gap:12px}
+  .alerte-carte .ic{width:28px;height:28px;border-radius:999px;background:var(--positif-fond);
+    display:grid;place-items:center;flex:none}
+  .alerte-carte .ic svg{stroke:var(--positif)}
+  .alerte-carte .t{font-size:15px;line-height:20px;font-weight:700}
+  .alerte-carte .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  .onglets-bas{position:absolute;left:0;right:0;bottom:0;background:var(--carte);
+    box-shadow:0 -1px 0 var(--trait);padding-bottom:34px}
+  .onglets-bas .rangee{display:flex;height:49px}
+  .onglets-bas a{flex:1;height:49px;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:2px;text-decoration:none;color:var(--tertiaire);position:relative}
+  .onglets-bas a.on{color:var(--laterite)}
+  .onglets-bas a svg{width:24px;height:24px;stroke:currentColor;stroke-width:1.5}
+  .onglets-bas a span{font-size:11px;line-height:16px}
+  .onglets-bas a .point{position:absolute;top:2px;right:24px;width:6px;height:6px;
+    border-radius:999px;background:var(--negatif)}
+  .poignee{position:absolute;left:50%;transform:translateX(-50%);bottom:9px;width:134px;height:5px;
+    border-radius:999px;background:var(--encre);opacity:.25}
+</style>
+<!--SPRITE-->
+
+<body>
+
+<!-- barre d'état -->
+<div class="barre-ios" data-mesure-ignore>
+  <span>07:38</span>
+  <span class="droite">
+    <svg width="18" height="12" viewBox="0 0 18 12"><g fill="currentColor" stroke="none">
+      <rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/>
+      <rect x="10" y="2.5" width="3" height="9.5" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></g></svg>
+    <svg width="16" height="12" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+      <path d="M2.5 9a13 13 0 0 1 19 0M6 12.6a8.5 8.5 0 0 1 12 0M9.4 16.2a4 4 0 0 1 5.2 0M12 19.7h.01"/></svg>
+    <svg width="24" height="12" viewBox="0 0 24 12"><rect x="0.5" y="0.5" width="19" height="11" rx="3"
+      fill="none" stroke="currentColor"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/>
+      <rect x="21" y="4" width="2" height="4" rx="1" fill="currentColor"/></svg>
+  </span>
+</div>
+
+<!-- en-tête -->
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span><span class="badge">ADMIN</span>
+  <div class="bascule"><i class="on">English</i><i>Français</i></div>
+  <div class="avatar">N</div>
+</div>
+
+<!-- santé d’ensemble -->
+<div class="clair">
+  <span class="ic"><svg class="ic16"><use href="#i-check"/></svg></span>
+  <div>
+    <div class="t">All clear</div>
+    <div class="d">7 of 7 terminals reporting · everyone on stable-2.4.2</div>
+  </div>
+</div>
+
+<!-- quatre chiffres -->
+<div class="tuiles">
+  <div class="kpi"><div class="l">SMS today</div><div class="v">218</div>
+    <div class="s">14 receipts issued</div></div>
+  <div class="kpi"><div class="l">SIM cards</div><div class="v">12</div>
+    <div class="s">11 in place · 1 roaming</div></div>
+  <div class="kpi"><div class="l">Waiting to sync</div><div class="v">0</div>
+    <div class="s" style="color:var(--positif)">nothing left to send</div></div>
+  <div class="kpi"><div class="l">Clients</div><div class="v">9</div>
+    <div class="s">6 people · 1 invited</div></div>
+</div>
+
+<!-- la flotte -->
+<div class="titre-section">
+  <h2>The fleet</h2>
+  <span class="q">Updated 12s ago</span>
+  <button class="btn btn--icone" style="width:44px;height:44px"><svg><use href="#i-refresh"/></svg></button>
+</div>
+
+<div class="liste">
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille ok"></i>douala-akwa-01</div>
+      <div class="m"><span class="e ok">Active</span><span class="chip version">stable-2.4.2</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span>
+        <div class="q">12s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille ok"></i>douala-bonaberi-01</div>
+      <div class="m"><span class="e ok">Active</span><span class="chip version">stable-2.4.2</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>3/5</em></span>
+        <div class="q">31s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille ok"></i>douala-deido-01</div>
+      <div class="m"><span class="e ok">Active</span><span class="chip version">stable-2.4.2</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span>
+        <div class="q">8s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille ok"></i>yaounde-centre-01</div>
+      <div class="m"><span class="e ok">Active</span><span class="chip">4G backup</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>3/5</em></span>
+        <div class="q">54s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille attention"></i>yaounde-mvan-01</div>
+      <div class="m"><span class="e att">One SIM roaming</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#8a6d1f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#8a6d1f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#e0dcd7"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>2/5</em></span>
+        <div class="q">19s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille attention"></i>bafoussam-01</div>
+      <div class="m"><span class="e att">On battery</span><span class="chip attention">76%</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span>
+        <div class="q">26s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+  <a class="terminal" href="#">
+    <div class="id">
+      <div class="n"><i class="pastille ok"></i>bafoussam-marche-01</div>
+      <div class="m"><span class="e ok">Active</span><span class="chip">joined yesterday</span></div>
+    </div>
+    <div class="tele">
+      <div>
+        <span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+          <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+          <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+          <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span>
+        <div class="q">41s ago</div>
+      </div>
+      <svg class="fleche"><use href="#i-chevron"/></svg>
+    </div>
+  </a>
+</div>
+
+<!-- la dernière alerte -->
+<div class="titre-section">
+  <h2>Last alert</h2>
+  <span class="q">this week · 1</span>
+</div>
+<div class="alerte-carte">
+  <div class="haut">
+    <span class="ic"><svg class="ic16"><use href="#i-check"/></svg></span>
+    <div class="t">yaounde-centre-01</div>
+    <span class="chip ok" style="margin-left:auto">resolved · 14m</span>
+  </div>
+  <div class="d">The internet box burnt out on Thursday at 15:50. The spare 4G router took over at 16:04
+    and the 12 waiting messages were read in order. Nothing was lost.</div>
+</div>
+
+<!-- barre d’onglets -->
+<nav class="onglets-bas">
+  <div class="rangee">
+    <a class="on" href="#"><svg><use href="#i-flotte"/></svg><span>Fleet</span></a>
+    <a href="#"><svg><use href="#i-sim"/></svg><span>SIMs</span></a>
+    <a href="#"><svg><use href="#i-clients"/></svg><span>Clients</span></a>
+    <a href="#"><svg><use href="#i-alertes"/></svg><span>Alerts</span></a>
+    <a href="#"><svg><use href="#i-menu"/></svg><span>More</span></a>
+  </div>
+</nav>
+<div class="poignee" data-mesure-ignore></div>

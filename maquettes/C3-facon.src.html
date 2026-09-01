@@ -1,0 +1,187 @@
+<meta charset="utf-8"><title>TOTEM — How you'll get in</title>
+<!--SYSTEME-->
+<style>
+  /* ===== La bifurcation. =====
+     Tout ce qui suit dépend de ce qui est choisi ici, et cette page décide
+     aussi de la charge de dépannage que le propriétaire portera pour toujours.
+     Trois voies, dans l'ordre où le NIST et le terrain les classent :
+       — le verrou du téléphone : résiste à l'hameçonnage, couvre l'essentiel
+         du parc Android d'ici, et satisfait à lui seul SP 800-63B-4 §2.2.2 ;
+       — le papier : formellement « quelque chose que l'on a » (§3.1.2), et la
+         seule voie qui ne demande NI téléphone, NI réseau, NI électricité ;
+       — le SMS : permis, mais « restreint » (§3.2.9). Le seul des trois qui
+         oblige à prévenir la personne du risque — alors on la prévient, ici,
+         en clair, et pas dans des conditions d'utilisation.
+     Le courriel n'est pas dans la liste : §3.1.3.1 l'interdit sans appel. */
+  body{background:var(--fond);min-height:844px;position:relative}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .corps{padding:4px 16px 0}
+  .corps h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .corps .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  /* LA QUESTION PRÉALABLE. Une clé liée au téléphone authentifie le TÉLÉPHONE,
+     pas la personne : sur un combiné de comptoir, elle appartient à qui le
+     tient — le neveu qui connaît le geste de déverrouillage est dedans. On ne
+     devine donc jamais à qui est l'appareil : on demande, et la réponse
+     retire une option au lieu d'ajouter un avertissement. */
+  .apparte{margin:24px 16px 0}
+  .apparte h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:12px}
+  .apparte .deux{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .apparte label{display:block;background:var(--carte);border-radius:12px;padding:12px;
+    box-shadow:inset 0 0 0 1px var(--trait-controle);cursor:pointer;min-height:44px}
+  .apparte label:has(input:checked){box-shadow:inset 0 0 0 2px var(--encre)}
+  .apparte input[type=radio]{position:absolute;opacity:0;width:24px;height:24px;margin:0}
+  .apparte .n{font-size:13px;line-height:20px;font-weight:700}
+  .apparte .q{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:4px}
+
+  .voies{display:flex;flex-direction:column;gap:12px;margin:16px 16px 0}
+  /* Toute l'étiquette est la cible : le doigt tombe sur la carte, pas sur le
+     petit rond. C'est ce que WCAG 2.2 §2.5.8 mesure. */
+  .voie{display:block;background:var(--carte);border-radius:12px;padding:16px;
+    box-shadow:inset 0 0 0 1px var(--trait-controle);cursor:pointer}
+  .voie:has(input:checked){box-shadow:inset 0 0 0 2px var(--encre)}
+  .voie .haut{display:flex;align-items:center;gap:12px}
+  .voie input[type=radio]{appearance:none;width:24px;height:24px;border-radius:999px;
+    box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte);flex:none;
+    margin:0;display:grid;place-items:center;order:3;margin-left:auto}
+  .voie input[type=radio]:checked{background:var(--encre);box-shadow:none}
+  .voie input[type=radio]:checked::after{content:"";width:8px;height:8px;border-radius:999px;
+    background:#fff}
+  .voie .ic{width:40px;height:40px;border-radius:10px;background:var(--fond2);
+    display:grid;place-items:center;flex:none}
+  .voie .ic svg{stroke:var(--secondaire)}
+  .voie:has(input:checked) .ic{background:var(--sable)}
+  .voie:has(input:checked) .ic svg{stroke:var(--laterite)}
+  .voie .n{font-size:15px;line-height:20px;font-weight:700}
+  .voie .q{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .voie .dit{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:12px}
+
+  /* Le jour où le téléphone disparaît : dit ici, avant le choix, pas après. */
+  .perte{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding-top:12px;
+    border-top:1px solid var(--hairline)}
+  .perte svg{width:16px;height:16px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+  .perte .t{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .perte .t b{color:var(--encre);font-weight:700}
+  .voie.hors{box-shadow:inset 0 0 0 1px var(--trait);background:var(--fond2);cursor:default}
+  .voie.hors .n{color:var(--tertiaire)}
+  .voie.hors .ic{background:var(--plein)}
+  .voie.hors .ic svg{stroke:var(--tertiaire)}
+  .voie .avert{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:12px;
+    border-radius:8px;background:var(--alerte-fond)}
+  .voie .avert svg{width:16px;height:16px;stroke:#6d5616;flex:none;margin-top:2px}
+  .voie .avert .t{font-size:12px;line-height:16px;color:#5c4712}
+
+  .geste{padding:24px 16px 0}
+  .geste .btn{width:100%;height:48px;font-size:15px}
+  .geste .apres{font-size:12px;line-height:16px;color:var(--tertiaire);
+    margin-top:12px;text-align:center}
+
+  .jamais{margin:24px 16px 32px;display:flex;gap:12px;padding:16px;border-radius:12px;
+    background:var(--carte);box-shadow:inset 0 0 0 1px var(--trait)}
+  .jamais svg{width:20px;height:20px;stroke:var(--laterite);flex:none;margin-top:2px}
+  .jamais .t{font-size:13px;line-height:20px;font-weight:700}
+  .jamais .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:4px}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>14:09</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="corps">
+  <h1>How will you get in, from now on?</h1>
+  <p class="sous">Pick one now. You can add a second one later, and you should — the day this
+    one is out of reach, the second is what gets you back to your shop.</p>
+</div>
+
+<div class="apparte">
+  <h2>First — whose phone is this?</h2>
+  <div class="deux">
+    <label><input type="radio" name="apparte">
+      <div class="n">Mine</div>
+      <div class="q">It stays with me, and nobody else opens it</div></label>
+    <label><input type="radio" name="apparte" checked>
+      <div class="n">The shop's</div>
+      <div class="q">It lives on the counter, several of us use it</div></label>
+  </div>
+</div>
+
+<div class="voies">
+
+  <!-- Retirée par la réponse ci-dessus, pas simplement déconseillée. -->
+  <div class="voie hors">
+    <div class="haut">
+      <span class="ic"><svg class="ic24"><use href="#i-empreinte"/></svg></span>
+      <div><div class="n">Your phone's own lock</div>
+        <div class="q">Not for a shop phone</div></div>
+    </div>
+    <div class="dit">A phone's lock proves the phone, not the person. On a handset that stays on
+      the counter, the key belongs to whoever picks it up — and the shop's journal would carry
+      your name for what someone else did.</div>
+  </div>
+
+  <label class="voie">
+    <div class="haut">
+      <span class="ic"><svg class="ic24"><use href="#i-doc"/></svg></span>
+      <div><div class="n">A paper in your drawer</div>
+        <div class="q">Ten codes, each one good once</div></div>
+      <input type="radio" name="voie">
+    </div>
+    <div class="dit">We print ten codes. You keep them where you keep what matters. No phone
+      needed, no network, no electricity — it works the day everything else does not.</div>
+    <div class="perte"><svg><use href="#i-doc"/></svg>
+      <span class="t">Lose your phone? <b>Nothing changes</b> — the paper is still in the drawer.
+        Make ten new ones before the last is gone.</span></div>
+  </label>
+
+  <label class="voie">
+    <div class="haut">
+      <span class="ic"><svg class="ic24"><use href="#i-envoi"/></svg></span>
+      <div><div class="n">A code by SMS</div>
+        <div class="q">Six digits to +237 ·· ·· 42 18</div></div>
+      <input type="radio" name="voie" checked>
+    </div>
+    <div class="dit">The code goes to <b>your</b> number, not to the phone. That is what keeps
+      the key yours on a handset that everyone touches — and it is why the shop phone signs
+      itself out at the end of every day.</div>
+    <div class="avert"><svg><use href="#i-attention"/></svg>
+      <span class="t">You should know: whoever takes over your phone number receives your codes.
+        That happens — a lost SIM, a line reassigned. Tell Mme Fotso the day you change number,
+        before you change it.</span></div>
+  </label>
+
+</div>
+
+<div class="geste">
+  <button class="btn btn--primaire"><svg><use href="#i-check"/></svg>Set this up</button>
+  <p class="apres">Takes about a minute. Nothing on your account changes until it works.</p>
+</div>
+
+<div class="jamais">
+  <svg><use href="#i-cadenas"/></svg>
+  <div>
+    <div class="t">None of these is your Mobile Money PIN</div>
+    <div class="d">Your PIN stays on the SIM, typed at the counter, at the moment of an
+      operation. It never gets you into TOTEM, and TOTEM never asks for it.</div>
+  </div>
+</div>

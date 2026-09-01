@@ -1,0 +1,229 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Fleet overview</title>
+<!--SYSTEME-->
+<style>
+  /* propre à cet écran — toutes les valeurs viennent de NORMES.md */
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .villes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .ville .haut{display:flex;align-items:center;gap:8px}
+  .ville .nom{font-size:14px;line-height:20px;font-weight:700}
+  .ville .compte{margin-left:auto;font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .ville .liste{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+  .ville .l{display:flex;align-items:center;gap:8px;font-size:13px;line-height:20px}
+  .ville .l .s{margin-left:auto;font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .actions-ligne{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+  .puissance{display:flex;align-items:center;gap:8px;font-size:13px;line-height:20px;color:var(--secondaire)}
+  .puissance svg{width:16px;height:16px;stroke:var(--tertiaire);stroke-width:1.5;flex:none}
+  /* une ligne de table ne se plie jamais en deux : le sous-titre reste sur un rail */
+  .cellule-double .p,.cellule-double .s{white-space:nowrap}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="fleet">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>Fleet overview</h1>
+      <span class="ariane">7 sites · Cameroon</span>
+      <div class="action-page">
+        <button class="btn btn--primaire"><svg><use href="#i-plus"/></svg>Enrol a terminal</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <!-- ============ rangée de mesures ============ -->
+      <div class="kpis k5">
+        <div class="kpi">
+          <div class="l">Terminals</div>
+          <div class="v">7<span class="unite">of 7 online</span></div>
+          <div class="s">all reported within the minute</div>
+        </div>
+        <div class="kpi">
+          <div class="l">SIM cards</div>
+          <div class="v">12<span class="unite">in service</span></div>
+          <div class="s">11 in place · 1 roaming</div>
+        </div>
+        <div class="kpi">
+          <div class="l">SMS this week</div>
+          <div class="v">1,412
+            <svg class="spark" style="align-self:center;margin-left:auto" viewBox="0 0 100 32" preserveAspectRatio="none">
+              <path d="M0 25 L16 22 L33 26 L49 16 L66 18 L82 9 L98 6 L98 32 L0 32Z" fill="#9a4b2e" opacity=".10" stroke="none"/>
+              <path d="M0 25 L16 22 L33 26 L49 16 L66 18 L82 9 L98 6" stroke="#9a4b2e" stroke-width="1.5"/>
+              <circle cx="98" cy="6" r="2.4" fill="#9a4b2e" stroke="none"/>
+            </svg>
+          </div>
+          <div class="s">96 receipts issued</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Waiting to sync</div>
+          <div class="v">0</div>
+          <div class="s" style="color:var(--positif)">nothing left to send</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Release</div>
+          <div class="v petite">stable-2.4.2</div>
+          <div class="s">7 of 7 up to date</div>
+        </div>
+      </div>
+
+      <div class="duo">
+        <!-- ============ colonne de gauche : la flotte, puis les villes ============ -->
+        <div class="colonne principal">
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>The fleet</h2>
+              <div class="a-droite">
+                <span class="pastille ok"></span>refreshing every 5s
+              </div>
+            </div>
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Terminal</th><th>Status</th><th>Signal</th>
+                  <th>Power</th><th class="num">Last heard from</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-vers="douala-akwa-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">douala-akwa-01</a></span><span class="s">Douala · Akwa · 2 SIMs</span></div></td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                  <td><span class="puissance"><svg><use href="#i-prise"/></svg>Mains</span></td>
+                  <td class="num pale">12s ago</td>
+                </tr>
+                <tr data-vers="douala-bonaberi-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">douala-bonaberi-01</a></span><span class="s">Douala · Bonabéri · 2 SIMs</span></div></td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>3/5</em></span></td>
+                  <td><span class="puissance"><svg><use href="#i-prise"/></svg>Mains</span></td>
+                  <td class="num pale">31s ago</td>
+                </tr>
+                <tr class="survol" data-vers="douala-deido-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">douala-deido-01</a></span><span class="s">Douala · Deïdo · 1 SIM</span></div></td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                  <td><span class="puissance"><svg><use href="#i-prise"/></svg>Mains</span></td>
+                  <td class="num pale">8s ago</td>
+                </tr>
+                <tr data-vers="yaounde-centre-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">yaounde-centre-01</a></span><span class="s">Yaoundé · Centre · 2 SIMs</span></div></td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>3/5</em></span></td>
+                  <td><span class="puissance"><svg><use href="#i-reseau"/></svg>4G backup</span></td>
+                  <td class="num pale">54s ago</td>
+                </tr>
+                <tr data-vers="yaounde-mvan-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">yaounde-mvan-01</a></span><span class="s">Yaoundé · Mvan · 2 SIMs</span></div></td>
+                  <td><span class="etat attention"><i class="pastille attention"></i>One SIM roaming</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#8a6d1f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#8a6d1f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#e0dcd7"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#e0dcd7"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>2/5</em></span></td>
+                  <td><span class="puissance"><svg><use href="#i-prise"/></svg>Mains</span></td>
+                  <td class="num pale">19s ago</td>
+                </tr>
+                <tr data-vers="bafoussam-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">bafoussam-01</a></span><span class="s">Bafoussam · 1 SIM</span></div></td>
+                  <td><span class="etat attention"><i class="pastille attention"></i>On battery</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                  <td><span class="chip attention">Battery 76%</span></td>
+                  <td class="num pale">26s ago</td>
+                </tr>
+                <tr data-vers="bafoussam-marche-01">
+                  <td><div class="cellule-double"><span class="p"><a href="#">bafoussam-marche-01</a></span><span class="s">Bafoussam · Marché · 2 SIMs</span></div></td>
+                  <td><span class="etat ok"><i class="pastille ok"></i>Active</span></td>
+                  <td><span class="signal"><svg viewBox="0 0 20 13"><g stroke="none">
+                    <rect x="0" y="8" width="3" height="5" rx="1" fill="#17603f"/><rect x="4.2" y="6" width="3" height="7" rx="1" fill="#17603f"/>
+                    <rect x="8.5" y="4" width="3" height="9" rx="1" fill="#17603f"/><rect x="12.8" y="2" width="3" height="11" rx="1" fill="#17603f"/>
+                    <rect x="17" y="0" width="3" height="13" rx="1" fill="#e0dcd7"/></g></svg><em>4/5</em></span></td>
+                  <td><span class="puissance"><svg><use href="#i-prise"/></svg>Mains</span></td>
+                  <td class="num pale">41s ago</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="carte-pied">
+              7 terminals · all on stable-2.4.2 · nothing waiting in any queue
+              <span class="a-droite">2 need an eye · 0 silent</span>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- ============ journal de la flotte ============ -->
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div>
+              <div class="titre">What happened</div>
+              <div class="sous">Written by the terminals themselves</div>
+            </div>
+            <button class="btn btn--sm btn--fantome" style="margin-left:auto">See all 38</button>
+          </div>
+          <div class="bloc">
+            <div class="fil">
+              <div class="ev">
+                <span class="h">14:02</span>
+                <span class="ic accent"><svg><use href="#i-doc"/></svg></span>
+                <div class="c">
+                  <div class="t">Receipt issued again<span class="chip accent">just now</span></div>
+                  <div class="d">TM-2026-0805-0075 rebuilt as a transfer for WONDER PHONE — done in 18s.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">Tue 09:31</span>
+                <span class="ic ok"><svg><use href="#i-check-cercle"/></svg></span>
+                <div class="c">
+                  <div class="t">Whole fleet moved to stable-2.4.2</div>
+                  <div class="d">7 of 7 in 26 minutes. No customer session was interrupted.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">Tue 11:47</span>
+                <span class="ic"><svg><use href="#i-plus-cercle"/></svg></span>
+                <div class="c">
+                  <div class="t">bafoussam-marche-01 joined</div>
+                  <div class="d">Two modems, two SIMs recognised on their own — matched to Mme Fotso.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">Tue 16:25</span>
+                <span class="ic attention"><svg><use href="#i-attention"/></svg></span>
+                <div class="c">
+                  <div class="t">Orange mast down in Douala</div>
+                  <div class="d">Three SIMs lost signal at once, back at 17:20 without anyone touching it. The 12 messages that arrived meanwhile were caught up.</div>
+                </div>
+              </div>
+              <div class="ev">
+                <span class="h">Mon 07:56</span>
+                <span class="ic"><svg><use href="#i-batterie"/></svg></span>
+                <div class="c">
+                  <div class="t">Two power cuts absorbed in Bafoussam</div>
+                  <div class="d">The battery bridged 47 minutes, the terminal shut down cleanly and came back on its own.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+
+    </div>
+  </main>
+</div>

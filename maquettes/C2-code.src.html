@@ -1,0 +1,120 @@
+<meta charset="utf-8"><title>TOTEM — Your code</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Le code à six chiffres, côté comptoir. =====
+     Cet écran resservira cinq fois : à l'acceptation, à chaque nouvel appareil,
+     après un changement de numéro, au retour d'un téléphone perdu. Il est donc
+     dessiné une fois, entièrement, et jamais recopié.
+     Il doit survivre à une coupure : rouvrir la page redonne cet écran-ci. */
+  body{background:var(--fond);min-height:844px;position:relative}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .retour{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 16px;
+    border:none;background:transparent;font:400 13px/20px 'DM Sans';color:var(--secondaire);
+    cursor:pointer}
+  .retour svg{width:20px;height:20px;stroke:currentColor;transform:rotate(180deg)}
+
+  .corps{padding:4px 16px 0}
+  .corps h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .corps .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+  .corps .sous b{font-weight:700;color:var(--encre)}
+
+  /* Un seul champ, jamais six cases : le collage, la correction et les lecteurs
+     d'écran y survivent (WCAG 2.2 §3.3.8). 49px de haut : la seule exception à
+     l'échelle du téléphone, écrite dans NORMES §2. */
+  .champ{margin-top:24px}
+  .champ label{display:block;font-size:11px;line-height:16px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--tertiaire);margin-bottom:8px}
+  .champ input{width:100%;height:49px;border:none;border-radius:8px;background:var(--carte);
+    box-shadow:inset 0 0 0 1px var(--trait-controle);text-align:center;
+    font:700 22px/28px 'DM Sans';letter-spacing:.30em;font-variant-numeric:tabular-nums;
+    color:var(--encre)}
+  .champ input::placeholder{color:var(--tertiaire);letter-spacing:.16em;font-weight:400;font-size:15px}
+
+  .sous-champ{display:flex;align-items:center;justify-content:space-between;
+    margin-top:12px;min-height:44px}
+  .sous-champ .q{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .sous-champ .btn{height:44px}
+
+  .valider{width:100%;height:48px;font-size:15px;margin-top:12px}
+
+  .aide{margin:24px 16px 0;background:var(--carte);border-radius:12px;
+    box-shadow:var(--ombre);overflow:hidden}
+  .aide h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);padding:16px 16px 4px}
+  .aide .l{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;min-height:44px}
+  .aide .l+.l{border-top:1px solid var(--hairline)}
+  .aide .l svg{width:20px;height:20px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+  .aide .t{font-size:13px;line-height:20px}
+  .aide .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+
+  /* Ce qu'on peut dire à un inconnu — et rien de plus. Cet écran ne raconte pas
+     ce qu'il sait du compte : il décrit ce que le code peut, pas qui vous êtes. */
+  .portee{margin:16px 16px 32px;display:flex;gap:12px;padding:16px;border-radius:12px;
+    background:var(--fond2)}
+  .portee svg{width:20px;height:20px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+  .portee .t{font-size:12px;line-height:16px;color:var(--secondaire)}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>14:07</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<button class="retour" type="button"><svg><use href="#i-chevron"/></svg>Back to the invitation</button>
+
+<div class="corps">
+  <h1>Check your messages</h1>
+  <p class="sous">We sent six digits by SMS to <b>+237 ·· ·· 42 18</b>, the number Mme Fotso
+    gave for you. Paste them or type them — both work.</p>
+
+  <div class="champ">
+    <label for="code">Your code</label>
+    <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+           placeholder="6 digits">
+  </div>
+
+  <div class="sous-champ">
+    <span class="q">You can ask for a new one in 0:48</span>
+    <button class="btn btn--secondaire" disabled>Send another</button>
+  </div>
+
+  <button class="btn btn--primaire valider"><svg><use href="#i-check"/></svg>Continue</button>
+</div>
+
+<div class="aide">
+  <h2>It hasn't arrived</h2>
+  <div class="l"><svg><use href="#i-horloge"/></svg>
+    <div><div class="t">Give it a minute</div>
+      <div class="d">A message can be slow when the network is busy, or when you are on a weak signal.</div></div></div>
+  <div class="l"><svg><use href="#i-telephone"/></svg>
+    <div><div class="t">Is <b>·· 42 18</b> really your number?</div>
+      <div class="d">If it is not, Mme Fotso can correct it and send the invitation again.</div></div></div>
+  <div class="l"><svg><use href="#i-envoi"/></svg>
+    <div><div class="t">Ask for it on WhatsApp instead</div>
+      <div class="d">Same six digits, same number, other road. Useful when the SMS network is the one that is stuck.</div></div></div>
+</div>
+
+<div class="portee">
+  <svg><use href="#i-cadenas"/></svg>
+  <span class="t">These six digits open this page, on this phone, once. They cannot be used
+    anywhere else, by anyone — and they stop working in ten minutes.</span>
+</div>

@@ -1,0 +1,137 @@
+<meta charset="utf-8"><title>TOTEM — The counter</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Le comptoir, vu par l'opérateur. =====
+     C'est la première preuve visible que les rôles existent : sans cet écran,
+     l'invitation n'a rien changé pour personne.
+     Deux partis pris qui se tiennent :
+       — le NOM de la personne connectée est en haut, en permanence. Sur un
+         comptoir où le téléphone circule, ce n'est pas une décoration, c'est
+         le dispositif qui empêche d'agir sous le nom du patron sans le voir.
+       — le geste réservé n'est pas un bouton qui échouera : c'est une carte
+         qui dit QUI peut le faire et COMMENT le demander. Un refus après coup
+         pousse à emprunter le compte du propriétaire — donc on refuse avant,
+         en expliquant, et on offre le chemin honnête. */
+  body{background:var(--fond);min-height:844px;position:relative;padding-bottom:24px}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .qui{display:flex;align-items:center;gap:12px;padding:8px 16px 12px}
+  .qui .rond{width:44px;height:44px;border-radius:999px;background:var(--sable);
+    display:grid;place-items:center;flex:none;font-size:15px;font-weight:700;color:var(--laterite)}
+  .qui .n{font-size:15px;line-height:20px;font-weight:700}
+  .qui .r{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .qui .sortir{margin-left:auto;height:44px;padding:0 12px;border:none;background:transparent;
+    font:400 13px/20px 'DM Sans';color:var(--laterite);cursor:pointer;flex:none}
+
+  .ou{padding:0 16px 12px;display:flex;align-items:center;gap:8px}
+  .ou .b{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .ou .etat{margin-left:auto}
+  .bascule{height:44px}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .soldes{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 16px}
+  .solde{background:var(--carte);border-radius:12px;box-shadow:var(--ombre);padding:16px}
+  .solde .o{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .solde .v{font-size:22px;line-height:28px;font-weight:700;margin-top:6px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .solde .u{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+
+  .section{padding:0 16px 12px;display:flex;align-items:center}
+  .section h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .section .q{margin-left:auto;font-size:12px;line-height:16px;color:var(--tertiaire)}
+
+  .liste{margin:0 16px 16px;background:var(--carte);border-radius:12px;
+    box-shadow:var(--ombre);overflow:hidden}
+  .liste .l{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:56px}
+  .liste .l+.l{border-top:1px solid var(--hairline)}
+  .liste .ic{width:32px;height:32px;border-radius:8px;background:var(--fond2);
+    display:grid;place-items:center;flex:none}
+  .liste .ic svg{stroke:var(--secondaire)}
+  .liste .t{font-size:13px;line-height:20px;font-weight:700}
+  .liste .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .liste .m{margin-left:auto;font-size:13px;line-height:20px;font-weight:700;
+    font-variant-numeric:tabular-nums;flex:none}
+
+  /* Le geste réservé. Pas un bouton grisé — une explication et un chemin. */
+  .reserve{margin:0 16px 16px;padding:16px;border-radius:12px;background:var(--sable)}
+  .reserve .haut{display:flex;gap:12px;align-items:flex-start}
+  .reserve .rond{width:40px;height:40px;border-radius:12px;background:var(--carte);
+    display:grid;place-items:center;flex:none}
+  .reserve .rond svg{stroke:var(--laterite)}
+  .reserve .t{font-size:15px;line-height:20px;font-weight:700}
+  .reserve .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:4px}
+  .reserve .btn{width:100%;height:44px;margin-top:16px}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>09:41</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<!-- Le nom d'abord : le téléphone circule, et personne ne doit agir sous le
+     nom d'un autre sans s'en apercevoir. -->
+<div class="qui">
+  <span class="rond">JE</span>
+  <div><div class="n">J. Eyenga</div><div class="r">operator · Marché · Bafoussam</div></div>
+  <button class="sortir" type="button">Sign out</button>
+</div>
+
+<div class="ou">
+  <span class="b">The counter</span>
+  <span class="etat ok"><i class="pastille ok"></i>Terminal up</span>
+  <nav class="bascule" aria-label="Language" style="margin-left:12px"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="soldes">
+  <div class="solde">
+    <div class="o">Orange ··7715</div>
+    <div class="v">912,400</div>
+    <div class="u">FCFA · read 12s ago</div>
+  </div>
+  <div class="solde">
+    <div class="o">MTN ··3082</div>
+    <div class="v">148,900</div>
+    <div class="u">FCFA · read 12s ago</div>
+  </div>
+</div>
+
+<div class="section"><h2>This morning</h2><span class="q">7 receipts</span></div>
+<div class="liste">
+  <div class="l">
+    <span class="ic"><svg class="ic16"><use href="#i-doc"/></svg></span>
+    <div><div class="t">Deposit · Orange</div><div class="d">09:38 · TM-2026-0807-0112</div></div>
+    <span class="m">+25,000</span>
+  </div>
+  <div class="l">
+    <span class="ic"><svg class="ic16"><use href="#i-doc"/></svg></span>
+    <div><div class="t">Withdrawal · MTN</div><div class="d">09:21 · TM-2026-0807-0111</div></div>
+    <span class="m">−10,000</span>
+  </div>
+  <div class="l">
+    <span class="ic"><svg class="ic16"><use href="#i-doc"/></svg></span>
+    <div><div class="t">Deposit · Orange</div><div class="d">08:55 · TM-2026-0807-0110</div></div>
+    <span class="m">+5,000</span>
+  </div>
+</div>
+
+<!-- Ce que l'opérateur ne fera pas ici, dit AVANT qu'il essaie. -->
+<div class="reserve">
+  <div class="haut">
+    <span class="rond"><svg class="ic20"><use href="#i-cle"/></svg></span>
+    <div>
+      <div class="t">Sending money is Mme Fotso's</div>
+      <div class="d">You read the balances and you hand out the receipts. Moving the money is
+        done at the counter with the SIM's own PIN, by the person who owns it — not from a
+        web page, and not by TOTEM.</div>
+    </div>
+  </div>
+  <button class="btn btn--secondaire"><svg><use href="#i-envoi"/></svg>Ask Mme Fotso for a transfer</button>
+</div>

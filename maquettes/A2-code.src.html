@@ -1,0 +1,73 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Check your email</title>
+<!--SYSTEME-->
+<style>
+  .retour{display:inline-flex;align-items:center;gap:8px;height:28px;font-size:13px;
+    color:var(--secondaire);margin-bottom:16px}
+  .retour svg{width:16px;height:16px;stroke:currentColor;transform:rotate(180deg)}
+  .compte-a-rebours{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+  .compte-a-rebours .t{font-size:12px;line-height:16px;color:var(--tertiaire);white-space:nowrap}
+  .pasrecu{margin-top:24px;padding-top:20px;border-top:1px solid var(--hairline)}
+  .pasrecu h3{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:12px}
+  .pasrecu li{display:flex;gap:10px;font-size:13px;line-height:20px;color:var(--secondaire);
+    list-style:none;margin-bottom:8px}
+  .pasrecu li svg{width:16px;height:16px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body>
+<div class="porte">
+  <aside class="porte-marque">
+    <div class="marque-porte">
+      <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+      <span class="badge">ADMIN</span>
+    </div>
+    <div class="dire">
+      <h2>A code that lives ten minutes, and only once.</h2>
+      <p>It is sent to your address, it works a single time, and it dies on its own. Nobody — not
+        even us — can read it back to you afterwards.</p>
+    </div>
+    <div class="pied">totem.app/admin · Nelson · super admin</div>
+  </aside>
+
+  <main class="porte-corps">
+    <div class="langue">
+      <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+    </div>
+
+    <div class="feuille">
+      <a class="retour" href="#"><svg><use href="#i-chevron"/></svg>Use another address</a>
+      <h1>Check your email</h1>
+      <p class="sous">We sent a six-digit code to <b>n.•••@totem.app</b>. Paste it or type it —
+        both work.</p>
+
+      <div class="champs">
+        <div>
+          <label for="code">Your code</label>
+          <input id="code" class="code" type="text" inputmode="numeric"
+                 autocomplete="one-time-code" value="408 913">
+          <div class="compte-a-rebours">
+            <span class="t">This code expires in 9:41</span>
+            <button class="btn btn--sm btn--fantome">Send another one</button>
+          </div>
+        </div>
+        <button class="btn btn--lg btn--primaire"><svg><use href="#i-check"/></svg>Sign in</button>
+      </div>
+
+      <div class="pasrecu">
+        <h3>It hasn’t arrived</h3>
+        <ul>
+          <li><svg><use href="#i-horloge"/></svg><span>Give it a minute — email is sometimes slow from Douala.</span></li>
+          <li><svg><use href="#i-doc"/></svg><span>Look in the spam folder, and add <b>hello@totem.app</b> to your contacts.</span></li>
+          <li><svg><use href="#i-bouclier"/></svg><span>Or skip the email entirely and use your authenticator app.</span></li>
+        </ul>
+      </div>
+
+      <div class="avis avis--calme" style="margin-top:24px">
+        <svg class="ic"><use href="#i-oeil"/></svg>
+        <span>This code only opens the page you left open, on this screen. It cannot be used
+          anywhere else, by anyone.</span>
+      </div>
+    </div>
+  </main>
+</div>
