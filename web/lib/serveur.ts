@@ -909,6 +909,17 @@ export async function listerUtilisateurs(): Promise<Utilisateur[]> {
   return lignes.map(versUtilisateur);
 }
 
+/** Pose une nouvelle empreinte de mot de passe. L'appelant a déjà prouvé
+ *  qu'il connaît l'ancienne : cette fonction ne fait qu'écrire. */
+export async function definirEmpreinte(
+  id: number, empreinte: string,
+): Promise<boolean> {
+  if (!Number.isInteger(id)) return false;
+  const r = await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", { empreinte },
+                         { prefer: "return=minimal" });
+  return Boolean(r?.ok);
+}
+
 /** Le propriétaire ouvre — ou referme — la porte à un compte. */
 export async function definirApprobation(
   id: number, approuve: boolean,
