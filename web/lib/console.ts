@@ -109,9 +109,55 @@ type LigneEvenement = {
 
 type LigneCommande = {
   id: number; terminal: string; type: string; etat: string;
-  resultat: string | null; demandee_le: string; traitee_le: string | null;
+  demandee_le: string; traitee_le: string | null;
   demandee_par?: number | null; commerce?: string | null;
 };
+
+// --- Laver un texte de ce qu'il ne doit jamais porter ------------------------
+
+const MASQUE = "••••";
+
+/**
+ * Les règles de masquage, dans l'ordre où elles s'appliquent.
+ *
+ * ELLES MASQUENT PLUS QUE NÉCESSAIRE, ET C'EST VOULU. Une suite de quatre
+ * chiffres dans une ligne de journal peut être un montant, une référence — ou
+ * un code. L'écran n'a aucun moyen de savoir lequel, et se tromper une seule
+ * fois écrit un code confidentiel dans une page qui reste. Perdre un montant
+ * ici ne coûte rien : les montants vivent sur les écrans du commerce, où ils
+ * ont une colonne à eux et un sens.
+ *
+ * TOUT texte libre qui monte à un écran de console passe par ici : ce que
+ * les boîtiers écrivent (`evenements.texte`), le titre et le détail d'une
+ * alerte, le motif d'une clôture. La revue de sécurité de septembre a trouvé
+ * la fiche d'un terminal qui affichait le journal du boîtier SANS ce lavage,
+ * pendant que l'écran du journal, lui, lavait le même texte — une règle qui
+ * ne s'applique qu'à un écran sur deux n'est pas une règle.
+ */
+const REGLES: readonly (readonly [RegExp, string])[] = [
+  // « code : 408913 », « PIN=1234 », « token: eyJhbGci… »
+  [/\b(code|pin|jeton|token|mot de passe|password|secret|otp)\b\s*[:=]?\s*\S+/gi,
+    `$1 ${MASQUE}`],
+  // Un code composé sur la carte — « #150# », « *126*1# ». C'est par là que
+  // l'argent sort.
+  [/[*#][0-9*#]+#/g, MASQUE],
+  // Une longue suite opaque : une empreinte, un jeton de session.
+  [/\b[A-Za-z0-9_-]{20,}\b/g, MASQUE],
+  // « 408 913 » — un code se colle avec ses espaces, et arrive donc espacé.
+  [/\b\d{1,4}(?:[\s.]\d{3,4})+\b/g, MASQUE],
+  // Toute suite de quatre chiffres ou plus.
+  [/\d{4,}/g, MASQUE],
+];
+
+/** Le même texte, débarrassé de ce qu'un écran de console ne doit pas porter. */
+export function sansSecret(texte: string | null | undefined): string {
+  if (!texte) return "";
+  let propre = String(texte);
+  for (const [motif, remplacement] of REGLES) {
+    propre = propre.replace(motif, remplacement);
+  }
+  return propre;
+}
 
 // --- Dire l'heure sans mentir ----------------------------------------------
 
@@ -403,7 +449,6 @@ export type CommandeDeLaConsole = {
   id: number;
   genre: string;
   etat: string;
-  resultat: string;
   quand: string;
   attenteDepuis: string | null;
   /** Qui a demandé. Vide quand la ligne est antérieure à la colonne. */
@@ -447,8 +492,11 @@ function versAlerte(
     commerceNom: nomDeCommerce(l.commerce, commerces),
     genre: l.genre,
     gravite,
-    titre: l.titre,
-    detail: l.detail ?? "",
+    // Le robot écrit ces deux phrases pour un humain. On les lave quand
+    // même : le jour où il recopiera un message d'opérateur dedans, il n'y
+    // aura pas de deuxième chance.
+    titre: sansSecret(l.titre),
+    detail: sansSecret(l.detail),
     ouverteLe: l.ouverte_le,
     depuis: ecartLisible(l.ouverte_le, langue),
     vue: Boolean(l.vue_le),
@@ -622,12 +670,14 @@ export async function chargerFicheTerminal(
   const [journal, commandes] = await Promise.all([
     lire<LigneEvenement>(
       `evenements?select=*&terminal=eq.${propre}&order=survenu_le.desc&limit=40`),
-    // Les colonnes sont NOMMÉES, et « parametres » n'y est pas : elle porte le
-    // code composé sur la carte — et, le temps d'une session USSD, le code
-    // confidentiel avant que le robot ne l'efface. Ce qui n'est pas demandé à
-    // la base ne peut fuir ni dans une page, ni dans un journal de serveur.
+    // Les colonnes sont NOMMÉES, et ni « parametres » ni « resultat » n'y
+    // sont : la première porte le code composé sur la carte — et, le temps
+    // d'une session USSD, le code confidentiel avant que le robot ne
+    // l'efface — la seconde recopie ce que le réseau a répondu, un menu qui
+    // demande justement un code. Ce qui n'est pas demandé à la base ne peut
+    // fuir ni dans une page, ni dans un journal de serveur.
     lire<LigneCommande>(
-      "commandes?select=id,terminal,type,etat,resultat,demandee_le,traitee_le"
+      "commandes?select=id,terminal,type,etat,demandee_le,traitee_le"
       + `&terminal=eq.${propre}&order=demandee_le.desc&limit=30`),
   ]);
 
@@ -646,7 +696,9 @@ export async function chargerFicheTerminal(
     journal: journal
       .filter((e) => e.terminal === propre)
       .map((e) => ({
-        id: e.id, texte: e.texte, survenuLe: e.survenu_le,
+        // Ce que le boîtier écrit est du texte libre : il se lave, comme
+        // sur l'écran du journal — la règle est une, ou elle n'est pas.
+        id: e.id, texte: sansSecret(e.texte), survenuLe: e.survenu_le,
         quand: momentLisible(e.survenu_le, langue),
       })),
     commandes: commandes
@@ -655,7 +707,6 @@ export async function chargerFicheTerminal(
         id: c.id,
         genre: c.type,
         etat: c.etat,
-        resultat: c.resultat ?? "",
         quand: momentLisible(c.demandee_le, langue),
         attenteDepuis:
           c.etat === "en_attente" ? ecartLisible(c.demandee_le, langue) : null,

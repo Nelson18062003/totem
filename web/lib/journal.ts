@@ -43,56 +43,22 @@
 
 import { lire, modifier, relie } from "./base";
 import {
-  chargerFlotte, dateLisible, ecartLisible, momentLisible,
+  chargerFlotte, dateLisible, ecartLisible, momentLisible, sansSecret,
   type TerminalDeFlotte, type Vivacite,
 } from "./console";
 import type { Langue } from "@noyau/langue";
 
-export { relie };
+export { relie, sansSecret };
 
 // Douala ne change pas d'heure. Un décalage fixe suffit donc à découper une
 // journée, et il vaut mieux qu'une bibliothèque de fuseaux : le jour du
 // journal est le jour du commerçant, pas celui du serveur.
 const DECALAGE_DOUALA = "+01:00";
 
-// --- Laver un texte de ce qu'il ne doit jamais porter ------------------------
-
-const MASQUE = "••••";
-
-/**
- * Les règles de masquage, dans l'ordre où elles s'appliquent.
- *
- * ELLES MASQUENT PLUS QUE NÉCESSAIRE, ET C'EST VOULU. Une suite de quatre
- * chiffres dans une ligne de journal peut être un montant, une référence — ou
- * un code. Le journal n'a aucun moyen de savoir lequel, et se tromper une seule
- * fois écrit un code confidentiel dans une page qui reste. Perdre un montant
- * ici ne coûte rien : les montants vivent sur les écrans du commerce, où ils
- * ont une colonne à eux et un sens.
- */
-const REGLES: readonly (readonly [RegExp, string])[] = [
-  // « code : 408913 », « PIN=1234 », « token: eyJhbGci… »
-  [/\b(code|pin|jeton|token|mot de passe|password|secret|otp)\b\s*[:=]?\s*\S+/gi,
-    `$1 ${MASQUE}`],
-  // Un code composé sur la carte — « #150# », « *126*1# ». C'est par là que
-  // l'argent sort.
-  [/[*#][0-9*#]+#/g, MASQUE],
-  // Une longue suite opaque : une empreinte, un jeton de session.
-  [/\b[A-Za-z0-9_-]{20,}\b/g, MASQUE],
-  // « 408 913 » — un code se colle avec ses espaces, et arrive donc espacé.
-  [/\b\d{1,4}(?:[\s.]\d{3,4})+\b/g, MASQUE],
-  // Toute suite de quatre chiffres ou plus.
-  [/\d{4,}/g, MASQUE],
-];
-
-/** Le même texte, débarrassé de ce qu'une ligne de journal ne doit pas porter. */
-export function sansSecret(texte: string | null | undefined): string {
-  if (!texte) return "";
-  let propre = String(texte);
-  for (const [motif, remplacement] of REGLES) {
-    propre = propre.replace(motif, remplacement);
-  }
-  return propre;
-}
+// « sansSecret » — le lavage des textes libres — vit dans « lib/console.ts »
+// désormais : la fiche d'un terminal et la flotte affichent elles aussi ce
+// que les boîtiers écrivent, et la règle doit être UNE, au seul endroit que
+// les deux moitiés de la console peuvent importer sans se mordre la queue.
 
 // --- Ce que la base contient -------------------------------------------------
 
