@@ -31,22 +31,39 @@ const tables = () => ({
     id: "douala-faux", nom: "Douala (faux)", vu_le: maintenant(),
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
   }],
+  // La console lit ces trois registres. Vides ici : personne n'y écrit
+  // encore, et c'est justement l'état que ses écrans doivent savoir dire.
+  // Les freins, eux, se remplissent quand on essaie des mots de passe — la
+  // table se recalcule depuis le seau à chaque demande, filtres compris.
+  alertes: [],
+  versions: [],
+  freins: [...freins.entries()].map(([cle, e]) =>
+    ({ cle, n: e.n, vu: new Date(e.vu).toISOString() })),
   cartes: [
     // « nom » est le nom COMMERCIAL — ce qu'on donne à qui veut payer, ce
     // que la fiche des coordonnées affiche. « Caisse principale » était un
     // libellé de tiroir, pas un nom qu'on écrit sur un virement.
-    { iccid: "89237010000000008901", operateur: "MTN", libelle: "MTN ·8901",
+    //
+    // « terminal » : la vraie base le porte sur chaque ligne (unique
+    // (terminal, iccid)), et la console s'en sert pour dire quel boîtier
+    // tient quelle puce. Sans lui, la flotte disait « aucune SIM jamais
+    // vue » au-dessus de deux cartes bien présentes.
+    { terminal: "douala-faux",
+      iccid: "89237010000000008901", operateur: "MTN", libelle: "MTN ·8901",
       nom: "ETS NKENGAFAC", numero: "677123456",
       premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: maintenant() },
-    { iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
+    { terminal: "douala-faux",
+      iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
       nom: "", numero: "699001122",
       premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: maintenant() },
   ],
   comptes: [
-    { iccid: "89237010000000008901", libelle: "MTN ·8901", operateur: "MTN",
+    { terminal: "douala-faux",
+      iccid: "89237010000000008901", libelle: "MTN ·8901", operateur: "MTN",
       reseau: "MTN CM", itinerance: false, numero: "677123456",
       solde: 412500, signal: 22, maj: il_y_a(12) },
-    { iccid: "89237020000000004432", libelle: "Orange ·4432", operateur: "Orange",
+    { terminal: "douala-faux",
+      iccid: "89237020000000004432", libelle: "Orange ·4432", operateur: "Orange",
       reseau: "Orange CM", itinerance: false, numero: "699001122",
       solde: 87300, signal: 18, maj: il_y_a(40) },
   ],

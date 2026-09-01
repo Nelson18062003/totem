@@ -1,0 +1,75 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Authenticator</title>
+<!--SYSTEME-->
+<style>
+  .retour{display:inline-flex;align-items:center;gap:8px;height:28px;font-size:13px;
+    color:var(--secondaire);margin-bottom:16px}
+  .retour svg{width:16px;height:16px;stroke:currentColor;transform:rotate(180deg)}
+  .memoire{display:flex;align-items:flex-start;gap:12px;margin-top:16px}
+  /* 24×24 : la plus petite cible que WCAG 2.2 §2.5.8 accepte, et une vraie
+     case, cochable au clavier, dont l'état est lisible par la voix. */
+  .memoire input[type=checkbox]{appearance:none;width:24px;height:24px;border-radius:6px;
+    box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte);flex:none;
+    margin:0;cursor:pointer;display:grid;place-items:center}
+  .memoire input[type=checkbox]:checked{background:var(--encre);box-shadow:none}
+  .memoire input[type=checkbox]:checked::after{content:"";width:12px;height:7px;
+    border-left:2px solid #fff;border-bottom:2px solid #fff;transform:translateY(-2px) rotate(-45deg)}
+  .memoire .t{font-size:13px;line-height:20px}
+  .memoire .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .autres-voies{margin-top:24px;padding-top:20px;border-top:1px solid var(--hairline);
+    display:flex;flex-direction:column;gap:8px}
+</style>
+<!--SPRITE-->
+
+<body>
+<div class="porte">
+  <aside class="porte-marque">
+    <div class="marque-porte">
+      <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+      <span class="badge">ADMIN</span>
+    </div>
+    <div class="dire">
+      <h2>The code your phone makes, without asking anyone.</h2>
+      <p>Your authenticator app produces a new code every thirty seconds, offline. No network,
+        no email, nothing to intercept on the way.</p>
+    </div>
+    <div class="pied">totem.app/admin · Nelson · super admin</div>
+  </aside>
+
+  <main class="porte-corps">
+    <div class="langue">
+      <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+    </div>
+
+    <div class="feuille">
+      <a class="retour" href="#"><svg><use href="#i-chevron"/></svg>Use another address</a>
+      <h1>Open your authenticator</h1>
+      <p class="sous">Type the six digits shown for <b>TOTEM ADMIN · n.•••@totem.app</b>.
+        They change every thirty seconds.</p>
+
+      <div class="champs">
+        <div>
+          <label for="code">The six digits</label>
+          <input id="code" class="code" type="text" inputmode="numeric"
+                 autocomplete="one-time-code" value="216 704">
+        </div>
+        <button class="btn btn--lg btn--primaire"><svg><use href="#i-check"/></svg>Sign in</button>
+      </div>
+
+      <div class="memoire">
+        <input type="checkbox" id="memoire" checked>
+        <label for="memoire">
+          <div class="t">Remember this device for 30 days</div>
+          <div class="d">You will still be asked for a code from anywhere else, and any new
+            device sends you an email the moment it appears.</div>
+        </label>
+      </div>
+
+      <div class="autres-voies">
+        <button class="btn btn--secondaire" style="width:100%">
+          <svg><use href="#i-envoi"/></svg>Send a code to my email instead</button>
+        <button class="btn btn--fantome" style="width:100%">
+          <svg><use href="#i-cadenas"/></svg>I lost my phone — use a backup code</button>
+      </div>
+    </div>
+  </main>
+</div>

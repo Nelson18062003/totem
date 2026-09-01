@@ -231,6 +231,19 @@ const en = {
   activee: "On",
   notePin:
     "The Mobile Money PIN is stored nowhere: it is typed for each operation, then forgotten.",
+  motDePasseAide:
+    "Yours, for this account. It changes here and nowhere else — TOTEM never sends password e-mails.",
+  motDePasseActuel: "Current password",
+  motDePasseNouveau: "New password (at least 12 characters)",
+  motDePasseBouton: "Change it",
+  motDePasseEnvoi: "Changing…",
+  motDePasseFait: "Done. Your next sign-in uses the new password.",
+  motDePasseRate: "That did not work. Check the current password and try again.",
+  motDePasseCourt: "The new password needs at least 12 characters.",
+
+  // --- La console de la plateforme
+  console: "Platform console",
+  consoleSous: "The fleet, the SIM cards, the people — every box at a glance.",
 
   // --- La langue
   langue: "Language",
@@ -427,6 +440,20 @@ const fr: typeof en = {
   activee: "Activée",
   notePin:
     "Le code PIN Mobile Money n’est enregistré nulle part : il se saisit à chaque opération, puis disparaît.",
+  motDePasseAide:
+    "Le vôtre, pour ce compte. Il se change ici et nulle part ailleurs — TOTEM n’envoie jamais de courriel de mot de passe.",
+  motDePasseActuel: "Mot de passe actuel",
+  motDePasseNouveau: "Nouveau mot de passe (12 caractères au moins)",
+  motDePasseBouton: "Le changer",
+  motDePasseEnvoi: "Changement…",
+  motDePasseFait: "C’est fait. La prochaine connexion se fera avec le nouveau.",
+  motDePasseRate:
+    "Ça n’a pas abouti. Vérifiez le mot de passe actuel, puis réessayez.",
+  motDePasseCourt: "Le nouveau mot de passe demande au moins 12 caractères.",
+
+  console: "Console de la plateforme",
+  consoleSous:
+    "La flotte, les cartes SIM, les gens — tous les boîtiers d’un coup d’œil.",
 
   langue: "Langue",
   langueActive: "Langue actuelle",

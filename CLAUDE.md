@@ -52,6 +52,7 @@ cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mo
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
 cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
+cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
@@ -154,6 +155,17 @@ cédait — « strict-dynamic » autorise délibérément un script créé par d
 déjà en confiance, c'est ainsi que Next charge ses morceaux. Il fallait
 l'injecter là où une vraie faille l'injecte : dans le HTML, pour que
 l'analyseur de la page le rencontre.
+
+`verifier-la-console` essaie d'entrer dans la console de la plateforme
+(`/console`) sous quatre identités : sans session, en invité, en
+propriétaire, avec la clé de secours. Un invité qui verrait la flotte, un
+anonyme qui atteindrait une route, un mot de passe qui se changerait sans la
+preuve de l'ancien — chacun de ces défauts le fait échouer. Il exige aussi
+que l'écran MONTRE ce que le faux nuage porte : une console qui rend 200
+sans lire la base passerait toutes les gardes et ne garderait rien. Il a
+trouvé du premier coup que le refus d'un écran partait en « meta refresh »
+dans une page déjà entamée — un vrai 200 — au lieu d'un 307 : le refus vit
+maintenant AUSSI dans le middleware, avant le premier octet.
 
 `verifier-le-journal` garde la page « Ce qui s'est passé ». Le terminal tenait
 son journal depuis toujours — modem redémarré, SMS illisible — et le poussait

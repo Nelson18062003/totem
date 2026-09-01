@@ -1,0 +1,129 @@
+<meta charset="utf-8"><title>TOTEM — Your paper of codes</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Le papier. =====
+     Dessiné en QUATRIÈME, et pas en dixième : le chemin de retour doit exister
+     AVANT la première sortie. Un compte créé sans filet, c'est un commerçant
+     coupé de son propre argent dans six mois.
+     Le NIST les qualifie formellement (§3.1.2) : « A look-up secret is
+     "something you have" ». Pas de téléphone, pas de réseau, pas de courant. */
+  body{background:var(--fond);min-height:844px;position:relative}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .corps{padding:4px 16px 0}
+  .corps h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .corps .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  /* La feuille, telle qu'elle sortira de l'imprimante ou se recopiera à la main.
+     Chiffres en chasse fixe : on les lit une colonne à la fois, sans se perdre
+     de ligne — c'est un papier qu'on consulte dans un tiroir, mal éclairé. */
+  .feuillet{margin:24px 16px 0;background:var(--carte);border-radius:12px;
+    box-shadow:var(--ombre);overflow:hidden}
+  .feuillet .haut{padding:16px;border-bottom:1px solid var(--hairline)}
+  .feuillet .h-t{font-size:13px;line-height:20px;font-weight:700}
+  .feuillet .h-d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .grille{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:16px}
+  .grille span{font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:20px;
+    font-weight:700;letter-spacing:.06em;background:var(--fond2);border-radius:8px;
+    padding:12px 8px;text-align:center}
+
+  .gestes{display:flex;gap:8px;padding:0 16px 16px}
+  .gestes .btn{flex:1;height:44px}
+
+  .savoir{margin:16px 16px 0;display:flex;flex-direction:column;gap:0;
+    background:var(--carte);border-radius:12px;box-shadow:var(--ombre);overflow:hidden}
+  .savoir .l{display:flex;gap:12px;align-items:flex-start;padding:16px;min-height:44px}
+  .savoir .l+.l{border-top:1px solid var(--hairline)}
+  .savoir .l svg{width:20px;height:20px;stroke:var(--tertiaire);flex:none;margin-top:2px}
+  .savoir .t{font-size:13px;line-height:20px;font-weight:700}
+  .savoir .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+
+  /* La case bloque la sortie. Ce n'est pas une formalité : après cet écran,
+     ces dix codes n'existent plus nulle part en clair, chez personne. */
+  .promesse{display:flex;align-items:flex-start;gap:12px;margin:24px 16px 0;padding:16px;
+    border-radius:12px;background:var(--sable)}
+  .promesse input[type=checkbox]{appearance:none;width:24px;height:24px;border-radius:6px;
+    box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte);flex:none;
+    margin:0;cursor:pointer;display:grid;place-items:center}
+  .promesse input[type=checkbox]:checked{background:var(--encre);box-shadow:none}
+  .promesse input[type=checkbox]:checked::after{content:"";width:12px;height:7px;
+    border-left:2px solid #fff;border-bottom:2px solid #fff;transform:translateY(-2px) rotate(-45deg)}
+  .promesse label{font-size:13px;line-height:20px;cursor:pointer}
+  .promesse label b{font-weight:700}
+
+  .geste{padding:16px 16px 32px}
+  .geste .btn{width:100%;height:48px;font-size:15px}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>14:11</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="corps">
+  <h1>And now the paper, whatever you chose</h1>
+  <p class="sous">Your phone's lock is set. These ten codes are the other way in — the one that
+    still works the day the phone is lost, flat, or at home on the table. Each opens the door
+    a single time. They appear once, now.</p>
+</div>
+
+<div class="feuillet">
+  <div class="haut">
+    <div class="h-t">Marché · Bafoussam — C. Fotso</div>
+    <div class="h-d">Made 7 August 2026 · keep this where you keep what matters</div>
+  </div>
+  <div class="grille">
+    <span>7K4M · 2QW9</span><span>PT3B · 8XLD</span>
+    <span>M9VC · 4RHT</span><span>Z2NF · 6BQK</span>
+    <span>4DHY · 9WMP</span><span>QX8L · 3TNR</span>
+    <span>B6KJ · 5FZV</span><span>W3RD · 7NQH</span>
+    <span>N8TC · 2VLB</span><span>H5MQ · 9XKF</span>
+  </div>
+  <div class="gestes">
+    <button class="btn btn--secondaire"><svg><use href="#i-doc"/></svg>Copy</button>
+    <button class="btn btn--secondaire"><svg><use href="#i-telecharger"/></svg>Save</button>
+    <button class="btn btn--secondaire"><svg><use href="#i-doc"/></svg>Print</button>
+  </div>
+</div>
+
+<div class="savoir">
+  <div class="l"><svg><use href="#i-cadenas"/></svg>
+    <div><div class="t">Not on your phone, and not in this shop</div>
+      <div class="d">In the phone, it dies with the phone. In the shop, it burns or floods with
+        the terminal — a copy kept next to the original is not a spare. Take it home.</div></div></div>
+  <div class="l"><svg><use href="#i-horloge"/></svg>
+    <div><div class="t">We tell you when the paper is running out</div>
+      <div class="d">At the last one, a message and a banner that follows you until you make ten new.</div></div></div>
+  <div class="l"><svg><use href="#i-clients"/></svg>
+    <div><div class="t">If you lose the paper too</div>
+      <div class="d">Mme Fotso can let you back in — she is the owner of this shop. You will
+        never be locked out with nobody to call.</div></div></div>
+</div>
+
+<div class="promesse">
+  <input type="checkbox" id="range">
+  <label for="range">I have put this paper somewhere safe — <b>we cannot show these codes
+    again, not even if you ask.</b></label>
+</div>
+
+<div class="geste">
+  <button class="btn btn--primaire" disabled><svg><use href="#i-check"/></svg>Take me to the shop</button>
+</div>

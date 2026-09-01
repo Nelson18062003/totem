@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { compteConnecte } from "@/lib/qui";
+import { quiAdministre } from "@/lib/garde";
 import { textesReglages } from "@noyau/textes/reglages";
 import { journalPour } from "@noyau/textes/journal";
 import { IconWallet } from "../icons";
@@ -11,6 +13,7 @@ import {
   SectionCodes,
   SectionEssaiNotification,
   SectionLangue,
+  SectionMotDePasse,
   SectionQui,
 } from "./interactifs";
 
@@ -20,7 +23,14 @@ export default async function Reglages() {
   const langue = await langueServeur();
   const t = textesReglages[langue];
   const tj = journalPour(langue);
-  const { terminal, sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });
+  // Qui est là, et administre-t-il ? Le compte nomme la carte d'en-tête ;
+  // le droit d'administrer décide si la carte de la console s'affiche.
+  const [moi, admin, donnees] = await Promise.all([
+    compteConnecte(),
+    quiAdministre(),
+    chargerDonnees(langue, { sms: 0, recus: 0 }),
+  ]);
+  const { terminal, sims, raccourcis } = donnees;
   // Une section de codes PAR OPÉRATEUR présent — les cartes en place
   // d'abord. Le repli « Orange » d'autrefois mentait dès qu'une MTN était
   // dans le berceau.
@@ -35,16 +45,38 @@ export default async function Reglages() {
         <p className="mt-1 text-small text-ink-soft">{t.sousTitre}</p>
       </header>
 
-      {/* Compte utilisateur */}
+      {/* Le compte connecté — tel qu'il est en base, jamais un nom inventé.
+          Une session de secours ou un vieux jeton ne désigne personne : la
+          carte montre alors le rôle seul. */}
       <section className="flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 text-body font-medium">
-          N
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 text-body font-medium uppercase">
+          {(moi?.courriel || t.proprietaire).slice(0, 1)}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-body font-medium">Nelson</p>
+          {moi?.courriel && (
+            <p className="truncate text-body font-medium">{moi.courriel}</p>
+          )}
           <p className="truncate text-small text-ink-faint">{t.proprietaire}</p>
         </div>
       </section>
+
+      {/* LA CONSOLE — pour celui qui administre, et lui seul. Les autres ne
+          voient même pas la carte : un lien qui mène à un refus enseigne
+          seulement qu'il existe une porte. */}
+      {admin && (
+        <section>
+          <Link
+            href="/console"
+            className="flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4 transition hover:border-ink-faint"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-body font-medium">{t.console}</p>
+              <p className="mt-0.5 text-small text-ink-faint">{t.consoleSous}</p>
+            </div>
+            <span aria-hidden className="text-ink-faint">›</span>
+          </Link>
+        </section>
+      )}
 
       {/* Grand écran : deux colonnes de réglages, pas une pile sans fin. */}
       <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-10">
@@ -210,6 +242,13 @@ export default async function Reglages() {
             {t.notePin}
           </p>
         </div>
+        {/* Le mot de passe se change ici — pour un COMPTE. La clé de secours
+            n'en a pas à changer : elle vit dans les variables du serveur. */}
+        {moi && (
+          <div className="mt-3">
+            <SectionMotDePasse />
+          </div>
+        )}
       </section>
       </div>
       </div>

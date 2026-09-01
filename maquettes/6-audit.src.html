@@ -1,0 +1,231 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Commands &amp; audit</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .tbl td,.tbl th{white-space:nowrap}
+  .qui{display:flex;align-items:center;gap:8px}
+  .qui .r{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .geste .p{font-size:13px;line-height:18px}
+  .geste .s{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .etapes{display:flex;flex-direction:column;gap:0}
+  .etapes .e{display:grid;grid-template-columns:16px 1fr auto;gap:12px;align-items:center;
+    padding:8px 0;position:relative}
+  .etapes .e:not(:last-child)::after{content:"";position:absolute;left:7px;top:28px;height:16px;
+    width:2px;background:var(--trait);border-radius:999px}
+  .etapes .e .pt{width:16px;height:16px;border-radius:999px;background:var(--positif-fond);
+    display:grid;place-items:center}
+  .etapes .e .pt svg{width:16px;height:16px;stroke:var(--positif)}
+  .etapes .e .t{font-size:13px;line-height:20px}
+  .etapes .e .q{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .charge{background:var(--fond2);border-radius:10px;padding:12px 16px;
+    font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:20px;color:var(--secondaire)}
+  .charge b{color:var(--encre)}
+  .jamais{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .jamais .item{display:flex;gap:12px}
+  .jamais .ic{width:32px;height:32px;border-radius:10px;background:var(--negatif-fond);
+    display:grid;place-items:center;flex:none}
+  .jamais .ic svg{stroke:var(--negatif)}
+  .jamais .t{font-size:13px;line-height:20px;font-weight:700}
+  .jamais .d{font-size:12px;line-height:18px;color:var(--tertiaire);margin-top:2px}
+  .urgence{display:flex;flex-direction:column;gap:8px}
+  .urgence .note{font-size:12px;line-height:18px;color:var(--tertiaire)}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="audit">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>Commands &amp; audit</h1>
+      <span class="ariane">The journal only grows</span>
+      <div class="action-page">
+        <button class="btn btn--secondaire"><svg><use href="#i-telecharger"/></svg>Export the journal</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <div class="kpis k4">
+        <div class="kpi">
+          <div class="l">Asked this week</div>
+          <div class="v">38<span class="unite">commands</span></div>
+          <div class="s">14 from here · 24 from the shops' robots</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Refused</div>
+          <div class="v">1</div>
+          <div class="s">a terminal is allowed to say no</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Money moved by an admin</div>
+          <div class="v">0</div>
+          <div class="s" style="color:var(--positif)">and it cannot be anything else</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Median answer</div>
+          <div class="v">6<span class="unite">seconds</span></div>
+          <div class="s">from asked to done</div>
+        </div>
+      </div>
+
+      <div class="duo">
+        <div class="colonne principal">
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>The journal</h2>
+              <div class="a-droite">
+                <a class="onglet on" href="#" style="height:28px;font-size:12px">Everything <span class="compte">38</span></a>
+                <a class="onglet" href="#" style="height:28px;font-size:12px">From this console <span class="compte">14</span></a>
+                <a class="onglet" href="#" style="height:28px;font-size:12px">Refused <span class="compte">1</span></a>
+              </div>
+            </div>
+            <table class="tbl">
+              <thead>
+                <tr><th>When</th><th>Who asked</th><th>What was asked</th><th class="num">Outcome</th></tr>
+              </thead>
+              <tbody>
+                <tr class="choisie" data-vers="cmd">
+                  <td class="pale">14:02</td>
+                  <td><div class="qui">Nelson<span class="chip carree">console</span></div></td>
+                  <td><div class="geste"><div class="p">Issue that receipt again, as a transfer</div><div class="s"><span class="mono">douala-akwa-01</span> · TM-2026-0805-0075</div></div></td>
+                  <td class="num"><span class="chip ok">done · 18s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">13:47</td>
+                  <td><div class="qui">M. Kamga<span class="chip carree">robot</span></div></td>
+                  <td><div class="geste"><div class="p">Check both balances</div><div class="s"><span class="mono">douala-akwa-01</span> · Orange ··4177 and MTN ··9021</div></div></td>
+                  <td class="num"><span class="chip ok">done · 6s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">09:40</td>
+                  <td><div class="qui">J. Eyenga<span class="chip carree">robot</span></div></td>
+                  <td><div class="geste"><div class="p">Check the balance</div><div class="s"><span class="mono">douala-akwa-01</span> · Orange ··4177, for the counter</div></div></td>
+                  <td class="num"><span class="chip ok">done · 5s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Tue 16:40</td>
+                  <td><div class="qui">Nelson<span class="chip carree">console</span></div></td>
+                  <td><div class="geste"><div class="p">Send money from Orange ··4177</div><div class="s"><span class="mono">douala-akwa-01</span> · an admin never operates money</div></div></td>
+                  <td class="num"><span class="chip danger">refused</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Tue 11:51</td>
+                  <td><div class="qui">Totem<span class="chip carree">automatic</span></div></td>
+                  <td><div class="geste"><div class="p">Take stable-2.4.2 on arrival</div><div class="s"><span class="mono">bafoussam-marche-01</span> · it catches up before it serves</div></div></td>
+                  <td class="num"><span class="chip ok">done · 2m 30s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Tue 11:47</td>
+                  <td><div class="qui">Nelson<span class="chip carree">console</span></div></td>
+                  <td><div class="geste"><div class="p">Enrol this terminal</div><div class="s"><span class="mono">bafoussam-marche-01</span> · two modems, two SIMs found</div></div></td>
+                  <td class="num"><span class="chip ok">done · 4m</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Tue 09:05</td>
+                  <td><div class="qui">Nelson<span class="chip carree">console</span></div></td>
+                  <td><div class="geste"><div class="p">Move everyone to stable-2.4.2</div><div class="s"><span class="mono">the whole fleet</span> · one at a time, never mid-operation</div></div></td>
+                  <td class="num"><span class="chip ok">done · 26m</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Mon 14:12</td>
+                  <td><div class="qui">Pipeline<span class="chip carree">automatic</span></div></td>
+                  <td><div class="geste"><div class="p">Add the trading-name column</div><div class="s"><span class="mono">the cloud</span> · change #87, by the pipeline</div></div></td>
+                  <td class="num"><span class="chip ok">done · 1.2s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">2 days ago</td>
+                  <td><div class="qui">Mme Fotso<span class="chip carree">web</span></div></td>
+                  <td><div class="geste"><div class="p">Invite C. Fotso as a viewer</div><div class="s"><span class="mono">—</span> · nothing exists until she accepts</div></div></td>
+                  <td class="num"><span class="chip attention">waiting</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Mon 09:02</td>
+                  <td><div class="qui">M. Talla<span class="chip carree">robot</span></div></td>
+                  <td><div class="geste"><div class="p">Check the balance</div><div class="s"><span class="mono">douala-deido-01</span> · MTN ··1170</div></div></td>
+                  <td class="num"><span class="chip ok">done · 7s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Sun 19:40</td>
+                  <td><div class="qui">Totem<span class="chip carree">automatic</span></div></td>
+                  <td><div class="geste"><div class="p">Catch up 12 messages after the outage</div><div class="s"><span class="mono">yaounde-centre-01</span> · read in the order they arrived</div></div></td>
+                  <td class="num"><span class="chip ok">done · 41s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Sun 08:15</td>
+                  <td><div class="qui">Mme Ngo<span class="chip carree">robot</span></div></td>
+                  <td><div class="geste"><div class="p">Send the week’s receipts by email</div><div class="s"><span class="mono">yaounde-centre-01</span> · 23 documents</div></div></td>
+                  <td class="num"><span class="chip ok">done · 12s</span></td>
+                </tr>
+                <tr data-vers="cmd">
+                  <td class="pale">Sat 16:22</td>
+                  <td><div class="qui">Nelson<span class="chip carree">console</span></div></td>
+                  <td><div class="geste"><div class="p">Read the journal of the last hour</div><div class="s"><span class="mono">bafoussam-01</span> · after the second power cut</div></div></td>
+                  <td class="num"><span class="chip ok">done · 3s</span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="carte-pied">
+              Showing the last 13 of 38 this week
+              <span class="a-droite">kept for 5 years · never rewritten</span>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- ============ le détail d’une commande ============ -->
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div>
+              <div class="titre">Command 4,912</div>
+              <div class="sous">Today 14:02 · asked by Nelson from this console</div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>What was actually sent</h3>
+            <div class="charge">
+              { receipt: <b>TM-2026-0805-0075</b>,<br>
+              &nbsp;&nbsp;kind: <b>"transfer"</b>,<br>
+              &nbsp;&nbsp;terminal: <b>douala-akwa-01</b> }
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>Where it went</h3>
+            <div class="etapes">
+              <div class="e"><span class="pt"><svg><use href="#i-check"/></svg></span>
+                <span class="t">Written to the queue</span><span class="q">14:02:04</span></div>
+              <div class="e"><span class="pt"><svg><use href="#i-check"/></svg></span>
+                <span class="t">Picked up by the terminal</span><span class="q">14:02:09</span></div>
+              <div class="e"><span class="pt"><svg><use href="#i-check"/></svg></span>
+                <span class="t">Receipt rebuilt and filed</span><span class="q">14:02:22</span></div>
+              <div class="e"><span class="pt"><svg><use href="#i-check"/></svg></span>
+                <span class="t">Sent to the shop’s robot</span><span class="q">14:02:22</span></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <h3>Proof</h3>
+            <div class="dl">
+              <div class="r"><span class="l">Signed by</span><span class="v">douala-akwa-01</span></div>
+              <div class="r"><span class="l">Entry</span><span class="v mono">#4912 · a7f0c2</span></div>
+              <div class="r"><span class="l">Follows</span><span class="v mono">#4911 · 3be914</span></div>
+              <div class="r"><span class="l">PIN in this record</span><span class="v fort">none, ever</span></div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <button class="btn btn--secondaire" style="width:100%">
+              <svg><use href="#i-telecharger"/></svg>Download this entry
+            </button>
+            <p class="t12 pale" style="margin-top:12px">Pausing or disconnecting a terminal is done from the terminal itself, behind its own menu — never from a line of history.</p>
+          </div>
+        </aside>
+      </div>
+
+    </div>
+  </main>
+</div>

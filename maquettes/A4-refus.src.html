@@ -1,0 +1,132 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — When it goes wrong</title>
+<!--SYSTEME-->
+<style>
+  .planche{padding:32px;display:flex;flex-direction:column;gap:24px;min-height:940px}
+  .planche-tete{display:flex;align-items:center;gap:16px}
+  .planche-tete .marque-porte{display:flex;align-items:center;gap:10px}
+  .planche-tete .logo{height:28px;width:148px;display:block}
+  .planche-tete .badge{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.14em;
+    color:var(--laterite);box-shadow:inset 0 0 0 1px var(--laterite);border-radius:6px;padding:2px 6px}
+  .planche-tete h1{font-size:20px;line-height:28px;font-weight:700;letter-spacing:-.015em;margin-left:16px}
+  .planche-tete .ariane{font-size:13px;line-height:20px;color:var(--tertiaire);margin-right:auto}
+  .cas{display:grid;grid-template-columns:repeat(2,1fr);gap:24px}
+  .cas .etui{background:var(--carte);border-radius:10px;box-shadow:var(--ombre);padding:24px}
+  .cas h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:16px}
+  .cas .titre{font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.01em}
+  .cas .dit{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+  .cas .champ{margin-top:16px}
+  .cas input.code{width:100%;height:48px;padding:0 12px;border:none;border-radius:6px;
+    background:var(--carte);box-shadow:inset 0 0 0 1px var(--trait-controle);text-align:center;
+    font:700 20px/24px 'DM Sans';letter-spacing:.34em;font-variant-numeric:tabular-nums;color:var(--encre)}
+  /* #c98f8f ne tenait que 2,69:1 sur blanc : le liseré d'erreur était une
+     couleur qu'on ne voyait pas. #bc4e4e tient 4,84:1 (WCAG 2.2 §1.4.11). */
+  .cas input.code.faux{box-shadow:inset 0 0 0 1.5px #bc4e4e}
+  .cas .gestes{display:flex;gap:8px;margin-top:16px}
+  .cas .gestes .btn{flex:1}
+  .frontiere{background:var(--carte);border-radius:10px;box-shadow:var(--ombre);padding:20px 24px}
+  .frontiere h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:16px}
+  .frontiere .grille{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  .frontiere .l{display:flex;gap:12px}
+  .frontiere .l svg{width:20px;height:20px;stroke:var(--negatif);flex:none;margin-top:1px}
+  .frontiere .t{font-size:13px;line-height:20px;font-weight:700}
+  .frontiere .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body>
+<div class="planche">
+  <div class="planche-tete">
+    <div class="marque-porte">
+      <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+      <span class="badge">ADMIN</span>
+    </div>
+    <h1>When the door says no</h1>
+    <span class="ariane">Every refusal, and exactly what the person is told</span>
+    <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+  </div>
+
+  <div class="cas">
+    <div class="etui">
+      <h2>The digits are wrong</h2>
+      <div class="titre">That code doesn’t match</div>
+      <div class="dit">Two tries left before we pause this address for a quarter of an hour.
+        Check you are reading the newest email — an older one still shows an old code.</div>
+      <div class="champ"><input class="code faux" type="text" inputmode="numeric"
+        autocomplete="one-time-code" value="408 913" aria-invalid="true"
+        aria-describedby="refus-code"></div>
+      <div class="avis avis--refus" id="refus-code" role="alert" style="margin-top:12px">
+        <svg class="ic"><use href="#i-attention"/></svg>
+        <span>Wrong code · 1 of 3 tries used</span>
+      </div>
+      <div class="gestes">
+        <button class="btn btn--secondaire">Send another code</button>
+        <button class="btn btn--primaire">Try again</button>
+      </div>
+    </div>
+
+    <div class="etui">
+      <h2>The code has died of old age</h2>
+      <div class="titre">That code has expired</div>
+      <div class="dit">Codes last ten minutes, on purpose. Nothing is wrong with your account —
+        ask for a fresh one and it will arrive in a few seconds.</div>
+      <div class="champ"><input class="code" type="text" value="— — —  — — —" readonly></div>
+      <div class="avis avis--attente" style="margin-top:12px">
+        <svg class="ic"><use href="#i-horloge"/></svg>
+        <span>Sent at 13:47 · expired at 13:57</span>
+      </div>
+      <div class="gestes">
+        <button class="btn btn--primaire" style="flex:1">Send me a fresh code</button>
+      </div>
+    </div>
+
+    <div class="etui">
+      <h2>Too many tries</h2>
+      <div class="titre">We have paused this address</div>
+      <div class="dit">Three wrong codes in a row. The pause lasts fifteen minutes and protects
+        you, not us — someone else may be trying your address. An email has just told you so.</div>
+      <div class="avis avis--refus" role="alert" style="margin-top:16px">
+        <svg class="ic"><use href="#i-cadenas"/></svg>
+        <span>Paused until 14:19 · 12 minutes left</span>
+      </div>
+      <div class="gestes">
+        <button class="btn btn--secondaire" style="flex:1">Use my authenticator app instead</button>
+      </div>
+      <p class="t12 pale" style="margin-top:12px">The app keeps working during the pause: it proves
+        you hold the phone, which is what the pause was protecting.</p>
+    </div>
+
+    <div class="etui">
+      <h2>The account itself is closed</h2>
+      <div class="titre">This account has been suspended</div>
+      <div class="dit">Signing in is off for this address. Nothing has been deleted — receipts,
+        journals and balances are untouched, and they stay readable by whoever still has access.</div>
+      <div class="avis avis--refus" role="alert" style="margin-top:16px">
+        <svg class="ic"><use href="#i-fermer"/></svg>
+        <span>Suspended on 6 August by Nelson · super admin</span>
+      </div>
+      <div class="gestes">
+        <button class="btn btn--secondaire" style="flex:1">Write to the person who suspended it</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="frontiere">
+    <h2>What the door never says, whatever happens</h2>
+    <div class="grille">
+      <div class="l"><svg><use href="#i-fermer"/></svg>
+        <div><div class="t">Whether the address exists</div>
+          <div class="d">An unknown address gets the same page and the same wait as a known one.
+            Otherwise the door becomes a list of who works here.</div></div></div>
+      <div class="l"><svg><use href="#i-fermer"/></svg>
+        <div><div class="t">Which part was wrong</div>
+          <div class="d">Never “right address, wrong code”. The refusal is one sentence, always
+            the same, and it never narrows the guess for anyone.</div></div></div>
+      <div class="l"><svg><use href="#i-fermer"/></svg>
+        <div><div class="t">Anything about the money</div>
+          <div class="d">No balance, no shop name, no PIN — not before signing in, and never
+            on this page. A door is a door.</div></div></div>
+    </div>
+  </div>
+</div>

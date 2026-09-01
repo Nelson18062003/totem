@@ -1,0 +1,242 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Alerts</title>
+<!--SYSTEME-->
+<style>
+  .colonne{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .inc-tete{display:flex;align-items:flex-start;gap:16px;padding:20px}
+  .inc-tete .ic{width:40px;height:40px;border-radius:12px;background:var(--positif-fond);
+    display:grid;place-items:center;flex:none}
+  .inc-tete .ic svg{stroke:var(--positif)}
+  .inc-tete .t{font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.01em}
+  .inc-tete .s{font-size:13px;line-height:20px;color:var(--tertiaire);margin-top:2px}
+  .inc-tete .verdict{margin-left:auto;text-align:right;flex:none}
+
+  .minutes{padding:4px 20px 20px}
+  .minute{display:grid;grid-template-columns:56px 32px 1fr;gap:16px;padding:12px 0;position:relative}
+  .minute:not(:last-child)::after{content:"";position:absolute;left:71px;top:48px;bottom:-4px;
+    width:2px;background:var(--trait);border-radius:999px}
+  .minute .h{font-size:12px;line-height:16px;color:var(--tertiaire);text-align:right;padding-top:8px}
+  .minute .pt{width:32px;height:32px;border-radius:999px;background:var(--fond2);
+    display:grid;place-items:center;z-index:1}
+  .minute .pt svg{stroke:var(--secondaire)}
+  .minute .pt.alerte{background:var(--alerte-fond)} .minute .pt.alerte svg{stroke:var(--alerte)}
+  .minute .pt.ok{background:var(--positif-fond)} .minute .pt.ok svg{stroke:var(--positif)}
+  .minute .pt.humain{background:var(--sable)} .minute .pt.humain svg{stroke:var(--laterite)}
+  .minute .t{font-size:13px;line-height:20px;font-weight:700;padding-top:6px}
+  .minute .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:2px}
+  .minute .tags{display:flex;gap:8px;margin-top:8px}
+
+  .repli{display:flex;align-items:center;gap:12px;padding:0 20px;height:44px;
+    border-top:1px solid var(--hairline)}
+  .repli .t{font-size:13px;line-height:20px;font-weight:700}
+  .repli .s{font-size:12px;line-height:16px;color:var(--tertiaire)}
+  .repli .a-droite{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+  .canal-n{display:flex;align-items:center;gap:12px;padding:12px 0}
+  .canal-n+.canal-n{border-top:1px solid var(--hairline)}
+  .canal-n .ic{width:28px;height:28px;border-radius:8px;background:var(--fond2);
+    display:grid;place-items:center;flex:none}
+  .canal-n .ic svg{stroke:var(--secondaire)}
+  .canal-n .t{font-size:13px;line-height:20px;font-weight:700}
+  .canal-n .d{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:2px}
+  .canal-n .commut{margin-left:auto;width:44px;height:32px;display:grid;place-items:center;
+    border:none;background:transparent;padding:0;cursor:pointer;flex:none}
+  .calme{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;
+    background:var(--sable);font-size:12px;line-height:18px;color:var(--secondaire);margin-top:16px}
+  .calme svg{stroke:var(--laterite);flex:none}
+  .jamais .l{display:flex;gap:12px}
+  .jamais .l+.l{margin-top:16px}
+  .jamais .ic{width:28px;height:28px;border-radius:999px;background:var(--fond2);
+    display:grid;place-items:center;flex:none}
+  .jamais .ic svg{stroke:var(--tertiaire)}
+  .jamais .t{font-size:13px;line-height:20px;font-weight:700}
+  .jamais .d{font-size:12px;line-height:18px;color:var(--tertiaire);margin-top:2px}
+</style>
+<!--SPRITE-->
+
+<body data-ecran="alerts">
+<div class="app">
+  <!--RAIL-->
+  <main>
+    <header class="barre">
+      <h1>Alerts</h1>
+      <span class="ariane">Nothing needs you right now</span>
+      <div class="action-page">
+        <button class="btn btn--primaire"><svg><use href="#i-telephone"/></svg>Send a test alert to my phone</button>
+      </div>
+      <span class="sep"></span>
+      <!--BARRE-DROITE-->
+    </header>
+
+    <div class="page">
+
+      <div class="kpis k4">
+        <div class="kpi">
+          <div class="l">Open right now</div>
+          <div class="v">0</div>
+          <div class="s">every terminal is reporting</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Resolved this week</div>
+          <div class="v">3<span class="unite">incidents</span></div>
+          <div class="s">1 phone call · 0 hands on the money</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Longest this week</div>
+          <div class="v">55<span class="unite">minutes</span></div>
+          <div class="s">the Orange mast, Tuesday — it closed itself</div>
+        </div>
+        <div class="kpi">
+          <div class="l">Median time to resolve</div>
+          <div class="v">38<span class="unite">minutes</span></div>
+          <div class="s">from the alert to the terminal being back</div>
+        </div>
+      </div>
+
+      <div class="duo">
+        <div class="colonne principal">
+          <section class="carte">
+            <div class="inc-tete">
+              <span class="ic"><svg class="ic20"><use href="#i-check-cercle"/></svg></span>
+              <div>
+                <div class="t">Yaoundé-Centre went quiet</div>
+                <div class="s">Thursday · yaounde-centre-01, in Mme Ngo’s pharmacy · the internet box had burnt out</div>
+              </div>
+              <div class="verdict">
+                <span class="chip ok">resolved in 14m</span>
+                <div class="s" style="margin-top:4px">0 messages lost</div>
+              </div>
+            </div>
+
+            <div class="minutes">
+              <div class="minute">
+                <span class="h">15:50</span>
+                <span class="pt alerte"><svg class="ic16"><use href="#i-alertes"/></svg></span>
+                <div>
+                  <div class="t">Silent for more than ten minutes</div>
+                  <div class="d">Last heartbeat 15:39. Our side noticed, not the shop — nobody there had to call anyone.</div>
+                  <div class="tags"><span class="chip">phone · delivered 15:50</span><span class="chip">WhatsApp · read 15:51</span></div>
+                </div>
+              </div>
+              <div class="minute">
+                <span class="h">15:54</span>
+                <span class="pt humain"><svg class="ic16"><use href="#i-telephone"/></svg></span>
+                <div>
+                  <div class="t">You called the pharmacy</div>
+                  <div class="d">Mme Ngo answered on the second ring: the internet box was dead — a burnt smell, no lights at all.</div>
+                </div>
+              </div>
+              <div class="minute">
+                <span class="h">16:01</span>
+                <span class="pt"><svg class="ic16"><use href="#i-reseau"/></svg></span>
+                <div>
+                  <div class="t">She plugged in the spare 4G router</div>
+                  <div class="d">The one that ships in the box with every terminal. One cable, nothing to set, no password to type.</div>
+                </div>
+              </div>
+              <div class="minute">
+                <span class="h">16:04</span>
+                <span class="pt ok"><svg class="ic16"><use href="#i-pouls"/></svg></span>
+                <div>
+                  <div class="t">The terminal came back on its own</div>
+                  <div class="d">It calls out to us, so there is no port to open and nothing to unblock at the shop.</div>
+                </div>
+              </div>
+              <div class="minute">
+                <span class="h">16:05</span>
+                <span class="pt ok"><svg class="ic16"><use href="#i-check-cercle"/></svg></span>
+                <div>
+                  <div class="t">The 12 waiting messages were read, in order</div>
+                  <div class="d">Everything that arrived during the outage was held on the terminal, then read and receipted as usual.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="carte-pied">
+              14 minutes from the alert to the terminal being back — no command was sent from this console
+              <span class="a-droite">one phone call, one cable</span>
+            </div>
+          </section>
+
+          <section class="carte">
+            <div class="carte-tete">
+              <h2>Earlier this week</h2>
+              <div class="a-droite">2 incidents · both closed themselves</div>
+            </div>
+            <div class="repli">
+              <svg class="ic16" style="color:var(--tertiaire)"><use href="#i-chevron"/></svg>
+              <div><div class="t">Orange mast down — Douala</div>
+                <div class="s">Tuesday 16:25 → 17:20 · three SIMs lost signal at once</div></div>
+              <div class="a-droite">
+                <span class="chip ok">closed itself · 55m</span>
+                <span class="chip">12 messages caught up</span>
+              </div>
+            </div>
+            <div class="repli">
+              <svg class="ic16" style="color:var(--tertiaire)"><use href="#i-chevron"/></svg>
+              <div><div class="t">Two power cuts — Bafoussam</div>
+                <div class="s">Monday · bafoussam-01 · the battery bridged both</div></div>
+              <div class="a-droite">
+                <span class="chip ok">47 min on battery</span>
+                <span class="chip">clean restart</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============ comment on vous prévient ============ -->
+        <aside class="panneau">
+          <div class="panneau-tete">
+            <div>
+              <div class="titre">How you get told</div>
+              <div class="sous">And when you deliberately don’t</div>
+            </div>
+          </div>
+
+          <div class="bloc">
+            <div class="canal-n">
+              <span class="ic"><svg class="ic16"><use href="#i-telephone"/></svg></span>
+              <div><div class="t">Your phone</div><div class="d">Always first · 3s after the alert</div></div>
+              <button class="commut" role="switch" aria-checked="true" aria-label="Notification channel"><span class="interrupteur on"></span></button>
+            </div>
+            <div class="canal-n">
+              <span class="ic"><svg class="ic16"><use href="#i-envoi"/></svg></span>
+              <div><div class="t">WhatsApp</div><div class="d">+33 ·· ·· 89 · read receipts on</div></div>
+              <button class="commut" role="switch" aria-checked="true" aria-label="Notification channel"><span class="interrupteur on"></span></button>
+            </div>
+            <div class="canal-n">
+              <span class="ic"><svg class="ic16"><use href="#i-doc"/></svg></span>
+              <div><div class="t">Email</div><div class="d">Incidents, plus a digest every Monday</div></div>
+              <button class="commut" role="switch" aria-checked="true" aria-label="Notification channel"><span class="interrupteur on"></span></button>
+            </div>
+            <div class="calme">
+              <svg class="ic16"><use href="#i-horloge"/></svg>
+              <span>Quiet from <b>23:00 to 07:00</b>, Paris time. Only “a terminal has gone silent” is allowed to ring through the night.</span>
+            </div>
+          </div>
+
+          <div class="bloc jamais">
+            <h3>What never wakes you</h3>
+            <div class="l">
+              <span class="ic"><svg class="ic16"><use href="#i-doc"/></svg></span>
+              <div><div class="t">The ordinary life of money</div>
+                <div class="d">A message understood, a receipt issued, a balance refreshed — 1,412 of those this week, and not one notification.</div></div>
+            </div>
+            <div class="l">
+              <span class="ic"><svg class="ic16"><use href="#i-batterie"/></svg></span>
+              <div><div class="t">A power cut the battery absorbs</div>
+                <div class="d">Bafoussam bridged 47 minutes on Monday. You read about it the next morning; it did not ring at night.</div></div>
+            </div>
+            <div class="l">
+              <span class="ic"><svg class="ic16"><use href="#i-signal"/></svg></span>
+              <div><div class="t">A signal that dips</div>
+                <div class="d">The alert waits for ten silent minutes. A blip never becomes a page.</div></div>
+            </div>
+          </div>
+
+
+        </aside>
+      </div>
+
+    </div>
+  </main>
+</div>

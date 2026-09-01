@@ -1,0 +1,172 @@
+<meta charset="utf-8"><title>TOTEM ADMIN — Add an authenticator app</title>
+<!--SYSTEME-->
+<style>
+  .parcours{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  .pas{background:var(--carte);border-radius:10px;box-shadow:var(--ombre);padding:24px;
+    display:flex;flex-direction:column}
+  .pas .rang{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .pas .rond{width:24px;height:24px;border-radius:999px;background:var(--encre);color:#fff;
+    display:grid;place-items:center;font-size:12px;line-height:16px;font-weight:700;flex:none}
+  /* la carte de rechange ne porte pas de numéro : elle ne fait pas avancer
+     l'escalier, elle offre l'autre marche du même étage. */
+  .pas .rond--ou{background:transparent;color:var(--tertiaire);
+    box-shadow:inset 0 0 0 1px var(--trait-controle)}
+  .pas .rang h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .pas .titre{font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.01em}
+  .pas .dit{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+  .appli-liste{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+  .appli{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px;border-radius:6px;
+    background:var(--fond2);font-size:13px;line-height:20px}
+  .appli svg{width:16px;height:16px;stroke:var(--tertiaire);flex:none}
+  .qr{width:180px;height:180px;margin:16px auto 0;display:block;border-radius:6px}
+  .cle{margin-top:16px}
+  .cle .v{font-family:ui-monospace,Menlo,monospace;font-size:14px;line-height:20px;font-weight:700;
+    letter-spacing:.08em;background:var(--fond2);border-radius:6px;padding:12px;text-align:center}
+  .cle .q{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:8px}
+  .pas .bas{margin-top:auto;padding-top:16px}
+  .pas input.code{width:100%;height:48px;padding:0 12px;border:none;border-radius:6px;
+    background:var(--carte);box-shadow:inset 0 0 0 1px var(--trait-controle);text-align:center;
+    font:700 20px/24px 'DM Sans';letter-spacing:.34em;font-variant-numeric:tabular-nums;color:var(--encre)}
+  .planche{padding:32px;display:flex;flex-direction:column;gap:24px;min-height:940px}
+  .planche-tete{display:flex;align-items:center;gap:16px}
+  .planche-tete .logo{height:28px;width:148px;display:block}
+  .planche-tete .badge{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.14em;
+    color:var(--laterite);box-shadow:inset 0 0 0 1px var(--laterite);border-radius:6px;padding:2px 6px}
+  .planche-tete h1{font-size:20px;line-height:28px;font-weight:700;letter-spacing:-.015em;margin-left:16px}
+  .planche-tete .ariane{font-size:13px;line-height:20px;color:var(--tertiaire);margin-right:auto}
+  .marque-porte{display:flex;align-items:center;gap:10px}
+  .secours{display:grid;grid-template-columns:1fr 420px;gap:24px;background:var(--carte);
+    border-radius:10px;box-shadow:var(--ombre);padding:24px}
+  .secours .rang{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .secours .rond{width:24px;height:24px;border-radius:999px;background:var(--laterite);color:#fff;
+    display:grid;place-items:center;font-size:12px;line-height:16px;font-weight:700;flex:none}
+  .secours h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire)}
+  .secours .titre{font-size:16px;line-height:24px;font-weight:700;letter-spacing:-.01em}
+  .secours .dit{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px;max-width:64ch}
+  .grille-codes{display:grid;grid-template-columns:repeat(2,220px);gap:8px 24px;margin-top:16px}
+  .grille-codes span{font-family:ui-monospace,Menlo,monospace;font-size:14px;line-height:20px;
+    font-weight:700;letter-spacing:.06em;background:var(--fond2);border-radius:6px;padding:8px 12px;
+    text-align:center}
+  .gestes-codes{display:flex;gap:8px;margin-top:16px}
+  .promesse{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:13px;line-height:20px}
+  .promesse input[type=checkbox]{appearance:none;width:24px;height:24px;border-radius:6px;
+    box-shadow:inset 0 0 0 1px var(--trait-controle);background:var(--carte);flex:none;
+    margin:0;cursor:pointer;display:grid;place-items:center}
+  .promesse input[type=checkbox]:checked{background:var(--encre);box-shadow:none}
+  .promesse input[type=checkbox]:checked::after{content:"";width:12px;height:7px;
+    border-left:2px solid #fff;border-bottom:2px solid #fff;transform:translateY(-2px) rotate(-45deg)}
+  .secours .droite{border-left:1px solid var(--hairline);padding-left:24px}
+  .secours .etat{display:flex;gap:12px;align-items:flex-start;margin-top:12px;
+    font-size:13px;line-height:20px;color:var(--secondaire)}
+  .secours .etat .chip{flex:none}
+</style>
+<!--SPRITE-->
+
+<body>
+<div class="planche">
+  <div class="planche-tete">
+    <div class="marque-porte">
+      <svg class="logo" data-marque role="img" aria-label="TOTEM"><use href="#marque-logo"/></svg>
+      <span class="badge">ADMIN</span>
+    </div>
+    <h1>Add an authenticator app</h1>
+    <span class="ariane">Four steps · nothing is saved until the last one works</span>
+    <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+  </div>
+
+  <div class="parcours">
+    <div class="pas">
+      <div class="rang"><span class="rond">1</span><h2>Install</h2></div>
+      <div class="titre">Get an app on your phone</div>
+      <div class="dit">Any of these three works, they are free, and they hold nothing but codes.</div>
+      <div class="appli-liste">
+        <div class="appli"><svg><use href="#i-telephone"/></svg>Google Authenticator</div>
+        <div class="appli"><svg><use href="#i-telephone"/></svg>Microsoft Authenticator</div>
+        <div class="appli"><svg><use href="#i-telephone"/></svg>FreeOTP</div>
+      </div>
+      <div class="bas"><p class="t12 pale">It works with no network at all — useful the day the
+        internet box burns out.</p></div>
+    </div>
+
+    <div class="pas">
+      <div class="rang"><span class="rond">2</span><h2>Scan</h2></div>
+      <div class="titre">Point it at this square</div>
+      <div class="dit">Open the app, choose “add an account”, and hold your phone up to the screen.</div>
+      <svg class="qr" viewBox="-1 -1 27 27" shape-rendering="crispEdges" data-illustration><rect x="-1" y="-1" width="27" height="27" fill="#fff"/><g fill="#16171a"><rect x="0" y="0" width="1" height="1"/><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="6" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="10" y="0" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/><rect x="15" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/><rect x="18" y="0" width="1" height="1"/><rect x="19" y="0" width="1" height="1"/><rect x="20" y="0" width="1" height="1"/><rect x="21" y="0" width="1" height="1"/><rect x="22" y="0" width="1" height="1"/><rect x="23" y="0" width="1" height="1"/><rect x="24" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="8" y="1" width="1" height="1"/><rect x="12" y="1" width="1" height="1"/><rect x="15" y="1" width="1" height="1"/><rect x="18" y="1" width="1" height="1"/><rect x="24" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="10" y="2" width="1" height="1"/><rect x="12" y="2" width="1" height="1"/><rect x="13" y="2" width="1" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="18" y="2" width="1" height="1"/><rect x="20" y="2" width="1" height="1"/><rect x="21" y="2" width="1" height="1"/><rect x="22" y="2" width="1" height="1"/><rect x="24" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="12" y="3" width="1" height="1"/><rect x="13" y="3" width="1" height="1"/><rect x="14" y="3" width="1" height="1"/><rect x="15" y="3" width="1" height="1"/><rect x="16" y="3" width="1" height="1"/><rect x="18" y="3" width="1" height="1"/><rect x="20" y="3" width="1" height="1"/><rect x="21" y="3" width="1" height="1"/><rect x="22" y="3" width="1" height="1"/><rect x="24" y="3" width="1" height="1"/><rect x="0" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="9" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="13" y="4" width="1" height="1"/><rect x="14" y="4" width="1" height="1"/><rect x="16" y="4" width="1" height="1"/><rect x="18" y="4" width="1" height="1"/><rect x="20" y="4" width="1" height="1"/><rect x="21" y="4" width="1" height="1"/><rect x="22" y="4" width="1" height="1"/><rect x="24" y="4" width="1" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="11" y="5" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="13" y="5" width="1" height="1"/><rect x="15" y="5" width="1" height="1"/><rect x="16" y="5" width="1" height="1"/><rect x="18" y="5" width="1" height="1"/><rect x="24" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="3" y="6" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="5" y="6" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="8" y="6" width="1" height="1"/><rect x="12" y="6" width="1" height="1"/><rect x="14" y="6" width="1" height="1"/><rect x="15" y="6" width="1" height="1"/><rect x="18" y="6" width="1" height="1"/><rect x="19" y="6" width="1" height="1"/><rect x="20" y="6" width="1" height="1"/><rect x="21" y="6" width="1" height="1"/><rect x="22" y="6" width="1" height="1"/><rect x="23" y="6" width="1" height="1"/><rect x="24" y="6" width="1" height="1"/><rect x="11" y="7" width="1" height="1"/><rect x="12" y="7" width="1" height="1"/><rect x="14" y="7" width="1" height="1"/><rect x="15" y="7" width="1" height="1"/><rect x="16" y="7" width="1" height="1"/><rect x="1" y="8" width="1" height="1"/><rect x="2" y="8" width="1" height="1"/><rect x="4" y="8" width="1" height="1"/><rect x="7" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="9" y="8" width="1" height="1"/><rect x="10" y="8" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="13" y="8" width="1" height="1"/><rect x="14" y="8" width="1" height="1"/><rect x="15" y="8" width="1" height="1"/><rect x="20" y="8" width="1" height="1"/><rect x="22" y="8" width="1" height="1"/><rect x="24" y="8" width="1" height="1"/><rect x="1" y="9" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/><rect x="5" y="9" width="1" height="1"/><rect x="7" y="9" width="1" height="1"/><rect x="9" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="11" y="9" width="1" height="1"/><rect x="12" y="9" width="1" height="1"/><rect x="13" y="9" width="1" height="1"/><rect x="14" y="9" width="1" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="20" y="9" width="1" height="1"/><rect x="21" y="9" width="1" height="1"/><rect x="22" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/><rect x="0" y="10" width="1" height="1"/><rect x="2" y="10" width="1" height="1"/><rect x="4" y="10" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="7" y="10" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="11" y="10" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="13" y="10" width="1" height="1"/><rect x="15" y="10" width="1" height="1"/><rect x="16" y="10" width="1" height="1"/><rect x="17" y="10" width="1" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="19" y="10" width="1" height="1"/><rect x="21" y="10" width="1" height="1"/><rect x="23" y="10" width="1" height="1"/><rect x="1" y="11" width="1" height="1"/><rect x="4" y="11" width="1" height="1"/><rect x="10" y="11" width="1" height="1"/><rect x="11" y="11" width="1" height="1"/><rect x="12" y="11" width="1" height="1"/><rect x="14" y="11" width="1" height="1"/><rect x="16" y="11" width="1" height="1"/><rect x="18" y="11" width="1" height="1"/><rect x="21" y="11" width="1" height="1"/><rect x="22" y="11" width="1" height="1"/><rect x="23" y="11" width="1" height="1"/><rect x="24" y="11" width="1" height="1"/><rect x="2" y="12" width="1" height="1"/><rect x="3" y="12" width="1" height="1"/><rect x="4" y="12" width="1" height="1"/><rect x="12" y="12" width="1" height="1"/><rect x="13" y="12" width="1" height="1"/><rect x="14" y="12" width="1" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="23" y="12" width="1" height="1"/><rect x="1" y="13" width="1" height="1"/><rect x="5" y="13" width="1" height="1"/><rect x="6" y="13" width="1" height="1"/><rect x="7" y="13" width="1" height="1"/><rect x="9" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="12" y="13" width="1" height="1"/><rect x="13" y="13" width="1" height="1"/><rect x="14" y="13" width="1" height="1"/><rect x="15" y="13" width="1" height="1"/><rect x="16" y="13" width="1" height="1"/><rect x="17" y="13" width="1" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="20" y="13" width="1" height="1"/><rect x="22" y="13" width="1" height="1"/><rect x="24" y="13" width="1" height="1"/><rect x="1" y="14" width="1" height="1"/><rect x="3" y="14" width="1" height="1"/><rect x="4" y="14" width="1" height="1"/><rect x="6" y="14" width="1" height="1"/><rect x="7" y="14" width="1" height="1"/><rect x="9" y="14" width="1" height="1"/><rect x="10" y="14" width="1" height="1"/><rect x="11" y="14" width="1" height="1"/><rect x="13" y="14" width="1" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="16" y="14" width="1" height="1"/><rect x="19" y="14" width="1" height="1"/><rect x="20" y="14" width="1" height="1"/><rect x="21" y="14" width="1" height="1"/><rect x="22" y="14" width="1" height="1"/><rect x="0" y="15" width="1" height="1"/><rect x="1" y="15" width="1" height="1"/><rect x="4" y="15" width="1" height="1"/><rect x="6" y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/><rect x="9" y="15" width="1" height="1"/><rect x="11" y="15" width="1" height="1"/><rect x="13" y="15" width="1" height="1"/><rect x="16" y="15" width="1" height="1"/><rect x="17" y="15" width="1" height="1"/><rect x="18" y="15" width="1" height="1"/><rect x="22" y="15" width="1" height="1"/><rect x="0" y="16" width="1" height="1"/><rect x="4" y="16" width="1" height="1"/><rect x="6" y="16" width="1" height="1"/><rect x="7" y="16" width="1" height="1"/><rect x="8" y="16" width="1" height="1"/><rect x="12" y="16" width="1" height="1"/><rect x="15" y="16" width="1" height="1"/><rect x="16" y="16" width="1" height="1"/><rect x="17" y="16" width="1" height="1"/><rect x="18" y="16" width="1" height="1"/><rect x="19" y="16" width="1" height="1"/><rect x="21" y="16" width="1" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="8" y="17" width="1" height="1"/><rect x="9" y="17" width="1" height="1"/><rect x="11" y="17" width="1" height="1"/><rect x="15" y="17" width="1" height="1"/><rect x="16" y="17" width="1" height="1"/><rect x="17" y="17" width="1" height="1"/><rect x="19" y="17" width="1" height="1"/><rect x="20" y="17" width="1" height="1"/><rect x="21" y="17" width="1" height="1"/><rect x="0" y="18" width="1" height="1"/><rect x="1" y="18" width="1" height="1"/><rect x="2" y="18" width="1" height="1"/><rect x="3" y="18" width="1" height="1"/><rect x="4" y="18" width="1" height="1"/><rect x="5" y="18" width="1" height="1"/><rect x="6" y="18" width="1" height="1"/><rect x="8" y="18" width="1" height="1"/><rect x="10" y="18" width="1" height="1"/><rect x="11" y="18" width="1" height="1"/><rect x="16" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="19" y="18" width="1" height="1"/><rect x="20" y="18" width="1" height="1"/><rect x="21" y="18" width="1" height="1"/><rect x="23" y="18" width="1" height="1"/><rect x="24" y="18" width="1" height="1"/><rect x="0" y="19" width="1" height="1"/><rect x="6" y="19" width="1" height="1"/><rect x="9" y="19" width="1" height="1"/><rect x="12" y="19" width="1" height="1"/><rect x="13" y="19" width="1" height="1"/><rect x="14" y="19" width="1" height="1"/><rect x="15" y="19" width="1" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="17" y="19" width="1" height="1"/><rect x="18" y="19" width="1" height="1"/><rect x="19" y="19" width="1" height="1"/><rect x="20" y="19" width="1" height="1"/><rect x="0" y="20" width="1" height="1"/><rect x="2" y="20" width="1" height="1"/><rect x="3" y="20" width="1" height="1"/><rect x="4" y="20" width="1" height="1"/><rect x="6" y="20" width="1" height="1"/><rect x="8" y="20" width="1" height="1"/><rect x="10" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="14" y="20" width="1" height="1"/><rect x="15" y="20" width="1" height="1"/><rect x="16" y="20" width="1" height="1"/><rect x="18" y="20" width="1" height="1"/><rect x="20" y="20" width="1" height="1"/><rect x="22" y="20" width="1" height="1"/><rect x="23" y="20" width="1" height="1"/><rect x="24" y="20" width="1" height="1"/><rect x="0" y="21" width="1" height="1"/><rect x="2" y="21" width="1" height="1"/><rect x="3" y="21" width="1" height="1"/><rect x="4" y="21" width="1" height="1"/><rect x="6" y="21" width="1" height="1"/><rect x="8" y="21" width="1" height="1"/><rect x="9" y="21" width="1" height="1"/><rect x="10" y="21" width="1" height="1"/><rect x="13" y="21" width="1" height="1"/><rect x="16" y="21" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="18" y="21" width="1" height="1"/><rect x="19" y="21" width="1" height="1"/><rect x="21" y="21" width="1" height="1"/><rect x="23" y="21" width="1" height="1"/><rect x="0" y="22" width="1" height="1"/><rect x="2" y="22" width="1" height="1"/><rect x="3" y="22" width="1" height="1"/><rect x="4" y="22" width="1" height="1"/><rect x="6" y="22" width="1" height="1"/><rect x="8" y="22" width="1" height="1"/><rect x="10" y="22" width="1" height="1"/><rect x="11" y="22" width="1" height="1"/><rect x="12" y="22" width="1" height="1"/><rect x="15" y="22" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="17" y="22" width="1" height="1"/><rect x="19" y="22" width="1" height="1"/><rect x="20" y="22" width="1" height="1"/><rect x="21" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/><rect x="23" y="22" width="1" height="1"/><rect x="0" y="23" width="1" height="1"/><rect x="6" y="23" width="1" height="1"/><rect x="8" y="23" width="1" height="1"/><rect x="10" y="23" width="1" height="1"/><rect x="13" y="23" width="1" height="1"/><rect x="16" y="23" width="1" height="1"/><rect x="22" y="23" width="1" height="1"/><rect x="23" y="23" width="1" height="1"/><rect x="24" y="23" width="1" height="1"/><rect x="0" y="24" width="1" height="1"/><rect x="1" y="24" width="1" height="1"/><rect x="2" y="24" width="1" height="1"/><rect x="3" y="24" width="1" height="1"/><rect x="4" y="24" width="1" height="1"/><rect x="5" y="24" width="1" height="1"/><rect x="6" y="24" width="1" height="1"/><rect x="9" y="24" width="1" height="1"/><rect x="11" y="24" width="1" height="1"/><rect x="13" y="24" width="1" height="1"/><rect x="16" y="24" width="1" height="1"/><rect x="17" y="24" width="1" height="1"/><rect x="18" y="24" width="1" height="1"/><rect x="19" y="24" width="1" height="1"/><rect x="22" y="24" width="1" height="1"/><rect x="23" y="24" width="1" height="1"/><rect x="24" y="24" width="1" height="1"/></g></svg>
+      <div class="bas"><p class="t12 pale">This square is good for ten minutes and for one phone.
+        Leaving now means starting again.</p></div>
+    </div>
+
+    <div class="pas">
+      <div class="rang"><span class="rond rond--ou">or</span><h2>Instead of scanning</h2></div>
+      <div class="titre">Can’t scan it?</div>
+      <div class="dit">Choose “enter a key” in the app and type these letters. Case does not matter.</div>
+      <div class="cle">
+        <div class="q" style="margin:0 0 8px">The key for your app</div>
+        <div class="v">JBSW Y3DP EHPK 3PXP</div>
+        <div class="q">Account name: <b>TOTEM ADMIN (n.•••@totem.app)</b><br>The app will show
+          six digits, and change them every thirty seconds.</div>
+      </div>
+      <div class="bas">
+        <button class="btn btn--secondaire" style="width:100%"><svg><use href="#i-doc"/></svg>Copy the key</button>
+      </div>
+    </div>
+
+    <div class="pas">
+      <div class="rang"><span class="rond">3</span><h2>Prove it</h2></div>
+      <div class="titre">Type the code it shows</div>
+      <div class="dit">This is what actually turns the app on. Until this works, nothing has changed
+        on your account.</div>
+      <div class="cle"><input class="code" type="text" inputmode="numeric"
+        autocomplete="one-time-code" value="384 902"></div>
+      <div class="avis avis--attente" style="margin-top:12px">
+        <svg class="ic"><use href="#i-horloge"/></svg>
+        <span>Refused twice? Your phone’s clock is probably off. Turn on automatic date &amp; time.</span>
+      </div>
+      <div class="bas">
+        <button class="btn btn--lg btn--primaire" style="width:100%">Turn on the app</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="secours">
+    <div class="gauche">
+      <div class="rang"><span class="rond">4</span><h2>And then, once</h2></div>
+      <div class="titre">Your ten backup codes</div>
+      <div class="dit">They appear the moment the app is turned on, and never again. Each one opens
+        the door a single time, the day the phone is lost, flat, or left at home.</div>
+      <div class="grille-codes">
+        <span>7K4M · 2QW9</span><span>PT3B · 8XLD</span>
+        <span>M9VC · 4RHT</span><span>Z2NF · 6BQK</span>
+        <span>4DHY · 9WMP</span><span>QX8L · 3TNR</span>
+        <span>B6KJ · 5FZV</span><span>W3RD · 7NQH</span>
+        <span>N8TC · 2VLB</span><span>H5MQ · 9XKF</span>
+      </div>
+      <div class="gestes-codes">
+        <button class="btn btn--secondaire"><svg><use href="#i-doc"/></svg>Copy</button>
+        <button class="btn btn--secondaire"><svg><use href="#i-telecharger"/></svg>Download</button>
+        <button class="btn btn--secondaire"><svg><use href="#i-doc"/></svg>Print</button>
+      </div>
+      <div class="promesse">
+        <input type="checkbox" id="promesse" checked>
+        <label for="promesse">I have saved them somewhere safe — <b>we cannot show them again.</b></label>
+      </div>
+    </div>
+    <div class="droite">
+      <h2>What you will be told, later</h2>
+      <div class="etat"><span class="chip">after one is used</span>
+        <span>You used a backup code. <b>Nine left.</b></span></div>
+      <div class="etat"><span class="chip attention">when one remains</span>
+        <span>One backup code left. Make new ones — a banner will follow you until you do.</span></div>
+      <div class="etat"><span class="chip danger">when none remain</span>
+        <span>You have used all ten. Use your app, or ask for a code by email.</span></div>
+      <div class="avis avis--attente" style="margin-top:16px">
+        <svg class="ic"><use href="#i-attention"/></svg>
+        <span>You are the super admin: nobody above you can let you back in. Print these,
+          and keep the paper somewhere that is not your phone.</span>
+      </div>
+    </div>
+  </div>
+</div>

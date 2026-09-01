@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
-import { compteEncoreOuvert } from "@/lib/session-vivante";
+import { etatDuCompte } from "@/lib/session-vivante";
 import { verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 import { nonceNeuf, politiqueCsp } from "@/lib/csp";
@@ -161,7 +161,39 @@ export async function middleware(req: NextRequest) {
     // donc rien à y relire — la clé de secours existe justement pour le jour
     // où la base des comptes est injoignable.
     const id = compteDuSujet(sujet);
-    if (id === null || await compteEncoreOuvert(id)) return passer();
+
+    // LES PAGES DE LA CONSOLE SE REFUSENT ICI, avant le premier octet. Les
+    // écrans les gardent aussi (lib/garde.ts), mais un écran refuse APRÈS
+    // que la coque a commencé à couler vers le navigateur : le renvoi part
+    // alors en « meta refresh » dans une page déjà entamée, au lieu d'un
+    // vrai 307. Le middleware, lui, parle avant tout le monde.
+    //
+    // La clé de secours administre (voir lib/garde.ts) ; un jeton d'avant
+    // les comptes, non : il ouvre les écrans du commerce jusqu'à son
+    // échéance, pas la console. Le renvoi va vers l'ACCUEIL, pas vers la
+    // connexion — celui qui est là est déjà entré.
+    const versConsole = pathname === "/console" || pathname.startsWith("/console/");
+    if (versConsole && sujet !== "secours") {
+      const refuserConsole = () => {
+        const accueil = req.nextUrl.clone();
+        accueil.pathname = "/";
+        accueil.search = "";
+        return avecCsp(NextResponse.redirect(accueil));
+      };
+      if (id === null) return refuserConsole();
+      const etat = await etatDuCompte(id);
+      if (!etat.ouvert) {
+        // Le compte n'existe plus : le refus ordinaire, plus bas, décide.
+      } else {
+        // « Je ne sais pas » (base muette) passe : l'écran regarde à son
+        // tour, et lui refuse ce qu'il ne sait pas — deux portes valent
+        // mieux qu'une, dans les deux sens.
+        if (etat.proprietaire === false) return refuserConsole();
+        return passer();
+      }
+    } else if (id === null || (await etatDuCompte(id)).ouvert) {
+      return passer();
+    }
   }
 
   // Une API répond « connexion requise » (le navigateur gère) ; une page

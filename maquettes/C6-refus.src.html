@@ -1,0 +1,153 @@
+<meta charset="utf-8"><title>TOTEM — When the door says no</title>
+<!--SYSTEME-->
+<style>
+  /* ===== Les refus, côté comptoir. =====
+     Sur un mauvais réseau, cet écran est vu plus souvent que le succès. Un
+     refus muet envoie le commerçant sur WhatsApp demander le mot de passe du
+     patron — c'est-à-dire qu'il détruit exactement ce qu'on est en train de
+     construire. Donc : aucune impasse. Chaque refus porte le geste suivant.
+     Et on ne verrouille JAMAIS définitivement : verrouiller le propriétaire,
+     c'est le couper de son propre argent. On ralentit, on n'enferme pas. */
+  body{background:var(--fond);min-height:844px;position:relative}
+
+  .barre-ios{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px 4px;font-size:13px;font-weight:700}
+  .barre-ios .droite{display:flex;align-items:center;gap:6px}
+
+  .tete{display:flex;align-items:center;gap:8px;padding:8px 16px 12px}
+  .tete .symbole{width:32px;height:32px;flex:none}
+  .tete .mot{font-size:15px;font-weight:700;letter-spacing:.18em}
+  .bascule{height:44px;margin-left:auto}
+  .bascule a{height:44px;padding:0 12px;font-size:13px}
+
+  .titre-p{padding:4px 16px 0}
+  .titre-p h1{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.015em}
+  .titre-p .sous{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:8px}
+
+  .cas{margin:16px;background:var(--carte);border-radius:12px;box-shadow:var(--ombre);
+    padding:16px}
+  .cas .quand{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:12px}
+  .cas input.code{width:100%;height:49px;border:none;border-radius:8px;background:var(--carte);
+    box-shadow:inset 0 0 0 1px var(--trait-controle);text-align:center;
+    font:700 22px/28px 'DM Sans';letter-spacing:.30em;font-variant-numeric:tabular-nums;
+    color:var(--encre)}
+  /* #bc4e4e tient 4,84:1 sur blanc. Le liseré d'erreur doit se VOIR, sinon la
+     couleur est une décoration (WCAG 2.2 §1.4.11). */
+  .cas input.code.faux{box-shadow:inset 0 0 0 2px #bc4e4e}
+  .cas .avis{margin-top:12px}
+  .cas .gestes{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+  .cas .gestes .btn{width:100%;height:44px}
+  .cas .note{font-size:12px;line-height:16px;color:var(--tertiaire);margin-top:12px}
+  .cas .grand{display:flex;gap:12px;align-items:flex-start}
+  .cas .grand .rond{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+    flex:none}
+  .cas .grand .rond.att{background:var(--alerte-fond)} .cas .grand .rond.att svg{stroke:#6d5616}
+  .cas .grand .rond.neg{background:var(--negatif-fond)} .cas .grand .rond.neg svg{stroke:var(--negatif)}
+  .cas .grand .t{font-size:15px;line-height:20px;font-weight:700}
+  .cas .grand .d{font-size:13px;line-height:20px;color:var(--secondaire);margin-top:4px}
+
+  .jamais{margin:16px 16px 32px;padding:16px;border-radius:12px;background:var(--carte);
+    box-shadow:inset 0 0 0 1px var(--trait)}
+  .jamais h2{font-size:11px;line-height:16px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--tertiaire);margin-bottom:12px}
+  .jamais .l{display:flex;gap:12px;align-items:flex-start;min-height:44px;padding:4px 0}
+  .jamais .l svg{width:20px;height:20px;stroke:var(--laterite);flex:none;margin-top:2px}
+  .jamais .t{font-size:13px;line-height:20px}
+</style>
+<!--SPRITE-->
+
+<body lang="en">
+
+<div class="barre-ios">
+  <span>14:14</span>
+  <span class="droite"><svg class="ic16"><use href="#i-signal"/></svg><svg class="ic16"><use href="#i-batterie"/></svg></span>
+</div>
+
+<div class="tete">
+  <svg class="symbole" data-marque role="img" aria-label="TOTEM"><use href="#marque-symbole"/></svg>
+  <span class="mot">TOTEM</span>
+  <nav class="bascule" aria-label="Language"><a href="?en" aria-current="true" lang="en">English</a><a href="?fr" lang="fr">Français</a></nav>
+</div>
+
+<div class="titre-p">
+  <h1>When the door says no</h1>
+  <p class="sous">Four refusals, and the way out of each one. None of them is a dead end.</p>
+</div>
+
+<!-- 1 · le code ne correspond pas -->
+<div class="cas">
+  <div class="quand">The digits don't match</div>
+  <input class="code faux" type="text" inputmode="numeric" autocomplete="one-time-code"
+         value="408 913" aria-invalid="true" aria-describedby="r1">
+  <div class="avis avis--refus" id="r1" role="alert">
+    <svg class="ic"><use href="#i-attention"/></svg>
+    <span>That code doesn't open. Two more tries before we slow things down.</span>
+  </div>
+  <div class="gestes">
+    <button class="btn btn--primaire">Try again</button>
+    <button class="btn btn--secondaire">Send me a new one</button>
+  </div>
+  <p class="note">Six digits are easy to misread on a cracked screen. 0 and O, 1 and I —
+    we only ever send digits.</p>
+</div>
+
+<!-- 2 · le code a expiré -->
+<div class="cas">
+  <div class="quand">It arrived too late</div>
+  <div class="grand">
+    <span class="rond att"><svg class="ic20"><use href="#i-horloge"/></svg></span>
+    <div><div class="t">That code has expired</div>
+      <div class="d">It was sent at 13:47 and stopped working at 13:57. Nothing is wrong with
+        your account — codes are short-lived on purpose.</div></div>
+  </div>
+  <div class="gestes">
+    <button class="btn btn--primaire">Send me a new one</button>
+  </div>
+  <p class="note">The SMS network is sometimes slower than ten minutes. If it happens twice,
+    use the paper in your drawer instead.</p>
+</div>
+
+<!-- 3 · trop d'essais : on ralentit, on n'enferme pas -->
+<div class="cas">
+  <div class="quand">Too many tries</div>
+  <div class="grand">
+    <span class="rond att"><svg class="ic20"><use href="#i-horloge"/></svg></span>
+    <div><div class="t">Wait one minute, then try again</div>
+      <div class="d">Five wrong codes in a row. We slow the door down — we do not lock it.
+        This is your shop, and nobody at TOTEM will ever shut you out of it.</div></div>
+  </div>
+  <div class="gestes">
+    <button class="btn btn--secondaire">Use a code from my paper instead</button>
+  </div>
+  <p class="note">Mme Fotso has been told that someone tried five times. If it wasn't you,
+    that message is how she finds out.</p>
+</div>
+
+<!-- 4 · le lien a déjà servi -->
+<div class="cas">
+  <div class="quand">The link was already used</div>
+  <div class="grand">
+    <span class="rond neg"><svg class="ic20"><use href="#i-interdit"/></svg></span>
+    <div><div class="t">Someone opened this invitation before you</div>
+      <div class="d">An invitation works once. If that was not you, tell Mme Fotso now — she can
+        cancel the account it created, in one gesture, and send you a fresh link.</div></div>
+  </div>
+  <div class="gestes">
+    <button class="btn btn--primaire">Tell Mme Fotso</button>
+  </div>
+  <p class="note">This is why a link is never enough on its own: a code came to your number
+    too, and without it the link opens nothing.</p>
+</div>
+
+<div class="jamais">
+  <h2>What the door never says</h2>
+  <div class="l"><svg><use href="#i-oeil"/></svg>
+    <span class="t">Whether an address or a number is known. An unknown one gets this same
+      page, and the same wait.</span></div>
+  <div class="l"><svg><use href="#i-clients"/></svg>
+    <span class="t">Who else works in this shop, or how many people have a key.</span></div>
+  <div class="l"><svg><use href="#i-cadenas"/></svg>
+    <span class="t">Anything at all about your Mobile Money PIN — because it never comes
+      near this door.</span></div>
+</div>
