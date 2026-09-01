@@ -59,6 +59,7 @@ cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
 cd mobile && node scripts/verifier-la-reponse.mjs # le bouton se fait reconnaître
+cd mobile && node scripts/verifier-le-cahier.mjs # un seul cahier, et hors ligne
 cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
 cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
@@ -263,6 +264,46 @@ au milieu d'une application française. « 8/31 » et « 31/8 » se confondent o
 mois sur douze, et sur une date on ne devine pas. Le mois s'écrit donc en
 toutes lettres (`dateVue` dans le noyau), et un test du noyau balaie les DEUX
 surfaces : la faute était écrite deux fois, à l'identique.
+
+`verifier-le-cahier` écoute LE RÉSEAU pendant qu'on parcourt l'application.
+Chaque écran gardait SON état : sept écrans, sept employés qui ne se parlent
+pas. On ouvre l'Accueil, il court chercher le solde ; on touche « Comptes »,
+il RECOURT chercher le même chiffre, vieux de dix secondes.
+
+Le harnais a surtout servi à **démonter ce que je croyais gagner**. Mesuré :
+4 descentes avant, 3 après — un gain mince — et **105 Ko avant, 117 Ko
+après**, c'est-à-dire PLUS. Le vrai gain était ailleurs, et il ne se voyait
+pas dans ce comptage : chaque écran écoutait pour lui le retour au premier
+plan et les notifications. **Un seul retour devant l'application déclenchait
+quatre rechargements**, et une notification arrive à chaque SMS — quarante
+fois par jour sur une caisse active. C'est un, maintenant.
+
+**Un drapeau ne se réunit pas.** L'écran des cartes compte sur mille SMS sans
+en vouloir un seul (`sansLignes`) ; l'accueil en veut trente, avec leurs
+textes. Quand les deux sont montés, le plus grand besoin commun n'est ni
+« aucune ligne » ni « toutes » — c'est un NOMBRE. Le drapeau est devenu
+`lignes`, et l'ancien reste compris par la plateforme : une application déjà
+installée continue de l'envoyer tant qu'elle n'a pas reçu la mise à jour.
+
+**« Personne n'a encore demandé » n'est pas « on demande ce qui se fait
+d'habitude ».** Le cahier partait au guichet AVANT que le premier écran n'ait
+dit ce qu'il voulait, et ramenait 88 Ko de valeurs par défaut que la descente
+suivante remplaçait aussitôt. Le besoin vaut donc `null` tant que le registre
+est vide.
+
+Il garde enfin la promesse qui compte : **sans réseau, l'application montre
+les chiffres du dernier passage, et DIT qu'ils datent.** Avant, elle
+n'affichait rien — « la plateforme ne répond pas », mesuré. Un solde d'hier
+présenté comme celui de maintenant serait pire qu'un écran vide : on remet de
+l'argent en croyant qu'il est arrivé. Et le cahier **se ferme avec la
+session** — sans quoi un téléphone perdu montrerait les SMS du propriétaire à
+qui l'ouvrirait, sans un mot de passe.
+
+Le bandeau qui l'annonce ne passe PAS par `useDonnees` : il l'a fait, et
+`verifier-les-ecrans` l'a pris — à juste titre — pour un écran qui lit les
+données sans jamais dire la panne. **Exempter un harnais, c'est le rendre
+aveugle** ; il valait mieux que le bandeau demande exactement ce qu'il
+regarde.
 
 `verifier-les-fiches` tient une règle en une phrase : **on tronque dans une
 LISTE, jamais dans une FICHE**. Dans une liste, les lignes doivent s'aligner —

@@ -35,7 +35,7 @@ export default function Comptes() {
   // afficher quatre cartes. Les compteurs restent justes ; les lignes
   // s'arrêtent au serveur.
   const { donnees, chargement, erreur, recharger } =
-    useDonnees({ sms: 1000, recus: 0, sansLignes: true });
+    useDonnees({ sms: 1000, recus: 0, lignes: 0 });
 
   const sims = donnees?.sims ?? [];
   const enPlace = sims.filter((s) => s.enPlace);

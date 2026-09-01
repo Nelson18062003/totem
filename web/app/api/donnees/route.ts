@@ -51,9 +51,19 @@ export async function GET(req: Request) {
   const donnees = await chargerDonnees(langue, {
     sms: borne(params.get("sms"), 200, MAX_SMS),
     recus: borne(params.get("recus"), 200, MAX_RECUS),
-    // « compte, mais ne me les envoie pas » : l'écran des cartes veut des
-    // compteurs justes, pas mille textes de SMS sur une connexion mobile.
-    sansLignes: params.get("sansLignes") === "1",
+    // « compte loin, rapporte peu » : l'écran des cartes veut des compteurs
+    // justes, pas mille textes de SMS sur une connexion mobile. Un nombre et
+    // non un drapeau — voir `chargerDonnees`.
+    //
+    // L'ANCIEN DRAPEAU RESTE COMPRIS, et ce n'est pas de la coquetterie : une
+    // application déjà installée continue de l'envoyer tant qu'elle n'a pas
+    // reçu la mise à jour. Sans cette ligne, elle recevrait mille lignes de
+    // SMS à chaque ouverture des Comptes, sur le forfait de quelqu'un.
+    lignes: params.get("sansLignes") === "1"
+      ? 0
+      : params.get("lignes") != null
+        ? borne(params.get("lignes"), 0, MAX_SMS)
+        : undefined,
   });
 
   // Qui regarde ? Uniquement pour le saluer par son prénom. Le courriel ne

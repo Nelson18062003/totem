@@ -176,6 +176,35 @@ export function dateVue(iso: string, langue: Langue): string {
   }).format(d);
 }
 
+/**
+ * L'ÂGE D'UN RELEVÉ — « il y a 5 min », « il y a 3 h », « il y a 2 jours ».
+ *
+ * Sans réseau, l'application montre les chiffres de son dernier passage. Elle
+ * doit dire de QUAND ils datent : un solde d'hier présenté comme celui de
+ * maintenant est pire qu'un écran vide, parce qu'on décide dessus.
+ *
+ * On dit l'ÉCART, jamais l'heure, et c'est délibéré : une heure se lit dans
+ * un fuseau, et le fuseau qui fait foi ici est celui du terminal, pas celui
+ * du téléphone qui voyage. « Il y a trois heures » ne se trompe jamais de
+ * fuseau — et c'est de toute façon la question qu'on se pose.
+ */
+export function ageVu(quand: number, maintenant: number, langue: Langue): string {
+  const s = Math.max(0, Math.floor((maintenant - quand) / 1000));
+  const min = Math.floor(s / 60);
+  const h = Math.floor(min / 60);
+  const j = Math.floor(h / 24);
+  if (langue === "en") {
+    if (min < 2) return "just now";
+    if (min < 60) return `${min} min ago`;
+    if (h < 24) return h === 1 ? "1 hour ago" : `${h} hours ago`;
+    return j === 1 ? "yesterday" : `${j} days ago`;
+  }
+  if (min < 2) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  if (h < 24) return h === 1 ? "il y a 1 heure" : `il y a ${h} heures`;
+  return j === 1 ? "hier" : `il y a ${j} jours`;
+}
+
 export function nombre(n: number, langue: Langue): string {
   return langue === "en"
     ? n.toLocaleString("en-US")

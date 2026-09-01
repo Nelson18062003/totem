@@ -238,15 +238,24 @@ export async function chargerDonnees(
   // ignorer une troncature serait un mensonge (l'export comptable), pas à
   // chaque ouverture d'écran.
   //
-  // `sansLignes` : COMPTER SANS RAPPORTER. L'écran des cartes demandait mille
-  // SMS — non pour les montrer, il ne les regarde jamais, mais pour que les
-  // compteurs par carte (nbPaiements, totalRecu) soient calculés sur la même
-  // profondeur que le web. Le serveur comptait bien, puis renvoyait les mille
-  // lignes, textes de SMS compris : 264 Ko sur le réseau mobile de Douala
-  // pour afficher des soldes de cartes. Avec ce drapeau, le comptage se fait
-  // et les lignes restent ici.
+  // `lignes` : COMPTER LOIN, RAPPORTER PEU. L'écran des cartes demandait
+  // mille SMS — non pour les montrer, il ne les regarde jamais, mais pour que
+  // les compteurs par carte (nbPaiements, totalRecu) soient calculés sur la
+  // même profondeur que le web. Le serveur comptait bien, puis renvoyait les
+  // mille lignes, textes de SMS compris : 264 Ko sur le réseau mobile de
+  // Douala pour afficher des soldes de cartes.
+  //
+  // C'ÉTAIT UN DRAPEAU (`sansLignes`), ET UN DRAPEAU NE SE RÉUNIT PAS. Sur le
+  // téléphone, les quatre onglets restent montés ensemble et partagent une
+  // seule demande : l'écran des cartes n'en veut aucune, l'accueil en veut
+  // trente. Le plus grand besoin commun n'est ni « aucune » ni « toutes » —
+  // c'est un NOMBRE. Avec un drapeau, il fallait choisir, et choisir « avec
+  // les lignes » rapportait les mille.
+  //
+  // Absent, il vaut « autant que `sms` » : qui n'a rien précisé veut tout ce
+  // qu'il a demandé.
   bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean;
-             sansLignes?: boolean },
+             lignes?: number },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
@@ -428,7 +437,7 @@ export async function chargerDonnees(
     relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques,
     // Les compteurs des cartes sont déjà calculés : les lignes qui ont servi
     // à les calculer n'ont plus rien à faire sur le réseau.
-    paiements: bornes?.sansLignes ? [] : paiements,
+    paiements: bornes?.lignes != null ? paiements.slice(0, bornes.lignes) : paiements,
   };
 }
 

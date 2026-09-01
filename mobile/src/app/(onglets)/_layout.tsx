@@ -14,10 +14,13 @@ import { Animated, Easing, Platform, Pressable, View } from "react-native";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useSafeAreaInsets as useMarges } from "react-native-safe-area-context";
 import { Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { textesCharpente } from "@noyau/textes/charpente";
+import { ageVu } from "@noyau/types";
 import { useLangue } from "@/langue";
+import { useAgeDesChiffres } from "@/donnees";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 
 const ONGLETS: { nom: string; cle: keyof ReturnType<typeof libelles>; icone: NomIcone }[] = [
@@ -36,6 +39,8 @@ export default function Onglets() {
   const t = libelles(langue);
 
   return (
+    <>
+    <BandeauHorsLigne />
     <Tabs
       tabBar={(props) => <BarreFlottante {...props} />}
       screenOptions={{
@@ -47,6 +52,47 @@ export default function Onglets() {
         <Tabs.Screen key={o.nom} name={o.nom} options={{ title: t[o.cle] as string }} />
       ))}
     </Tabs>
+    </>
+  );
+}
+
+/**
+ * « CES CHIFFRES DATENT » — au-dessus des quatre onglets, une seule fois.
+ *
+ * Sans réseau, l'application montre ce qu'elle avait au dernier passage
+ * plutôt qu'un écran vide. C'est un progrès — et un DANGER si elle se tait :
+ * un solde d'hier présenté comme celui de maintenant, c'est de l'argent
+ * qu'on remet à quelqu'un en croyant qu'il est arrivé.
+ *
+ * Le bandeau ne s'affiche donc QUE dans ce cas : ce qui est à l'écran vient
+ * du téléphone, et la plateforme n'a pas répondu depuis. Dès qu'elle répond,
+ * il disparaît sans un geste.
+ *
+ * Il ne demande RIEN au guichet : il lit l'âge de ce qui est déjà au cahier,
+ * et ne s'inscrit à aucun besoin — passer par `useDonnees` avec des bornes à
+ * zéro marchait, mais le faisait passer pour un écran qui lit les données
+ * sans jamais dire la panne (voir `verifier-les-ecrans`).
+ */
+function BandeauHorsLigne() {
+  const langue = useLangue();
+  const marges = useMarges();
+  const { duCahier, quand } = useAgeDesChiffres();
+  if (!duCahier || quand == null) return null;
+  const t = textesCharpente[langue];
+  return (
+    <View style={{
+      paddingTop: marges.top + espaces.sm,
+      paddingBottom: espaces.sm,
+      paddingHorizontal: espaces.lg,
+      backgroundColor: couleurs.surface2,
+      borderBottomWidth: 1, borderBottomColor: couleurs.trait,
+      flexDirection: "row", alignItems: "center", gap: espaces.sm,
+    }}>
+      <Icone nom="Refresh" taille={14} couleur={couleurs.encreDouce} />
+      <Texte taille={textes.legende} ton="doux" style={{ flex: 1 }}>
+        {t.horsLigne} · {t.horsLigneDetail(ageVu(quand, Date.now(), langue))}
+      </Texte>
+    </View>
   );
 }
 
