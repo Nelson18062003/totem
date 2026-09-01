@@ -16,6 +16,11 @@ import { Nav } from "./nav";
 const PLEIN_ECRAN = ["/connexion", "/inscription", "/confidentialite",
                      "/suppression"];
 
+/** La console a son propre rail (voir app/console/gabarit.tsx) : le menu du
+ *  commerçant ne doit pas s'afficher par-dessus. Elle garde la colonne large
+ *  de l'application — c'est le rail qu'elle remplace, pas la mise en page. */
+const CONSOLE = "/console";
+
 export function Coquille({
   relie,
   terminal,
@@ -32,6 +37,14 @@ export function Coquille({
 
   if (nu) {
     return <div className="mx-auto w-full max-w-4xl px-4">{children}</div>;
+  }
+
+  if (path === CONSOLE || path.startsWith(CONSOLE + "/")) {
+    return (
+      <div className="mx-auto w-full max-w-4xl px-4 py-5 md:px-8 md:py-9 lg:max-w-6xl lg:px-10">
+        {children}
+      </div>
+    );
   }
 
   return (

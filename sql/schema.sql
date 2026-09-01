@@ -540,6 +540,71 @@ $$;
 -- téléphone ne parlent qu'à la plateforme, jamais à Supabase.
 -- Aucune clé publique n'ouvre donc quoi que ce soit — voir plus bas.
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- La console de la plateforme : le lieu d'un boîtier, son retrait, les
+-- alertes, le registre des versions. (Voir migrations/20260901_console.sql.)
+-- ---------------------------------------------------------------------------
+
+-- Où le boîtier est posé (« Douala · Akwa »), et sa sortie de service. Un
+-- terminal retiré ne s'efface pas : on date, et son journal reste entier.
+alter table terminaux add column if not exists lieu         text;
+alter table terminaux add column if not exists retire_le    timestamptz;
+alter table terminaux add column if not exists retire_motif text;
+
+-- --- Alertes : ce qui va mal, et ce qu'on en a fait ------------------------
+-- Trois heures et jamais moins : ouverte, vue, close. « Vue » n'est pas
+-- « close » — fondre les deux ferait disparaître de l'écran des choses que
+-- personne n'a réparées.
+create table if not exists alertes (
+  id          bigint generated always as identity primary key,
+  terminal    text references terminaux(id) on delete cascade,
+  genre       text not null,             -- « muet », « sous-tension », libre à dessein
+  gravite     text not null default 'attention'
+              check (gravite in ('information', 'attention', 'grave')),
+  titre       text not null,
+  detail      text,
+  ouverte_le  timestamptz not null default now(),
+  vue_le      timestamptz,
+  vue_par     bigint references utilisateurs(id) on delete set null,
+  close_le    timestamptz,
+  close_par   bigint references utilisateurs(id) on delete set null,
+  close_motif text
+);
+
+comment on table alertes is
+  'Ce qui va mal sur la flotte, et ce qu''on en a fait. Rien ne s''efface : '
+  'une alerte close garde ses trois heures — ouverte, vue, close.';
+
+-- UNE SEULE ALERTE OUVERTE PAR (TERMINAL, GENRE). Une nuit de délestage sans
+-- cette règle, c'est vingt lignes identiques au matin — et la vingt et
+-- unième que personne ne lit plus.
+create unique index if not exists alertes_ouverte_unique
+  on alertes (terminal, genre) where close_le is null;
+
+create index if not exists alertes_ouvertes_idx
+  on alertes (ouverte_le desc) where close_le is null;
+
+-- --- Versions : ce que la flotte devrait porter ----------------------------
+-- « Publiée » n'est pas « envoyée » : une version à l'essai ne met personne
+-- en retard. Sans ce registre, l'écran des versions ne peut comparer les
+-- boîtiers qu'entre eux — et une flotte entière en retard a l'air à jour.
+create table if not exists versions (
+  version            text primary key,   -- doit égaler terminaux.version, exactement
+  publiee_le         timestamptz not null default now(),
+  envoyee_le         timestamptz,        -- null tant qu'elle est à l'essai
+  resume             text,
+  correctif_securite boolean not null default false,
+  retiree_le         timestamptz,
+  retiree_motif      text
+);
+
+comment on table versions is
+  'Le registre du logiciel du terminal. « envoyee_le » nul = à l''essai : '
+  'elle ne met aucun boîtier en retard.';
+
+create index if not exists versions_envoyees_idx
+  on versions (envoyee_le) where envoyee_le is not null;
+
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;
 alter table comptes    enable row level security;
@@ -553,6 +618,8 @@ alter table evenements alter column terminal drop not null;
 
 alter table utilisateurs enable row level security;
 alter table freins   enable row level security;
+alter table alertes  enable row level security;
+alter table versions enable row level security;
 
 -- AUCUNE POLITIQUE. Sur AUCUNE table. C'est le but, pas un oubli.
 --
