@@ -116,22 +116,27 @@ try {
     corpsCourse.some((c) => /course|simultan|concurrent/i.test(c.erreur ?? "")), false);
 
   console.log("\nLa première inscription : celle du propriétaire");
-  const r1 = course.find((r, i) => corpsCourse[i].proprietaire === true);
-  const c1 = corpsCourse.find((c) => c.proprietaire === true) ?? {};
+  const gagnant = corpsCourse.findIndex((c) => c.proprietaire === true);
+  const r1 = course[gagnant];
+  const c1 = corpsCourse[gagnant] ?? {};
   verifier("le premier compte est créé", r1?.status, 200);
   verifier("il est propriétaire", c1.proprietaire, true);
   verifier("il repart avec une session", Boolean(c1.jeton), true);
-  // C'est le PREMIER courriel qui a gagné : l'ordre de la course n'est pas
-  // garanti, mais celui-là est le seul dont le harnais connaît le mot de
-  // passe pour la suite — s'il a perdu, tout ce qui suit est faux.
-  verifier("c'est bien le courriel du propriétaire qui a gagné",
-    corpsCourse[0].proprietaire === true, true);
+  // L'ORDRE DE LA COURSE N'EST PAS GARANTI, et c'est le principe même d'une
+  // course : n'importe lequel des trois peut gagner. Le harnais continuait
+  // en supposant que le premier avait gagné — et s'écroulait, une fois sur
+  // quelques-unes, sur un état parfaitement sain. On continue donc avec le
+  // courriel du VAINQUEUR, quel qu'il soit : c'est lui, le propriétaire.
+  const COURRIELS_DE_LA_COURSE =
+    ["nelson@exemple.cm", "intrus@exemple.cm", "intrus2@exemple.cm"];
+  const proprio = COURRIELS_DE_LA_COURSE[gagnant] ?? COURRIELS_DE_LA_COURSE[0];
   const jetonProprio = c1.jeton;
 
   console.log("\nLe courriel est rangé sous une seule forme");
-  // « Nelson@Exemple.CM » et « nelson@exemple.cm » sont la MÊME personne :
+  // « NELSON@Exemple.CM » et « nelson@exemple.cm » sont la MÊME personne :
   // deux lignes en feraient deux comptes qu'on croirait un seul.
-  const rMaj = await poste("/api/session", { courriel: "NELSON@exemple.cm", motdepasse: MDP });
+  const rMaj = await poste("/api/session",
+    { courriel: proprio.toUpperCase(), motdepasse: MDP });
   verifier("les majuscules ne font pas un autre compte", rMaj.status, 200);
 
   console.log("\nLA PORTE EST FERMÉE : plus aucune inscription");
@@ -155,7 +160,7 @@ try {
 
   console.log("\nCe qu'on ne dit pas à un inconnu");
   const rInconnu = await poste("/api/session", { courriel: "personne@exemple.cm", motdepasse: "x" });
-  const rMauvais = await poste("/api/session", { courriel: "nelson@exemple.cm", motdepasse: "faux" });
+  const rMauvais = await poste("/api/session", { courriel: proprio, motdepasse: "faux" });
   const mInconnu = (await rInconnu.json()).erreur;
   const mMauvais = (await rMauvais.json()).erreur;
   verifier("compte inconnu : refusé", rInconnu.status, 401);
@@ -166,7 +171,7 @@ try {
   // L'empreinte réelle du propriétaire, lue dans le faux nuage : elle
   // servira à poser un invité qui puisse vraiment se connecter.
   const empreinteConnue = (await (await fetch(
-    "http://127.0.0.1:4999/rest/v1/utilisateurs?courriel=eq.nelson@exemple.cm"
+    "http://127.0.0.1:4999/rest/v1/utilisateurs?courriel=eq." + proprio
   )).json())[0].empreinte;
 
   console.log("\nLe mot de passe ne se retrouve nulle part");
@@ -371,7 +376,7 @@ try {
            (await fetch(B + "/api/donnees", avecAncien)).status, 401);
 
   console.log("\nOn ne se ferme pas la porte à soi-même");
-  const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === "nelson@exemple.cm").id;
+  const idMoi = JSON.parse(liste).comptes.find((c) => c.courriel === proprio).id;
   const rSoi = await poste("/api/comptes", { id: idMoi, geste: "supprimer" },
                            { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire ne se supprime pas", rSoi.status, 400);
@@ -453,7 +458,7 @@ try {
   // On ne distingue PAS « ce courriel est pris » de « inscriptions
   // fermées » : la porte se referme avant de regarder le courriel. Les
   // distinguer dirait à un inconnu quelles adresses ont un compte ici.
-  const rDeja = await poste("/api/inscription", { courriel: "nelson@exemple.cm", motdepasse: MDP });
+  const rDeja = await poste("/api/inscription", { courriel: proprio, motdepasse: MDP });
   verifier("le courriel du propriétaire : même refus", rDeja.status, 403);
 
   console.log(echecs
