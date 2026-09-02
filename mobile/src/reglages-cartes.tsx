@@ -54,6 +54,7 @@ export function SectionCartes({ sims, langue, terminal, onChange }: {
           <View key={s.iccid}>
             {i > 0 ? <Filet /> : null}
             <Pressable
+              accessibilityRole="button"
               disabled={!s.enPlace}
               onPress={() => setOuverte(s)}
               style={({ pressed }) => ({
@@ -176,6 +177,7 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
       }
       pied={
         <Pressable
+          accessibilityRole="button"
           onPress={() => void enregistrer()}
           disabled={etat === "envoi"}
           style={({ pressed }) => ({

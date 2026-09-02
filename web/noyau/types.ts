@@ -156,6 +156,55 @@ export function fcfa(n: number, langue: Langue): string {
 // recherche échouait, un copier-coller vers un tableur aussi, et le CSV du
 // bilan emportait le caractère exotique. On vise désormais les deux espaces
 // insécables par leur code, jamais par un caractère invisible dans le source.
+/**
+ * Une date à MONTRER, dans la langue de l'écran.
+ *
+ * `toLocaleDateString()` sans argument suit la langue de l'APPAREIL, pas
+ * celle de l'application. Un propriétaire camerounais dont le téléphone est
+ * en anglais lisait « 8/31/2026 » — un mois avant un jour — au milieu d'un
+ * écran en français. Ce n'est pas seulement laid : « 8/31 » et « 31/8 » se
+ * confondent onze mois sur douze, et sur une date on ne devine pas.
+ *
+ * Le mois s'écrit en toutes lettres pour cette raison même : « 31 août 2026 »
+ * ne se lit que d'une façon, quel que soit le pays de qui regarde.
+ */
+export function dateVue(iso: string, langue: Langue): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  return new Intl.DateTimeFormat(langue === "en" ? "en-GB" : "fr-FR", {
+    day: "numeric", month: "short", year: "numeric",
+  }).format(d);
+}
+
+/**
+ * L'ÂGE D'UN RELEVÉ — « il y a 5 min », « il y a 3 h », « il y a 2 jours ».
+ *
+ * Sans réseau, l'application montre les chiffres de son dernier passage. Elle
+ * doit dire de QUAND ils datent : un solde d'hier présenté comme celui de
+ * maintenant est pire qu'un écran vide, parce qu'on décide dessus.
+ *
+ * On dit l'ÉCART, jamais l'heure, et c'est délibéré : une heure se lit dans
+ * un fuseau, et le fuseau qui fait foi ici est celui du terminal, pas celui
+ * du téléphone qui voyage. « Il y a trois heures » ne se trompe jamais de
+ * fuseau — et c'est de toute façon la question qu'on se pose.
+ */
+export function ageVu(quand: number, maintenant: number, langue: Langue): string {
+  const s = Math.max(0, Math.floor((maintenant - quand) / 1000));
+  const min = Math.floor(s / 60);
+  const h = Math.floor(min / 60);
+  const j = Math.floor(h / 24);
+  if (langue === "en") {
+    if (min < 2) return "just now";
+    if (min < 60) return `${min} min ago`;
+    if (h < 24) return h === 1 ? "1 hour ago" : `${h} hours ago`;
+    return j === 1 ? "yesterday" : `${j} days ago`;
+  }
+  if (min < 2) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  if (h < 24) return h === 1 ? "il y a 1 heure" : `il y a ${h} heures`;
+  return j === 1 ? "hier" : `il y a ${j} jours`;
+}
+
 export function nombre(n: number, langue: Langue): string {
   return langue === "en"
     ? n.toLocaleString("en-US")

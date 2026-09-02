@@ -69,6 +69,20 @@ const tables = () => ({
   ],
   paiements: [
     ...[...smsEnPlus].reverse(),
+    // UN NOM VOLONTAIREMENT LONG. La fiche coupait son titre à une ligne :
+    // « NKENGAFAC MBOUNGOU… » — et c'est précisément la question qu'on se
+    // pose en ouvrant la fiche. Sans un nom long ici, aucun essai ne pouvait
+    // le voir : les données de démonstration tenaient toutes sur une ligne.
+    { id: 20, source_id: 20, expediteur: "MTNMobileMoney", terminal: "douala-faux",
+      compte: "MTN ·8901", carte: "89237010000000008901", sens: "entree",
+      montant: 45000, tiers: "NKENGAFAC MBOUNGOU JEANNE-CLAIRE EPSE TCHOUMI",
+      numero: "677445566", reference: "PP260831.1042.A31245X7",
+      solde_apres: 457500,
+      texte: "Vous avez recu 45 000 FCFA de NKENGAFAC MBOUNGOU JEANNE-CLAIRE "
+           + "EPSE TCHOUMI (677445566). Ref: PP260831.1042.A31245X7. "
+           + "Nouveau solde: 457 500 FCFA.",
+      categorie: "encaissement", nature: null,
+      emis_le: il_y_a(5), recu_le: il_y_a(5), lu_le: null },
     { id: 3, source_id: 3, expediteur: "MTNMobileMoney", terminal: "douala-faux",
       compte: "MTN ·8901", carte: "89237010000000008901", sens: "entree",
       montant: 20000, tiers: "NKENGAFAC M.", numero: "677998877",

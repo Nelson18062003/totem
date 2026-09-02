@@ -14,7 +14,7 @@ import { Pressable, Share, View } from "react-native";
 import { router } from "expo-router";
 import * as Navigateur from "expo-web-browser";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { Carte, Filet, Texte, appuiTexte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { LogoOperateur } from "@/logos-operateurs";
@@ -89,6 +89,7 @@ export function Coordonnees({ carte, langue, onFermer }: {
       pied={
         <View style={{ gap: espaces.sm }}>
           <Pressable
+            accessibilityRole="button"
             onPress={partager}
             style={({ pressed }) => ({
               flexDirection: "row", alignItems: "center", justifyContent: "center",
@@ -106,6 +107,7 @@ export function Coordonnees({ carte, langue, onFermer }: {
           {/* Le PDF, en second geste : le document qu'on imprime ou qu'on
               joint — le partage en texte reste le chemin de tous les jours. */}
           <Pressable
+            accessibilityRole="button"
             onPress={() => void ouvrirPdf()}
             disabled={pdf === "envoi"}
             style={({ pressed }) => ({
@@ -136,8 +138,8 @@ export function Coordonnees({ carte, langue, onFermer }: {
             <Texte poids="demi">{nom}</Texte>
           ) : (
             // Pas de nom : on le dit, et on mène là où il s'inscrit.
-            <Pressable onPress={() => { onFermer(); router.push("/reglages"); }}
-                       hitSlop={6}>
+            <Pressable accessibilityRole="button" hitSlop={6} style={appuiTexte}
+                       onPress={() => { onFermer(); router.push("/reglages"); }}>
               <Texte taille={textes.petit} ton="pale"
                      style={{ textDecorationLine: "underline" }}>
                 {t.coordSansNom}

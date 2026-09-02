@@ -22,6 +22,7 @@ import { useGesteUnique } from "@/geste";
 import { agirSurCompte, ErreurGuichet, listerComptes,
          type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
+import { dateVue } from "@noyau/types";
 import { textesReglages } from "@noyau/textes/reglages";
 import { textesConnexion } from "@noyau/textes/connexion";
 import type { Langue } from "@noyau/langue";
@@ -143,6 +144,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
             {t.pasPartie}
           </Texte>
           <Pressable
+            accessibilityRole="button"
             onPress={() => void charger()}
             style={({ pressed }) => ({
               alignSelf: "flex-start",
@@ -173,7 +175,12 @@ export function SectionQui({ langue }: { langue: Langue }) {
             {i > 0 ? <Filet /> : null}
             <View style={{ padding: espaces.lg, gap: espaces.sm }}>
               <View style={{ gap: 2 }}>
-                <Texte poids="moyen" taille={textes.petit} numberOfLines={1}>
+                {/* LE COURRIEL EN ENTIER. C'est sur lui qu'on décide
+                    d'ouvrir la caisse à quelqu'un : « jean.dupont@exemp… »
+                    et « jean.dupont@exemple-piege.cm » se ressemblent
+                    beaucoup une fois coupés. On ne tronque pas ce qui sert
+                    à reconnaître une personne. */}
+                <Texte poids="moyen" taille={textes.petit} selectable>
                   {c.courriel}
                 </Texte>
                 <Texte taille={textes.legende} ton="pale" numberOfLines={1}>
@@ -182,7 +189,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
                   {c.approuve ? t.ouvert : t.enAttente}
                   {" · "}
                   {c.vuLe
-                    ? `${t.vuLe} ${new Date(c.vuLe).toLocaleDateString()}`
+                    ? `${t.vuLe} ${dateVue(c.vuLe, langue)}`
                     : t.jamaisVenu}
                 </Texte>
               </View>
@@ -216,6 +223,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
 
       {!creationOuverte ? (
         <Pressable
+          accessibilityRole="button"
           onPress={() => { setCreationOuverte(true); setMot(null); }}
           style={({ pressed }) => ({
             alignSelf: "flex-start",
@@ -249,6 +257,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
           </View>
           <View style={{ flexDirection: "row", gap: espaces.sm }}>
             <Pressable
+              accessibilityRole="button"
               onPress={() => void creer()}
               disabled={creation || !courriel || motdepasse.length < 12}
               style={({ pressed }) => ({
@@ -266,6 +275,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
                   </Texte>}
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               onPress={() => { setCreationOuverte(false); setMot(null); }}
               style={({ pressed }) => ({
                 flex: 1, alignItems: "center", paddingVertical: espaces.md,
@@ -299,6 +309,7 @@ function Petit({ libelle, onPress, occupe, danger, accent }: {
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={occupe}
       // 26 dp de haut, sans marge de touche, entre deux gestes irréversibles.

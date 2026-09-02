@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { Feuille } from "@/feuille";
-import { Carte, Filet, Texte } from "@/ui";
+import { Carte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
 import { useGesteUnique } from "@/geste";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
@@ -167,8 +167,17 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
             </View>
             <Texte taille={textes.legende} ton="pale" chiffresAlignes>{p.sim}</Texte>
           </View>
-          <Texte taille={textes.intertitre} poids="demi" numberOfLines={1}
-                 style={{ marginTop: espaces.xs }}>
+          {/* ON TRONQUE DANS UNE LISTE, JAMAIS DANS UNE FICHE.
+              Dans la boîte de réception, les lignes doivent s'aligner : un
+              nom trop long se coupe, et c'est juste. Ici, on a OUVERT la
+              fiche — pour tout voir. « NKENGAFAC MBOUNGOU J… » ne dit pas
+              qui a payé, et c'est justement la question qu'on se pose en
+              ouvrant. Le nom passe donc à la ligne.
+              Deux lignes suffisent à tout nom d'état civil ; au-delà, on
+              coupe, parce qu'un en-tête qui pousse le contenu hors de
+              l'écran est un autre défaut. */}
+          <Texte taille={textes.intertitre} poids="demi" numberOfLines={2}
+                 selectable style={{ marginTop: espaces.xs }}>
             {p.tiers || p.nom}
           </Texte>
         </>
@@ -190,6 +199,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 comme il restait actif, le geste naturel — réappuyer —
                 déposait une SECONDE commande pour le même SMS. */}
             <Pressable
+              accessibilityRole="button"
               onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
               disabled={ouverture === "envoi" || etabli === "envoi"
                         || gesteRecu.occupe || (!p.recu && etabli === "fait")}
@@ -215,6 +225,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 nature vient d'être rechoisie — même numéro, document neuf. */}
             {p.recu && p.sourceId != null ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() => void etablirRecu()}
                 disabled={etabli === "envoi" || gesteRecu.occupe}
                 style={({ pressed }) => ({
@@ -277,14 +288,15 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
           {choisirType ? (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
               {NATURES.map((n) => (
-                <Pressable key={n} onPress={() => poserNature(n)}
-                           style={{
+                <Pressable
+                           accessibilityRole="button" key={n} onPress={() => poserNature(n)}
+                           style={avecAppui({
                              flexDirection: "row", alignItems: "center", gap: espaces.xs,
                              paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
                              borderRadius: rayons.rond,
                              borderWidth: nature === n ? 0 : 1, borderColor: couleurs.trait,
                              backgroundColor: nature === n ? couleurs.accent : couleurs.surfaceHaute,
-                           }}>
+                           })}>
                   <Icone nom={icone(n)} taille={14}
                          couleur={nature === n ? couleurs.surfaceHaute : couleurs.encreDouce} />
                   <Texte taille={textes.petit} poids="moyen" ton={nature === n ? "normal" : "doux"}
@@ -295,7 +307,8 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
               ))}
             </View>
           ) : (
-            <Pressable onPress={() => setChoisirType(true)}
+            <Pressable
+                       accessibilityRole="button" onPress={() => setChoisirType(true)}
                        style={({ pressed }) => ({
                          flexDirection: "row", alignItems: "center", gap: espaces.sm,
                          padding: espaces.lg, borderRadius: rayons.carte,
@@ -329,7 +342,8 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
           </Texte>
         </View>
         {long ? (
-          <Pressable onPress={() => setDeplie((d) => !d)} hitSlop={8}>
+          <Pressable accessibilityRole="button" onPress={() => setDeplie((d) => !d)}
+                     hitSlop={8} style={appuiTexte}>
             <Texte taille={textes.petit} ton="doux" poids="moyen">
               {deplie ? t.replierMessage : t.toutLeMessage}
             </Texte>
@@ -340,12 +354,22 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
   );
 }
 
+/** Une ligne « libellé · valeur » de la fiche.
+ *
+ *  LA VALEUR NE SE COUPE PAS. Elle portait `numberOfLines={1}` : la
+ *  RÉFÉRENCE de l'opérateur — « PP240829.1042.A31245 » — s'affichait
+ *  tronquée. Or c'est exactement le numéro qu'on recopie pour réclamer
+ *  auprès de MTN ou d'Orange quand une opération est contestée. Une
+ *  référence coupée ne sert à rien ; elle donne même l'illusion de l'avoir.
+ *
+ *  Elle est aussi SÉLECTIONNABLE : un appui long la copie. C'était la seule
+ *  façon de la sortir de l'application, et il n'y en avait aucune. */
 function Rangee({ libelle, valeur }: { libelle: string; valeur: string }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md,
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: espaces.md,
                    padding: espaces.lg }}>
       <Texte taille={textes.petit} ton="doux">{libelle}</Texte>
-      <Texte taille={textes.petit} chiffresAlignes numberOfLines={1}
+      <Texte taille={textes.petit} chiffresAlignes selectable
              style={{ flex: 1, textAlign: "right" }}>
         {valeur}
       </Texte>

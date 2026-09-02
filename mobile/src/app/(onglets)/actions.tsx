@@ -10,7 +10,7 @@ import { RefreshControl, ScrollView, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, Carte, Filet, Texte } from "@/ui";
+import { Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
@@ -136,15 +136,16 @@ export default function Actions() {
               const active = c.iccid === carte.iccid;
               return (
                 <Pressable
+                  accessibilityRole="button"
                   key={c.iccid}
                   onPress={() => setChoisie(c.iccid)}
                   accessibilityState={{ selected: active }}
-                  style={{
+                  style={avecAppui({
                     paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
                     borderRadius: rayons.bouton,
                     borderWidth: active ? 0 : 1, borderColor: couleurs.trait,
                     backgroundColor: active ? couleurs.accent : couleurs.surfaceHaute,
-                  }}
+                  })}
                 >
                   <Texte taille={textes.petit} poids="moyen"
                          style={active ? { color: couleurs.surfaceHaute } : undefined}
@@ -216,6 +217,7 @@ function Ligne({ titre, sous, icone, onPress }: {
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: "row", alignItems: "center", gap: espaces.md,

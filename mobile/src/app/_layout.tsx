@@ -17,6 +17,7 @@ import { DMSans_700Bold } from "@expo-google-fonts/dm-sans";
 
 import { FournisseurLangue } from "@/langue";
 import { FournisseurSession, useSession } from "@/session";
+import { FournisseurDonnees } from "@/donnees";
 import { useSonnerie } from "@/sonnerie";
 import { couleurs } from "@/theme/jetons";
 
@@ -29,7 +30,12 @@ export default function Racine() {
   return (
     <FournisseurLangue>
       <FournisseurSession>
-        <Charpente />
+        {/* LE CAHIER SUR LE COMPTOIR, au-dessus de tous les écrans : sept
+            d'entre eux demandaient les mêmes chiffres, chacun pour soi. Il
+            est DANS la session — se déconnecter l'efface. */}
+        <FournisseurDonnees>
+          <Charpente />
+        </FournisseurDonnees>
       </FournisseurSession>
     </FournisseurLangue>
   );

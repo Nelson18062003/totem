@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { MotTotem, Texte, couleurs, espaces, rayons, textes } from "@/ui";
+import { MotTotem, Texte, appuiTexte, couleurs, espaces, rayons, textes } from "@/ui";
 import { Symbole } from "@/marque";
 import { Entree } from "@/animations";
 import { Icone, type NomIcone } from "@/icones";
@@ -78,7 +78,8 @@ export function Bienvenue({ onFini }: { onFini: () => void }) {
     <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.surface }}>
       {/* « Passer » — toujours là, jamais suppliant. */}
       <View style={{ alignItems: "flex-end", padding: espaces.lg }}>
-        <Pressable onPress={finir} hitSlop={12}>
+        <Pressable accessibilityRole="button" onPress={finir} hitSlop={12}
+                   style={appuiTexte}>
           <Texte taille={textes.petit} ton="doux" poids="moyen">{t.passer}</Texte>
         </Pressable>
       </View>
@@ -136,6 +137,7 @@ export function Bienvenue({ onFini }: { onFini: () => void }) {
         </View>
 
         <Pressable
+          accessibilityRole="button"
           onPress={suivant}
           style={({ pressed }) => ({
             backgroundColor: pressed ? couleurs.encreDouce : couleurs.encre,

@@ -258,7 +258,13 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
           {p.sens === "in" ? "+" : p.sens === "out" ? "−" : ""}{fcfa(p.montant, langue)}
         </p>
       )}
-      <p className="mt-0.5 truncate text-body text-ink-soft">{p.tiers || p.nom}</p>
+      {/* ON TRONQUE DANS UNE LISTE, JAMAIS DANS UNE FICHE. Dans la boîte de
+          réception les lignes doivent s'aligner, et un nom trop long se
+          coupe — c'est juste. Ici on a OUVERT la fiche, pour tout voir :
+          « NKENGAFAC MBOUNGOU J… » ne dit pas qui a payé, et c'est
+          exactement la question qu'on se pose en l'ouvrant. Le nom passe à
+          la ligne. Deux lignes suffisent à tout nom d'état civil. */}
+      <p className="mt-0.5 line-clamp-2 text-body text-ink-soft">{p.tiers || p.nom}</p>
     </>
   );
 

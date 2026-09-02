@@ -58,6 +58,12 @@ cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
+cd mobile && node scripts/verifier-la-reponse.mjs # le bouton se fait reconnaître
+cd mobile && node scripts/verifier-le-cahier.mjs # un seul cahier, et hors ligne
+cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
+cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
+cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
+#   (même chaîne que verifier-les-formats — voir l'en-tête du script)
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
@@ -216,6 +222,164 @@ un bouton qui ne réagit pas tout de suite, et à Douala un bouton ne réagit
 pas tout de suite. Il faut donc un verrou SYNCHRONE (`useGesteUnique`) et une
 clé d'intention — le verrou pare le double appui, la clé pare la réponse
 perdue en route où la personne recommence de bonne foi.
+
+`verifier-la-reponse` garde la CAUSE dont `verifier-les-gestes` garde la
+conséquence : **on appuie deux fois parce que le premier appui n'a rien
+répondu.** Il maintient le doigt sur un bouton, prend l'image avant et
+pendant, et compte les pixels qui bougent. Mesuré : « tout voir », l'œil du
+mot de passe, les onglets ne remuaient PAS UN PIXEL — et « tout voir » change
+d'écran, ce qui prend du temps.
+
+Il tient l'autre moitié de la même promesse : **un bouton se fait reconnaître
+par le doigt ET par la voix.** Sur l'accueil, une aide technique annonçait
+DEUX boutons pour SEIZE choses qui se pressent — « Dépôt », « Retrait »,
+« Transfert », les gestes qui déplacent de l'argent, passaient pour du texte
+ordinaire. Compter cela demande le bon repère : `cursor: pointer` DESCEND en
+héritage, et un premier comptage trouvait 850 « boutons » sur un écran qui en
+porte seize, en comptant les mots à l'intérieur des boutons. Ce qui distingue
+un bouton, c'est que le clavier peut s'y poser.
+
+Le harnais porte son propre TÉMOIN — deux boutons dont on sait qu'ils
+répondent — et s'arrête si eux-mêmes sortent ✗ : une sonde qui répond non à
+tout est indiscernable d'une application immobile. Le premier témoin écrit
+ici visait « Se connecter », dont le code suit `pressed` depuis toujours, et
+sortait ✗ : les champs étaient vides, donc le bouton `disabled`. **Le code
+disait oui, l'écran disait non, et c'est l'écran qui a raison.**
+
+**Un budget d'affichage se compte dans l'unité qu'on veut borner.** La boîte
+de réception rendait quatre JOURS avant d'aller chercher la suite : ce
+qu'elle montait suivait donc ce que la boutique ENCAISSAIT. Quatre jours
+faisaient 88 lignes sur une caisse tranquille, 165 sur une caisse à quarante
+par jour, et une seule journée à cent quarante en montait cent quarante. Plus
+la boutique travaille, plus son téléphone peine — exactement à l'envers. Le
+budget se compte maintenant en lignes : 41 sur l'une, 44 sur l'autre. Le
+harnais n'a rien trouvé de nouveau ce jour-là ; il a simplement été lancé sur
+une caisse plus dense, et **une donnée d'essai trop sage cache le défaut au
+lieu de le montrer**.
+
+**Une date se lit dans la langue de l'ÉCRAN, pas dans celle de l'appareil.**
+`toLocaleDateString()` sans argument suit le réglage du téléphone : l'écran
+des comptes affichait « Last signed in 8/31/2026 » — un mois avant un jour —
+au milieu d'une application française. « 8/31 » et « 31/8 » se confondent onze
+mois sur douze, et sur une date on ne devine pas. Le mois s'écrit donc en
+toutes lettres (`dateVue` dans le noyau), et un test du noyau balaie les DEUX
+surfaces : la faute était écrite deux fois, à l'identique.
+
+`verifier-le-cahier` écoute LE RÉSEAU pendant qu'on parcourt l'application.
+Chaque écran gardait SON état : sept écrans, sept employés qui ne se parlent
+pas. On ouvre l'Accueil, il court chercher le solde ; on touche « Comptes »,
+il RECOURT chercher le même chiffre, vieux de dix secondes.
+
+Le harnais a surtout servi à **démonter ce que je croyais gagner**. Mesuré :
+4 descentes avant, 3 après — un gain mince — et **105 Ko avant, 117 Ko
+après**, c'est-à-dire PLUS. Le vrai gain était ailleurs, et il ne se voyait
+pas dans ce comptage : chaque écran écoutait pour lui le retour au premier
+plan et les notifications. **Un seul retour devant l'application déclenchait
+quatre rechargements**, et une notification arrive à chaque SMS — quarante
+fois par jour sur une caisse active. C'est un, maintenant.
+
+**Un drapeau ne se réunit pas.** L'écran des cartes compte sur mille SMS sans
+en vouloir un seul (`sansLignes`) ; l'accueil en veut trente, avec leurs
+textes. Quand les deux sont montés, le plus grand besoin commun n'est ni
+« aucune ligne » ni « toutes » — c'est un NOMBRE. Le drapeau est devenu
+`lignes`, et l'ancien reste compris par la plateforme : une application déjà
+installée continue de l'envoyer tant qu'elle n'a pas reçu la mise à jour.
+
+**« Personne n'a encore demandé » n'est pas « on demande ce qui se fait
+d'habitude ».** Le cahier partait au guichet AVANT que le premier écran n'ait
+dit ce qu'il voulait, et ramenait 88 Ko de valeurs par défaut que la descente
+suivante remplaçait aussitôt. Le besoin vaut donc `null` tant que le registre
+est vide.
+
+Il garde enfin la promesse qui compte : **sans réseau, l'application montre
+les chiffres du dernier passage, et DIT qu'ils datent.** Avant, elle
+n'affichait rien — « la plateforme ne répond pas », mesuré. Un solde d'hier
+présenté comme celui de maintenant serait pire qu'un écran vide : on remet de
+l'argent en croyant qu'il est arrivé. Et le cahier **se ferme avec la
+session** — sans quoi un téléphone perdu montrerait les SMS du propriétaire à
+qui l'ouvrirait, sans un mot de passe.
+
+Le bandeau qui l'annonce ne passe PAS par `useDonnees` : il l'a fait, et
+`verifier-les-ecrans` l'a pris — à juste titre — pour un écran qui lit les
+données sans jamais dire la panne. **Exempter un harnais, c'est le rendre
+aveugle** ; il valait mieux que le bandeau demande exactement ce qu'il
+regarde.
+
+`verifier-les-fiches` tient une règle en une phrase : **on tronque dans une
+LISTE, jamais dans une FICHE**. Dans une liste, les lignes doivent s'aligner —
+l'œil parcourt une colonne, il ne lit pas ; couper y est juste. Dans une
+fiche, on a demandé à voir : couper y est un contresens. Le titre de la fiche
+d'un SMS affichait « NKENGAFAC MBOUNGOU J… », et c'est exactement la question
+qu'on se pose en l'ouvrant. La valeur d'une rangée aussi : une référence
+d'opérateur coupée ne sert à rien — c'est le numéro qu'on recopie pour
+réclamer chez MTN — et elle donne l'illusion de l'avoir. Un courriel n'est
+jamais coupé non plus : c'est sur lui qu'on décide d'ouvrir la caisse à
+quelqu'un, et « jean@exemp… » ressemble beaucoup à « jean@exemple-piege.cm ».
+
+`verifier-l-attente` garde ce que l'écran montre PENDANT qu'il charge. Les
+écrans principaux ne rendaient rien : un écran blanc, sans un mot, pendant
+une à trois secondes — le propriétaire ne peut pas distinguer « ça arrive »
+de « c'est cassé ». Des formes grises à la bonne place répondent aux deux
+questions d'un coup.
+
+**Mais une forme à la mauvaise hauteur est pire que pas de forme** : l'écran
+SAUTE au moment de la substitution, et il saute juste quand le doigt
+s'approche d'un bouton. Premier essai : 72 points de saut, parce que la forme
+oubliait les trois commandes rondes sous la carte. À l'œil, on ne l'aurait pas
+vu — le harnais ralentit le réseau, mesure un repère placé sous la carte
+avant et après, et refuse plus de 20 points d'écart.
+
+Il attend un ÉTAT, jamais une durée : un délai fixe après le clic paraît
+marcher, puis la connexion prend une seconde de plus et le harnais mesure
+l'écran de connexion en annonçant « rien à l'écran ».
+
+Il compte les formes PAR LEUR MARQUE, jamais par leur couleur. Le gris des
+squelettes est `surface2`, employé à trente-trois endroits du thème — champs,
+pastilles, surfaces d'appui : le premier comptage attribuait donc sept formes
+à l'écran des Actions, qui n'en a aucune. Chaque onglet annonce maintenant
+COMBIEN il doit en montrer, et le nombre est celui des composants : un écart
+signale une forme perdue autant qu'une forme de trop.
+
+`verifier-les-listes` tient TROIS promesses, et la troisième est la
+condition des deux autres : une liste ne monte pas ce que personne ne
+regarde, **rien ne devient inatteignable**, et **l'écran ne saute pas**.
+
+Rendre par lots bornait le PREMIER affichage, et rien d'autre. Mesuré après
+avoir descendu un mois : **201 lignes montées, 2 161 nœuds — et toujours 201
+une fois remonté tout en haut**. Un serveur qui dresse les tables à mesure et
+ne débarrasse jamais. Les jours loin derrière sont maintenant reposés :
+**89 au plus fort, 37 à l'arrivée**.
+
+À leur place, un vide de la hauteur EXACTE qu'ils occupaient, prise par
+`onLayout`. Le premier essai posait cette mesure sur la vue INTÉRIEURE : à
+l'intérieur de `Entree`, `layout.y` vaut zéro pour tous les jours. Tous se
+croyaient donc en haut de la liste et se relâchaient TOUS dès qu'on
+descendait — **un beau chiffre pour une raison fausse**. La mesure se prend
+sur l'enveloppe.
+
+Il exige donc aussi que l'écran ne bouge pas quand un jour est reposé :
+7 relâchements, **0,0 point d'écart**. Une hauteur fausse d'un point décale
+l'écran sous le doigt, au moment précis où le doigt vise une ligne.
+
+Il demande à la PLATEFORME combien elle porte, au lieu de s'en remettre à
+l'écran : sans cette vérité indépendante, « la liste s'arrête à 88 » et « la
+caisse n'a que 88 lignes » se ressemblent — et le harnais accusait la caisse
+d'être vide pendant que l'écran perdait des encaissements.
+
+**Depuis qu'elle relâche, compter les lignes MONTÉES ne dit plus rien de ce
+qu'on peut ATTEINDRE — il dit le contraire.** Le harnais retient l'identité
+de chaque ligne croisée (`data-ligne`, comme `data-squelette` : web
+seulement). Deux corrections ont été nécessaires, et chacune accusait
+l'application à tort : le TEXTE ne distingue pas deux encaissements d'une
+caisse d'essai (200 lignes se réduisaient à 9), et relever les lignes une
+fois tous les douze crans — treize écrans — les laissait passer ENTRE deux
+coups d'œil (« 125 sur 200, 75 hors de portée »). Tant que la liste ne
+relâchait rien, ces deux fautes ne se voyaient pas : tout ce qu'on avait
+dépassé était encore là à la fin.
+
+Il descend à la MOLETTE, jamais en réglant `scrollTop` : régler la propriété
+ne déclenche pas le gestionnaire de react-native-web, et le harnais concluait
+« la liste s'arrête » sur une liste qui marchait.
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une

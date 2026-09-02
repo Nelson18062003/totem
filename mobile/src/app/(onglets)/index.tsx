@@ -16,10 +16,12 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Accroc, Carte, Filet, Pastille, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
+         appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
+import { SqueletteCaisse, SqueletteGestes, SqueletteListe } from "@/squelettes";
 import { OperationPopup, type Operation } from "@/operation";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
@@ -109,7 +111,12 @@ export default function Accueil() {
         <Entree delai={60}>
           <Caisse carte={active} langue={langue} soldeCache={soldeCache} />
         </Entree>
-      ) : !chargement ? (
+      ) : chargement ? (
+        // PENDANT L'ATTENTE, UNE FORME — pas le vide. L'écran ne montrait
+        // RIEN tant que les chiffres n'étaient pas là : le propriétaire ne
+        // pouvait pas distinguer « ça arrive » de « c'est cassé ».
+        <SqueletteCaisse />
+      ) : (
         <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                         borderStyle: "dashed" }}>
           {/* Le premier écran d'un propriétaire tout neuf : ni carte, ni SMS.
@@ -126,7 +133,7 @@ export default function Accueil() {
             {t.aucuneCarteDetail}
           </Texte>
         </Carte>
-      ) : null}
+      )}
 
       {/* Les commandes de la carte, HORS de la carte : masquer le solde,
           l'actualiser, partager ses coordonnées. Trois cercles, aucun mot —
@@ -171,12 +178,15 @@ export default function Accueil() {
             ))}
           </View>
         </Entree>
-      ) : active?.enPlace && !chargement ? (
+      ) : chargement ? (
+        <SqueletteGestes />
+      ) : active?.enPlace ? (
         // Aucun code relevé pour cet opérateur : le web le DIT et mène aux
         // Réglages ; ici les gestes disparaissaient sans un mot, comme si
         // l'application était en panne.
         <Entree delai={180}>
-          <Pressable onPress={() => router.push("/reglages")}>
+          <Pressable onPress={() => router.push("/reglages")}
+                     accessibilityRole="button" style={appuiTexte}>
             <Carte style={{ padding: espaces.lg, borderStyle: "dashed",
                             alignItems: "center" }}>
               <Texte taille={textes.petit} ton="pale"
@@ -204,7 +214,9 @@ export default function Accueil() {
                 {t.derniersSms}
               </Texte>
               <Pressable onPress={() => router.push("/encaissements")} hitSlop={8}
-                         style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs }}>
+                         accessibilityRole="button"
+                         style={avecAppui({ flexDirection: "row", alignItems: "center",
+                                            gap: espaces.xs })}>
                 <Texte taille={textes.petit} ton="doux">{t.toutVoir}</Texte>
                 <Icone nom="Chevron" taille={14} couleur={couleurs.encrePale} />
               </Pressable>
@@ -220,6 +232,13 @@ export default function Accueil() {
             </Carte>
           </View>
         </Entree>
+      ) : chargement ? (
+        // Le titre PUIS les formes : l'écran se compose dans le bon ordre, et
+        // « Derniers SMS » est déjà lisible pendant que les lignes arrivent.
+        <View style={{ gap: espaces.sm }}>
+          <Texte taille={textes.intertitre} poids="demi">{t.derniersSms}</Texte>
+          <SqueletteListe lignes={4} />
+        </View>
       ) : null}
 
       {donnees?.terminal ? (
@@ -270,15 +289,11 @@ export default function Accueil() {
             </View>
             {/* L'analyse puis l'engrenage : les deux écrans « à part »,
                 côte à côte dans l'angle où le pouce les attend. */}
-            <Pressable onPress={() => router.push("/analyse")} hitSlop={12}
-                       accessibilityLabel={ta.titre}
-                       style={{ marginRight: espaces.lg }}>
-              <Icone nom="Chart" taille={22} couleur={couleurs.encreDouce} />
-            </Pressable>
-            <Pressable onPress={() => router.push("/reglages")} hitSlop={12}
-                       accessibilityLabel={t.reglages}>
-              <Icone nom="Settings" taille={22} couleur={couleurs.encreDouce} />
-            </Pressable>
+            <BoutonIcone nom="Chart" etiquette={ta.titre}
+                         onPress={() => router.push("/analyse")}
+                         style={{ marginRight: espaces.lg }} />
+            <BoutonIcone nom="Settings" etiquette={t.reglages}
+                         onPress={() => router.push("/reglages")} />
           </View>
         </Entree>
 
@@ -322,6 +337,7 @@ function PuceCarte({ carte, actif, onPress }: {
   return (
     <Animated.View style={appui.style}>
       <Pressable onPress={onPress} {...appui}
+                 accessibilityRole="button"
                  accessibilityState={{ selected: actif }}
                  style={{
                    flexDirection: "row", alignItems: "center", gap: espaces.sm,
@@ -348,7 +364,8 @@ function Commande({ icone, libelle, onPress }: {
   const appui = useAppui();
   return (
     <Animated.View style={appui.style}>
-      <Pressable onPress={onPress} {...appui} accessibilityLabel={libelle}
+      <Pressable onPress={onPress} {...appui} accessibilityRole="button"
+                 accessibilityLabel={libelle}
                  style={{
                    width: 46, height: 46, borderRadius: rayons.rond,
                    borderWidth: 1, borderColor: couleurs.trait,
@@ -368,6 +385,7 @@ function BoutonGeste({ libelle, icone, onPress }: {
   return (
     <Animated.View style={[{ width: "48.5%" }, appui.style]}>
       <Pressable onPress={onPress} {...appui}
+                 accessibilityRole="button"
                  style={{
                    alignItems: "center", gap: espaces.sm,
                    paddingVertical: espaces.lg, paddingHorizontal: espaces.sm,
@@ -392,6 +410,7 @@ function LigneSms({ paiement: p, langue, onPress }: {
 
   return (
     <Pressable onPress={onPress}
+               accessibilityRole="button"
                style={({ pressed }) => ({
                  flexDirection: "row", alignItems: "center", gap: espaces.md,
                  padding: espaces.lg,

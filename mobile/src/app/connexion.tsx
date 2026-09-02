@@ -36,7 +36,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
-  Carte, MotTotem, Pastille, Texte, couleurs, espaces, rayons, textes,
+  BoutonIcone, Carte, MotTotem, Pastille, Texte, appuiTexte, avecAppui,
+  couleurs, espaces, rayons, textes,
 } from "@/ui";
 import { Symbole } from "@/marque";
 import { Entree } from "@/animations";
@@ -193,11 +194,12 @@ export default function Connexion() {
           </View>
           <Pressable
             onPress={() => { setAttente(false); setMode("entrer"); }}
-            style={{
+            accessibilityRole="button"
+            style={avecAppui({
               borderWidth: 1, borderColor: couleurs.trait,
               borderRadius: rayons.bouton, paddingVertical: espaces.md,
               alignItems: "center",
-            }}
+            })}
           >
             <Texte poids="demi" ton="doux">{t.jAiDejaUnCompte}</Texte>
           </Pressable>
@@ -292,6 +294,8 @@ export default function Connexion() {
                   <Pressable
                     onPress={() => { setSaisie(adresse || "https://"); setErreurAdresse(null); }}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    style={appuiTexte}
                   >
                     <Texte taille={textes.petit} ton="doux" poids="moyen"
                            style={{ textDecorationLine: "underline" }}>
@@ -299,7 +303,8 @@ export default function Connexion() {
                     </Texte>
                   </Pressable>
                   {etat !== null && etat !== "trouvee" ? (
-                    <Pressable onPress={() => void sonder()} hitSlop={8}>
+                    <Pressable onPress={() => void sonder()} hitSlop={8}
+                               accessibilityRole="button" style={appuiTexte}>
                       <Texte taille={textes.petit} ton="doux" poids="moyen"
                              style={{ textDecorationLine: "underline" }}>
                         {t.reessayer}
@@ -337,6 +342,7 @@ export default function Connexion() {
                 </Texte>
                 <View style={{ flexDirection: "row", gap: espaces.sm }}>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={enregistrerAdresse}
                     style={({ pressed }) => ({
                       flex: 1, alignItems: "center",
@@ -350,12 +356,13 @@ export default function Connexion() {
                   </Pressable>
                   <Pressable
                     onPress={() => { setSaisie(null); setErreurAdresse(null); }}
-                    style={{
+                    accessibilityRole="button"
+                    style={avecAppui({
                       alignItems: "center", justifyContent: "center",
                       borderWidth: 1, borderColor: couleurs.trait,
                       borderRadius: rayons.bouton,
                       paddingVertical: espaces.md, paddingHorizontal: espaces.lg,
-                    }}
+                    })}
                   >
                     <Texte ton="doux">{t.annuler}</Texte>
                   </Pressable>
@@ -418,13 +425,16 @@ export default function Connexion() {
                   color: couleurs.encre,
                 }}
               />
-              <Pressable
+              {/* L'œil : une icône nue, donc un `BoutonIcone` — il s'enfonce
+                  sous le doigt et s'annonce comme un bouton. Écrit à la main,
+                  il ne faisait ni l'un ni l'autre, et son étiquette était en
+                  français quel que soit l'écran. */}
+              <BoutonIcone
+                nom={visible ? "EyeOff" : "Eye"}
+                couleur={couleurs.encrePale}
+                etiquette={visible ? t.masquerMotDePasse : t.montrerMotDePasse}
                 onPress={() => setVisible((v) => !v)}
-                hitSlop={12}
-                accessibilityLabel={visible ? "Masquer" : "Afficher"}
-              >
-                <Icone nom={visible ? "EyeOff" : "Eye"} couleur={couleurs.encrePale} />
-              </Pressable>
+              />
             </View>
 
             {mode === "creer" ? (
@@ -442,6 +452,7 @@ export default function Connexion() {
             ) : null}
 
             <Pressable
+              accessibilityRole="button"
               onPress={valider}
               disabled={!complet || enCours || !porteOuverte}
               style={({ pressed }) => ({
@@ -472,7 +483,8 @@ export default function Connexion() {
               lui-même — la répéter ici ne faisait qu'épaissir l'écran. */}
           <Entree delai={120} style={{ gap: espaces.lg, alignItems: "center" }}>
             {(inscriptionOuverte || mode === "creer") && (
-              <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}>
+              <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}
+                         accessibilityRole="button" style={appuiTexte}>
                 <Texte taille={textes.petit} poids="moyen" ton="doux"
                        style={{ textDecorationLine: "underline" }}>
                   {mode === "creer" ? t.jAiDejaUnCompte : t.creerUnCompte}
@@ -483,6 +495,7 @@ export default function Connexion() {
             {/* La bascule de langue : un drapeau et le nom de l'AUTRE langue,
                 dans une pastille visible — celle qui la cherche la voit. */}
             <Pressable
+              accessibilityRole="button"
               onPress={() => changerLangue(autre.code)}
               hitSlop={8}
               style={({ pressed }) => ({

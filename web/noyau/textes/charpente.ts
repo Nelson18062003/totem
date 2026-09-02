@@ -29,6 +29,13 @@ const en = {
   nonRelieApres:
     " (see docs/CLOUD.md), then reload: the terminal’s real data will appear.",
 
+  // LE BANDEAU « CES CHIFFRES DATENT ». Sans réseau, l'application montre
+  // ce qu'elle avait au dernier passage — mais elle DOIT le dire. Un solde
+  // d'hier présenté comme celui de maintenant est pire qu'un écran vide :
+  // on décide dessus.
+  horsLigne: "No network",
+  horsLigneDetail: (age: string) => `Figures from your last visit, ${age}.`,
+
   // Les SMS
   nonLu: "unread",
   nonLus: (n: number) => (n === 1 ? "1 unread message" : `${n} unread messages`),
@@ -58,6 +65,9 @@ const fr: typeof en = {
   nonRelieEt: " et ",
   nonRelieApres:
     " (voir docs/CLOUD.md), puis rechargez : les vraies données du terminal apparaîtront.",
+
+  horsLigne: "Pas de réseau",
+  horsLigneDetail: (age: string) => `Chiffres de votre dernier passage, ${age}.`,
 
   nonLu: "non lu",
   nonLus: (n) => (n === 1 ? "1 message non lu" : `${n} messages non lus`),

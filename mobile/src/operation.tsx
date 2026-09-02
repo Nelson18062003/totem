@@ -299,7 +299,11 @@ export function OperationPopup({
             {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
             {" · "}{codeAffiche}
           </Texte>
-          <Texte taille={textes.intertitre} poids="demi" numberOfLines={1}
+          {/* Même règle que la fiche d'un SMS : on a ouvert l'écran pour
+              savoir CE QU'ON COMPOSE. « Transfert vers NKENGAFAC MBOU… »
+              cache justement le bénéficiaire — sur un écran qui envoie de
+              l'argent. */}
+          <Texte taille={textes.intertitre} poids="demi" numberOfLines={2}
                  style={{ marginTop: 2 }}>
             {operation.titre}
           </Texte>
@@ -430,6 +434,7 @@ function Bouton({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={desactive}
       style={({ pressed }) => ([{

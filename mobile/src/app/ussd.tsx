@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, Carte, Filet, Texte } from "@/ui";
+import { Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -66,12 +66,9 @@ export default function CadranUssd() {
       <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
-          <Pressable onPress={() => router.back()} hitSlop={12}
-                     accessibilityLabel={t.fermerEcran}>
-            <View style={{ transform: [{ rotate: "180deg" }] }}>
-              <Icone nom="Chevron" taille={22} couleur={couleurs.encreDouce} />
-            </View>
-          </Pressable>
+          <BoutonIcone nom="Chevron" etiquette={t.fermerEcran}
+                       onPress={() => router.back()}
+                       style={{ transform: [{ rotate: "180deg" }] }} />
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </View>
 
@@ -100,14 +97,15 @@ export default function CadranUssd() {
                 {cartes.map((c) => {
                   const active = c.iccid === carte.iccid;
                   return (
-                    <Pressable key={c.iccid} onPress={() => setChoisie(c.iccid)}
+                    <Pressable
+                               accessibilityRole="button" key={c.iccid} onPress={() => setChoisie(c.iccid)}
                                accessibilityState={{ selected: active }}
-                               style={{
+                               style={avecAppui({
                                  paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
                                  borderRadius: rayons.bouton,
                                  borderWidth: active ? 0 : 1, borderColor: couleurs.trait,
                                  backgroundColor: active ? couleurs.accent : couleurs.surfaceHaute,
-                               }}>
+                               })}>
                       <Texte taille={textes.petit} poids="moyen"
                              style={active ? { color: couleurs.surfaceHaute } : undefined}
                              ton={active ? "normal" : "doux"}>
@@ -143,7 +141,8 @@ export default function CadranUssd() {
                   }}
                 />
               </View>
-              <Pressable onPress={composer} disabled={!saisie.trim()}
+              <Pressable
+                         accessibilityRole="button" onPress={composer} disabled={!saisie.trim()}
                          style={({ pressed }) => ({
                            justifyContent: "center", paddingHorizontal: espaces.lg,
                            borderRadius: rayons.bouton,
@@ -166,6 +165,7 @@ export default function CadranUssd() {
                   <View key={c.code}>
                     {i > 0 ? <Filet /> : null}
                     <Pressable
+                      accessibilityRole="button"
                       onPress={() => ouvrir(t.libelleCode(c.cle, c.libelle), [c.code])}
                       style={({ pressed }) => ({
                         flexDirection: "row", alignItems: "center", gap: espaces.md,
@@ -202,6 +202,7 @@ export default function CadranUssd() {
                       <View key={r.nom}>
                         {i > 0 ? <Filet /> : null}
                         <Pressable
+                          accessibilityRole="button"
                           disabled={aTrous}
                           onPress={() => ouvrir(r.libelle || r.nom, r.etapes)}
                           style={({ pressed }) => ({

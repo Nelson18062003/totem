@@ -300,11 +300,20 @@ async function demander<T>(chemin: string, options: RequestInit = {}): Promise<T
 /** Les caisses, les SMS, le terminal — la même lecture que les pages web. */
 export function chargerDonnees(
   langue: Langue,
-  bornes?: { sms?: number; recus?: number },
+  // `lignes` : COMPTER LOIN, RAPPORTER PEU. L'écran des cartes veut des
+  // compteurs calculés sur mille SMS, pas les mille SMS. Sans cette borne il
+  // téléchargeait 264 Ko de textes qu'il ne regarde jamais — sur le réseau
+  // mobile de Douala, des secondes d'attente pour rien.
+  //
+  // Un NOMBRE et non un drapeau : les onglets partagent une seule demande, et
+  // « le plus grand besoin » de zéro ligne et de trente lignes n'est ni l'un
+  // ni l'autre. Absent, il vaut « autant que `sms` ».
+  bornes?: { sms?: number; recus?: number; lignes?: number },
 ): Promise<Donnees> {
   const q = new URLSearchParams({ langue });
   if (bornes?.sms != null) q.set("sms", String(bornes.sms));
   if (bornes?.recus != null) q.set("recus", String(bornes.recus));
+  if (bornes?.lignes != null) q.set("lignes", String(bornes.lignes));
   return demander<Donnees>(`/api/donnees?${q}`);
 }
 
