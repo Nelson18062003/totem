@@ -21,7 +21,7 @@
       },
       "//permissions": "La liste est VIDE, et c'est un choix. Les SMS sont lus par le modem de Douala, jamais par le telephone : READ_SMS et RECEIVE_SMS sont des autorisations restreintes qui declenchent un formulaire de justification et, presque toujours, un refus. Ne jamais les ajouter, meme pour essayer. Cette liste ne sert qu'a AJOUTER des autorisations : celles dont une bibliotheque a besoin arrivent toutes seules avec elle (expo-notifications apporte POST_NOTIFICATIONS). La laisser vide n'enleve donc rien.",
       "permissions": [],
-      "edgeToEdgeEnabled": true,
+      "//edgeToEdge": "RETIRE, et c'est le greffon d'Expo qui le demande : « `edgeToEdgeEnabled` customization is no longer available — Android 16 makes edge-to-edge mandatory. Remove the entry from your app.json ». Le bord a bord n'est plus un choix a partir d'Android 16, que TOTEM vise (targetSdkVersion 36). Le garder ne reglait plus rien et laissait un avertissement a chaque compilation.",
       "predictiveBackGestureEnabled": true,
       "resizeableActivity": true
     },
@@ -46,10 +46,15 @@
         "expo-build-properties",
         {
           "//": "Depuis le 31 aout 2026, une nouvelle application doit viser Android 16 (API 36) pour entrer sur le Play Store. On le pose explicitement des la premiere compilation plutot que de dependre d'une valeur par defaut qui bougera.",
+          "//optimisation": "GOOGLE PLAY LE RECLAME, et il a raison. Sur le paquet 4 : « obscurcissement 1 % », « configuration R8 : - », 52,8 Mo de code non compresse et 33,9 Mo a telecharger. Le code part donc EN CLAIR : plus lourd sur un forfait camerounais, et lisible par quiconque demonte l'application. Echeance annoncee par Google : fevrier 2027.",
+          "//prudence": "R8 raccourcit et renomme le code a la compilation. Il SUPPRIME ce qu'il croit inutilise : une bibliotheque qui se cherche par reflexion casse alors AU DEMARRAGE, pas a la compilation. Le paquet sort en vert et l'application plante sur le telephone. Les modules Expo et Reanimated apportent leurs propres regles de conservation, donc le risque est faible — mais il n'est pas nul, et AUCUN harnais d'ici ne peut le voir : ils mesurent l'export web et le paquet JAVASCRIPT, jamais le code natif. A EPROUVER SUR UN VRAI TELEPHONE (profil « apercu », qui rend un APK a installer directement) AVANT toute publication.",
+          "//leNomDeLOption": "« enableMinifyInReleaseBuilds », et non « enableProguardInReleaseBuilds » : ce dernier est l'ancien nom, et un nom inconnu est ignore SANS ERREUR. Le reglage n'aurait rien fait et l'avertissement de Google serait reste. Verifie contre les types du greffon, pas de memoire.",
           "android": {
             "compileSdkVersion": 36,
             "targetSdkVersion": 36,
-            "minSdkVersion": 24
+            "minSdkVersion": 24,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
       ],
