@@ -780,9 +780,22 @@ Une machine s'ouvre dans un onglet, Node déjà installé, le dépôt déjà là
 ```sh
 cd mobile
 npm install
-npx eas-cli login
+export EXPO_TOKEN=le-jeton-copie-sur-expo.dev
 npx eas-cli credentials --platform ios
 ```
+
+**Surtout PAS `eas-cli login`.** Cette commande ouvre une page qui doit
+revenir sur `localhost:38415` — c'est-à-dire sur la machine où le terminal
+tourne. Dans un Codespace, le terminal est chez GitHub et le navigateur est
+chez soi : la réponse cherche une porte qui n'existe pas de ce côté-là, et
+l'écran affiche « Ce site est inaccessible ». Rien n'est cassé ; la connexion
+par navigateur ne s'applique simplement pas à un terminal distant.
+
+Le jeton s'en passe. Il se crée sur `expo.dev` → **Access tokens** →
+« Create token », et **Expo ne le montre qu'une fois**. Il se colle dans le
+terminal du Codespace, jamais ailleurs. C'est d'ailleurs ainsi que le
+workflow s'authentifie depuis toujours — `EXPO_TOKEN` était sous nos yeux
+dans ses secrets.
 
 Profil **production** → **Build Credentials** → **All: Set up all the
 required credentials**. Expo demande à Apple les deux pièces et les garde.
