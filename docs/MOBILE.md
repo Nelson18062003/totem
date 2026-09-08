@@ -526,27 +526,98 @@ toutes celles d'après, savent écouter.
 
 ## 7. L'iPhone
 
-L'inscription au programme Apple prend **deux à quatre semaines** pour une
-organisation : Apple vérifie le numéro D-U-N-S, puis que la personne inscrite
-engage juridiquement l'entreprise. Huit à dix jours d'attente sont donc
-**encore dans la fenêtre annoncée** — désagréable, pas anormal.
+### Ce qui s'est passé
 
-Ce qui bloque le plus souvent, dans l'ordre :
+Dossier d'organisation déposé le **15 août 2026**. Le 8 septembre — **vingt-
+quatre jours** — il était toujours « en cours de traitement », sans un
+courriel, sans un appel, sans une demande de document. Une relance a été
+déposée le 3 septembre : dossier **102952763167**, identifiant d'inscription
+**UTRBGQJKX9**.
+
+Ce qui bloque le plus souvent une inscription d'organisation, dans l'ordre :
 
 1. **Le nom ou l'adresse ne correspondent pas au dossier D&B**, au caractère
-   près. Apple ne peut alors pas relier les deux dossiers et le nôtre attend.
+   près. Apple ne peut alors pas relier les deux dossiers, et le nôtre attend.
 2. **Le téléphone ne répond pas.** Apple appelle le numéro déclaré chez D&B
-   pour vérifier l'autorité de signature. Aux heures américaines. Un appel
-   manqué, et le dossier dort sans que personne ne prévienne.
+   pour vérifier l'autorité de signature. Un appel manqué, et le dossier dort
+   sans que personne ne prévienne. C'est la cause la mieux documentée des
+   blocages muets — et elle ne se répare pas chez Apple, elle se répare chez
+   [D&B](https://support.dnb.com/?CUST=APPLEDEV).
 
-Ce qu'il y a à faire, dans cet ordre : vérifier le dossier D&B ; s'assurer que
-le numéro est joignable ; puis relancer le support Apple avec le numéro
-d'inscription, **en demandant un rappel téléphonique** plutôt qu'en remplissant
-le formulaire.
+### La décision : publier sous le compte individuel, transférer ensuite
 
-**L'iPhone n'est pas sur le chemin critique.** On construit l'application
-maintenant ; le jour où le compte s'ouvre, l'iPhone sort du même code, sans
-projet supplémentaire.
+Attendre indéfiniment n'était pas tenable. Un compte **individuel** a donc été
+ouvert, et c'est lui qui publie. Le jour où l'organisation s'ouvre,
+l'application se **transfère** — Apple le prévoit.
+
+**Ce que le transfert conserve** : les avis, les notes, les installations,
+l'identifiant du paquet, et la continuité des mises à jour pour les gens déjà
+installés. L'application reste disponible pendant l'opération.
+
+**Ce qu'il ne conserve PAS, et qui compte ici** :
+
+- **Les clés de notification.** Le compte qui reçoit doit en générer de
+  nouvelles. Pour TOTEM, dont la notification est *le* canal temps réel — un
+  SMS arrive, le téléphone sonne, l'écran se met à jour —, c'est l'étape à ne
+  pas oublier le jour du basculement. Une application qui ne sonne plus a
+  perdu ce qui la rend utile.
+- **TestFlight.** Il faut retirer les versions et les testeurs avant de
+  transférer.
+
+**Ce qu'il faut savoir avant de publier** : sur un compte individuel, l'App
+Store affiche le **nom légal de la personne**, pas celui de la société. La
+fiche portera donc « Nelson Soh » et non « BONZINILABS LTD ». Sur une
+application qui montre des soldes Mobile Money, un examinateur peut le
+relever. Ce n'est pas un refus annoncé — c'est une friction connue, et la
+réponse est que la personne et la société sont la même.
+
+### Ce qui diffère d'Android, et qu'il faut savoir avant de cliquer
+
+**Il n'y a pas de profil « apercu ».** Sur Android, un APK s'installe
+directement sur le téléphone, sans magasin — c'est ainsi qu'on éprouve une
+compilation avant de la publier. Sur iPhone, rien ne s'installe hors du
+magasin sans enregistrer l'appareil un par un chez Apple. Le chemin d'essai de
+l'iPhone, c'est **TestFlight**, donc le profil « essai ».
+
+**Tout passe par TestFlight, « production » compris.** `eas submit` dépose
+dans App Store Connect ; la version y est aussitôt distribuable aux testeurs.
+La mettre sur l'App Store **public** reste un geste séparé, chez Apple. Il n'y
+a pas d'équivalent iPhone du « brouillon sur la piste publique » d'Android.
+
+### Ce qu'il faut poser une seule fois
+
+1. Un compte Apple Developer en règle.
+2. App Store Connect → Mes apps → « + » → créer la fiche, avec l'identifiant
+   **`com.bonzinilabs.totem`** (celui d'`app.json`, qui ne se change jamais).
+3. App Store Connect → Utilisateurs et accès → Intégrations → Clés d'API →
+   « + » → rôle **App Manager**. Noter l'ID de la clé et l'ID de l'émetteur,
+   télécharger le fichier `.p8`. **Apple ne le donne qu'une fois.**
+4. GitHub → Settings → Secrets and variables → Actions → trois secrets :
+   `ASC_CLE_P8` (le contenu entier du `.p8`), `ASC_CLE_ID`, `ASC_EMETTEUR_ID`.
+
+**Une clé, et non l'identifiant Apple avec son mot de passe** : un compte Apple
+porte une double authentification, et en intégration continue personne n'est
+là pour taper le code reçu sur le téléphone. La clé s'en passe — c'est le
+pendant du compte de service côté Google.
+
+Ensuite : onglet Actions → **« Application iPhone »** → Run workflow → profil
+`essai`. Le reste est écrit dans l'en-tête du workflow.
+
+### Deux pièges rencontrés en câblant tout cela
+
+**Le bloc `infoPlist` est recopié MOT POUR MOT dans l'application.** La
+convention de commentaires du dépôt (`"//quelquechose": "…"`) ne vaut qu'au
+niveau d'Expo, qui ignore ce qu'il ne connaît pas. Écrite dans `infoPlist`,
+elle est ressortie telle quelle dans le `Info.plist` du paquet — de la prose
+française embarquée dans l'application installée. Les commentaires restent un
+cran au-dessus.
+
+**Le numéro de compilation ne s'écrit pas dans `app.json`.** Il y valait
+`"1"`, et il serait resté à `"1"` à chaque envoi — Apple refuse un numéro déjà
+vu. C'est exactement le piège que le `versionCode` d'Android avait déjà : avec
+`appVersionSource: "remote"`, le numéro est tenu par le serveur d'Expo, et une
+valeur écrite ici est ignorée à la compilation tout en restant visible dans le
+paquet. Deux vérités pour un seul numéro.
 
 ---
 

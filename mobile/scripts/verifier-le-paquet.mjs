@@ -1,6 +1,12 @@
 // Ce que l'application EMPORTE vraiment, vérifié dans le paquet compilé.
 //
-//     node scripts/verifier-le-paquet.mjs
+//     node scripts/verifier-le-paquet.mjs            # Android
+//     node scripts/verifier-le-paquet.mjs iphone     # iPhone
+//
+// LES DEUX PAQUETS TIENNENT LA MÊME PROMESSE, et il a fallu le dire : ce
+// contrôle ne regardait qu'Android, parce qu'il n'y avait qu'Android. Un
+// secret qui fuirait dans le paquet iPhone fuirait tout autant — une
+// application installée se démonte, quel que soit le téléphone.
 //
 // Deux questions, et la seconde est la seule qui compte vraiment :
 //
@@ -21,12 +27,23 @@ import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// « iphone » plutôt que « ios » à l'appel : le dépôt nomme l'objet, pas la
+// technique. Expo, lui, ne connaît que « ios ».
+const demande = (process.argv[2] ?? "android").toLowerCase();
+if (!["android", "iphone", "ios"].includes(demande)) {
+  console.error(`\n✗ Plateforme inconnue : « ${demande} ».`);
+  console.error("  Attendu : « android » (par défaut) ou « iphone ».");
+  process.exit(1);
+}
+const plateforme = demande === "android" ? "android" : "ios";
+const nom = plateforme === "android" ? "Android" : "iPhone";
+
 const sortie = mkdtempSync(join(tmpdir(), "totem-paquet-"));
-console.log("Compilation du paquet Android…\n");
-execFileSync("npx", ["expo", "export", "--platform", "android", "--output-dir", sortie],
+console.log(`Compilation du paquet ${nom}…\n`);
+execFileSync("npx", ["expo", "export", "--platform", plateforme, "--output-dir", sortie],
   { stdio: "ignore" });
 
-const dossier = join(sortie, "_expo/static/js/android");
+const dossier = join(sortie, `_expo/static/js/${plateforme}`);
 const paquet = readdirSync(dossier).find((f) => f.endsWith(".hbc") || f.endsWith(".js"));
 const octets = readFileSync(join(dossier, paquet));
 
@@ -40,7 +57,7 @@ const doitEtre = (present, quoi) => {
   console.log(`  ${ok ? "✓" : "✗"} ${present ? "présent " : "absent  "} ${quoi}`);
 };
 
-console.log(`Paquet : ${(octets.length / 1e6).toFixed(1)} Mo\n`);
+console.log(`Paquet ${nom} : ${(octets.length / 1e6).toFixed(1)} Mo\n`);
 
 console.log("Le noyau partagé voyage bien avec l'application");
 [
@@ -131,6 +148,6 @@ if (inattendues.length) {
 }
 
 console.log(echecs === 0
-  ? "\n✓ Le paquet est propre.\n"
+  ? `\n✓ Le paquet ${nom} est propre.\n`
   : `\n✗ ${echecs} problème(s). Ne pas compiler pour le magasin en l'état.\n`);
 process.exit(echecs === 0 ? 0 : 1);

@@ -26,9 +26,15 @@
       "resizeableActivity": true
     },
     "ios": {
+      "//bundleIdentifier": "DEFINITIF, comme le paquet Android : il identifie l'application chez Apple. Le changer reviendrait a publier une autre application.",
       "bundleIdentifier": "com.bonzinilabs.totem",
-      "buildNumber": "1",
-      "supportsTablet": true
+      "//buildNumber": "RETIRE, pour la MEME raison que versionCode plus haut : eas.json porte appVersionSource=remote, donc le numero de compilation est tenu par le serveur d'Expo, et le profil iPhone porte autoIncrement=buildNumber. Une valeur ecrite ici serait ignoree a la compilation tout en restant visible dans le paquet — deux verites pour un seul numero. Elle valait « 1 », et elle serait restee a « 1 » a chaque envoi : Apple refuse un numero deja vu.",
+      "supportsTablet": true,
+      "//infoPlist": "ATTENTION : ce bloc est recopie MOT POUR MOT dans le Info.plist de l'application. Un commentaire « // » y voyagerait donc jusque dans le paquet installe — c'est arrive en l'ecrivant, la prose francaise s'est retrouvee dans le plist du prebuild. Les commentaires restent ICI, un cran au-dessus, ou Expo ignore ce qu'il ne connait pas.",
+      "//ITSAppUsesNonExemptEncryption": "TOTEM ne chiffre rien lui-meme : il parle a sa plateforme en HTTPS, et range son jeton dans le trousseau du systeme. C'est le chiffrement standard, exempte par Apple. Sans cette declaration, App Store Connect pose la question a CHAQUE envoi et retient la version tant que personne n'a repondu — un envoi automatique resterait bloque sans qu'on sache pourquoi. A REVOIR si TOTEM se met un jour a chiffrer par lui-meme.",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-router",
