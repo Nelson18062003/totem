@@ -727,6 +727,71 @@ qui l'explique.
 
 **Le seul essai qui prouve quelque chose reste le lancement du travail.**
 
+### Le verdict : la voie du navigateur est épuisée
+
+Troisième lancement, avec TOUT en place cette fois :
+
+```
+EXPO_ASC_API_KEY_PATH: ./app-store-connect.p8
+EXPO_ASC_KEY_ID:       ***
+EXPO_ASC_ISSUER_ID:    ***
+EXPO_APPLE_TEAM_ID:    ***      ← enfin lue
+EXPO_APPLE_TEAM_TYPE:  ***      ← enfin lue
+```
+
+…plus la clé d'API posée sur le compte Expo. Réponse, à la seconde près,
+identique aux deux fois précédentes :
+
+```
+✔ Using remote iOS credentials (Expo server)
+Distribution Certificate is not validated for non-interactive builds.
+```
+
+**La question est tranchée, et la réponse est non.** Une clé d'API ne suffit
+pas à créer la PREMIÈRE signature. Ce n'était pas un problème
+d'authentification — Expo savait très bien se présenter à Apple. C'est
+`--non-interactive` qui refuse de CRÉER, quoi qu'on lui donne. Les variables
+servent à réparer une signature existante, comme la documentation le dit, et
+rien de plus.
+
+Trois lancements, trois causes différentes, et **une seule vraie** :
+
+| | ce qui manquait | vraie cause ? |
+|---|---|---|
+| 1 | la clé n'allait qu'au dépôt, pas à la compilation | non |
+| 2 | l'identité d'équipe, rangée dans le mauvais onglet | non |
+| 3 | rien — tout était en place | **oui** |
+
+Les deux premiers échecs se ressemblaient tellement qu'ils passaient pour le
+même. **Un essai qui n'essaie rien rend le même verdict qu'un essai qui
+échoue**, et c'est ce qui a coûté deux tours : à chaque fois j'ai lu « ça ne
+marche pas » là où il fallait lire « ça n'a pas été tenté ». D'où le
+garde-fou qui écrit maintenant l'identité d'équipe avant de compiler.
+
+### Un terminal, sans rien installer : le Codespace
+
+La signature doit donc se créer à la main, une fois. Cela demande un terminal
+— mais **pas d'installer quoi que ce soit sur son ordinateur**.
+
+GitHub en prête un, dans le navigateur : sur la page du dépôt, bouton
+**« Code »** → onglet **« Codespaces »** → **« Create codespace on main »**.
+Une machine s'ouvre dans un onglet, Node déjà installé, le dépôt déjà là.
+
+```sh
+cd mobile
+npm install
+npx eas-cli login
+npx eas-cli credentials --platform ios
+```
+
+Profil **production** → **Build Credentials** → **All: Set up all the
+required credentials**. Expo demande à Apple les deux pièces et les garde.
+Le Codespace peut être supprimé ensuite : **la signature ne vit pas dedans,
+elle vit chez Expo.**
+
+C'est la seule étape de tout ce document qui demande une invite de commande,
+et elle ne se fait qu'une fois pour la vie de l'application.
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
