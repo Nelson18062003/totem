@@ -66,7 +66,7 @@ cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
 #   (même chaîne que verifier-les-formats — voir l'en-tête du script)
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android emporte
 cd mobile && node scripts/verifier-le-paquet.mjs iphone # …et le paquet iPhone
-cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
+cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # douze écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
 ```
 
@@ -196,6 +196,37 @@ n'avaient jamais été EXÉCUTÉES : tous les autres harnais parlent au faux
 nuage, une imitation écrite ici même, qui ne peut pas prendre en défaut du SQL
 qu'elle n'exécute pas. Retirer l'index du propriétaire unique fait échouer la
 migration elle-même, qui refuse de se déclarer en place.
+
+**Le harnais des formats a longtemps mesuré huit écrans, tous Android.** Pas
+un iPhone : ni le plus étroit encore vendu, ni celui qu'on croise le plus, ni
+le 16 Pro Max. Il sortait vert, et il ne mentait pas — il mesurait fidèlement
+huit écrans que personne n'avait sous la main. C'est la même faute que la
+caisse d'essai trop tranquille, rejouée sur les tailles d'écran : **une donnée
+d'essai trop sage cache le défaut au lieu de le montrer.**
+
+Il en mesure douze, dont « pro-max-agrandi » — qui n'est pas un autre
+téléphone, mais le MÊME 16 Pro Max avec « Affichage → Agrandi » dans ses
+réglages, qui lui rend la géométrie d'un 16 Pro. Beaucoup de gens l'activent,
+précisément sur les grands écrans.
+
+**Une décision écrite et jamais branchée ne protège de rien — elle rassure.**
+`ecran.ts` portait `ECHELLE_MAX = 1,35`, avec sa raison écrite noir sur blanc :
+au-delà, les chiffres d'un solde ne tiennent plus sur la carte. Elle vivait
+dans une fonction `corps()` que **personne n'appelait**. Pendant ce temps,
+React Native appliquait le réglage « taille du texte » du téléphone SANS
+AUCUNE LIMITE : sur un iPhone dont ce réglage est monté d'un cran,
+l'application devenait « trop grosse » d'un bout à l'autre — sur le PLUS GRAND
+écran de la gamme, où tout aurait dû paraître plus petit. On relisait le code,
+on trouvait la borne, on croyait le sujet traité, et on cherchait ailleurs. La
+borne est maintenant posée dans `Texte`, donc sur tous les écrans à la fois.
+
+**Une sensation fausse est pire qu'aucune sensation.** Le premier jet de
+l'haptique faisait vibrer « c'est passé » dès que le geste rendait la main —
+or les écrans attrapent leurs propres erreurs et rendent la main NORMALEMENT
+après avoir affiché « ça n'a pas marché ». Le téléphone aurait félicité la
+personne pour un échec, sur de l'argent. `lancer` ne fait donc sentir que ce
+qu'un écran a DIT : `true`, `false`, ou rien du tout — et rien du tout est le
+défaut.
 
 **Un contrôle qui passe sans rien regarder est pire que pas de contrôle : il
 rassure.** Le harnais des formats a mesuré l'écran de connexion aux huit

@@ -16,7 +16,7 @@
 // Les seuils ci-dessous sont ceux de Google (window size classes), pas des
 // nôtres : autant parler la langue du système sur lequel on tourne.
 
-import { PixelRatio, useWindowDimensions } from "react-native";
+import { useWindowDimensions } from "react-native";
 
 /** Les classes de largeur de Google, en dp. */
 export const SEUILS = {
@@ -41,21 +41,31 @@ export type Ecran = {
   largeurContenu: number;
   /** La marge extérieure, plus généreuse quand l'écran grandit. */
   marge: number;
-  /** Met un corps de texte à l'échelle de l'écran, sans jamais suivre
-   *  aveuglément le réglage système. */
-  corps: (base: number) => number;
 };
 
 // Au-delà de cette largeur, on cesse d'élargir le contenu : une colonne de
 // texte de 700 points ne se lit plus, elle se balaie.
 const CONTENU_MAX = 640;
 
-// Le réglage « taille du texte » d'Android va jusqu'à 2× (et davantage en
+// Le réglage « taille du texte » du téléphone va jusqu'à 2× (et davantage en
 // accessibilité). On le RESPECTE — c'est une aide réelle — mais on le borne :
 // au-delà, les chiffres d'un solde ne tiennent plus sur la carte et le
 // montant devient illisible, ce qui dessert précisément la personne qui a
 // demandé du plus gros.
-const ECHELLE_MAX = 1.35;
+//
+// ELLE EST EXPORTÉE, ET C'EST TOUT LE SUJET. Cette borne a longtemps vécu
+// ici, dans une fonction `corps()` que PERSONNE n'appelait — pas un écran,
+// pas un composant. Pendant ce temps, React Native appliquait
+// l'agrandissement du système sans aucune limite. Sur un iPhone dont la
+// taille de texte est montée d'un cran, l'application devenait « trop
+// grosse » partout ; et le code, lui, portait noir sur blanc une borne à
+// 1,35.
+//
+// **Une décision écrite et jamais branchée ne protège de rien.** Elle fait
+// pire : on relit le code, on trouve la borne, on croit le sujet traité et
+// on cherche ailleurs. Elle est maintenant posée là où le texte se rend,
+// dans `Texte` (`ui.tsx`), donc sur tous les écrans à la fois.
+export const ECHELLE_MAX = 1.35;
 
 export function useEcran(): Ecran {
   const { width, height } = useWindowDimensions();
@@ -70,7 +80,6 @@ export function useEcran(): Ecran {
     height >= 900 ? "haute" : height >= 480 ? "moyenne" : "courte";
 
   const marge = classe === "compacte" ? 16 : classe === "moyenne" ? 24 : 32;
-  const echelle = Math.min(PixelRatio.getFontScale(), ECHELLE_MAX);
 
   return {
     largeur: width,
@@ -81,6 +90,5 @@ export function useEcran(): Ecran {
     deuxColonnes: width >= SEUILS.moyenne,
     largeurContenu: Math.min(width - marge * 2, CONTENU_MAX),
     marge,
-    corps: (base) => Math.round(base * echelle),
   };
 }

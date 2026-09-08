@@ -186,19 +186,21 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
         { operateur, cle, libelle, etapes: corps, action }, terminal,
         cleIntention);
       const resultat = await attendreCommande(id);
-      if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return; }
+      if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return false; }
       if (resultat.etat !== "faite") {
         setEtat("erreur");
         setMessage(/inconnue/i.test(resultat.resultat || "")
           ? t.majRequise
           : (resultat.resultat || t.aRefuse));
-        return;
+        return false;
       }
       onChange();
       onFermer();
+      return true;
     } catch {
       setEtat("erreur");
       setMessage(t.pasPartie);
+      return false;
     }
   });
 

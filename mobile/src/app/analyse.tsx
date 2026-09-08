@@ -16,12 +16,12 @@
 // l'afficher. Même chemin que le reçu et la fiche des coordonnées.
 
 import { useMemo, useState } from "react";
-import { RefreshControl, Pressable, ScrollView, View } from "react-native";
+import { RefreshControl, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Navigateur from "expo-web-browser";
 
-import { Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
+import { Defilement, Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Entree } from "@/animations";
 import { SqueletteAnalyse } from "@/squelettes";
@@ -58,7 +58,7 @@ export default function Analyse() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-      <ScrollView
+      <Defilement
         contentContainerStyle={{
           paddingHorizontal: ecran.marge, paddingTop: espaces.md,
           paddingBottom: espaces.xl, gap: espaces.xl,
@@ -234,7 +234,7 @@ export default function Analyse() {
             ) : null}
           </>
         )}
-      </ScrollView>
+      </Defilement>
     </SafeAreaView>
   );
 }

@@ -10,13 +10,13 @@
 // garantit plus l'orientation ; on ne peut donc rien figer.
 
 import { useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, RefreshControl, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
+import { Defilement, Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
@@ -260,7 +260,7 @@ export default function Accueil() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-      <ScrollView
+      <Defilement
         contentContainerStyle={{
           paddingHorizontal: ecran.marge,
           paddingTop: espaces.md,
@@ -307,7 +307,7 @@ export default function Accueil() {
         ) : (
           <>{colonneGauche}{colonneDroite}</>
         )}
-      </ScrollView>
+      </Defilement>
 
       {operation ? (
         <OperationPopup operation={operation} onFermer={() => setOperation(null)}

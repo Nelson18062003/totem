@@ -84,6 +84,19 @@ const nav = await chromium.launch({
 });
 
 // Les classes de Google : compacte (<600), moyenne (600-840), étendue (840+).
+// HUIT TAILLES, ET PAS UN IPHONE. C'était l'état de cette liste le jour où
+// l'application est arrivée sur un iPhone 16 Pro Max : elle mesurait un
+// Android d'entrée de gamme, un Pixel, un Fold ouvert et fermé, deux
+// tablettes — et rien de ce sur quoi l'application allait tourner.
+//
+// Le harnais sortait vert. Il ne mentait pas : il mesurait fidèlement huit
+// écrans que personne n'avait. **Une donnée d'essai trop sage cache le
+// défaut au lieu de le montrer** — c'est écrit dans ce dépôt, à propos d'une
+// caisse d'essai trop tranquille, et la même faute s'est rejouée sur les
+// tailles d'écran.
+//
+// Les valeurs sont en POINTS logiques, ceux dans lesquels on dessine, pas en
+// pixels : un iPhone 16 Pro Max fait 1320 pixels de large et 440 points.
 const FORMATS = [
   ["tres-petit",   320, 640],   // Android d'entrée de gamme
   ["petit",        360, 800],
@@ -93,6 +106,16 @@ const FORMATS = [
   ["pliable-ouvert",673, 841],  // Fold, écran intérieur
   ["tablette",     800, 1280],
   ["tablette-pays",1280, 800],
+  // Les iPhone. « iphone-se » est le plus étroit encore vendu ; les trois
+  // autres sont ceux qu'on croise aujourd'hui. « pro-max-agrandi » n'est pas
+  // un autre téléphone : c'est le MÊME 16 Pro Max avec « Affichage → Agrandi »
+  // dans ses réglages, qui lui rend la géométrie d'un 16 Pro. Beaucoup de
+  // gens l'activent, précisément sur les grands écrans, et l'application y
+  // dispose alors de 38 points de moins qu'elle ne croit.
+  ["iphone-se",         375, 667],
+  ["iphone-16",         393, 852],
+  ["iphone-16-pro-max", 440, 956],
+  ["pro-max-agrandi",   402, 874],
 ];
 
 // LE COMPTE. La plateforme a maintenant de vrais comptes : on en crée un,

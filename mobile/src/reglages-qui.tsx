@@ -123,9 +123,11 @@ export function SectionQui({ langue }: { langue: Langue }) {
       setMotdepasse("");
       setCreationOuverte(false);
       await charger();
+      return true;
     } catch (e) {
       setRate(true);
       setMot(e instanceof Error && e.message ? e.message : t.creerBouton);
+      return false;
     } finally {
       setCreation(false);
     }

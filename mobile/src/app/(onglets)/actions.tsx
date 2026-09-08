@@ -6,11 +6,11 @@
 // l'argent serait irresponsable. Un geste sans code connu ne s'affiche pas.
 
 import { useState } from "react";
-import { RefreshControl, ScrollView, View, Pressable } from "react-native";
+import { RefreshControl, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { Defilement, Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
@@ -36,7 +36,7 @@ export default function Actions() {
   if (!carte) {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScrollView
+        <Defilement
           contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
           refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
         >
@@ -59,7 +59,7 @@ export default function Actions() {
               </Texte>
             </Carte>
           )}
-        </ScrollView>
+        </Defilement>
       </SafeAreaView>
     );
   }
@@ -117,7 +117,7 @@ export default function Actions() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-      <ScrollView
+      <Defilement
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
         refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
       >
@@ -198,7 +198,7 @@ export default function Actions() {
           <Ligne titre={tu.titre} sous={tu.composerSous} icone="Hash"
                  onPress={() => router.push("/ussd")} />
         </Carte>
-      </ScrollView>
+      </Defilement>
 
       {operation ? (
         <OperationPopup

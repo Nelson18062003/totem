@@ -125,15 +125,17 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
     const nomPropre = nom.trim().replace(/\s+/g, " ");
     const numeroPropre = numero.replace(/\D/g, "");
     if (nomPropre && nomPropre.length < 2) {
-      setEtat("erreur"); setMessage(t.nomTropCourt); return;
+      setEtat("erreur"); setMessage(t.nomTropCourt); return false;
     }
     if (numeroPropre && numeroPropre.length < 8) {
-      setEtat("erreur"); setMessage(t.neufChiffres); return;
+      setEtat("erreur"); setMessage(t.neufChiffres); return false;
     }
     // Ce qui n'a pas bougé ne part pas : une demande au terminal se mérite.
     const parametres: Record<string, string> = { iccid: sim.iccid };
     if (nomPropre !== sim.nom) parametres.nom = nomPropre;
     if (numeroPropre !== sim.numero) parametres.numero = numeroPropre;
+    // RIEN N'A CHANGÉ, donc rien n'est parti : ni réussite, ni échec. On
+    // ferme, et le doigt ne sent rien — c'est la vérité de ce geste.
     if (Object.keys(parametres).length === 1) { onFermer(); return; }
 
     setEtat("envoi");
@@ -142,19 +144,21 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
       const { id } = await deposerCommande("identite", parametres, terminal,
                                            cleIntention);
       const resultat = await attendreCommande(id);
-      if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return; }
+      if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return false; }
       if (resultat.etat === "faite") {
         onChange();
         onFermer();
-        return;
+        return true;
       }
       setEtat("erreur");
       setMessage(/inconnue/i.test(resultat.resultat || "")
         ? t.majRequise
         : (resultat.resultat || t.aRefuse));
+      return false;
     } catch {
       setEtat("erreur");
       setMessage(t.pasPartie);
+      return false;
     }
   });
 

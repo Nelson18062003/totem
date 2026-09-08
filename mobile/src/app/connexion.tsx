@@ -31,11 +31,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, KeyboardAvoidingView, Pressable,
-  ScrollView, TextInput, View,
+  TextInput, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import {
+import { Defilement,
   BoutonIcone, Carte, MotTotem, Pastille, Texte, appuiTexte, avecAppui,
   couleurs, espaces, rayons, textes,
 } from "@/ui";
@@ -177,7 +177,7 @@ export default function Connexion() {
   if (attente) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.surface }}>
-        <ScrollView
+        <Defilement
           contentContainerStyle={{
             flexGrow: 1, justifyContent: "center",
             padding: espaces.xl, gap: espaces.lg,
@@ -203,7 +203,7 @@ export default function Connexion() {
           >
             <Texte poids="demi" ton="doux">{t.jAiDejaUnCompte}</Texte>
           </Pressable>
-        </ScrollView>
+        </Defilement>
       </SafeAreaView>
     );
   }
@@ -218,7 +218,7 @@ export default function Connexion() {
           le champ du mot de passe, et l'on tapait douze caractères à
           l'aveugle. « Je ne voyais pas mon mot de passe » — c'était ça. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <ScrollView
+        <Defilement
           contentContainerStyle={{
             flexGrow: 1, justifyContent: "center",
             padding: espaces.xl, gap: espaces.xl,
@@ -510,7 +510,7 @@ export default function Connexion() {
               <Texte taille={textes.petit} poids="moyen">{nomAutre}</Texte>
             </Pressable>
           </Entree>
-        </ScrollView>
+        </Defilement>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
