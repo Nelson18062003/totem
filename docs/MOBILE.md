@@ -669,6 +669,44 @@ compilation réussie n'écrit rien, une panne de réseau n'écrit rien non plus
 (pas de faux diagnostic), et la panne de signature sort le mode d'emploi
 même quand elle se cache derrière une sortie qui se termine bien.
 
+### La clé se pose à DEUX endroits, et le second se voit
+
+Sur `expo.dev` → l'organisation → **Android & iOS credentials**, quatre
+sections. Trois se remplissent toutes seules, une se remplit à la main :
+
+```
+Apple Distribution Certificates   ← Expo le crée, ne rien téléverser
+Apple Push Keys                   ← Expo la crée, ne rien téléverser
+App Store Connect API Keys        ← C'EST ICI qu'on met quelque chose
+Apple Teams                       ← se remplit dès que la clé est là
+```
+
+**La clé d'API est le passeport d'Expo pour parler à Apple.** Tant qu'elle
+n'est nulle part, Expo ne peut ni créer ni vérifier une signature : il voit
+qu'il n'en a pas, il ne peut pas en demander une, il s'arrête. C'est
+exactement le mur des deux premiers lancements.
+
+Elle se donne de deux façons, et **ce n'est pas l'une OU l'autre** :
+
+| où | portée | ce que ça sert |
+|---|---|---|
+| les variables du workflow | ce travail-là | la compilation et le dépôt |
+| le compte Expo (cette page) | tout le compte | les signatures, partout |
+
+Les variables suffisent en théorie. Poser aussi la clé sur le compte coûte
+deux minutes, se voit sur une page, et **se vérifie d'un coup d'œil** — au
+lieu de se déduire d'un journal de compilation. Une configuration qu'on peut
+REGARDER vaut mieux qu'une configuration dont on suppose l'effet.
+
+Le bouton est *« Add an App Store Connect API key »* : il demande l'ID de la
+clé, l'ID de l'émetteur et le fichier `.p8` — les trois choses déjà rangées
+dans les secrets GitHub. **Aucun terminal.**
+
+Une fois la clé posée, la section « Apple Teams » cesse d'être vide : c'est
+le signe qu'Expo a réussi à se présenter chez Apple. Les deux premières
+sections, elles, restent vides jusqu'à la première compilation qui aboutit —
+**c'est Expo qui fabrique le certificat, on ne le téléverse pas.**
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de

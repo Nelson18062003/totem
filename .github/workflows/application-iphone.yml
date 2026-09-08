@@ -56,6 +56,14 @@
 #      paquet vient de nous, elle ne se fabrique pas toute seule dans le dos
 #      de son propriétaire.
 #
+#      La voie sans terminal, à essayer d'abord : poser la MÊME clé d'API
+#      sur le compte Expo — expo.dev → l'organisation → « Android & iOS
+#      credentials » → « Add an App Store Connect API key ». C'est le
+#      passeport d'Expo pour parler à Apple ; sans lui il ne peut ni créer
+#      ni vérifier une signature. Les certificats et les clés de
+#      notification de cette page, eux, ne se téléversent PAS : c'est Expo
+#      qui les fabrique.
+#
 #      Le premier lancement sans cela s'arrête en une minute et demie sur
 #      « Distribution Certificate is not validated for non-interactive
 #      builds ». Une fois les deux pièces créées, elles vivent chez Expo et
