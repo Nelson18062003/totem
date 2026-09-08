@@ -594,6 +594,15 @@ a pas d'équivalent iPhone du « brouillon sur la piste publique » d'Android.
    télécharger le fichier `.p8`. **Apple ne le donne qu'une fois.**
 4. GitHub → Settings → Secrets and variables → Actions → trois secrets :
    `ASC_CLE_P8` (le contenu entier du `.p8`), `ASC_CLE_ID`, `ASC_EMETTEUR_ID`.
+5. **La signature de l'application**, créée une fois à la main :
+
+   ```sh
+   npx eas-cli login
+   npx eas-cli credentials --platform ios
+   ```
+
+6. Facultatif — deux **variables** (onglet « Variables », pas « Secrets ») :
+   `APPLE_EQUIPE_ID` et `APPLE_EQUIPE_TYPE` (`INDIVIDUAL` ici). Voir plus bas.
 
 **Une clé, et non l'identifiant Apple avec son mot de passe** : un compte Apple
 porte une double authentification, et en intégration continue personne n'est
@@ -602,6 +611,71 @@ pendant du compte de service côté Google.
 
 Ensuite : onglet Actions → **« Application iPhone »** → Run workflow → profil
 `essai`. Le reste est écrit dans l'en-tête du workflow.
+
+### La signature ne se fabrique pas toute seule, et c'est voulu
+
+Le premier lancement s'est arrêté au bout d'**une minute vingt-cinq**, sur une
+ligne d'anglais au milieu de cinquante autres :
+
+```
+✓ Using remote iOS credentials (Expo server)
+Distribution Certificate is not validated for non-interactive builds.
+Failed to set up credentials.
+Credentials are not set up. Run this command again in interactive mode.
+```
+
+Tout ce qui précédait était vert — les types, les règles partagées, ce que le
+paquet emporte, la clé d'Apple. Les trois secrets étaient bien posés : l'étape
+« Poser la clé d'Apple » ne les aurait pas laissés passer.
+
+**Ce qui manquait, ce sont deux pièces que ce dépôt ne peut pas contenir.**
+Apple exige, pour reconnaître un paquet iPhone comme le nôtre, un **certificat
+de distribution** et un **profil de provisionnement**. Ils vivent chez Expo, ils
+se demandent à Apple, et **personne ne les avait jamais demandés** — l'iPhone
+n'avait encore rien fabriqué.
+
+**Expo REFUSE de les créer en `--non-interactive`.** Ce n'est pas une lacune de
+l'outil, c'est la bonne décision : une signature est ce qui prouve qu'un paquet
+vient de nous. Elle ne se fabrique pas toute seule, dans un travail lancé par
+un robot, sans que son propriétaire la voie se créer.
+
+Le geste, une seule fois, sur n'importe quel ordinateur — **Windows compris,
+aucun Mac n'est nécessaire** : Expo parle à Apple depuis ses propres machines.
+
+```sh
+npx eas-cli login
+npx eas-cli credentials --platform ios
+```
+
+**J'avais écrit la liste des « une seule fois » sans ce point.** Elle allait du
+compte Apple jusqu'aux secrets GitHub, et s'arrêtait juste avant la seule
+chose qui bloquait vraiment. Une liste de préparatifs incomplète est pire
+qu'une absence de liste : on la déroule, on la croit finie, et on découvre le
+trou au premier essai.
+
+**Le travail le dit maintenant lui-même.** Il relit sa propre sortie, et quand
+il y trouve cette panne-là, il écrit dans son résumé — en français — ce qui
+manque et la commande qui le règle. Éprouvé dans les trois sens : une
+compilation réussie n'écrit rien, une panne de réseau n'écrit rien non plus
+(pas de faux diagnostic), et la panne de signature sort le mode d'emploi
+même quand elle se cache derrière une sortie qui se termine bien.
+
+### Un certificat expire, et il expirera un mauvais jour
+
+La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
+l'équipe (`EXPO_ASC_API_KEY_PATH`, `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`,
+`EXPO_APPLE_TEAM_ID`, `EXPO_APPLE_TEAM_TYPE`). Elle ne les avait pas : seule
+l'étape de dépôt les portait.
+
+Un certificat de distribution **dure un an**. Un profil se périme dès qu'on
+touche aux capacités de l'application. Sans ces variables, Expo constate
+l'avarie et s'arrête net, faute de pouvoir se présenter à Apple ; avec elles,
+il répare et continue. Elles n'inventent pas la première signature — elles
+entretiennent celle qui existe.
+
+L'identifiant d'équipe est une **variable**, pas un secret : il se lit dans
+n'importe quelle application publiée sur l'App Store. Le ranger parmi les
+secrets ne protégerait rien et ferait croire qu'il protège quelque chose.
 
 ### Deux pièges rencontrés en câblant tout cela
 
