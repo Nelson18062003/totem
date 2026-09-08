@@ -869,6 +869,54 @@ et non deviné. C'est la deuxième fois que la question se pose sur ce
 fichier ; la première, j'avais inventé une substitution `$VARIABLE` qui
 n'existe nulle part.
 
+### « Incomplete » ne voulait pas dire « il en manque une »
+
+Le paquet fabriqué, la fiche désignée, il restait le dépôt :
+
+```
+App Store Connect credentials are incomplete, skipping TestFlight setup
+Looking up credentials configuration for com.bonzinilabs.totem...
+App Store Connect API Keys cannot be set up in --non-interactive mode.
+```
+
+**Les trois variables `EXPO_ASC_*` étaient pourtant posées**, visibles dans le
+journal de l'étape. « Incomplete » ne voulait pas dire « il en manque une » :
+il voulait dire **« je ne regarde pas là »**.
+
+Ces variables sont documentées — pour la COMPILATION, où elles réparent une
+signature abîmée. `eas submit` ne les lit pas : il cherche la clé dans le
+profil de dépôt d'`eas.json`, sous `ascApiKeyPath`, `ascApiKeyId` et
+`ascApiKeyIssuerId`.
+
+**Le workflow affirmait le contraire, et il l'a affirmé trois lancements
+durant** : un commentaire disait que c'était « le chemin DOCUMENTÉ pour donner
+la clé à `eas submit` ». Je l'avais écrit de mémoire, en recopiant la section
+qui traite de la compilation. C'est la deuxième fois sur ce même fichier :
+la première, j'avais inventé une substitution `$VARIABLE`. **Un commentaire
+faux est pire qu'un commentaire absent — il ferme la question.**
+
+### La clé se pose à la compilation, pas dans un commit
+
+`eas.json` ne remplace aucune variable : ce qu'on y écrit part dans le dépôt.
+`poser-la-cle-du-depot.mjs` l'y écrit donc **au moment de déposer**, depuis
+les secrets de GitHub — exactement comme `poser-l-adresse` écrit l'adresse de
+la plateforme dans `app.json` au moment de compiler.
+
+L'identifiant de la clé et celui de l'émetteur ne sont pas des secrets au sens
+strict : sans le fichier `.p8`, ils n'ouvrent rien. Mais ils désignent une clé
+qui, elle, publie sur l'App Store. Ils ne traversent donc aucun commit.
+
+Le script **refuse de réécrire un `eas.json` qu'il ne sait pas reproduire** :
+avant de toucher au fichier, il vérifie que le rendre sans rien changer donne
+le même octet à octet. Sinon il s'arrête. Réécrire tout un fichier pour y
+poser trois lignes efface une mise en forme que quelqu'un a voulue.
+
+Éprouvé dans cinq directions : le cas nominal (les trois champs posés, l'autre
+profil intact, les profils de compilation intacts), sans identifiants (rien
+n'est touché, sortie 0 — le dépôt à la main reste possible), profil inconnu
+(refus, fichier intact, et la liste des profils connus affichée), arguments
+manquants (refus), et **mise en forme étrangère (refus)**.
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
