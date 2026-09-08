@@ -11,9 +11,9 @@
 // tous au même endroit. Rien ne s'écrit localement.
 
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { ChampTexte, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { useGesteUnique } from "@/geste";
@@ -227,7 +227,7 @@ function Champ({ libelle, valeur, onChange, aide, clavier }: {
              style={{ textTransform: "uppercase", letterSpacing: 1 }}>
         {libelle}
       </Texte>
-      <TextInput
+      <ChampTexte
         value={valeur}
         onChangeText={onChange}
         placeholder={aide}

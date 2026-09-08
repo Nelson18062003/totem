@@ -13,11 +13,11 @@
 // d'un côté.
 
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { Feuille, type Retenue } from "@/feuille";
 import { PaveSecret } from "@/pave-secret";
-import { Texte } from "@/ui";
+import { ChampTexte, Texte } from "@/ui";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { deposerCommande, lireCommande } from "@/api/guichet";
 import { useLangue } from "@/langue";
@@ -320,7 +320,7 @@ export function OperationPopup({
 
           {enSession && !attente && !pave && !fini ? (
             <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
-              <TextInput
+              <ChampTexte
                 value={reponseLibre}
                 onChangeText={setReponseLibre}
                 placeholder={t.votreReponse}
@@ -365,7 +365,7 @@ export function OperationPopup({
           {operation.champs.map((c) => (
             <View key={c.cle} style={{ gap: espaces.xs }}>
               <Texte taille={textes.petit} ton="doux">{c.label}</Texte>
-              <TextInput
+              <ChampTexte
                 value={valeurs[c.cle] ?? ""}
                 onChangeText={(v) => set(c.cle, v)}
                 placeholder={c.aide}

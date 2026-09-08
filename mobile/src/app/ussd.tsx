@@ -12,12 +12,12 @@
 
 import { useState } from "react";
 import {
-  KeyboardAvoidingView, Pressable, TextInput, View,
+  KeyboardAvoidingView, Pressable, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -127,7 +127,7 @@ export default function CadranUssd() {
                 backgroundColor: couleurs.surfaceHaute,
               }}>
                 <Icone nom="Hash" taille={16} couleur={couleurs.encrePale} />
-                <TextInput
+                <ChampTexte
                   value={saisie}
                   onChangeText={(v) => setSaisie(v.replace(/[^0-9#*]/g, ""))}
                   keyboardType="phone-pad"

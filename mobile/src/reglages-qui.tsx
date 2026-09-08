@@ -15,9 +15,9 @@
 // clavier (vérifié par scripts/verifier-le-clavier.mjs).
 
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { ChampTexte, Carte, Filet, Texte } from "@/ui";
 import { useGesteUnique } from "@/geste";
 import { agirSurCompte, ErreurGuichet, listerComptes,
          type CompteInscrit } from "@/api/guichet";
@@ -352,7 +352,7 @@ function Saisie({ libelle, valeur, onChange, clavier }: {
              style={{ textTransform: "uppercase", letterSpacing: 1 }}>
         {libelle}
       </Texte>
-      <TextInput
+      <ChampTexte
         value={valeur}
         onChangeText={onChange}
         keyboardType={clavier}

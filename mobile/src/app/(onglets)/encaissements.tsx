@@ -9,12 +9,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView, Pressable, RefreshControl, TextInput, View,
+  KeyboardAvoidingView, Pressable, RefreshControl, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -268,7 +268,7 @@ export default function Encaissements() {
             paddingHorizontal: espaces.lg, paddingVertical: espaces.sm,
           }}>
             <Icone nom="Search" taille={18} couleur={couleurs.encrePale} />
-            <TextInput
+            <ChampTexte
               value={recherche}
               onChangeText={setRecherche}
               placeholder={t.recherchePlaceholder}

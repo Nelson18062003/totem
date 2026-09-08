@@ -55,6 +55,7 @@ cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
 cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
+cd mobile && node scripts/verifier-l-echelle.mjs # rien ne grossit sans limite
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
 cd mobile && node scripts/verifier-les-gestes.mjs # un appui, une demande
@@ -219,6 +220,30 @@ l'application devenait « trop grosse » d'un bout à l'autre — sur le PLUS GR
 écran de la gamme, où tout aurait dû paraître plus petit. On relisait le code,
 on trouvait la borne, on croyait le sujet traité, et on cherchait ailleurs. La
 borne est maintenant posée dans `Texte`, donc sur tous les écrans à la fois.
+
+`verifier-l-echelle` garde la borne du grossissement là où elle se pose : il
+exige que tout texte passe par `Texte`, tout champ par `ChampTexte`, tout ce
+qui défile par `Defilement`. **Il est STATIQUE, et c'est un choix** :
+`maxFontSizeMultiplier` est un réglage natif que react-native-web ignore. Un
+harnais de navigateur sortirait donc vert sans avoir rien vérifié. Ce qui se
+vérifie, c'est que la borne est POSÉE — un `<Text>` écrit en direct sur un
+écran neuf y échapperait sans que rien ne le dise. Il porte son propre témoin :
+un faux écran avec les trois fautes, et il s'arrête s'il n'en voit pas trois.
+
+**Une exemption trop large est pire qu'une exemption : elle ne se voit nulle
+part.** En apprenant à `verifier-le-clavier` que `ui.tsx` définit les pièces
+et n'est pas un écran, l'exemption s'est écrite `chemin.endsWith("ui.tsx")` —
+qui écarte AUSSI `reglages-qui.tsx`, puisque « qui.tsx » finit par « ui.tsx ».
+Un vrai écran, avec un vrai champ, a disparu de la liste sans un mot : ni ✓ ni
+✗, juste absent. Le harnais sortait vert en gardant un écran de moins. On
+compare le nom entier.
+
+**Un contrôle qui lit ce qu'on DIT au lieu de ce qu'on FAIT ne contrôle
+rien.** La même règle vérifie que `Defilement` porte vraiment
+`keyboardShouldPersistTaps` — neuf écrans en dépendent d'un coup. Le premier
+jet lisait le fichier brut : le commentaire qui EXPLIQUE le réglage, vingt
+lignes au-dessus, suffisait à le satisfaire. Retirer vraiment le réglage
+laissait le harnais vert.
 
 **Une sensation fausse est pire qu'aucune sensation.** Le premier jet de
 l'haptique faisait vibrer « c'est passé » dès que le geste rendait la main —

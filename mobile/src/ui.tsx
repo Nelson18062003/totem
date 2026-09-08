@@ -8,8 +8,8 @@
 // pas d'ombre. Les plans se séparent par les bordures et les fonds.
 
 import {
-  ScrollView, Text, View,
-  type ScrollViewProps, type TextProps, type ViewProps,
+  ScrollView, Text, TextInput, View,
+  type ScrollViewProps, type TextInputProps, type TextProps, type ViewProps,
 } from "react-native";
 import { couleurs, espaces, polices, rayons, textes, INTERLETTRAGE_MARQUE } from "./theme/jetons";
 import { ECHELLE_MAX } from "./ecran";
@@ -80,6 +80,27 @@ export function Texte({
       ]}
     />
   );
+}
+
+/**
+ * TOUT CE QUI SE SAISIT PASSE PAR ICI — pour la même raison que `Texte`.
+ *
+ * Un champ de saisie suit le réglage « taille du texte » du téléphone
+ * exactement comme un texte, et sans limite : onze champs, aucun borné. La
+ * moitié visible du défaut était traitée, l'autre pas.
+ *
+ * Et un champ qui déborde coûte plus cher qu'un texte qui déborde. On y tape
+ * un numéro de téléphone à neuf chiffres, une adresse de plateforme, un code
+ * d'opérateur : quand le texte dépasse sa boîte, on ne relit plus ce qu'on
+ * vient d'écrire — sur un numéro vers lequel de l'argent va partir.
+ *
+ * La borne est la même que celle du texte, pour que les deux restent
+ * d'accord. Rien d'autre n'est décidé ici : la capitalisation, le clavier, la
+ * correction automatique se choisissent champ par champ, et n'ont pas de
+ * bonne valeur commune.
+ */
+export function ChampTexte(props: TextInputProps) {
+  return <TextInput maxFontSizeMultiplier={ECHELLE_MAX} {...props} />;
 }
 
 /**

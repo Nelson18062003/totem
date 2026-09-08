@@ -31,11 +31,11 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, KeyboardAvoidingView, Pressable,
-  TextInput, View,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Defilement,
+import { ChampTexte, Defilement,
   BoutonIcone, Carte, MotTotem, Pastille, Texte, appuiTexte, avecAppui,
   couleurs, espaces, rayons, textes,
 } from "@/ui";
@@ -315,7 +315,7 @@ export default function Connexion() {
               </>
             ) : (
               <>
-                <TextInput
+                <ChampTexte
                   value={saisie}
                   onChangeText={(v) => { setSaisie(v); setErreurAdresse(null); }}
                   autoCapitalize="none"
@@ -378,7 +378,7 @@ export default function Connexion() {
             <Texte taille={textes.petit} ton="doux" poids="moyen">
               {t.courriel}
             </Texte>
-            <TextInput
+            <ChampTexte
               value={courriel}
               onChangeText={(v) => { setCourriel(v); setErreur(null); }}
               autoCapitalize="none"
@@ -408,7 +408,7 @@ export default function Connexion() {
               borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
               paddingHorizontal: espaces.md,
             }}>
-              <TextInput
+              <ChampTexte
                 value={motdepasse}
                 onChangeText={(v) => { setMotdepasse(v); setErreur(null); }}
                 secureTextEntry={!visible}
