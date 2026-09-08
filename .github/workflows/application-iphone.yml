@@ -24,7 +24,13 @@
 #      avec l'identifiant « com.bonzinilabs.totem » (celui d'app.json, qui ne
 #      se change jamais).
 #   3. App Store Connect → Utilisateurs et accès → Intégrations → Clés d'API
-#      App Store Connect → « + » → rôle « App Manager ».
+#      App Store Connect → « + » → rôle « Admin ».
+#
+#      LE RÔLE N'EST PAS UN DÉTAIL. Ce dépôt a d'abord dit « App Manager » :
+#      cela suffit à DÉPOSER une version, pas à demander à Apple un certificat
+#      de signature. Expo demande « Admin » dans son propre guide. Une clé de
+#      rôle trop faible ne se plaint pas à la création — elle échoue plus tard,
+#      sur une étape qui n'a pas l'air d'y être pour quelque chose.
 #      Noter l'ID de la clé et l'ID de l'émetteur, télécharger le fichier
 #      « .p8 ». APPLE NE LE DONNE QU'UNE FOIS : le perdre oblige à recréer
 #      une clé.

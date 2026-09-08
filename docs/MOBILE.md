@@ -590,8 +590,17 @@ a pas d'équivalent iPhone du « brouillon sur la piste publique » d'Android.
 2. App Store Connect → Mes apps → « + » → créer la fiche, avec l'identifiant
    **`com.bonzinilabs.totem`** (celui d'`app.json`, qui ne se change jamais).
 3. App Store Connect → Utilisateurs et accès → Intégrations → Clés d'API →
-   « + » → rôle **App Manager**. Noter l'ID de la clé et l'ID de l'émetteur,
+   « + » → rôle **Admin**. Noter l'ID de la clé et l'ID de l'émetteur,
    télécharger le fichier `.p8`. **Apple ne le donne qu'une fois.**
+
+   **Le rôle n'est pas un détail, et ce document a d'abord dit « App
+   Manager ».** Ce rôle suffit à déposer une version ; il ne suffit pas à
+   demander à Apple un certificat de signature. Le guide d'Expo dit
+   « Admin ». Une clé de rôle trop faible ne se plaint pas au moment où on
+   la crée : elle échoue bien plus tard, sur une étape qui n'a pas l'air
+   d'y être pour quelque chose. Une clé se recrée en deux minutes — s'il y
+   a un doute sur le rôle de la sienne, en refaire une coûte moins cher que
+   de chercher.
 4. GitHub → Settings → Secrets and variables → Actions → trois secrets :
    `ASC_CLE_P8` (le contenu entier du `.p8`), `ASC_CLE_ID`, `ASC_EMETTEUR_ID`.
 5. **La signature de l'application**, créée une fois à la main :
