@@ -322,7 +322,14 @@ jobs:
         working-directory: mobile
         run: rm -f app-store-connect.p8
 
+      # `always()` : SURTOUT quand quelque chose a échoué.
+      #
+      # Cette étape a été sautée le jour où le dépôt a échoué après une
+      # compilation RÉUSSIE — c'est-à-dire le seul jour où elle servait
+      # vraiment. Le paquet existait, personne ne savait où. Un panneau
+      # indicateur qui s'éteint quand on se perd n'indique rien.
       - name: Où trouver le paquet
+        if: always()
         working-directory: mobile
         env:
           PROFIL: ${{ inputs.profil }}
