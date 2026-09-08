@@ -296,12 +296,33 @@ jobs:
           fi
           exit 1
 
-      # LE DÉPÔT CHEZ APPLE, sans passer par les mains du propriétaire.
+      # LA CLÉ, POSÉE DANS LE PROFIL DE DÉPÔT.
       #
-      # Les trois variables ci-dessous sont le chemin DOCUMENTÉ pour donner la
-      # clé à `eas submit` sans interaction. Écrire des « $VAR » dans eas.json
-      # à leur place ne marcherait pas : rien ne garantit qu'elles y seraient
-      # remplacées.
+      # J'avais écrit ici que les trois variables EXPO_ASC_* étaient « le
+      # chemin DOCUMENTÉ pour donner la clé à `eas submit` ». C'ÉTAIT FAUX,
+      # et ça l'est resté trois lancements. Elles sont bien documentées —
+      # mais pour la COMPILATION, où elles réparent une signature abîmée.
+      # `eas submit` ne les lit pas. D'où, les trois posées :
+      #
+      #     App Store Connect credentials are incomplete
+      #     App Store Connect API Keys cannot be set up in --non-interactive
+      #
+      # « Incomplete » ne voulait pas dire « il en manque une » : il voulait
+      # dire « je ne regarde pas là ».
+      #
+      # `eas submit` regarde le profil de dépôt d'eas.json. Comme eas.json ne
+      # remplace aucune variable, la clé s'y pose à la compilation — depuis
+      # les secrets, jamais depuis un commit. Même geste que l'adresse de la
+      # plateforme, sur un autre fichier.
+      - name: Poser la clé dans le profil de dépôt
+        if: steps.cle.outputs.posee == 'oui'
+        working-directory: mobile
+        env:
+          ASC_CLE_ID: ${{ secrets.ASC_CLE_ID }}
+          ASC_EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+        run: node scripts/poser-la-cle-du-depot.mjs "${{ inputs.profil }}" ./app-store-connect.p8
+
+      # LE DÉPÔT CHEZ APPLE, sans passer par les mains du propriétaire.
       #
       # Où atterrit le paquet : App Store Connect, donc TestFlight aussitôt.
       # Le mettre sur l'App Store PUBLIC reste un geste séparé, chez Apple.
@@ -310,9 +331,6 @@ jobs:
         working-directory: mobile
         env:
           PROFIL: ${{ inputs.profil }}
-          EXPO_ASC_API_KEY_PATH: ./app-store-connect.p8
-          EXPO_ASC_KEY_ID: ${{ secrets.ASC_CLE_ID }}
-          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_EMETTEUR_ID }}
         run: eas submit --platform ios --profile "$PROFIL" --latest --non-interactive
 
       # La clé ne survit pas au travail. `always()` : même si la compilation
