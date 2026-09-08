@@ -24,7 +24,13 @@
 #      avec l'identifiant « com.bonzinilabs.totem » (celui d'app.json, qui ne
 #      se change jamais).
 #   3. App Store Connect → Utilisateurs et accès → Intégrations → Clés d'API
-#      App Store Connect → « + » → rôle « App Manager ».
+#      App Store Connect → « + » → rôle « Admin ».
+#
+#      LE RÔLE N'EST PAS UN DÉTAIL. Ce dépôt a d'abord dit « App Manager » :
+#      cela suffit à DÉPOSER une version, pas à demander à Apple un certificat
+#      de signature. Expo demande « Admin » dans son propre guide. Une clé de
+#      rôle trop faible ne se plaint pas à la création — elle échoue plus tard,
+#      sur une étape qui n'a pas l'air d'y être pour quelque chose.
 #      Noter l'ID de la clé et l'ID de l'émetteur, télécharger le fichier
 #      « .p8 ». APPLE NE LE DONNE QU'UNE FOIS : le perdre oblige à recréer
 #      une clé.
@@ -32,6 +38,38 @@
 #        ASC_CLE_P8       le contenu ENTIER du fichier .p8
 #        ASC_CLE_ID       l'ID de la clé (une dizaine de caractères)
 #        ASC_EMETTEUR_ID  l'ID de l'émetteur (un UUID)
+#
+#   5. LA SIGNATURE DE L'APPLICATION, CRÉÉE UNE FOIS À LA MAIN. C'est le seul
+#      geste de cette liste qui demande un terminal, et il ne se fait qu'une
+#      fois pour la vie de l'application :
+#
+#        npx eas-cli login
+#        npx eas-cli credentials --platform ios
+#
+#      Apple exige deux pièces pour qu'un paquet iPhone soit reconnu comme le
+#      nôtre : un CERTIFICAT de distribution et un PROFIL de provisionnement.
+#      Ni l'un ni l'autre n'existe tant que personne ne les a demandés à Apple.
+#
+#      Et ce travail ne peut pas les demander : `--non-interactive` le lui
+#      interdit — Expo REFUSE de créer une signature sans que quelqu'un la
+#      voie se créer. C'est délibéré : une signature est ce qui prouve que le
+#      paquet vient de nous, elle ne se fabrique pas toute seule dans le dos
+#      de son propriétaire.
+#
+#      Le premier lancement sans cela s'arrête en une minute et demie sur
+#      « Distribution Certificate is not validated for non-interactive
+#      builds ». Une fois les deux pièces créées, elles vivent chez Expo et
+#      ce travail les retrouve à chaque fois.
+#
+#   6. Facultatif, mais recommandé — GitHub → Settings → Secrets and
+#      variables → Actions → onglet « Variables » → deux variables :
+#        APPLE_EQUIPE_ID    l'identifiant d'équipe Apple (10 caractères,
+#                           visible en haut à droite sur developer.apple.com)
+#        APPLE_EQUIPE_TYPE  INDIVIDUAL, COMPANY_OR_ORGANIZATION ou IN_HOUSE
+#      Elles permettent à Expo de RÉPARER une signature abîmée sans personne
+#      devant l'écran — un certificat expire au bout d'un an, et il expirera
+#      un jour où personne ne s'y attend. Ce ne sont pas des secrets : un
+#      identifiant d'équipe se lit dans n'importe quelle application publiée.
 #
 # POURQUOI UNE CLÉ ET NON L'IDENTIFIANT APPLE. Un compte Apple porte une
 # double authentification : en intégration continue, personne n'est là pour
@@ -162,12 +200,65 @@ jobs:
           fi
           echo "posee=oui" >> $GITHUB_OUTPUT
 
+      # LA CLÉ D'APPLE SERT AUSSI ICI, et pas seulement au dépôt.
+      #
+      # Un certificat de distribution expire au bout d'un an ; un profil de
+      # provisionnement se périme dès qu'on touche aux capacités. Sans ces
+      # variables, Expo constate l'avarie et s'arrête, parce qu'il n'a aucun
+      # moyen de se présenter à Apple. Avec elles, il répare et continue.
+      #
+      # Elles ne CRÉENT pas la première signature — voir le point 5 de
+      # l'en-tête. Elles entretiennent celle qui existe.
+      #
+      # Le chemin ne vaut que si l'étape précédente a bien posé le fichier :
+      # pointer sur un fichier absent vaudrait moins que ne rien pointer.
       - name: Compiler
         if: ${{ !inputs.sans_compiler }}
         working-directory: mobile
         env:
           PROFIL: ${{ inputs.profil }}
-        run: eas build --platform ios --profile "$PROFIL" --non-interactive --wait
+          EXPO_ASC_API_KEY_PATH: ${{ steps.cle.outputs.posee == 'oui' && './app-store-connect.p8' || '' }}
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_CLE_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ vars.APPLE_EQUIPE_ID }}
+          EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_EQUIPE_TYPE }}
+        run: |
+          # On garde la sortie pour la relire : le message d'Expo est en
+          # anglais et tient en une ligne au milieu de cinquante autres.
+          set -o pipefail
+          if eas build --platform ios --profile "$PROFIL" --non-interactive --wait 2>&1 | tee journal-compilation.txt; then
+            exit 0
+          fi
+          if grep -qi "Credentials are not set up\|not validated for non-interactive" journal-compilation.txt; then
+            {
+              echo "### L'application n'a pas de signature"
+              echo ""
+              echo "Apple exige deux pièces pour reconnaître un paquet iPhone comme"
+              echo "le nôtre : un **certificat de distribution** et un **profil de"
+              echo "provisionnement**. Aucune des deux n'existe encore."
+              echo ""
+              echo "Ce travail ne peut pas les demander à votre place : Expo refuse"
+              echo "de fabriquer une signature sans que personne ne la voie se"
+              echo "créer. C'est voulu — une signature prouve que le paquet vient"
+              echo "de vous."
+              echo ""
+              echo "**À faire une seule fois**, sur n'importe quel ordinateur"
+              echo "(Windows compris — aucun Mac n'est nécessaire) :"
+              echo ""
+              echo '```'
+              echo "npx eas-cli login"
+              echo "npx eas-cli credentials --platform ios"
+              echo '```'
+              echo ""
+              echo "Choisir le profil **production**, puis se laisser guider :"
+              echo "Expo se connecte à Apple et crée les deux pièces. Elles"
+              echo "restent chez lui ; ce travail les retrouvera tout seul."
+              echo ""
+              echo "Puis relancer ce travail."
+            } >> $GITHUB_STEP_SUMMARY
+            echo "::error::L'application n'a pas encore de signature Apple. Voir le résumé de ce travail."
+          fi
+          exit 1
 
       # LE DÉPÔT CHEZ APPLE, sans passer par les mains du propriétaire.
       #
