@@ -917,6 +917,47 @@ n'est touché, sortie 0 — le dépôt à la main reste possible), profil inconn
 (refus, fichier intact, et la liste des profils connus affichée), arguments
 manquants (refus), et **mise en forme étrangère (refus)**.
 
+### TestFlight : « interne » et « externe » ne sont pas deux tailles
+
+Le paquet déposé, il restait à l'installer. Deux chemins portent presque le
+même nom, et **un seul rend l'application le jour même** :
+
+| | relecture d'Apple | délai | pour qui |
+|---|---|---|---|
+| Tests **internes** | aucune | **immédiat** | les membres de l'équipe App Store Connect |
+| Tests **externes** | oui | 1 à 3 jours | tout le monde |
+
+Le premier essai est parti du côté **externe** : formulaire « Informations sur
+les tests », description de l'app bêta, personne à contacter, identifiants de
+connexion, « Éléments à tester » en anglais — puis *Soumettre pour
+vérification*. Le propriétaire s'est ajouté comme testeur, et son propre
+compte affichait :
+
+```
+nastirozplays@gmail.com   ✗ Aucun build disponible
+```
+
+**Il attendait Apple pour essayer sa propre application.** Un testeur externe
+ne reçoit rien tant que la relecture n'est pas passée ; le titulaire du compte
+n'a rien à faire relire pour ouvrir son app.
+
+Deux pièges dans la manœuvre, et ils tombent dans cet ordre :
+
+**Le groupe ne se crée pas depuis la page d'une version.** Le bouton « + » qui
+s'y trouve sert à CHOISIR un groupe existant, et répond « Il n'existe aucun
+groupe auquel ce build peut être assigné » quand il n'y en a aucun — ce qui
+est vrai, et n'aide pas. Le groupe se crée un cran au-dessus, dans la colonne
+de gauche de TestFlight, sous « Tests internes ».
+
+**Le repère qui ne trompe pas** : si un écran reparle de « soumettre pour
+vérification », on est reparti du côté externe.
+
+Le reste des formulaires n'est pas perdu — il faudra les remplir pour l'App
+Store public. Mais **dans cet ordre-là** : essayer soi-même d'abord, corriger,
+et seulement ensuite faire relire. Soumettre en premier, c'est faire relire
+par Apple une application que personne n'a jamais lancée sur un iPhone : le
+refus reste dans l'historique de la fiche.
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
