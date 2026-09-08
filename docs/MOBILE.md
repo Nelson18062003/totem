@@ -610,7 +610,7 @@ a pas d'équivalent iPhone du « brouillon sur la piste publique » d'Android.
    npx eas-cli credentials --platform ios
    ```
 
-6. Facultatif — deux **variables** (onglet « Variables », pas « Secrets ») :
+6. Deux **variables** — onglet « Variables », **pas « Secrets »** :
    `APPLE_EQUIPE_ID` et `APPLE_EQUIPE_TYPE` (`INDIVIDUAL` ici). Voir plus bas.
 
 **Une clé, et non l'identifiant Apple avec son mot de passe** : un compte Apple
@@ -669,6 +669,64 @@ compilation réussie n'écrit rien, une panne de réseau n'écrit rien non plus
 (pas de faux diagnostic), et la panne de signature sort le mode d'emploi
 même quand elle se cache derrière une sortie qui se termine bien.
 
+### La clé se pose à DEUX endroits, et le second se voit
+
+Sur `expo.dev` → l'organisation → **Android & iOS credentials**, quatre
+sections. Trois se remplissent toutes seules, une se remplit à la main :
+
+```
+Apple Distribution Certificates   ← Expo le crée, ne rien téléverser
+Apple Push Keys                   ← Expo la crée, ne rien téléverser
+App Store Connect API Keys        ← C'EST ICI qu'on met quelque chose
+Apple Teams                       ← ne dit RIEN, voir plus bas
+```
+
+**La clé d'API est le passeport d'Expo pour parler à Apple.** Tant qu'elle
+n'est nulle part, Expo ne peut ni créer ni vérifier une signature : il voit
+qu'il n'en a pas, il ne peut pas en demander une, il s'arrête. C'est
+exactement le mur des deux premiers lancements.
+
+Elle se donne de deux façons, et **ce n'est pas l'une OU l'autre** :
+
+| où | portée | ce que ça sert |
+|---|---|---|
+| les variables du workflow | ce travail-là | la compilation et le dépôt |
+| le compte Expo (cette page) | tout le compte | les signatures, partout |
+
+Les variables suffisent en théorie. Poser aussi la clé sur le compte coûte
+deux minutes, se voit sur une page, et **se vérifie d'un coup d'œil** — au
+lieu de se déduire d'un journal de compilation. Une configuration qu'on peut
+REGARDER vaut mieux qu'une configuration dont on suppose l'effet.
+
+Le bouton est *« Add an App Store Connect API key »* : il demande l'ID de la
+clé, l'ID de l'émetteur et le fichier `.p8` — les trois choses déjà rangées
+dans les secrets GitHub. **Aucun terminal.**
+
+Les deux premières sections restent vides jusqu'à la première compilation qui
+aboutit — **c'est Expo qui fabrique le certificat, on ne le téléverse pas.**
+
+**Et cette page ne dit PAS si la clé fonctionne.** J'avais écrit ici que la
+section « Apple Teams » se remplirait une fois la clé posée, et qu'elle
+servirait donc de témoin. **C'est faux, mesuré :** la clé est en place —
+
+```
+Identifier            Key ID        Team    Roles   Uploaded at
+TOTEM Admin 2026-09   3D4CG386MV    None    None    Sep 8, 2026 2:10 PM
+```
+
+— et « Apple Teams » est resté vide. Les colonnes `Team` et `Roles` de la clé
+elle-même sont vides aussi. Expo **range** la clé sans jamais s'en servir ; il
+ne la présentera à Apple qu'à la première compilation qui en aura besoin.
+
+Le formulaire s'est fermé sans erreur, la ligne s'affiche, tout a l'air fait —
+et rien n'a été vérifié. **Un écran qui répond « c'est enregistré » ne répond
+pas à la question « est-ce que ça marche ».** J'ai proposé un témoin qui ne
+témoigne de rien ; c'est exactement la faute que ce dépôt reproche aux
+contrôles qui passent sans rien regarder, et je l'ai commise dans le document
+qui l'explique.
+
+**Le seul essai qui prouve quelque chose reste le lancement du travail.**
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
@@ -685,6 +743,37 @@ entretiennent celle qui existe.
 L'identifiant d'équipe est une **variable**, pas un secret : il se lit dans
 n'importe quelle application publiée sur l'App Store. Le ranger parmi les
 secrets ne protégerait rien et ferait croire qu'il protège quelque chose.
+
+**Les deux onglets sont sur la même page, et cela s'est payé.** Au deuxième
+lancement, les deux valeurs étaient vides :
+
+```
+EXPO_ASC_API_KEY_PATH: ./app-store-connect.p8
+EXPO_ASC_KEY_ID: ***
+EXPO_ASC_ISSUER_ID: ***
+EXPO_APPLE_TEAM_ID:            ← vide
+EXPO_APPLE_TEAM_TYPE:          ← vide
+```
+
+Le travail s'est arrêté sur la même erreur que la veille, et **l'essai a passé
+pour un verdict alors qu'il n'avait rien essayé** : Expo n'avait toujours aucun
+moyen de se présenter à Apple. Une variable rangée dans le mauvais onglet vaut
+`""` sans que rien ne le dise, et l'échec sort une étape plus loin, sur un
+message qui ne parle pas d'elle.
+
+Deux corrections, dans cet ordre d'importance :
+
+**Le travail REGARDE l'identité d'équipe avant de compiler**, et l'écrit —
+`Identité d'équipe Apple : A1B2C3D4E5 (INDIVIDUAL)` — ou avertit qu'elle
+manque, en disant où la poser. C'est le même principe que la clé `.p8` relue
+avant la compilation : *découvrir au bout de vingt minutes que ça ne pouvait
+pas marcher, c'est vingt minutes pour rien.* La clé avait ce garde-fou ;
+l'identité d'équipe, ajoutée plus tard, ne l'avait pas.
+
+**Les deux onglets sont acceptés** (`vars.X || secrets.X`). Ranger un
+non-secret parmi les secrets n'est pas une faute qui mérite un échec — c'est
+une faute de rangement. Et le type d'équipe vaut `INDIVIDUAL` par défaut,
+puisque c'est le compte sous lequel TOTEM publie.
 
 ### Deux pièges rencontrés en câblant tout cela
 
