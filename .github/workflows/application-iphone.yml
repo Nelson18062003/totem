@@ -61,8 +61,12 @@
 #      builds ». Une fois les deux pièces créées, elles vivent chez Expo et
 #      ce travail les retrouve à chaque fois.
 #
-#   6. Facultatif, mais recommandé — GitHub → Settings → Secrets and
-#      variables → Actions → onglet « Variables » → deux variables :
+#   6. Recommandé — GitHub → Settings → Secrets and variables → Actions →
+#      **onglet « Variables », pas « Secrets »** ; les deux onglets sont sur
+#      la même page et ne se ressemblent pas assez. Une valeur rangée dans le
+#      mauvais onglet n'est pas lue et ne se plaint pas : elle vaut « ». Ce
+#      travail accepte donc les deux, et DIT ce qu'il a trouvé avant de
+#      compiler. Deux variables :
 #        APPLE_EQUIPE_ID    l'identifiant d'équipe Apple (10 caractères,
 #                           visible en haut à droite sur developer.apple.com)
 #        APPLE_EQUIPE_TYPE  INDIVIDUAL, COMPANY_OR_ORGANIZATION ou IN_HOUSE
@@ -185,6 +189,8 @@ jobs:
           P8: ${{ secrets.ASC_CLE_P8 }}
           CLE_ID: ${{ secrets.ASC_CLE_ID }}
           EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+          EQUIPE_ID: ${{ vars.APPLE_EQUIPE_ID || secrets.APPLE_EQUIPE_ID }}
+          EQUIPE_TYPE: ${{ vars.APPLE_EQUIPE_TYPE || secrets.APPLE_EQUIPE_TYPE || 'INDIVIDUAL' }}
         run: |
           if [ -z "$P8" ] || [ -z "$CLE_ID" ] || [ -z "$EMETTEUR_ID" ]; then
             echo "posee=non" >> $GITHUB_OUTPUT
@@ -199,6 +205,23 @@ jobs:
             exit 1
           fi
           echo "posee=oui" >> $GITHUB_OUTPUT
+
+          # L'IDENTITÉ D'ÉQUIPE, REGARDÉE ET NON SUPPOSÉE.
+          #
+          # Une variable qu'on croit posée et qui vaut « » se comporte comme
+          # une variable absente, sans le dire : la compilation échoue plus
+          # loin, sur un message qui ne parle pas d'elle. C'est arrivé — les
+          # deux étaient vides, rangées dans le mauvais onglet, et l'essai
+          # a passé pour un verdict alors qu'il n'avait rien essayé.
+          #
+          # Un identifiant d'équipe n'est pas un secret : il se lit dans
+          # n'importe quelle application publiée sur l'App Store. Il ne se
+          # masque donc pas ici — c'est justement ce qu'on veut voir.
+          if [ -n "$EQUIPE_ID" ]; then
+            echo "Identité d'équipe Apple : $EQUIPE_ID ($EQUIPE_TYPE)"
+          else
+            echo "::warning::APPLE_EQUIPE_ID est vide. Expo ne pourra pas se présenter à Apple : il ne saura ni créer ni réparer une signature. À poser dans Settings → Secrets and variables → Actions → onglet « Variables »."
+          fi
 
       # LA CLÉ D'APPLE SERT AUSSI ICI, et pas seulement au dépôt.
       #
@@ -220,8 +243,8 @@ jobs:
           EXPO_ASC_API_KEY_PATH: ${{ steps.cle.outputs.posee == 'oui' && './app-store-connect.p8' || '' }}
           EXPO_ASC_KEY_ID: ${{ secrets.ASC_CLE_ID }}
           EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_EMETTEUR_ID }}
-          EXPO_APPLE_TEAM_ID: ${{ vars.APPLE_EQUIPE_ID }}
-          EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_EQUIPE_TYPE }}
+          EXPO_APPLE_TEAM_ID: ${{ vars.APPLE_EQUIPE_ID || secrets.APPLE_EQUIPE_ID }}
+          EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_EQUIPE_TYPE || secrets.APPLE_EQUIPE_TYPE || 'INDIVIDUAL' }}
         run: |
           # On garde la sortie pour la relire : le message d'Expo est en
           # anglais et tient en une ligne au milieu de cinquante autres.
