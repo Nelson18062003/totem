@@ -64,7 +64,8 @@ cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
 cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
 #   (même chaîne que verifier-les-formats — voir l'en-tête du script)
-cd mobile && node scripts/verifier-le-paquet.mjs # ce que l'application emporte
+cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android emporte
+cd mobile && node scripts/verifier-le-paquet.mjs iphone # …et le paquet iPhone
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # huit écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
 ```
@@ -386,6 +387,19 @@ DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
 application installée se démonte — tout ce qui entre dans ce fichier est
 public, pour toujours. À relancer avant toute compilation destinée au
 magasin.
+
+**Les deux paquets tiennent la même promesse.** `verifier-le-paquet` ne
+regardait qu'Android, parce qu'il n'y avait qu'Android ; un secret qui
+fuirait dans le paquet iPhone fuirait tout autant — une application installée
+se démonte, quel que soit le téléphone. Il prend maintenant la plateforme en
+argument, et refuse une plateforme inconnue plutôt que de retomber sur
+Android : une faute de frappe passerait alors pour un contrôle.
+
+**Ce qui est recopié MOT POUR MOT ne se commente pas.** Le bloc `infoPlist`
+d'`app.json` part tel quel dans le `Info.plist` de l'application. La
+convention `"//quelquechose"` du dépôt ne vaut qu'au niveau d'Expo, qui ignore
+ce qu'il ne connaît pas — écrite un cran trop bas, elle embarque de la prose
+française dans le paquet installé. Vu au prébuild, pas deviné.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

@@ -17,7 +17,10 @@
         "buildType": "app-bundle"
       },
       "channel": "essai",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "autoIncrement": "buildNumber"
+      }
     },
     "production": {
       "distribution": "store",
@@ -25,7 +28,10 @@
         "buildType": "app-bundle"
       },
       "channel": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "ios": {
+        "autoIncrement": "buildNumber"
+      }
     }
   },
   "submit": {

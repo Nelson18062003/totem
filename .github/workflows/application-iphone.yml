@@ -1,0 +1,233 @@
+# Fabriquer l'application iPhone, sans ouvrir un terminal ni posséder un Mac.
+#
+# Le jumeau de « Application Android ». Même geste : on clique, Expo compile
+# sur ses machines, la version apparaît chez Apple. Le propriétaire n'installe
+# ni Xcode, ni les outils Apple, ni quoi que ce soit.
+#
+# CE QUI DIFFÈRE D'ANDROID, ET IL FAUT LE SAVOIR AVANT DE CLIQUER :
+#
+#   1. IL N'Y A PAS DE PROFIL « APERCU ». Sur Android, un APK s'installe
+#      directement sur le téléphone, sans magasin. Sur iPhone, rien ne
+#      s'installe hors du magasin sans enregistrer l'appareil un par un chez
+#      Apple. Le chemin d'essai de l'iPhone, c'est TestFlight — donc « essai ».
+#
+#   2. TOUT PASSE PAR TESTFLIGHT, « production » compris. `eas submit` dépose
+#      dans App Store Connect ; la version y est aussitôt distribuable aux
+#      testeurs. La mettre sur l'App Store PUBLIC reste un geste séparé, dans
+#      App Store Connect. Il n'y a pas d'équivalent du « brouillon sur la
+#      piste publique » d'Android.
+#
+# CE QU'IL FAUT UNE SEULE FOIS, avant le premier lancement :
+#
+#   1. Un compte Apple Developer en règle (individuel ou organisation).
+#   2. App Store Connect → Mes apps → « + » → créer la fiche de l'application,
+#      avec l'identifiant « com.bonzinilabs.totem » (celui d'app.json, qui ne
+#      se change jamais).
+#   3. App Store Connect → Utilisateurs et accès → Intégrations → Clés d'API
+#      App Store Connect → « + » → rôle « App Manager ».
+#      Noter l'ID de la clé et l'ID de l'émetteur, télécharger le fichier
+#      « .p8 ». APPLE NE LE DONNE QU'UNE FOIS : le perdre oblige à recréer
+#      une clé.
+#   4. GitHub → Settings → Secrets and variables → Actions → trois secrets :
+#        ASC_CLE_P8       le contenu ENTIER du fichier .p8
+#        ASC_CLE_ID       l'ID de la clé (une dizaine de caractères)
+#        ASC_EMETTEUR_ID  l'ID de l'émetteur (un UUID)
+#
+# POURQUOI UNE CLÉ ET NON L'IDENTIFIANT APPLE. Un compte Apple porte une
+# double authentification : en intégration continue, personne n'est là pour
+# taper le code reçu sur le téléphone. La clé s'en passe — c'est le pendant du
+# compte de service côté Google.
+#
+# Sans ces secrets, rien ne casse : le paquet se compile, et le résumé donne
+# le lien pour le déposer à la main.
+
+name: Application iPhone
+
+on:
+  workflow_dispatch:
+    inputs:
+      profil:
+        description: "Quel paquet fabriquer"
+        required: true
+        default: essai
+        type: choice
+        options:
+          - essai        # TestFlight, pour les testeurs de la liste
+          - production   # même dépôt, destiné à l'App Store public
+      adresse:
+        description: "Adresse de la plateforme (vide = celle des réglages du dépôt)"
+        required: false
+        default: ""
+      sans_compiler:
+        description: "Déposer au magasin le DERNIER paquet déjà fabriqué, sans en refaire un"
+        required: false
+        default: false
+        type: boolean
+
+# Le jeton de l'action ne sert qu'à LIRE le dépôt. Sans ce bloc, il hérite du
+# réglage par défaut de l'organisation — souvent l'écriture sur tous les
+# domaines — dans un travail qui installe des centaines de paquets et détient
+# de quoi publier sur tous les téléphones. On le réduit à ce qui sert.
+permissions:
+  contents: read
+
+jobs:
+  fabriquer:
+    name: Fabriquer (${{ inputs.profil }})
+    runs-on: ubuntu-latest
+    steps:
+      # Les actions sont épinglées par EMPREINTE, pas par étiquette : une
+      # étiquette est un nom, et celui qui contrôle le dépôt peut le faire
+      # pointer ailleurs. Ce travail tient le jeton Expo et la clé d'Apple.
+      # Voir l'en-tête d'« Application Android » pour le raisonnement complet.
+      - name: Récupérer le dépôt
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+
+      - name: Installer Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Installer les outils d'Expo
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e   # 8.2.1
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        working-directory: mobile
+        run: npm ci
+
+      # Les garde-fous AVANT la compilation : une compilation dure une
+      # vingtaine de minutes — et l'attente chez Expo peut durer des heures.
+      # Autant ne pas la lancer sur du code qui ne tient pas debout.
+      - name: Vérifier les types
+        if: ${{ !inputs.sans_compiler }}
+        working-directory: mobile
+        run: npx tsc --noEmit
+
+      - name: Vérifier les règles partagées
+        if: ${{ !inputs.sans_compiler }}
+        working-directory: web
+        run: npm ci && npm test
+
+      # L'adresse passe par « env », jamais collée dans la ligne de commande :
+      # « ${{ … }} » est remplacé AVANT que le shell ne lise la ligne. Voir
+      # l'en-tête d'« Application Android » pour le détail.
+      - name: Poser l'adresse de la plateforme
+        working-directory: mobile
+        env:
+          ADRESSE: ${{ inputs.adresse || vars.ADRESSE_PLATEFORME }}
+        run: node scripts/poser-l-adresse.mjs "$ADRESSE"
+
+      # CE QUE LE PAQUET EMPORTE — regardé, pas supposé.
+      #
+      # Le paquet iPhone tient la MÊME promesse que le paquet Android : le
+      # noyau partagé doit y être, aucun secret ne doit y être. Une
+      # application installée se démonte, quel que soit le téléphone.
+      #
+      # On la saute quand on ne compile pas : elle regarderait le code
+      # d'aujourd'hui alors qu'on dépose un paquet fabriqué hier.
+      - name: Vérifier ce que le paquet emporte
+        if: ${{ !inputs.sans_compiler }}
+        working-directory: mobile
+        run: node scripts/verifier-le-paquet.mjs iphone
+
+      # LA CLÉ D'APPLE — posée AVANT la compilation, pas après.
+      #
+      # Elle ne sert qu'à la fin, mais on la regarde maintenant : découvrir au
+      # bout de vingt minutes que le dépôt ne peut pas se faire, c'est vingt
+      # minutes pour rien.
+      - name: Poser la clé d'Apple
+        id: cle
+        working-directory: mobile
+        env:
+          P8: ${{ secrets.ASC_CLE_P8 }}
+          CLE_ID: ${{ secrets.ASC_CLE_ID }}
+          EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+        run: |
+          if [ -z "$P8" ] || [ -z "$CLE_ID" ] || [ -z "$EMETTEUR_ID" ]; then
+            echo "posee=non" >> $GITHUB_OUTPUT
+            echo "Secrets ASC_* incomplets : le paquet devra être déposé à la main."
+            exit 0
+          fi
+          printf '%s' "$P8" > app-store-connect.p8
+          # Une clé tronquée au copier-coller donnerait, après la compilation,
+          # une erreur que personne ne sait lire. On la lit ici.
+          if ! grep -q "BEGIN PRIVATE KEY" app-store-connect.p8; then
+            echo "::error::ASC_CLE_P8 n'est pas une clé privée valable (« BEGIN PRIVATE KEY » attendu). Recopier le fichier .p8 ENTIER, en-têtes compris."
+            exit 1
+          fi
+          echo "posee=oui" >> $GITHUB_OUTPUT
+
+      - name: Compiler
+        if: ${{ !inputs.sans_compiler }}
+        working-directory: mobile
+        env:
+          PROFIL: ${{ inputs.profil }}
+        run: eas build --platform ios --profile "$PROFIL" --non-interactive --wait
+
+      # LE DÉPÔT CHEZ APPLE, sans passer par les mains du propriétaire.
+      #
+      # Les trois variables ci-dessous sont le chemin DOCUMENTÉ pour donner la
+      # clé à `eas submit` sans interaction. Écrire des « $VAR » dans eas.json
+      # à leur place ne marcherait pas : rien ne garantit qu'elles y seraient
+      # remplacées.
+      #
+      # Où atterrit le paquet : App Store Connect, donc TestFlight aussitôt.
+      # Le mettre sur l'App Store PUBLIC reste un geste séparé, chez Apple.
+      - name: Déposer au magasin
+        if: steps.cle.outputs.posee == 'oui'
+        working-directory: mobile
+        env:
+          PROFIL: ${{ inputs.profil }}
+          EXPO_ASC_API_KEY_PATH: ./app-store-connect.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_CLE_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+        run: eas submit --platform ios --profile "$PROFIL" --latest --non-interactive
+
+      # La clé ne survit pas au travail. `always()` : même si la compilation
+      # ou le dépôt a échoué — surtout dans ce cas.
+      - name: Effacer la clé d'Apple
+        if: always()
+        working-directory: mobile
+        run: rm -f app-store-connect.p8
+
+      - name: Où trouver le paquet
+        working-directory: mobile
+        env:
+          PROFIL: ${{ inputs.profil }}
+          SANS_COMPILER: ${{ inputs.sans_compiler }}
+          DEPOSE: ${{ steps.cle.outputs.posee }}
+        run: |
+          echo "### Paquet iPhone — profil \`$PROFIL\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          eas build:list --platform ios --limit 1 --json --non-interactive \
+            | node -e "
+              let e='';process.stdin.on('data',d=>e+=d).on('end',()=>{
+                const b=JSON.parse(e)[0]||{};
+                console.log('- état : ' + (b.status ?? '?'));
+                if (b.artifacts?.buildUrl) console.log('- téléchargement : ' + b.artifacts.buildUrl);
+                if (b.appVersion) console.log('- version : ' + b.appVersion);
+              });" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$SANS_COMPILER" = "true" ]; then
+            echo "_Aucune compilation : c'est le dernier paquet déjà fabriqué_" >> $GITHUB_STEP_SUMMARY
+            echo "_qui vient d'être déposé._" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$DEPOSE" = "oui" ]; then
+            echo "✅ **Déposé chez Apple tout seul.** Rien à téléverser." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "La version est dans App Store Connect, donc sur TestFlight." >> $GITHUB_STEP_SUMMARY
+            echo "La mettre sur l'App Store **public** reste un geste séparé," >> $GITHUB_STEP_SUMMARY
+            echo "chez Apple : il n'y a pas d'équivalent iPhone du brouillon" >> $GITHUB_STEP_SUMMARY
+            echo "sur la piste publique d'Android." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Dépôt manuel.** Les secrets \`ASC_CLE_P8\`, \`ASC_CLE_ID\`" >> $GITHUB_STEP_SUMMARY
+            echo "et \`ASC_EMETTEUR_ID\` ne sont pas tous posés : télécharger le" >> $GITHUB_STEP_SUMMARY
+            echo "paquet ci-dessus et l'envoyer avec Transporter. Voir" >> $GITHUB_STEP_SUMMARY
+            echo "l'en-tête de ce fichier pour s'en passer." >> $GITHUB_STEP_SUMMARY
+          fi
