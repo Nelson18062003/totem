@@ -805,6 +805,39 @@ elle vit chez Expo.**
 C'est la seule étape de tout ce document qui demande une invite de commande,
 et elle ne se fait qu'une fois pour la vie de l'application.
 
+**Le vrai témoin, cette fois, c'est la commande elle-même.** Avant :
+
+```
+No credentials set up yet!
+```
+
+Après, sur le même écran, sans avoir à croire qui que ce soit :
+
+```
+Distribution Certificate
+  Expiration Date   Wed, 08 Sep 2027
+  Apple Team        S84ML7M6Y9 (Individual)
+Provisioning Profile
+  Status            active
+  Expiration        Wed, 08 Sep 2027
+```
+
+Ce n'est pas un formulaire qui répond « enregistré » : c'est l'état relu
+après avoir été changé. **Un écran qui montre ce qu'il vient de faire vaut
+mieux qu'un écran qui confirme qu'on le lui a demandé.**
+
+Deux choses à retenir de cette sortie :
+
+**L'identifiant d'équipe est `S84ML7M6Y9`.** C'est la valeur que doit porter
+`APPLE_EQUIPE_ID` — elle se lit ici, elle ne se devine pas.
+
+**Les deux pièces expirent le 8 septembre 2027.** Un an, jour pour jour. Ce
+jour-là personne ne s'en souviendra, et la compilation s'arrêtera sur un
+message qui ne dira pas « votre certificat a expiré ». C'est précisément
+pour cette date que la compilation reçoit la clé d'Apple et l'identité
+d'équipe : avec elles, Expo répare seul ; sans elles, il constate et
+s'arrête.
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
