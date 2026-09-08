@@ -838,6 +838,37 @@ pour cette date que la compilation reçoit la clé d'Apple et l'identité
 d'équipe : avec elles, Expo répare seul ; sans elles, il constate et
 s'arrête.
 
+### La compilation a réussi, et le dépôt a buté sur un numéro
+
+Premier paquet iPhone fabriqué : **6 min 49**. Puis :
+
+```
+✓ Compiler               6m 49s
+✗ Déposer au magasin        3s
+    Set ascAppId in the submit profile (eas.json)
+```
+
+Expo avait le paquet et savait parler à Apple — **il ne savait pas dans
+quelle fiche le déposer.** Un compte peut en porter plusieurs ; il faut
+nommer la bonne.
+
+Ce numéro s'appelle `ascAppId`. Il se lit dans App Store Connect →
+l'application → onglet App Store → **App Information** → ligne **« Apple
+ID »**. Le nom trompe : ce n'est pas une adresse électronique, c'est un
+nombre à dix chiffres. Il est maintenant dans `eas.json`, sur les deux
+profils de dépôt.
+
+**Ce n'est pas un secret** : il figure dans l'adresse de l'application sur
+l'App Store, lisible par tout le monde. Il vit donc dans le dépôt, pas dans
+les secrets — y ranger une valeur publique ne protégerait rien et ferait
+croire le contraire.
+
+**Une seule façon documentée de le donner : `eas.json`.** Pas de variable
+d'environnement, pas d'option en ligne de commande — vérifié avant d'écrire,
+et non deviné. C'est la deuxième fois que la question se pose sur ce
+fichier ; la première, j'avais inventé une substitution `$VARIABLE` qui
+n'existe nulle part.
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de
