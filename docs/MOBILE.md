@@ -678,7 +678,7 @@ sections. Trois se remplissent toutes seules, une se remplit à la main :
 Apple Distribution Certificates   ← Expo le crée, ne rien téléverser
 Apple Push Keys                   ← Expo la crée, ne rien téléverser
 App Store Connect API Keys        ← C'EST ICI qu'on met quelque chose
-Apple Teams                       ← se remplit dès que la clé est là
+Apple Teams                       ← ne dit RIEN, voir plus bas
 ```
 
 **La clé d'API est le passeport d'Expo pour parler à Apple.** Tant qu'elle
@@ -702,10 +702,30 @@ Le bouton est *« Add an App Store Connect API key »* : il demande l'ID de la
 clé, l'ID de l'émetteur et le fichier `.p8` — les trois choses déjà rangées
 dans les secrets GitHub. **Aucun terminal.**
 
-Une fois la clé posée, la section « Apple Teams » cesse d'être vide : c'est
-le signe qu'Expo a réussi à se présenter chez Apple. Les deux premières
-sections, elles, restent vides jusqu'à la première compilation qui aboutit —
-**c'est Expo qui fabrique le certificat, on ne le téléverse pas.**
+Les deux premières sections restent vides jusqu'à la première compilation qui
+aboutit — **c'est Expo qui fabrique le certificat, on ne le téléverse pas.**
+
+**Et cette page ne dit PAS si la clé fonctionne.** J'avais écrit ici que la
+section « Apple Teams » se remplirait une fois la clé posée, et qu'elle
+servirait donc de témoin. **C'est faux, mesuré :** la clé est en place —
+
+```
+Identifier            Key ID        Team    Roles   Uploaded at
+TOTEM Admin 2026-09   3D4CG386MV    None    None    Sep 8, 2026 2:10 PM
+```
+
+— et « Apple Teams » est resté vide. Les colonnes `Team` et `Roles` de la clé
+elle-même sont vides aussi. Expo **range** la clé sans jamais s'en servir ; il
+ne la présentera à Apple qu'à la première compilation qui en aura besoin.
+
+Le formulaire s'est fermé sans erreur, la ligne s'affiche, tout a l'air fait —
+et rien n'a été vérifié. **Un écran qui répond « c'est enregistré » ne répond
+pas à la question « est-ce que ça marche ».** J'ai proposé un témoin qui ne
+témoigne de rien ; c'est exactement la faute que ce dépôt reproche aux
+contrôles qui passent sans rien regarder, et je l'ai commise dans le document
+qui l'explique.
+
+**Le seul essai qui prouve quelque chose reste le lancement du travail.**
 
 ### Un certificat expire, et il expirera un mauvais jour
 
