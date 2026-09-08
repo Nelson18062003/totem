@@ -56,13 +56,18 @@
 #      paquet vient de nous, elle ne se fabrique pas toute seule dans le dos
 #      de son propriétaire.
 #
-#      La voie sans terminal, à essayer d'abord : poser la MÊME clé d'API
-#      sur le compte Expo — expo.dev → l'organisation → « Android & iOS
-#      credentials » → « Add an App Store Connect API key ». C'est le
-#      passeport d'Expo pour parler à Apple ; sans lui il ne peut ni créer
-#      ni vérifier une signature. Les certificats et les clés de
-#      notification de cette page, eux, ne se téléversent PAS : c'est Expo
-#      qui les fabrique.
+#      ESSAYÉ ET ÉCARTÉ : la clé d'API ne suffit pas. Avec les trois
+#      variables ASC, l'identité d'équipe ET la clé posée sur le compte
+#      Expo, la réponse est la même à la seconde près. Ce n'était pas un
+#      problème d'authentification — Expo savait se présenter à Apple.
+#      C'est `--non-interactive` qui refuse de CRÉER, quoi qu'on lui donne.
+#      Les variables réparent une signature existante ; elles n'en font
+#      pas naître une.
+#
+#      Sans rien installer : GitHub prête un terminal dans le navigateur.
+#      Dépôt → « Code » → onglet « Codespaces » → « Create codespace on
+#      main ». Node est déjà là, le dépôt aussi. La signature ne vit pas
+#      dans le Codespace — elle vit chez Expo — donc il se supprime après.
 #
 #      Le premier lancement sans cela s'arrête en une minute et demie sur
 #      « Distribution Certificate is not validated for non-interactive
@@ -317,7 +322,14 @@ jobs:
         working-directory: mobile
         run: rm -f app-store-connect.p8
 
+      # `always()` : SURTOUT quand quelque chose a échoué.
+      #
+      # Cette étape a été sautée le jour où le dépôt a échoué après une
+      # compilation RÉUSSIE — c'est-à-dire le seul jour où elle servait
+      # vraiment. Le paquet existait, personne ne savait où. Un panneau
+      # indicateur qui s'éteint quand on se perd n'indique rien.
       - name: Où trouver le paquet
+        if: always()
         working-directory: mobile
         env:
           PROFIL: ${{ inputs.profil }}

@@ -727,6 +727,148 @@ qui l'explique.
 
 **Le seul essai qui prouve quelque chose reste le lancement du travail.**
 
+### Le verdict : la voie du navigateur est épuisée
+
+Troisième lancement, avec TOUT en place cette fois :
+
+```
+EXPO_ASC_API_KEY_PATH: ./app-store-connect.p8
+EXPO_ASC_KEY_ID:       ***
+EXPO_ASC_ISSUER_ID:    ***
+EXPO_APPLE_TEAM_ID:    ***      ← enfin lue
+EXPO_APPLE_TEAM_TYPE:  ***      ← enfin lue
+```
+
+…plus la clé d'API posée sur le compte Expo. Réponse, à la seconde près,
+identique aux deux fois précédentes :
+
+```
+✔ Using remote iOS credentials (Expo server)
+Distribution Certificate is not validated for non-interactive builds.
+```
+
+**La question est tranchée, et la réponse est non.** Une clé d'API ne suffit
+pas à créer la PREMIÈRE signature. Ce n'était pas un problème
+d'authentification — Expo savait très bien se présenter à Apple. C'est
+`--non-interactive` qui refuse de CRÉER, quoi qu'on lui donne. Les variables
+servent à réparer une signature existante, comme la documentation le dit, et
+rien de plus.
+
+Trois lancements, trois causes différentes, et **une seule vraie** :
+
+| | ce qui manquait | vraie cause ? |
+|---|---|---|
+| 1 | la clé n'allait qu'au dépôt, pas à la compilation | non |
+| 2 | l'identité d'équipe, rangée dans le mauvais onglet | non |
+| 3 | rien — tout était en place | **oui** |
+
+Les deux premiers échecs se ressemblaient tellement qu'ils passaient pour le
+même. **Un essai qui n'essaie rien rend le même verdict qu'un essai qui
+échoue**, et c'est ce qui a coûté deux tours : à chaque fois j'ai lu « ça ne
+marche pas » là où il fallait lire « ça n'a pas été tenté ». D'où le
+garde-fou qui écrit maintenant l'identité d'équipe avant de compiler.
+
+### Un terminal, sans rien installer : le Codespace
+
+La signature doit donc se créer à la main, une fois. Cela demande un terminal
+— mais **pas d'installer quoi que ce soit sur son ordinateur**.
+
+GitHub en prête un, dans le navigateur : sur la page du dépôt, bouton
+**« Code »** → onglet **« Codespaces »** → **« Create codespace on main »**.
+Une machine s'ouvre dans un onglet, Node déjà installé, le dépôt déjà là.
+
+```sh
+cd mobile
+npm install
+export EXPO_TOKEN=le-jeton-copie-sur-expo.dev
+npx eas-cli credentials --platform ios
+```
+
+**Surtout PAS `eas-cli login`.** Cette commande ouvre une page qui doit
+revenir sur `localhost:38415` — c'est-à-dire sur la machine où le terminal
+tourne. Dans un Codespace, le terminal est chez GitHub et le navigateur est
+chez soi : la réponse cherche une porte qui n'existe pas de ce côté-là, et
+l'écran affiche « Ce site est inaccessible ». Rien n'est cassé ; la connexion
+par navigateur ne s'applique simplement pas à un terminal distant.
+
+Le jeton s'en passe. Il se crée sur `expo.dev` → **Access tokens** →
+« Create token », et **Expo ne le montre qu'une fois**. Il se colle dans le
+terminal du Codespace, jamais ailleurs. C'est d'ailleurs ainsi que le
+workflow s'authentifie depuis toujours — `EXPO_TOKEN` était sous nos yeux
+dans ses secrets.
+
+Profil **production** → **Build Credentials** → **All: Set up all the
+required credentials**. Expo demande à Apple les deux pièces et les garde.
+Le Codespace peut être supprimé ensuite : **la signature ne vit pas dedans,
+elle vit chez Expo.**
+
+C'est la seule étape de tout ce document qui demande une invite de commande,
+et elle ne se fait qu'une fois pour la vie de l'application.
+
+**Le vrai témoin, cette fois, c'est la commande elle-même.** Avant :
+
+```
+No credentials set up yet!
+```
+
+Après, sur le même écran, sans avoir à croire qui que ce soit :
+
+```
+Distribution Certificate
+  Expiration Date   Wed, 08 Sep 2027
+  Apple Team        S84ML7M6Y9 (Individual)
+Provisioning Profile
+  Status            active
+  Expiration        Wed, 08 Sep 2027
+```
+
+Ce n'est pas un formulaire qui répond « enregistré » : c'est l'état relu
+après avoir été changé. **Un écran qui montre ce qu'il vient de faire vaut
+mieux qu'un écran qui confirme qu'on le lui a demandé.**
+
+Deux choses à retenir de cette sortie :
+
+**L'identifiant d'équipe est `S84ML7M6Y9`.** C'est la valeur que doit porter
+`APPLE_EQUIPE_ID` — elle se lit ici, elle ne se devine pas.
+
+**Les deux pièces expirent le 8 septembre 2027.** Un an, jour pour jour. Ce
+jour-là personne ne s'en souviendra, et la compilation s'arrêtera sur un
+message qui ne dira pas « votre certificat a expiré ». C'est précisément
+pour cette date que la compilation reçoit la clé d'Apple et l'identité
+d'équipe : avec elles, Expo répare seul ; sans elles, il constate et
+s'arrête.
+
+### La compilation a réussi, et le dépôt a buté sur un numéro
+
+Premier paquet iPhone fabriqué : **6 min 49**. Puis :
+
+```
+✓ Compiler               6m 49s
+✗ Déposer au magasin        3s
+    Set ascAppId in the submit profile (eas.json)
+```
+
+Expo avait le paquet et savait parler à Apple — **il ne savait pas dans
+quelle fiche le déposer.** Un compte peut en porter plusieurs ; il faut
+nommer la bonne.
+
+Ce numéro s'appelle `ascAppId`. Il se lit dans App Store Connect →
+l'application → onglet App Store → **App Information** → ligne **« Apple
+ID »**. Le nom trompe : ce n'est pas une adresse électronique, c'est un
+nombre à dix chiffres. Il est maintenant dans `eas.json`, sur les deux
+profils de dépôt.
+
+**Ce n'est pas un secret** : il figure dans l'adresse de l'application sur
+l'App Store, lisible par tout le monde. Il vit donc dans le dépôt, pas dans
+les secrets — y ranger une valeur publique ne protégerait rien et ferait
+croire le contraire.
+
+**Une seule façon documentée de le donner : `eas.json`.** Pas de variable
+d'environnement, pas d'option en ligne de commande — vérifié avant d'écrire,
+et non deviné. C'est la deuxième fois que la question se pose sur ce
+fichier ; la première, j'avais inventé une substitution `$VARIABLE` qui
+n'existe nulle part.
+
 ### Un certificat expire, et il expirera un mauvais jour
 
 La compilation reçoit maintenant, elle aussi, la clé d'Apple et l'identité de

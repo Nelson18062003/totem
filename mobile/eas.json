@@ -40,6 +40,9 @@
         "serviceAccountKeyPath": "./google-play.json",
         "track": "internal",
         "releaseStatus": "completed"
+      },
+      "ios": {
+        "ascAppId": "6809711396"
       }
     },
     "production": {
@@ -47,6 +50,9 @@
         "serviceAccountKeyPath": "./google-play.json",
         "track": "production",
         "releaseStatus": "draft"
+      },
+      "ios": {
+        "ascAppId": "6809711396"
       }
     }
   }
