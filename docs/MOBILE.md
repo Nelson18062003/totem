@@ -470,6 +470,37 @@ Obligatoire dès qu'une brique **native** bouge :
 - le fichier `google-services.json` de Firebase ;
 - la version d'Android visée.
 
+### Ce qui serait arrivé si on avait poussé le passage iPhone à distance
+
+Le travail sur la fluidité ajoute `expo-haptics`, se sert d'`expo-glass-effect`
+et retire trois paquets. Ce sont des briques NATIVES.
+
+Poussé par la mise à jour à distance sur le paquet déjà installé, voici la
+chaîne, vérifiée dans le code de la bibliothèque et non supposée :
+
+```
+la barre d'onglets rend sa coque
+  → isLiquidGlassAvailable()
+  → requireNativeModule("ExpoGlassEffect")
+  → la brique n'est pas dans le paquet installé : ça LÈVE
+  → la barre ne rend plus
+  → l'application plante au démarrage, sur tous les écrans
+```
+
+**Et une application qui plante au démarrage ne peut plus recevoir la
+correction.** Le téléphone serait mort pour de bon — c'est écrit dans
+l'en-tête du workflow, et ça a failli arriver.
+
+`version` est donc montée de `1.0.0` à `1.1.0`. Avec
+`runtimeVersion: appVersion`, l'ancien paquet cesse simplement d'être
+concerné par les mises à jour : il continue de tourner comme avant, et la
+suite passe par une vraie compilation.
+
+**La règle est écrite depuis longtemps et elle se tient À LA MAIN.** Rien ne
+la fait respecter : aucun harnais ne sait dire « une brique native a changé ».
+C'est le genre de règle qu'on applique dix fois et qu'on oublie la
+onzième — celle qui compte.
+
 ### La règle à tenir soi-même
 
 `app.json` porte `runtimeVersion: { policy: "appVersion" }` : **une mise à
