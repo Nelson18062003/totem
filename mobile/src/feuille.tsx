@@ -9,11 +9,11 @@
 
 import type { ReactNode } from "react";
 import {
-  Alert, BackHandler, KeyboardAvoidingView, Modal, Pressable, ScrollView, View,
+  Alert, BackHandler, KeyboardAvoidingView, Modal, Pressable, View,
 } from "react-native";
 import { useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BoutonIcone, Texte } from "@/ui";
+import { Defilement, BoutonIcone, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { couleurs, espaces, rayons } from "@/theme/jetons";
 
@@ -94,12 +94,12 @@ export function Feuille({
             <BoutonIcone nom="Close" etiquette={libelleFermer} onPress={sortir} />
           </View>
 
-          <ScrollView
+          <Defilement
             contentContainerStyle={{ padding: espaces.lg, gap: espaces.md }}
             keyboardShouldPersistTaps="handled"
           >
             {children}
-          </ScrollView>
+          </Defilement>
 
           {pied ? (
             <View style={{

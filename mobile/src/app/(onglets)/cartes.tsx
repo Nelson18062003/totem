@@ -5,10 +5,10 @@
 // troisième n'apparaît que s'il a lieu d'être : retirer une carte ne perd
 // rien — son journal reste consultable, et son total avec.
 
-import { RefreshControl, ScrollView, View } from "react-native";
+import { RefreshControl, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Accroc, Carte, Filet, Texte } from "@/ui";
+import { Defilement, Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree } from "@/animations";
@@ -44,7 +44,7 @@ export default function Comptes() {
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-      <ScrollView
+      <Defilement
         contentContainerStyle={{
           paddingHorizontal: ecran.marge, paddingTop: espaces.md,
           paddingBottom: 108, gap: espaces.xl,
@@ -171,7 +171,7 @@ export default function Comptes() {
             </View>
           </Entree>
         ) : null}
-      </ScrollView>
+      </Defilement>
     </SafeAreaView>
   );
 }

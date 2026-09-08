@@ -12,12 +12,12 @@
 
 import { useState } from "react";
 import {
-  KeyboardAvoidingView, Pressable, ScrollView, TextInput, View,
+  KeyboardAvoidingView, Pressable, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -63,7 +63,7 @@ export default function CadranUssd() {
           feuille.tsx). Le cadran vit en haut, mais un téléphone couché n'a
           que quelques lignes au-dessus du clavier. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
           <BoutonIcone nom="Chevron" etiquette={t.fermerEcran}
@@ -127,7 +127,7 @@ export default function CadranUssd() {
                 backgroundColor: couleurs.surfaceHaute,
               }}>
                 <Icone nom="Hash" taille={16} couleur={couleurs.encrePale} />
-                <TextInput
+                <ChampTexte
                   value={saisie}
                   onChangeText={(v) => setSaisie(v.replace(/[^0-9#*]/g, ""))}
                   keyboardType="phone-pad"
@@ -225,7 +225,7 @@ export default function CadranUssd() {
 
           </>
         )}
-      </ScrollView>
+      </Defilement>
       </KeyboardAvoidingView>
 
       {operation ? (

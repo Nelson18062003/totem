@@ -9,12 +9,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, TextInput, View,
+  KeyboardAvoidingView, Pressable, RefreshControl, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -215,7 +215,7 @@ export default function Encaissements() {
           feuille.tsx). La recherche vit en haut, mais un téléphone couché
           n'a que quelques lignes au-dessus du clavier. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-      <ScrollView
+      <Defilement
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: 108 }}
         keyboardShouldPersistTaps="handled"
         // On allonge la liste AVANT d'arriver au bout — un écran et demi
@@ -268,7 +268,7 @@ export default function Encaissements() {
             paddingHorizontal: espaces.lg, paddingVertical: espaces.sm,
           }}>
             <Icone nom="Search" taille={18} couleur={couleurs.encrePale} />
-            <TextInput
+            <ChampTexte
               value={recherche}
               onChangeText={setRecherche}
               placeholder={t.recherchePlaceholder}
@@ -419,7 +419,7 @@ export default function Encaissements() {
           </Entree>
           );
         })}
-      </ScrollView>
+      </Defilement>
       </KeyboardAvoidingView>
 
       {ouvert ? (
@@ -434,10 +434,10 @@ export default function Encaissements() {
  *  quatre natures ne tiennent pas de front. */
 function Rangee({ children }: { children: React.ReactNode }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
+    <Defilement horizontal showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: espaces.sm, paddingRight: espaces.lg }}>
       {children}
-    </ScrollView>
+    </Defilement>
   );
 }
 

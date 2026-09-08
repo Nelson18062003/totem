@@ -138,12 +138,15 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
       for (let i = 0; i < 25; i++) {
         await new Promise((r) => setTimeout(r, 1200));
         const c = await lireCommande(id).catch(() => null);
-        if (c?.etat === "faite") { setEtabli("fait"); onChange?.(); return; }
-        if (c?.etat === "echouee") { setEtabli("refus"); return; }
+        if (c?.etat === "faite") { setEtabli("fait"); onChange?.(); return true; }
+        if (c?.etat === "echouee") { setEtabli("refus"); return false; }
       }
+      // Vingt-cinq essais, trente secondes : le terminal n'a pas répondu.
       setEtabli("refus");
+      return false;
     } catch {
       setEtabli("refus");
+      return false;
     }
   });
 

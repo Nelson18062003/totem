@@ -30,6 +30,8 @@
 
 import { useCallback, useRef, useState } from "react";
 
+import { toucherDepart, toucherEchec, toucherReussite } from "./toucher";
+
 /** Une clé d'intention neuve. */
 export function nouvelleCle(): string {
   // `crypto.randomUUID` n'existe pas partout sur React Native selon la
@@ -48,8 +50,24 @@ export type Geste = {
    * appui pendant que le premier travaille ne fait RIEN — pas une erreur,
    * pas un message : rien. C'est ce que la personne attend d'un bouton sur
    * lequel elle vient d'appuyer.
+   *
+   * CE QU'IL REND DÉCIDE DE CE QUE LE DOIGT SENT :
+   *
+   *   `true`      la demande a abouti  → le toucher de réussite
+   *   `false`     elle n'a pas abouti  → le toucher d'échec
+   *   rien        on ne sait pas       → RIEN
+   *
+   * Le troisième cas est le plus important, et c'est le défaut par défaut.
+   * Un premier jet faisait vibrer « c'est passé » dès que `faire` rendait la
+   * main — or les écrans attrapent leurs propres erreurs et rendent la main
+   * NORMALEMENT après avoir affiché « ça n'a pas marché ». Le téléphone
+   * aurait donc félicité la personne pour un échec.
+   *
+   * Une sensation fausse est pire qu'aucune sensation : on apprend à s'y
+   * fier, puis elle ment une fois, sur de l'argent. Tant qu'un écran n'a pas
+   * DIT ce qui s'est passé, on ne sent rien.
    */
-  lancer: (faire: (cle: string) => Promise<void>) => Promise<void>;
+  lancer: (faire: (cle: string) => Promise<boolean | void>) => Promise<void>;
 };
 
 export function useGesteUnique(): Geste {
@@ -58,12 +76,27 @@ export function useGesteUnique(): Geste {
   const verrou = useRef(false);
   const [occupe, setOccupe] = useState(false);
 
-  const lancer = useCallback(async (faire: (cle: string) => Promise<void>) => {
+  const lancer = useCallback(async (faire: (cle: string) => Promise<boolean | void>) => {
+    // LE SECOND APPUI NE SENT RIEN. Il ne fait rien : le faire vibrer lui
+    // répondrait qu'il a fait quelque chose. C'est le seul retour honnête.
     if (verrou.current) return;
     verrou.current = true;
     setOccupe(true);
+    // ICI, ET NULLE PART AILLEURS. Le toucher se pose au même endroit que le
+    // verrou, pour la même raison : tout geste d'argent passe par cette
+    // fonction. Le poser écran par écran, c'est l'oublier sur le prochain.
+    toucherDepart();
     try {
-      await faire(nouvelleCle());
+      const verdict = await faire(nouvelleCle());
+      // On ne sent QUE ce qui a été dit. `undefined` n'est pas un succès :
+      // c'est un silence, et un silence ne se célèbre pas.
+      if (verdict === true) toucherReussite();
+      else if (verdict === false) toucherEchec();
+    } catch (e) {
+      toucherEchec();
+      // On ne SE SUBSTITUE PAS à l'écran : il a son message, ses mots, sa
+      // place. On ajoute une sensation, on ne retient pas l'erreur.
+      throw e;
     } finally {
       verrou.current = false;
       setOccupe(false);

@@ -9,8 +9,10 @@
 // L'Analyse et la console USSD se rejoignent depuis les écrans qui les
 // appellent, pas depuis la barre.
 
-import { useEffect, useRef } from "react";
-import { Animated, Easing, Platform, Pressable, View } from "react-native";
+import { Platform, Pressable, View, type ViewStyle } from "react-native";
+import Animated, {
+  interpolateColor, useAnimatedStyle, useDerivedValue, withTiming, Easing,
+} from "react-native-reanimated";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,6 +23,8 @@ import { textesCharpente } from "@noyau/textes/charpente";
 import { ageVu } from "@noyau/types";
 import { useLangue } from "@/langue";
 import { useAgeDesChiffres } from "@/donnees";
+import { toucherChoix } from "@/toucher";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 
 const ONGLETS: { nom: string; cle: keyof ReturnType<typeof libelles>; icone: NomIcone }[] = [
@@ -120,13 +124,12 @@ function BarreFlottante({ state, descriptors, navigation }: ProprietesBarre) {
         alignItems: "center",
       }}
     >
-      <View
+      <Coque
         style={{
           flexDirection: "row", alignItems: "center", gap: espaces.xs,
           padding: 6,
           borderRadius: rayons.rond,
           borderWidth: 1, borderColor: couleurs.trait,
-          backgroundColor: couleurs.surfaceHaute,
           // Une ombre TRÈS légère, et la seule de l'application : la barre
           // flotte au-dessus du contenu, il faut qu'on le voie. Ailleurs, la
           // règle tient — pas d'ombre, les plans se séparent au trait.
@@ -162,9 +165,37 @@ function BarreFlottante({ state, descriptors, navigation }: ProprietesBarre) {
             />
           );
         })}
-      </View>
+      </Coque>
     </View>
   );
+}
+
+/**
+ * LA COQUE DE LA BARRE : du verre quand iOS sait en faire, une surface
+ * pleine partout ailleurs.
+ *
+ * `expo-glass-effect` était dans les dépendances de ce dépôt sans qu'une
+ * seule ligne ne l'importe — comme `expo-symbols` et `@expo/ui`. Trois
+ * paquets qui pèsent dans le paquet installé et n'apportent rien : les
+ * laisser là était le seul mauvais choix, entre s'en servir et les retirer.
+ *
+ * ON S'EN SERT ICI, ET NULLE PART AILLEURS. Une barre qui flotte AU-DESSUS
+ * du contenu est exactement ce que le verre est fait pour rendre : on
+ * devine ce qui passe dessous, donc on comprend qu'elle flotte. Partout
+ * ailleurs dans l'application, les plans se séparent au trait — la charte
+ * ne bouge pas pour un effet.
+ *
+ * `isLiquidGlassAvailable()` répond faux sur Android, sur le web, et sur
+ * les iPhone trop anciens. On retombe alors sur la surface pleine, à
+ * l'identique de ce qui existait : personne ne perd un écran parce qu'un
+ * effet n'était pas disponible.
+ */
+function Coque({ style, children }: { style: ViewStyle; children: React.ReactNode }) {
+  if (isLiquidGlassAvailable()) {
+    // Le verre porte son propre fond : lui en donner un l'éteindrait.
+    return <GlassView style={style} glassEffectStyle="regular">{children}</GlassView>;
+  }
+  return <View style={[style, { backgroundColor: couleurs.surfaceHaute }]}>{children}</View>;
 }
 
 /** Un onglet : icône seule au repos, pilule sombre avec son nom une fois
@@ -172,21 +203,47 @@ function BarreFlottante({ state, descriptors, navigation }: ProprietesBarre) {
 function Pilule({ actif, libelle, icone, onPress }: {
   actif: boolean; libelle: string; icone: NomIcone; onPress: () => void;
 }) {
-  const ouvert = useRef(new Animated.Value(actif ? 1 : 0)).current;
+  // SUR LE FIL DE L'INTERFACE, ET NON SUR CELUI DU JAVASCRIPT.
+  //
+  // Cette animation employait l'ancienne API `Animated` de React Native avec
+  // « useNativeDriver: false », et son commentaire donnait la raison : on
+  // anime une largeur, et le pilote natif ne sait pas la prendre. C'était
+  // vrai — pour cette API-là.
+  //
+  // Reanimated, lui, sait animer une largeur et une couleur sur le fil de
+  // l'interface. Il est dans ce dépôt depuis longtemps, et l'en-tête
+  // d'`animations.tsx` explique exactement le problème que ça règle : quand
+  // l'écran charge ses données, le JavaScript est occupé, et une animation
+  // ordinaire saccade PRÉCISÉMENT à ce moment-là.
+  //
+  // C'est la barre d'onglets. On y appuie plus que sur tout le reste, et on
+  // y appuie surtout au moment de changer d'écran — c'est-à-dire au moment
+  // où le JavaScript part chercher des données. Le seul élément de
+  // l'application qui saccadait était celui qu'on touche le plus, et à
+  // l'instant précis où on le touche.
+  const ouvert = useDerivedValue(
+    () => withTiming(actif ? 1 : 0, { duration: 220, easing: Easing.out(Easing.cubic) }),
+    [actif],
+  );
 
-  useEffect(() => {
-    Animated.timing(ouvert, {
-      toValue: actif ? 1 : 0,
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
-      // On anime une largeur : le pilote natif ne sait pas la prendre.
-      useNativeDriver: false,
-    }).start();
-  }, [actif, ouvert]);
+  const fond = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      ouvert.value, [0, 1], ["rgba(0,0,0,0)", couleurs.accent],
+    ),
+  }));
+
+  const nom = useAnimatedStyle(() => ({
+    opacity: ouvert.value,
+    maxWidth: ouvert.value * 140,
+    marginLeft: ouvert.value * espaces.sm,
+  }));
 
   return (
     <Pressable
-      onPress={onPress}
+      // Le toucher part à l'APPUI, avant même que l'écran change : c'est la
+      // première réponse que le doigt reçoit, et elle arrive avant le
+      // premier pixel.
+      onPress={() => { toucherChoix(); onPress(); }}
       accessibilityRole="tab"
       accessibilityState={{ selected: actif }}
       accessibilityLabel={libelle}
@@ -201,27 +258,18 @@ function Pilule({ actif, libelle, icone, onPress }: {
       })}
     >
       <Animated.View
-        style={{
+        style={[{
           flexDirection: "row", alignItems: "center",
           height: 44,
           paddingHorizontal: espaces.lg,
           borderRadius: rayons.rond,
-          backgroundColor: ouvert.interpolate({
-            inputRange: [0, 1],
-            outputRange: ["rgba(0,0,0,0)", couleurs.accent],
-          }),
-        }}
+        }, fond]}
       >
         <Icone nom={icone} taille={22}
                couleur={actif ? couleurs.surfaceHaute : couleurs.encrePale} />
         {/* Le nom n'apparaît que sur l'onglet choisi : les quatre noms côte
             à côte ne tiendraient pas sur un écran étroit. */}
-        <Animated.View style={{
-          overflow: "hidden",
-          opacity: ouvert,
-          maxWidth: ouvert.interpolate({ inputRange: [0, 1], outputRange: [0, 140] }),
-          marginLeft: ouvert.interpolate({ inputRange: [0, 1], outputRange: [0, espaces.sm] }),
-        }}>
+        <Animated.View style={[{ overflow: "hidden" }, nom]}>
           <Texte poids="demi" taille={textes.petit} numberOfLines={1}
                  style={{ color: couleurs.surfaceHaute }}>
             {libelle}

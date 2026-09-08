@@ -9,13 +9,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator, KeyboardAvoidingView, Linking, ScrollView, View,
+  ActivityIndicator, KeyboardAvoidingView, Linking, View,
   Pressable, Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Accroc, BoutonIcone, Carte, Filet, MotTotem, Pastille, Texte,
+import { Defilement, Accroc, BoutonIcone, Carte, Filet, MotTotem, Pastille, Texte,
         appuiTexte } from "@/ui";
 import { Icone } from "@/icones";
 import { SectionCartes } from "@/reglages-cartes";
@@ -69,7 +69,7 @@ export default function Reglages() {
           « Créer » pendant que le clavier est levé COMPTE — sans lui, le
           premier toucher ne faisait que ranger le clavier. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
           <BoutonIcone nom="Chevron" etiquette={t.annuler}
@@ -205,7 +205,7 @@ export default function Reglages() {
           <MotTotem taille={12} />
           <Texte taille={textes.legende} ton="pale">{t.proprietaire}</Texte>
         </View>
-      </ScrollView>
+      </Defilement>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -7,8 +7,12 @@
 // Rappel de la charte, parce que c'est ici qu'on serait tenté de l'oublier :
 // pas d'ombre. Les plans se séparent par les bordures et les fonds.
 
-import { Text, View, type TextProps, type ViewProps } from "react-native";
+import {
+  ScrollView, Text, TextInput, View,
+  type ScrollViewProps, type TextInputProps, type TextProps, type ViewProps,
+} from "react-native";
 import { couleurs, espaces, polices, rayons, textes, INTERLETTRAGE_MARQUE } from "./theme/jetons";
+import { ECHELLE_MAX } from "./ecran";
 
 type TonTexte = "normal" | "doux" | "pale" | "positif" | "negatif" | "alerte" | "marque";
 type PoidsTexte = "normal" | "moyen" | "demi" | "gras";
@@ -42,6 +46,28 @@ export function Texte({
 }) {
   return (
     <Text
+      // LE RÉGLAGE « TAILLE DU TEXTE » DU TÉLÉPHONE, RESPECTÉ MAIS BORNÉ.
+      //
+      // Sans cette borne, React Native applique l'agrandissement du système
+      // SANS LIMITE : sur un iPhone dont la taille de texte est montée d'un
+      // ou deux crans — un réglage courant, et légitime — l'application
+      // devient « trop grosse » d'un bout à l'autre. C'est ce qui a été
+      // constaté sur un iPhone 16 Pro Max, le plus GRAND écran de la gamme,
+      // où tout aurait dû paraître plus petit.
+      //
+      // La borne était pourtant décidée depuis longtemps, et écrite :
+      // `ECHELLE_MAX` dans `ecran.ts`, avec sa raison — au-delà, les
+      // chiffres d'un solde ne tiennent plus sur la carte, ce qui dessert
+      // précisément la personne qui a demandé du plus gros. Elle vivait
+      // dans une fonction que PERSONNE n'appelait. **Une décision écrite et
+      // jamais branchée ne protège de rien** ; elle fait pire, elle
+      // rassure : on relit le code, on lit la borne, on croit le sujet
+      // traité.
+      //
+      // Elle est posée AVANT `{...reste}` : un écran qui a une bonne raison
+      // de la lever — un montant qui doit rester lisible d'un mètre — passe
+      // devant.
+      maxFontSizeMultiplier={ECHELLE_MAX}
       {...reste}
       style={[
         {
@@ -56,6 +82,69 @@ export function Texte({
   );
 }
 
+/**
+ * TOUT CE QUI SE SAISIT PASSE PAR ICI — pour la même raison que `Texte`.
+ *
+ * Un champ de saisie suit le réglage « taille du texte » du téléphone
+ * exactement comme un texte, et sans limite : onze champs, aucun borné. La
+ * moitié visible du défaut était traitée, l'autre pas.
+ *
+ * Et un champ qui déborde coûte plus cher qu'un texte qui déborde. On y tape
+ * un numéro de téléphone à neuf chiffres, une adresse de plateforme, un code
+ * d'opérateur : quand le texte dépasse sa boîte, on ne relit plus ce qu'on
+ * vient d'écrire — sur un numéro vers lequel de l'argent va partir.
+ *
+ * La borne est la même que celle du texte, pour que les deux restent
+ * d'accord. Rien d'autre n'est décidé ici : la capitalisation, le clavier, la
+ * correction automatique se choisissent champ par champ, et n'ont pas de
+ * bonne valeur commune.
+ */
+export function ChampTexte(props: TextInputProps) {
+  return <TextInput maxFontSizeMultiplier={ECHELLE_MAX} {...props} />;
+}
+
+/**
+ * TOUT CE QUI DÉFILE PASSE PAR ICI.
+ *
+ * L'application portait douze `ScrollView`, et pas un seul réglage. Les
+ * corriger un par un, c'est en oublier un — et surtout le treizième, celui
+ * qu'on écrira demain. C'est le même raisonnement que le verrou d'un geste
+ * ou le toucher : on pose la règle à l'endroit par lequel tout passe.
+ *
+ * TROIS RÉGLAGES, ET CHACUN RÉPARE QUELQUE CHOSE DE PRÉCIS :
+ *
+ * `keyboardShouldPersistTaps="handled"` — ce n'est PAS du confort, c'est un
+ * défaut. Sans lui, quand le clavier est ouvert, le premier appui sur un
+ * bouton ne fait que refermer le clavier : il faut appuyer DEUX fois. Or
+ * `verifier-les-gestes` garde précisément la promesse inverse — un geste
+ * part une fois — et `verifier-la-reponse` explique pourquoi on appuie deux
+ * fois : parce que le premier appui n'a rien répondu. Le clavier fabriquait
+ * exactement cette situation.
+ *
+ * `keyboardDismissMode="on-drag"` — on fait défiler pour LIRE. Devoir
+ * d'abord fermer le clavier pour voir ce qu'on tape est un pas de trop, et
+ * c'est ce que fait n'importe quelle application du téléphone.
+ *
+ * `contentInsetAdjustmentBehavior="automatic"` — iOS uniquement : le
+ * contenu s'écarte tout seul de l'encoche et de la barre d'accueil. Sans
+ * lui, la dernière ligne se glisse sous la barre du bas.
+ *
+ * Les réglages sont posés AVANT `{...reste}` : un écran qui a une raison de
+ * les lever passe devant.
+ */
+export function Defilement({ children, ...reste }: ScrollViewProps) {
+  return (
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      contentInsetAdjustmentBehavior="automatic"
+      {...reste}
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
 /** Le mot TOTEM, et lui seul. Le logotype ne se recompose pas dans une
  *  autre police, et son interlettrage ne s'applique à rien d'autre. */
 export function MotTotem(
@@ -63,7 +152,11 @@ export function MotTotem(
   { taille?: number; couleur?: string } = {},
 ) {
   return (
-    <Text style={{
+    // UN LOGOTYPE NE SE MET PAS À L'ÉCHELLE. « TOTEM » est un dessin, pas
+    // une phrase : son interlettrage est calculé pour sa taille, et le
+    // grossir le déforme au lieu de le rendre plus lisible. Aucune autre
+    // marque ne grossit quand on monte la taille du texte du téléphone.
+    <Text allowFontScaling={false} style={{
       fontFamily: polices.marque, fontSize: taille, color: couleur,
       letterSpacing: (INTERLETTRAGE_MARQUE / textes.petit) * taille,
     }}>

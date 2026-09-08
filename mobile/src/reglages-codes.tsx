@@ -13,9 +13,9 @@
 // chiffres avant de composer. Jamais le code secret : il a son pavé.
 
 import { useState } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 
-import { Carte, Filet, Texte } from "@/ui";
+import { ChampTexte, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { useGesteUnique } from "@/geste";
@@ -186,19 +186,21 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
         { operateur, cle, libelle, etapes: corps, action }, terminal,
         cleIntention);
       const resultat = await attendreCommande(id);
-      if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return; }
+      if (!resultat) { setEtat("erreur"); setMessage(t.pasRepondu); return false; }
       if (resultat.etat !== "faite") {
         setEtat("erreur");
         setMessage(/inconnue/i.test(resultat.resultat || "")
           ? t.majRequise
           : (resultat.resultat || t.aRefuse));
-        return;
+        return false;
       }
       onChange();
       onFermer();
+      return true;
     } catch {
       setEtat("erreur");
       setMessage(t.pasPartie);
+      return false;
     }
   });
 
@@ -269,7 +271,7 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
       <View style={{ gap: espaces.lg }}>
         {rang == null ? (
           <View style={{ gap: espaces.xs }}>
-            <TextInput
+            <ChampTexte
               value={nom}
               onChangeText={(v) => setNom(v.slice(0, 40))}
               placeholder={t.nomExemple}
@@ -279,7 +281,7 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
           </View>
         ) : null}
         <View style={{ gap: espaces.xs }}>
-          <TextInput
+          <ChampTexte
             value={etapes}
             onChangeText={(v) => setEtapes(proprerEtapes(v))}
             placeholder={t.exempleEtapes}
