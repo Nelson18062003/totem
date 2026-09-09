@@ -95,17 +95,47 @@ def composer(expediteur, libelle, texte, anglais=False):
                        f"Un message de {expediteur}"))
 
 
+# Ce qu'Expo répond quand il refuse de servir un appareil, dit avec des mots
+# d'ici. Ces codes s'écrivent dans le journal du robot — celui que le
+# propriétaire lit sur la page « Ce qui s'est passé » — et il n'est pas
+# informaticien : « InvalidCredentials » ne désigne rien pour lui.
+CAUSES = {
+    "DeviceNotRegistered": "l'application n'est plus installée sur ce téléphone",
+    "InvalidCredentials": "la clé du service de notification manque au projet",
+    "MismatchSenderId": "le téléphone est inscrit sous un autre projet",
+    "MessageRateExceeded": "trop de notifications d'affilée",
+    "MessageTooBig": "le message était trop long",
+}
+
+
 def envoyer(jetons, titre, corps, ouvrir=None):
     """Pousse la notification vers les appareils enregistrés.
 
-    Rend le nombre d'appareils servis. Une panne du guichet n'est jamais
+    Rend `(servis, soucis)` : combien d'appareils le guichet a ACCEPTÉS, et
+    ce qu'il a répondu pour les autres. Une panne du guichet n'est jamais
     fatale : la notification est un confort, le journal reste la vérité.
+
+    CE QUE CE COMPTE VALAIT AVANT, et pourquoi c'était un mensonge. Il
+    faisait « servis += len(lot) » dès que la requête rendait un code
+    inférieur à 300 — c'est-à-dire dès que le guichet avait ACCEPTÉ
+    L'ENVELOPPE, sans jamais l'ouvrir. Or Expo répond 200 puis range, DANS
+    LE CORPS, un billet par appareil : « je ne connais pas ce téléphone »,
+    « ce projet n'a pas de clé ». Un iPhone dont le projet n'a pas de clé
+    Apple comptait donc pour un appareil servi, à chaque paiement, pendant
+    que rien ne sonnait — et le journal du robot n'en disait pas un mot.
+
+    Le billet n'est pas encore l'accusé de remise : un billet accepté peut
+    échouer plus loin (voir `web/lib/pousser.ts`, qui va chercher les
+    accusés). Le robot, lui, ne guette rien : il envoie et passe au SMS
+    suivant. Il dit donc « accepté », pas « remis » — et c'est déjà
+    infiniment plus que ce qu'il disait.
     """
     jetons = [j for j in jetons if isinstance(j, str) and j.startswith("Expo")]
     if not jetons or not corps:
-        return 0
+        return 0, []
 
     servis = 0
+    soucis = []
     for depart in range(0, len(jetons), PAR_LOT):
         lot = [
             {
@@ -141,11 +171,33 @@ def envoyer(jetons, titre, corps, ouvrir=None):
         )
         try:
             with urllib.request.urlopen(requete, timeout=DELAI) as reponse:
-                if reponse.status < 300:
-                    servis += len(lot)
+                if reponse.status >= 300:
+                    soucis.append(f"le guichet a répondu {reponse.status}")
+                    continue
+                rendu = json.loads(reponse.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, TimeoutError):
             # Réseau coupé, guichet muet : on n'insiste pas. Le SMS est déjà
             # dans le journal et dans Telegram ; la notification n'était que
             # le raccourci.
-            pass
-    return servis
+            soucis.append("le guichet n'a pas répondu")
+            continue
+        except (ValueError, UnicodeDecodeError):
+            # Une réponse qu'on ne sait pas lire ne se compte pas comme une
+            # réussite : c'est exactement l'erreur qu'on répare ici.
+            soucis.append("le guichet a répondu quelque chose d'illisible")
+            continue
+
+        billets = rendu.get("data") if isinstance(rendu, dict) else None
+        if not isinstance(billets, list):
+            soucis.append("le guichet n'a rendu aucun billet")
+            continue
+        for billet in billets:
+            if not isinstance(billet, dict):
+                continue
+            if billet.get("status") == "ok":
+                servis += 1
+                continue
+            details = billet.get("details")
+            code = details.get("error") if isinstance(details, dict) else None
+            soucis.append(CAUSES.get(code, code or "refusé sans raison donnée"))
+    return servis, soucis

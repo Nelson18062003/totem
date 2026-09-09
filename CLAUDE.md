@@ -53,6 +53,7 @@ cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécut
 cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
 cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
+cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT sonné
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-l-echelle.mjs # rien ne grossit sans limite
@@ -187,6 +188,34 @@ plusieurs. Cette dernière règle se tient du côté de l'ÉCRITURE : un premier
 essai la cherchait sur la page (« aucune suite de 4 à 8 chiffres ») et se
 déclenchait sur les montants et les années. La page montre fidèlement ce
 qu'on lui donne ; c'est ce qu'on lui donne qu'il faut garder.
+
+`verifier-la-sonnerie` garde ce que l'écran a le droit d'annoncer quand on
+appuie sur « Envoyer un essai ». Sur un iPhone où AUCUNE notification n'est
+jamais arrivée, il répondait « Envoyé. Votre téléphone devrait sonner dans
+quelques secondes ». Il n'y avait pas une panne à réparer : il y avait un
+écran qui disait que tout allait bien, et tant qu'il le disait, on cherchait
+ailleurs.
+
+**Le billet n'est pas l'accusé.** Le guichet d'Expo répond tout de suite
+« accepté » — c'est le billet, et il ne dit rien de plus que « je m'en
+occupe ». Ce qui se passe ENSUITE — Apple qui refuse parce que le projet n'a
+pas de clé, le téléphone désinstallé — ne s'écrit que dans l'ACCUSÉ DE
+RÉCEPTION, qu'il faut aller chercher après coup. La plateforme ne lisait que
+le billet. Le robot faisait pire : il comptait tout un lot comme servi dès
+que la requête rendait moins de 300, sans jamais OUVRIR L'ENVELOPPE — et le
+test qui gardait ce compte présentait un faux guichet qui répondait 200 sans
+corps. Un contrôle qui n'ouvre pas l'enveloppe ne mesure rien.
+
+« Servi » ne veut donc plus dire qu'une chose : l'accusé confirme. Ce qui
+est parti sans réponse se dit « en chemin », et c'est tout ce qu'on sait. Le
+harnais porte son témoin — l'ancienne façon de compter, réécrite en quinze
+lignes — et s'arrête si les mêmes exigences PASSENT sur elle.
+
+La cause est enfin dite en français : Expo répond « InvalidCredentials », et
+ce mot était affiché tel quel au propriétaire, qui n'est pas informaticien.
+Les deux pannes les plus fréquentes ne se réparent d'ailleurs pas dans le
+code — la clé Apple s'ajoute au projet Expo, le fichier Firebase au paquet
+Android — raison de plus pour que l'écran les NOMME au lieu de féliciter.
 
 `verifier-les-regles.sh` monte un PostgreSQL neuf, y joue le schéma et TOUTES
 les migrations dans l'ordre, puis attaque : il essaie vraiment de créer un
