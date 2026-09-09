@@ -245,6 +245,31 @@ jet lisait le fichier brut : le commentaire qui EXPLIQUE le réglage, vingt
 lignes au-dessus, suffisait à le satisfaire. Retirer vraiment le réglage
 laissait le harnais vert.
 
+**Un drapeau ne se réunit pas — deuxième fois, et sur un écran cette fois.**
+Le drapeau `chargement` du cahier partagé répondait à DEUX questions : « on
+n'a pas encore de réponse » (ce qui fait afficher les formes grises) et « un
+chargement est en cours » (ce qui fait tourner la roue de « tirer pour
+rafraîchir »). Sur un iPhone 16 Pro Max en itinérance, la roue restait plantée
+en haut des QUATRE onglets — ils partagent le même cahier — sur des écrans qui
+affichaient pourtant leurs chiffres, et poussait le contenu de cent quarante
+points vers le bas.
+
+**Tirer vers le bas ne la débloquait pas** : elle repartait, s'arrêtait, et
+restait. C'est la signature d'un drapeau qui ment, pas d'un chargement qui
+traîne — et personne ne pouvait plus savoir laquelle des deux affirmations il
+portait. Il est maintenant CALCULÉ à partir de deux états séparés
+(`enVol > 0 || !repondu`) : n'étant plus rangé nulle part, il ne peut plus
+rester vrai tout seul.
+
+**Je n'ai pas su reproduire cette panne, et c'est écrit dans le harnais.**
+Deux reconstitutions ont été essayées — le rechargement hors ligne, puis le
+même avec un cahier rétréci pour que le besoin ne soit pas couvert — et sur le
+code d'avant, `verifier-le-cahier` sortait VERT dans les deux cas. Le contrôle
+ajouté garde donc quelque chose de vrai mais de plus faible, et **il le dit
+lui-même** plutôt que de passer pour la preuve qu'il n'est pas. La correction
+tient parce qu'elle rend l'état impossible, pas parce qu'un harnais l'a vue
+échouer.
+
 **Une sensation fausse est pire qu'aucune sensation.** Le premier jet de
 l'haptique faisait vibrer « c'est passé » dès que le geste rendait la main —
 or les écrans attrapent leurs propres erreurs et rendent la main NORMALEMENT
