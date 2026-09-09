@@ -68,7 +68,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef,
   useState, type ReactNode,
 } from "react";
-import { AppState } from "react-native";
+import { AppState, View } from "react-native";
 import * as Notifications from "expo-notifications";
 import { chargerDonnees, ErreurGuichet } from "@/api/guichet";
 import * as Cahier from "@/api/cahier";
@@ -149,6 +149,8 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   const [donnees, setDonnees] = useState<Donnees | null>(null);
   const [servies, setServies] = useState<BornesPleines | null>(null);
   const [chargement, setChargement] = useState(true);
+  /** Combien de chargements sont en cours. Voir le `finally` de `charger`. */
+  const enVol = useRef(0);
   const [erreur, setErreur] = useState<string | null>(null);
   const [quand, setQuand] = useState<number | null>(null);
   const [duCahier, setDuCahier] = useState(false);
@@ -222,6 +224,7 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
    */
   const charger = useCallback(async (discret = false) => {
     if (!besoin) return;         // personne n'a rien demandé : rien à aller chercher
+    enVol.current += 1;
     if (!discret) setChargement(true);
     setErreur(null);
     try {
@@ -257,7 +260,30 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
           : textesConnexion[langue].reseauEnPanne);
       }
     } finally {
-      if (!discret) setChargement(false);
+      // CE QUI COMMENCE FINIT — même ce qui n'a rien affiché.
+      //
+      // Cette ligne portait « if (!discret) », symétrique du « if (!discret)
+      // setChargement(true) » plus haut. La symétrie était fausse : le
+      // drapeau ne dit pas « on a levé un voile », il dit « quelque chose
+      // est en cours ». Un rechargement DISCRET — celui qui part au retour
+      // devant l'application, à chaque notification, et dès que le besoin
+      // grandit — ne le remettait donc jamais à zéro.
+      //
+      // Et il démarre à `true`. Il suffisait qu'un rechargement discret
+      // échoue — un réseau qui tombe, ce qui arrive tout le temps en
+      // itinérance — pour que le drapeau reste vrai POUR TOUJOURS : les
+      // quatre onglets partagent le même cahier, donc la roue de
+      // « tirer pour rafraîchir » restait plantée en haut des quatre, sur
+      // des écrans qui affichaient pourtant leurs chiffres.
+      //
+      // On compte ce qui vole : deux chargements peuvent se croiser — un
+      // geste volontaire pendant qu'une notification en a lancé un — et le
+      // premier arrivé ne doit pas éteindre le voile du second.
+      enVol.current -= 1;
+      if (enVol.current <= 0) {
+        enVol.current = 0;
+        setChargement(false);
+      }
     }
   }, [langue, besoin, perdue, donnees]);
 
@@ -308,7 +334,29 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   }), [donnees, chargement, erreur, quand, duCahier, servies,
        charger, inscrire, retirer]);
 
-  return <Contexte.Provider value={boite}>{children}</Contexte.Provider>;
+  return (
+    <Contexte.Provider value={boite}>
+      {/* LE TÉMOIN DU CHARGEMENT — web seulement, comme `data-squelette` et
+          `data-ligne`.
+          `dataSet` devient un attribut `data-*` sur le web et n'existe pas
+          dans le paquet du téléphone : il ne coûte rien à l'application
+          installée. Il est ici, à côté du drapeau lui-même, plutôt que sur
+          chacun des quatre écrans — une marque posée quatre fois s'oublie
+          la cinquième.
+          Ce qu'il permet : `verifier-le-cahier` coupe le réseau, laisse un
+          rechargement discret échouer, et exige que ce témoin ait disparu.
+          Sans lui, la roue plantée ne se voyait que sur un vrai téléphone,
+          et seulement en itinérance. */}
+      {chargement
+        ? <View
+            {...({ dataSet: { chargement: "1" } } as object)}
+            pointerEvents="none"
+            style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
+          />
+        : null}
+      {children}
+    </Contexte.Provider>
+  );
 }
 
 /**

@@ -232,6 +232,45 @@ try {
     echecs++;
   }
 
+  // ET LA ROUE S'ARRÊTE, MÊME QUAND LE RÉSEAU A REFUSÉ.
+  //
+  // Ce que ce contrôle garde, mesuré sur un iPhone 16 Pro Max en itinérance :
+  // les quatre onglets portaient, en haut, la roue de « tirer pour
+  // rafraîchir », plantée — sur des écrans qui affichaient pourtant leurs
+  // chiffres. Elle poussait le contenu de cent quarante points vers le bas et
+  // ne repartait jamais.
+  //
+  // La cause tenait en trois mots : `if (!discret)`. Le drapeau du chargement
+  // se levait pour un geste volontaire et se baissait pour lui seul ; un
+  // rechargement DISCRET — au retour devant l'application, à chaque
+  // notification, dès que le besoin grandit — ne le baissait jamais. Il part
+  // à `true` : un seul rechargement discret qui échoue le laissait vrai pour
+  // toujours, et les quatre onglets partagent le même cahier.
+  //
+  // ⚠️ CE QUE CE CONTRÔLE NE PROUVE PAS, ET IL FAUT LE LIRE AVANT DE S'Y
+  // FIER. Il a été écrit pour attraper la roue plantée vue sur un iPhone
+  // 16 Pro Max en itinérance. **Il ne l'attrape pas.** Remis sur le code
+  // d'avant la correction — le `if (!discret)` du `finally` — il sort VERT.
+  //
+  // Deux reconstitutions ont été essayées et ont échoué à faire échouer le
+  // harnais : le simple rechargement hors ligne, puis le même avec un cahier
+  // rétréci à une ligne pour que le besoin ne soit pas couvert. Dans les deux
+  // cas le drapeau se baisse par l'autre chemin, celui du besoin satisfait.
+  //
+  // La condition exacte n'est donc PAS reproduite ici. Ce qui reste vrai et
+  // se vérifie : après un refus sec du guichet, rien ne doit rester en
+  // chargement. C'est une garde faible, et elle est écrite comme telle
+  // plutôt que présentée comme la preuve qu'elle n'est pas.
+  const roueCoincee = await page.evaluate(
+    () => !!document.querySelector("[data-chargement]"));
+  if (!roueCoincee) {
+    console.log("  ✓ le réseau a refusé, et la roue d'actualisation s'est arrêtée.");
+  } else {
+    console.log("  ✗ la roue tourne encore alors que le chargement est fini :");
+    console.log("      « tirer pour rafraîchir » restera planté sur les quatre onglets.");
+    echecs++;
+  }
+
   // ET LE CAHIER SE FERME AVEC LA SESSION. Sans cette règle, un téléphone
   // perdu montrerait les SMS du propriétaire à qui l'ouvrirait, sans avoir
   // à entrer le moindre mot de passe.
