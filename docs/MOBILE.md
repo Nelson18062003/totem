@@ -240,6 +240,68 @@ désinstallé répond « DeviceNotRegistered » : son jeton est alors retiré de
 base. Sans cette lecture, il y resterait pour toujours, et le compte des
 appareils servis mentirait.
 
+### « Remis », « en chemin », et pourquoi ce n'est pas la même nouvelle
+
+**Le billet n'est pas l'accusé.** Le guichet d'Expo répond tout de suite
+« accepté » : c'est le BILLET, et il ne dit rien de plus que « je m'en
+occupe ». Ce qui se passe ENSUITE — Apple qui refuse parce que le projet n'a
+pas de clé, Google qui ne connaît pas l'appareil, le téléphone désinstallé —
+ne s'écrit que dans l'ACCUSÉ DE RÉCEPTION, qu'il faut aller chercher après
+coup.
+
+La plateforme ne lisait que le billet. Sur un iPhone où **aucune**
+notification n'est jamais arrivée, l'écran répondait donc « Envoyé. Votre
+téléphone devrait sonner dans quelques secondes ». Il n'y avait pas une
+panne à réparer : il y avait un écran qui disait que tout allait bien, et
+tant qu'il le disait, on cherchait ailleurs.
+
+L'écran distingue maintenant deux nouvelles :
+
+| ce qu'il dit | ce que ça veut dire |
+|---|---|
+| **Remis. Votre téléphone a sonné.** | l'accusé confirme la remise |
+| **Accepté, et en chemin.** | le guichet a pris le message, l'accusé n'est pas encore revenu |
+| **Rien n'a pu être envoyé — …** | le service refuse, et la phrase qui suit dit pourquoi |
+
+La cause est dite en français. Expo répond « InvalidCredentials » ; ce mot
+était affiché tel quel au propriétaire, qui n'est pas informaticien.
+
+**Le robot faisait pire que la plateforme.** Il comptait tout un lot comme
+servi dès que la requête rendait moins de 300, sans jamais ouvrir
+l'enveloppe — et le test qui gardait ce compte présentait un faux guichet
+qui répondait 200 **sans corps**. Il ouvre maintenant l'enveloppe, et il
+écrit au journal (« Ce qui s'est passé ») quand les téléphones se taisent :
+une cause, aucune donnée personnelle, et seulement quand elle CHANGE.
+
+Le harnais : `cd web && node scripts/verifier-la-sonnerie.mjs`. Il porte son
+témoin — l'ancienne façon de compter, réécrite en quinze lignes — et
+s'arrête si les mêmes exigences passent sur elle.
+
+### Rien ne sonne : par où chercher
+
+Dans cet ordre, parce que les deux premières causes ne se réparent pas dans
+le code.
+
+1. **Réglages, sur le téléphone.** La section « Est-ce que mon téléphone
+   sonne ? » nomme ce qui a empêché CET appareil de s'inscrire : permission
+   refusée, projet non rattaché, jeton non rendu — et elle montre le message
+   du système mot pour mot.
+2. **Envoyer un essai**, et lire la phrase. « la clé Apple manque au projet
+   Expo » et « le fichier Firebase manque au paquet » désignent chacune un
+   geste précis, ci-dessous.
+3. **iPhone : la clé Apple, chez Expo.** Apple Developer → Keys → une clé
+   APNs → télécharger le `.p8` (une seule fois, il ne se retélécharge
+   jamais). Puis expo.dev → le projet → Credentials → iOS → **Apple Push
+   Keys** → Add. Tant que cette page dit « This account doesn't have any
+   Apple push keys », **aucun iPhone ne sonnera jamais**, quoi que fasse le
+   code : Expo n'a rien pour signer la remise à Apple.
+4. **Android : le fichier Firebase**, secret de fichier `GOOGLE_SERVICES_JSON`
+   dans EAS (voir plus bas).
+
+Ni l'un ni l'autre ne vit dans le dépôt, et c'est voulu. Aucune modification
+du code ne peut donc les remplacer — d'où l'importance que l'écran les
+NOMME au lieu de féliciter.
+
 Aucun contenu de SMS ne traverse cet essai — le message ne parle que de
 lui-même. Ce qu'une vraie notification montre — le message reçu, en aperçu —
 se décide chez le robot, à un seul endroit.
@@ -302,9 +364,12 @@ muettes. C'est voulu (voir le commentaire en tête de `app.config.js`) : une
 ligne fixe dans `app.json` aurait au contraire fait échouer la compilation
 sur un fichier absent.
 
-**Pour l'iPhone**, ce sera un autre tuyau (APNs, chez Apple) et une clé à
-téléverser chez Expo. Rien à faire tant que l'inscription développeur Apple
-n'est pas terminée.
+**Pour l'iPhone**, c'est un autre tuyau : APNs, chez Apple, et une clé `.p8`
+à téléverser chez Expo (expo.dev → Credentials → iOS → **Apple Push Keys**).
+Elle n'est PAS posée par la compilation, elle ne se déduit d'aucun réglage du
+dépôt, et sans elle un iPhone s'inscrit normalement, l'essai part
+normalement, et **rien n'arrive jamais**. Voir « Rien ne sonne : par où
+chercher », plus haut.
 
 ---
 
@@ -469,6 +534,37 @@ Obligatoire dès qu'une brique **native** bouge :
 - une bibliothèque nouvelle (`expo-notifications`, `expo-updates`…) ;
 - le fichier `google-services.json` de Firebase ;
 - la version d'Android visée.
+
+### Ce qui serait arrivé si on avait poussé le passage iPhone à distance
+
+Le travail sur la fluidité ajoute `expo-haptics`, se sert d'`expo-glass-effect`
+et retire trois paquets. Ce sont des briques NATIVES.
+
+Poussé par la mise à jour à distance sur le paquet déjà installé, voici la
+chaîne, vérifiée dans le code de la bibliothèque et non supposée :
+
+```
+la barre d'onglets rend sa coque
+  → isLiquidGlassAvailable()
+  → requireNativeModule("ExpoGlassEffect")
+  → la brique n'est pas dans le paquet installé : ça LÈVE
+  → la barre ne rend plus
+  → l'application plante au démarrage, sur tous les écrans
+```
+
+**Et une application qui plante au démarrage ne peut plus recevoir la
+correction.** Le téléphone serait mort pour de bon — c'est écrit dans
+l'en-tête du workflow, et ça a failli arriver.
+
+`version` est donc montée de `1.0.0` à `1.1.0`. Avec
+`runtimeVersion: appVersion`, l'ancien paquet cesse simplement d'être
+concerné par les mises à jour : il continue de tourner comme avant, et la
+suite passe par une vraie compilation.
+
+**La règle est écrite depuis longtemps et elle se tient À LA MAIN.** Rien ne
+la fait respecter : aucun harnais ne sait dire « une brique native a changé ».
+C'est le genre de règle qu'on applique dix fois et qu'on oublie la
+onzième — celle qui compte.
 
 ### La règle à tenir soi-même
 

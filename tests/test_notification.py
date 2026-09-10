@@ -65,17 +65,52 @@ class TexteDeLaNotification(unittest.TestCase):
         self.assertEqual(en, "A message from MTN")
 
 
+def faux_guichet(billets=None, statut=200, brut=None):
+    """Un guichet d'Expo en carton, qui rend un VRAI corps.
+
+    Le corps compte : c'est là qu'Expo range son verdict par appareil, et
+    c'est précisément ce que l'ancien code ne lisait pas.
+    """
+    charge = brut if brut is not None else json.dumps(
+        {"data": billets or []}).encode("utf-8")
+
+    class Guichet:
+        status = statut
+
+        def read(soi):
+            return charge
+
+        def __enter__(soi):
+            return soi
+
+        def __exit__(soi, *args):
+            return False
+
+    return Guichet()
+
+
+def avec_faux_guichet(faux_urlopen, faire):
+    """Joue `faire` en remplaçant le guichet d'Expo, et le remet toujours."""
+    import totem.notification as module
+    vrai = module.urllib.request.urlopen
+    module.urllib.request.urlopen = faux_urlopen
+    try:
+        return faire()
+    finally:
+        module.urllib.request.urlopen = vrai
+
+
 class EnvoiDesNotifications(unittest.TestCase):
 
     def test_un_jeton_qui_n_est_pas_d_expo_est_ignore(self):
         # Rien ne part vers une adresse qu'on ne reconnaît pas.
-        self.assertEqual(envoyer(["pas-un-jeton", "", None], "T", "C"), 0)
+        self.assertEqual(envoyer(["pas-un-jeton", "", None], "T", "C"), (0, []))
 
     def test_sans_appareil_rien_ne_part(self):
-        self.assertEqual(envoyer([], "T", "C"), 0)
+        self.assertEqual(envoyer([], "T", "C"), (0, []))
 
     def test_un_corps_vide_ne_part_pas(self):
-        self.assertEqual(envoyer(["ExponentPushToken[abc]"], "T", ""), 0)
+        self.assertEqual(envoyer(["ExponentPushToken[abc]"], "T", ""), (0, []))
 
     def test_la_notification_part_en_haute_priorite(self):
         # LE RETARD DE TROIS À CINQ MINUTES venait d'ici : sans priorité,
@@ -89,31 +124,55 @@ class EnvoiDesNotifications(unittest.TestCase):
         # laisserait la faute revenir sans bruit.
         envois = []
 
-        class FauxGuichet:
-            status = 200
-
-            def __enter__(soi):
-                return soi
-
-            def __exit__(soi, *args):
-                return False
-
         def faux_urlopen(requete, timeout=None):
             envois.append(json.loads(requete.data.decode("utf-8")))
-            return FauxGuichet()
+            return faux_guichet([{"status": "ok", "id": "b1"}])
 
-        import totem.notification as module
-        vrai = module.urllib.request.urlopen
-        module.urllib.request.urlopen = faux_urlopen
-        try:
-            servis = envoyer(["ExponentPushToken[abc]"], "Titre", "Corps")
-        finally:
-            module.urllib.request.urlopen = vrai
+        servis, soucis = avec_faux_guichet(
+            faux_urlopen, lambda: envoyer(["ExponentPushToken[abc]"], "Titre", "Corps"))
 
-        self.assertEqual(servis, 1)
+        self.assertEqual((servis, soucis), (1, []))
         (message,) = envois[0]
         self.assertEqual(message["priority"], "high")
         self.assertEqual(message["channelId"], "paiements")
+
+    def test_un_billet_en_erreur_ne_compte_pas_pour_un_telephone_servi(self):
+        """LA FAUTE QUE CE TEST GARDE, et elle a duré.
+
+        Le compte faisait « servis += len(lot) » dès que la requête rendait
+        200 — c'est-à-dire dès que le guichet avait accepté L'ENVELOPPE. Or
+        Expo répond 200 puis range dans le corps un billet par appareil :
+        « ce projet n'a pas de clé ». Un iPhone dont le projet Expo n'a pas
+        de clé Apple comptait donc pour un appareil servi, à chaque
+        paiement, pendant que rien ne sonnait.
+
+        Le test qui existait ici validait la faute contre elle-même : son
+        faux guichet rendait 200 SANS CORPS, et le code ne lisait pas le
+        corps. Un contrôle qui n'ouvre pas l'enveloppe ne mesure rien.
+        """
+        def faux_urlopen(requete, timeout=None):
+            return faux_guichet([
+                {"status": "ok", "id": "b1"},
+                {"status": "error", "message": "…",
+                 "details": {"error": "InvalidCredentials"}},
+            ])
+
+        servis, soucis = avec_faux_guichet(faux_urlopen, lambda: envoyer(
+            ["ExponentPushToken[un]", "ExponentPushToken[deux]"], "T", "C"))
+
+        self.assertEqual(servis, 1)
+        self.assertEqual(
+            soucis, ["la clé du service de notification manque au projet"])
+
+    def test_une_reponse_illisible_ne_compte_personne(self):
+        # Un guichet qui répond 200 avec du charabia n'a servi personne.
+        def faux_urlopen(requete, timeout=None):
+            return faux_guichet(brut=b"<html>maintenance</html>")
+
+        servis, soucis = avec_faux_guichet(faux_urlopen, lambda: envoyer(
+            ["ExponentPushToken[un]"], "T", "C"))
+        self.assertEqual(servis, 0)
+        self.assertEqual(len(soucis), 1)
 
 
 class ListeDesAppareils(unittest.TestCase):

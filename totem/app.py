@@ -163,6 +163,10 @@ class Robot:
         self.delai_session = delai_session
         self.chemin_base = chemin_base
         self.nuage = nuage      # None ou non configuré : le robot ignore le cloud
+        # Ce que le guichet des notifications a répondu la dernière fois. On
+        # ne journalise que les CHANGEMENTS : une clé manquante refuserait
+        # sinon chaque paiement, et noierait le journal sous la même phrase.
+        self._souci_sonnerie = None
         if self.nuage is not None:
             # Quand la base refuse un paiement, le propriétaire doit l'apprendre
             # sur Telegram — sinon un SMS cesse d'apparaître sur la plateforme
@@ -2488,11 +2492,48 @@ class Robot:
 
         def porter():
             try:
-                envoyer(self.nuage.appareils(), titre, corps)
+                appareils = self.nuage.appareils()
+                servis, soucis = envoyer(appareils, titre, corps)
+                self._dire_si_les_telephones_se_taisent(
+                    len(appareils), servis, soucis)
             except Exception:
                 pass    # une notification perdue n'est pas une panne
 
         threading.Thread(target=porter, daemon=True).start()
+
+    def _dire_si_les_telephones_se_taisent(self, attendus, servis, soucis):
+        """Écrit au journal quand les téléphones ne sonnent pas.
+
+        POURQUOI CETTE MÉTHODE EXISTE. Le robot envoyait ses notifications
+        dans un fil à part, avalait toute erreur, et ne comptait même pas ce
+        que le guichet avait accepté. Quand plus rien ne sonnait — une clé
+        Apple absente du projet suffit — TOUT avait l'air normal : Telegram
+        annonçait, la plateforme affichait, le journal se taisait. Le
+        propriétaire n'avait aucun endroit où lire que ses téléphones
+        n'étaient plus joints.
+
+        AUCUNE DONNÉE PERSONNELLE N'ENTRE ICI : un compte, et une cause. Le
+        journal se garde longtemps et se lit à plusieurs.
+        """
+        if attendus and not servis:
+            etat = "muets : " + " · ".join(dict.fromkeys(soucis)) if soucis \
+                else "muets, sans raison donnée par le guichet"
+        elif servis < attendus:
+            etat = (f"{servis} sur {attendus} accepté(s) : "
+                    + " · ".join(dict.fromkeys(soucis)))
+        else:
+            etat = "d'accord"
+        # Le premier retour à la normale se dit aussi : sans cela, on lirait
+        # « muets » pour toujours et on ne saurait pas quand ça s'est réparé.
+        if etat == self._souci_sonnerie:
+            return
+        premier = self._souci_sonnerie is None
+        self._souci_sonnerie = etat
+        if etat == "d'accord":
+            if not premier:
+                self.journal.evenement("les téléphones sonnent à nouveau")
+            return
+        self.journal.evenement(f"téléphones {etat}")
 
     def _courrier_abandonne(self, canal, texte):
         """Le facteur a dû jeter un message que Telegram refusait obstinément

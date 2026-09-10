@@ -842,15 +842,18 @@ export function SectionEssaiNotification() {
       } else if (c.aucun) {
         setRate(true);
         setMessage(`${t.essaiAucunAppareil} ${t.essaiDepuisNavigateur}`);
-      } else if (c.servis > 0) {
+      } else if (c.servis > 0 || c.enRoute) {
         setRate(false);
+        // REMIS, OU SEULEMENT PARTI. Voir `lib/pousser.ts` : le guichet rend
+        // un billet tout de suite, l'accusé de remise plus tard, et seul le
+        // second dit qu'un téléphone a sonné.
         setMessage(
-          t.essaiReussi
+          (c.servis > 0 ? t.essaiRemis : t.essaiEnRoute)
           + (c.oublies ? ` (${c.oublies} ${t.essaiOublies})` : ""));
       } else {
         setRate(true);
-        // Le détail vient d'Expo, en anglais. On le montre quand même : sans
-        // lui, « rien n'a pu être envoyé » ne dit pas par où chercher.
+        // La cause, dans la langue de l'écran : le mot anglais du service
+        // (« InvalidCredentials ») ne disait rien à qui doit s'en servir.
         setMessage(
           t.essaiEchec + (c.soucis?.length ? ` — ${c.soucis.join(" · ")}` : ""));
       }

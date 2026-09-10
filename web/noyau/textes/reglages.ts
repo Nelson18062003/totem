@@ -185,7 +185,15 @@ const en = {
   essaiBouton: "Send a test",
   essaiEnCours: "Sending…",
   essaiTexte: "This is a test. Notifications are working.",
-  essaiReussi: "Sent. Your phone should ring within a few seconds.",
+  // DEUX RÉPONSES, PARCE QU'IL Y A DEUX CHOSES DIFFÉRENTES À DIRE.
+  // « Remis » : le service a confirmé que le téléphone l'a reçu. « En
+  // route » : il a pris le message et n'a pas encore rendu son accusé —
+  // c'est vrai, et c'est tout ce qu'on sait. L'ancien texte disait le
+  // premier dans les deux cas, y compris quand la remise échouait ensuite.
+  essaiRemis: "Delivered. Your phone has rung.",
+  essaiEnRoute:
+    "Accepted, and on its way. The service has not confirmed delivery yet — " +
+    "if nothing rings within a minute, send another test.",
   // « Aucun téléphone connecté » était un CONTRESENS. Le propriétaire EST
   // connecté — il vient de taper son courriel et son mot de passe — et le
   // message lui disait le contraire. Ce qui manque n'est pas une session,
@@ -204,6 +212,23 @@ const en = {
     "a phone does. Open the app on your phone, then come back here.",
   essaiEchec: "Nothing could be sent.",
   essaiOublies: "phone(s) removed: the app is no longer installed on them.",
+
+  // --- Pourquoi le service a refusé de servir un téléphone ---------------
+  // Expo répond « InvalidCredentials », « MismatchSenderId ». Ces mots
+  // étaient affichés tels quels au propriétaire, qui n'est pas
+  // informaticien : autant lui montrer une page blanche.
+  causeSansCle:
+    "The notification service has nothing to reach this phone with: the " +
+    "Apple push key is missing from the Expo project (iPhone), or the " +
+    "Firebase file is missing from the build (Android). Nothing to fix " +
+    "from the phone.",
+  causeMauvaisProjet:
+    "This phone is registered under a different notification project. " +
+    "Register it again after a fresh build.",
+  causeTropSouvent: "Too many notifications in a row. Wait a minute.",
+  causeTropGros: "The message was too long for the notification service.",
+  causeGuichet: "The notification service did not answer.",
+  causeAutre: "The notification service refused, without saying why.",
 
   // --- Ce qui a empêché ce téléphone de s'inscrire -----------------------
   // Cinq raisons, cinq gestes différents. Les confondre sous un « ça ne
@@ -404,7 +429,10 @@ const fr: typeof en = {
   essaiBouton: "Envoyer un essai",
   essaiEnCours: "Envoi…",
   essaiTexte: "Ceci est un essai. Les notifications fonctionnent.",
-  essaiReussi: "Envoyé. Votre téléphone devrait sonner dans quelques secondes.",
+  essaiRemis: "Remis. Votre téléphone a sonné.",
+  essaiEnRoute:
+    "Accepté, et en chemin. Le service n’a pas encore confirmé la remise — " +
+    "si rien ne sonne d’ici une minute, relancez un essai.",
   essaiAucunAppareil:
     "Aucun téléphone n’est inscrit pour les notifications. Cela ne concerne " +
     "pas votre connexion — vous êtes bien connecté. Cela veut dire qu’aucun " +
@@ -415,6 +443,18 @@ const fr: typeof en = {
     "téléphone, puis revenez ici.",
   essaiEchec: "Rien n’a pu être envoyé.",
   essaiOublies: "téléphone(s) retiré(s) : l’application n’y est plus installée.",
+
+  causeSansCle:
+    "Le service de notification n’a pas de quoi joindre ce téléphone : la " +
+    "clé Apple manque au projet Expo (iPhone), ou le fichier Firebase manque " +
+    "au paquet (Android). Rien à corriger depuis le téléphone.",
+  causeMauvaisProjet:
+    "Ce téléphone est inscrit sous un autre projet de notification. " +
+    "Réinscrivez-le après une nouvelle compilation.",
+  causeTropSouvent: "Trop de notifications d’affilée. Attendez une minute.",
+  causeTropGros: "Le message était trop long pour le service de notification.",
+  causeGuichet: "Le service de notification n’a pas répondu.",
+  causeAutre: "Le service de notification a refusé, sans dire pourquoi.",
 
   sonnerieInscrit: "Ce téléphone sonnera.",
   sonnerieRefusee:

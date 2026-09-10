@@ -299,9 +299,14 @@ function EssaiNotification() {
       if (r.aucun) {
         setRate(true);
         setMessage(t.essaiAucunAppareil);
-      } else if (r.servis > 0) {
+      } else if (r.servis > 0 || r.enRoute) {
         setRate(false);
-        setMessage(t.essaiReussi
+        // REMIS, OU SEULEMENT PARTI : ce n'est pas la même nouvelle. Le
+        // service confirme la remise dans un second temps ; tant qu'il ne
+        // l'a pas fait, on ne promet rien. L'écran annonçait « votre
+        // téléphone devrait sonner » dès que le guichet avait pris le
+        // message — y compris sur un iPhone où il n'arrivait jamais rien.
+        setMessage((r.servis > 0 ? t.essaiRemis : t.essaiEnRoute)
           + (r.oublies ? ` (${r.oublies} ${t.essaiOublies})` : ""));
       } else {
         setRate(true);

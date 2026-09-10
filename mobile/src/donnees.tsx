@@ -68,7 +68,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef,
   useState, type ReactNode,
 } from "react";
-import { AppState } from "react-native";
+import { AppState, View } from "react-native";
 import * as Notifications from "expo-notifications";
 import { chargerDonnees, ErreurGuichet } from "@/api/guichet";
 import * as Cahier from "@/api/cahier";
@@ -148,7 +148,33 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
 
   const [donnees, setDonnees] = useState<Donnees | null>(null);
   const [servies, setServies] = useState<BornesPleines | null>(null);
-  const [chargement, setChargement] = useState(true);
+  // UN DRAPEAU NE SE RÉUNIT PAS — et celui-ci en portait deux.
+  //
+  // « chargement » répondait à la fois à « on n'a pas encore de réponse »
+  // (ce qui fait afficher les formes grises) et à « un chargement est en
+  // cours » (ce qui fait tourner la roue de « tirer pour rafraîchir »). Ce
+  // sont deux questions différentes, et les confondre a fait exactement ce
+  // qu'on pouvait craindre : le drapeau restait vrai, plus personne ne
+  // savait laquelle des deux il affirmait, et la roue tournait en haut des
+  // quatre onglets sur des écrans qui affichaient pourtant leurs chiffres.
+  //
+  // MESURÉ SUR UN VRAI TÉLÉPHONE : tirer vers le bas et relâcher ne la
+  // débloquait pas. Elle repartait, s'arrêtait, et restait. C'est la
+  // signature d'un drapeau qui ment — pas d'un chargement qui traîne.
+  //
+  // Deux états séparés, donc, et un drapeau CALCULÉ à partir d'eux : il ne
+  // peut plus rester vrai tout seul, puisqu'il n'est plus rangé nulle part.
+  //
+  //   `enVol`   les chargements VISIBLES en cours. Les discrets — retour
+  //             devant l'application, notification, besoin qui grandit — n'y
+  //             entrent pas : faire clignoter l'écran à chaque SMS serait
+  //             pire que de ne pas rafraîchir.
+  //   `repondu` a-t-on eu une réponse, ne serait-ce qu'une fois ? Un échec
+  //             compte : on a répondu « non ». Ce qui fait cesser les formes
+  //             grises, c'est de SAVOIR, pas de réussir.
+  const [enVol, setEnVol] = useState(0);
+  const [repondu, setRepondu] = useState(false);
+  const chargement = enVol > 0 || !repondu;
   const [erreur, setErreur] = useState<string | null>(null);
   const [quand, setQuand] = useState<number | null>(null);
   const [duCahier, setDuCahier] = useState(false);
@@ -197,6 +223,7 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (connecte === false) {
       setDonnees(null); setServies(null); setQuand(null); setDuCahier(false);
+      setRepondu(false); setEnVol(0);
       cahierRelu.current = false;
       void Cahier.fermer();
       return;
@@ -211,6 +238,9 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
       setServies((deja) => (deja ? deja : page.bornes));
       setQuand((deja) => (deja ? deja : page.quand));
       setDuCahier((deja) => (deja ? deja : true));
+      // Le cahier a répondu : on sait quoi montrer, les formes grises
+      // s'effacent même si le réseau, lui, n'a encore rien dit.
+      setRepondu(true);
     });
   }, [connecte]);
 
@@ -222,7 +252,7 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
    */
   const charger = useCallback(async (discret = false) => {
     if (!besoin) return;         // personne n'a rien demandé : rien à aller chercher
-    if (!discret) setChargement(true);
+    if (!discret) setEnVol((n) => n + 1);
     setErreur(null);
     try {
       const d = await chargerDonnees(langue, besoin);
@@ -257,7 +287,11 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
           : textesConnexion[langue].reseauEnPanne);
       }
     } finally {
-      if (!discret) setChargement(false);
+      // CE QUI COMMENCE FINIT. « repondu » passe à vrai même sur un échec :
+      // la question a reçu sa réponse, et les formes grises n'ont plus lieu
+      // d'être — l'écran a mieux à dire, un message ou de vieux chiffres.
+      setRepondu(true);
+      if (!discret) setEnVol((n) => Math.max(0, n - 1));
     }
   }, [langue, besoin, perdue, donnees]);
 
@@ -268,7 +302,9 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
     || (servies !== null && couvre(servies, besoin));
   useEffect(() => {
     if (connecte !== true) return;
-    if (besoinCouvert) { setChargement(false); return; }
+    // Le besoin est couvert : rien à aller chercher. Il n'y a plus de drapeau
+    // à baisser ici — il se calcule.
+    if (besoinCouvert) return;
     void charger(donnees !== null);   // discret si l'on a déjà de quoi montrer
     // `charger` change à chaque rendu (il dépend de `donnees`) : le suivre
     // ici relancerait une boucle. Ce qui décide est le besoin et sa
@@ -308,7 +344,29 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   }), [donnees, chargement, erreur, quand, duCahier, servies,
        charger, inscrire, retirer]);
 
-  return <Contexte.Provider value={boite}>{children}</Contexte.Provider>;
+  return (
+    <Contexte.Provider value={boite}>
+      {/* LE TÉMOIN DU CHARGEMENT — web seulement, comme `data-squelette` et
+          `data-ligne`.
+          `dataSet` devient un attribut `data-*` sur le web et n'existe pas
+          dans le paquet du téléphone : il ne coûte rien à l'application
+          installée. Il est ici, à côté du drapeau lui-même, plutôt que sur
+          chacun des quatre écrans — une marque posée quatre fois s'oublie
+          la cinquième.
+          Ce qu'il permet : `verifier-le-cahier` coupe le réseau, laisse un
+          rechargement discret échouer, et exige que ce témoin ait disparu.
+          Sans lui, la roue plantée ne se voyait que sur un vrai téléphone,
+          et seulement en itinérance. */}
+      {chargement
+        ? <View
+            {...({ dataSet: { chargement: "1" } } as object)}
+            pointerEvents="none"
+            style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
+          />
+        : null}
+      {children}
+    </Contexte.Provider>
+  );
 }
 
 /**

@@ -3,7 +3,7 @@ import { erreurApi } from "@noyau/textes/api";
 import { textesReglages } from "@noyau/textes/reglages";
 import { listerAppareils, oublierAppareil, relie } from "@/lib/serveur";
 import { estProprietaire } from "@/lib/qui";
-import { pousser } from "@/lib/pousser";
+import { pousser, type Cause } from "@/lib/pousser";
 
 export const dynamic = "force-dynamic";
 
@@ -54,13 +54,33 @@ export async function POST(req: Request) {
   await Promise.all(morts.map((v) => oublierAppareil(v.jeton)));
 
   return Response.json({
+    // « SERVI » NE VEUT DIRE QU'UNE CHOSE : le service a confirmé que le
+    // téléphone a reçu. Ce compte valait auparavant « le guichet a pris le
+    // message », c'est-à-dire presque rien — et il valait 1 sur un iPhone
+    // où rien n'est jamais arrivé.
     servis: verdicts.filter((v) => v.etat === "ok").length,
+    // Pris, mais pas encore confirmé. On le DIT, au lieu de le compter
+    // comme une réussite.
+    enRoute: verdicts.filter((v) => v.etat === "attente").length,
     oublies: morts.length,
     // De quoi comprendre un échec sans ouvrir un journal : c'est le
-    // propriétaire qui lit, et il n'a personne à qui demander.
-    soucis: verdicts
+    // propriétaire qui lit, et il n'a personne à qui demander. La CAUSE est
+    // dite dans sa langue ; les mots anglais du service ne servaient qu'à
+    // le laisser seul devant « InvalidCredentials ».
+    soucis: [...new Set(verdicts
       .filter((v) => v.etat === "invalide" || v.etat === "refuse")
-      .map((v) => v.detail ?? v.etat)
-      .slice(0, 3),
+      .map((v) => enClair(t, v.cause)))].slice(0, 3),
   });
+}
+
+/** La cause, dans la langue de l'écran. */
+function enClair(t: (typeof textesReglages)["fr"], cause: Cause | undefined): string {
+  switch (cause) {
+    case "sansCle": return t.causeSansCle;
+    case "mauvaisProjet": return t.causeMauvaisProjet;
+    case "tropSouvent": return t.causeTropSouvent;
+    case "tropGros": return t.causeTropGros;
+    case "guichet": return t.causeGuichet;
+    default: return t.causeAutre;
+  }
 }

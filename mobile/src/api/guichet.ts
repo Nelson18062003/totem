@@ -386,7 +386,8 @@ export function lienRecu(numero: string): Promise<{ url: string }> {
  *  combien ont été servis, et combien ont été retirés parce que le service
  *  de notification les déclare éteints. */
 export function essaiNotification(langue: Langue): Promise<{
-  servis: number; oublies: number; aucun?: boolean; soucis?: string[];
+  servis: number; enRoute?: number; oublies: number;
+  aucun?: boolean; soucis?: string[];
 }> {
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
 }
