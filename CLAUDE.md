@@ -516,8 +516,13 @@ française dans le paquet installé. Vu au prébuild, pas deviné.
 l'écran. Une annonce se regarde une fois et se partage cent fois : une phrase
 fausse y voyage plus loin que partout ailleurs. Il refuse les promesses que le
 dépôt ne tient pas (« IA », « dans les magasins », « chiffré de bout en
-bout », « partenaire de MTN », « à la seconde »), et les vraies personnes que
-les tests ont relevées sur de vrais SMS. Il porte son témoin. La vidéo, elle,
+bout », « partenaire de MTN », « à la seconde », « personne n'entre »), et les
+vraies personnes que les tests ont relevées sur de vrais SMS. Il porte son
+témoin — dont une phrase qui l'a traversé une fois : « Personne n'entre sans
+vous » disait « inviolable » sans le mot, alors que docs/LIMITES-ET-RISQUES.md
+nomme encore des portes (un téléphone volé et déverrouillé, la carte SD). Le
+film dit maintenant ce que `verifier-les-comptes` prouve, et rien de plus :
+« Un nouveau compte attend votre accord ». La vidéo, elle,
 recalcule la Tresse au démarrage et refuse de tourner si elle ne retombe pas,
 au millième, sur `brand/totem-symbole.svg`.
 

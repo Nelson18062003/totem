@@ -319,19 +319,43 @@ export function pave(x, px, py, w, o = {}) {
 // au milieu, les preuves dans le bandeau sable. Le logo de l'opérateur, lui,
 // n'est pas redessiné ici.
 export function recu(x, px, py, w, o) {
-  const k = w / 1000, h = 707;
+  // o.portrait : la mise en page debout du format vertical (1000 × 1250), où
+  // la carte à l'italienne ne laissait lisible que le montant.
+  const portrait = !!o.portrait;
+  const k = w / 1000, h = portrait ? 1250 : 707;
   x.save(); x.translate(px, py); x.scale(k, k);
   rr(x, 0, 0, 1000, h, 10); x.fillStyle = "#ffffff"; x.fill();
-  const cap = 22;
+  const cap = portrait ? 30 : 22;
   // Sous 22 px de haut à l'écran, la charte sert la variante mini : les deux brins fondus.
   const hSym = cap * 1.45 * (27.6 - 4.4) / 28;
   dessinerTresse(x, { x: 90, y: 104, h: hSym, couleur: C.laterite, tisse: hSym * 28 / 23.2 * k >= 22 });
-  dessinerMot(x, 90 + 13 + cap * 0.78 + 4, 104 + cap / 2, cap, C.encre);
+  dessinerMot(x, 90 + 13 * cap / 22 + cap * 0.78 + 4, 104 + cap / 2, cap, C.encre);
+  const m = montant(o.montant ?? 20000);
+  if (portrait) {
+    texte(x, o.titre || "Reçu de transfert", 935, 104, 26, { graisse: 700, align: "right", police: MARQUE });
+    texte(x, o.numero || "N° TM-2026-0929-0042", 935, 134, 16, { couleur: C.texteFaible, align: "right" });
+    x.fillStyle = C.ligne; x.fillRect(66, 170, 868, 1.5);
+    texte(x, o.libelle || "MONTANT REÇU", 66, 270, 18, { graisse: 600, couleur: "#8a7d72", espace: 3, police: MARQUE });
+    texte(x, m, 62, 390, 110, { graisse: 700, couleur: C.encre, police: MARQUE, espace: -2 });
+    x.font = `700 110px ${MARQUE}`; x.letterSpacing = "-2px"; const mw = x.measureText(m).width; x.letterSpacing = "0px";
+    texte(x, "FCFA", 78 + mw, 390, 44, { graisse: 700, couleur: "#5c5c5c", police: MARQUE });
+    texte(x, o.sens || "DE", 66, 490, 18, { graisse: 600, couleur: "#8a7d72", espace: 3, police: MARQUE });
+    texte(x, o.de || "MAMA CLARISSE", 66, 548, 44, { graisse: 700, couleur: C.encre, police: MARQUE });
+    texte(x, o.deNumero || "670 33 44 55", 66, 592, 26, { couleur: "#5c5c5c" });
+    rr(x, 66, 650, 868, 480, 14); x.fillStyle = "#f5f2ee"; x.fill();
+    [["OPÉRATEUR", o.operateur || "MTN MoMo"], ["DATE", o.date || "29 septembre 2026"], ["HEURE", o.heure || "23 h 18"]].forEach(([a, b], i) => {
+      const y0 = 690 + i * 150;
+      texte(x, a, 98, y0 + 30, 16, { graisse: 600, couleur: "#8a7d72", espace: 2.6, police: MARQUE });
+      texte(x, b, 98, y0 + 80, 34, { graisse: 700, couleur: C.encre, police: MARQUE });
+    });
+    texte(x, "Douala", 66, 1200, 16, { couleur: C.texteFaible });
+    x.restore();
+    return h * k;
+  }
   texte(x, o.titre || "Reçu de transfert", 935, 104, 20, { graisse: 700, align: "right", police: MARQUE });
   texte(x, o.numero || "N° TM-2026-0929-0042", 935, 128, 12, { couleur: C.texteFaible, align: "right" });
   x.fillStyle = C.ligne; x.fillRect(66, 152, 868, 1.5);
   texte(x, o.libelle || "MONTANT REÇU", 66, 282, 12, { graisse: 600, couleur: "#8a7d72", espace: 3, police: MARQUE });
-  const m = montant(o.montant ?? 20000);
   texte(x, m, 62, 360, 84, { graisse: 700, couleur: C.encre, police: MARQUE, espace: -2 });
   x.font = `700 84px ${MARQUE}`; x.letterSpacing = "-2px"; const mw = x.measureText(m).width; x.letterSpacing = "0px";
   texte(x, "FCFA", 74 + mw, 360, 34, { graisse: 700, couleur: "#5c5c5c", police: MARQUE });

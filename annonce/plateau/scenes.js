@@ -118,8 +118,10 @@ export function carteFin(x, l, o = {}) {
   fondSable(x, l);
   const u = l.u;
   const [finTrace, debutMot, debutDevise, finDevise] = o.rythme || [1.5, 0.4, 1.5, 3.8];
-  const arr = acc.sortie4(avance(l.l, 0, 0.6));
-  const trace = acc.deux3(avance(l.l, 0, finTrace));
+  // Un tracé nul : la Tresse est déjà posée à la coupe (elle vient d'être
+  // tracée) ; seules les lettres du mot remontent.
+  const arr = finTrace <= 0.05 ? 1 : acc.sortie4(avance(l.l, 0, 0.6));
+  const trace = finTrace <= 0.05 ? 1 : acc.deux3(avance(l.l, 0, finTrace));
   const lettre = (cap) => (i) => {
     const d = acc.sortie4(borne(avance(l.l, debutMot, debutMot + 1.2) * 1.6 - i * 0.12));
     return { dy: (1 - d) * cap * 0.4, alpha: d };
@@ -438,7 +440,7 @@ export const MENU_MTN = ["MTN MoMo", "1. Transfert d'argent", "2. Retrait", "3. 
 export function menuBoutons(x, l, o = {}) {
   const u = l.u, v = l.v;
   const f = acc.deux4(avance(l.l, o.debutMue ?? 1.5, (o.debutMue ?? 1.5) + 1.2));
-  const w = v ? l.W * 0.8 : u * 0.62, cx = l.W / 2;
+  const w = o.largeur ?? (v ? l.W * 0.8 : u * 0.62), cx = l.W / 2;
   const taille = w * 0.058, inter = taille * 1.9;
   const h0 = inter * MENU_MTN.length + taille * 2.5;
   const y0 = l.H / 2 - h0 / 2;
@@ -555,7 +557,7 @@ export function attaque(x, l, o = {}) {
 // Les points se remplissent sur les temps ; jamais un chiffre à l'écran.
 export function paveJoue(x, l, o = {}) {
   const u = l.u, v = l.v;
-  const w = v ? l.W * 0.78 : u * 0.52;
+  const w = o.largeur ?? (v ? l.W * 0.78 : u * 0.52);
   const temps = o.temps || [0.5, 1, 1.5, 2, 2.5];
   const touches = o.touches || ["4", "8", "1", "7", "2"];
   // Aucune touche chiffrée ne s'allume : on verrait quels chiffres sont tapés.
@@ -574,16 +576,18 @@ export function paveJoue(x, l, o = {}) {
 // --- Le reçu qui sort --------------------------------------------------------------------------
 export function recuSort(x, l, o = {}) {
   const u = l.u, v = l.v;
-  const w = l.W * (l.W / l.H < 1.3 ? 0.9 : 0.62);
+  // En vertical, le reçu se tient debout : à l'italienne, seul le montant s'y lisait.
+  const portrait = v;
+  const w = portrait ? Math.min(l.W * 0.86, l.H * 0.78) : l.W * (l.W / l.H < 1.3 ? 0.9 : 0.62);
   const p = acc.sortie4(avance(l.l, o.debut ?? 0, (o.debut ?? 0) + 0.9));
-  const h = w * 0.707;
+  const h = w * (portrait ? 1.25 : 0.707);
   const y = l.H / 2 - h / 2 + (1 - p) * l.H * 0.6;
   x.save();
   x.translate(l.W / 2, y + h / 2); x.rotate((1 - p) * 0.08); x.translate(-l.W / 2, -(y + h / 2));
   x.shadowColor = "rgba(0,0,0,0.5)"; x.shadowBlur = u * 0.06; x.shadowOffsetY = u * 0.02;
   rr(x, l.W / 2 - w / 2, y, w, h, 8); x.fillStyle = "#fff"; x.fill();
   x.shadowColor = "transparent";
-  recu(x, l.W / 2 - w / 2, y, w, o);
+  recu(x, l.W / 2 - w / 2, y, w, { ...o, portrait });
   x.restore();
 }
 
@@ -704,9 +708,9 @@ export function titreDrop(x, l, mot, sous, o = {}) {
   const reference = "On ne tape plus.";
   const taille = v ? ajuster(x, reference, l.W * 0.8, u * 0.15, 800) : ajuster(x, reference, l.W * 0.33, u * 0.13, 800);
   const n = mot.split("\n").length;
-  // En vertical, on place le HAUT du bloc (à 12 % de la hauteur, poussée
-  // comprise) : un titre de deux lignes ne monte pas sous la barre d'état.
-  const px = v ? l.W / 2 : l.W * 0.06, py = v ? l.H * 0.12 + taille * (0.37 + (n - 1) * 0.5) : l.H * 0.44;
+  // En vertical, on place le HAUT du bloc (à 14 % de la hauteur : la poussée
+  // de la caméra le remonte vers 12 %) : un titre de deux lignes ne monte pas sous la barre d'état.
+  const px = v ? l.W / 2 : l.W * 0.06, py = v ? l.H * 0.14 + taille * (0.37 + (n - 1) * 0.5) : l.H * 0.44;
   montee(x, mot, avance(l.l, 0, 0.5), { x: px, y: py, taille, graisse: 800, couleur: o.couleur || C.clair, align: v ? "center" : "left", espace: -0.03, sortie: o.sortie, interligne: 1.0 });
   if (sous) {
     // Une seule taille de sous-titre pour tout l'acte, réglée sur la plus longue ligne.
@@ -811,12 +815,16 @@ export function choc(x, l, depuis, o = {}) {
   if (s < 0 || s > 2) return;
   const r = (o.rayon ?? l.u * 0.1) + s * l.u * 1.1;
   x.save();
+  // Charte §6 : on n'enferme pas le symbole dans un cercle. Autour de la
+  // Tresse, l'onde ne garde que ses éclats.
+  if (o.anneaux !== false) {
   x.globalAlpha = Math.max(0, 1 - s / 1.2) * 0.8;
   x.strokeStyle = o.couleur || "#ffd9bd"; x.lineWidth = l.u * 0.006 * (1 - s / 2);
   x.beginPath(); x.arc(l.W / 2, l.H / 2, r, 0, 7); x.stroke();
   x.globalAlpha = Math.max(0, 1 - s / 0.8) * 0.4;
   x.lineWidth = l.u * 0.02 * (1 - s / 2);
   x.beginPath(); x.arc(l.W / 2, l.H / 2, r * 0.8, 0, 7); x.stroke();
+  }
   x.restore();
   // Des éclats qui partent du centre.
   for (let i = 0; i < 80; i++) {
@@ -1040,36 +1048,48 @@ export function piegeChoc(x, l, o = {}) {
 export function piegeVerite(x, l, o = {}) {
   const u = l.u, v = l.v;
   const deux = o.ligne2 ?? 3;
-  if (l.l < deux) {
-    // Le SMS piégé, à la taille et à la place qu'il avait pendant la lecture.
-    const m = mesuresPiege(x, l);
+  const m = mesuresPiege(x, l);
+  // Le SMS piégé et sa pastille « Illisible », à la taille et à la place
+  // qu'ils avaient pendant la lecture. Rend le bas de la pastille.
+  const smsIllisible = (e) => {
     police(x, m.taille * 0.28, 500, POLICE); x.fillStyle = "rgba(244,239,233,0.5)"; x.textAlign = "left"; x.textBaseline = "alphabetic";
     x.fillText("Depot de", m.x0, m.y - m.taille * 0.95);
     police(x, m.taille, 500, CHASSE); x.fillStyle = "rgba(244,239,233,0.9)";
     x.fillText(PIEGE.chiffres, m.x0, m.y);
     police(x, m.taille * 0.3, 500, POLICE); x.fillStyle = "rgba(244,239,233,0.6)";
     x.fillText("FCFA", m.x0 + m.w + m.taille * 0.12, m.y);
-    // La pastille « Illisible », à ses vraies couleurs, posée comme un tampon sur la clave.
-    const e = acc.sortieExpo(avance(l.l, 0, 0.12));
+    // La pastille, à ses vraies couleurs, posée comme un tampon sur la clave.
     const tp = u * (v ? 0.075 : 0.07);
     police(x, tp, 700, POLICE);
     const pw = x.measureText("Illisible").width + tp * 1.4;
     const py = m.y + m.taille * 0.55;
-    x.save(); x.translate(l.W / 2, py + tp * 0.85); x.scale(1.5 - 0.5 * e, 1.5 - 0.5 * e); x.globalAlpha = borne(e * 3);
+    x.save(); x.translate(l.W / 2, py + tp * 0.85); x.scale(1.5 - 0.5 * e, 1.5 - 0.5 * e); x.globalAlpha *= borne(e * 3);
     rr(x, -pw / 2, -tp * 0.85, pw, tp * 1.7, tp * 0.85); x.fillStyle = "#fff1c2"; x.fill();
     x.fillStyle = "#522504"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("Illisible", 0, tp * 0.05);
     x.restore(); x.textBaseline = "alphabetic";
-    if (l.l >= (o.ligne1 ?? 0.5)) {
-      police(x, u * (v ? 0.075 : 0.09), 700, POLICE); x.fillStyle = C.clair; x.textAlign = "center";
-      x.fillText("Aucun montant.", l.W / 2, py + tp * 1.7 + u * (v ? 0.14 : 0.13));
-    }
-    return;
+    return { py, tp };
+  };
+  // Juste avant la morale, la preuve se range en haut, en petit : elle reste
+  // à l'écran pendant qu'on en tire la leçon — la vérité ne doit pas être
+  // plus fugace que le mensonge qu'elle corrige.
+  const monte = acc.deux3(avance(l.l, deux - 0.35, deux));
+  const k = melange(1, 0.55, monte);
+  x.save();
+  x.translate(l.W / 2, melange(m.y + m.taille * 0.5, l.H * (v ? 0.22 : 0.2), monte)); x.scale(k, k); x.translate(-l.W / 2, -(m.y + m.taille * 0.5));
+  const { py, tp } = smsIllisible(acc.sortieExpo(avance(l.l, 0, 0.12)));
+  x.restore();
+  if (l.l >= (o.ligne1 ?? 0.5) && monte < 1) {
+    x.save(); x.globalAlpha *= 1 - monte;
+    police(x, u * (v ? 0.075 : 0.09), 700, POLICE); x.fillStyle = C.clair; x.textAlign = "center";
+    x.fillText("Aucun montant.", l.W / 2, py + tp * 1.7 + u * (v ? 0.14 : 0.13));
+    x.restore();
   }
-  // Puis la phrase, seule, en grand.
+  if (l.l < deux) return;
   const tg = ajuster(x, "il n’invente rien.", l.W * (v ? 0.86 : 0.7), u * 0.16, 700);
+  const yP = l.H / 2 + l.H * 0.05;
   police(x, tg, 700, POLICE); x.textAlign = "center"; x.textBaseline = "alphabetic";
-  x.fillStyle = C.clair; x.fillText("Dans le doute,", l.W / 2, l.H / 2 - tg * 0.15);
-  if (l.l >= deux + 0.25) { x.fillStyle = C.lateriteClair; x.fillText("il n’invente rien.", l.W / 2, l.H / 2 + tg * 1.0); }
+  x.fillStyle = C.clair; x.fillText("Dans le doute,", l.W / 2, yP - tg * 0.15);
+  if (l.l >= deux + 0.25) { x.fillStyle = C.lateriteClair; x.fillText("il n’invente rien.", l.W / 2, yP + tg * 1.0); }
 }
 
 

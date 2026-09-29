@@ -18,12 +18,15 @@ l'image 0 sert d'aperçu.
 2. **Le point, et le nom.** Dans le silence, un point de latérite ; la Tresse
    se trace à la place de la couture, et le nom se pose : « Un boîtier au
    pays. Vos cartes SIM dedans. »
-3. **Ce qu'il fait.** Le drop. Il écoute, il lit, il compose le *126# à votre
-   place, et le reçu suit.
+3. **Ce qu'il fait.** Le drop. Il écoute, il lit ; l'écran se fend comme à
+   l'ouverture — à gauche le menu du réseau, qui tremble, à droite les mêmes
+   lignes devenues boutons, nettes ; il compose le *126# à votre place, et le
+   reçu suit.
 4. **Le piège.** Un SMS piégé ; une machine naïve y lit 550 000 000 FCFA.
-   L'image gèle, le son se tait. TOTEM : « Illisible. Aucun montant. »
+   L'image gèle, le son se tait. TOTEM : « Illisible. Aucun montant. » — et
+   cette preuve reste à l'écran pendant la morale.
 5. **L'épreuve.** 30 000 SMS piégés, lancés contre lui. Le courant saute :
-   rien n'est compté deux fois. Personne n'entre sans vous.
+   rien n'est compté deux fois. Un nouveau compte attend votre accord.
 6. **Le rappel.** Vos SIM, au pays. Vous voyez. Vous agissez. La Terre, et
    les distances.
 7. **La signature.** La Tresse, le nom, « Une télécommande. Aucun argent n'y

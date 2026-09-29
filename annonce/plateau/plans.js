@@ -22,7 +22,7 @@ import {
   piegeLecture, piegeLegende, piegeChoc, piegeVerite, couture, moities, pointMonde, pointVerite, plongee, poseApresPoint,
 } from "./scenes.js";
 import { police, frappe, ajuster } from "./typo.js";
-import { PT_W, PT_H } from "./interface.js";
+import { PT_W, PT_H, CHASSE } from "./interface.js";
 
 // Le SMS du film, un seul texte partout : la notification le montre mot pour
 // mot, le lecteur le lit. 09:13 à Douala, 04:13 à Montréal.
@@ -58,6 +58,18 @@ function demo(mot, sous, fn) {
     dessiner: (x, l) => decor(x, l, mot, sous),
     verite: (x, l) => dansRegion(x, l, region(l), (x2, l2) => fn(x2, l2)),
   };
+}
+// Les deux moitiés de « On appuie » : côte à côte en 16:9, l'une sur l'autre en 9:16.
+function moitieMenu(l, cote) {
+  if (l.v) return cote === "reseau" ? { x: l.W * 0.07, y: l.H * 0.3, w: l.W * 0.82, h: l.H * 0.26 } : { x: l.W * 0.07, y: l.H * 0.62, w: l.W * 0.82, h: l.H * 0.25 };
+  return cote === "reseau" ? { x: 0, y: l.H * 0.26, w: l.W / 2, h: l.H * 0.68 } : { x: l.W / 2, y: l.H * 0.26, w: l.W / 2, h: l.H * 0.68 };
+}
+function etiquetteMoitie(x, l, r, texte) {
+  police(x, l.u * (l.v ? 0.03 : 0.024), 600);
+  x.fillStyle = "rgba(244,239,233,0.62)"; x.textAlign = "center"; x.textBaseline = "alphabetic";
+  x.letterSpacing = `${l.u * 0.004}px`;
+  x.fillText(texte, r.x + r.w / 2, r.y + (l.v ? -l.u * 0.012 : -l.u * 0.02));
+  x.letterSpacing = "0px";
 }
 // Un carton qui FRAPPE : présent dès la première image, il arrive plus grand et se pose.
 function cartonFrappe(x, l, texte, o = {}) {
@@ -148,7 +160,9 @@ export const PLANS = [
   {
     // On sort du losange face à la notification, en gros plan : on la LIT.
     // Puis la caméra recule jusqu'au téléphone, et la phrase arrive.
-    nom: "sonne", de: 38, a: 42, transition: { type: "losange", duree: 0.75 },
+    // Une coupe sur le coup : la plongée finit déjà DANS le vide du losange ;
+    // une transition en losange s'ouvrirait sur du noir.
+    nom: "sonne", de: 38, a: 42, transition: { type: "coupe", duree: 0.01 },
     dessiner: (x, l) => decor(x, l, "À travers lui,\nvous voyez.", "Le SMS de Douala,\nmot pour mot.", 2),
     verite(x, l) {
       const largeurNotif = l.v ? l.W * 0.86 : l.W * 0.6;
@@ -185,13 +199,37 @@ export const PLANS = [
     verite(x, l) { cartonFrappe(x, l, "À travers lui,\nvous agissez.", { max: 0.15, accent: 1 }); },
   },
   {
+    // L'écran fendu de l'ouverture revient, et la règle du film tient dans une
+    // image : à gauche, le menu que le réseau envoie, dans le MONDE — il
+    // tremble ; à droite, les mêmes lignes devenues boutons, dans la VÉRITÉ.
     nom: "appuyez", de: 56, a: 61, transition: { type: "fouetV", duree: 0.5 },
-    ...demo("On ne tape plus.\nOn appuie.", "Les menus du réseau\ndeviennent des boutons.", (x, l) => menuBoutons(x, l, { saisie: "1", debutMue: 0.8, appui: 3 })),
+    dessiner(x, l) {
+      fondEncre(x, l, { force: 0.5 }); balayage(x, l); poussiere(x, l, { force: 0.6 });
+      const g = moitieMenu(l, "reseau");
+      dansRegion(x, l, g, (x2, l2) => menuBoutons(x2, l2, { saisie: "1", debutMue: 99, appui: 99, largeur: Math.min(l2.W * 0.86, l2.H * 1.15) }));
+      etiquetteMoitie(x, l, g, "LE MENU DU RÉSEAU");
+      // La couture, entre les deux.
+      x.strokeStyle = "rgba(244,239,233,0.22)"; x.lineWidth = 2; x.beginPath();
+      if (l.v) { x.moveTo(l.W * 0.07, l.H * 0.58); x.lineTo(l.W * 0.89, l.H * 0.58); } else { x.moveTo(l.W / 2, l.H * 0.26); x.lineTo(l.W / 2, l.H * 0.94); }
+      x.stroke();
+    },
+    verite(x, l) {
+      carton(x, l, l.v ? "On ne tape plus.\nOn appuie." : "On ne tape plus. On appuie.", { de: 0, a: 0.5, y: l.H * (l.v ? 0.18 : 0.14), max: l.v ? 0.1 : 0.075, graisse: 800 });
+      const d = moitieMenu(l, "totem");
+      dansRegion(x, l, d, (x2, l2) => menuBoutons(x2, l2, { debutMue: -2, appui: 3, largeur: Math.min(l2.W * 0.86, l2.H * 1.15) }));
+      etiquetteMoitie(x, l, d, "DANS TOTEM");
+    },
+    fx: ({ l }) => ({ glitch: (l % 1) < 0.1 ? 0.3 : 0, secousse: 3, aberration: 4 }),
   },
   {
     // Le *126# de l'ouverture, qui échouait : c'est lui que le boîtier compose.
     nom: "secret", de: 61, a: 66, transition: { type: "fouet", duree: 0.5 },
-    ...demo("Il compose.", "Le *126#, pour vous.\nVotre code, jamais affiché.", (x, l) => paveJoue(x, l, { temps: [0.5, 1, 1.5, 2, 2.5], valider: 3.25 })),
+    ...demo("Il compose.", "Le *126#, pour vous.\nVotre code, jamais affiché.", (x, l) => {
+      const w = l.v ? l.W * 0.6 : l.u * 0.46, hp = w * 392 / 320;
+      const t = ajuster(x, "*126#", w * 0.9, l.u * 0.12, 800, CHASSE);
+      frappe(x, "*126#", avance(l.l, 0, 0.3), { x: l.W / 2, y: l.H / 2 - hp / 2 - t * 0.2, taille: t, graisse: 800, famille: CHASSE, couleur: C.lateriteClair, depuis: 1.25, espace: -0.03 });
+      paveJoue(x, l, { temps: [0.5, 1, 1.5, 2, 2.5], valider: 3.25, largeur: w, dy: t * 0.4 });
+    }),
   },
   {
     nom: "recu", de: 66, a: 70, transition: { type: "volet", duree: 0.75 },
@@ -231,7 +269,7 @@ export const PLANS = [
   {
     nom: "illisible", de: 78, a: 83, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) { fondEncre(x, l, { force: 0.3 }); },
-    verite(x, l) { piegeVerite(x, l, { ligne1: 0.25, ligne2: 1.5 }); },
+    verite(x, l) { piegeVerite(x, l, { ligne1: 0.25, ligne2: 2 }); },
     fx: () => ({ aberration: 0, lueur: 0, grain: 0.03 }),
   },
 
@@ -254,7 +292,7 @@ export const PLANS = [
     verite(x, l) {
       coupureVerite(x, l, { noir: 1.5 });
       const y = l.H * (l.v ? 0.78 : 0.86);
-      if (l.l < 1.5) carton(x, l, "Le courant saute.", { de: 0.1, a: 0.5, y, max: 0.075 });
+      if (l.l < 1.5) carton(x, l, "Le courant saute.", { p: 1, y, max: 0.075 });
       else if (l.l >= 2.9) carton(x, l, "Rien n’est compté deux fois.", { de: 2.9, a: 3.5, y, max: 0.075 });
     },
     fx: ({ l }) => ({ glitch: l > 1.3 && l < 1.5 ? 0.9 : l > 2 && l < 2.12 ? 0.6 : 0 }),
@@ -262,9 +300,10 @@ export const PLANS = [
   {
     nom: "porte", de: 92, a: 95, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) { fondEncre(x, l, { force: 0.2 }); },
-    // Un compte nouveau attend l'accord du propriétaire (verifier-les-comptes) ;
-    // le boîtier n'ouvre aucune porte sur Internet (README).
-    verite(x, l) { cartonFrappe(x, l, "Personne n’entre\nsans vous.", { max: l.v ? 0.16 : 0.14, accent: 1 }); },
+    // Exactement ce que verifier-les-comptes prouve, et rien de plus : un
+    // compte nouveau attend l'accord du propriétaire. « Personne n'entre sans
+    // vous » promettait davantage — docs/LIMITES-ET-RISQUES.md §3.
+    verite(x, l) { cartonFrappe(x, l, "Un nouveau compte\nattend votre accord.", { max: l.v ? 0.16 : 0.14, accent: 1 }); },
   },
 
   // --- VI. LE RAPPEL ----------------------------------------------------------------------------------
@@ -274,15 +313,17 @@ export const PLANS = [
     // Trois phrases qu'on peut répéter à quelqu'un.
     verite(x, l) {
       claustra(x, l, { p: avance(l.l, 0, 1.5), defile: l.p * 0.5 });
+      // L'entrée ouvre la bande ; la sortie fait monter le mot et éteint la
+      // bande, sans la rétrécir sous un mot encore entier.
       ["Vos SIM, au pays.", "Vous voyez.", "Vous agissez."].forEach((m, i) => {
-        const e = acc.sortie4(avance(l.l, 1.5 + i, 2.1 + i)) * (1 - acc.entree3(avance(l.l, 5.2, 5.8)));
-        if (e <= 0) return;
+        const ent = acc.sortie4(avance(l.l, 1.5 + i, 2.1 + i)), sor = acc.entree3(avance(l.l, 5.2, 5.8));
+        if (ent <= 0 || sor >= 1) return;
         const hb = l.u * 0.16;
         const y = l.H / 2 + (i - 1) * hb * 1.1;
-        x.save(); x.globalAlpha = e;
-        x.fillStyle = C.encre; x.fillRect(l.W / 2 - l.W * (l.v ? 0.42 : 0.24) * e, y - hb / 2, l.W * (l.v ? 0.84 : 0.48) * e, hb);
+        x.save(); x.globalAlpha = ent * (1 - sor);
+        x.fillStyle = C.encre; x.fillRect(l.W / 2 - l.W * (l.v ? 0.42 : 0.24) * ent, y - hb / 2, l.W * (l.v ? 0.84 : 0.48) * ent, hb);
         x.restore();
-        carton(x, l, m, { p: e, y, max: 0.095, couleur: C.sable });
+        carton(x, l, m, { p: ent, sortie: sor, y, max: 0.095, couleur: C.sable });
       });
     },
     fx: () => ({ lueur: 0, vignette: 0, grain: 0, aberration: 0 }),
@@ -313,7 +354,7 @@ export const PLANS = [
         revelation(x, l, { finTrace: 1.2, tresse: false, halo: false });
         poussiere(x, l, { n: 90 });
         const h = l.u * 0.46;
-        choc(x, l, 1.3, { rayon: h / 2 + h * 18 / 23.2 });
+        choc(x, l, 1.3, { rayon: h / 2 + h * 18 / 23.2, anneaux: false });
       }
     },
     // La marque est de la vérité : aucun effet ne la touche.
@@ -325,13 +366,13 @@ export const PLANS = [
         carton(x, l, "Une télécommande.\nAucun argent n’y transite.", { de: 3.3, a: 3.9, y: l.H * (l.v ? 0.64 : 0.72), max: l.v ? 0.07 : 0.06, graisse: 600, couleur: "rgba(244,239,233,0.92)" });
       }
     },
-    fx: () => ({ lueur: 0, aberration: 0, vignette: 0.3 }),
+    fx: () => ({ lueur: 0, aberration: 0, vignette: 0 }),
   },
   {
     // Une coupe franche, sur le temps : un fondu dédoublerait le verrouillage.
     nom: "fin", de: 113, a: 117, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) { fondSable(x, l); },
-    verite(x, l) { carteFin(x, l, { pied: "BIENTÔT", piedA: 1.9, rythme: [0.8, 0.2, 0.6, 1.9] }); },
+    verite(x, l) { carteFin(x, l, { pied: "BIENTÔT", piedA: 1.9, rythme: [0.01, 0, 0.6, 1.9] }); },
     fx: () => ({ lueur: 0, vignette: 0, grain: 0, aberration: 0, pousse: 0 }),
   },
 ];

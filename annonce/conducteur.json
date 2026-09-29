@@ -71,7 +71,7 @@
     {"type": "glitch", "temps": 74, "duree": 0.9, "force": 0.8},
     {"type": "silence", "temps": 76, "duree": 2},
     {"type": "clave", "temps": 78, "gain": 0.8},
-    {"type": "frappe", "temps": 79.5, "gain": 0.6},
+    {"type": "frappe", "temps": 80, "gain": 0.6},
     {"type": "frappe", "temps": 83},
     {"type": "glitch", "temps": 83, "duree": 0.15},
     {"type": "frappe", "temps": 87},

@@ -32,6 +32,7 @@ const INTERDITS = [
   [/app ?store|google play|play store|t[ée]l[ée]chargez/i, "l'application n'est pas encore publiée (docs/PLAY-STORE.md, docs/MOBILE.md §7)"],
   [/bout en bout/i, "Telegram n'est pas chiffré de bout en bout (docs/LIMITES-ET-RISQUES.md)"],
   [/inviolable|impossible à pirater|100 ?% s[ûu]r/i, "la confirmation ralentit un voleur pressé, elle n'arrête pas un déterminé"],
+  [/personne n.entre|aucune (porte|faille)|imprenable/i, "docs/LIMITES-ET-RISQUES.md §3 : un téléphone volé et déverrouillé, ou la carte SD, donnent le robot"],
   [/partenaire|API (de |d')?(MTN|Orange)|officiel/i, "TOTEM lit des SMS et compose de l'USSD ; aucune API, aucun partenariat"],
   [/à la seconde|instantan/i, "c'est un objectif, pas une mesure (docs/MOBILE.md, « Résultat visé »)"],
   [/suivre l.argent|(une|votre|la|nouvelle) banque|(un|votre|le) portefeuille/i, "TOTEM n'est ni une banque ni un portefeuille ; aucun argent n'y transite"],
@@ -72,9 +73,10 @@ const ok = (m) => console.log(`✓ ${m}`);
 const ko = (m) => { console.log(`✗ ${m}`); echecs++; };
 
 // Le témoin : le harnais doit savoir échouer.
-const temoin = examiner(["Grâce à l'IA, disponible sur l'App Store", "de NKENGAFAC M."]);
-if (temoin.length < 3) { console.log("✗ le témoin n'est pas attrapé : ce harnais ne vérifie plus rien"); process.exit(2); }
-ok(`le témoin est attrapé (${temoin.length} fautes sur 3 glissées)`);
+// La quatrième faute est une vraie : elle a passé ce harnais, et le film, une fois.
+const temoin = examiner(["Grâce à l'IA, disponible sur l'App Store", "de NKENGAFAC M.", "Personne n’entre sans vous."]);
+if (temoin.length < 4) { console.log("✗ le témoin n'est pas attrapé : ce harnais ne vérifie plus rien"); process.exit(2); }
+ok(`le témoin est attrapé (${temoin.length} fautes sur 4 glissées)`);
 
 const fichiers = ["plans.js", "scenes.js", "interface.js"].map((f) => path.join(PLATEAU, f)).filter((f) => fs.existsSync(f));
 const chaines = fichiers.flatMap((f) => litteraux(fs.readFileSync(f, "utf8")));
