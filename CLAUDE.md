@@ -70,6 +70,7 @@ cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android empo
 cd mobile && node scripts/verifier-le-paquet.mjs iphone # …et le paquet iPhone
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # douze écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
+node annonce/verifier-l-annonce.mjs            # ce que la vidéo d'annonce a le droit de dire
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -510,6 +511,22 @@ d'`app.json` part tel quel dans le `Info.plist` de l'application. La
 convention `"//quelquechose"` du dépôt ne vaut qu'au niveau d'Expo, qui ignore
 ce qu'il ne connaît pas — écrite un cran trop bas, elle embarque de la prose
 française dans le paquet installé. Vu au prébuild, pas deviné.
+
+`verifier-l-annonce` relit ce que la vidéo d'annonce (`annonce/`) ÉCRIT à
+l'écran. Une annonce se regarde une fois et se partage cent fois : une phrase
+fausse y voyage plus loin que partout ailleurs. Il refuse les promesses que le
+dépôt ne tient pas (« IA », « dans les magasins », « chiffré de bout en
+bout », « partenaire de MTN », « à la seconde »), et les vraies personnes que
+les tests ont relevées sur de vrais SMS. Il porte son témoin. La vidéo, elle,
+recalcule la Tresse au démarrage et refuse de tourner si elle ne retombe pas,
+au millième, sur `brand/totem-symbole.svg`.
+
+**Une annonce se juge sur un téléphone, muette, dans un fil.** La première
+version disait son nom à 64 s — après la minute où un statut WhatsApp la
+coupe — et sa carte de fin, lisible sur un écran de salon, faisait six pixels
+dans un fil LinkedIn. Elle dure maintenant 59,7 s, le nom se pose à 15 s, et
+la première image porte déjà une phrase : la vidéo part sans le son, et
+l'image 0 sert d'aperçu.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

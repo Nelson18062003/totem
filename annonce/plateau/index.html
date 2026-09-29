@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>TOTEM — le plateau de l'annonce</title>
+<style>
+  @font-face { font-family: "Inter"; src: url("../.polices/Inter.ttf"); font-weight: 100 900; }
+  @font-face { font-family: "DM Sans"; src: url("../.polices/DMSans.ttf"); font-weight: 100 1000; }
+  @font-face { font-family: "JetBrains Mono"; src: url("../.polices/JetBrainsMono.ttf"); font-weight: 100 800; }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- Le plateau ne s'affiche pas : il dessine sur commande. tourner.mjs
+     appelle preparer(), puis image(n) pour chaque image. -->
+<script type="module">
+  import { preparer, dessiner } from "./montage.js";
+
+  const q = new URLSearchParams(location.search);
+  const W = Number(q.get("w") || 1920), H = Number(q.get("h") || 1080), FPS = Number(q.get("fps") || 30);
+  const sortie = document.createElement("canvas");
+  sortie.width = W; sortie.height = H;
+  document.body.appendChild(sortie);
+
+  window.preparer = async () => {
+    try {
+      await Promise.all([
+        document.fonts.load("800 100px Inter"), document.fonts.load("400 100px Inter"),
+        document.fonts.load("700 100px 'DM Sans'"), document.fonts.load("500 100px 'JetBrains Mono'"),
+      ]);
+      const info = await preparer(W, H, FPS);
+      return info;
+    } catch (e) {
+      return { erreur: String(e && e.stack || e) };
+    }
+  };
+  window.image = (n, type = "image/jpeg", qualite = 0.95) => {
+    dessiner(sortie, n / FPS, n);
+    return sortie.toDataURL(type, qualite);
+  };
+</script>
+</body>
+</html>

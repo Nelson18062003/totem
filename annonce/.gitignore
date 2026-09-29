@@ -1,0 +1,4 @@
+# Les polices se téléchargent au premier tournage (voir tourner.mjs).
+.polices/
+# Les images de relecture (--temps) ; les vidéos, elles, sont versionnées.
+rendu/images/
