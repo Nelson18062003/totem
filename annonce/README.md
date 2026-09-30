@@ -1,35 +1,32 @@
 # annonce/ — la vidéo d'annonce de TOTEM
 
-**59,7 secondes**, deux formats : **16:9** (YouTube, LinkedIn, un écran de
+**33 secondes**, deux formats : **16:9** (YouTube, LinkedIn, un écran de
 salon) et **9:16** (statut WhatsApp, TikTok, Reels). Les deux sont dans
 `rendu/`.
 
-Pourquoi sous la minute : un statut WhatsApp coupe à soixante secondes, et
-sur un fil la plupart des gens décrochent avant. Le nom TOTEM se pose donc à
-15 s — la première version ne le montrait qu'à 64 s, après la coupure. Et la
-première image porte déjà une phrase : sur un fil, la vidéo part muette et
-l'image 0 sert d'aperçu.
+**Une seule idée** : vos cartes SIM restent au pays ; à travers TOTEM, vous
+voyez et vous agissez de partout. Une première version (59,7 s, sept actes)
+racontait aussi le piège des chiffres d'une autre écriture, la coupure de
+courant, les comptes à approuver, le *126# qui échoue. Tout était vrai, et
+c'était trop : « c'est trop compliqué ». Une annonce donne envie ; la preuve
+se montre à qui la demande. Cette version reste dans l'historique git.
 
-## Le film, en sept actes
+La première image porte déjà une phrase : sur un fil, la vidéo part muette et
+l'image 0 sert d'aperçu. Le nom TOTEM se pose à 9 s.
 
-1. **La distance.** L'écran fendu en deux : Douala, où les paiements
-   arrivent ; là-bas, un téléphone en veille, « Aucune notification ». Puis le
-   *126# qu'on tape, qui échoue, et le réseau qui lâche. Le film se rembobine.
-2. **Le point, et le nom.** Dans le silence, un point de latérite ; la Tresse
-   se trace à la place de la couture, et le nom se pose : « Un boîtier au
-   pays. Vos cartes SIM dedans. »
-3. **Ce qu'il fait.** Le drop. Il écoute, il lit ; l'écran se fend comme à
-   l'ouverture — à gauche le menu du réseau, qui tremble, à droite les mêmes
-   lignes devenues boutons, nettes ; il compose le *126# à votre place, et le
-   reçu suit.
-4. **Le piège.** Un SMS piégé ; une machine naïve y lit 550 000 000 FCFA.
-   L'image gèle, le son se tait. TOTEM : « Illisible. Aucun montant. » — et
-   cette preuve reste à l'écran pendant la morale.
-5. **L'épreuve.** 30 000 SMS piégés, lancés contre lui. Le courant saute :
-   rien n'est compté deux fois. Un nouveau compte attend votre accord.
-6. **Le rappel.** Vos SIM, au pays. Vous voyez. Vous agissez. La Terre, et
-   les distances.
-7. **La signature.** La Tresse, le nom, « Une télécommande. Aucun argent n'y
+## Le film, en quatre temps
+
+1. **Le problème.** L'écran fendu en deux : Douala, où les paiements
+   arrivent ; là-bas, un téléphone en veille, « Aucune notification ». « Vos
+   cartes SIM restent au pays. Vous, non. »
+2. **Le nom.** Un silence, un point de latérite ; la Tresse se trace à la
+   place de la couture, et TOTEM se pose : « Un boîtier au pays. Vos cartes
+   SIM dedans. »
+3. **Ce que ça change.** Le drop, sur la notification : à travers lui, vous
+   voyez. À travers lui, vous agissez : le menu du réseau devient des
+   boutons, et le reçu suit.
+4. **La signature.** « Vos SIM, au pays. Vous voyez. Vous agissez. » ; la
+   Terre ; la Tresse, le nom, « Une télécommande. Aucun argent n'y
    transite. », la devise, « Bientôt ».
 
 **Le faux tremble, le vrai ne bouge pas.** Un montant faux, une panne, une

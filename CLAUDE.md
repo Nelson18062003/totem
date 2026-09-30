@@ -529,9 +529,17 @@ au millième, sur `brand/totem-symbole.svg`.
 **Une annonce se juge sur un téléphone, muette, dans un fil.** La première
 version disait son nom à 64 s — après la minute où un statut WhatsApp la
 coupe — et sa carte de fin, lisible sur un écran de salon, faisait six pixels
-dans un fil LinkedIn. Elle dure maintenant 59,7 s, le nom se pose à 15 s, et
-la première image porte déjà une phrase : la vidéo part sans le son, et
-l'image 0 sert d'aperçu.
+dans un fil LinkedIn. La première image porte maintenant une phrase : la
+vidéo part sans le son, et l'image 0 sert d'aperçu.
+
+**Tout ce qui est vrai ne fait pas une annonce.** Resserrée à 59,7 s, elle
+racontait encore sept choses — le piège des chiffres d'une autre écriture, la
+coupure de courant, les comptes à approuver — chacune prouvée, chacune
+relue. Le propriétaire l'a regardée et a répondu : « C'est trop compliqué. »
+Quatre critiques avaient cherché ce qui était faux ou illisible ; aucun
+n'avait demandé s'il y en avait trop. Elle dure 33 s, porte une seule idée
+(vos SIM au pays, vous voyez et vous agissez de partout), et dit son nom à
+9 s. La preuve se montre à qui la demande.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

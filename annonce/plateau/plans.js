@@ -9,23 +9,25 @@
 // marque se posent dans la couche VÉRITÉ, que la post-production ne touche
 // jamais — seule la caméra la déplace.
 //
-// Sept actes : la distance, le point (et le nom), ce qu'il fait, le piège,
-// l'épreuve, le rappel, la signature. 117 temps : 58,5 s, plus la queue —
-// sous la minute d'un statut WhatsApp.
+// UNE idée, en quatre temps : vos cartes SIM restent au pays ; TOTEM ; à
+// travers lui, vous voyez et vous agissez ; la signature. 64 temps : 32 s,
+// plus la queue. Une première version en racontait sept (le piège des
+// chiffres d'une autre écriture, la coupure de courant, les comptes…) : tout
+// était vrai, et c'était trop — « c'est trop compliqué ». Une annonce donne
+// envie ; la preuve, elle, se montre à qui la demande.
 
 import { C } from "./marque.js";
 import { acc, avance, borne, melange } from "./outils.js";
 import {
-  fondEncre, fondSable, distance, carton, manoeuvre, revelation, revelationTresse, verrouillageAnime,
-  titreDrop, region, dansRegion, ecoute, lecture, ecranVerrouille, menuBoutons, paveJoue, recuSort,
-  attaque, claustra, carteFin, poussiere, balayage, motFantome, choc, coupure, coupureVerite,
-  piegeLecture, piegeLegende, piegeChoc, piegeVerite, couture, moities, pointMonde, pointVerite, plongee, poseApresPoint,
+  fondEncre, fondSable, distance, carton, revelation, revelationTresse, verrouillageAnime,
+  titreDrop, region, dansRegion, ecranVerrouille, menuBoutons, recuSort,
+  claustra, carteFin, poussiere, balayage, motFantome, choc, couture, moities, pointMonde, pointVerite, plongee, poseApresPoint,
 } from "./scenes.js";
 import { police, frappe, ajuster } from "./typo.js";
-import { PT_W, PT_H, CHASSE } from "./interface.js";
+import { PT_W, PT_H } from "./interface.js";
 
-// Le SMS du film, un seul texte partout : la notification le montre mot pour
-// mot, le lecteur le lit. 09:13 à Douala, 04:13 à Montréal.
+// Le SMS du film : la notification le montre mot pour mot. 09:13 à Douala,
+// 04:13 à Montréal.
 const SMS = "MobileMoney: Vous avez recu 35 000 FCFA de MAMA CLARISSE (670334455). Ref: PP260929.0913.A41. Nouveau solde: 447 500 FCFA.";
 
 // Un carton posé dans une des deux moitiés de la couture. En vertical, la
@@ -43,8 +45,7 @@ function cartonMoitie(x, l, cote, texte, o = {}) {
 // Une démonstration : le décor et le titre dans le monde, l'interface réelle
 // dans la vérité.
 const FANTOMES = {
-  "Il écoute.": "ÉCOUTE", "Il lit.": "LECTURE",
-  "On ne tape plus.\nOn appuie.": "BOUTONS", "Il compose.": "SECRET", "Et le reçu\nsuit.": "REÇU",
+  "Et le reçu\nsuit.": "REÇU",
 };
 function decor(x, l, mot, sous, depuis = 0) {
   fondEncre(x, l, { lx: l.v ? 0.5 : 0.68, ly: l.v ? 0.6 : 0.5 });
@@ -84,9 +85,7 @@ function cartonFrappe(x, l, texte, o = {}) {
 }
 
 export const PLANS = [
-  // --- I. LA DISTANCE ------------------------------------------------------------------------------
-  // La phrase qui dit la situation est là dès la première image : sur un fil,
-  // la vidéo part muette, et l'image 0 sert d'aperçu.
+  // --- 1. LE PROBLÈME : les SIM au pays, vous ailleurs -----------------------------------------
   {
     nom: "couture", de: 0, a: 12,
     dessiner(x, l) {
@@ -102,37 +101,9 @@ export const PLANS = [
     },
     fx: () => ({ lueur: 0.12, grain: 0.07, vignette: 0.7 }),
   },
+  // --- 2. LE NOM ------------------------------------------------------------------------------------
   {
-    nom: "manoeuvre", de: 12, a: 20, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) {
-      fondEncre(x, l, { force: 0.2 });
-      x.save(); x.globalAlpha = l.v ? 0.1 : 0.22; couture(x, { ...l, l: 12 + l.l }, { ouverture: false, approche: [8, 12] }); x.restore();
-      manoeuvre(x, l, { temps: [0, 1, 2, 3, 4, 5, 6, 7] });
-    },
-    fx: ({ l }) => ({ glitch: l > 5 && l < 5.35 ? 0.6 : l > 6 ? 0.2 + 0.3 * (l - 6) : 0, secousse: l > 6 ? 5 + 5 * (l - 6) : 0, lignes: 0.5 }),
-  },
-  {
-    nom: "reseau", de: 20, a: 22, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) {
-      fondEncre(x, l, { force: 0.2 });
-      const t = ajuster(x, "Le réseau lâche…", l.W * (l.v ? 0.8 : 0.8), l.u * 0.2, 800, "'JetBrains Mono', monospace");
-      frappe(x, "Le réseau lâche…", avance(l.l, 0, 0.3), { x: l.W / 2, y: l.H * 0.46, taille: t, graisse: 800, famille: "'JetBrains Mono', monospace", couleur: C.clair, depuis: l.v ? 1.08 : 1.3, espace: -0.03 });
-      // Les barres du réseau, qui tombent une à une.
-      const n = 4 - Math.min(4, Math.floor(l.l * 2.5));
-      const u = l.u, bx = l.W / 2 - u * 0.1, by = l.H * 0.7;
-      for (let i = 0; i < 4; i++) {
-        x.fillStyle = i < n ? C.clair : "rgba(244,239,233,0.15)";
-        x.fillRect(bx + i * u * 0.06, by - (i + 1) * u * 0.035, u * 0.04, (i + 1) * u * 0.035);
-      }
-    },
-    fx: ({ l }) => ({ secousse: 10, glitch: 0.35 + 0.3 * l, aberration: 6, lignes: 0.6 }),
-  },
-  // Le film se rembobine lui-même, jusqu'à la première image.
-  { nom: "rembobinage", de: 22, a: 24, rembobine: { courbe: 1.6 }, dessiner() {} },
-
-  // --- II. LE POINT, ET LE NOM ---------------------------------------------------------------------
-  {
-    nom: "point", de: 24, a: 35, transition: { type: "coupe", duree: 0.01 },
+    nom: "point", de: 12, a: 23, transition: { type: "coupe", duree: 0.01 },
     // Le point naît dans le silence — l'écran n'est jamais vide. Les brins se
     // tracent et prennent la place de la couture ; puis le nom se pose à côté,
     // avec ce qu'est la chose. Le mot se retire, la Tresse revient au centre,
@@ -150,19 +121,19 @@ export const PLANS = [
     fx: ({ l }) => ({ aberration: 0, lueur: 0, grain: 0.03 * borne((l - 1) / 1), vignette: 0.4 * borne((l - 1) / 1), pousse: 0 }),
   },
   {
-    nom: "plongee", de: 35, a: 38, transition: { type: "coupe", duree: 0.01 },
+    nom: "plongee", de: 23, a: 26, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) { fondEncre(x, l, { force: 0.8 }); poussiere(x, l, { n: 120, force: 1.2 }); },
     verite(x, l) { plongee(x, l, { de: 0, a: 3, facteur: 90 }); },
     fx: ({ l }) => ({ zoomFlou: 0.12 * acc.entree3(borne(l / 3)), aberration: 0.5, pousse: 0 }),
   },
 
-  // --- III. CE QU'IL FAIT --------------------------------------------------------------------------
+  // --- 3. CE QUE ÇA CHANGE : vous voyez, vous agissez ---------------------------------------------
   {
     // On sort du losange face à la notification, en gros plan : on la LIT.
     // Puis la caméra recule jusqu'au téléphone, et la phrase arrive.
     // Une coupe sur le coup : la plongée finit déjà DANS le vide du losange ;
     // une transition en losange s'ouvrirait sur du noir.
-    nom: "sonne", de: 38, a: 42, transition: { type: "coupe", duree: 0.01 },
+    nom: "sonne", de: 26, a: 30, transition: { type: "coupe", duree: 0.01 },
     dessiner: (x, l) => decor(x, l, "À travers lui,\nvous voyez.", "Le SMS de Douala,\nmot pour mot.", 2),
     verite(x, l) {
       const largeurNotif = l.v ? l.W * 0.86 : l.W * 0.6;
@@ -177,24 +148,7 @@ export const PLANS = [
     },
   },
   {
-    nom: "ecoute", de: 42, a: 46, transition: { type: "fouet", duree: 0.5 },
-    dessiner: (x, l) => decor(x, l, "Il écoute.", "Une SIM par opérateur,\nà l’écoute en permanence."),
-    verite: (x, l) => ecoute(x, l),
-  },
-  {
-    nom: "lit", de: 46, a: 52, transition: { type: "zoom", duree: 0.75 },
-    ...demo("Il lit.", "Montant, nom, solde :\nrien d’inventé.", (x, l) => lecture(x, l, {
-      texte: SMS, entete: "SMS REÇU · MTN ·8901 · 09:13", nature: "Encaissement", dureeTexte: 0.6, debutScan: 0.6, finScan: 1.4, debutFiche: 1.5, debutNature: 3.2,
-      champs: [
-        { cherche: "35 000 FCFA", libelle: "Montant", valeur: "+35 000 FCFA", couleur: "#7ee2a4" },
-        { cherche: "MAMA CLARISSE", libelle: "De", valeur: "MAMA CLARISSE" },
-        { cherche: "670334455", libelle: "Numéro", valeur: "670 33 44 55" },
-        { cherche: "447 500 FCFA", libelle: "Nouveau solde", valeur: "447 500 FCFA" },
-      ],
-    })),
-  },
-  {
-    nom: "agissez", de: 52, a: 56, transition: { type: "coupe", duree: 0.01 },
+    nom: "agissez", de: 30, a: 34, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) { fondEncre(x, l, { force: 0.5 }); poussiere(x, l); },
     verite(x, l) { cartonFrappe(x, l, "À travers lui,\nvous agissez.", { max: 0.15, accent: 1 }); },
   },
@@ -202,7 +156,7 @@ export const PLANS = [
     // L'écran fendu de l'ouverture revient, et la règle du film tient dans une
     // image : à gauche, le menu que le réseau envoie, dans le MONDE — il
     // tremble ; à droite, les mêmes lignes devenues boutons, dans la VÉRITÉ.
-    nom: "appuyez", de: 56, a: 61, transition: { type: "fouetV", duree: 0.5 },
+    nom: "appuyez", de: 34, a: 38, transition: { type: "fouetV", duree: 0.5 },
     dessiner(x, l) {
       fondEncre(x, l, { force: 0.5 }); balayage(x, l); poussiere(x, l, { force: 0.6 });
       const g = moitieMenu(l, "reseau");
@@ -222,17 +176,7 @@ export const PLANS = [
     fx: ({ l }) => ({ glitch: (l % 1) < 0.1 ? 0.3 : 0, secousse: 3, aberration: 4 }),
   },
   {
-    // Le *126# de l'ouverture, qui échouait : c'est lui que le boîtier compose.
-    nom: "secret", de: 61, a: 66, transition: { type: "fouet", duree: 0.5 },
-    ...demo("Il compose.", "Le *126#, pour vous.\nVotre code, jamais affiché.", (x, l) => {
-      const w = l.v ? l.W * 0.6 : l.u * 0.46, hp = w * 392 / 320;
-      const t = ajuster(x, "*126#", w * 0.9, l.u * 0.12, 800, CHASSE);
-      frappe(x, "*126#", avance(l.l, 0, 0.3), { x: l.W / 2, y: l.H / 2 - hp / 2 - t * 0.2, taille: t, graisse: 800, famille: CHASSE, couleur: C.lateriteClair, depuis: 1.25, espace: -0.03 });
-      paveJoue(x, l, { temps: [0.5, 1, 1.5, 2, 2.5], valider: 3.25, largeur: w, dy: t * 0.4 });
-    }),
-  },
-  {
-    nom: "recu", de: 66, a: 70, transition: { type: "volet", duree: 0.75 },
+    nom: "recu", de: 38, a: 42, transition: { type: "volet", duree: 0.75 },
     // Le reçu du transfert qu'on vient de composer : ce qui est parti, et vers qui.
     ...demo("Et le reçu\nsuit.", "Propre, à montrer.", (x, l) => recuSort(x, l, {
       debut: 0.4, titre: "Reçu de transfert", libelle: "MONTANT ENVOYÉ", sens: "À", montant: 5000,
@@ -240,75 +184,9 @@ export const PLANS = [
     })),
   },
 
-  // --- IV. LE PIÈGE : le faux tremble, le vrai ne bouge pas ------------------------------------------
-  // Une attaque, pas une panne d'autrefois : quiconque connaît le numéro de la
-  // SIM peut lui écrire.
+  // --- 4. LE RAPPEL, ET LA SIGNATURE --------------------------------------------------------------
   {
-    nom: "piege-lecture", de: 70, a: 74, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) { fondEncre(x, l, { force: 0.2 }); piegeLecture(x, l); },
-    verite(x, l) { piegeLegende(x, l); },
-    fx: ({ l }) => ({ secousse: 14 * acc.entree3(borne(l / 3.6)), aberration: 1 + 10 * acc.entree3(borne(l / 3.6)), lignes: 0.4 }),
-  },
-  {
-    nom: "piege-choc", de: 74, a: 78, transition: { type: "coupe", duree: 0.01 },
-    gel: { de: 1.98, a: 4 },
-    dessiner(x, l) {
-      fondEncre(x, l, { force: 0.2 });
-      x.fillStyle = "rgba(192,15,12,0.2)"; x.fillRect(0, 0, l.W, l.H);
-      piegeChoc(x, l);
-    },
-    // Pendant le gel, le rouge se vide et les chiffres s'effacent, sans un effet, sans un bruit.
-    verite(x, l) {
-      if (l.l < 2) return;
-      const vide = acc.deux3(avance(l.l, 2.2, 3.8));
-      x.fillStyle = C.encre; x.fillRect(0, 0, l.W, l.H);
-      piegeChoc(x, l, { vide });
-    },
-    fx: () => ({ glitch: 0.8, secousse: 24, aberration: 18, lignes: 0.5 }),
-  },
-  {
-    nom: "illisible", de: 78, a: 83, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) { fondEncre(x, l, { force: 0.3 }); },
-    verite(x, l) { piegeVerite(x, l, { ligne1: 0.25, ligne2: 2 }); },
-    fx: () => ({ aberration: 0, lueur: 0, grain: 0.03 }),
-  },
-
-  // --- V. L'ÉPREUVE -----------------------------------------------------------------------------------
-  {
-    nom: "attaque", de: 83, a: 87, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) {
-      fondEncre(x, l, { couleur: "#0f1012", force: 0.3 });
-      attaque(x, l, { debut: 0, fin: 1.8, legende: "SMS PIÉGÉS, LANCÉS CONTRE LUI" });
-    },
-    verite(x, l) { if (l.l >= 2) carton(x, l, "Il tient.", { p: 1, y: l.H * (l.v ? 0.7 : 0.8), max: 0.1 }); },
-    fx: ({ l }) => ({ lignes: 0.6, glitch: l < 0.3 ? 0.7 : 0 }),
-  },
-  {
-    // La cause AVANT l'effet : le courant saute, l'écran s'éteint, et au retour
-    // le double qu'une machine naïve aurait compté est barré.
-    // (eprouver-la-chaine.py : relu au redémarrage, reconnu, pas recompté.)
-    nom: "coupure", de: 87, a: 92, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) { fondEncre(x, l, { force: 0.3 }); coupure(x, l, { noir: 1.5 }); },
-    verite(x, l) {
-      coupureVerite(x, l, { noir: 1.5 });
-      const y = l.H * (l.v ? 0.78 : 0.86);
-      if (l.l < 1.5) carton(x, l, "Le courant saute.", { p: 1, y, max: 0.075 });
-      else if (l.l >= 2.9) carton(x, l, "Rien n’est compté deux fois.", { de: 2.9, a: 3.5, y, max: 0.075 });
-    },
-    fx: ({ l }) => ({ glitch: l > 1.3 && l < 1.5 ? 0.9 : l > 2 && l < 2.12 ? 0.6 : 0 }),
-  },
-  {
-    nom: "porte", de: 92, a: 95, transition: { type: "coupe", duree: 0.01 },
-    dessiner(x, l) { fondEncre(x, l, { force: 0.2 }); },
-    // Exactement ce que verifier-les-comptes prouve, et rien de plus : un
-    // compte nouveau attend l'accord du propriétaire. « Personne n'entre sans
-    // vous » promettait davantage — docs/LIMITES-ET-RISQUES.md §3.
-    verite(x, l) { cartonFrappe(x, l, "Un nouveau compte\nattend votre accord.", { max: l.v ? 0.16 : 0.14, accent: 1 }); },
-  },
-
-  // --- VI. LE RAPPEL ----------------------------------------------------------------------------------
-  {
-    nom: "claustra", de: 95, a: 101, transition: { type: "claustra", duree: 1.5 },
+    nom: "claustra", de: 42, a: 48, transition: { type: "claustra", duree: 1.5 },
     dessiner(x, l) { fondSable(x, l); },
     // Trois phrases qu'on peut répéter à quelqu'un.
     verite(x, l) {
@@ -329,7 +207,7 @@ export const PLANS = [
     fx: () => ({ lueur: 0, vignette: 0, grain: 0, aberration: 0 }),
   },
   {
-    nom: "partout", de: 101, a: 107, transition: { type: "losange", duree: 1.5 },
+    nom: "partout", de: 48, a: 54, transition: { type: "losange", duree: 1.5 },
     dessiner(x, l) {
       distance(x, l, {
         villes: [[48.86, 2.35], [50.85, 4.35], [51.51, -0.13], [45.5, -73.57], [52.52, 13.4], [29.76, -95.37], [40.71, -74.0]],
@@ -343,9 +221,8 @@ export const PLANS = [
     },
   },
 
-  // --- VII. LA SIGNATURE -------------------------------------------------------------------------------
   {
-    nom: "final", de: 107, a: 113, transition: { type: "coupe", duree: 0.01 },
+    nom: "final", de: 54, a: 60, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) {
       fondEncre(x, l, { force: 1.2 });
       if (l.l < 2.3) {
@@ -370,7 +247,7 @@ export const PLANS = [
   },
   {
     // Une coupe franche, sur le temps : un fondu dédoublerait le verrouillage.
-    nom: "fin", de: 113, a: 117, transition: { type: "coupe", duree: 0.01 },
+    nom: "fin", de: 60, a: 64, transition: { type: "coupe", duree: 0.01 },
     dessiner(x, l) { fondSable(x, l); },
     verite(x, l) { carteFin(x, l, { pied: "BIENTÔT", piedA: 1.9, rythme: [0.01, 0, 0.6, 1.9] }); },
     fx: () => ({ lueur: 0, vignette: 0, grain: 0, aberration: 0, pousse: 0 }),
