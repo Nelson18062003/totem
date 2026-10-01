@@ -190,7 +190,7 @@ tourner le calcul complet même quand le compte n'existe pas
    session ne peut être signée, et **le verrou n'est pas actif du tout**.
 3. Ouvrir la plateforme, créer le premier compte : c'est le vôtre.
 4. **Les cartes de chacun** : exécuter aussi
-   `migrations/20261001_cartes-de-chacun.sql` (même chemin). Il ajoute la
+   `migrations/20261001_consolidation.sql` (même chemin). Il ajoute la
    liste des cartes confiées, le prénom et le nom des comptes, et se vérifie
    lui-même. Il ne touche à aucun mot de passe. **À faire avant de mettre la
    plateforme à jour** : sans lui, les invités ne voient rien.

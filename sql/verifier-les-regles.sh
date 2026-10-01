@@ -282,7 +282,7 @@ refuser "une carte confiée à un compte qui n'existe pas" \
 # LES MOTS DE PASSE SURVIVENT À LA MIGRATION. Une version de travail de ce
 # fichier effaçait toutes les empreintes (on devait entrer par un code) :
 # rejouée sur la base en service, elle aurait mis tout le monde dehors.
-$P -d totem -f migrations/20261001_cartes-de-chacun.sql >/dev/null 2>&1 || true
+$P -d totem -f migrations/20261001_consolidation.sql >/dev/null 2>&1 || true
 garde=$($P -d totem -tAc "select empreinte from utilisateurs where courriel = 'vendeur@essai.cm';")
 if [ "$garde" = "x" ]; then
   echo "  ✓ rejouer la migration garde les mots de passe"

@@ -607,7 +607,7 @@ create index if not exists versions_envoyees_idx
 
 -- ---------------------------------------------------------------------------
 -- Les cartes de chacun, et le nom des comptes.
--- (Voir migrations/20261001_cartes-de-chacun.sql, qui se vérifie elle-même.)
+-- (Voir migrations/20261001_consolidation.sql, qui se vérifie elle-même.)
 -- ---------------------------------------------------------------------------
 
 -- ===========================================================================
