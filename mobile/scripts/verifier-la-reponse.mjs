@@ -244,8 +244,10 @@ try {
   echecs -= 0;  // le témoin lui-même ne compte pas : il vient de passer
 
   console.log("\nL'écran de connexion :");
-  await sonder("« envoyer un nouveau code »",
-               page.getByText(/^Send a new code$|^Envoyer un nouveau code$|^New code possible|^Nouveau code possible/).first());
+  // « Envoyer un nouveau code » est INACTIF pendant la première minute (la
+  // base refuse un second code) : on sonde le lien qui, lui, répond.
+  await sonder("« utiliser une autre adresse »",
+               page.getByText(/^Use another address$|^Utiliser une autre adresse$/).first());
 
   // ── DANS L'APPLICATION ───────────────────────────────────────────────
   await page.getByText(/^Sign in$|^Se connecter$/).last().click();

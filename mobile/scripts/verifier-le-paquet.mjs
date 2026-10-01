@@ -69,7 +69,7 @@ console.log("Le noyau partagé voyage bien avec l'application");
 ].forEach((s) => doitEtre(true, s));
 
 console.log("\nL'application ne parle qu'à la plateforme");
-["/api/session", "/api/donnees", "/api/appareil", "/api/inscription",
+["/api/session", "/api/code", "/api/donnees", "/api/appareil", "/api/inscription",
  "/api/plateforme", "totem.jeton"].forEach((s) => doitEtre(true, s));
 
 // Les mises à jour à distance sont-elles vraiment branchées ? Sans cette

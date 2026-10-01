@@ -61,7 +61,7 @@ from tests.test_pdu import fabriquer_pdu
 PORT = 3166
 NUAGE = 4992
 BASE = f"http://127.0.0.1:{PORT}"
-MDP = "un-mot-de-passe-assez-long"
+COURRIEL = "chaine@essai.cm"
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(RACINE, "web")
 
@@ -140,7 +140,11 @@ def main():
              "SUPABASE_URL": f"http://127.0.0.1:{NUAGE}",
              "SUPABASE_CLE": "peu-importe",
              "SESSION_SECRET": "secret-de-la-chaine",
-             "TOTEM_MOT_DE_PASSE": "cle-de-secours-chaine"},
+             "TOTEM_MOT_DE_PASSE": "cle-de-secours-chaine",
+             # Le courrier part vers le faux nuage, qui garde les lettres :
+             # on entre par le code qu'il a reçu, comme une personne.
+             "COURRIER_CLE": "re_essai",
+             "COURRIER_URL": f"http://127.0.0.1:{NUAGE}"},
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     try:
@@ -221,8 +225,7 @@ def main():
 
         # --- LA PLATEFORME : le même argent, relu par un autre code --------
         print("\nDu nuage à l'écran (deux lectures du même SMS)")
-        poster(f"{BASE}/api/inscription",
-               {"courriel": "chaine@essai.cm", "motdepasse": MDP})
+        poster(f"{BASE}/api/inscription", {"courriel": COURRIEL})
         biscuit = connexion()
         donnees = lire(f"{BASE}/api/donnees?sms=200", biscuit)
         ordinaire = next((p for p in donnees["paiements"]
@@ -313,9 +316,22 @@ def poster(url, corps, biscuit=None):
         return e.code, json.loads(e.read() or b"{}"), e.headers
 
 
+def code_recu():
+    """Le code de la dernière lettre reçue — la plateforme l'envoie APRÈS
+    avoir répondu, on attend donc qu'elle arrive (un état, pas une durée)."""
+    for _ in range(80):
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{NUAGE}/essai/courrier?a={COURRIEL}", timeout=5) as r:
+            boite = json.loads(r.read())
+        if boite.get("code"):
+            return boite["code"]
+        time.sleep(0.1)
+    return ""
+
+
 def connexion():
     _, _, entetes = poster(f"{BASE}/api/connexion",
-                           {"courriel": "chaine@essai.cm", "motdepasse": MDP})
+                           {"courriel": COURRIEL, "code": code_recu()})
     biscuits = entetes.get_all("set-cookie") or []
     return "; ".join(c.split(";")[0] for c in biscuits)
 

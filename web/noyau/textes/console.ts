@@ -215,7 +215,7 @@ const en = {
     colonnePlateforme: "System",
     colonneVu: "Last heard from",
     freinsTitre: "The brake on the door",
-    freinsNote: "addresses that tried a password more than the free allowance",
+    freinsNote: "addresses that tried a code more than the free allowance",
     freinsVideTitre: "Nothing worth slowing down",
     freinsVideDetail:
       "No address has gone past the free attempts in the current window. The brake forgets on its own — an empty list here is the normal state.",
@@ -418,7 +418,7 @@ const fr: typeof en = {
     colonneVu: "Dernière nouvelle",
     freinsTitre: "Le frein de la porte",
     freinsNote:
-      "les adresses qui ont essayé un mot de passe au-delà des essais gratuits",
+      "les adresses qui ont essayé un code au-delà des essais gratuits",
     freinsVideTitre: "Rien qui mérite d'être ralenti",
     freinsVideDetail:
       "Aucune adresse n'a dépassé les essais gratuits dans la fenêtre en cours. Le frein oublie tout seul — une liste vide est ici l'état normal.",

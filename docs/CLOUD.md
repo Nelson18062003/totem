@@ -139,22 +139,43 @@ besoin de deux variables d'environnement, **côté serveur uniquement** :
 | `SUPABASE_URL` | l'adresse du projet, `https://xxxxxxxxxxxx.supabase.co` |
 | `SUPABASE_CLE` | la clé de service (Settings → API → `service_role`) |
 | `SESSION_SECRET` | une longue phrase secrète au hasard — elle signe les sessions et **active le verrou** de la plateforme |
-| `TOTEM_MOT_DE_PASSE` | le mot de passe du propriétaire pour se connecter au site |
+| `TOTEM_MOT_DE_PASSE` | la **clé de secours** : le seul mot de passe qui reste, pour le jour où la base ou le courrier se taisent |
+| `COURRIER_CLE` | la clé du service d'envoi des codes (Resend, « re_… ») — sans elle, **aucun code ne part** et personne n'entre par son compte |
+| `COURRIER_EXPEDITEUR` | facultatif — `TOTEM <connexion@totemlabs.app>` par défaut |
 
-- **Sur Vercel** : Settings → Environment Variables, ajouter les quatre, puis
+- **Sur Vercel** : Settings → Environment Variables, ajouter les variables, puis
   redéployer.
 - **En local** : créer `web/.env.local` avec ces lignes, puis `npm run dev`.
 
 ⚠️ **Le verrou.** Tant que `SESSION_SECRET` n'est pas défini, le site est
 **ouvert** (pratique en développement). **Dès qu'on le pose**, tout est
-protégé : plus rien ne se lit ni ne s'appelle sans se connecter avec
-`TOTEM_MOT_DE_PASSE`. Ce mot de passe **n'est pas** le code PIN Mobile Money —
+protégé : plus rien ne se lit ni ne s'appelle sans se connecter — par un
+code reçu au courriel du compte, ou avec la clé de secours
+`TOTEM_MOT_DE_PASSE`. Aucun des deux **n'est** le code PIN Mobile Money —
 celui-là ne se saisit qu'au moment d'une opération et n'est enregistré nulle
 part. Avant toute mise en ligne publique, ces deux variables **doivent** être
 définies.
 
 Sans elles, l'application l'affiche clairement (« Non relié ») et ne montre
 **aucune donnée** — jamais de chiffres inventés.
+
+### Le courrier des codes (Resend)
+
+On entre par un code à six chiffres envoyé au courriel du compte. Il faut
+donc un service qui envoie les lettres — Resend, une fois :
+
+1. créer un compte sur resend.com ;
+2. **Domains → Add domain → `totemlabs.app`**, puis poser chez le registraire
+   du domaine les trois enregistrements DNS qu'il affiche. Tant que le
+   domaine n'est pas vérifié, Resend refuse d'envoyer depuis
+   `connexion@totemlabs.app` ;
+3. **API Keys → Create** (droit « Sending access »), et coller la clé dans
+   `COURRIER_CLE` sur Vercel ; redéployer.
+
+Pour vérifier : ouvrir la plateforme, taper son courriel, « Recevoir un
+code ». Si rien n'arrive, la page « Ce qui s'est passé » dit pourquoi
+(« le service de courrier l'a refusé ») — sans jamais écrire le courriel ni
+le code.
 
 Pourquoi la clé de service, alors qu'elle ne doit « jamais quitter le Pi » ?
 Parce que les règles de la base refusent toute lecture sans session, et que

@@ -47,6 +47,7 @@ python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
+cd web && node scripts/verifier-les-cartes.mjs  # chacun ne voit que ses cartes
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
@@ -114,6 +115,23 @@ une écriture ne garantit rien** : entre les deux, quelqu'un a pu écrire. Seule
 tient une règle que la BASE fait respecter au moment de l'écriture (ici,
 l'index `utilisateurs_un_seul_proprietaire`). Le faux nuage a dû apprendre la
 règle pour que le harnais puisse voir la course.
+
+**On entre par un code, plus par un mot de passe.** Tous les harnais entrent
+comme une personne : ils demandent un code, vont le lire dans la boîte du
+faux nuage — qui se fait passer pour le service de courrier — et le tapent
+(`web/scripts/entrer.mjs`, `mobile/scripts/entrer.mjs`). La plateforme
+d'essai se lance donc avec `COURRIER_CLE=re_essai
+COURRIER_URL=http://127.0.0.1:4999` ; sans eux, elle refuse d'envoyer un
+code, et c'est voulu.
+
+`verifier-les-cartes` se met à la place d'un vendeur à qui le propriétaire a
+confié UNE carte, et cherche ce qui fuit de l'autre : l'application, les
+pages, le bilan, la pastille, un reçu dont on devine le numéro, les
+coordonnées d'une carte qui n'est pas la sienne, un lien de bilan signé
+qu'on réécrit pour « tout ». Rendre la règle aveugle — tout le monde voit
+tout — le fait échouer dix-sept fois. **La portée se pose dans la base ET se
+revérifie ligne par ligne** : un filtre qu'un service distant ignorerait ne
+doit rien laisser passer.
 
 `verifier-le-parcours` déroule ce que le propriétaire FAIT : il se connecte,
 compose un code complet, le réseau réclame le code secret, il le tape. Le

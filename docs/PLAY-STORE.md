@@ -126,15 +126,20 @@ justifier une collecte qui n'existe pas.
 
 ### Le courriel du compte
 
-Le propriétaire crée un compte avec un courriel, qui vit dans **sa** base
-Supabase. Il n'est envoyé à personne d'autre, jamais.
+**Ce qui a changé le 1er octobre 2026** : on entre par un code envoyé au
+courriel. Le courriel part donc chez le service d'envoi (Resend) à chaque
+connexion. Il faut maintenant le DÉCLARER :
 
-Google demande de déclarer ce que l'**application** collecte et transmet à
-des tiers. Ici le courriel ne quitte pas l'infrastructure du propriétaire.
-Dans le doute, on peut le déclarer — **Adresse e-mail**, collectée,
-**non partagée**, obligatoire, finalité **Gestion du compte**. C'est
-défendable, et déclarer plus que le strict nécessaire ne fait pas refuser une
-application ; l'inverse, si.
+| Champ | Valeur |
+|---|---|
+| Type | **Adresse e-mail** |
+| Collecté | **Oui** |
+| Partagé | **Oui** — avec Resend, pour envoyer le code d'entrée |
+| Facultatif ou obligatoire | **Obligatoire** — on n'entre pas sans |
+| Finalité | **Gestion du compte** |
+
+La politique de confidentialité (`/confidentialite`) nomme Resend dans
+« Qui d'autre voit quelque chose » : les deux doivent dire la même chose.
 
 ---
 

@@ -41,7 +41,7 @@ const en = {
 
   effaceTitre: "What is deleted",
   efface: [
-    ["Your account", "the email address, the password fingerprint, the role, and the date it was created. The password itself was never stored, so there is nothing there to delete."],
+    ["Your account", "the email address, the role, the cards it was entrusted, and the date it was created. There is no password, and a sign-in code is erased the moment it is used."],
     ["Your notification tokens", "the identifiers that let the terminal ring your phone. Every token registered by your phone is removed, and your phone stops receiving notifications immediately."],
     ["Your session", "any session still open in your name stops working at once."],
   ],
@@ -99,7 +99,7 @@ const fr: typeof en = {
 
   effaceTitre: "Ce qui est effacé",
   efface: [
-    ["Votre compte", "l'adresse électronique, l'empreinte du mot de passe, le rôle, la date de création. Le mot de passe lui-même n'a jamais été enregistré : il n'y a rien à en effacer."],
+    ["Votre compte", "l'adresse électronique, le rôle, les cartes qui lui sont confiées, la date de création. Il n'y a pas de mot de passe, et un code d'entrée s'efface dès qu'il a servi."],
     ["Vos jetons de notification", "les identifiants qui permettent au terminal de faire sonner votre téléphone. Chaque jeton déposé par votre téléphone est retiré, et le téléphone cesse aussitôt de recevoir des notifications."],
     ["Votre session", "toute session encore ouverte à votre nom cesse de fonctionner immédiatement."],
   ],

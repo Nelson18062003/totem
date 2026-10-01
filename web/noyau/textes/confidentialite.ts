@@ -61,9 +61,9 @@ const en = {
     ["Your platform's address", "in ordinary storage. A web address is not a secret."],
   ],
   telephoneNote:
-    "Your password is never stored on the phone — not in the keystore, not " +
-    "anywhere. It leaves the screen the moment it is sent, and what comes " +
-    "back is a token.",
+    "There is no password: you sign in with a code received by email. The " +
+    "code is never stored on the phone — not in the keystore, not anywhere. " +
+    "It leaves the screen the moment it is sent, and what comes back is a token.",
 
   codeTitre: "The Mobile Money PIN",
   code:
@@ -78,6 +78,7 @@ const en = {
     ["Expo and Google (Firebase Cloud Messaging)", "carry notifications to your phone. They therefore see the text of a notification, which can name an amount and the other party to a payment. This is the only way to ring an Android phone; there is no alternative that avoids it."],
     ["Supabase", "hosts the database: the messages the terminal has received, the cards, the receipts."],
     ["Vercel", "hosts the platform the app talks to."],
+    ["Resend", "delivers the sign-in codes by email. It therefore sees your email address and the code — a code that works once, for ten minutes. It sees nothing of your cards or your messages."],
   ],
   tiersNote:
     "Nothing is sold, rented, or shared with anyone else. There is no " +
@@ -156,9 +157,10 @@ const fr: typeof en = {
     ["L’adresse de votre plateforme", "dans un rangement ordinaire. Une adresse web n’est pas un secret."],
   ],
   telephoneNote:
-    "Votre mot de passe n’est jamais rangé sur le téléphone — ni dans le " +
-    "coffre, ni ailleurs. Il quitte l’écran au moment de l’envoi, et ce qui " +
-    "revient est un jeton.",
+    "Il n’y a pas de mot de passe : on entre avec un code reçu par courriel. " +
+    "Le code n’est jamais rangé sur le téléphone — ni dans le coffre, ni " +
+    "ailleurs. Il quitte l’écran au moment de l’envoi, et ce qui revient est " +
+    "un jeton.",
 
   codeTitre: "Le code PIN Mobile Money",
   code:
@@ -173,6 +175,7 @@ const fr: typeof en = {
     ["Expo et Google (Firebase Cloud Messaging)", "acheminent les notifications jusqu’à votre téléphone. Ils voient donc le texte d’une notification, qui peut nommer un montant et l’autre partie d’un paiement. C’est le seul chemin pour faire sonner un téléphone Android ; il n’existe pas d’alternative qui l’évite."],
     ["Supabase", "héberge la base de données : les messages reçus par le terminal, les cartes, les reçus."],
     ["Vercel", "héberge la plateforme à laquelle l’application parle."],
+    ["Resend", "achemine les codes d’entrée par courriel. Il voit donc votre adresse et le code — un code qui sert une fois, pendant dix minutes. Il ne voit rien de vos cartes ni de vos messages."],
   ],
   tiersNote:
     "Rien n’est vendu, loué, ni partagé avec qui que ce soit d’autre. Aucune " +
