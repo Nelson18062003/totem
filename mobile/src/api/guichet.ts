@@ -146,6 +146,12 @@ export type EtatPlateforme =
 let inscriptionOuverte = false;
 export const peutSInscrire = (): boolean => inscriptionOuverte;
 
+/** Les codes d'entrée peuvent-ils partir de cette plateforme ? Sans service
+ *  de courrier, non : l'écran le dit AVANT qu'on attende une lettre qui ne
+ *  viendra jamais, et propose la clé de secours. */
+let codesOuverts = true;
+export const codesPossibles = (): boolean => codesOuverts;
+
 /**
  * « Y a-t-il un TOTEM au bout de cette adresse ? »
  *
@@ -159,6 +165,7 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
   // mort ou étranger, et l'écran offrait encore « créer un compte » sur la
   // foi d'une autre maison.
   inscriptionOuverte = false;
+  codesOuverts = true;
   const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
   if (!adresseValable(base)) return "absente";
   try {
@@ -172,6 +179,8 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
     // n'importe quel chemin ne passe pas cette porte.
     if (corps?.totem !== true) return "absente";
     inscriptionOuverte = corps.inscription === true;
+    // Absent (une plateforme d'avant les codes) : on ne crie pas au loup.
+    codesOuverts = corps.codes !== false;
     return corps.configuree === true ? "trouvee" : "non-configuree";
   } catch {
     return "injoignable";
@@ -202,25 +211,45 @@ export async function sessionVivante(): Promise<boolean> {
 }
 
 /**
- * Ouvre une session avec un COMPTE — un courriel et un mot de passe.
+ * « Envoyez-moi un code. » La première moitié de l'entrée.
+ *
+ * La plateforme répond la même chose que l'adresse ait un compte ou non :
+ * l'écran ne doit pas, lui non plus, en conclure quoi que ce soit.
+ */
+export async function demanderCode(courriel: string, langue: Langue): Promise<void> {
+  const base = await adressePlateforme();
+  const r = await avecDelai(`${base}/api/code?langue=${langue}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel }),
+  });
+  if (!r.ok) {
+    const corps = await r.json().catch(() => ({}));
+    throw new ErreurGuichet(corps?.erreur ?? "code refusé", r.status);
+  }
+}
+
+/**
+ * Ouvre une session avec un COMPTE — un courriel et le CODE reçu à ce
+ * courriel. Il n'y a plus de mot de passe.
  *
  * Sans courriel, la plateforme comprend qu'on présente la clé de secours :
  * le mot de passe unique posé sur l'hébergement. Il existe pour le jour où
- * la base des comptes ne répond plus, et le propriétaire doit tout de même
- * pouvoir entrer, ne serait-ce que pour constater la panne.
+ * la base des comptes ou le courrier ne répondent plus, et le propriétaire
+ * doit tout de même pouvoir entrer, ne serait-ce que pour constater la panne.
  *
- * Ni le courriel ni le mot de passe ne survivent à cet appel : ce qui se
- * range dans le coffre, c'est le JETON rendu par la plateforme.
+ * Ni le courriel ni le code ne survivent à cet appel : ce qui se range dans
+ * le coffre, c'est le JETON rendu par la plateforme.
  */
 export async function ouvrirSession(
-  courriel: string, motdepasse: string, langue: Langue,
+  courriel: string, secret: string, langue: Langue,
 ): Promise<void> {
   const base = await adressePlateforme();
   const r = await avecDelai(`${base}/api/session?langue=${langue}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(
-      courriel ? { courriel, motdepasse } : { motdepasse }),
+      courriel ? { courriel, code: secret } : { motdepasse: secret }),
   });
   const corps = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -230,38 +259,23 @@ export async function ouvrirSession(
   await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
 }
 
-/** Ce qu'une inscription peut donner. */
-export type Inscription =
-  | { entre: true }        // le propriétaire : il entre tout de suite
-  | { entre: false };      // un invité : le compte attend une approbation
-
 /**
- * Crée un compte.
+ * Crée le compte du PROPRIÉTAIRE — le tout premier, sur une plateforme neuve.
  *
- * Le PREMIER compte de la plateforme est celui du propriétaire : il entre
- * immédiatement, et la session est rangée ici même. Tous les suivants sont
- * créés mais n'ouvrent rien tant que le propriétaire ne les a pas approuvés
- * — d'où `entre: false`, qui n'est pas une erreur.
+ * Il n'ouvre pas de session : un code part au courriel donné, et c'est ce
+ * code, tapé à l'écran suivant, qui ouvre — comme pour toutes les entrées.
  */
-export async function creerCompte(
-  courriel: string, motdepasse: string, langue: Langue,
-): Promise<Inscription> {
+export async function creerCompte(courriel: string, langue: Langue): Promise<void> {
   const base = await adressePlateforme();
   const r = await avecDelai(`${base}/api/inscription?langue=${langue}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel, motdepasse }),
+    body: JSON.stringify({ courriel }),
   });
-  const corps = await r.json().catch(() => ({}));
-  if (!r.ok && r.status !== 202) {
+  if (!r.ok) {
+    const corps = await r.json().catch(() => ({}));
     throw new ErreurGuichet(corps?.erreur ?? "inscription refusée", r.status);
   }
-  if (corps?.proprietaire && corps?.jeton) {
-    await Coffre.ecrire(CLE_JETON, corps.jeton);
-    await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
-    return { entre: true };
-  }
-  return { entre: false };
 }
 
 export async function fermerSession(): Promise<void> {
@@ -392,24 +406,34 @@ export function essaiNotification(langue: Langue): Promise<{
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
 }
 
-/** Un compte de la plateforme, tel que la liste du propriétaire le montre. */
+/** Un compte de la plateforme, tel que la liste du propriétaire le montre :
+ *  avec les cartes qu'il voit — ou `null` pour le propriétaire, qui voit
+ *  tout. */
 export type CompteInscrit = {
   id: number; courriel: string; role: string; approuve: boolean;
-  creeLe: string | null; vuLe: string | null;
+  creeLe: string | null; vuLe: string | null; cartes: string[] | null;
 };
 
-/** La liste des comptes — réservée au propriétaire : 403 pour les autres,
- *  et l'écran se tait alors de lui-même, comme sur le web. */
-export function listerComptes(): Promise<{ comptes: CompteInscrit[] }> {
+/** Une carte de la maison, qu'on peut confier à quelqu'un. */
+export type CarteAConfier = {
+  iccid: string; libelle: string; operateur: string; numero: string;
+  nom: string; enPlace: boolean;
+};
+
+/** La liste des comptes et des cartes — réservée au propriétaire : 403 pour
+ *  les autres, et l'écran se tait alors de lui-même, comme sur le web. */
+export function listerComptes(): Promise<{ comptes: CompteInscrit[]; cartes?: CarteAConfier[] }> {
   return demander("/api/comptes");
 }
 
 /** Un geste du propriétaire sur un compte : laisser entrer, bloquer,
- *  supprimer — ou en créer un (l'inscription libre est fermée). */
+ *  supprimer, en créer un (l'inscription libre est fermée) — et confier ou
+ *  reprendre une carte. */
 export function agirSurCompte(
   corps:
     | { id: number; geste: "approuver" | "fermer" | "supprimer" }
-    | { geste: "creer"; courriel: string; motdepasse: string },
+    | { geste: "creer"; courriel: string }
+    | { id: number; iccid: string; geste: "attribuer" | "retirer" },
 ): Promise<unknown> {
   return demander("/api/comptes", { method: "POST", body: JSON.stringify(corps) });
 }

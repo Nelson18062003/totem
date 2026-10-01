@@ -6,9 +6,14 @@
 // lui-même — un invité ne voit même pas qu'elle existe.
 //
 // L'inscription libre est fermée dès le premier compte : créer un compte
-// ICI est le seul chemin pour faire entrer quelqu'un. L'avertissement vient
-// AVANT les champs — un compte approuvé voit tout, le dire après serait
-// trop tard.
+// ICI est le seul chemin pour faire entrer quelqu'un. Un courriel suffit — on
+// entre par un code reçu à ce courriel, il n'y a plus de mot de passe à
+// transmettre.
+//
+// LES CARTES DE CHACUN. Un invité ne voit que les cartes qu'on lui confie
+// ici, et rien du tout tant qu'on ne lui en a confié aucune. L'avertissement
+// vient AVANT le champ — le dire après la création ferait croire à un accès
+// cassé.
 //
 // clavier : protégé par app/reglages.tsx — la section vit dans l'écran des
 // réglages, dont le KeyboardAvoidingView pousse le formulaire au-dessus du
@@ -20,7 +25,7 @@ import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import { ChampTexte, Carte, Filet, Texte } from "@/ui";
 import { useGesteUnique } from "@/geste";
 import { agirSurCompte, ErreurGuichet, listerComptes,
-         type CompteInscrit } from "@/api/guichet";
+         type CarteAConfier, type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { dateVue } from "@noyau/types";
 import { textesReglages } from "@noyau/textes/reglages";
@@ -31,12 +36,16 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const t = textesReglages[langue];
   const tc = textesConnexion[langue];
   const [comptes, setComptes] = useState<CompteInscrit[] | null>(null);
+  const [cartes, setCartes] = useState<CarteAConfier[]>([]);
+  // Le compte dont on choisit les cartes, ou aucun.
+  const [enChoix, setEnChoix] = useState<number | null>(null);
+  // La carte dont l'attribution part en ce moment (« compte-iccid »).
+  const [bascule, setBascule] = useState<string | null>(null);
   const [permis, setPermis] = useState<boolean | null>(null);
   const [occupe, setOccupe] = useState<number | null>(null);
 
   const [creationOuverte, setCreationOuverte] = useState(false);
   const [courriel, setCourriel] = useState("");
-  const [motdepasse, setMotdepasse] = useState("");
   const [creation, setCreation] = useState(false);
   const [mot, setMot] = useState<string | null>(null);
   const [rate, setRate] = useState(false);
@@ -48,8 +57,9 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const [accroc, setAccroc] = useState(false);
   const charger = useCallback(async () => {
     try {
-      const { comptes } = await listerComptes();
-      setComptes(comptes ?? []);
+      const r = await listerComptes();
+      setComptes(r.comptes ?? []);
+      setCartes(r.cartes ?? []);
       setPermis(true);
       setAccroc(false);
     } catch (e) {
@@ -111,18 +121,20 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const gesteCreer = useGesteUnique();
 
   const creer = () => gesteCreer.lancer(async () => {
-    if (!courriel || motdepasse.length < 12) return;
+    if (!courriel.trim()) return;
     setCreation(true);
     setMot(null);
     try {
-      await agirSurCompte({ geste: "creer", courriel, motdepasse });
+      const r = await agirSurCompte({ geste: "creer", courriel: courriel.trim() }) as
+        { id?: number } | null;
       setRate(false);
       setMot(t.creerFait);
-      // Le mot de passe ne reste pas à l'écran : il vient d'être transmis.
       setCourriel("");
-      setMotdepasse("");
       setCreationOuverte(false);
       await charger();
+      // Le geste qui suit naturellement : choisir ses cartes. Sans cela, le
+      // compte neuf ne verrait rien, et l'on croirait l'accès cassé.
+      if (typeof r?.id === "number") setEnChoix(r.id);
       return true;
     } catch (e) {
       setRate(true);
@@ -132,6 +144,27 @@ export function SectionQui({ langue }: { langue: Langue }) {
       setCreation(false);
     }
   });
+
+  /** Confier une carte, ou la reprendre. La liste rechargée dit ensuite
+   *  l'état réel — jamais celui qu'on espérait. */
+  const basculer = async (c: CompteInscrit, iccid: string, confiee: boolean) => {
+    if (bascule) return;
+    setBascule(`${c.id}-${iccid}`);
+    setMot(null);
+    try {
+      await agirSurCompte({ id: c.id, iccid, geste: confiee ? "retirer" : "attribuer" });
+      setRate(false);
+    } catch (e) {
+      setRate(true);
+      setMot(e instanceof Error && e.message ? e.message : t.pasPartie);
+    } finally {
+      await charger();
+      setBascule(null);
+    }
+  };
+
+  const nomDeCarte = (iccid: string) =>
+    cartes.find((x) => x.iccid === iccid)?.libelle ?? `··${iccid.slice(-4)}`;
 
   // Pas le propriétaire : la section se tait, comme au web.
   if (permis === false) return null;
@@ -213,6 +246,73 @@ export function SectionQui({ langue }: { langue: Langue }) {
                   />
                 </View>
               ) : null}
+
+              {/* CE QUE CETTE PERSONNE VOIT, en toutes lettres : « aucune »
+                  n'est pas un oubli d'affichage, c'est un compte qui ne voit
+                  rien. */}
+              <View style={{
+                gap: espaces.xs, padding: espaces.md,
+                borderRadius: rayons.bouton, backgroundColor: couleurs.surface2,
+              }}>
+                <Texte taille={textes.legende} ton="pale">{t.cartesDeLaPersonne}</Texte>
+                <Texte taille={textes.petit}
+                       ton={c.cartes !== null && c.cartes.length === 0 ? "alerte" : "normal"}>
+                  {c.cartes === null ? t.cartesToutes
+                    : c.cartes.length === 0 ? t.cartesAucune
+                      : c.cartes.map(nomDeCarte).join(" · ")}
+                </Texte>
+                {c.cartes !== null && enChoix !== c.id ? (
+                  <Petit libelle={t.cartesConfier} occupe={false}
+                         onPress={() => setEnChoix(c.id)} />
+                ) : null}
+                {c.cartes !== null && enChoix === c.id ? (
+                  <View style={{ gap: espaces.xs, marginTop: espaces.xs }}>
+                    {cartes.length === 0 ? (
+                      <Texte taille={textes.legende} ton="pale">{t.cartesAucuneDansLaMaison}</Texte>
+                    ) : null}
+                    {cartes.map((carte) => {
+                      const confiee = c.cartes!.includes(carte.iccid);
+                      const enRoute = bascule === `${c.id}-${carte.iccid}`;
+                      return (
+                        <Pressable
+                          key={carte.iccid}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: confiee, busy: enRoute }}
+                          disabled={bascule !== null}
+                          onPress={() => void basculer(c, carte.iccid, confiee)}
+                          style={({ pressed }) => ({
+                            flexDirection: "row", alignItems: "center", gap: espaces.md,
+                            minHeight: 48, paddingHorizontal: espaces.md,
+                            borderRadius: rayons.bouton, borderWidth: 1,
+                            borderColor: confiee ? couleurs.accent : couleurs.trait,
+                            backgroundColor: pressed ? couleurs.surface3 : couleurs.surfaceHaute,
+                            opacity: bascule !== null && !enRoute ? 0.5 : 1,
+                          })}
+                        >
+                          <View style={{
+                            width: 20, height: 20, borderRadius: 4, borderWidth: 2,
+                            borderColor: confiee ? couleurs.accent : couleurs.trait,
+                            backgroundColor: confiee ? couleurs.accent : "transparent",
+                          }} />
+                          <View style={{ flex: 1, paddingVertical: espaces.sm }}>
+                            <Texte taille={textes.petit} poids="moyen">{carte.libelle}</Texte>
+                            <Texte taille={textes.legende} ton="pale" selectable>
+                              {[carte.nom, carte.numero].filter(Boolean).join(" · ") || carte.iccid}
+                              {carte.enPlace ? "" : ` · ${t.cartesRetiree}`}
+                            </Texte>
+                          </View>
+                          {enRoute ? <ActivityIndicator size="small" color={couleurs.encrePale} />
+                            : confiee ? (
+                              <Texte taille={textes.legende} ton="doux">{t.cartesConfiee}</Texte>
+                            ) : null}
+                        </Pressable>
+                      );
+                    })}
+                    <Petit libelle={t.cartesFermer} occupe={false}
+                           onPress={() => setEnChoix(null)} />
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
         ))}
@@ -242,31 +342,21 @@ export function SectionQui({ langue }: { langue: Langue }) {
           <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
             {t.creerCompteAide}
           </Texte>
-          <Texte taille={textes.legende} ton="negatif" style={{ lineHeight: 18 }}>
+          <Texte taille={textes.legende} ton="doux" style={{ lineHeight: 18 }}>
             {t.creerAvertissement}
           </Texte>
           <Saisie libelle={t.creerCourriel} valeur={courriel} onChange={setCourriel}
                   clavier="email-address" />
-          <View style={{ gap: espaces.xs }}>
-            {/* En clair, à dessein : le propriétaire doit pouvoir le relire
-                pour le transmettre. Ce n'est pas SON mot de passe. */}
-            <Saisie libelle={t.creerMotDePasse} valeur={motdepasse}
-                    onChange={setMotdepasse} />
-            <Texte taille={textes.legende}
-                   ton={motdepasse && motdepasse.length < 12 ? "negatif" : "pale"}>
-              {t.creerLongueur}
-            </Texte>
-          </View>
           <View style={{ flexDirection: "row", gap: espaces.sm }}>
             <Pressable
               accessibilityRole="button"
               onPress={() => void creer()}
-              disabled={creation || !courriel || motdepasse.length < 12}
+              disabled={creation || !courriel.trim()}
               style={({ pressed }) => ({
                 flex: 1, alignItems: "center", paddingVertical: espaces.md,
                 borderRadius: rayons.bouton,
                 backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
-                opacity: creation || !courriel || motdepasse.length < 12 ? 0.35 : 1,
+                opacity: creation || !courriel.trim() ? 0.35 : 1,
               })}
             >
               {creation

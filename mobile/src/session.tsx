@@ -15,11 +15,12 @@ import type { Langue } from "@noyau/langue";
 type Boite = {
   /** `null` tant qu'on n'a pas encore regardé dans le coffre. */
   connecte: boolean | null;
-  /** Se connecter. Sans courriel, c'est la clé de secours qu'on présente. */
-  ouvrir: (courriel: string, motdepasse: string, langue: Langue) => Promise<void>;
-  /** Créer un compte. Rend `true` si l'on entre tout de suite (le premier
-   *  compte est celui du propriétaire), `false` si le compte attend. */
-  inscrire: (courriel: string, motdepasse: string, langue: Langue) => Promise<boolean>;
+  /** Se connecter avec le code reçu. Sans courriel, c'est la clé de secours
+   *  qu'on présente. */
+  ouvrir: (courriel: string, secret: string, langue: Langue) => Promise<void>;
+  /** Créer le compte du propriétaire. N'ouvre rien : un code part au
+   *  courriel, et c'est lui qui ouvrira. */
+  inscrire: (courriel: string, langue: Langue) => Promise<void>;
   fermer: () => Promise<void>;
   /** À appeler quand le guichet a répondu « session expirée ». */
   perdue: () => void;
@@ -28,7 +29,7 @@ type Boite = {
 const Contexte = createContext<Boite>({
   connecte: null,
   ouvrir: async () => {},
-  inscrire: async () => false,
+  inscrire: async () => {},
   fermer: async () => {},
   perdue: () => {},
 });
@@ -41,18 +42,16 @@ export function FournisseurSession({ children }: { children: ReactNode }) {
   }, []);
 
   const ouvrir = useCallback(
-    async (courriel: string, motdepasse: string, langue: Langue) => {
-      await ouvrirSession(courriel, motdepasse, langue);  // lève si c'est faux
+    async (courriel: string, secret: string, langue: Langue) => {
+      await ouvrirSession(courriel, secret, langue);  // lève si c'est faux
       setConnecte(true);
     }, []);
 
   const inscrire = useCallback(
-    async (courriel: string, motdepasse: string, langue: Langue) => {
-      const r = await creerCompte(courriel, motdepasse, langue);
-      // Un compte en attente ne connecte personne : l'écran le dit, et le
-      // verrou reste fermé. Le basculer ici mènerait à un écran vide.
-      if (r.entre) setConnecte(true);
-      return r.entre;
+    async (courriel: string, langue: Langue) => {
+      // Le verrou reste fermé : le compte est créé, le code est parti, et
+      // c'est le code qui ouvrira.
+      await creerCompte(courriel, langue);
     }, []);
 
   const fermer = useCallback(async () => {
