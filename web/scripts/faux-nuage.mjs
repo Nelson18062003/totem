@@ -287,7 +287,12 @@ const serveur = createServer(async (req, res) => {
     const eq = url.searchParams.get("id");
     const id = eq ? Number(eq.replace("eq.", "")) : null;
     const c = commandes.get(id);
-    return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+    // Ce que la plateforme demande, comme PostgREST le rend : la carte d'une
+    // commande se lit dans ses paramètres — c'est elle qui dit à qui la
+    // commande appartient.
+    return repondre(c ? [{ id: c.id, type: c.type, parametres: c.parametres ?? {},
+                           terminal: c.terminal ?? null, etat: c.etat,
+                           resultat: c.resultat }] : []);
   }
 
   // Un SMS qui tombe PENDANT qu'on regarde. Sans cela, impossible d'éprouver
@@ -361,7 +366,25 @@ const serveur = createServer(async (req, res) => {
       if (eq) appareils.delete(decodeURIComponent(eq.replace("eq.", "")));
       return repondre([], 204);
     }
-    return repondre([...appareils.values()]);
+    // À QUI SONNE CHAQUE TÉLÉPHONE — le filtre que la vraie base applique.
+    // Sans lui, « les téléphones de ce compte » rendait tous les téléphones,
+    // et le harnais ne pouvait pas voir un essai sonner chez un autre.
+    const quiEst = (a, regle) => {
+      const [col, op, val] = regle.split(".");
+      if (col !== "utilisateur") return true;
+      if (op === "is") return a.utilisateur == null;
+      if (op === "eq") return String(a.utilisateur) === val;
+      return true;
+    };
+    let liste = [...appareils.values()];
+    const u = url.searchParams.get("utilisateur");
+    if (u) liste = liste.filter((a) => quiEst(a, `utilisateur.${u}`));
+    const ou = url.searchParams.get("or");
+    if (ou) {
+      const regles = ou.replace(/^\(|\)$/g, "").split(",");
+      liste = liste.filter((a) => regles.some((r) => quiEst(a, r)));
+    }
+    return repondre(liste);
   }
 
   // --- LE FREIN, COMPTÉ COMME LA VRAIE BASE LE COMPTE --------------------

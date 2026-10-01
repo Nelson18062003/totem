@@ -87,6 +87,8 @@ export function OperationPopup({
   const complet = operation.champs.every((c) => (valeurs[c.cle] ?? "").trim());
 
   const chiffres = (v: string) => v.replace(/\D/g, "");
+  const avecCarte = (p: Record<string, unknown>) =>
+    operation.carte ? { ...p, carte: operation.carte } : p;
 
   const envoyer = async (
     genre: "ussd" | "ussd_reponse",
@@ -102,7 +104,11 @@ export function OperationPopup({
       const r = await fetch("/api/commande", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: genre, parametres, cle }),
+        // La carte voyage avec CHAQUE geste de la session, pas seulement
+        // l'ouverture : c'est elle qui dit à la plateforme que la réponse
+        // vient du titulaire de cette carte, et au robot dans quelle session
+        // la poser.
+        body: JSON.stringify({ type: genre, parametres: avecCarte(parametres), cle }),
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
@@ -222,7 +228,7 @@ export function OperationPopup({
       raccrochageDu.current = false;
       navigator.sendBeacon?.(
         "/api/commande",
-        new Blob([JSON.stringify({ type: "ussd_fin", parametres: {} })],
+        new Blob([JSON.stringify({ type: "ussd_fin", parametres: avecCarte({}) })],
                  { type: "application/json" }));
     };
     window.addEventListener("pagehide", enPartant);
@@ -247,7 +253,7 @@ export function OperationPopup({
     fetch("/api/commande", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+      body: JSON.stringify({ type: "ussd_fin", parametres: avecCarte({}) }),
     }).catch(() => {});
   };
 

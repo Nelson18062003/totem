@@ -1,5 +1,5 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
-import { compteConnecte } from "@/lib/qui";
+import { compteConnecte, estProprietaire } from "@/lib/qui";
 import { RIEN, porteeDe } from "@/lib/portee";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
@@ -73,6 +73,7 @@ export async function GET(req: Request) {
   // sort pas d'ici autrement : il ne part ni chez Expo, ni dans une
   // notification, ni dans un journal.
   const moi = await compteConnecte(req);
+  const proprietaire = !process.env.SESSION_SECRET || await estProprietaire(req);
 
-  return Response.json({ ...donnees, courriel: moi?.courriel ?? null });
+  return Response.json({ ...donnees, courriel: moi?.courriel ?? null, proprietaire });
 }

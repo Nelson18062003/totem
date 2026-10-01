@@ -290,10 +290,16 @@ else
   echo "  ✗ rejouer la migration a touché un mot de passe ($garde)"
   echecs=$((echecs + 1))
 fi
+accepter "inscrire un téléphone au nom de celui qui tient la carte" \
+  "insert into appareils(jeton, plateforme, utilisateur)
+     values ('ExponentPushToken[vendeur]', 'ios', $VENDEUR);"
+refuser "un téléphone inscrit au nom d'un compte qui n'existe pas" \
+  "insert into appareils(jeton, utilisateur) values ('ExponentPushToken[fantome]', 999999);"
 accepter "effacer un compte efface ses cartes" \
   "delete from utilisateurs where id = $VENDEUR;
    do \$\$ begin
-     if exists (select 1 from attributions where utilisateur = $VENDEUR) then
+     if exists (select 1 from attributions where utilisateur = $VENDEUR)
+        or exists (select 1 from appareils where utilisateur = $VENDEUR) then
        raise exception 'restes';
      end if;
    end \$\$;"

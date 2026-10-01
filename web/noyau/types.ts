@@ -120,6 +120,11 @@ export type Donnees = {
   // personne par son prénom — et rien d'autre. `null` pour une session
   // ouverte par la clé de secours, qui ne désigne personne.
   courriel?: string | null;
+  // Celui qui regarde est-il le propriétaire (ou la clé de secours) ? Faux :
+  // il tient les cartes qu'on lui a confiées, et ne voit pas ce qui
+  // n'appartient à aucune carte — le carnet des boutons, les comptes.
+  // Absent d'une plateforme pas encore à jour : l'écran fait comme avant.
+  proprietaire?: boolean;
   relie: boolean;           // les variables d'accès à la base sont-elles là ?
   terminal: EtatTerminal | null;
   sims: Sim[];

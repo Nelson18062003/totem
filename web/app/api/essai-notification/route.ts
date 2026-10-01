@@ -2,7 +2,7 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { textesReglages } from "@noyau/textes/reglages";
 import { listerAppareils, oublierAppareil, relie } from "@/lib/serveur";
-import { estProprietaire } from "@/lib/qui";
+import { compteConnecte, estProprietaire } from "@/lib/qui";
 import { pousser, type Cause } from "@/lib/pousser";
 
 export const dynamic = "force-dynamic";
@@ -25,13 +25,15 @@ export async function POST(req: Request) {
   const langue = await langueDemandee(req);
   const t = textesReglages[langue];
 
-  // AU PROPRIÉTAIRE SEUL, comme les commandes du terminal. Le verrou de
-  // session laissait entrer tout compte approuvé — un invité pouvait donc
-  // faire sonner en boucle tous les téléphones du propriétaire, et le
-  // ménage des jetons se déclenchait sur ses essais. Le commentaire d'en
-  // haut le disait déjà : ce n'est pas un geste que l'on offre.
+  // CHACUN FAIT SONNER SES TÉLÉPHONES, ET SEULEMENT LES SIENS. Un essai
+  // faisait sonner TOUS les téléphones inscrits : un invité aurait pu faire
+  // sonner en boucle ceux du propriétaire, et le ménage des jetons se serait
+  // déclenché sur ses essais. L'essai ne vise que les téléphones inscrits au
+  // nom de celui qui le demande.
   // (Sans SESSION_SECRET, aucun verrou n'existe : on ne fait pas semblant.)
-  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+  const proprietaire = !process.env.SESSION_SECRET || await estProprietaire(req);
+  const compte = await compteConnecte(req);
+  if (!proprietaire && !compte?.approuve) {
     return Response.json(
       { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
   }
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
 
-  const appareils = await listerAppareils();
+  const appareils = await listerAppareils(compte?.id ?? null, proprietaire);
   if (!appareils.length) {
     return Response.json({ servis: 0, oublies: 0, aucun: true });
   }

@@ -75,12 +75,18 @@ export function ConsoleUssd({
 
   // L'ordre de raccrochage, à un seul endroit : il marque aussi que c'est
   // fait, pour que le démontage ne le renvoie pas une seconde fois.
+  // La carte sur laquelle la session en cours a été ouverte — celle que
+  // portent ensuite chaque réponse et le raccrochage.
+  const carteSession = useRef<string | null>(null);
+  const carteDeLaSession = () =>
+    carteSession.current ? { carte: carteSession.current } : {};
+
   const posterFin = useCallback(() => {
     aRaccrocher.current = false;
     fetch("/api/commande", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "ussd_fin", parametres: {} }),
+      body: JSON.stringify({ type: "ussd_fin", parametres: carteDeLaSession() }),
     }).catch(() => {});
   }, []);
 
@@ -97,6 +103,9 @@ export function ConsoleUssd({
   ): Promise<string | null> => {
     if (attente || envoiEnCours.current) return null;
     envoiEnCours.current = true;
+    if (genre === "ussd" && typeof parametres.carte === "string") {
+      carteSession.current = parametres.carte;
+    }
     const gen = generation.current;
     setAttente(true);
     setErreur(null);
@@ -105,7 +114,11 @@ export function ConsoleUssd({
       const r = await fetch("/api/commande", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: genre, parametres, cle }),
+        // La carte de la session voyage avec chaque réponse : la plateforme
+        // y lit que c'est bien le titulaire de CETTE carte qui répond, et le
+        // robot dans quelle session poser la réponse.
+        body: JSON.stringify({
+          type: genre, parametres: { ...carteDeLaSession(), ...parametres }, cle }),
       });
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
@@ -235,7 +248,7 @@ export function ConsoleUssd({
       aRaccrocher.current = false;
       navigator.sendBeacon?.(
         "/api/commande",
-        new Blob([JSON.stringify({ type: "ussd_fin", parametres: {} })],
+        new Blob([JSON.stringify({ type: "ussd_fin", parametres: carteDeLaSession() })],
                  { type: "application/json" }));
     };
     window.addEventListener("pagehide", enPartant);

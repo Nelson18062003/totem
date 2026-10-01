@@ -1,5 +1,5 @@
-import { marquerLu, relie } from "@/lib/serveur";
-import { estProprietaire } from "@/lib/qui";
+import { carteDuSms, marquerLu, relie } from "@/lib/serveur";
+import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 /** Le propriétaire vient d'ouvrir la fiche d'un SMS : il est lu. */
 export async function POST(req: Request) {
   const langue = await langueServeur();
-  // AU PROPRIÉTAIRE SEUL : l'état lu/non-lu est celui de SA boîte.
-  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+  // LE TITULAIRE DE LA CARTE, ou le propriétaire : un SMS d'une carte
+  // confiée appartient à celui qui la tient.
+  const main = process.env.SESSION_SECRET ? await maniement(req) : TOUT;
+  if (!main) {
     return Response.json(
       { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
   }
@@ -17,6 +19,13 @@ export async function POST(req: Request) {
   const id = Number(corps?.id);
   if (!Number.isInteger(id) || id <= 0) {
     return Response.json({ erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
+  }
+  if (!main.tout) {
+    const carte = relie ? await carteDuSms({ id }) : null;
+    if (!carte || !voitLaCarte(main, carte)) {
+      return Response.json(
+        { erreur: erreurApi(langue, "carteNonConfiee") }, { status: 403 });
+    }
   }
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonReliee") }, { status: 503 });

@@ -223,12 +223,12 @@ try {
                              { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne s'approuve personne", rPromo.status, 403);
 
-  console.log("\nUn invité ne touche pas aux cartes");
-  // C'est le contrôle le plus important de ce script. Un compte approuvé
-  // ouvrait jusqu'ici le GUICHET : déposer une demande, c'est faire composer
-  // un code sur une vraie carte SIM, avec de vrais francs derrière. Un
-  // examinateur du magasin, à qui l'on donne un compte pour qu'il regarde,
-  // pouvait lancer une opération réelle. Il regarde ; il ne compose pas.
+  console.log("\nUn compte sans carte confiée ne touche à rien");
+  // UNE CARTE CONFIÉE EST UNE CARTE DONNÉE : celui qui en tient une y
+  // compose comme sur la sienne — `verifier-les-cartes` le joue en entier.
+  // Celui-ci n'en tient AUCUNE : déposer une demande, c'est faire composer un
+  // code sur une vraie carte SIM, avec de vrais francs derrière, et il n'en
+  // a aucune à lui.
   const rSolde = await poste("/api/commande", { type: "solde" },
                              { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne demande pas un solde", rSolde.status, 403);
@@ -236,6 +236,10 @@ try {
     { type: "ussd", parametres: { code: "*126#" } },
     { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne compose pas un code USSD", rUssd.status, 403);
+  const rUssdCarte = await poste("/api/commande",
+    { type: "ussd", parametres: { code: "*126#", carte: "89237010000000008901" } },
+    { authorization: `Bearer ${jetonAmi}` });
+  verifier("ni en nommant une carte qui n'est pas à lui", rUssdCarte.status, 403);
   const rRacc = await poste("/api/commande",
     { type: "raccourci", parametres: { operateur: "MTN", cle: "depot",
       etapes: ["*126#"], action: "definir" } },
@@ -243,46 +247,45 @@ try {
   verifier("il ne range rien dans le carnet", rRacc.status, 403);
   const rSansJeton = await poste("/api/commande", { type: "solde" });
   verifier("un inconnu non plus", rSansJeton.status, 401);
-  // Le propriétaire, lui, passe : 503 parce que la base n'est pas branchée
-  // ici, et 503 se lit « le verrou a laissé passer, la base s'est tue ».
   const rProprio = await poste("/api/commande", { type: "solde" },
                                { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire passe le verrou", rProprio.status !== 403, true);
 
-  // La sonnerie d'essai obéit à la même règle : un invité pouvait faire
-  // sonner en boucle tous les téléphones du propriétaire, et le ménage des
-  // jetons se déclenchait sur SES essais. Il regarde ; il ne sonne pas.
-  const rSonne = await poste("/api/essai-notification", {},
-                             { authorization: `Bearer ${jetonAmi}` });
-  verifier("il ne fait pas sonner les téléphones", rSonne.status, 403);
-  const rSonneProprio = await poste("/api/essai-notification", {},
-                                    { authorization: `Bearer ${jetonProprio}` });
-  verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
-
-  // La LECTURE d'une commande, longtemps ouverte à tout compte, portait
-  // fugitivement le code secret dans « resultat » avant que le robot ne le
-  // masque : un invité pouvait l'énumérer. Fermée au propriétaire.
+  // LA LECTURE d'une commande porte, fugitivement, ce qu'on y a tapé — le
+  // code secret compris, avant que le robot ne le masque. Une commande qui
+  // n'est pas sur une de ses cartes n'existe pas pour lui.
   const rLire = await fetch(B + "/api/commande/1",
     { headers: { authorization: `Bearer ${jetonAmi}` } });
-  verifier("il ne lit pas une commande (le code y passe)", rLire.status, 403);
-  // Et il n'écrit pas dans le registre : ni la nature, ni le lu/non-lu.
+  verifier("il ne lit pas une commande (le code y passe)",
+           rLire.status === 403 || rLire.status === 404, true);
+  // Et il n'écrit pas dans le registre des SMS des autres.
   const rNature = await poste("/api/nature", { id: 1, nature: "publicite" },
                               { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne reclasse pas un SMS", rNature.status, 403);
   const rLu = await poste("/api/lu", { id: 1 },
                           { authorization: `Bearer ${jetonAmi}` });
   verifier("il ne marque rien lu", rLu.status, 403);
-  // ET IL NE S'ABONNE PAS AUX NOTIFICATIONS. Une notification porte le SMS
-  // reçu en aperçu : s'y inscrire, c'est recevoir chaque mouvement d'argent
-  // du propriétaire en direct, sur son propre écran verrouillé, sans jamais
-  // rouvrir la plateforme. Aucun écran ne liste les appareils inscrits :
-  // l'abonné clandestin serait resté invisible. Et le robot ne servant que
-  // les vingt derniers vus, s'inscrire en boucle rendait MUET le vrai
-  // téléphone du propriétaire.
+
+  // SES NOTIFICATIONS, À SON NOM. Un téléphone inscrit sans nom de compte
+  // est celui du propriétaire — le robot le fait sonner pour CHAQUE SMS.
+  // Celui d'un compte s'inscrit donc À SON NOM, et le robot ne le fait
+  // sonner que pour les cartes qu'on lui a confiées (aucune, ici).
+  const JETON_AMI = "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]";
   const rAbonne = await poste("/api/appareil",
-    { jeton: "ExponentPushToken[G0PZ1nT5bBRl8yQ2xKvJ_a]", plateforme: "android" },
+    { jeton: JETON_AMI, plateforme: "android" },
     { authorization: `Bearer ${jetonAmi}` });
-  verifier("il ne s'abonne pas aux SMS du propriétaire", rAbonne.status, 403);
+  verifier("il inscrit son téléphone", rAbonne.status, 200);
+  const inscrits = await (await fetch("http://127.0.0.1:4999/rest/v1/appareils")).json();
+  const sien = inscrits.find((a) => a.jeton === JETON_AMI);
+  verifier("…à SON nom, jamais à celui du propriétaire", sien?.utilisateur, idAmi);
+  // Et l'essai ne fait sonner que les siens.
+  const rSonne = await poste("/api/essai-notification", {},
+                             { authorization: `Bearer ${jetonAmi}` });
+  verifier("il ne fait pas sonner les téléphones des autres",
+           rSonne.status === 200 ? (await rSonne.json()).appareils?.length ?? 0 : -1, 1);
+  const rSonneProprio = await poste("/api/essai-notification", {},
+                                    { authorization: `Bearer ${jetonProprio}` });
+  verifier("le propriétaire, lui, sonne", rSonneProprio.status !== 403, true);
   const rLireProprio = await fetch(B + "/api/commande/1",
     { headers: { authorization: `Bearer ${jetonProprio}` } });
   verifier("le propriétaire, lui, passe le verrou de lecture",

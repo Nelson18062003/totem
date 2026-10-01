@@ -102,6 +102,9 @@ export function OperationPopup({
   const [erreur, setErreur] = useState<string | null>(null);
   const [reponseLibre, setReponseLibre] = useState("");
 
+  const avecCarte = (p: Record<string, unknown>) =>
+    operation.carte ? { ...p, carte: operation.carte } : p;
+
   // Les champs pas encore consommés par les questions du réseau.
   const restants = useRef<ChampOperation[]>([...operation.champs]);
   // L'écran est-il encore monté ? Une session peut répondre après la
@@ -119,7 +122,7 @@ export function OperationPopup({
     // l'opération suivante peut échouer parce que la carte est encore sur un
     // menu. On raccroche.
     if (raccrochageDu.current) {
-      void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {});
+      void deposerCommande("ussd_fin", avecCarte({}), operation.terminal).catch(() => {});
     }
   }, [operation.terminal]);
 
@@ -139,7 +142,10 @@ export function OperationPopup({
     setErreur(null);
     if (bulle) setFil((f) => [...f, bulle]);
     try {
-      const { id } = await deposerCommande(genre, parametres,
+      // La carte voyage avec CHAQUE geste de la session : la plateforme y
+      // lit que la réponse vient du titulaire de cette carte, et le robot
+      // dans quelle session la poser.
+      const { id } = await deposerCommande(genre, avecCarte(parametres),
                                            operation.terminal, cle);
       for (let i = 0; i < TOURS; i++) {
         await new Promise((r) => setTimeout(r, PAUSE_MS));
@@ -276,7 +282,7 @@ export function OperationPopup({
   /** L'ordre de raccrochage, sans faire attendre l'écran. */
   const posterFin = () => {
     raccrochageDu.current = false;   // c'est fait : le démontage ne refait rien
-    void deposerCommande("ussd_fin", {}, operation.terminal).catch(() => {});
+    void deposerCommande("ussd_fin", avecCarte({}), operation.terminal).catch(() => {});
   };
 
   const raccrocher = () => { posterFin(); onFermer(); };

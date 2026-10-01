@@ -167,7 +167,13 @@ class Pilotage:
             return True
         return False
 
-    def _raccrocher(self):
+    def _raccrocher(self, iccid=None):
+        """Raccroche notre session — seulement celle de CETTE carte, quand la
+        demande en nomme une. Celui qui tient une carte ne raccroche pas
+        l'opération qu'un autre mène sur la sienne."""
+        if self._session and iccid and not _sur_la_carte(
+                self._session["compte"], iccid):
+            return
         if self._session:
             try:
                 self._session["compte"].ussd_annuler()
@@ -205,7 +211,7 @@ class Pilotage:
             elif genre == "ussd_reponse":
                 resultat = self._repondre(identifiant, parametres, langue)
             elif genre == "ussd_fin":
-                self._raccrocher()
+                self._raccrocher(self._iccid_demande(parametres))
                 resultat = t("Session closed.", "Session refermée.",
                              langue=langue)
             elif genre == "recu":
@@ -502,6 +508,10 @@ class Pilotage:
         return t("Terminal state published again.",
                  "État du terminal republié.", langue=langue)
 
+    @staticmethod
+    def _iccid_demande(parametres):
+        return re.sub(r"\D", "", str(parametres.get("carte") or ""))
+
     def _compte_vise(self, parametres, langue=None):
         """La carte sur laquelle composer.
 
@@ -555,6 +565,20 @@ class Pilotage:
                 "Finish it there, then try again here.",
                 "Une session est déjà ouverte sur Telegram pour ce compte. "
                 "Terminez-la, puis recommencez ici.", langue=langue))
+        # UNE OPÉRATION EN COURS SUR UNE AUTRE CARTE NE S'INTERROMPT PAS.
+        # Le guichet ne tient qu'une session à la fois ; ouvrir raccrochait
+        # donc la précédente, quelle qu'elle soit. Avec une seule personne,
+        # c'était la sienne. Depuis que chacun tient ses cartes, c'était
+        # couper un autre en plein transfert, au moment du code secret.
+        # On refuse plutôt : la session muette se libère seule
+        # (`SESSION_MUETTE`), et l'autre aura fini bien avant.
+        en_cours = self._session
+        if en_cours and en_cours["compte"] is not compte:
+            raise RefusPoli(t(
+                "Another operation is in progress on the terminal, on another "
+                "card. Try again in a moment.",
+                "Une autre opération est en cours sur le terminal, sur une "
+                "autre carte. Réessayez dans un instant.", langue=langue))
         self._raccrocher()          # notre éventuelle session précédente
         self.journal.evenement(t(
             f"remote desk: {code} ({compte.libelle})",
@@ -612,6 +636,16 @@ class Pilotage:
                 "Aucune session en cours : composez d'abord un code.",
                 langue=langue))
         compte = session["compte"]
+        # LA RÉPONSE VA À LA SESSION DE SA CARTE, OU NULLE PART. Quand la
+        # demande nomme une carte, la session ouverte doit être la sienne :
+        # sinon, ce chiffre — peut-être un code secret — tomberait dans le
+        # menu qu'une autre personne parcourt sur une autre carte.
+        iccid = self._iccid_demande(parametres)
+        if iccid and not _sur_la_carte(compte, iccid):
+            raise RefusPoli(t(
+                "The open session is not on this card — dial the code again.",
+                "La session ouverte n'est pas sur cette carte — recomposez "
+                "le code.", langue=langue))
         if not texte:
             raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
         reponse = compte.ussd_repondre(texte)
@@ -632,6 +666,10 @@ class Pilotage:
                 self.nuage.publier_solde(compte.carte.iccid, solde)
         except Exception:
             pass    # un solde non relevé n'est pas une panne de session
+
+
+def _sur_la_carte(compte, iccid):
+    return bool(compte.carte.identifiee and compte.carte.iccid == iccid)
 
 
 class RefusPoli(Exception):

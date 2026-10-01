@@ -139,33 +139,47 @@ trouve en une seconde, et poussent à écrire le mot de passe sur un papier.
 
 ---
 
-## Un invité regarde ; il ne compose pas
+## Une carte confiée est une carte donnée
 
-Il y a deux rôles : **propriétaire** et **invité**. Jusqu'ici, tout compte
-approuvé ouvrait le guichet — c'est-à-dire pouvait faire composer un code sur
-une vraie carte SIM, avec de vrais francs derrière. Le verrou vérifiait qu'une
-session était valable, pas à QUI elle appartenait.
+Il y a deux rôles : **propriétaire** et **titulaire** (un compte créé par le
+propriétaire, à qui il confie des cartes).
 
-C'était une porte grande ouverte le jour où il a fallu donner un compte à un
-examinateur du magasin pour qu'il regarde l'application.
+Confier une carte, ce n'est pas la prêter pour qu'on la regarde : c'est la
+**remettre**. Le titulaire y travaille comme le propriétaire travaille sur les
+siennes — il compose, répond au menu, entre le code secret, établit les reçus,
+classe ses SMS, renomme la carte. Son téléphone sonne quand l'argent arrive
+**sur ses cartes**, et sur aucune autre. Le propriétaire garde la main sur
+toutes, pour intervenir s'il y a un problème.
 
-Désormais, `/api/commande` est **réservée au propriétaire** :
+| Qui | Ses cartes | Les cartes des autres | Le carnet des boutons, les comptes, la console |
+|---|---|---|---|
+| Personne (sans session) | — | — | non |
+| Titulaire | **tout** | **rien** — ni voir, ni composer, ni lire une réponse | non |
+| Propriétaire | tout | tout | oui |
+| Clé de secours | tout | tout | oui |
 
-| Qui | Consulter les écrans | Déposer une demande au terminal |
-|---|---|---|
-| Personne (sans session) | non | non |
-| Invité approuvé | ses cartes | **non** |
-| Propriétaire | oui | oui |
-| Clé de secours | oui | oui |
+Le carnet des boutons d'un opérateur reste au propriétaire : il sert à
+**toutes** les cartes de cet opérateur, et le réécrire changerait ce que les
+autres composent.
 
-La clé de secours passe, et c'est voulu : elle ne vit que dans les variables
-d'environnement de Vercel — y avoir accès, c'est déjà être le propriétaire.
+**Chaque geste dit sa carte.** Une réponse au menu, un raccrochage, une
+demande de reçu portent la carte qu'ils visent ; la plateforme vérifie qu'elle
+est confiée à celui qui la porte (`maniement`, dans `web/lib/portee.ts`). Le
+robot, lui, ne tient qu'une session à la fois : une réponse qui nomme une
+carte ne tombe jamais dans la session ouverte sur une autre, un raccrochage
+ne coupe que la sienne, et ouvrir une session n'interrompt pas l'opération
+qu'un autre mène sur une autre carte — on lui répond « réessayez dans un
+instant ».
+
+**Chaque téléphone sonne pour son titulaire.** La table des appareils dit à
+qui est chaque téléphone (colonne `utilisateur`, migration du 2 octobre). Le
+robot fait sonner, pour un SMS : les téléphones du propriétaire, et ceux des
+comptes à qui la carte de ce SMS est confiée. « Envoyer un essai » ne fait
+sonner que les téléphones de celui qui appuie.
 
 Un **ancien jeton**, émis avant les comptes, ne désigne personne : il ouvre
-encore les écrans jusqu'à son expiration, mais plus le guichet. Si le
-propriétaire voit « réservé au propriétaire » là où il commandait hier, il
-suffit qu'il se déconnecte et se reconnecte : le nouveau jeton porte son
-compte.
+encore les écrans jusqu'à son expiration, mais plus le guichet. Il suffit de
+se déconnecter et de se reconnecter.
 
 ---
 
@@ -194,7 +208,12 @@ tourner le calcul complet même quand le compte n'existe pas
    liste des cartes confiées, le prénom et le nom des comptes, et se vérifie
    lui-même. Il ne touche à aucun mot de passe. **À faire avant de mettre la
    plateforme à jour** : sans lui, les invités ne voient rien.
-5. Confier ses cartes à chaque invité — jusque-là, il ne voit rien.
+5. **Les cartes données** : exécuter aussi
+   `migrations/20261002_consolidation.sql`. Il dit à qui sonne chaque
+   téléphone. Sans lui, la plateforme refuse d'inscrire le téléphone d'un
+   titulaire — inscrit sans nom, il serait pris pour celui du propriétaire et
+   recevrait chaque SMS de la maison.
+6. Confier ses cartes à chaque titulaire — jusque-là, il ne voit rien.
 
 `TOTEM_MOT_DE_PASSE` devient facultatif. Le garder donne la clé de secours ;
 ne pas le poser n'empêche rien, tant que Supabase répond.

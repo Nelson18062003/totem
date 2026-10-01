@@ -627,27 +627,76 @@ class Nuage:
             self.derniere_erreur = str(e)
             return []
 
-    def appareils(self):
-        """Les téléphones qui ont demandé à être prévenus.
+    def appareils(self, iccid=None):
+        """Les téléphones à faire sonner pour un SMS arrivé sur la carte
+        `iccid`.
 
         La plateforme inscrit un appareil quand l'application s'ouvre ; le
         robot vient lire la liste au moment d'annoncer un paiement. Aucun
         appareil, ou nuage injoignable : on rend une liste vide, et le
         propriétaire reçoit son message sur Telegram comme toujours.
 
+        CHACUN ENTEND SES CARTES. Un téléphone sans compte (colonne vide)
+        est celui du propriétaire : il sonne pour tout. Un téléphone inscrit
+        au nom d'un compte sonne si ce compte est le propriétaire, ou si la
+        carte du SMS lui est confiée — jamais pour une autre. Un compte
+        fermé n'entend plus rien.
+
+        Dans le doute, on ne sonne pas : une lecture des comptes ou des
+        cartes confiées qui échoue laisse les téléphones des comptes muets
+        pour ce SMS, et ceux du propriétaire sonnent comme toujours.
+
         On ne remonte que les jetons — rien d'autre n'est utile ici.
         """
         if not self.actif:
             return []
         try:
-            lignes = self._lire("appareils?select=jeton&order=vu_le.desc"
-                                f"&limit={PAR_ENVOI}")
+            try:
+                lignes = self._lire(
+                    "appareils?select=jeton,utilisateur&order=vu_le.desc"
+                    f"&limit={PAR_ENVOI * 5}")
+            except urllib.error.HTTPError as e:
+                # Base pas encore migrée : pas de colonne « utilisateur ».
+                # Tous les téléphones sont alors ceux du propriétaire — la
+                # plateforme n'en inscrivait pas d'autres.
+                if e.code != 400 or not self._defaut_de_schema(self._lire_corps(e)):
+                    raise
+                lignes = self._lire("appareils?select=jeton&order=vu_le.desc"
+                                    f"&limit={PAR_ENVOI}")
             self.derniere_erreur = None
+            lignes = [l for l in lignes
+                      if isinstance(l.get("jeton"), str) and l["jeton"]]
+            admis = self._comptes_qui_entendent(
+                {l["utilisateur"] for l in lignes
+                 if isinstance(l.get("utilisateur"), int)}, iccid)
             return [l["jeton"] for l in lignes
-                    if isinstance(l.get("jeton"), str) and l["jeton"]]
+                    if l.get("utilisateur") is None
+                    or l.get("utilisateur") in admis][:PAR_ENVOI]
         except Exception as e:
             self.derniere_erreur = str(e)
             return []
+
+    def _comptes_qui_entendent(self, ids, iccid):
+        """Parmi ces comptes, ceux qui doivent entendre un SMS de `iccid`."""
+        if not ids:
+            return set()
+        try:
+            liste = ",".join(str(i) for i in sorted(ids))
+            comptes = self._lire(
+                f"utilisateurs?select=id,role,approuve&id=in.({liste})")
+            ouverts = {c["id"]: c.get("role") for c in comptes
+                       if c.get("approuve") is True}
+            admis = {i for i, role in ouverts.items() if role == "proprietaire"}
+            carte = re.sub(r"[^A-Za-z0-9]", "", str(iccid or ""))
+            if carte:
+                confiees = self._lire(
+                    f"attributions?select=utilisateur&iccid=eq.{carte}"
+                    f"&utilisateur=in.({liste})")
+                admis |= {a["utilisateur"] for a in confiees
+                          if a.get("utilisateur") in ouverts}
+            return admis
+        except Exception:
+            return set()
 
     def reclamer(self, identifiant):
         """PRENDRE une demande pour soi — ou constater qu'un autre l'a prise.

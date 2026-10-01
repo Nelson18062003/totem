@@ -11,6 +11,7 @@ const en = {
   titre: "Settings",
   sousTitre: "The terminal, the accounts, security.",
   proprietaire: "Terminal owner",
+  titulaire: "Holds the cards entrusted to them",
 
   // --- Le terminal
   terminal: "Terminal",
@@ -314,6 +315,7 @@ const fr: typeof en = {
   titre: "Réglages",
   sousTitre: "Le terminal, les comptes, la sécurité.",
   proprietaire: "Propriétaire du terminal",
+  titulaire: "Titulaire des cartes qui lui sont confiées",
 
   terminal: "Terminal",
   enLigne: "En ligne",

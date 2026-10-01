@@ -23,6 +23,7 @@ import { cookies } from "next/headers";
 import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
 import { cartesDe, utilisateurParId } from "@/lib/serveur";
 import { verifierLien } from "@/lib/lien-signe";
+import { compteConnecte, estProprietaire } from "@/lib/qui";
 
 export type Portee =
   | { tout: true }
@@ -106,4 +107,27 @@ export async function porteeDuLienDeBilan(
 /** Cette carte est-elle visible ? */
 export function voitLaCarte(p: Portee, iccid: string): boolean {
   return p.tout || p.cartes.includes(iccid);
+}
+
+/**
+ * Ce que la main qui demande peut MANIER — composer un code, répondre au
+ * menu, établir un reçu, renommer la carte, classer un SMS.
+ *
+ * UNE CARTE CONFIÉE EST UNE CARTE DONNÉE. Le propriétaire qui confie une SIM
+ * à quelqu'un la lui remet : elle est désormais la sienne, il y travaille
+ * comme le propriétaire travaille sur les siennes. Il ne la regarde pas
+ * seulement. Le propriétaire garde la main sur toutes, pour intervenir.
+ *
+ * Ce qui reste au propriétaire, c'est ce qui n'appartient à AUCUNE carte :
+ * le carnet des boutons d'un opérateur (partagé par toutes ses cartes), les
+ * comptes, la console.
+ *
+ * `null` : personne à qui confier quoi que ce soit — un jeton d'avant les
+ * comptes, ou pas de session. On refuse.
+ */
+export async function maniement(req: Request): Promise<Portee | null> {
+  if (await estProprietaire(req)) return TOUT;
+  const compte = await compteConnecte(req);
+  if (!compte) return null;
+  return porteeDuCompte(compte.id);
 }

@@ -118,7 +118,9 @@ règle pour que le harnais puisse voir la course.
 
 `verifier-les-cartes` se met à la place d'un vendeur — créé par le
 propriétaire avec son prénom, son nom et le mot de passe qu'il lui a choisi —
-à qui il a confié UNE carte, et cherche ce qui fuit de l'autre : l'application, les
+à qui il a confié UNE carte. **Une carte confiée est une carte donnée** : il
+exige d'abord que le vendeur y TRAVAILLE (composer, répondre, raccrocher,
+reçu, renommer), puis cherche ce qui fuit de l'autre : l'application, les
 pages, le bilan, la pastille, un reçu dont on devine le numéro, les
 coordonnées d'une carte qui n'est pas la sienne, un lien de bilan signé
 qu'on réécrit pour « tout ». Rendre la règle aveugle — tout le monde voit

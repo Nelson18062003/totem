@@ -573,6 +573,61 @@ class TestDeuxCartesUneOperation(unittest.TestCase):
         self.assertEqual(mtn.recu, ["*126#"])
 
 
+class TestChacunSaCarte(unittest.TestCase):
+    """Deux personnes, deux cartes : chacune tient la sienne. Une réponse ne
+    tombe jamais dans la session de l'autre, un raccrochage ne coupe que la
+    sienne, et une ouverture n'interrompt pas l'opération de l'autre."""
+
+    deux_comptes = TestDeuxCartesUneOperation.deux_comptes
+
+    def session_sur_mtn(self):
+        orange, mtn = self.deux_comptes()
+        mtn.reponses = [("ouverte", "MTN MoMo\n1. Transfert"),
+                        ("ouverte", "Entrez le numero")]
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [orange, mtn], FauxJournal())
+        p._traiter({"id": 60, "type": "ussd",
+                    "parametres": {"code": "*126#", "carte": mtn.carte.iccid}})
+        return orange, mtn, nuage, p
+
+    def test_une_reponse_ne_tombe_pas_dans_la_session_d_une_autre_carte(self):
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        p._traiter({"id": 61, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True,
+                                   "carte": orange.carte.iccid}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(mtn.recu, ["*126#"], "le chiffre est parti chez l'autre")
+
+    def test_la_reponse_de_sa_carte_passe(self):
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        p._traiter({"id": 62, "type": "ussd_reponse",
+                    "parametres": {"texte": "1", "carte": mtn.carte.iccid}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+        self.assertEqual(mtn.recu, ["*126#", "1"])
+
+    def test_raccrocher_sa_carte_ne_coupe_pas_l_autre(self):
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        p._traiter({"id": 63, "type": "ussd_fin",
+                    "parametres": {"carte": orange.carte.iccid}})
+        self.assertTrue(mtn.session_ouverte, "la session de l'autre a été coupée")
+        self.assertIsNotNone(p._session)
+
+    def test_ouvrir_n_interrompt_pas_l_operation_de_l_autre(self):
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        p._traiter({"id": 64, "type": "ussd",
+                    "parametres": {"code": "#150#", "carte": orange.carte.iccid}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertEqual(orange.recu, [])
+        self.assertTrue(mtn.session_ouverte)
+
+    def test_sans_carte_le_geste_d_avant_marche(self):
+        """Une application pas encore mise à jour n'envoie pas la carte avec
+        ses réponses : celle du propriétaire continue de fonctionner."""
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        p._traiter({"id": 65, "type": "ussd_reponse", "parametres": {"texte": "1"}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
+
+
 class TestLibelleAmbiguRefusePoliment(unittest.TestCase):
     """Deux cartes MTN et une demande « compte: mtn » : le préfixe visait la
     première en silence. On refuse — l'ICCID, lui, ne se trompe jamais."""

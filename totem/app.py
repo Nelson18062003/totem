@@ -2473,9 +2473,10 @@ class Robot:
         # Les téléphones inscrits ne sont pas tous celui du propriétaire : un
         # invité approuvé en a un, et un aperçu s'affiche sur un écran
         # VERROUILLÉ, que n'importe qui peut lire par-dessus une épaule.
-        self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte))
+        self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte),
+                           iccid=compte.carte.iccid if compte.carte.identifiee else None)
 
-    def _faire_sonner(self, expediteur, libelle, texte):
+    def _faire_sonner(self, expediteur, libelle, texte, iccid=None):
         """Fait sonner les téléphones qui se sont inscrits.
 
         Rien ici ne peut retarder ni empêcher l'annonce Telegram : elle est
@@ -2497,7 +2498,8 @@ class Robot:
 
         def porter():
             try:
-                appareils = self.nuage.appareils()
+                # Le propriétaire, et ceux à qui CETTE carte est confiée.
+                appareils = self.nuage.appareils(iccid)
                 billets = []
                 servis, soucis = envoyer(appareils, titre, corps, acceptes=billets)
                 # L'ACCUSÉ, PAS SEULEMENT LE BILLET. Le refus d'Apple (clé de

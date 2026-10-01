@@ -1,8 +1,8 @@
 import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
-import { creerCommande, relie } from "@/lib/serveur";
+import { carteDuSms, creerCommande, relie } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { estProprietaire } from "@/lib/qui";
+import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -14,15 +14,22 @@ const GENRES = new Set([
 ]);
 
 /**
- * Dépose une demande pour le terminal — RÉSERVÉ AU PROPRIÉTAIRE.
+ * Dépose une demande pour le terminal — sur une carte QU'ON TIENT.
  *
  * Déposer une demande ici, ce n'est pas consulter un écran : c'est faire
  * composer un code sur une vraie carte SIM, avec de vrais francs derrière.
- * Le verrou de la plateforme ne suffisait pas — il vérifie qu'une session
- * est valable, pas à QUI elle appartient. N'importe quel compte approuvé,
- * y compris un invité, pouvait ainsi lancer une opération réelle.
+ * Le verrou de la plateforme ne suffit pas — il vérifie qu'une session est
+ * valable, pas à QUI elle appartient.
  *
- * Un invité voit les écrans. Il ne touche pas aux cartes.
+ * Le propriétaire manie toutes les cartes. Celui à qui il en a CONFIÉ une la
+ * manie comme si elle était la sienne — elle l'est : composer, répondre au
+ * menu, raccrocher, établir un reçu, la renommer. Sur une carte qu'on ne lui
+ * a pas confiée, rien. Le carnet des boutons, lui, n'appartient à aucune
+ * carte (il sert à toutes celles d'un opérateur) : il reste au propriétaire.
+ *
+ * Chaque geste de session porte sa carte, réponses et raccrochage compris :
+ * sans elle, une réponse d'un titulaire tomberait dans la session qu'un
+ * autre a ouverte sur une autre carte. Le robot revérifie de son côté.
  *
  * Le corps n'est JAMAIS journalisé : une réponse peut porter le code secret,
  * qui ne doit laisser aucune trace ici — le robot le masque en base sitôt lu.
@@ -33,7 +40,8 @@ export async function POST(req: Request) {
   // Sans SESSION_SECRET, la plateforme n'a AUCUN verrou : le middleware
   // laisse tout passer. Refuser ici donnerait l'illusion d'une porte fermée
   // devant une maison ouverte, et casserait le développement local pour rien.
-  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+  const main = process.env.SESSION_SECRET ? await maniement(req) : TOUT;
+  if (!main) {
     return Response.json(
       { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
   }
@@ -166,6 +174,34 @@ export async function POST(req: Request) {
         (parametres.action === "definir" && !parametres.etapes)) {
       return Response.json(
         { erreur: erreurApi(langue, "raccourciIncomplet") }, { status: 400 });
+    }
+  }
+
+  // LA CARTE DU GESTE, POUR CELUI QUI N'A PAS TOUT. Elle se lit dans ce que
+  // la demande vise — et une demande qui ne dit pas sa carte est refusée :
+  // dans le doute, on ne compose pas.
+  if (!main.tout) {
+    if (genre === "raccourci") {
+      return Response.json(
+        { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+    }
+    // « Actualiser » ne vise pas une carte (le terminal republie l'état de
+    // toutes) : il suffit d'en tenir une. Sans carte, on ne demande rien.
+    if (genre === "solde" ? main.cartes.length === 0 : false) {
+      return Response.json(
+        { erreur: erreurApi(langue, "carteNonConfiee") }, { status: 403 });
+    }
+    if (genre !== "solde") {
+      const carte = genre === "identite" ? parametres.iccid
+        : genre === "recu"
+          ? (typeof parametres.source_id === "number" && relie
+            ? await carteDuSms({ source: parametres.source_id, terminal: terminalCible })
+            : null)
+          : parametres.carte;
+      if (typeof carte !== "string" || !voitLaCarte(main, carte)) {
+        return Response.json(
+          { erreur: erreurApi(langue, "carteNonConfiee") }, { status: 403 });
+      }
     }
   }
 

@@ -162,7 +162,10 @@ export default function Reglages() {
 
         {/* Les codes USSD — une section par opérateur vu par le terminal,
             avec les boutons appris par le robot en regard. */}
-        {operateurs.map((op) => (
+        {/* Le carnet des boutons d'un opérateur sert à TOUTES ses cartes :
+            il reste au propriétaire. Celui qui tient des cartes confiées
+            compose avec, il ne le réécrit pas. */}
+        {donnees?.proprietaire !== false && operateurs.map((op) => (
           <SectionCodes key={op} operateur={op}
                         enPlace={enPlaceOps.includes(op)}
                         appris={donnees?.raccourcis?.[op] ?? []}
@@ -204,7 +207,9 @@ export default function Reglages() {
 
         <View style={{ alignItems: "center", paddingTop: espaces.lg, gap: espaces.xs }}>
           <MotTotem taille={12} />
-          <Texte taille={textes.legende} ton="pale">{t.proprietaire}</Texte>
+          <Texte taille={textes.legende} ton="pale">
+            {donnees?.proprietaire === false ? t.titulaire : t.proprietaire}
+          </Texte>
         </View>
       </Defilement>
       </KeyboardAvoidingView>

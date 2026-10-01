@@ -655,6 +655,20 @@ comment on table attributions is
 
 alter table attributions enable row level security;
 
+-- À qui sonne chaque téléphone. Vide : au propriétaire. Un numéro : à ce
+-- compte, qui ne reçoit que les SMS des cartes qu'on lui a confiées — le
+-- robot fait le tri au moment d'annoncer. (Ici, après « utilisateurs » :
+-- la table des téléphones est créée avant elle.)
+alter table appareils add column if not exists utilisateur bigint;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'appareils_utilisateur_fk') then
+    alter table appareils add constraint appareils_utilisateur_fk
+      foreign key (utilisateur) references utilisateurs(id) on delete cascade;
+  end if;
+end $$;
+create index if not exists appareils_utilisateur on appareils (utilisateur);
+
 
 -- ===========================================================================
 -- 2. LE PRÉNOM ET LE NOM

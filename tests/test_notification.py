@@ -233,7 +233,7 @@ class AccusesDeReception(unittest.TestCase):
 
         class FauxNuage:
             @staticmethod
-            def appareils():
+            def appareils(iccid=None):
                 return ["ExponentPushToken[iphone]"]
 
         class FauxRobot:
@@ -295,6 +295,82 @@ class ListeDesAppareils(unittest.TestCase):
         self.assertEqual(Nuage("", "", "totem", journal=None).appareils(), [])
 
 
+class ChacunEntendSesCartes(unittest.TestCase):
+    """Un téléphone inscrit au nom d'un compte ne sonne que pour les SMS des
+    cartes confiées à ce compte. Celui du propriétaire sonne pour tout."""
+
+    MTN = "89237010000000008901"
+    ORANGE = "89237020000000004432"
+
+    def setUp(self):
+        essai = self
+        self.tables = {
+            "appareils": [
+                {"jeton": "ExponentPushToken[proprio-ancien]", "utilisateur": None},
+                {"jeton": "ExponentPushToken[proprio]", "utilisateur": 1},
+                {"jeton": "ExponentPushToken[vendeur]", "utilisateur": 2},
+                {"jeton": "ExponentPushToken[ferme]", "utilisateur": 3},
+            ],
+            "utilisateurs": [
+                {"id": 1, "role": "proprietaire", "approuve": True},
+                {"id": 2, "role": "invite", "approuve": True},
+                {"id": 3, "role": "invite", "approuve": False},
+            ],
+            "attributions": [
+                {"utilisateur": 2, "iccid": self.MTN},
+                {"utilisateur": 3, "iccid": self.MTN},
+            ],
+        }
+        self.panne = set()
+
+        class Base(BaseHTTPRequestHandler):
+            def do_GET(soi):
+                table = soi.path.split("/rest/v1/")[1].split("?")[0]
+                if table in essai.panne:
+                    soi.send_response(500)
+                    soi.end_headers()
+                    return
+                lignes = essai.tables.get(table, [])
+                if table == "attributions":
+                    iccid = soi.path.split("iccid=eq.")[1].split("&")[0]
+                    lignes = [l for l in lignes if l["iccid"] == iccid]
+                corps = json.dumps(lignes).encode()
+                soi.send_response(200)
+                soi.send_header("Content-Type", "application/json")
+                soi.send_header("Content-Length", str(len(corps)))
+                soi.end_headers()
+                soi.wfile.write(corps)
+
+            def log_message(soi, *args):
+                pass
+
+        self.serveur = HTTPServer(("127.0.0.1", 0), Base)
+        threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
+        self.nuage = Nuage(f"http://127.0.0.1:{self.serveur.server_port}",
+                           "cle", "totem-test", journal=None)
+
+    def tearDown(self):
+        self.serveur.shutdown()
+
+    def test_le_titulaire_entend_sa_carte(self):
+        self.assertEqual(self.nuage.appareils(self.MTN), [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]",
+            "ExponentPushToken[vendeur]"])
+
+    def test_le_titulaire_n_entend_pas_la_carte_d_un_autre(self):
+        self.assertEqual(self.nuage.appareils(self.ORANGE), [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]"])
+
+    def test_une_carte_inconnue_ne_sonne_que_chez_le_proprietaire(self):
+        self.assertEqual(self.nuage.appareils(None), [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]"])
+
+    def test_dans_le_doute_seul_le_proprietaire_d_avant_sonne(self):
+        self.panne = {"utilisateurs"}
+        self.assertEqual(self.nuage.appareils(self.MTN),
+                         ["ExponentPushToken[proprio-ancien]"])
+
+
 class FaireSonnerLeTelephone(unittest.TestCase):
     """Le branchement : ce que le robot fait sonner en recevant un SMS.
 
@@ -317,7 +393,7 @@ class FaireSonnerLeTelephone(unittest.TestCase):
 
         class FauxNuage:
             @staticmethod
-            def appareils():
+            def appareils(iccid=None):
                 return ["ExponentPushToken[abc]"]
 
         class FauxRobot:

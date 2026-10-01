@@ -32,6 +32,11 @@ export default async function Reglages() {
     chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 0, recus: 0 }),
   ]);
   const { terminal, sims, raccourcis } = donnees;
+  // Sans verrou (développement local), tout est ouvert : on est le
+  // propriétaire. Sinon, celui qui n'administre pas TIENT des cartes — il
+  // les manie, mais le carnet des boutons d'un opérateur, qui sert à toutes
+  // ses cartes, reste au propriétaire.
+  const proprietaire = !process.env.SESSION_SECRET || admin != null;
   // Une section de codes PAR OPÉRATEUR présent — les cartes en place
   // d'abord. Le repli « Orange » d'autrefois mentait dès qu'une MTN était
   // dans le berceau.
@@ -57,7 +62,9 @@ export default async function Reglages() {
           {moi?.courriel && (
             <p className="truncate text-body font-medium">{moi.courriel}</p>
           )}
-          <p className="truncate text-small text-ink-faint">{t.proprietaire}</p>
+          <p className="truncate text-small text-ink-faint">
+            {proprietaire ? t.proprietaire : t.titulaire}
+          </p>
         </div>
       </section>
 
@@ -201,7 +208,7 @@ export default async function Reglages() {
 
       {/* Codes USSD — une section par opérateur vu par le terminal, avec les
           boutons appris par le robot (💾 sur Telegram) en regard */}
-      {operateurs.map((op) => (
+      {proprietaire && operateurs.map((op) => (
         <SectionCodes
           key={op}
           operateur={op}
