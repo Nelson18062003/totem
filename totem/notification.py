@@ -44,6 +44,8 @@ import urllib.request
 # L'APPAREIL qui autorise l'envoi, et il n'est connu que de l'appareil et de
 # nous. Voir docs/MOBILE.md.
 GUICHET_EXPO = "https://exp.host/--/api/v2/push/send"
+# Les ACCUSÉS DE RÉCEPTION : ce qu'Apple et Google ont fait du billet.
+ACCUSES_EXPO = "https://exp.host/--/api/v2/push/getReceipts"
 
 # Expo accepte cent messages par requête. On n'en aura jamais autant — un
 # propriétaire, deux ou trois téléphones — mais la borne évite qu'un jour un
@@ -108,7 +110,7 @@ CAUSES = {
 }
 
 
-def envoyer(jetons, titre, corps, ouvrir=None):
+def envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
     """Pousse la notification vers les appareils enregistrés.
 
     Rend `(servis, soucis)` : combien d'appareils le guichet a ACCEPTÉS, et
@@ -129,6 +131,9 @@ def envoyer(jetons, titre, corps, ouvrir=None):
     accusés). Le robot, lui, ne guette rien : il envoie et passe au SMS
     suivant. Il dit donc « accepté », pas « remis » — et c'est déjà
     infiniment plus que ce qu'il disait.
+
+    `acceptes`, s'il est donné, reçoit l'identifiant de chaque billet
+    accepté : c'est avec lui qu'on ira chercher l'accusé (`lire_les_accuses`).
     """
     jetons = [j for j in jetons if isinstance(j, str) and j.startswith("Expo")]
     if not jetons or not corps:
@@ -196,8 +201,53 @@ def envoyer(jetons, titre, corps, ouvrir=None):
                 continue
             if billet.get("status") == "ok":
                 servis += 1
+                if acceptes is not None and isinstance(billet.get("id"), str):
+                    acceptes.append(billet["id"])
                 continue
             details = billet.get("details")
             code = details.get("error") if isinstance(details, dict) else None
             soucis.append(CAUSES.get(code, code or "refusé sans raison donnée"))
     return servis, soucis
+
+
+def lire_les_accuses(billets):
+    """Ce qu'Apple et Google ont fait des billets acceptés.
+
+    Rend la liste des causes, une par billet REFUSÉ plus loin. Un accusé qui
+    n'est pas encore revenu ne compte ni pour ni contre : on ne sait pas.
+
+    POURQUOI CETTE LECTURE. Le guichet d'Expo accepte le billet tout de
+    suite — c'est APRÈS qu'Apple refuse, quand le projet n'a pas de clé de
+    notification. Ce refus ne s'écrit QUE dans l'accusé. Le robot ne le
+    lisait jamais : sur un iPhone qui n'a jamais sonné, il comptait chaque
+    paiement comme « servi », et son journal se taisait. C'était exactement
+    la panne qu'on cherchait, et l'endroit où elle était écrite.
+    """
+    billets = [b for b in billets if isinstance(b, str) and b]
+    if not billets:
+        return []
+    requete = urllib.request.Request(
+        ACCUSES_EXPO, data=json.dumps({"ids": billets}).encode("utf-8"),
+        headers={"content-type": "application/json", "accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(requete, timeout=DELAI) as reponse:
+            if reponse.status >= 300:
+                return []
+            rendu = json.loads(reponse.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError, UnicodeDecodeError):
+        # Le guichet des accusés ne répond pas : on ne sait pas, et on ne
+        # dit rien de plus que ce qu'on savait.
+        return []
+    accuses = rendu.get("data") if isinstance(rendu, dict) else None
+    if not isinstance(accuses, dict):
+        return []
+    causes = []
+    for billet in billets:
+        accuse = accuses.get(billet)
+        if not isinstance(accuse, dict) or accuse.get("status") != "error":
+            continue
+        details = accuse.get("details")
+        code = details.get("error") if isinstance(details, dict) else None
+        causes.append(CAUSES.get(code, code or "refusé sans raison donnée"))
+    return causes

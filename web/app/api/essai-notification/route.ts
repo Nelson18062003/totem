@@ -53,7 +53,28 @@ export async function POST(req: Request) {
   const morts = verdicts.filter((v) => v.etat === "inconnu");
   await Promise.all(morts.map((v) => oublierAppareil(v.jeton)));
 
+  // TÉLÉPHONE PAR TÉLÉPHONE. Le total seul cachait la panne : un Android qui
+  // sonne et un iPhone muet donnaient « servis : 1 », et l'écran affichait
+  // « Remis » — la cause de l'iPhone, pourtant connue, ne s'affichait jamais.
+  // Le jeton ne sort pas d'ici : seulement le nom de l'appareil, sa
+  // plateforme, et ce qui lui est arrivé.
+  const parJeton = new Map(verdicts.map((v) => [v.jeton, v]));
+  const parAppareil = appareils.map((a) => {
+    const v = parJeton.get(a.jeton);
+    const etat = !v ? "refuse"
+      : v.etat === "ok" ? "remis"
+        : v.etat === "attente" ? "enRoute"
+          : v.etat === "inconnu" ? "oublie" : "refuse";
+    return {
+      nom: a.nom || "",
+      plateforme: a.plateforme || "",
+      etat,
+      cause: etat === "refuse" ? enClair(t, v?.cause) : undefined,
+    };
+  });
+
   return Response.json({
+    appareils: parAppareil,
     // « SERVI » NE VEUT DIRE QU'UNE CHOSE : le service a confirmé que le
     // téléphone a reçu. Ce compte valait auparavant « le guichet a pris le
     // message », c'est-à-dire presque rien — et il valait 1 sur un iPhone

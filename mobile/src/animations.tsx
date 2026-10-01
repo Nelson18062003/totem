@@ -17,7 +17,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AccessibilityInfo, type ViewProps } from "react-native";
 import Animated, {
-  FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withSpring, withTiming,
+  useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
   Easing,
 } from "react-native-reanimated";
 
@@ -50,13 +50,20 @@ export function Entree({
 
   useEffect(() => {
     if (reduit) { avancement.value = 1; return; }
-    avancement.value = withTiming(1, {
+    // LE DÉLAI EST DANS LE MOUVEMENT, pas à côté. La montée partait dès le
+    // montage, et le délai ne retardait que l'APPARITION : un bloc attendu à
+    // 260 ms ou plus se montrait d'un coup, déjà arrivé, sans avoir bougé —
+    // la moitié de l'accueil « sautait » à sa place au lieu de s'y poser.
+    // C'était une bonne part de l'impression de raideur.
+    // Borné : la trentième ligne d'une liste n'attend pas une seconde et
+    // demie pour se montrer — au-delà de 400 ms, on attend l'écran.
+    avancement.value = withDelay(Math.min(delai, 400), withTiming(1, {
       duration: 260,
       // Sortie douce : rapide au départ, freinée à l'arrivée. C'est ce qui
       // donne l'impression d'un objet qui se pose.
       easing: Easing.out(Easing.cubic),
-    });
-  }, [reduit, avancement]);
+    }));
+  }, [reduit, avancement, delai]);
 
   const anime = useAnimatedStyle(() => ({
     opacity: avancement.value,
@@ -64,11 +71,7 @@ export function Entree({
   }));
 
   return (
-    <Animated.View
-      {...reste}
-      entering={reduit ? undefined : FadeIn.delay(delai).duration(1)}
-      style={[style, anime]}
-    >
+    <Animated.View {...reste} style={[style, anime]}>
       {children}
     </Animated.View>
   );

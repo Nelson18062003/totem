@@ -16,7 +16,7 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Defilement, Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
+import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
@@ -38,6 +38,8 @@ import { salutation } from "@noyau/salutation";
 const CLE_SOLDE_CACHE = "totem.solde.cache";
 
 export default function Accueil() {
+  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
+  const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesAccueil[langue];
   const ta = textesAnalyse[langue];
@@ -264,7 +266,7 @@ export default function Accueil() {
         contentContainerStyle={{
           paddingHorizontal: ecran.marge,
           paddingTop: espaces.md,
-          paddingBottom: 108,
+          paddingBottom: margeBas,
           gap: espaces.xl,
           // Sur grand écran, le contenu se centre au lieu de s'étirer : une
           // ligne large de mille points ne se lit plus, elle se balaie.

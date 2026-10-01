@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 
-import { ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { useMargeSousLaBarre, ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { texteSurEcran } from "@noyau/sms";
 import { Icone, type NomIcone } from "@/icones";
@@ -67,6 +67,8 @@ const MARQUE_REPOSE = { dataSet: { repose: "1" } } as object;
 const marqueLigne = (id: string) => ({ dataSet: { ligne: id } } as object);
 
 export default function Encaissements() {
+  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
+  const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesSms[langue];
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 200 });
@@ -216,7 +218,7 @@ export default function Encaissements() {
           n'a que quelques lignes au-dessus du clavier. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <Defilement
-        contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: 108 }}
+        contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
         keyboardShouldPersistTaps="handled"
         // On allonge la liste AVANT d'arriver au bout — un écran et demi
         // d'avance : la suite est déjà là quand le doigt y arrive, et rien

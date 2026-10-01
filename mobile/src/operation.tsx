@@ -13,7 +13,7 @@
 // d'un côté.
 
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { ActivityIndicator, Keyboard, Pressable, View } from "react-native";
 
 import { Feuille, type Retenue } from "@/feuille";
 import { PaveSecret } from "@/pave-secret";
@@ -166,6 +166,9 @@ export function OperationPopup({
   const lancer = async () => {
     if (lance.current) return;
     lance.current = true;
+    // Le clavier de la saisie ne survit pas à la saisie : resté ouvert, il
+    // couvrait la session — le message de l'opérateur, le pavé du code.
+    Keyboard.dismiss();
     setEtape("session");
     restants.current = [...operation.champs];
     const brutes = operation.etapes?.length ? operation.etapes : [operation.code];
@@ -371,6 +374,7 @@ export function OperationPopup({
                 placeholder={c.aide}
                 placeholderTextColor={couleurs.encrePale}
                 keyboardType="number-pad"
+                returnKeyType="done"
                 style={{
                   borderWidth: 1, borderColor: couleurs.trait,
                   borderRadius: rayons.bouton, backgroundColor: couleurs.surfaceHaute,

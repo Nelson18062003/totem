@@ -227,6 +227,14 @@ const en = {
     "a phone does. Open the app on your phone, then come back here.",
   essaiEchec: "Nothing could be sent.",
   essaiOublies: "phone(s) removed: the app is no longer installed on them.",
+  // Le verdict de CHAQUE téléphone : un Android qui sonne ne doit plus
+  // cacher un iPhone muet.
+  essaiPasTous: "Not every phone rang:",
+  essaiAppareil: (nom: string, plateforme: string) =>
+    nom || (plateforme === "ios" ? "iPhone" : plateforme === "android" ? "Android phone" : "Phone"),
+  essaiAppareilRemis: "rang",
+  essaiAppareilEnRoute: "on its way",
+  essaiAppareilRefuse: "did not ring",
 
   // --- Pourquoi le service a refusé de servir un téléphone ---------------
   // Expo répond « InvalidCredentials », « MismatchSenderId ». Ces mots
@@ -250,8 +258,14 @@ const en = {
   // marche pas » laisse chercher au hasard.
   sonnerieInscrit: "This phone will ring.",
   sonnerieRefusee:
-    "Notifications are turned off for TOTEM. Android will not ask again — " +
+    "Notifications are turned off for TOTEM. The phone will not ask again — " +
     "turn them on in the phone's own settings.",
+  // Un compte invité ne peut pas inscrire son téléphone : les notifications
+  // portent les SMS de TOUTES les cartes. Le dire — « vérifiez la connexion »
+  // envoyait chercher une panne de réseau qui n'existait pas.
+  sonnerieReservee:
+    "For now, only the owner's account receives notifications. Sign in " +
+    "with the owner's account on this phone to make it ring.",
   sonnerieOuvrirReglages: "Open phone settings",
   sonnerieSimulateur:
     "This device cannot receive notifications (no Google services).",
@@ -471,6 +485,12 @@ const fr: typeof en = {
     "téléphone, puis revenez ici.",
   essaiEchec: "Rien n’a pu être envoyé.",
   essaiOublies: "téléphone(s) retiré(s) : l’application n’y est plus installée.",
+  essaiPasTous: "Tous les téléphones n’ont pas sonné :",
+  essaiAppareil: (nom: string, plateforme: string) =>
+    nom || (plateforme === "ios" ? "iPhone" : plateforme === "android" ? "Téléphone Android" : "Téléphone"),
+  essaiAppareilRemis: "a sonné",
+  essaiAppareilEnRoute: "en chemin",
+  essaiAppareilRefuse: "n’a pas sonné",
 
   causeSansCle:
     "Le service de notification n’a pas de quoi joindre ce téléphone : la " +
@@ -486,8 +506,12 @@ const fr: typeof en = {
 
   sonnerieInscrit: "Ce téléphone sonnera.",
   sonnerieRefusee:
-    "Les notifications sont désactivées pour TOTEM. Android ne le redemandera " +
-    "pas — activez-les dans les réglages du téléphone.",
+    "Les notifications sont désactivées pour TOTEM. Le téléphone ne le " +
+    "redemandera plus — activez-les dans les réglages du téléphone.",
+  sonnerieReservee:
+    "Pour l’instant, seul le compte du propriétaire reçoit les notifications. " +
+    "Connectez-vous avec le compte du propriétaire sur ce téléphone pour " +
+    "qu’il sonne.",
   sonnerieOuvrirReglages: "Ouvrir les réglages du téléphone",
   sonnerieSimulateur:
     "Cet appareil ne peut pas recevoir de notifications (pas de services Google).",

@@ -12,6 +12,7 @@ import * as Coffre from "./coffre";
 import * as Reglage from "./reglage";
 import type { Donnees } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
+import type { ReponseEssai } from "@noyau/essai";
 
 // L'adresse de la plateforme. Elle vient de la configuration d'Expo pour
 // qu'une compilation d'essai puisse viser un déploiement de préversion sans
@@ -385,10 +386,7 @@ export function lienRecu(numero: string): Promise<{ url: string }> {
  *  Fait envoyer une notification d'essai aux appareils inscrits. Rend
  *  combien ont été servis, et combien ont été retirés parce que le service
  *  de notification les déclare éteints. */
-export function essaiNotification(langue: Langue): Promise<{
-  servis: number; enRoute?: number; oublies: number;
-  aucun?: boolean; soucis?: string[];
-}> {
+export function essaiNotification(langue: Langue): Promise<ReponseEssai> {
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
 }
 

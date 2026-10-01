@@ -10,7 +10,7 @@ import { RefreshControl, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Defilement, Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
@@ -21,6 +21,8 @@ import { textesGuichet } from "@noyau/textes/guichet";
 import { textesUssd } from "@noyau/textes/ussd";
 
 export default function Actions() {
+  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
+  const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesGuichet[langue];
   const tu = textesUssd[langue];
@@ -37,7 +39,7 @@ export default function Actions() {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <Defilement
-          contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+          contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
           refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
         >
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
@@ -118,7 +120,7 @@ export default function Actions() {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
       <Defilement
-        contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+        contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
         refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
       >
         <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>

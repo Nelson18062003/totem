@@ -74,7 +74,9 @@
           "//color": "La teinte que le systeme applique a la silhouette : la laterite de la marque.",
           "color": "#9a4b2e",
           "//defaultChannel": "Le canal qu'Android utilise si une notification n'en nomme aucun. Le meme que celui declare par src/sonnerie.tsx et vise par totem/notification.py : sans lui, un message atterrirait dans un canal \u00ab Divers \u00bb muet.",
-          "defaultChannel": "paiements"
+          "defaultChannel": "paiements",
+          "//mode": "L'environnement des notifications Apple. Sans lui, le greffon ecrit « development » dans le paquet, et ne compte que sur Xcode pour le corriger a l'export. Toute compilation iPhone part sur TestFlight ou l'App Store : c'est le serveur de PRODUCTION d'Apple qui doit sonner. Ne prend effet qu'a la prochaine compilation, pas par une mise a jour a distance.",
+          "mode": "production"
         }
       ]
     ],

@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { useMargeDuBas, ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone } from "@/icones";
 import { OperationPopup, type Operation } from "@/operation";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
@@ -27,6 +27,8 @@ import { aDesVariables, codesUssd } from "@noyau/codes";
 import { textesUssd } from "@noyau/textes/ussd";
 
 export default function CadranUssd() {
+  // La barre de navigation d'Android couvrait la dernière ligne du catalogue.
+  const margeBas = useMargeDuBas();
   const langue = useLangue();
   const t = textesUssd[langue];
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
@@ -63,7 +65,8 @@ export default function CadranUssd() {
           feuille.tsx). Le cadran vit en haut, mais un téléphone couché n'a
           que quelques lignes au-dessus du clavier. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg,
+                                           paddingBottom: margeBas }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
           <BoutonIcone nom="Chevron" etiquette={t.fermerEcran}
