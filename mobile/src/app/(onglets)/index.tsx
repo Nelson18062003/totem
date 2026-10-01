@@ -75,7 +75,7 @@ export default function Accueil() {
     const et = active ? etapesGeste(active.operateur, cle, raccourcis[active.operateur] ?? []) : [];
     return { titre, code: et[0] ?? "", etapes: et, champs,
              carte: active?.iccid, terminal: donnees?.terminal?.id ?? null,
-             carteLibelle: active?.libelle,
+             carteLibelle: active?.libelle, operateur: active?.operateur,
              recents: clientsRecents(donnees?.paiements ?? [], active?.iccid) };
   };
 

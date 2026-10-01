@@ -79,7 +79,7 @@ export default function Actions() {
     return {
       titre, code: et[0] ?? "", etapes: et, champs,
       carte: carte.iccid, terminal: donnees?.terminal?.id ?? null,
-      carteLibelle: carte.libelle,
+      carteLibelle: carte.libelle, operateur: carte.operateur,
       recents: clientsRecents(donnees?.paiements ?? [], carte.iccid),
     };
   };

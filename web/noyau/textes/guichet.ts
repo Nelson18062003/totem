@@ -105,6 +105,25 @@ const en = {
   recapVers: "To",
   recapMontant: "Amount",
   clientsRecents: "Recent",
+
+  // Le parcours en plein écran : une question par écran.
+  combien: "How much?",
+  continuer: "Continue",
+  retour: "Back",
+  verifiez: "Check before sending",
+  vers: "to",
+  depuis: (carte: string) => `from ${carte}`,
+  confirmer: "Confirm",
+  codeEnsuite: "Your secret code will be asked at the end.",
+  connexionA: (op: string) => `Connecting to ${op}…`,
+  onParleA: (op: string) => `Talking to ${op}…`,
+  reseau: "the network",
+  codeTitre: "Your secret code",
+  codeNote: "Never shown, never kept.",
+  operateurDemande: (op: string) => `${op} asks`,
+  details: "Details",
+  masquerDetails: "Hide details",
+  saisirAutrement: "Type a number",
 };
 
 const fr: typeof en = {
@@ -204,6 +223,24 @@ const fr: typeof en = {
   recapVers: "Vers",
   recapMontant: "Montant",
   clientsRecents: "Récents",
+
+  combien: "Combien ?",
+  continuer: "Continuer",
+  retour: "Retour",
+  verifiez: "Vérifiez avant d’envoyer",
+  vers: "à",
+  depuis: (carte: string) => `depuis ${carte}`,
+  confirmer: "Confirmer",
+  codeEnsuite: "Votre code secret vous sera demandé à la fin.",
+  connexionA: (op: string) => `Connexion à ${op}…`,
+  onParleA: (op: string) => `On parle avec ${op}…`,
+  reseau: "le réseau",
+  codeTitre: "Votre code secret",
+  codeNote: "Jamais affiché, jamais gardé.",
+  operateurDemande: (op: string) => `${op} demande`,
+  details: "Détails",
+  masquerDetails: "Masquer les détails",
+  saisirAutrement: "Taper un numéro",
 };
 
 export const textesGuichet = { en, fr } as const;
