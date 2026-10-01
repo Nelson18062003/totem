@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 import { compteConnecte } from "@/lib/qui";
 import { quiAdministre } from "@/lib/garde";
 import { textesReglages } from "@noyau/textes/reglages";
@@ -13,7 +14,6 @@ import {
   SectionCodes,
   SectionEssaiNotification,
   SectionLangue,
-  SectionMotDePasse,
   SectionQui,
 } from "./interactifs";
 
@@ -28,7 +28,7 @@ export default async function Reglages() {
   const [moi, admin, donnees] = await Promise.all([
     compteConnecte(),
     quiAdministre(),
-    chargerDonnees(langue, { sms: 0, recus: 0 }),
+    chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 0, recus: 0 }),
   ]);
   const { terminal, sims, raccourcis } = donnees;
   // Une section de codes PAR OPÉRATEUR présent — les cartes en place
@@ -242,11 +242,11 @@ export default async function Reglages() {
             {t.notePin}
           </p>
         </div>
-        {/* Le mot de passe se change ici — pour un COMPTE. La clé de secours
-            n'en a pas à changer : elle vit dans les variables du serveur. */}
+        {/* Plus de mot de passe à changer : on entre par un code. Ce qui est
+            vrai se dit — et ce qui n'existe plus ne s'affiche plus. */}
         {moi && (
-          <div className="mt-3">
-            <SectionMotDePasse />
+          <div className="mt-3 rounded-card border border-line bg-surface-raised px-4 py-3.5">
+            <p className="text-small leading-relaxed text-ink-soft">{t.noteCode}</p>
           </div>
         )}
       </section>

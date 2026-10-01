@@ -97,6 +97,7 @@ export default async function Cartes() {
                   <EnTete>{t.cartes.colonneCarte}</EnTete>
                   <EnTete>{t.cartes.colonneCommerce}</EnTete>
                   <EnTete>{t.cartes.colonneTerminal}</EnTete>
+                  <EnTete>{t.cartes.colonneConfiee}</EnTete>
                   <EnTete>{t.cartes.colonneEtat}</EnTete>
                   <EnTete nombre>{t.cartes.colonneSolde}</EnTete>
                   <EnTete nombre>{t.cartes.colonneVue}</EnTete>
@@ -125,6 +126,21 @@ export default async function Cartes() {
                     </Cellule>
                     <Cellule>
                       <span className="tabnums">{c.terminalNom}</span>
+                    </Cellule>
+                    <Cellule>
+                      {c.confieeA.length > 0 ? (
+                        c.confieeA.map((courriel) => (
+                          <span key={courriel} className="block break-all">{courriel}</span>
+                        ))
+                      ) : (
+                        <span className="text-ink-faint">{t.cartes.confieeAPersonne}</span>
+                      )}
+                      <a
+                        href="/console/gens"
+                        className="mt-0.5 block text-caption text-ink-faint underline underline-offset-4 hover:text-ink-soft"
+                      >
+                        {t.cartes.confieeGerer}
+                      </a>
                     </Cellule>
                     <Cellule>
                       {c.etat === "inconnu" ? (

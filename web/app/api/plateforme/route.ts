@@ -1,5 +1,6 @@
 import { relie } from "@/lib/serveur";
 import { inscriptionPossible } from "@/lib/porte";
+import { courrierPret } from "@/lib/courrier";
 
 export const dynamic = "force-dynamic";
 
@@ -52,5 +53,11 @@ export async function GET() {
   // n'apprend à personne qui il est.
   const inscription = (await inscriptionPossible()) === true;
 
-  return Response.json({ totem: true, configuree, relie, inscription });
+  // Les codes peuvent-ils partir ? Sans courrier, l'écran le dit AVANT qu'on
+  // attende une lettre qui ne viendra jamais — et propose la clé de secours.
+  // C'est un fait de la plateforme, pareil pour tout le monde : il ne dit
+  // rien de personne.
+  const codes = configuree && relie && courrierPret;
+
+  return Response.json({ totem: true, configuree, relie, inscription, codes });
 }

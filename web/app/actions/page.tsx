@@ -1,5 +1,6 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { Vide } from "../vide";
 import { Guichet } from "./guichet";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function Operations() {
   const langue = await langueServeur();
   const t = textesGuichet[langue];
-  const { sims, raccourcis } = await chargerDonnees(langue, { sms: 0, recus: 0 });
+  const { sims, raccourcis } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 0, recus: 0 });
   // TOUTES les cartes en place : le guichet montre un sélecteur dès qu'il y
   // en a deux — chaque opération part sur la carte choisie, jamais sur « la
   // première venue ».

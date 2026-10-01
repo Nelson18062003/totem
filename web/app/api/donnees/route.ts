@@ -1,5 +1,6 @@
 import { chargerDonnees, relie } from "@/lib/serveur";
 import { compteConnecte } from "@/lib/qui";
+import { RIEN, porteeDe } from "@/lib/portee";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -48,7 +49,9 @@ export async function GET(req: Request) {
   // la boîte de réception les veut tous. Charger 1000 lignes pour afficher
   // les six dernières se paierait sur la facture de données du téléphone.
   const params = new URL(req.url).searchParams;
-  const donnees = await chargerDonnees(langue, {
+  // CE QUE CETTE PERSONNE A LE DROIT DE VOIR. Le téléphone d'un vendeur ne
+  // reçoit que les cartes qu'on lui a confiées — jamais la caisse entière.
+  const donnees = await chargerDonnees(langue, (await porteeDe(req)) ?? RIEN, {
     sms: borne(params.get("sms"), 200, MAX_SMS),
     recus: borne(params.get("recus"), 200, MAX_RECUS),
     // « compte loin, rapporte peu » : l'écran des cartes veut des compteurs

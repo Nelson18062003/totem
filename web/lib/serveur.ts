@@ -21,6 +21,7 @@ import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noy
 import { estNature } from "@noyau/natures";
 import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
+import type { Portee } from "./portee";
 
 const url = process.env.SUPABASE_URL;
 const cle = process.env.SUPABASE_CLE;
@@ -220,8 +221,18 @@ export async function chargerTerminal(langue: Langue): Promise<EtatTerminal | nu
   return versTerminal(terminaux[0], langue);
 }
 
+/** Une liste d'ICCID prête pour un filtre « in.(…) ». Chaque valeur est
+ *  relavée ici : la base exige déjà la forme, on ne s'en remet pas à elle. */
+function listeDeCartes(cartes: string[]): string {
+  const propres = cartes.filter((c) => /^[A-Za-z0-9]{1,32}$/.test(c));
+  return encodeURIComponent(`(${propres.map((c) => `"${c}"`).join(",")})`);
+}
+
 export async function chargerDonnees(
   langue: Langue,
+  // CE QUE LA PERSONNE A LE DROIT DE VOIR — obligatoire, à dessein : un
+  // appelant qui l'oublierait ne compile pas. Voir lib/portee.ts.
+  portee: Portee,
   // Chaque page dit ce dont elle a besoin : l'accueil montre 6 SMS, inutile
   // d'en charger 1000. `sms: 0` saute la requête entièrement. ATTENTION :
   // les compteurs des cartes (nbPaiements, totalRecu) ne comptent que ce qui
@@ -271,16 +282,27 @@ export async function chargerDonnees(
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
   // moins riche — jamais une liste vide. Les champs du type non présents
   // arrivent à undefined, que chaque lecture traite déjà comme null.
-  const [terminaux, cartes, comptes, releve, recus, boutons] = await Promise.all([
+  //
+  // LA PORTÉE SE POSE DANS LA BASE, pas après coup : un invité ne doit pas
+  // recevoir mille lignes dont on jetterait neuf cents — la limite mordrait
+  // sur les SMS des autres, et ses propres messages manqueraient. Une portée
+  // sans carte ne demande rien du tout.
+  const rien = !portee.tout && portee.cartes.length === 0;
+  const dans = portee.tout ? "" : listeDeCartes(portee.cartes);
+  const filtreCarte = portee.tout ? "" : `&iccid=in.${dans}`;
+  const filtrePaiement = portee.tout ? "" : `&carte=in.${dans}`;
+  const vide = <T,>() => Promise.resolve([] as T[]);
+  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
-    lire<LigneCarte>("cartes?select=*&order=derniere_vue.desc.nullslast"),
-    lire<LigneCompte>("comptes?select=*"),
-    nSms > 0
+    rien ? vide<LigneCarte>()
+      : lire<LigneCarte>(`cartes?select=*${filtreCarte}&order=derniere_vue.desc.nullslast`),
+    rien ? vide<LigneCompte>() : lire<LigneCompte>(`comptes?select=*${filtreCarte}`),
+    nSms > 0 && !rien
       ? (bornes?.compter
           ? lireEtCompter<LignePaiement>(
-              `paiements?select=*${filtreDate}&order=recu_le.desc&limit=${nSms}`)
+              `paiements?select=*${filtreDate}${filtrePaiement}&order=recu_le.desc&limit=${nSms}`)
           : lire<LignePaiement>(
-              `paiements?select=*${filtreDate}&order=recu_le.desc&limit=${nSms}`)
+              `paiements?select=*${filtreDate}${filtrePaiement}&order=recu_le.desc&limit=${nSms}`)
               .then((lignes) => ({ lignes, total: null as number | null })))
       : Promise.resolve({ lignes: [] as LignePaiement[], total: null as number | null }),
     nRecus > 0
@@ -291,11 +313,18 @@ export async function chargerDonnees(
     lire<LigneRaccourci>("raccourcis?select=*&order=id"),
   ]);
 
-  const lignes = releve.lignes;
+  // Revérifié ici, ligne par ligne : ce que la base a filtré, on le
+  // refiltre — la portée ne dépend pas de la bonne volonté d'un service
+  // distant (ni d'un faux nuage qui ignorerait un filtre).
+  const visible = (iccid: string | null | undefined) =>
+    portee.tout || (iccid != null && portee.cartes.includes(iccid));
+  const cartes = cartesBrutes.filter((c) => visible(c.iccid));
+  const comptes = comptesBruts.filter((c) => visible(c.iccid));
+  const lignes = releve.lignes.filter((l) => visible(l.carte));
   // La base avait-elle plus à donner que ce qu'on a demandé ? La réponse
   // n'intéresse que l'export comptable — mais elle ne peut se calculer QUE
   // ici, au moment de la lecture.
-  const smsTronques = releve.total != null && releve.total > lignes.length;
+  const smsTronques = releve.total != null && releve.total > releve.lignes.length;
 
   const terminal = versTerminal(terminaux[0], langue);
 
@@ -456,6 +485,46 @@ export async function chargerFicheRecu(
   return fiche ? { etabliLe: fiche.etabli_le ?? null } : null;
 }
 
+/**
+ * Ce reçu appartient-il à une carte que la personne peut voir ?
+ *
+ * Un numéro de reçu se DEVINE (« TM-2026-0731-0042 », puis 0043…) : sans
+ * cette question, un invité aurait téléchargé, numéro après numéro, les reçus
+ * de toutes les cartes de la maison. On retrouve donc le SMS du reçu — par la
+ * référence d'opérateur, ou par le numéro de ligne du journal, exactement
+ * comme l'écran fait le lien (voir `recuDe` plus haut) — et on demande si sa
+ * carte est dans la portée. Introuvable : non.
+ */
+export async function recuVisible(numero: string, portee: Portee): Promise<boolean> {
+  if (portee.tout) return true;
+  if (!relie || portee.cartes.length === 0) return false;
+  const propre = numero.replace(/[^A-Za-z0-9._-]/g, "");
+  const fiche = (await lire<{ numero: string; reference: string | null; terminal?: string | null }>(
+    `recus?select=numero,reference,terminal&numero=eq.${propre}&limit=1`,
+  )).find((f) => f.numero === propre);
+  if (!fiche) return false;
+  const dans = `&carte=in.${listeDeCartes(portee.cartes)}`;
+  const aSaCarte = (l: { carte: string | null }) =>
+    l.carte != null && portee.cartes.includes(l.carte);
+  if (fiche.reference) {
+    const parReference = await lire<{ carte: string | null; terminal?: string | null }>(
+      `paiements?select=carte,terminal&reference=eq.${encodeURIComponent(fiche.reference)}`
+      + `${dans}&limit=5`);
+    if (parReference.some((l) => aSaCarte(l)
+        && (fiche.terminal == null || l.terminal == null || l.terminal === fiche.terminal))) {
+      return true;
+    }
+  }
+  const ligne = propre.startsWith("TM-") ? /-(\d+)$/.exec(propre) : null;
+  if (ligne) {
+    const parLigne = await lire<{ carte: string | null; terminal?: string | null }>(
+      `paiements?select=carte,terminal&source_id=eq.${ligne[1]}${dans}&limit=5`);
+    return parLigne.some((l) => aSaCarte(l)
+      && (fiche.terminal == null || l.terminal == null || l.terminal === fiche.terminal));
+  }
+  return false;
+}
+
 export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
   if (!relie) return null;
   const propre = numero.replace(/[^A-Za-z0-9._-]/g, "");
@@ -568,13 +637,20 @@ export async function definirNature(
 // SMS connu (s'il monte, l'écran se rafraîchit) et le nombre de non-lus (la
 // pastille du menu). Volontairement minuscule : la veille passe souvent.
 
-export async function chargerActualite(): Promise<{ dernier: number; nonLus: number }> {
+export async function chargerActualite(
+  portee: Portee,
+): Promise<{ dernier: number; nonLus: number }> {
   if (!relie) return { dernier: 0, nonLus: 0 };
+  // La pastille compte les SMS de SES cartes : un invité qui verrait monter
+  // un chiffre pour des messages qu'il ne peut pas ouvrir apprendrait déjà
+  // quelque chose de la caisse des autres.
+  if (!portee.tout && portee.cartes.length === 0) return { dernier: 0, nonLus: 0 };
+  const dans = portee.tout ? "" : `&carte=in.${listeDeCartes(portee.cartes)}`;
   const entetes = { apikey: cle!, authorization: `Bearer ${cle}` };
   let dernier = 0;
   let nonLus = 0;
   try {
-    const r = await fetch(`${url}/rest/v1/paiements?select=id&order=id.desc&limit=1`, {
+    const r = await fetch(`${url}/rest/v1/paiements?select=id${dans}&order=id.desc&limit=1`, {
       headers: entetes, cache: "no-store",
     });
     if (r.ok) {
@@ -583,7 +659,7 @@ export async function chargerActualite(): Promise<{ dernier: number; nonLus: num
     }
     // Le compte est lu dans l'en-tête « content-range » (« 0-0/42 » → 42).
     // Base pas encore migrée (colonne absente) → réponse 400 → zéro, sans bruit.
-    const c = await fetch(`${url}/rest/v1/paiements?select=id&lu_le=is.null&limit=1`, {
+    const c = await fetch(`${url}/rest/v1/paiements?select=id${dans}&lu_le=is.null&limit=1`, {
       headers: { ...entetes, prefer: "count=exact" }, cache: "no-store",
     });
     if (c.ok) {
@@ -776,9 +852,9 @@ export async function lireCommande(
 // par ici. Aucune de ces fonctions n'est appelée depuis un composant client :
 // elles vivent derrière les routes API, qui vérifient la session avant.
 //
-// L'empreinte du mot de passe ne SORT jamais de ce fichier autrement que
-// pour être vérifiée sur place (voir `lib/motdepasse.ts`). Elle n'entre dans
-// aucune réponse, aucun journal, aucun message.
+// On n'entre plus par mot de passe : par un code envoyé au courriel (voir
+// `lib/code.ts`). Aucune de ces fonctions ne lit ni n'écrit d'empreinte de
+// mot de passe — il n'y en a plus.
 // ---------------------------------------------------------------------------
 
 export type Utilisateur = {
@@ -791,7 +867,7 @@ export type Utilisateur = {
 };
 
 type LigneUtilisateur = {
-  id: number; courriel: string; empreinte: string;
+  id: number; courriel: string; empreinte?: string | null;
   role: string; approuve: boolean;
   cree_le: string | null; vu_le: string | null;
 };
@@ -855,18 +931,55 @@ export async function compterUtilisateurs(): Promise<number | null> {
   }
 }
 
-/** Le compte portant ce courriel, EMPREINTE COMPRISE — pour la vérifier.
- *
- *  Le seul endroit où l'empreinte sort de la base. Elle ne doit pas quitter
- *  la route qui appelle ceci. */
-export async function utilisateurAVerifier(
-  courriel: string,
-): Promise<{ compte: Utilisateur; empreinte: string } | null> {
+/** Le compte portant ce courriel, ou `null`. */
+export async function utilisateurParCourriel(courriel: string): Promise<Utilisateur | null> {
   if (!relie || !courriel) return null;
   const lignes = await lire<LigneUtilisateur>(
-    `utilisateurs?courriel=eq.${encodeURIComponent(courriel)}&limit=1`);
-  const l = lignes[0];
-  return l ? { compte: versUtilisateur(l), empreinte: l.empreinte } : null;
+    "utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le"
+    + `&courriel=eq.${encodeURIComponent(courriel)}&limit=1`);
+  const l = lignes.find((x) => x.courriel === courriel);
+  return l ? versUtilisateur(l) : null;
+}
+
+// ---------------------------------------------------------------------------
+// LES CODES D'ENTRÉE
+//
+// Deux gestes, et chacun est UNE instruction de la base (voir
+// `poser_un_code` et `essayer_un_code` dans sql/schema.sql) : un code ne
+// sert qu'une fois, même tapé par dix mains ensemble, et cinq essais faux le
+// brûlent. Ici, on ne fait que transmettre — ce qui compte se joue là-bas.
+//
+// Le code lui-même n'arrive jamais jusqu'ici : seulement son empreinte.
+// ---------------------------------------------------------------------------
+
+async function appeler(fonction: string, corps: unknown): Promise<unknown> {
+  const r = await ecrire(`rpc/${fonction}`, "POST", corps);
+  if (!r?.ok) return undefined;
+  return r.json().catch(() => undefined);
+}
+
+/** Pose un code pour ce compte. `true` : posé. `false` : un code récent
+ *  existe déjà (on ne remplit pas une boîte en boucle). `null` : la base n'a
+ *  pas répondu. */
+export async function poserUnCode(
+  id: number, empreinte: string, dureeS: number, delaiS: number,
+): Promise<boolean | null> {
+  if (!relie) return null;
+  const rendu = await appeler("poser_un_code", {
+    le_compte: id, l_empreinte: empreinte, duree_s: dureeS, delai_s: delaiS,
+  });
+  if (rendu === undefined) return null;
+  return rendu === true;
+}
+
+/** Essaie un code. `true` une fois, une seule ; tout le reste est `false`. */
+export async function essayerUnCode(
+  id: number, empreinte: string, maxEssais: number,
+): Promise<boolean> {
+  if (!relie) return false;
+  return (await appeler("essayer_un_code", {
+    le_compte: id, l_empreinte: empreinte, max_essais: maxEssais,
+  })) === true;
 }
 
 /** Le compte portant cet identifiant. Sans empreinte : on ne la sort que
@@ -897,11 +1010,13 @@ export async function utilisateurParId(id: number): Promise<Utilisateur | null> 
  * Jamais un compte à moitié créé : PostgREST écrit la ligne ou ne l'écrit pas.
  */
 export async function creerUtilisateur(
-  courriel: string, empreinte: string,
+  courriel: string,
   role: "proprietaire" | "invite", approuve: boolean,
 ): Promise<Utilisateur | "refuse" | null> {
+  // Sans empreinte : on n'entre plus par mot de passe, mais par un code
+  // envoyé à ce courriel (voir lib/porte.ts).
   const r = await ecrire("utilisateurs", "POST", [{
-    courriel, empreinte, role, approuve,
+    courriel, role, approuve,
   }]);
   if (!r) return null;
   // 409 : une contrainte d'unicité a parlé (code Postgres 23505).
@@ -911,15 +1026,10 @@ export async function creerUtilisateur(
   return lignes[0] ? versUtilisateur(lignes[0]) : null;
 }
 
-/** Note l'heure de la connexion réussie, et rafraîchit l'empreinte si le
- *  nombre de tours a été augmenté depuis. Ni l'un ni l'autre ne doit pouvoir
- *  faire échouer une connexion : on ignore l'échec. */
-export async function noterConnexion(
-  id: number, nouvelleEmpreinte?: string,
-): Promise<void> {
-  const champs: Record<string, unknown> = { vu_le: new Date().toISOString() };
-  if (nouvelleEmpreinte) champs.empreinte = nouvelleEmpreinte;
-  await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", champs,
+/** Note l'heure de la connexion réussie. Ne doit pas pouvoir faire échouer
+ *  une connexion : on ignore l'échec. */
+export async function noterConnexion(id: number): Promise<void> {
+  await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", { vu_le: new Date().toISOString() },
                { prefer: "return=minimal" });
 }
 
@@ -929,17 +1039,6 @@ export async function listerUtilisateurs(): Promise<Utilisateur[]> {
     "utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le" +
     "&order=cree_le.asc&limit=200");
   return lignes.map(versUtilisateur);
-}
-
-/** Pose une nouvelle empreinte de mot de passe. L'appelant a déjà prouvé
- *  qu'il connaît l'ancienne : cette fonction ne fait qu'écrire. */
-export async function definirEmpreinte(
-  id: number, empreinte: string,
-): Promise<boolean> {
-  if (!Number.isInteger(id)) return false;
-  const r = await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", { empreinte },
-                         { prefer: "return=minimal" });
-  return Boolean(r?.ok);
 }
 
 /** Le propriétaire ouvre — ou referme — la porte à un compte. */
@@ -961,6 +1060,57 @@ export async function supprimerUtilisateur(id: number): Promise<boolean> {
       headers: { apikey: cle!, authorization: `Bearer ${cle}` },
       cache: "no-store",
     });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LES CARTES DE CHACUN
+//
+// Quelle personne voit quelle carte. Le propriétaire voit tout et n'a pas de
+// ligne ici ; un invité sans ligne ne voit rien. La règle qui s'en sert vit
+// dans `lib/portee.ts` — ici, on ne fait que lire et écrire la liste.
+// ---------------------------------------------------------------------------
+
+/** Les cartes confiées à ce compte. Une base muette rend une liste vide :
+ *  dans le doute, on ne montre pas. */
+export async function cartesDe(id: number): Promise<string[]> {
+  if (!relie || !Number.isInteger(id)) return [];
+  const lignes = await lire<{ utilisateur: number; iccid: string }>(
+    `attributions?select=utilisateur,iccid&utilisateur=eq.${id}`);
+  return lignes.filter((l) => l.utilisateur === id).map((l) => l.iccid);
+}
+
+/** Toutes les attributions : numéro de compte → ses cartes. */
+export async function listerAttributions(): Promise<Map<number, string[]>> {
+  const lignes = await lire<{ utilisateur: number; iccid: string }>(
+    "attributions?select=utilisateur,iccid&order=attribuee_le.asc");
+  const parCompte = new Map<number, string[]>();
+  for (const l of lignes) {
+    parCompte.set(l.utilisateur, [...(parCompte.get(l.utilisateur) ?? []), l.iccid]);
+  }
+  return parCompte;
+}
+
+/** Confie une carte à quelqu'un. Déjà confiée : c'est fait, pas une erreur. */
+export async function attribuerCarte(id: number, iccid: string): Promise<boolean> {
+  if (!Number.isInteger(id) || !/^[A-Za-z0-9]{1,32}$/.test(iccid)) return false;
+  const r = await ecrire("attributions?on_conflict=utilisateur,iccid", "POST",
+    [{ utilisateur: id, iccid }],
+    { prefer: "resolution=ignore-duplicates,return=minimal" });
+  return Boolean(r?.ok);
+}
+
+/** Reprend une carte. Déjà reprise : c'est fait aussi. */
+export async function retirerCarte(id: number, iccid: string): Promise<boolean> {
+  if (!relie || !Number.isInteger(id) || !/^[A-Za-z0-9]{1,32}$/.test(iccid)) return false;
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/attributions?utilisateur=eq.${id}&iccid=eq.${iccid}`,
+      { method: "DELETE", headers: { apikey: cle!, authorization: `Bearer ${cle}` },
+        cache: "no-store" });
     return r.ok;
   } catch {
     return false;

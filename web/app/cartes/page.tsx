@@ -1,5 +1,6 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 import { textesCartes } from "@noyau/textes/cartes";
 import { fcfa, nombre } from "@noyau/types";
 import { IconWallet } from "../icons";
@@ -12,7 +13,7 @@ export default async function Comptes() {
   const langue = await langueServeur();
   const t = textesCartes[langue];
   // Les SMS restent chargés : le bilan des cartes retirées se compte dessus.
-  const { sims } = await chargerDonnees(langue);
+  const { sims } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN);
   const enPlace = sims.filter((s) => s.enPlace);
   const retirees = sims.filter((s) => !s.enPlace);
   const soldeTotal = enPlace.reduce((s, x) => s + (x.solde ?? 0), 0);

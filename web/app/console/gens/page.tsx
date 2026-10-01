@@ -9,10 +9,12 @@
 // douce, une adresse qui essaie des mots de passe toute la nuit, rien de tout
 // cela ne se voyait.
 //
-// CE QUE CET ÉCRAN NE FAIT PAS
-// Il ne crée, ne ferme et n'approuve aucun compte : ces gestes vivent dans
-// Réglages → « Qui peut se connecter », et un seul endroit doit savoir les
-// faire. Ici on REGARDE — c'est le métier de la console.
+// CE QUE CET ÉCRAN FAIT
+// Il crée les comptes, les ferme, et surtout CONFIE LES CARTES : un invité ne
+// voit que les cartes qu'on lui a confiées. Ces gestes ne sont pas écrits
+// deux fois — c'est la section « Qui peut se connecter » des Réglages,
+// montrée ici aussi, parce que c'est ici que l'administrateur la cherche.
+// Aucun geste d'argent : la console ne compose rien.
 //
 // CE QU'IL NE MONTRE JAMAIS
 // Le jeton de notification d'un téléphone. Un jeton suffit à faire sonner
@@ -23,6 +25,7 @@ import { exigerPouvoir } from "@/lib/garde";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerGens, dateLisible } from "@/lib/console";
 import { textesConsole } from "@noyau/textes/console";
+import { SectionQui } from "@/app/reglages/interactifs";
 import {
   CadreConsole, Cellule, EnTete, Etiquette, Mesure, Panneau, Pastille,
   RienADire, TableauQuiDefile,
@@ -78,49 +81,9 @@ export default async function GensEtAppareils() {
           </div>
 
           <Panneau titre={t.gens.comptesTitre} note={t.gens.comptesNote}>
-            <TableauQuiDefile>
-              <thead>
-                <tr>
-                  <EnTete>{t.gens.colonneCourriel}</EnTete>
-                  <EnTete>{t.gens.colonneRole}</EnTete>
-                  <EnTete>{t.gens.colonneEtat}</EnTete>
-                  <EnTete nombre>{t.gens.colonneEntree}</EnTete>
-                </tr>
-              </thead>
-              <tbody>
-                {gens.comptes.map((c) => (
-                  <tr key={c.id} className="transition hover:bg-surface-2">
-                    <Cellule>
-                      <span className="font-medium break-all">{c.courriel}</span>
-                      {c.creeLe && (
-                        <span className="block text-caption tabnums text-ink-faint">
-                          {t.gens.creeLe(dateLisible(c.creeLe, langue))}
-                        </span>
-                      )}
-                    </Cellule>
-                    <Cellule>
-                      <Etiquette ton={c.role === "proprietaire" ? "positif" : "neutre"}>
-                        {t.gens.role[c.role as "proprietaire" | "invite"]}
-                      </Etiquette>
-                    </Cellule>
-                    <Cellule>
-                      {c.approuve ? (
-                        <span className="flex items-center gap-2">
-                          <Pastille ton="positif" /> {t.gens.porteOuverte}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-2 text-alert">
-                          <Pastille ton="attention" /> {t.gens.porteFermee}
-                        </span>
-                      )}
-                    </Cellule>
-                    <Cellule nombre pale>
-                      {c.vuLe ? c.depuis : t.gens.jamaisEntre}
-                    </Cellule>
-                  </tr>
-                ))}
-              </tbody>
-            </TableauQuiDefile>
+            <div className="p-4">
+              <SectionQui sansTitre />
+            </div>
           </Panneau>
 
           <Panneau titre={t.gens.telephonesTitre} note={t.gens.telephonesNote}>

@@ -1,4 +1,5 @@
-import { chargerRecu } from "@/lib/serveur";
+import { chargerRecu, recuVisible } from "@/lib/serveur";
+import { porteeDe } from "@/lib/portee";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
  * La clé d'accès reste côté serveur ; le navigateur ne voit que le document.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
   const langue = await langueServeur();
@@ -21,6 +22,13 @@ export async function GET(
   // que le numéro qui atterrit dans « Content-Disposition » soit toujours
   // propre, quelle que soit la porte d'entrée.
   if (!/^[\w.-]{1,64}$/.test(numero)) {
+    return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
+  }
+  // Avec une session, le reçu doit appartenir à une de SES cartes : un
+  // numéro de reçu se devine. Sans session, la main tient un lien signé, qui
+  // ne se signe que pour un reçu visible (voir …/lien).
+  const portee = await porteeDe(req);
+  if (portee && !(await recuVisible(numero, portee))) {
     return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   }
   const pdf = await chargerRecu(numero);

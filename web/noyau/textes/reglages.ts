@@ -134,7 +134,8 @@ const en = {
   // PERSONNES. Deux choses très différentes qui portaient le même mot.
   qui: "Who can sign in",
   quiAide:
-    "Anyone can create an account. Nobody gets in until you let them.",
+    "Nobody signs up alone: you create each account, and it sees only the " +
+    "cards you entrust to it. People sign in with a code sent to their email.",
   roleProprietaire: "Owner",
   roleInvite: "Guest",
   enAttente: "Waiting",
@@ -156,24 +157,35 @@ const en = {
   // libre est fermée, et doit le rester.
   creerCompte: "Create an account",
   creerCompteAide:
-    "Sign-up is closed to everyone. This is the only way to let someone in — " +
-    "you create the account, you hand over the password, and you can block " +
-    "or delete it whenever you want.",
+    "Sign-up is closed to everyone. This is the only way to let someone in. " +
+    "There is no password to hand over: they type their email and receive a " +
+    "code. You can block or delete the account whenever you want.",
   creerCourriel: "Their email",
-  creerMotDePasse: "Password you choose for them",
-  creerLongueur: "At least 12 characters.",
   creerBouton: "Create",
   creerEnCours: "Creating…",
-  creerFait: "Account created. It can sign in right away.",
+  creerFait:
+    "Account created, and a letter is on its way to them. Now entrust it " +
+    "the cards it should see.",
   // Une action de compte (approuver/fermer/supprimer) qui n'aboutit pas.
   // Sans ce message, fermer un accès pouvait échouer en silence, et le
   // propriétaire croire qu'il avait coupé quelqu'un alors que non.
   actionRatee: "Action failed — nothing changed. Check the connection and try again.",
-  // L'avertissement qui compte : tant que rattacher une SIM à une personne
-  // n'existe pas, un compte approuvé voit TOUT.
+  // L'avertissement, dit AVANT les champs : un compte neuf ne voit RIEN tant
+  // qu'on ne lui a pas confié de carte. Le dire après serait trop tard — on
+  // croirait l'accès cassé.
   creerAvertissement:
-    "This account will see everything you see — every card, every message, " +
-    "every amount. Attaching specific SIMs to a person does not exist yet.",
+    "This account will see nothing until you entrust it one or more cards — " +
+    "then only those cards, their messages and their balances. It can never " +
+    "dial a code or move money.",
+  // --- Les cartes confiées à une personne
+  cartesDeLaPersonne: "Cards it sees",
+  cartesAucune: "None yet: this account sees nothing.",
+  cartesToutes: "Every card — the owner sees everything.",
+  cartesConfier: "Entrust cards",
+  cartesFermer: "Done",
+  cartesConfiee: "Entrusted",
+  cartesRetiree: "absent from the terminal",
+  cartesAucuneDansLaMaison: "No card has been seen by the terminal yet.",
   // --- L'essai de notification
   // Le propriétaire vient d'installer l'application. Lui demander d'attendre
   // un vrai paiement pour savoir si son téléphone sonne serait cruel — et
@@ -251,20 +263,12 @@ const en = {
   sonnerieInscrire: "Register this phone",
   sonnerieEnCours: "Registering…",
   securite: "Security",
-  motDePasse: "Change the password",
-  doubleAuth: "Two-step sign-in",
-  activee: "On",
   notePin:
     "The Mobile Money PIN is stored nowhere: it is typed for each operation, then forgotten.",
-  motDePasseAide:
-    "Yours, for this account. It changes here and nowhere else — TOTEM never sends password e-mails.",
-  motDePasseActuel: "Current password",
-  motDePasseNouveau: "New password (at least 12 characters)",
-  motDePasseBouton: "Change it",
-  motDePasseEnvoi: "Changing…",
-  motDePasseFait: "Done. Your next sign-in uses the new password.",
-  motDePasseRate: "That did not work. Check the current password and try again.",
-  motDePasseCourt: "The new password needs at least 12 characters.",
+  // Plus de mot de passe à changer : ce qui est vrai, c'est le code.
+  noteCode:
+    "There is no password: each sign-in sends a 6-digit code to your email. " +
+    "It works once, for 10 minutes. Nobody from TOTEM will ever ask you for it.",
 
   // --- La console de la plateforme
   console: "Platform console",
@@ -391,8 +395,9 @@ const fr: typeof en = {
 
   qui: "Qui peut se connecter",
   quiAide:
-    "N’importe qui peut créer un compte. Personne n’entre tant que vous ne " +
-    "l’avez pas laissé entrer.",
+    "Personne ne s’inscrit seul : c’est vous qui créez chaque compte, et il ne " +
+    "voit que les cartes que vous lui confiez. On entre avec un code reçu par " +
+    "courriel.",
   roleProprietaire: "Propriétaire",
   roleInvite: "Invité",
   enAttente: "En attente",
@@ -409,19 +414,28 @@ const fr: typeof en = {
   creerCompte: "Créer un compte",
   creerCompteAide:
     "L’inscription est fermée à tout le monde. C’est le seul moyen de faire " +
-    "entrer quelqu’un — vous créez le compte, vous transmettez le mot de " +
-    "passe, et vous pouvez le bloquer ou le supprimer quand vous voulez.",
+    "entrer quelqu’un. Aucun mot de passe à transmettre : la personne tape " +
+    "son courriel et reçoit un code. Vous pouvez bloquer ou supprimer le " +
+    "compte quand vous voulez.",
   creerCourriel: "Son courriel",
-  creerMotDePasse: "Le mot de passe que vous lui donnez",
-  creerLongueur: "Au moins 12 caractères.",
   creerBouton: "Créer",
   creerEnCours: "Création…",
-  creerFait: "Compte créé. Il peut se connecter tout de suite.",
+  creerFait:
+    "Compte créé, et une lettre part vers la personne. Confiez-lui maintenant " +
+    "les cartes qu’elle doit voir.",
   actionRatee: "L'action n'a pas abouti — rien n'a changé. Vérifiez la connexion et réessayez.",
   creerAvertissement:
-    "Ce compte verra tout ce que vous voyez — chaque carte, chaque message, " +
-    "chaque montant. Rattacher des SIM précises à une personne n’existe pas " +
-    "encore.",
+    "Ce compte ne verra rien tant que vous ne lui aurez pas confié une ou " +
+    "plusieurs cartes — et ensuite, seulement celles-là, leurs messages et " +
+    "leurs soldes. Il ne pourra jamais composer un code ni déplacer d’argent.",
+  cartesDeLaPersonne: "Cartes qu’il voit",
+  cartesAucune: "Aucune pour l’instant : ce compte ne voit rien.",
+  cartesToutes: "Toutes — le propriétaire voit tout.",
+  cartesConfier: "Confier des cartes",
+  cartesFermer: "Terminé",
+  cartesConfiee: "Confiée",
+  cartesRetiree: "absente du terminal",
+  cartesAucuneDansLaMaison: "Aucune carte n’a encore été vue par le terminal.",
   essai: "Est-ce que mon téléphone sonne ?",
   essaiAide:
     "Envoie une notification d’essai aux téléphones connectés. Elle vérifie " +
@@ -475,21 +489,12 @@ const fr: typeof en = {
   sonnerieInscrire: "Inscrire ce téléphone",
   sonnerieEnCours: "Inscription…",
   securite: "Sécurité",
-  motDePasse: "Changer le mot de passe",
-  doubleAuth: "Double authentification",
-  activee: "Activée",
   notePin:
     "Le code PIN Mobile Money n’est enregistré nulle part : il se saisit à chaque opération, puis disparaît.",
-  motDePasseAide:
-    "Le vôtre, pour ce compte. Il se change ici et nulle part ailleurs — TOTEM n’envoie jamais de courriel de mot de passe.",
-  motDePasseActuel: "Mot de passe actuel",
-  motDePasseNouveau: "Nouveau mot de passe (12 caractères au moins)",
-  motDePasseBouton: "Le changer",
-  motDePasseEnvoi: "Changement…",
-  motDePasseFait: "C’est fait. La prochaine connexion se fera avec le nouveau.",
-  motDePasseRate:
-    "Ça n’a pas abouti. Vérifiez le mot de passe actuel, puis réessayez.",
-  motDePasseCourt: "Le nouveau mot de passe demande au moins 12 caractères.",
+  noteCode:
+    "Il n’y a pas de mot de passe : chaque connexion envoie un code à 6 " +
+    "chiffres à votre courriel. Il sert une fois, pendant 10 minutes. Personne " +
+    "de TOTEM ne vous le demandera jamais.",
 
   console: "Console de la plateforme",
   consoleSous:

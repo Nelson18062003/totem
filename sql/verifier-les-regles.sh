@@ -259,6 +259,80 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# LES CARTES DE CHACUN, ET LE CODE QUI NE SERT QU'UNE FOIS.
+#
+# Un invité ne voit que les cartes qu'on lui a confiées : c'est la base qui
+# porte la liste, et elle doit refuser ce qui la rendrait fausse. Le code
+# d'entrée, lui, doit ouvrir UNE porte même quand dix mains le tapent
+# ensemble — on lance donc la rafale pour de vrai, comme pour le frein.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Les cartes de chacun"
+$P -d totem -c "
+  insert into utilisateurs(courriel, role, approuve)
+    values ('vendeur@essai.cm', 'invite', true);"
+VENDEUR=$($P -d totem -tAc "select id from utilisateurs where courriel = 'vendeur@essai.cm';")
+accepter "confier une carte à une personne" \
+  "insert into attributions(utilisateur, iccid) values ($VENDEUR, '89237010000000008901');"
+refuser "la même carte confiée deux fois à la même personne" \
+  "insert into attributions(utilisateur, iccid) values ($VENDEUR, '89237010000000008901');"
+refuser "un ICCID qui porte autre chose que des lettres et des chiffres" \
+  "insert into attributions(utilisateur, iccid) values ($VENDEUR, '8923'')--');"
+refuser "une carte confiée à un compte qui n'existe pas" \
+  "insert into attributions(utilisateur, iccid) values (999999, '89237020000000004432');"
+
+echo ""
+echo "Le code d'entrée ne sert qu'une fois"
+$P -d totem -tAc "select poser_un_code($VENDEUR, 'bonne', 600, 60);" >/dev/null
+second=$($P -d totem -tAc "select coalesce(poser_un_code($VENDEUR, 'autre', 600, 60)::text, 'refuse');")
+if [ "$second" = "refuse" ]; then
+  echo "  ✓ un second code demandé aussitôt ne remplace pas le premier"
+else
+  echo "  ✗ un second code a remplacé le premier aussitôt"
+  echecs=$((echecs + 1))
+fi
+RAFALE=$(mktemp)
+i=0
+while [ $i -lt 10 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select essayer_un_code($VENDEUR, 'bonne', 5);" > "$RAFALE.$i" 2>/dev/null &
+  i=$((i + 1))
+done
+wait
+ouvertes=$(cat "$RAFALE".* | grep -c '^t$' || true)
+rm -f "$RAFALE" "$RAFALE".*
+if [ "$ouvertes" = "1" ]; then
+  echo "  ✓ dix entrées lancées ensemble avec le bon code n'ouvrent qu'une porte"
+else
+  echo "  ✗ dix entrées lancées ensemble avec le bon code ont ouvert $ouvertes porte(s)"
+  echecs=$((echecs + 1))
+fi
+$P -d totem -c "update codes_de_connexion set emis_le = now() - interval '1 hour';" >/dev/null 2>&1 || true
+$P -d totem -tAc "select poser_un_code($VENDEUR, 'bonne', 600, 60);" >/dev/null
+i=0
+while [ $i -lt 40 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select essayer_un_code($VENDEUR, 'faux-$i', 5);" >/dev/null 2>&1 &
+  i=$((i + 1))
+done
+wait
+apres=$($P -d totem -tAc "select essayer_un_code($VENDEUR, 'bonne', 5);")
+if [ "$apres" = "f" ]; then
+  echo "  ✓ après quarante essais faux en rafale, même le bon code est refusé"
+else
+  echo "  ✗ après quarante essais faux en rafale, le bon code ouvre encore"
+  echecs=$((echecs + 1))
+fi
+accepter "effacer un compte efface ses cartes et son code" \
+  "delete from utilisateurs where id = $VENDEUR;
+   do \$\$ begin
+     if exists (select 1 from attributions where utilisateur = $VENDEUR)
+        or exists (select 1 from codes_de_connexion where utilisateur = $VENDEUR) then
+       raise exception 'restes';
+     end if;
+   end \$\$;"
+
+# ---------------------------------------------------------------------------
 # PERSONNE NE LIT LA BASE EN DIRECT.
 # ---------------------------------------------------------------------------
 echo ""

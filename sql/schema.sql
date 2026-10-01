@@ -278,9 +278,10 @@ create table if not exists utilisateurs (
   -- En MINUSCULES, sans espaces : deux écritures d'une même adresse feraient
   -- deux comptes qu'on croirait un seul.
   courriel    text not null unique,
-  -- L'empreinte, jamais le mot de passe :
-  -- « pbkdf2$sha256$210000$<sel>$<empreinte> ». Voir web/lib/motdepasse.ts.
-  empreinte   text not null,
+  -- Plus utilisée depuis l'entrée par code (migration du 1er octobre 2026) :
+  -- vide sur tous les comptes. Elle reste pour qu'une base ancienne et une
+  -- base neuve aient la même forme.
+  empreinte   text,
   -- « proprietaire » ou « invite ». Le PREMIER compte créé est le
   -- propriétaire : personne n'est là pour l'approuver.
   role        text not null default 'invite',
@@ -604,6 +605,155 @@ comment on table versions is
 
 create index if not exists versions_envoyees_idx
   on versions (envoyee_le) where envoyee_le is not null;
+
+-- ---------------------------------------------------------------------------
+-- L'entrée par code, et les cartes de chacun.
+-- (Voir migrations/20261001_codes-et-cartes.sql, qui se vérifie elle-même.)
+-- ---------------------------------------------------------------------------
+
+-- ===========================================================================
+-- 1. LES CARTES DE CHACUN
+-- ===========================================================================
+--
+-- Une ligne = « cette personne voit cette carte ». Une carte peut être
+-- confiée à plusieurs personnes (deux vendeurs sur la même caisse), une
+-- personne peut tenir plusieurs cartes.
+--
+-- La carte est désignée par son ICCID — le seul nom d'une puce qui ne change
+-- jamais — et pas par la ligne de « cartes » : une puce changée de boîtier a
+-- deux lignes là-bas, et reste la même caisse pour la personne qui la tient.
+--
+-- Le propriétaire n'a pas besoin de ligne ici : il voit tout, toujours.
+-- Supprimer un compte efface ses attributions avec lui (« on delete
+-- cascade ») : une attribution orpheline rouvrirait un jour la carte à
+-- quelqu'un qui reprendrait le même numéro de compte.
+
+create table if not exists attributions (
+  utilisateur  bigint not null references utilisateurs(id) on delete cascade,
+  iccid        text not null,
+  attribuee_le timestamptz not null default now(),
+  primary key (utilisateur, iccid)
+);
+
+alter table attributions add column if not exists attribuee_le timestamptz
+  not null default now();
+
+-- La forme d'un ICCID, rien d'autre : la plateforme le recopie dans ses
+-- requêtes, et la base est le dernier endroit où l'on peut l'exiger.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'attributions_iccid_forme') then
+    alter table attributions add constraint attributions_iccid_forme
+      check (iccid ~ '^[A-Za-z0-9]{1,32}$');
+  end if;
+end $$;
+
+create index if not exists attributions_iccid on attributions (iccid);
+
+comment on table attributions is
+  'Quelle personne voit quelle carte SIM. Le propriétaire voit tout et n''a '
+  'pas de ligne ici ; un invité sans ligne ne voit rien.';
+
+alter table attributions enable row level security;
+
+
+-- ===========================================================================
+-- 2. L'ENTRÉE PAR CODE
+-- ===========================================================================
+--
+-- UNE ligne par compte, au plus : demander un nouveau code remplace l'ancien.
+-- Le code lui-même n'est JAMAIS rangé — seulement son empreinte, calculée par
+-- la plateforme avec son secret de signature. Une base volée ne donne donc
+-- aucun code utilisable, même valide.
+
+create table if not exists codes_de_connexion (
+  utilisateur bigint primary key references utilisateurs(id) on delete cascade,
+  empreinte   text not null,
+  expire_le   timestamptz not null,
+  essais      integer not null default 0,
+  emis_le     timestamptz not null default now()
+);
+
+alter table codes_de_connexion add column if not exists essais  integer not null default 0;
+alter table codes_de_connexion add column if not exists emis_le timestamptz not null default now();
+
+comment on table codes_de_connexion is
+  'Le code d''entrée en cours de chaque compte — son empreinte, jamais le '
+  'code. Une seule ligne par compte, effacée dès que le code a servi.';
+
+alter table codes_de_connexion enable row level security;
+
+-- POSER UN CODE. Rend « true » si le code est posé, NULL sinon.
+--
+-- Un nouveau code ne remplace l'ancien que si celui-ci a plus de `delai_s`
+-- secondes : sans cette borne, n'importe qui pourrait, en boucle, remplir la
+-- boîte de quelqu'un — et, à chaque nouveau code, remettre à zéro le compte
+-- des essais faux. La condition vit DANS l'écriture : lire puis écrire
+-- laisserait passer une rafale (la leçon du frein).
+create or replace function poser_un_code(
+  le_compte bigint, l_empreinte text, duree_s integer, delai_s integer)
+returns boolean
+language sql
+set search_path = public
+as $$
+  insert into public.codes_de_connexion (utilisateur, empreinte, expire_le, essais, emis_le)
+  values (le_compte, l_empreinte, now() + make_interval(secs => duree_s), 0, now())
+  on conflict (utilisateur) do update
+    set empreinte = excluded.empreinte,
+        expire_le = excluded.expire_le,
+        essais    = 0,
+        emis_le   = now()
+    where codes_de_connexion.emis_le <= now() - make_interval(secs => delai_s)
+  returning true;
+$$;
+
+-- ESSAYER UN CODE. Rend « true » une fois, et une seule.
+--
+-- Tout se joue sur UNE ligne verrouillée : l'essai est COMPTÉ avant d'être
+-- jugé, si bien que cinquante essais lancés ensemble ne lisent pas tous
+-- « zéro essai » ; et le bon code EFFACE la ligne sous le même verrou, si
+-- bien que deux entrées simultanées avec le même code n'ouvrent qu'une porte.
+create or replace function essayer_un_code(
+  le_compte bigint, l_empreinte text, max_essais integer)
+returns boolean
+language plpgsql
+set search_path = public
+as $$
+declare
+  attendue text;
+begin
+  update public.codes_de_connexion
+     set essais = essais + 1
+   where utilisateur = le_compte
+     and expire_le > now()
+     and essais < max_essais
+  returning empreinte into attendue;
+
+  if attendue is null then
+    return false;
+  end if;
+  if attendue = l_empreinte then
+    delete from public.codes_de_connexion where utilisateur = le_compte;
+    return true;
+  end if;
+  return false;
+end $$;
+
+
+-- ===========================================================================
+-- 3. LES EMPREINTES DE MOT DE PASSE S'EN VONT
+-- ===========================================================================
+--
+-- On n'entre plus par mot de passe : l'empreinte n'a plus d'usage, et une
+-- empreinte gardée sans usage est une chose de plus à voler. Le compte reste,
+-- son courriel reste, ses cartes restent — il entrera par code.
+--
+-- (La clé de secours, elle, ne vit pas en base : elle reste dans les
+-- variables d'environnement de l'hébergeur, et ouvre toujours.)
+
+alter table utilisateurs alter column empreinte drop not null;
+update utilisateurs set empreinte = null where empreinte is not null;
+
 
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;

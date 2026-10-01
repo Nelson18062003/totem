@@ -23,6 +23,9 @@ import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 // justement en demander un. Ce qui les rend sûres n'est pas une porte fermée,
 // c'est qu'un compte neuf n'ouvre RIEN tant que le propriétaire ne l'a pas
 // approuvé (voir lib/porte.ts).
+// « /api/code » est la première moitié de l'entrée : on y demande le code
+// qu'on tapera ensuite. Elle ne dit rien de personne (la même réponse pour
+// une adresse connue ou inconnue) et le frein la garde.
 // « /confidentialite » est ouverte parce que Google Play l'exige à une
 // adresse publique : un examinateur l'ouvre sans compte, depuis un lien collé
 // dans un formulaire. Derrière le verrou, l'application serait refusée sans
@@ -33,6 +36,7 @@ import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 const OUVERT = ["/connexion", "/inscription", "/confidentialite",
                 "/suppression",
                 "/api/connexion", "/api/deconnexion", "/api/inscription",
+                "/api/code",
                 "/api/session", "/api/plateforme"];
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
@@ -130,10 +134,13 @@ export async function middleware(req: NextRequest) {
     return passer();
   }
   // Le bilan CSV : la signature couvre le NOMBRE DE JOURS demandé — un lien
-  // signé pour la semaine n'ouvre pas le trimestre.
+  // signé pour la semaine n'ouvre pas le trimestre — ET pour qui il a été
+  // fait : le bilan d'un vendeur ne porte que ses cartes.
   const jours = req.nextUrl.searchParams.get("jours");
+  const qui = req.nextUrl.searchParams.get("q");
   if (pathname === "/api/bilan" && jours && /^\d{1,2}$/.test(jours)
-      && await verifierLien(secret, "bilan", jours,
+      && qui && /^(?:tout|c\d{1,12})$/.test(qui)
+      && await verifierLien(secret, "bilan", `${jours}.${qui}`,
            req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return passer();
   }

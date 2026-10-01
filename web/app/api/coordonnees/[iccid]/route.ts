@@ -1,4 +1,5 @@
 import { chargerDonnees } from "@/lib/serveur";
+import { TOUT, porteeDe } from "@/lib/portee";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { pdfCoordonnees } from "@/lib/pdf-rib";
 import { textesAccueil } from "@noyau/textes/accueil";
@@ -33,7 +34,11 @@ export async function GET(
     return Response.json(
       { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
   }
-  const { sims } = await chargerDonnees(langue, { sms: 0, recus: 0 });
+  // Avec une session : la carte doit être dans SA portée. Sans session, la
+  // main tient un lien signé — et un lien ne se signe que pour une carte que
+  // le demandeur voit (voir …/lien) : la signature EST la vérification.
+  const portee = (await porteeDe(req)) ?? TOUT;
+  const { sims } = await chargerDonnees(langue, portee, { sms: 0, recus: 0 });
   const carte = sims.find((s) => s.iccid === iccid);
   if (!carte) {
     return Response.json(

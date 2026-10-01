@@ -2,22 +2,24 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { compteConnecte, estProprietaire } from "@/lib/qui";
 import {
-  definirApprobation, listerUtilisateurs, relie, supprimerUtilisateur,
-  utilisateurParId,
+  attribuerCarte, chargerDonnees, definirApprobation, listerAttributions,
+  listerUtilisateurs, relie, retirerCarte, supprimerUtilisateur, utilisateurParId,
 } from "@/lib/serveur";
 import { creerParLeProprietaire } from "@/lib/porte";
+import { TOUT } from "@/lib/portee";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Les comptes de la plateforme — réservé au propriétaire.
+ * Les comptes de la plateforme, et les cartes de chacun — réservé au
+ * propriétaire.
  *
- * C'est ici qu'il ouvre la porte à quelqu'un, la referme, ou supprime un
- * compte. Un compte créé n'ouvre rien tant qu'il n'est pas passé par là :
- * l'inscription est libre, l'accès ne l'est pas.
+ * C'est ici qu'il ouvre la porte à quelqu'un, la referme, supprime un compte,
+ * et CONFIE ses cartes : un invité ne voit que les cartes qu'on lui a
+ * confiées, et rien du tout tant qu'on ne lui en a confié aucune.
  *
- * Ce qui sort d'ici ne contient JAMAIS d'empreinte de mot de passe — la
- * fonction qui liste ne va même pas la chercher en base.
+ * Le navigateur (Réglages, console) et le téléphone parlent à la MÊME route :
+ * une seule règle, deux écrans.
  */
 export async function GET(req: Request) {
   const langue = await langueDemandee(req);
@@ -28,7 +30,25 @@ export async function GET(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
-  return Response.json({ comptes: await listerUtilisateurs() });
+  // Les comptes, chacun avec ses cartes ; et TOUTES les cartes de la maison,
+  // pour qu'on puisse en confier une — présentes ou retirées, puisqu'une
+  // carte retirée garde ses SMS passés.
+  const [comptes, attributions, { sims }] = await Promise.all([
+    listerUtilisateurs(),
+    listerAttributions(),
+    chargerDonnees(langue, TOUT, { sms: 0, recus: 0 }),
+  ]);
+  return Response.json({
+    comptes: comptes.map((c) => ({
+      ...c,
+      // Le propriétaire n'a pas de liste : il voit tout, toujours.
+      cartes: c.role === "proprietaire" ? null : attributions.get(c.id) ?? [],
+    })),
+    cartes: sims.map((s) => ({
+      iccid: s.iccid, libelle: s.libelle, operateur: s.operateur,
+      numero: s.numero, nom: s.nom, enPlace: s.enPlace,
+    })),
+  });
 }
 
 export async function POST(req: Request) {
@@ -44,14 +64,14 @@ export async function POST(req: Request) {
   // CRÉER un compte ne vise aucun identifiant : il n'en existe pas encore.
   // Ce geste passe donc avant les contrôles qui en réclament un.
   if (geste === "creer") {
-    const r = await creerParLeProprietaire(corps?.courriel, corps?.motdepasse, langue);
-    // 201 : le compte est créé. `Entree` rend toujours une décision, et
-    // celle-ci se lit « c'est fait » — voir `creerParLeProprietaire`.
-    return Response.json(
-      r.ok || (!r.ok && r.statut === 201)
-        ? { ok: true }
-        : { erreur: (r as { erreur: string }).erreur },
-      { status: r.ok ? 200 : r.statut === 201 ? 201 : r.statut });
+    // Un courriel, et c'est tout : la personne entrera par un code. L'adresse
+    // de la plateforme part dans la lettre d'invitation — celle par laquelle
+    // le propriétaire est venu, donc la bonne.
+    const r = await creerParLeProprietaire(
+      corps?.courriel, new URL(req.url).origin, langue);
+    return r.ok
+      ? Response.json({ ok: true, id: r.id }, { status: 201 })
+      : Response.json({ erreur: r.erreur }, { status: r.statut });
   }
 
   const id = Number(corps?.id);
@@ -88,6 +108,38 @@ export async function POST(req: Request) {
   if (vise?.role === "proprietaire" && (geste === "supprimer" || geste === "fermer")) {
     return Response.json(
       { erreur: erreurApi(langue, "pasLeProprietaire") }, { status: 400 });
+  }
+
+  // CONFIER UNE CARTE, OU LA REPRENDRE. Seulement à un invité : le
+  // propriétaire voit tout, une liste ne lui ajouterait rien — et une carte
+  // seulement si la maison la connaît, pour qu'une faute de frappe ne
+  // fabrique pas une attribution vers une carte qui n'existe pas.
+  if (geste === "attribuer" || geste === "retirer") {
+    const iccid = typeof corps?.iccid === "string" ? corps.iccid : "";
+    if (!/^[A-Za-z0-9]{1,32}$/.test(iccid)) {
+      return Response.json(
+        { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
+    }
+    if (!vise) {
+      return Response.json(
+        { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 404 });
+    }
+    if (vise.role === "proprietaire") {
+      return Response.json(
+        { erreur: erreurApi(langue, "proprietaireVoitTout") }, { status: 400 });
+    }
+    if (geste === "attribuer") {
+      const { sims } = await chargerDonnees(langue, TOUT, { sms: 0, recus: 0 });
+      if (!sims.some((s) => s.iccid === iccid)) {
+        return Response.json(
+          { erreur: erreurApi(langue, "carteInconnue") }, { status: 404 });
+      }
+    }
+    const fait = geste === "attribuer"
+      ? await attribuerCarte(id, iccid) : await retirerCarte(id, iccid);
+    return fait
+      ? Response.json({ ok: true })
+      : Response.json({ erreur: erreurApi(langue, "nonEnregistre") }, { status: 502 });
   }
 
   const ok = geste === "approuver" ? await definirApprobation(id, true)

@@ -11,11 +11,12 @@ const en = {
   sousTitre:
     "Your Mobile Money SIM cards stay in the country. From here you run " +
     "them — every card, every receipt — wherever you are.",
-  reserve: "For the terminal's owner only.",
-  motDePasse: "Password",
+  reserve: "For the owner and the people they invited.",
+  // Le champ de la clé de secours — le seul mot de passe qui reste.
+  motDePasse: "Recovery key",
   verification: "Checking…",
   seConnecter: "Sign in",
-  motDePasseIncorrect: "Wrong password.",
+  motDePasseIncorrect: "Wrong recovery key.",
   connexionImpossible: "Can't sign in right now. Try again.",
   notePin:
     "The Mobile Money PIN is never asked for here. It is only entered " +
@@ -38,7 +39,7 @@ const en = {
   plateformeCherche: "Looking for the platform…",
   plateformeTrouvee: "TOTEM found",
   plateformeAbsente:
-    "No TOTEM at this address. The password will not be sent there.",
+    "No TOTEM at this address. Your email will not be sent there.",
   plateformeInjoignable:
     "This address does not answer. Check your connection, then the address.",
   // La panne vue des écrans de données : sans cette phrase, c'est le
@@ -51,8 +52,8 @@ const en = {
   // de l'application, où le contrôle des secrets les attend au tournant. La
   // marche à suivre est dans docs/CLOUD.md, à sa place.
   plateformeNonConfiguree:
-    "The TOTEM is here, but sign-in has not been set up on it yet. No " +
-    "password can work until the platform's settings are filled in on Vercel.",
+    "The TOTEM is here, but sign-in has not been set up on it yet. Nobody " +
+    "can get in until the platform's settings are filled in on Vercel.",
   changerAdresse: "Change the address",
   adresseAide:
     "The web address of your platform, the one Vercel gave you. It starts " +
@@ -68,13 +69,26 @@ const en = {
   jAiDejaUnCompte: "I already have an account",
   inscriptionTitre: "Create your account",
   inscriptionSousTitre:
-    "The first account created is the owner's. The ones after it wait for " +
-    "the owner to open the door.",
+    "The first account created is the owner's. Every account after it is " +
+    "created by the owner.",
   premierCompte:
-    "No account exists yet. The one you create now will be the owner's.",
-  motDePasseConseil: "At least 12 characters. Length beats complication.",
-  confirmerMotDePasse: "Repeat the password",
-  motsDePasseDifferents: "The two passwords are not the same.",
+    "No account exists yet. The one you create now will be the owner's. A " +
+    "code will be sent to this email to open it.",
+
+  // --- L'entrée par code ------------------------------------------------
+  // Deux temps : le courriel, puis le code reçu. Pas de mot de passe.
+  recevoirCode: "Receive a code",
+  envoiDuCode: "Sending…",
+  codeRecu: "Code received by email",
+  codeAide: (courriel: string) =>
+    `If ${courriel} has access, a 6-digit code has just been sent to it. ` +
+    "Look in the spam folder too. It works once, for 10 minutes.",
+  renvoyer: "Send a new code",
+  renvoyerDans: (s: number) => `New code possible in ${s} s`,
+  autreAdresse: "Use another address",
+  codesIndisponibles:
+    "Sign-in codes cannot be sent from this platform yet (email sending is " +
+    "not set up). The recovery key still works.",
   compteCree: "Account created.",
   compteEnAttenteTitre: "Your account is waiting",
   compteEnAttenteTexte:
@@ -92,11 +106,11 @@ const fr: typeof en = {
   sousTitre:
     "Vos cartes SIM Mobile Money restent au pays. D’ici, vous les pilotez — " +
     "chaque carte, chaque reçu — d’où que vous soyez.",
-  reserve: "Accès réservé au propriétaire du terminal.",
-  motDePasse: "Mot de passe",
+  reserve: "Accès réservé au propriétaire et aux personnes qu’il a invitées.",
+  motDePasse: "Clé de secours",
   verification: "Vérification…",
   seConnecter: "Se connecter",
-  motDePasseIncorrect: "Mot de passe incorrect.",
+  motDePasseIncorrect: "Clé de secours incorrecte.",
   connexionImpossible: "Connexion impossible pour l’instant. Réessayez.",
   notePin:
     "Le code PIN Mobile Money n’est jamais demandé ici. Il ne se saisit " +
@@ -109,15 +123,15 @@ const fr: typeof en = {
   plateformeCherche: "Recherche de la plateforme…",
   plateformeTrouvee: "TOTEM trouvé",
   plateformeAbsente:
-    "Aucun TOTEM à cette adresse. Le mot de passe n’y sera pas envoyé.",
+    "Aucun TOTEM à cette adresse. Votre courriel n’y sera pas envoyé.",
   plateformeInjoignable:
     "Cette adresse ne répond pas. Vérifiez la connexion, puis l’adresse.",
   reseauEnPanne:
     "La plateforme ne répond pas. Vérifiez la connexion, puis réessayez.",
   plateformeNonConfiguree:
     "Le TOTEM est bien là, mais la connexion n’y est pas encore configurée. " +
-    "Aucun mot de passe ne peut marcher tant que les réglages de la " +
-    "plateforme ne sont pas remplis sur Vercel.",
+    "Personne ne peut entrer tant que les réglages de la plateforme ne sont " +
+    "pas remplis sur Vercel.",
   changerAdresse: "Changer l’adresse",
   adresseAide:
     "L’adresse web de votre plateforme, celle que Vercel vous a donnée. Elle " +
@@ -132,14 +146,24 @@ const fr: typeof en = {
   jAiDejaUnCompte: "J’ai déjà un compte",
   inscriptionTitre: "Créez votre compte",
   inscriptionSousTitre:
-    "Le premier compte créé est celui du propriétaire. Les suivants attendent " +
-    "qu’il leur ouvre la porte.",
+    "Le premier compte créé est celui du propriétaire. Tous les suivants, " +
+    "c’est lui qui les crée.",
   premierCompte:
     "Aucun compte n’existe encore. Celui que vous créez maintenant sera celui " +
-    "du propriétaire.",
-  motDePasseConseil: "Au moins 12 caractères. La longueur vaut mieux que la complication.",
-  confirmerMotDePasse: "Répétez le mot de passe",
-  motsDePasseDifferents: "Les deux mots de passe ne sont pas les mêmes.",
+    "du propriétaire. Un code partira à ce courriel pour l’ouvrir.",
+
+  recevoirCode: "Recevoir un code",
+  envoiDuCode: "Envoi…",
+  codeRecu: "Code reçu par courriel",
+  codeAide: (courriel: string) =>
+    `Si ${courriel} a un accès, un code à 6 chiffres vient d’y être envoyé. ` +
+    "Regardez aussi dans les indésirables. Il sert une fois, pendant 10 minutes.",
+  renvoyer: "Envoyer un nouveau code",
+  renvoyerDans: (s: number) => `Nouveau code possible dans ${s} s`,
+  autreAdresse: "Utiliser une autre adresse",
+  codesIndisponibles:
+    "Les codes ne peuvent pas encore partir de cette plateforme (l’envoi des " +
+    "courriels n’est pas réglé). La clé de secours fonctionne toujours.",
   compteCree: "Compte créé.",
   compteEnAttenteTitre: "Votre compte attend",
   compteEnAttenteTexte:

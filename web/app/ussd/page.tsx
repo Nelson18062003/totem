@@ -1,5 +1,6 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 import { textesUssd } from "@noyau/textes/ussd";
 import { Vide } from "../vide";
 import { ConsoleUssd } from "./console";
@@ -14,7 +15,7 @@ export default async function CodeUssd({
   const langue = await langueServeur();
   const t = textesUssd[langue];
   const [{ sims, raccourcis }, { code }] = await Promise.all([
-    chargerDonnees(langue, { sms: 0, recus: 0 }),
+    chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 0, recus: 0 }),
     searchParams,
   ]);
   // TOUTES les cartes en place : le cadran compose sur la carte choisie —

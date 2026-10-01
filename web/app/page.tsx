@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
 import { chargerDonnees } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { AccueilGuichet } from "./accueil-client";
 import { DerniersSms } from "./derniers-sms";
@@ -16,7 +17,7 @@ export default async function Accueil() {
   // Uniquement pour la salutation : on lit qui est connecté.
   const moi = await compteConnecte();
   const t = textesAccueil[langue];
-  const { terminal, sims, paiements, raccourcis } = await chargerDonnees(langue, { sms: 30, recus: 60 });
+  const { terminal, sims, paiements, raccourcis } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 30, recus: 60 });
   // TOUTES les cartes en place — Orange ET MTN, chacune avec son solde. Si
   // plus aucune n'est « en place » (terminal muet, cloud en retard), on
   // montre quand même les cartes connues, avec leur état dit franchement :

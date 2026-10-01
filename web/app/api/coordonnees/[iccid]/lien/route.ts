@@ -1,6 +1,7 @@
 import { signerLien } from "@/lib/lien-signe";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
+import { RIEN, porteeDe, voitLaCarte } from "@/lib/portee";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,12 @@ export async function GET(
   if (!/^\w{1,32}$/.test(iccid)) {
     return Response.json(
       { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
+  }
+  // On ne signe un laissez-passer que pour une carte qu'on a le droit de
+  // voir : le lien, lui, ne reposera plus la question.
+  if (!voitLaCarte((await porteeDe(req)) ?? RIEN, iccid)) {
+    return Response.json(
+      { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 404 });
   }
   const u = new URL(req.url);
   const secret = process.env.SESSION_SECRET || "";
