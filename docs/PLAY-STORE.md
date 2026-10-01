@@ -72,8 +72,8 @@ un accès spécial » et remplir :
 | Mot de passe | celui choisi |
 | Instructions | « Sign in with the email and password above. The app shows the Mobile Money SIM cards held in the owner's terminal. » |
 
-⚠️ **Ce compte voit tout ce que voit le propriétaire** — le rattachement des
-SIM à une personne n'existe pas encore. Supprimez-le une fois l'examen
+⚠️ **Ce compte ne voit que les cartes que vous lui confiez** — confiez-lui-en
+une, sinon il verra une application vide. Supprimez-le une fois l'examen
 terminé : même écran, bouton *Supprimer*.
 
 ---

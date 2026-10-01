@@ -295,7 +295,7 @@ try {
   // aurait fallu livrer le sien.
   const MDP2 = "un-autre-mot-de-passe-long";
   const rCree = await poste("/api/comptes",
-    { geste: "creer", courriel: "Examen@Google.COM", motdepasse: MDP2 },
+    { geste: "creer", prenom: "Essai", nom: "Compte", courriel: "Examen@Google.COM", motdepasse: MDP2 },
     { authorization: `Bearer ${jetonProprio}` });
   verifier("le propriétaire peut créer un compte", rCree.status, 201);
 
@@ -314,22 +314,22 @@ try {
   verifier("mais il n'administre rien", rPasProprio.status, 403);
 
   const rInvitecree = await poste("/api/comptes",
-    { geste: "creer", courriel: "encore@exemple.cm", motdepasse: MDP2 },
+    { geste: "creer", prenom: "Essai", nom: "Compte", courriel: "encore@exemple.cm", motdepasse: MDP2 },
     { authorization: `Bearer ${jetonNouveau}` });
   verifier("un invité ne crée personne", rInvitecree.status, 403);
 
   const rDejaLa = await poste("/api/comptes",
-    { geste: "creer", courriel: "examen@google.com", motdepasse: MDP2 },
+    { geste: "creer", prenom: "Essai", nom: "Compte", courriel: "examen@google.com", motdepasse: MDP2 },
     { authorization: `Bearer ${jetonProprio}` });
   verifier("deux fois le même courriel : refusé", rDejaLa.status, 409);
 
   const rFaible = await poste("/api/comptes",
-    { geste: "creer", courriel: "faible@exemple.cm", motdepasse: "court" },
+    { geste: "creer", prenom: "Essai", nom: "Compte", courriel: "faible@exemple.cm", motdepasse: "court" },
     { authorization: `Bearer ${jetonProprio}` });
   verifier("un mot de passe trop court : refusé", rFaible.status, 400);
 
   const rAnonCree = await poste("/api/comptes",
-    { geste: "creer", courriel: "intrus@exemple.cm", motdepasse: MDP2 });
+    { geste: "creer", prenom: "Essai", nom: "Compte", courriel: "intrus@exemple.cm", motdepasse: MDP2 });
   verifier("sans session : refusé", rAnonCree.status, 401);
 
   console.log("\nLe propriétaire referme");

@@ -54,6 +54,9 @@ const en = {
   // Un « refus » qui n'en est pas un : le compte EST créé. La porte
   // rend toujours une décision, et celle-ci se lit « c'est fait ».
   compteCree: "account created",
+  nomManquant: "the first name and the last name are both needed",
+  proprietaireVoitTout: "the owner already sees every card",
+  carteInconnue: "this card is not known to the platform",
 };
 
 const fr: typeof en = {
@@ -92,6 +95,9 @@ const fr: typeof en = {
     "le compte du propriétaire ne se ferme ni ne se supprime — la plateforme "
     + "resterait sans propriétaire.",
   compteCree: "compte créé",
+  nomManquant: "il faut le prénom et le nom",
+  proprietaireVoitTout: "le propriétaire voit déjà toutes les cartes",
+  carteInconnue: "cette carte n’est pas connue de la plateforme",
 };
 
 export const textesApi = { en, fr } as const;

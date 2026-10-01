@@ -38,8 +38,8 @@ page déjà entamée au lieu d'un vrai renvoi. D'où la porte du middleware.
 |---|---|---|
 | La flotte | chaque boîtier, son état de vie, sa santé en toutes lettres, son logiciel | `terminaux` |
 | Un terminal | sa fiche : cartes, journal, commandes, gestes interdits | `terminaux`, `cartes`, `evenements`, `commandes` |
-| Les cartes SIM | toutes les puces, présentes, retirées ou perdues de vue, leurs soldes | `cartes`, `comptes` |
-| Les gens et les appareils | les comptes, les téléphones prévenus, le frein de la porte | `utilisateurs`, `appareils`, `freins` |
+| Les cartes SIM | toutes les puces, présentes, retirées ou perdues de vue, leurs soldes, et **à qui chacune est confiée** | `cartes`, `comptes`, `attributions` |
+| Les gens et les appareils | les comptes — **on y crée un compte et on lui confie des cartes** —, les téléphones prévenus, le frein de la porte | `utilisateurs`, `attributions`, `appareils`, `freins` |
 | Les versions | qui porte quoi, qui est resté en arrière | `terminaux`, `versions` |
 | Commandes et journal | ce qui a été demandé et ce que les boîtiers ont écrit, filtrable par boîtier et par jour | `commandes`, `evenements`, `alertes` |
 | Les alertes | ce qui va mal et ce qu'on en a fait — vue n'est pas close | `alertes` |
@@ -53,10 +53,12 @@ Trois règles tiennent tous ces écrans, héritées des maquettes d'août
    mal », « on ne sait pas ». Une carte dont le boîtier s'est tu n'est pas
    retirée — on l'ignore, et c'est ce qui s'écrit. Jamais un zéro à la place
    d'une absence.
-3. **L'administrateur regarde, il n'opère pas.** Aucun geste d'argent
+3. **L'administrateur ne déplace pas d'argent.** Aucun geste d'argent
    n'existe dans la console — les gestes impossibles sont montrés barrés,
-   avec qui les fait vraiment. Ses deux seules écritures : « je l'ai vue »
-   et « c'est réglé », sur les alertes.
+   avec qui les fait vraiment. Ses écritures : « je l'ai vue » et « c'est
+   réglé » sur les alertes ; et, sur « Les gens », créer, bloquer ou
+   supprimer un compte, et lui confier ou reprendre des cartes (la même
+   section que Réglages → Qui peut se connecter, montrée aux deux endroits).
 
 ## Ce qui reste vide, et pourquoi c'est dit
 
@@ -87,10 +89,13 @@ Sans cette migration, la console marche quand même — flotte, cartes, gens,
 journal — et les écrans d'alertes et de versions disent, en toutes lettres,
 que leur registre n'existe pas encore.
 
-## Le mot de passe
+## Comment on y entre
 
-Chacun change LE SIEN, dans Réglages → Sécurité, avec la preuve de l'ancien
-— une session est un téléphone resté ouvert sur une table, la preuve est ce
-qui sépare « s'en servir » de « changer la serrure ». Les essais passent par
-le même frein que la porte de connexion. Le propriétaire, lui, recrée un
-compte depuis « Qui peut se connecter » quand quelqu'un a perdu le sien.
+À l'adresse de la plateforme suivie de `/console` — par exemple
+`https://totemlabs.app/console` — connecté avec le courriel et le mot de
+passe du propriétaire (ou la clé de secours). Sur le site, Réglages →
+« Console de la plateforme » y mène aussi.
+
+Sur le téléphone, il n'y a pas de console — mais ce qui compte au quotidien
+y est : Réglages → « Qui peut se connecter » crée les comptes et confie les
+cartes, exactement comme la page « Les gens ».

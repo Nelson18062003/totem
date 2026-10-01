@@ -1,4 +1,5 @@
-import { chargerFicheRecu } from "@/lib/serveur";
+import { chargerFicheRecu, recuVisible } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 
 export const dynamic = "force-dynamic";
 
@@ -8,11 +9,12 @@ export const dynamic = "force-dynamic";
  * est en place, au lieu de le promettre sur un minuteur.
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ numero: string }> },
 ) {
   const { numero } = await params;
-  const fiche = await chargerFicheRecu(numero);
+  const visible = await recuVisible(numero, (await porteeDe(req)) ?? RIEN);
+  const fiche = visible ? await chargerFicheRecu(numero) : null;
   return Response.json(fiche ?? { etabliLe: null }, {
     headers: { "cache-control": "private, no-store" },
   });

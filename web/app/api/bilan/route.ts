@@ -5,6 +5,7 @@ import { jourLocal, type Paiement } from "@noyau/types";
 import { debutDeFenetre } from "@noyau/analyse";
 import { FUSEAU } from "@/lib/fuseau";
 import type { Langue } from "@noyau/langue";
+import { porteeDe, porteeDuLienDeBilan } from "@/lib/portee";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,13 @@ export async function GET(req: Request) {
   const maintenant = Date.now();
   const depuis = debutDeFenetre(maintenant, FUSEAU, jours);
 
-  const { paiements, smsTronques } = await chargerDonnees(langue, {
+  // Avec une session, la portée de la personne. Sans session, la main tient
+  // un lien signé : il dit pour QUI il a été fait, et c'est cette personne-là
+  // — relue maintenant — dont on rend les cartes.
+  const adresse = new URL(req.url).searchParams;
+  const portee = (await porteeDe(req)) ?? await porteeDuLienDeBilan(
+    adresse.get("jours"), adresse.get("q"), adresse.get("e"), adresse.get("s"));
+  const { paiements, smsTronques } = await chargerDonnees(langue, portee, {
     sms: LIGNES_MAX,
     depuis: new Date(depuis - MARGE_RELEVE_MS).toISOString(),
     compter: true,

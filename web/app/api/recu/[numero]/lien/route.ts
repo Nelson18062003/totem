@@ -1,6 +1,8 @@
 import { signerLienRecu } from "@/lib/lien-signe";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
+import { recuVisible } from "@/lib/serveur";
+import { RIEN, porteeDe } from "@/lib/portee";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,11 @@ export async function GET(
   if (!/^[\w.-]{1,64}$/.test(numero)) {
     return Response.json(
       { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 400 });
+  }
+  // Un laissez-passer ne se signe que pour un reçu qu'on a le droit de voir.
+  if (!(await recuVisible(numero, (await porteeDe(req)) ?? RIEN))) {
+    return Response.json(
+      { erreur: erreurApi(langue, "recuIntrouvable") }, { status: 404 });
   }
   const u = new URL(req.url);
   const secret = process.env.SESSION_SECRET || "";

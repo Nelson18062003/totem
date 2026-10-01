@@ -358,6 +358,9 @@ export type CarteDuRegistre = {
   reseau: string;
   premiereVue: string | null;
   derniereVue: string | null;
+  /** Les courriels des personnes à qui cette carte est confiée. Le
+   *  propriétaire n'y figure pas : il voit tout, toujours. */
+  confieeA: string[];
 };
 
 export type RegistreDesCartes = {
@@ -592,6 +595,7 @@ function versCarte(
     reseau: compte?.reseau ?? "",
     premiereVue: c.premiere_vue,
     derniereVue: c.derniere_vue,
+    confieeA: [],
   };
 }
 
@@ -724,11 +728,22 @@ export async function chargerFicheTerminal(
 export async function chargerRegistreDesCartes(
   langue: Langue,
 ): Promise<RegistreDesCartes> {
-  const socle = await lireLeSocle(langue);
+  const [socle, attributions, utilisateurs] = await Promise.all([
+    lireLeSocle(langue),
+    lire<{ utilisateur: number; iccid: string }>("attributions?select=utilisateur,iccid"),
+    lire<{ id: number; courriel: string }>("utilisateurs?select=id,courriel"),
+  ]);
   const parId = new Map(socle.terminaux.map((t) => [t.id, t]));
+  const courrielDe = new Map(utilisateurs.map((u) => [u.id, u.courriel]));
 
   const cartes = socle.cartes
-    .map((c) => versCarte(c, socle.comptes, parId, socle.parId))
+    .map((c) => ({
+      ...versCarte(c, socle.comptes, parId, socle.parId),
+      confieeA: attributions
+        .filter((a) => a.iccid === c.iccid)
+        .map((a) => courrielDe.get(a.utilisateur))
+        .filter((x): x is string => Boolean(x)),
+    }))
     .sort(parEtatDeCarte);
 
   return {

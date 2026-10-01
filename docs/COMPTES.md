@@ -1,6 +1,6 @@
 # Les comptes
 
-> Qui peut ouvrir TOTEM, et comment on décide.
+> Qui peut ouvrir TOTEM, ce que chacun voit, et comment on décide.
 
 ---
 
@@ -49,8 +49,14 @@ ici.
 
 **Réglages → Qui peut se connecter → Créer un compte.**
 
-Le propriétaire saisit un courriel et un mot de passe qu'il choisit, et
-transmet ce mot de passe à la personne. Le compte naît **approuvé** — c'est
+Le propriétaire saisit le **prénom**, le **nom**, le **courriel** et un
+**mot de passe** qu'il choisit, et transmet ce mot de passe à la personne.
+Pendant la phase d'essai, personne ne s'inscrit seul : c'est lui qui pose
+chaque compte. Le nom sert à reconnaître la personne dans la liste —
+« vendeur2@gmail.com » ne dit pas qui c'est.
+
+On le fait au même endroit sur le site (**Console → Les gens**, ou Réglages)
+et sur le téléphone (**Réglages → Qui peut se connecter**). Le compte naît **approuvé** — c'est
 lui qui crée, et créer *est* décider ; une case à cocher ensuite ne servirait
 à rien. Il naît **invité**, jamais propriétaire : l'écran ne doit pas pouvoir
 fabriquer un second propriétaire, qui pourrait ensuite fermer la porte au
@@ -67,18 +73,37 @@ L'inscription libre, elle, reste fermée. C'est désormais le seul chemin.
 > à un examinateur — c'est-à-dire son mot de passe, sans moyen de le
 > reprendre autrement qu'en le changeant.
 
-### ⚠️ Ce qu'un compte créé voit
+### Ce qu'un compte créé voit : les cartes qu'on lui confie
 
-**Tout ce que voit le propriétaire.** Chaque carte, chaque message, chaque
-montant.
+**Rien, tant qu'on ne lui a pas confié de carte.** Sur chaque compte, la ligne
+« Cartes qu'il voit » et le bouton **Confier des cartes** : une case par carte
+SIM de la maison, présente dans le terminal ou retirée.
 
-Rattacher des SIM précises à une personne n'est pas construit (voir plus
-bas). L'écran de création le dit **avant** les champs, pas après : un
-avertissement qui arrive une fois le compte créé est un avertissement raté.
+| Qui | Ce qu'il voit |
+|---|---|
+| Le propriétaire | **toutes** les cartes |
+| La clé de secours | **toutes** les cartes |
+| Un invité | **seulement** les cartes qu'on lui a confiées |
+| Un invité sans carte | **rien** — et la page le dit en toutes lettres |
 
-Un compte se bloque ou se supprime d'un bouton, sur la même page. C'est la
-différence qui compte avec le fait de livrer son propre mot de passe : cela
-se reprend.
+« Voir » veut dire **partout** : les écrans, l'application du téléphone, la
+liste des SMS, les soldes, le bilan CSV, les reçus PDF, la fiche des
+coordonnées, la pastille des non-lus. La règle est écrite UNE fois
+(`web/lib/portee.ts`) et `chargerDonnees` exige une portée : une page qui
+l'oublierait ne compilerait pas.
+
+Une carte peut être confiée à plusieurs personnes ; une personne peut tenir
+plusieurs cartes. Reprendre une carte agit **tout de suite**, même sur un
+téléphone déjà connecté. **Console → Les cartes SIM** montre à qui chaque
+carte est confiée.
+
+Les liens signés (un reçu, un bilan ouverts dans le navigateur du téléphone)
+tiennent la même règle : un lien de reçu ne se signe que pour un reçu
+visible, et un lien de bilan porte **pour qui** il a été fait — réécrit pour
+« tout », il n'ouvre plus rien.
+
+Un compte se bloque ou se supprime d'un bouton, sur la même page. Supprimer
+un compte efface aussi ses cartes confiées.
 
 ### La clé de secours
 
@@ -129,7 +154,7 @@ Désormais, `/api/commande` est **réservée au propriétaire** :
 | Qui | Consulter les écrans | Déposer une demande au terminal |
 |---|---|---|
 | Personne (sans session) | non | non |
-| Invité approuvé | oui | **non** |
+| Invité approuvé | ses cartes | **non** |
 | Propriétaire | oui | oui |
 | Clé de secours | oui | oui |
 
@@ -157,17 +182,6 @@ tourner le calcul complet même quand le compte n'existe pas
 
 ---
 
-## Ce qui n'existe pas encore
-
-**Rattacher une carte SIM à une personne.** L'idée — « l'administrateur te
-donne les comptes qui sont à toi » — n'est pas construite. Tant qu'elle ne
-l'est pas, un compte approuvé voit **tout** ce que voit le propriétaire.
-
-C'est pourquoi l'approbation compte : n'approuvez que des personnes à qui vous
-montreriez l'écran par-dessus votre épaule.
-
----
-
 ## Installer
 
 1. Exécuter `migrations/20260829_consolidation.sql` dans Supabase
@@ -175,6 +189,12 @@ montreriez l'écran par-dessus votre épaule.
 2. Vérifier que `SESSION_SECRET` est posé sur Vercel — sans lui, aucune
    session ne peut être signée, et **le verrou n'est pas actif du tout**.
 3. Ouvrir la plateforme, créer le premier compte : c'est le vôtre.
+4. **Les cartes de chacun** : exécuter aussi
+   `migrations/20261001_consolidation.sql` (même chemin). Il ajoute la
+   liste des cartes confiées, le prénom et le nom des comptes, et se vérifie
+   lui-même. Il ne touche à aucun mot de passe. **À faire avant de mettre la
+   plateforme à jour** : sans lui, les invités ne voient rien.
+5. Confier ses cartes à chaque invité — jusque-là, il ne voit rien.
 
 `TOTEM_MOT_DE_PASSE` devient facultatif. Le garder donne la clé de secours ;
 ne pas le poser n'empêche rien, tant que Supabase répond.
@@ -184,7 +204,8 @@ ne pas le poser n'empêche rien, tant que Supabase répond.
 ## Vérifier
 
 ```sh
-cd web && node scripts/verifier-les-comptes.mjs
+cd web && node scripts/verifier-les-comptes.mjs   # la vie d'un compte
+cd web && node scripts/verifier-les-cartes.mjs    # chacun ne voit que ses cartes
 ```
 
 Il lance un vrai serveur et déroule la vie entière d'un compte : la première

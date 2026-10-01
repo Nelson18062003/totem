@@ -197,6 +197,12 @@ let prochainCompte = 1;
 // Les téléphones inscrits pour les notifications, par jeton.
 const appareils = new Map();
 
+// LES CARTES DE CHACUN — « attributions ». Une vraie table, avec ce que la
+// vraie base fait respecter : une carte une seule fois par personne, un
+// compte qui doit exister, et l'effacement d'un compte qui emporte ses cartes.
+// Sans ces règles ici, aucun harnais ne pourrait voir une portée qui fuit.
+const attributions = [];             // { utilisateur, iccid, attribuee_le }
+
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
 // Les essais de mot de passe comptés, comme la table « freins ».
@@ -378,6 +384,48 @@ const serveur = createServer(async (req, res) => {
     return repondre(n);
   }
 
+  // --- LES CARTES DE CHACUN -------------------------------------------------
+  if (chemin === "/rest/v1/attributions") {
+    const filtre = (nom) => {
+      const v = url.searchParams.get(nom);
+      return v ? decodeURIComponent(v.replace(/^eq\./, "")) : null;
+    };
+    if (req.method === "POST") {
+      let brut = "";
+      for await (const mm of req) brut += mm;
+      for (const a of [].concat(JSON.parse(brut || "[]"))) {
+        if (!utilisateurs.has(Number(a.utilisateur))) {
+          return repondre({ code: "23503", message: "violates foreign key constraint" }, 409);
+        }
+        if (!/^[A-Za-z0-9]{1,32}$/.test(String(a.iccid))) {
+          return repondre({ code: "23514", message: "attributions_iccid_forme" }, 400);
+        }
+        const deja = attributions.some(
+          (x) => x.utilisateur === Number(a.utilisateur) && x.iccid === a.iccid);
+        if (deja) {
+          // « resolution=ignore-duplicates » : la vraie base se tait ; sans,
+          // elle refuse. Le faux nuage fait pareil.
+          if (/ignore-duplicates/.test(req.headers.prefer || "")) continue;
+          return repondre({ code: "23505", message: "duplicate key" }, 409);
+        }
+        attributions.push({
+          utilisateur: Number(a.utilisateur), iccid: a.iccid, attribuee_le: maintenant(),
+        });
+      }
+      return repondre([], 201);
+    }
+    const u = filtre("utilisateur");
+    const i = filtre("iccid");
+    const vise = (x) => (u == null || x.utilisateur === Number(u)) && (i == null || x.iccid === i);
+    if (req.method === "DELETE") {
+      for (let k = attributions.length - 1; k >= 0; k--) {
+        if (vise(attributions[k])) attributions.splice(k, 1);
+      }
+      return repondre([], 204);
+    }
+    return repondre(attributions.filter(vise));
+  }
+
   // --- LES COMPTES -------------------------------------------------------
   if (chemin === "/rest/v1/utilisateurs") {
     const lignes = [...utilisateurs.values()];
@@ -422,6 +470,7 @@ const serveur = createServer(async (req, res) => {
         const ligne = {
           id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
           role: u.role ?? "invite", approuve: Boolean(u.approuve),
+          prenom: u.prenom ?? null, nom: u.nom ?? null,
           cree_le: maintenant(), vu_le: null,
         };
         utilisateurs.set(ligne.id, ligne);
@@ -452,7 +501,13 @@ const serveur = createServer(async (req, res) => {
             400);
         }
       }
-      for (const u of vise()) utilisateurs.delete(u.id);
+      for (const u of vise()) {
+        utilisateurs.delete(u.id);
+        // « on delete cascade » : ses cartes partent avec lui.
+        for (let k = attributions.length - 1; k >= 0; k--) {
+          if (attributions[k].utilisateur === u.id) attributions.splice(k, 1);
+        }
+      }
       return repondre([], 204);
     }
   }
@@ -514,6 +569,14 @@ const serveur = createServer(async (req, res) => {
           case "gt": return v != null && String(v) > valeur;
           case "lte": return v != null && String(v) <= valeur;
           case "lt": return v != null && String(v) < valeur;
+          // « in.("a","b") » — la portée d'un invité passe par là. Sans ce
+          // filtre, le faux nuage rendait TOUT, et la plateforme devait
+          // refiltrer seule : un harnais n'aurait pas vu un filtre oublié.
+          case "in": {
+            const liste = decodeURIComponent(valeur).replace(/^\(|\)$/g, "")
+              .split(",").map((x) => x.trim().replace(/^"|"$/g, "")).filter(Boolean);
+            return v != null && liste.includes(String(v));
+          }
           default: return true;
         }
       });

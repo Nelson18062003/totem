@@ -605,6 +605,69 @@ comment on table versions is
 create index if not exists versions_envoyees_idx
   on versions (envoyee_le) where envoyee_le is not null;
 
+-- ---------------------------------------------------------------------------
+-- Les cartes de chacun, et le nom des comptes.
+-- (Voir migrations/20261001_consolidation.sql, qui se vérifie elle-même.)
+-- ---------------------------------------------------------------------------
+
+-- ===========================================================================
+-- 1. LES CARTES DE CHACUN
+-- ===========================================================================
+--
+-- Une ligne = « cette personne voit cette carte ». Une carte peut être
+-- confiée à plusieurs personnes (deux vendeurs sur la même caisse), une
+-- personne peut tenir plusieurs cartes.
+--
+-- La carte est désignée par son ICCID — le seul nom d'une puce qui ne change
+-- jamais — et pas par la ligne de « cartes » : une puce changée de boîtier a
+-- deux lignes là-bas, et reste la même caisse pour la personne qui la tient.
+--
+-- Le propriétaire n'a pas besoin de ligne ici : il voit tout, toujours.
+-- Supprimer un compte efface ses attributions avec lui (« on delete
+-- cascade ») : une attribution orpheline rouvrirait un jour la carte à
+-- quelqu'un qui reprendrait le même numéro de compte.
+
+create table if not exists attributions (
+  utilisateur  bigint not null references utilisateurs(id) on delete cascade,
+  iccid        text not null,
+  attribuee_le timestamptz not null default now(),
+  primary key (utilisateur, iccid)
+);
+
+alter table attributions add column if not exists attribuee_le timestamptz
+  not null default now();
+
+-- La forme d'un ICCID, rien d'autre : la plateforme le recopie dans ses
+-- requêtes, et la base est le dernier endroit où l'on peut l'exiger.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'attributions_iccid_forme') then
+    alter table attributions add constraint attributions_iccid_forme
+      check (iccid ~ '^[A-Za-z0-9]{1,32}$');
+  end if;
+end $$;
+
+create index if not exists attributions_iccid on attributions (iccid);
+
+comment on table attributions is
+  'Quelle personne voit quelle carte SIM. Le propriétaire voit tout et n''a '
+  'pas de ligne ici ; un invité sans ligne ne voit rien.';
+
+alter table attributions enable row level security;
+
+
+-- ===========================================================================
+-- 2. LE PRÉNOM ET LE NOM
+-- ===========================================================================
+--
+-- Facultatifs en base : les comptes d'avant n'en ont pas, et le tout premier
+-- compte (celui du propriétaire) se crée sans. C'est l'écran du propriétaire
+-- qui les exige quand il crée quelqu'un.
+
+alter table utilisateurs add column if not exists prenom text;
+alter table utilisateurs add column if not exists nom    text;
+
+
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;
 alter table comptes    enable row level security;

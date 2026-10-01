@@ -259,6 +259,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# LES CARTES DE CHACUN.
+#
+# Un invité ne voit que les cartes qu'on lui a confiées : c'est la base qui
+# porte la liste, et elle doit refuser ce qui la rendrait fausse.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Les cartes de chacun"
+$P -d totem -c "
+  insert into utilisateurs(courriel, empreinte, role, approuve, prenom, nom)
+    values ('vendeur@essai.cm', 'x', 'invite', true, 'Jean', 'Vendeur');"
+VENDEUR=$($P -d totem -tAc "select id from utilisateurs where courriel = 'vendeur@essai.cm';")
+accepter "confier une carte à une personne" \
+  "insert into attributions(utilisateur, iccid) values ($VENDEUR, '89237010000000008901');"
+refuser "la même carte confiée deux fois à la même personne" \
+  "insert into attributions(utilisateur, iccid) values ($VENDEUR, '89237010000000008901');"
+refuser "un ICCID qui porte autre chose que des lettres et des chiffres" \
+  "insert into attributions(utilisateur, iccid) values ($VENDEUR, '8923'')--');"
+refuser "une carte confiée à un compte qui n'existe pas" \
+  "insert into attributions(utilisateur, iccid) values (999999, '89237020000000004432');"
+
+# LES MOTS DE PASSE SURVIVENT À LA MIGRATION. Une version de travail de ce
+# fichier effaçait toutes les empreintes (on devait entrer par un code) :
+# rejouée sur la base en service, elle aurait mis tout le monde dehors.
+$P -d totem -f migrations/20261001_consolidation.sql >/dev/null 2>&1 || true
+garde=$($P -d totem -tAc "select empreinte from utilisateurs where courriel = 'vendeur@essai.cm';")
+if [ "$garde" = "x" ]; then
+  echo "  ✓ rejouer la migration garde les mots de passe"
+else
+  echo "  ✗ rejouer la migration a touché un mot de passe ($garde)"
+  echecs=$((echecs + 1))
+fi
+accepter "effacer un compte efface ses cartes" \
+  "delete from utilisateurs where id = $VENDEUR;
+   do \$\$ begin
+     if exists (select 1 from attributions where utilisateur = $VENDEUR) then
+       raise exception 'restes';
+     end if;
+   end \$\$;"
+
+# ---------------------------------------------------------------------------
 # PERSONNE NE LIT LA BASE EN DIRECT.
 # ---------------------------------------------------------------------------
 echo ""

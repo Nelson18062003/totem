@@ -1,6 +1,7 @@
 import { signerLien } from "@/lib/lien-signe";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
+import { quiPourLien } from "@/lib/portee";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,17 @@ export async function GET(req: Request) {
   if (!secret) {
     return Response.json({ url: `${u.origin}/api/bilan?jours=${jours}` });
   }
-  const { expiration, signature } = await signerLien(secret, "bilan", jours);
+  // LA SIGNATURE COUVRE AUSSI « QUI ». Le bilan d'un vendeur ne porte que
+  // ses cartes ; un lien qui ne dirait pas pour qui il a été fait rendrait
+  // la caisse entière à quiconque le tient. La liste des cartes, elle, n'est
+  // pas dans le lien : elle est relue au moment où il sert.
+  const qui = await quiPourLien(req);
+  if (!qui) {
+    return Response.json(
+      { erreur: erreurApi(langue, "identifiantInvalide") }, { status: 401 });
+  }
+  const { expiration, signature } = await signerLien(secret, "bilan", `${jours}.${qui}`);
   return Response.json({
-    url: `${u.origin}/api/bilan?jours=${jours}&e=${expiration}&s=${signature}`,
+    url: `${u.origin}/api/bilan?jours=${jours}&q=${qui}&e=${expiration}&s=${signature}`,
   });
 }

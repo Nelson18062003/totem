@@ -162,7 +162,7 @@ try {
 
   console.log("\nL'INVITÉ : il entre dans l'application, jamais dans la console");
   await poste("/api/comptes",
-    { geste: "creer", courriel: "employe@essai.cm", motdepasse: MDP },
+    { geste: "creer", prenom: "Essai", nom: "Compte", courriel: "employe@essai.cm", motdepasse: MDP },
     { cookie: `totem_session=${patron}` });
   const employe = (await (await poste("/api/session",
     { courriel: "employe@essai.cm", motdepasse: MDP })).json()).jeton;
@@ -189,6 +189,22 @@ try {
       { motdepasse: SECOURS })).json()).jeton;
     const r = await page("/console", secours);
     verifier("la console s'ouvre avec la clé de secours", r.status, 200);
+  }
+
+  console.log("\nLES GENS : on confie une carte, la page des cartes le dit");
+  {
+    const liste = await (await fetch(B + "/api/comptes",
+      { headers: { cookie: `totem_session=${patron}` } })).json();
+    const idEmploye = liste.comptes.find((c) => c.courriel === "employe@essai.cm")?.id;
+    const r = await poste("/api/comptes",
+      { geste: "attribuer", id: idEmploye, iccid: "89237020000000004432" },
+      { cookie: `totem_session=${patron}` });
+    verifier("le propriétaire confie une carte", r.status, 200);
+    // La page des CARTES est rendue au serveur : elle doit dire à qui chaque
+    // carte est confiée, lu dans la base.
+    const cartes = await (await page("/console/cartes", patron)).text();
+    verifier("la page des cartes dit à qui la carte est confiée",
+      cartes.includes("employe@essai.cm"), true);
   }
 
   console.log("\nLE MOT DE PASSE : la preuve de l'ancien, ou rien");

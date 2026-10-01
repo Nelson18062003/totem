@@ -52,7 +52,9 @@ export type Entree =
   | { ok: true; jeton: string; sujet: string }
   | { ok: false; erreur: string; statut: number };
 
-function refus(langue: Langue, cle: Parameters<typeof erreurApi>[1], statut: number): Entree {
+function refus(
+  langue: Langue, cle: Parameters<typeof erreurApi>[1], statut: number,
+): Extract<Entree, { ok: false }> {
   return { ok: false, erreur: erreurApi(langue, cle), statut };
 }
 
@@ -227,14 +229,26 @@ export async function inscrire(
  * et l'écran des comptes ne doit pas pouvoir en fabriquer un second qui
  * pourrait ensuite fermer la porte au premier.
  *
+ * LE PROPRIÉTAIRE DONNE LE PRÉNOM, LE NOM, LE COURRIEL ET LE MOT DE PASSE.
+ * Pendant les essais, personne ne s'inscrit seul : c'est lui qui pose chaque
+ * personne, la nomme, et lui transmet son mot de passe. Le nom sert à la
+ * reconnaître dans la liste — « vendeur2@gmail.com » ne dit pas qui c'est.
+ *
+ * Le compte ne voit RIEN tant qu'on ne lui a pas confié de carte — voir
+ * lib/portee.ts.
+ *
  * QUI PEUT APPELER CECI : la route s'en assure (`estProprietaire`). Cette
  * fonction ne vérifie rien de tel — elle n'est appelée que de là.
  */
 export async function creerParLeProprietaire(
-  courrielBrut: unknown, motdepasse: unknown, langue: Langue,
-): Promise<Entree> {
-  const courriel = normaliserCourriel(courrielBrut);
+  identiteBrute: { prenom?: unknown; nom?: unknown; courriel?: unknown },
+  motdepasse: unknown, langue: Langue,
+): Promise<{ ok: true; id: number } | Extract<Entree, { ok: false }>> {
+  const courriel = normaliserCourriel(identiteBrute.courriel);
   if (!courrielAcceptable(courriel)) return refus(langue, "courrielInvalide", 400);
+  const prenom = nomPropre(identiteBrute.prenom);
+  const nom = nomPropre(identiteBrute.nom);
+  if (!prenom || !nom) return refus(langue, "nomManquant", 400);
   if (typeof motdepasse !== "string" || !motDePasseAcceptable(motdepasse)) {
     return refus(langue, "motDePasseTropCourt", 400);
   }
@@ -247,7 +261,7 @@ export async function creerParLeProprietaire(
   }
 
   const compte = await creerUtilisateur(
-    courriel, await empreinter(motdepasse), "invite", true);
+    courriel, await empreinter(motdepasse), "invite", true, { prenom, nom });
   // Deux créations lancées ensemble pour la même adresse : la vérification
   // faite plus haut a vu « libre » des deux côtés, la base n'en garde qu'une.
   // Ici le propriétaire parle à sa propre plateforme — on peut lui dire ce
@@ -258,5 +272,12 @@ export async function creerParLeProprietaire(
   // Aucune session n'est rendue : le propriétaire crée un compte POUR
   // QUELQU'UN D'AUTRE. Lui ouvrir une session par-dessus la sienne serait
   // un contresens, et le déconnecterait de son propre compte.
-  return refus(langue, "compteCree", 201);
+  return { ok: true, id: compte.id };
+}
+
+/** Un prénom ou un nom, tel qu'il s'affichera : sans espaces en trop, sans
+ *  caractères de contrôle, et borné — c'est un libellé, pas un texte. */
+function nomPropre(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
 }

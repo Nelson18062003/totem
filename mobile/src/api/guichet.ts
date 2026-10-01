@@ -392,24 +392,35 @@ export function essaiNotification(langue: Langue): Promise<{
   return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
 }
 
-/** Un compte de la plateforme, tel que la liste du propriétaire le montre. */
+/** Un compte de la plateforme, tel que la liste du propriétaire le montre :
+ *  avec les cartes qu'il voit — ou `null` pour le propriétaire, qui voit
+ *  tout. */
 export type CompteInscrit = {
-  id: number; courriel: string; role: string; approuve: boolean;
-  creeLe: string | null; vuLe: string | null;
+  id: number; courriel: string; prenom?: string; nom?: string;
+  role: string; approuve: boolean;
+  creeLe: string | null; vuLe: string | null; cartes: string[] | null;
 };
 
-/** La liste des comptes — réservée au propriétaire : 403 pour les autres,
- *  et l'écran se tait alors de lui-même, comme sur le web. */
-export function listerComptes(): Promise<{ comptes: CompteInscrit[] }> {
+/** Une carte de la maison, qu'on peut confier à quelqu'un. */
+export type CarteAConfier = {
+  iccid: string; libelle: string; operateur: string; numero: string;
+  nom: string; enPlace: boolean;
+};
+
+/** La liste des comptes et des cartes — réservée au propriétaire : 403 pour
+ *  les autres, et l'écran se tait alors de lui-même, comme sur le web. */
+export function listerComptes(): Promise<{ comptes: CompteInscrit[]; cartes?: CarteAConfier[] }> {
   return demander("/api/comptes");
 }
 
 /** Un geste du propriétaire sur un compte : laisser entrer, bloquer,
- *  supprimer — ou en créer un (l'inscription libre est fermée). */
+ *  supprimer, en créer un (l'inscription libre est fermée) — et confier ou
+ *  reprendre une carte. */
 export function agirSurCompte(
   corps:
     | { id: number; geste: "approuver" | "fermer" | "supprimer" }
-    | { geste: "creer"; courriel: string; motdepasse: string },
+    | { geste: "creer"; prenom: string; nom: string; courriel: string; motdepasse: string }
+    | { id: number; iccid: string; geste: "attribuer" | "retirer" },
 ): Promise<unknown> {
   return demander("/api/comptes", { method: "POST", body: JSON.stringify(corps) });
 }

@@ -130,10 +130,13 @@ export async function middleware(req: NextRequest) {
     return passer();
   }
   // Le bilan CSV : la signature couvre le NOMBRE DE JOURS demandé — un lien
-  // signé pour la semaine n'ouvre pas le trimestre.
+  // signé pour la semaine n'ouvre pas le trimestre — ET pour qui il a été
+  // fait : le bilan d'un vendeur ne porte que ses cartes.
   const jours = req.nextUrl.searchParams.get("jours");
+  const qui = req.nextUrl.searchParams.get("q");
   if (pathname === "/api/bilan" && jours && /^\d{1,2}$/.test(jours)
-      && await verifierLien(secret, "bilan", jours,
+      && qui && /^(?:tout|c\d{1,12})$/.test(qui)
+      && await verifierLien(secret, "bilan", `${jours}.${qui}`,
            req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return passer();
   }

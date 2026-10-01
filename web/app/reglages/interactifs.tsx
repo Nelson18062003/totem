@@ -579,33 +579,47 @@ export function BoutonDeconnexion() {
   );
 }
 
+/** Un compte tel que la route le rend : ses cartes, ou `null` pour le
+ *  propriétaire, qui voit tout. */
+type CompteAvecCartes = {
+  id: number; courriel: string; prenom?: string; nom?: string;
+  role: string; approuve: boolean;
+  creeLe: string | null; vuLe: string | null; cartes: string[] | null;
+};
+type CarteDeLaMaison = {
+  iccid: string; libelle: string; operateur: string; numero: string;
+  nom: string; enPlace: boolean;
+};
+
 /**
- * QUI PEUT SE CONNECTER — réservé au propriétaire.
+ * QUI PEUT SE CONNECTER, ET CE QUE CHACUN VOIT — réservé au propriétaire.
  *
- * L'inscription est libre : n'importe qui peut créer un compte. Ce n'est pas
- * une négligence, c'est le partage du travail. Un compte neuf n'ouvre RIEN ;
- * c'est ici, et seulement ici, qu'une porte s'ouvre.
+ * Personne ne s'inscrit seul : c'est ici que le propriétaire crée un compte —
+ * prénom, nom, courriel, et le mot de passe qu'il transmettra lui-même. Et
+ * c'est ici qu'il CONFIE des cartes : un invité ne voit que
+ * celles-là, et rien du tout tant qu'on ne lui en a confié aucune.
  *
- * La section ne s'affiche pas du tout pour un invité : la route répond 403,
- * et l'écran ne montre rien plutôt que de laisser une case vide et
- * mystérieuse. Le refus est déjà dit par le serveur ; le répéter à l'écran
- * n'apprendrait rien à personne.
+ * La même section vit dans les Réglages et dans la console (« Les gens ») :
+ * un seul écran pour un seul geste, montré aux deux endroits où on le cherche.
+ *
+ * Elle ne s'affiche pas du tout pour un invité : la route répond 403, et
+ * l'écran ne montre rien plutôt qu'une case vide et mystérieuse.
  */
-export function SectionQui() {
+export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) {
   const langue = useLangue();
   const t = textesReglages[langue];
-  const [comptes, setComptes] = useState<{
-    id: number; courriel: string; role: string; approuve: boolean;
-    creeLe: string | null; vuLe: string | null;
-  }[] | null>(null);
+  const [comptes, setComptes] = useState<CompteAvecCartes[] | null>(null);
+  const [cartes, setCartes] = useState<CarteDeLaMaison[]>([]);
   const [permis, setPermis] = useState<boolean | null>(null);
-  const [occupe, setOccupe] = useState<number | null>(null);
-  // L'échec d'une action de compte, à dire au propriétaire : fermer un
-  // accès qui n'aboutit pas ne doit jamais passer pour un succès.
-  const [rateAction, setRateAction] = useState(false);
-  // La création d'un compte : ouverte à la demande, pas affichée d'office.
-  // Ce n'est pas un geste de tous les jours.
+  const [occupe, setOccupe] = useState<string | null>(null);
+  // L'échec d'une action, à dire au propriétaire : retirer une carte qui
+  // n'aboutit pas ne doit jamais passer pour un succès.
+  const [rateAction, setRateAction] = useState<string | null>(null);
+  // Le compte dont on choisit les cartes, ou aucun.
+  const [enChoix, setEnChoix] = useState<number | null>(null);
   const [ouvrirCreation, setOuvrirCreation] = useState(false);
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
   const [courriel, setCourriel] = useState("");
   const [motdepasse, setMotdepasse] = useState("");
   const [creation, setCreation] = useState(false);
@@ -616,8 +630,9 @@ export function SectionQui() {
     try {
       const r = await fetch("/api/comptes", { cache: "no-store" });
       if (!r.ok) { setPermis(false); return; }
-      const { comptes } = await r.json();
-      setComptes(comptes ?? []);
+      const corps = await r.json();
+      setComptes(corps.comptes ?? []);
+      setCartes(corps.cartes ?? []);
       setPermis(true);
     } catch {
       setPermis(false);
@@ -626,54 +641,80 @@ export function SectionQui() {
 
   useEffect(() => { void charger(); }, [charger]);
 
-  async function agir(id: number, geste: "approuver" | "fermer" | "supprimer") {
-    if (geste === "supprimer" && !confirm(t.supprimerSur)) return;
-    setOccupe(id);
-    setRateAction(false);
+  async function envoyer(cle: string, corps: Record<string, unknown>) {
+    setOccupe(cle);
+    setRateAction(null);
     try {
-      // ON REGARDE SI ÇA A ABOUTI. Sans ce contrôle, un 403, une coupure
-      // réseau ou une panne serveur repassaient inaperçus : la liste se
-      // réaffichait inchangée et le propriétaire croyait avoir fermé un accès
-      // qui, lui, tenait toujours. Le frère `creer` vérifie déjà `r.ok`.
+      // ON REGARDE SI ÇA A ABOUTI. Sans ce contrôle, un 403 ou une coupure
+      // repassaient inaperçus : la liste se réaffichait inchangée et le
+      // propriétaire croyait avoir fermé un accès qui, lui, tenait toujours.
       const r = await fetch("/api/comptes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, geste }),
+        body: JSON.stringify(corps),
       });
-      if (!r.ok) { setRateAction(true); return; }
+      if (!r.ok) {
+        const c = await r.json().catch(() => ({}));
+        setRateAction(c?.erreur || t.actionRatee);
+        return;
+      }
       await charger();
     } catch {
-      setRateAction(true);
+      setRateAction(t.actionRatee);
     } finally {
       setOccupe(null);
     }
   }
 
+  function agir(id: number, geste: "approuver" | "fermer" | "supprimer") {
+    if (geste === "supprimer" && !confirm(t.supprimerSur)) return;
+    if (geste === "fermer" && !confirm(t.fermerSur)) return;
+    void envoyer(`${geste}-${id}`, { id, geste });
+  }
+
+  function basculer(id: number, iccid: string, confiee: boolean) {
+    void envoyer(`${id}-${iccid}`, {
+      id, iccid, geste: confiee ? "retirer" : "attribuer",
+    });
+  }
+
+  const formulaireComplet = Boolean(prenom.trim() && nom.trim() && courriel.trim())
+    && motdepasse.length >= 12;
+
   async function creer(e: React.FormEvent) {
     e.preventDefault();
-    if (creation || !courriel || motdepasse.length < 12) return;
+    if (creation || !formulaireComplet) return;
     setCreation(true);
     setMotCree(null);
     try {
       const r = await fetch("/api/comptes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ geste: "creer", courriel, motdepasse }),
+        body: JSON.stringify({ geste: "creer", prenom, nom, courriel, motdepasse }),
       });
       const c = await r.json().catch(() => ({}));
-      if (r.ok || r.status === 201) {
+      if (r.ok) {
         setRateCree(false);
         setMotCree(t.creerFait);
         // Le mot de passe ne reste pas à l'écran : il vient d'être transmis
         // au serveur, il n'a plus rien à faire dans un champ ouvert.
+        setPrenom("");
+        setNom("");
         setCourriel("");
         setMotdepasse("");
         setOuvrirCreation(false);
         await charger();
+        // Le geste qui suit naturellement : choisir ses cartes. On ouvre le
+        // choix tout de suite, sans quoi le compte neuf ne verrait rien et
+        // on croirait l'accès cassé.
+        if (typeof c?.id === "number") setEnChoix(c.id);
       } else {
         setRateCree(true);
-        setMotCree(c?.erreur ?? t.creerBouton);
+        setMotCree(c?.erreur ?? t.actionRatee);
       }
+    } catch {
+      setRateCree(true);
+      setMotCree(t.actionRatee);
     } finally {
       setCreation(false);
     }
@@ -682,51 +723,131 @@ export function SectionQui() {
   // Ni autorisé, ni encore chargé : rien à montrer.
   if (permis !== true || !comptes) return null;
 
+  const nomDeCarte = (iccid: string) => {
+    const c = cartes.find((x) => x.iccid === iccid);
+    return c ? c.libelle : `··${iccid.slice(-4)}`;
+  };
+
   return (
     <section>
-      <h2 className="mb-1 text-heading font-semibold">{t.qui}</h2>
+      {!sansTitre && <h2 className="mb-1 text-heading font-semibold">{t.qui}</h2>}
       <p className="mb-3 text-caption leading-relaxed text-ink-faint">{t.quiAide}</p>
       <ul className="divide-hair rounded-card border border-line bg-surface-raised px-4">
         {rateAction && (
           <li className="py-3 text-caption text-negative" role="alert">
-            {t.actionRatee}
+            {rateAction}
           </li>
         )}
         {comptes.map((c) => (
-          <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-small font-medium">{c.courriel}</p>
-              <p className="mt-0.5 text-caption text-ink-faint">
-                {c.role === "proprietaire" ? t.roleProprietaire : t.roleInvite}
-                {" · "}
-                {c.approuve ? t.ouvert : t.enAttente}
-                {" · "}
-                {c.vuLe
-                  ? `${t.vuLe} ${dateVue(c.vuLe, langue)}`
-                  : t.jamaisVenu}
-              </p>
-            </div>
-            {/* Le propriétaire n'a pas de boutons sur sa propre ligne : il ne
-                peut ni se bloquer ni se supprimer, et un bouton qui refuse
-                toujours est un bouton de trop. */}
-            {c.role !== "proprietaire" && (
-              <div className="flex shrink-0 gap-2">
-                <button
-                  onClick={() => agir(c.id, c.approuve ? "fermer" : "approuver")}
-                  disabled={occupe === c.id}
-                  className="rounded-btn border border-line px-3 py-1.5 text-caption font-medium text-ink-soft transition hover:border-ink-faint disabled:opacity-40"
-                >
-                  {c.approuve ? t.fermer : t.approuver}
-                </button>
-                <button
-                  onClick={() => agir(c.id, "supprimer")}
-                  disabled={occupe === c.id}
-                  className="rounded-btn border border-line px-3 py-1.5 text-caption text-negative transition hover:border-negative disabled:opacity-40"
-                >
-                  {t.supprimer}
-                </button>
+          <li key={c.id} className="py-3" data-compte={c.courriel}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="min-w-0 flex-1">
+                {/* Un courriel n'est jamais coupé : c'est sur lui qu'on décide
+                    d'ouvrir la caisse à quelqu'un. */}
+                {(c.prenom || c.nom) && (
+                  <p className="text-small font-medium">
+                    {[c.prenom, c.nom].filter(Boolean).join(" ")}
+                  </p>
+                )}
+                <p className={`break-all ${c.prenom || c.nom
+                  ? "text-caption text-ink-soft" : "text-small font-medium"}`}>
+                  {c.courriel}
+                </p>
+                <p className="mt-0.5 text-caption text-ink-faint">
+                  {c.role === "proprietaire" ? t.roleProprietaire : t.roleInvite}
+                  {" · "}
+                  {c.approuve ? t.ouvert : t.enAttente}
+                  {" · "}
+                  {c.vuLe ? `${t.vuLe} ${dateVue(c.vuLe, langue)}` : t.jamaisVenu}
+                </p>
               </div>
-            )}
+              {/* Le propriétaire n'a pas de boutons sur sa propre ligne : il ne
+                  peut ni se bloquer ni se supprimer, et un bouton qui refuse
+                  toujours est un bouton de trop. */}
+              {c.role !== "proprietaire" && (
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => agir(c.id, c.approuve ? "fermer" : "approuver")}
+                    disabled={occupe !== null}
+                    className="min-h-11 rounded-btn border border-line px-3 text-caption font-medium text-ink-soft transition hover:border-ink-faint disabled:opacity-40"
+                  >
+                    {c.approuve ? t.fermer : t.approuver}
+                  </button>
+                  <button
+                    onClick={() => agir(c.id, "supprimer")}
+                    disabled={occupe !== null}
+                    className="min-h-11 rounded-btn border border-line px-3 text-caption text-negative transition hover:border-negative disabled:opacity-40"
+                  >
+                    {t.supprimer}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* CE QUE CETTE PERSONNE VOIT. Dit en toutes lettres sur chaque
+                ligne : « aucune » n'est pas un oubli d'affichage, c'est un
+                compte qui ne voit rien. */}
+            <div className="mt-2 rounded-btn bg-surface-2 px-3 py-2">
+              <p className="text-caption text-ink-faint">{t.cartesDeLaPersonne}</p>
+              {c.cartes === null ? (
+                <p className="mt-0.5 text-caption text-ink-soft">{t.cartesToutes}</p>
+              ) : c.cartes.length === 0 ? (
+                <p className="mt-0.5 text-caption text-alert">{t.cartesAucune}</p>
+              ) : (
+                <p className="mt-0.5 text-caption text-ink">
+                  {c.cartes.map(nomDeCarte).join(" · ")}
+                </p>
+              )}
+              {c.cartes !== null && enChoix !== c.id && (
+                <button
+                  onClick={() => setEnChoix(c.id)}
+                  className="mt-1.5 min-h-11 text-caption font-medium text-accent underline underline-offset-4"
+                >
+                  {t.cartesConfier}
+                </button>
+              )}
+              {c.cartes !== null && enChoix === c.id && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {cartes.length === 0 && (
+                    <p className="text-caption text-ink-faint">{t.cartesAucuneDansLaMaison}</p>
+                  )}
+                  {cartes.map((carte) => {
+                    const confiee = c.cartes!.includes(carte.iccid);
+                    return (
+                      <label
+                        key={carte.iccid}
+                        className="flex min-h-11 cursor-pointer items-center gap-3 rounded-btn border border-line bg-surface-raised px-3"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={confiee}
+                          disabled={occupe !== null}
+                          onChange={() => basculer(c.id, carte.iccid, confiee)}
+                          data-carte={carte.iccid}
+                          className="h-4 w-4"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-small font-medium">{carte.libelle}</span>
+                          <span className="block break-all text-caption text-ink-faint">
+                            {[carte.nom, carte.numero].filter(Boolean).join(" · ") || carte.iccid}
+                            {!carte.enPlace && ` · ${t.cartesRetiree}`}
+                          </span>
+                        </span>
+                        {confiee && (
+                          <span className="text-caption text-positive">{t.cartesConfiee}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                  <button
+                    onClick={() => setEnChoix(null)}
+                    className="mt-1 min-h-11 self-start rounded-btn border border-line px-3 text-caption font-medium text-ink-soft transition hover:border-ink-faint"
+                  >
+                    {t.cartesFermer}
+                  </button>
+                </div>
+              )}
+            </div>
           </li>
         ))}
         {comptes.length <= 1 && (
@@ -735,13 +856,12 @@ export function SectionQui() {
       </ul>
 
       {/* CRÉER UN COMPTE. L'inscription libre est fermée et le reste : c'est
-          désormais le seul chemin pour faire entrer quelqu'un. Il en fallait
-          un — Google EXIGE un compte qui fonctionne pour examiner
-          l'application, et sans cela il aurait fallu livrer le sien. */}
+          le seul chemin pour faire entrer quelqu'un. Google EXIGE un compte
+          qui fonctionne pour examiner l'application. */}
       {!ouvrirCreation ? (
         <button
           onClick={() => { setOuvrirCreation(true); setMotCree(null); }}
-          className="mt-3 rounded-btn border border-line px-3.5 py-2 text-small font-medium text-ink-soft transition hover:border-ink-faint"
+          className="mt-3 min-h-11 rounded-btn border border-line px-3.5 text-small font-medium text-ink-soft transition hover:border-ink-faint"
         >
           {t.creerCompte}
         </button>
@@ -750,16 +870,34 @@ export function SectionQui() {
           <p className="text-caption leading-relaxed text-ink-faint">
             {t.creerCompteAide}
           </p>
-          {/* L'AVERTISSEMENT, avant les champs et pas après. Un compte
-              approuvé voit TOUT : le dire une fois le compte créé serait
-              trop tard. */}
-          <p className="rounded-btn border border-line bg-surface px-3 py-2 text-caption leading-relaxed text-negative">
+          {/* L'AVERTISSEMENT, avant le champ et pas après : un compte neuf ne
+              voit RIEN tant qu'on ne lui a pas confié de carte. */}
+          <p className="rounded-btn border border-line bg-surface px-3 py-2 text-caption leading-relaxed text-ink-soft">
             {t.creerAvertissement}
           </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-small text-ink-soft">{t.creerPrenom}</span>
+              <input
+                value={prenom} required autoComplete="off" name="nouveau-prenom"
+                onChange={(e) => setPrenom(e.target.value)}
+                className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-small text-ink-soft">{t.creerNom}</span>
+              <input
+                value={nom} required autoComplete="off" name="nouveau-nom"
+                onChange={(e) => setNom(e.target.value)}
+                className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+              />
+            </label>
+          </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-small text-ink-soft">{t.creerCourriel}</span>
             <input
               type="email" value={courriel} required autoCapitalize="none"
+              autoComplete="off" name="nouveau-courriel"
               onChange={(e) => setCourriel(e.target.value)}
               className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
             />
@@ -770,6 +908,7 @@ export function SectionQui() {
                 pour le transmettre. Ce n'est pas SON mot de passe. */}
             <input
               type="text" value={motdepasse} required autoComplete="off"
+              name="nouveau-motdepasse"
               onChange={(e) => setMotdepasse(e.target.value)}
               className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
             />
@@ -782,15 +921,15 @@ export function SectionQui() {
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={creation || !courriel || motdepasse.length < 12}
-              className="rounded-btn bg-ink px-4 py-2 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-35"
+              disabled={creation || !formulaireComplet}
+              className="min-h-11 rounded-btn bg-ink px-4 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-35"
             >
               {creation ? t.creerEnCours : t.creerBouton}
             </button>
             <button
               type="button"
               onClick={() => { setOuvrirCreation(false); setMotCree(null); }}
-              className="rounded-btn border border-line px-4 py-2 text-small text-ink-soft transition hover:border-ink-faint"
+              className="min-h-11 rounded-btn border border-line px-4 text-small text-ink-soft transition hover:border-ink-faint"
             >
               {t.annuler}
             </button>
@@ -799,7 +938,7 @@ export function SectionQui() {
       )}
 
       {motCree && (
-        <p className={`mt-2 text-caption ${rateCree ? "text-negative" : "text-ink-soft"}`}>
+        <p role="status" className={`mt-2 text-caption ${rateCree ? "text-negative" : "text-ink-soft"}`}>
           {motCree}
         </p>
       )}
