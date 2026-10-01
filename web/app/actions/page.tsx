@@ -4,13 +4,17 @@ import { RIEN, porteeDe } from "@/lib/portee";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { Vide } from "../vide";
 import { Guichet } from "./guichet";
+import { aQuiParCarte } from "@noyau/beneficiaires";
 
 export const dynamic = "force-dynamic";
 
 export default async function Operations() {
   const langue = await langueServeur();
   const t = textesGuichet[langue];
-  const { sims, raccourcis } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 0, recus: 0 });
+  // Soixante SMS : de quoi proposer, à « À qui ? », les numéros vus sur la
+  // carte en plus de son carnet.
+  const { sims, raccourcis, paiements, beneficiaires } =
+    await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 60, recus: 0 });
   // TOUTES les cartes en place : le guichet montre un sélecteur dès qu'il y
   // en a deux — chaque opération part sur la carte choisie, jamais sur « la
   // première venue ».
@@ -34,6 +38,7 @@ export default async function Operations() {
         libelle: c.libelle, operateur: c.operateur, iccid: c.iccid,
       }))}
       raccourcis={raccourcis}
+      aQui={aQuiParCarte(beneficiaires, paiements, cartes.map((c) => c.iccid))}
     />
   );
 }

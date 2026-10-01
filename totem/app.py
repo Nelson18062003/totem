@@ -38,7 +38,12 @@ from .codes import catalogue, cle as cle_code
 from .compte import ErreurModem, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
-from .notification import composer, envoyer
+from .notification import composer, envoyer, lire_les_accuses
+
+# Combien de secondes laisser à Apple et Google avant de lire leurs accusés.
+# Ils reviennent d'ordinaire en quelques secondes ; on attend dans un fil à
+# part, rien ne patiente derrière.
+ATTENTE_DES_ACCUSES = 20
 from .pilotage import Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import langue_active, t
@@ -2468,9 +2473,10 @@ class Robot:
         # Les téléphones inscrits ne sont pas tous celui du propriétaire : un
         # invité approuvé en a un, et un aperçu s'affiche sur un écran
         # VERROUILLÉ, que n'importe qui peut lire par-dessus une épaule.
-        self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte))
+        self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte),
+                           iccid=compte.carte.iccid if compte.carte.identifiee else None)
 
-    def _faire_sonner(self, expediteur, libelle, texte):
+    def _faire_sonner(self, expediteur, libelle, texte, iccid=None):
         """Fait sonner les téléphones qui se sont inscrits.
 
         Rien ici ne peut retarder ni empêcher l'annonce Telegram : elle est
@@ -2492,8 +2498,21 @@ class Robot:
 
         def porter():
             try:
-                appareils = self.nuage.appareils()
-                servis, soucis = envoyer(appareils, titre, corps)
+                # Le propriétaire, et ceux à qui CETTE carte est confiée.
+                appareils = self.nuage.appareils(iccid)
+                billets = []
+                servis, soucis = envoyer(appareils, titre, corps, acceptes=billets)
+                # L'ACCUSÉ, PAS SEULEMENT LE BILLET. Le refus d'Apple (clé de
+                # notification absente du projet) n'arrive qu'après coup :
+                # sans cette lecture, un iPhone muet comptait pour servi à
+                # chaque paiement. On attend un peu — on est dans un fil à
+                # part, rien d'autre n'attend — puis on retire du compte
+                # les billets refusés plus loin.
+                if billets:
+                    time.sleep(ATTENTE_DES_ACCUSES)
+                    refus = lire_les_accuses(billets)
+                    servis -= len(refus)
+                    soucis = soucis + refus
                 self._dire_si_les_telephones_se_taisent(
                     len(appareils), servis, soucis)
             except Exception:

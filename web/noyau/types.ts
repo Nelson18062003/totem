@@ -101,6 +101,14 @@ export type RaccourciAppris = {
   etapes: string[];
 };
 
+/** Un bénéficiaire enregistré sur une carte : un nom pour un numéro. */
+export type Beneficiaire = {
+  id: number;
+  carte: string;      // l'ICCID — le carnet suit la carte, pas la personne
+  numero: string;     // des chiffres seulement
+  nom: string;
+};
+
 export type EtatTerminal = {
   id: string;
   nom: string;
@@ -120,6 +128,11 @@ export type Donnees = {
   // personne par son prénom — et rien d'autre. `null` pour une session
   // ouverte par la clé de secours, qui ne désigne personne.
   courriel?: string | null;
+  // Celui qui regarde est-il le propriétaire (ou la clé de secours) ? Faux :
+  // il tient les cartes qu'on lui a confiées, et ne voit pas ce qui
+  // n'appartient à aucune carte — le carnet des boutons, les comptes.
+  // Absent d'une plateforme pas encore à jour : l'écran fait comme avant.
+  proprietaire?: boolean;
   relie: boolean;           // les variables d'accès à la base sont-elles là ?
   terminal: EtatTerminal | null;
   sims: Sim[];
@@ -128,6 +141,9 @@ export type Donnees = {
   // Vide tant que le terminal n'a rien appris — ou que la base n'a pas
   // encore la table (migration en retard) : jamais un écran cassé.
   raccourcis: Record<string, RaccourciAppris[]>;
+  // Les bénéficiaires enregistrés des cartes visibles. Absent d'une
+  // plateforme pas encore à jour, vide tant que la base n'a pas la table.
+  beneficiaires?: Beneficiaire[];
   // Le fuseau du terminal — celui qui découpe les journées. Le téléphone
   // en a besoin pour ranger un encaissement dans le BON jour : sans lui,
   // il découperait selon son propre fuseau, ou selon un défaut écrit en

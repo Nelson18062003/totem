@@ -15,7 +15,8 @@ import {
 } from "@expo-google-fonts/inter";
 import { DMSans_700Bold } from "@expo-google-fonts/dm-sans";
 
-import { FournisseurLangue } from "@/langue";
+import { FournisseurLangue, useLangue } from "@/langue";
+import { BarreClavier } from "@/ui";
 import { FournisseurSession, useSession } from "@/session";
 import { FournisseurDonnees } from "@/donnees";
 import { useSonnerie } from "@/sonnerie";
@@ -43,6 +44,7 @@ export default function Racine() {
 
 function Charpente() {
   const { connecte } = useSession();
+  const langue = useLangue();
   // Une fois connecté, le téléphone s'inscrit pour être prévenu. Rien ne
   // bloque : un refus de notification laisse l'application entière.
   useSonnerie(connecte);
@@ -80,6 +82,7 @@ function Charpente() {
           {/* Le cadran USSD aussi : on y vient depuis Opérations, pour
               composer un code à la main comme sur un téléphone. */}
           <Stack.Screen name="ussd" options={{ animation: "slide_from_right" }} />
+          <Stack.Screen name="beneficiaires" options={{ animation: "slide_from_right" }} />
           {/* L'analyse : la semaine en chiffres, depuis l'accueil. */}
           <Stack.Screen name="analyse" options={{ animation: "slide_from_right" }} />
         </Stack.Protected>
@@ -87,6 +90,10 @@ function Charpente() {
           <Stack.Screen name="connexion" />
         </Stack.Protected>
       </Stack>
+      {/* La barre « Terminé » des claviers de chiffres, sur iPhone : posée
+          une fois, elle s'accroche à chaque champ de chiffres des écrans
+          (voir `ChampTexte`). Les feuilles posent la leur. */}
+      <BarreClavier id="totem-clavier" langue={langue} />
     </>
   );
 }

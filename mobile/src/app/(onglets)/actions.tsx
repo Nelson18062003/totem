@@ -10,20 +10,29 @@ import { RefreshControl, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { Defilement, Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
+import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
+import { clientsRecents } from "@noyau/recents";
+import { aQui } from "@noyau/beneficiaires";
+import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesUssd } from "@noyau/textes/ussd";
 
 export default function Actions() {
+  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
+  const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesGuichet[langue];
   const tu = textesUssd[langue];
+  const tb = textesBeneficiaires[langue];
+  // Aucune ligne demandée : l'accueil, toujours monté, en met déjà trente
+  // au cahier partagé — les clients récents se lisent là, sans que cet
+  // onglet devienne un écran lourd qui ferait attendre.
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const [operation, setOperation] = useState<Operation | null>(null);
@@ -37,7 +46,7 @@ export default function Actions() {
     return (
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <Defilement
-          contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+          contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
           refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
         >
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
@@ -73,6 +82,9 @@ export default function Actions() {
     return {
       titre, code: et[0] ?? "", etapes: et, champs,
       carte: carte.iccid, terminal: donnees?.terminal?.id ?? null,
+      carteLibelle: carte.libelle, operateur: carte.operateur,
+      recents: aQui(donnees?.beneficiaires,
+                    clientsRecents(donnees?.paiements ?? [], carte.iccid), carte.iccid),
     };
   };
 
@@ -118,7 +130,7 @@ export default function Actions() {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
       <Defilement
-        contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}
+        contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
         refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
       >
         <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
@@ -195,6 +207,9 @@ export default function Actions() {
             Le web l'a en page à part (« Code USSD ») ; ici il s'ouvre d'une
             ligne — c'est le geste de secours quand aucun bouton ne convient. */}
         <Carte>
+          <Ligne titre={tb.titre} sous={tb.sous} icone="Personnes"
+                 onPress={() => router.push("/beneficiaires")} />
+          <Filet />
           <Ligne titre={tu.titre} sous={tu.composerSous} icone="Hash"
                  onPress={() => router.push("/ussd")} />
         </Carte>

@@ -16,7 +16,7 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { Defilement, Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
+import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
@@ -30,6 +30,8 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
+import { clientsRecents } from "@noyau/recents";
+import { aQui } from "@noyau/beneficiaires";
 import { fcfa, type Paiement, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { textesAnalyse } from "@noyau/textes/analyse";
@@ -38,6 +40,8 @@ import { salutation } from "@noyau/salutation";
 const CLE_SOLDE_CACHE = "totem.solde.cache";
 
 export default function Accueil() {
+  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
+  const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesAccueil[langue];
   const ta = textesAnalyse[langue];
@@ -71,7 +75,10 @@ export default function Accueil() {
   const operationDe = (cle: string, titre: string, champs: Operation["champs"]): Operation => {
     const et = active ? etapesGeste(active.operateur, cle, raccourcis[active.operateur] ?? []) : [];
     return { titre, code: et[0] ?? "", etapes: et, champs,
-             carte: active?.iccid, terminal: donnees?.terminal?.id ?? null };
+             carte: active?.iccid, terminal: donnees?.terminal?.id ?? null,
+             carteLibelle: active?.libelle, operateur: active?.operateur,
+             recents: aQui(donnees?.beneficiaires,
+                           clientsRecents(donnees?.paiements ?? [], active?.iccid), active?.iccid) };
   };
 
   type Geste = { label: string; icone: NomIcone; fabrique: () => Operation };
@@ -264,7 +271,7 @@ export default function Accueil() {
         contentContainerStyle={{
           paddingHorizontal: ecran.marge,
           paddingTop: espaces.md,
-          paddingBottom: 108,
+          paddingBottom: margeBas,
           gap: espaces.xl,
           // Sur grand écran, le contenu se centre au lieu de s'étirer : une
           // ligne large de mille points ne se lit plus, elle se balaie.

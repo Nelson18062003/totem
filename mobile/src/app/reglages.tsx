@@ -31,6 +31,7 @@ import {
   type EtatSonnerie,
 } from "@/sonnerie";
 import { textesReglages } from "@noyau/textes/reglages";
+import { messageDEssai } from "@noyau/essai";
 import { textesCharpente } from "@noyau/textes/charpente";
 import { LANGUES } from "@noyau/langue";
 
@@ -161,7 +162,10 @@ export default function Reglages() {
 
         {/* Les codes USSD — une section par opérateur vu par le terminal,
             avec les boutons appris par le robot en regard. */}
-        {operateurs.map((op) => (
+        {/* Le carnet des boutons d'un opérateur sert à TOUTES ses cartes :
+            il reste au propriétaire. Celui qui tient des cartes confiées
+            compose avec, il ne le réécrit pas. */}
+        {donnees?.proprietaire !== false && operateurs.map((op) => (
           <SectionCodes key={op} operateur={op}
                         enPlace={enPlaceOps.includes(op)}
                         appris={donnees?.raccourcis?.[op] ?? []}
@@ -203,7 +207,9 @@ export default function Reglages() {
 
         <View style={{ alignItems: "center", paddingTop: espaces.lg, gap: espaces.xs }}>
           <MotTotem taille={12} />
-          <Texte taille={textes.legende} ton="pale">{t.proprietaire}</Texte>
+          <Texte taille={textes.legende} ton="pale">
+            {donnees?.proprietaire === false ? t.titulaire : t.proprietaire}
+          </Texte>
         </View>
       </Defilement>
       </KeyboardAvoidingView>
@@ -269,6 +275,7 @@ function EssaiNotification() {
 
   const explication: Record<EtatSonnerie, string> = {
     inscrit: t.sonnerieInscrit,
+    reservee: t.sonnerieReservee,
     refusee: t.sonnerieRefusee,
     simulateur: t.sonnerieSimulateur,
     sansProjet: t.sonnerieSansProjet,
@@ -296,26 +303,11 @@ function EssaiNotification() {
     setMessage(null);
     try {
       const r = await essaiNotification(langue);
-      if (r.aucun) {
-        setRate(true);
-        setMessage(t.essaiAucunAppareil);
-      } else if (r.servis > 0 || r.enRoute) {
-        setRate(false);
-        // REMIS, OU SEULEMENT PARTI : ce n'est pas la même nouvelle. Le
-        // service confirme la remise dans un second temps ; tant qu'il ne
-        // l'a pas fait, on ne promet rien. L'écran annonçait « votre
-        // téléphone devrait sonner » dès que le guichet avait pris le
-        // message — y compris sur un iPhone où il n'arrivait jamais rien.
-        setMessage((r.servis > 0 ? t.essaiRemis : t.essaiEnRoute)
-          + (r.oublies ? ` (${r.oublies} ${t.essaiOublies})` : ""));
-      } else {
-        setRate(true);
-        // Le détail vient du service de notification, en anglais. On le
-        // montre quand même : sans lui, « rien n'a pu être envoyé » ne dit
-        // pas par où chercher.
-        setMessage(t.essaiEchec
-          + (r.soucis?.length ? ` — ${r.soucis.join(" · ")}` : ""));
-      }
+      // La règle est dans le noyau, partagée avec le navigateur : un
+      // téléphone qui sonne ne cache plus celui qui se tait.
+      const dit = messageDEssai(t, r);
+      setRate(dit.rate);
+      setMessage(dit.texte);
     } catch (e) {
       setRate(true);
       setMessage(e instanceof Error ? e.message : t.essaiEchec);
@@ -328,7 +320,7 @@ function EssaiNotification() {
   // Recompiler n'est pas un geste qu'on fait depuis un téléphone : inutile
   // de proposer un bouton qui ne mènerait à rien.
   const peutReessayer = etat !== null && etat !== "inscrit"
-    && etat !== "simulateur" && etat !== "sansProjet";
+    && etat !== "simulateur" && etat !== "sansProjet" && etat !== "reservee";
 
   return (
     <View style={{ gap: espaces.sm }}>

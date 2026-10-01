@@ -8,7 +8,7 @@
 import { RefreshControl, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Defilement, Accroc, Carte, Filet, Texte } from "@/ui";
+import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree } from "@/animations";
@@ -22,6 +22,8 @@ import { fcfa, nombre, type Sim } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
 export default function Comptes() {
+  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
+  const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesCartes[langue];
   const ecran = useEcran();
@@ -47,7 +49,7 @@ export default function Comptes() {
       <Defilement
         contentContainerStyle={{
           paddingHorizontal: ecran.marge, paddingTop: espaces.md,
-          paddingBottom: 108, gap: espaces.xl,
+          paddingBottom: margeBas, gap: espaces.xl,
           maxWidth: 1100, width: "100%", alignSelf: "center",
         }}
         refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger}

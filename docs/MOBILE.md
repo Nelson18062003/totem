@@ -288,7 +288,13 @@ le code.
    du système mot pour mot.
 2. **Envoyer un essai**, et lire la phrase. « la clé Apple manque au projet
    Expo » et « le fichier Firebase manque au paquet » désignent chacune un
-   geste précis, ci-dessous.
+   geste précis, ci-dessous. La réponse nomme CHAQUE téléphone : un Android
+   qui sonne ne cache plus un iPhone muet (c'est ce qu'il faisait — l'écran
+   disait « Remis » dès qu'un seul avait sonné).
+   Un compte **invité** ne peut pas inscrire son téléphone — l'écran le dit :
+   une notification porte les SMS de toutes les cartes.
+   Le robot, lui, lit maintenant l'accusé d'Apple vingt secondes après chaque
+   envoi : un refus s'écrit sur la page « Ce qui s'est passé ».
 3. **iPhone : la clé Apple, chez Expo.** Apple Developer → Keys → une clé
    APNs → télécharger le `.p8` (une seule fois, il ne se retélécharge
    jamais). Puis expo.dev → le projet → Credentials → iOS → **Apple Push

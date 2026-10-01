@@ -209,6 +209,100 @@ try {
     verifier("ni entrer dans la console", console_.status, 307);
   }
 
+  console.log("\nSA CARTE EST LA SIENNE : IL Y TRAVAILLE");
+  {
+    // UNE CARTE CONFIÉE EST UNE CARTE DONNÉE. Le vendeur ne fait pas que
+    // regarder la carte Orange : il compose, répond au menu, établit ses
+    // reçus. Rien de tout cela ne doit déborder sur la MTN.
+    const commande = async (corps, jeton) => {
+      const r = await poste("/api/commande", corps, jeton);
+      return { statut: r.status, id: r.ok ? (await r.json()).id : null };
+    };
+    const ouvre = await commande(
+      { type: "ussd", parametres: { code: "#150#", carte: ORANGE } }, vendeur);
+    verifier("il compose sur SA carte", ouvre.statut, 200);
+    verifier("il lit la réponse de l'opérateur",
+      (await lire(`/api/commande/${ouvre.id}`, vendeur)).status, 200);
+    verifier("il répond au menu de SA carte",
+      (await commande({ type: "ussd_reponse", parametres: { texte: "1", carte: ORANGE } },
+                      vendeur)).statut, 200);
+    verifier("il raccroche SA session",
+      (await commande({ type: "ussd_fin", parametres: { carte: ORANGE } }, vendeur)).statut, 200);
+    verifier("il actualise", (await commande({ type: "solde" }, vendeur)).statut, 200);
+    verifier("il renomme SA carte",
+      (await commande({ type: "identite", parametres: { iccid: ORANGE, nom: "Boutique" } },
+                      vendeur)).statut, 200);
+    verifier("il établit le reçu d'un SMS de SA carte",
+      (await commande({ type: "recu", parametres: { source_id: 2 }, terminal: "douala-faux" },
+                      vendeur)).statut, 200);
+    verifier("il classe un SMS de SA carte (le verrou le laisse passer)",
+      (await poste("/api/nature", { id: 2, nature: "retrait" }, vendeur)).status !== 403, true);
+
+    // SON CARNET DE BÉNÉFICIAIRES : il suit la carte.
+    const carnet = (corps, jeton) => poste("/api/beneficiaires", corps, jeton);
+    verifier("il enregistre un bénéficiaire sur SA carte",
+      (await carnet({ geste: "enregistrer", carte: ORANGE, numero: "237 677 99 88 77", nom: "Maman" },
+                    vendeur)).status, 200);
+    verifier("le propriétaire en enregistre un sur la MTN (témoin)",
+      (await carnet({ geste: "enregistrer", carte: MTN, numero: "699000111", nom: "Fournisseur" },
+                    patron)).status, 200);
+    const sesBenef = (await donnees(vendeur)).beneficiaires ?? [];
+    verifier("il retrouve le sien, numéro rangé sans 237",
+      sesBenef.map((b) => [b.nom, b.numero]), [["Maman", "677998877"]]);
+    const tousBenef = (await donnees(patron)).beneficiaires ?? [];
+    verifier("le propriétaire voit les deux carnets (témoin)", tousBenef.length, 2);
+    const leSien = sesBenef[0]?.id;
+    const celuiDuPatron = tousBenef.find((b) => b.carte === MTN)?.id;
+    verifier("il renomme le sien",
+      (await carnet({ geste: "renommer", id: leSien, nom: "Maman Douala" }, vendeur)).status, 200);
+
+    console.log("\n…ET RIEN SUR LA CARTE D'UN AUTRE");
+    verifier("enregistrer un bénéficiaire sur la MTN : refusé",
+      (await carnet({ geste: "enregistrer", carte: MTN, numero: "677000000", nom: "Piege" },
+                    vendeur)).status, 403);
+    verifier("renommer celui du propriétaire : introuvable",
+      (await carnet({ geste: "renommer", id: celuiDuPatron, nom: "Piege" }, vendeur)).status, 404);
+    verifier("le supprimer : introuvable",
+      (await carnet({ geste: "supprimer", id: celuiDuPatron }, vendeur)).status, 404);
+    verifier("le carnet MTN n'a pas bougé (témoin)",
+      ((await donnees(patron)).beneficiaires ?? []).find((b) => b.id === celuiDuPatron)?.nom,
+      "Fournisseur");
+    verifier("composer sur la MTN : refusé",
+      (await commande({ type: "ussd", parametres: { code: "*126#", carte: MTN } }, vendeur)).statut, 403);
+    verifier("composer sans dire sur quelle carte : refusé",
+      (await commande({ type: "ussd", parametres: { code: "*126#" } }, vendeur)).statut, 403);
+    verifier("répondre dans une session MTN : refusé",
+      (await commande({ type: "ussd_reponse", parametres: { texte: "1234", secret: true, carte: MTN } },
+                      vendeur)).statut, 403);
+    verifier("répondre sans dire à quelle carte : refusé",
+      (await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur)).statut, 403);
+    verifier("raccrocher la session MTN : refusé",
+      (await commande({ type: "ussd_fin", parametres: { carte: MTN } }, vendeur)).statut, 403);
+    verifier("renommer la MTN : refusé",
+      (await commande({ type: "identite", parametres: { iccid: MTN, nom: "Piege" } },
+                      vendeur)).statut, 403);
+    verifier("le reçu d'un SMS MTN : refusé",
+      (await commande({ type: "recu", parametres: { source_id: 3 }, terminal: "douala-faux" },
+                      vendeur)).statut, 403);
+    verifier("reclasser un SMS MTN : refusé",
+      (await poste("/api/nature", { id: 3, nature: "retrait" }, vendeur)).status, 403);
+    verifier("marquer lu un SMS MTN : refusé",
+      (await poste("/api/lu", { id: 3 }, vendeur)).status, 403);
+    verifier("réécrire le carnet des boutons : au propriétaire seul",
+      (await commande({ type: "raccourci", parametres: { operateur: "Orange", cle: "depot",
+        etapes: ["#150#"], action: "definir" } }, vendeur)).statut, 403);
+    // Le propriétaire compose sur la MTN : le vendeur énumère les numéros de
+    // commande et tombe dessus. Elle n'existe pas pour lui — la réponse de
+    // l'opérateur y porte un solde, un nom, et ce qu'on y a tapé.
+    const sienne = await commande(
+      { type: "ussd", parametres: { code: "*126#", carte: MTN } }, patron);
+    verifier("le propriétaire compose sur la MTN (témoin)", sienne.statut, 200);
+    verifier("le vendeur ne lit pas la commande du propriétaire",
+      (await lire(`/api/commande/${sienne.id}`, vendeur)).status, 404);
+    verifier("le propriétaire, lui, la lit (témoin)",
+      (await lire(`/api/commande/${sienne.id}`, patron)).status, 200);
+  }
+
   console.log("\nLE LIEN SIGNÉ DU BILAN DIT POUR QUI IL A ÉTÉ FAIT");
   {
     const { url } = await (await lire("/api/bilan/lien?jours=90", vendeur)).json();

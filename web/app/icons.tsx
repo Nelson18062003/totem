@@ -67,3 +67,5 @@ export const IconMail = icone("Mail");
 export const IconEye = icone("Eye");
 export const IconEyeOff = icone("EyeOff");
 export const IconPuceSim = icone("PuceSim");
+export const IconCheck = icone("Check");
+export const IconPersonnes = icone("Personnes");

@@ -15,6 +15,7 @@ import { BoutonCopier, Coordonnees, formaterNumero } from "./coordonnees";
 import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
+import type { ClientRecent } from "@noyau/recents";
 
 /** Le signal en quatre barres — rempli au niveau, lisible sans chiffres. */
 function BarresSignal({ niveau }: { niveau: number }) {
@@ -192,8 +193,12 @@ function CarteSim({
 export function AccueilGuichet({
   cartes,
   raccourcis,
+  aQui = {},
 }: {
   cartes: CarteGuichet[];
+  // Le carnet de chaque carte, puis les numéros vus dans ses SMS — préparés
+  // par le serveur pour l'écran « À qui ? ».
+  aQui?: Record<string, (ClientRecent & { enregistre: boolean })[]>;
   // Les boutons définis ou appris par le propriétaire, par opérateur : ils
   // l'emportent sur le catalogue — c'est le terrain qui commande.
   raccourcis: Record<string, RaccourciAppris[]>;
@@ -230,14 +235,16 @@ export function AccueilGuichet({
   const solde = (c: CarteGuichet): Operation => {
     const et = geste(c, "solde");
     return { titre: t.consulterSolde, code: et[0] ?? "", etapes: et,
-             champs: [], carte: c.iccid };
+             champs: [], carte: c.iccid, carteLibelle: c.libelle, operateur: c.operateur };
   };
 
   const operationDe = (cle: string, titre: string,
                        champs: Operation["champs"]): Operation => {
     const et = active ? geste(active, cle) : [];
     return { titre, code: et[0] ?? "", etapes: et, champs,
-             carte: active?.iccid };
+             carte: active?.iccid, carteLibelle: active?.libelle,
+             operateur: active?.operateur,
+             recents: active ? aQui[active.iccid] : undefined };
   };
 
   const operations: { label: string; Icone: typeof IconWallet; fabrique: () => Operation }[] =

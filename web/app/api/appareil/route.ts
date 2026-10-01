@@ -1,6 +1,6 @@
 import { enregistrerAppareil, relie } from "@/lib/serveur";
 import { langueDemandee } from "@/lib/langue-serveur";
-import { estProprietaire } from "@/lib/qui";
+import { compteConnecte, estProprietaire } from "@/lib/qui";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -8,28 +8,33 @@ export const dynamic = "force-dynamic";
 /**
  * Le téléphone s'inscrit pour recevoir les notifications.
  *
- * RÉSERVÉE AU PROPRIÉTAIRE, et ce n'est pas un excès de prudence.
+ * TOUT COMPTE QUI TIENT DES CARTES, mais chacun pour les siennes. Le
+ * téléphone est inscrit AU NOM du compte connecté ; le robot, au moment
+ * d'annoncer un SMS, ne fait sonner que les téléphones du propriétaire et
+ * ceux des comptes à qui la carte de ce SMS est confiée.
  *
- * Cette route est derrière le verrou, mais « derrière le verrou » ne voulait
- * dire que « connecté » — un compte INVITÉ passait donc, y compris celui
- * qu'on crée pour l'examinateur du magasin. Or ce qui est inscrit ici reçoit
- * les notifications du robot, et une notification porte désormais le SMS
- * REÇU en aperçu : un invité pouvait donc s'abonner à chaque message d'argent
- * du propriétaire — montants, tiers, soldes — en direct sur son propre écran
- * verrouillé, sans jamais rouvrir la plateforme. La table des appareils ne
- * porte aucune colonne de propriétaire et aucun écran ne la liste : l'abonné
- * clandestin restait invisible.
+ * Cette route a longtemps été réservée au propriétaire, et pour une vraie
+ * raison : la table des appareils ne disait pas À QUI était chaque
+ * téléphone, et le robot les faisait tous sonner pour chaque SMS — un
+ * invité qui s'inscrivait recevait donc chaque message d'argent de la
+ * maison sur son écran verrouillé. La colonne `utilisateur` lève cette
+ * raison-là ; tant que la base ne l'a pas, un titulaire n'est pas inscrit
+ * (voir `enregistrerAppareil`).
  *
- * Le robot ne sert par ailleurs que les 20 appareils vus le plus récemment :
- * en s'inscrivant en boucle, un invité poussait dehors le vrai téléphone du
- * propriétaire, qui devenait muet pendant que l'argent bougeait.
+ * Le robot ne sert que les appareils vus le plus récemment, et la clé de
+ * l'inscription est le jeton : un téléphone qui change de main change de
+ * compte, il ne s'ajoute pas.
  *
  * Ce qui entre est borné et nettoyé : un jeton d'Expo a une forme connue, et
  * le nom de l'appareil n'est qu'un libellé d'affichage.
  */
 export async function POST(req: Request) {
   const langue = await langueDemandee(req);
-  if (!(await estProprietaire(req))) {
+  // Le propriétaire (ou la clé de secours), ou un compte approuvé. Un jeton
+  // d'avant les comptes ne désigne personne : on ne sait pas à qui sonner.
+  const proprietaire = await estProprietaire(req);
+  const compte = await compteConnecte(req);
+  if (!proprietaire && !compte?.approuve) {
     return Response.json(
       { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
   }
@@ -68,7 +73,8 @@ export async function POST(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonReliee") }, { status: 503 });
   }
-  const ok = await enregistrerAppareil(jeton, plateforme, nom);
+  const ok = await enregistrerAppareil(jeton, plateforme, nom,
+                                       compte?.id ?? null, proprietaire);
   return ok
     ? Response.json({ ok: true })
     : Response.json({ erreur: erreurApi(langue, "nonEnregistre") }, { status: 502 });

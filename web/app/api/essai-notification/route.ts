@@ -2,7 +2,7 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { textesReglages } from "@noyau/textes/reglages";
 import { listerAppareils, oublierAppareil, relie } from "@/lib/serveur";
-import { estProprietaire } from "@/lib/qui";
+import { compteConnecte, estProprietaire } from "@/lib/qui";
 import { pousser, type Cause } from "@/lib/pousser";
 
 export const dynamic = "force-dynamic";
@@ -25,13 +25,15 @@ export async function POST(req: Request) {
   const langue = await langueDemandee(req);
   const t = textesReglages[langue];
 
-  // AU PROPRIÉTAIRE SEUL, comme les commandes du terminal. Le verrou de
-  // session laissait entrer tout compte approuvé — un invité pouvait donc
-  // faire sonner en boucle tous les téléphones du propriétaire, et le
-  // ménage des jetons se déclenchait sur ses essais. Le commentaire d'en
-  // haut le disait déjà : ce n'est pas un geste que l'on offre.
+  // CHACUN FAIT SONNER SES TÉLÉPHONES, ET SEULEMENT LES SIENS. Un essai
+  // faisait sonner TOUS les téléphones inscrits : un invité aurait pu faire
+  // sonner en boucle ceux du propriétaire, et le ménage des jetons se serait
+  // déclenché sur ses essais. L'essai ne vise que les téléphones inscrits au
+  // nom de celui qui le demande.
   // (Sans SESSION_SECRET, aucun verrou n'existe : on ne fait pas semblant.)
-  if (process.env.SESSION_SECRET && !(await estProprietaire(req))) {
+  const proprietaire = !process.env.SESSION_SECRET || await estProprietaire(req);
+  const compte = await compteConnecte(req);
+  if (!proprietaire && !compte?.approuve) {
     return Response.json(
       { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
   }
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
 
-  const appareils = await listerAppareils();
+  const appareils = await listerAppareils(compte?.id ?? null, proprietaire);
   if (!appareils.length) {
     return Response.json({ servis: 0, oublies: 0, aucun: true });
   }
@@ -53,7 +55,28 @@ export async function POST(req: Request) {
   const morts = verdicts.filter((v) => v.etat === "inconnu");
   await Promise.all(morts.map((v) => oublierAppareil(v.jeton)));
 
+  // TÉLÉPHONE PAR TÉLÉPHONE. Le total seul cachait la panne : un Android qui
+  // sonne et un iPhone muet donnaient « servis : 1 », et l'écran affichait
+  // « Remis » — la cause de l'iPhone, pourtant connue, ne s'affichait jamais.
+  // Le jeton ne sort pas d'ici : seulement le nom de l'appareil, sa
+  // plateforme, et ce qui lui est arrivé.
+  const parJeton = new Map(verdicts.map((v) => [v.jeton, v]));
+  const parAppareil = appareils.map((a) => {
+    const v = parJeton.get(a.jeton);
+    const etat = !v ? "refuse"
+      : v.etat === "ok" ? "remis"
+        : v.etat === "attente" ? "enRoute"
+          : v.etat === "inconnu" ? "oublie" : "refuse";
+    return {
+      nom: a.nom || "",
+      plateforme: a.plateforme || "",
+      etat,
+      cause: etat === "refuse" ? enClair(t, v?.cause) : undefined,
+    };
+  });
+
   return Response.json({
+    appareils: parAppareil,
     // « SERVI » NE VEUT DIRE QU'UNE CHOSE : le service a confirmé que le
     // téléphone a reçu. Ce compte valait auparavant « le guichet a pris le
     // message », c'est-à-dire presque rien — et il valait 1 sur un iPhone

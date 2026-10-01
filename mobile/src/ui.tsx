@@ -7,8 +7,10 @@
 // Rappel de la charte, parce que c'est ici qu'on serait tenté de l'oublier :
 // pas d'ombre. Les plans se séparent par les bordures et les fonds.
 
+import { createContext, useContext } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  ScrollView, Text, TextInput, View,
+  InputAccessoryView, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View,
   type ScrollViewProps, type TextInputProps, type TextProps, type ViewProps,
 } from "react-native";
 import { couleurs, espaces, polices, rayons, textes, INTERLETTRAGE_MARQUE } from "./theme/jetons";
@@ -98,9 +100,92 @@ export function Texte({
  * d'accord. Rien d'autre n'est décidé ici : la capitalisation, le clavier, la
  * correction automatique se choisissent champ par champ, et n'ont pas de
  * bonne valeur commune.
+ *
+ * SAUF UNE CHOSE, décidée ici parce qu'elle vaut pour tous : SUR IPHONE, UN
+ * CLAVIER DE CHIFFRES N'A PAS DE TOUCHE « OK ». Ni le pavé numérique ni celui
+ * du téléphone : une fois ouvert, rien ne le referme, et il cache le champ
+ * suivant, le bouton « Lancer », le bas de la feuille. Toucher à côté, dans
+ * une feuille, proposait même d'abandonner l'opération. Chaque champ de
+ * chiffres reçoit donc la barre « Terminé » au-dessus du clavier — celle
+ * qu'iOS montre dans toutes les applications qui s'en soucient.
  */
 export function ChampTexte(props: TextInputProps) {
-  return <TextInput maxFontSizeMultiplier={ECHELLE_MAX} {...props} />;
+  const barre = useContext(ContexteClavier);
+  const chiffres = props.keyboardType === "number-pad" || props.keyboardType === "phone-pad"
+    || props.keyboardType === "decimal-pad" || props.keyboardType === "numeric"
+    || props.inputMode === "numeric" || props.inputMode === "tel" || props.inputMode === "decimal";
+  return (
+    <TextInput
+      maxFontSizeMultiplier={ECHELLE_MAX}
+      inputAccessoryViewID={Platform.OS === "ios" && chiffres ? barre : undefined}
+      {...props}
+    />
+  );
+}
+
+/**
+ * LA BARRE D'ONGLETS FLOTTE AU-DESSUS DU CONTENU — combien laisser dessous ?
+ *
+ * Trois écrans écrivaient « 108 » en dur, le quatrième (Opérations) rien du
+ * tout : sa dernière carte — « Code USSD » — passait SOUS la barre. Et 108
+ * était faux des deux côtés : sur iPhone, le défilement s'écarte DÉJÀ tout
+ * seul de la barre d'accueil (`contentInsetAdjustmentBehavior`), si bien que
+ * 108 s'ajoutait à ses 34 points — un vide au bas de chaque écran ; sur un
+ * Android bord à bord, la barre de navigation n'était pas comptée.
+ *
+ * La marge se calcule donc d'après la barre elle-même : sa hauteur, sa
+ * distance au bord (voir `(onglets)/_layout.tsx`), et un souffle.
+ */
+export const HAUTEUR_BARRE_ONGLETS = 58;
+export function useMargeSousLaBarre(): number {
+  const bas = useSafeAreaInsets().bottom;
+  const dessus = Math.max(bas, espaces.md) + HAUTEUR_BARRE_ONGLETS + espaces.lg;
+  return Platform.OS === "ios" ? dessus - bas : dessus;
+}
+
+/** Le bas d'un écran SANS barre d'onglets : sur Android bord à bord, la
+ *  barre de navigation du système recouvre la dernière ligne ; sur iPhone,
+ *  le défilement s'en écarte déjà tout seul. */
+export function useMargeDuBas(): number {
+  const bas = useSafeAreaInsets().bottom;
+  return Platform.OS === "ios" ? espaces.lg : bas + espaces.lg;
+}
+
+/** L'identifiant de la barre « Terminé » en service à cet endroit. Une
+ *  feuille (une fenêtre à part) pose la sienne : une barre posée dans
+ *  l'écran du dessous ne s'accrocherait pas à ses champs. */
+export const ContexteClavier = createContext("totem-clavier");
+
+/**
+ * La barre au-dessus du clavier de chiffres, sur iPhone : un seul bouton,
+ * « Terminé », qui referme le clavier. Ailleurs, elle ne rend rien — Android
+ * a sa touche, et le navigateur n'en a pas besoin.
+ */
+export function BarreClavier({ id, langue }: { id: string; langue: "fr" | "en" }) {
+  const libelle = langue === "en" ? "Done" : "Terminé";
+  if (Platform.OS !== "ios") return null;
+  return (
+    <InputAccessoryView nativeID={id}>
+      <View style={{
+        flexDirection: "row", justifyContent: "flex-end",
+        backgroundColor: couleurs.surface2,
+        borderTopWidth: 1, borderTopColor: couleurs.trait,
+        paddingHorizontal: espaces.sm,
+      }}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => Keyboard.dismiss()}
+          hitSlop={8}
+          style={({ pressed }) => ({
+            paddingHorizontal: espaces.lg, paddingVertical: espaces.md,
+            opacity: pressed ? 0.5 : 1,
+          })}
+        >
+          <Texte poids="demi" style={{ color: couleurs.accent }}>{libelle}</Texte>
+        </Pressable>
+      </View>
+    </InputAccessoryView>
+  );
 }
 
 /**
@@ -205,7 +290,7 @@ export { couleurs, espaces, rayons, textes, polices };
 // « Aucun SMS », « Aucune carte », « Rien à analyser » : une connexion en
 // panne déguisée en commerce vide. Le message vient du guichet (déjà dans
 // la langue de l'écran) ; le bouton relance la lecture.
-import { Pressable, type ViewStyle } from "react-native";
+import { type ViewStyle } from "react-native";
 import { Animated, useAppui } from "./animations";
 import { Icone, type NomIcone } from "./icones";
 import { useLangue } from "./langue";

@@ -25,7 +25,7 @@ import * as Notifications from "expo-notifications";
 import * as Appareil from "expo-device";
 import Constants from "expo-constants";
 
-import { enregistrerAppareil } from "@/api/guichet";
+import { enregistrerAppareil, ErreurGuichet } from "@/api/guichet";
 import { couleurs } from "@/theme/jetons";
 
 // Application ouverte au moment où la notification arrive : on la montre
@@ -87,6 +87,11 @@ function projet(): string | undefined {
 export type EtatSonnerie =
   /** Tout va bien : ce téléphone est inscrit et peut sonner. */
   | "inscrit"
+  /** Le compte connecté n'est pas celui du propriétaire : la plateforme
+   *  refuse (403), à dessein — une notification porte le SMS reçu, de
+   *  TOUTES les cartes. Ce n'est pas une panne, et réessayer n'y changera
+   *  rien. */
+  | "reservee"
   /** La permission a été refusée. Sur Android, une fois refusée, le système
    *  ne la redemande plus : il faut passer par ses propres réglages. */
   | "refusee"
@@ -164,6 +169,7 @@ export async function inscrireLAppareil(): Promise<EtatSonnerie> {
   try {
     await enregistrerAppareil(jeton, Platform.OS, Appareil.modelName ?? "");
   } catch (e) {
+    if (e instanceof ErreurGuichet && e.statut === 403) return "reservee";
     dernierSouci = e instanceof Error ? e.message : String(e);
     // Réseau coupé, session expirée : le jeton est bon, c'est le dépôt qui
     // a manqué. On réessaiera — et le propriétaire peut réessayer lui-même.

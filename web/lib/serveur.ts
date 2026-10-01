@@ -17,7 +17,7 @@
 // qu'il a poussé. Aucune donnée n'est inventée : sans variables, les écrans
 // sont vides et le disent.
 
-import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
+import type { Beneficiaire, Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
 import { estNature } from "@noyau/natures";
 import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
@@ -45,6 +45,14 @@ import { FUSEAU } from "./fuseau";
  * — et on retire les valeurs. Un journal doit dire QUELLE requête a échoué,
  * pas ce qu'elle cherchait.
  */
+/** Colonne ou table absente : la base n'a pas encore reçu sa migration. */
+function defautDeSchema(corps: string): boolean {
+  const c = corps.toLowerCase();
+  return c.includes("pgrst204") || c.includes("pgrst205") || c.includes("42703")
+    || c.includes("schema cache") || c.includes("could not find")
+    || c.includes("does not exist");
+}
+
 function sansValeurs(chemin: string): string {
   return chemin.replace(
     /(=(?:eq|neq|ilike|like|lt|lte|gt|gte|in|is)\.)[^&]*/gi, "$1…");
@@ -292,7 +300,7 @@ export async function chargerDonnees(
   const filtreCarte = portee.tout ? "" : `&iccid=in.${dans}`;
   const filtrePaiement = portee.tout ? "" : `&carte=in.${dans}`;
   const vide = <T,>() => Promise.resolve([] as T[]);
-  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons] = await Promise.all([
+  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons, carnet] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
     rien ? vide<LigneCarte>()
       : lire<LigneCarte>(`cartes?select=*${filtreCarte}&order=derniere_vue.desc.nullslast`),
@@ -311,6 +319,11 @@ export async function chargerDonnees(
     // Les boutons appris par le robot. Table absente (base pas migrée) :
     // `lire` rend [] sans bruit — les écrans montrent juste moins de boutons.
     lire<LigneRaccourci>("raccourcis?select=*&order=id"),
+    // Le carnet des bénéficiaires, carte par carte — même portée que le
+    // reste. Table absente (base pas migrée) : un carnet vide, sans bruit.
+    rien ? vide<Beneficiaire>()
+      : lire<Beneficiaire>(
+          `beneficiaires?select=id,carte,numero,nom${filtrePaiement}&order=nom.asc&limit=500`),
   ]);
 
   // Revérifié ici, ligne par ligne : ce que la base a filtré, on le
@@ -464,6 +477,9 @@ export async function chargerDonnees(
 
   return {
     relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques,
+    // Revérifiés ici, comme les SMS : la portée ne dépend pas d'un filtre
+    // distant.
+    beneficiaires: carnet.filter((b) => visible(b.carte)),
     // Les compteurs des cartes sont déjà calculés : les lignes qui ont servi
     // à les calculer n'ont plus rien à faire sur le réseau.
     paiements: bornes?.lignes != null ? paiements.slice(0, bornes.lignes) : paiements,
@@ -704,22 +720,36 @@ export async function marquerLu(id: number): Promise<boolean> {
  */
 export async function enregistrerAppareil(
   jeton: string, plateforme: string, nom: string,
+  // À QUI SONNE CE TÉLÉPHONE. `null` : au propriétaire (ou à la clé de
+  // secours, qui ne désigne personne). Un numéro : à ce compte, qui ne
+  // recevra que les SMS des cartes qu'on lui a confiées — le robot fait le
+  // tri au moment d'annoncer.
+  utilisateur: number | null,
+  pourLeProprietaire: boolean,
 ): Promise<boolean> {
   if (!relie) return false;
+  const poser = (corps: Record<string, unknown>) => fetch(`${url}/rest/v1/appareils`, {
+    method: "POST",
+    headers: {
+      apikey: cle!, authorization: `Bearer ${cle}`,
+      "content-type": "application/json",
+      prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify(corps),
+    cache: "no-store",
+  });
   try {
-    const r = await fetch(`${url}/rest/v1/appareils`, {
-      method: "POST",
-      headers: {
-        apikey: cle!, authorization: `Bearer ${cle}`,
-        "content-type": "application/json",
-        prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify({
-        jeton, plateforme, nom, vu_le: new Date().toISOString(),
-      }),
-      cache: "no-store",
-    });
-    return r.ok;
+    const base = { jeton, plateforme, nom, vu_le: new Date().toISOString() };
+    const r = await poser({ ...base, utilisateur });
+    if (r.ok) return true;
+    // BASE PAS ENCORE MIGRÉE (la colonne « utilisateur » manque). Le
+    // téléphone du propriétaire s'inscrit comme avant. Celui d'un titulaire,
+    // JAMAIS sans son nom : inscrit sans propriétaire, il serait pris pour
+    // celui du propriétaire et recevrait chaque SMS de la maison.
+    if (r.status === 400 && pourLeProprietaire && defautDeSchema(await r.text())) {
+      return (await poser(base)).ok;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -834,6 +864,41 @@ export async function lireIncidents(limite = 100): Promise<Incident[]> {
     qui: l.terminal ?? "",
     texte: l.texte,
   }));
+}
+
+/** La carte d'un SMS — pour savoir si la main qui le touche en est le
+ *  titulaire. Par son identifiant en base, ou par celui du journal du
+ *  terminal (`source_id`, ce que porte une demande de reçu). */
+export async function carteDuSms(
+  par: { id: number } | { source: number; terminal?: string | null },
+): Promise<string | null> {
+  const filtre = "id" in par
+    ? `id=eq.${par.id}`
+    : `source_id=eq.${par.source}` + (par.terminal
+      ? `&terminal=eq.${encodeURIComponent(par.terminal)}` : "");
+  const lignes = await lire<{ carte: string | null }>(
+    `paiements?select=carte&${filtre}&limit=2`);
+  // Deux terminaux peuvent porter le même numéro de journal : sans terminal
+  // pour trancher, deux réponses différentes ne désignent AUCUNE carte.
+  const cartes = new Set(lignes.map((l) => l.carte));
+  return cartes.size === 1 ? lignes[0].carte : null;
+}
+
+/** La carte visée par une demande déjà déposée — sans jamais rendre ses
+ *  paramètres à l'écran (une réponse peut porter le code secret). */
+export async function carteDeLaCommande(id: number): Promise<string | null> {
+  const lignes = await lire<{ id: number; type: string; parametres: Record<string, unknown> | null; terminal: string | null }>(
+    `commandes?select=id,type,parametres,terminal&id=eq.${id}&limit=1`);
+  const c = lignes.find((x) => x.id === id);
+  if (!c) return null;
+  const p = c.parametres ?? {};
+  const carte = typeof p.carte === "string" ? p.carte
+    : typeof p.iccid === "string" ? p.iccid : null;
+  if (carte) return carte;
+  if (typeof p.source_id === "number") {
+    return carteDuSms({ source: p.source_id, terminal: c.terminal });
+  }
+  return null;
 }
 
 export async function lireCommande(
@@ -1113,10 +1178,32 @@ export async function retirerCarte(id: number, iccid: string): Promise<boolean> 
  *  Sert à l'essai de notification : la plateforme doit pouvoir sonner
  *  elle-même, une fois, pour que le propriétaire sache tout de suite si son
  *  téléphone répond. Le reste du temps, c'est le robot qui sonne. */
-export async function listerAppareils(): Promise<
-  { jeton: string; nom: string | null; plateforme: string | null }[]
-> {
-  return lire("appareils?select=jeton,nom,plateforme&order=vu_le.desc&limit=20");
+export async function listerAppareils(
+  // Les téléphones de qui ? `null` : ceux du propriétaire, inscrits sans nom
+  // de compte (la clé de secours, les inscriptions d'avant). Un numéro : ceux
+  // de ce compte — et, pour le propriétaire, AUSSI ceux d'avant.
+  utilisateur: number | null, proprietaire: boolean,
+): Promise<{ jeton: string; nom: string | null; plateforme: string | null }[]> {
+  const qui = utilisateur == null ? "utilisateur=is.null"
+    : proprietaire ? `or=(utilisateur.is.null,utilisateur.eq.${utilisateur})`
+      : `utilisateur=eq.${utilisateur}`;
+  type Appareil = { jeton: string; nom: string | null; plateforme: string | null };
+  if (!relie) return [];
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/appareils?select=jeton,nom,plateforme&${qui}&order=vu_le.desc&limit=20`,
+      { headers: { apikey: cle!, authorization: `Bearer ${cle}` }, cache: "no-store" });
+    if (r.ok) return (await r.json()) as Appareil[];
+    // Base pas encore migrée : la colonne manque. Tous les téléphones sont
+    // alors ceux du propriétaire — seul lui a jamais pu en inscrire. Un
+    // titulaire, lui, n'en a aucun.
+    if (defautDeSchema(await r.text()) && (utilisateur == null || proprietaire)) {
+      return lire<Appareil>("appareils?select=jeton,nom,plateforme&order=vu_le.desc&limit=20");
+    }
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 /** Oublie un appareil dont Expo dit qu'il n'existe plus.
@@ -1135,4 +1222,58 @@ export async function oublierAppareil(jeton: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// LES BÉNÉFICIAIRES
+//
+// Le carnet suit la CARTE. Qui peut écrire dedans se décide dans la route
+// (`maniement`) : ces fonctions ne font qu'écrire ce qu'on leur donne, déjà
+// nettoyé — la base retient de toute façon la forme du numéro et du nom.
+// ---------------------------------------------------------------------------
+
+async function ecrireBeneficiaires(
+  methode: "POST" | "PATCH" | "DELETE", chemin: string, corps?: unknown,
+  entetes: Record<string, string> = {},
+): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+      method: methode,
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=minimal", ...entetes,
+      },
+      body: corps === undefined ? undefined : JSON.stringify(corps),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Enregistre un bénéficiaire — ou renomme celui que la carte connaît déjà
+ *  sous ce numéro : une carte ne connaît un numéro qu'une fois. */
+export function enregistrerBeneficiaire(
+  carte: string, numero: string, nom: string, par: number | null,
+): Promise<boolean> {
+  return ecrireBeneficiaires("POST", "beneficiaires?on_conflict=carte,numero",
+    { carte, numero, nom, cree_par: par, maj_le: new Date().toISOString() },
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+}
+
+export async function beneficiaireParId(id: number): Promise<Beneficiaire | null> {
+  const lignes = await lire<Beneficiaire>(
+    `beneficiaires?select=id,carte,numero,nom&id=eq.${id}&limit=1`);
+  return lignes.find((b) => b.id === id) ?? null;
+}
+
+export function renommerBeneficiaire(id: number, nom: string): Promise<boolean> {
+  return ecrireBeneficiaires("PATCH", `beneficiaires?id=eq.${id}`,
+    { nom, maj_le: new Date().toISOString() });
+}
+
+export function supprimerBeneficiaire(id: number): Promise<boolean> {
+  return ecrireBeneficiaires("DELETE", `beneficiaires?id=eq.${id}`);
 }

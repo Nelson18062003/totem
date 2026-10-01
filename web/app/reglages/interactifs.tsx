@@ -6,6 +6,7 @@ import { changerLangue, useLangue } from "@/app/langue";
 import { aDesVariables, CLES_GUICHET, codesUssd, type CodeUssd } from "@noyau/codes";
 import { LANGUES } from "@noyau/langue";
 import { textesReglages } from "@noyau/textes/reglages";
+import { messageDEssai } from "@noyau/essai";
 import { ApercuCode, Composeur } from "./composeur";
 import { dateVue, type RaccourciAppris } from "@noyau/types";
 import { IconHash, IconPlus } from "../icons";
@@ -978,23 +979,14 @@ export function SectionEssaiNotification() {
       if (!r.ok) {
         setRate(true);
         setMessage(c?.erreur ?? t.essaiEchec);
-      } else if (c.aucun) {
-        setRate(true);
-        setMessage(`${t.essaiAucunAppareil} ${t.essaiDepuisNavigateur}`);
-      } else if (c.servis > 0 || c.enRoute) {
-        setRate(false);
-        // REMIS, OU SEULEMENT PARTI. Voir `lib/pousser.ts` : le guichet rend
-        // un billet tout de suite, l'accusé de remise plus tard, et seul le
-        // second dit qu'un téléphone a sonné.
-        setMessage(
-          (c.servis > 0 ? t.essaiRemis : t.essaiEnRoute)
-          + (c.oublies ? ` (${c.oublies} ${t.essaiOublies})` : ""));
       } else {
-        setRate(true);
-        // La cause, dans la langue de l'écran : le mot anglais du service
-        // (« InvalidCredentials ») ne disait rien à qui doit s'en servir.
-        setMessage(
-          t.essaiEchec + (c.soucis?.length ? ` — ${c.soucis.join(" · ")}` : ""));
+        // La règle est dans le noyau, partagée avec le téléphone : un
+        // téléphone qui sonne ne cache plus celui qui se tait.
+        const dit = messageDEssai(t, c);
+        setRate(dit.rate);
+        // Sur le navigateur, la précision qui manquait le plus : un
+        // navigateur n'est pas un téléphone, et ne sonnera jamais.
+        setMessage(c.aucun ? `${dit.texte} ${t.essaiDepuisNavigateur}` : dit.texte);
       }
     } catch {
       setRate(true);
@@ -1017,7 +1009,7 @@ export function SectionEssaiNotification() {
           {etat === "envoi" ? t.essaiEnCours : t.essaiBouton}
         </button>
         {message && (
-          <p className={`mt-3 text-caption leading-relaxed ${
+          <p className={`mt-3 whitespace-pre-line text-caption leading-relaxed ${
             rate ? "text-negative" : "text-ink-soft"
           }`}>
             {message}

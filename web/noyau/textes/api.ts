@@ -43,6 +43,8 @@ const en = {
     "This platform already has its owner. No new account can be created.",
   inscriptionImpossible: "the account could not be created",
   reserveAuProprietaire: "only the owner can do this",
+  carteNonConfiee: "this card has not been entrusted to you",
+  beneficiaireIncomplet: "a beneficiary needs a card, a number of 8 to 15 digits and a name",
   pasSoiMeme: "you cannot do this to your own account",
   // Le compte du propriétaire ne se ferme ni ne se supprime — par personne,
   // pas même avec la clé de secours. Une plateforme sans propriétaire
@@ -90,6 +92,8 @@ const fr: typeof en = {
     "être créé.",
   inscriptionImpossible: "le compte n’a pas pu être créé",
   reserveAuProprietaire: "seul le propriétaire peut faire cela",
+  carteNonConfiee: "cette carte ne vous a pas été confiée",
+  beneficiaireIncomplet: "un bénéficiaire demande une carte, un numéro de 8 à 15 chiffres et un nom",
   pasSoiMeme: "vous ne pouvez pas faire cela à votre propre compte",
   pasLeProprietaire:
     "le compte du propriétaire ne se ferme ni ne se supprime — la plateforme "

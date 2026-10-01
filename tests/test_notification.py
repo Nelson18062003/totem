@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import totem.app
 from totem.app import Robot
-from totem.notification import APERCU_MAX, composer, envoyer
+from totem.notification import APERCU_MAX, composer, envoyer, lire_les_accuses
 from totem.nuage import Nuage
 
 
@@ -164,6 +164,15 @@ class EnvoiDesNotifications(unittest.TestCase):
         self.assertEqual(
             soucis, ["la clé du service de notification manque au projet"])
 
+    def test_l_identifiant_du_billet_est_garde_pour_l_accuse(self):
+        def faux_urlopen(requete, timeout=None):
+            return faux_guichet([{"status": "ok", "id": "billet-1"}])
+
+        billets = []
+        avec_faux_guichet(faux_urlopen, lambda: envoyer(
+            ["ExponentPushToken[un]"], "T", "C", acceptes=billets))
+        self.assertEqual(billets, ["billet-1"])
+
     def test_une_reponse_illisible_ne_compte_personne(self):
         # Un guichet qui répond 200 avec du charabia n'a servi personne.
         def faux_urlopen(requete, timeout=None):
@@ -173,6 +182,73 @@ class EnvoiDesNotifications(unittest.TestCase):
             ["ExponentPushToken[un]"], "T", "C"))
         self.assertEqual(servis, 0)
         self.assertEqual(len(soucis), 1)
+
+
+class AccusesDeReception(unittest.TestCase):
+    """LE REFUS D'APPLE N'EST ÉCRIT QUE DANS L'ACCUSÉ.
+
+    Le guichet d'Expo accepte le billet ; c'est après qu'Apple refuse, quand
+    le projet n'a pas de clé de notification. Le robot ne lisait jamais
+    l'accusé : un iPhone muet comptait pour servi à chaque paiement.
+    """
+
+    def test_un_refus_d_apple_est_lu_et_dit_en_francais(self):
+        demandes = []
+
+        def faux_urlopen(requete, timeout=None):
+            demandes.append(json.loads(requete.data.decode("utf-8")))
+            corps = json.dumps({"data": {
+                "b1": {"status": "ok"},
+                "b2": {"status": "error", "details": {"error": "InvalidCredentials"}},
+            }}).encode("utf-8")
+            return faux_guichet(brut=corps)
+
+        causes = avec_faux_guichet(faux_urlopen, lambda: lire_les_accuses(["b1", "b2", "b3"]))
+        self.assertEqual(demandes[0], {"ids": ["b1", "b2", "b3"]})
+        self.assertEqual(causes, ["la clé du service de notification manque au projet"])
+
+    def test_un_guichet_muet_ne_dit_rien_de_plus(self):
+        def faux_urlopen(requete, timeout=None):
+            raise OSError("réseau coupé")
+
+        self.assertEqual(avec_faux_guichet(faux_urlopen, lambda: lire_les_accuses(["b1"])), [])
+
+    def test_sans_billet_on_ne_demande_rien(self):
+        self.assertEqual(lire_les_accuses([]), [])
+
+    def test_un_iphone_refuse_par_apple_n_est_plus_compte_servi(self):
+        # Le chemin entier, dans le robot : le billet est accepté, l'accusé
+        # le refuse — le journal doit dire « muets », pas « d'accord ».
+        dit = threading.Event()
+        vu = []
+        vrais = (totem.app.envoyer, totem.app.lire_les_accuses, totem.app.ATTENTE_DES_ACCUSES)
+
+        def faux_envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
+            acceptes.append("b1")
+            return 1, []
+
+        totem.app.envoyer = faux_envoyer
+        totem.app.lire_les_accuses = lambda b: ["la clé du service de notification manque au projet"]
+        totem.app.ATTENTE_DES_ACCUSES = 0
+
+        class FauxNuage:
+            @staticmethod
+            def appareils(iccid=None):
+                return ["ExponentPushToken[iphone]"]
+
+        class FauxRobot:
+            nuage = FauxNuage()
+
+            def _dire_si_les_telephones_se_taisent(soi, attendus, servis, soucis):
+                vu.append((attendus, servis, soucis))
+                dit.set()
+
+        try:
+            Robot._faire_sonner(FauxRobot(), "MTN", "MTN ·8901", "Vous avez recu 1 000 FCFA")
+            self.assertTrue(dit.wait(3))
+        finally:
+            totem.app.envoyer, totem.app.lire_les_accuses, totem.app.ATTENTE_DES_ACCUSES = vrais
+        self.assertEqual(vu, [(1, 0, ["la clé du service de notification manque au projet"])])
 
 
 class ListeDesAppareils(unittest.TestCase):
@@ -219,6 +295,82 @@ class ListeDesAppareils(unittest.TestCase):
         self.assertEqual(Nuage("", "", "totem", journal=None).appareils(), [])
 
 
+class ChacunEntendSesCartes(unittest.TestCase):
+    """Un téléphone inscrit au nom d'un compte ne sonne que pour les SMS des
+    cartes confiées à ce compte. Celui du propriétaire sonne pour tout."""
+
+    MTN = "89237010000000008901"
+    ORANGE = "89237020000000004432"
+
+    def setUp(self):
+        essai = self
+        self.tables = {
+            "appareils": [
+                {"jeton": "ExponentPushToken[proprio-ancien]", "utilisateur": None},
+                {"jeton": "ExponentPushToken[proprio]", "utilisateur": 1},
+                {"jeton": "ExponentPushToken[vendeur]", "utilisateur": 2},
+                {"jeton": "ExponentPushToken[ferme]", "utilisateur": 3},
+            ],
+            "utilisateurs": [
+                {"id": 1, "role": "proprietaire", "approuve": True},
+                {"id": 2, "role": "invite", "approuve": True},
+                {"id": 3, "role": "invite", "approuve": False},
+            ],
+            "attributions": [
+                {"utilisateur": 2, "iccid": self.MTN},
+                {"utilisateur": 3, "iccid": self.MTN},
+            ],
+        }
+        self.panne = set()
+
+        class Base(BaseHTTPRequestHandler):
+            def do_GET(soi):
+                table = soi.path.split("/rest/v1/")[1].split("?")[0]
+                if table in essai.panne:
+                    soi.send_response(500)
+                    soi.end_headers()
+                    return
+                lignes = essai.tables.get(table, [])
+                if table == "attributions":
+                    iccid = soi.path.split("iccid=eq.")[1].split("&")[0]
+                    lignes = [l for l in lignes if l["iccid"] == iccid]
+                corps = json.dumps(lignes).encode()
+                soi.send_response(200)
+                soi.send_header("Content-Type", "application/json")
+                soi.send_header("Content-Length", str(len(corps)))
+                soi.end_headers()
+                soi.wfile.write(corps)
+
+            def log_message(soi, *args):
+                pass
+
+        self.serveur = HTTPServer(("127.0.0.1", 0), Base)
+        threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
+        self.nuage = Nuage(f"http://127.0.0.1:{self.serveur.server_port}",
+                           "cle", "totem-test", journal=None)
+
+    def tearDown(self):
+        self.serveur.shutdown()
+
+    def test_le_titulaire_entend_sa_carte(self):
+        self.assertEqual(self.nuage.appareils(self.MTN), [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]",
+            "ExponentPushToken[vendeur]"])
+
+    def test_le_titulaire_n_entend_pas_la_carte_d_un_autre(self):
+        self.assertEqual(self.nuage.appareils(self.ORANGE), [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]"])
+
+    def test_une_carte_inconnue_ne_sonne_que_chez_le_proprietaire(self):
+        self.assertEqual(self.nuage.appareils(None), [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]"])
+
+    def test_dans_le_doute_seul_le_proprietaire_d_avant_sonne(self):
+        self.panne = {"utilisateurs"}
+        self.assertEqual(self.nuage.appareils(self.MTN),
+                         ["ExponentPushToken[proprio-ancien]"])
+
+
 class FaireSonnerLeTelephone(unittest.TestCase):
     """Le branchement : ce que le robot fait sonner en recevant un SMS.
 
@@ -232,16 +384,16 @@ class FaireSonnerLeTelephone(unittest.TestCase):
         self.parti = threading.Event()
         self._vrai_envoyer = totem.app.envoyer
 
-        def faux_envoyer(jetons, titre, corps, ouvrir=None):
+        def faux_envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
             self.envois.append((list(jetons), titre, corps))
             self.parti.set()
-            return len(jetons)
+            return len(jetons), []
 
         totem.app.envoyer = faux_envoyer
 
         class FauxNuage:
             @staticmethod
-            def appareils():
+            def appareils(iccid=None):
                 return ["ExponentPushToken[abc]"]
 
         class FauxRobot:
