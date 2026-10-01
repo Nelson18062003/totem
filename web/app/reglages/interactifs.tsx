@@ -582,7 +582,8 @@ export function BoutonDeconnexion() {
 /** Un compte tel que la route le rend : ses cartes, ou `null` pour le
  *  propriétaire, qui voit tout. */
 type CompteAvecCartes = {
-  id: number; courriel: string; role: string; approuve: boolean;
+  id: number; courriel: string; prenom?: string; nom?: string;
+  role: string; approuve: boolean;
   creeLe: string | null; vuLe: string | null; cartes: string[] | null;
 };
 type CarteDeLaMaison = {
@@ -593,9 +594,9 @@ type CarteDeLaMaison = {
 /**
  * QUI PEUT SE CONNECTER, ET CE QUE CHACUN VOIT — réservé au propriétaire.
  *
- * Personne ne s'inscrit seul : c'est ici que le propriétaire crée un compte,
- * avec un courriel et rien d'autre (on entre par un code envoyé à ce
- * courriel). Et c'est ici qu'il CONFIE des cartes : un invité ne voit que
+ * Personne ne s'inscrit seul : c'est ici que le propriétaire crée un compte —
+ * prénom, nom, courriel, et le mot de passe qu'il transmettra lui-même. Et
+ * c'est ici qu'il CONFIE des cartes : un invité ne voit que
  * celles-là, et rien du tout tant qu'on ne lui en a confié aucune.
  *
  * La même section vit dans les Réglages et dans la console (« Les gens ») :
@@ -617,7 +618,10 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
   // Le compte dont on choisit les cartes, ou aucun.
   const [enChoix, setEnChoix] = useState<number | null>(null);
   const [ouvrirCreation, setOuvrirCreation] = useState(false);
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
   const [courriel, setCourriel] = useState("");
+  const [motdepasse, setMotdepasse] = useState("");
   const [creation, setCreation] = useState(false);
   const [motCree, setMotCree] = useState<string | null>(null);
   const [rateCree, setRateCree] = useState(false);
@@ -674,22 +678,30 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
     });
   }
 
+  const formulaireComplet = Boolean(prenom.trim() && nom.trim() && courriel.trim())
+    && motdepasse.length >= 12;
+
   async function creer(e: React.FormEvent) {
     e.preventDefault();
-    if (creation || !courriel) return;
+    if (creation || !formulaireComplet) return;
     setCreation(true);
     setMotCree(null);
     try {
       const r = await fetch("/api/comptes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ geste: "creer", courriel }),
+        body: JSON.stringify({ geste: "creer", prenom, nom, courriel, motdepasse }),
       });
       const c = await r.json().catch(() => ({}));
       if (r.ok) {
         setRateCree(false);
         setMotCree(t.creerFait);
+        // Le mot de passe ne reste pas à l'écran : il vient d'être transmis
+        // au serveur, il n'a plus rien à faire dans un champ ouvert.
+        setPrenom("");
+        setNom("");
         setCourriel("");
+        setMotdepasse("");
         setOuvrirCreation(false);
         await charger();
         // Le geste qui suit naturellement : choisir ses cartes. On ouvre le
@@ -732,7 +744,15 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
               <div className="min-w-0 flex-1">
                 {/* Un courriel n'est jamais coupé : c'est sur lui qu'on décide
                     d'ouvrir la caisse à quelqu'un. */}
-                <p className="break-all text-small font-medium">{c.courriel}</p>
+                {(c.prenom || c.nom) && (
+                  <p className="text-small font-medium">
+                    {[c.prenom, c.nom].filter(Boolean).join(" ")}
+                  </p>
+                )}
+                <p className={`break-all ${c.prenom || c.nom
+                  ? "text-caption text-ink-soft" : "text-small font-medium"}`}>
+                  {c.courriel}
+                </p>
                 <p className="mt-0.5 text-caption text-ink-faint">
                   {c.role === "proprietaire" ? t.roleProprietaire : t.roleInvite}
                   {" · "}
@@ -855,6 +875,24 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
           <p className="rounded-btn border border-line bg-surface px-3 py-2 text-caption leading-relaxed text-ink-soft">
             {t.creerAvertissement}
           </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-small text-ink-soft">{t.creerPrenom}</span>
+              <input
+                value={prenom} required autoComplete="off" name="nouveau-prenom"
+                onChange={(e) => setPrenom(e.target.value)}
+                className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-small text-ink-soft">{t.creerNom}</span>
+              <input
+                value={nom} required autoComplete="off" name="nouveau-nom"
+                onChange={(e) => setNom(e.target.value)}
+                className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+              />
+            </label>
+          </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-small text-ink-soft">{t.creerCourriel}</span>
             <input
@@ -864,10 +902,26 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
               className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
             />
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-small text-ink-soft">{t.creerMotDePasse}</span>
+            {/* En clair, à dessein : le propriétaire doit pouvoir le relire
+                pour le transmettre. Ce n'est pas SON mot de passe. */}
+            <input
+              type="text" value={motdepasse} required autoComplete="off"
+              name="nouveau-motdepasse"
+              onChange={(e) => setMotdepasse(e.target.value)}
+              className="rounded-btn border border-line bg-surface px-3 py-2 text-small outline-none transition focus:border-ink"
+            />
+            <span className={`text-caption ${
+              motdepasse && motdepasse.length < 12 ? "text-negative" : "text-ink-faint"
+            }`}>
+              {t.creerLongueur}
+            </span>
+          </label>
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={creation || !courriel}
+              disabled={creation || !formulaireComplet}
               className="min-h-11 rounded-btn bg-ink px-4 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-35"
             >
               {creation ? t.creerEnCours : t.creerBouton}
@@ -971,5 +1025,99 @@ export function SectionEssaiNotification() {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Changer SON mot de passe — connecté, avec la preuve de l'ancien.
+ *
+ * LA PREUVE N'EST PAS UNE FORMALITÉ : une session, c'est un téléphone resté
+ * ouvert sur une table. Sans l'ancien mot de passe, quiconque le ramasse
+ * change la clé et met le propriétaire dehors. La route « /api/motdepasse »
+ * exige la même preuve — ce formulaire ne fait que la transporter.
+ */
+export function SectionMotDePasse() {
+  const langue = useLangue();
+  const t = textesReglages[langue];
+  const [actuel, setActuel] = useState("");
+  const [nouveau, setNouveau] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [dit, setDit] = useState<{ bon: boolean; texte: string } | null>(null);
+
+  async function changer(e: React.FormEvent) {
+    e.preventDefault();
+    if (envoi) return;
+    if (nouveau.length < 12) {
+      setDit({ bon: false, texte: t.motDePasseCourt });
+      return;
+    }
+    setEnvoi(true);
+    setDit(null);
+    try {
+      const r = await fetch("/api/motdepasse", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actuel, nouveau }),
+      });
+      const c = await r.json().catch(() => ({}));
+      if (r.ok) {
+        // Les deux champs se vident : un mot de passe transmis n'a plus rien
+        // à faire dans un champ ouvert.
+        setActuel("");
+        setNouveau("");
+        setDit({ bon: true, texte: t.motDePasseFait });
+      } else {
+        setDit({ bon: false, texte: c?.erreur || t.motDePasseRate });
+      }
+    } catch {
+      setDit({ bon: false, texte: t.motDePasseRate });
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={changer}
+      className="flex flex-col gap-3 rounded-card border border-line bg-surface-raised p-4"
+    >
+      <p className="text-body font-medium">{t.motDePasse}</p>
+      <p className="text-caption leading-relaxed text-ink-faint">{t.motDePasseAide}</p>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-small text-ink-soft">{t.motDePasseActuel}</span>
+        <input
+          type="password" value={actuel} required
+          autoComplete="current-password"
+          onChange={(e) => setActuel(e.target.value)}
+          className="h-11 rounded-btn border border-line-control bg-surface px-3 text-body"
+        />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-small text-ink-soft">{t.motDePasseNouveau}</span>
+        <input
+          type="password" value={nouveau} required minLength={12}
+          autoComplete="new-password"
+          onChange={(e) => setNouveau(e.target.value)}
+          className="h-11 rounded-btn border border-line-control bg-surface px-3 text-body"
+        />
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={envoi || !actuel || !nouveau}
+          className="rounded-btn border border-line px-3.5 py-2 text-small font-medium text-ink-soft transition hover:border-ink-faint disabled:opacity-40"
+        >
+          {envoi ? t.motDePasseEnvoi : t.motDePasseBouton}
+        </button>
+        {dit && (
+          <p
+            role="status"
+            className={`text-caption leading-relaxed ${dit.bon ? "text-positive" : "text-negative"}`}
+          >
+            {dit.texte}
+          </p>
+        )}
+      </div>
+    </form>
   );
 }

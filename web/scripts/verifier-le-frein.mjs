@@ -1,8 +1,4 @@
-// LE FREIN AUX ESSAIS DE CODE, ÉPROUVÉ EN RAFALE.
-//
-// (On entrait autrefois par mot de passe ; on entre maintenant par un code à
-// six chiffres reçu au courriel. Le frein est le même, et il compte plus
-// encore : un code n'a qu'un million de valeurs.)
+// LE FREIN AUX ESSAIS DE MOT DE PASSE, ÉPROUVÉ EN RAFALE.
 //
 //     node scripts/verifier-le-frein.mjs
 //
@@ -21,16 +17,16 @@
 //
 //   1. en file, le délai grandit — le frein existe ;
 //   2. EN RAFALE, il existe encore. C'est la vérification qui manquait ;
-//   3. au-delà du mur, le serveur refuse SANS juger le code — la base n'est
-//      même pas interrogée (le faux nuage COMPTE les codes qu'il juge). Sans
-//      ce refus précoce, une rafale d'essais devient une rafale de travail ;
+//   3. au-delà du mur, le serveur refuse SANS vérifier le mot de passe. Une
+//      vérification coûte 210 000 tours de PBKDF2 : sans ce refus précoce,
+//      une rafale d'essais devient une rafale de calculs, et la plateforme
+//      s'écroule sous les tentatives ;
 //   4. le mur est par ADRESSE. Attaquer ne doit pas enfermer le propriétaire
 //      dehors — sans quoi le frein devient l'arme qu'il devait parer ;
 //   5. changer l'adresse annoncée ne desserre rien.
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
-import { attendreUneLettre, boite, envCourrier } from "./entrer.mjs";
 
 const PORT = 3177;
 // UNE SECONDE INSTANCE, sur le même faux nuage. C'est elle qui prouve le
@@ -42,11 +38,8 @@ const PORT2 = 3178;
 const NUAGE = 4993;
 const B = `http://127.0.0.1:${PORT}`;
 const B2 = `http://127.0.0.1:${PORT2}`;
+const MDP = "le-vrai-mot-de-passe-du-proprietaire";
 const CIBLE = "cible@exemple.cm";
-
-/** Combien de codes la base a jugés jusqu'ici. */
-const codesJuges = async () =>
-  (await (await fetch(`http://127.0.0.1:${NUAGE}/essai/compteurs`)).json()).codesJuges;
 
 let echecs = 0;
 const verifier = (quoi, ok, detail = "") => {
@@ -80,22 +73,19 @@ const envServeur = {
   ...process.env,
   SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
   SESSION_SECRET: "secret-du-frein", TOTEM_MOT_DE_PASSE: "cle-de-secours-frein",
-  ...envCourrier(NUAGE),
 };
 const serveur = spawn("npx", ["next", "start", "-p", String(PORT)],
                       { env: envServeur, stdio: "ignore" });
 const serveur2 = spawn("npx", ["next", "start", "-p", String(PORT2)],
                        { env: envServeur, stdio: "ignore" });
 
-/** Un essai de code depuis une adresse donnée. Rend le statut et la durée.
- *  Les codes faux sont de vrais codes à six chiffres : un code mal formé
- *  serait refusé avant même d'être jugé, et ne mesurerait rien. */
-async function essai(adresse, code, courriel = CIBLE, base = B) {
+/** Un essai depuis une adresse donnée. Rend le statut et la durée. */
+async function essai(adresse, motdepasse, courriel = CIBLE, base = B) {
   const t0 = Date.now();
   const r = await fetch(`${base}/api/connexion`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-real-ip": adresse },
-    body: JSON.stringify({ courriel, code }),
+    body: JSON.stringify({ courriel, motdepasse }),
   });
   return { statut: r.status, ms: Date.now() - t0 };
 }
@@ -108,16 +98,14 @@ try {
     }
   }
   await fetch(`${B}/api/inscription`, {
-    method: "POST", headers: { "content-type": "application/json", "x-real-ip": "203.0.113.1" },
-    body: JSON.stringify({ courriel: CIBLE }),
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel: CIBLE, motdepasse: MDP }),
   });
-  await attendreUneLettre(NUAGE, CIBLE, 0);
-  const faux = (i) => String(100000 + i);
 
   // --- 1. EN FILE : le délai grandit -------------------------------------
   console.log("\nEn file : le frein serre");
   const file = [];
-  for (let i = 0; i < 12; i++) file.push(await essai("198.51.100.1", faux(i)));
+  for (let i = 0; i < 12; i++) file.push(await essai("198.51.100.1", `faux-${i}`));
   const premiers = file.slice(0, 3).reduce((s, e) => s + e.ms, 0) / 3;
   const derniers = file.slice(-3).reduce((s, e) => s + e.ms, 0) / 3;
   verifier("les derniers essais coûtent plus cher que les premiers",
@@ -130,52 +118,36 @@ try {
   console.log("\nEn rafale : le compteur n'est pas contourné");
   const t0 = Date.now();
   const rafale = await Promise.all(
-    Array.from({ length: 80 }, (_, i) => essai("198.51.100.42", faux(100 + i))));
+    Array.from({ length: 80 }, (_, i) => essai("198.51.100.42", `rafale-${i}`)));
   const duree = Date.now() - t0;
   const juges = rafale.filter((e) => e.statut === 401).length;
   const murs = rafale.filter((e) => e.statut === 429).length;
 
   verifier("le mur arrête une partie de la rafale", murs > 0, `${murs} refus sur 80`);
   verifier("le nombre d'essais VRAIMENT jugés reste borné",
-    juges <= 61, `${juges} codes jugés`);
+    juges <= 61, `${juges} mots de passe vérifiés`);
   verifier("une rafale ne va pas plus vite qu'une file",
     duree / 80 > 40, `${(duree / 80).toFixed(0)} ms par essai`);
 
-  // --- 3. LE MUR NE FAIT PAS TRAVAILLER LA BASE --------------------------
+  // --- 3. LE MUR NE FAIT PAS TRAVAILLER LE SERVEUR -----------------------
   //
-  // Un refus doit arriver AVANT de juger le code. Un mur qui jugerait quand
-  // même ne protégerait que la porte, pas la plateforme : mille essais
-  // resteraient mille questions à la base. On ne CHRONOMÈTRE pas — juger un
-  // code est rapide, l'écart serait du bruit — on COMPTE ce que la base a
-  // eu à juger.
-  console.log("\nAu-delà du mur, la base n'est plus interrogée");
-  const avantMur = await codesJuges();
-  const apres = await essai("198.51.100.42", faux(999));
-  for (let i = 0; i < 5; i++) await essai("198.51.100.42", faux(900 + i));
+  // Un refus doit arriver AVANT le calcul de l'empreinte. S'il coûtait aussi
+  // cher qu'une vérification, le mur ne protégerait que le mot de passe, pas
+  // la plateforme : mille essais resteraient mille calculs.
+  console.log("\nAu-delà du mur, le serveur ne calcule plus");
+  const apres = await essai("198.51.100.42", "encore-un");
   verifier("l'adresse murée reçoit 429", apres.statut === 429, `${apres.statut}`);
-  verifier("et la base n'a jugé aucun de ces six codes",
-    (await codesJuges()) === avantMur, `${(await codesJuges()) - avantMur} jugé(s)`);
+  const empreinteMs = premiers;   // le coût d'une vraie vérification, mesuré
+  verifier("et ce refus est bien plus rapide qu'une vérification",
+    apres.ms < empreinteMs, `${apres.ms} ms contre ${empreinteMs.toFixed(0)} ms`);
 
   // --- 4. LE PROPRIÉTAIRE N'EST PAS ENFERMÉ DEHORS -----------------------
   //
   // Un mur global serait l'arme qu'il devait parer : il suffirait d'attaquer
   // pour fermer la porte au propriétaire. Le sien est par adresse.
-  //
-  // CE QUE L'ATTAQUE A COÛTÉ, et il faut le dire : chaque code faux jugé
-  // compte contre le code EN COURS du propriétaire, qui se brûle au cinquième.
-  // L'attaquant ne peut pas entrer, mais il peut obliger le propriétaire à
-  // redemander un code. Celui-ci en demande donc un neuf — et il entre.
   console.log("\nPendant l'attaque, le propriétaire entre encore");
-  await fetch(`http://127.0.0.1:${NUAGE}/essai/vieillir-les-codes`, { method: "POST" });
-  const avantLettre = (await boite(NUAGE, CIBLE)).nombre;
-  await fetch(`${B}/api/code`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-real-ip": "203.0.113.200" },
-    body: JSON.stringify({ courriel: CIBLE }),
-  });
-  const neuf = (await attendreUneLettre(NUAGE, CIBLE, avantLettre))?.code;
-  const lui = await essai("203.0.113.200", neuf);
-  verifier("depuis une autre adresse, avec un code neuf : il entre",
+  const lui = await essai("203.0.113.200", MDP);
+  verifier("depuis une autre adresse, avec le bon mot de passe : il entre",
     lui.statut === 200, `${lui.statut}`);
 
   // --- 5. L'ADRESSE ANNONCÉE NE DESSERRE RIEN ----------------------------
@@ -194,7 +166,7 @@ try {
         "x-real-ip": "198.51.100.77",
         "x-forwarded-for": `10.0.0.${i}, 198.51.100.77`,
       },
-      body: JSON.stringify({ courriel: CIBLE, code: faux(500 + i) }),
+      body: JSON.stringify({ courriel: CIBLE, motdepasse: `menteur-${i}` }),
     });
     menteur.push({ statut: r.status, ms: Date.now() - t });
   }
@@ -217,16 +189,15 @@ try {
   // En rafale : les enchaîner coûterait huit secondes chacun, et le harnais
   // mettrait un quart d'heure à dire une chose qui se voit en dix secondes.
   await Promise.all(
-    Array.from({ length: 65 }, (_, i) => essai(attaquant, faux(600 + i), CIBLE, B)));
-  const surUn = await essai(attaquant, faux(700), CIBLE, B);
-  const avantDeux = await codesJuges();
-  const surDeux = await essai(attaquant, faux(701), CIBLE, B2);
+    Array.from({ length: 65 }, (_, i) => essai(attaquant, `deux-${i}`, CIBLE, B)));
+  const surUn = await essai(attaquant, "encore", CIBLE, B);
+  const surDeux = await essai(attaquant, "encore", CIBLE, B2);
   verifier("la première instance mure l'adresse", surUn.statut === 429,
     `${surUn.statut}`);
   verifier("la SECONDE la mure aussi, sans l'avoir vue attaquer",
     surDeux.statut === 429, `${surDeux.statut}`);
-  verifier("et elle n'a pas fait juger le code pour le dire",
-    (await codesJuges()) === avantDeux, `${(await codesJuges()) - avantDeux} jugé(s)`);
+  verifier("et elle n'a pas vérifié le mot de passe pour le dire",
+    surDeux.ms < empreinteMs, `${surDeux.ms} ms`);
 
   // --- 7. SI LA BASE SE TAIT, LA PORTE NE SE FERME PAS -------------------
   //
@@ -236,8 +207,8 @@ try {
   // Supabase a hoqueté.
   //
   // On éprouve la CLÉ DE SECOURS, et c'est bien elle qu'il faut éprouver :
-  // sans base, il n'y a plus de comptes ni de codes — un code ne PEUT pas
-  // ouvrir, et c'est normal. La clé de secours existe
+  // sans base, il n'y a plus de comptes à vérifier — un mot de passe de
+  // compte ne PEUT pas ouvrir, et c'est normal. La clé de secours existe
   // exactement pour ce jour-là. Ce qu'on vérifie ici, c'est que le frein ne
   // vient pas s'ajouter à la panne en fermant aussi cette porte-là.
   //

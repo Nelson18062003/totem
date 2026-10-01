@@ -23,9 +23,6 @@ import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 // justement en demander un. Ce qui les rend sûres n'est pas une porte fermée,
 // c'est qu'un compte neuf n'ouvre RIEN tant que le propriétaire ne l'a pas
 // approuvé (voir lib/porte.ts).
-// « /api/code » est la première moitié de l'entrée : on y demande le code
-// qu'on tapera ensuite. Elle ne dit rien de personne (la même réponse pour
-// une adresse connue ou inconnue) et le frein la garde.
 // « /confidentialite » est ouverte parce que Google Play l'exige à une
 // adresse publique : un examinateur l'ouvre sans compte, depuis un lien collé
 // dans un formulaire. Derrière le verrou, l'application serait refusée sans
@@ -36,7 +33,6 @@ import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 const OUVERT = ["/connexion", "/inscription", "/confidentialite",
                 "/suppression",
                 "/api/connexion", "/api/deconnexion", "/api/inscription",
-                "/api/code",
                 "/api/session", "/api/plateforme"];
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */

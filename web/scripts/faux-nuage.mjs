@@ -203,18 +203,6 @@ const appareils = new Map();
 // Sans ces règles ici, aucun harnais ne pourrait voir une portée qui fuit.
 const attributions = [];             // { utilisateur, iccid, attribuee_le }
 
-// LES CODES D'ENTRÉE — « codes_de_connexion », et ses deux fonctions, jouées
-// comme la base les joue : un code par compte, pas deux dans la minute, cinq
-// essais au plus, et le bon code s'efface en servant.
-const codes = new Map();             // utilisateur → { empreinte, expire, essais, emis }
-
-// LE COURRIER. Le faux nuage se fait aussi passer pour le service d'envoi
-// (COURRIER_URL=http://127.0.0.1:4999) : il GARDE les lettres au lieu de les
-// envoyer, et le harnais vient y lire le code — exactement ce que ferait la
-// personne en ouvrant sa boîte.
-const lettres = [];                  // { a, sujet, texte, quand }
-let codesJuges = 0;                  // combien d'essais de code la base a jugés
-
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
 // Les essais de mot de passe comptés, comme la table « freins ».
@@ -396,75 +384,6 @@ const serveur = createServer(async (req, res) => {
     return repondre(n);
   }
 
-  // --- LE COURRIER (le faux service d'envoi) -------------------------------
-  if (req.method === "POST" && chemin === "/emails") {
-    let brut = "";
-    for await (const mm of req) brut += mm;
-    const l = JSON.parse(brut || "{}");
-    // Le vrai service exige sa clé : le faux aussi, sans quoi une plateforme
-    // qui oublierait de la poser passerait les essais.
-    if (!/^Bearer .+/.test(req.headers.authorization || "")) {
-      return repondre({ message: "clé manquante" }, 401);
-    }
-    for (const a of [].concat(l.to || [])) {
-      lettres.push({ a, sujet: l.subject, texte: l.text, quand: Date.now() });
-    }
-    return repondre({ id: `lettre-${lettres.length}` });
-  }
-  //     curl "http://127.0.0.1:4999/essai/courrier?a=patron@essai.cm"
-  // La dernière lettre reçue à cette adresse, et le code qu'elle porte.
-  if (chemin === "/essai/courrier") {
-    const a = url.searchParams.get("a");
-    const siennes = lettres.filter((l) => l.a === a);
-    const derniere = siennes[siennes.length - 1];
-    const code = derniere ? (/\b(\d{6})\b/.exec(derniere.texte || "") || [])[1] : null;
-    return repondre({ nombre: siennes.length, derniere: derniere ?? null, code: code ?? null });
-  }
-
-  // --- LES CODES D'ENTRÉE -------------------------------------------------
-  if (req.method === "POST" && chemin === "/rest/v1/rpc/poser_un_code") {
-    let brut = "";
-    for await (const mm of req) brut += mm;
-    const { le_compte, l_empreinte, duree_s, delai_s } = JSON.parse(brut || "{}");
-    if (!utilisateurs.has(le_compte)) {
-      return repondre({ code: "23503", message: "violates foreign key constraint" }, 409);
-    }
-    const deja = codes.get(le_compte);
-    if (deja && Date.now() - deja.emis < delai_s * 1000) return repondre(null);
-    codes.set(le_compte, {
-      empreinte: l_empreinte, expire: Date.now() + duree_s * 1000, essais: 0, emis: Date.now(),
-    });
-    return repondre(true);
-  }
-  if (req.method === "POST" && chemin === "/rest/v1/rpc/essayer_un_code") {
-    codesJuges += 1;
-    let brut = "";
-    for await (const mm of req) brut += mm;
-    const { le_compte, l_empreinte, max_essais } = JSON.parse(brut || "{}");
-    // UN SEUL GESTE, comme sous le verrou de la ligne : compter, juger,
-    // effacer — sans rendre la main entre les trois.
-    const c = codes.get(le_compte);
-    if (!c || c.expire <= Date.now() || c.essais >= max_essais) return repondre(false);
-    c.essais += 1;
-    if (c.empreinte === l_empreinte) {
-      codes.delete(le_compte);
-      return repondre(true);
-    }
-    return repondre(false);
-  }
-  //     curl "http://127.0.0.1:4999/essai/compteurs"
-  // Combien de codes la base a eu à JUGER. Le harnais du frein s'en sert :
-  // un mur qui refuse doit refuser AVANT de demander à la base — sans quoi
-  // une rafale d'essais devient une rafale de travail.
-  if (chemin === "/essai/compteurs") return repondre({ codesJuges });
-  //     curl -X POST "http://127.0.0.1:4999/essai/vieillir-les-codes"
-  // Fait comme si chaque code avait été émis il y a une heure : le harnais
-  // peut ainsi redemander un code sans attendre la minute.
-  if (req.method === "POST" && chemin === "/essai/vieillir-les-codes") {
-    for (const c of codes.values()) c.emis -= 3600_000;
-    return repondre({ vieillis: codes.size });
-  }
-
   // --- LES CARTES DE CHACUN -------------------------------------------------
   if (chemin === "/rest/v1/attributions") {
     const filtre = (nom) => {
@@ -551,6 +470,7 @@ const serveur = createServer(async (req, res) => {
         const ligne = {
           id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
           role: u.role ?? "invite", approuve: Boolean(u.approuve),
+          prenom: u.prenom ?? null, nom: u.nom ?? null,
           cree_le: maintenant(), vu_le: null,
         };
         utilisateurs.set(ligne.id, ligne);
@@ -583,8 +503,7 @@ const serveur = createServer(async (req, res) => {
       }
       for (const u of vise()) {
         utilisateurs.delete(u.id);
-        // « on delete cascade » : ses cartes et son code partent avec lui.
-        codes.delete(u.id);
+        // « on delete cascade » : ses cartes partent avec lui.
         for (let k = attributions.length - 1; k >= 0; k--) {
           if (attributions[k].utilisateur === u.id) attributions.splice(k, 1);
         }

@@ -1,10 +1,10 @@
-// LES CARTES DE CHACUN, ET L'ENTRÉE PAR CODE — VRAIMENT ESSAYÉES.
+// LES CARTES DE CHACUN — VRAIMENT ESSAYÉES.
 //
 //     node scripts/verifier-les-cartes.mjs
 //
-// Il lance un faux Supabase (qui joue aussi le service de courrier) et un vrai
-// serveur, puis déroule ce que fait le propriétaire : il entre par code, crée
-// le compte d'un vendeur, lui confie UNE carte. Et il se met à la place du
+// Il lance un faux Supabase et un vrai serveur, puis déroule ce que fait le
+// propriétaire : il entre, crée le compte d'un vendeur (prénom, nom,
+// courriel, mot de passe), lui confie UNE carte. Et il se met à la place du
 // vendeur pour chercher ce qui FUIT :
 //
 //   · les SMS, les soldes, les cartes d'une carte qu'on ne lui a pas confiée —
@@ -12,10 +12,6 @@
 //   · un reçu d'une autre carte, en devinant son numéro ;
 //   · un lien signé de bilan, en réécrivant à qui il était destiné ;
 //   · un compte qui se confierait des cartes lui-même.
-//
-// Et du côté de la porte : un code faux, un code qui resservirait, un code
-// qu'on essaierait sans fin, une adresse inconnue qui se trahirait par une
-// réponse différente, un ancien mot de passe qui ouvrirait encore.
 //
 // LE TÉMOIN, D'ABORD : le propriétaire doit VOIR les deux cartes et leurs
 // SMS. Sans lui, « le vendeur ne voit pas la carte MTN » et « le faux nuage
@@ -26,9 +22,13 @@
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
-import {
-  adresseNeuve, attendreUneLettre, boite, demanderUnCode, entrerParCode, envCourrier,
-} from "./entrer.mjs";
+
+const MDP_PATRON = "le-mot-de-passe-du-patron";
+const MDP_VENDEUR = "le-mot-de-passe-du-vendeur";
+let adresse = 1;
+// Une adresse d'origine neuve à chaque appel : le frein de la porte ne doit
+// pas confondre ce scénario avec une attaque (il a son propre harnais).
+const adresseNeuve = () => `10.88.${(adresse >> 8) & 255}.${adresse++ & 255}`;
 
 const SECRET = "secret-d-essai-pour-les-cartes";
 const SECOURS = "cle-de-secours-d-essai-cartes";
@@ -71,7 +71,6 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     ...process.env,
     SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
-    ...envCourrier(NUAGE),
   },
   stdio: "ignore",
   // Son PROPRE groupe de processus : « npx » lance le vrai serveur en
@@ -109,18 +108,10 @@ try {
     await attendre(500);
   }
 
-  console.log("\nLA PORTE : on entre par un code, et rien d'autre");
-  const plateforme = await (await fetch(B + "/api/plateforme")).json();
-  verifier("la plateforme annonce que les codes peuvent partir", plateforme.codes, true);
-  const patron = await entrerParCode(B, NUAGE, "patron@essai.cm", { inscrire: true });
-  verifier("le propriétaire entre par le code reçu", Boolean(patron), true);
-  {
-    const r = await poste("/api/session",
-      { courriel: "patron@essai.cm", motdepasse: "un-mot-de-passe-assez-long" });
-    verifier("un mot de passe n'ouvre plus aucun compte", r.status, 401);
-    const s = await poste("/api/session", { motdepasse: SECOURS });
-    verifier("la clé de secours ouvre toujours", s.status, 200);
-  }
+  console.log("\nLE PROPRIÉTAIRE ENTRE");
+  const patron = (await (await poste("/api/inscription",
+    { courriel: "patron@essai.cm", motdepasse: MDP_PATRON })).json()).jeton;
+  verifier("le premier compte est le propriétaire, et il entre", Boolean(patron), true);
 
   console.log("\nLE TÉMOIN : le propriétaire voit les deux cartes et leurs SMS");
   const tout = await donnees(patron);
@@ -129,16 +120,25 @@ try {
 
   console.log("\nLE PROPRIÉTAIRE CRÉE UN VENDEUR");
   {
-    const r = await poste("/api/comptes", { geste: "creer", courriel: "vendeur@essai.cm" }, patron);
-    verifier("le compte est créé, sans mot de passe", r.status, 201);
-    const lettre = await attendreUneLettre(NUAGE, "vendeur@essai.cm", 0);
-    verifier("une lettre d'invitation lui part", Boolean(lettre), true);
-    verifier("elle ne porte aucun code", lettre?.code ?? null, null);
+    const sansNom = await poste("/api/comptes",
+      { geste: "creer", courriel: "anonyme@essai.cm", motdepasse: MDP_VENDEUR }, patron);
+    verifier("sans prénom ni nom : refusé", sansNom.status, 400);
+    const court = await poste("/api/comptes", { geste: "creer", prenom: "Jean", nom: "Mbarga",
+      courriel: "court@essai.cm", motdepasse: "court" }, patron);
+    verifier("un mot de passe trop court : refusé", court.status, 400);
+    const r = await poste("/api/comptes", { geste: "creer", prenom: "Jean", nom: "Mbarga",
+      courriel: "vendeur@essai.cm", motdepasse: MDP_VENDEUR }, patron);
+    verifier("le propriétaire crée le compte du vendeur", r.status, 201);
   }
-  const vendeur = await entrerParCode(B, NUAGE, "vendeur@essai.cm");
-  verifier("le vendeur entre par son propre code", Boolean(vendeur), true);
-  const idVendeur = (await (await lire("/api/comptes", patron)).json()).comptes
-    .find((c) => c.courriel === "vendeur@essai.cm")?.id;
+  const s = await poste("/api/session", { courriel: "vendeur@essai.cm", motdepasse: MDP_VENDEUR });
+  verifier("le vendeur entre avec le mot de passe que le propriétaire a choisi", s.status, 200);
+  const vendeur = (await s.json()).jeton;
+  const fiche = (await (await lire("/api/comptes", patron)).json()).comptes
+    .find((c) => c.courriel === "vendeur@essai.cm");
+  verifier("la liste le nomme", [fiche?.prenom, fiche?.nom], ["Jean", "Mbarga"]);
+  verifier("et ne laisse sortir aucune empreinte",
+    JSON.stringify(fiche ?? {}).includes("pbkdf2"), false);
+  const idVendeur = fiche?.id;
 
   console.log("\nSANS CARTE CONFIÉE, LE VENDEUR NE VOIT RIEN");
   {
@@ -250,51 +250,6 @@ try {
     await poste("/api/comptes", { geste: "approuver", id: idVendeur }, patron);
   }
 
-  console.log("\nLE CODE : une fois, dix minutes, cinq essais");
-  {
-    const inconnue = await demanderUnCode(B, "personne@essai.cm");
-    const connue = await demanderUnCode(B, "vendeur@essai.cm");
-    const [ti, tc] = [await inconnue.json(), await connue.json()];
-    verifier("une adresse inconnue reçoit la même réponse qu'une connue",
-      [inconnue.status, ti.message === tc.message], [connue.status, true]);
-    await attendre(800);
-    verifier("et aucune lettre ne lui part", (await boite(NUAGE, "personne@essai.cm")).nombre, 0);
-    const faux = await poste("/api/session", { courriel: "personne@essai.cm", code: "123456" });
-    verifier("un code pour une adresse inconnue : refusé", faux.status, 401);
-
-    // Un code tout neuf, puis cinq essais faux : le bon ne doit plus ouvrir.
-    await fetch(`http://127.0.0.1:${NUAGE}/essai/vieillir-les-codes`, { method: "POST" });
-    const avant = (await boite(NUAGE, "vendeur@essai.cm")).nombre;
-    await demanderUnCode(B, "vendeur@essai.cm");
-    const lettre = await attendreUneLettre(NUAGE, "vendeur@essai.cm", avant);
-    const bon = lettre?.code;
-    const autre = String((Number(bon) + 1) % 1_000_000).padStart(6, "0");
-    for (let i = 0; i < 5; i++) {
-      await poste("/api/session", { courriel: "vendeur@essai.cm", code: autre });
-    }
-    const brule = await poste("/api/session", { courriel: "vendeur@essai.cm", code: bon });
-    verifier("après cinq codes faux, le bon est brûlé", brule.status, 401);
-
-    // Un code neuf : il ouvre une fois, et pas deux.
-    await fetch(`http://127.0.0.1:${NUAGE}/essai/vieillir-les-codes`, { method: "POST" });
-    const avant2 = (await boite(NUAGE, "vendeur@essai.cm")).nombre;
-    await demanderUnCode(B, "vendeur@essai.cm");
-    const code2 = (await attendreUneLettre(NUAGE, "vendeur@essai.cm", avant2))?.code;
-    const une = await poste("/api/connexion", { courriel: "vendeur@essai.cm", code: code2 });
-    verifier("un code neuf ouvre (navigateur : un cookie)",
-      [une.status, /totem_session=/.test(une.headers.get("set-cookie") || "")], [200, true]);
-    const deux = await poste("/api/connexion", { courriel: "vendeur@essai.cm", code: code2 });
-    verifier("le même code ne resert pas", deux.status, 401);
-
-    // Pas deux codes dans la minute : on ne remplit pas une boîte en boucle.
-    const avant3 = (await boite(NUAGE, "vendeur@essai.cm")).nombre;
-    await demanderUnCode(B, "vendeur@essai.cm");
-    await demanderUnCode(B, "vendeur@essai.cm");
-    await attendre(1000);
-    verifier("deux demandes dans la minute : une seule lettre",
-      (await boite(NUAGE, "vendeur@essai.cm")).nombre - avant3, 1);
-  }
-
   console.log("\nSUPPRIMER LE COMPTE EMPORTE SES CARTES");
   {
     await poste("/api/comptes", { geste: "supprimer", id: idVendeur }, patron);
@@ -313,5 +268,5 @@ if (echecs) {
   console.log(`✗ ${echecs} vérification(s) en échec.`);
   process.exit(1);
 }
-console.log("✓ Chacun ne voit que ses cartes, et l'on n'entre que par un code — essayé, pas supposé.");
+console.log("✓ Chacun ne voit que ses cartes — essayé, pas supposé.");
 process.exit(0);

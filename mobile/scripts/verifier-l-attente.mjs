@@ -5,8 +5,7 @@
 // Prérequis, comme `verifier-les-formats` :
 //   node web/scripts/faux-nuage.mjs
 //   cd web && SUPABASE_URL=http://127.0.0.1:4999 SUPABASE_CLE=x \
-//     SESSION_SECRET=essai TOTEM_MOT_DE_PASSE=essai \
-//     COURRIER_CLE=re_essai COURRIER_URL=http://127.0.0.1:4999 npx next start -p 3120
+//     SESSION_SECRET=essai TOTEM_MOT_DE_PASSE=essai npx next start -p 3120
 //   cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3120 EXPO_PUBLIC_APERCU=1 \
 //     npx expo export --platform web --output-dir /tmp/apercu
 //   cd /tmp/apercu && python3 -m http.server 3210 --bind 127.0.0.1
@@ -31,12 +30,12 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
-import { entrerDansLApercu, preparerLeProprietaire } from "./entrer.mjs";
 
 const APERCU = "http://127.0.0.1:3210";
 // Le MÊME compte que `verifier-les-formats` : les deux harnais peuvent
 // alors se suivre sur le même faux nuage sans se fermer la porte.
 const COURRIEL = "essai@totem.test";
+const MOTDEPASSE = "un-mot-de-passe-assez-long";
 // Un décalage qu'on ne voit pas. Au-delà, l'écran bouge sous le doigt.
 const SAUT_TOLERE = 20;
 
@@ -62,11 +61,23 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
 // prouve maintenant, pas au moment de la connexion avec le mauvais
 // diagnostic : sans cela le harnais annonce « l'écran ne montre rien »
 // alors qu'on est simplement resté devant la porte.
-try {
-  await preparerLeProprietaire(COURRIEL);
-} catch (e) {
-  console.error(`\n✗ ${e.message}`);
-  process.exit(1);
+{
+  const inscription = await fetch("http://127.0.0.1:3120/api/inscription", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+  });
+  if (inscription.status === 403) {
+    const porte = await fetch("http://127.0.0.1:3120/api/connexion", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+    });
+    if (!porte.ok) {
+      console.error("\n✗ Les inscriptions sont fermées par un AUTRE compte :");
+      console.error("  un autre harnais a déjà utilisé ce faux nuage.");
+      console.error("  Redémarrez le faux nuage, puis relancez.");
+      process.exit(1);
+    }
+  }
 }
 
 const nav = await chromium.launch({
@@ -97,7 +108,9 @@ for (const [nom, w, h] of FORMATS) {
       await attendre(4000);
       await route.continue();
     });
-    await entrerDansLApercu(page, COURRIEL);
+    await page.locator('input[type="email"]').first().fill(COURRIEL);
+    await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
+    await page.getByText(/^Sign in$|^Se connecter$/).last().click();
 
     // ON ATTEND L'ÉTAT, PAS UNE DURÉE. Un délai fixe après le clic paraît
     // marcher — puis la connexion prend une seconde de plus (le frein compte
@@ -158,7 +171,9 @@ console.log("\n  Chaque onglet montre quelque chose pendant qu'il charge");
       await attendre(3000);
       await route.continue();
     });
-    await entrerDansLApercu(page, COURRIEL);
+    await page.locator('input[type="email"]').first().fill(COURRIEL);
+    await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
+    await page.getByText(/^Sign in$|^Se connecter$/).last().click();
     await page.waitForFunction(
       () => !![...document.querySelectorAll("div")].find((e) => /FCFA/.test(e.textContent || "")),
       null, { timeout: 25000 }).catch(() => {});

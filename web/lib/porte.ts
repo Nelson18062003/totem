@@ -9,110 +9,59 @@
 //
 // DEUX FAÇONS D'ENTRER, et il faut les deux :
 //
-//   1. UN COMPTE — un courriel, et un CODE à six chiffres envoyé à ce
-//      courriel (`/api/code`). Plus de mot de passe : un mot de passe se
-//      choisit mal, se réutilise ailleurs, et sa fuite ailleurs ouvrait la
-//      porte ici. Le code ne se choisit pas, sert une fois, vit dix minutes,
-//      et prouve à chaque entrée qu'on tient la boîte. Le navigateur et le
-//      téléphone font exactement le même chemin.
+//   1. UN COMPTE — un courriel et un mot de passe, rangés en base. C'est le
+//      chemin normal, celui qui sait qui est entré et permet d'ouvrir ou de
+//      fermer à quelqu'un sans toucher aux autres.
 //
-//   2. LA CLÉ DE SECOURS — le mot de passe unique posé dans la variable
+//   2. LA CLÉ DE SECOURS — l'ancien mot de passe unique, dans la variable
 //      d'environnement `TOTEM_MOT_DE_PASSE`. Elle n'existe que si elle est
-//      posée. Pourquoi la garder : les comptes vivent dans Supabase, et les
-//      codes partent par un service de courrier. Si l'un des deux se tait,
-//      PLUS PERSONNE n'entre — y compris le propriétaire, y compris pour
-//      constater la panne. Une panne ne doit pas être un verrou sur sa
-//      propre maison.
+//      posée. Pourquoi la garder : les comptes vivent dans Supabase, et si
+//      Supabase ne répond pas, PLUS PERSONNE n'entre — y compris le
+//      propriétaire, y compris pour constater la panne. Une base de données
+//      injoignable ne doit pas être un verrou sur sa propre maison.
 //
-// Tout passe par le MÊME frein : alterner les chemins ne double pas la
-// cadence des essais.
+// Les deux passent par le MÊME frein : alterner l'une et l'autre ne double
+// pas la cadence des essais.
 
-import { after } from "next/server";
 import {
-  compterUtilisateurs, creerUtilisateur, essayerUnCode, noterConnexion,
-  noterIncident, poserUnCode, utilisateurParCourriel,
+  compterUtilisateurs, creerUtilisateur, noterConnexion, utilisateurAVerifier,
 } from "@/lib/serveur";
 import {
-  DELAI_ENTRE_DEUX_CODES_S, DUREE_DU_CODE_S, ESSAIS_PAR_CODE, codeSaisi,
-  courrielAcceptable, empreinteDuCode, normaliserCourriel, tirerUnCode,
-} from "@/lib/code";
-import { courrierPret, envoyerCode, envoyerInvitation } from "@/lib/courrier";
+  aRafraichir, courrielAcceptable, empreinter, motDePasseAcceptable,
+  normaliserCourriel, verifier,
+} from "@/lib/motdepasse";
 import { egaliteConstante, signerSession, sujetDuCompte } from "@/lib/session";
 import { attendreLeFrein, cleDeFrein, noterEchec, oublierEchecs } from "@/lib/frein";
 import { erreurApi } from "@noyau/textes/api";
 import type { Langue } from "@noyau/langue";
 
-export type Refus = { ok: false; erreur: string; statut: number };
-
-export type Entree = { ok: true; jeton: string; sujet: string } | Refus;
-
-function refus(langue: Langue, cle: Parameters<typeof erreurApi>[1], statut: number): Refus {
-  return { ok: false, erreur: erreurApi(langue, cle), statut };
-}
-
 /**
- * Pose un code pour ce compte et l'envoie. Ne rend rien : celui qui demande
- * ne doit RIEN apprendre de ce qui se passe ici — ni si le compte existe, ni
- * si la lettre est partie. Ce qui rate se note au journal, sans courriel et
- * sans code.
- */
-async function poserEtEnvoyer(courriel: string, langue: Langue): Promise<void> {
-  const secret = process.env.SESSION_SECRET || "";
-  if (!secret) return;
-  const compte = await utilisateurParCourriel(courriel);
-  // Un compte fermé ne reçoit pas de code : il n'ouvrirait rien, et une
-  // lettre qui arrive dirait que la porte est encore là.
-  if (!compte || !compte.approuve) return;
-  const code = tirerUnCode();
-  const pose = await poserUnCode(
-    compte.id, await empreinteDuCode(secret, compte.id, code),
-    DUREE_DU_CODE_S, DELAI_ENTRE_DEUX_CODES_S);
-  // `false` : un code de moins d'une minute existe déjà. On n'en renvoie
-  // pas — sinon n'importe qui pourrait remplir une boîte en boucle.
-  if (pose !== true) {
-    if (pose === null) noterIncident("Un code d'entrée n'a pas pu être posé : la base n'a pas répondu.");
-    return;
-  }
-  if (!(await envoyerCode(courriel, code, langue))) {
-    noterIncident(
-      "Un code d'entrée n'a pas pu partir : le service de courrier l'a refusé "
-      + "ou n'a pas répondu. Vérifier la clé du courrier et le domaine d'envoi.");
-  }
-}
-
-/**
- * Demande un code d'entrée pour ce courriel.
+ * Une empreinte factice, sur laquelle on fait travailler PBKDF2 quand le
+ * courriel n'existe pas.
  *
- * LA RÉPONSE EST LA MÊME POUR TOUT LE MONDE, ET ELLE ARRIVE EN MÊME TEMPS.
- * « Si cette adresse a un accès, un code vient de partir. » Un message
- * différent pour un courriel inconnu dirait à n'importe qui quelles adresses
- * ont un compte ici. Un délai différent le dirait aussi, sans un mot : c'est
- * pourquoi TOUT le travail — chercher le compte, poser le code, l'envoyer —
- * se fait APRÈS la réponse (`after`). La réponse ne dépend que de la forme
- * du courriel.
+ * Sans elle, un courriel inconnu répondrait tout de suite et un courriel
+ * connu répondrait un cinquième de seconde plus tard : il suffirait de
+ * chronométrer pour savoir qui a un compte ici. On paie donc le même prix
+ * dans les deux cas. Le mot de passe qui l'a produite n'existe pas.
  */
-export async function demanderUnCode(
-  req: Request, corps: unknown, langue: Langue,
-): Promise<{ ok: true } | Refus> {
-  if (!process.env.SESSION_SECRET) return refus(langue, "connexionNonConfiguree", 503);
-  // Sans service de courrier, aucun code ne partira : on le dit franchement,
-  // et pour tout le monde — c'est un fait de la plateforme, pas du compte.
-  if (!courrierPret) return refus(langue, "courrierNonConfigure", 503);
+const LEURRE =
+  "pbkdf2$sha256$210000$AAAAAAAAAAAAAAAAAAAAAA$" +
+  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-  const cle = cleDeFrein(req);
-  if (!(await attendreLeFrein(cle))) return refus(langue, "tropDEssais", 429);
+export type Entree =
+  | { ok: true; jeton: string; sujet: string }
+  | { ok: false; erreur: string; statut: number };
 
-  const courriel = normaliserCourriel((corps as Record<string, unknown> | null)?.courriel);
-  if (!courrielAcceptable(courriel)) return refus(langue, "courrielInvalide", 400);
-
-  after(() => poserEtEnvoyer(courriel, langue));
-  return { ok: true };
+function refus(
+  langue: Langue, cle: Parameters<typeof erreurApi>[1], statut: number,
+): Extract<Entree, { ok: false }> {
+  return { ok: false, erreur: erreurApi(langue, cle), statut };
 }
 
 /**
  * Décide si l'on entre, et rend le jeton signé le cas échéant.
  *
- * `corps` est ce que la requête portait : `{ courriel, code }` pour un
+ * `corps` est ce que la requête portait : `{ courriel, motdepasse }` pour un
  * compte, `{ motdepasse }` seul pour la clé de secours.
  */
 export async function ouvrirLaPorte(
@@ -127,43 +76,54 @@ export async function ouvrirLaPorte(
 
   const champs = (corps ?? {}) as Record<string, unknown>;
   const courriel = normaliserCourriel(champs.courriel);
+  const motdepasse = typeof champs.motdepasse === "string" ? champs.motdepasse : "";
 
   // Le frein, avant tout examen : un seau partagé par les deux portes.
+  //
+  // LE REFUS ARRIVE AVANT LE CALCUL. Vérifier un mot de passe coûte au
+  // serveur 210 000 tours de PBKDF2, volontairement — cher pour qui essaie,
+  // cher pour nous aussi. Passé le mur, on répond sans rien calculer : sinon
+  // une rafale d'essais devient une rafale de calculs, et la plateforme
+  // s'écroule d'elle-même sous les tentatives.
   const cle = cleDeFrein(req);
   if (!(await attendreLeFrein(cle))) {
     return refus(langue, "tropDEssais", 429);
   }
 
-  // --- Chemin 1 : un compte, et son code ----------------------------------
+  if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
+
+  // --- Chemin 1 : un compte ------------------------------------------------
   if (courriel) {
-    const code = codeSaisi(champs.code);
-    if (!code) return refus(langue, "codeIncorrect", 401);
-    const compte = await utilisateurParCourriel(courriel);
-    // MÊME TRAVAIL POUR UN COURRIEL INCONNU : on essaie un code sur un compte
-    // qui n'existe pas (le numéro 0). Sans cela, un courriel inconnu
-    // répondrait un aller-retour plus tôt — et le chronomètre dirait qui a
-    // un compte ici.
-    const id = compte?.id ?? 0;
-    const bon = await essayerUnCode(
-      id, await empreinteDuCode(secret, id, code), ESSAIS_PAR_CODE);
-    if (!compte || !bon) {
+    const trouve = await utilisateurAVerifier(courriel);
+    // Même quand le compte n'existe pas, on fait tourner PBKDF2 : voir LEURRE.
+    const bon = await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
+
+    if (!trouve || !bon) {
       noterEchec(cle);
-      return refus(langue, "codeIncorrect", 401);
+      return refus(langue, "identifiantsIncorrects", 401);
     }
-    // Le code était bon, mais la porte a pu se refermer entre-temps.
-    if (!compte.approuve) return refus(langue, "compteEnAttente", 403);
+    if (!trouve.compte.approuve) {
+      // Le mot de passe était bon : ce n'est pas une tentative d'intrusion,
+      // on ne freine pas. Mais la porte ne s'ouvre pas pour autant.
+      return refus(langue, "compteEnAttente", 403);
+    }
     oublierEchecs(cle);
-    await noterConnexion(compte.id);
-    const sujet = sujetDuCompte(compte.id);
+    // On profite d'avoir le mot de passe en main pour refaire l'empreinte si
+    // le nombre de tours a été augmenté depuis. Un échec ici n'empêche pas
+    // d'entrer : c'est un entretien, pas une condition.
+    const rafraichie = aRafraichir(trouve.empreinte)
+      ? await empreinter(motdepasse) : undefined;
+    await noterConnexion(trouve.compte.id, rafraichie);
+
+    const sujet = sujetDuCompte(trouve.compte.id);
     return { ok: true, jeton: await signerSession(secret, sujet), sujet };
   }
 
   // --- Chemin 2 : la clé de secours ---------------------------------------
-  const motdepasse = typeof champs.motdepasse === "string" ? champs.motdepasse : "";
-  if (!motdepasse || !secours) return refus(langue, "cleIncorrecte", 401);
+  if (!secours) return refus(langue, "identifiantsIncorrects", 401);
   if (!(await egaliteConstante(motdepasse, secours))) {
     noterEchec(cle);
-    return refus(langue, "cleIncorrecte", 401);
+    return refus(langue, "identifiantsIncorrects", 401);
   }
   oublierEchecs(cle);
   return { ok: true, jeton: await signerSession(secret, "secours"), sujet: "secours" };
@@ -174,8 +134,17 @@ export async function ouvrirLaPorte(
  *
  * NON, dès qu'un compte existe. L'inscription ne sert qu'à UNE chose : poser
  * le tout premier compte, celui du propriétaire, sur une plateforme neuve.
- * Cela fait, la porte se referme d'elle-même — les autres comptes, c'est le
- * propriétaire qui les crée.
+ * Cela fait, la porte se referme d'elle-même.
+ *
+ * Pourquoi ce choix plutôt qu'un réglage à cocher : une plateforme qui suit
+ * l'argent d'une seule personne n'a aucune raison d'accepter des inconnus.
+ * Un compte de plus, même en attente d'approbation, c'est une ligne de plus
+ * dans une base, un courriel de plus à surveiller, et une case de plus où
+ * cliquer par erreur. Le défaut le plus sûr est celui qui ne demande rien à
+ * personne.
+ *
+ * Rouvrir se fera le jour où il y aura de vraies personnes à faire entrer —
+ * et ce jour-là, ce sera le propriétaire qui ouvrira, depuis ses Réglages.
  *
  * Rend `null` si la base ne répond pas : « je ne sais pas » n'est ni oui ni
  * non, et l'écran doit pouvoir le dire ainsi.
@@ -186,80 +155,129 @@ export async function inscriptionPossible(): Promise<boolean | null> {
 }
 
 /**
- * Crée le compte du propriétaire — le PREMIER.
+ * Crée le compte du propriétaire — le PREMIER, et pour l'instant le seul.
  *
- * Il n'y a personne pour l'approuver : il est approuvé d'office. Mais il
- * n'entre PAS tout de suite : un code part à son courriel, et c'est ce code
- * qui ouvre. Ainsi la toute première entrée prouve déjà qu'on tient la boîte
- * — un courriel mal tapé à l'installation se voit tout de suite, au lieu de
- * se découvrir le jour où il faudrait recevoir un code.
+ * Il n'y a personne pour l'approuver, et c'est celui qui installe la
+ * plateforme : il est approuvé d'office et entre immédiatement.
+ *
+ * Dès qu'il existe, cette porte est fermée : plus aucune inscription. Voir
+ * `inscriptionPossible` pour le pourquoi.
  *
  * On ne se fie PAS à un compte de zéro obtenu d'une base muette : « je ne
- * sais pas » n'est pas « il n'y a personne ».
+ * sais pas » n'est pas « il n'y a personne ». Confondre les deux rouvrirait
+ * les inscriptions parce que Supabase a hoqueté.
  */
 export async function inscrire(
-  req: Request, courrielBrut: unknown, langue: Langue,
-): Promise<{ ok: true } | Refus> {
+  courrielBrut: unknown, motdepasse: unknown, langue: Langue,
+): Promise<Entree> {
   const courriel = normaliserCourriel(courrielBrut);
   if (!courrielAcceptable(courriel)) return refus(langue, "courrielInvalide", 400);
-  if (!process.env.SESSION_SECRET) return refus(langue, "connexionNonConfiguree", 503);
-  if (!courrierPret) return refus(langue, "courrierNonConfigure", 503);
+  if (typeof motdepasse !== "string" || !motDePasseAcceptable(motdepasse)) {
+    return refus(langue, "motDePasseTropCourt", 400);
+  }
 
   const combien = await compterUtilisateurs();
   if (combien === null) return refus(langue, "nonRelieeBase", 503);
+
   // LA PORTE EST FERMÉE dès qu'un compte existe. On refuse AVANT de regarder
   // le courriel : répondre « ce courriel est déjà pris » à l'un et
   // « inscriptions fermées » à l'autre dirait qui a un compte ici.
   if (combien > 0) return refus(langue, "inscriptionsFermees", 403);
 
-  const compte = await creerUtilisateur(courriel, "proprietaire", true);
-  // LA BASE A LE DERNIER MOT. Trois inscriptions lancées ensemble donnaient
-  // trois propriétaires ; l'index « un seul propriétaire » refuse maintenant
-  // la seconde, et on répond ce qu'on répond à toute inscription tardive.
+  // Le secret se vérifie AVANT de créer quoi que ce soit. Après, le compte
+  // du propriétaire existait durablement pendant que la réponse affichait
+  // une erreur — et le second essai butait sur « inscriptions fermées »,
+  // sans un mot pour dire que son compte était là et son mot de passe bon.
+  // Un refus ne doit rien laisser derrière lui.
+  const secret = process.env.SESSION_SECRET || "";
+  if (!secret) return refus(langue, "connexionNonConfiguree", 503);
+
+  const compte = await creerUtilisateur(
+    courriel, await empreinter(motdepasse), "proprietaire", true);
+
+  // LA BASE A LE DERNIER MOT, ET C'EST TOUT L'INTÉRÊT. Le comptage ci-dessus
+  // ne prouve rien : entre lui et cette écriture, il s'est écoulé le temps
+  // d'un aller-retour et celui du calcul de l'empreinte, lent à dessein.
+  // Trois inscriptions lancées ensemble sur une plateforme neuve donnaient
+  // TROIS propriétaires — trois sessions ouvertes, trois comptes approuvés,
+  // chacun pouvant fermer celui des autres. La base refuse maintenant la
+  // seconde (index « un seul propriétaire »), et on répond ici exactement ce
+  // qu'on répond à toute inscription tardive : la porte est fermée. Ni le
+  // mot « déjà » ni le mot « course » : celui qui a perdu n'apprend rien.
   if (compte === "refuse") return refus(langue, "inscriptionsFermees", 403);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
-
-  // Le code part par le même chemin que tous les autres, frein compris.
-  return demanderUnCode(req, { courriel }, langue);
+  // Le propriétaire entre tout de suite : il vient de créer la maison.
+  const sujet = sujetDuCompte(compte.id);
+  return { ok: true, jeton: await signerSession(secret, sujet), sujet };
 }
 
 /**
- * Le propriétaire ouvre la plateforme à quelqu'un.
+ * Le propriétaire crée un compte pour quelqu'un d'autre.
  *
- * Un courriel, et c'est tout : il n'y a plus de mot de passe à choisir, à
- * recopier, à transmettre par WhatsApp. La personne reçoit une lettre qui
- * lui dit qu'elle a accès ; pour entrer, elle tape son courriel et reçoit un
- * code.
+ * L'INSCRIPTION LIBRE EST FERMÉE, et le reste. Elle ne servait qu'à poser le
+ * premier compte ; un inconnu ne dépose plus rien ici. Mais fermer la porte
+ * d'entrée avait supprimé le seul moyen de faire entrer quelqu'un — y
+ * compris l'examinateur du Play Store, à qui Google EXIGE qu'on donne un
+ * compte qui fonctionne.
  *
- * Le compte naît APPROUVÉ (c'est le propriétaire qui crée, et créer EST
- * décider) et INVITÉ (jamais un second propriétaire). Il ne voit RIEN tant
- * qu'on ne lui a pas confié de carte — voir lib/portee.ts.
+ * Le compte naît APPROUVÉ. Ailleurs l'approbation sert à ce que le
+ * propriétaire décide ; ici, c'est lui qui crée, et créer EST décider. Un
+ * compte qu'on vient de poser soi-même et qu'il faudrait ensuite approuver
+ * serait une case à cocher pour rien.
  *
- * QUI PEUT APPELER CECI : la route s'en assure. Cette fonction ne vérifie
- * rien de tel — elle n'est appelée que de là.
+ * Il naît « invite », jamais « proprietaire » : il n'y a qu'un propriétaire,
+ * et l'écran des comptes ne doit pas pouvoir en fabriquer un second qui
+ * pourrait ensuite fermer la porte au premier.
+ *
+ * LE PROPRIÉTAIRE DONNE LE PRÉNOM, LE NOM, LE COURRIEL ET LE MOT DE PASSE.
+ * Pendant les essais, personne ne s'inscrit seul : c'est lui qui pose chaque
+ * personne, la nomme, et lui transmet son mot de passe. Le nom sert à la
+ * reconnaître dans la liste — « vendeur2@gmail.com » ne dit pas qui c'est.
+ *
+ * Le compte ne voit RIEN tant qu'on ne lui a pas confié de carte — voir
+ * lib/portee.ts.
+ *
+ * QUI PEUT APPELER CECI : la route s'en assure (`estProprietaire`). Cette
+ * fonction ne vérifie rien de tel — elle n'est appelée que de là.
  */
 export async function creerParLeProprietaire(
-  courrielBrut: unknown, adresse: string, langue: Langue,
-): Promise<{ ok: true; id: number } | Refus> {
-  const courriel = normaliserCourriel(courrielBrut);
+  identiteBrute: { prenom?: unknown; nom?: unknown; courriel?: unknown },
+  motdepasse: unknown, langue: Langue,
+): Promise<{ ok: true; id: number } | Extract<Entree, { ok: false }>> {
+  const courriel = normaliserCourriel(identiteBrute.courriel);
   if (!courrielAcceptable(courriel)) return refus(langue, "courrielInvalide", 400);
+  const prenom = nomPropre(identiteBrute.prenom);
+  const nom = nomPropre(identiteBrute.nom);
+  if (!prenom || !nom) return refus(langue, "nomManquant", 400);
+  if (typeof motdepasse !== "string" || !motDePasseAcceptable(motdepasse)) {
+    return refus(langue, "motDePasseTropCourt", 400);
+  }
 
-  // Ici on distingue « déjà pris » : celui qui lit est le propriétaire, chez
-  // lui. Le secret sur qui a un compte protège des inconnus, pas de lui.
-  if (await utilisateurParCourriel(courriel)) {
+  // Ici on distingue « déjà pris » de tout le reste, et c'est voulu : celui
+  // qui lit est le propriétaire, chez lui. Le secret sur qui a un compte
+  // protège des inconnus, pas de la personne qui tient la maison.
+  if (await utilisateurAVerifier(courriel)) {
     return refus(langue, "courrielDejaPris", 409);
   }
-  const compte = await creerUtilisateur(courriel, "invite", true);
+
+  const compte = await creerUtilisateur(
+    courriel, await empreinter(motdepasse), "invite", true, { prenom, nom });
+  // Deux créations lancées ensemble pour la même adresse : la vérification
+  // faite plus haut a vu « libre » des deux côtés, la base n'en garde qu'une.
+  // Ici le propriétaire parle à sa propre plateforme — on peut lui dire ce
+  // qui s'est passé.
   if (compte === "refuse") return refus(langue, "courrielDejaPris", 409);
   if (!compte) return refus(langue, "inscriptionImpossible", 502);
 
-  // La lettre d'invitation part APRÈS la réponse : une boîte lente ne doit
-  // pas faire attendre l'écran. Si elle ne part pas, rien n'est perdu — la
-  // personne entrera de la même façon, en demandant son code.
-  after(async () => {
-    if (courrierPret && !(await envoyerInvitation(courriel, adresse, langue))) {
-      noterIncident("Une lettre d'invitation n'a pas pu partir : le service de courrier l'a refusée.");
-    }
-  });
+  // Aucune session n'est rendue : le propriétaire crée un compte POUR
+  // QUELQU'UN D'AUTRE. Lui ouvrir une session par-dessus la sienne serait
+  // un contresens, et le déconnecterait de son propre compte.
   return { ok: true, id: compte.id };
+}
+
+/** Un prénom ou un nom, tel qu'il s'affichera : sans espaces en trop, sans
+ *  caractères de contrôle, et borné — c'est un libellé, pas un texte. */
+function nomPropre(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
 }

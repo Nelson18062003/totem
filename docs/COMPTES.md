@@ -1,111 +1,83 @@
 # Les comptes
 
-> Qui peut ouvrir TOTEM, ce que chacun voit, et comment on entre.
+> Qui peut ouvrir TOTEM, ce que chacun voit, et comment on décide.
 
 ---
 
 ## Avant / après
 
-**Au début**, la plateforme avait UN mot de passe, rangé dans une variable
-d'environnement sur Vercel. Impossible de savoir qui s'était connecté,
-d'ouvrir à quelqu'un sans lui donner la clé de la maison, de la lui retirer
-sans la changer pour tout le monde.
+**Avant**, la plateforme avait UN mot de passe, rangé dans une variable
+d'environnement sur Vercel. Cela marche pour une personne seule, et cela ne
+sait rien faire d'autre :
 
-**Ensuite**, chacun a eu son compte : un courriel, un mot de passe. Mais un
-compte créé voyait **tout** — chaque carte, chaque SMS, chaque montant.
+- impossible de savoir qui s'est connecté ;
+- impossible d'ouvrir à quelqu'un sans lui donner la clé de la maison ;
+- impossible de la lui retirer sans la changer pour tout le monde.
 
-**Depuis le 1er octobre 2026** :
-
-- on entre **par un code** envoyé au courriel — il n'y a plus de mot de passe ;
-- chaque personne ne voit que **les cartes SIM qu'on lui a confiées**.
+**Maintenant**, chacun a son compte : un courriel, un mot de passe.
 
 ---
 
-## Entrer : un courriel, puis un code
+## Comment ça se passe
 
-1. On tape son courriel, on appuie sur **Recevoir un code**.
-2. Un code à six chiffres arrive dans la boîte (regarder aussi les
-   indésirables).
-3. On le tape. On est dedans.
-
-Le web et l'application du téléphone font **exactement** le même chemin, et
-la même règle décide (`web/lib/porte.ts`).
-
-Ce que le code tient, et c'est la base qui le fait respecter
-(`poser_un_code`, `essayer_un_code` dans `sql/schema.sql`) :
-
-| Règle | Pourquoi |
-|---|---|
-| Il sert **une fois** | même tapé par dix mains en même temps — `sql/verifier-les-regles.sh` le lance pour de vrai |
-| Il vit **dix minutes** | le temps d'ouvrir sa boîte, pas celui de traîner |
-| **Cinq** essais faux le brûlent | un code n'a qu'un million de valeurs |
-| Pas **deux codes dans la minute** | sinon n'importe qui remplirait une boîte en boucle |
-| Il n'est **jamais rangé** | la base ne garde que son empreinte, signée avec le secret de la plateforme : volée, elle ne donne rien |
-
-Pourquoi un code plutôt qu'un mot de passe : un mot de passe se choisit mal,
-se réutilise d'un site à l'autre, se note sur un papier — et sa fuite
-AILLEURS ouvrait la porte ici. Un code ne se choisit pas, et chaque entrée
-prouve qu'on tient la boîte.
-
-### Ce que la plateforme refuse de dire
-
-« Si cette adresse a un accès, un code vient de partir. » — **la même phrase
-pour tout le monde**, au même moment. Le travail (chercher le compte, poser
-le code, envoyer la lettre) se fait APRÈS la réponse : ni le message ni le
-chronomètre ne disent quelles adresses ont un compte ici. Un code faux, un
-code expiré, une adresse inconnue reçoivent aussi le même refus.
-
-### Ce qu'une attaque peut coûter
-
-Un attaquant ne peut pas entrer, mais en tapant des codes faux sur VOTRE
-adresse, il peut brûler votre code en cours : vous en redemandez un. Le
-frein (par adresse réseau, compté dans la base) le ralentit, puis le mure.
-`web/scripts/verifier-le-frein.mjs` le mesure.
-
-### La clé de secours
-
-Le mot de passe unique `TOTEM_MOT_DE_PASSE`, sous un lien discret de l'écran
-de connexion : « Utiliser la clé de secours ». **C'est le seul mot de passe
-qui reste**, et il existe pour une raison : les comptes vivent dans Supabase
-et les codes partent par Resend. Si l'un des deux se tait, **plus personne
-n'entre** — pas même le propriétaire, pas même pour constater la panne.
-
-Qui a accès aux variables d'environnement de Vercel **est** le propriétaire :
-cette clé voit tout et administre.
-
----
-
-## Le premier compte est celui du propriétaire
+### Le premier compte est le vôtre
 
 Sur une plateforme neuve, il n'y a aucun compte. **Le premier créé est celui
-du propriétaire.** Il ne repart pas avec une session : un code part à son
-courriel, et c'est ce code qui ouvre. Un courriel mal tapé à l'installation
-se voit donc tout de suite.
+du propriétaire**, et il entre immédiatement. C'est logique : personne n'est
+là pour l'approuver, et l'attente serait sans fin. C'est celui qui installe
+la maison.
 
-**Dès que ce compte existe, plus aucune inscription n'est possible.**
-`/api/inscription` refuse, et le lien « Créer un compte » disparaît.
+### Puis la porte se referme
 
----
+**Dès que ce compte existe, plus aucune inscription n'est possible.** Ni pour
+un inconnu, ni pour le propriétaire lui-même. `/api/inscription` refuse, et le
+lien « Créer un compte » disparaît des deux écrans — un bouton qui ne mène
+qu'à un refus est un bouton de trop.
 
-## Faire entrer quelqu'un
+Pourquoi fermé plutôt qu'« ouvert mais en attente d'approbation » : une
+plateforme qui suit l'argent d'une seule personne n'a aucune raison
+d'accepter des inconnus. Un compte de plus, même en attente, c'est une ligne
+de plus dans une base, un courriel de plus à surveiller, et une case de plus
+où cliquer par erreur. Le défaut le plus sûr est celui qui ne demande rien à
+personne.
 
-**Console → Les gens** (web), ou **Réglages → Qui peut se connecter** (web et
-téléphone) → **Créer un compte**.
+Le refus ne distingue pas « ce courriel est déjà pris » de « inscriptions
+fermées » : les distinguer dirait à un inconnu quelles adresses ont un compte
+ici.
 
-Un courriel, et c'est tout. Il n'y a plus de mot de passe à inventer, à
-recopier, à envoyer par WhatsApp. La personne reçoit une lettre qui lui dit
-qu'elle a accès ; pour entrer, elle tape son courriel et reçoit un code.
+### Faire entrer quelqu'un
 
-Le compte naît **approuvé** (créer EST décider) et **invité**, jamais
-propriétaire.
+**Réglages → Qui peut se connecter → Créer un compte.**
 
----
+Le propriétaire saisit le **prénom**, le **nom**, le **courriel** et un
+**mot de passe** qu'il choisit, et transmet ce mot de passe à la personne.
+Pendant la phase d'essai, personne ne s'inscrit seul : c'est lui qui pose
+chaque compte. Le nom sert à reconnaître la personne dans la liste —
+« vendeur2@gmail.com » ne dit pas qui c'est.
 
-## Ce que chacun voit : les cartes confiées
+On le fait au même endroit sur le site (**Console → Les gens**, ou Réglages)
+et sur le téléphone (**Réglages → Qui peut se connecter**). Le compte naît **approuvé** — c'est
+lui qui crée, et créer *est* décider ; une case à cocher ensuite ne servirait
+à rien. Il naît **invité**, jamais propriétaire : l'écran ne doit pas pouvoir
+fabriquer un second propriétaire, qui pourrait ensuite fermer la porte au
+premier.
 
-Sur la même page, chaque compte porte la ligne **« Cartes qu'il voit »**, et
-le bouton **Confier des cartes** : une case par carte SIM de la maison —
-présente dans le terminal ou retirée.
+Le mot de passe s'affiche en clair dans le formulaire, à dessein : le
+propriétaire doit pouvoir le relire pour le transmettre. Ce n'est pas le sien.
+
+L'inscription libre, elle, reste fermée. C'est désormais le seul chemin.
+
+> **Il en fallait un.** Google EXIGE un compte qui fonctionne pour examiner
+> l'application (formulaire « Informations de connexion » de la Play
+> Console). Sans ce chemin, il aurait fallu livrer le compte du propriétaire
+> à un examinateur — c'est-à-dire son mot de passe, sans moyen de le
+> reprendre autrement qu'en le changeant.
+
+### Ce qu'un compte créé voit : les cartes qu'on lui confie
+
+**Rien, tant qu'on ne lui a pas confié de carte.** Sur chaque compte, la ligne
+« Cartes qu'il voit » et le bouton **Confier des cartes** : une case par carte
+SIM de la maison, présente dans le terminal ou retirée.
 
 | Qui | Ce qu'il voit |
 |---|---|
@@ -122,63 +94,110 @@ l'oublierait ne compilerait pas.
 
 Une carte peut être confiée à plusieurs personnes ; une personne peut tenir
 plusieurs cartes. Reprendre une carte agit **tout de suite**, même sur un
-téléphone déjà connecté : la liste est relue à chaque demande.
-
-**La console → Les cartes SIM** montre, pour chaque carte, à qui elle est
-confiée.
+téléphone déjà connecté. **Console → Les cartes SIM** montre à qui chaque
+carte est confiée.
 
 Les liens signés (un reçu, un bilan ouverts dans le navigateur du téléphone)
 tiennent la même règle : un lien de reçu ne se signe que pour un reçu
 visible, et un lien de bilan porte **pour qui** il a été fait — réécrit pour
 « tout », il n'ouvre plus rien.
 
+Un compte se bloque ou se supprime d'un bouton, sur la même page. Supprimer
+un compte efface aussi ses cartes confiées.
+
+### La clé de secours
+
+L'ancien mot de passe unique (`TOTEM_MOT_DE_PASSE`) fonctionne toujours,
+sous un lien discret de l'écran de connexion : « Utiliser la clé de secours ».
+
+Elle existe pour une raison précise. Les comptes vivent dans Supabase. Si
+Supabase ne répond pas, **plus personne n'entre** — pas même le propriétaire,
+pas même pour constater la panne. Une base de données injoignable ne doit pas
+être un verrou sur sa propre maison.
+
+Qui a accès aux variables d'environnement de Vercel **est** le propriétaire :
+cette clé donne donc aussi le droit d'administrer les comptes.
+
+---
+
+## Le mot de passe n'est jamais enregistré
+
+Ce qui est rangé en base est une **empreinte** : un calcul qui va dans un sens
+et pas dans l'autre. À la connexion, on refait le calcul sur ce qui vient
+d'être tapé et on compare. La base ne contient donc jamais de quoi se
+connecter à la place de quelqu'un — même volée, même lue par nous.
+
+Le détail : `PBKDF2-SHA256`, 210 000 tours, un sel de 16 octets tiré au
+hasard pour chaque mot de passe. Le nombre de tours est écrit dans l'empreinte
+elle-même, si bien qu'en l'augmentant un jour, les anciennes continuent de se
+vérifier et se réécrivent toutes seules à la connexion suivante. Personne
+n'est mis dehors par un durcissement. Voir `web/lib/motdepasse.ts`.
+
+**Une seule exigence : douze caractères.** Pas de « une majuscule, un chiffre,
+un symbole » — ces règles-là produisent `Password1!`, qu'un dictionnaire
+trouve en une seconde, et poussent à écrire le mot de passe sur un papier.
+
 ---
 
 ## Un invité regarde ; il ne compose pas
 
-Confier une carte, c'est la **montrer**, pas la mettre entre les mains :
+Il y a deux rôles : **propriétaire** et **invité**. Jusqu'ici, tout compte
+approuvé ouvrait le guichet — c'est-à-dire pouvait faire composer un code sur
+une vraie carte SIM, avec de vrais francs derrière. Le verrou vérifiait qu'une
+session était valable, pas à QUI elle appartenait.
 
-| Qui | Consulter | Déposer une demande au terminal (USSD, solde…) |
+C'était une porte grande ouverte le jour où il a fallu donner un compte à un
+examinateur du magasin pour qu'il regarde l'application.
+
+Désormais, `/api/commande` est **réservée au propriétaire** :
+
+| Qui | Consulter les écrans | Déposer une demande au terminal |
 |---|---|---|
 | Personne (sans session) | non | non |
-| Invité | ses cartes | **non** |
-| Propriétaire | tout | oui |
-| Clé de secours | tout | oui |
+| Invité approuvé | ses cartes | **non** |
+| Propriétaire | oui | oui |
+| Clé de secours | oui | oui |
 
-Un invité ne reclasse pas un SMS, ne marque rien comme lu, et n'inscrit pas
-son téléphone aux notifications : celles-ci portent le SMS reçu en aperçu,
-de toutes les cartes.
+La clé de secours passe, et c'est voulu : elle ne vit que dans les variables
+d'environnement de Vercel — y avoir accès, c'est déjà être le propriétaire.
 
-Laisser un vendeur **opérer** sa propre carte (dépôt, retrait) serait la
-prochaine étape. Elle se décide, elle ne s'improvise pas : c'est de l'argent.
+Un **ancien jeton**, émis avant les comptes, ne désigne personne : il ouvre
+encore les écrans jusqu'à son expiration, mais plus le guichet. Si le
+propriétaire voit « réservé au propriétaire » là où il commandait hier, il
+suffit qu'il se déconnecte et se reconnecte : le nouveau jeton porte son
+compte.
 
 ---
 
-## Fermer, supprimer
+## Ce que la plateforme refuse de dire
 
-Un compte se **bloque** ou se **supprime** d'un bouton. Le jeton déjà délivré
-cesse d'ouvrir quoi que ce soit — à la demande suivante, pas dans un mois.
-Supprimer un compte efface aussi ses cartes confiées et son code en cours.
+Un courriel inconnu et un mauvais mot de passe reçoivent **exactement le même
+message**, et prennent **exactement le même temps**.
 
-Le compte du propriétaire ne se ferme ni ne se supprime — par personne, pas
-même avec la clé de secours : une plateforme sans propriétaire rouvrirait ses
-inscriptions au monde entier.
+Deux messages différents diraient à un inconnu quelles adresses ont un compte
+ici — de quoi dresser une liste, puis s'acharner dessus. Deux durées
+différentes le diraient aussi, sans un mot : c'est pourquoi la plateforme fait
+tourner le calcul complet même quand le compte n'existe pas
+(`LEURRE`, dans `web/lib/porte.ts`).
 
 ---
 
 ## Installer
 
-1. Exécuter `migrations/20261001_codes-et-cartes.sql` dans Supabase
-   (SQL Editor → New query → coller → Run). Rejouable. Il se vérifie
-   lui-même, et **efface les anciennes empreintes de mot de passe**.
-2. Régler le courrier : voir `docs/CLOUD.md`, « Le courrier des codes ».
-3. Vérifier que `SESSION_SECRET` est posé sur Vercel — il signe les sessions
-   ET les empreintes des codes.
-4. Confier à chaque invité ses cartes : **jusque-là, il ne voit rien.**
+1. Exécuter `migrations/20260829_consolidation.sql` dans Supabase
+   (SQL Editor → New query → coller → Run). Le script est rejouable.
+2. Vérifier que `SESSION_SECRET` est posé sur Vercel — sans lui, aucune
+   session ne peut être signée, et **le verrou n'est pas actif du tout**.
+3. Ouvrir la plateforme, créer le premier compte : c'est le vôtre.
+4. **Les cartes de chacun** : exécuter aussi
+   `migrations/20261001_cartes-de-chacun.sql` (même chemin). Il ajoute la
+   liste des cartes confiées, le prénom et le nom des comptes, et se vérifie
+   lui-même. Il ne touche à aucun mot de passe. **À faire avant de mettre la
+   plateforme à jour** : sans lui, les invités ne voient rien.
+5. Confier ses cartes à chaque invité — jusque-là, il ne voit rien.
 
-⚠️ **Les applications déjà installées** envoient encore un mot de passe, qui
-ne marche plus : il faut leur pousser la mise à jour (voir `docs/MOBILE.md`)
-avant ou en même temps que la plateforme.
+`TOTEM_MOT_DE_PASSE` devient facultatif. Le garder donne la clé de secours ;
+ne pas le poser n'empêche rien, tant que Supabase répond.
 
 ---
 
@@ -187,10 +206,10 @@ avant ou en même temps que la plateforme.
 ```sh
 cd web && node scripts/verifier-les-comptes.mjs   # la vie d'un compte
 cd web && node scripts/verifier-les-cartes.mjs    # chacun ne voit que ses cartes
-sh sql/verifier-les-regles.sh                      # le code ne sert qu'une fois
 ```
 
-`verifier-les-cartes` se met à la place d'un vendeur et cherche ce qui fuit :
-l'application, les pages, le bilan, un lien signé réécrit, un reçu deviné,
-les coordonnées d'une autre carte. Rendre la règle aveugle le fait échouer
-dix-sept fois.
+Il lance un vrai serveur et déroule la vie entière d'un compte : la première
+inscription, une deuxième qui doit attendre, les mauvais mots de passe,
+l'approbation, la fermeture, la clé de secours. Il cherche surtout à prendre
+en défaut — un compte non approuvé qui entrerait, un invité qui
+administrerait, un mot de passe qui se retrouverait quelque part en clair.

@@ -5,6 +5,7 @@ import type { Langue } from "../langue";
 
 const en = {
   connexionNonConfiguree: "sign-in is not set up on this deployment",
+  motDePasseIncorrect: "wrong password",
   demandeInconnue: "unknown request",
   codeVide: "empty code",
   carteOuValeurManquante: "missing card or value",
@@ -22,19 +23,10 @@ const en = {
   variableMalFormee: "a variable is misspelt: write it whole, braces included — {numero}",
 
   // --- Les comptes --------------------------------------------------------
-  // La clé de secours refusée. Les comptes, eux, n'ont plus de mot de passe.
-  cleIncorrecte: "wrong recovery key",
-  // Un seul et même message pour « ce courriel n'a pas de compte », « ce
-  // code est faux », « ce code a expiré » et « ce code a déjà servi ». Les
-  // distinguer dirait à un inconnu quelles adresses ont un compte ici.
-  codeIncorrect: "wrong or expired code. Ask for a new one if needed.",
-  // Le même pour tout le monde — voir `demanderUnCode`.
-  codeEnvoye:
-    "If this address has access, a 6-digit code has just been sent to it. " +
-    "It works once, for 10 minutes.",
-  courrierNonConfigure:
-    "Sign-in codes cannot be sent: email sending is not set up on this " +
-    "platform yet. The recovery key still works.",
+  // Un seul et même message pour « ce courriel n'existe pas » et « ce mot de
+  // passe est faux ». Les distinguer dirait à un inconnu quelles adresses
+  // ont un compte ici — de quoi dresser une liste, puis s'acharner dessus.
+  identifiantsIncorrects: "wrong email or password",
   // 429. On ne dit pas combien de temps il reste : ce serait un chronomètre
   // offert à qui mesure. On ne dit pas non plus si le compte existe.
   tropDEssais: "too many attempts. Wait a few minutes and try again.",
@@ -42,6 +34,7 @@ const en = {
     "This account is waiting for the owner's approval. It cannot open " +
     "anything yet.",
   courrielInvalide: "that does not look like an email address",
+  motDePasseTropCourt: "the password must be at least 12 characters long",
   courrielDejaPris: "an account already exists with this email",
   // Fermé, et non « réservé » : il n'y a rien à demander à personne. La
   // plateforme suit l'argent d'une seule personne ; elle n'attend pas de
@@ -61,12 +54,14 @@ const en = {
   // Un « refus » qui n'en est pas un : le compte EST créé. La porte
   // rend toujours une décision, et celle-ci se lit « c'est fait ».
   compteCree: "account created",
+  nomManquant: "the first name and the last name are both needed",
   proprietaireVoitTout: "the owner already sees every card",
   carteInconnue: "this card is not known to the platform",
 };
 
 const fr: typeof en = {
   connexionNonConfiguree: "connexion non configurée sur ce déploiement",
+  motDePasseIncorrect: "mot de passe incorrect",
   demandeInconnue: "demande inconnue",
   codeVide: "code vide",
   carteOuValeurManquante: "carte ou valeur manquante",
@@ -83,18 +78,12 @@ const fr: typeof en = {
   variableInconnue: "variable inconnue dans le code : seuls {numero}, {montant} et {point} existent",
   variableMalFormee: "une variable est mal écrite : écrivez-la en entier, accolades comprises — {numero}",
 
-  cleIncorrecte: "clé de secours incorrecte",
-  codeIncorrect: "code incorrect ou expiré. Demandez-en un nouveau si besoin.",
-  codeEnvoye:
-    "Si cette adresse a un accès, un code à 6 chiffres vient d’y être " +
-    "envoyé. Il sert une fois, pendant 10 minutes.",
-  courrierNonConfigure:
-    "Les codes ne peuvent pas partir : l’envoi des courriels n’est pas encore " +
-    "réglé sur cette plateforme. La clé de secours fonctionne toujours.",
+  identifiantsIncorrects: "courriel ou mot de passe incorrect",
   tropDEssais: "trop d’essais. Attendez quelques minutes et recommencez.",
   compteEnAttente:
     "Ce compte attend l’approbation du propriétaire. Il n’ouvre encore rien.",
   courrielInvalide: "cela ne ressemble pas à une adresse de courriel",
+  motDePasseTropCourt: "le mot de passe doit faire au moins 12 caractères",
   courrielDejaPris: "un compte existe déjà avec ce courriel",
   inscriptionsFermees:
     "Cette plateforme a déjà son propriétaire. Aucun nouveau compte ne peut " +
@@ -106,6 +95,7 @@ const fr: typeof en = {
     "le compte du propriétaire ne se ferme ni ne se supprime — la plateforme "
     + "resterait sans propriétaire.",
   compteCree: "compte créé",
+  nomManquant: "il faut le prénom et le nom",
   proprietaireVoitTout: "le propriétaire voit déjà toutes les cartes",
   carteInconnue: "cette carte n’est pas connue de la plateforme",
 };

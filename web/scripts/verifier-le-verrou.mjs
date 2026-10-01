@@ -178,10 +178,8 @@ try {
   const dit = JSON.stringify(plate);
   verifier("elle ne donne pas le mot de passe", dit.includes(MOTDEPASSE), false);
   verifier("elle ne donne pas le secret", dit.includes(SECRET), false);
-  // « codes » : les codes d'entrée peuvent-ils partir ? Un fait de la
-  // plateforme, pareil pour tout le monde — il ne dit rien de personne.
-  verifier("elle ne donne que cinq clés", Object.keys(plate).sort().join(","),
-           "codes,configuree,inscription,relie,totem");
+  verifier("elle ne donne que quatre clés", Object.keys(plate).sort().join(","),
+           "configuree,inscription,relie,totem");
 
   console.log("\nPorte de l'application");
   const json = (corps) => ({

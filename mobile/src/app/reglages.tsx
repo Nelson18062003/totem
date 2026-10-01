@@ -186,15 +186,6 @@ export default function Reglages() {
               </Texte>
             </View>
             <Filet />
-            {/* Plus de mot de passe : on entre par un code. Ce qui est vrai
-                se dit, au même endroit que la promesse sur le code secret. */}
-            <View style={{ flexDirection: "row", gap: espaces.md, padding: espaces.lg }}>
-              <Icone nom="Lock" taille={20} couleur={couleurs.encreDouce} />
-              <Texte taille={textes.petit} ton="doux" style={{ flex: 1, lineHeight: 20 }}>
-                {t.noteCode}
-              </Texte>
-            </View>
-            <Filet />
             <Pressable
               accessibilityRole="button"
               onPress={seDeconnecter}

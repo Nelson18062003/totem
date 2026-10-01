@@ -92,10 +92,9 @@ que leur registre n'existe pas encore.
 ## Comment on y entre
 
 À l'adresse de la plateforme suivie de `/console` — par exemple
-`https://totemlabs.app/console` — connecté avec le compte du propriétaire
-(ou la clé de secours). Il n'y a pas de mot de passe : on tape son courriel,
-on reçoit un code, on le tape (voir `docs/COMPTES.md`). Sur le site,
-Réglages → « Console de la plateforme » y mène aussi.
+`https://totemlabs.app/console` — connecté avec le courriel et le mot de
+passe du propriétaire (ou la clé de secours). Sur le site, Réglages →
+« Console de la plateforme » y mène aussi.
 
 Sur le téléphone, il n'y a pas de console — mais ce qui compte au quotidien
 y est : Réglages → « Qui peut se connecter » crée les comptes et confie les

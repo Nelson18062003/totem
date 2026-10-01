@@ -64,11 +64,11 @@ export async function POST(req: Request) {
   // CRÉER un compte ne vise aucun identifiant : il n'en existe pas encore.
   // Ce geste passe donc avant les contrôles qui en réclament un.
   if (geste === "creer") {
-    // Un courriel, et c'est tout : la personne entrera par un code. L'adresse
-    // de la plateforme part dans la lettre d'invitation — celle par laquelle
-    // le propriétaire est venu, donc la bonne.
+    // Le propriétaire pose la personne en entier : prénom, nom, courriel, et
+    // le mot de passe qu'il lui transmettra lui-même.
     const r = await creerParLeProprietaire(
-      corps?.courriel, new URL(req.url).origin, langue);
+      { prenom: corps?.prenom, nom: corps?.nom, courriel: corps?.courriel },
+      corps?.motdepasse, langue);
     return r.ok
       ? Response.json({ ok: true, id: r.id }, { status: 201 })
       : Response.json({ erreur: r.erreur }, { status: r.statut });

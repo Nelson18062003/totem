@@ -27,11 +27,11 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
-import { entrerALEcran, envCourrier } from "./entrer.mjs";
 
 const PORT = 3141;
 const B = `http://127.0.0.1:${PORT}`;
 const SECRET = "secret-d-essai-du-parcours";
+const MDP = "un-mot-de-passe-assez-long";
 const CODE_SECRET = "4321";
 
 let echecs = 0;
@@ -76,7 +76,6 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     ...process.env,
     SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: "cle-de-secours-du-parcours",
-    ...envCourrier(4999),
   },
   stdio: "ignore",
 });
@@ -89,7 +88,7 @@ try {
   }
   await fetch(`${B}/api/inscription`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: "parcours@totem.test" }),
+    body: JSON.stringify({ courriel: "parcours@totem.test", motdepasse: MDP }),
   });
 
   nav = await chromium.launch({
@@ -108,7 +107,9 @@ try {
 
   console.log("\nLe propriétaire entre");
   await page.goto(B, { waitUntil: "networkidle" });
-  await entrerALEcran(page, 4999, "parcours@totem.test");
+  await page.locator('input[type="email"]:not([readonly])').fill("parcours@totem.test");
+  await page.locator('input[type="password"]').fill(MDP);
+  await page.getByText(/^(Sign in|Se connecter)$/).last().click();
   await page.waitForTimeout(2500);
   verifier("il est sur la plateforme", !page.url().includes("/connexion"), true);
 

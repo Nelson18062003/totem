@@ -14,6 +14,7 @@ import {
   SectionCodes,
   SectionEssaiNotification,
   SectionLangue,
+  SectionMotDePasse,
   SectionQui,
 } from "./interactifs";
 
@@ -242,11 +243,11 @@ export default async function Reglages() {
             {t.notePin}
           </p>
         </div>
-        {/* Plus de mot de passe à changer : on entre par un code. Ce qui est
-            vrai se dit — et ce qui n'existe plus ne s'affiche plus. */}
+        {/* Le mot de passe se change ici — pour un COMPTE. La clé de secours
+            n'en a pas à changer : elle vit dans les variables du serveur. */}
         {moi && (
-          <div className="mt-3 rounded-card border border-line bg-surface-raised px-4 py-3.5">
-            <p className="text-small leading-relaxed text-ink-soft">{t.noteCode}</p>
+          <div className="mt-3">
+            <SectionMotDePasse />
           </div>
         )}
       </section>

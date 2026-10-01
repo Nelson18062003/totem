@@ -1,32 +1,32 @@
 // Le verrou de l'application.
 //
-// UN COURRIEL, PUIS UN CODE. Pas de mot de passe : on tape son courriel, un
-// code à six chiffres part vers cette boîte, on le tape. Le code sert une
-// fois, vit dix minutes, et ne se choisit pas — ce qui vaut mieux qu'un mot
-// de passe qu'on choisit mal, qu'on réutilise ailleurs, et dont la fuite
-// ailleurs ouvrait la porte ici. Le navigateur fait exactement le même
-// chemin, avec la même règle (web/lib/porte.ts).
+// UN COURRIEL ET UN MOT DE PASSE, vérifiés contre un compte rangé en base. Le
+// mot de passe n'y est jamais : seulement son empreinte, qui ne se remonte
+// pas. Le même écran sert à créer un compte — c'est la même paire de champs,
+// il aurait été absurde d'en faire deux écrans.
 //
-// LE PREMIER COMPTE de la plateforme est celui du propriétaire. Le créer
-// envoie, lui aussi, un code : la toute première entrée prouve déjà qu'on
-// tient la boîte. Les comptes suivants, c'est le propriétaire qui les crée.
-//
-// L'écran ne dit JAMAIS si une adresse a un compte (« si cette adresse a un
-// accès, un code vient de partir ») — le dire apprendrait à n'importe qui
-// quelles adresses ouvrent quelque chose ici.
+// LE PREMIER COMPTE de la plateforme est celui du propriétaire : il entre
+// tout de suite. Les suivants sont créés et attendent qu'il leur ouvre.
 //
 // Ce n'est PAS le code PIN Mobile Money. Celui-là ne se saisit qu'au moment
-// d'une opération, sur un pavé de boutons, et ne s'enregistre nulle part.
+// d'une opération, sur un pavé de boutons, et ne s'enregistre nulle part. La
+// note en bas de l'écran le dit, parce que c'est exactement là qu'on peut se
+// tromper.
 //
+// Le mot de passe ne vit que dans l'état de cet écran, le temps de l'envoi.
 // Ce qui se range dans le coffre, c'est le JETON rendu par la plateforme —
-// jamais le code, jamais la clé de secours.
+// jamais le mot de passe lui-même.
 //
-// AVANT LE COURRIEL, L'ADRESSE. Cet écran commence par demander à
+// AVANT LE MOT DE PASSE, L'ADRESSE. Cet écran commence par demander à
 // l'adresse configurée : « y a-t-il un TOTEM ici ? » Tant que la réponse
-// n'est pas oui, les champs restent fermés. L'application a porté pendant un
-// temps une adresse d'exemple qui appartenait à quelqu'un d'autre : ce qu'on
-// tapait partait vers un serveur inconnu. Rien ne part plus vers une adresse
-// qui n'a pas montré patte blanche.
+// n'est pas oui, le champ du mot de passe reste fermé.
+//
+// Ce n'est pas de la prudence théorique. L'application a porté pendant un
+// temps une adresse d'exemple, reprise d'une documentation, qui appartenait
+// en fait à quelqu'un d'autre : le mot de passe du propriétaire partait vers
+// un serveur inconnu, et l'écran ne disait qu'un « connexion impossible »
+// où l'on cherchait une faute de frappe dans le mot de passe. Un mot de
+// passe ne part plus vers une adresse qui n'a pas montré patte blanche.
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -46,8 +46,8 @@ import { Icone } from "@/icones";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
 import {
-  adressePlateforme, adresseValable, codesPossibles, definirAdresse,
-  demanderCode, peutSInscrire, verifierPlateforme, type EtatPlateforme,
+  adressePlateforme, adresseValable, definirAdresse, peutSInscrire,
+  verifierPlateforme, type EtatPlateforme,
 } from "@/api/guichet";
 import { textesConnexion } from "@noyau/textes/connexion";
 import { autreLangue } from "@noyau/langue";
@@ -59,31 +59,18 @@ export default function Connexion() {
   const t = textesConnexion[langue];
   const { ouvrir, inscrire } = useSession();
 
-  // « entrer » : je me connecte. « creer » : je crée le compte du
-  // propriétaire. « secours » : je présente la clé de secours.
-  const [mode, setMode] = useState<"entrer" | "creer" | "secours">("entrer");
-  // Où l'on en est : donner son courriel, ou taper le code reçu.
-  const [etape, setEtape] = useState<"courriel" | "code">("courriel");
+  // « entrer » : je me connecte. « creer » : je crée un compte.
+  const [mode, setMode] = useState<"entrer" | "creer">("entrer");
   const [courriel, setCourriel] = useState("");
-  const [code, setCode] = useState("");
-  const [cle, setCle] = useState("");
-  // Les secondes avant de pouvoir redemander un code : la plateforme refuse
-  // d'en poser un second dans la minute, l'écran ne propose pas un geste vain.
-  const [renvoi, setRenvoi] = useState(0);
+  const [motdepasse, setMotdepasse] = useState("");
+  const [attente, setAttente] = useState(false);   // compte créé, en attente
   // Peut-on encore créer un compte ? La plateforme l'a dit en répondant à
   // « y a-t-il un TOTEM ici ». Un bouton qui mène toujours à un refus est un
   // bouton de trop.
   const [inscriptionOuverte, setInscriptionOuverte] = useState(false);
-  const [codesOuverts, setCodesOuverts] = useState(true);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (renvoi <= 0) return;
-    const minuteur = setTimeout(() => setRenvoi((n) => n - 1), 1000);
-    return () => clearTimeout(minuteur);
-  }, [renvoi]);
 
   // L'adresse de la plateforme, et ce qu'on a trouvé au bout.
   // `null` = on n'a pas encore regardé.
@@ -121,7 +108,6 @@ export default function Connexion() {
     }
     setEtat(await verifierPlateforme(a));
     setInscriptionOuverte(peutSInscrire());
-    setCodesOuverts(codesPossibles());
   }, []);
 
   useEffect(() => { void sonder(); }, [sonder]);
@@ -137,41 +123,31 @@ export default function Connexion() {
     await sonder();
   };
 
-  // Rien ne part QUE vers un TOTEM qui a répondu.
+  // Le mot de passe ne part QUE vers un TOTEM qui a répondu.
   const porteOuverte = etat === "trouvee";
 
-  const chiffres = code.replace(/\D/g, "");
-  const complet = mode === "secours" ? Boolean(cle)
-    : etape === "code" ? chiffres.length === 6
-      : Boolean(courriel.trim());
-
-  /** Demander (ou redemander) un code — ou créer le compte du propriétaire,
-   *  qui en envoie un lui-même. */
-  const envoyerLeCode = async () => {
-    if (mode === "creer") await inscrire(courriel.trim(), langue);
-    else await demanderCode(courriel.trim(), langue);
-    setEtape("code");
-    setCode("");
-    setRenvoi(60);
-  };
+  // Au moins douze caractères : la longueur vaut mieux que la complication,
+  // et c'est la seule règle. Voir web/lib/motdepasse.ts.
+  const assezLong = motdepasse.length >= 12;
+  const complet = mode === "creer"
+    ? Boolean(courriel) && assezLong
+    : Boolean(courriel) && Boolean(motdepasse);
 
   const valider = async () => {
     if (!complet || enCours || !porteOuverte) return;
     setEnCours(true);
     setErreur(null);
     try {
-      if (mode === "secours") {
-        await ouvrir("", cle, langue);
-        setCle("");                 // rien ne subsiste après l'envoi
+      if (mode === "creer") {
+        const entre = await inscrire(courriel, motdepasse, langue);
+        setMotdepasse("");          // rien ne subsiste après l'envoi
+        // Un compte en attente ne connecte personne : on le dit, franchement,
+        // plutôt que de laisser croire à un échec.
+        if (!entre) { setAttente(true); setEnCours(false); }
         return;
       }
-      if (etape === "courriel") {
-        await envoyerLeCode();
-        setEnCours(false);
-        return;
-      }
-      await ouvrir(courriel.trim(), chiffres, langue);
-      setCode("");
+      await ouvrir(courriel, motdepasse, langue);
+      setMotdepasse("");
     } catch (e) {
       // Le guichet rend déjà le message dans la bonne langue ; on ne le
       // réécrit pas ici, on ne fait que le montrer.
@@ -181,27 +157,9 @@ export default function Connexion() {
     }
   };
 
-  const renvoyer = async () => {
-    if (renvoi > 0 || enCours) return;
-    setEnCours(true);
-    setErreur(null);
-    try {
-      // Un second code se demande toujours par la porte ordinaire — même
-      // juste après l'inscription : le compte existe désormais.
-      await demanderCode(courriel.trim(), langue);
-      setRenvoi(60);
-    } catch (e) {
-      setErreur(e instanceof Error && e.message ? e.message : t.connexionImpossible);
-    } finally {
-      setEnCours(false);
-    }
-  };
-
-  const changerDeMode = (m: "entrer" | "creer" | "secours") => {
-    setMode((actuel) => (actuel === m ? "entrer" : m));
-    setEtape("courriel");
-    setCode("");
-    setCle("");
+  const changerDeMode = () => {
+    setMode((m) => (m === "entrer" ? "creer" : "entrer"));
+    setMotdepasse("");
     setErreur(null);
   };
 
@@ -211,6 +169,43 @@ export default function Connexion() {
   }
   if (!accueilli) {
     return <Bienvenue onFini={() => setAccueilli(true)} />;
+  }
+
+  // LE COMPTE EST CRÉÉ, ET IL ATTEND. On le dit sur un écran à lui : renvoyer
+  // au formulaire donnerait l'impression d'un échec, alors que tout s'est
+  // bien passé — il manque seulement l'accord du propriétaire.
+  if (attente) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: couleurs.surface }}>
+        <Defilement
+          contentContainerStyle={{
+            flexGrow: 1, justifyContent: "center",
+            padding: espaces.xl, gap: espaces.lg,
+          }}
+        >
+          <View style={{ alignItems: "center", gap: espaces.md }}>
+            <MotTotem taille={22} couleur={couleurs.encre} />
+            <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
+              {t.compteEnAttenteTitre}
+            </Texte>
+            <Texte ton="doux" style={{ textAlign: "center", lineHeight: 22 }}>
+              {t.compteEnAttenteTexte}
+            </Texte>
+          </View>
+          <Pressable
+            onPress={() => { setAttente(false); setMode("entrer"); }}
+            accessibilityRole="button"
+            style={avecAppui({
+              borderWidth: 1, borderColor: couleurs.trait,
+              borderRadius: rayons.bouton, paddingVertical: espaces.md,
+              alignItems: "center",
+            })}
+          >
+            <Texte poids="demi" ton="doux">{t.jAiDejaUnCompte}</Texte>
+          </Pressable>
+        </Defilement>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -243,7 +238,7 @@ export default function Connexion() {
                 connexion, il ne faisait que remplir l'écran. */}
             {mode === "creer" ? (
               <Texte ton="doux" style={{ textAlign: "center", lineHeight: 22 }}>
-                {t.premierCompte}
+                {t.inscriptionSousTitre}
               </Texte>
             ) : null}
           </Entree>
@@ -380,65 +375,20 @@ export default function Connexion() {
 
           <Entree delai={80}>
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
-            {mode === "secours" ? (
-              <>
-                <Texte taille={textes.petit} ton="doux" poids="moyen">
-                  {t.motDePasse}
-                </Texte>
-                <View style={{
-                  flexDirection: "row", alignItems: "center",
-                  borderWidth: 1, borderColor: erreur ? couleurs.negatif : couleurs.trait,
-                  borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
-                  paddingHorizontal: espaces.md,
-                }}>
-                  <ChampTexte
-                    value={cle}
-                    onChangeText={(v) => { setCle(v); setErreur(null); }}
-                    secureTextEntry={!visible}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="password"
-                    textContentType="password"
-                    editable={!enCours && porteOuverte}
-                    onSubmitEditing={valider}
-                    returnKeyType="go"
-                    style={{
-                      flex: 1, paddingVertical: espaces.md,
-                      fontFamily: polices.corps, fontSize: textes.corps,
-                      color: couleurs.encre,
-                    }}
-                  />
-                  {/* L'œil : une icône nue, donc un `BoutonIcone` — il
-                      s'enfonce sous le doigt et s'annonce comme un bouton. */}
-                  <BoutonIcone
-                    nom={visible ? "EyeOff" : "Eye"}
-                    couleur={couleurs.encrePale}
-                    etiquette={visible ? t.masquerMotDePasse : t.montrerMotDePasse}
-                    onPress={() => setVisible((v) => !v)}
-                  />
-                </View>
-                <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
-                  {t.cleDeSecoursAide}
-                </Texte>
-              </>
-            ) : etape === "courriel" ? (
-              <>
-                <Texte taille={textes.petit} ton="doux" poids="moyen">
-                  {t.courriel}
-                </Texte>
-                <ChampTexte
-                  value={courriel}
-                  onChangeText={(v) => { setCourriel(v); setErreur(null); }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="email"
-                  textContentType="emailAddress"
-                  keyboardType="email-address"
-                  inputMode="email"
-                  editable={!enCours && porteOuverte}
-                  onSubmitEditing={valider}
-                  returnKeyType="send"
-                  style={{
+            <Texte taille={textes.petit} ton="doux" poids="moyen">
+              {t.courriel}
+            </Texte>
+            <ChampTexte
+              value={courriel}
+              onChangeText={(v) => { setCourriel(v); setErreur(null); }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              keyboardType="email-address"
+              inputMode="email"
+              editable={!enCours && porteOuverte}
+              style={{
                 borderWidth: 1,
                 borderColor: erreur ? couleurs.negatif : couleurs.trait,
                 borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
@@ -446,50 +396,56 @@ export default function Connexion() {
                 fontFamily: polices.corps, fontSize: textes.corps,
                 color: couleurs.encre,
               }}
-                />
-                {/* Sans courrier, aucun code ne partira : on le dit AVANT
-                    qu'on attende une lettre qui ne viendra jamais. */}
-                {porteOuverte && !codesOuverts ? (
-                  <Texte taille={textes.petit} ton="negatif" style={{ lineHeight: 20 }}>
-                    {t.codesIndisponibles}
-                  </Texte>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <Texte taille={textes.petit} ton="doux" style={{ lineHeight: 20 }}>
-                  {t.codeAide(courriel.trim())}
-                </Texte>
-                <Texte taille={textes.petit} ton="doux" poids="moyen">
-                  {t.codeRecu}
-                </Texte>
-                {/* « oneTimeCode » : le téléphone propose le code tout seul
-                    quand la lettre arrive. */}
-                <ChampTexte
-                  value={code}
-                  onChangeText={(v) => { setCode(v.replace(/[^\d\s]/g, "").slice(0, 7)); setErreur(null); }}
-                  autoComplete="one-time-code"
-                  textContentType="oneTimeCode"
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  autoFocus
-                  editable={!enCours}
-                  onSubmitEditing={valider}
-                  returnKeyType="go"
-                  style={[
-                    {
-                borderWidth: 1,
-                borderColor: erreur ? couleurs.negatif : couleurs.trait,
-                borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
-                paddingHorizontal: espaces.md, paddingVertical: espaces.md,
-                fontFamily: polices.corps, fontSize: textes.corps,
-                color: couleurs.encre,
-              },
-                    { textAlign: "center", letterSpacing: 8, fontSize: textes.titre },
-                  ]}
-                />
-              </>
-            )}
+            />
+
+            <Texte taille={textes.petit} ton="doux" poids="moyen">
+              {t.motDePasse}
+            </Texte>
+
+            <View style={{
+              flexDirection: "row", alignItems: "center",
+              borderWidth: 1, borderColor: erreur ? couleurs.negatif : couleurs.trait,
+              borderRadius: rayons.bouton, backgroundColor: couleurs.surface,
+              paddingHorizontal: espaces.md,
+            }}>
+              <ChampTexte
+                value={motdepasse}
+                onChangeText={(v) => { setMotdepasse(v); setErreur(null); }}
+                secureTextEntry={!visible}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="password"
+                textContentType="password"
+                editable={!enCours && porteOuverte}
+                onSubmitEditing={valider}
+                returnKeyType="go"
+                style={{
+                  flex: 1, paddingVertical: espaces.md,
+                  fontFamily: polices.corps, fontSize: textes.corps,
+                  color: couleurs.encre,
+                }}
+              />
+              {/* L'œil : une icône nue, donc un `BoutonIcone` — il s'enfonce
+                  sous le doigt et s'annonce comme un bouton. Écrit à la main,
+                  il ne faisait ni l'un ni l'autre, et son étiquette était en
+                  français quel que soit l'écran. */}
+              <BoutonIcone
+                nom={visible ? "EyeOff" : "Eye"}
+                couleur={couleurs.encrePale}
+                etiquette={visible ? t.masquerMotDePasse : t.montrerMotDePasse}
+                onPress={() => setVisible((v) => !v)}
+              />
+            </View>
+
+            {mode === "creer" ? (
+              <Texte
+                taille={textes.legende}
+                ton={motdepasse && !assezLong ? "negatif" : "pale"}
+                style={{ lineHeight: 18 }}
+              >
+                {t.motDePasseConseil}
+              </Texte>
+            ) : null}
 
             {erreur ? (
               <Texte taille={textes.petit} ton="negatif">{erreur}</Texte>
@@ -513,31 +469,10 @@ export default function Connexion() {
             >
               {enCours ? <ActivityIndicator size="small" color={couleurs.surface} /> : null}
               <Texte poids="demi" style={{ color: couleurs.surfaceHaute }}>
-                {enCours ? (etape === "courriel" && mode !== "secours" ? t.envoiDuCode : t.verification)
-                  : mode === "secours" || etape === "code" ? t.seConnecter
-                    : mode === "creer" ? t.creerUnCompte : t.recevoirCode}
+                {enCours ? t.verification
+                  : mode === "creer" ? t.creerUnCompte : t.seConnecter}
               </Texte>
             </Pressable>
-
-            {mode !== "secours" && etape === "code" ? (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: espaces.md }}>
-                <Pressable onPress={() => void renvoyer()} hitSlop={8}
-                           disabled={renvoi > 0 || enCours}
-                           accessibilityRole="button" style={appuiTexte}>
-                  <Texte taille={textes.petit} ton={renvoi > 0 ? "pale" : "doux"} poids="moyen"
-                         style={{ textDecorationLine: renvoi > 0 ? "none" : "underline" }}>
-                    {renvoi > 0 ? t.renvoyerDans(renvoi) : t.renvoyer}
-                  </Texte>
-                </Pressable>
-                <Pressable onPress={() => { setEtape("courriel"); setErreur(null); setCode(""); }}
-                           hitSlop={8} accessibilityRole="button" style={appuiTexte}>
-                  <Texte taille={textes.petit} ton="doux" poids="moyen"
-                         style={{ textDecorationLine: "underline" }}>
-                    {t.autreAdresse}
-                  </Texte>
-                </Pressable>
-              </View>
-            ) : null}
           </Carte>
           </Entree>
 
@@ -547,8 +482,8 @@ export default function Connexion() {
               code PIN vit dans la politique de confidentialité et sur le pavé
               lui-même — la répéter ici ne faisait qu'épaissir l'écran. */}
           <Entree delai={120} style={{ gap: espaces.lg, alignItems: "center" }}>
-            {(inscriptionOuverte || mode === "creer") && mode !== "secours" && (
-              <Pressable onPress={() => changerDeMode("creer")} hitSlop={8} disabled={enCours}
+            {(inscriptionOuverte || mode === "creer") && (
+              <Pressable onPress={changerDeMode} hitSlop={8} disabled={enCours}
                          accessibilityRole="button" style={appuiTexte}>
                 <Texte taille={textes.petit} poids="moyen" ton="doux"
                        style={{ textDecorationLine: "underline" }}>
@@ -556,15 +491,6 @@ export default function Connexion() {
                 </Texte>
               </Pressable>
             )}
-
-            {/* La clé de secours ne s'annonce pas plus fort que cela : ce
-                n'est pas le chemin de tous les jours. */}
-            <Pressable onPress={() => changerDeMode("secours")} hitSlop={8} disabled={enCours}
-                       accessibilityRole="button" style={appuiTexte}>
-              <Texte taille={textes.legende} ton="pale">
-                {mode === "secours" ? t.retourAuCompte : t.cleDeSecours}
-              </Texte>
-            </Pressable>
 
             {/* La bascule de langue : un drapeau et le nom de l'AUTRE langue,
                 dans une pastille visible — celle qui la cherche la voit. */}

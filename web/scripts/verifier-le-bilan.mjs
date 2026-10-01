@@ -26,12 +26,12 @@
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
-import { cookieDuProprietaire, envCourrier } from "./entrer.mjs";
 
 const PORT = 3155;
 const NUAGE = 4998;
 const B = `http://127.0.0.1:${PORT}`;
 const SECRET = "secret-d-essai-du-bilan";
+const MDP = "un-mot-de-passe-assez-long";
 const FUSEAU = "Africa/Douala";
 
 let echecs = 0;
@@ -71,7 +71,6 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     ...process.env,
     SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: "cle-de-secours-du-bilan",
-    ...envCourrier(NUAGE),
     FUSEAU,
   },
   stdio: "ignore",
@@ -128,11 +127,19 @@ try {
     await attendre(500);
   }
 
-  // Le premier compte inscrit est le propriétaire : il entre par le code
-  // que l'inscription lui envoie.
-  biscuit = await cookieDuProprietaire(B, NUAGE, "bilan@essai.cm");
-  verifier("la session s'ouvre", biscuit.length > 0);
-  if (!biscuit) throw new Error("sans session, le bilan ne prouve rien");
+  // Le premier compte inscrit est le propriétaire : il entre sans attendre.
+  await fetch(`${B}/api/inscription`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel: "bilan@essai.cm", motdepasse: MDP }),
+  });
+  const co = await fetch(`${B}/api/connexion`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ courriel: "bilan@essai.cm", motdepasse: MDP }),
+  });
+  biscuit = (co.headers.getSetCookie?.() ?? [])
+    .map((c) => c.split(";")[0]).join("; ");
+  verifier("la session s'ouvre", co.ok && biscuit.length > 0);
+  if (!co.ok) throw new Error("sans session, le bilan ne prouve rien");
 
   // --- 1. UNE CAISSE QUI TOURNE DEPUIS QUATRE MOIS ------------------------
   // 120 jours × 20 encaissements = 2400 lignes, largement au-delà des mille

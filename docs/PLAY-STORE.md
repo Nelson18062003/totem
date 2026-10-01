@@ -62,24 +62,19 @@ derrière une connexion : il faut donc **lui donner un compte qui marche**.
 
 **Réglages → Qui peut se connecter → Créer un compte**
 
-⚠️ **À trancher avant le prochain envoi à Google.** Depuis le 1er octobre
-2026, on n'entre plus par mot de passe mais par un **code envoyé au
-courriel**. Un examinateur de Google ne peut pas lire la boîte d'un courriel
-qu'on a créé pour lui : le formulaire « nom d'utilisateur / mot de passe »
-ne suffit plus. Deux chemins possibles, à choisir — aucun n'est construit :
+Puis dans la Play Console, choisir « Toutes les fonctionnalités nécessitent
+un accès spécial » et remplir :
 
-1. créer le compte d'examen sur une adresse que **vous** lisez, et répondre
-   à l'examinateur (Google prévoit un champ d'instructions) — lent et
-   fragile ;
-2. un compte d'examen dont le code est FIXE, posé dans une variable de
-   l'hébergement et limité à ce seul courriel, effacé après l'examen —
-   c'est ce que font la plupart des applications à code, mais c'est une
-   porte de plus, et elle se décide, elle ne s'improvise pas.
+| Champ | Valeur |
+|---|---|
+| Nom des identifiants | `Examen Google` |
+| Nom d'utilisateur | le courriel créé |
+| Mot de passe | celui choisi |
+| Instructions | « Sign in with the email and password above. The app shows the Mobile Money SIM cards held in the owner's terminal. » |
 
-Le compte d'examen **ne voit que les cartes que vous lui confiez** (voir
-`docs/COMPTES.md`) : confiez-lui une carte, ou il verra une application vide
-— et l'examinateur refusera une application qui ne montre rien.
-Supprimez-le une fois l'examen terminé : même écran, bouton *Supprimer*.
+⚠️ **Ce compte ne voit que les cartes que vous lui confiez** — confiez-lui-en
+une, sinon il verra une application vide. Supprimez-le une fois l'examen
+terminé : même écran, bouton *Supprimer*.
 
 ---
 
@@ -126,20 +121,15 @@ justifier une collecte qui n'existe pas.
 
 ### Le courriel du compte
 
-**Ce qui a changé le 1er octobre 2026** : on entre par un code envoyé au
-courriel. Le courriel part donc chez le service d'envoi (Resend) à chaque
-connexion. Il faut maintenant le DÉCLARER :
+Le propriétaire crée un compte avec un courriel, qui vit dans **sa** base
+Supabase. Il n'est envoyé à personne d'autre, jamais.
 
-| Champ | Valeur |
-|---|---|
-| Type | **Adresse e-mail** |
-| Collecté | **Oui** |
-| Partagé | **Oui** — avec Resend, pour envoyer le code d'entrée |
-| Facultatif ou obligatoire | **Obligatoire** — on n'entre pas sans |
-| Finalité | **Gestion du compte** |
-
-La politique de confidentialité (`/confidentialite`) nomme Resend dans
-« Qui d'autre voit quelque chose » : les deux doivent dire la même chose.
+Google demande de déclarer ce que l'**application** collecte et transmet à
+des tiers. Ici le courriel ne quitte pas l'infrastructure du propriétaire.
+Dans le doute, on peut le déclarer — **Adresse e-mail**, collectée,
+**non partagée**, obligatoire, finalité **Gestion du compte**. C'est
+défendable, et déclarer plus que le strict nécessaire ne fait pas refuser une
+application ; l'inverse, si.
 
 ---
 
@@ -322,8 +312,7 @@ Les captures se refabriquent d'une commande, jamais à la main :
 ```sh
 node web/scripts/faux-nuage.mjs &
 cd web && SUPABASE_URL=http://127.0.0.1:4999 SUPABASE_CLE=x \
-  SESSION_SECRET=essai COURRIER_CLE=re_essai COURRIER_URL=http://127.0.0.1:4999 \
-  npx next start -p 3180 &
+  SESSION_SECRET=essai npx next start -p 3180 &
 cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3180 EXPO_PUBLIC_APERCU=1 \
   npx expo export --platform web --output-dir /tmp/apercu
 node scripts/captures-boutique.mjs /tmp/apercu

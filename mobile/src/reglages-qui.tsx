@@ -6,9 +6,9 @@
 // lui-même — un invité ne voit même pas qu'elle existe.
 //
 // L'inscription libre est fermée dès le premier compte : créer un compte
-// ICI est le seul chemin pour faire entrer quelqu'un. Un courriel suffit — on
-// entre par un code reçu à ce courriel, il n'y a plus de mot de passe à
-// transmettre.
+// ICI est le seul chemin pour faire entrer quelqu'un : le propriétaire donne
+// le prénom, le nom, le courriel, et choisit le mot de passe qu'il
+// transmettra lui-même.
 //
 // LES CARTES DE CHACUN. Un invité ne voit que les cartes qu'on lui confie
 // ici, et rien du tout tant qu'on ne lui en a confié aucune. L'avertissement
@@ -45,7 +45,10 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const [occupe, setOccupe] = useState<number | null>(null);
 
   const [creationOuverte, setCreationOuverte] = useState(false);
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
   const [courriel, setCourriel] = useState("");
+  const [motdepasse, setMotdepasse] = useState("");
   const [creation, setCreation] = useState(false);
   const [mot, setMot] = useState<string | null>(null);
   const [rate, setRate] = useState(false);
@@ -120,16 +123,25 @@ export function SectionQui({ langue }: { langue: Langue }) {
   // réussie. Le propriétaire lisait un échec là où tout s'était bien passé.
   const gesteCreer = useGesteUnique();
 
+  const complet = Boolean(prenom.trim() && nom.trim() && courriel.trim())
+    && motdepasse.length >= 12;
+
   const creer = () => gesteCreer.lancer(async () => {
-    if (!courriel.trim()) return;
+    if (!complet) return;
     setCreation(true);
     setMot(null);
     try {
-      const r = await agirSurCompte({ geste: "creer", courriel: courriel.trim() }) as
-        { id?: number } | null;
+      const r = await agirSurCompte({
+        geste: "creer", prenom: prenom.trim(), nom: nom.trim(),
+        courriel: courriel.trim(), motdepasse,
+      }) as { id?: number } | null;
       setRate(false);
       setMot(t.creerFait);
+      // Le mot de passe ne reste pas à l'écran : il vient d'être transmis.
+      setPrenom("");
+      setNom("");
       setCourriel("");
+      setMotdepasse("");
       setCreationOuverte(false);
       await charger();
       // Le geste qui suit naturellement : choisir ses cartes. Sans cela, le
@@ -215,7 +227,14 @@ export function SectionQui({ langue }: { langue: Langue }) {
                     et « jean.dupont@exemple-piege.cm » se ressemblent
                     beaucoup une fois coupés. On ne tronque pas ce qui sert
                     à reconnaître une personne. */}
-                <Texte poids="moyen" taille={textes.petit} selectable>
+                {c.prenom || c.nom ? (
+                  <Texte poids="moyen" taille={textes.petit}>
+                    {[c.prenom, c.nom].filter(Boolean).join(" ")}
+                  </Texte>
+                ) : null}
+                <Texte poids={c.prenom || c.nom ? "normal" : "moyen"}
+                       taille={c.prenom || c.nom ? textes.legende : textes.petit}
+                       ton={c.prenom || c.nom ? "doux" : "normal"} selectable>
                   {c.courriel}
                 </Texte>
                 <Texte taille={textes.legende} ton="pale" numberOfLines={1}>
@@ -345,18 +364,30 @@ export function SectionQui({ langue }: { langue: Langue }) {
           <Texte taille={textes.legende} ton="doux" style={{ lineHeight: 18 }}>
             {t.creerAvertissement}
           </Texte>
+          <Saisie libelle={t.creerPrenom} valeur={prenom} onChange={setPrenom} mots />
+          <Saisie libelle={t.creerNom} valeur={nom} onChange={setNom} mots />
           <Saisie libelle={t.creerCourriel} valeur={courriel} onChange={setCourriel}
                   clavier="email-address" />
+          <View style={{ gap: espaces.xs }}>
+            {/* En clair, à dessein : le propriétaire doit pouvoir le relire
+                pour le transmettre. Ce n'est pas SON mot de passe. */}
+            <Saisie libelle={t.creerMotDePasse} valeur={motdepasse}
+                    onChange={setMotdepasse} />
+            <Texte taille={textes.legende}
+                   ton={motdepasse && motdepasse.length < 12 ? "negatif" : "pale"}>
+              {t.creerLongueur}
+            </Texte>
+          </View>
           <View style={{ flexDirection: "row", gap: espaces.sm }}>
             <Pressable
               accessibilityRole="button"
               onPress={() => void creer()}
-              disabled={creation || !courriel.trim()}
+              disabled={creation || !complet}
               style={({ pressed }) => ({
                 flex: 1, alignItems: "center", paddingVertical: espaces.md,
                 borderRadius: rayons.bouton,
                 backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
-                opacity: creation || !courriel.trim() ? 0.35 : 1,
+                opacity: creation || !complet ? 0.35 : 1,
               })}
             >
               {creation
@@ -430,11 +461,13 @@ function Petit({ libelle, onPress, occupe, danger, accent }: {
   );
 }
 
-function Saisie({ libelle, valeur, onChange, clavier }: {
+function Saisie({ libelle, valeur, onChange, clavier, mots }: {
   libelle: string;
   valeur: string;
   onChange: (v: string) => void;
   clavier?: "email-address";
+  /** Un prénom ou un nom : une majuscule en tête de chaque mot. */
+  mots?: boolean;
 }) {
   return (
     <View style={{ gap: espaces.xs }}>
@@ -446,7 +479,7 @@ function Saisie({ libelle, valeur, onChange, clavier }: {
         value={valeur}
         onChangeText={onChange}
         keyboardType={clavier}
-        autoCapitalize="none"
+        autoCapitalize={mots ? "words" : "none"}
         autoCorrect={false}
         style={{
           borderWidth: 1, borderColor: couleurs.trait,

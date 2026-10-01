@@ -461,7 +461,7 @@ secret).
 ## 5 ter. Ne plus jamais taper l'adresse
 
 Le propriétaire ne devrait **jamais** avoir à taper l'adresse de son serveur.
-On ouvre l’application, on met son courriel, on tape le code reçu, on entre.
+On ouvre l'application, on met son courriel et son mot de passe, on entre.
 C'est tout.
 
 Le champ « Changer l'adresse » existe parce que l'adresse livrée était fausse

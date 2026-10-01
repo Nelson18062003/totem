@@ -37,10 +37,10 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
-import { preparerLeProprietaire, remplirJusquAuCode } from "./entrer.mjs";
 
 const APERCU = "http://127.0.0.1:3210";
 const COURRIEL = "essai@totem.test";
+const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
 // Combien de pixels doivent bouger, en part de la surface du bouton. Un
 // changement de fond en couvre presque tout ; un enfoncement de 3 % n'en
@@ -146,12 +146,10 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
     process.exit(1);
   }
 }
-try {
-  await preparerLeProprietaire(COURRIEL);
-} catch (e) {
-  console.error(`\n✗ ${e.message}`);
-  process.exit(1);
-}
+await fetch("http://127.0.0.1:3120/api/inscription", {
+  method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+}).catch(() => {});
 
 const nav = await chromium.launch({ args: ["--disable-web-security"] });
 const page = await nav.newPage({ viewport: { width: 390, height: 844 } });
@@ -224,9 +222,8 @@ try {
     if (pret) break;
     await attendre(500);
   }
-  // Jusqu'au code, sans appuyer : le témoin sonde le bouton « Se connecter »
-  // quand il est ENFIN pressable — champs remplis, comme une vraie personne.
-  await remplirJusquAuCode(page, COURRIEL);
+  await page.locator('input[type="email"]').first().fill(COURRIEL);
+  await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
   await attendre(600);
 
   // ── LE TÉMOIN ────────────────────────────────────────────────────────
@@ -244,10 +241,8 @@ try {
   echecs -= 0;  // le témoin lui-même ne compte pas : il vient de passer
 
   console.log("\nL'écran de connexion :");
-  // « Envoyer un nouveau code » est INACTIF pendant la première minute (la
-  // base refuse un second code) : on sonde le lien qui, lui, répond.
-  await sonder("« utiliser une autre adresse »",
-               page.getByText(/^Use another address$|^Utiliser une autre adresse$/).first());
+  await sonder("l'œil qui montre le mot de passe",
+               page.getByLabel(/Afficher|Masquer|Show|Hide/).first());
 
   // ── DANS L'APPLICATION ───────────────────────────────────────────────
   await page.getByText(/^Sign in$|^Se connecter$/).last().click();

@@ -852,14 +852,18 @@ export async function lireCommande(
 // par ici. Aucune de ces fonctions n'est appelée depuis un composant client :
 // elles vivent derrière les routes API, qui vérifient la session avant.
 //
-// On n'entre plus par mot de passe : par un code envoyé au courriel (voir
-// `lib/code.ts`). Aucune de ces fonctions ne lit ni n'écrit d'empreinte de
-// mot de passe — il n'y en a plus.
+// L'empreinte du mot de passe ne SORT jamais de ce fichier autrement que
+// pour être vérifiée sur place (voir `lib/motdepasse.ts`). Elle n'entre dans
+// aucune réponse, aucun journal, aucun message.
 // ---------------------------------------------------------------------------
 
 export type Utilisateur = {
   id: number;
   courriel: string;
+  /** Le prénom et le nom, tels que le propriétaire les a saisis en créant
+   *  le compte. Vides pour un compte d'avant (la colonne n'existait pas). */
+  prenom: string;
+  nom: string;
   role: "proprietaire" | "invite";
   approuve: boolean;
   creeLe: string | null;
@@ -867,7 +871,8 @@ export type Utilisateur = {
 };
 
 type LigneUtilisateur = {
-  id: number; courriel: string; empreinte?: string | null;
+  id: number; courriel: string; empreinte: string;
+  prenom?: string | null; nom?: string | null;
   role: string; approuve: boolean;
   cree_le: string | null; vu_le: string | null;
 };
@@ -875,6 +880,8 @@ type LigneUtilisateur = {
 const versUtilisateur = (l: LigneUtilisateur): Utilisateur => ({
   id: l.id,
   courriel: l.courriel,
+  prenom: l.prenom ?? "",
+  nom: l.nom ?? "",
   role: l.role === "proprietaire" ? "proprietaire" : "invite",
   approuve: Boolean(l.approuve),
   creeLe: l.cree_le,
@@ -931,55 +938,18 @@ export async function compterUtilisateurs(): Promise<number | null> {
   }
 }
 
-/** Le compte portant ce courriel, ou `null`. */
-export async function utilisateurParCourriel(courriel: string): Promise<Utilisateur | null> {
+/** Le compte portant ce courriel, EMPREINTE COMPRISE — pour la vérifier.
+ *
+ *  Le seul endroit où l'empreinte sort de la base. Elle ne doit pas quitter
+ *  la route qui appelle ceci. */
+export async function utilisateurAVerifier(
+  courriel: string,
+): Promise<{ compte: Utilisateur; empreinte: string } | null> {
   if (!relie || !courriel) return null;
   const lignes = await lire<LigneUtilisateur>(
-    "utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le"
-    + `&courriel=eq.${encodeURIComponent(courriel)}&limit=1`);
-  const l = lignes.find((x) => x.courriel === courriel);
-  return l ? versUtilisateur(l) : null;
-}
-
-// ---------------------------------------------------------------------------
-// LES CODES D'ENTRÉE
-//
-// Deux gestes, et chacun est UNE instruction de la base (voir
-// `poser_un_code` et `essayer_un_code` dans sql/schema.sql) : un code ne
-// sert qu'une fois, même tapé par dix mains ensemble, et cinq essais faux le
-// brûlent. Ici, on ne fait que transmettre — ce qui compte se joue là-bas.
-//
-// Le code lui-même n'arrive jamais jusqu'ici : seulement son empreinte.
-// ---------------------------------------------------------------------------
-
-async function appeler(fonction: string, corps: unknown): Promise<unknown> {
-  const r = await ecrire(`rpc/${fonction}`, "POST", corps);
-  if (!r?.ok) return undefined;
-  return r.json().catch(() => undefined);
-}
-
-/** Pose un code pour ce compte. `true` : posé. `false` : un code récent
- *  existe déjà (on ne remplit pas une boîte en boucle). `null` : la base n'a
- *  pas répondu. */
-export async function poserUnCode(
-  id: number, empreinte: string, dureeS: number, delaiS: number,
-): Promise<boolean | null> {
-  if (!relie) return null;
-  const rendu = await appeler("poser_un_code", {
-    le_compte: id, l_empreinte: empreinte, duree_s: dureeS, delai_s: delaiS,
-  });
-  if (rendu === undefined) return null;
-  return rendu === true;
-}
-
-/** Essaie un code. `true` une fois, une seule ; tout le reste est `false`. */
-export async function essayerUnCode(
-  id: number, empreinte: string, maxEssais: number,
-): Promise<boolean> {
-  if (!relie) return false;
-  return (await appeler("essayer_un_code", {
-    le_compte: id, l_empreinte: empreinte, max_essais: maxEssais,
-  })) === true;
+    `utilisateurs?courriel=eq.${encodeURIComponent(courriel)}&limit=1`);
+  const l = lignes[0];
+  return l ? { compte: versUtilisateur(l), empreinte: l.empreinte } : null;
 }
 
 /** Le compte portant cet identifiant. Sans empreinte : on ne la sort que
@@ -1010,14 +980,16 @@ export async function utilisateurParId(id: number): Promise<Utilisateur | null> 
  * Jamais un compte à moitié créé : PostgREST écrit la ligne ou ne l'écrit pas.
  */
 export async function creerUtilisateur(
-  courriel: string,
+  courriel: string, empreinte: string,
   role: "proprietaire" | "invite", approuve: boolean,
+  // Le prénom et le nom, quand le propriétaire les a donnés. Ils ne partent
+  // que s'ils sont remplis : l'inscription du tout premier compte n'en a pas.
+  identite: { prenom?: string; nom?: string } = {},
 ): Promise<Utilisateur | "refuse" | null> {
-  // Sans empreinte : on n'entre plus par mot de passe, mais par un code
-  // envoyé à ce courriel (voir lib/porte.ts).
-  const r = await ecrire("utilisateurs", "POST", [{
-    courriel, role, approuve,
-  }]);
+  const ligne: Record<string, unknown> = { courriel, empreinte, role, approuve };
+  if (identite.prenom) ligne.prenom = identite.prenom;
+  if (identite.nom) ligne.nom = identite.nom;
+  const r = await ecrire("utilisateurs", "POST", [ligne]);
   if (!r) return null;
   // 409 : une contrainte d'unicité a parlé (code Postgres 23505).
   if (r.status === 409) return "refuse";
@@ -1026,19 +998,38 @@ export async function creerUtilisateur(
   return lignes[0] ? versUtilisateur(lignes[0]) : null;
 }
 
-/** Note l'heure de la connexion réussie. Ne doit pas pouvoir faire échouer
- *  une connexion : on ignore l'échec. */
-export async function noterConnexion(id: number): Promise<void> {
-  await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", { vu_le: new Date().toISOString() },
+/** Note l'heure de la connexion réussie, et rafraîchit l'empreinte si le
+ *  nombre de tours a été augmenté depuis. Ni l'un ni l'autre ne doit pouvoir
+ *  faire échouer une connexion : on ignore l'échec. */
+export async function noterConnexion(
+  id: number, nouvelleEmpreinte?: string,
+): Promise<void> {
+  const champs: Record<string, unknown> = { vu_le: new Date().toISOString() };
+  if (nouvelleEmpreinte) champs.empreinte = nouvelleEmpreinte;
+  await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", champs,
                { prefer: "return=minimal" });
 }
 
 /** Tous les comptes, pour l'écran du propriétaire. Sans les empreintes. */
 export async function listerUtilisateurs(): Promise<Utilisateur[]> {
   const lignes = await lire<LigneUtilisateur>(
-    "utilisateurs?select=id,courriel,role,approuve,cree_le,vu_le" +
-    "&order=cree_le.asc&limit=200");
+    // « select=* » à dessein : le prénom et le nom n'existent qu'après la
+    // migration du 1er octobre — les nommer rendrait la liste VIDE sur une
+    // base en retard. L'empreinte arrive avec l'étoile, mais `versUtilisateur`
+    // ne la recopie pas : elle ne sort pas d'ici.
+    "utilisateurs?select=*&order=cree_le.asc&limit=200");
   return lignes.map(versUtilisateur);
+}
+
+/** Pose une nouvelle empreinte de mot de passe. L'appelant a déjà prouvé
+ *  qu'il connaît l'ancienne : cette fonction ne fait qu'écrire. */
+export async function definirEmpreinte(
+  id: number, empreinte: string,
+): Promise<boolean> {
+  if (!Number.isInteger(id)) return false;
+  const r = await ecrire(`utilisateurs?id=eq.${id}`, "PATCH", { empreinte },
+                         { prefer: "return=minimal" });
+  return Boolean(r?.ok);
 }
 
 /** Le propriétaire ouvre — ou referme — la porte à un compte. */

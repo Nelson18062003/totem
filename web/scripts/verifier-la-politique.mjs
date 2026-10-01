@@ -31,12 +31,12 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
-import { entrerALEcran, envCourrier } from "./entrer.mjs";
 
 const PORT = 3188;
 const NUAGE = 4995;
 const B = `http://127.0.0.1:${PORT}`;
 const SECRET = "secret-de-la-politique";
+const MDP = "un-mot-de-passe-assez-long";
 
 let echecs = 0;
 const verifier = (quoi, ok, detail = "") => {
@@ -73,7 +73,6 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     ...process.env,
     SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: "cle-de-secours-politique",
-    ...envCourrier(NUAGE),
     NODE_ENV: "production",
   },
   stdio: "ignore",
@@ -207,11 +206,11 @@ try {
   console.log("\nUne fois entré, les écrans marchent aussi");
   await fetch(`${B}/api/inscription`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: "politique@essai.cm" }),
+    body: JSON.stringify({ courriel: "politique@essai.cm", motdepasse: MDP }),
   });
-  // L'inscription a envoyé un premier code ; on en demande un à l'écran,
-  // comme le ferait la personne revenue le lendemain.
-  await entrerALEcran(page, NUAGE, "politique@essai.cm");
+  await champ.fill("politique@essai.cm");
+  await page.locator('input[type="password"]').first().fill(MDP);
+  await page.locator('button[type="submit"]').first().click();
   await page.waitForURL((u) => !u.pathname.includes("/connexion"), { timeout: 20000 });
 
   plaintes.length = 0;
