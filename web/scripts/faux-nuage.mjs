@@ -197,6 +197,23 @@ let prochainCompte = 1;
 // Les téléphones inscrits pour les notifications, par jeton.
 const appareils = new Map();
 
+// LES CARTES DE CHACUN — « attributions ». Une vraie table, avec ce que la
+// vraie base fait respecter : une carte une seule fois par personne, un
+// compte qui doit exister, et l'effacement d'un compte qui emporte ses cartes.
+// Sans ces règles ici, aucun harnais ne pourrait voir une portée qui fuit.
+const attributions = [];             // { utilisateur, iccid, attribuee_le }
+
+// LES CODES D'ENTRÉE — « codes_de_connexion », et ses deux fonctions, jouées
+// comme la base les joue : un code par compte, pas deux dans la minute, cinq
+// essais au plus, et le bon code s'efface en servant.
+const codes = new Map();             // utilisateur → { empreinte, expire, essais, emis }
+
+// LE COURRIER. Le faux nuage se fait aussi passer pour le service d'envoi
+// (COURRIER_URL=http://127.0.0.1:4999) : il GARDE les lettres au lieu de les
+// envoyer, et le harnais vient y lire le code — exactement ce que ferait la
+// personne en ouvrant sa boîte.
+const lettres = [];                  // { a, sujet, texte, quand }
+
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
 // Les essais de mot de passe comptés, comme la table « freins ».
@@ -378,6 +395,111 @@ const serveur = createServer(async (req, res) => {
     return repondre(n);
   }
 
+  // --- LE COURRIER (le faux service d'envoi) -------------------------------
+  if (req.method === "POST" && chemin === "/emails") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const l = JSON.parse(brut || "{}");
+    // Le vrai service exige sa clé : le faux aussi, sans quoi une plateforme
+    // qui oublierait de la poser passerait les essais.
+    if (!/^Bearer .+/.test(req.headers.authorization || "")) {
+      return repondre({ message: "clé manquante" }, 401);
+    }
+    for (const a of [].concat(l.to || [])) {
+      lettres.push({ a, sujet: l.subject, texte: l.text, quand: Date.now() });
+    }
+    return repondre({ id: `lettre-${lettres.length}` });
+  }
+  //     curl "http://127.0.0.1:4999/essai/courrier?a=patron@essai.cm"
+  // La dernière lettre reçue à cette adresse, et le code qu'elle porte.
+  if (chemin === "/essai/courrier") {
+    const a = url.searchParams.get("a");
+    const siennes = lettres.filter((l) => l.a === a);
+    const derniere = siennes[siennes.length - 1];
+    const code = derniere ? (/\b(\d{6})\b/.exec(derniere.texte || "") || [])[1] : null;
+    return repondre({ nombre: siennes.length, derniere: derniere ?? null, code: code ?? null });
+  }
+
+  // --- LES CODES D'ENTRÉE -------------------------------------------------
+  if (req.method === "POST" && chemin === "/rest/v1/rpc/poser_un_code") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const { le_compte, l_empreinte, duree_s, delai_s } = JSON.parse(brut || "{}");
+    if (!utilisateurs.has(le_compte)) {
+      return repondre({ code: "23503", message: "violates foreign key constraint" }, 409);
+    }
+    const deja = codes.get(le_compte);
+    if (deja && Date.now() - deja.emis < delai_s * 1000) return repondre(null);
+    codes.set(le_compte, {
+      empreinte: l_empreinte, expire: Date.now() + duree_s * 1000, essais: 0, emis: Date.now(),
+    });
+    return repondre(true);
+  }
+  if (req.method === "POST" && chemin === "/rest/v1/rpc/essayer_un_code") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const { le_compte, l_empreinte, max_essais } = JSON.parse(brut || "{}");
+    // UN SEUL GESTE, comme sous le verrou de la ligne : compter, juger,
+    // effacer — sans rendre la main entre les trois.
+    const c = codes.get(le_compte);
+    if (!c || c.expire <= Date.now() || c.essais >= max_essais) return repondre(false);
+    c.essais += 1;
+    if (c.empreinte === l_empreinte) {
+      codes.delete(le_compte);
+      return repondre(true);
+    }
+    return repondre(false);
+  }
+  //     curl -X POST "http://127.0.0.1:4999/essai/vieillir-les-codes"
+  // Fait comme si chaque code avait été émis il y a une heure : le harnais
+  // peut ainsi redemander un code sans attendre la minute.
+  if (req.method === "POST" && chemin === "/essai/vieillir-les-codes") {
+    for (const c of codes.values()) c.emis -= 3600_000;
+    return repondre({ vieillis: codes.size });
+  }
+
+  // --- LES CARTES DE CHACUN -------------------------------------------------
+  if (chemin === "/rest/v1/attributions") {
+    const filtre = (nom) => {
+      const v = url.searchParams.get(nom);
+      return v ? decodeURIComponent(v.replace(/^eq\./, "")) : null;
+    };
+    if (req.method === "POST") {
+      let brut = "";
+      for await (const mm of req) brut += mm;
+      for (const a of [].concat(JSON.parse(brut || "[]"))) {
+        if (!utilisateurs.has(Number(a.utilisateur))) {
+          return repondre({ code: "23503", message: "violates foreign key constraint" }, 409);
+        }
+        if (!/^[A-Za-z0-9]{1,32}$/.test(String(a.iccid))) {
+          return repondre({ code: "23514", message: "attributions_iccid_forme" }, 400);
+        }
+        const deja = attributions.some(
+          (x) => x.utilisateur === Number(a.utilisateur) && x.iccid === a.iccid);
+        if (deja) {
+          // « resolution=ignore-duplicates » : la vraie base se tait ; sans,
+          // elle refuse. Le faux nuage fait pareil.
+          if (/ignore-duplicates/.test(req.headers.prefer || "")) continue;
+          return repondre({ code: "23505", message: "duplicate key" }, 409);
+        }
+        attributions.push({
+          utilisateur: Number(a.utilisateur), iccid: a.iccid, attribuee_le: maintenant(),
+        });
+      }
+      return repondre([], 201);
+    }
+    const u = filtre("utilisateur");
+    const i = filtre("iccid");
+    const vise = (x) => (u == null || x.utilisateur === Number(u)) && (i == null || x.iccid === i);
+    if (req.method === "DELETE") {
+      for (let k = attributions.length - 1; k >= 0; k--) {
+        if (vise(attributions[k])) attributions.splice(k, 1);
+      }
+      return repondre([], 204);
+    }
+    return repondre(attributions.filter(vise));
+  }
+
   // --- LES COMPTES -------------------------------------------------------
   if (chemin === "/rest/v1/utilisateurs") {
     const lignes = [...utilisateurs.values()];
@@ -452,7 +574,14 @@ const serveur = createServer(async (req, res) => {
             400);
         }
       }
-      for (const u of vise()) utilisateurs.delete(u.id);
+      for (const u of vise()) {
+        utilisateurs.delete(u.id);
+        // « on delete cascade » : ses cartes et son code partent avec lui.
+        codes.delete(u.id);
+        for (let k = attributions.length - 1; k >= 0; k--) {
+          if (attributions[k].utilisateur === u.id) attributions.splice(k, 1);
+        }
+      }
       return repondre([], 204);
     }
   }
@@ -514,6 +643,14 @@ const serveur = createServer(async (req, res) => {
           case "gt": return v != null && String(v) > valeur;
           case "lte": return v != null && String(v) <= valeur;
           case "lt": return v != null && String(v) < valeur;
+          // « in.("a","b") » — la portée d'un invité passe par là. Sans ce
+          // filtre, le faux nuage rendait TOUT, et la plateforme devait
+          // refiltrer seule : un harnais n'aurait pas vu un filtre oublié.
+          case "in": {
+            const liste = decodeURIComponent(valeur).replace(/^\(|\)$/g, "")
+              .split(",").map((x) => x.trim().replace(/^"|"$/g, "")).filter(Boolean);
+            return v != null && liste.includes(String(v));
+          }
           default: return true;
         }
       });
