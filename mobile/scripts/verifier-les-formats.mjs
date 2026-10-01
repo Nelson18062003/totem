@@ -6,7 +6,8 @@
 //
 //   node web/scripts/faux-nuage.mjs                        (le faux Supabase)
 //   cd web && SUPABASE_URL=http://127.0.0.1:4999 SUPABASE_CLE=x \
-//     SESSION_SECRET=essai TOTEM_MOT_DE_PASSE=essai npx next start -p 3120
+//     SESSION_SECRET=essai TOTEM_MOT_DE_PASSE=essai \
+//     COURRIER_CLE=re_essai COURRIER_URL=http://127.0.0.1:4999 npx next start -p 3120
 //   cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3120 \
 //     npx expo export --platform web --output-dir /tmp/apercu
 //   cd /tmp/apercu && python3 -m http.server 3210 --bind 127.0.0.1
@@ -71,6 +72,7 @@ await new Promise((r) => fichiers.listen(0, "127.0.0.1", r));
 const APERCU = `http://127.0.0.1:${fichiers.address().port}`;
 console.log(`\n  aperçu servi depuis « ${RACINE} » sur ${APERCU}\n`);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
+import { entrerDansLApercu, preparerLeProprietaire } from "./entrer.mjs";
 const nav = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium",
   // « disable-web-security » : le navigateur applique le CORS, un téléphone
@@ -128,34 +130,11 @@ const FORMATS = [
 //   409  le courriel est pris (quand l'inscription était encore ouverte) ;
 //   403  l'inscription est fermée, ce qu'elle devient dès le premier compte.
 const COURRIEL = "essai@totem.test";
-const MOTDEPASSE = "un-mot-de-passe-assez-long";
-{
-  const r = await fetch("http://127.0.0.1:3120/api/inscription", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-  });
-  if (!r.ok && r.status !== 409 && r.status !== 403) {
-    console.error(`  ⚠️  le compte d'essai n'a pas pu être créé (${r.status}).`);
-    console.error("     La plateforme d'essai tourne-t-elle sur 3120, reliée");
-    console.error("     au faux nuage sur 4999 ?");
-    process.exit(1);
-  }
-  // 403 dit « fermées » — pas « VOTRE compte existe » : un autre harnais a
-  // pu poser le premier compte sur ce faux nuage. On le prouve maintenant,
-  // pas au moment de la connexion, avec le mauvais diagnostic.
-  if (r.status === 403) {
-    const c = await fetch("http://127.0.0.1:3120/api/connexion", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-    });
-    if (!c.ok) {
-      console.error("  ✗ Les inscriptions sont fermées par un AUTRE compte :");
-      console.error("    un autre harnais a déjà utilisé ce faux nuage.");
-      console.error("    Redémarrez le faux nuage, puis relancez.");
-      process.exit(1);
-    }
-  }
+try {
+  await preparerLeProprietaire(COURRIEL);
+} catch (e) {
+  console.error(`\n✗ ${e.message}`);
+  process.exit(1);
 }
 
 for (const [nom, w, h] of FORMATS) {
@@ -164,8 +143,8 @@ for (const [nom, w, h] of FORMATS) {
   page.on("pageerror", (e) => soucis.push(String(e).slice(0, 110)));
   await page.goto(APERCU, { waitUntil: "networkidle" });
   await page.waitForTimeout(2200);
-  // On se connecte comme le propriétaire le ferait : un courriel et un mot de
-  // passe, sur un compte créé plus haut. Les champs sont visés par leur TYPE
+  // On se connecte comme le propriétaire le ferait : un courriel, puis le
+  // code reçu, sur un compte créé plus haut. Les champs sont visés par leur TYPE
   // et non par leur rang — l'écran porte maintenant l'encart de la plateforme
   // au-dessus, et « le premier champ » n'est plus le bon.
   // On attend que la porte soit OUVERTE, pas seulement que les champs soient
@@ -181,17 +160,14 @@ for (const [nom, w, h] of FORMATS) {
     console.error("\n  La plateforme d'essai répond-elle sur 3120 ?");
     process.exit(1);
   }
-  const motdepasse = page.locator('input[type="password"]');
-  await courriel.fill(COURRIEL);
-  await motdepasse.fill(MOTDEPASSE);
-  await page.getByText("Sign in", { exact: true }).last().click();
+  await entrerDansLApercu(page, COURRIEL);
 
   // LA CONNEXION A-T-ELLE VRAIMENT ABOUTI ? Sans cette vérification, le
   // harnais mesurait l'écran de connexion aux huit tailles — en vert, sans
   // jamais voir un écran de l'application. Un contrôle qui passe sans rien
   // regarder est pire que pas de contrôle : il rassure.
   try {
-    await page.locator('input[type="password"]').waitFor({ state: "detached", timeout: 15000 });
+    await page.locator('input[inputmode="numeric"]').waitFor({ state: "detached", timeout: 15000 });
   } catch {
     console.error(`\n✗ ${nom} : la connexion n'aboutit pas. Ce que l'écran dit :\n`);
     console.error(await page.evaluate(() => document.body.innerText));

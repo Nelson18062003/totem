@@ -178,8 +178,10 @@ try {
   const dit = JSON.stringify(plate);
   verifier("elle ne donne pas le mot de passe", dit.includes(MOTDEPASSE), false);
   verifier("elle ne donne pas le secret", dit.includes(SECRET), false);
-  verifier("elle ne donne que quatre clés", Object.keys(plate).sort().join(","),
-           "configuree,inscription,relie,totem");
+  // « codes » : les codes d'entrée peuvent-ils partir ? Un fait de la
+  // plateforme, pareil pour tout le monde — il ne dit rien de personne.
+  verifier("elle ne donne que cinq clés", Object.keys(plate).sort().join(","),
+           "codes,configuree,inscription,relie,totem");
 
   console.log("\nPorte de l'application");
   const json = (corps) => ({
@@ -320,21 +322,28 @@ try {
            (await fetch(lienCoordSigne)).status, 404);
 
   console.log("\nLe lien de bilan signé — la troisième porte, attaquée");
-  // La signature couvre le NOMBRE DE JOURS : un lien signé pour la semaine
-  // ne doit pas ouvrir le trimestre. (503 = entré, la base n'est pas
-  // configurée ici ; 401 = repoussé par le verrou.)
-  const signerBilan = (jours, exp) =>
-    createHmac("sha256", SECRET).update(`bilan:${jours}:${exp}`).digest("base64url");
-  const bonBilan = signerBilan("7", futur);
+  // La signature couvre le NOMBRE DE JOURS — un lien signé pour la semaine
+  // ne doit pas ouvrir le trimestre — et POUR QUI il a été fait (« q ») : le
+  // bilan d'un vendeur ne porte que ses cartes, et un lien qui ne dirait pas
+  // pour qui il est rendrait la caisse entière. (503 = entré, la base n'est
+  // pas configurée ici ; 401 = repoussé par le verrou.)
+  const signerBilan = (jours, qui, exp) =>
+    createHmac("sha256", SECRET).update(`bilan:${jours}.${qui}:${exp}`).digest("base64url");
+  const bonBilan = signerBilan("7", "tout", futur);
   verifier("le CSV sans rien reste fermé", await code("/api/bilan?jours=7"), 401);
   verifier("un lien signé valable entre (503 : base absente ici)",
-           await code(`/api/bilan?jours=7&e=${futur}&s=${bonBilan}`), 503);
+           await code(`/api/bilan?jours=7&q=tout&e=${futur}&s=${bonBilan}`), 503);
   verifier("le lien de la semaine n'ouvre pas le trimestre",
-           await code(`/api/bilan?jours=90&e=${futur}&s=${bonBilan}`), 401);
+           await code(`/api/bilan?jours=90&q=tout&e=${futur}&s=${bonBilan}`), 401);
   verifier("échéance passée : dehors",
-           await code(`/api/bilan?jours=7&e=${passe}&s=${signerBilan("7", passe)}`), 401);
+           await code(`/api/bilan?jours=7&q=tout&e=${passe}&s=${signerBilan("7", "tout", passe)}`), 401);
+  const pourUnVendeur = signerBilan("7", "c5", futur);
+  verifier("un lien fait pour un vendeur ne s'élargit pas à « tout »",
+           await code(`/api/bilan?jours=7&q=tout&e=${futur}&s=${pourUnVendeur}`), 401);
+  verifier("sans dire pour qui, un lien n'ouvre rien",
+           await code(`/api/bilan?jours=7&e=${futur}&s=${bonBilan}`), 401);
   verifier("un lien de reçu n'ouvre pas le bilan",
-           await code(`/api/bilan?jours=7&e=${futur}&s=${signer("7", futur)}`), 401);
+           await code(`/api/bilan?jours=7&q=tout&e=${futur}&s=${signer("7.tout", futur)}`), 401);
   verifier("la fabrique reste derrière le verrou",
            await code("/api/bilan/lien?jours=7"), 401);
   const rLienBilan = await fetch(`${B}/api/bilan/lien?jours=7`, {

@@ -13,21 +13,20 @@
 //   · un anonyme qui atteindrait une page ou une route de console ;
 //   · un écran de flotte qui ne montrerait PAS ce que la base porte —
 //     une console en vert sur une base qu'elle ne lit pas ne garde rien ;
-//   · un mot de passe qui se changerait sans la preuve de l'ancien.
+//   · une page des gens qui ne montrerait pas les cartes confiées.
 //
 // Comme ses frères, il sert le code COMPILÉ : lancez « npx next build »
 // avant, sans quoi il mesurerait l'application d'hier.
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
+import { entrerParCode, envCourrier } from "./entrer.mjs";
 
 const SECRET = "secret-d-essai-pour-la-console";
 const SECOURS = "cle-de-secours-d-essai-console";
 const PORT = 3161;
 const NUAGE = 4989;
 const B = `http://127.0.0.1:${PORT}`;
-const MDP = "un-mot-de-passe-assez-long";
-const MDP2 = "le-nouveau-mot-de-passe-long";
 
 let echecs = 0;
 function verifier(quoi, obtenu, attendu) {
@@ -67,6 +66,7 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     ...process.env,
     SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
+    ...envCourrier(NUAGE),
   },
   stdio: "ignore",
 });
@@ -115,15 +115,13 @@ try {
     verifier("les gens aussi", [g.status, renvoyeVers(g)], [307, "/connexion"]);
     const v = await poste("/api/console/alertes/vue", { alerte: 1 });
     verifier("le geste d'alerte répond « connexion requise »", v.status, 401);
-    const m = await poste("/api/motdepasse", { actuel: "x", nouveau: MDP2 });
-    verifier("le mot de passe ne se change pas sans session", m.status, 401);
+    const m = await poste("/api/comptes", { geste: "attribuer", id: 2, iccid: "8923" });
+    verifier("aucune carte ne se confie sans session", m.status, 401);
   }
 
   console.log("\nLE PROPRIÉTAIRE : il voit ce que la base porte");
   // La première inscription fait le propriétaire — comme en production.
-  await poste("/api/inscription", { courriel: "patron@essai.cm", motdepasse: MDP });
-  const patron = (await (await poste("/api/session",
-    { courriel: "patron@essai.cm", motdepasse: MDP })).json()).jeton;
+  const patron = await entrerParCode(B, NUAGE, "patron@essai.cm", { inscrire: true });
   verifier("le propriétaire a une session", Boolean(patron), true);
   {
     const r = await page("/console", patron);
@@ -162,10 +160,9 @@ try {
 
   console.log("\nL'INVITÉ : il entre dans l'application, jamais dans la console");
   await poste("/api/comptes",
-    { geste: "creer", courriel: "employe@essai.cm", motdepasse: MDP },
+    { geste: "creer", courriel: "employe@essai.cm" },
     { cookie: `totem_session=${patron}` });
-  const employe = (await (await poste("/api/session",
-    { courriel: "employe@essai.cm", motdepasse: MDP })).json()).jeton;
+  const employe = await entrerParCode(B, NUAGE, "employe@essai.cm");
   verifier("l'invité a une session", Boolean(employe), true);
   {
     const accueil = await page("/", employe);
@@ -191,26 +188,21 @@ try {
     verifier("la console s'ouvre avec la clé de secours", r.status, 200);
   }
 
-  console.log("\nLE MOT DE PASSE : la preuve de l'ancien, ou rien");
+  console.log("\nLES GENS : la page montre les comptes et ce qu'ils voient");
   {
-    const faux = await poste("/api/motdepasse",
-      { actuel: "pas-le-bon-mot-de-passe", nouveau: MDP2 },
-      { cookie: `totem_session=${employe}` });
-    verifier("sans l'ancien mot de passe : refus", faux.status, 401);
-    const court = await poste("/api/motdepasse",
-      { actuel: MDP, nouveau: "court" },
-      { cookie: `totem_session=${employe}` });
-    verifier("un nouveau trop court : refus", court.status, 400);
-    const bon = await poste("/api/motdepasse",
-      { actuel: MDP, nouveau: MDP2 },
-      { cookie: `totem_session=${employe}` });
-    verifier("avec la preuve : le changement passe", bon.status, 200);
-    const vieux = await poste("/api/session",
-      { courriel: "employe@essai.cm", motdepasse: MDP });
-    verifier("l'ancien mot de passe n'ouvre plus", vieux.status, 401);
-    const neuf = await poste("/api/session",
-      { courriel: "employe@essai.cm", motdepasse: MDP2 });
-    verifier("le nouveau ouvre", neuf.status, 200);
+    const liste = await (await fetch(B + "/api/comptes",
+      { headers: { cookie: `totem_session=${patron}` } })).json();
+    const idEmploye = liste.comptes.find((c) => c.courriel === "employe@essai.cm")?.id;
+    const r = await poste("/api/comptes",
+      { geste: "attribuer", id: idEmploye, iccid: "89237020000000004432" },
+      { cookie: `totem_session=${patron}` });
+    verifier("le propriétaire confie une carte depuis la console", r.status, 200);
+    // La section des comptes se dessine dans le navigateur ; la page des
+    // CARTES, elle, est rendue au serveur : elle doit dire à qui chaque
+    // carte est confiée, lu dans la base.
+    const cartes = await (await page("/console/cartes", patron)).text();
+    verifier("la page des cartes dit à qui la carte est confiée",
+      cartes.includes("employe@essai.cm"), true);
   }
 
   console.log("");

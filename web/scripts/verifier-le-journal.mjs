@@ -23,11 +23,11 @@
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
+import { cookieDuProprietaire, envCourrier } from "./entrer.mjs";
 
 const PORT = 3144;
 const NUAGE = 4991;
 const B = `http://127.0.0.1:${PORT}`;
-const MDP = "un-mot-de-passe-assez-long";
 
 let echecs = 0;
 const verifier = (quoi, ok, detail = "") => {
@@ -62,6 +62,7 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     ...process.env,
     SUPABASE_URL: `http://127.0.0.1:${NUAGE}`, SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: "secret-du-journal", TOTEM_MOT_DE_PASSE: "cle-de-secours-journal",
+    ...envCourrier(NUAGE),
   },
   stdio: "ignore",
 });
@@ -80,16 +81,7 @@ try {
   verifier("sans session, le journal ne s'ouvre pas",
     [302, 307, 308].includes(sansSession.status), `${sansSession.status}`);
 
-  await fetch(`${B}/api/inscription`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: "journal@essai.cm", motdepasse: MDP }),
-  });
-  const co = await fetch(`${B}/api/connexion`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: "journal@essai.cm", motdepasse: MDP }),
-  });
-  const biscuit = (co.headers.getSetCookie?.() ?? [])
-    .map((c) => c.split(";")[0]).join("; ");
+  const biscuit = await cookieDuProprietaire(B, NUAGE, "journal@essai.cm");
 
   // --- 2. LA PAGE MONTRE CE QUE LA BASE PORTE ----------------------------
   //
@@ -122,7 +114,7 @@ try {
   // lit à plusieurs : c'est l'endroit où un code de confirmation, un
   // courriel ou un mot de passe survivrait à tout le reste.
   const interdits = [
-    ["le mot de passe du propriétaire", MDP],
+    ["la clé du courrier", "re_essai"],
     ["un courriel de compte", "journal@essai.cm"],
     ["la clé de secours", "cle-de-secours-journal"],
     ["la clé de session", "secret-du-journal"],

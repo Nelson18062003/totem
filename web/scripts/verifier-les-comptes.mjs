@@ -2,26 +2,30 @@
 //
 //     node scripts/verifier-les-comptes.mjs
 //
-// Il lance un faux Supabase et un vrai serveur, puis déroule la vie entière
-// d'un compte : la première inscription (celle du propriétaire), une
-// deuxième (qui doit attendre), les mauvais mots de passe, l'approbation, la
-// fermeture. « Ça compile » ne dit rien d'un verrou.
+// Il lance un faux Supabase (qui joue aussi le service de courrier) et un
+// vrai serveur, puis déroule la vie entière d'un compte : la première
+// inscription (celle du propriétaire), une deuxième (qui doit être refusée),
+// les codes faux, l'approbation, la fermeture. On entre par un CODE reçu au
+// courriel — il n'y a plus de mot de passe. « Ça compile » ne dit rien d'un
+// verrou.
 //
 // CE QU'IL CHERCHE À PRENDRE EN DÉFAUT, et c'est le cœur :
 //
-//   · un compte non approuvé qui entrerait quand même ;
+//   · un compte non approuvé qui entrerait quand même — ou recevrait un code ;
 //   · un invité qui pourrait administrer les comptes ;
-//   · un mot de passe qui se retrouverait quelque part en clair ;
+//   · un code qui se retrouverait quelque part en clair ;
 //   · une réponse qui dirait si un courriel a un compte ici ou non ;
 //   · le deuxième inscrit qui deviendrait propriétaire.
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
+import {
+  adresseNeuve, attendreUneLettre, boite, demanderUnCode, entrerParCode, envCourrier,
+} from "./entrer.mjs";
 
 const SECRET = "secret-d-essai-pour-les-comptes";
 const SECOURS = "cle-de-secours-d-essai";
 const B = "http://127.0.0.1:3131";
-const MDP = "un-mot-de-passe-assez-long";
 
 let echecs = 0;
 function verifier(quoi, obtenu, attendu) {
@@ -59,16 +63,30 @@ const serveur = spawn("npx", ["next", "start", "-p", "3131"], {
     ...process.env,
     SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: SECOURS,
+    ...envCourrier(4999),
   },
   stdio: "ignore",
+  // Son propre groupe de processus : tuer « npx » seul laissait vivre le
+  // vrai serveur, port occupé, et le prochain essai l'aurait mesuré.
+  detached: true,
 });
 
+// Chaque appel vient d'une adresse neuve : le frein de la porte ne doit pas
+// confondre ce scénario avec une attaque (il a son propre harnais).
 const poste = (chemin, corps, entetes = {}) =>
   fetch(B + chemin, {
     method: "POST",
-    headers: { "content-type": "application/json", ...entetes },
+    headers: { "content-type": "application/json", "x-forwarded-for": adresseNeuve(), ...entetes },
     body: JSON.stringify(corps),
   });
+
+/** Un code frais pour ce courriel — ou `null` si aucune lettre n'arrive. */
+async function codePour(courriel) {
+  await fetch("http://127.0.0.1:4999/essai/vieillir-les-codes", { method: "POST" });
+  const avant = (await boite(4999, courriel)).nombre;
+  await demanderUnCode(B, courriel);
+  return (await attendreUneLettre(4999, courriel, avant, 2500))?.code ?? null;
+}
 
 try {
   // Attendre les DEUX : le faux nuage d'abord, le serveur ensuite. Sans
@@ -97,16 +115,18 @@ try {
   // du vrai propriétaire. C'est la base qui tranche désormais (index
   // « utilisateurs_un_seul_proprietaire »), au moment de l'écriture : une
   // vérification faite AVANT une écriture ne garantit jamais rien.
+  const COURRIELS_DE_LA_COURSE =
+    ["nelson@exemple.cm", "intrus@exemple.cm", "intrus2@exemple.cm"];
   const course = await Promise.all([
-    poste("/api/inscription", { courriel: "Nelson@Exemple.CM", motdepasse: MDP }),
-    poste("/api/inscription", { courriel: "intrus@exemple.cm", motdepasse: MDP }),
-    poste("/api/inscription", { courriel: "intrus2@exemple.cm", motdepasse: MDP }),
+    poste("/api/inscription", { courriel: "Nelson@Exemple.CM" }),
+    poste("/api/inscription", { courriel: "intrus@exemple.cm" }),
+    poste("/api/inscription", { courriel: "intrus2@exemple.cm" }),
   ]);
   const corpsCourse = await Promise.all(course.map((r) => r.json()));
   const proprios = corpsCourse.filter((c) => c.proprietaire === true);
   verifier("un seul propriétaire sort de la course", proprios.length, 1);
-  verifier("une seule session est ouverte",
-    corpsCourse.filter((c) => Boolean(c.jeton)).length, 1);
+  verifier("aucune session n'est rendue par l'inscription",
+    corpsCourse.filter((c) => Boolean(c.jeton)).length, 0);
   // Les perdants n'apprennent RIEN de ce qui s'est passé : ils reçoivent le
   // refus de toute inscription tardive. « Vous avez perdu une course » dirait
   // qu'un compte vient d'être créé, et à quelle seconde.
@@ -116,27 +136,32 @@ try {
     corpsCourse.some((c) => /course|simultan|concurrent/i.test(c.erreur ?? "")), false);
 
   console.log("\nLa première inscription : celle du propriétaire");
-  const gagnant = corpsCourse.findIndex((c) => c.proprietaire === true);
-  const r1 = course[gagnant];
-  const c1 = corpsCourse[gagnant] ?? {};
-  verifier("le premier compte est créé", r1?.status, 200);
-  verifier("il est propriétaire", c1.proprietaire, true);
-  verifier("il repart avec une session", Boolean(c1.jeton), true);
   // L'ORDRE DE LA COURSE N'EST PAS GARANTI, et c'est le principe même d'une
-  // course : n'importe lequel des trois peut gagner. Le harnais continuait
-  // en supposant que le premier avait gagné — et s'écroulait, une fois sur
-  // quelques-unes, sur un état parfaitement sain. On continue donc avec le
+  // course : n'importe lequel des trois peut gagner. On continue avec le
   // courriel du VAINQUEUR, quel qu'il soit : c'est lui, le propriétaire.
-  const COURRIELS_DE_LA_COURSE =
-    ["nelson@exemple.cm", "intrus@exemple.cm", "intrus2@exemple.cm"];
+  const gagnant = corpsCourse.findIndex((c) => c.proprietaire === true);
   const proprio = COURRIELS_DE_LA_COURSE[gagnant] ?? COURRIELS_DE_LA_COURSE[0];
-  const jetonProprio = c1.jeton;
+  verifier("le premier compte est créé", course[gagnant]?.status, 200);
+  const lettre1 = await attendreUneLettre(4999, proprio, 0);
+  verifier("un code part au courriel du propriétaire", Boolean(lettre1?.code), true);
+  await attendre(500);
+  const perdants = COURRIELS_DE_LA_COURSE.filter((c) => c !== proprio);
+  const lettresPerdants = (await Promise.all(perdants.map((c) => boite(4999, c))))
+    .reduce((n, b) => n + b.nombre, 0);
+  verifier("aucun code ne part aux perdants", lettresPerdants, 0);
+  const rEntre1 = await poste("/api/session", { courriel: proprio, code: lettre1?.code });
+  verifier("ce code ouvre la session du propriétaire", rEntre1.status, 200);
+  const jetonProprio = (await rEntre1.json()).jeton;
 
   console.log("\nLe courriel est rangé sous une seule forme");
   // « NELSON@Exemple.CM » et « nelson@exemple.cm » sont la MÊME personne :
   // deux lignes en feraient deux comptes qu'on croirait un seul.
+  await fetch("http://127.0.0.1:4999/essai/vieillir-les-codes", { method: "POST" });
+  const avantMaj = (await boite(4999, proprio)).nombre;
+  await demanderUnCode(B, proprio.toUpperCase());
+  const lettreMaj = await attendreUneLettre(4999, proprio, avantMaj);
   const rMaj = await poste("/api/session",
-    { courriel: proprio.toUpperCase(), motdepasse: MDP });
+    { courriel: proprio.toUpperCase(), code: lettreMaj?.code });
   verifier("les majuscules ne font pas un autre compte", rMaj.status, 200);
 
   console.log("\nLA PORTE EST FERMÉE : plus aucune inscription");
@@ -144,13 +169,16 @@ try {
   // sert qu'à poser le PREMIER compte ; dès qu'il existe, plus personne ne
   // s'inscrit. Un inconnu ne doit pas pouvoir déposer un compte ici, même un
   // compte qui attendrait sagement une approbation.
-  const r2 = await poste("/api/inscription", { courriel: "inconnu@exemple.cm", motdepasse: MDP });
+  const r2 = await poste("/api/inscription", { courriel: "inconnu@exemple.cm" });
   const c2 = await r2.json();
   verifier("une deuxième inscription est refusée", r2.status, 403);
   verifier("aucun compte n'est créé", c2.proprietaire, undefined);
   verifier("aucune session n'est rendue", c2.jeton, undefined);
 
-  const rEntreInconnu = await poste("/api/session", { courriel: "inconnu@exemple.cm", motdepasse: MDP });
+  await attendre(500);
+  verifier("aucun code ne part à cette adresse",
+    (await boite(4999, "inconnu@exemple.cm")).nombre, 0);
+  const rEntreInconnu = await poste("/api/session", { courriel: "inconnu@exemple.cm", code: "000000" });
   verifier("et ce compte n'existe donc pas", rEntreInconnu.status, 401);
 
   console.log("\nLa plateforme le dit d'elle-même");
@@ -159,46 +187,44 @@ try {
   verifier("elle annonce l'inscription fermée", plate.inscription, false);
 
   console.log("\nCe qu'on ne dit pas à un inconnu");
-  const rInconnu = await poste("/api/session", { courriel: "personne@exemple.cm", motdepasse: "x" });
-  const rMauvais = await poste("/api/session", { courriel: proprio, motdepasse: "faux" });
+  const dInconnu = await demanderUnCode(B, "personne@exemple.cm");
+  const dConnu = await demanderUnCode(B, proprio);
+  verifier("demander un code : la même réponse pour tous",
+    [dInconnu.status, (await dInconnu.json()).message === (await dConnu.json()).message],
+    [dConnu.status, true]);
+  const rInconnu = await poste("/api/session", { courriel: "personne@exemple.cm", code: "123456" });
+  const rMauvais = await poste("/api/session", { courriel: proprio, code: "123456" });
   const mInconnu = (await rInconnu.json()).erreur;
   const mMauvais = (await rMauvais.json()).erreur;
   verifier("compte inconnu : refusé", rInconnu.status, 401);
-  verifier("mot de passe faux : refusé", rMauvais.status, 401);
+  verifier("code faux : refusé", rMauvais.status, 401);
   // Deux messages différents diraient quelles adresses ont un compte ici.
   verifier("le MÊME message dans les deux cas", mInconnu === mMauvais, true);
 
-  // L'empreinte réelle du propriétaire, lue dans le faux nuage : elle
-  // servira à poser un invité qui puisse vraiment se connecter.
-  const empreinteConnue = (await (await fetch(
-    "http://127.0.0.1:4999/rest/v1/utilisateurs?courriel=eq." + proprio
-  )).json())[0].empreinte;
-
-  console.log("\nLe mot de passe ne se retrouve nulle part");
+  console.log("\nLe code ne se retrouve nulle part");
   const rMoi = await fetch(B + "/api/comptes", {
     headers: { authorization: `Bearer ${jetonProprio}` },
   });
   const liste = await rMoi.text();
   verifier("le propriétaire voit la liste", rMoi.status, 200);
-  verifier("le mot de passe n'y est pas", liste.includes(MDP), false);
-  verifier("aucune empreinte n'en sort", liste.includes("pbkdf2"), false);
-  verifier("le jeton ne porte pas le mot de passe", jetonProprio.includes(MDP), false);
+  verifier("le code n'y est pas", liste.includes(lettre1?.code ?? "--"), false);
+  verifier("aucune empreinte n'en sort", /empreinte|pbkdf2/.test(liste), false);
+  verifier("le jeton ne porte pas le code", jetonProprio.includes(lettre1?.code ?? "--"), false);
+  const enBase = await (await fetch("http://127.0.0.1:4999/rest/v1/utilisateurs")).json();
+  verifier("la base ne garde aucune empreinte de mot de passe",
+    enBase.filter((u) => u.empreinte).length, 0);
 
   console.log("\nL'administration est réservée au propriétaire");
-  // Un invité n'existe plus par inscription : on en pose un directement en
-  // base, comme le fera l'écran du propriétaire le jour où il pourra inviter
-  // quelqu'un. Le reste du scénario — approuver, fermer — vaut toujours.
+  // Un compte NON approuvé, posé directement en base (l'écran du
+  // propriétaire, lui, crée des comptes déjà approuvés) : c'est ce qui permet
+  // d'éprouver qu'une porte fermée ne reçoit même pas de code.
   await fetch("http://127.0.0.1:4999/rest/v1/utilisateurs", {
     method: "POST",
     headers: { "content-type": "application/json", prefer: "return=representation" },
-    body: JSON.stringify([{
-      courriel: "ami@exemple.cm",
-      // L'empreinte du même mot de passe que le propriétaire : ce qui est
-      // éprouvé ici est l'approbation, pas le hachage (il a ses tests).
-      empreinte: empreinteConnue,
-      role: "invite", approuve: false,
-    }]),
+    body: JSON.stringify([{ courriel: "ami@exemple.cm", role: "invite", approuve: false }]),
   });
+  verifier("un compte fermé ne reçoit pas de code",
+    await codePour("ami@exemple.cm"), null);
   const liste2 = await (await fetch(B + "/api/comptes", {
     headers: { authorization: `Bearer ${jetonProprio}` },
   })).text();
@@ -210,9 +236,8 @@ try {
   const rApp = await poste("/api/comptes", { id: idAmi, geste: "approuver" },
                            { authorization: `Bearer ${jetonProprio}` });
   verifier("l'approbation passe", rApp.status, 200);
-  const rEntre = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
-  verifier("l'invité entre maintenant", rEntre.status, 200);
-  const jetonAmi = (await rEntre.json()).jeton;
+  const jetonAmi = await entrerParCode(B, 4999, "ami@exemple.cm");
+  verifier("l'invité entre maintenant, par son code", Boolean(jetonAmi), true);
 
   console.log("\nUn invité n'administre rien");
   const rInvite = await fetch(B + "/api/comptes", {
@@ -293,17 +318,14 @@ try {
   // chemin pour faire entrer quelqu'un — et il en fallait un : Google exige
   // un compte qui fonctionne pour examiner l'application, et sans cela il
   // aurait fallu livrer le sien.
-  const MDP2 = "un-autre-mot-de-passe-long";
   const rCree = await poste("/api/comptes",
-    { geste: "creer", courriel: "Examen@Google.COM", motdepasse: MDP2 },
+    { geste: "creer", courriel: "Examen@Google.COM" },
     { authorization: `Bearer ${jetonProprio}` });
-  verifier("le propriétaire peut créer un compte", rCree.status, 201);
+  verifier("le propriétaire peut créer un compte — un courriel suffit", rCree.status, 201);
 
-  const rNouveau = await poste("/api/session",
-    { courriel: "examen@google.com", motdepasse: MDP2 });
   // Créé PAR le propriétaire, donc déjà approuvé : créer EST décider.
-  verifier("ce compte entre tout de suite", rNouveau.status, 200);
-  const jetonNouveau = (await rNouveau.json()).jeton;
+  const jetonNouveau = await entrerParCode(B, 4999, "examen@google.com");
+  verifier("ce compte entre tout de suite, par son code", Boolean(jetonNouveau), true);
 
   const rPasProprio = await fetch(B + "/api/comptes", {
     headers: { authorization: `Bearer ${jetonNouveau}` },
@@ -314,29 +336,28 @@ try {
   verifier("mais il n'administre rien", rPasProprio.status, 403);
 
   const rInvitecree = await poste("/api/comptes",
-    { geste: "creer", courriel: "encore@exemple.cm", motdepasse: MDP2 },
+    { geste: "creer", courriel: "encore@exemple.cm" },
     { authorization: `Bearer ${jetonNouveau}` });
   verifier("un invité ne crée personne", rInvitecree.status, 403);
 
   const rDejaLa = await poste("/api/comptes",
-    { geste: "creer", courriel: "examen@google.com", motdepasse: MDP2 },
+    { geste: "creer", courriel: "examen@google.com" },
     { authorization: `Bearer ${jetonProprio}` });
   verifier("deux fois le même courriel : refusé", rDejaLa.status, 409);
 
   const rFaible = await poste("/api/comptes",
-    { geste: "creer", courriel: "faible@exemple.cm", motdepasse: "court" },
+    { geste: "creer", courriel: "pas-un-courriel" },
     { authorization: `Bearer ${jetonProprio}` });
-  verifier("un mot de passe trop court : refusé", rFaible.status, 400);
+  verifier("un courriel qui n'en est pas un : refusé", rFaible.status, 400);
 
   const rAnonCree = await poste("/api/comptes",
-    { geste: "creer", courriel: "intrus@exemple.cm", motdepasse: MDP2 });
+    { geste: "creer", courriel: "intrus@exemple.cm" });
   verifier("sans session : refusé", rAnonCree.status, 401);
 
   console.log("\nLe propriétaire referme");
   await poste("/api/comptes", { id: idAmi, geste: "fermer" },
               { authorization: `Bearer ${jetonProprio}` });
-  const rRefuse = await poste("/api/session", { courriel: "ami@exemple.cm", motdepasse: MDP });
-  verifier("l'invité ne rentre plus", rRefuse.status, 403);
+  verifier("l'invité ne reçoit plus de code", await codePour("ami@exemple.cm"), null);
 
   // LE JETON DÉJÀ DÉLIVRÉ — la seule chose que l'intrus possède vraiment.
   //
@@ -417,7 +438,7 @@ try {
   const porte = await (await fetch(B + "/api/plateforme")).json();
   verifier("la porte des inscriptions est restée fermée", porte.inscription, false);
   const rPassant = await poste("/api/inscription",
-    { courriel: "passant@internet.example", motdepasse: MDP });
+    { courriel: "passant@internet.example" });
   verifier("un passant ne s'inscrit toujours pas", rPassant.status, 403);
   verifier("et il n'est surtout pas propriétaire",
     (await rPassant.json()).proprietaire, undefined);
@@ -449,23 +470,23 @@ try {
   verifier("répondre « 1 » deux fois reste possible", Boolean(idemR1.id) && idemR1.id !== idemR2.id, true);
 
   console.log("\nCe qu'on refuse d'enregistrer");
-  // La forme est vérifiée AVANT la porte : un mot de passe trop court est
-  // refusé pour ce qu'il est, sur une plateforme neuve comme sur celle-ci.
-  const rCourt = await poste("/api/inscription", { courriel: "x@y.cm", motdepasse: "court" });
-  verifier("un mot de passe trop court", rCourt.status, 400);
-  const rPasCourriel = await poste("/api/inscription", { courriel: "pas-un-courriel", motdepasse: MDP });
+  // La forme est vérifiée AVANT la porte : un courriel qui n'en est pas un
+  // est refusé pour ce qu'il est, sur une plateforme neuve comme ici.
+  const rPasCourriel = await poste("/api/inscription", { courriel: "pas-un-courriel" });
   verifier("un courriel qui n'en est pas un", rPasCourriel.status, 400);
+  const rAncien = await poste("/api/session", { courriel: proprio, motdepasse: "un-mot-de-passe-assez-long" });
+  verifier("un mot de passe n'ouvre plus aucun compte", rAncien.status, 401);
   // On ne distingue PAS « ce courriel est pris » de « inscriptions
   // fermées » : la porte se referme avant de regarder le courriel. Les
   // distinguer dirait à un inconnu quelles adresses ont un compte ici.
-  const rDeja = await poste("/api/inscription", { courriel: proprio, motdepasse: MDP });
+  const rDeja = await poste("/api/inscription", { courriel: proprio });
   verifier("le courriel du propriétaire : même refus", rDeja.status, 403);
 
   console.log(echecs
     ? `\n✗ ${echecs} vérification(s) en échec.`
     : "\n✓ Les comptes tiennent : toutes les vérifications passent.");
 } finally {
-  serveur.kill();
+  try { process.kill(-serveur.pid, "SIGTERM"); } catch { serveur.kill(); }
   nuage.kill();
 }
 process.exit(echecs ? 1 : 0);

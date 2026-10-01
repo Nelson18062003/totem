@@ -31,10 +31,10 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
+import { entrerDansLApercu, preparerLeProprietaire } from "./entrer.mjs";
 
 const APERCU = "http://127.0.0.1:3210";
 const COURRIEL = "essai@totem.test";
-const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
 // Quatre onglets, visités deux fois. Trois descentes est le PLANCHER, et il
 // faut dire pourquoi plutôt que d'espérer mieux : un onglet ne se monte qu'à
@@ -71,10 +71,12 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
     process.exit(1);
   }
 }
-await fetch("http://127.0.0.1:3120/api/inscription", {
-  method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-}).catch(() => {});
+try {
+  await preparerLeProprietaire(COURRIEL);
+} catch (e) {
+  console.error(`\n✗ ${e.message}`);
+  process.exit(1);
+}
 
 const nav = await chromium.launch({ args: ["--disable-web-security"] });
 const page = await nav.newPage({ viewport: { width: 390, height: 844 } });
@@ -104,9 +106,7 @@ try {
     if (pret) break;
     await attendre(500);
   }
-  await page.locator('input[type="email"]').first().fill(COURRIEL);
-  await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
-  await page.getByText(/^Sign in$|^Se connecter$/).last().click();
+  await entrerDansLApercu(page, COURRIEL);
   await page.waitForFunction(
     () => !![...document.querySelectorAll("div")].find((e) => /FCFA/.test(e.textContent || "")),
     null, { timeout: 30000 });

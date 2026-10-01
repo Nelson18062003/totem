@@ -21,6 +21,7 @@ import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
+import { entrerDansLApercu, preparerLeProprietaire } from "./entrer.mjs";
 
 const RACINE = process.argv[2] || "dist";
 const SORTIE = process.argv[3] || "../boutique/captures";
@@ -45,32 +46,11 @@ await new Promise((r) => fichiers.listen(0, "127.0.0.1", r));
 const BASE = `http://127.0.0.1:${fichiers.address().port}`;
 
 const COURRIEL = "boutique@totem.test";
-const MOTDEPASSE = "un-mot-de-passe-assez-long";
-{
-  const r = await fetch("http://127.0.0.1:3180/api/inscription", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-  });
-  if (!r.ok && r.status !== 409 && r.status !== 403) {
-    console.error(`\n✗ compte d'essai impossible (${r.status}).`);
-    process.exit(1);
-  }
-  // 403 dit « les inscriptions sont fermées » — pas « VOTRE compte existe » :
-  // un AUTRE script a pu poser le premier compte sur ce même faux nuage. On
-  // le prouve tout de suite, sinon l'échec arrive plus tard, à la connexion,
-  // avec un diagnostic qui accuse le mauvais coupable.
-  if (r.status === 403) {
-    const c = await fetch("http://127.0.0.1:3180/api/connexion", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-    });
-    if (!c.ok) {
-      console.error("\n✗ Les inscriptions sont fermées par un AUTRE compte :");
-      console.error("  un autre harnais a déjà utilisé ce faux nuage.");
-      console.error("  Redémarrez le faux nuage, puis relancez.");
-      process.exit(1);
-    }
-  }
+try {
+  await preparerLeProprietaire(COURRIEL, { base: "http://127.0.0.1:3180" });
+} catch (e) {
+  console.error(`\n✗ ${e.message}`);
+  process.exit(1);
 }
 
 const nav = await chromium.launch({
@@ -89,11 +69,9 @@ await page.waitForTimeout(3000);
 
 const champ = page.locator('input[type="email"]:not([readonly])');
 await champ.waitFor({ state: "visible", timeout: 20000 });
-await champ.fill(COURRIEL);
-await page.locator('input[type="password"]').fill(MOTDEPASSE);
-await page.getByText("Sign in", { exact: true }).last().click();
+await entrerDansLApercu(page, COURRIEL);
 try {
-  await page.locator('input[type="password"]').waitFor({ state: "detached", timeout: 15000 });
+  await page.locator('input[inputmode="numeric"]').waitFor({ state: "detached", timeout: 15000 });
 } catch {
   console.error("\n✗ La connexion n'aboutit pas. Ce que l'écran dit :\n");
   console.error(await page.evaluate(() => document.body.innerText));

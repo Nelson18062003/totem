@@ -38,10 +38,10 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
+import { connexionPour, entrerDansLApercu, preparerLeProprietaire } from "./entrer.mjs";
 
 const APERCU = "http://127.0.0.1:3210";
 const COURRIEL = "essai@totem.test";
-const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
 // LE PLAFOND, quelle que soit la distance parcourue. C'est la seconde
 // promesse, et elle ne se voyait pas dans le premier affichage : rendre par
@@ -81,10 +81,12 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
     process.exit(1);
   }
 }
-await fetch("http://127.0.0.1:3120/api/inscription", {
-  method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-}).catch(() => {});
+try {
+  await preparerLeProprietaire(COURRIEL);
+} catch (e) {
+  console.error(`\n✗ ${e.message}`);
+  process.exit(1);
+}
 
 // COMBIEN LA CAISSE PORTE-T-ELLE VRAIMENT ? On le demande à la plateforme,
 // pas à l'écran. Sans cette vérité indépendante, une liste qui S'ARRÊTE à
@@ -92,10 +94,7 @@ await fetch("http://127.0.0.1:3120/api/inscription", {
 // ressemblent — et le harnais accusait la caisse d'être vide alors que
 // l'écran perdait des encaissements. Un mauvais diagnostic envoie chercher
 // la panne à l'autre bout.
-const porte = await fetch("http://127.0.0.1:3120/api/connexion", {
-  method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
-});
+const porte = await connexionPour(COURRIEL);
 if (!porte.ok) {
   console.error("\n✗ Impossible d'entrer avec le compte d'essai :");
   console.error("  un autre harnais a déjà utilisé ce faux nuage.");
@@ -139,9 +138,7 @@ try {
     if (pret) break;
     await attendre(500);
   }
-  await page.locator('input[type="email"]').first().fill(COURRIEL);
-  await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
-  await page.getByText(/^Sign in$|^Se connecter$/).last().click();
+  await entrerDansLApercu(page, COURRIEL);
   await page.waitForFunction(
     () => !![...document.querySelectorAll("div")].find((e) => /FCFA/.test(e.textContent || "")),
     null, { timeout: 30000 });

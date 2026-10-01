@@ -213,6 +213,7 @@ const codes = new Map();             // utilisateur → { empreinte, expire, ess
 // envoyer, et le harnais vient y lire le code — exactement ce que ferait la
 // personne en ouvrant sa boîte.
 const lettres = [];                  // { a, sujet, texte, quand }
+let codesJuges = 0;                  // combien d'essais de code la base a jugés
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
@@ -436,6 +437,7 @@ const serveur = createServer(async (req, res) => {
     return repondre(true);
   }
   if (req.method === "POST" && chemin === "/rest/v1/rpc/essayer_un_code") {
+    codesJuges += 1;
     let brut = "";
     for await (const mm of req) brut += mm;
     const { le_compte, l_empreinte, max_essais } = JSON.parse(brut || "{}");
@@ -450,6 +452,11 @@ const serveur = createServer(async (req, res) => {
     }
     return repondre(false);
   }
+  //     curl "http://127.0.0.1:4999/essai/compteurs"
+  // Combien de codes la base a eu à JUGER. Le harnais du frein s'en sert :
+  // un mur qui refuse doit refuser AVANT de demander à la base — sans quoi
+  // une rafale d'essais devient une rafale de travail.
+  if (chemin === "/essai/compteurs") return repondre({ codesJuges });
   //     curl -X POST "http://127.0.0.1:4999/essai/vieillir-les-codes"
   // Fait comme si chaque code avait été émis il y a une heure : le harnais
   // peut ainsi redemander un code sans attendre la minute.

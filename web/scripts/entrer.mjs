@@ -94,3 +94,37 @@ export async function entrerParCode(base, portNuage, courriel, { inscrire = fals
   }
   return (await s.json()).jeton ?? null;
 }
+
+/**
+ * Entre À L'ÉCRAN, dans un vrai navigateur, comme une personne : le
+ * courriel, « Recevoir un code », la lettre, le code, « Se connecter ».
+ * La page doit être sur l'écran de connexion.
+ */
+export async function entrerALEcran(page, portNuage, courriel) {
+  await fetch(`http://127.0.0.1:${portNuage}/essai/vieillir-les-codes`, { method: "POST" });
+  const avant = (await boite(portNuage, courriel)).nombre;
+  await page.locator('input[type="email"]:not([readonly])').first().fill(courriel);
+  await page.locator('button[type="submit"]').first().click();
+  const lettre = await attendreUneLettre(portNuage, courriel, avant);
+  if (!lettre?.code) throw new Error(`aucune lettre n'est arrivée pour ${courriel}`);
+  await page.locator('input[name="code"]').fill(lettre.code);
+  await page.locator('button[type="submit"]').first().click();
+}
+
+/** Inscrit le propriétaire d'une plateforme neuve, puis rend le COOKIE de
+ *  la porte du navigateur (« totem_session=… »), ou une chaîne vide. */
+export async function cookieDuProprietaire(base, portNuage, courriel) {
+  await fetch(`${base}/api/inscription`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": adresseNeuve() },
+    body: JSON.stringify({ courriel }),
+  });
+  const lettre = await attendreUneLettre(portNuage, courriel, 0);
+  if (!lettre?.code) return "";
+  const co = await fetch(`${base}/api/connexion`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-forwarded-for": adresseNeuve() },
+    body: JSON.stringify({ courriel, code: lettre.code }),
+  });
+  return (co.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+}
