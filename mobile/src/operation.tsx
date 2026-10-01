@@ -353,7 +353,7 @@ export function OperationPopup({
         <>
           <Texte taille={textes.legende} ton="pale"
                  style={{ textTransform: "uppercase", letterSpacing: 0.8 }}>
-            {etape === "saisie" ? t.preparation : enSession ? t.sessionEnCours : t.session}
+            {etape === "saisie" ? t.preparation : enSession && !fini ? t.sessionEnCours : t.session}
             {operation.carteLibelle ? ` · ${operation.carteLibelle}` : ""}
           </Texte>
           {/* Même règle que la fiche d'un SMS : on a ouvert l'écran pour

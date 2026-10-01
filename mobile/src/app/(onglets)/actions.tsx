@@ -27,7 +27,10 @@ export default function Actions() {
   const langue = useLangue();
   const t = textesGuichet[langue];
   const tu = textesUssd[langue];
-  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 30, recus: 0 });
+  // Aucune ligne demandée : l'accueil, toujours monté, en met déjà trente
+  // au cahier partagé — les clients récents se lisent là, sans que cet
+  // onglet devienne un écran lourd qui ferait attendre.
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const [operation, setOperation] = useState<Operation | null>(null);
   const [choisie, setChoisie] = useState<string | null>(null);
