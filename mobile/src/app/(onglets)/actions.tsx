@@ -18,6 +18,8 @@ import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { clientsRecents } from "@noyau/recents";
+import { aQui } from "@noyau/beneficiaires";
+import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesUssd } from "@noyau/textes/ussd";
 
@@ -27,6 +29,7 @@ export default function Actions() {
   const langue = useLangue();
   const t = textesGuichet[langue];
   const tu = textesUssd[langue];
+  const tb = textesBeneficiaires[langue];
   // Aucune ligne demandée : l'accueil, toujours monté, en met déjà trente
   // au cahier partagé — les clients récents se lisent là, sans que cet
   // onglet devienne un écran lourd qui ferait attendre.
@@ -80,7 +83,8 @@ export default function Actions() {
       titre, code: et[0] ?? "", etapes: et, champs,
       carte: carte.iccid, terminal: donnees?.terminal?.id ?? null,
       carteLibelle: carte.libelle, operateur: carte.operateur,
-      recents: clientsRecents(donnees?.paiements ?? [], carte.iccid),
+      recents: aQui(donnees?.beneficiaires,
+                    clientsRecents(donnees?.paiements ?? [], carte.iccid), carte.iccid),
     };
   };
 
@@ -203,6 +207,9 @@ export default function Actions() {
             Le web l'a en page à part (« Code USSD ») ; ici il s'ouvre d'une
             ligne — c'est le geste de secours quand aucun bouton ne convient. */}
         <Carte>
+          <Ligne titre={tb.titre} sous={tb.sous} icone="Personnes"
+                 onPress={() => router.push("/beneficiaires")} />
+          <Filet />
           <Ligne titre={tu.titre} sous={tu.composerSous} icone="Hash"
                  onPress={() => router.push("/ussd")} />
         </Carte>

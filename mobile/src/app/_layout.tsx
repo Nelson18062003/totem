@@ -82,6 +82,7 @@ function Charpente() {
           {/* Le cadran USSD aussi : on y vient depuis Opérations, pour
               composer un code à la main comme sur un téléphone. */}
           <Stack.Screen name="ussd" options={{ animation: "slide_from_right" }} />
+          <Stack.Screen name="beneficiaires" options={{ animation: "slide_from_right" }} />
           {/* L'analyse : la semaine en chiffres, depuis l'accueil. */}
           <Stack.Screen name="analyse" options={{ animation: "slide_from_right" }} />
         </Stack.Protected>

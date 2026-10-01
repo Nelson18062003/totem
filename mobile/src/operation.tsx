@@ -48,7 +48,7 @@ import { Icone, type NomIcone } from "@/icones";
 import {
   couleurOperateur, couleurs, espaces, polices, rayons, textes,
 } from "@/theme/jetons";
-import { deposerCommande, lireCommande } from "@/api/guichet";
+import { agirSurBeneficiaire, deposerCommande, lireCommande } from "@/api/guichet";
 import { useLangue } from "@/langue";
 import { toucherDepart, toucherEchec, toucherReussite } from "@/toucher";
 import { remplirVariables } from "@noyau/codes";
@@ -58,6 +58,8 @@ import {
 import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
+import { nomDuBeneficiaire, nomPropre, numeroPropre } from "@noyau/beneficiaires";
+import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 
 export type ChampOperation = {
@@ -84,8 +86,9 @@ export type Operation = {
   carteLibelle?: string;
   /** « MTN » : à qui l'on parle, pendant que le réseau répond. */
   operateur?: string;
-  /** Les numéros déjà vus sur cette carte, proposés d'un geste. */
-  recents?: ClientRecent[];
+  /** Les bénéficiaires de cette carte, proposés d'un geste : le carnet
+   *  d'abord (`enregistre`), puis les numéros vus dans ses SMS. */
+  recents?: (ClientRecent & { enregistre?: boolean })[];
 };
 
 type Msg = { de: "reseau" | "vous"; texte: string };
@@ -335,7 +338,7 @@ export function OperationPopup({
 
   const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
   const ecran = lireEcran(dernier);
-  const pave = enSession && !attente && !fini && demandeUnCode(dernier);
+  const pave = enSession && !attente && !fini && ecran.attend === "secret";
   const reduit = useMouvementReduit();
   const insets = useSafeAreaInsets();
   const [details, setDetails] = useState(false);
@@ -407,6 +410,18 @@ export function OperationPopup({
   const numeroSaisi = champNumero ? chiffresDe(valeurs[champNumero.cle] ?? "") : "";
   const montantSaisi = champMontant ? Number(chiffresDe(valeurs[champMontant.cle] ?? "")) : 0;
   const nomDuDestinataire = operation.recents?.find((r) => r.numero === numeroSaisi)?.nom;
+
+  // À LA FIN D'UN TRANSFERT RÉUSSI : « Enregistrer ce bénéficiaire ? » Le
+  // nom proposé est celui que l'OPÉRATEUR a écrit sur son écran de
+  // confirmation (« … a JEAN DUPONT (677998877) »), sinon celui des SMS. Un
+  // numéro déjà au carnet ne se repropose pas.
+  const numeroDuTransfert = numeroSaisi ? numeroPropre(numeroSaisi) : "";
+  const dejaAuCarnet = Boolean(operation.recents?.some(
+    (r) => r.enregistre && numeroPropre(r.numero) === numeroDuTransfert));
+  const nomLu = [...fil].reverse().filter((m) => m.de === "reseau")
+    .map((m) => nomDuBeneficiaire(m.texte, numeroDuTransfert)).find(Boolean) ?? null;
+  const proposer = termine && issue === "reussie" && Boolean(operation.carte)
+    && numeroDuTransfert.length >= 8 && !dejaAuCarnet;
 
   // Ce que l'on montre, une chose à la fois.
   let vue: React.ReactNode;
@@ -488,6 +503,11 @@ export function OperationPopup({
         // raccroche en partant : elle ne reste pas pendue sur la carte.
         onTerminer={enSession && !fini ? raccrocher : onFermer}
         t={t}
+        proposition={proposer && operation.carte ? (
+          <ProposerBeneficiaire carte={operation.carte} numero={numeroDuTransfert}
+                                nomInitial={nomLu ?? nomDuDestinataire ?? ""}
+                                langue={langue} onFait={onTermine} />
+        ) : null}
       />
     );
   } else if (pave) {
@@ -669,7 +689,7 @@ function EtapeChiffres({
   valeur: string;
   aide: string;
   onChange: (v: string) => void;
-  recents?: ClientRecent[];
+  recents?: (ClientRecent & { enregistre?: boolean })[];
   onRecent: (numero: string) => void;
   bouton: string;
   onValider: () => void;
@@ -731,7 +751,8 @@ function EtapeChiffres({
         {recents?.length ? (
           <View style={{ alignSelf: "stretch", gap: espaces.sm }}>
             <Texte taille={textes.legende} ton="pale" style={{ textAlign: "center" }}>
-              {t.clientsRecents}
+              {recents.some((r) => r.enregistre)
+                ? textesBeneficiaires[langue].vosBenef : t.clientsRecents}
             </Texte>
             <Defilement horizontal showsHorizontalScrollIndicator={false}
                         contentContainerStyle={{ gap: espaces.md, paddingHorizontal: espaces.xs,
@@ -975,8 +996,9 @@ function Attente({ texte, couleur, reduit }: { texte: string; couleur: string; r
 /** C'est fini : ce que l'opérateur a dit, en une phrase et une couleur. */
 function Fin({
   issue, titre, texte, note, fil, details, onDetails, repondreQuandMeme,
-  bouton, onTerminer, t,
+  bouton, onTerminer, t, proposition,
 }: {
+  proposition?: React.ReactNode;
   issue: Issue;
   titre: string;
   texte: string;
@@ -1022,6 +1044,7 @@ function Fin({
             {note}
           </Texte>
         ) : null}
+        {proposition}
         {repondreQuandMeme ? (
           <Pressable accessibilityRole="button" onPress={repondreQuandMeme} hitSlop={8}
             style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
@@ -1060,6 +1083,75 @@ function Fin({
         ) : null}
       </Defilement>
       <GrosBouton libelle={bouton} onPress={onTerminer} />
+    </View>
+  );
+}
+
+/**
+ * « Enregistrer ce bénéficiaire ? » — à la fin d'un transfert réussi. Le nom
+ * est déjà écrit (celui de l'opérateur) ; on peut le raccourcir — « Maman »
+ * se retrouve mieux que « NKENGAFAC MBOUNGOU JEANNE-CLAIRE EPSE TCHOUMI ».
+ */
+function ProposerBeneficiaire({ carte, numero, nomInitial, langue, onFait }: {
+  carte: string; numero: string; nomInitial: string; langue: "fr" | "en";
+  onFait?: () => void;
+}) {
+  const tb = textesBeneficiaires[langue];
+  const [nom, setNom] = useState(nomInitial);
+  const [etat, setEtat] = useState<"repos" | "envoi" | "fait" | "erreur">("repos");
+  const enCours = useRef(false);
+  const enregistrer = async () => {
+    if (enCours.current || !nom.trim()) return;
+    enCours.current = true;
+    setEtat("envoi");
+    try {
+      await agirSurBeneficiaire({ geste: "enregistrer", carte, numero, nom: nomPropre(nom) });
+      setEtat("fait");
+      onFait?.();
+    } catch {
+      setEtat("erreur");
+    } finally {
+      enCours.current = false;
+    }
+  };
+  if (etat === "fait") {
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
+        <Icone nom="Check" taille={18} couleur={couleurs.positif} />
+        <Texte ton="doux">{tb.enregistre} · {nomPropre(nom)}</Texte>
+      </View>
+    );
+  }
+  return (
+    <View style={{
+      alignSelf: "stretch", backgroundColor: couleurs.surfaceHaute, borderRadius: 14,
+      padding: espaces.lg, gap: espaces.md, borderWidth: 1, borderColor: couleurs.trait,
+    }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
+        <Icone nom="Personnes" taille={20} couleur={couleurs.encre} />
+        <Texte poids="demi">{tb.enregistrerCeBenef}</Texte>
+      </View>
+      <ChampTexte value={nom} onChangeText={setNom} placeholder={tb.nomAide}
+                  placeholderTextColor={couleurs.encrePale} autoCapitalize="words"
+                  style={{
+                    borderBottomWidth: 1.5, borderColor: couleurs.encre,
+                    paddingVertical: espaces.sm, fontFamily: polices.moyen,
+                    fontSize: textes.intertitre, color: couleurs.encre,
+                  }} />
+      <Texte taille={textes.petit} ton="pale" chiffresAlignes>{formaterNumero(numero)}</Texte>
+      {etat === "erreur" ? <Texte taille={textes.petit} ton="negatif">{tb.echec}</Texte> : null}
+      <Pressable accessibilityRole="button" disabled={!nom.trim() || etat === "envoi"}
+        onPress={() => void enregistrer()}
+        style={({ pressed }) => ({
+          alignSelf: "flex-start", paddingHorizontal: espaces.lg, paddingVertical: espaces.sm + 2,
+          borderRadius: rayons.rond,
+          backgroundColor: !nom.trim() ? couleurs.surface3
+            : pressed ? couleurs.accentAppui : couleurs.accent,
+        })}>
+        <Texte poids="demi" taille={textes.petit} style={{ color: couleurs.surfaceHaute }}>
+          {tb.enregistrer}
+        </Texte>
+      </Pressable>
     </View>
   );
 }

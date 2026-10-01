@@ -17,7 +17,7 @@
 // qu'il a poussé. Aucune donnée n'est inventée : sans variables, les écrans
 // sont vides et le disent.
 
-import type { Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
+import type { Beneficiaire, Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
 import { estNature } from "@noyau/natures";
 import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
@@ -300,7 +300,7 @@ export async function chargerDonnees(
   const filtreCarte = portee.tout ? "" : `&iccid=in.${dans}`;
   const filtrePaiement = portee.tout ? "" : `&carte=in.${dans}`;
   const vide = <T,>() => Promise.resolve([] as T[]);
-  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons] = await Promise.all([
+  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons, carnet] = await Promise.all([
     lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
     rien ? vide<LigneCarte>()
       : lire<LigneCarte>(`cartes?select=*${filtreCarte}&order=derniere_vue.desc.nullslast`),
@@ -319,6 +319,11 @@ export async function chargerDonnees(
     // Les boutons appris par le robot. Table absente (base pas migrée) :
     // `lire` rend [] sans bruit — les écrans montrent juste moins de boutons.
     lire<LigneRaccourci>("raccourcis?select=*&order=id"),
+    // Le carnet des bénéficiaires, carte par carte — même portée que le
+    // reste. Table absente (base pas migrée) : un carnet vide, sans bruit.
+    rien ? vide<Beneficiaire>()
+      : lire<Beneficiaire>(
+          `beneficiaires?select=id,carte,numero,nom${filtrePaiement}&order=nom.asc&limit=500`),
   ]);
 
   // Revérifié ici, ligne par ligne : ce que la base a filtré, on le
@@ -472,6 +477,9 @@ export async function chargerDonnees(
 
   return {
     relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques,
+    // Revérifiés ici, comme les SMS : la portée ne dépend pas d'un filtre
+    // distant.
+    beneficiaires: carnet.filter((b) => visible(b.carte)),
     // Les compteurs des cartes sont déjà calculés : les lignes qui ont servi
     // à les calculer n'ont plus rien à faire sur le réseau.
     paiements: bornes?.lignes != null ? paiements.slice(0, bornes.lignes) : paiements,
@@ -1214,4 +1222,58 @@ export async function oublierAppareil(jeton: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// LES BÉNÉFICIAIRES
+//
+// Le carnet suit la CARTE. Qui peut écrire dedans se décide dans la route
+// (`maniement`) : ces fonctions ne font qu'écrire ce qu'on leur donne, déjà
+// nettoyé — la base retient de toute façon la forme du numéro et du nom.
+// ---------------------------------------------------------------------------
+
+async function ecrireBeneficiaires(
+  methode: "POST" | "PATCH" | "DELETE", chemin: string, corps?: unknown,
+  entetes: Record<string, string> = {},
+): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+      method: methode,
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json", prefer: "return=minimal", ...entetes,
+      },
+      body: corps === undefined ? undefined : JSON.stringify(corps),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Enregistre un bénéficiaire — ou renomme celui que la carte connaît déjà
+ *  sous ce numéro : une carte ne connaît un numéro qu'une fois. */
+export function enregistrerBeneficiaire(
+  carte: string, numero: string, nom: string, par: number | null,
+): Promise<boolean> {
+  return ecrireBeneficiaires("POST", "beneficiaires?on_conflict=carte,numero",
+    { carte, numero, nom, cree_par: par, maj_le: new Date().toISOString() },
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+}
+
+export async function beneficiaireParId(id: number): Promise<Beneficiaire | null> {
+  const lignes = await lire<Beneficiaire>(
+    `beneficiaires?select=id,carte,numero,nom&id=eq.${id}&limit=1`);
+  return lignes.find((b) => b.id === id) ?? null;
+}
+
+export function renommerBeneficiaire(id: number, nom: string): Promise<boolean> {
+  return ecrireBeneficiaires("PATCH", `beneficiaires?id=eq.${id}`,
+    { nom, maj_le: new Date().toISOString() });
+}
+
+export function supprimerBeneficiaire(id: number): Promise<boolean> {
+  return ecrireBeneficiaires("DELETE", `beneficiaires?id=eq.${id}`);
 }

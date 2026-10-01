@@ -23,8 +23,8 @@ export type TypeChamp = "numero" | "montant";
 
 /** La question du réseau ↔ le champ qui peut y répondre tout seul. */
 export const RECONNAISSANCE: { motif: RegExp; type: TypeChamp }[] = [
-  { motif: /num[ée]ro|beneficiaire|b[ée]n[ée]ficiaire|abonn[ée]|agent|destinataire|t[ée]l[ée]phone|number|recipient|beneficiary|receiver|subscriber|phone/i, type: "numero" },
-  { motif: /montant|somme|combien|amount|how\s+much/i, type: "montant" },
+  { motif: /num[ée]ro|beneficiaire|b[ée]n[ée]ficiaire|abonn[ée]|agent|destinataire|t[ée]l[ée]phone|number|recipient|beneficiary|receiver|subscriber|phone|msisdn|mobile\s+no/i, type: "numero" },
+  { motif: /montant|somme|combien|amount|how\s+much|\bvaleur\b|\bvalue\b/i, type: "montant" },
 ];
 
 // Une ligne de choix numéroté : « 1. Envoyer », « 2) Retirer », « 3 - Solde ».
@@ -135,9 +135,44 @@ export type EcranReseau = {
 
 const RE_LIGNE_CHOIX = /^[ \t]*(\d{1,2})[ \t]*[.):\-][ \t]*(?!\d{2}(?:\D|$))(\S.*)$/;
 
+// LES MENUS NE SONT PAS LES NÔTRES : ils changent sans prévenir, d'un
+// opérateur à l'autre, d'une langue à l'autre, d'une semaine à l'autre. On
+// ne les apprend donc pas par cœur — on lit leur FORME. Deux formes de plus
+// que « 1. Libellé » se rencontrent :
+//
+//   — le numéro suivi d'une simple espace, puis d'une LETTRE : « 1 Transfert ».
+//     La lettre est exigée : « 1 000 FCFA » n'est pas un choix ;
+//   — la navigation : « 0 Retour », « 00 Accueil », « 98 Suivant »,
+//     « #. Retour », « *: Menu ». Le « # » et l'« * » ne comptent jamais pour
+//     DIRE qu'un message est un menu (une puce « * Frais : 0 FCFA » n'en fait
+//     pas un) ; ils ne sont lus comme choix que dans un message qui en est
+//     déjà un.
+//
+// LA GARDE DU CODE SECRET N'EST PAS ÉLARGIE. `demandeUnCode` garde sa règle,
+// la même que celle du robot : un message qui parle de code et n'est pas un
+// menu au sens strict ouvre le pavé. La forme souple ne fait un menu que si
+// le message ne parle PAS de code — dans le doute, le pavé.
+const RE_LIGNE_SOUPLE = /^[ \t]*(\d{1,2})[ \t]+(?=[A-Za-zÀ-ÿ])(\S.*)$/;
+const RE_LIGNE_NAVIGATION = /^[ \t]*([#*])[ \t]*(?:[.):\-][ \t]*|[ \t]+(?=[A-Za-zÀ-ÿ]))(\S.*)$/;
+
+/** Un message en forme de menu, au sens large — jamais quand il parle de code. */
+function estUnMenuSouple(texte: string): boolean {
+  if (estUnMenu(texte)) return true;
+  if (RE_SECRET.test(texte)) return false;
+  const lignes = texte.split("\n").filter((l) => RE_LIGNE_SOUPLE.test(l));
+  return lignes.length >= MENU_MINIMUM;
+}
+
+/** Le choix porté par une ligne, sous l'une des trois formes. */
+function choixDeLaLigne(ligne: string): ChoixReseau | null {
+  const m = RE_LIGNE_CHOIX.exec(ligne) ?? RE_LIGNE_SOUPLE.exec(ligne)
+    ?? RE_LIGNE_NAVIGATION.exec(ligne);
+  return m ? { numero: m[1], libelle: m[2].trim() } : null;
+}
+
 // Une demande se reconnaît à ses verbes, ou à sa ponctuation finale.
 const RE_DEMANDE =
-  /entre[zr]|saisi(?:r|ssez)|tape[zr]|indique[zr]|choisi(?:r|ssez)|r[ée]pond|veuillez|enter|type|choose|select|reply|please|\?\s*$|:\s*$/im;
+  /entre[zr]|saisi(?:r|ssez)|tape[zr]|indique[zr]|choisi(?:r|ssez)|r[ée]pond|veuillez|compose[zr]|renseigne[zr]|enter|type|choose|select|reply|please|input|provide|dial|\?\s*$|:\s*$/im;
 const RE_REUSSIE =
   /succ[eè]s|r[ée]ussi|effectu[ée]|a\s+[ée]t[ée]\s+(?:envoy|transf|cr[ée]dit|d[ée]bit)|confirm[ée]e?\b|successful|completed|has\s+been\s+(?:sent|transferred|credited)/i;
 const RE_REFUSEE =
@@ -149,16 +184,22 @@ export function lireEcran(brut: string | null | undefined): EcranReseau {
   const lignes = source.split("\n");
   const choix: ChoixReseau[] = [];
   const reste: string[] = [];
-  const menu = estUnMenu(source);
+  const menu = estUnMenuSouple(source);
   for (const ligne of lignes) {
-    const m = menu ? RE_LIGNE_CHOIX.exec(ligne) : null;
-    if (m) choix.push({ numero: m[1], libelle: m[2].trim() });
+    const c = menu ? choixDeLaLigne(ligne) : null;
+    if (c) choix.push(c);
     else if (ligne.trim()) reste.push(ligne.trim());
   }
   const texte = reste.join("\n");
 
   let attend: EcranReseau["attend"];
-  if (demandeUnCode(source)) attend = "secret";
+  // « Wrong PIN. Transaction failed. » parle de code sans en demander : c'est
+  // une FIN, refusée. L'ouvrir en pavé ferait taper un code qui ne part
+  // nulle part. Un refus SANS question n'attend plus rien ; avec une
+  // question (« Code incorrect, entrez votre code »), c'est encore le pavé.
+  if (demandeUnCode(source) && !(RE_REFUSEE.test(source) && !RE_DEMANDE.test(source))) {
+    attend = "secret";
+  }
   else if (choix.length >= MENU_MINIMUM) attend = "choix";
   else {
     const type = RECONNAISSANCE.filter((r) => r.motif.test(source)).map((r) => r.type);

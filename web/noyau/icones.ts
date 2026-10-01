@@ -114,6 +114,12 @@ export const ICONES = {
     { f: "rect", x: "7", y: "3", w: "10", h: "18", r: "2" },
     { f: "path", d: "M11 18h2" },
   ],
+  // Deux silhouettes : les gens à qui l'on envoie.
+  Personnes: [
+    { f: "circle", cx: "9", cy: "8", r: "3.2" },
+    { f: "path", d: "M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" },
+    { f: "path", d: "M15.5 5.2a3 3 0 0 1 0 5.6M17 14.3c2 .6 3.2 2.2 3.5 4.7" },
+  ],
   Bank: [
     { f: "path", d: "M4 10h16M5 10v8m4.7-8v8m4.6-8v8M19 10v8M3.5 18h17M12 4l8 6H4z" },
   ],

@@ -435,3 +435,15 @@ export function lienCoordonnees(iccid: string): Promise<{ url: string }> {
 export function lienBilan(jours: number): Promise<{ url: string }> {
   return demander(`/api/bilan/lien?jours=${jours}`);
 }
+
+/** Le carnet des bénéficiaires d'une carte : enregistrer (ou renommer celui
+ *  que la carte connaît déjà sous ce numéro), renommer, retirer. La lecture
+ *  voyage avec les données, dans le cahier. */
+export function agirSurBeneficiaire(
+  corps:
+    | { geste: "enregistrer"; carte: string; numero: string; nom: string }
+    | { geste: "renommer"; id: number; nom: string }
+    | { geste: "supprimer"; id: number },
+): Promise<unknown> {
+  return demander("/api/beneficiaires", { method: "POST", body: JSON.stringify(corps) });
+}

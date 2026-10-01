@@ -295,6 +295,17 @@ accepter "inscrire un téléphone au nom de celui qui tient la carte" \
      values ('ExponentPushToken[vendeur]', 'ios', $VENDEUR);"
 refuser "un téléphone inscrit au nom d'un compte qui n'existe pas" \
   "insert into appareils(jeton, utilisateur) values ('ExponentPushToken[fantome]', 999999);"
+accepter "enregistrer un bénéficiaire sur une carte" \
+  "insert into beneficiaires(carte, numero, nom, cree_par)
+     values ('89237010000000008901', '677998877', 'Jean Dupont', $VENDEUR);"
+refuser "le même numéro deux fois sur la même carte" \
+  "insert into beneficiaires(carte, numero, nom) values ('89237010000000008901', '677998877', 'Autre');"
+accepter "le même numéro sur une AUTRE carte" \
+  "insert into beneficiaires(carte, numero, nom) values ('89237020000000004432', '677998877', 'Jean');"
+refuser "un numéro qui n'en est pas un" \
+  "insert into beneficiaires(carte, numero, nom) values ('89237010000000008901', '677-99', 'X');"
+refuser "un bénéficiaire sans nom" \
+  "insert into beneficiaires(carte, numero, nom) values ('89237010000000008901', '699000000', '   ');"
 accepter "effacer un compte efface ses cartes" \
   "delete from utilisateurs where id = $VENDEUR;
    do \$\$ begin

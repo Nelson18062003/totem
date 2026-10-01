@@ -238,7 +238,35 @@ try {
     verifier("il classe un SMS de SA carte (le verrou le laisse passer)",
       (await poste("/api/nature", { id: 2, nature: "retrait" }, vendeur)).status !== 403, true);
 
+    // SON CARNET DE BÉNÉFICIAIRES : il suit la carte.
+    const carnet = (corps, jeton) => poste("/api/beneficiaires", corps, jeton);
+    verifier("il enregistre un bénéficiaire sur SA carte",
+      (await carnet({ geste: "enregistrer", carte: ORANGE, numero: "237 677 99 88 77", nom: "Maman" },
+                    vendeur)).status, 200);
+    verifier("le propriétaire en enregistre un sur la MTN (témoin)",
+      (await carnet({ geste: "enregistrer", carte: MTN, numero: "699000111", nom: "Fournisseur" },
+                    patron)).status, 200);
+    const sesBenef = (await donnees(vendeur)).beneficiaires ?? [];
+    verifier("il retrouve le sien, numéro rangé sans 237",
+      sesBenef.map((b) => [b.nom, b.numero]), [["Maman", "677998877"]]);
+    const tousBenef = (await donnees(patron)).beneficiaires ?? [];
+    verifier("le propriétaire voit les deux carnets (témoin)", tousBenef.length, 2);
+    const leSien = sesBenef[0]?.id;
+    const celuiDuPatron = tousBenef.find((b) => b.carte === MTN)?.id;
+    verifier("il renomme le sien",
+      (await carnet({ geste: "renommer", id: leSien, nom: "Maman Douala" }, vendeur)).status, 200);
+
     console.log("\n…ET RIEN SUR LA CARTE D'UN AUTRE");
+    verifier("enregistrer un bénéficiaire sur la MTN : refusé",
+      (await carnet({ geste: "enregistrer", carte: MTN, numero: "677000000", nom: "Piege" },
+                    vendeur)).status, 403);
+    verifier("renommer celui du propriétaire : introuvable",
+      (await carnet({ geste: "renommer", id: celuiDuPatron, nom: "Piege" }, vendeur)).status, 404);
+    verifier("le supprimer : introuvable",
+      (await carnet({ geste: "supprimer", id: celuiDuPatron }, vendeur)).status, 404);
+    verifier("le carnet MTN n'a pas bougé (témoin)",
+      ((await donnees(patron)).beneficiaires ?? []).find((b) => b.id === celuiDuPatron)?.nom,
+      "Fournisseur");
     verifier("composer sur la MTN : refusé",
       (await commande({ type: "ussd", parametres: { code: "*126#", carte: MTN } }, vendeur)).statut, 403);
     verifier("composer sans dire sur quelle carte : refusé",

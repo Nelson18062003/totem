@@ -31,6 +31,7 @@ import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { clientsRecents } from "@noyau/recents";
+import { aQui } from "@noyau/beneficiaires";
 import { fcfa, type Paiement, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { textesAnalyse } from "@noyau/textes/analyse";
@@ -76,7 +77,8 @@ export default function Accueil() {
     return { titre, code: et[0] ?? "", etapes: et, champs,
              carte: active?.iccid, terminal: donnees?.terminal?.id ?? null,
              carteLibelle: active?.libelle, operateur: active?.operateur,
-             recents: clientsRecents(donnees?.paiements ?? [], active?.iccid) };
+             recents: aQui(donnees?.beneficiaires,
+                           clientsRecents(donnees?.paiements ?? [], active?.iccid), active?.iccid) };
   };
 
   type Geste = { label: string; icone: NomIcone; fabrique: () => Operation };

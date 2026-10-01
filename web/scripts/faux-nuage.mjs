@@ -27,6 +27,7 @@ const maintenant = () => new Date().toISOString();
 const il_y_a = (min) => new Date(Date.now() - min * 60000).toISOString();
 
 const tables = () => ({
+  beneficiaires,
   terminaux: [{
     id: "douala-faux", nom: "Douala (faux)", vu_le: maintenant(),
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
@@ -202,6 +203,12 @@ const appareils = new Map();
 // compte qui doit exister, et l'effacement d'un compte qui emporte ses cartes.
 // Sans ces règles ici, aucun harnais ne pourrait voir une portée qui fuit.
 const attributions = [];             // { utilisateur, iccid, attribuee_le }
+
+// LE CARNET DES BÉNÉFICIAIRES — avec les règles de la vraie base : un numéro
+// une seule fois par carte, un numéro qui en est un, un nom qui n'est pas
+// vide. Sans elles, aucun harnais ne verrait un doublon passer.
+const beneficiaires = [];             // { id, carte, numero, nom, cree_par, … }
+let prochainBeneficiaire = 1;
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
@@ -548,6 +555,41 @@ const serveur = createServer(async (req, res) => {
   // créer une seconde. C'est ce qui permet au robot de relire ses messages
   // passés quand son lecteur s'améliore — et c'est aussi ce qui empêche un
   // paiement d'être compté deux fois après une coupure de courant.
+  if (chemin === "/rest/v1/beneficiaires" && req.method !== "GET") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    const vise = () => {
+      const id = (url.searchParams.get("id") || "").replace("eq.", "");
+      return beneficiaires.filter((b) => String(b.id) === id);
+    };
+    const mauvais = (b) => !/^[A-Za-z0-9]{1,32}$/.test(String(b.carte ?? ""))
+      || !/^[0-9]{8,15}$/.test(String(b.numero ?? ""))
+      || !String(b.nom ?? "").trim() || String(b.nom).trim().length > 80;
+    if (req.method === "POST") {
+      const fusion = (req.headers.prefer || "").includes("merge-duplicates");
+      for (const b of [].concat(JSON.parse(brut || "[]"))) {
+        if (mauvais(b)) return repondre({ code: "23514", message: "check violation" }, 400);
+        const deja = beneficiaires.find((x) => x.carte === b.carte && x.numero === b.numero);
+        if (deja && !fusion) return repondre({ code: "23505", message: "duplicate key" }, 409);
+        if (deja) Object.assign(deja, b);
+        else beneficiaires.push({ id: prochainBeneficiaire++, cree_le: maintenant(), ...b });
+      }
+      return repondre([], 201);
+    }
+    if (req.method === "PATCH") {
+      const champs = JSON.parse(brut || "{}");
+      for (const b of vise()) {
+        if (mauvais({ ...b, ...champs })) return repondre({ code: "23514" }, 400);
+        Object.assign(b, champs);
+      }
+      return repondre([], 204);
+    }
+    if (req.method === "DELETE") {
+      for (const b of vise()) beneficiaires.splice(beneficiaires.indexOf(b), 1);
+      return repondre([], 204);
+    }
+  }
+
   const ecriture = /^\/rest\/v1\/(\w+)$/.exec(chemin);
   if (req.method === "POST" && ecriture && tables()[ecriture[1]]) {
     const nom = ecriture[1];

@@ -669,6 +669,22 @@ begin
 end $$;
 create index if not exists appareils_utilisateur on appareils (utilisateur);
 
+-- Les bénéficiaires de chaque carte : un nom pour un numéro. Ils suivent la
+-- carte (pas la personne) et se voient avec elle. Une carte ne connaît un
+-- numéro qu'une fois ; la forme du numéro est tenue ici.
+create table if not exists beneficiaires (
+  id         bigint generated always as identity primary key,
+  carte      text not null check (carte ~ '^[A-Za-z0-9]{1,32}$'),
+  numero     text not null check (numero ~ '^[0-9]{8,15}$'),
+  nom        text not null check (length(btrim(nom)) between 1 and 80),
+  cree_par   bigint references utilisateurs(id) on delete set null,
+  cree_le    timestamptz not null default now(),
+  maj_le     timestamptz not null default now()
+);
+create unique index if not exists beneficiaires_un_numero_par_carte
+  on beneficiaires (carte, numero);
+alter table beneficiaires enable row level security;
+
 
 -- ===========================================================================
 -- 2. LE PRÉNOM ET LE NOM
