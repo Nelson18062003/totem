@@ -9,6 +9,7 @@ import { BasculeLangue } from "./langue";
 import { IconChevron, IconSettings } from "./icons";
 import { salutation } from "@noyau/salutation";
 import { compteConnecte } from "@/lib/qui";
+import { aQuiParCarte } from "@noyau/beneficiaires";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function Accueil() {
   // Uniquement pour la salutation : on lit qui est connecté.
   const moi = await compteConnecte();
   const t = textesAccueil[langue];
-  const { terminal, sims, paiements, raccourcis } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 30, recus: 60 });
+  const { terminal, sims, paiements, raccourcis, beneficiaires } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 30, recus: 60 });
   // TOUTES les cartes en place — Orange ET MTN, chacune avec son solde. Si
   // plus aucune n'est « en place » (terminal muet, cloud en retard), on
   // montre quand même les cartes connues, avec leur état dit franchement :
@@ -59,6 +60,7 @@ export default async function Accueil() {
             iccid: c.iccid, enPlace: c.enPlace, derniereVue: c.derniereVue,
           }))}
           raccourcis={raccourcis}
+          aQui={aQuiParCarte(beneficiaires, paiements, cartes.map((c) => c.iccid))}
         />
       ) : (
         <section className="rounded-card border border-dashed border-line px-4 py-10 text-center lg:col-start-1">

@@ -7,11 +7,13 @@ import { etapesGeste } from "@noyau/codes";
 import { textesGuichet } from "@noyau/textes/guichet";
 import type { RaccourciAppris, Sim } from "@noyau/types";
 import {
-  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash,
+  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash, IconPersonnes,
   IconInbox, IconPhone, IconRefresh, IconWallet,
 } from "../icons";
 import { useLangue } from "../langue";
 import { OperationPopup, type Operation } from "../operation";
+import type { ClientRecent } from "@noyau/recents";
+import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 
 type CarteGuichet = Pick<Sim, "libelle" | "operateur" | "iccid">;
 
@@ -25,9 +27,11 @@ type CarteGuichet = Pick<Sim, "libelle" | "operateur" | "iccid">;
 export function Guichet({
   cartes,
   raccourcis,
+  aQui = {},
 }: {
   cartes: CarteGuichet[];
   raccourcis: Record<string, RaccourciAppris[]>;
+  aQui?: Record<string, (ClientRecent & { enregistre: boolean })[]>;
 }) {
   const router = useRouter();
   const langue = useLangue();
@@ -42,7 +46,9 @@ export function Guichet({
   const operationDe = (cle: string, titre: string,
                        champs: Operation["champs"]): Operation => {
     const et = etapesGeste(op, cle, raccourcis[op] ?? []);
-    return { titre, code: et[0] ?? "", etapes: et, champs, carte: carte.iccid };
+    return { titre, code: et[0] ?? "", etapes: et, champs, carte: carte.iccid,
+             carteLibelle: carte.libelle, operateur: carte.operateur,
+             recents: aQui[carte.iccid] };
   };
 
   const operations = [
@@ -158,6 +164,7 @@ export function Guichet({
             { href: "/encaissements", l: t.smsRecus, Icone: IconInbox },
             { href: "/analyse", l: t.analyse, Icone: IconChart },
             { href: "/ussd", l: t.codeUssd, Icone: IconHash },
+            { href: "/beneficiaires", l: textesBeneficiaires[langue].titre, Icone: IconPersonnes },
           ].map(({ href, l, Icone }) => (
             <Link key={l} href={href}
               className="flex items-center gap-2.5 rounded-card border border-line bg-surface-raised px-3.5 py-3 text-small font-medium transition hover:border-ink-faint">

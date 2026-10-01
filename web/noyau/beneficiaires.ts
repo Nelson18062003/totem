@@ -14,7 +14,8 @@
 //      MBOUNGOU JEANNE-CLAIRE EPSE TCHOUMI ».
 
 import type { Beneficiaire } from "./types";
-import type { ClientRecent } from "./recents";
+import { clientsRecents, type ClientRecent } from "./recents";
+import type { Paiement } from "./types";
 
 /** Un nom tel qu'on le range : espaces resserrées, bornées. */
 export function nomPropre(nom: string): string {
@@ -85,4 +86,15 @@ export function aQui(
     .filter((r) => !vus.has(r.numero) && (vus.add(r.numero), true))
     .map((r) => ({ ...r, enregistre: false }));
   return [...carnet, ...autres].slice(0, max);
+}
+
+/** `aQui` pour chaque carte d'une liste — ce que le serveur prépare pour
+ *  les écrans du site, qui ouvrent leurs opérations sans recharger. */
+export function aQuiParCarte(
+  enregistres: readonly Beneficiaire[] | undefined,
+  paiements: readonly Paiement[],
+  cartes: readonly string[],
+): Record<string, (ClientRecent & { enregistre: boolean })[]> {
+  return Object.fromEntries(cartes.map((c) =>
+    [c, aQui(enregistres, clientsRecents(paiements, c), c)]));
 }

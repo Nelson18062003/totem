@@ -158,6 +158,14 @@ toutes, pour intervenir s'il y a un problème.
 | Propriétaire | tout | tout | oui |
 | Clé de secours | tout | tout | oui |
 
+**Le carnet des bénéficiaires suit la carte.** Les gens à qui l'on envoie,
+avec le nom qu'on leur donne, appartiennent à la carte : celui qui la tient
+les retrouve, les enregistre, les renomme ; le propriétaire aussi. Si la
+carte change de main, son carnet la suit. Les noms viennent de deux endroits
+seulement — ce qu'on a enregistré (l'application le propose à la fin d'un
+transfert réussi, avec le nom que l'opérateur a écrit), et les SMS de la
+carte, où l'opérateur écrit le nom et le numéro de chaque personne.
+
 Le carnet des boutons d'un opérateur reste au propriétaire : il sert à
 **toutes** les cartes de cet opérateur, et le réécrire changerait ce que les
 autres composent.
@@ -210,7 +218,7 @@ tourner le calcul complet même quand le compte n'existe pas
    plateforme à jour** : sans lui, les invités ne voient rien.
 5. **Les cartes données** : exécuter aussi
    `migrations/20261002_consolidation.sql`. Il dit à qui sonne chaque
-   téléphone. Sans lui, la plateforme refuse d'inscrire le téléphone d'un
+   téléphone, et ajoute le carnet des bénéficiaires de chaque carte. Sans lui, la plateforme refuse d'inscrire le téléphone d'un
    titulaire — inscrit sans nom, il serait pris pour celui du propriétaire et
    recevrait chaque SMS de la maison.
 6. Confier ses cartes à chaque titulaire — jusque-là, il ne voit rien.

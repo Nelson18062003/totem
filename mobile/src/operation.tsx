@@ -717,7 +717,9 @@ function EtapeChiffres({
           <Texte taille={36} poids="demi" chiffresAlignes numberOfLines={1}
                  adjustsFontSizeToFit maxFontSizeMultiplier={1.2}
                  ton={c ? "normal" : "pale"} style={{ letterSpacing: 0.5 }}>
-            {c ? (brut ? c : formaterNumero(c)) : (aide || "—")}
+            {/* Vide, un trait — jamais un numéro d'exemple : grisé, il
+                passait pour un numéro déjà rempli. */}
+            {c ? (brut ? c : formaterNumero(c)) : "— — —"}
           </Texte>
         )}
 
