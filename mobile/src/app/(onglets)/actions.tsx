@@ -17,6 +17,7 @@ import { OperationPopup, type ChampOperation, type Operation } from "@/operation
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
+import { clientsRecents } from "@noyau/recents";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesUssd } from "@noyau/textes/ussd";
 
@@ -26,7 +27,7 @@ export default function Actions() {
   const langue = useLangue();
   const t = textesGuichet[langue];
   const tu = textesUssd[langue];
-  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 30, recus: 0 });
 
   const [operation, setOperation] = useState<Operation | null>(null);
   const [choisie, setChoisie] = useState<string | null>(null);
@@ -75,6 +76,8 @@ export default function Actions() {
     return {
       titre, code: et[0] ?? "", etapes: et, champs,
       carte: carte.iccid, terminal: donnees?.terminal?.id ?? null,
+      carteLibelle: carte.libelle,
+      recents: clientsRecents(donnees?.paiements ?? [], carte.iccid),
     };
   };
 

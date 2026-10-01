@@ -49,6 +49,7 @@ export default function CadranUssd() {
     setOperation({
       titre, code: etapes[0], etapes, champs: [],
       carte: carte.iccid, terminal: donnees?.terminal?.id ?? null,
+      carteLibelle: carte.libelle,
     });
   };
 

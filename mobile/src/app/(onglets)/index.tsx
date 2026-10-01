@@ -30,6 +30,7 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
+import { clientsRecents } from "@noyau/recents";
 import { fcfa, type Paiement, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { textesAnalyse } from "@noyau/textes/analyse";
@@ -73,7 +74,9 @@ export default function Accueil() {
   const operationDe = (cle: string, titre: string, champs: Operation["champs"]): Operation => {
     const et = active ? etapesGeste(active.operateur, cle, raccourcis[active.operateur] ?? []) : [];
     return { titre, code: et[0] ?? "", etapes: et, champs,
-             carte: active?.iccid, terminal: donnees?.terminal?.id ?? null };
+             carte: active?.iccid, terminal: donnees?.terminal?.id ?? null,
+             carteLibelle: active?.libelle,
+             recents: clientsRecents(donnees?.paiements ?? [], active?.iccid) };
   };
 
   type Geste = { label: string; icone: NomIcone; fabrique: () => Operation };
