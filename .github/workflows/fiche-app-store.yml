@@ -63,9 +63,10 @@ jobs:
           P8: ${{ secrets.ASC_CLE_P8 }}
           CLE_ID: ${{ secrets.ASC_CLE_ID }}
           EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+          EQUIPE_ID: ${{ vars.APPLE_EQUIPE_ID || secrets.APPLE_EQUIPE_ID || 'S84ML7M6Y9' }}
         run: |
           manque=""
-          for nom in P8 CLE_ID EMETTEUR_ID; do
+          for nom in P8 CLE_ID EMETTEUR_ID EQUIPE_ID; do
             if [ -z "${!nom}" ]; then manque="$manque $nom"; fi
           done
           if [ -n "$manque" ]; then
@@ -75,7 +76,8 @@ jobs:
               echo "Pas encore posé :**$manque**"
               echo ""
               echo "GitHub → Settings → Secrets and variables → Actions."
-              echo "(P8, CLE_ID, EMETTEUR_ID : ce sont ASC_CLE_P8, ASC_CLE_ID, ASC_EMETTEUR_ID.)"
+              echo "(P8, CLE_ID, EMETTEUR_ID, EQUIPE_ID : ce sont ASC_CLE_P8, ASC_CLE_ID,"
+              echo "ASC_EMETTEUR_ID et APPLE_EQUIPE_ID — les mêmes que pour « Application iPhone ».)"
             } >> $GITHUB_STEP_SUMMARY
             echo "::error::Il manque :$manque — voir le résumé."
             exit 1
@@ -96,9 +98,20 @@ jobs:
           fi
           node scripts/poser-la-cle-du-depot.mjs production ./app-store-connect.p8
 
+      # L'ÉQUIPE APPLE SE DIT, ELLE NE SE DEVINE PAS. Sans elle, EAS la
+      # demande au clavier — et en mode non interactif, il n'y a pas de
+      # clavier : le premier envoi s'est arrêté là, sur « Apple Team ID: ».
+      # Mêmes valeurs que pour « Application iPhone » ; à défaut, l'équipe du
+      # propriétaire, écrite ici — un identifiant d'équipe n'est pas un
+      # secret, il figure dans chaque application signée.
       - name: Envoyer la fiche chez Apple
         working-directory: mobile
         env:
+          EXPO_ASC_API_KEY_PATH: ./app-store-connect.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_CLE_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ vars.APPLE_EQUIPE_ID || secrets.APPLE_EQUIPE_ID || 'S84ML7M6Y9' }}
+          EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_EQUIPE_TYPE || secrets.APPLE_EQUIPE_TYPE || 'INDIVIDUAL' }}
           APPLE_CONTACT_PRENOM: ${{ vars.APPLE_CONTACT_PRENOM }}
           APPLE_CONTACT_NOM: ${{ vars.APPLE_CONTACT_NOM }}
           APPLE_CONTACT_COURRIEL: ${{ vars.APPLE_CONTACT_COURRIEL }}
