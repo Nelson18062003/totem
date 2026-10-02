@@ -22,19 +22,26 @@
 //   « À qui ? »  →  « Combien ? »  →  « Vérifiez »  →  on parle à MTN…
 //   →  le code secret  →  c'est fait.
 //
-// Chaque écran ne pose qu'une question, en grand. Les chiffres se tapent sur
-// un pavé À NOUS, posé dans l'écran : le clavier du téléphone ne monte plus
-// par-dessus le bouton, ni sur iPhone ni sur Android. Le menu de l'opérateur
-// ne se montre plus quand l'application y répond seule — on montre ce qui se
-// passe (« on parle avec MTN… »), pas comment. Il ne réapparaît que s'il
-// pose une question qu'on ne sait pas servir, et alors ses choix sont des
-// boutons. Le texte de l'opérateur, lui, reste à un geste (« Détails »), mot
-// pour mot : on met en forme, on ne cache rien.
+// Chaque écran ne pose qu'une question, en grand.
+//
+// DES VRAIS CHAMPS. Le numéro et le montant se tapaient sur un pavé dessiné,
+// chiffre par chiffre : impossible d'y COLLER un numéro recopié d'un SMS ou
+// de WhatsApp — « c'est trop figé », a dit le propriétaire. Ce sont
+// maintenant des champs du téléphone (appui long → Coller), qui acceptent
+// tout ce qu'on y met ; l'écran montre ce qui partira (`@noyau/saisie`), et
+// ne devine jamais entre deux numéros.
+//
+// TOUT CE QUE DIT L'OPÉRATEUR SE LIT. Pendant l'appel, l'échange s'écrit à
+// l'écran, message après message, en entier — même les écrans auxquels
+// l'application répond seule —, et ce qu'on lui a répondu. Le pavé du code
+// secret se pose SOUS le message qui le réclame (« Dépôt de 5 000 F à JEAN
+// DUPONT, frais 0 F ») : on sait ce qu'on signe. Avant, il n'affichait que
+// « Votre code secret », seul. Chaque message se sélectionne et se copie.
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
-  useWindowDimensions,
+  Alert, Clipboard, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
+  useWindowDimensions, type ScrollView,
 } from "react-native";
 import {
   Easing, FadeIn, FadeInRight, useAnimatedStyle, useSharedValue, withRepeat,
@@ -59,6 +66,7 @@ import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
 import { nomDuBeneficiaire, nomPropre, numeroPropre } from "@noyau/beneficiaires";
+import { montantSaisi, numeroSaisi } from "@noyau/saisie";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 
@@ -104,13 +112,33 @@ const MONTANTS = [1000, 5000, 10000, 25000];
 const LONGUEUR_CODE_MIN = 4;
 const LONGUEUR_CODE_MAX = 6;
 
-const chiffresDe = (v: string) => v.replace(/\D/g, "");
+type TypeSaisie = TypeChamp | "texte";
+
+// Le type de la référence de l'échange. Nommé à part : écrit en chevrons
+// dans le code, il ressemblerait, pour les contrôles qui lisent ce fichier,
+// à une liste qui défile posée en direct — et c'est `Defilement` qui la pose.
+type Rouleau = ScrollView;
+
+/** Ce qui partira réellement au réseau, lu dans ce qu'on a tapé ou collé. */
+function valeurPropre(type: TypeSaisie, brut: string): string {
+  if (type === "numero") return numeroSaisi(brut);
+  if (type === "montant") { const m = montantSaisi(brut); return m ? String(m) : ""; }
+  return brut.trim();
+}
 
 /** Un numéro se tient à partir de huit chiffres ; un montant, dès le premier
- *  franc. Le réseau reste juge : ceci n'évite que le « Continuer » à vide. */
-function pret(type: TypeChamp, valeur: string): boolean {
-  const c = chiffresDe(valeur);
-  return type === "numero" ? c.length >= 8 : Number(c) > 0;
+ *  franc ; une réponse libre, dès le premier caractère. Le réseau reste juge :
+ *  ceci n'évite que le « Continuer » à vide. */
+function pret(type: TypeSaisie, brut: string): boolean {
+  const v = valeurPropre(type, brut);
+  return type === "numero" ? v.length >= 8 : v.length > 0;
+}
+
+/** Le nom qu'on connaît à ce numéro — carnet ou SMS —, s'il y en a un. */
+function nomDe(recents: Operation["recents"], numero: string): string | undefined {
+  if (!numero) return undefined;
+  const n = numeroPropre(numero);
+  return recents?.find((r) => numeroPropre(r.numero) === n)?.nom || undefined;
 }
 
 export function OperationPopup({
@@ -138,7 +166,8 @@ export function OperationPopup({
     `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [reponseLibre, setReponseLibre] = useState("");
+  // « Taper une autre réponse » : un champ libre à la place des boutons.
+  const [libre, setLibre] = useState(false);
 
   const avecCarte = (p: Record<string, unknown>) =>
     operation.carte ? { ...p, carte: operation.carte } : p;
@@ -165,8 +194,6 @@ export function OperationPopup({
   }, [operation.terminal]);
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
-  const complet = operation.champs.every((c) => (valeurs[c.cle] ?? "").trim());
-  const chiffres = (v: string) => v.replace(/\D/g, "");
 
   /** Dépose une demande et attend la réponse du réseau. */
   const envoyer = async (
@@ -193,6 +220,9 @@ export function OperationPopup({
           setAttente(false);
           const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
           setFil((f) => [...f, { de: "reseau", texte }]);
+          // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
+          // en « autre réponse » aurait caché les boutons du menu suivant.
+          setLibre(false);
           if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
           setEnSession(true);
           return texte;
@@ -215,7 +245,7 @@ export function OperationPopup({
       const champ = champPourQuestion(texte, restants.current);
       if (!champ) return;                                // question inattendue : à vous
       restants.current = restants.current.filter((c) => c !== champ);
-      const valeur = chiffres(valeurs[champ.cle] ?? "");
+      const valeur = valeurPropre(champ.type, valeurs[champ.cle] ?? "");
       texte = await envoyer("ussd_reponse", { texte: valeur }, { de: "vous", texte: valeur });
     }
   };
@@ -241,7 +271,12 @@ export function OperationPopup({
     // LES TROUS D'ABORD. Un code peut porter « {numero} » et « {montant} » :
     // on les remplace par ce qui vient d'être saisi, et le code part alors
     // ENTIER, le réseau ne demandant plus que le code secret.
-    const { etapes, consommees, manquantes } = remplirVariables(brutes, valeurs);
+    // Ce qui remplit un trou, c'est ce que l'écran a annoncé (« Partira :
+    // … ») — jamais le texte collé tel quel, dont « +237 » ferait un autre
+    // numéro.
+    const propres = Object.fromEntries(operation.champs.map(
+      (c) => [c.cle, valeurPropre(c.type, valeurs[c.cle] ?? "")]));
+    const { etapes, consommees, manquantes } = remplirVariables(brutes, propres);
     // Un trou sans réponse ne part JAMAIS tel quel : « {numero} » composé au
     // réseau, c'est un code faux — au mieux il échoue, au pire il tombe sur
     // autre chose. On s'arrête, et on dit lequel manque.
@@ -308,7 +343,6 @@ export function OperationPopup({
     if (!valeur) return;
     if (repondEnCours.current) return;
     repondEnCours.current = true;
-    setReponseLibre("");
     try {
       await derouler(await envoyer("ussd_reponse", { texte: valeur },
                                    { de: "vous", texte: valeur }));
@@ -342,7 +376,6 @@ export function OperationPopup({
   const reduit = useMouvementReduit();
   const insets = useSafeAreaInsets();
   const [details, setDetails] = useState(false);
-  const [libre, setLibre] = useState(false);
   // Le formulaire, un champ par écran : `pas` désigne le champ montré, et
   // le dernier pas (= nombre de champs) est la vérification.
   const [pas, setPas] = useState(0);
@@ -407,15 +440,15 @@ export function OperationPopup({
   // Le destinataire, tel qu'on le connaît : son nom s'il est dans les SMS.
   const champNumero = operation.champs.find((c) => c.type === "numero");
   const champMontant = operation.champs.find((c) => c.type === "montant");
-  const numeroSaisi = champNumero ? chiffresDe(valeurs[champNumero.cle] ?? "") : "";
-  const montantSaisi = champMontant ? Number(chiffresDe(valeurs[champMontant.cle] ?? "")) : 0;
-  const nomDuDestinataire = operation.recents?.find((r) => r.numero === numeroSaisi)?.nom;
+  const numeroChoisi = champNumero ? numeroSaisi(valeurs[champNumero.cle] ?? "") : "";
+  const montantChoisi = champMontant ? montantSaisi(valeurs[champMontant.cle] ?? "") : 0;
+  const nomDuDestinataire = nomDe(operation.recents, numeroChoisi);
 
   // À LA FIN D'UN TRANSFERT RÉUSSI : « Enregistrer ce bénéficiaire ? » Le
   // nom proposé est celui que l'OPÉRATEUR a écrit sur son écran de
   // confirmation (« … a JEAN DUPONT (677998877) »), sinon celui des SMS. Un
   // numéro déjà au carnet ne se repropose pas.
-  const numeroDuTransfert = numeroSaisi ? numeroPropre(numeroSaisi) : "";
+  const numeroDuTransfert = numeroChoisi ? numeroPropre(numeroChoisi) : "";
   const dejaAuCarnet = Boolean(operation.recents?.some(
     (r) => r.enregistre && numeroPropre(r.numero) === numeroDuTransfert));
   const nomLu = [...fil].reverse().filter((m) => m.de === "reseau")
@@ -430,11 +463,10 @@ export function OperationPopup({
     const champ = operation.champs[pas];
     cleVue = `champ-${pas}`;
     vue = (
-      <EtapeChiffres
+      <EtapeSaisie
         titre={champ.type === "montant" ? t.combien : champ.label}
         type={champ.type}
         valeur={valeurs[champ.cle] ?? ""}
-        aide={champ.aide}
         onChange={(v) => set(champ.cle, v)}
         recents={champ.type === "numero" ? operation.recents : undefined}
         onRecent={(n) => { set(champ.cle, n); avancer(); }}
@@ -450,22 +482,22 @@ export function OperationPopup({
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center",
                        paddingHorizontal: espaces.xl, gap: espaces.md }}>
           <Texte taille={textes.petit} ton="pale">{t.verifiez}</Texte>
-          {montantSaisi ? (
-            <Montant valeur={montantSaisi} langue={langue} grand />
+          {montantChoisi ? (
+            <Montant valeur={montantChoisi} langue={langue} grand />
           ) : (
             <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
               {operation.titre}
             </Texte>
           )}
-          {numeroSaisi ? (
+          {numeroChoisi ? (
             <View style={{ alignItems: "center", gap: 2 }}>
               <Texte taille={textes.intertitre} style={{ textAlign: "center" }}>
                 {t.vers} <Texte taille={textes.intertitre} poids="demi">
-                  {nomDuDestinataire || formaterNumero(numeroSaisi)}
+                  {nomDuDestinataire || formaterNumero(numeroChoisi)}
                 </Texte>
               </Texte>
               {nomDuDestinataire ? (
-                <Texte ton="doux" chiffresAlignes>{formaterNumero(numeroSaisi)}</Texte>
+                <Texte ton="doux" chiffresAlignes>{formaterNumero(numeroChoisi)}</Texte>
               ) : null}
             </View>
           ) : null}
@@ -510,79 +542,31 @@ export function OperationPopup({
         ) : null}
       />
     );
-  } else if (pave) {
-    cleVue = `code-${fil.length}`;
-    vue = <EtapeCode onValider={secret} t={t} />;
-  } else if (attente || !dernier) {
-    cleVue = "attente";
-    vue = <Attente texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
-                   couleur={couleurOperateur(op)} reduit={reduit} />;
-  } else if (ecran.choix.length && !libre) {
-    cleVue = `menu-${fil.length}`;
-    vue = (
-      <Defilement contentContainerStyle={{ padding: espaces.xl, gap: espaces.sm }}>
-        <Texte taille={textes.petit} ton="pale">{t.operateurDemande(op)}</Texte>
-        {/* Le texte du réseau, mot pour mot : jamais traduit. */}
-        {ecran.texte ? (
-          <Texte taille={textes.titre} poids="demi" style={{ marginBottom: espaces.md }}>
-            {ecran.texte}
-          </Texte>
-        ) : null}
-        {ecran.choix.map((c) => (
-          <Choix key={`${c.numero}-${c.libelle}`} libelle={c.libelle}
-                 onPress={() => void repondre(c.numero)} />
-        ))}
-        <Pressable accessibilityRole="button" onPress={() => setLibre(true)} hitSlop={8}
-          style={({ pressed }) => ({ alignSelf: "center", padding: espaces.md,
-                                      opacity: pressed ? 0.5 : 1 })}>
-          <Texte taille={textes.petit} ton="doux">{t.autreReponse}</Texte>
-        </Pressable>
-      </Defilement>
-    );
-  } else if (ecran.attend === "texte") {
-    cleVue = `texte-${fil.length}`;
-    vue = (
-      <View style={{ flex: 1, padding: espaces.xl, gap: espaces.lg }}>
-        <Texte taille={textes.petit} ton="pale">{t.operateurDemande(op)}</Texte>
-        <Texte taille={textes.titre} poids="demi">{ecran.texte || dernier}</Texte>
-        <ChampTexte
-          value={reponseLibre}
-          onChangeText={setReponseLibre}
-          placeholder={t.votreReponse}
-          placeholderTextColor={couleurs.encrePale}
-          autoFocus
-          onSubmitEditing={() => void repondre(reponseLibre)}
-          style={{
-            borderBottomWidth: 2, borderColor: couleurs.encre,
-            paddingVertical: espaces.md, fontFamily: polices.moyen,
-            fontSize: textes.titre, color: couleurs.encre,
-          }}
-        />
-        <View style={{ flex: 1 }} />
-        <GrosBouton libelle={t.envoyer} desactive={!reponseLibre.trim()}
-                    onPress={() => void repondre(reponseLibre)} />
-      </View>
-    );
   } else {
-    // L'opérateur demande un chiffre qu'on ne sait pas servir seul — un
-    // numéro, un montant, ou un choix qu'on veut taper soi-même : le même
-    // pavé que pour la saisie, sous SA question à lui.
-    cleVue = `question-${fil.length}`;
+    // L'APPEL EN COURS : tout l'échange, en entier, puis ce qu'on attend de
+    // vous — le pavé du code, un champ, ou rien pendant que le réseau parle.
+    // Une seule vue pour toute la session : elle ne se remonte pas à chaque
+    // message, l'échange défile sous les yeux au lieu de clignoter.
+    cleVue = "session";
+    const menu = !pave && !attente && ecran.choix.length > 0 && !libre;
+    const question = !pave && !attente && !menu && Boolean(dernier)
+      && (libre || ecran.attend !== "rien");
+    const typeQuestion: TypeSaisie = libre ? "texte"
+      : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
     vue = (
-      <EtapeChiffres
-        surtitre={t.operateurDemande(op)}
-        titre={ecran.texte || dernier}
-        type={ecran.attend === "montant" ? "montant" : "numero"}
-        brut={ecran.attend !== "numero" && ecran.attend !== "montant"}
-        valeur={reponseLibre}
-        aide=""
-        onChange={setReponseLibre}
-        recents={ecran.attend === "numero" ? operation.recents : undefined}
-        onRecent={(n) => void repondre(n)}
-        bouton={t.envoyer}
-        onValider={() => void repondre(reponseLibre)}
-        langue={langue}
-      />
+      <View style={{ flex: 1 }}>
+        <Echange fil={fil} op={op} couleur={couleurOperateur(op)} t={t} reduit={reduit}
+          attente={attente ? (!dernier ? t.connexionA(op) : t.onParleA(op)) : null}
+          menu={menu ? { texte: ecran.texte, choix: ecran.choix } : null}
+          onChoix={(n) => void repondre(n)}
+          onAutre={menu ? () => setLibre(true) : undefined} />
+        {question ? (
+          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion}
+            recents={typeQuestion === "numero" ? operation.recents : undefined}
+            onEnvoyer={(v) => void repondre(v)} langue={langue} />
+        ) : null}
+        {pave ? <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} /> : null}
+      </View>
     );
   }
 
@@ -670,24 +654,92 @@ function Montant({ valeur, langue, grand, vide }: {
 }
 
 /**
- * UN CHAMP DE CHIFFRES, SUR UN ÉCRAN À LUI.
+ * UN VRAI CHAMP. On y tape, on y colle (appui long → Coller), on corrige au
+ * milieu : tout ce qu'un champ du téléphone sait faire ailleurs. Il accepte
+ * n'importe quel texte — un numéro recopié avec « +237 » et des espaces, un
+ * montant avec « FCFA » — et dit dessous ce qui partira réellement. Quand il
+ * ne sait pas lire UN numéro (deux numéros différents dans le même collage),
+ * il le dit, et rien ne part.
  *
- * La question en haut, la réponse en très grand au milieu, le pavé en bas.
- * Pas de clavier du téléphone : sur iPhone, le pavé numérique du système
- * n'a pas de touche « OK » et couvrait le bouton suivant — le pavé est ici
- * une partie de l'écran, il ne cache rien.
+ * Le clavier est celui du téléphone, le bon pour chaque champ : sur iPhone,
+ * `ChampTexte` lui ajoute la barre « Terminé » qui manque aux claviers de
+ * chiffres, et la feuille se pousse au-dessus de lui.
  */
-function EtapeChiffres({
-  surtitre, titre, type, brut, valeur, aide, onChange, recents, onRecent,
-  bouton, onValider, langue,
+function ChampSaisie({ type, valeur, onChange, onValider, langue }: {
+  type: TypeSaisie; valeur: string; onChange: (v: string) => void;
+  onValider: () => void; langue: "fr" | "en";
+}) {
+  const t = textesGuichet[langue];
+  const propre = valeurPropre(type, valeur);
+  const brut = valeur.trim();
+  // Ce qu'on annonce sous le champ — seulement quand ce n'est pas déjà ce
+  // qu'on lit dedans : « 677998877 » tapé tel quel n'a pas besoin d'écho.
+  let annonce: { texte: string; doute?: boolean } | null = null;
+  if (brut && type === "numero") {
+    if (propre.length >= 8) {
+      const vu = formaterNumero(propre);
+      if (vu !== brut && propre !== brut) annonce = { texte: t.partira(vu) };
+    } else if (!propre || /\D/.test(brut.replace(/[\s+().\-]/g, ""))) {
+      annonce = { texte: t.numeroIntrouvable, doute: true };
+    }
+  } else if (brut && type === "montant") {
+    if (!propre) annonce = { texte: t.montantIntrouvable, doute: true };
+    else if (propre !== brut && nombre(Number(propre), langue) !== brut) {
+      annonce = { texte: t.partira(`${nombre(Number(propre), langue)} FCFA`) };
+    }
+  }
+  const chiffres = type !== "texte";
+  return (
+    <View style={{ alignSelf: "stretch" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                     borderBottomWidth: 2, borderColor: couleurs.encre }}>
+        <ChampTexte
+          value={valeur}
+          onChangeText={onChange}
+          autoFocus
+          keyboardType={type === "numero" ? "phone-pad" : type === "montant" ? "number-pad" : "default"}
+          autoCorrect={false}
+          autoCapitalize="none"
+          autoComplete="off"
+          returnKeyType="done"
+          onSubmitEditing={onValider}
+          placeholder={type === "numero" ? t.numeroPlaceholder
+            : type === "montant" ? "0" : t.reponsePlaceholder}
+          placeholderTextColor={couleurs.encrePale}
+          accessibilityLabel={type === "numero" ? t.numeroPlaceholder
+            : type === "montant" ? t.combien : t.reponsePlaceholder}
+          style={{
+            // `minWidth: 0` : sans lui, un champ « flex » prend la largeur de
+            // son texte — un numéro collé ou l'invite le poussaient hors de
+            // l'écran, à droite.
+            flex: 1, minWidth: 0, paddingVertical: espaces.sm, color: couleurs.encre,
+            fontFamily: chiffres ? polices.demi : polices.moyen,
+            fontSize: chiffres ? 24 : textes.titre,
+            fontVariant: chiffres ? ["tabular-nums"] : undefined,
+            textAlign: type === "montant" ? "right" : "left",
+          }}
+        />
+        {type === "montant" ? (
+          <Texte taille={textes.intertitre} ton="pale" poids="moyen">FCFA</Texte>
+        ) : null}
+      </View>
+      <Texte taille={textes.petit} ton={annonce?.doute ? "negatif" : "doux"}
+             accessibilityLiveRegion="polite"
+             style={{ marginTop: espaces.sm, minHeight: 20 }}>
+        {annonce?.texte ?? ""}
+      </Texte>
+    </View>
+  );
+}
+
+/** UNE QUESTION DU FORMULAIRE, SUR UN ÉCRAN À ELLE : la question, le champ,
+ *  les montants de tous les jours ou les visages déjà connus, « Continuer ». */
+function EtapeSaisie({
+  titre, type, valeur, onChange, recents, onRecent, bouton, onValider, langue,
 }: {
-  surtitre?: string;
   titre: string;
   type: TypeChamp;
-  /** Une réponse quelconque au menu : on montre les chiffres tels quels. */
-  brut?: boolean;
   valeur: string;
-  aide: string;
   onChange: (v: string) => void;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onRecent: (numero: string) => void;
@@ -696,39 +748,22 @@ function EtapeChiffres({
   langue: "fr" | "en";
 }) {
   const t = textesGuichet[langue];
-  const c = chiffresDe(valeur);
-  const max = type === "montant" ? 9 : 15;
-  const taper = (x: string) => onChange((c + x).replace(/^0+(?=\d)/, "").slice(0, max));
-  const effacer = () => onChange(c.slice(0, -1));
-  const valide = brut ? c.length > 0 : pret(type, c);
+  const valide = pret(type, valeur);
+  const propre = valeurPropre(type, valeur);
+  const valider = () => { if (valide) onValider(); };
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ paddingHorizontal: espaces.xl, paddingTop: espaces.xl, gap: espaces.xs }}>
-        {surtitre ? <Texte taille={textes.petit} ton="pale">{surtitre}</Texte> : null}
+      <Defilement contentContainerStyle={{ padding: espaces.xl, gap: espaces.xl }}>
         <Texte taille={textes.titre} poids="demi" style={{ lineHeight: 32 }}>{titre}</Texte>
-      </View>
-
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center",
-                     paddingHorizontal: espaces.xl, gap: espaces.lg }}>
-        {type === "montant" && !brut ? (
-          <Montant valeur={Number(c) || 0} langue={langue} vide={!c} />
-        ) : (
-          <Texte taille={36} poids="demi" chiffresAlignes numberOfLines={1}
-                 adjustsFontSizeToFit maxFontSizeMultiplier={1.2}
-                 ton={c ? "normal" : "pale"} style={{ letterSpacing: 0.5 }}>
-            {/* Vide, un trait — jamais un numéro d'exemple : grisé, il
-                passait pour un numéro déjà rempli. */}
-            {c ? (brut ? c : formaterNumero(c)) : "— — —"}
-          </Texte>
-        )}
+        <ChampSaisie type={type} valeur={valeur} onChange={onChange}
+                     onValider={valider} langue={langue} />
 
         {/* Les montants de tous les jours, sous le montant. */}
-        {type === "montant" && !brut ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center",
-                         gap: espaces.sm }}>
+        {type === "montant" ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
             {MONTANTS.map((m) => {
-              const choisi = Number(c) === m;
+              const choisi = Number(propre) === m;
               return (
                 <Pressable key={m} accessibilityRole="button" onPress={() => onChange(String(m))}
                   style={({ pressed }) => ({
@@ -751,27 +786,185 @@ function EtapeChiffres({
             frappe sur le chiffre vers lequel l'argent part est la plus chère
             de toutes. Un visage, un prénom : on reconnaît avant de lire. */}
         {recents?.length ? (
-          <View style={{ alignSelf: "stretch", gap: espaces.sm }}>
-            <Texte taille={textes.legende} ton="pale" style={{ textAlign: "center" }}>
+          <View style={{ gap: espaces.sm }}>
+            <Texte taille={textes.legende} ton="pale">
               {recents.some((r) => r.enregistre)
                 ? textesBeneficiaires[langue].vosBenef : t.clientsRecents}
             </Texte>
             <Defilement horizontal showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={{ gap: espaces.md, paddingHorizontal: espaces.xs,
-                                                 flexGrow: 1, justifyContent: "center" }}>
+                        contentContainerStyle={{ gap: espaces.md }}>
               {recents.map((r) => (
-                <Visage key={r.numero} client={r} choisi={r.numero === c}
+                <Visage key={r.numero} client={r}
+                        choisi={numeroPropre(r.numero) === numeroPropre(propre)}
                         onPress={() => onRecent(r.numero)} />
               ))}
             </Defilement>
           </View>
         ) : null}
-      </View>
+      </Defilement>
+      <GrosBouton libelle={bouton} desactive={!valide} onPress={valider} />
+    </View>
+  );
+}
 
-      <Pave onChiffre={taper} onEffacer={effacer}
-            gauche={type === "montant" && !brut ? "000" : undefined}
-            etiquetteEffacer={t.effacerDernier} />
-      <GrosBouton libelle={bouton} desactive={!valide} onPress={onValider} />
+/**
+ * RÉPONDRE À L'OPÉRATEUR, quand il pose une question que l'application ne
+ * sert pas seule. Un vrai champ, là aussi : il accepte des LETTRES. Une
+ * question qu'on ne savait pas classer ouvrait un pavé de chiffres — et un
+ * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
+ * recevoir de réponse.
+ */
+function ZoneReponse({ type, recents, onEnvoyer, langue }: {
+  type: TypeSaisie;
+  recents?: (ClientRecent & { enregistre?: boolean })[];
+  onEnvoyer: (valeur: string) => void;
+  langue: "fr" | "en";
+}) {
+  const t = textesGuichet[langue];
+  const [valeur, setValeur] = useState("");
+  const valide = pret(type, valeur);
+  const envoyer = () => {
+    if (!valide) return;
+    onEnvoyer(valeurPropre(type, valeur));
+    setValeur("");
+  };
+  return (
+    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait, gap: espaces.sm,
+                   paddingHorizontal: espaces.xl, paddingTop: espaces.lg }}>
+      <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
+                   onValider={envoyer} langue={langue} />
+      {recents?.length ? (
+        <Defilement horizontal showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: espaces.md, paddingBottom: espaces.sm }}>
+          {recents.map((r) => (
+            <Visage key={r.numero} client={r} choisi={false} onPress={() => onEnvoyer(r.numero)} />
+          ))}
+        </Defilement>
+      ) : null}
+      {/* Le grand bouton garde sa largeur de partout : il porte sa propre
+          marge, on retire celle de la zone. */}
+      <View style={{ marginHorizontal: -espaces.xl }}>
+        <GrosBouton libelle={t.envoyer} desactive={!valide} onPress={envoyer} />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * L'ÉCHANGE, EN ENTIER. Chaque écran de l'opérateur, mot pour mot — même
+ * ceux auxquels l'application répond seule —, et ce qu'on lui a répondu. Le
+ * code secret n'y est jamais : quatre points. Le dernier message est en
+ * avant ; les précédents restent là, plus discrets, à relire.
+ */
+function Echange({ fil, op, couleur, t, reduit, attente, menu, onChoix, onAutre }: {
+  fil: Msg[]; op: string; couleur: string; t: T; reduit: boolean;
+  attente: string | null;
+  menu: { texte: string; choix: { numero: string; libelle: string }[] } | null;
+  onChoix: (numero: string) => void;
+  onAutre?: () => void;
+}) {
+  const defile = useRef<Rouleau>(null);
+  const dernier = fil.map((m) => m.de).lastIndexOf("reseau");
+  return (
+    <Defilement ref={defile} style={{ flex: 1 }}
+      // Le dernier message en vue, à chaque nouveau.
+      onContentSizeChange={() => defile.current?.scrollToEnd({ animated: !reduit })}
+      contentContainerStyle={{ padding: espaces.lg, gap: espaces.md }}>
+      {fil.map((m, k) => m.de === "vous" ? (
+        <View key={k} style={{
+          alignSelf: "flex-end", maxWidth: "80%", backgroundColor: couleurs.accent,
+          borderRadius: 16, borderBottomRightRadius: 6,
+          paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+        }}>
+          <Texte taille={textes.petit} poids="moyen" chiffresAlignes selectable
+                 style={{ color: couleurs.surfaceHaute }}>{m.texte}</Texte>
+        </View>
+      ) : (
+        <CarteReseau key={k} op={op} couleur={couleur} t={t} actuelle={k === dernier}
+          // Le menu en cours : son titre ici, ses choix en boutons dessous.
+          // Les anciens messages restent entiers, tels qu'ils sont arrivés.
+          texte={k === dernier && menu ? (menu.texte || m.texte) : m.texte}
+          copie={m.texte} />
+      ))}
+      {menu ? (
+        <View style={{ gap: espaces.sm }}>
+          {menu.choix.map((c) => (
+            <Choix key={`${c.numero}-${c.libelle}`} numero={c.numero} libelle={c.libelle}
+                   onPress={() => onChoix(c.numero)} />
+          ))}
+          {onAutre ? (
+            <Pressable accessibilityRole="button" onPress={onAutre} hitSlop={8}
+              style={({ pressed }) => ({ alignSelf: "center", padding: espaces.md,
+                                          opacity: pressed ? 0.5 : 1 })}>
+              <Texte taille={textes.petit} ton="doux">{t.autreReponse}</Texte>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {attente ? <EnCours texte={attente} couleur={couleur} reduit={reduit} /> : null}
+    </Defilement>
+  );
+}
+
+/** Un message de l'opérateur : qui parle, le texte entier, « Copier ». */
+function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
+  texte: string; copie: string; op: string; couleur: string; t: T; actuelle: boolean;
+}) {
+  const [copiee, setCopiee] = useState(false);
+  const copier = () => {
+    // Le presse-papiers du cœur de React Native : présent dans l'application
+    // déjà installée, donc rien à refabriquer pour l'offrir. Le texte reste
+    // de toute façon sélectionnable à l'appui long.
+    try {
+      Clipboard.setString(copie);
+      setCopiee(true);
+      setTimeout(() => setCopiee(false), 1600);
+    } catch { /* l'appui long sur le texte reste là */ }
+  };
+  return (
+    <View style={{
+      alignSelf: "flex-start", maxWidth: "92%", borderRadius: 16, borderBottomLeftRadius: 6,
+      paddingHorizontal: espaces.lg, paddingVertical: espaces.md, gap: espaces.xs,
+      backgroundColor: actuelle ? couleurs.surfaceHaute : couleurs.surface2,
+      borderWidth: 1, borderColor: actuelle ? couleurs.trait : "transparent",
+    }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
+        <View style={{ width: 8, height: 8, borderRadius: rayons.rond, backgroundColor: couleur }} />
+        <Texte taille={textes.legende} ton="pale" poids="moyen" style={{ flex: 1 }}>{op}</Texte>
+        <Pressable accessibilityRole="button" onPress={copier} hitSlop={10}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+          <Texte taille={textes.legende} ton="pale">{copiee ? t.copie : t.copier}</Texte>
+        </Pressable>
+      </View>
+      {/* Le texte du réseau, mot pour mot : jamais traduit, toujours entier,
+          et sélectionnable — appui long → Copier. */}
+      <Texte selectable taille={actuelle ? textes.corps : textes.petit}
+             ton={actuelle ? "normal" : "doux"}
+             style={{ lineHeight: actuelle ? 22 : 19 }}>
+        {texte}
+      </Texte>
+    </View>
+  );
+}
+
+/** Le réseau parle : un point qui respire, à la couleur de l'opérateur. */
+function EnCours({ texte, couleur, reduit }: { texte: string; couleur: string; reduit: boolean }) {
+  const souffle = useSharedValue(0);
+  useEffect(() => {
+    if (reduit) return;
+    souffle.value = withRepeat(
+      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }), -1, true);
+  }, [reduit]);
+  const point = useAnimatedStyle(() => ({ opacity: 1 - souffle.value * 0.6 }));
+  return (
+    <View accessibilityLiveRegion="polite" style={{
+      alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: espaces.sm,
+      backgroundColor: couleurs.surface2, borderRadius: 16,
+      paddingHorizontal: espaces.lg, paddingVertical: espaces.sm + 2,
+    }}>
+      <Animated.View style={[{ width: 10, height: 10, borderRadius: rayons.rond,
+                                backgroundColor: couleur }, point]} />
+      <Texte taille={textes.petit} ton="doux">{texte}</Texte>
     </View>
   );
 }
@@ -816,17 +1009,16 @@ function Visage({ client, choisi, onPress }: {
  * LE PAVÉ — à nous, dans l'écran. Trois colonnes, quatre rangées, de grandes
  * touches sans bordure qui s'éclairent sous le doigt.
  */
-function Pave({ onChiffre, onEffacer, gauche, etiquetteEffacer }: {
+function Pave({ onChiffre, onEffacer, etiquetteEffacer }: {
   onChiffre: (c: string) => void;
   onEffacer: () => void;
-  gauche?: string;
   etiquetteEffacer: string;
 }) {
   const { height } = useWindowDimensions();
   // Un petit écran (iPhone SE) garde la place du bouton sous le pavé.
-  const haut = height < 700 ? 50 : 60;
+  const haut = height < 700 ? 46 : 54;
   const rangees: (string | null)[][] = [
-    ["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], [gauche ?? null, "0", "⌫"],
+    ["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], [null, "0", "⌫"],
   ];
   return (
     <View style={{ paddingHorizontal: espaces.lg, paddingBottom: espaces.sm }}>
@@ -841,7 +1033,7 @@ function Pave({ onChiffre, onEffacer, gauche, etiquetteEffacer }: {
                 borderRadius: rayons.carte * 2,
                 backgroundColor: pressed ? couleurs.surface2 : "transparent",
               })}>
-              <Texte taille={x === "000" ? textes.intertitre : 28}
+              <Texte taille={26}
                      poids={x === "⌫" ? "normal" : "moyen"} chiffresAlignes
                      maxFontSizeMultiplier={1.1}
                      ton={x === "⌫" ? "doux" : "normal"}>
@@ -912,17 +1104,17 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }
     setCode("");            // rien ne subsiste après l'envoi
   };
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: espaces.md }}>
-        <View style={{ width: 56, height: 56, borderRadius: rayons.rond,
-                       backgroundColor: couleurs.surface2, alignItems: "center",
-                       justifyContent: "center" }}>
-          <Icone nom="Lock" taille={24} couleur={couleurs.encre} />
+    // Posé SOUS l'échange, pas à sa place : le message qui réclame le code
+    // — ce qu'on va signer — reste lisible juste au-dessus.
+    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait, paddingTop: espaces.md }}>
+      <View style={{ alignItems: "center", gap: espaces.xs }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
+          <Icone nom="Lock" taille={18} couleur={couleurs.encre} />
+          <Texte taille={textes.intertitre} poids="demi">{t.codeTitre}</Texte>
         </View>
-        <Texte taille={textes.titre} poids="demi">{t.codeTitre}</Texte>
-        <Texte taille={textes.petit} ton="pale">{t.codeNote}</Texte>
+        <Texte taille={textes.legende} ton="pale">{t.codeNote}</Texte>
         <View accessibilityLabel={t.chiffresComposes(code.length)}
-              style={{ flexDirection: "row", gap: espaces.md, marginTop: espaces.lg,
+              style={{ flexDirection: "row", gap: espaces.md, marginVertical: espaces.sm,
                        height: 16, alignItems: "center" }}>
           {Array.from({ length: Math.max(LONGUEUR_CODE_MIN, code.length) }).map((_, i) => (
             <View key={i} style={{
@@ -943,55 +1135,25 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }
 }
 
 /** Un choix du menu de l'opérateur : une rangée qu'on touche. */
-function Choix({ libelle, onPress }: { libelle: string; onPress: () => void }) {
+function Choix({ numero, libelle, onPress }: {
+  numero: string; libelle: string; onPress: () => void;
+}) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: "row", alignItems: "center", gap: espaces.md,
-        paddingHorizontal: espaces.lg, paddingVertical: espaces.lg,
-        borderRadius: 14,
+        paddingHorizontal: espaces.lg, paddingVertical: espaces.md + 2,
+        borderRadius: 14, borderWidth: 1, borderColor: couleurs.trait,
         backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
       })}>
+      <View style={{ width: 28, height: 28, borderRadius: rayons.rond,
+                     backgroundColor: couleurs.surface2, alignItems: "center",
+                     justifyContent: "center" }}>
+        <Texte taille={textes.petit} ton="doux" chiffresAlignes>{numero}</Texte>
+      </View>
       <Texte taille={17} poids="moyen" style={{ flex: 1 }}>{libelle}</Texte>
       <Icone nom="Chevron" taille={18} couleur={couleurs.encrePale} />
     </Pressable>
-  );
-}
-
-/**
- * L'ATTENTE — la carte est à Douala, le réseau met quelques secondes. Un
- * rond qui respire, à la couleur de l'opérateur, et UNE phrase : ce qui se
- * passe, pas comment.
- */
-function Attente({ texte, couleur, reduit }: { texte: string; couleur: string; reduit: boolean }) {
-  const souffle = useSharedValue(0);
-  useEffect(() => {
-    if (reduit) return;
-    souffle.value = withRepeat(
-      withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [reduit]);
-  const anneau = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + souffle.value * 0.25 }],
-    opacity: 0.35 - souffle.value * 0.25,
-  }));
-  return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: espaces.xl }}
-          accessibilityLiveRegion="polite">
-      <View style={{ width: 120, height: 120, alignItems: "center", justifyContent: "center" }}>
-        <Animated.View style={[{
-          position: "absolute", width: 120, height: 120, borderRadius: rayons.rond,
-          backgroundColor: couleur,
-        }, anneau]} />
-        <View style={{ width: 72, height: 72, borderRadius: rayons.rond,
-                       backgroundColor: couleurs.surfaceHaute, alignItems: "center",
-                       justifyContent: "center", borderWidth: 3, borderColor: couleur }}>
-          <Icone nom="PuceSim" taille={28} couleur={couleurs.encre} />
-        </View>
-      </View>
-      <Texte taille={textes.intertitre} poids="moyen" style={{ textAlign: "center" }}>
-        {texte}
-      </Texte>
-    </View>
   );
 }
 
@@ -1035,7 +1197,7 @@ function Fin({
         {/* Le texte du réseau, mot pour mot : jamais traduit. Pour une simple
             réponse (un solde, un numéro), c'est lui l'information — en grand. */}
         {texte ? (
-          <Texte taille={issue === "reponse" ? textes.intertitre : textes.corps}
+          <Texte selectable taille={issue === "reponse" ? textes.intertitre : textes.corps}
                  ton={issue === "reponse" ? "normal" : "doux"}
                  style={{ textAlign: "center", lineHeight: issue === "reponse" ? 28 : 22 }}>
             {texte}
@@ -1075,7 +1237,7 @@ function Fin({
                 backgroundColor: m.de === "vous" ? couleurs.accent : couleurs.surfaceHaute,
                 borderRadius: 14, paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
               }}>
-                <Texte taille={textes.petit}
+                <Texte taille={textes.petit} selectable
                        style={m.de === "vous" ? { color: couleurs.surfaceHaute } : undefined}>
                   {m.texte}
                 </Texte>

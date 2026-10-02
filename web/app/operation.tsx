@@ -7,27 +7,35 @@ import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
 import { nomDuBeneficiaire, nomPropre, numeroPropre } from "@noyau/beneficiaires";
+import { montantSaisi, numeroSaisi } from "@noyau/saisie";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { BarreArret, BoutonFermer, type SortieRetenue } from "./feuille";
-import { IconBubble, IconCheck, IconChevron, IconClose, IconLock, IconPersonnes, IconPuceSim } from "./icons";
+import { IconBubble, IconCheck, IconChevron, IconClose, IconLock, IconPersonnes } from "./icons";
 import { useLangue } from "./langue";
 
 /**
  * Une opération, du premier chiffre au code secret — le même parcours que
  * sur le téléphone (`mobile/src/operation.tsx`).
  *
- * UNE QUESTION PAR ÉCRAN : « À qui ? » → « Combien ? » → « Vérifiez » → on
- * parle à MTN… → le code secret → c'est fait. Sur un ordinateur, une fenêtre
- * centrée ; sur un téléphone, tout l'écran. Les chiffres se tapent au pavé
- * de l'écran OU au clavier de l'ordinateur — Entrée continue, Retour
- * arrière efface, Échap sort.
+ * Avant d'appeler : « À qui ? » → « Combien ? » → « Vérifiez », une question
+ * par écran. Sur un ordinateur, une fenêtre centrée ; sur un téléphone, tout
+ * l'écran. Échap sort.
  *
- * La vraie session USSD s'ouvre sur la carte de Douala, la plateforme répond
- * elle-même aux questions qu'elle reconnaît, et le menu de l'opérateur ne se
- * montre que s'il pose une question qu'on ne sait pas servir — ses choix
- * sont alors des boutons. Son texte reste à un geste (« Détails »), mot pour
- * mot.
+ * DES VRAIS CHAMPS. Le numéro et le montant se tapaient sur un pavé dessiné,
+ * chiffre par chiffre : impossible d'y COLLER un numéro recopié d'un SMS,
+ * de faire clic droit, de corriger au milieu. « C'est trop figé », a dit le
+ * propriétaire. Ce sont maintenant des champs ordinaires, qui acceptent tout
+ * ce qu'on tape ou colle ; l'écran montre ce qui partira (`@noyau/saisie`),
+ * et ne devine jamais entre deux numéros.
+ *
+ * TOUT CE QUE DIT L'OPÉRATEUR SE LIT. Pendant l'appel, l'échange s'écrit à
+ * l'écran, message après message, en entier : chaque écran de MTN ou
+ * d'Orange, même ceux auxquels la plateforme répond seule, et ce qu'on lui a
+ * répondu. Le pavé du code secret se pose SOUS le message qui le réclame —
+ * « Dépôt de 5 000 F à JEAN DUPONT, frais 0 F » : on sait ce qu'on signe.
+ * Avant, il n'affichait que « Votre code secret », seul : on signait à
+ * l'aveugle. Chaque message se sélectionne et se copie.
  *
  * La sortie suit le motif de la plateforme (feuille.tsx) : tant que la
  * session est VIVANTE, la croix et Échap mènent à la même confirmation —
@@ -67,9 +75,21 @@ type Issue = "reussie" | "refusee" | "interrompue" | "reponse";
 const MONTANTS = [1000, 5000, 10000, 25000];
 const LONGUEUR_CODE_MIN = 4;
 const LONGUEUR_CODE_MAX = 6;
-const chiffresDe = (v: string) => v.replace(/\D/g, "");
-const pret = (type: "numero" | "montant", v: string) =>
-  type === "numero" ? chiffresDe(v).length >= 8 : Number(chiffresDe(v)) > 0;
+
+type TypeSaisie = "numero" | "montant" | "texte";
+
+/** Ce qui partira réellement au réseau, lu dans ce qu'on a tapé ou collé. */
+function valeurPropre(type: TypeSaisie, brut: string): string {
+  if (type === "numero") return numeroSaisi(brut);
+  if (type === "montant") { const m = montantSaisi(brut); return m ? String(m) : ""; }
+  return brut.trim();
+}
+/** Un numéro se tient à partir de huit chiffres ; un montant, dès le premier
+ *  franc ; une réponse libre, dès le premier caractère. Le réseau reste juge. */
+const pret = (type: TypeSaisie, brut: string) => {
+  const v = valeurPropre(type, brut);
+  return type === "numero" ? v.length >= 8 : v.length > 0;
+};
 
 function couleurOperateur(op: string): string {
   const o = op.toUpperCase();
@@ -108,7 +128,6 @@ export function OperationPopup({
   const raccrochageDu = useRef(false);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [reponseLibre, setReponseLibre] = useState("");
   const [pas, setPas] = useState(0);
   const [details, setDetails] = useState(false);
   const [libre, setLibre] = useState(false);
@@ -153,6 +172,9 @@ export function OperationPopup({
           setAttente(false);
           const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
           setFil((f) => [...f, { de: "reseau", texte }]);
+          // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
+          // en « autre réponse » aurait caché les boutons du menu suivant.
+          setLibre(false);
           if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
           setEnSession(true);
           return texte;
@@ -174,7 +196,7 @@ export function OperationPopup({
       const champ = champPourQuestion(texte, restants.current);
       if (!champ) return;                            // question inattendue : à vous
       restants.current = restants.current.filter((c) => c !== champ);
-      const valeur = chiffresDe(valeurs[champ.cle] ?? "");
+      const valeur = valeurPropre(champ.type, valeurs[champ.cle] ?? "");
       texte = await envoyer("ussd_reponse", { texte: valeur }, { de: "vous", texte: valeur });
     }
   };
@@ -189,8 +211,12 @@ export function OperationPopup({
     restants.current = [...operation.champs];
     const brutes = operation.etapes?.length ? operation.etapes : [operation.code];
     // LES TROUS D'ABORD : « {numero} », « {montant} » remplis par la saisie,
-    // et le code part ENTIER. Un trou sans réponse ne part jamais.
-    const { etapes, consommees, manquantes } = remplirVariables(brutes, valeurs);
+    // et le code part ENTIER. Un trou sans réponse ne part jamais. Ce qui
+    // remplit un trou, c'est ce que l'écran a annoncé (« Partira : … ») —
+    // jamais le texte collé tel quel, dont « +237 » ferait un autre numéro.
+    const propres = Object.fromEntries(operation.champs.map(
+      (c) => [c.cle, valeurPropre(c.type, valeurs[c.cle] ?? "")]));
+    const { etapes, consommees, manquantes } = remplirVariables(brutes, propres);
     if (manquantes.length) {
       setErreur(t.trouSansReponse(manquantes.map((m) => `{${m}}`).join(", ")));
       setFini(true);
@@ -258,7 +284,6 @@ export function OperationPopup({
     const v = brut.trim();
     if (!v || repondEnCours.current) return;
     repondEnCours.current = true;
-    setReponseLibre("");
     try {
       await derouler(await envoyer("ussd_reponse", { texte: v }, { de: "vous", texte: v }));
     } finally {
@@ -328,12 +353,12 @@ export function OperationPopup({
 
   const champNumero = operation.champs.find((c) => c.type === "numero");
   const champMontant = operation.champs.find((c) => c.type === "montant");
-  const numeroSaisi = champNumero ? chiffresDe(valeurs[champNumero.cle] ?? "") : "";
-  const montantSaisi = champMontant ? Number(chiffresDe(valeurs[champMontant.cle] ?? "")) : 0;
-  const nomDuDestinataire = operation.recents?.find((r) => r.numero === numeroSaisi)?.nom;
+  const numeroChoisi = champNumero ? numeroSaisi(valeurs[champNumero.cle] ?? "") : "";
+  const montantChoisi = champMontant ? montantSaisi(valeurs[champMontant.cle] ?? "") : 0;
+  const nomDuDestinataire = nomDe(operation.recents, numeroChoisi);
 
   // « Enregistrer ce bénéficiaire ? » à la fin d'un transfert réussi.
-  const numeroDuTransfert = numeroSaisi ? numeroPropre(numeroSaisi) : "";
+  const numeroDuTransfert = numeroChoisi ? numeroPropre(numeroChoisi) : "";
   const dejaAuCarnet = Boolean(operation.recents?.some(
     (r) => r.enregistre && numeroPropre(r.numero) === numeroDuTransfert));
   const nomLu = [...fil].reverse().filter((m) => m.de === "reseau")
@@ -347,9 +372,9 @@ export function OperationPopup({
     const champ = operation.champs[pas];
     cleVue = `champ-${pas}`;
     vue = (
-      <EtapeChiffres
+      <EtapeSaisie
         titre={champ.type === "montant" ? t.combien : champ.label}
-        type={champ.type} valeur={valeurs[champ.cle] ?? ""} aide={champ.aide}
+        type={champ.type} valeur={valeurs[champ.cle] ?? ""}
         onChange={(v) => set(champ.cle, v)}
         recents={champ.type === "numero" ? operation.recents : undefined}
         onRecent={(n) => { set(champ.cle, n); setPas((p) => p + 1); }}
@@ -361,13 +386,13 @@ export function OperationPopup({
       <div className="flex flex-1 flex-col">
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
           <p className="text-small text-ink-faint">{t.verifiez}</p>
-          {montantSaisi ? <Montant valeur={montantSaisi} langue={langue} grand />
+          {montantChoisi ? <Montant valeur={montantChoisi} langue={langue} grand />
             : <p className="text-title font-semibold">{operation.titre}</p>}
-          {numeroSaisi ? (
+          {numeroChoisi ? (
             <div>
               <p className="text-heading">{t.vers} <strong className="font-semibold">
-                {nomDuDestinataire || formaterNumero(numeroSaisi)}</strong></p>
-              {nomDuDestinataire && <p className="tabnums text-ink-soft">{formaterNumero(numeroSaisi)}</p>}
+                {nomDuDestinataire || formaterNumero(numeroChoisi)}</strong></p>
+              {nomDuDestinataire && <p className="tabnums text-ink-soft">{formaterNumero(numeroChoisi)}</p>}
             </div>
           ) : null}
           {operation.carteLibelle && (
@@ -398,58 +423,36 @@ export function OperationPopup({
             nomInitial={nomLu ?? nomDuDestinataire ?? ""} tb={tb} onFait={onTermine} />
         ) : null} />
     );
-  } else if (pave) {
-    cleVue = `code-${fil.length}`;
-    vue = <EtapeCode onValider={secret} t={t} />;
-  } else if (attente || !dernier) {
-    cleVue = "attente";
-    vue = <Attente texte={!dernier ? t.connexionA(op) : t.onParleA(op)} couleur={couleurOperateur(op)} />;
-  } else if (ecran.choix.length && !libre) {
-    cleVue = `menu-${fil.length}`;
-    vue = (
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-6 py-6">
-        <p className="text-small text-ink-faint">{t.operateurDemande(op)}</p>
-        {/* Le texte du réseau, mot pour mot : jamais traduit. */}
-        {ecran.texte && <p className="mb-3 whitespace-pre-line text-title font-semibold">{ecran.texte}</p>}
-        {ecran.choix.map((c) => (
-          <button key={`${c.numero}-${c.libelle}`} onClick={() => void repondre(c.numero)}
-            className="flex items-center gap-3 rounded-2xl bg-surface-raised px-5 py-4 text-left text-body font-medium transition hover:bg-surface-2">
-            <span className="flex-1">{c.libelle}</span>
-            <IconChevron size={16} className="text-ink-faint" />
-          </button>
-        ))}
-        <button onClick={() => setLibre(true)}
-          className="mt-1 self-center p-3 text-small text-ink-soft transition hover:text-ink">
-          {t.autreReponse}
-        </button>
-      </div>
-    );
-  } else if (ecran.attend === "texte") {
-    cleVue = `texte-${fil.length}`;
-    vue = (
-      <form onSubmit={(e) => { e.preventDefault(); void repondre(reponseLibre); }}
-        className="flex flex-1 flex-col gap-4 px-6 py-6">
-        <p className="text-small text-ink-faint">{t.operateurDemande(op)}</p>
-        <p className="whitespace-pre-line text-title font-semibold">{ecran.texte || dernier}</p>
-        <input value={reponseLibre} onChange={(e) => setReponseLibre(e.target.value)} autoFocus
-          placeholder={t.votreReponse}
-          className="border-b-2 border-ink bg-transparent py-3 text-title outline-none placeholder:text-ink-faint" />
-        <div className="flex-1" />
-        <GrosBouton libelle={t.envoyer} desactive={!reponseLibre.trim()} type="submit" />
-      </form>
-    );
   } else {
-    // L'opérateur demande un chiffre qu'on ne sait pas servir seul : le même
-    // pavé que pour la saisie, sous SA question à lui.
-    cleVue = `question-${fil.length}`;
+    // L'APPEL EN COURS : tout l'échange, en entier, puis ce qu'on attend de
+    // vous — le pavé du code, un champ, ou rien pendant que le réseau parle.
+    // Une seule vue pour toute la session : elle ne se remonte pas à chaque
+    // message, l'échange défile sous les yeux au lieu de clignoter.
+    cleVue = "session";
+    const menu = !pave && !attente && ecran.choix.length > 0 && !libre;
+    const question = !pave && !attente && !menu && Boolean(dernier)
+      && (libre || ecran.attend !== "rien");
+    const typeQuestion: TypeSaisie = libre ? "texte"
+      : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
     vue = (
-      <EtapeChiffres surtitre={t.operateurDemande(op)} titre={ecran.texte || dernier}
-        type={ecran.attend === "montant" ? "montant" : "numero"}
-        brut={ecran.attend !== "numero" && ecran.attend !== "montant"}
-        valeur={reponseLibre} aide="" onChange={setReponseLibre}
-        recents={ecran.attend === "numero" ? operation.recents : undefined}
-        onRecent={(n) => void repondre(n)}
-        bouton={t.envoyer} onValider={() => void repondre(reponseLibre)} langue={langue} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Echange fil={fil} op={op} couleur={couleurOperateur(op)} t={t}
+          attente={attente ? (!dernier ? t.connexionA(op) : t.onParleA(op)) : null}
+          menu={menu ? { texte: ecran.texte, choix: ecran.choix } : null}
+          onChoix={(n) => void repondre(n)} />
+        {menu && (
+          <button type="button" onClick={() => setLibre(true)}
+            className="self-center p-3 text-small text-ink-soft transition hover:text-ink">
+            {t.autreReponse}
+          </button>
+        )}
+        {question && (
+          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion}
+            recents={typeQuestion === "numero" ? operation.recents : undefined}
+            onEnvoyer={(v) => void repondre(v)} langue={langue} />
+        )}
+        {pave && <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} />}
+      </div>
     );
   }
 
@@ -463,7 +466,7 @@ export function OperationPopup({
         <header className="flex items-center gap-3 px-4 pb-2 pt-4">
           <div className="w-11">
             {etape === "saisie" && pas > 0 && (
-              <button onClick={reculer} aria-label={t.retour} title={t.retour}
+              <button type="button" onClick={reculer} aria-label={t.retour} title={t.retour}
                 className="grid size-11 place-items-center rounded-full text-ink-soft transition hover:bg-surface-2 hover:text-ink">
                 <IconChevron size={18} className="rotate-180" />
               </button>
@@ -513,63 +516,96 @@ function Montant({ valeur, langue, grand, vide }: {
   );
 }
 
-/** UN CHAMP DE CHIFFRES, SUR UN ÉCRAN À LUI — au pavé de l'écran ou au
- *  clavier de l'ordinateur. */
-function EtapeChiffres({
-  surtitre, titre, type, brut, valeur, aide, onChange, recents, onRecent,
-  bouton, onValider, langue,
+/** Le nom qu'on connaît à ce numéro — carnet ou SMS —, s'il y en a un. */
+function nomDe(recents: Operation["recents"], numero: string): string | undefined {
+  if (!numero) return undefined;
+  const n = numeroPropre(numero);
+  return recents?.find((r) => numeroPropre(r.numero) === n)?.nom || undefined;
+}
+
+/**
+ * UN VRAI CHAMP. On y tape, on y colle (clic droit, Ctrl+V, appui long sur
+ * un téléphone), on sélectionne, on corrige au milieu : tout ce qu'un champ
+ * sait faire partout ailleurs. Il accepte n'importe quel texte — un numéro
+ * recopié avec « +237 » et des espaces, un montant avec « FCFA » — et dit
+ * dessous ce qui partira réellement. Quand il ne sait pas lire UN numéro
+ * (deux numéros différents dans le même collage), il le dit, et rien ne part.
+ */
+function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true }: {
+  type: TypeSaisie; valeur: string; onChange: (v: string) => void;
+  langue: "fr" | "en"; autoFocus?: boolean;
+}) {
+  const t = textesGuichet[langue];
+  const propre = valeurPropre(type, valeur);
+  const brut = valeur.trim();
+  // Ce qu'on annonce sous le champ — seulement quand ce n'est pas déjà ce
+  // qu'on lit dedans : « 677998877 » tapé tel quel n'a pas besoin d'écho.
+  let annonce: { texte: string; doute?: boolean } | null = null;
+  if (brut && type === "numero") {
+    if (propre.length >= 8) {
+      const vu = formaterNumero(propre);
+      if (vu !== brut && propre !== brut) annonce = { texte: t.partira(vu) };
+    } else if (!propre || /\D/.test(brut.replace(/[\s+().\-]/g, ""))) {
+      annonce = { texte: t.numeroIntrouvable, doute: true };
+    }
+  } else if (brut && type === "montant") {
+    const vu = `${nombre(Number(propre) || 0, langue)} FCFA`;
+    if (!propre) annonce = { texte: t.montantIntrouvable, doute: true };
+    else if (propre !== brut && nombre(Number(propre), langue) !== brut) annonce = { texte: t.partira(vu) };
+  }
+  return (
+    <div className="w-full">
+      {/* Le champ actif se signale par son fond, pas par un cadre posé
+          par-dessus le soulignement : deux traits pour un seul champ. */}
+      <div className="flex items-baseline gap-2 rounded-t-xl border-b-2 border-ink px-2 pb-1 transition-colors focus-within:bg-surface-raised">
+        <input
+          value={valeur} onChange={(e) => onChange(e.target.value)} autoFocus={autoFocus}
+          // Le bon clavier sur un téléphone, et rien d'autre : le champ
+          // accepte quand même tout ce qu'on y colle.
+          inputMode={type === "numero" ? "tel" : type === "montant" ? "numeric" : "text"}
+          autoComplete="off" spellCheck={false}
+          placeholder={type === "numero" ? t.numeroPlaceholder
+            : type === "montant" ? "0" : t.reponsePlaceholder}
+          aria-label={type === "numero" ? t.numeroPlaceholder
+            : type === "montant" ? t.combien : t.reponsePlaceholder}
+          className={`min-w-0 flex-1 bg-transparent py-2 outline-none focus-visible:outline-none placeholder:text-ink-faint ${
+            type === "texte" ? "text-title" : "tabnums text-[30px] font-semibold tracking-tight"} ${
+            type === "montant" ? "text-right" : ""}`} />
+        {type === "montant" && <span className="text-heading font-medium text-ink-faint">FCFA</span>}
+      </div>
+      <p aria-live="polite" className={`mt-2 min-h-5 px-2 text-small ${annonce?.doute ? "text-negative" : "text-ink-soft"}`}>
+        {annonce?.texte ?? ""}
+      </p>
+    </div>
+  );
+}
+
+/** UNE QUESTION DU FORMULAIRE, SUR UN ÉCRAN À ELLE : la question, le champ,
+ *  les montants de tous les jours ou les visages déjà connus, « Continuer ». */
+function EtapeSaisie({
+  titre, type, valeur, onChange, recents, onRecent, bouton, onValider, langue,
 }: {
-  surtitre?: string; titre: string; type: "numero" | "montant"; brut?: boolean;
-  valeur: string; aide: string; onChange: (v: string) => void;
+  titre: string; type: "numero" | "montant";
+  valeur: string; onChange: (v: string) => void;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onRecent: (numero: string) => void; bouton: string; onValider: () => void;
   langue: "fr" | "en";
 }) {
   const t = textesGuichet[langue];
   const tb = textesBeneficiaires[langue];
-  const c = chiffresDe(valeur);
-  const max = type === "montant" ? 9 : 15;
-  const taper = (x: string) => onChange((c + x).replace(/^0+(?=\d)/, "").slice(0, max));
-  const effacer = () => onChange(c.slice(0, -1));
-  const valide = brut ? c.length > 0 : pret(type, c);
-
-  // LE CLAVIER DE L'ORDINATEUR, aussi : on ne clique pas des chiffres un à
-  // un quand on a un clavier sous les doigts.
-  const etat = useRef({ c, valide, taper, effacer, onValider });
-  etat.current = { c, valide, taper, effacer, onValider };
-  useEffect(() => {
-    const f = (e: KeyboardEvent) => {
-      const cible = e.target as HTMLElement | null;
-      if (cible && /^(INPUT|TEXTAREA|SELECT)$/.test(cible.tagName)) return;
-      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); etat.current.taper(e.key); }
-      else if (e.key === "Backspace") { e.preventDefault(); etat.current.effacer(); }
-      else if (e.key === "Enter" && etat.current.valide) { e.preventDefault(); etat.current.onValider(); }
-    };
-    window.addEventListener("keydown", f);
-    return () => window.removeEventListener("keydown", f);
-  }, []);
-
+  const valide = pret(type, valeur);
+  const propre = valeurPropre(type, valeur);
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="px-6 pt-6">
-        {surtitre && <p className="text-small text-ink-faint">{surtitre}</p>}
+    <form onSubmit={(e) => { e.preventDefault(); if (valide) onValider(); }}
+      className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 pt-6">
         <p className="whitespace-pre-line text-title font-semibold leading-snug">{titre}</p>
-      </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6">
-        {type === "montant" && !brut ? (
-          <Montant valeur={Number(c) || 0} langue={langue} vide={!c} />
-        ) : (
-          <p className={`tabnums text-[36px] font-semibold tracking-wide ${c ? "" : "text-ink-faint"}`}>
-            {/* Vide, un trait — jamais un numéro d'exemple : grisé, il
-                passait pour un numéro déjà rempli. */}
-            {c ? (brut ? c : formaterNumero(c)) : "— — —"}
-          </p>
-        )}
-        {type === "montant" && !brut && (
-          <div className="flex flex-wrap justify-center gap-2">
+        <ChampSaisie type={type} valeur={valeur} onChange={onChange} langue={langue} />
+        {type === "montant" && (
+          <div className="flex flex-wrap gap-2">
             {MONTANTS.map((m) => (
-              <button key={m} onClick={() => onChange(String(m))}
-                className={`tabnums rounded-full px-3.5 py-1.5 text-small font-medium transition ${Number(c) === m ? "bg-ink text-white" : "bg-surface-2 hover:bg-surface-3"}`}>
+              <button key={m} type="button" onClick={() => onChange(String(m))}
+                className={`tabnums rounded-full px-3.5 py-1.5 text-small font-medium transition ${Number(propre) === m ? "bg-ink text-white" : "bg-surface-2 hover:bg-surface-3"}`}>
                 {nombre(m, langue)}
               </button>
             ))}
@@ -577,23 +613,154 @@ function EtapeChiffres({
         )}
         {recents?.length ? (
           <div className="w-full">
-            <p className="mb-2 text-center text-caption text-ink-faint">
+            <p className="mb-2 text-caption text-ink-faint">
               {recents.some((r) => r.enregistre) ? tb.vosBenef : t.clientsRecents}
             </p>
-            {/* Centré quand ils tiennent, défilant quand ils débordent — sans
-                jamais couper le premier : un « justify-center » dans une
-                bande qui défile rogne le début, hors d'atteinte. */}
+            {/* Défilant quand ils débordent — sans jamais couper le premier. */}
             <div className="overflow-x-auto pb-1">
-              <div className="mx-auto flex w-max gap-3">
-                {recents.map((r) => <Visage key={r.numero} client={r} choisi={r.numero === c} onClick={() => onRecent(r.numero)} />)}
+              <div className="flex w-max gap-3">
+                {recents.map((r) => (
+                  <Visage key={r.numero} client={r}
+                    choisi={numeroPropre(r.numero) === numeroPropre(propre)}
+                    onClick={() => onRecent(r.numero)} />
+                ))}
               </div>
             </div>
           </div>
         ) : null}
       </div>
-      <Pave onChiffre={taper} onEffacer={effacer} gauche={type === "montant" && !brut ? "000" : undefined}
-            etiquetteEffacer={t.effacerDernier} />
-      <GrosBouton libelle={bouton} desactive={!valide} onClick={onValider} />
+      <div className="pt-3">
+        <GrosBouton libelle={bouton} desactive={!valide} type="submit" />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * RÉPONDRE À L'OPÉRATEUR, quand il pose une question que la plateforme ne
+ * sert pas seule. Un vrai champ, là aussi : il accepte des LETTRES. Une
+ * question qu'on ne savait pas classer ouvrait un pavé de chiffres — et un
+ * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
+ * recevoir de réponse.
+ */
+function ZoneReponse({ type, recents, onEnvoyer, langue }: {
+  type: TypeSaisie;
+  recents?: (ClientRecent & { enregistre?: boolean })[];
+  onEnvoyer: (valeur: string) => void; langue: "fr" | "en";
+}) {
+  const t = textesGuichet[langue];
+  const [valeur, setValeur] = useState("");
+  const valide = pret(type, valeur);
+  const envoyer = () => {
+    if (!valide) return;
+    onEnvoyer(valeurPropre(type, valeur));
+    setValeur("");
+  };
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); envoyer(); }}
+      className="flex flex-col gap-3 border-t border-line bg-surface px-5 pb-5 pt-4">
+      <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue} />
+      {recents?.length ? (
+        <div className="overflow-x-auto pb-1">
+          <div className="flex w-max gap-3">
+            {recents.map((r) => (
+              <Visage key={r.numero} client={r} choisi={false} onClick={() => onEnvoyer(r.numero)} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <button type="submit" disabled={!valide}
+        className="h-12 w-full rounded-2xl bg-accent text-body font-semibold text-white transition hover:bg-accent-hover active:scale-[.98] disabled:bg-surface-3 disabled:text-ink-faint">
+        {t.envoyer}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * L'ÉCHANGE, EN ENTIER. Chaque écran de l'opérateur, mot pour mot — même
+ * ceux auxquels la plateforme répond seule —, et ce qu'on lui a répondu.
+ * Le code secret n'y est jamais : quatre points. Le dernier message est en
+ * avant ; les précédents restent là, plus discrets, à relire.
+ */
+function Echange({ fil, op, couleur, t, attente, menu, onChoix }: {
+  fil: Msg[]; op: string; couleur: string; t: (typeof textesGuichet)["fr"];
+  attente: string | null;
+  menu: { texte: string; choix: { numero: string; libelle: string }[] } | null;
+  onChoix: (numero: string) => void;
+}) {
+  const defile = useRef<HTMLDivElement>(null);
+  // Le dernier message en vue, à chaque NOUVEAU — pas à chaque rendu : on
+  // peut remonter relire le début de l'échange sans être ramené en bas.
+  const choixEnCours = menu?.choix.length ?? 0;
+  useEffect(() => {
+    const d = defile.current;
+    if (d) d.scrollTop = d.scrollHeight;
+  }, [fil.length, attente, choixEnCours]);
+  const dernier = fil.map((m) => m.de).lastIndexOf("reseau");
+  return (
+    <div ref={defile} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+      {fil.map((m, k) => m.de === "vous" ? (
+        <p key={k} className="tabnums max-w-[80%] self-end whitespace-pre-line rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-small font-medium text-white">
+          {m.texte}
+        </p>
+      ) : (
+        <CarteReseau key={k} op={op} couleur={couleur} t={t} actuelle={k === dernier}
+          // Le menu en cours : son titre ici, ses choix en boutons dessous.
+          // Les anciens messages restent entiers, tels qu'ils sont arrivés.
+          texte={k === dernier && menu ? (menu.texte || m.texte) : m.texte}
+          copie={m.texte} />
+      ))}
+      {menu && (
+        <div className="flex flex-col gap-2">
+          {menu.choix.map((c) => (
+            <button type="button" key={`${c.numero}-${c.libelle}`} onClick={() => onChoix(c.numero)}
+              className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2">
+              <span className="tabnums grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-small text-ink-soft">{c.numero}</span>
+              <span className="flex-1">{c.libelle}</span>
+              <IconChevron size={16} className="text-ink-faint" />
+            </button>
+          ))}
+        </div>
+      )}
+      {attente && (
+        <p aria-live="polite" className="flex items-center gap-2.5 self-start rounded-2xl bg-surface-2 px-4 py-2.5 text-small text-ink-soft">
+          <span className="relative grid size-2.5 place-items-center">
+            <span className="absolute inset-0 animate-ping rounded-full opacity-60 motion-reduce:animate-none" style={{ background: couleur }} />
+            <span className="size-2.5 rounded-full" style={{ background: couleur }} />
+          </span>
+          {attente}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Un message de l'opérateur : qui parle, le texte entier, « Copier ». */
+function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
+  texte: string; copie: string; op: string; couleur: string;
+  t: (typeof textesGuichet)["fr"]; actuelle: boolean;
+}) {
+  const [copiee, setCopiee] = useState(false);
+  const copier = async () => {
+    try {
+      await navigator.clipboard.writeText(copie);
+      setCopiee(true);
+      setTimeout(() => setCopiee(false), 1600);
+    } catch { /* le texte reste sélectionnable à la souris */ }
+  };
+  return (
+    <div className={`max-w-[92%] self-start rounded-2xl rounded-bl-md border px-4 py-3 ${actuelle ? "border-line bg-surface-raised" : "border-transparent bg-surface-2 text-ink-soft"}`}>
+      <div className="mb-1.5 flex items-center gap-2 text-caption text-ink-faint">
+        <span className="size-2 rounded-full" style={{ background: couleur }} />
+        <span className="font-medium">{op}</span>
+        <button type="button" onClick={() => void copier()}
+          className="ml-auto rounded-full px-2 py-0.5 transition hover:bg-surface-2 hover:text-ink">
+          {copiee ? t.copie : t.copier}
+        </button>
+      </div>
+      {/* Le texte du réseau, mot pour mot : jamais traduit, toujours entier. */}
+      <p className={`whitespace-pre-line break-words ${actuelle ? "text-body" : "text-small"}`}>{texte}</p>
     </div>
   );
 }
@@ -607,7 +774,12 @@ function Visage({ client, choisi, onClick }: {
     ? mots.slice(0, 2).map((m) => m[0] + m.slice(1).toLowerCase()).join(" ")
     : formaterNumero(client.numero);
   return (
-    <button onClick={onClick} title={`${client.nom} ${formaterNumero(client.numero)}`.trim()}
+    // `type="button"` N'EST PAS UN DÉTAIL. Ces visages vivent dans un
+    // formulaire, et un bouton sans type y est un bouton d'ENVOI : Entrée,
+    // dans le champ, « cliquait » le premier visage. On collait un numéro,
+    // on validait au clavier — et c'est au premier client de la liste que
+    // l'argent partait. Le harnais du parcours l'a vu au premier essai.
+    <button type="button" onClick={onClick} title={`${client.nom} ${formaterNumero(client.numero)}`.trim()}
       className="flex w-[72px] shrink-0 flex-col items-center gap-1 transition hover:opacity-70">
       <span className={`grid size-[52px] place-items-center rounded-full border font-semibold ${choisi ? "border-ink bg-ink text-white" : "border-line bg-surface-raised"}`}>
         {initiales}
@@ -617,16 +789,16 @@ function Visage({ client, choisi, onClick }: {
   );
 }
 
-function Pave({ onChiffre, onEffacer, gauche, etiquetteEffacer }: {
-  onChiffre: (c: string) => void; onEffacer: () => void; gauche?: string; etiquetteEffacer: string;
+function Pave({ onChiffre, onEffacer, etiquetteEffacer }: {
+  onChiffre: (c: string) => void; onEffacer: () => void; etiquetteEffacer: string;
 }) {
-  const touches: (string | null)[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", gauche ?? null, "0", "⌫"];
+  const touches: (string | null)[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", null, "0", "⌫"];
   return (
     <div className="grid grid-cols-3 px-4 pb-2">
       {touches.map((x, i) => x == null ? <span key={i} /> : (
-        <button key={i} onClick={() => (x === "⌫" ? onEffacer() : onChiffre(x))}
+        <button type="button" key={i} onClick={() => (x === "⌫" ? onEffacer() : onChiffre(x))}
           aria-label={x === "⌫" ? etiquetteEffacer : x}
-          className={`h-14 rounded-2xl tabnums transition hover:bg-surface-2 active:bg-surface-3 ${x === "000" ? "text-heading" : "text-[26px]"} ${x === "⌫" ? "text-ink-soft" : "font-medium"}`}>
+          className={`h-12 rounded-2xl tabnums text-[24px] transition hover:bg-surface-2 active:bg-surface-3 ${x === "⌫" ? "text-ink-soft" : "font-medium"}`}>
           {x}
         </button>
       ))}
@@ -671,13 +843,16 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: (ty
     window.addEventListener("keydown", f);
     return () => window.removeEventListener("keydown", f);
   }, []);
+  // Posé SOUS l'échange, pas à sa place : le message qui réclame le code
+  // — ce qu'on va signer — reste lisible juste au-dessus.
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <span className="grid size-14 place-items-center rounded-full bg-surface-2"><IconLock size={24} /></span>
-        <p className="text-title font-semibold">{t.codeTitre}</p>
-        <p className="text-small text-ink-faint">{t.codeNote}</p>
-        <div aria-label={t.chiffresComposes(code.length)} className="mt-4 flex h-4 items-center gap-3">
+    <div className="flex flex-col border-t border-line bg-surface pt-4">
+      <div className="flex flex-col items-center gap-2">
+        <p className="flex items-center gap-2 text-heading font-semibold">
+          <IconLock size={18} /> {t.codeTitre}
+        </p>
+        <p className="text-caption text-ink-faint">{t.codeNote}</p>
+        <div aria-label={t.chiffresComposes(code.length)} className="my-2 flex h-4 items-center gap-3">
           {Array.from({ length: Math.max(LONGUEUR_CODE_MIN, code.length) }).map((_, i) => (
             <span key={i} className={`size-3.5 rounded-full border-[1.5px] ${i < code.length ? "border-ink bg-ink" : "border-ink-faint"}`} />
           ))}
@@ -685,21 +860,6 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: (ty
       </div>
       <Pave onChiffre={taper} onEffacer={effacer} etiquetteEffacer={t.effacerDernier} />
       <GrosBouton libelle={t.valider} desactive={code.length < LONGUEUR_CODE_MIN} onClick={valider} />
-    </div>
-  );
-}
-
-/** L'attente : un rond qui respire, à la couleur de l'opérateur, et UNE phrase. */
-function Attente({ texte, couleur }: { texte: string; couleur: string }) {
-  return (
-    <div aria-live="polite" className="flex flex-1 flex-col items-center justify-center gap-6">
-      <div className="relative grid size-[120px] place-items-center">
-        <span className="absolute inset-0 animate-ping rounded-full opacity-25 motion-reduce:animate-none" style={{ background: couleur }} />
-        <span className="grid size-[72px] place-items-center rounded-full border-[3px] bg-surface-raised" style={{ borderColor: couleur }}>
-          <IconPuceSim size={28} />
-        </span>
-      </div>
-      <p className="text-heading font-medium">{texte}</p>
     </div>
   );
 }
@@ -733,12 +893,12 @@ function Fin({
         {note && <p className="text-small text-ink-faint">{note}</p>}
         {proposition}
         {repondreQuandMeme && (
-          <button onClick={repondreQuandMeme} className="text-small text-ink-soft underline underline-offset-4">
+          <button type="button" onClick={repondreQuandMeme} className="text-small text-ink-soft underline underline-offset-4">
             {t.repondreQuandMeme}
           </button>
         )}
         {fil.length > 1 && (
-          <button onClick={onDetails} className="mt-2 text-small text-ink-soft transition hover:text-ink">
+          <button type="button" onClick={onDetails} className="mt-2 text-small text-ink-soft transition hover:text-ink">
             {details ? t.masquerDetails : t.details}
           </button>
         )}

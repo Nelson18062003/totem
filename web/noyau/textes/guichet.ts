@@ -124,6 +124,15 @@ const en = {
   details: "Details",
   masquerDetails: "Hide details",
   saisirAutrement: "Type a number",
+  // Les champs acceptent tout : on tape, on colle, on recopie.
+  numeroPlaceholder: "Type or paste the number",
+  reponsePlaceholder: "Type or paste your reply",
+  partira: (valeur: string) => `Will be sent: ${valeur}`,
+  numeroIntrouvable: "No single phone number found here — keep just one.",
+  montantIntrouvable: "No single amount found here.",
+  // L'échange avec l'opérateur, montré en entier.
+  copier: "Copy",
+  copie: "Copied",
 };
 
 const fr: typeof en = {
@@ -241,6 +250,13 @@ const fr: typeof en = {
   details: "Détails",
   masquerDetails: "Masquer les détails",
   saisirAutrement: "Taper un numéro",
+  numeroPlaceholder: "Tapez ou collez le numéro",
+  reponsePlaceholder: "Tapez ou collez votre réponse",
+  partira: (valeur: string) => `Partira : ${valeur}`,
+  numeroIntrouvable: "Aucun numéro clair ici — n’en gardez qu’un.",
+  montantIntrouvable: "Aucun montant clair ici.",
+  copier: "Copier",
+  copie: "Copié",
 };
 
 export const textesGuichet = { en, fr } as const;
