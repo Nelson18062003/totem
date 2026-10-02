@@ -38,6 +38,17 @@ Orange au même instant lisait « une autre opération est en cours sur une
 autre carte ». Deux personnes, deux cartes, deux modems libres — et une seule
 passait. Le guichet tient maintenant une session PAR CARTE, et chaque carte a
 sa propre file : ce qui se compose sur l'une n'attend jamais l'autre.
+
+Et la session n'est plus rangée ici. C'est la CARTE qui sait qui tient son
+menu, et qui le vérifie sous le verrou de son modem au moment d'écrire (voir
+`compte.py`). Le guichet n'a plus de registre à tenir à jour, donc plus de
+registre qui puisse mentir.
+
+Qui tient la session ? Pas « le web » : une PERSONNE. La plateforme joint à
+chaque demande le sujet de la session qui l'a déposée (« c:12 ») — elle le
+pose elle-même, jamais repris de ce que l'écran envoie. Deux personnes sur la
+même carte ne se volent donc plus le menu : la seconde attend que la première
+ait fini, et la réponse de la première ne peut pas tomber chez la seconde.
 """
 
 import queue
@@ -48,6 +59,7 @@ import time
 from datetime import datetime, timedelta
 
 from .analyse_sms import solde_annonce
+from .compte import WEB, TELEGRAM, SessionTenue
 from .declencheur import NATURES, RefusRecu
 from .nuage import _horodatage
 from .textes import t
@@ -96,17 +108,14 @@ class Pilotage:
         # fournit). None : ce terminal ne fabrique pas de reçus.
         self.programmeur = programmeur
         self._marche = False
-        # Les sessions ouvertes PAR LE WEB, une par carte : compte → dernier
-        # signe de vie. Une carte absente d'ici n'est pas tenue par le web —
-        # une session Telegram éventuelle appartient à Telegram, on n'y
-        # touche jamais.
-        #
-        # UNE PAR CARTE, et non une pour tout le terminal : chaque carte a son
-        # modem. Deux personnes sur deux cartes ne se gênent en rien.
-        self._sessions = {}
+        # Le dernier signe de vie de chaque session web, par carte — pour
+        # raccrocher celle qu'on a abandonnée. Ce n'est PAS le registre de qui
+        # tient quoi : celui-là vit dans la carte (`compte.titulaire`). Une
+        # entrée ici dont la carte n'est plus tenue par le web ne compte pas.
+        self._vie = {}
         # Les files de travail se touchent depuis plusieurs fils (une file par
-        # carte, la boucle de relève, Telegram qui reprend la main) : un seul
-        # verrou garde le registre des sessions et celui des files.
+        # carte, la boucle de relève) : un seul verrou garde les signes de vie
+        # et le registre des files.
         self._garde = threading.RLock()
         self._files = {}            # clé de file → queue.Queue
         self._en_vol = set()        # demandes confiées à une file, pas finies
@@ -136,7 +145,7 @@ class Pilotage:
                 self.journal.evenement(t(
                     f"remote desk: error {e}",
                     f"guichet à distance : erreur {e}"))
-            time.sleep(PAS_SESSION if (self._sessions or self._en_vol)
+            time.sleep(PAS_SESSION if (self._tenues() or self._en_vol)
                        else self.pause)
 
     # ---- une file par carte ----------------------------------------------
@@ -234,79 +243,75 @@ class Pilotage:
 
     def _expirer_session(self):
         maintenant = time.time()
-        with self._garde:
-            muettes = [c for c, vie in self._sessions.items()
-                       if maintenant - vie > SESSION_MUETTE]
-        for compte in muettes:
-            self.journal.evenement(t(
-                f"remote desk: session abandoned, hung up ({compte.libelle})",
-                f"guichet à distance : session abandonnée, raccrochée "
-                f"({compte.libelle})"))
-            self._raccrocher_compte(compte)
+        for compte in self._tenues():
+            titulaire = compte.titulaire
+            with self._garde:
+                vie = self._vie.get(compte, 0)
+            if maintenant - vie <= SESSION_MUETTE:
+                continue
+            # Raccroché seulement s'il est ENCORE à ce titulaire : entre la
+            # lecture et l'écriture, Telegram a pu reprendre la carte.
+            if compte.ussd_annuler(qui=titulaire):
+                self.journal.evenement(t(
+                    f"remote desk: session abandoned, hung up "
+                    f"({compte.libelle})",
+                    f"guichet à distance : session abandonnée, raccrochée "
+                    f"({compte.libelle})"))
+            with self._garde:
+                self._vie.pop(compte, None)
 
-    def ceder(self, compte):
-        """Telegram reprend la main sur ce compte : on lâche notre session.
+    # ---- qui tient quoi ----------------------------------------------------
+    @staticmethod
+    def _qui(parametres):
+        """Le titulaire d'une demande : la personne qui l'a déposée.
 
-        Sans ça, la nôtre resterait ouverte dans nos livres alors que
-        l'opérateur, lui, en a ouvert une autre. La réponse suivante venue de
-        la plateforme partirait dans un menu qui a bougé — et cette réponse
-        peut être un code secret. Le refus poli vaut infiniment mieux.
-        """
-        with self._garde:
-            if compte not in self._sessions:
-                return False
-            # Sans annuler : Telegram tient la ligne.
-            del self._sessions[compte]
-        self.journal.evenement(t(
-            "remote desk: session taken back from Telegram",
-            "guichet à distance : session reprise depuis Telegram"))
-        return True
+        `par` est posé par la plateforme (le sujet de la session : « c:12 »,
+        « secours »). Une plateforme d'avant n'en met pas : toutes ses
+        demandes ont alors le même titulaire, comme autrefois."""
+        par = re.sub(r"[^A-Za-z0-9:_-]", "", str(parametres.get("par") or ""))
+        return (WEB, par[:40] or None)
 
-    def _session_de(self, compte):
-        with self._garde:
-            return compte in self._sessions
-
-    def _raccrocher_compte(self, compte):
-        """Raccroche la session web de CETTE carte, et d'aucune autre."""
-        with self._garde:
-            if compte not in self._sessions:
-                return
-            del self._sessions[compte]
-        try:
-            compte.ussd_annuler()
-        except Exception:
-            pass
+    def _tenues(self, qui=None):
+        """Les cartes dont un menu est ouvert par le web — par `qui`
+        seulement, quand il est donné. Un instantané : la carte, elle,
+        revérifie au moment d'écrire."""
+        tenues = []
+        for c in self.comptes:
+            titulaire = getattr(c, "titulaire", None)
+            if not (titulaire and c.session_ouverte):
+                continue
+            if (titulaire == qui) if qui is not None else titulaire[0] == WEB:
+                tenues.append(c)
+        return tenues
 
     def _raccrocher_tout(self):
+        for compte in self._tenues():
+            compte.ussd_annuler(qui=compte.titulaire)
         with self._garde:
-            comptes = list(self._sessions)
-        for compte in comptes:
-            self._raccrocher_compte(compte)
+            self._vie.clear()
 
-    def _raccrocher(self, iccid=None, langue=None):
-        """Raccroche la session de la carte nommée — et seulement elle.
-        Celui qui tient une carte ne raccroche pas l'opération qu'un autre
-        mène sur la sienne.
+    def _raccrocher(self, iccid, qui, langue=None):
+        """Raccroche la session de `qui` sur la carte nommée — et seulement
+        elle. Celui qui tient une carte ne raccroche pas l'opération qu'un
+        autre mène sur la sienne, ni celle d'un autre sur la même.
 
         Sans carte nommée (une application d'avant le ciblage), on raccroche
-        la session ouverte s'il n'y en a qu'une. S'il y en a plusieurs, on ne
-        devine pas laquelle : couper au hasard, ce serait couper quelqu'un
-        en plein transfert."""
-        with self._garde:
-            ouvertes = list(self._sessions)
+        la session de `qui` s'il n'en tient qu'une. S'il en tient plusieurs,
+        on ne devine pas laquelle."""
         if iccid:
-            for compte in ouvertes:
-                if _sur_la_carte(compte, iccid):
-                    self._raccrocher_compte(compte)
-            return
-        if len(ouvertes) > 1:
-            raise RefusPoli(t(
-                "Several operations are open on the terminal — say which "
-                "card to hang up.",
-                "Plusieurs opérations sont ouvertes sur le terminal — "
-                "précisez la carte à raccrocher.", langue=langue))
-        for compte in ouvertes:
-            self._raccrocher_compte(compte)
+            cibles = [c for c in self.comptes if _sur_la_carte(c, iccid)]
+        else:
+            cibles = self._tenues(qui)
+            if len(cibles) > 1:
+                raise RefusPoli(t(
+                    "Several operations are open on the terminal — say which "
+                    "card to hang up.",
+                    "Plusieurs opérations sont ouvertes sur le terminal — "
+                    "précisez la carte à raccrocher.", langue=langue))
+        for compte in cibles:
+            compte.ussd_annuler(qui=qui)
+            with self._garde:
+                self._vie.pop(compte, None)
 
     # ---- exécution ---------------------------------------------------------
     def _traiter(self, demande):
@@ -338,7 +343,8 @@ class Pilotage:
             elif genre == "ussd_reponse":
                 resultat = self._repondre(identifiant, parametres, langue)
             elif genre == "ussd_fin":
-                self._raccrocher(self._iccid_demande(parametres), langue)
+                self._raccrocher(self._iccid_demande(parametres),
+                                 self._qui(parametres), langue)
                 resultat = t("Session closed.", "Session refermée.",
                              langue=langue)
             elif genre == "recu":
@@ -702,31 +708,49 @@ class Pilotage:
             raise RefusPoli(t("No code to dial.", "Aucun code à composer.",
                               langue=langue))
         compte = self._compte_vise(parametres, langue)
-        # Une session Telegram a la priorité : c'est un humain au bout.
-        if compte.session_ouverte and not self._session_de(compte):
-            raise RefusPoli(t(
-                "A session is already open on Telegram for this account. "
-                "Finish it there, then try again here.",
-                "Une session est déjà ouverte sur Telegram pour ce compte. "
-                "Terminez-la, puis recommencez ici.", langue=langue))
-        # UNE OPÉRATION EN COURS SUR UNE AUTRE CARTE NE S'INTERROMPT PAS —
-        # ET N'EMPÊCHE RIEN NON PLUS.
+        qui = self._qui(parametres)
+        # UNE CARTE, UN MENU — MAIS UN PAR CARTE, PAS UN PAR TERMINAL.
         #
         # Le guichet ne tenait qu'une session pour tout le terminal. Ouvrir
         # raccrochait d'abord la précédente, quelle qu'elle soit — couper un
         # autre en plein transfert ; puis on a refusé à la place : « une
         # autre opération est en cours, sur une autre carte ». Les deux
         # partaient de la même idée fausse, un seul combiné pour le terminal.
-        # Il y en a un par carte. Ouvrir ne raccroche donc que la session
-        # précédente de CETTE carte, et laisse les autres travailler.
-        self._raccrocher_compte(compte)
+        # Il y en a un par carte : ce qui se passe sur une autre carte ne
+        # change rien ici.
+        #
+        # Sur CETTE carte, on remplace son propre menu précédent, et on
+        # refuse celui d'un autre — Telegram (un humain est au bout du fil)
+        # ou une autre personne de la plateforme. C'est la carte qui tranche,
+        # sous le verrou de son modem (`si_libre`) : entre un contrôle fait
+        # ici et la composition, quelqu'un aurait pu prendre la ligne.
+        if compte.tenue_par(qui):
+            compte.ussd_annuler(qui=qui)
+        try:
+            reponse = compte.ussd_demarrer(code, qui=qui, si_libre=True)
+        except SessionTenue as tenue:
+            raise RefusPoli(self._expliquer_tenue(tenue.titulaire, langue))
         self.journal.evenement(t(
             f"remote desk: {code} ({compte.libelle})",
             f"guichet à distance : {code} ({compte.libelle})"))
-        reponse = compte.ussd_demarrer(code)
-        self._noter_session(compte)
+        self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
         return reponse
+
+    @staticmethod
+    def _expliquer_tenue(titulaire, langue=None):
+        if titulaire and titulaire[0] == TELEGRAM:
+            return t(
+                "A session is already open on Telegram for this card. "
+                "Finish it there, then try again here.",
+                "Une session est déjà ouverte sur Telegram pour cette carte. "
+                "Terminez-la, puis recommencez ici.", langue=langue)
+        return t(
+            "Someone else is using this card right now (a card holds one "
+            "USSD menu at a time). Try again in a moment.",
+            "Quelqu'un d'autre utilise cette carte en ce moment (une carte "
+            "ne tient qu'un menu USSD à la fois). Réessayez dans un instant.",
+            langue=langue)
 
     def _repondre(self, identifiant, parametres, langue=None):
         texte = str(parametres.get("texte") or "")
@@ -734,8 +758,8 @@ class Pilotage:
         #
         # Cet effacement venait APRÈS le contrôle de session. Or c'est
         # précisément quand la session a disparu que la commande est refusée :
-        # coupure de courant à Douala et robot redémarré (`_sessions` repart
-        # TOUJOURS vide), session expirée, main rendue à Telegram. Le code
+        # coupure de courant à Douala et robot redémarré (les sessions repartent
+        # TOUJOURS vides), session expirée, main rendue à Telegram. Le code
         # secret était alors refusé ET conservé — en clair, dans la base, pour
         # toujours, sans même avoir été composé. Le pire des deux mondes, et
         # sur la panne la plus banale de toutes.
@@ -767,55 +791,63 @@ class Pilotage:
                     "Le code secret n'a pas pu être sécurisé — il n'a pas "
                     "été composé. Vérifiez la connexion, puis réessayez.",
                     langue=langue))
-        # On fige les sessions dans une liste locale : le fil Telegram peut
-        # en retirer une (ceder) entre le test et la lecture.
-        with self._garde:
-            ouvertes = list(self._sessions)
-        if not ouvertes:
-            raise RefusPoli(t(
-                "No session in progress: dial a code first.",
-                "Aucune session en cours : composez d'abord un code.",
-                langue=langue))
-        # LA RÉPONSE VA À LA SESSION DE SA CARTE, OU NULLE PART. Quand la
-        # demande nomme une carte, c'est la session de CETTE carte qui reçoit
-        # le chiffre : sinon ce chiffre — peut-être un code secret — tomberait
-        # dans le menu qu'une autre personne parcourt sur une autre carte.
+        # À QUI EST LA RÉPONSE. Quand la demande nomme sa carte, c'est elle ;
+        # la carte refusera d'écrire si son menu n'est pas à `qui` — sinon ce
+        # chiffre, peut-être un code secret, tomberait dans le menu qu'une
+        # autre personne parcourt.
+        qui = self._qui(parametres)
         iccid = self._iccid_demande(parametres)
         if iccid:
-            compte = next((c for c in ouvertes if _sur_la_carte(c, iccid)),
+            compte = next((c for c in self.comptes if _sur_la_carte(c, iccid)),
                           None)
-            if compte is None:
+            if compte is None or not compte.tenue_par(qui):
                 raise RefusPoli(t(
                     "The open session is not on this card — dial the code "
                     "again.",
                     "La session ouverte n'est pas sur cette carte — "
                     "recomposez le code.", langue=langue))
-        elif len(ouvertes) == 1:
-            # Une application d'avant le ciblage : une seule session ouverte,
-            # c'est la sienne.
-            compte = ouvertes[0]
         else:
-            # Plusieurs sessions, et aucune carte nommée : on ne devine pas.
-            # Deviner, c'est envoyer un code secret chez quelqu'un d'autre.
-            raise RefusPoli(t(
-                "Several operations are open on the terminal — this reply "
-                "does not say which card it is for. Dial the code again.",
-                "Plusieurs opérations sont ouvertes sur le terminal — cette "
-                "réponse ne dit pas pour quelle carte. Recomposez le code.",
-                langue=langue))
+            # Une application d'avant le ciblage : la session de `qui`, s'il
+            # n'en tient qu'une. Plusieurs : on ne devine pas — deviner,
+            # c'est envoyer un code secret chez quelqu'un d'autre.
+            tenues = self._tenues(qui)
+            if not tenues:
+                raise RefusPoli(t(
+                    "No session in progress: dial a code first.",
+                    "Aucune session en cours : composez d'abord un code.",
+                    langue=langue))
+            if len(tenues) > 1:
+                raise RefusPoli(t(
+                    "Several operations are open on the terminal — this "
+                    "reply does not say which card it is for. Dial the code "
+                    "again.",
+                    "Plusieurs opérations sont ouvertes sur le terminal — "
+                    "cette réponse ne dit pas pour quelle carte. Recomposez "
+                    "le code.", langue=langue))
+            compte = tenues[0]
         if not texte:
             raise RefusPoli(t("Empty reply.", "Réponse vide.", langue=langue))
-        reponse = compte.ussd_repondre(texte)
-        self._noter_session(compte)
+        try:
+            # LA vérification qui compte : sous le verrou du modem, au moment
+            # d'écrire. Celle d'au-dessus ne sert qu'à bien dire le refus.
+            reponse = compte.ussd_repondre(texte, qui=qui)
+        except SessionTenue:
+            raise RefusPoli(t(
+                "This menu is no longer yours (it closed, or was taken back) "
+                "— nothing was sent. Dial the code again.",
+                "Ce menu n'est plus le vôtre (il s'est refermé, ou a été "
+                "repris) — rien n'a été envoyé. Recomposez le code.",
+                langue=langue))
+        self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
         return reponse
 
-    def _noter_session(self, compte):
+    def _noter_session(self, compte, qui):
         with self._garde:
-            if compte.session_ouverte:
-                self._sessions[compte] = time.time()
+            if compte.tenue_par(qui):
+                self._vie[compte] = time.time()
             else:
-                self._sessions.pop(compte, None)
+                self._vie.pop(compte, None)
 
     def _relever_solde(self, compte, reponse):
         """Si le réseau vient d'annoncer un solde, la base le reflète tout de
