@@ -573,6 +573,32 @@ export async function terminalVise(): Promise<string | null> {
   return t[0]?.id ?? null;
 }
 
+/**
+ * LE TERMINAL QUI PORTE CETTE CARTE — ou `null` si aucun ne la porte.
+ *
+ * Une demande qui vise une carte partait au terminal « le dernier à avoir
+ * donné signe de vie ». Avec un seul boîtier, c'était le bon. Avec deux, un
+ * transfert sur la MTN du boîtier B partait au boîtier A, qui n'a pas cette
+ * carte. Plus il y a de boîtiers, plus la demande tombe à côté.
+ *
+ * Une demande vise une CARTE, pas un boîtier : elle part à celui qui a vu
+ * la carte en dernier. Chaque terminal rafraîchit `derniere_vue` à chaque
+ * relecture de ses puces (environ toutes les minutes) ; une carte déplacée
+ * d'un boîtier à l'autre suit donc d'elle-même. Vue nulle part depuis
+ * `EN_PLACE_MS` : elle est retirée, ou son terminal est éteint — on ne
+ * dépose rien, la demande n'aurait personne pour la composer.
+ */
+export async function terminalDeLaCarte(iccid: string): Promise<string | null> {
+  if (!/^[A-Za-z0-9]{1,32}$/.test(iccid)) return null;
+  const vues = await lire<{ terminal: string; derniere_vue: string | null }>(
+    `cartes?select=terminal,derniere_vue&iccid=eq.${iccid}`
+    + "&order=derniere_vue.desc.nullslast&limit=1");
+  const vue = vues[0];
+  if (!vue?.terminal || !vue.derniere_vue) return null;
+  const age = Date.now() - new Date(vue.derniere_vue).getTime();
+  return age < EN_PLACE_MS ? vue.terminal : null;
+}
+
 export async function creerCommande(
   genre: string,
   parametres: Record<string, unknown>,
@@ -884,19 +910,37 @@ export async function carteDuSms(
   return cartes.size === 1 ? lignes[0].carte : null;
 }
 
-/** La carte de la session USSD d'un terminal : celle de la DERNIÈRE
- *  ouverture déposée pour lui. Le robot ne tient qu'une session à la fois,
- *  et refuse d'en ouvrir une sur une autre carte tant qu'elle vit : la
- *  dernière ouverture est donc celle de la session en cours — ou bien elle
- *  a été refusée, et le robot refusera aussi la réponse qu'on lui joint
- *  (il revérifie que la session est sur la carte nommée).
+/** La carte de la session USSD où tombe une réponse qui ne la nomme pas :
+ *  celle de la DERNIÈRE ouverture déposée PAR LA MÊME PERSONNE.
+ *
+ *  C'était « la dernière ouverture déposée pour ce terminal », juste tant
+ *  que le robot ne tenait qu'une session à la fois. Il en tient maintenant
+ *  une par carte et par personne : la dernière ouverture du terminal peut
+ *  être celle de quelqu'un d'autre, sur une autre carte, et la réponse
+ *  légitime de la première personne partait vers une carte qui n'était pas
+ *  la sienne — refusée par la carte, au robot, mais refusée quand même. La
+ *  personne, elle, ne se trompe pas de session ; et sa dernière ouverture
+ *  dit aussi sur quel boîtier elle est.
+ *
+ *  Sans personne (plateforme sans verrou : le développement local), on
+ *  garde l'ancien chemin — la dernière ouverture du terminal.
  *
  *  Seulement la dernière : si elle ne nomme aucune carte, on ne remonte
- *  pas plus loin chercher une session plus ancienne. */
-export async function carteDeLaSession(terminal: string): Promise<string | null> {
+ *  pas plus loin chercher une session plus ancienne. Si c'est la mauvaise,
+ *  la carte refusera d'écrire : elle revérifie qui tient son menu. */
+export async function carteDeLaSession(
+  par: string | null, terminal?: string | null,
+): Promise<string | null> {
+  let filtre: string;
+  if (par && /^[A-Za-z0-9:_-]{1,40}$/.test(par)) {
+    filtre = `&parametres->>par=eq.${encodeURIComponent(par)}`;
+  } else {
+    const t = terminal || (await terminalVise());
+    if (!t) return null;
+    filtre = `&terminal=eq.${encodeURIComponent(t)}`;
+  }
   const lignes = await lire<{ parametres: Record<string, unknown> | null }>(
-    `commandes?select=parametres&type=eq.ussd`
-    + `&terminal=eq.${encodeURIComponent(terminal)}&order=id.desc&limit=1`);
+    `commandes?select=parametres&type=eq.ussd${filtre}&order=id.desc&limit=1`);
   const carte = lignes[0]?.parametres?.carte;
   return typeof carte === "string" && /^\d{1,22}$/.test(carte) ? carte : null;
 }

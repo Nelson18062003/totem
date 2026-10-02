@@ -59,6 +59,12 @@ const en = {
   nomManquant: "the first name and the last name are both needed",
   proprietaireVoitTout: "the owner already sees every card",
   carteInconnue: "this card is not known to the platform",
+  // Une demande vise une CARTE, et part au terminal qui la porte. Aucun ne
+  // l'a vue depuis dix minutes : on le dit tout de suite, plutôt que
+  // d'envoyer la demande au hasard ou de faire attendre l'écran.
+  carteDansAucunTerminal:
+    "this card is not in any terminal right now — removed, or its terminal "
+    + "is off. Nothing was dialled.",
 };
 
 const fr: typeof en = {
@@ -102,6 +108,9 @@ const fr: typeof en = {
   nomManquant: "il faut le prénom et le nom",
   proprietaireVoitTout: "le propriétaire voit déjà toutes les cartes",
   carteInconnue: "cette carte n’est pas connue de la plateforme",
+  carteDansAucunTerminal:
+    "cette carte n’est dans aucun terminal en ce moment — retirée, ou son "
+    + "terminal est éteint. Rien n’a été composé.",
 };
 
 export const textesApi = { en, fr } as const;
