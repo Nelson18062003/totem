@@ -15,7 +15,7 @@ compte qui permet à son examinateur d'entrer — la vitrine de démonstration.
 |---|---|
 | Les textes de la fiche, en français et en anglais | `mobile/store.config.js` |
 | Le nom sur l'App Store : « TOTEM by Bonzinilabs » (« TOTEM » seul est pris) | `mobile/store.config.js` |
-| Huit captures au format exigé (1290 × 2796) | `mobile/store/apple/screenshot/` |
+| Huit captures iPhone (1290 × 2796) et huit iPad (2048 × 2732) | `mobile/store/apple/screenshot/` |
 | La classification d'âge (4+) | `mobile/store.config.js` |
 | La note pour l'examinateur, en anglais | `mobile/store.config.js` |
 | Le compte de l'examinateur (vitrine de démonstration) | `web/lib/demonstration.ts` |
@@ -126,7 +126,12 @@ cd mobile && EXPO_PUBLIC_ADRESSE=http://127.0.0.1:3180 EXPO_PUBLIC_APERCU=1 \
   npx expo export --clear --platform web --output-dir /tmp/apercu
 node scripts/captures-boutique.mjs /tmp/apercu store/apple/screenshot/fr-FR/APP_IPHONE_67 iphone fr
 node scripts/captures-boutique.mjs /tmp/apercu store/apple/screenshot/en-US/APP_IPHONE_67 iphone en
+node scripts/captures-boutique.mjs /tmp/apercu store/apple/screenshot/fr-FR/APP_IPAD_PRO_3GEN_129 ipad fr
+node scripts/captures-boutique.mjs /tmp/apercu store/apple/screenshot/en-US/APP_IPAD_PRO_3GEN_129 ipad en
 ```
+
+L'iPad n'est pas facultatif : l'application s'y installe, et Apple refuse
+la soumission tant que la série du 13 pouces manque.
 
 `--clear` n'est pas un détail : sans lui, l'export peut garder l'adresse
 d'un export précédent, et l'application s'arrête sur l'écran de connexion.

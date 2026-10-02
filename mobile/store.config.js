@@ -39,10 +39,13 @@ const EXAMEN_COURRIEL = "examen@totemlabs.app";
 const EXAMEN_MOTDEPASSE = "TOTEM-Examen-2026";
 
 // Les captures d'une langue, dans l'ordre où Apple les montre.
-const captures = (langue) => ({
-  APP_IPHONE_67: ["1-caisses", "2-encaissements", "3-actions", "4-cartes"]
-    .map((nom) => `store/apple/screenshot/${langue}/APP_IPHONE_67/${nom}.png`),
-});
+// L'iPad aussi : l'application s'y installe (« supportsTablet »), et Apple
+// refuse la soumission sans la série du 13 pouces (2048 × 2732).
+const SERIE = ["1-caisses", "2-encaissements", "3-actions", "4-cartes"];
+const captures = (langue) => Object.fromEntries(
+  ["APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"].map((format) => [format,
+    SERIE.map((nom) => `store/apple/screenshot/${langue}/${format}/${nom}.png`)]),
+);
 
 // LE NOM SUR L'APP STORE — le seul qu'Apple veut UNIQUE au monde. « TOTEM »
 // tout court est déjà pris par une autre application, sur un autre compte :
