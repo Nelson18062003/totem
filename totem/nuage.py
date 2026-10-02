@@ -659,7 +659,22 @@ class Nuage:
                 # Base pas encore migrée : pas de colonne « utilisateur ».
                 # Tous les téléphones sont alors ceux du propriétaire — la
                 # plateforme n'en inscrivait pas d'autres.
-                if e.code != 400 or not self._defaut_de_schema(self._lire_corps(e)):
+                #
+                # UNE COLONNE ABSENTE DANS « select » NE SE DIT PAS COMME À
+                # L'ÉCRITURE. PostgREST répond PGRST204 à une écriture, mais
+                # c'est PostgreSQL qui répond à une lecture : « 42703 —
+                # column appareils.utilisateur does not exist ». Ce
+                # rattrapage ne connaissait que la première forme : sur une
+                # base sans la migration du 2 octobre, l'erreur remontait, la
+                # liste revenait vide, et AUCUN téléphone ne sonnait — Android
+                # compris — sans un mot au journal. Éprouvé sur un vrai
+                # PostgREST. Le test est ici seulement, à dessein : ailleurs,
+                # le rattrapage retire une colonne d'une écriture, ce qui
+                # n'a pas de sens pour une lecture.
+                corps = self._lire_corps(e)
+                manquante = (self._defaut_de_schema(corps) or "42703" in corps
+                             or "does not exist" in corps.lower())
+                if e.code != 400 or not manquante:
                     raise
                 lignes = self._lire("appareils?select=jeton&order=vu_le.desc"
                                     f"&limit={PAR_ENVOI}")

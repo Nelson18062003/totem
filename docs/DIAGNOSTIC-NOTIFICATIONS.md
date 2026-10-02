@@ -130,8 +130,11 @@ encore migrée » : il ne fait alors sonner **aucun** téléphone, Android
 compris, **et ne l'écrit nulle part**. Le site, lui, la reconnaît.
 *Prouvé par un essai réel sur une vraie base.*
 
-**En attendant la correction : lancer le fichier SQL du 2 octobre AVANT de
-mettre à jour le robot.**
+**Corrigé le 2 octobre** (`totem/nuage.py`, `appareils`) : la lecture
+reconnaît maintenant aussi cette réponse, et retombe sur l'ancienne lecture —
+tous les téléphones sonnent, comme avant la migration. Le test
+`BaseSansLaMigrationDuDeuxOctobre` rejoue la réponse exacte d'un vrai
+PostgREST ; sur le robot d'avant, il échoue (liste vide).
 
 ---
 
@@ -176,7 +179,9 @@ mettre à jour le robot.**
 
 1. **expo.dev → projet `totem` → Credentials → iOS → `com.bonzinilabs.totem`**
    — y a-t-il une clé de notifications (« Push Key ») ? *Tranche le
-   problème n°1.*
+   problème n°1.* — **Constaté le 2 octobre : le cadre était VIDE.** La clé
+   existait chez Apple depuis le 8 septembre, mais n'avait jamais été déposée
+   chez Expo. Déposée le jour même.
 2. **Sur le site : Console → Les gens → « Les téléphones que TOTEM fait
    sonner »** — votre iPhone y figure-t-il (une ligne « ios ») ? *Tranche :
    l'iPhone est-il inscrit ?*
@@ -194,10 +199,10 @@ mettre à jour le robot.**
 
 | Étape | Qui | Quoi |
 |---|---|---|
-| 2 | vous | Les vérifications ci-dessus (cinq minutes). |
-| 3 | Claude | Corriger le défaut du robot (problème n°4), avec son test. |
-| 4 | vous | Lancer le fichier SQL du 2 octobre, puis mettre à jour le robot. |
-| 5 | vous, guidé pas à pas | Créer la clé de notifications chez Apple (environnement Production) et l'ajouter chez Expo. |
+| 2 | vous | Les vérifications ci-dessus. ✅ L'iPhone est inscrit (Console → Les gens) ; le robot est à jour (4584704) ; le Samsung sonne. |
+| 3 | Claude | Corriger le défaut du robot (problème n°4), avec son test. ✅ |
+| 4 | vous | ~~Créer la clé chez Apple~~ : elle existait déjà depuis le 8 septembre (Key ID `7H5K87B6CG`, Sandbox & Production) ; **déposée chez Expo le 2 octobre** ✅ |
+| 5 | vous, après la fusion | Mettre à jour le robot (cette correction). |
 | 6 | ensemble | « Envoyer un essai » depuis le site : l'iPhone doit sonner. |
 | 7 | Claude | Corriger la documentation et les descriptions de GitHub. |
 | 8 | vous, guidé | Refabriquer l'iPhone et Android en 1.1.0, puis publier la mise à jour sur le bon canal. |
