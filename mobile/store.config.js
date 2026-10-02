@@ -44,6 +44,13 @@ const captures = (langue) => ({
     .map((nom) => `store/apple/screenshot/${langue}/APP_IPHONE_67/${nom}.png`),
 });
 
+// LE NOM SUR L'APP STORE — le seul qu'Apple veut UNIQUE au monde. « TOTEM »
+// tout court est déjà pris par une autre application, sur un autre compte :
+// l'envoi de la fiche a été refusé pour cela. C'est le nom sous lequel la
+// fiche a été créée dans App Store Connect, donc un nom déjà à nous. Le nom
+// sous l'icône du téléphone, lui, reste « TOTEM » (app.json).
+const NOM_SUR_LE_MAGASIN = "TOTEM by Bonzinilabs";
+
 const CONFIDENTIALITE = "https://totemlabs.app/confidentialite";
 
 const descriptionFr = `Vos cartes SIM Mobile Money restent où elles sont. Vous, non.
@@ -123,7 +130,7 @@ module.exports = {
     categories: ["FINANCE", "BUSINESS"],
     info: {
       "fr-FR": {
-        title: "TOTEM",
+        title: NOM_SUR_LE_MAGASIN,
         subtitle: "Vos cartes Mobile Money",
         description: descriptionFr,
         keywords: ["mobile money", "USSD", "SIM", "MoMo", "Orange Money", "MTN",
@@ -134,7 +141,7 @@ module.exports = {
         screenshots: captures("fr-FR"),
       },
       "en-US": {
-        title: "TOTEM",
+        title: NOM_SUR_LE_MAGASIN,
         subtitle: "Your Mobile Money SIM cards",
         description: descriptionEn,
         keywords: ["mobile money", "USSD", "SIM", "MoMo", "Orange Money", "MTN",

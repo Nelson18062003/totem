@@ -117,7 +117,33 @@ jobs:
           APPLE_CONTACT_COURRIEL: ${{ vars.APPLE_CONTACT_COURRIEL }}
           APPLE_CONTACT_TELEPHONE: ${{ vars.APPLE_CONTACT_TELEPHONE }}
           APPLE_COPYRIGHT: ${{ vars.APPLE_COPYRIGHT }}
-        run: eas metadata:push --profile production --non-interactive
+        # UN VERT QUI MENT EST PIRE QU'UN ROUGE. EAS rend la main « réussi »
+        # même quand Apple a refusé une partie de la fiche : le deuxième envoi
+        # est sorti vert, résumé « ✅ La fiche est chez Apple », alors que le
+        # nom, la description et les mots-clés avaient été refusés. On relit
+        # donc ce qu'il a ÉCRIT, pas ce qu'il a RENDU.
+        run: |
+          set -o pipefail
+          eas metadata:push --profile production --non-interactive 2>&1 | tee journal-fiche.txt
+          if grep -q "upload encountered an error\|✖ Failed" journal-fiche.txt; then
+            {
+              echo "### ❌ Apple a refusé une partie de la fiche"
+              echo ""
+              if grep -q "app name you entered is already being used" journal-fiche.txt; then
+                echo "**Le nom de l'application est déjà pris** par une autre app, sur un"
+                echo "autre compte. Il faut en choisir un autre (champ title de"
+                echo "mobile/store.config.js), puis relancer ce travail."
+                echo ""
+              fi
+              echo "Ce qu'Apple a répondu :"
+              echo ""
+              echo '```'
+              grep -A2 "✖\|encountered an error" journal-fiche.txt | head -20
+              echo '```'
+            } >> $GITHUB_STEP_SUMMARY
+            echo "::error::Apple a refusé une partie de la fiche — voir le résumé."
+            exit 1
+          fi
 
       - name: Effacer la clé d'Apple
         if: always()

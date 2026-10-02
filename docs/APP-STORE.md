@@ -14,6 +14,7 @@ compte qui permet à son examinateur d'entrer — la vitrine de démonstration.
 | Quoi | Où |
 |---|---|
 | Les textes de la fiche, en français et en anglais | `mobile/store.config.js` |
+| Le nom sur l'App Store : « TOTEM by Bonzinilabs » (« TOTEM » seul est pris) | `mobile/store.config.js` |
 | Huit captures au format exigé (1290 × 2796) | `mobile/store/apple/screenshot/` |
 | La classification d'âge (4+) | `mobile/store.config.js` |
 | La note pour l'examinateur, en anglais | `mobile/store.config.js` |
@@ -91,8 +92,10 @@ qui détient le compte.
    `CONTACT_COURRIEL` (voir `docs/PLAY-STORE.md`). Vérifiez-le avant de
    soumettre.
 
-3. **La version 1.1.0**, rubrique **Build** : choisir le paquet déjà déposé
-   (celui de TestFlight).
+3. **La version 1.1.0** : App Store Connect a préparé la fiche pour une
+   version « 1.0 » — cliquer dessus, en haut à gauche, et la renommer
+   **1.1.0**, le numéro du paquet. Puis, rubrique **Build** : choisir le
+   paquet déjà déposé (celui de TestFlight).
 
 4. **Le formulaire « app non répertoriée »**, envoyé par le titulaire du compte :
    **https://developer.apple.com/contact/request/unlisted-app/**
