@@ -3,7 +3,8 @@
 //     node scripts/captures-boutique.mjs /tmp/apercu
 //     node scripts/captures-boutique.mjs /tmp/apercu <sortie> iphone fr
 //
-// Le troisième argument choisit le format (android, par défaut, ou iphone),
+// Le troisième argument choisit le format (android, par défaut, iphone ou
+// ipad),
 // le quatrième la langue de l'écran (en, par défaut, ou fr).
 //
 // Prérequis : les mêmes que le harnais des formats — le faux nuage, la
@@ -23,6 +24,11 @@
 // est celle des plus grands iPhone ; 1290 × 2796 y est admis — 430 × 932
 // points à trois fois la densité, la géométrie d'un iPhone « Pro Max ».
 // Une image d'un pixel trop large est refusée au dépôt, sans plus.
+//
+// L'IPAD AUSSI, dès que l'application s'y installe (« supportsTablet ») :
+// Apple a refusé la soumission tant qu'il manquait la série du 13 pouces.
+// 2048 × 2732 y est admis — 1024 × 1366 points à deux fois la densité,
+// la géométrie d'un iPad Pro 12,9.
 
 import { createRequire } from "module";
 import { createServer } from "node:http";
@@ -35,15 +41,17 @@ const RACINE = process.argv[2] || "dist";
 const SORTIE = process.argv[3] || "../boutique/captures";
 const FORMAT = process.argv[4] || "android";
 const LANGUE = process.argv[5] || "en";
-if (!["android", "iphone"].includes(FORMAT) || !["en", "fr"].includes(LANGUE)) {
+if (!["android", "iphone", "ipad"].includes(FORMAT) || !["en", "fr"].includes(LANGUE)) {
   // Un format inconnu ne retombe pas sur Android : une faute de frappe
   // fabriquerait des images qu'Apple refuserait, sans que rien ne le dise.
   console.error(`\n✗ Format « ${FORMAT} » ou langue « ${LANGUE} » inconnus.`);
   process.exit(1);
 }
-const TAILLE = FORMAT === "iphone"
-  ? { viewport: { width: 430, height: 932 }, deviceScaleFactor: 3 }    // 1290 × 2796
-  : { viewport: { width: 540, height: 960 }, deviceScaleFactor: 2 };   // 1080 × 1920
+const TAILLE = {
+  iphone: { viewport: { width: 430, height: 932 }, deviceScaleFactor: 3 },    // 1290 × 2796
+  ipad: { viewport: { width: 1024, height: 1366 }, deviceScaleFactor: 2 },    // 2048 × 2732
+  android: { viewport: { width: 540, height: 960 }, deviceScaleFactor: 2 },   // 1080 × 1920
+}[FORMAT];
 if (!existsSync(join(RACINE, "index.html"))) {
   console.error(`\n✗ Aucun aperçu web dans « ${RACINE} ».`);
   process.exit(1);
