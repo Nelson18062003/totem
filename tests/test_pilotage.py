@@ -283,7 +283,7 @@ class TestGuichet(unittest.TestCase):
     def test_le_code_secret_est_efface_MEME_quand_la_session_a_disparu(self):
         """La panne la plus banale de Douala : le courant saute.
 
-        Au redémarrage, `_session` repart à None. La réponse au code secret,
+        Au redémarrage, `_sessions` repart vide. La réponse au code secret,
         elle, attend toujours dans la base. On la refusait — à raison, il n'y
         a plus de session — mais SANS effacer le code : il restait en clair
         dans le nuage, pour toujours, sans même avoir été composé. Le pire des
@@ -291,7 +291,7 @@ class TestGuichet(unittest.TestCase):
         """
         compte = FauxCompte([])
         p, nuage = pilote(compte)
-        p._session = None               # le robot vient de redémarrer
+        p._sessions.clear()             # le robot vient de redémarrer
         p._traiter({"id": 3, "type": "ussd_reponse",
                     "parametres": {"texte": "1234", "secret": True}})
 
@@ -329,9 +329,9 @@ class TestGuichet(unittest.TestCase):
         compte = FauxCompte([("ouverte", "Orange Money\n1) Transfert")])
         p, nuage = pilote(compte)
         p._traiter({"id": 6, "type": "ussd", "parametres": {"code": "#148#"}})
-        self.assertIsNotNone(p._session)
+        self.assertIn(compte, p._sessions)
         p._traiter({"id": 7, "type": "ussd_fin", "parametres": {}})
-        self.assertIsNone(p._session)
+        self.assertNotIn(compte, p._sessions)
         self.assertFalse(compte.session_ouverte)
         self.assertEqual(nuage.maj[-1][1]["resultat"], "Session closed.")
 
@@ -480,10 +480,10 @@ class TestLaMainRepriseDepuisTelegram(unittest.TestCase):
         journal = Journal(":memory:")
         compte = Compte(ModemSimule("Orange"), "Orange")
         guichet = Pilotage(None, [compte], journal)
-        guichet._session = {"compte": compte, "vie": 0}
+        guichet._sessions[compte] = 0
 
         self.assertTrue(guichet.ceder(compte))
-        self.assertIsNone(guichet._session)
+        self.assertNotIn(compte, guichet._sessions)
 
     def test_un_autre_compte_ne_le_derange_pas(self):
         from totem.pilotage import Pilotage
@@ -495,10 +495,10 @@ class TestLaMainRepriseDepuisTelegram(unittest.TestCase):
         orange = Compte(ModemSimule("Orange"), "Orange")
         mtn = Compte(ModemSimule("MTN"), "MTN")
         guichet = Pilotage(None, [orange, mtn], journal)
-        guichet._session = {"compte": orange, "vie": 0}
+        guichet._sessions[orange] = 0
 
         self.assertFalse(guichet.ceder(mtn))
-        self.assertIsNotNone(guichet._session)
+        self.assertIn(orange, guichet._sessions)
 
     def test_ouvrir_depuis_telegram_previent_le_guichet(self):
         """Le bout à bout : le robot doit appeler ceder() de lui-même."""
@@ -515,10 +515,10 @@ class TestLaMainRepriseDepuisTelegram(unittest.TestCase):
         compte = Compte(ModemSimule("Orange"), "Orange")
         robot = Robot([compte], TransportEspion(), journal)
         robot.pilotage = Pilotage(None, [compte], journal)
-        robot.pilotage._session = {"compte": compte, "vie": 0}
+        robot.pilotage._sessions[compte] = 0
 
         robot._ouvrir_session(compte, "#150#", None)
-        self.assertIsNone(robot.pilotage._session,
+        self.assertNotIn(compte, robot.pilotage._sessions,
                           "le guichet garde une session devenue fausse")
 
 
@@ -610,15 +610,61 @@ class TestChacunSaCarte(unittest.TestCase):
         p._traiter({"id": 63, "type": "ussd_fin",
                     "parametres": {"carte": orange.carte.iccid}})
         self.assertTrue(mtn.session_ouverte, "la session de l'autre a été coupée")
-        self.assertIsNotNone(p._session)
+        self.assertIn(mtn, p._sessions)
 
     def test_ouvrir_n_interrompt_pas_l_operation_de_l_autre(self):
         orange, mtn, nuage, p = self.session_sur_mtn()
         p._traiter({"id": 64, "type": "ussd",
                     "parametres": {"code": "#150#", "carte": orange.carte.iccid}})
-        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
-        self.assertEqual(orange.recu, [])
         self.assertTrue(mtn.session_ouverte)
+        self.assertEqual(mtn.recu, ["*126#"], "l'opération de l'autre a bougé")
+
+    def test_deux_cartes_travaillent_en_meme_temps(self):
+        """LE DÉFAUT VU À DOUALA : deux personnes, deux cartes, deux modems
+        libres — et la seconde lisait « une autre opération est en cours sur
+        le terminal, sur une autre carte ». Chaque carte a son modem : les
+        deux opérations avancent, chacune dans son menu."""
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        orange.reponses = [("ouverte", "Orange Money\n1) Transfert"),
+                           ("fermee", "Solde : 3673510 FCFA")]
+        p._traiter({"id": 66, "type": "ussd",
+                    "parametres": {"code": "#150#", "carte": orange.carte.iccid}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "faite",
+                         nuage.maj[-1][1].get("resultat"))
+        self.assertIn(orange, p._sessions)
+        self.assertIn(mtn, p._sessions)
+        # Les réponses s'entrelacent : chacune tombe dans SON menu.
+        p._traiter({"id": 67, "type": "ussd_reponse",
+                    "parametres": {"texte": "1", "carte": mtn.carte.iccid}})
+        p._traiter({"id": 68, "type": "ussd_reponse",
+                    "parametres": {"texte": "4", "carte": orange.carte.iccid}})
+        self.assertEqual(mtn.recu, ["*126#", "1"])
+        self.assertEqual(orange.recu, ["#150#", "4"])
+        self.assertTrue(all(c["etat"] == "faite" for i, c in nuage.maj
+                            if i in (66, 67, 68) and "resultat" in c))
+        # La session finie d'Orange se libère ; celle de MTN reste.
+        self.assertNotIn(orange, p._sessions)
+        self.assertIn(mtn, p._sessions)
+
+    def test_sans_carte_et_deux_sessions_on_ne_devine_pas(self):
+        """Une réponse qui ne nomme pas sa carte, quand DEUX sessions sont
+        ouvertes : la donner à l'une au hasard, c'est peut-être envoyer un
+        code secret chez quelqu'un d'autre. Refusée — et effacée quand même."""
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        orange.reponses = [("ouverte", "Orange Money\n1) Transfert")]
+        p._traiter({"id": 69, "type": "ussd",
+                    "parametres": {"code": "#150#", "carte": orange.carte.iccid}})
+        p._traiter({"id": 70, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True}})
+        ecritures = [c for i, c in nuage.maj if i == 70]
+        self.assertEqual(ecritures[-1]["etat"], "echouee")
+        self.assertNotIn("1234", str(ecritures))
+        self.assertEqual(mtn.recu, ["*126#"])
+        self.assertEqual(orange.recu, ["#150#"])
+        # Raccrocher sans carte non plus : on ne coupe personne au hasard.
+        p._traiter({"id": 71, "type": "ussd_fin", "parametres": {}})
+        self.assertEqual(nuage.maj[-1][1]["etat"], "echouee")
+        self.assertTrue(mtn.session_ouverte and orange.session_ouverte)
 
     def test_sans_carte_le_geste_d_avant_marche(self):
         """Une application pas encore mise à jour n'envoie pas la carte avec
@@ -840,3 +886,75 @@ class TestSoldeMonotone(unittest.TestCase):
         # Aucune session/solde ici, mais l'appel direct doit accepter moment.
         p.nuage.publier_solde("ic", 100, moment="2026-08-10T07:04:00+01:00")
         self.assertEqual(recu[-1], ("ic", 100, "2026-08-10T07:04:00+01:00"))
+
+
+class TestUneFileParCarte(unittest.TestCase):
+    """Ne plus refuser ne suffit pas : la relève exécutait les demandes UNE
+    par une, et composer un code, c'est attendre le réseau plusieurs
+    secondes. L'Orange de l'un attendait donc la MTN de l'autre, sur un modem
+    pourtant libre. Chaque carte a maintenant sa file."""
+
+    def test_une_carte_lente_ne_retient_pas_l_autre(self):
+        import threading
+        orange, mtn = TestDeuxCartesUneOperation.deux_comptes(self)
+        lache = threading.Event()
+        repondu = threading.Event()
+
+        lent = mtn.ussd_demarrer
+        def ussd_lent(code):        # le réseau MTN tarde à répondre
+            lache.wait(5)
+            return lent(code)
+        mtn.ussd_demarrer = ussd_lent
+
+        rapide = orange.ussd_demarrer
+        def ussd_rapide(code):
+            r = rapide(code)
+            repondu.set()
+            return r
+        orange.ussd_demarrer = ussd_rapide
+
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [orange, mtn], FauxJournal())
+        p._marche = True
+        try:
+            p._distribuer({"id": 80, "type": "ussd", "parametres": {
+                "code": "*126#", "carte": mtn.carte.iccid}})
+            p._distribuer({"id": 81, "type": "ussd", "parametres": {
+                "code": "#150#", "carte": orange.carte.iccid}})
+            self.assertTrue(repondu.wait(2),
+                            "l'Orange a attendu que la MTN ait fini")
+        finally:
+            lache.set()
+            p._marche = False
+
+    def test_une_demande_n_est_confiee_qu_une_fois(self):
+        """La demande reste « en attente » dans la base tant que sa file ne
+        l'a pas réclamée : la relève suivante la revoit. Elle ne doit pas
+        partir deux fois dans la file."""
+        import threading
+        compte = FauxCompte([("fermee", "Solde : 1000 FCFA")])
+        bloque = threading.Event()
+        vrai = compte.ussd_demarrer
+        def ussd(code):
+            bloque.wait(5)
+            return vrai(code)
+        compte.ussd_demarrer = ussd
+        p, nuage = pilote(compte)
+        p._marche = True
+        try:
+            demande = {"id": 90, "type": "ussd", "parametres": {
+                "code": "#150#", "carte": compte.carte.iccid}}
+            p._distribuer(demande)
+            p._distribuer(demande)
+            p._distribuer(demande)
+            bloque.set()
+            for _ in range(100):
+                if not p._en_vol:
+                    break
+                import time
+                time.sleep(0.02)
+            self.assertEqual(nuage.reclamations, [90])
+            self.assertEqual(compte.recu, ["#150#"])
+        finally:
+            bloque.set()
+            p._marche = False
