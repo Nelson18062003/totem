@@ -1,7 +1,7 @@
+import { donneesMontrees } from "@/lib/ce-qu-on-montre";
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
-import { chargerDonnees } from "@/lib/serveur";
-import { RIEN, porteeDe } from "@/lib/portee";
+import { RIEN } from "@/lib/portee";
 import { compteConnecte } from "@/lib/qui";
 import { quiAdministre } from "@/lib/garde";
 import { textesReglages } from "@noyau/textes/reglages";
@@ -29,7 +29,7 @@ export default async function Reglages() {
   const [moi, admin, donnees] = await Promise.all([
     compteConnecte(),
     quiAdministre(),
-    chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 0, recus: 0 }),
+    donneesMontrees(langue, { sms: 0, recus: 0 }),
   ]);
   const { terminal, sims, raccourcis } = donnees;
   // Sans verrou (développement local), tout est ouvert : on est le

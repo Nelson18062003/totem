@@ -1,7 +1,6 @@
+import { donneesMontrees } from "@/lib/ce-qu-on-montre";
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
-import { chargerDonnees } from "@/lib/serveur";
-import { RIEN, porteeDe } from "@/lib/portee";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { clientsRecents } from "@noyau/recents";
@@ -23,7 +22,7 @@ export default async function Beneficiaires() {
   const langue = await langueServeur();
   const t = textesBeneficiaires[langue];
   const { sims, paiements, beneficiaires = [] } =
-    await chargerDonnees(langue, (await porteeDe()) ?? RIEN, { sms: 200, recus: 0 });
+    await donneesMontrees(langue, { sms: 200, recus: 0 });
 
   return (
     <div className="flex flex-col gap-7">

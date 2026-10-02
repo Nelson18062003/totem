@@ -2,6 +2,7 @@ import { estNature } from "@noyau/natures";
 import { carteDuSms, definirNature, relie } from "@/lib/serveur";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import { langueServeur } from "@/lib/langue-serveur";
+import { estDemonstration } from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,9 @@ export const dynamic = "force-dynamic";
 /** Classe un SMS : le propriétaire décide sa nature, pour l'affichage et le reçu. */
 export async function POST(req: Request) {
   const langue = await langueServeur();
+  // La démonstration peut classer un SMS inventé : l'écran l'accepte, rien
+  // ne s'écrit — ses lignes n'existent dans aucune base.
+  if (await estDemonstration(req)) return Response.json({ ok: true });
   // LE TITULAIRE DE LA CARTE, ou le propriétaire : un SMS d'une carte
   // confiée appartient à celui qui la tient.
   const main = process.env.SESSION_SECRET ? await maniement(req) : TOUT;

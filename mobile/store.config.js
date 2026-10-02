@@ -5,10 +5,16 @@
 // les secrets du dépôt. Rien ne se tape à la main dans App Store Connect,
 // sauf ce qu'Apple réserve au titulaire du compte (voir docs/APP-STORE.md).
 //
-// UN FICHIER EN JAVASCRIPT, ET NON EN JSON, POUR UNE SEULE RAISON : le mot de
-// passe du compte d'examen. Il n'est écrit nulle part dans le dépôt — tout ce
-// qui est dans ce fichier est public, pour toujours. Il vient des secrets de
-// GitHub, au moment de l'envoi, comme la clé d'Apple.
+// LE CONTACT D'APPLE — qui Apple appelle si son examinateur a une question —
+// est écrit ici, à la demande du propriétaire : les variables de GitHub ne
+// se posent pas par programme. Une variable APPLE_CONTACT_* posée dans
+// GitHub, si elle existe un jour, passe devant.
+//
+// LE COMPTE D'EXAMEN, LUI, EST ÉCRIT EN CLAIR — à dessein. C'est la vitrine
+// de démonstration de la plateforme (web/lib/demonstration.ts) : elle ne
+// montre que des données inventées, ne touche à aucune vraie carte, et ses
+// opérations sont jouées pour de faux. `verifier-la-demonstration` exige que
+// ces identifiants soient bien ceux que la plateforme accepte.
 //
 // LES TEXTES suivent les deux règles de la fiche Google Play
 // (docs/PLAY-STORE.md) : on ne dit pas « suivre l'argent » — TOTEM n'en
@@ -19,6 +25,18 @@
 // jamais sur de vraies données.
 
 const env = (nom) => (process.env[nom] || "").trim();
+
+// Le contact du propriétaire.
+const CONTACT = {
+  prenom: "Nelson",
+  nom: "Soh",
+  courriel: "nelsonsoh2003@gmail.com",
+  telephone: "+33745645891",
+};
+
+// La vitrine de démonstration — les MÊMES que dans web/lib/demonstration.ts.
+const EXAMEN_COURRIEL = "examen@totemlabs.app";
+const EXAMEN_MOTDEPASSE = "TOTEM-Examen-2026";
 
 // Les captures d'une langue, dans l'ordre où Apple les montre.
 const captures = (langue) => ({
@@ -88,10 +106,11 @@ English and French.`;
 // une application qu'il ne peut pas comprendre en trente secondes.
 const notesExamen = `TOTEM is a private management interface for the owner of Mobile Money SIM cards. The SIM cards sit in a terminal (a Raspberry Pi with a GSM modem) that the owner keeps at their shop; the app talks to the owner's own platform, which talks to that terminal.
 
-The account below is a reviewer account created by the owner. One test card has been entrusted to it, so the app shows real screens: the card and its balance, the incoming operator SMS, the operations screen.
+The account below is a built-in DEMONSTRATION account. It shows invented data only (two demo SIM cards, their balances and operator SMS), so you can use every screen freely.
 
 Please note:
-- No money moves through TOTEM and it holds no funds. Operations (deposit, transfer) are USSD sessions run on the owner's own SIM card, exactly as if they typed *126# on that phone. Please do not complete a money operation: it would move real money on a real SIM card.
+- No money moves through TOTEM and it holds no funds. For a real owner, operations (deposit, transfer) are USSD sessions run on their own SIM card, exactly as if they typed *126# on that phone.
+- In the demonstration account, operations are SIMULATED end to end: you can run a full deposit or transfer (number, amount, the operator's confirmation screen, a PIN of your choice). Nothing is sent to any network and no money moves.
 - The Mobile Money PIN is typed only at the moment of an operation and is never stored.
 - The app is meant for the owner and the sellers they entrust cards to; it is distributed as an unlisted app.
 
@@ -160,12 +179,12 @@ module.exports = {
     // qui décide du jour.
     release: { automaticRelease: false },
     review: {
-      firstName: env("APPLE_CONTACT_PRENOM"),
-      lastName: env("APPLE_CONTACT_NOM"),
-      email: env("APPLE_CONTACT_COURRIEL"),
-      phone: env("APPLE_CONTACT_TELEPHONE"),
-      demoUsername: env("APPLE_EXAMEN_COURRIEL"),
-      demoPassword: env("APPLE_EXAMEN_MOTDEPASSE"),
+      firstName: env("APPLE_CONTACT_PRENOM") || CONTACT.prenom,
+      lastName: env("APPLE_CONTACT_NOM") || CONTACT.nom,
+      email: env("APPLE_CONTACT_COURRIEL") || CONTACT.courriel,
+      phone: env("APPLE_CONTACT_TELEPHONE") || CONTACT.telephone,
+      demoUsername: EXAMEN_COURRIEL,
+      demoPassword: EXAMEN_MOTDEPASSE,
       demoRequired: true,
       notes: notesExamen,
     },

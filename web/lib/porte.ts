@@ -30,7 +30,10 @@ import {
   aRafraichir, courrielAcceptable, empreinter, motDePasseAcceptable,
   normaliserCourriel, verifier,
 } from "@/lib/motdepasse";
-import { egaliteConstante, signerSession, sujetDuCompte } from "@/lib/session";
+import { SUJET_DEMONSTRATION, egaliteConstante, signerSession, sujetDuCompte } from "@/lib/session";
+import {
+  COURRIEL_DEMONSTRATION, MOTDEPASSE_DEMONSTRATION, demonstrationOuverte,
+} from "@/lib/demonstration";
 import { attendreLeFrein, cleDeFrein, noterEchec, oublierEchecs } from "@/lib/frein";
 import { erreurApi } from "@noyau/textes/api";
 import type { Langue } from "@noyau/langue";
@@ -91,6 +94,23 @@ export async function ouvrirLaPorte(
   }
 
   if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
+
+  // --- Chemin 0 : la démonstration ---------------------------------------
+  // Son courriel n'est celui d'aucun compte : il n'existe pas en base, et
+  // n'y existera jamais. Un mauvais mot de passe compte comme un échec,
+  // comme partout — des identifiants publics ne sont pas une raison de
+  // laisser essayer à l'infini.
+  if (courriel === COURRIEL_DEMONSTRATION && demonstrationOuverte()) {
+    if (!(await egaliteConstante(motdepasse, MOTDEPASSE_DEMONSTRATION))) {
+      noterEchec(cle);
+      return refus(langue, "identifiantsIncorrects", 401);
+    }
+    oublierEchecs(cle);
+    return {
+      ok: true, jeton: await signerSession(secret, SUJET_DEMONSTRATION),
+      sujet: SUJET_DEMONSTRATION,
+    };
+  }
 
   // --- Chemin 1 : un compte ------------------------------------------------
   if (courriel) {

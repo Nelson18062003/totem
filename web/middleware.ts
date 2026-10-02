@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
+import {
+  COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, sujetDeSession,
+} from "@/lib/session";
 import { etatDuCompte } from "@/lib/session-vivante";
 import { verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
@@ -149,7 +151,12 @@ export async function middleware(req: NextRequest) {
   // signature : ajouter cette porte n'affaiblit rien, et le chemin du
   // navigateur n'est pas touché.
   const jeton = req.cookies.get(COOKIE_SESSION)?.value ?? jetonPorte(req);
-  const sujet = await sujetDeSession(secret, jeton);
+  const lu = await sujetDeSession(secret, jeton);
+  // LA DÉMONSTRATION FERMÉE FERME AUSSI SES JETONS. Sans cette ligne, un
+  // jeton d'examen déjà émis passerait encore le verrou pendant un mois —
+  // pour ne rien voir, certes, mais une porte fermée ne s'entrouvre pas.
+  const fermee = (process.env.DEMONSTRATION || "").trim().toLowerCase() === "non";
+  const sujet = lu === SUJET_DEMONSTRATION && fermee ? null : lu;
   if (sujet !== null) {
     // LE JETON NE SUFFIT PAS : le compte doit exister encore.
     //

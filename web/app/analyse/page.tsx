@@ -1,7 +1,6 @@
+import { donneesMontrees } from "@/lib/ce-qu-on-montre";
 import Link from "next/link";
 import { langueServeur } from "@/lib/langue-serveur";
-import { chargerDonnees } from "@/lib/serveur";
-import { RIEN, porteeDe } from "@/lib/portee";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { resumeSemaine } from "@noyau/analyse";
 import { fcfa, nombre } from "@noyau/types";
@@ -25,7 +24,7 @@ export const dynamic = "force-dynamic";
 export default async function Analyse() {
   const langue = await langueServeur();
   const t = textesAnalyse[langue];
-  const { paiements } = await chargerDonnees(langue, (await porteeDe()) ?? RIEN);
+  const { paiements } = await donneesMontrees(langue);
 
   if (paiements.length === 0) {
     return (

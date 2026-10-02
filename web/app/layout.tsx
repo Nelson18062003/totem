@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Inter } from "next/font/google";
 import "./globals.css";
-import { chargerTerminal, relie } from "@/lib/serveur";
+import { relie } from "@/lib/serveur";
+import { terminalMontre } from "@/lib/ce-qu-on-montre";
 import { langueServeur } from "@/lib/langue-serveur";
 import { Coquille } from "./coquille";
 import { FournisseurLangue } from "./langue";
@@ -47,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const langue = await langueServeur();
   // Le terminal seul : la coquille n'affiche que lui. Recharger les 1000 SMS
   // et les 1000 reçus ici doublait le coût de CHAQUE page.
-  const terminal = relie ? await chargerTerminal(langue) : null;
+  const terminal = relie ? await terminalMontre(langue) : null;
   return (
     <html lang={langue} className={`${inter.variable} ${dmSans.variable}`}>
       <body className="min-h-dvh">
