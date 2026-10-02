@@ -249,7 +249,7 @@ class Pilotage:
         # secondes — le code s'en va avec celle-ci. Réécrire un effacement
         # déjà fait ne coûte rien.
         if parametres.get("secret"):
-            final["parametres"] = {"secret": True}
+            final["parametres"] = self._parametres_masques(parametres)
         self.nuage.commande_maj(identifiant, final)
 
     def _etablir_recu(self, parametres, langue=None):
@@ -512,6 +512,23 @@ class Pilotage:
     def _iccid_demande(parametres):
         return re.sub(r"\D", "", str(parametres.get("carte") or ""))
 
+    @classmethod
+    def _parametres_masques(cls, parametres):
+        """Ce qui reste d'une réponse secrète une fois le code effacé : le
+        drapeau, et LA CARTE.
+
+        On écrivait `{"secret": True}` tout court, ce qui effaçait la carte
+        avec le code. Or c'est la carte qui dit, sur la plateforme, À QUI la
+        demande appartient : celui à qui elle est confiée tapait son code
+        secret, l'opération passait… et il ne pouvait plus lire la réponse
+        du réseau — « demande introuvable » sur sa propre carte. Un ICCID
+        n'a rien de secret : il est imprimé sur la puce."""
+        masques = {"secret": True}
+        iccid = cls._iccid_demande(parametres)
+        if iccid:
+            masques["carte"] = iccid
+        return masques
+
     def _compte_vise(self, parametres, langue=None):
         """La carte sur laquelle composer.
 
@@ -615,7 +632,8 @@ class Pilotage:
             efface = False
             for _ in range(3):
                 if self.nuage.commande_maj(
-                        identifiant, {"parametres": {"secret": True}}):
+                        identifiant,
+                        {"parametres": self._parametres_masques(parametres)}):
                     efface = True
                     break
                 time.sleep(0.5)

@@ -277,6 +277,16 @@ const serveur = createServer(async (req, res) => {
     setTimeout(() => {
       enregistree.etat = "faite";
       enregistree.resultat = reponsePour(enregistree);
+      // LE CODE SECRET S'EFFACE, COMME CHEZ LE VRAI ROBOT : il ne reste que
+      // le drapeau et la carte (`_parametres_masques`). Sans cette
+      // imitation, la commande gardait ici ses paramètres d'origine, et
+      // aucun harnais ne pouvait voir qu'un effacement trop large rendait
+      // la réponse illisible à celui dont c'est la carte.
+      if (enregistree.parametres?.secret) {
+        const carte = enregistree.parametres.carte;
+        enregistree.parametres = typeof carte === "string"
+          ? { secret: true, carte } : { secret: true };
+      }
     }, 700);
     return repondre([{ id }]);
   }
@@ -290,6 +300,22 @@ const serveur = createServer(async (req, res) => {
       const cle = parCle.replace("eq.", "");
       const c = [...commandes.values()].find((x) => x.cle === cle);
       return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+    }
+    // La DERNIÈRE ouverture d'un terminal : c'est là que la plateforme lit
+    // la carte d'une réponse qui ne dit pas la sienne. Filtres, ordre et
+    // limite comme PostgREST les applique.
+    const parType = url.searchParams.get("type");
+    if (parType) {
+      const type = parType.replace("eq.", "");
+      const terminal = (url.searchParams.get("terminal") ?? "").replace("eq.", "");
+      const limite = Number(url.searchParams.get("limit") ?? 1000);
+      const lignes = [...commandes.values()]
+        .filter((x) => x.type === type && (!terminal || x.terminal === terminal))
+        .sort((x, y) => url.searchParams.get("order") === "id.desc" ? y.id - x.id : x.id - y.id)
+        .slice(0, limite)
+        .map((x) => ({ id: x.id, type: x.type, parametres: x.parametres ?? {},
+                       terminal: x.terminal ?? null }));
+      return repondre(lignes);
     }
     const eq = url.searchParams.get("id");
     const id = eq ? Number(eq.replace("eq.", "")) : null;

@@ -1,6 +1,8 @@
 import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
-import { carteDuSms, creerCommande, relie } from "@/lib/serveur";
+import {
+  carteDeLaSession, carteDuSms, creerCommande, relie, terminalVise,
+} from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import { erreurApi } from "@noyau/textes/api";
@@ -177,9 +179,32 @@ export async function POST(req: Request) {
     }
   }
 
+  // UNE RÉPONSE QUI NE DIT PAS SA CARTE PREND CELLE DE SA SESSION.
+  //
+  // L'application installée sur les téléphones (la 1.0.0) nomme la carte en
+  // OUVRANT la session, mais pas dans ses réponses ni en raccrochant. Le
+  // guichet exigeait pourtant la carte de chaque geste : celui à qui une
+  // carte est confiée ouvrait sa session, puis se voyait refuser son propre
+  // code secret — « cette carte ne vous a pas été confiée ». Sur sa carte.
+  //
+  // La carte d'une réponse, c'est celle de la session où elle tombe : on la
+  // retrouve dans la dernière ouverture déposée pour ce terminal, et on
+  // l'écrit dans la demande. La portée se vérifie ensuite sur ELLE, comme si
+  // l'écran l'avait nommée — et le robot, qui la lit aussi, refuse de poser
+  // la réponse dans une session ouverte sur une autre carte. Le propriétaire
+  // y gagne autant : son code secret ne tombe plus dans le menu qu'un autre
+  // parcourt sur une autre carte.
+  let terminal = terminalCible;
+  if ((genre === "ussd_reponse" || genre === "ussd_fin")
+      && typeof parametres.carte !== "string" && relie) {
+    terminal = terminalCible || (await terminalVise());
+    const carte = terminal ? await carteDeLaSession(terminal) : null;
+    if (carte) parametres.carte = carte;
+  }
+
   // LA CARTE DU GESTE, POUR CELUI QUI N'A PAS TOUT. Elle se lit dans ce que
-  // la demande vise — et une demande qui ne dit pas sa carte est refusée :
-  // dans le doute, on ne compose pas.
+  // la demande vise — et une demande dont on ne retrouve pas la carte est
+  // refusée : dans le doute, on ne compose pas.
   if (!main.tout) {
     if (genre === "raccourci") {
       return Response.json(
@@ -212,8 +237,7 @@ export async function POST(req: Request) {
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
-  const id = await creerCommande(genre, parametres, terminalCible,
-                                 cleIntention);
+  const id = await creerCommande(genre, parametres, terminal, cleIntention);
   if (id == null) {
     return Response.json({ erreur: erreurApi(langue, "depotImpossible") }, { status: 502 });
   }

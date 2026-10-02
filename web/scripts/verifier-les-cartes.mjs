@@ -11,7 +11,10 @@
 //     par l'application, par les pages, par le bilan, par la pastille ;
 //   · un reçu d'une autre carte, en devinant son numéro ;
 //   · un lien signé de bilan, en réécrivant à qui il était destiné ;
-//   · un compte qui se confierait des cartes lui-même.
+//   · un compte qui se confierait des cartes lui-même ;
+//   · une réponse qui ne nomme pas sa carte — l'application installée sur
+//     les téléphones n'en nomme aucune après l'ouverture — et qui tomberait
+//     dans la session qu'un autre parcourt sur une autre carte.
 //
 // LE TÉMOIN, D'ABORD : le propriétaire doit VOIR les deux cartes et leurs
 // SMS. Sans lui, « le vendeur ne voit pas la carte MTN » et « le faux nuage
@@ -226,6 +229,37 @@ try {
     verifier("il répond au menu de SA carte",
       (await commande({ type: "ussd_reponse", parametres: { texte: "1", carte: ORANGE } },
                       vendeur)).statut, 200);
+
+    // L'APPLICATION D'AVANT, celle qui est installée sur les téléphones :
+    // elle nomme la carte en ouvrant, et plus ensuite. Le guichet refusait
+    // alors au titulaire son propre code secret — « cette carte ne vous a
+    // pas été confiée », sur SA carte. La carte d'une réponse, c'est celle
+    // de la session où elle tombe.
+    const brute = async (id) => (await (await fetch(
+      `http://127.0.0.1:${NUAGE}/rest/v1/commandes?id=eq.${id}`)).json())[0]?.parametres ?? {};
+    const sansCarte = await commande(
+      { type: "ussd_reponse", parametres: { texte: "2" } }, vendeur);
+    verifier("l'application d'avant répond sans nommer la carte : passe",
+      sansCarte.statut, 200);
+    verifier("…et la demande porte la carte de SA session",
+      (await brute(sansCarte.id)).carte, ORANGE);
+    const code = await commande(
+      { type: "ussd_reponse", parametres: { texte: "1234", secret: true } }, vendeur);
+    verifier("il tape SON code secret, sans nommer la carte : passe", code.statut, 200);
+    // Le robot efface le code dès qu'il l'a lu. S'il effaçait la carte avec,
+    // le titulaire ne pourrait plus lire la réponse du réseau — l'argent
+    // serait parti sans qu'il le sache.
+    let lu = null;
+    for (let i = 0; i < 20 && lu?.etat !== "faite"; i++) {
+      await attendre(250);
+      const r = await lire(`/api/commande/${code.id}`, vendeur);
+      lu = r.ok ? await r.json() : { statut: r.status };
+    }
+    verifier("il lit la réponse à SON code secret", lu?.etat, "faite");
+    verifier("le code s'est effacé, la carte est restée",
+      await brute(code.id), { secret: true, carte: ORANGE });
+    verifier("l'application d'avant raccroche sans nommer la carte : passe",
+      (await commande({ type: "ussd_fin" }, vendeur)).statut, 200);
     verifier("il raccroche SA session",
       (await commande({ type: "ussd_fin", parametres: { carte: ORANGE } }, vendeur)).statut, 200);
     verifier("il actualise", (await commande({ type: "solde" }, vendeur)).statut, 200);
@@ -274,8 +308,6 @@ try {
     verifier("répondre dans une session MTN : refusé",
       (await commande({ type: "ussd_reponse", parametres: { texte: "1234", secret: true, carte: MTN } },
                       vendeur)).statut, 403);
-    verifier("répondre sans dire à quelle carte : refusé",
-      (await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur)).statut, 403);
     verifier("raccrocher la session MTN : refusé",
       (await commande({ type: "ussd_fin", parametres: { carte: MTN } }, vendeur)).statut, 403);
     verifier("renommer la MTN : refusé",
@@ -301,6 +333,28 @@ try {
       (await lire(`/api/commande/${sienne.id}`, vendeur)).status, 404);
     verifier("le propriétaire, lui, la lit (témoin)",
       (await lire(`/api/commande/${sienne.id}`, patron)).status, 200);
+
+    // La session ouverte est maintenant celle du propriétaire, sur la MTN.
+    // Une réponse sans carte prend celle de la session — donc la MTN — et
+    // le vendeur ne la tient pas. Sans ce refus, son chiffre tomberait dans
+    // le menu que le propriétaire est en train de parcourir.
+    verifier("répondre sans carte dans la session MTN : refusé",
+      (await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur)).statut, 403);
+    verifier("y taper un code secret sans carte : refusé",
+      (await commande({ type: "ussd_reponse", parametres: { texte: "1234", secret: true } },
+                      vendeur)).statut, 403);
+    verifier("la raccrocher sans carte : refusé",
+      (await commande({ type: "ussd_fin" }, vendeur)).statut, 403);
+    const duPatron = await commande(
+      { type: "ussd_reponse", parametres: { texte: "1" } }, patron);
+    verifier("la réponse du propriétaire sans carte prend celle de SA session",
+      (await brute(duPatron.id)).carte, MTN);
+    // Une ouverture qui ne nomme aucune carte ne prête la sienne à personne :
+    // on ne remonte pas chercher une session plus ancienne.
+    verifier("le propriétaire compose sans nommer la carte (témoin)",
+      (await commande({ type: "ussd", parametres: { code: "#150#" } }, patron)).statut, 200);
+    verifier("répondre sans carte quand aucune ne se retrouve : refusé",
+      (await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur)).statut, 403);
   }
 
   console.log("\nLE LIEN SIGNÉ DU BILAN DIT POUR QUI IL A ÉTÉ FAIT");
