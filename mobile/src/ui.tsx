@@ -7,7 +7,7 @@
 // Rappel de la charte, parce que c'est ici qu'on serait tenté de l'oublier :
 // pas d'ombre. Les plans se séparent par les bordures et les fonds.
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, type Ref } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   InputAccessoryView, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View,
@@ -217,7 +217,12 @@ export function BarreClavier({ id, langue }: { id: string; langue: "fr" | "en" }
  * Les réglages sont posés AVANT `{...reste}` : un écran qui a une raison de
  * les lever passe devant.
  */
-export function Defilement({ children, ...reste }: ScrollViewProps) {
+export function Defilement({ children, ...reste }: ScrollViewProps & {
+  // React 19 passe la référence comme une propriété ordinaire : un écran qui
+  // doit défiler lui-même (l'échange d'une opération, qui suit le dernier
+  // message) la reçoit sur le vrai ScrollView, sans contourner cette pièce.
+  ref?: Ref<ScrollView>;
+}) {
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"

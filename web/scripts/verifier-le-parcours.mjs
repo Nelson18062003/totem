@@ -18,6 +18,17 @@
 //   5. quitter l'écran RACCROCHE la session, faute de quoi la SIM reste en
 //      ligne et l'opération suivante peut échouer.
 //
+// PUIS UN DÉPÔT, PAR LE BOUTON « DÉPÔT », comme le propriétaire le fait :
+//
+//   6. le numéro se COLLE — « +237 6 77 99 88 77 » recopié d'un message —,
+//      et c'est 677998877 qui part, jamais l'indicatif ni les espaces ;
+//   7. le montant s'écrit comme on veut (« 5 000 FCFA ») et part en chiffres ;
+//   8. quand le réseau réclame le code, son message ENTIER est à l'écran en
+//      même temps que le pavé — ce qu'on signe : le montant, le nom, les
+//      frais. L'écran d'avant n'affichait que « Votre code secret » ;
+//   9. tout l'échange se lit, y compris les écrans auxquels la plateforme a
+//      répondu seule.
+//
 // Un harnais qui ne regarde que l'écran ne prouve rien de tout cela : on
 // écoute donc AUSSI ce qui part sur le réseau.
 
@@ -78,6 +89,10 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: "cle-de-secours-du-parcours",
   },
   stdio: "ignore",
+  // Son PROPRE groupe : « npx » lance le vrai serveur en dessous, et tuer
+  // « npx » seul le laissait vivant, port occupé — l'essai suivant aurait
+  // mesuré CE serveur-là.
+  detached: true,
 });
 
 let nav;
@@ -95,7 +110,13 @@ try {
     executablePath: "/opt/pw-browsers/chromium",
     args: ["--no-sandbox", "--no-proxy-server"], proxy: { server: "direct://" },
   });
-  const page = await nav.newPage({ viewport: { width: 1280, height: 900 } });
+  // Le presse-papiers ouvert à la page : sans cette permission, « coller »
+  // n'aurait rien à coller, et l'essai ne prouverait rien.
+  const contexte = await nav.newContext({
+    viewport: { width: 1280, height: 900 },
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
+  const page = await contexte.newPage();
 
   // CE QUI PART SUR LE RÉSEAU : c'est là que vivent les preuves.
   const demandes = [];
@@ -158,12 +179,71 @@ try {
   const apres = demandes.filter((d) => d.type === "ussd_fin").length;
   verifier("la session est raccrochée en partant", apres > avant, true);
 
+  console.log("\nUn dépôt, par le bouton « Dépôt »");
+  await page.goto(`${B}/actions`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: /MTN/ }).first().click();
+  await page.getByRole("button", { name: /^(Dépôt|Deposit)/ }).first().click();
+  const fenetre = page.getByRole("dialog");
+  await fenetre.waitFor({ timeout: 5000 });
+  const champs = fenetre.locator("input");
+  verifier("le numéro se tape dans un VRAI champ", await champs.count(), 1);
+
+  // COLLER, pour de vrai : le presse-papiers, puis Ctrl+V dans le champ.
+  await page.evaluate(() => navigator.clipboard.writeText("+237 6 77 99 88 77"));
+  await champs.first().click();
+  await page.keyboard.press("Control+V");
+  verifier("le numéro collé est dans le champ, tel quel",
+           await champs.first().inputValue(), "+237 6 77 99 88 77");
+  const lu = await fenetre.innerText();
+  verifier("l'écran dit ce qui partira : 677 99 88 77", lu.includes("677 99 88 77"), true);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+
+  await fenetre.locator("input").first().pressSequentially("5 000 FCFA");
+  verifier("le montant s'écrit comme on veut",
+           await fenetre.locator("input").first().inputValue(), "5 000 FCFA");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+  await fenetre.getByRole("button", { name: /^(Confirmer|Confirm)$/ }).click();
+
+  // Le réseau parle : on attend le PAVÉ, un état, jamais une durée.
+  let paveDepot = 0;
+  for (let i = 0; i < 40 && paveDepot < 9; i++) {
+    await page.waitForTimeout(500);
+    paveDepot = await fenetre.getByRole("button", { name: /^[0-9]$/ }).count();
+  }
+  verifier("le pavé du code s'ouvre au bout du dépôt", paveDepot >= 9, true);
+  const avecPave = await fenetre.innerText();
+  verifier("…SOUS le message qui le réclame : le nom", avecPave.includes("JEAN DUPONT"), true);
+  verifier("…le montant et les frais", /5 000 FCFA[\s\S]*Frais/.test(avecPave), true);
+  verifier("tout l'échange se lit, même ce que l'écran a servi seul",
+           avecPave.includes("Entrez le numero du beneficiaire")
+             && avecPave.includes("Entrez le montant"), true);
+
+  const depot = demandes.slice(demandes.findLastIndex((d) => d.type === "ussd"));
+  const textes = depot.map((d) => String(d.parametres?.texte ?? d.parametres?.code ?? ""));
+  verifier("le numéro est parti en chiffres, sans indicatif",
+           textes.includes("677998877") && !textes.some((x) => x.includes("237677")), true);
+  verifier("le montant est parti en chiffres", textes.includes("5000"), true);
+
+  for (const c of CODE_SECRET) {
+    await fenetre.getByRole("button", { name: new RegExp(`^${c}$`) }).first().click();
+  }
+  verifier("le code ne s'affiche PAS en clair, là non plus",
+           (await fenetre.innerText()).includes(CODE_SECRET), false);
+  await fenetre.getByRole("button", { name: /^(Valider|Confirm)$/i }).first().click();
+  await page.waitForTimeout(3000);
+  const secretDepot = demandes.slice(demandes.findLastIndex((d) => d.type === "ussd"))
+    .find((d) => d.parametres?.secret === true);
+  verifier("le code du dépôt part avec son drapeau", Boolean(secretDepot), true);
+
   console.log(echecs === 0
     ? "\n✓ Le parcours tient : l'opération se déroule et le code reste secret.\n"
     : `\n✗ ${echecs} vérification(s) en échec.\n`);
 } finally {
   if (nav) await nav.close().catch(() => {});
-  serveur.kill();
+  try { process.kill(-serveur.pid, "SIGTERM"); } catch { serveur.kill(); }
   nuage.kill();
 }
 process.exit(echecs === 0 ? 0 : 1);

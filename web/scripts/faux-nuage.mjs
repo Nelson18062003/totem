@@ -155,9 +155,12 @@ const tables = () => ({
   ],
   raccourcis: [
     { operateur: "MTN", nom: "solde", libelle: "Solde", etapes: "*126#,5,1" },
-    { operateur: "MTN", nom: "depot", libelle: "Depot", etapes: "*126#,1,1" },
+    // Le menu, puis « 1 » : le réseau demande alors le numéro, puis le
+    // montant, et l'écran répond SEUL avec ce qu'on a saisi — c'est ce
+    // chemin qu'un dépôt MTN suit vraiment.
+    { operateur: "MTN", nom: "depot", libelle: "Depot", etapes: "*126#,1" },
     { operateur: "MTN", nom: "retrait", libelle: "Retrait", etapes: "*126#,2" },
-    { operateur: "MTN", nom: "transfert", libelle: "Transfert", etapes: "*126#,1,2" },
+    { operateur: "MTN", nom: "transfert", libelle: "Transfert", etapes: "*126#,1" },
     { operateur: "Orange", nom: "solde", libelle: "Solde", etapes: "#150*1#" },
   ],
   // CE QUE LE TERMINAL A REMARQUÉ. La table existait ici, vide : rien ne
@@ -236,7 +239,11 @@ function reponsePour(commande) {
   if (parametres.secret) return "Operation reussie. Nouveau solde: 407 500 FCFA.";
   if (n === 0) return "Entrez le numero du beneficiaire:";
   if (n === 1) return "Entrez le montant:";
-  return "Confirmer l'operation ?\nEntrez votre code secret:";
+  // Comme un vrai opérateur : ce qu'on va signer, PUIS la demande du code.
+  // Un écran qui ne montrerait que « votre code secret » ferait signer à
+  // l'aveugle — et sans ces lignes ici, aucun harnais ne pourrait le voir.
+  return "Depot de 5 000 FCFA vers JEAN DUPONT (677998877).\nFrais : 0 FCFA.\n"
+    + "Confirmer l'operation ?\nEntrez votre code secret:";
 }
 
 const serveur = createServer(async (req, res) => {
@@ -268,9 +275,13 @@ const serveur = createServer(async (req, res) => {
       }
     }
     const id = prochainId++;
-    // Le tour compte les réponses déjà données dans CETTE session.
+    // Le tour compte les réponses déjà données dans CETTE session — depuis
+    // la dernière ouverture. Compté sur tout le faux nuage, il faisait
+    // commencer la deuxième opération d'un essai au milieu du scénario.
+    const ouverture = Math.max(0, ...[...commandes.values()]
+      .filter((x) => x.type === "ussd").map((x) => x.id));
     const tour = [...commandes.values()].filter(
-      (x) => x.type === "ussd_reponse" && !x.parametres?.secret).length;
+      (x) => x.type === "ussd_reponse" && !x.parametres?.secret && x.id > ouverture).length;
     const enregistree = { ...c, id, tour, etat: "en_attente", resultat: null, depose: Date.now() };
     commandes.set(id, enregistree);
     // Le « robot » répond après un instant, comme le vrai le ferait.

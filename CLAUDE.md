@@ -147,6 +147,17 @@ composerait le transfert deux fois), et quitter l'écran raccroche la session.
 Il RECOMPILE avant de mesurer : `next start` sert « .next », pas le disque —
 sans cela le parcours passerait en vert contre du code d'hier.
 
+Il joue aussi un DÉPÔT par le bouton « Dépôt », comme le propriétaire : il
+COLLE « +237 6 77 99 88 77 » dans le champ du numéro — un vrai champ, le pavé
+dessiné d'avant ne savait pas coller —, exige que 677998877 parte, sans
+l'indicatif, et que le message ENTIER de l'opérateur (montant, nom, frais)
+soit à l'écran en même temps que le pavé du code : avant, il n'affichait que
+« Votre code secret », et l'on signait à l'aveugle. Il a trouvé du premier
+coup ce qu'aucun œil n'avait vu : les visages des clients récents vivaient
+dans le formulaire sans `type="button"` — Entrée, dans le champ, « cliquait »
+le premier visage, et l'argent partait au premier client de la liste.
+**Un bouton sans type, dans un formulaire, est un bouton d'envoi.**
+
 `verifier-le-bilan` sème quatre mois de caisse dans le faux nuage — 2 400
 encaissements — et redemande le bilan CSV. C'est le seul chiffre de TOTEM qui
 SORT de TOTEM : il part chez un comptable, il se rapproche d'un solde, il
