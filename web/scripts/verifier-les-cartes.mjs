@@ -335,26 +335,40 @@ try {
       (await lire(`/api/commande/${sienne.id}`, patron)).status, 200);
 
     // La session ouverte est maintenant celle du propriétaire, sur la MTN.
-    // Une réponse sans carte prend celle de la session — donc la MTN — et
-    // le vendeur ne la tient pas. Sans ce refus, son chiffre tomberait dans
-    // le menu que le propriétaire est en train de parcourir.
-    verifier("répondre sans carte dans la session MTN : refusé",
-      (await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur)).statut, 403);
-    verifier("y taper un code secret sans carte : refusé",
-      (await commande({ type: "ussd_reponse", parametres: { texte: "1234", secret: true } },
-                      vendeur)).statut, 403);
-    verifier("la raccrocher sans carte : refusé",
-      (await commande({ type: "ussd_fin" }, vendeur)).statut, 403);
+    //
+    // Une réponse sans carte prenait « la dernière ouverture du terminal » —
+    // donc la MTN — et le vendeur était refusé de justesse : sans ce refus,
+    // son chiffre tombait dans le menu que le propriétaire parcourt. Le robot
+    // tient maintenant un menu PAR CARTE ET PAR PERSONNE : la réponse prend
+    // la dernière ouverture de SA personne — la sienne, sur l'Orange. Ce qui
+    // compte n'a pas changé, et c'est cela qu'on exige : son chiffre ne
+    // s'approche JAMAIS de la MTN. (Le refus d'hier était le mécanisme ;
+    // la carte de destination est la propriété.)
+    const r1 = await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur);
+    verifier("répondre sans carte pendant la session MTN : part à SA carte",
+      [r1.statut, (await brute(r1.id)).carte], [200, ORANGE]);
+    const r2 = await commande(
+      { type: "ussd_reponse", parametres: { texte: "1234", secret: true } }, vendeur);
+    verifier("y taper un code secret sans carte : jamais vers la MTN",
+      [r2.statut, (await brute(r2.id)).carte], [200, ORANGE]);
+    const r3 = await commande({ type: "ussd_fin" }, vendeur);
+    verifier("raccrocher sans carte : SA session, pas celle du propriétaire",
+      [r3.statut, (await brute(r3.id)).carte], [200, ORANGE]);
     const duPatron = await commande(
       { type: "ussd_reponse", parametres: { texte: "1" } }, patron);
     verifier("la réponse du propriétaire sans carte prend celle de SA session",
       (await brute(duPatron.id)).carte, MTN);
     // Une ouverture qui ne nomme aucune carte ne prête la sienne à personne :
-    // on ne remonte pas chercher une session plus ancienne.
+    // on ne remonte pas chercher une session plus ancienne — ni la sienne,
+    // ni celle d'un autre.
     verifier("le propriétaire compose sans nommer la carte (témoin)",
       (await commande({ type: "ussd", parametres: { code: "#150#" } }, patron)).statut, 200);
-    verifier("répondre sans carte quand aucune ne se retrouve : refusé",
-      (await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur)).statut, 403);
+    const r4 = await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, patron);
+    verifier("sa réponse sans carte ne remonte pas à sa session MTN d'avant",
+      (await brute(r4.id)).carte ?? null, null);
+    const r5 = await commande({ type: "ussd_reponse", parametres: { texte: "1" } }, vendeur);
+    verifier("et l'ouverture du propriétaire n'a pas déplacé celle du vendeur",
+      [r5.statut, (await brute(r5.id)).carte], [200, ORANGE]);
   }
 
   console.log("\nLE LIEN SIGNÉ DU BILAN DIT POUR QUI IL A ÉTÉ FAIT");

@@ -102,6 +102,11 @@ minutes un abandon. Une carte déplacée d'un boîtier à l'autre suit d'elle-m�
 La plateforme joint aussi **la personne** qui demande (le sujet de la session)
 — elle le pose elle-même, jamais repris de l'écran.
 
+L'application d'hier (1.0.0) ne nomme pas la carte dans ses réponses. Sa
+réponse prend la carte de **la dernière ouverture de la même personne** —
+plus « la dernière ouverture du terminal », qui, avec un menu par carte et
+par personne, peut être celle de quelqu'un d'autre.
+
 ### La preuve
 
 `web/scripts/verifier-l-adressage.mjs` monte une flotte dans le faux nuage :
