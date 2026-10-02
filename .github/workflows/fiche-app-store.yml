@@ -1,0 +1,140 @@
+# Envoyer la fiche App Store chez Apple : textes, captures, classification,
+# et ce que l'examinateur doit savoir — sans rien taper dans App Store Connect.
+#
+# La fiche vit dans `mobile/store.config.js`, les captures dans
+# `mobile/store/apple/screenshot/`. Ce travail les pousse avec la clé
+# d'Apple déjà rangée pour « Application iPhone » (ASC_CLE_P8, ASC_CLE_ID,
+# ASC_EMETTEUR_ID).
+#
+# CE QU'IL FAUT UNE SEULE FOIS — GitHub → Settings → Secrets and variables →
+# Actions :
+#
+#   onglet « Secrets » (ce qui ne doit jamais se lire) :
+#     APPLE_EXAMEN_COURRIEL    le courriel du compte créé pour l'examinateur
+#     APPLE_EXAMEN_MOTDEPASSE  son mot de passe
+#
+#   onglet « Variables » (ce qu'Apple affiche à son examinateur, pas plus) :
+#     APPLE_CONTACT_PRENOM, APPLE_CONTACT_NOM, APPLE_CONTACT_COURRIEL,
+#     APPLE_CONTACT_TELEPHONE   — qui Apple appelle s'il a une question
+#     APPLE_COPYRIGHT           — facultatif, « 2026 Votre nom »
+#
+# Le mot de passe d'examen ne vit QUE dans les secrets : tout ce qui est dans
+# le dépôt est public, pour toujours. Voir docs/APP-STORE.md pour la suite —
+# le formulaire « app non répertoriée » et la soumission, qu'Apple réserve au
+# titulaire du compte.
+
+name: Fiche App Store
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  envoyer:
+    name: Envoyer la fiche
+    runs-on: ubuntu-latest
+    steps:
+      # Épinglées par empreinte, comme dans « Application iPhone » : ce travail
+      # tient la clé d'Apple.
+      - name: Récupérer le dépôt
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4.4.0
+
+      - name: Installer Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Installer les outils d'Expo
+        uses: expo/expo-github-action@c7b66a9c327a43a8fa7c0158e7f30d6040d2481e   # 8.2.1
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Installer les dépendances
+        working-directory: mobile
+        run: npm ci
+
+      # TOUT EST REGARDÉ AVANT D'ENVOYER. Une fiche sans compte d'examen part
+      # sans erreur — et revient refusée trois jours plus tard, « nous
+      # n'avons pas pu nous connecter ». On le dit ici, en une minute.
+      - name: Vérifier ce qu'il faut à Apple
+        env:
+          P8: ${{ secrets.ASC_CLE_P8 }}
+          CLE_ID: ${{ secrets.ASC_CLE_ID }}
+          EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+          APPLE_EXAMEN_COURRIEL: ${{ secrets.APPLE_EXAMEN_COURRIEL }}
+          APPLE_EXAMEN_MOTDEPASSE: ${{ secrets.APPLE_EXAMEN_MOTDEPASSE }}
+          APPLE_CONTACT_PRENOM: ${{ vars.APPLE_CONTACT_PRENOM }}
+          APPLE_CONTACT_NOM: ${{ vars.APPLE_CONTACT_NOM }}
+          APPLE_CONTACT_COURRIEL: ${{ vars.APPLE_CONTACT_COURRIEL }}
+          APPLE_CONTACT_TELEPHONE: ${{ vars.APPLE_CONTACT_TELEPHONE }}
+        run: |
+          manque=""
+          for nom in P8 CLE_ID EMETTEUR_ID APPLE_EXAMEN_COURRIEL APPLE_EXAMEN_MOTDEPASSE \
+                     APPLE_CONTACT_PRENOM APPLE_CONTACT_NOM APPLE_CONTACT_COURRIEL APPLE_CONTACT_TELEPHONE; do
+            if [ -z "${!nom}" ]; then manque="$manque $nom"; fi
+          done
+          if [ -n "$manque" ]; then
+            {
+              echo "### Il manque de quoi remplir la fiche"
+              echo ""
+              echo "Pas encore posé :**$manque**"
+              echo ""
+              echo "GitHub → Settings → Secrets and variables → Actions."
+              echo "Les deux APPLE_EXAMEN_* vont dans l'onglet **Secrets** ;"
+              echo "les APPLE_CONTACT_* dans l'onglet **Variables**."
+              echo "(P8, CLE_ID, EMETTEUR_ID : ce sont ASC_CLE_P8, ASC_CLE_ID, ASC_EMETTEUR_ID.)"
+            } >> $GITHUB_STEP_SUMMARY
+            echo "::error::Il manque :$manque — voir le résumé."
+            exit 1
+          fi
+          echo "Tout ce qu'Apple demande est là."
+
+      - name: Poser la clé d'Apple
+        working-directory: mobile
+        env:
+          P8: ${{ secrets.ASC_CLE_P8 }}
+          ASC_CLE_ID: ${{ secrets.ASC_CLE_ID }}
+          ASC_EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
+        run: |
+          printf '%s' "$P8" > app-store-connect.p8
+          if ! grep -q "BEGIN PRIVATE KEY" app-store-connect.p8; then
+            echo "::error::ASC_CLE_P8 n'est pas une clé privée valable."
+            exit 1
+          fi
+          node scripts/poser-la-cle-du-depot.mjs production ./app-store-connect.p8
+
+      - name: Envoyer la fiche chez Apple
+        working-directory: mobile
+        env:
+          APPLE_EXAMEN_COURRIEL: ${{ secrets.APPLE_EXAMEN_COURRIEL }}
+          APPLE_EXAMEN_MOTDEPASSE: ${{ secrets.APPLE_EXAMEN_MOTDEPASSE }}
+          APPLE_CONTACT_PRENOM: ${{ vars.APPLE_CONTACT_PRENOM }}
+          APPLE_CONTACT_NOM: ${{ vars.APPLE_CONTACT_NOM }}
+          APPLE_CONTACT_COURRIEL: ${{ vars.APPLE_CONTACT_COURRIEL }}
+          APPLE_CONTACT_TELEPHONE: ${{ vars.APPLE_CONTACT_TELEPHONE }}
+          APPLE_COPYRIGHT: ${{ vars.APPLE_COPYRIGHT }}
+        run: eas metadata:push --profile production --non-interactive
+
+      - name: Effacer la clé d'Apple
+        if: always()
+        working-directory: mobile
+        run: rm -f app-store-connect.p8
+
+      - name: La suite
+        if: success()
+        run: |
+          {
+            echo "### ✅ La fiche est chez Apple"
+            echo ""
+            echo "Textes (français et anglais), captures, classification 4+ et"
+            echo "informations pour l'examinateur sont dans App Store Connect."
+            echo ""
+            echo "Reste ce qu'Apple réserve au titulaire du compte — voir"
+            echo "**docs/APP-STORE.md** : la confidentialité de l'app, le"
+            echo "formulaire « non répertoriée », puis « Soumettre pour examen »."
+          } >> $GITHUB_STEP_SUMMARY

@@ -220,11 +220,16 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   // passe montrerait les SMS du propriétaire à qui ouvrirait un téléphone
   // perdu. Et il est EFFACÉ dès que la session tombe.
   const cahierRelu = useRef(false);
+  // La plateforme a-t-elle déjà répondu ? Le cahier arrive APRÈS elle sur un
+  // téléphone rapide : il ne doit alors rien dire, et surtout pas « ces
+  // chiffres datent » sur des chiffres qui viennent d'arriver.
+  const reseauARepondu = useRef(false);
   useEffect(() => {
     if (connecte === false) {
       setDonnees(null); setServies(null); setQuand(null); setDuCahier(false);
       setRepondu(false); setEnVol(0);
       cahierRelu.current = false;
+      reseauARepondu.current = false;
       void Cahier.fermer();
       return;
     }
@@ -233,7 +238,7 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
     void Cahier.lire().then((page) => {
       // Si la plateforme a déjà répondu entre-temps, on ne l'écrase pas :
       // le réseau a toujours raison contre le cahier.
-      if (!page) return;
+      if (!page || reseauARepondu.current) return;
       setDonnees((deja) => (deja ? deja : page.donnees));
       setServies((deja) => (deja ? deja : page.bornes));
       setQuand((deja) => (deja ? deja : page.quand));
@@ -260,6 +265,7 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
       setServies(besoin);
       setQuand(Date.now());
       setDuCahier(false);
+      reseauARepondu.current = true;
       void Cahier.ecrire({ quand: Date.now(), bornes: besoin, donnees: d });
     } catch (e) {
       // Session expirée : ce n'est pas une erreur à afficher, c'est un
@@ -298,8 +304,17 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   // Le chargement part quand le besoin grandit — et seulement alors. Un
   // écran qui demande MOINS que ce qui est déjà au cahier ne déclenche rien :
   // c'est tout l'objet du cahier.
+  //
+  // SAUF SI CE QUI EST À L'ÉCRAN VIENT DU CAHIER LUI-MÊME. Ouvrir
+  // l'application sur un onglet qui demande peu (« Opérations » : aucun
+  // SMS) trouvait son besoin « couvert » par les chiffres du dernier
+  // passage — et ne demandait JAMAIS rien à la plateforme. Le bandeau
+  // « Pas de réseau » restait affiché sur un téléphone parfaitement
+  // connecté, pour toujours. Vu sur les captures de la fiche App Store, pas
+  // deviné. Des chiffres relus du téléphone ne couvrent aucun besoin : ils
+  // tiennent l'écran en attendant la réponse, c'est tout.
   const besoinCouvert = besoin === null
-    || (servies !== null && couvre(servies, besoin));
+    || (servies !== null && !duCahier && couvre(servies, besoin));
   useEffect(() => {
     if (connecte !== true) return;
     // Le besoin est couvert : rien à aller chercher. Il n'y a plus de drapeau

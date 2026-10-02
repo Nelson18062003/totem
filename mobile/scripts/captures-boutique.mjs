@@ -1,6 +1,10 @@
-// Les captures d'écran de la fiche Google Play.
+// Les captures d'écran des fiches Google Play ET App Store.
 //
 //     node scripts/captures-boutique.mjs /tmp/apercu
+//     node scripts/captures-boutique.mjs /tmp/apercu <sortie> iphone fr
+//
+// Le troisième argument choisit le format (android, par défaut, ou iphone),
+// le quatrième la langue de l'écran (en, par défaut, ou fr).
 //
 // Prérequis : les mêmes que le harnais des formats — le faux nuage, la
 // plateforme d'essai sur 3180, et un export web portant EXPO_PUBLIC_APERCU=1.
@@ -14,6 +18,11 @@
 // LA TAILLE. Google demande entre 320 et 3840 px de côté, deux images au
 // moins, huit au plus. On rend en 1080 × 1920 — le format d'un téléphone
 // courant, assez net pour ne pas paraître flou sur un grand écran.
+//
+// Apple, lui, n'accepte QUE des tailles exactes. La seule série obligatoire
+// est celle des plus grands iPhone ; 1290 × 2796 y est admis — 430 × 932
+// points à trois fois la densité, la géométrie d'un iPhone « Pro Max ».
+// Une image d'un pixel trop large est refusée au dépôt, sans plus.
 
 import { createRequire } from "module";
 import { createServer } from "node:http";
@@ -24,6 +33,17 @@ const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 
 const RACINE = process.argv[2] || "dist";
 const SORTIE = process.argv[3] || "../boutique/captures";
+const FORMAT = process.argv[4] || "android";
+const LANGUE = process.argv[5] || "en";
+if (!["android", "iphone"].includes(FORMAT) || !["en", "fr"].includes(LANGUE)) {
+  // Un format inconnu ne retombe pas sur Android : une faute de frappe
+  // fabriquerait des images qu'Apple refuserait, sans que rien ne le dise.
+  console.error(`\n✗ Format « ${FORMAT} » ou langue « ${LANGUE} » inconnus.`);
+  process.exit(1);
+}
+const TAILLE = FORMAT === "iphone"
+  ? { viewport: { width: 430, height: 932 }, deviceScaleFactor: 3 }    // 1290 × 2796
+  : { viewport: { width: 540, height: 960 }, deviceScaleFactor: 2 };   // 1080 × 1920
 if (!existsSync(join(RACINE, "index.html"))) {
   console.error(`\n✗ Aucun aperçu web dans « ${RACINE} ».`);
   process.exit(1);
@@ -79,19 +99,22 @@ const nav = await chromium.launch({
          "--disable-features=IsolateOrigins,site-per-process"],
   proxy: { server: "direct://" },
 });
-// 540 × 960 à deux fois la densité = 1080 × 1920.
 const page = await nav.newPage({
-  viewport: { width: 540, height: 960 }, deviceScaleFactor: 2,
+  ...TAILLE, locale: LANGUE === "fr" ? "fr-FR" : "en-US",
 });
 
 await page.goto(BASE, { waitUntil: "networkidle" });
 await page.waitForTimeout(3000);
 
+// La langue se choisit sur l'écran de connexion, comme le ferait quelqu'un.
+const bascule = page.getByText(LANGUE === "fr" ? /^Français$/ : /^English$/);
+if (await bascule.count()) await bascule.first().click();
+
 const champ = page.locator('input[type="email"]:not([readonly])');
 await champ.waitFor({ state: "visible", timeout: 20000 });
 await champ.fill(COURRIEL);
 await page.locator('input[type="password"]').fill(MOTDEPASSE);
-await page.getByText("Sign in", { exact: true }).last().click();
+await page.getByText(/^(Sign in|Se connecter)$/).last().click();
 try {
   await page.locator('input[type="password"]').waitFor({ state: "detached", timeout: 15000 });
 } catch {
@@ -116,10 +139,23 @@ for (const [nom, chemin, quoi] of ECRANS) {
     await page.goto(`${BASE}${chemin}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(2500);
   }
+  // LE BANDEAU « PAS DE RÉSEAU » N'A RIEN À FAIRE SUR UNE FICHE. Il paraît
+  // un instant pendant qu'un écran recharge, et une première série l'a
+  // photographié sur une capture sur quatre — vue à l'œil, pas devinée. On
+  // attend qu'il parte ; s'il reste, on s'arrête au lieu de le publier.
+  for (let i = 0; i < 20; i++) {
+    const t = await page.evaluate(() => document.body.innerText);
+    if (!/No network|Pas de réseau|Hors ligne/.test(t)) break;
+    await page.waitForTimeout(500);
+  }
   const texte = await page.evaluate(() => document.body.innerText);
+  if (/No network|Pas de réseau|Hors ligne/.test(texte)) {
+    console.error(`\n✗ ${nom} : le bandeau « pas de réseau » reste affiché. Rien n'est pris.`);
+    process.exit(1);
+  }
   // Une capture de l'écran de connexion sur une fiche de magasin serait
   // ridicule — et c'est exactement ce qui arrive quand la session tombe.
-  if (texte.includes("Password")) {
+  if (/Password|Mot de passe/.test(texte)) {
     console.error(`\n✗ ${nom} : on est retombé sur la connexion. Rien n'est pris.`);
     process.exit(1);
   }
@@ -128,7 +164,9 @@ for (const [nom, chemin, quoi] of ECRANS) {
   pris++;
 }
 
-console.log(`\n${pris} captures dans « ${SORTIE} », en 1080 × 1920.`);
+const { width, height } = TAILLE.viewport;
+console.log(`\n${pris} captures dans « ${SORTIE} », en `
+  + `${width * TAILLE.deviceScaleFactor} × ${height * TAILLE.deviceScaleFactor}.`);
 console.log("Données inventées : aucun montant ni nom réel n'y figure.");
 await nav.close();
 fichiers.close();
