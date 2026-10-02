@@ -50,20 +50,13 @@ serveur, à chaque fois.
 tombent avec elle. Rouvrez-la (supprimez la variable) avant chaque nouvelle
 soumission : l'examinateur revient à chaque version.
 
-### 2. Qui Apple appelle s'il a une question
+### 2. Qui Apple appelle s'il a une question : déjà fait
 
-**GitHub → Settings → Secrets and variables → Actions → onglet
-« Variables »** :
-
-| Nom | Valeur |
-|---|---|
-| `APPLE_CONTACT_PRENOM` | votre prénom |
-| `APPLE_CONTACT_NOM` | votre nom |
-| `APPLE_CONTACT_COURRIEL` | votre courriel |
-| `APPLE_CONTACT_TELEPHONE` | votre numéro, avec l'indicatif (`+237…`) |
-| `APPLE_COPYRIGHT` | facultatif : « 2026 Votre nom » |
-
-Apple exige un contact : c'est la seule chose qu'on ne peut pas inventer.
+Apple exige un contact. Il est écrit dans la fiche (`mobile/store.config.js`,
+bloc `CONTACT`) : le prénom, le nom, le courriel et le téléphone du
+propriétaire. Les variables de GitHub ne se posent pas par programme ; si
+l'on en pose un jour (`APPLE_CONTACT_PRENOM`, `…_NOM`, `…_COURRIEL`,
+`…_TELEPHONE`, onglet « Variables »), elles passent devant.
 
 ### 3. Envoyer la fiche
 

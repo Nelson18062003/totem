@@ -5,9 +5,10 @@
 // les secrets du dépôt. Rien ne se tape à la main dans App Store Connect,
 // sauf ce qu'Apple réserve au titulaire du compte (voir docs/APP-STORE.md).
 //
-// UN FICHIER EN JAVASCRIPT, ET NON EN JSON : le contact d'Apple (nom,
-// courriel, téléphone) vient des variables de GitHub au moment de l'envoi,
-// et n'est pas écrit ici.
+// LE CONTACT D'APPLE — qui Apple appelle si son examinateur a une question —
+// est écrit ici, à la demande du propriétaire : les variables de GitHub ne
+// se posent pas par programme. Une variable APPLE_CONTACT_* posée dans
+// GitHub, si elle existe un jour, passe devant.
 //
 // LE COMPTE D'EXAMEN, LUI, EST ÉCRIT EN CLAIR — à dessein. C'est la vitrine
 // de démonstration de la plateforme (web/lib/demonstration.ts) : elle ne
@@ -24,6 +25,14 @@
 // jamais sur de vraies données.
 
 const env = (nom) => (process.env[nom] || "").trim();
+
+// Le contact du propriétaire.
+const CONTACT = {
+  prenom: "Nelson",
+  nom: "Soh",
+  courriel: "nelsonsoh2003@gmail.com",
+  telephone: "+33745645891",
+};
 
 // La vitrine de démonstration — les MÊMES que dans web/lib/demonstration.ts.
 const EXAMEN_COURRIEL = "examen@totemlabs.app";
@@ -170,10 +179,10 @@ module.exports = {
     // qui décide du jour.
     release: { automaticRelease: false },
     review: {
-      firstName: env("APPLE_CONTACT_PRENOM"),
-      lastName: env("APPLE_CONTACT_NOM"),
-      email: env("APPLE_CONTACT_COURRIEL"),
-      phone: env("APPLE_CONTACT_TELEPHONE"),
+      firstName: env("APPLE_CONTACT_PRENOM") || CONTACT.prenom,
+      lastName: env("APPLE_CONTACT_NOM") || CONTACT.nom,
+      email: env("APPLE_CONTACT_COURRIEL") || CONTACT.courriel,
+      phone: env("APPLE_CONTACT_TELEPHONE") || CONTACT.telephone,
       demoUsername: EXAMEN_COURRIEL,
       demoPassword: EXAMEN_MOTDEPASSE,
       demoRequired: true,

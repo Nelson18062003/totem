@@ -9,10 +9,9 @@
 # CE QU'IL FAUT UNE SEULE FOIS — GitHub → Settings → Secrets and variables →
 # Actions :
 #
-#   onglet « Variables » (ce qu'Apple affiche à son examinateur, pas plus) :
-#     APPLE_CONTACT_PRENOM, APPLE_CONTACT_NOM, APPLE_CONTACT_COURRIEL,
-#     APPLE_CONTACT_TELEPHONE   — qui Apple appelle s'il a une question
-#     APPLE_COPYRIGHT           — facultatif, « 2026 Votre nom »
+#   rien d'autre que la clé d'Apple. Le contact d'Apple est écrit dans la
+#   fiche ; des variables APPLE_CONTACT_* ou APPLE_COPYRIGHT, si on les pose
+#   un jour (onglet « Variables »), passent devant.
 #
 # Le compte de l'examinateur, lui, n'a rien à ranger : c'est la vitrine de
 # démonstration de la plateforme (web/lib/demonstration.ts), dont les
@@ -64,14 +63,9 @@ jobs:
           P8: ${{ secrets.ASC_CLE_P8 }}
           CLE_ID: ${{ secrets.ASC_CLE_ID }}
           EMETTEUR_ID: ${{ secrets.ASC_EMETTEUR_ID }}
-          APPLE_CONTACT_PRENOM: ${{ vars.APPLE_CONTACT_PRENOM }}
-          APPLE_CONTACT_NOM: ${{ vars.APPLE_CONTACT_NOM }}
-          APPLE_CONTACT_COURRIEL: ${{ vars.APPLE_CONTACT_COURRIEL }}
-          APPLE_CONTACT_TELEPHONE: ${{ vars.APPLE_CONTACT_TELEPHONE }}
         run: |
           manque=""
-          for nom in P8 CLE_ID EMETTEUR_ID \
-                     APPLE_CONTACT_PRENOM APPLE_CONTACT_NOM APPLE_CONTACT_COURRIEL APPLE_CONTACT_TELEPHONE; do
+          for nom in P8 CLE_ID EMETTEUR_ID; do
             if [ -z "${!nom}" ]; then manque="$manque $nom"; fi
           done
           if [ -n "$manque" ]; then
@@ -81,7 +75,6 @@ jobs:
               echo "Pas encore posé :**$manque**"
               echo ""
               echo "GitHub → Settings → Secrets and variables → Actions."
-              echo "Les APPLE_CONTACT_* vont dans l'onglet **Variables**."
               echo "(P8, CLE_ID, EMETTEUR_ID : ce sont ASC_CLE_P8, ASC_CLE_ID, ASC_EMETTEUR_ID.)"
             } >> $GITHUB_STEP_SUMMARY
             echo "::error::Il manque :$manque — voir le résumé."
