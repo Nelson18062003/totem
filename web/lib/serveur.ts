@@ -567,7 +567,7 @@ export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
 // L'application dépose une demande ; le robot de Douala la relève, l'exécute
 // sur la vraie SIM, et écrit le résultat ici même.
 
-async function terminalVise(): Promise<string | null> {
+export async function terminalVise(): Promise<string | null> {
   const t = await lire<{ id: string }>(
     "terminaux?select=id&order=vu_le.desc.nullslast&limit=1");
   return t[0]?.id ?? null;
@@ -882,6 +882,23 @@ export async function carteDuSms(
   // pour trancher, deux réponses différentes ne désignent AUCUNE carte.
   const cartes = new Set(lignes.map((l) => l.carte));
   return cartes.size === 1 ? lignes[0].carte : null;
+}
+
+/** La carte de la session USSD d'un terminal : celle de la DERNIÈRE
+ *  ouverture déposée pour lui. Le robot ne tient qu'une session à la fois,
+ *  et refuse d'en ouvrir une sur une autre carte tant qu'elle vit : la
+ *  dernière ouverture est donc celle de la session en cours — ou bien elle
+ *  a été refusée, et le robot refusera aussi la réponse qu'on lui joint
+ *  (il revérifie que la session est sur la carte nommée).
+ *
+ *  Seulement la dernière : si elle ne nomme aucune carte, on ne remonte
+ *  pas plus loin chercher une session plus ancienne. */
+export async function carteDeLaSession(terminal: string): Promise<string | null> {
+  const lignes = await lire<{ parametres: Record<string, unknown> | null }>(
+    `commandes?select=parametres&type=eq.ussd`
+    + `&terminal=eq.${encodeURIComponent(terminal)}&order=id.desc&limit=1`);
+  const carte = lignes[0]?.parametres?.carte;
+  return typeof carte === "string" && /^\d{1,22}$/.test(carte) ? carte : null;
 }
 
 /** La carte visée par une demande déjà déposée — sans jamais rendre ses

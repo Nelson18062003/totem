@@ -175,12 +175,15 @@ const en = {
   // Sans ce message, fermer un accès pouvait échouer en silence, et le
   // propriétaire croire qu'il avait coupé quelqu'un alors que non.
   actionRatee: "Action failed — nothing changed. Check the connection and try again.",
-  // L'avertissement qui compte : tant que rattacher une SIM à une personne
-  // n'existe pas, un compte approuvé voit TOUT.
+  // L'avertissement qui compte : ce qu'une carte confiée DONNE. Il disait
+  // « il ne pourra jamais composer un code ni déplacer d'argent » — vrai
+  // avant que la carte confiée ne devienne la sienne, faux depuis. Le
+  // propriétaire lisait l'inverse de ce qu'il accordait.
   creerAvertissement:
-    "This account will see nothing until you entrust it one or more cards — " +
-    "then only those cards, their messages and their balances. It can never " +
-    "dial a code or move money.",
+    "This account will see nothing until you entrust it one or more cards. " +
+    "An entrusted card is theirs: its messages, its balance, dialling codes, " +
+    "entering the secret code, moving money — on those cards only. You keep " +
+    "control: you can take a card back at any time.",
   // --- Les cartes confiées à une personne
   cartesDeLaPersonne: "Cards it sees",
   cartesAucune: "None yet: this account sees nothing.",
@@ -456,8 +459,10 @@ const fr: typeof en = {
   actionRatee: "L'action n'a pas abouti — rien n'a changé. Vérifiez la connexion et réessayez.",
   creerAvertissement:
     "Ce compte ne verra rien tant que vous ne lui aurez pas confié une ou " +
-    "plusieurs cartes — et ensuite, seulement celles-là, leurs messages et " +
-    "leurs soldes. Il ne pourra jamais composer un code ni déplacer d’argent.",
+    "plusieurs cartes. Une carte confiée est à lui : ses messages, son solde, " +
+    "composer les codes, taper le code secret, déplacer l’argent — sur " +
+    "celles-là seulement. Vous gardez la main : vous pouvez reprendre une " +
+    "carte à tout moment.",
   cartesDeLaPersonne: "Cartes qu’il voit",
   cartesAucune: "Aucune pour l’instant : ce compte ne voit rien.",
   cartesToutes: "Toutes — le propriétaire voit tout.",

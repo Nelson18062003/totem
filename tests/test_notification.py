@@ -295,6 +295,59 @@ class ListeDesAppareils(unittest.TestCase):
         self.assertEqual(Nuage("", "", "totem", journal=None).appareils(), [])
 
 
+class BaseSansLaMigrationDuDeuxOctobre(unittest.TestCase):
+    """La base n'a pas encore la colonne « utilisateur » : les téléphones
+    doivent sonner quand même. Ce qui suit est la réponse EXACTE d'un vrai
+    PostgREST à `select=jeton,utilisateur` sur une telle base — relevée, pas
+    imaginée. Elle ne ressemble pas à celle d'une écriture (PGRST204) : le
+    robot ne la reconnaissait pas, et plus aucun téléphone ne sonnait."""
+
+    REPONSE = {"code": "42703", "details": None, "hint": None,
+               "message": "column appareils.utilisateur does not exist"}
+
+    def setUp(self):
+        essai = self
+        self.demandes = []
+
+        class Base(BaseHTTPRequestHandler):
+            def do_GET(soi):
+                essai.demandes.append(soi.path)
+                if "utilisateur" in soi.path:
+                    statut, lignes = 400, essai.REPONSE
+                else:
+                    statut, lignes = 200, [{"jeton": "ExponentPushToken[samsung]"},
+                                           {"jeton": "ExponentPushToken[iphone]"}]
+                corps = json.dumps(lignes).encode()
+                soi.send_response(statut)
+                soi.send_header("Content-Type", "application/json")
+                soi.send_header("Content-Length", str(len(corps)))
+                soi.end_headers()
+                soi.wfile.write(corps)
+
+            def log_message(soi, *args):
+                pass
+
+        self.serveur = HTTPServer(("127.0.0.1", 0), Base)
+        threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
+        self.nuage = Nuage(f"http://127.0.0.1:{self.serveur.server_port}",
+                           "cle", "totem-test", journal=None)
+
+    def tearDown(self):
+        self.serveur.shutdown()
+
+    def test_les_telephones_sonnent_quand_meme(self):
+        self.assertEqual(self.nuage.appareils("89237010000000008901"),
+                         ["ExponentPushToken[samsung]", "ExponentPushToken[iphone]"])
+        self.assertEqual(len(self.demandes), 2, "la relecture sans la colonne n'a pas eu lieu")
+
+    def test_une_autre_panne_ne_passe_pas_pour_une_base_en_retard(self):
+        """Seule la colonne manquante déclenche la relecture : un vrai refus
+        (clé fausse, table absente d'une autre façon) reste une panne."""
+        self.REPONSE = {"code": "42501", "message": "permission denied for table appareils"}
+        self.assertEqual(self.nuage.appareils("89237010000000008901"), [])
+        self.assertEqual(len(self.demandes), 1)
+
+
 class ChacunEntendSesCartes(unittest.TestCase):
     """Un téléphone inscrit au nom d'un compte ne sonne que pour les SMS des
     cartes confiées à ce compte. Celui du propriétaire sonne pour tout."""

@@ -128,6 +128,15 @@ tout — le fait échouer dix-sept fois. **La portée se pose dans la base ET se
 revérifie ligne par ligne** : un filtre qu'un service distant ignorerait ne
 doit rien laisser passer.
 
+**Une règle neuve s'éprouve aussi contre l'application d'HIER.** Le guichet
+s'est mis à exiger la carte de chaque geste ; l'application installée sur les
+téléphones ne la nomme qu'en OUVRANT la session. Le titulaire ouvrait donc sur
+sa carte, puis se voyait refuser son propre code secret — « cette carte ne
+vous a pas été confiée » — et le harnais, qui ne jouait que l'application du
+jour, sortait vert. La carte d'une réponse est celle de sa session : elle se
+retrouve dans la dernière ouverture du terminal, et le robot, en effaçant le
+code, n'efface plus la carte avec.
+
 `verifier-le-parcours` déroule ce que le propriétaire FAIT : il se connecte,
 compose un code complet, le réseau réclame le code secret, il le tape. Le
 harnais écoute alors CE QUI PART SUR LE RÉSEAU — pas seulement l'écran — et

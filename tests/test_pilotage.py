@@ -627,6 +627,28 @@ class TestChacunSaCarte(unittest.TestCase):
         p._traiter({"id": 65, "type": "ussd_reponse", "parametres": {"texte": "1"}})
         self.assertEqual(nuage.maj[-1][1]["etat"], "faite")
 
+    def test_le_code_s_efface_mais_la_carte_reste(self):
+        """Le code secret s'efface ; la CARTE, elle, reste écrite.
+
+        L'effacement écrivait `{"secret": True}` tout court, et la carte
+        partait avec le code. Or c'est elle qui dit, sur la plateforme, à qui
+        la demande appartient : le titulaire de la MTN tapait son code,
+        l'argent partait, et il ne pouvait plus lire la réponse du réseau —
+        « demande introuvable », sur sa propre carte."""
+        orange, mtn, nuage, p = self.session_sur_mtn()
+        mtn.reponses.append(("fermee", "Transfert reussi. Nouveau solde 4 500 F."))
+        p._traiter({"id": 66, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True,
+                                   "carte": mtn.carte.iccid}})
+        ecritures = [c for i, c in nuage.maj if i == 66]
+        masque = {"secret": True, "carte": mtn.carte.iccid}
+        # Les DEUX écritures qui effacent : avant de composer, et la finale.
+        self.assertEqual(ecritures[1], {"parametres": masque})
+        self.assertEqual(ecritures[-1]["parametres"], masque)
+        self.assertEqual(ecritures[-1]["etat"], "faite")
+        self.assertNotIn("1234", str(ecritures))
+        self.assertEqual(mtn.recu[-1], "1234")
+
 
 class TestLibelleAmbiguRefusePoliment(unittest.TestCase):
     """Deux cartes MTN et une demande « compte: mtn » : le préfixe visait la
