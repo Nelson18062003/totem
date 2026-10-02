@@ -171,6 +171,15 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 }
 .voile { animation: voile 0.18s ease-out both; }
 
+/* L'écran suivant de l'opérateur : il monte de quelques pixels en
+   apparaissant, comme une page qu'on tourne. Opacité et position seulement —
+   la carte graphique s'en charge, rien ne se recalcule. */
+@keyframes ecran {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.ecran { animation: ecran 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) backwards; }
+
 @keyframes surgit {
   from { opacity: 0; transform: translateY(14px) scale(0.985); }
   to   { opacity: 1; transform: none; }
@@ -178,5 +187,5 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 .surgit { animation: surgit 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .entree, .voile, .surgit { animation: none; }
+  .entree, .voile, .surgit, .ecran { animation: none; }
 }

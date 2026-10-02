@@ -29,13 +29,22 @@ import { useLangue } from "./langue";
  * ce qu'on tape ou colle ; l'écran montre ce qui partira (`@noyau/saisie`),
  * et ne devine jamais entre deux numéros.
  *
- * TOUT CE QUE DIT L'OPÉRATEUR SE LIT. Pendant l'appel, l'échange s'écrit à
- * l'écran, message après message, en entier : chaque écran de MTN ou
- * d'Orange, même ceux auxquels la plateforme répond seule, et ce qu'on lui a
- * répondu. Le pavé du code secret se pose SOUS le message qui le réclame —
- * « Dépôt de 5 000 F à JEAN DUPONT, frais 0 F » : on sait ce qu'on signe.
- * Avant, il n'affichait que « Votre code secret », seul : on signait à
- * l'aveugle. Chaque message se sélectionne et se copie.
+ * UN ÉCRAN À LA FOIS, COMME SUR LE TÉLÉPHONE. Pendant l'appel, on voit
+ * l'écran EN COURS de l'opérateur, en entier — son texte, ses choix en
+ * boutons, ou le champ qu'il attend — et rien d'autre : on répond, ça
+ * charge, l'écran suivant REMPLACE le précédent. Une première version
+ * empilait tout l'échange, message après message ; le propriétaire l'a
+ * refusée : « je veux uniquement l'écran sur lequel je suis ». L'échange
+ * entier reste à un geste, à la fin (« Détails »).
+ *
+ * Le pavé du code secret se pose SOUS le message qui le réclame — « Dépôt de
+ * 5 000 F à JEAN DUPONT, frais 0 F » : on sait ce qu'on signe. Avant, il
+ * n'affichait que « Votre code secret », seul. Le message se sélectionne et
+ * se copie.
+ *
+ * Les transitions sont courtes et ne touchent que l'opacité et la position
+ * (`.ecran`, `animate-ping`) : la carte graphique s'en charge, rien ne se
+ * recalcule, et « réduire les animations » les coupe.
  *
  * La sortie suit le motif de la plateforme (feuille.tsx) : tant que la
  * session est VIVANTE, la croix et Échap mènent à la même confirmation —
@@ -434,22 +443,31 @@ export function OperationPopup({
       && (libre || ecran.attend !== "rien");
     const typeQuestion: TypeSaisie = libre ? "texte"
       : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
+    // Ce qu'on vient d'envoyer — « 1 », un numéro, « •••• » — reste écrit
+    // pendant que le réseau répond : on sait qu'on a été entendu.
+    const envoye = [...fil].reverse().find((m) => m.de === "vous")?.texte ?? null;
     vue = (
       <div className="flex min-h-0 flex-1 flex-col">
-        <Echange fil={fil} op={op} couleur={couleurOperateur(op)} t={t}
-          attente={attente ? (!dernier ? t.connexionA(op) : t.onParleA(op)) : null}
-          menu={menu ? { texte: ecran.texte, choix: ecran.choix } : null}
-          onChoix={(n) => void repondre(n)} />
-        {menu && (
-          <button type="button" onClick={() => setLibre(true)}
-            className="self-center p-3 text-small text-ink-soft transition hover:text-ink">
-            {t.autreReponse}
-          </button>
-        )}
-        {question && (
+        {attente || !dernier ? (
+          <Patience key={`patience-${fil.length}`} couleur={couleurOperateur(op)}
+            texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
+            envoye={dernier ? envoye : null} t={t} />
+        ) : question ? (
+          // Une question : le champ juste SOUS le message, comme dans la
+          // fenêtre d'un téléphone — pas en bas de l'écran, loin de lui.
           <ZoneReponse key={`question-${fil.length}`} type={typeQuestion}
+            entete={<CarteOperateur texte={dernier} copie={dernier} op={op}
+                                    couleur={couleurOperateur(op)} t={t} />}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
             onEnvoyer={(v) => void repondre(v)} langue={langue} />
+        ) : (
+          <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)} t={t}
+            // Un menu : son titre ici, ses choix en boutons. Toute autre
+            // chose — une question, la demande du code, la réponse libre —
+            // se lit en entier, telle que l'opérateur l'a écrite.
+            texte={menu ? ecran.texte : dernier} copie={dernier}
+            choix={menu ? ecran.choix : []} onChoix={(n) => void repondre(n)}
+            onAutre={menu ? () => setLibre(true) : undefined} />
         )}
         {pave && <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} />}
       </div>
@@ -643,8 +661,9 @@ function EtapeSaisie({
  * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
  * recevoir de réponse.
  */
-function ZoneReponse({ type, recents, onEnvoyer, langue }: {
+function ZoneReponse({ type, entete, recents, onEnvoyer, langue }: {
   type: TypeSaisie;
+  entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onEnvoyer: (valeur: string) => void; langue: "fr" | "en";
 }) {
@@ -658,64 +677,47 @@ function ZoneReponse({ type, recents, onEnvoyer, langue }: {
   };
   return (
     <form onSubmit={(e) => { e.preventDefault(); envoyer(); }}
-      className="flex flex-col gap-3 border-t border-line bg-surface px-5 pb-5 pt-4">
-      <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue} />
-      {recents?.length ? (
-        <div className="overflow-x-auto pb-1">
-          <div className="flex w-max gap-3">
-            {recents.map((r) => (
-              <Visage key={r.numero} client={r} choisi={false} onClick={() => onEnvoyer(r.numero)} />
-            ))}
+      className="flex min-h-0 flex-1 flex-col">
+      <div className="ecran flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
+        {entete}
+        <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue} />
+        {recents?.length ? (
+          <div className="overflow-x-auto pb-1">
+            <div className="flex w-max gap-3">
+              {recents.map((r) => (
+                <Visage key={r.numero} client={r} choisi={false} onClick={() => onEnvoyer(r.numero)} />
+              ))}
+            </div>
           </div>
-        </div>
-      ) : null}
-      <button type="submit" disabled={!valide}
-        className="h-12 w-full rounded-2xl bg-accent text-body font-semibold text-white transition hover:bg-accent-hover active:scale-[.98] disabled:bg-surface-3 disabled:text-ink-faint">
-        {t.envoyer}
-      </button>
+        ) : null}
+      </div>
+      <div className="pt-2">
+        <GrosBouton libelle={t.envoyer} desactive={!valide} type="submit" />
+      </div>
     </form>
   );
 }
 
 /**
- * L'ÉCHANGE, EN ENTIER. Chaque écran de l'opérateur, mot pour mot — même
- * ceux auxquels la plateforme répond seule —, et ce qu'on lui a répondu.
- * Le code secret n'y est jamais : quatre points. Le dernier message est en
- * avant ; les précédents restent là, plus discrets, à relire.
+ * L'ÉCRAN EN COURS DE L'OPÉRATEUR — un seul, comme sur le téléphone. Qui
+ * parle, ce qu'il dit, mot pour mot, et ses choix en boutons. Il entre en
+ * glissant doucement (`.ecran`) : on voit qu'un nouvel écran est arrivé.
  */
-function Echange({ fil, op, couleur, t, attente, menu, onChoix }: {
-  fil: Msg[]; op: string; couleur: string; t: (typeof textesGuichet)["fr"];
-  attente: string | null;
-  menu: { texte: string; choix: { numero: string; libelle: string }[] } | null;
+function EcranOperateur({ texte, copie, op, couleur, t, choix, onChoix, onAutre }: {
+  texte: string; copie: string; op: string; couleur: string;
+  t: (typeof textesGuichet)["fr"];
+  choix: { numero: string; libelle: string }[];
   onChoix: (numero: string) => void;
+  onAutre?: () => void;
 }) {
-  const defile = useRef<HTMLDivElement>(null);
-  // Le dernier message en vue, à chaque NOUVEAU — pas à chaque rendu : on
-  // peut remonter relire le début de l'échange sans être ramené en bas.
-  const choixEnCours = menu?.choix.length ?? 0;
-  useEffect(() => {
-    const d = defile.current;
-    if (d) d.scrollTop = d.scrollHeight;
-  }, [fil.length, attente, choixEnCours]);
-  const dernier = fil.map((m) => m.de).lastIndexOf("reseau");
   return (
-    <div ref={defile} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
-      {fil.map((m, k) => m.de === "vous" ? (
-        <p key={k} className="tabnums max-w-[80%] self-end whitespace-pre-line rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-small font-medium text-white">
-          {m.texte}
-        </p>
-      ) : (
-        <CarteReseau key={k} op={op} couleur={couleur} t={t} actuelle={k === dernier}
-          // Le menu en cours : son titre ici, ses choix en boutons dessous.
-          // Les anciens messages restent entiers, tels qu'ils sont arrivés.
-          texte={k === dernier && menu ? (menu.texte || m.texte) : m.texte}
-          copie={m.texte} />
-      ))}
-      {menu && (
+    <div className="ecran flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+      <CarteOperateur texte={texte} copie={copie} op={op} couleur={couleur} t={t} />
+      {choix.length > 0 && (
         <div className="flex flex-col gap-2">
-          {menu.choix.map((c) => (
+          {choix.map((c) => (
             <button type="button" key={`${c.numero}-${c.libelle}`} onClick={() => onChoix(c.numero)}
-              className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2">
+              className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2 active:scale-[.98]">
               <span className="tabnums grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-small text-ink-soft">{c.numero}</span>
               <span className="flex-1">{c.libelle}</span>
               <IconChevron size={16} className="text-ink-faint" />
@@ -723,23 +725,21 @@ function Echange({ fil, op, couleur, t, attente, menu, onChoix }: {
           ))}
         </div>
       )}
-      {attente && (
-        <p aria-live="polite" className="flex items-center gap-2.5 self-start rounded-2xl bg-surface-2 px-4 py-2.5 text-small text-ink-soft">
-          <span className="relative grid size-2.5 place-items-center">
-            <span className="absolute inset-0 animate-ping rounded-full opacity-60 motion-reduce:animate-none" style={{ background: couleur }} />
-            <span className="size-2.5 rounded-full" style={{ background: couleur }} />
-          </span>
-          {attente}
-        </p>
+      {onAutre && (
+        <button type="button" onClick={onAutre}
+          className="self-center p-2 text-small text-ink-soft transition hover:text-ink">
+          {t.autreReponse}
+        </button>
       )}
     </div>
   );
 }
 
-/** Un message de l'opérateur : qui parle, le texte entier, « Copier ». */
-function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
+/** Le message de l'opérateur, dans sa carte : qui parle, le texte entier,
+ *  « Copier ». */
+function CarteOperateur({ texte, copie, op, couleur, t }: {
   texte: string; copie: string; op: string; couleur: string;
-  t: (typeof textesGuichet)["fr"]; actuelle: boolean;
+  t: (typeof textesGuichet)["fr"];
 }) {
   const [copiee, setCopiee] = useState(false);
   const copier = async () => {
@@ -750,8 +750,8 @@ function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
     } catch { /* le texte reste sélectionnable à la souris */ }
   };
   return (
-    <div className={`max-w-[92%] self-start rounded-2xl rounded-bl-md border px-4 py-3 ${actuelle ? "border-line bg-surface-raised" : "border-transparent bg-surface-2 text-ink-soft"}`}>
-      <div className="mb-1.5 flex items-center gap-2 text-caption text-ink-faint">
+    <div className="rounded-3xl border border-line bg-surface-raised px-5 py-4 shadow-sm">
+      <div className="mb-2 flex items-center gap-2 text-caption text-ink-faint">
         <span className="size-2 rounded-full" style={{ background: couleur }} />
         <span className="font-medium">{op}</span>
         <button type="button" onClick={() => void copier()}
@@ -760,7 +760,34 @@ function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
         </button>
       </div>
       {/* Le texte du réseau, mot pour mot : jamais traduit, toujours entier. */}
-      <p className={`whitespace-pre-line break-words ${actuelle ? "text-body" : "text-small"}`}>{texte}</p>
+      {texte && <p className="whitespace-pre-line break-words text-heading leading-relaxed">{texte}</p>}
+    </div>
+  );
+}
+
+/**
+ * LE RÉSEAU RÉPOND — comme le « code USSD en cours » d'un téléphone. Un rond
+ * qui respire à la couleur de l'opérateur, une phrase, et ce qu'on vient
+ * d'envoyer : on sait qu'on a été entendu, et l'écran ne reste jamais blanc.
+ */
+function Patience({ texte, couleur, envoye, t }: {
+  texte: string; couleur: string; envoye: string | null;
+  t: (typeof textesGuichet)["fr"];
+}) {
+  return (
+    <div aria-live="polite" className="ecran flex flex-1 flex-col items-center justify-center gap-5 px-6">
+      <div className="relative grid size-[88px] place-items-center">
+        <span className="absolute inset-0 animate-ping rounded-full opacity-20 motion-reduce:animate-none" style={{ background: couleur }} />
+        <span className="grid size-[56px] place-items-center rounded-full border-[3px] bg-surface-raised" style={{ borderColor: couleur }}>
+          <span className="size-2.5 rounded-full" style={{ background: couleur }} />
+        </span>
+      </div>
+      <p className="text-heading font-medium">{texte}</p>
+      {envoye && (
+        <p className="tabnums rounded-full bg-surface-2 px-3.5 py-1.5 text-small text-ink-soft">
+          {t.envoye(envoye)}
+        </p>
+      )}
     </div>
   );
 }

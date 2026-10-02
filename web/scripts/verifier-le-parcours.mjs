@@ -26,8 +26,9 @@
 //   8. quand le réseau réclame le code, son message ENTIER est à l'écran en
 //      même temps que le pavé — ce qu'on signe : le montant, le nom, les
 //      frais. L'écran d'avant n'affichait que « Votre code secret » ;
-//   9. tout l'échange se lit, y compris les écrans auxquels la plateforme a
-//      répondu seule.
+//   9. et RIEN D'AUTRE : un écran à la fois, comme sur le téléphone. Une
+//      version empilait tout l'échange, message après message ; le
+//      propriétaire l'a refusée. Les écrans déjà passés ne restent pas.
 //
 // Un harnais qui ne regarde que l'écran ne prouve rien de tout cela : on
 // écoute donc AUSSI ce qui part sur le réseau.
@@ -217,9 +218,9 @@ try {
   const avecPave = await fenetre.innerText();
   verifier("…SOUS le message qui le réclame : le nom", avecPave.includes("JEAN DUPONT"), true);
   verifier("…le montant et les frais", /5 000 FCFA[\s\S]*Frais/.test(avecPave), true);
-  verifier("tout l'échange se lit, même ce que l'écran a servi seul",
+  verifier("un écran à la fois : les écrans déjà passés ne restent pas",
            avecPave.includes("Entrez le numero du beneficiaire")
-             && avecPave.includes("Entrez le montant"), true);
+             || avecPave.includes("Entrez le montant"), false);
 
   const depot = demandes.slice(demandes.findLastIndex((d) => d.type === "ussd"));
   const textes = depot.map((d) => String(d.parametres?.texte ?? d.parametres?.code ?? ""));

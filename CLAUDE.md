@@ -158,6 +158,15 @@ dans le formulaire sans `type="button"` — Entrée, dans le champ, « cliquait 
 le premier visage, et l'argent partait au premier client de la liste.
 **Un bouton sans type, dans un formulaire, est un bouton d'envoi.**
 
+Il exige aussi qu'on ne voie QUE l'écran en cours. Une version empilait
+l'échange entier, message après message ; le propriétaire l'a refusée :
+« je veux uniquement l'écran sur lequel je suis », comme quand il tape un
+code sur son téléphone. Montrer TOUT le message de l'écran en cours n'est pas
+montrer TOUS les messages — deux demandes qui se ressemblent assez pour
+qu'on prenne l'une pour l'autre. Quand le pavé est là, les écrans déjà
+passés ne doivent plus y être ; la version empilée échoue sur cette
+vérification.
+
 `verifier-le-bilan` sème quatre mois de caisse dans le faux nuage — 2 400
 encaissements — et redemande le bilan CSV. C'est le seul chiffre de TOTEM qui
 SORT de TOTEM : il part chez un comptable, il se rapproche d'un solde, il
