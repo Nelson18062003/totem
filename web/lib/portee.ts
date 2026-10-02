@@ -20,7 +20,7 @@
 // existe pour le jour où la base ne répond plus.
 
 import { cookies } from "next/headers";
-import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
+import { COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, sujetDeSession } from "@/lib/session";
 import { cartesDe, utilisateurParId } from "@/lib/serveur";
 import { verifierLien } from "@/lib/lien-signe";
 import { compteConnecte, estProprietaire } from "@/lib/qui";
@@ -65,6 +65,12 @@ export async function porteeDe(req?: Request): Promise<Portee | null> {
   if (!secret) return TOUT;
   const sujet = await sujetDeSession(secret, await jetonPresente(req));
   if (sujet === null) return null;
+  // LE COMPTE DE DÉMONSTRATION NE VOIT RIEN DE LA MAISON. Ce qu'il montre
+  // vient d'un jeu de données inventé (`lib/demonstration.ts`), servi par
+  // les seules routes qui le savent. Ailleurs, il est un compte sans carte.
+  // Cette ligne passe AVANT la suivante, qui donne TOUT à ce qui ne désigne
+  // personne : l'ordre est la règle.
+  if (sujet === SUJET_DEMONSTRATION) return RIEN;
   const id = compteDuSujet(sujet);
   // La clé de secours, et les jetons d'avant les comptes, ne désignent
   // personne : ils sont ceux du propriétaire, et voient ce qu'il voit.
@@ -80,6 +86,9 @@ export async function quiPourLien(req?: Request): Promise<string | null> {
   if (!secret) return "tout";
   const sujet = await sujetDeSession(secret, await jetonPresente(req));
   if (sujet === null) return null;
+  // Aucun lien de bilan pour la démonstration : il n'y a rien à exporter,
+  // et « tout » serait la caisse entière.
+  if (sujet === SUJET_DEMONSTRATION) return null;
   const id = compteDuSujet(sujet);
   return id === null ? "tout" : `c${id}`;
 }

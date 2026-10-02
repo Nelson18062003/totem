@@ -1,6 +1,7 @@
-import { chargerDonnees, relie } from "@/lib/serveur";
+import { relie } from "@/lib/serveur";
+import { donneesMontrees } from "@/lib/ce-qu-on-montre";
+import { COURRIEL_DEMONSTRATION, estDemonstration } from "@/lib/demonstration";
 import { compteConnecte, estProprietaire } from "@/lib/qui";
-import { RIEN, porteeDe } from "@/lib/portee";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -39,19 +40,11 @@ function borne(valeur: string | null, defaut: number, plafond: number): number {
  */
 export async function GET(req: Request) {
   const langue = await langueDemandee(req);
-
-  if (!relie) {
-    return Response.json(
-      { erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
-  }
-
   // Chaque écran dit ce dont il a besoin : l'accueil se contente de 30 SMS,
   // la boîte de réception les veut tous. Charger 1000 lignes pour afficher
   // les six dernières se paierait sur la facture de données du téléphone.
   const params = new URL(req.url).searchParams;
-  // CE QUE CETTE PERSONNE A LE DROIT DE VOIR. Le téléphone d'un vendeur ne
-  // reçoit que les cartes qu'on lui a confiées — jamais la caisse entière.
-  const donnees = await chargerDonnees(langue, (await porteeDe(req)) ?? RIEN, {
+  const bornes = {
     sms: borne(params.get("sms"), 200, MAX_SMS),
     recus: borne(params.get("recus"), 200, MAX_RECUS),
     // « compte loin, rapporte peu » : l'écran des cartes veut des compteurs
@@ -67,7 +60,23 @@ export async function GET(req: Request) {
       : params.get("lignes") != null
         ? borne(params.get("lignes"), 0, MAX_SMS)
         : undefined,
-  });
+  };
+
+  // LA DÉMONSTRATION : les mêmes écrans, sur un jeu inventé. Elle passe
+  // AVANT le test de la base — elle n'en a pas besoin, et ne la lit jamais.
+  if (await estDemonstration(req)) {
+    const donnees = await donneesMontrees(langue, bornes, req);
+    return Response.json({ ...donnees, courriel: COURRIEL_DEMONSTRATION, proprietaire: false });
+  }
+
+  if (!relie) {
+    return Response.json(
+      { erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
+  }
+
+  // CE QUE CETTE PERSONNE A LE DROIT DE VOIR. Le téléphone d'un vendeur ne
+  // reçoit que les cartes qu'on lui a confiées — jamais la caisse entière.
+  const donnees = await donneesMontrees(langue, bornes, req);
 
   // Qui regarde ? Uniquement pour le saluer par son prénom. Le courriel ne
   // sort pas d'ici autrement : il ne part ni chez Expo, ni dans une

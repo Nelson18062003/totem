@@ -1,6 +1,5 @@
+import { donneesMontrees } from "@/lib/ce-qu-on-montre";
 import { langueServeur } from "@/lib/langue-serveur";
-import { chargerDonnees } from "@/lib/serveur";
-import { RIEN, porteeDe } from "@/lib/portee";
 import { ListeEncaissements } from "./liste";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +11,7 @@ export default async function Encaissements({
 }) {
   const langue = await langueServeur();
   const [{ paiements, terminal }, { recherche }] = await Promise.all([
-    chargerDonnees(langue, (await porteeDe()) ?? RIEN),
+    donneesMontrees(langue),
     searchParams,
   ]);
   // Les filtres proposés sont les CARTES réellement vues dans les données —

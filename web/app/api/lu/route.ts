@@ -1,6 +1,7 @@
 import { carteDuSms, marquerLu, relie } from "@/lib/serveur";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import { langueServeur } from "@/lib/langue-serveur";
+import { estDemonstration } from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,9 @@ export const dynamic = "force-dynamic";
 /** Le propriétaire vient d'ouvrir la fiche d'un SMS : il est lu. */
 export async function POST(req: Request) {
   const langue = await langueServeur();
+  // La démonstration peut lire un SMS inventé : l'écran l'accepte, rien
+  // ne s'écrit — ses lignes n'existent dans aucune base.
+  if (await estDemonstration(req)) return Response.json({ ok: true });
   // LE TITULAIRE DE LA CARTE, ou le propriétaire : un SMS d'une carte
   // confiée appartient à celui qui la tient.
   const main = process.env.SESSION_SECRET ? await maniement(req) : TOUT;

@@ -1,6 +1,7 @@
 import { carteDeLaCommande, lireCommande } from "@/lib/serveur";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import { langueServeur } from "@/lib/langue-serveur";
+import { estDemonstration, reponseJouee } from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const langue = await langueServeur();
+  // La démonstration ne lit jamais la table des commandes : sa réponse se
+  // calcule à partir du numéro, et un vrai numéro n'en est pas une.
+  if (await estDemonstration(req)) {
+    const reponse = reponseJouee(Number((await params).id));
+    return reponse
+      ? Response.json(reponse)
+      : Response.json({ erreur: erreurApi(langue, "demandeIntrouvable") }, { status: 404 });
+  }
   // LA MÊME MAIN QUE LE DÉPÔT. Lire une demande, c'est lire la réponse de
   // l'opérateur — un solde, un nom, une référence — et, fugitivement, ce
   // qu'on y a tapé. Un titulaire lit donc les demandes de SES cartes, et

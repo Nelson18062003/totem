@@ -55,6 +55,7 @@ cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
 cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
 cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT sonné
+cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur rien
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-l-echelle.mjs # rien ne grossit sans limite
@@ -258,6 +259,31 @@ ce mot était affiché tel quel au propriétaire, qui n'est pas informaticien.
 Les deux pannes les plus fréquentes ne se réparent d'ailleurs pas dans le
 code — la clé Apple s'ajoute au projet Expo, le fichier Firebase au paquet
 Android — raison de plus pour que l'écran les NOMME au lieu de féliciter.
+
+`verifier-la-demonstration` garde la VITRINE : le compte que les magasins
+donnent à leur examinateur. Ses identifiants sont PUBLICS — écrits dans la
+fiche, donc dans le dépôt —, ce qui veut dire que n'importe qui entre par
+cette porte. Elle ne montre qu'un jeu inventé, et ses opérations se jouent
+pour de faux, sans une ligne dans la table des commandes.
+
+**Un sujet qui ne désigne personne n'est pas le propriétaire.** Tout le
+code des droits disait « pas un compte, donc la clé de secours, donc tout
+voir » : vrai tant qu'il n'existait que ces deux sujets-là. Un troisième y
+tombe de lui-même. La ligne qui rend RIEN à la démonstration, dans
+`porteeDe`, passe donc AVANT celle qui rend TOUT — et c'est elle le témoin :
+retirée, la vitrine voit le bilan, la pastille et les coordonnées de la
+maison, et le harnais échoue.
+
+**La décision se prend une fois.** Chaque écran posait sa propre ligne
+`chargerDonnees(porteeDe() ?? RIEN)` ; ajouter la vitrine écran par écran,
+c'était promettre d'en oublier un — et l'écran oublié montrait le vrai
+terminal. Les écrans passent maintenant par `donneesMontrees`, et la
+vitrine lit dans un jeu en mémoire qui ne touche jamais la base : il n'y a
+pas de filtre à oublier, puisqu'il n'y a pas de requête.
+
+Le harnais refuse aussi une fiche qui porterait d'autres identifiants que
+ceux que la plateforme accepte, et exige que `DEMONSTRATION=non` ferme la
+porte ET les jetons déjà émis.
 
 `verifier-les-regles.sh` monte un PostgreSQL neuf, y joue le schéma et TOUTES
 les migrations dans l'ordre, puis attaque : il essaie vraiment de créer un

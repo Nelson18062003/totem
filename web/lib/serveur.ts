@@ -31,6 +31,16 @@ export const relie = Boolean(url && cle);
 // Le fuseau du terminal, réglable (voir lib/fuseau.ts). Il découpe les
 // journées : c'est la caisse qui décide de ce qu'est « aujourd'hui ».
 import { FUSEAU } from "./fuseau";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { lireDansLaDemonstration, tablesDeDemonstration } from "./demonstration";
+
+// LA SOURCE DE LA DÉMONSTRATION. Quand une lecture se fait « dans » la
+// démonstration, `lire` répond depuis ce jeu inventé et ne touche JAMAIS la
+// base : il n'y a pas de chemin, même mal filtré, par lequel une vraie ligne
+// arriverait à l'examinateur. Le contexte suit l'appel et lui seul — deux
+// requêtes simultanées, l'une du propriétaire, l'autre de l'examinateur, ne
+// se mélangent pas.
+const sourceDeDemonstration = new AsyncLocalStorage<Record<string, Record<string, unknown>[]>>();
 
 /**
  * Le chemin d'une requête, SANS ce qu'elle cherchait — pour le journal.
@@ -70,6 +80,11 @@ function sansValeurs(chemin: string): string {
  * la troncature serait un mensonge (l'export comptable), pas à chaque page.
  */
 async function lireEtCompter<T>(chemin: string): Promise<{ lignes: T[]; total: number | null }> {
+  const demo = sourceDeDemonstration.getStore();
+  if (demo) {
+    const lignes = lireDansLaDemonstration(demo, chemin) as T[];
+    return { lignes, total: lignes.length };
+  }
   if (!relie) return { lignes: [], total: null };
   try {
     const r = await fetch(`${url}/rest/v1/${chemin}`, {
@@ -96,6 +111,8 @@ async function lireEtCompter<T>(chemin: string): Promise<{ lignes: T[]; total: n
 }
 
 async function lire<T>(chemin: string): Promise<T[]> {
+  const demo = sourceDeDemonstration.getStore();
+  if (demo) return lireDansLaDemonstration(demo, chemin) as T[];
   if (!relie) return [];
   try {
     const r = await fetch(`${url}/rest/v1/${chemin}`, {
@@ -234,6 +251,21 @@ export async function chargerTerminal(langue: Langue): Promise<EtatTerminal | nu
 function listeDeCartes(cartes: string[]): string {
   const propres = cartes.filter((c) => /^[A-Za-z0-9]{1,32}$/.test(c));
   return encodeURIComponent(`(${propres.map((c) => `"${c}"`).join(",")})`);
+}
+
+/** Les écrans de la démonstration : la MÊME lecture que les vrais, sur le
+ *  jeu inventé. La portée vaut « tout » — tout ce jeu lui appartient, et rien
+ *  d'autre n'y entre. */
+export function chargerDonneesDeDemonstration(
+  langue: Langue, bornes?: Parameters<typeof chargerDonnees>[2],
+): Promise<Donnees> {
+  return sourceDeDemonstration.run(
+    tablesDeDemonstration(), () => chargerDonnees(langue, { tout: true }, bornes));
+}
+
+/** Le terminal de la démonstration, pour la coquille du site. */
+export function chargerTerminalDeDemonstration(langue: Langue): Promise<EtatTerminal | null> {
+  return sourceDeDemonstration.run(tablesDeDemonstration(), () => chargerTerminal(langue));
 }
 
 export async function chargerDonnees(

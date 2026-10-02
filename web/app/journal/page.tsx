@@ -1,5 +1,6 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { lireIncidents, relie } from "@/lib/serveur";
+import { estDemonstration } from "@/lib/demonstration";
 import { FUSEAU } from "@/lib/fuseau";
 import { journalPour } from "@noyau/textes/journal";
 import { jourLocal } from "@noyau/types";
@@ -32,7 +33,9 @@ export default async function Journal() {
     return <Vide titre={t.titre} detail={t.rienDetail} />;
   }
 
-  const incidents = await lireIncidents(200);
+  // La vitrine de démonstration n'a rien vécu : le journal de la maison
+  // n'est pas le sien.
+  const incidents = (await estDemonstration()) ? [] : await lireIncidents(200);
 
   // Les jours se découpent dans le fuseau DU TERMINAL, comme partout
   // ailleurs : la caisse peut être à Douala et le lecteur à Paris.

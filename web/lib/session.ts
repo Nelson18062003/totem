@@ -97,6 +97,16 @@ export function compteDuSujet(sujet: string | null): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/** Le sujet d'un jeton du COMPTE DE DÉMONSTRATION — celui des examinateurs
+ *  d'Apple et de Google (voir `lib/demonstration.ts`).
+ *
+ *  ⚠️ Il ne désigne aucun compte, comme la clé de secours et les jetons
+ *  d'avant les comptes — et ceux-là voient TOUT. Chaque endroit qui lit un
+ *  sujet doit donc le reconnaître AVANT de conclure « personne, donc le
+ *  propriétaire » : `porteeDe` le fait, et `verifier-la-demonstration`
+ *  essaie toutes les portes avec ce jeton. */
+export const SUJET_DEMONSTRATION = "demonstration";
+
 /** Le sujet d'un jeton de compte. Le « c: » évite qu'un jour un identifiant
  *  se confonde avec un mot réservé comme « secours ». */
 export const sujetDuCompte = (id: number): string => `c:${id}`;

@@ -5,6 +5,9 @@ import {
 } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
+import {
+  GESTES_DE_DEMONSTRATION, demandeJouee, estDemonstration,
+} from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +41,26 @@ const GENRES = new Set([
  */
 export async function POST(req: Request) {
   const langue = await langueServeur();
+
+  // LA DÉMONSTRATION NE DÉPOSE RIEN. Aucune ligne n'entre dans la table des
+  // commandes, aucun robot ne la lit : la « réponse de l'opérateur » est
+  // calculée, et voyage dans le numéro rendu (voir lib/demonstration.ts).
+  if (await estDemonstration(req)) {
+    const corps = await req.json().catch(() => null);
+    const genre = typeof corps?.type === "string" ? corps.type : "";
+    if (!GESTES_DE_DEMONSTRATION.has(genre)) {
+      return Response.json(
+        { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+    }
+    const brut = corps?.parametres ?? {};
+    return Response.json({
+      id: demandeJouee(genre, {
+        code: typeof brut.code === "string" ? brut.code.slice(0, 32) : "",
+        texte: typeof brut.texte === "string" ? brut.texte.slice(0, 120) : "",
+        secret: brut.secret === true,
+      }),
+    });
+  }
 
   // Sans SESSION_SECRET, la plateforme n'a AUCUN verrou : le middleware
   // laisse tout passer. Refuser ici donnerait l'illusion d'une porte fermée

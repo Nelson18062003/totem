@@ -7,7 +7,7 @@
 
 Apple examine une application non répertoriée **exactement** comme une
 application publique. Il faut donc une fiche complète, des captures, et un
-compte qui permet à son examinateur d'entrer.
+compte qui permet à son examinateur d'entrer — la vitrine de démonstration.
 
 ## Ce qui est déjà prêt dans le dépôt
 
@@ -17,6 +17,7 @@ compte qui permet à son examinateur d'entrer.
 | Huit captures au format exigé (1290 × 2796) | `mobile/store/apple/screenshot/` |
 | La classification d'âge (4+) | `mobile/store.config.js` |
 | La note pour l'examinateur, en anglais | `mobile/store.config.js` |
+| Le compte de l'examinateur (vitrine de démonstration) | `web/lib/demonstration.ts` |
 | Le bouton qui envoie tout chez Apple | GitHub → Actions → **« Fiche App Store »** |
 
 Les captures sont faites sur le faux nuage, jamais sur de vraies données : un
@@ -24,30 +25,35 @@ montant réel ou un nom de client n'a rien à faire sur une fiche publique.
 
 ## Ce que vous faites, dans l'ordre
 
-### 1. Un compte pour l'examinateur d'Apple
+### 1. Le compte de l'examinateur : rien à faire
 
-Sur le site : **Console → Les gens → Créer un compte**. Par exemple :
+La plateforme porte une **vitrine de démonstration**. Ses identifiants sont
+écrits dans la fiche, et Apple les donne à son examinateur :
 
-- Prénom « Examen », nom « Apple », un courriel à vous, un mot de passe long.
-- **Confiez-lui UNE carte**, sinon il verra une application vide.
-
-⚠️ Une carte confiée est une carte qu'il **peut** manier. La note de la fiche
-lui demande de ne lancer aucune opération d'argent, mais confiez de
-préférence une carte qui porte peu. Supprimez le compte quand l'examen est
-fini.
-
-### 2. Ranger ces informations dans GitHub
-
-**GitHub → Settings → Secrets and variables → Actions.**
-
-Onglet **« Secrets »** (ce qui ne doit jamais se lire) :
-
-| Nom | Valeur |
+| | |
 |---|---|
-| `APPLE_EXAMEN_COURRIEL` | le courriel du compte d'examen |
-| `APPLE_EXAMEN_MOTDEPASSE` | son mot de passe |
+| Courriel | `examen@totemlabs.app` |
+| Mot de passe | `TOTEM-Examen-2026` |
 
-Onglet **« Variables »** (qui Apple appelle s'il a une question) :
+Ils sont publics, et c'est voulu : la vitrine ne montre que des données
+**inventées** (deux cartes « démo », des SMS de clients « DÉMO »), ne touche à
+**aucune** de vos cartes, et ses opérations se jouent **pour de faux** —
+numéro, montant, message de confirmation, code secret, « opération
+réussie », sans réseau et sans un franc. Elle ne voit ni vos SMS, ni votre
+terminal, ni votre journal, ni la console.
+
+`web/scripts/verifier-la-demonstration.mjs` le vérifie contre un vrai
+serveur, à chaque fois.
+
+**Après l'accord d'Apple**, vous pouvez la fermer : variable
+`DEMONSTRATION` = `non` sur la plateforme. Les sessions déjà ouvertes
+tombent avec elle. Rouvrez-la (supprimez la variable) avant chaque nouvelle
+soumission : l'examinateur revient à chaque version.
+
+### 2. Qui Apple appelle s'il a une question
+
+**GitHub → Settings → Secrets and variables → Actions → onglet
+« Variables »** :
 
 | Nom | Valeur |
 |---|---|
@@ -56,6 +62,8 @@ Onglet **« Variables »** (qui Apple appelle s'il a une question) :
 | `APPLE_CONTACT_COURRIEL` | votre courriel |
 | `APPLE_CONTACT_TELEPHONE` | votre numéro, avec l'indicatif (`+237…`) |
 | `APPLE_COPYRIGHT` | facultatif : « 2026 Votre nom » |
+
+Apple exige un contact : c'est la seule chose qu'on ne peut pas inventer.
 
 ### 3. Envoyer la fiche
 
