@@ -75,9 +75,9 @@ const envServeur = {
   SESSION_SECRET: "secret-du-frein", TOTEM_MOT_DE_PASSE: "cle-de-secours-frein",
 };
 const serveur = spawn("npx", ["next", "start", "-p", String(PORT)],
-                      { env: envServeur, stdio: "ignore" });
+                      { env: envServeur, stdio: "ignore", detached: true });
 const serveur2 = spawn("npx", ["next", "start", "-p", String(PORT2)],
-                       { env: envServeur, stdio: "ignore" });
+                       { env: envServeur, stdio: "ignore", detached: true });
 
 /** Un essai depuis une adresse donnée. Rend le statut et la durée. */
 async function essai(adresse, motdepasse, courriel = CIBLE, base = B) {
@@ -233,8 +233,8 @@ try {
   verifier("et le seau de secours en mémoire prend le relais",
     [401, 429].includes(muree.status), `${muree.status}`);
 } finally {
-  serveur.kill("SIGKILL");
-  serveur2.kill("SIGKILL");
+  try { process.kill(-serveur.pid, "SIGKILL"); } catch { /* déjà parti */ }
+  try { process.kill(-serveur2.pid, "SIGKILL"); } catch { /* déjà parti */ }
   nuage.kill("SIGKILL");
 }
 
