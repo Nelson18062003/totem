@@ -55,6 +55,7 @@ cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
 cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
 cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT sonné
+cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-l-echelle.mjs # rien ne grossit sans limite
@@ -238,6 +239,30 @@ ce mot était affiché tel quel au propriétaire, qui n'est pas informaticien.
 Les deux pannes les plus fréquentes ne se réparent d'ailleurs pas dans le
 code — la clé Apple s'ajoute au projet Expo, le fichier Firebase au paquet
 Android — raison de plus pour que l'écran les NOMME au lieu de féliciter.
+
+`verifier-l-adressage` monte une FLOTTE dans le faux nuage : deux boîtiers,
+celui qui n'a pas la carte ayant parlé le dernier, et une carte retirée. Une
+demande partait au terminal « le dernier à avoir donné signe de vie » — dès
+deux boîtiers, un transfert sur une carte de Douala partait à Akwa. **Une
+demande vise une carte, pas un boîtier.** L'ancienne route y échoue neuf
+fois. Il vérifie aussi que la PERSONNE qui demande est nommée par la
+plateforme, jamais par l'écran : c'est d'après elle que la carte décide à
+qui est son menu.
+
+**La carte tient elle-même son menu.** Une carte ne tient qu'un menu USSD à
+la fois ; le robot gardait « qui le tient » en trois registres qui se
+prévenaient, et entre deux avertissements une réponse — peut-être un code
+secret — pouvait tomber dans le menu d'un autre. C'est maintenant la carte
+(`totem/compte.py`) qui le vérifie, sous le verrou de son modem, au moment
+d'écrire : la même leçon que le propriétaire unique, appliquée au modem.
+`tests/test_titulaire.py` l'attaque en rafale, avec son témoin. La suite —
+les boutiques, une clé par boîtier — est dans `docs/ARCHITECTURE-ECHELLE.md`.
+
+**Un harnais ne laisse pas son serveur derrière lui.** Huit sur dix tuaient
+« npx » et laissaient vivre le serveur Next lancé en dessous : le harnais
+suivant refusait de démarrer, ou aurait mesuré CE serveur et son vieux code.
+Un serveur de harnais a son propre groupe de processus, et c'est le groupe
+qu'on arrête.
 
 `verifier-les-regles.sh` monte un PostgreSQL neuf, y joue le schéma et TOUTES
 les migrations dans l'ordre, puis attaque : il essaie vraiment de créer un
