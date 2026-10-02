@@ -133,6 +133,7 @@ const en = {
   // L'échange avec l'opérateur, montré en entier.
   copier: "Copy",
   copie: "Copied",
+  envoye: (valeur: string) => `Sent: ${valeur}`,
 };
 
 const fr: typeof en = {
@@ -257,6 +258,7 @@ const fr: typeof en = {
   montantIntrouvable: "Aucun montant clair ici.",
   copier: "Copier",
   copie: "Copié",
+  envoye: (valeur: string) => `Envoyé : ${valeur}`,
 };
 
 export const textesGuichet = { en, fr } as const;

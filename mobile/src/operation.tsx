@@ -31,21 +31,31 @@
 // tout ce qu'on y met ; l'écran montre ce qui partira (`@noyau/saisie`), et
 // ne devine jamais entre deux numéros.
 //
-// TOUT CE QUE DIT L'OPÉRATEUR SE LIT. Pendant l'appel, l'échange s'écrit à
-// l'écran, message après message, en entier — même les écrans auxquels
-// l'application répond seule —, et ce qu'on lui a répondu. Le pavé du code
-// secret se pose SOUS le message qui le réclame (« Dépôt de 5 000 F à JEAN
-// DUPONT, frais 0 F ») : on sait ce qu'on signe. Avant, il n'affichait que
-// « Votre code secret », seul. Chaque message se sélectionne et se copie.
+// UN ÉCRAN À LA FOIS, COMME SUR LE TÉLÉPHONE. Pendant l'appel, on voit
+// l'écran EN COURS de l'opérateur, en entier — son texte, ses choix en
+// boutons, ou le champ qu'il attend — et rien d'autre : on répond, ça
+// charge, l'écran suivant REMPLACE le précédent. Une première version
+// empilait tout l'échange ; le propriétaire l'a refusée : « je veux
+// uniquement l'écran sur lequel je suis ». L'échange entier reste à un
+// geste, à la fin (« Détails »).
+//
+// Le pavé du code secret se pose SOUS le message qui le réclame (« Dépôt de
+// 5 000 F à JEAN DUPONT, frais 0 F ») : on sait ce qu'on signe. Avant, il
+// n'affichait que « Votre code secret », seul. Le message se sélectionne et
+// se copie.
+//
+// Les transitions passent par Reanimated, sur le fil de l'interface : elles
+// ne touchent que l'opacité et la position, ne bloquent rien, et
+// « réduire les animations » les coupe.
 
 import { useEffect, useRef, useState } from "react";
 import {
   Alert, Clipboard, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
-  useWindowDimensions, type ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import {
-  Easing, FadeIn, FadeInRight, useAnimatedStyle, useSharedValue, withRepeat,
-  withTiming,
+  Easing, FadeIn, FadeInDown, FadeInRight, useAnimatedStyle, useSharedValue,
+  withRepeat, withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -113,11 +123,6 @@ const LONGUEUR_CODE_MIN = 4;
 const LONGUEUR_CODE_MAX = 6;
 
 type TypeSaisie = TypeChamp | "texte";
-
-// Le type de la référence de l'échange. Nommé à part : écrit en chevrons
-// dans le code, il ressemblerait, pour les contrôles qui lisent ce fichier,
-// à une liste qui défile posée en direct — et c'est `Defilement` qui la pose.
-type Rouleau = ScrollView;
 
 /** Ce qui partira réellement au réseau, lu dans ce qu'on a tapé ou collé. */
 function valeurPropre(type: TypeSaisie, brut: string): string {
@@ -553,18 +558,33 @@ export function OperationPopup({
       && (libre || ecran.attend !== "rien");
     const typeQuestion: TypeSaisie = libre ? "texte"
       : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
+    // Ce qu'on vient d'envoyer — « 1 », un numéro, « •••• » — reste écrit
+    // pendant que le réseau répond : on sait qu'on a été entendu.
+    const envoye = [...fil].reverse().find((m) => m.de === "vous")?.texte ?? null;
     vue = (
       <View style={{ flex: 1 }}>
-        <Echange fil={fil} op={op} couleur={couleurOperateur(op)} t={t} reduit={reduit}
-          attente={attente ? (!dernier ? t.connexionA(op) : t.onParleA(op)) : null}
-          menu={menu ? { texte: ecran.texte, choix: ecran.choix } : null}
-          onChoix={(n) => void repondre(n)}
-          onAutre={menu ? () => setLibre(true) : undefined} />
-        {question ? (
-          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion}
+        {attente || !dernier ? (
+          <Patience key={`patience-${fil.length}`} couleur={couleurOperateur(op)} reduit={reduit}
+            texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
+            envoye={dernier ? envoye : null} t={t} />
+        ) : question ? (
+          // Une question : le champ juste SOUS le message, comme dans la
+          // fenêtre d'un téléphone — pas en bas de l'écran, loin de lui.
+          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion} reduit={reduit}
+            entete={<CarteOperateur texte={dernier} copie={dernier} op={op}
+                                    couleur={couleurOperateur(op)} t={t} />}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
             onEnvoyer={(v) => void repondre(v)} langue={langue} />
-        ) : null}
+        ) : (
+          <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)}
+            t={t} reduit={reduit}
+            // Un menu : son titre ici, ses choix en boutons. Toute autre
+            // chose — une question, la demande du code, la réponse libre —
+            // se lit en entier, telle que l'opérateur l'a écrite.
+            texte={menu ? ecran.texte : dernier} copie={dernier}
+            choix={menu ? ecran.choix : []} onChoix={(n) => void repondre(n)}
+            onAutre={menu ? () => setLibre(true) : undefined} />
+        )}
         {pave ? <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} /> : null}
       </View>
     );
@@ -814,11 +834,13 @@ function EtapeSaisie({
  * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
  * recevoir de réponse.
  */
-function ZoneReponse({ type, recents, onEnvoyer, langue }: {
+function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
   type: TypeSaisie;
+  entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onEnvoyer: (valeur: string) => void;
   langue: "fr" | "en";
+  reduit: boolean;
 }) {
   const t = textesGuichet[langue];
   const [valeur, setValeur] = useState("");
@@ -829,86 +851,68 @@ function ZoneReponse({ type, recents, onEnvoyer, langue }: {
     setValeur("");
   };
   return (
-    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait, gap: espaces.sm,
-                   paddingHorizontal: espaces.xl, paddingTop: espaces.lg }}>
-      <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
-                   onValider={envoyer} langue={langue} />
-      {recents?.length ? (
-        <Defilement horizontal showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: espaces.md, paddingBottom: espaces.sm }}>
-          {recents.map((r) => (
-            <Visage key={r.numero} client={r} choisi={false} onPress={() => onEnvoyer(r.numero)} />
-          ))}
-        </Defilement>
-      ) : null}
-      {/* Le grand bouton garde sa largeur de partout : il porte sa propre
-          marge, on retire celle de la zone. */}
-      <View style={{ marginHorizontal: -espaces.xl }}>
-        <GrosBouton libelle={t.envoyer} desactive={!valide} onPress={envoyer} />
-      </View>
-    </View>
+    <Animated.View style={{ flex: 1 }}
+      entering={reduit ? undefined : FadeInDown.duration(240)}>
+      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}>
+        {entete}
+        <View style={{ paddingHorizontal: espaces.xs }}>
+          <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
+                       onValider={envoyer} langue={langue} />
+        </View>
+        {recents?.length ? (
+          <Defilement horizontal showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: espaces.md }}>
+            {recents.map((r) => (
+              <Visage key={r.numero} client={r} choisi={false} onPress={() => onEnvoyer(r.numero)} />
+            ))}
+          </Defilement>
+        ) : null}
+      </Defilement>
+      <GrosBouton libelle={t.envoyer} desactive={!valide} onPress={envoyer} />
+    </Animated.View>
   );
 }
 
 /**
- * L'ÉCHANGE, EN ENTIER. Chaque écran de l'opérateur, mot pour mot — même
- * ceux auxquels l'application répond seule —, et ce qu'on lui a répondu. Le
- * code secret n'y est jamais : quatre points. Le dernier message est en
- * avant ; les précédents restent là, plus discrets, à relire.
+ * L'ÉCRAN EN COURS DE L'OPÉRATEUR — un seul, comme sur le téléphone. Qui
+ * parle, ce qu'il dit, mot pour mot, et ses choix en boutons. Il entre en
+ * montant doucement : on voit qu'un nouvel écran est arrivé.
  */
-function Echange({ fil, op, couleur, t, reduit, attente, menu, onChoix, onAutre }: {
-  fil: Msg[]; op: string; couleur: string; t: T; reduit: boolean;
-  attente: string | null;
-  menu: { texte: string; choix: { numero: string; libelle: string }[] } | null;
+function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, onAutre }: {
+  texte: string; copie: string; op: string; couleur: string; t: T; reduit: boolean;
+  choix: { numero: string; libelle: string }[];
   onChoix: (numero: string) => void;
   onAutre?: () => void;
 }) {
-  const defile = useRef<Rouleau>(null);
-  const dernier = fil.map((m) => m.de).lastIndexOf("reseau");
   return (
-    <Defilement ref={defile} style={{ flex: 1 }}
-      // Le dernier message en vue, à chaque nouveau.
-      onContentSizeChange={() => defile.current?.scrollToEnd({ animated: !reduit })}
-      contentContainerStyle={{ padding: espaces.lg, gap: espaces.md }}>
-      {fil.map((m, k) => m.de === "vous" ? (
-        <View key={k} style={{
-          alignSelf: "flex-end", maxWidth: "80%", backgroundColor: couleurs.accent,
-          borderRadius: 16, borderBottomRightRadius: 6,
-          paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
-        }}>
-          <Texte taille={textes.petit} poids="moyen" chiffresAlignes selectable
-                 style={{ color: couleurs.surfaceHaute }}>{m.texte}</Texte>
-        </View>
-      ) : (
-        <CarteReseau key={k} op={op} couleur={couleur} t={t} actuelle={k === dernier}
-          // Le menu en cours : son titre ici, ses choix en boutons dessous.
-          // Les anciens messages restent entiers, tels qu'ils sont arrivés.
-          texte={k === dernier && menu ? (menu.texte || m.texte) : m.texte}
-          copie={m.texte} />
-      ))}
-      {menu ? (
-        <View style={{ gap: espaces.sm }}>
-          {menu.choix.map((c) => (
-            <Choix key={`${c.numero}-${c.libelle}`} numero={c.numero} libelle={c.libelle}
-                   onPress={() => onChoix(c.numero)} />
-          ))}
-          {onAutre ? (
-            <Pressable accessibilityRole="button" onPress={onAutre} hitSlop={8}
-              style={({ pressed }) => ({ alignSelf: "center", padding: espaces.md,
-                                          opacity: pressed ? 0.5 : 1 })}>
-              <Texte taille={textes.petit} ton="doux">{t.autreReponse}</Texte>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
-      {attente ? <EnCours texte={attente} couleur={couleur} reduit={reduit} /> : null}
-    </Defilement>
+    <Animated.View style={{ flex: 1 }}
+      entering={reduit ? undefined : FadeInDown.duration(240)}>
+      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.md }}>
+        <CarteOperateur texte={texte} copie={copie} op={op} couleur={couleur} t={t} />
+        {choix.length ? (
+          <View style={{ gap: espaces.sm }}>
+            {choix.map((c) => (
+              <Choix key={`${c.numero}-${c.libelle}`} numero={c.numero} libelle={c.libelle}
+                     onPress={() => onChoix(c.numero)} />
+            ))}
+          </View>
+        ) : null}
+        {onAutre ? (
+          <Pressable accessibilityRole="button" onPress={onAutre} hitSlop={8}
+            style={({ pressed }) => ({ alignSelf: "center", padding: espaces.sm,
+                                        opacity: pressed ? 0.5 : 1 })}>
+            <Texte taille={textes.petit} ton="doux">{t.autreReponse}</Texte>
+          </Pressable>
+        ) : null}
+      </Defilement>
+    </Animated.View>
   );
 }
 
-/** Un message de l'opérateur : qui parle, le texte entier, « Copier ». */
-function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
-  texte: string; copie: string; op: string; couleur: string; t: T; actuelle: boolean;
+/** Le message de l'opérateur, dans sa carte : qui parle, le texte entier,
+ *  « Copier ». */
+function CarteOperateur({ texte, copie, op, couleur, t }: {
+  texte: string; copie: string; op: string; couleur: string; t: T;
 }) {
   const [copiee, setCopiee] = useState(false);
   const copier = () => {
@@ -923,10 +927,9 @@ function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
   };
   return (
     <View style={{
-      alignSelf: "flex-start", maxWidth: "92%", borderRadius: 16, borderBottomLeftRadius: 6,
-      paddingHorizontal: espaces.lg, paddingVertical: espaces.md, gap: espaces.xs,
-      backgroundColor: actuelle ? couleurs.surfaceHaute : couleurs.surface2,
-      borderWidth: 1, borderColor: actuelle ? couleurs.trait : "transparent",
+      borderRadius: 20, borderWidth: 1, borderColor: couleurs.trait,
+      backgroundColor: couleurs.surfaceHaute, gap: espaces.sm,
+      paddingHorizontal: espaces.lg, paddingVertical: espaces.md,
     }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
         <View style={{ width: 8, height: 8, borderRadius: rayons.rond, backgroundColor: couleur }} />
@@ -938,34 +941,62 @@ function CarteReseau({ texte, copie, op, couleur, t, actuelle }: {
       </View>
       {/* Le texte du réseau, mot pour mot : jamais traduit, toujours entier,
           et sélectionnable — appui long → Copier. */}
-      <Texte selectable taille={actuelle ? textes.corps : textes.petit}
-             ton={actuelle ? "normal" : "doux"}
-             style={{ lineHeight: actuelle ? 22 : 19 }}>
-        {texte}
-      </Texte>
+      {texte ? (
+        <Texte selectable taille={textes.intertitre} style={{ lineHeight: 27 }}>
+          {texte}
+        </Texte>
+      ) : null}
     </View>
   );
 }
 
-/** Le réseau parle : un point qui respire, à la couleur de l'opérateur. */
-function EnCours({ texte, couleur, reduit }: { texte: string; couleur: string; reduit: boolean }) {
+/**
+ * LE RÉSEAU RÉPOND — comme le « code USSD en cours » d'un téléphone. Un rond
+ * qui respire à la couleur de l'opérateur, une phrase, et ce qu'on vient
+ * d'envoyer : on sait qu'on a été entendu, et l'écran ne reste jamais blanc.
+ * Le souffle tourne sur le fil de l'interface (Reanimated) : il ne retient
+ * rien, même quand le réseau traîne.
+ */
+function Patience({ texte, couleur, envoye, t, reduit }: {
+  texte: string; couleur: string; envoye: string | null; t: T; reduit: boolean;
+}) {
   const souffle = useSharedValue(0);
   useEffect(() => {
     if (reduit) return;
     souffle.value = withRepeat(
-      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }), -1, true);
+      withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.quad) }), -1, true);
   }, [reduit]);
-  const point = useAnimatedStyle(() => ({ opacity: 1 - souffle.value * 0.6 }));
+  const anneau = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + souffle.value * 0.25 }],
+    opacity: 0.3 - souffle.value * 0.2,
+  }));
   return (
-    <View accessibilityLiveRegion="polite" style={{
-      alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: espaces.sm,
-      backgroundColor: couleurs.surface2, borderRadius: 16,
-      paddingHorizontal: espaces.lg, paddingVertical: espaces.sm + 2,
-    }}>
-      <Animated.View style={[{ width: 10, height: 10, borderRadius: rayons.rond,
-                                backgroundColor: couleur }, point]} />
-      <Texte taille={textes.petit} ton="doux">{texte}</Texte>
-    </View>
+    <Animated.View accessibilityLiveRegion="polite"
+      entering={reduit ? undefined : FadeIn.duration(200)}
+      style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: espaces.lg,
+               paddingHorizontal: espaces.xl }}>
+      <View style={{ width: 96, height: 96, alignItems: "center", justifyContent: "center" }}>
+        <Animated.View style={[{
+          position: "absolute", width: 96, height: 96, borderRadius: rayons.rond,
+          backgroundColor: couleur,
+        }, anneau]} />
+        <View style={{ width: 60, height: 60, borderRadius: rayons.rond, borderWidth: 3,
+                       borderColor: couleur, backgroundColor: couleurs.surfaceHaute,
+                       alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 10, height: 10, borderRadius: rayons.rond,
+                         backgroundColor: couleur }} />
+        </View>
+      </View>
+      <Texte taille={textes.intertitre} poids="moyen" style={{ textAlign: "center" }}>
+        {texte}
+      </Texte>
+      {envoye ? (
+        <View style={{ backgroundColor: couleurs.surface2, borderRadius: rayons.rond,
+                       paddingHorizontal: espaces.md, paddingVertical: espaces.xs + 2 }}>
+          <Texte taille={textes.petit} ton="doux" chiffresAlignes>{t.envoye(envoye)}</Texte>
+        </View>
+      ) : null}
+    </Animated.View>
   );
 }
 
@@ -1145,6 +1176,8 @@ function Choix({ numero, libelle, onPress }: {
         paddingHorizontal: espaces.lg, paddingVertical: espaces.md + 2,
         borderRadius: 14, borderWidth: 1, borderColor: couleurs.trait,
         backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+        // Le doigt se sent : le choix s'enfonce d'un rien sous lui.
+        transform: [{ scale: pressed ? 0.98 : 1 }],
       })}>
       <View style={{ width: 28, height: 28, borderRadius: rayons.rond,
                      backgroundColor: couleurs.surface2, alignItems: "center",
