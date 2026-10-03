@@ -29,6 +29,8 @@
 //               appuierait — le doigt toucherait l'autre chose
 //   signé       sur l'écran du code : le message de l'opérateur est-il
 //               ENTIER au-dessus du pavé, sans avoir à le faire défiler ?
+//   copie       une fois : la fiche des coordonnées copie-t-elle ce
+//               qu'elle AFFICHE — le nom et le numéro, pas le réseau ?
 //
 // Il porte son TÉMOIN : une page fabriquée avec les trois fautes (un bouton
 // dont l'icône sort, un bouton recouvert, un message sous le pavé). S'il ne
@@ -285,6 +287,7 @@ const attendreTexte = (page, re, ms = 20000) =>
                        re.source, { timeout: ms });
 
 let defauts = 0;
+let copieEprouvee = false;
 const resume = [];
 function noter(format, ecran, m) {
   const fautes = [];
@@ -305,7 +308,8 @@ function noter(format, ecran, m) {
 
 const SEUL = process.env.FORMAT;      // pour rejouer une seule taille
 for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
-  const page = await nav.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+  const page = await nav.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1,
+                                  permissions: ["clipboard-read", "clipboard-write"] });
   const erreurs = [];
   page.on("pageerror", (e) => erreurs.push(String(e).slice(0, 120)));
   const mesurer = async (ecran) => {
@@ -380,14 +384,63 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     await mesurer("fiche-recu-refait");
   }
 
-  // 3 bis. La fiche des coordonnées d'une carte (« Mon numéro »).
+  // 3 bis. La fiche des coordonnées d'une carte — le bouton rond « carte
+  // d'identité » sous la carte. PAS « My number » : ce raccourci-là lance
+  // une demande USSD à l'opérateur (« Mon numéro »), et la première version
+  // de ce harnais mesurait donc le menu MTN MoMo en l'appelant « fiche des
+  // coordonnées », en vert, à quatorze tailles. Vu sur une capture, pas
+  // par le harnais. On exige maintenant de VOIR la fiche — son titre et
+  // ses rangées — avant de la mesurer.
   await page.goto(APERCU, { waitUntil: "networkidle" });
   await attendreTexte(page, /FCFA/);
-  const numero = page.getByText(/^(My number|Mon numéro)$/);
-  if (await numero.count()) {
-    await numero.first().click();
-    await page.waitForTimeout(900);
-    await mesurer("fiche-coordonnees");
+  await page.getByLabel(/^(Show the account details to share them|Afficher les coordonnées de la carte pour les partager)$/)
+    .first().click();
+  try {
+    await attendreTexte(page, /Account details[\s\S]*Network|Mes coordonnées[\s\S]*Réseau/);
+  } catch {
+    console.error(`\n✗ ${format} : la fiche des coordonnées ne s'ouvre pas. Ce que l'écran dit :\n`);
+    console.error(await page.evaluate(() => document.body.innerText));
+    process.exit(1);
+  }
+  await mesurer("fiche-coordonnees");
+
+  // 3 ter. CE QUE LA FICHE COPIE — une fois, à la première taille. Le
+  // propriétaire a demandé « le nom et le numéro, d'un appui », et la règle
+  // vit dans le noyau (`texteACopier`), testée là-bas. Mais rien n'y
+  // vérifiait que l'ÉCRAN l'appelle : on appuie donc vraiment, puis on LIT le
+  // presse-papiers, et on le compare à ce que la fiche AFFICHE. Le
+  // presse-papiers est d'abord rempli d'un témoin : un bouton qui ne copie
+  // rien laisserait le témoin, et ne passerait pas pour une copie juste.
+  if (!copieEprouvee) {
+    copieEprouvee = true;
+    const lire = () => page.evaluate(() => navigator.clipboard.readText()).catch(() => null);
+    const temoin = () => page.evaluate(() => navigator.clipboard.writeText("(témoin)")).catch(() => {});
+    const ecran = await page.evaluate(() => document.body.innerText);
+    const vu = /(?:^|\n)(?:Name|Nom)\n([^\n]+)\n[\s\S]*?(?:Number|Numéro)\n([^\n]+)/i.exec(ecran);
+    const essais = [
+      [/^(Copy the name and number|Copier le nom et le numéro)$/, vu && `${vu[1]}\n${vu[2]}`, "Copier"],
+      // Le rond du numéro copie les CHIFFRES (pour un champ), pas les tranches.
+      [/^(Copy the number|Copier le numéro)$/,
+       vu && vu[2].replace(/\D/g, "").replace(/^237(?=\d{9}$)/, ""), "le rond du numéro"],
+      [/^(Copy the name|Copier le nom)$/, vu && vu[1], "le rond du nom"],
+    ];
+    for (const [nomDuBouton, attendu, qui] of essais) {
+      const bouton = page.getByRole("button", { name: nomDuBouton });
+      let faute = null;
+      if (!vu) faute = "la fiche n'affiche ni nom ni numéro à comparer";
+      else if (!(await bouton.count())) faute = "bouton absent";
+      else {
+        await temoin();
+        await bouton.first().click();
+        await page.waitForTimeout(150);
+        const lu = await lire();
+        if (lu !== attendu) faute = `copie ${JSON.stringify(lu)}, la fiche affiche ${JSON.stringify(attendu)}`;
+        else if (/Mobile Money|Orange Money/.test(lu)) faute = "la copie emporte le réseau";
+      }
+      if (faute) defauts++;
+      resume.push(`  ${faute ? "✗" : "✓"} ${format.padEnd(18)} ${("copie : " + qui).padEnd(16)} ${faute ?? JSON.stringify(attendu)}`);
+      await page.waitForTimeout(1900);      // le « Copié » s'efface
+    }
   }
 
   // 4. Une opération jusqu'au pavé du code — là où l'on signe.

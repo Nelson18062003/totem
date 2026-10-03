@@ -64,12 +64,17 @@ const en = {
   coordSansNom: "No name yet — add it in Settings so it appears here.",
   coordCopier: "Copy",
   coordCopie: "Copied",
-  // Sur le téléphone, le geste naturel n'est pas de copier mais de PARTAGER :
-  // la feuille d'Android porte WhatsApp, les SMS — et « Copier » avec.
+  // Ce que le bouton « Copier » emporte, dit en entier aux aides vocales :
+  // le nom et le numéro, pas le réseau (voir `noyau/coordonnees.ts`).
+  coordCopierNomNumero: "Copy the name and number",
+  coordCopierNom: "Copy the name",
+  nomCopie: "Name copied",
+  // Partager envoie aussi le réseau : il part chez quelqu'un qui ne connaît
+  // pas encore la carte.
   coordPartager: "Share",
   coordPdf: "Download the PDF",
   coordPdfImpossible:
-    "The PDF could not be opened. Check the connection and try again.",
+    "The PDF could not be prepared. Check the connection and try again.",
   coordVoir: "View",
   coordTelecharger: "Download",
   copierNumero: "Copy the number",
@@ -139,10 +144,13 @@ const fr: typeof en = {
   coordSansNom: "Aucun nom pour l’instant — ajoutez-le dans les Réglages pour qu’il apparaisse ici.",
   coordCopier: "Copier",
   coordCopie: "Copié",
+  coordCopierNomNumero: "Copier le nom et le numéro",
+  coordCopierNom: "Copier le nom",
+  nomCopie: "Nom copié",
   coordPartager: "Partager",
   coordPdf: "Télécharger le PDF",
   coordPdfImpossible:
-    "Le PDF n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
+    "Le PDF n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   coordVoir: "Voir",
   coordTelecharger: "Télécharger",
   copierNumero: "Copier le numéro",

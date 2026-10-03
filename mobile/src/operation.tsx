@@ -50,7 +50,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert, Clipboard, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
+  Alert, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
   useWindowDimensions,
 } from "react-native";
 import {
@@ -68,6 +68,7 @@ import {
 import { agirSurBeneficiaire, deposerCommande, lireCommande } from "@/api/guichet";
 import { useLangue } from "@/langue";
 import { toucherDepart, toucherEchec, toucherReussite } from "@/toucher";
+import { copierTexte } from "@/presse-papiers";
 import { remplirVariables } from "@noyau/codes";
 import {
   champPourQuestion, demandeUnCode, lireEcran, type TypeChamp,
@@ -928,14 +929,11 @@ function CarteOperateur({ texte, copie, op, couleur, t, serre }: {
   const compact = serre && height < 900;
   const [copiee, setCopiee] = useState(false);
   const copier = () => {
-    // Le presse-papiers du cœur de React Native : présent dans l'application
-    // déjà installée, donc rien à refabriquer pour l'offrir. Le texte reste
-    // de toute façon sélectionnable à l'appui long.
-    try {
-      Clipboard.setString(copie);
-      setCopiee(true);
-      setTimeout(() => setCopiee(false), 1600);
-    } catch { /* l'appui long sur le texte reste là */ }
+    // Voir `presse-papiers.ts`. Le texte reste de toute façon sélectionnable
+    // à l'appui long.
+    if (!copierTexte(copie)) return;
+    setCopiee(true);
+    setTimeout(() => setCopiee(false), 1600);
   };
   return (
     <View style={{

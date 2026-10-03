@@ -9,6 +9,7 @@ seule fois**.
 | `natures.ts` | les quatre natures de reçu — le miroir de `totem/declencheur.py` |
 | `codes.ts` | le catalogue des codes USSD et les raccourcis appris |
 | `langue.ts` | anglais / français |
+| `coordonnees.ts` | ce que la fiche des coordonnées copie (nom, numéro) et partage (et le réseau) |
 | `textes/` | le dictionnaire des deux langues, en entier |
 
 Une phrase corrigée ici l'est partout, du même geste. C'est tout l'objet du

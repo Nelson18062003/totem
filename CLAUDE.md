@@ -632,6 +632,16 @@ l'ancien code n'en est pas un. Et il cherche ce qui couvre un bouton APRÈS
 l'avoir amené à l'écran : un bouton sous la barre d'onglets flottante n'est
 pas caché, il est plus bas.
 
+**Reconnaître l'écran, c'est aussi vérifier qu'on Y EST.** La première
+version ouvrait « la fiche des coordonnées » en touchant « My number » — un
+raccourci qui lance une demande USSD à l'opérateur. Elle a donc mesuré le
+menu MTN MoMo à quatorze tailles, en vert, sous le nom de « fiche des
+coordonnées », et la vraie fiche n'a jamais été regardée. Personne ne l'a vu
+dans la sortie du harnais : c'est une CAPTURE, faite pour montrer l'avant et
+l'après au propriétaire, qui l'a montré. Le harnais ouvre maintenant le
+bouton rond « coordonnées » sous la carte, et exige d'y lire le titre et la
+ligne « Réseau » avant de mesurer — sinon il s'arrête en montrant l'écran.
+
 **Une donnée d'essai trop sage, troisième fois — sur un écran USSD.** Le
 faux nuage servait « Votre code secret », une ligne. Un vrai dépôt MTN en
 porte cinq : montant, nom, numéro, frais, solde après. L'écran tenait la
@@ -647,6 +657,16 @@ puis ouvre la feuille de partage du téléphone sur le fichier. La brique de
 partage est CHERCHÉE, pas exigée : une application compilée avant elle
 reçoit cette mise à jour à distance, et une application qui plante au
 démarrage ne peut plus recevoir la correction.
+
+**« Un générateur, un document » ne suffit pas si chaque appelant prépare
+ses données.** Le PDF des coordonnées n'a qu'un générateur, et son
+commentaire le promettait : « le PDF du téléphone est celui du web ». Mais
+le web lui passait le numéro mis en forme, la route du téléphone le numéro
+brut — le même document disait « 677 12 34 56 » d'un côté, « 677123456 » de
+l'autre. Vu sur la capture, là encore. La mise en forme vit maintenant DANS
+le générateur, et un test du noyau fabrique le document des deux façons.
+Même règle pour ce qu'on copie : nom et numéro, sans le réseau, écrits une
+fois dans `noyau/coordonnees.ts` pour les deux surfaces.
 
 **Un nom de commerce n'a pas de longueur.** Le lecteur de SMS bornait le nom
 du client à quarante caractères : un encaissement de 4 231 500 F s'affichait
