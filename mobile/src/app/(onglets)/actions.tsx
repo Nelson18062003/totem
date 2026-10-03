@@ -10,8 +10,11 @@ import { RefreshControl, View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
-import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, Texte, avecAppui } from "@/ui";
-import { Icone, type NomIcone } from "@/icones";
+import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte, avecAppui } from "@/ui";
+import { Coordonnees } from "@/coordonnees";
+import { choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { toucherChoix } from "@/toucher";
+import { type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
 import { useDonnees } from "@/donnees";
@@ -36,7 +39,11 @@ export default function Actions() {
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const [operation, setOperation] = useState<Operation | null>(null);
-  const [choisie, setChoisie] = useState<string | null>(null);
+  // LA MÊME CARTE QUE L'ACCUEIL. Chaque écran gardait la sienne : on
+  // choisissait la MTN sur l'accueil et l'on trouvait l'Orange ici, sur
+  // l'écran où l'on déplace de l'argent.
+  const choisie = useCarteChoisie();
+  const [coordonnees, setCoordonnees] = useState(false);
 
   const cartes = (donnees?.sims ?? []).filter((s) => s.enPlace);
   const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
@@ -120,9 +127,9 @@ export default function Actions() {
   const gestes = tousLesGestes.filter((g) => g.fabrique().code);
 
   const toutesLesConsultations: Geste[] = [
-    { titre: t.consulterSolde, icone: "Refresh",
+    { titre: t.consulterSolde, sous: t.soldeSous, icone: "Refresh",
       fabrique: () => operationDe("solde", t.consulterSolde, []) },
-    { titre: t.monNumero, icone: "Phone",
+    { titre: t.monNumero, sous: t.monNumeroSous, icone: "Phone",
       fabrique: () => operationDe("mon_numero", t.monNumero, []) },
   ];
   const consultations = toutesLesConsultations.filter((c) => c.fabrique().code);
@@ -150,7 +157,7 @@ export default function Actions() {
                 <Pressable
                   accessibilityRole="button"
                   key={c.iccid}
-                  onPress={() => setChoisie(c.iccid)}
+                  onPress={() => { if (!active) { choisirCarte(c.iccid); toucherChoix(); } }}
                   accessibilityState={{ selected: active }}
                   style={avecAppui({
                     paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
@@ -181,8 +188,8 @@ export default function Actions() {
             {gestes.map((g, i) => (
               <View key={g.titre}>
                 {i > 0 ? <Filet /> : null}
-                <Ligne titre={g.titre} sous={g.sous} icone={g.icone}
-                       onPress={() => setOperation(g.fabrique())} />
+                <LigneAction titre={g.titre} sous={g.sous} icone={g.icone}
+                             onPress={() => setOperation(g.fabrique())} />
               </View>
             ))}
           </Carte>
@@ -195,8 +202,8 @@ export default function Actions() {
               {consultations.map((c, i) => (
                 <View key={c.titre}>
                   {i > 0 ? <Filet /> : null}
-                  <Ligne titre={c.titre} icone={c.icone}
-                         onPress={() => setOperation(c.fabrique())} />
+                  <LigneAction titre={c.titre} sous={c.sous} icone={c.icone}
+                               onPress={() => setOperation(c.fabrique())} />
                 </View>
               ))}
             </Carte>
@@ -206,14 +213,28 @@ export default function Actions() {
         {/* Le cadran : composer n'importe quel code, comme sur un téléphone.
             Le web l'a en page à part (« Code USSD ») ; ici il s'ouvre d'une
             ligne — c'est le geste de secours quand aucun bouton ne convient. */}
+        {/* LE CATALOGUE COMPLET : ce que l'accueil montre en ronds a aussi
+            sa ligne ici, avec la phrase qui dit ce qu'il fait — deux
+            chemins vers chaque chose. */}
         <Carte>
-          <Ligne titre={tb.titre} sous={tb.sous} icone="Personnes"
-                 onPress={() => router.push("/beneficiaires")} />
+          <LigneAction titre={t.recevoir} sous={t.recevoirSous} icone="Identite"
+                       onPress={() => setCoordonnees(true)} />
           <Filet />
-          <Ligne titre={tu.titre} sous={tu.composerSous} icone="Hash"
-                 onPress={() => router.push("/ussd")} />
+          <LigneAction titre={tb.titre} sous={tb.sous} icone="Personnes"
+                       onPress={() => router.push("/beneficiaires")} />
+          <Filet />
+          {/* Le cadran s'ouvre sur LA carte choisie ici. */}
+          <LigneAction titre={tu.titre} sous={tu.composerSous} icone="Hash"
+                       onPress={() => router.push({ pathname: "/ussd",
+                                                    params: { carte: carte.iccid } })} />
         </Carte>
       </Defilement>
+
+      {coordonnees ? (
+        <Coordonnees langue={langue} onFermer={() => setCoordonnees(false)}
+                     carte={{ iccid: carte.iccid, nom: carte.nom, numero: carte.numero,
+                              operateur: carte.operateur, libelle: carte.libelle }} />
+      ) : null}
 
       {operation ? (
         <OperationPopup
@@ -224,34 +245,5 @@ export default function Actions() {
         />
       ) : null}
     </SafeAreaView>
-  );
-}
-
-function Ligne({ titre, sous, icone, onPress }: {
-  titre: string; sous?: string; icone: NomIcone; onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row", alignItems: "center", gap: espaces.md,
-        padding: espaces.lg,
-        backgroundColor: pressed ? couleurs.surface2 : "transparent",
-      })}
-    >
-      <View style={{
-        width: 40, height: 40, borderRadius: rayons.rond,
-        borderWidth: 1, borderColor: couleurs.trait,
-        alignItems: "center", justifyContent: "center",
-      }}>
-        <Icone nom={icone} taille={18} couleur={couleurs.encreDouce} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Texte poids="moyen">{titre}</Texte>
-        {sous ? <Texte taille={textes.petit} ton="pale">{sous}</Texte> : null}
-      </View>
-      <Icone nom="Chevron" taille={18} couleur={couleurs.encrePale} />
-    </Pressable>
   );
 }

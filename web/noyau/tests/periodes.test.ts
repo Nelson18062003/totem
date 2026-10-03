@@ -85,3 +85,16 @@ test("le calendrier commence le lundi, et tient le mois entier", () => {
   assert.equal(s.flat().filter(Boolean).length, 31);
   assert.ok(s.every((r) => r.length === 7));
 });
+
+test("le jour d'un relevé de solde : aujourd'hui, hier, ou une date — vus de Douala", async () => {
+  const { jourDuReleve } = await import("../periodes");
+  const maintenant = Date.UTC(2026, 9, 3, 7, 0);          // 8 h à Douala, le 3
+  // 23 h 50 à Douala, la veille : hier.
+  assert.deepEqual(jourDuReleve("2026-10-02T22:50:00Z", maintenant, DOUALA), { genre: "hier" });
+  // 00 h 10 à Douala le 3 = 23 h 10 UTC le 2 : c'est AUJOURD'HUI à la caisse.
+  assert.deepEqual(jourDuReleve("2026-10-02T23:10:00Z", maintenant, DOUALA), { genre: "aujourdhui" });
+  assert.deepEqual(jourDuReleve("2026-09-28T20:54:00Z", maintenant, DOUALA),
+                   { genre: "avant", cle: "2026-09-28" });
+  assert.equal(jourDuReleve(null, maintenant, DOUALA), null);
+  assert.equal(jourDuReleve("pas une date", maintenant, DOUALA), null);
+});

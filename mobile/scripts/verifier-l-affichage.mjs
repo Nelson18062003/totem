@@ -361,6 +361,74 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     await mesurer(ecran);
   }
 
+  // 2 bis. L'ACCUEIL TEL QUE LE PROPRIÉTAIRE L'A : QUATRE CARTES, et un
+  // terminal qui se tait. Le faux nuage n'a que deux cartes et un terminal
+  // toujours en ligne — une donnée d'essai trop sage, encore : les puces
+  // passaient sur deux lignes avec quatre cartes, et personne ne l'avait
+  // vu ici. On enrichit la réponse de la plateforme au passage, sans
+  // toucher au faux nuage (les autres harnais comptent sur lui tel quel).
+  // On part de l'ACCUEIL à deux cartes, comme le propriétaire qui rouvre
+  // l'application : la rangée est déjà là, mesurée, quand les cinq cartes
+  // arrivent. Venu d'un autre écran, l'harnais trouvait la puce à l'écran ;
+  // venu de l'accueil, elle restait dehors — la même application, deux
+  // ordres d'arrivée des mesures.
+  await page.goto(APERCU, { waitUntil: "networkidle" });
+  await attendreTexte(page, /FCFA/);
+  await page.route("**/api/donnees**", async (route) => {
+    // La requête part de Node, pas de `route.fetch` : celui-ci suit le
+    // mandataire réseau de la machine, qui ne connaît pas 127.0.0.1.
+    const demande = route.request();
+    // LA RÉPONSE ARRIVE APRÈS LE CAHIER. Au rechargement, l'accueil montre
+    // d'abord ce que le téléphone a gardé (deux cartes) ; la carte retenue
+    // n'existe qu'à l'arrivée des cinq. Servie tout de suite, la réponse
+    // battait le cahier, et le harnais sortait vert sur une puce que la
+    // capture montrait hors de l'écran.
+    await new Promise((r) => setTimeout(r, 1500));
+    const reponse = await fetch(demande.url(), { headers: demande.headers() });
+    const j = await reponse.json();
+    const modele = j.sims?.[0];
+    if (modele) {
+      j.sims = [...j.sims, ...[["MTN ·3501", "MTN"], ["MTN ·6414", "MTN"], ["Orange ·4177", "Orange"]]
+        .map(([libelle, operateur], i) => ({ ...modele, iccid: `89237000000000000${i}99`, libelle, operateur }))];
+    }
+    if (j.terminal) j.terminal = { ...j.terminal, enLigne: false };
+    await route.fulfill({ status: reponse.status, json: j });
+  });
+  // La carte choisie est la DERNIÈRE (Orange ·4177), retenue d'une
+  // ouverture à l'autre : l'accueil doit la ramener à l'écran tout seul. La
+  // première puce, elle, est toujours visible — la vérifier ne prouvait rien.
+  await page.evaluate(() => localStorage.setItem("totem.carte.choisie", "89237000000000000299"));
+  await page.goto(APERCU, { waitUntil: "networkidle" });
+  await attendreTexte(page, /FCFA/);
+  await attendreTexte(page, /Terminal silent|Terminal muet/).catch(() => {});
+  await page.waitForTimeout(800);      // le défilement de la rangée est animé
+  {
+    // AVANT la mesure : `mesurer` fait défiler jusqu'à l'écran ce qu'il
+    // trouve recouvert — une puce coupée au bord en fait partie. Vérifiée
+    // après, elle était ramenée par le harnais lui-même, et l'étape sortait
+    // verte sur une puce que la capture montrait hors de l'écran.
+    const puces = await page.evaluate(() => [...document.querySelectorAll('[role="button"]')]
+      .filter((e) => /^(Select the|Choisir la carte) /.test(e.getAttribute("aria-label") || ""))
+      .map((e) => { const r = e.getBoundingClientRect();
+                    return { haut: Math.round(r.top), choisie: e.getAttribute("aria-selected") === "true",
+                             nom: e.getAttribute("aria-label"), gauche: r.left, droite: r.right }; }));
+    const uneLigne = puces.length >= 5 && puces.every((p) => Math.abs(p.haut - puces[0].haut) <= 1);
+    const choisie = puces.find((p) => p.choisie);
+    const visible = choisie && /4177/.test(choisie.nom) && choisie.gauche >= 0 && choisie.droite <= w;
+    const muet = await page.evaluate(() => /Terminal silent|Terminal muet/.test(document.body.innerText));
+    const fautes = [];
+    if (!uneLigne) fautes.push(`puces sur ${new Set(puces.map((p) => p.haut)).size} lignes (${puces.length} puces)`);
+    if (!choisie) fautes.push("aucune puce ne se dit choisie");
+    else if (!/4177/.test(choisie.nom)) fautes.push(`la carte retenue est oubliée (choisie : ${choisie.nom})`);
+    else if (!visible) fautes.push("la puce choisie est hors de l'écran");
+    if (!muet) fautes.push("le terminal muet n'est pas signalé");
+    if (fautes.length) defauts += fautes.length;
+    resume.push(`  ${fautes.length ? "✗" : "✓"} ${format.padEnd(18)} ${"4 cartes, muet".padEnd(16)} ${fautes.join(" ; ")}`);
+  }
+  await mesurer("accueil-4-cartes");
+  await page.unroute("**/api/donnees**");
+  await page.evaluate(() => localStorage.removeItem("totem.carte.choisie"));
+
   // 3. La fiche d'un SMS — avec son pied (le reçu).
   await page.goto(`${APERCU}/encaissements`, { waitUntil: "networkidle" });
   await attendreTexte(page, /NKENGAFAC/);
@@ -393,8 +461,8 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   // ses rangées — avant de la mesurer.
   await page.goto(APERCU, { waitUntil: "networkidle" });
   await attendreTexte(page, /FCFA/);
-  // Le bouton porte son NOM depuis qu'il n'est plus un cercle muet.
-  await page.getByRole("button", { name: /^(My details|Coordonnées)$/ }).first().click();
+  // Le rond « Recevoir » sous la carte ouvre la fiche des coordonnées.
+  await page.getByRole("button", { name: /^(Receive|Recevoir)$/ }).first().click();
   try {
     await attendreTexte(page, /Account details[\s\S]*Network|Mes coordonnées[\s\S]*Réseau/);
   } catch {

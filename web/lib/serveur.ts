@@ -475,6 +475,8 @@ export async function chargerDonnees(
     // comme avant.
     const soldeMaj = solde != null && compte
       ? heure(compte.solde_maj ?? compte.maj) : null;
+    // Le même instant, entier : l'écran en tire le JOUR (« hier à 21:54 »).
+    const soldeLe = solde != null && compte ? (compte.solde_maj ?? compte.maj ?? null) : null;
     const enPlace = Boolean(
       c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
     );
@@ -488,6 +490,7 @@ export async function chargerDonnees(
       numero: compte?.numero || c.numero || "",
       solde,
       soldeMaj,
+      soldeLe,
       signal: compte?.signal ?? null,
       enPlace,
       premiereVue: dateCourte(c.premiere_vue, langue),

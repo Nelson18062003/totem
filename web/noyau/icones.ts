@@ -174,6 +174,13 @@ export const ICONES = {
     { f: "path", d: "M10.6 6c.46-.07.93-.1 1.4-.1 6 0 9.5 6.1 9.5 6.1a17.6 17.6 0 0 1-2.4 3.2M6.4 6.9A17 17 0 0 0 2.5 12S6 18.1 12 18.1c1.4 0 2.7-.33 3.8-.84" },
     { f: "path", d: "M9.9 9.9a3 3 0 0 0 4.2 4.2" },
   ],
+  // Un billet : le RETRAIT, de l'argent liquide qu'on remet. Le portefeuille
+  // est déjà l'onglet Comptes — la même icône pour deux choses se confond.
+  Billet: [
+    { f: "rect", x: "3", y: "6.5", w: "18", h: "11", r: "2" },
+    { f: "circle", cx: "12", cy: "12", r: "2.5" },
+    { f: "path", d: "M6.5 9.5v.01M17.5 14.5v.01" },
+  ],
   // Le calendrier : le filtre « choisir les jours » des SMS.
   Calendrier: [
     { f: "rect", x: "4", y: "5.5", w: "16", h: "14.5", r: "2" },

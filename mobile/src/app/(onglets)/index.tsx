@@ -1,16 +1,33 @@
-// L'accueil : la carte, ses gestes, et ce qui vient d'arriver.
+// L'accueil : une carte, ce qu'on fait avec, et l'argent qui vient de bouger.
 //
-// Trois blocs, dans cet ordre, parce que c'est l'ordre des questions qu'on se
-// pose en ouvrant l'application : « combien ? », « je fais quoi ? », « il
-// s'est passé quoi ? ».
+// REFAIT POUR SE LIRE SANS MODE D'EMPLOI. Le propriétaire le montrait à son
+// père et à ses proches, qui ne savaient pas à quoi servait la moitié des
+// boutons : un titre « Overview » qui ne disait rien, trois cercles muets,
+// quatre grosses tuiles d'un autre style pour des gestes du même ordre, une
+// liste de SMS mêlant publicités et soldes, et une carte « terminal relié »
+// qui ne disait rien tant que tout allait bien. Quatre designers ont
+// proposé, trois juges ont tranché ; ce qui reste, de haut en bas :
+//
+//   — le salut, et l'engrenage ;
+//   — les cartes, en puces sur UNE ligne (quatre cartes n'en font plus
+//     deux) ;
+//   — la carte, avec l'âge de son solde dessous — le JOUR compris — et
+//     « Actualiser » à côté ;
+//   — UNE rangée de ronds nommés, tous du même dessin : Dépôt, Retrait,
+//     Transfert, Recevoir (la fiche des coordonnées), Code USSD ;
+//   — les derniers MOUVEMENTS D'ARGENT, toutes cartes, la carte nommée.
+//
+// Rien n'est perdu : « Mon numéro » et le solde exact sont dans Opérations
+// (avec une phrase qui dit ce qu'ils font), l'Analyse dans Comptes, l'état
+// complet du terminal dans Réglages — et la ligne sous la carte prévient
+// dès que le terminal se tait.
 //
 // La mise en page suit la FENÊTRE, pas l'appareil : au-delà de 600 dp de
 // large (tablette, pliable ouvert, écran partagé) elle passe à deux colonnes
-// — la carte et ses gestes d'un côté, les messages de l'autre. Android 16 ne
-// garantit plus l'orientation ; on ne peut donc rien figer.
+// — la carte et ses gestes d'un côté, les mouvements de l'autre.
 
-import { useEffect, useState } from "react";
-import { Pressable, RefreshControl, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -21,30 +38,46 @@ import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Pas
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
-import { SqueletteCaisse, SqueletteGestes, SqueletteListe } from "@/squelettes";
+import { SqueletteCaisse, SqueletteListe, SqueletteRonds } from "@/squelettes";
 import { OperationPopup, type Operation } from "@/operation";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
+import { choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { toucherChoix } from "@/toucher";
+import {
+  ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, LIGNE_ROND, LIGNES_MOUVEMENTS,
+  LIGNES_MOUVEMENTS_LARGE, NOM_ROND, ROND,
+} from "@/mesures-accueil";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { clientsRecents } from "@noyau/recents";
 import { aQui } from "@noyau/beneficiaires";
-import { fcfa, type Paiement, type Sim } from "@noyau/types";
+import { estMouvement } from "@noyau/sms";
+import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import {
+  FUSEAU_DEFAUT, fcfa, jourLocal, type EtatTerminal, type Paiement, type Sim,
+} from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
-import { textesAnalyse } from "@noyau/textes/analyse";
+import { textesGuichet } from "@noyau/textes/guichet";
 import { salutation } from "@noyau/salutation";
 
 const CLE_SOLDE_CACHE = "totem.solde.cache";
+// Combien de cartes au dernier passage : la forme d'attente dessine les
+// puces SEULEMENT s'il y en avait plusieurs — sans quoi un propriétaire à une
+// carte verrait l'écran remonter de 48 points à chaque ouverture.
+const CLE_NOMBRE_CARTES = "totem.cartes.nombre";
+
+type T = (typeof textesAccueil)["fr"];
 
 export default function Accueil() {
   // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
   const margeBas = useMargeSousLaBarre();
   const langue = useLangue();
   const t = textesAccueil[langue];
-  const ta = textesAnalyse[langue];
+  const tg = textesGuichet[langue];
   const ecran = useEcran();
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 30, recus: 60 });
 
@@ -52,8 +85,11 @@ export default function Accueil() {
   const enPlace = sims.filter((s) => s.enPlace);
   const cartes = enPlace.length ? enPlace : sims;
   const raccourcis = donnees?.raccourcis ?? {};
+  const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
 
-  const [choisie, setChoisie] = useState<string | null>(null);
+  // La carte choisie est PARTAGÉE avec Opérations, et retenue d'une
+  // ouverture à l'autre (voir `carte-choisie.ts`).
+  const choisie = useCarteChoisie();
   const active = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const [operation, setOperation] = useState<Operation | null>(null);
   const [smsOuvert, setSmsOuvert] = useState<Paiement | null>(null);
@@ -72,6 +108,16 @@ export default function Accueil() {
     });
   };
 
+  const [plusieurs, setPlusieurs] = useState(true);
+  useEffect(() => {
+    Coffre.lire(CLE_NOMBRE_CARTES)
+      .then((v) => { if (v != null) setPlusieurs(Number(v) > 1); }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!donnees) return;
+    void Coffre.ecrire(CLE_NOMBRE_CARTES, String(cartes.length)).catch(() => {});
+  }, [donnees, cartes.length]);
+
   const operationDe = (cle: string, titre: string, champs: Operation["champs"]): Operation => {
     const et = active ? etapesGeste(active.operateur, cle, raccourcis[active.operateur] ?? []) : [];
     return { titre, code: et[0] ?? "", etapes: et, champs,
@@ -81,124 +127,98 @@ export default function Accueil() {
                            clientsRecents(donnees?.paiements ?? [], active?.iccid), active?.iccid) };
   };
 
-  type Geste = { label: string; icone: NomIcone; fabrique: () => Operation };
+  // LES GESTES D'ARGENT. Un geste dont on ne connaît pas le code ne
+  // s'affiche PAS : un bouton qui composerait au hasard vaut moins que pas
+  // de bouton du tout.
+  type Geste = { libelle: string; aide: string; icone: NomIcone; fabrique: () => Operation };
   const tous: Geste[] = active == null ? [] : [
-    { label: t.depot, icone: "ArrowDown", fabrique: () => operationDe("depot", t.depotTitre, [
-      { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
-      { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { label: t.retrait, icone: "Wallet", fabrique: () => operationDe("retrait", t.retraitTitre, [
-      { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
-      { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { label: t.transfert, icone: "ArrowUp", fabrique: () => operationDe("transfert", t.transfertTitre, [
-      { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
-      { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" }]) },
-    { label: t.monNumero, icone: "Phone", fabrique: () => operationDe("mon_numero", t.monNumero, []) },
+    { libelle: t.depot, aide: tg.depotSous, icone: "ArrowDown",
+      fabrique: () => operationDe("depot", t.depotTitre, [
+        { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
+    { libelle: t.rondRetrait, aide: tg.retraitSous, icone: "Billet",
+      fabrique: () => operationDe("retrait", t.retraitTitre, [
+        { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
+    { libelle: t.transfert, aide: tg.transfertSous, icone: "ArrowUp",
+      fabrique: () => operationDe("transfert", t.transfertTitre, [
+        { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
+        { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" }]) },
   ];
   const gestes = tous.filter((g) => g.fabrique().code);
-  const derniers = (donnees?.paiements ?? []).slice(0, 4);
+  const actualiser = active && operationDe("solde", t.consulterSolde, []).code
+    ? () => setOperation(operationDe("solde", t.consulterSolde, [])) : null;
 
-  // Deux colonnes dès qu'il y a la place. Sur téléphone, une seule.
+  // L'ARGENT QUI VIENT DE BOUGER — toutes cartes, et rien d'autre : ni les
+  // consultations de solde, ni les échecs, ni les codes, ni les publicités.
+  // Toutes cartes, parce qu'un paiement arrivé sur la MTN pendant qu'on
+  // regardait l'Orange ne doit pas disparaître : on répondrait « pas reçu »
+  // à un client qui a payé. La carte est nommée sur chaque ligne.
   const deux = ecran.deuxColonnes;
+  const mouvements = (donnees?.paiements ?? []).filter(estMouvement)
+    .slice(0, deux ? LIGNES_MOUVEMENTS_LARGE : LIGNES_MOUVEMENTS);
+  const aujourdhui = jourLocal(new Date(), fuseau);
 
-  const colonneGauche = (
-    <View style={{ gap: espaces.lg, flex: deux ? 1 : undefined }}>
-      {cartes.length > 1 && active ? (
-        <Entree>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm,
-                         justifyContent: deux ? "flex-start" : "center" }}>
-            {cartes.map((c) => (
-              <PuceCarte key={c.iccid} carte={c} actif={c.iccid === active.iccid}
-                         onPress={() => setChoisie(c.iccid)} />
-            ))}
-          </View>
-        </Entree>
-      ) : null}
+  // Rien de ce qui arrive avec les données ne doit faire SAUTER l'écran : la
+  // forme d'attente de chaque bloc a la hauteur du vrai (`mesures-accueil`).
+  const enAttente = !active && chargement;
 
-      {active ? (
-        <Entree delai={60}>
-          <Caisse carte={active} langue={langue} soldeCache={soldeCache}
-                  onBasculerSolde={basculerSolde} />
-        </Entree>
-      ) : chargement ? (
-        // PENDANT L'ATTENTE, UNE FORME — pas le vide. L'écran ne montrait
-        // RIEN tant que les chiffres n'étaient pas là : le propriétaire ne
-        // pouvait pas distinguer « ça arrive » de « c'est cassé ».
-        <SqueletteCaisse />
-      ) : (
-        <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
-                        borderStyle: "dashed" }}>
-          {/* Le premier écran d'un propriétaire tout neuf : ni carte, ni SMS.
-              Il n'y lisait qu'un titre — « Aucune carte dans le terminal » —
-              et rien d'autre : pas de suite, pas d'explication, la liste des
-              SMS et les gestes étant tous masqués faute de carte. La phrase
-              qui dit quoi attendre existait déjà, et TOUS les autres écrans
-              l'affichent (Opérations, USSD, et l'accueil du web) ; seul
-              l'accueil du téléphone — celui qui s'ouvre en premier — ne la
-              disait pas. */}
-          <Texte poids="demi">{t.aucuneCarte}</Texte>
-          <Texte ton="doux" taille={textes.petit}
-                 style={{ textAlign: "center", lineHeight: 20 }}>
-            {t.aucuneCarteDetail}
-          </Texte>
-        </Carte>
-      )}
+  const blocCarte = active ? (
+    <Entree delai={60}>
+      <View>
+        {cartes.length > 1 ? (
+          <PucesCartes cartes={cartes} active={active.iccid} deux={deux}
+                       marge={ecran.marge} t={t} />
+        ) : null}
+        <Caisse carte={active} langue={langue} soldeCache={soldeCache}
+                onBasculerSolde={basculerSolde} />
+        <LigneEtat carte={active} terminal={donnees?.terminal ?? null} fuseau={fuseau}
+                   langue={langue} t={t} onActualiser={actualiser} />
+      </View>
+    </Entree>
+  ) : enAttente ? (
+    // PENDANT L'ATTENTE, UNE FORME — pas le vide. L'écran ne montrait RIEN
+    // tant que les chiffres n'étaient pas là : le propriétaire ne pouvait
+    // pas distinguer « ça arrive » de « c'est cassé ».
+    <SqueletteCaisse puces={plusieurs} />
+  ) : erreur ? null : (
+    // La panne passe AVANT la carte vide : hors ligne, « aucune carte »
+    // serait un mensonge.
+    <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
+                    borderStyle: "dashed" }}>
+      <Texte poids="demi">{t.aucuneCarte}</Texte>
+      <Texte ton="doux" taille={textes.petit}
+             style={{ textAlign: "center", lineHeight: 20 }}>
+        {t.aucuneCarteDetail}
+      </Texte>
+    </Carte>
+  );
 
-      {/* Les commandes de la carte, HORS de la carte : demander le solde,
-          composer un code USSD, montrer ses coordonnées. TROIS CERCLES, ET
-          CHACUN SON NOM. Ils étaient muets — « la carte reste nette », disait
-          ce commentaire — et ceux qui découvraient l'application ne savaient
-          pas à quoi ils servaient. L'œil, lui, est monté SUR la carte, contre
-          le solde qu'il cache ; sa place ici est allée au code USSD, pour
-          composer n'importe quel menu sans quitter l'accueil. */}
-      {/* RIEN À COMPOSER SUR UNE CARTE ABSENTE. Quand aucune puce n'est dans
-          le terminal, l'écran retombe sur les cartes RETIRÉES (voir plus
-          haut) pour montrer leur dernier solde connu — c'est utile. Mais les
-          boutons restaient armés : interroger le solde ou lancer un geste
-          partait vers une puce qui n'est pas dans le boîtier, et échouait
-          sans qu'on comprenne pourquoi. On les retire ; la carte, elle,
-          reste affichée avec sa phrase d'avertissement. */}
-      {active?.enPlace ? (
-        <Entree delai={120}>
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: espaces.md }}>
-            <Commande icone="Refresh" libelle={t.cmdSolde} aide={t.actualiserAria}
-                      onPress={() => setOperation(operationDe("solde", t.consulterSolde, []))} />
-            <Commande icone="Hash" libelle={t.cmdUssd} aide={t.ussdAria}
-                      onPress={() => router.push({ pathname: "/ussd",
-                                                   params: { carte: active.iccid } })} />
-            {/* Les coordonnées à donner pour être payé — la fiche s'ouvre
-                ICI, comme sur le web. Ce bouton renvoyait aux Réglages :
-                un détour, pour la chose qu'on montre le plus souvent. */}
-            <Commande icone="Identite" libelle={t.cmdCoordonnees} aide={t.coordonneesAria}
-                      onPress={() => setCoordonnees(true)} />
-          </View>
-        </Entree>
-      ) : null}
-
-      {/* Les gestes. Deux par ligne sur téléphone, quatre dès qu'il y a la
-          place — la grille suit la fenêtre, pas l'appareil. */}
-      {gestes.length && active?.enPlace ? (
-        <Entree delai={180}>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
-            {gestes.map((g) => (
-              // Deux par ligne, toujours : les gestes vivent dans une
-              // COLONNE, qui fait la largeur d'un téléphone même sur
-              // tablette. Les serrer à quatre d'après la largeur de l'écran
-              // tronquait « Withdrawal » en « Withdra… ».
-              <BoutonGeste key={g.label} libelle={g.label} icone={g.icone}
-                           onPress={() => setOperation(g.fabrique())} />
-            ))}
-          </View>
-        </Entree>
-      ) : chargement ? (
-        <SqueletteGestes />
-      ) : active?.enPlace ? (
-        // Aucun code relevé pour cet opérateur : le web le DIT et mène aux
-        // Réglages ; ici les gestes disparaissaient sans un mot, comme si
-        // l'application était en panne.
-        <Entree delai={180}>
+  // RIEN À COMPOSER SUR UNE CARTE ABSENTE : une carte retirée montre son
+  // dernier solde connu, mais aucun geste — il partirait vers une puce qui
+  // n'est plus dans le boîtier.
+  const ronds = active?.enPlace ? (
+    <Entree delai={120}>
+      <View>
+        <View style={{ flexDirection: "row", justifyContent: "center",
+                       width: "100%", maxWidth: 460, alignSelf: "center" }}>
+          {gestes.map((g) => (
+            <Rond key={g.libelle} icone={g.icone} libelle={g.libelle} aide={g.aide}
+                  onPress={() => setOperation(g.fabrique())} />
+          ))}
+          <Rond icone="Identite" libelle={t.rondRecevoir} aide={t.recevoirAria}
+                onPress={() => setCoordonnees(true)} />
+          <Rond icone="Hash" libelle={t.rondUssd} aide={t.ussdAria}
+                onPress={() => router.push({ pathname: "/ussd",
+                                             params: { carte: active.iccid } })} />
+        </View>
+        {gestes.length === 0 ? (
+          // Aucun code relevé pour cet opérateur : on le DIT, et on mène
+          // là où il s'inscrit — sans quoi les gestes disparaissaient sans
+          // un mot, comme si l'application était en panne.
           <Pressable onPress={() => router.push("/reglages")}
                      accessibilityRole="button" style={appuiTexte}>
-            <Carte style={{ padding: espaces.lg, borderStyle: "dashed",
+            <Carte style={{ marginTop: espaces.md, padding: espaces.lg, borderStyle: "dashed",
                             alignItems: "center" }}>
               <Texte taille={textes.petit} ton="pale"
                      style={{ textAlign: "center", lineHeight: 20 }}>
@@ -210,73 +230,71 @@ export default function Accueil() {
               </Texte>
             </Carte>
           </Pressable>
-        </Entree>
-      ) : null}
-    </View>
-  );
+        ) : null}
+      </View>
+    </Entree>
+  ) : enAttente ? <SqueletteRonds /> : null;
 
-  const colonneDroite = (
-    <View style={{ gap: espaces.lg, flex: deux ? 1 : undefined }}>
-      {derniers.length ? (
-        <Entree delai={240}>
-          <View style={{ gap: espaces.sm }}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Texte taille={textes.intertitre} poids="demi" style={{ flex: 1 }}>
-                {t.derniersSms}
-              </Texte>
-              <Pressable onPress={() => router.push("/encaissements")} hitSlop={8}
-                         accessibilityRole="button"
-                         style={avecAppui({ flexDirection: "row", alignItems: "center",
-                                            gap: espaces.xs })}>
-                <Texte taille={textes.petit} ton="doux">{t.toutVoir}</Texte>
-                <Icone nom="Chevron" taille={14} couleur={couleurs.encrePale} />
-              </Pressable>
-            </View>
-            <Carte>
-              {derniers.map((p, i) => (
-                <View key={p.id}>
-                  {i > 0 ? <Filet /> : null}
-                  <LigneSms paiement={p} langue={langue}
-                            onPress={() => setSmsOuvert(p)} />
-                </View>
-              ))}
-            </Carte>
-          </View>
-        </Entree>
-      ) : chargement ? (
-        // Le titre PUIS les formes : l'écran se compose dans le bon ordre, et
-        // « Derniers SMS » est déjà lisible pendant que les lignes arrivent.
-        <View style={{ gap: espaces.sm }}>
-          <Texte taille={textes.intertitre} poids="demi">{t.derniersSms}</Texte>
-          <SqueletteListe lignes={4} />
+  const blocMouvements = active || enAttente ? (
+    <Entree delai={180}>
+      <View style={{ gap: espaces.sm, marginTop: deux ? 0 : espaces.sm }}>
+        {/* Le titre est le MÊME pendant l'attente : il se lit tout de suite,
+            et l'écran se compose dans le bon ordre. */}
+        <View style={{ flexDirection: "row", alignItems: "center", minHeight: 24,
+                       gap: espaces.sm }}>
+          <Texte poids="demi" accessibilityRole="header" style={{ flex: 1 }}>
+            {t.mouvements}
+          </Texte>
+          {donnees ? (
+            <Pressable onPress={() => router.push("/encaissements")} hitSlop={8}
+                       accessibilityRole="button"
+                       style={avecAppui({ flexDirection: "row", alignItems: "center",
+                                          gap: espaces.xs })}>
+              <Texte taille={textes.petit} ton="doux">{t.toutVoir}</Texte>
+              <Icone nom="Chevron" taille={14} couleur={couleurs.encrePale} />
+            </Pressable>
+          ) : null}
         </View>
-      ) : null}
-
-      {donnees?.terminal ? (
-        <Entree delai={300}>
-          <Carte style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm,
-                          padding: espaces.lg }}>
-            <Pastille vif={donnees.terminal.enLigne} />
-            <Texte taille={textes.petit} style={{ flex: 1 }}>
-              {donnees.terminal.enLigne ? t.enLigne : t.muet}
-            </Texte>
-            <Texte taille={textes.legende} ton="pale" chiffresAlignes>
-              {donnees.terminal.majTexte}
-            </Texte>
+        {!donnees ? (
+          <SqueletteListe lignes={deux ? LIGNES_MOUVEMENTS_LARGE : LIGNES_MOUVEMENTS} />
+        ) : mouvements.length ? (
+          <Carte>
+            {mouvements.map((p, i) => (
+              <View key={p.id}>
+                {i > 0 ? <Filet /> : null}
+                <LigneMouvement paiement={p} langue={langue} aujourdhui={aujourdhui}
+                                nommerCarte={sims.length > 1}
+                                onPress={() => setSmsOuvert(p)} />
+              </View>
+            ))}
           </Carte>
-        </Entree>
-      ) : null}
-    </View>
-  );
+        ) : (
+          // Des SMS, mais aucun mouvement d'argent parmi eux : on le dit, et
+          // la boîte de réception est à un appui.
+          <Carte>
+            <Pressable onPress={() => router.push("/encaissements")}
+                       accessibilityRole="button"
+                       style={avecAppui({ flexDirection: "row", alignItems: "center",
+                                          gap: espaces.md, padding: espaces.lg })}>
+              <Texte taille={textes.petit} ton="pale" style={{ flex: 1, lineHeight: 20 }}>
+                {(donnees.paiements ?? []).length ? t.aucunMouvement : t.aucunSms}
+              </Texte>
+              <Icone nom="Chevron" taille={14} couleur={couleurs.encrePale} />
+            </Pressable>
+          </Carte>
+        )}
+      </View>
+    </Entree>
+  ) : null;
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
       <Defilement
         contentContainerStyle={{
           paddingHorizontal: ecran.marge,
-          paddingTop: espaces.md,
+          paddingTop: espaces.sm,
           paddingBottom: margeBas,
-          gap: espaces.xl,
+          gap: espaces.lg,
           // Sur grand écran, le contenu se centre au lieu de s'étirer : une
           // ligne large de mille points ne se lit plus, elle se balaie.
           maxWidth: deux ? 1100 : undefined,
@@ -288,21 +306,19 @@ export default function Accueil() {
                           tintColor={couleurs.encrePale} />
         }
       >
-        {/* L'en-tête : le salut, et l'engrenage. Rien d'autre — le nom de
-            l'application n'a pas à se répéter sur son propre écran. */}
+        {/* L'EN-TÊTE : le salut, et l'engrenage. « Overview » est parti — il
+            ne disait rien ; le salut, lui, accueille. Le graphe de l'Analyse
+            aussi : une icône sans nom que personne ne reconnaissait. Elle
+            est dans l'onglet Comptes, sur une ligne qui dit son nom. */}
         <Entree montee={6}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ flex: 1 }}>
-              <Texte taille={textes.petit} ton="pale">
-                {salutation(langue, donnees?.courriel)}
-              </Texte>
-              <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
-            </View>
-            {/* L'analyse puis l'engrenage : les deux écrans « à part »,
-                côte à côte dans l'angle où le pouce les attend. */}
-            <BoutonIcone nom="Chart" etiquette={ta.titre}
-                         onPress={() => router.push("/analyse")}
-                         style={{ marginRight: espaces.lg }} />
+          <View style={{ flexDirection: "row", alignItems: "center", minHeight: 44,
+                         gap: espaces.md }}>
+            <Texte taille={textes.titre} poids="demi" numberOfLines={1}
+                   adjustsFontSizeToFit minimumFontScale={0.75}
+                   accessibilityRole="header"
+                   style={{ flex: 1, letterSpacing: -0.3 }}>
+              {salutation(langue, donnees?.courriel)}
+            </Texte>
             <BoutonIcone nom="Settings" etiquette={t.reglages}
                          onPress={() => router.push("/reglages")} />
           </View>
@@ -312,11 +328,11 @@ export default function Accueil() {
 
         {deux ? (
           <View style={{ flexDirection: "row", gap: espaces.xl, alignItems: "flex-start" }}>
-            {colonneGauche}
-            {colonneDroite}
+            <View style={{ flex: 1, gap: espaces.lg }}>{blocCarte}{ronds}</View>
+            <View style={{ flex: 1 }}>{blocMouvements}</View>
           </View>
         ) : (
-          <>{colonneGauche}{colonneDroite}</>
+          <>{blocCarte}{ronds}{blocMouvements}</>
         )}
       </Defilement>
 
@@ -340,91 +356,231 @@ export default function Accueil() {
   );
 }
 
-/** La puce d'une carte : son logo, et le nom court. */
-function PuceCarte({ carte, actif, onPress }: {
-  carte: Sim; actif: boolean; onPress: () => void;
+/**
+ * LES CARTES, EN PUCES, SUR UNE LIGNE. Elles passaient sur deux lignes avec
+ * quatre cartes ; un logo et les quatre chiffres suffisent à les distinguer
+ * — le nom long est sur la carte elle-même. Au-delà de la largeur, la
+ * rangée défile, et ramène la carte choisie en vue : sinon la carte
+ * affichée n'aurait aucune puce allumée visible.
+ */
+function PucesCartes({ cartes, active, deux, marge, t }: {
+  cartes: Sim[]; active: string; deux: boolean; marge: number; t: T;
 }) {
+  const rangee = useRef<ScrollView>(null);
+  // TROIS MESURES, DANS N'IMPORTE QUEL ORDRE : la largeur de la rangée, la
+  // place de chaque puce, et le choix — qui, retenu d'une ouverture à
+  // l'autre, arrive avec les données, APRÈS une rangée déjà mesurée. La
+  // première version ne regardait qu'au changement de choix ou de largeur :
+  // la puce choisie venait d'apparaître, pas encore mesurée, et plus rien ne
+  // la ramenait — elle restait hors de l'écran, selon l'ordre d'arrivée.
+  // Chacune des trois mesures redemande donc, et seule la dernière agit.
+  const places = useRef(new Map<string, { x: number; w: number }>());
+  const largeur = useRef(0);
+  const decalage = useRef(0);
+  const bord = deux ? 0 : marge;
+  const amener = useRef(() => {});
+  amener.current = () => {
+    const p = places.current.get(active);
+    const l = largeur.current;
+    if (!p || !l) return;
+    const gauche = p.x - decalage.current;
+    // Déjà en vue : on ne bouge rien sous le doigt.
+    if (gauche >= bord - 1 && gauche + p.w <= l - bord + 1) return;
+    const x = gauche + p.w > l - bord ? p.x + p.w - l + bord : p.x - bord;
+    rangee.current?.scrollTo({ x: Math.max(0, x), animated: true });
+  };
+  useEffect(() => amener.current(), [active, bord]);
+
+  return (
+    <Defilement
+      ref={rangee}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentInsetAdjustmentBehavior="never"
+      onLayout={(e) => { largeur.current = e.nativeEvent.layout.width; amener.current(); }}
+      onScroll={(e) => { decalage.current = e.nativeEvent.contentOffset.x; }}
+      scrollEventThrottle={32}
+      style={{ marginHorizontal: deux ? 0 : -marge, flexGrow: 0,
+               marginBottom: espaces.md }}
+      contentContainerStyle={{ paddingHorizontal: deux ? 0 : marge, gap: ECART_PUCES,
+                               alignItems: "center" }}
+    >
+      {cartes.map((c) => (
+        <View key={c.iccid}
+              onLayout={(e) => {
+                places.current.set(c.iccid,
+                  { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width });
+                if (c.iccid === active) amener.current();
+              }}>
+          <PuceCarte carte={c} actif={c.iccid === active} t={t} />
+        </View>
+      ))}
+    </Defilement>
+  );
+}
+
+/** Une puce : le logo de l'opérateur, et la fin du libellé (« 8901 »). */
+function PuceCarte({ carte, actif, t }: { carte: Sim; actif: boolean; t: T }) {
   const appui = useAppui();
+  const reconnu = operateurReconnu(carte.operateur);
+  const fin = /·\s*(\S+)$/.exec(carte.libelle)?.[1];
   return (
     <Animated.View style={appui.style}>
-      <Pressable onPress={onPress} {...appui}
+      <Pressable onPress={() => { if (!actif) { choisirCarte(carte.iccid); toucherChoix(); } }}
+                 {...appui}
                  accessibilityRole="button"
-                 accessibilityState={{ selected: actif }}
+                 // `aria-selected` EN PLUS : react-native-web ignore
+                 // `accessibilityState`, et la puce choisie ne se disait
+                 // « choisie » à personne dans l'aperçu web.
+                 accessibilityState={{ selected: actif }} aria-selected={actif}
+                 accessibilityLabel={t.choisirCarte(carte.libelle)}
+                 hitSlop={{ top: 4, bottom: 4 }}
                  style={{
-                   flexDirection: "row", alignItems: "center", gap: espaces.sm,
-                   paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
-                   borderRadius: rayons.rond,
-                   borderWidth: actif ? 0 : 1, borderColor: couleurs.trait,
+                   height: HAUTEUR_PUCE,
+                   flexDirection: "row", alignItems: "center", gap: espaces.xs,
+                   paddingHorizontal: espaces.sm + 2,
+                   borderRadius: rayons.bouton,
+                   // Le trait dans les DEUX états : sans lui d'un côté, la
+                   // puce choisie changeait de taille de deux points.
+                   borderWidth: 1, borderColor: actif ? couleurs.accent : couleurs.trait,
                    backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
                  }}>
-        {operateurReconnu(carte.operateur)
-          ? <LogoOperateur operateur={carte.operateur} taille={16} /> : null}
-        <Texte taille={textes.petit} poids="moyen" ton={actif ? "normal" : "doux"}
+        {reconnu ? <LogoOperateur operateur={carte.operateur} taille={14} /> : null}
+        <Texte taille={textes.petit} poids={actif ? "demi" : "moyen"} chiffresAlignes
+               ton={actif ? "normal" : "doux"}
                style={actif ? { color: couleurs.surfaceHaute } : undefined}>
-          {carte.libelle}
+          {reconnu && fin ? fin : carte.libelle}
         </Texte>
       </Pressable>
     </Animated.View>
   );
 }
 
-/** Une commande ronde, sous la carte : le cercle, et son NOM dessous —
- *  comme les applications d'opérateur que tout le monde a déjà dans la
- *  main. L'aide vocale lit le nom, puis la phrase qui dit ce qu'il fait. */
-function Commande({ icone, libelle, aide, onPress }: {
+/**
+ * LA LIGNE SOUS LA CARTE : de quand date le solde — LE JOUR COMPRIS — et, à
+ * droite, ce qu'on peut y faire. Sa hauteur ne bouge jamais (une ou deux
+ * lignes de texte y tiennent) : l'alerte du terminal vient s'y loger au
+ * lieu de pousser l'écran.
+ */
+function LigneEtat({ carte, terminal, fuseau, langue, t, onActualiser }: {
+  carte: Sim; terminal: EtatTerminal | null; fuseau: string; langue: "en" | "fr"; t: T;
+  onActualiser: (() => void) | null;
+}) {
+  const muet = terminal != null && !terminal.enLigne;
+  let texte: string;
+  if (!carte.enPlace) texte = t.carteMuette(carte.derniereVue);
+  else if (carte.solde == null) texte = t.aucunSoldeCourt;
+  else if (!carte.soldeMaj) texte = t.soldeSansHeure;
+  else {
+    // « 21:54 » seul ne dit pas si c'était ce soir ou hier soir : un solde
+    // d'hier s'annonçait comme celui de maintenant — le chiffre pour lequel
+    // on ouvre l'application. Une plateforme pas encore à jour n'envoie pas
+    // l'instant : on garde alors l'heure seule, comme avant.
+    const jour = jourDuReleve(carte.soldeLe, Date.now(), fuseau);
+    texte = jour?.genre === "hier" ? t.soldeReleveHier(carte.soldeMaj)
+      : jour?.genre === "avant" ? t.soldeReleveLe(jourCourt(jour.cle, langue), carte.soldeMaj)
+      : t.soldeReleve(carte.soldeMaj);
+  }
+
+  return (
+    <View style={{ marginTop: espaces.sm, minHeight: HAUTEUR_ETAT, flexDirection: "row",
+                   alignItems: "center", gap: espaces.sm, paddingHorizontal: espaces.xs }}>
+      {!carte.enPlace ? <Icone nom="Close" taille={13} couleur={couleurs.alerte} /> : null}
+      <Texte taille={textes.legende} ton={carte.enPlace ? "pale" : "alerte"}
+             style={{ flex: 1, lineHeight: 16 }}>
+        {texte}
+      </Texte>
+      {muet ? (
+        <Pressable onPress={() => router.push("/reglages")}
+                   accessibilityRole="button"
+                   accessibilityLabel={t.terminalMuetAria(terminal!.majTexte)}
+                   hitSlop={{ top: 6, bottom: 6 }}
+                   style={({ pressed }) => ({
+                     height: HAUTEUR_ETAT, flexDirection: "row", alignItems: "center",
+                     gap: espaces.xs + 2, paddingHorizontal: espaces.md,
+                     borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.alerte,
+                     backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+                   })}>
+          <Pastille couleur={couleurs.alerte} />
+          <Texte taille={textes.petit} poids="moyen" ton="alerte">{t.terminalMuetCourt}</Texte>
+          <Icone nom="Chevron" taille={12} couleur={couleurs.alerte} />
+        </Pressable>
+      ) : carte.enPlace && onActualiser ? (
+        // « Actualiser » remplace le cercle « Solde » : il pose la question
+        // au réseau, juste à côté de la réponse qu'il va remplacer.
+        <Pressable onPress={onActualiser}
+                   accessibilityRole="button"
+                   accessibilityLabel={t.actualiserAria}
+                   hitSlop={{ top: 6, bottom: 6 }}
+                   style={({ pressed }) => ({
+                     height: HAUTEUR_ETAT, flexDirection: "row", alignItems: "center",
+                     gap: espaces.xs, paddingHorizontal: espaces.md,
+                     borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.trait,
+                     backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+                   })}>
+          <Icone nom="Refresh" taille={14} couleur={couleurs.encre} />
+          <Texte taille={textes.petit} poids="moyen">{t.actualiser}</Texte>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * UN ROND D'ACTION : le cercle, et son NOM dessous — comme les applications
+ * d'opérateur que tout le monde a déjà dans la main. Tous du même dessin :
+ * il y avait des cercles muets ET de grosses tuiles pour des gestes du même
+ * ordre, deux familles de boutons pour une seule chose à faire. Le nom a
+ * deux lignes réservées : un nom long passe à la ligne sur un petit écran
+ * sans rien pousser.
+ */
+function Rond({ icone, libelle, aide, onPress }: {
   icone: NomIcone; libelle: string; aide: string; onPress: () => void;
 }) {
   const appui = useAppui();
+  // UN MOT NE SE COUPE PAS EN DEUX. Sur 320 points, une colonne fait 57 :
+  // « Withdraw » en 12 n'y tenait pas, et l'écran affichait « Withdra / w ».
+  // Sous 360 points, le nom passe en 11 et ne grossit plus avec le réglage
+  // « taille du texte » ; au-dessus, il grossit de 15 % au plus — de quoi
+  // rester entier dans sa colonne. L'aide vocale, elle, lit le nom entier
+  // quoi qu'il arrive.
+  const etroit = useWindowDimensions().width < 360;
   return (
-    <Animated.View style={[{ width: LARGEUR_COMMANDE }, appui.style]}>
+    <Animated.View style={[{ width: "20%" }, appui.style]}>
       <Pressable onPress={onPress} {...appui} accessibilityRole="button"
                  accessibilityLabel={libelle} accessibilityHint={aide}
-                 style={{ alignItems: "center", gap: espaces.xs }}>
-        <View style={{
-          width: 52, height: 52, borderRadius: rayons.rond,
-          borderWidth: 1, borderColor: couleurs.trait,
-          backgroundColor: couleurs.surfaceHaute,
-          alignItems: "center", justifyContent: "center",
-        }}>
-          <Icone nom={icone} taille={21} couleur={couleurs.encre} />
-        </View>
-        <Texte taille={textes.legende} poids="moyen" style={{ textAlign: "center" }}>
-          {libelle}
-        </Texte>
+                 style={{ alignItems: "center", gap: ECART_ROND }}>
+        {({ pressed }) => (
+          <>
+            <View style={{
+              width: ROND, height: ROND, borderRadius: rayons.rond,
+              borderWidth: 1, borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <Icone nom={icone} taille={22} couleur={couleurs.encre} />
+            </View>
+            <View style={{ height: NOM_ROND, width: "100%" }}>
+              <Texte taille={etroit ? 11 : textes.legende} poids="moyen"
+                     maxFontSizeMultiplier={etroit ? 1 : 1.15}
+                     numberOfLines={2}
+                     style={{ textAlign: "center", lineHeight: LIGNE_ROND }}>
+                {libelle}
+              </Texte>
+            </View>
+          </>
+        )}
       </Pressable>
     </Animated.View>
   );
 }
 
-/** Assez large pour « Coordonnées » sur une ligne ; trois tiennent sur 320.
- *  `squelettes.tsx` reprend la même mesure pour sa forme d'attente. */
-const LARGEUR_COMMANDE = 88;
-
-function BoutonGeste({ libelle, icone, onPress }: {
-  libelle: string; icone: NomIcone; onPress: () => void;
-}) {
-  const appui = useAppui();
-  return (
-    <Animated.View style={[{ width: "48.5%" }, appui.style]}>
-      <Pressable onPress={onPress} {...appui}
-                 accessibilityRole="button"
-                 style={{
-                   alignItems: "center", gap: espaces.sm,
-                   paddingVertical: espaces.lg, paddingHorizontal: espaces.sm,
-                   borderRadius: rayons.carte,
-                   borderWidth: 1, borderColor: couleurs.trait,
-                   backgroundColor: couleurs.surfaceHaute,
-                 }}>
-        <Icone nom={icone} taille={20} couleur={couleurs.encreDouce} />
-        <Texte taille={textes.petit} poids="moyen" numberOfLines={1}>{libelle}</Texte>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-/** Une ligne de message : la nature d'un coup d'œil, le nom, le montant. */
-function LigneSms({ paiement: p, langue, onPress }: {
-  paiement: Paiement; langue: "en" | "fr"; onPress: () => void;
+/** Un mouvement d'argent : la nature d'un coup d'œil, le nom, le montant —
+ *  le jour quand ce n'est pas aujourd'hui, la carte quand il y en a
+ *  plusieurs. */
+function LigneMouvement({ paiement: p, langue, aujourdhui, nommerCarte, onPress }: {
+  paiement: Paiement; langue: "en" | "fr"; aujourdhui: string; nommerCarte: boolean;
+  onPress: () => void;
 }) {
   const entree = p.sens === "in";
   const sortie = p.sens === "out";
@@ -454,15 +610,20 @@ function LigneSms({ paiement: p, langue, onPress }: {
           </Texte>
         </View>
         <Texte taille={textes.legende} ton="pale" numberOfLines={1}>
-          {p.heure}
+          {p.jour === aujourdhui ? p.heure : `${p.date} · ${p.heure}`}
         </Texte>
       </View>
-      {p.montant != null ? (
-        <Texte poids="demi" chiffresAlignes taille={textes.petit}
-               ton={entree ? "positif" : sortie ? "negatif" : "doux"}>
-          {entree ? "+" : sortie ? "−" : ""}{fcfa(p.montant, langue)}
-        </Texte>
-      ) : null}
+      <View style={{ alignItems: "flex-end", gap: 2 }}>
+        {p.montant != null ? (
+          <Texte poids="demi" chiffresAlignes taille={textes.petit}
+                 ton={entree ? "positif" : sortie ? "negatif" : "doux"}>
+            {entree ? "+" : sortie ? "−" : ""}{fcfa(p.montant, langue)}
+          </Texte>
+        ) : null}
+        {nommerCarte ? (
+          <Texte taille={textes.legende} ton="pale" numberOfLines={1}>{p.sim}</Texte>
+        ) : null}
+      </View>
     </Pressable>
   );
 }

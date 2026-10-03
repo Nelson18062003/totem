@@ -22,6 +22,11 @@ export type Sim = {
   // L'heure de l'interrogation réseau qui a donné ce solde (« 09:47 »).
   // Les écrans l'habillent d'une phrase dans la langue du moment.
   soldeMaj: string | null;
+  // L'INSTANT du relevé (ISO), pour dire son JOUR. « 21:54 » tout seul ne
+  // dit pas si c'était ce soir ou hier soir : un solde d'hier s'annonçait
+  // comme celui d'aujourd'hui. Facultatif : une plateforme pas encore à jour
+  // ne l'envoie pas, et l'écran retombe alors sur l'heure seule.
+  soldeLe?: string | null;
   signal: number | null;
   enPlace: boolean;
   premiereVue: string;

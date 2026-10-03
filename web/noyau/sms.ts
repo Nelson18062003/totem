@@ -43,6 +43,19 @@ export const estArgent = (p: Paiement): boolean =>
   p.montant != null || ARGENT.includes(categorieDe(p));
 
 /**
+ * UN MOUVEMENT D'ARGENT : ce que l'accueil montre sous « Derniers
+ * mouvements ». De l'argent entré ou sorti — pas une consultation de solde,
+ * pas un échec, pas un code, pas une publicité. Les ILLISIBLES en sont : ils
+ * parlent d'argent, et cacher un paiement mal lu serait pire que de le
+ * montrer sans montant.
+ */
+const MOUVEMENTS: Categorie[] = [
+  "encaissement", "envoi", "transfert", "depot", "retrait", "illisible",
+];
+export const estMouvement = (p: Pick<Paiement, "nature" | "categorie">): boolean =>
+  MOUVEMENTS.includes(p.nature ?? p.categorie);
+
+/**
  * LE TEXTE DU SMS, TEL QU'IL EST ARRIVÉ. Sans retouche.
  *
  * Le propriétaire reçoit ses messages ENTIERS — y compris les codes qu'ils

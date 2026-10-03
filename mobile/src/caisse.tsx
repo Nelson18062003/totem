@@ -9,7 +9,8 @@
 // proportion, le coin large, la matière (un dégradé, pas un aplat), et son
 // contenu tient en trois choses — le solde, le numéro, l'opérateur. Tout le
 // reste — l'heure du relevé, l'état du terminal, les commandes — vit AUTOUR
-// d'elle, pas dessus : une carte bancaire ne porte pas de mode d'emploi. Une
+// d'elle, dans l'accueil, pas dessus : une carte bancaire ne porte pas de
+// mode d'emploi. Une
 // seule exception, l'œil qui cache le solde : il se pose contre ce qu'il
 // cache, sans quoi personne ne comprenait ce qu'il faisait.
 
@@ -245,41 +246,16 @@ export function Caisse({ carte, langue, soldeCache, onBasculerSolde }: {
             </Texte>
           ) : null}
         </View>
+        {/* LA TRANCHE : un liseré d'un cheveu, comme le bord d'une vraie
+            carte qui accroche la lumière. Pas d'ombre — la charte sépare les
+            plans au trait. */}
+        <View pointerEvents="none" style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          borderRadius: Math.round(hauteur * 0.088),
+          borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+        }} />
       </LinearGradient>
 
-      {/* Hors de la carte : l'état, en une ligne. Une carte bancaire ne porte
-          pas son mode d'emploi ; on le met dessous, court. */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                     marginTop: espaces.sm, paddingHorizontal: espaces.xs }}>
-        {!carte.enPlace ? (
-          <>
-            {/* UNE DATE NUE NE PRÉVIENT PERSONNE. Cette ligne n'affichait
-                que « 28 juil. 2026 » à côté d'une croix, sous un solde
-                présenté en grand comme s'il était vivant. Le propriétaire
-                lisait donc l'argent d'il y a trois jours comme celui
-                d'aujourd'hui — et c'est le seul chiffre pour lequel il
-                ouvre l'application. La plateforme web, elle, écrit la
-                phrase entière depuis toujours (`carteMuette`) : on la dit
-                ici aussi, et on ne la coupe pas. */}
-            <Icone nom="Close" taille={13} couleur={couleurs.alerte} />
-            <Texte taille={textes.legende} ton="alerte" style={{ flex: 1 }}>
-              {t.carteMuette(carte.derniereVue)}
-            </Texte>
-          </>
-        ) : carte.soldeMaj ? (
-          <>
-            <Icone nom="Refresh" taille={13} couleur={couleurs.encrePale} />
-            <Texte taille={textes.legende} ton="pale" style={{ flex: 1 }}>
-              {/* « 09:47 » tout seul ne dit pas ce qu'est cette heure. Le
-                  reste de l'application l'habille d'une phrase ; ici on
-                  l'affichait nue. */}
-              {t.soldeMaj(carte.soldeMaj)}
-            </Texte>
-          </>
-        ) : (
-          <Texte taille={textes.legende} ton="pale">{t.aucunSoldeConnu}</Texte>
-        )}
-      </View>
     </View>
   );
 }

@@ -1,10 +1,11 @@
 import { donneesMontrees } from "@/lib/ce-qu-on-montre";
 import { langueServeur } from "@/lib/langue-serveur";
 import { textesCartes } from "@noyau/textes/cartes";
-import { fcfa, nombre } from "@noyau/types";
+import { FUSEAU_DEFAUT, fcfa, nombre } from "@noyau/types";
 import { IconWallet } from "../icons";
 import { LogoOperateur, operateurReconnu } from "../logos-operateurs";
 import { Vide } from "../vide";
+import { jourCourt, jourDuReleve } from "@noyau/periodes";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function Comptes() {
   const langue = await langueServeur();
   const t = textesCartes[langue];
   // Les SMS restent chargés : le bilan des cartes retirées se compte dessus.
-  const { sims } = await donneesMontrees(langue);
+  const { sims, fuseau } = await donneesMontrees(langue);
   const enPlace = sims.filter((s) => s.enPlace);
   const retirees = sims.filter((s) => !s.enPlace);
   const soldeTotal = enPlace.reduce((s, x) => s + (x.solde ?? 0), 0);
@@ -48,7 +49,13 @@ export default async function Comptes() {
                   </p>
                   {s.solde != null && s.soldeMaj && (
                     <p className={`mt-0.5 text-caption tabnums ${i === 0 ? "text-white/45" : "text-ink-faint"}`}>
-                      {t.soldeLe(s.soldeMaj)}
+                      {(() => {
+                        // Le JOUR du relevé, pas l'heure seule (`jourDuReleve`).
+                        const j = jourDuReleve(s.soldeLe, Date.now(), fuseau || FUSEAU_DEFAUT);
+                        return j?.genre === "hier" ? t.soldeLeHier(s.soldeMaj!)
+                          : j?.genre === "avant" ? t.soldeLeDate(jourCourt(j.cle, langue), s.soldeMaj!)
+                          : t.soldeLe(s.soldeMaj!);
+                      })()}
                     </p>
                   )}
                   <p className={`mt-1 text-small tabnums ${i === 0 ? "text-white/55" : "text-ink-faint"}`}>

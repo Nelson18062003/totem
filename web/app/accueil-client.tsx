@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { etapesGeste } from "@noyau/codes";
-import { nombre, type RaccourciAppris, type Sim } from "@noyau/types";
+import { FUSEAU_DEFAUT, nombre, type RaccourciAppris, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { useLangue } from "@/app/langue";
 import {
@@ -17,6 +17,7 @@ import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-opera
 import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
 import type { ClientRecent } from "@noyau/recents";
+import { jourCourt, jourDuReleve } from "@noyau/periodes";
 
 /** Le signal en quatre barres — rempli au niveau, lisible sans chiffres. */
 function BarresSignal({ niveau }: { niveau: number }) {
@@ -40,15 +41,29 @@ const CLE_SOLDE_CACHE = "totem_solde_cache";
 // Ce que l'accueil doit savoir d'une carte pour la montrer et la piloter.
 export type CarteGuichet = Pick<
   Sim,
-  "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "signal"
+  "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "soldeLe" | "signal"
   | "iccid" | "enPlace" | "derniereVue"
->;
+> & {
+  /** Le fuseau du TERMINAL : c'est lui qui dit si le relevé était hier. */
+  fuseau?: string;
+};
 
 /**
  * UNE carte SIM du guichet — son solde, son numéro, sa marque. Quand
  * plusieurs cartes vivent dans le terminal (Orange ET MTN), chacune a la
  * sienne, et le doigt choisit celle sur laquelle les gestes s'appliquent.
  */
+/** « Solde relevé hier à 21:54 » : l'heure seule ne disait pas QUEL jour,
+ *  et un solde d'hier s'annonçait comme celui de maintenant. Même règle que
+ *  le téléphone (`jourDuReleve`). */
+function phraseDuReleve(carte: CarteGuichet, h: string, langue: ReturnType<typeof useLangue>) {
+  const t = textesAccueil[langue];
+  const jour = jourDuReleve(carte.soldeLe, Date.now(), carte.fuseau || FUSEAU_DEFAUT);
+  return jour?.genre === "hier" ? t.soldeReleveHier(h)
+    : jour?.genre === "avant" ? t.soldeReleveLe(jourCourt(jour.cle, langue), h)
+    : t.soldeReleve(h);
+}
+
 function CarteSim({
   carte, langue, soldeCache, basculerSolde, onSolde,
 }: {
@@ -150,7 +165,7 @@ function CarteSim({
           : carte.solde == null
             ? t.aucunSoldeConnu
             : carte.soldeMaj
-              ? t.soldeMaj(carte.soldeMaj)
+              ? phraseDuReleve(carte, carte.soldeMaj, langue)
               : t.soldeSansHeure}
       </p>
       {/* Le pied : la puce SIM au trait — la carte à l'écran EST la carte

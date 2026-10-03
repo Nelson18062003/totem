@@ -80,6 +80,12 @@ function fautes(contenu, nomDuFichier) {
       const suite = ligne.slice(ligne.indexOf(brut) + brut.length, ligne.indexOf(brut) + brut.length + 1);
       if (!ligne.includes(brut)) return;
       if (brut === "<Text" && !(suite === " " || suite === ">" || suite === "\n" || suite === "")) return;
+      // UN TYPE N'EST PAS UNE BALISE. « useRef<ScrollView>(null) » nomme le
+      // genre de la référence — rien ne s'affiche. Une balise suit une
+      // espace, une parenthèse ou une accolade ; un paramètre de type suit
+      // un NOM, collé à lui. Le témoin porte les deux.
+      const avant = ligne[ligne.indexOf(brut) - 1] ?? "";
+      if (/[A-Za-z0-9_$]/.test(avant)) return;
       vues.push({ fichier: nomDuFichier, ligne: i + 1, brut, piece, pourquoi });
     });
   }
@@ -91,6 +97,7 @@ const TEMOIN = `
   <Text style={{ fontSize: 16 }}>un texte écrit en direct</Text>
   <TextInput value={x} onChangeText={setX} />
   <ScrollView><View /></ScrollView>
+  const rangee = useRef<ScrollView>(null);
 `;
 const vuesTemoin = fautes(TEMOIN, "(témoin)");
 if (vuesTemoin.length !== 3) {
@@ -105,7 +112,10 @@ console.log("  témoin : les 3 fautes du faux écran sont vues ✓\n");
 // ── L'APPLICATION ───────────────────────────────────────────────────────────
 const trouvees = [];
 for (const chemin of fichiers(RACINE)) {
-  if (chemin.endsWith(PORTEUSE)) continue;
+  // LE NOM ENTIER, jamais sa fin : « reglages-qui.tsx » finit aussi par
+  // « ui.tsx », et un vrai écran sortait de la liste sans un mot — la faute
+  // déjà trouvée dans `verifier-le-clavier`, restée ici.
+  if (chemin === join(RACINE, PORTEUSE)) continue;
   const court = chemin.slice(RACINE.length);
   trouvees.push(...fautes(readFileSync(chemin, "utf8"), court));
 }

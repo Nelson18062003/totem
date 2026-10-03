@@ -377,6 +377,14 @@ Un vrai écran, avec un vrai champ, a disparu de la liste sans un mot : ni ✓ n
 ✗, juste absent. Le harnais sortait vert en gardant un écran de moins. On
 compare le nom entier.
 
+La MÊME exemption vivait encore, mot pour mot, dans `verifier-l-echelle` :
+corrigée dans un harnais, la faute restait chez son voisin, et
+`reglages-qui.tsx` échappait toujours à la borne du grossissement. **Une
+faute trouvée se cherche partout où elle a pu être recopiée.** Le même
+harnais prenait aussi un TYPE pour une balise (`useRef<ScrollView>`, qui
+n'affiche rien) : un paramètre de type suit un nom collé à lui, une balise
+non — et le témoin porte maintenant les deux.
+
 **Un contrôle qui lit ce qu'on DIT au lieu de ce qu'on FAIT ne contrôle
 rien.** La même règle vérifie que `Defilement` porte vraiment
 `keyboardShouldPersistTaps` — neuf écrans en dépendent d'un coup. Le premier
@@ -648,6 +656,28 @@ ligne « Réseau » avant de mesurer — sinon il s'arrête en montrant l'écran
 faux nuage servait « Votre code secret », une ligne. Un vrai dépôt MTN en
 porte cinq : montant, nom, numéro, frais, solde après. L'écran tenait la
 ligne et perdait les cinq. Le faux nuage sert maintenant 177 caractères.
+
+**Un harnais qui amène lui-même ce qu'il vérifie ne vérifie rien.**
+L'accueil range les cartes en puces sur UNE ligne qui défile, et ramène à
+l'écran la carte retenue d'une ouverture à l'autre. Le harnais monte donc
+cinq cartes et un terminal muet — le faux nuage n'en a que deux, et un
+terminal toujours en ligne : avec quatre cartes, les puces passaient sur
+deux lignes sans que rien le dise —, choisit d'avance la DERNIÈRE, et exige
+de la voir. Il sortait vert ; la capture la montrait dehors. Sa propre
+mesure fait défiler jusqu'à l'écran ce qu'elle trouve recouvert, et une
+puce coupée au bord en fait partie : il vérifie maintenant AVANT de mesurer.
+Même alors, il ne voyait la panne qu'en arrivant DE L'ACCUEIL : venues d'un
+autre écran, les trois mesures de la rangée (sa largeur, la place des
+puces, le choix) arrivaient dans un autre ordre, et la puce tombait juste.
+**Une correction qui dépend de l'ordre d'arrivée des mesures marche une fois
+sur deux** ; la rangée redemande maintenant à chacune des trois. Sans le
+défilement, l'étape échoue à 320 points — c'est son témoin.
+
+**Un solde se date au JOUR, pas seulement à l'heure.** « Solde relevé à
+21:54 » ne disait pas lequel : le lendemain matin, le solde de la veille
+s'annonçait comme celui de maintenant — le chiffre pour lequel on ouvre
+l'application. `jourDuReleve` (noyau) dit « aujourd'hui », « hier » ou la
+date, dans le fuseau de la CAISSE, sur le téléphone comme sur le site.
 
 **Un reçu se partage comme un FICHIER, jamais comme un lien.** Le bouton
 ouvrait le lien signé dans le navigateur ; le « partager » du navigateur

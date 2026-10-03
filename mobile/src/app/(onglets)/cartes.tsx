@@ -8,7 +8,8 @@
 import { RefreshControl, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, Texte } from "@/ui";
+import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte } from "@/ui";
+import { router } from "expo-router";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree } from "@/animations";
@@ -18,7 +19,9 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { textesCartes } from "@noyau/textes/cartes";
-import { fcfa, nombre, type Sim } from "@noyau/types";
+import { FUSEAU_DEFAUT, fcfa, nombre, type Sim } from "@noyau/types";
+import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { textesAnalyse } from "@noyau/textes/analyse";
 import type { Langue } from "@noyau/langue";
 
 export default function Comptes() {
@@ -59,6 +62,15 @@ export default function Comptes() {
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </Entree>
 
+        {/* L'ANALYSE, NOMMÉE. Elle n'avait qu'une icône de graphe dans le
+            coin de l'accueil — que personne ne reconnaissait. Elle vit ici,
+            sur une ligne qui dit ce qu'on y trouve : c'est l'onglet où l'on
+            regarde ses comptes. */}
+        <Carte>
+          <LigneAction titre={textesAnalyse[langue].titre} sous={t.analyseSous} icone="Chart"
+                       onPress={() => router.push("/analyse")} />
+        </Carte>
+
         {/* La panne se dit AVANT l'état vide : sans cela, un téléphone hors
             ligne montrait « aucune carte » — une connexion en panne déguisée
             en terminal vide. */}
@@ -94,7 +106,8 @@ export default function Comptes() {
                     style={ecran.deuxColonnes
                       ? { flex: 1, minWidth: 280 }
                       : { alignSelf: "stretch" }}>
-              <CarteCompte sim={s} tete={i === 0} langue={langue} t={t} />
+              <CarteCompte sim={s} tete={i === 0} langue={langue} t={t}
+                           fuseau={donnees?.fuseau || FUSEAU_DEFAUT} />
             </Entree>
           ))}
         </View>
@@ -179,9 +192,12 @@ export default function Comptes() {
 }
 
 /** Une carte du compte : sombre pour la caisse de tête, claire ensuite. */
-function CarteCompte({ sim: s, tete, langue, t }: {
-  sim: Sim; tete: boolean; langue: Langue; t: (typeof textesCartes)["fr"];
+function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
+  sim: Sim; tete: boolean; langue: Langue; t: (typeof textesCartes)["fr"]; fuseau: string;
 }) {
+  // L'âge du solde AVEC son jour : « consulté à 21:54 » ne disait pas si
+  // c'était ce soir ou hier soir (voir `jourDuReleve`).
+  const jour = jourDuReleve(s.soldeLe, Date.now(), fuseau);
   const sombre = tete;
   const encre = sombre ? "#ffffff" : couleurs.encre;
   const doux = sombre ? "rgba(255,255,255,0.55)" : couleurs.encreDouce;
@@ -237,7 +253,9 @@ function CarteCompte({ sim: s, tete, langue, t }: {
         </Texte>
         {s.solde != null && s.soldeMaj ? (
           <Texte taille={textes.legende} chiffresAlignes style={{ color: pale }}>
-            {t.soldeLe(s.soldeMaj)}
+            {jour?.genre === "hier" ? t.soldeLeHier(s.soldeMaj)
+              : jour?.genre === "avant" ? t.soldeLeDate(jourCourt(jour.cle, langue), s.soldeMaj)
+              : t.soldeLe(s.soldeMaj)}
           </Texte>
         ) : null}
       </View>

@@ -84,11 +84,19 @@ const nav = await chromium.launch({
   args: ["--disable-web-security", "--disable-features=IsolateOrigins,site-per-process"],
 });
 
-/** Le haut du titre « Derniers SMS » — un repère placé SOUS tout ce que la
- *  forme d'attente remplace. S'il ne bouge pas, rien n'a sauté. */
+/** Le haut du titre « Derniers mouvements » — un repère placé SOUS tout ce
+ *  que la forme d'attente remplace (la carte, sa ligne d'état, les ronds).
+ *  S'il ne bouge pas, rien n'a sauté. */
 const repere = () => {
-  const el = [...document.querySelectorAll("div")]
-    .find((e) => /^(Latest SMS|Derniers SMS)$/.test(e.textContent?.trim() || ""));
+  // Le titre est un EN-TÊTE (un `h2` sur le web), pas un `div`. Chercher
+  // dans les `div` trouvait sa RANGÉE tant qu'elle ne portait que lui —
+  // pendant l'attente — puis plus rien dès que « Tout voir » la rejoignait :
+  // le harnais aurait crié au saut sur un écran immobile. On prend donc
+  // l'élément le plus INTÉRIEUR qui porte exactement ce texte : le dernier
+  // dans l'ordre du document, puisqu'un parent précède ses enfants.
+  const el = [...document.querySelectorAll("body *")]
+    .filter((e) => /^(Latest transactions|Derniers mouvements)$/.test(e.textContent?.trim() || ""))
+    .pop();
   return el ? Math.round(el.getBoundingClientRect().top) : null;
 };
 

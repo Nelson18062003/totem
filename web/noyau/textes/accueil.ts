@@ -37,6 +37,23 @@ const en = {
   interrogerReseau: "Ask the network",
   aucunSoldeConnu: "No balance yet: press the arrow to ask the network.",
   soldeMaj: (h: string) => `From the network query at ${h}`,
+  // LA LIGNE SOUS LA CARTE : l'âge du solde, AVEC son jour. « 21:54 » seul
+  // ne disait pas si c'était ce soir ou hier soir.
+  soldeReleve: (h: string) => `Balance checked at ${h}`,
+  soldeReleveHier: (h: string) => `Balance checked yesterday at ${h}`,
+  soldeReleveLe: (j: string, h: string) => `Balance checked on ${j} at ${h}`,
+  aucunSoldeCourt: "No balance yet",
+  actualiser: "Refresh",
+  terminalMuetCourt: "Terminal silent",
+  terminalMuetAria: (q: string) => `The terminal is not answering (${q}): open its settings`,
+  // Les cinq ronds sous la carte : un verbe chacun, court.
+  rondRetrait: "Withdraw",
+  rondRecevoir: "Receive",
+  rondUssd: "USSD code",
+  recevoirAria: "Your name and number, to give to whoever pays you",
+  // Ce qui vient d'arriver : l'argent seulement, toutes cartes.
+  mouvements: "Latest transactions",
+  aucunMouvement: "No money movement among the latest SMS",
   soldeSansHeure: "Last known balance.",
   carteAnonyme: (fin: string) => `card ${fin}`,
 
@@ -124,6 +141,19 @@ const fr: typeof en = {
   interrogerReseau: "Interroger le réseau",
   aucunSoldeConnu: "Aucun solde connu : appuyez sur la flèche pour interroger le réseau.",
   soldeMaj: (h) => `D’après l’interrogation de ${h}`,
+  soldeReleve: (h) => `Solde relevé à ${h}`,
+  soldeReleveHier: (h) => `Solde relevé hier à ${h}`,
+  soldeReleveLe: (j, h) => `Solde relevé le ${j} à ${h}`,
+  aucunSoldeCourt: "Aucun solde connu",
+  actualiser: "Actualiser",
+  terminalMuetCourt: "Terminal muet",
+  terminalMuetAria: (q) => `Le terminal ne répond plus (${q}) : ouvrir ses réglages`,
+  rondRetrait: "Retrait",
+  rondRecevoir: "Recevoir",
+  rondUssd: "Code USSD",
+  recevoirAria: "Votre nom et votre numéro, à donner à qui vous paie",
+  mouvements: "Derniers mouvements",
+  aucunMouvement: "Aucun mouvement d’argent parmi les derniers SMS",
   soldeSansHeure: "Dernier solde connu.",
   carteAnonyme: (fin) => `carte ${fin}`,
 

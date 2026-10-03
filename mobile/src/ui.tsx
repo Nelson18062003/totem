@@ -416,3 +416,37 @@ export function BoutonIcone({
     </Pressable>
   );
 }
+
+/**
+ * Une ligne d'action : un rond avec son icône, un titre, une phrase qui dit
+ * ce qu'elle fait, et le chevron. Celle de l'onglet Opérations — sortie ici
+ * parce que l'onglet Comptes en a besoin aussi (la ligne « Analyse »).
+ */
+export function LigneAction({ titre, sous, icone, onPress }: {
+  titre: string; sous?: string; icone: NomIcone; onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row", alignItems: "center", gap: espaces.md,
+        padding: espaces.lg,
+        backgroundColor: pressed ? couleurs.surface2 : "transparent",
+      })}
+    >
+      <View style={{
+        width: 40, height: 40, borderRadius: rayons.rond,
+        borderWidth: 1, borderColor: couleurs.trait,
+        alignItems: "center", justifyContent: "center",
+      }}>
+        <Icone nom={icone} taille={18} couleur={couleurs.encreDouce} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Texte poids="moyen">{titre}</Texte>
+        {sous ? <Texte taille={textes.petit} ton="pale">{sous}</Texte> : null}
+      </View>
+      <Icone nom="Chevron" taille={18} couleur={couleurs.encrePale} />
+    </Pressable>
+  );
+}

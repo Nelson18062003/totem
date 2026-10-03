@@ -127,3 +127,23 @@ export function semainesDuMois(annee: number, mois: number): (string | null)[][]
   for (let i = 0; i < cases.length; i += 7) semaines.push(cases.slice(i, i + 7));
   return semaines;
 }
+
+/**
+ * LE JOUR D'UN RELEVÉ DE SOLDE, vu de la caisse : aujourd'hui, hier, ou une
+ * date. « Solde relevé à 21:54 » ne disait pas QUEL jour — le lendemain
+ * matin, le solde de la veille s'annonçait comme celui de maintenant, et
+ * c'est le chiffre pour lequel on ouvre l'application. `null` : instant
+ * absent ou illisible — l'écran garde alors l'heure seule, comme avant.
+ */
+export function jourDuReleve(
+  iso: string | null | undefined, maintenant: number, fuseau: string,
+): { genre: "aujourdhui" } | { genre: "hier" } | { genre: "avant"; cle: string } | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const cle = jourLocal(new Date(t), fuseau);
+  const aujourdhui = jourLocal(new Date(maintenant), fuseau);
+  if (cle >= aujourdhui) return { genre: "aujourdhui" };
+  if (cle === decalerJour(aujourdhui, -1)) return { genre: "hier" };
+  return { genre: "avant", cle };
+}
