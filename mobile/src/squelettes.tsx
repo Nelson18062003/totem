@@ -53,15 +53,21 @@ export function SqueletteCaisse() {
       <View style={{ alignItems: "center" }}>
         <Squelette largeur={168} hauteur={16} />
       </View>
-      {/* LES TROIS COMMANDES RONDES — masquer le solde, actualiser, partager
-          les coordonnées. Elles manquaient à cette forme, et la page SAUTAIT
+      {/* LES TROIS COMMANDES RONDES — demander le solde, composer un code
+          USSD, montrer les coordonnées. Elles manquaient à cette forme, et la page SAUTAIT
           de 72 points au moment où les vrais boutons prenaient leur place :
           mesuré, pas supposé. Un écran qui bouge sous le doigt au moment où
           l'on va appuyer est pire qu'un écran qui attend. */}
+      {/* Chacune a maintenant son NOM sous le cercle : la forme porte donc
+          un cercle de 52 et une ligne de légende, dans une colonne de 88 —
+          les mesures de `Commande` dans l'accueil. */}
       <View style={{ flexDirection: "row", justifyContent: "center",
-                     gap: espaces.lg }}>
+                     gap: espaces.md }}>
         {[0, 1, 2].map((i) => (
-          <Squelette key={i} largeur={46} hauteur={46} rayon={999} />
+          <View key={i} style={{ width: 88, alignItems: "center", gap: espaces.xs }}>
+            <Squelette largeur={52} hauteur={52} rayon={999} />
+            <Squelette largeur={56} hauteur={16} />
+          </View>
         ))}
       </View>
     </View>

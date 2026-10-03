@@ -9,10 +9,12 @@
 // proportion, le coin large, la matière (un dégradé, pas un aplat), et son
 // contenu tient en trois choses — le solde, le numéro, l'opérateur. Tout le
 // reste — l'heure du relevé, l'état du terminal, les commandes — vit AUTOUR
-// d'elle, pas dessus : une carte bancaire ne porte pas de mode d'emploi.
+// d'elle, pas dessus : une carte bancaire ne porte pas de mode d'emploi. Une
+// seule exception, l'œil qui cache le solde : il se pose contre ce qu'il
+// cache, sans quoi personne ne comprenait ce qu'il faisait.
 
 import { useMemo, useState } from "react";
-import { View, type ColorValue, type LayoutChangeEvent } from "react-native";
+import { Pressable, View, type ColorValue, type LayoutChangeEvent } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { Texte } from "@/ui";
@@ -25,6 +27,9 @@ import { formaterNumero } from "@noyau/numero";
 import { nombre, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import type { Langue } from "@noyau/langue";
+
+/** Le rond de l'œil, sur la carte. */
+const OEIL = 36;
 
 /** ISO/IEC 7810 ID-1 : 85,60 / 53,98. La proportion d'une vraie carte. */
 export const RAPPORT_CARTE = 85.6 / 53.98;
@@ -51,10 +56,15 @@ export type CarteCaisse = Pick<
   | "iccid" | "enPlace" | "derniereVue"
 >;
 
-export function Caisse({ carte, langue, soldeCache }: {
+export function Caisse({ carte, langue, soldeCache, onBasculerSolde }: {
   carte: CarteCaisse;
   langue: Langue;
   soldeCache: boolean;
+  /** L'œil, SUR la carte, contre le solde qu'il cache. Il vivait sous la
+   *  carte, parmi les commandes, où l'on ne comprenait pas ce qu'il
+   *  cachait : un œil se pose à côté de ce qu'il regarde — comme sur le web,
+   *  comme dans les applications d'opérateur. */
+  onBasculerSolde?: () => void;
 }) {
   const t = textesAccueil[langue];
   const ecran = useEcran();
@@ -74,6 +84,7 @@ export function Caisse({ carte, langue, soldeCache }: {
   const largeur = Math.min(place || ecran.largeurContenu, 420);
   const hauteur = Math.round(largeur / RAPPORT_CARTE);
   const rembourrage = Math.round(largeur * 0.062);
+  const avecOeil = Boolean(onBasculerSolde) && carte.solde != null;
 
   // LE chiffre : le plus grand corps qui tienne sur une ligne, calculé sur la
   // largeur RÉELLE de la carte. Le web le fait avec des unités de conteneur ;
@@ -102,12 +113,13 @@ export function Caisse({ carte, langue, soldeCache }: {
     if (dec) em += (dec.length + 1) * 0.62 * 0.5;
     em += 0.82;                       // « FCFA » et son écart
     em *= 1.06;                       // et de quoi respirer
-    const dispo = largeur - rembourrage * 2;
+    // L'œil prend sa place sur la ligne du solde : le corps se calcule sans.
+    const dispo = largeur - rembourrage * 2 - (avecOeil ? OEIL + espaces.sm : 0);
     return {
       entier: ent, decimales: dec,
       corps: Math.min(hauteur * 0.28, dispo / em),
     };
-  }, [carte.solde, langue, soldeCache, largeur, hauteur, rembourrage]);
+  }, [carte.solde, langue, soldeCache, largeur, hauteur, rembourrage, avecOeil]);
 
   // Le dégradé : deux noirs très proches, et une pointe de la couleur de
   // l'opérateur dans l'angle. Assez pour que la surface ait une matière,
@@ -178,7 +190,7 @@ export function Caisse({ carte, langue, soldeCache }: {
             tronqué est un montant faux, ici déclenché par un réglage
             d'accessibilité. La taille reste donc fixe et lisible ; les autres
             textes de l'application, eux, suivent le réglage. */}
-        <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+        <View style={{ flexDirection: "row", alignItems: "baseline", width: "100%" }}>
           <Texte poids="demi" chiffresAlignes numberOfLines={1} allowFontScaling={false}
                  style={{ fontSize: corps, lineHeight: corps * 1.05,
                           color: "#ffffff", letterSpacing: -corps * 0.025 }}>
@@ -196,6 +208,20 @@ export function Caisse({ carte, langue, soldeCache }: {
           }}>
             FCFA
           </Texte>
+          {avecOeil ? (
+            <Pressable onPress={onBasculerSolde} hitSlop={8}
+                       accessibilityRole="button"
+                       accessibilityLabel={soldeCache ? t.montrerSolde : t.masquerSolde}
+                       style={({ pressed }) => ({
+                         marginLeft: "auto", alignSelf: "center",
+                         width: OEIL, height: OEIL, borderRadius: OEIL / 2,
+                         alignItems: "center", justifyContent: "center",
+                         borderWidth: 1, borderColor: "rgba(255,255,255,0.35)",
+                         backgroundColor: pressed ? "rgba(255,255,255,0.18)" : "transparent",
+                       })}>
+              <Icone nom={soldeCache ? "Eye" : "EyeOff"} taille={18} couleur="#ffffff" />
+            </Pressable>
+          ) : null}
         </View>
 
         {/* En bas : le numéro, gravé comme sur une vraie carte. Et le nom de

@@ -1,9 +1,16 @@
 // Les quatre onglets, dans une BARRE FLOTTANTE.
 //
-// Ce n'est pas la barre standard : la plateforme pose une pilule blanche qui
-// flotte au-dessus du contenu, l'onglet actif prenant la forme d'une pilule
-// sombre AVEC son nom. Les autres restent des icônes muettes. C'est la même
-// idée ici — l'écran garde toute sa hauteur, et on voit toujours où l'on est.
+// Ce n'est pas la barre standard : une pilule blanche qui flotte au-dessus
+// du contenu, l'onglet actif posé sur un fond sombre. L'écran garde toute sa
+// hauteur, et on voit toujours où l'on est.
+//
+// CHAQUE ONGLET DIT SON NOM, TOUT LE TEMPS. Seul l'onglet choisi le disait ;
+// les trois autres étaient des icônes muettes, et ceux à qui le propriétaire
+// a montré l'application ne savaient pas où menaient « l'enveloppe » ni « la
+// grille ». Une icône seule ne se lit que si on la connaît déjà. Les icônes
+// ont changé aussi, pour ce que chacun reconnaît sans apprendre : un
+// portefeuille pour les comptes, une bulle de message pour les SMS, deux
+// flèches qui se croisent pour les opérations.
 //
 // Quatre entrées, pas une de plus : ce qu'un propriétaire vient faire.
 // L'Analyse et la console USSD se rejoignent depuis les écrans qui les
@@ -29,9 +36,9 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 
 const ONGLETS: { nom: string; cle: keyof ReturnType<typeof libelles>; icone: NomIcone }[] = [
   { nom: "index", cle: "accueil", icone: "Home" },
-  { nom: "cartes", cle: "comptes", icone: "Card" },
-  { nom: "encaissements", cle: "smsCourt", icone: "Inbox" },
-  { nom: "actions", cle: "operations", icone: "Grid" },
+  { nom: "cartes", cle: "comptes", icone: "Wallet" },
+  { nom: "encaissements", cle: "smsCourt", icone: "Bubble" },
+  { nom: "actions", cle: "operations", icone: "Transfer" },
 ];
 
 function libelles(langue: "en" | "fr") {
@@ -198,29 +205,15 @@ function Coque({ style, children }: { style: ViewStyle; children: React.ReactNod
   return <View style={[style, { backgroundColor: couleurs.surfaceHaute }]}>{children}</View>;
 }
 
-/** Un onglet : icône seule au repos, pilule sombre avec son nom une fois
- *  choisi. Le passage de l'un à l'autre est glissé, pas sauté. */
+/** Un onglet : son icône, et son nom dessous — toujours. L'onglet choisi
+ *  se pose sur un fond sombre ; le passage est glissé, pas sauté. */
 function Pilule({ actif, libelle, icone, onPress }: {
   actif: boolean; libelle: string; icone: NomIcone; onPress: () => void;
 }) {
-  // SUR LE FIL DE L'INTERFACE, ET NON SUR CELUI DU JAVASCRIPT.
-  //
-  // Cette animation employait l'ancienne API `Animated` de React Native avec
-  // « useNativeDriver: false », et son commentaire donnait la raison : on
-  // anime une largeur, et le pilote natif ne sait pas la prendre. C'était
-  // vrai — pour cette API-là.
-  //
-  // Reanimated, lui, sait animer une largeur et une couleur sur le fil de
-  // l'interface. Il est dans ce dépôt depuis longtemps, et l'en-tête
-  // d'`animations.tsx` explique exactement le problème que ça règle : quand
-  // l'écran charge ses données, le JavaScript est occupé, et une animation
-  // ordinaire saccade PRÉCISÉMENT à ce moment-là.
-  //
-  // C'est la barre d'onglets. On y appuie plus que sur tout le reste, et on
-  // y appuie surtout au moment de changer d'écran — c'est-à-dire au moment
-  // où le JavaScript part chercher des données. Le seul élément de
-  // l'application qui saccadait était celui qu'on touche le plus, et à
-  // l'instant précis où on le touche.
+  // SUR LE FIL DE L'INTERFACE, ET NON SUR CELUI DU JAVASCRIPT : on change
+  // d'onglet au moment précis où le JavaScript part chercher des données, et
+  // une animation ordinaire saccaderait à cet instant-là (voir
+  // `animations.tsx`). Reanimated anime la couleur hors de son chemin.
   const ouvert = useDerivedValue(
     () => withTiming(actif ? 1 : 0, { duration: 220, easing: Easing.out(Easing.cubic) }),
     [actif],
@@ -232,57 +225,48 @@ function Pilule({ actif, libelle, icone, onPress }: {
     ),
   }));
 
-  // UN ÉCRAN ÉTROIT (320 points) NE TENAIT PAS LA BARRE. L'onglet choisi
-  // déplie son nom ; « Operations », le plus long, la faisait déborder de
-  // deux points — la page entière glissait de côté. Mesuré par
-  // `verifier-l-affichage`. Sous 360 points, chaque onglet rend huit points
-  // de marge : la barre en gagne trente-deux.
-  const etroit = useWindowDimensions().width < 360;
-
-  const nom = useAnimatedStyle(() => ({
-    opacity: ouvert.value,
-    maxWidth: ouvert.value * 140,
-    marginLeft: ouvert.value * espaces.sm,
-  }));
+  // QUATRE NOMS DOIVENT TENIR SUR 320 POINTS. Chaque onglet prend sa part
+  // de la largeur (jamais plus de 84 points) ; « Opérations », le plus long,
+  // tient en 11 points sur 76.
+  const { width } = useWindowDimensions();
+  const largeur = Math.min(84, Math.floor((width - 2 * espaces.lg - 12) / 4));
 
   return (
     <Pressable
       // Le toucher part à l'APPUI, avant même que l'écran change : c'est la
-      // première réponse que le doigt reçoit, et elle arrive avant le
-      // premier pixel.
+      // première réponse que le doigt reçoit.
       onPress={() => { toucherChoix(); onPress(); }}
       accessibilityRole="tab"
       accessibilityState={{ selected: actif }}
       accessibilityLabel={libelle}
       // LA PASTILLE NE RÉPOND PAS À L'APPUI, elle répond au CHOIX : elle ne
-      // se remplit qu'une fois `actif` changé, donc une fois l'écran changé.
-      // Entre les deux, l'onglet restait parfaitement immobile — mesuré à
-      // zéro pixel par `verifier-la-reponse`. Sur un téléphone lent, c'est
-      // là qu'on appuie deux fois.
+      // se remplit qu'une fois l'écran changé. Entre les deux, l'onglet
+      // restait immobile — mesuré à zéro pixel par `verifier-la-reponse`.
+      // L'opacité, elle, répond tout de suite.
       style={({ pressed }) => ({
-        borderRadius: rayons.rond, overflow: "hidden",
+        borderRadius: 22, overflow: "hidden",
         opacity: pressed ? 0.5 : 1,
       })}
     >
       <Animated.View
         style={[{
-          flexDirection: "row", alignItems: "center",
-          height: 44,
-          paddingHorizontal: etroit ? espaces.md : espaces.lg,
-          borderRadius: rayons.rond,
+          width: largeur, height: HAUTEUR_ONGLET,
+          alignItems: "center", justifyContent: "center", gap: 2,
+          borderRadius: 22,
         }, fond]}
       >
         <Icone nom={icone} taille={22}
-               couleur={actif ? couleurs.surfaceHaute : couleurs.encrePale} />
-        {/* Le nom n'apparaît que sur l'onglet choisi : les quatre noms côte
-            à côte ne tiendraient pas sur un écran étroit. */}
-        <Animated.View style={[{ overflow: "hidden" }, nom]}>
-          <Texte poids="demi" taille={textes.petit} numberOfLines={1}
-                 style={{ color: couleurs.surfaceHaute }}>
-            {libelle}
-          </Texte>
-        </Animated.View>
+               couleur={actif ? couleurs.surfaceHaute : couleurs.encreDouce} />
+        <Texte poids={actif ? "demi" : "moyen"} taille={11}
+               style={{ color: actif ? couleurs.surfaceHaute : couleurs.encreDouce,
+                        textAlign: "center" }}>
+          {libelle}
+        </Texte>
       </Animated.View>
     </Pressable>
   );
 }
+
+/** La hauteur d'un onglet : l'icône, son nom, et de quoi respirer. La barre
+ *  entière (`HAUTEUR_BARRE_ONGLETS` dans `ui.tsx`) en découle. */
+const HAUTEUR_ONGLET = 54;

@@ -136,7 +136,7 @@ export function ChampTexte(props: TextInputProps) {
  * La marge se calcule donc d'après la barre elle-même : sa hauteur, sa
  * distance au bord (voir `(onglets)/_layout.tsx`), et un souffle.
  */
-export const HAUTEUR_BARRE_ONGLETS = 58;
+export const HAUTEUR_BARRE_ONGLETS = 68;   // un onglet de 54, 6 + 6 de marge, 2 de trait
 export function useMargeSousLaBarre(): number {
   const bas = useSafeAreaInsets().bottom;
   const dessus = Math.max(bas, espaces.md) + HAUTEUR_BARRE_ONGLETS + espaces.lg;

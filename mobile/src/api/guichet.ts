@@ -249,12 +249,18 @@ export function chargerDonnees(
   // Un NOMBRE et non un drapeau : les onglets partagent une seule demande, et
   // « le plus grand besoin » de zéro ligne et de trente lignes n'est ni l'un
   // ni l'autre. Absent, il vaut « autant que `sms` ».
-  bornes?: { sms?: number; recus?: number; lignes?: number },
+  //
+  // `depuis` : les SMS relevés à partir de cet instant (ISO) — le filtre par
+  // date de l'écran des SMS. Le découpage se fait dans la BASE : filtrer
+  // les deux cents derniers SMS sur le téléphone aurait rendu « ce mois »
+  // vide au-delà de quelques jours, sans le dire.
+  bornes?: { sms?: number; recus?: number; lignes?: number; depuis?: string },
 ): Promise<Donnees> {
   const q = new URLSearchParams({ langue });
   if (bornes?.sms != null) q.set("sms", String(bornes.sms));
   if (bornes?.recus != null) q.set("recus", String(bornes.recus));
   if (bornes?.lignes != null) q.set("lignes", String(bornes.lignes));
+  if (bornes?.depuis) q.set("depuis", bornes.depuis);
   return demander<Donnees>(`/api/donnees?${q}`);
 }
 

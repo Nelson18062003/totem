@@ -393,8 +393,8 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   // ses rangées — avant de la mesurer.
   await page.goto(APERCU, { waitUntil: "networkidle" });
   await attendreTexte(page, /FCFA/);
-  await page.getByLabel(/^(Show the account details to share them|Afficher les coordonnées de la carte pour les partager)$/)
-    .first().click();
+  // Le bouton porte son NOM depuis qu'il n'est plus un cercle muet.
+  await page.getByRole("button", { name: /^(My details|Coordonnées)$/ }).first().click();
   try {
     await attendreTexte(page, /Account details[\s\S]*Network|Mes coordonnées[\s\S]*Réseau/);
   } catch {

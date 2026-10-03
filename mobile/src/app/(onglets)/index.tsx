@@ -116,7 +116,8 @@ export default function Accueil() {
 
       {active ? (
         <Entree delai={60}>
-          <Caisse carte={active} langue={langue} soldeCache={soldeCache} />
+          <Caisse carte={active} langue={langue} soldeCache={soldeCache}
+                  onBasculerSolde={basculerSolde} />
         </Entree>
       ) : chargement ? (
         // PENDANT L'ATTENTE, UNE FORME — pas le vide. L'écran ne montrait
@@ -142,9 +143,13 @@ export default function Accueil() {
         </Carte>
       )}
 
-      {/* Les commandes de la carte, HORS de la carte : masquer le solde,
-          l'actualiser, partager ses coordonnées. Trois cercles, aucun mot —
-          la carte reste nette. */}
+      {/* Les commandes de la carte, HORS de la carte : demander le solde,
+          composer un code USSD, montrer ses coordonnées. TROIS CERCLES, ET
+          CHACUN SON NOM. Ils étaient muets — « la carte reste nette », disait
+          ce commentaire — et ceux qui découvraient l'application ne savaient
+          pas à quoi ils servaient. L'œil, lui, est monté SUR la carte, contre
+          le solde qu'il cache ; sa place ici est allée au code USSD, pour
+          composer n'importe quel menu sans quitter l'accueil. */}
       {/* RIEN À COMPOSER SUR UNE CARTE ABSENTE. Quand aucune puce n'est dans
           le terminal, l'écran retombe sur les cartes RETIRÉES (voir plus
           haut) pour montrer leur dernier solde connu — c'est utile. Mais les
@@ -154,17 +159,16 @@ export default function Accueil() {
           reste affichée avec sa phrase d'avertissement. */}
       {active?.enPlace ? (
         <Entree delai={120}>
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: espaces.lg }}>
-            {active.solde != null ? (
-              <Commande icone={soldeCache ? "Eye" : "EyeOff"} onPress={basculerSolde}
-                        libelle={soldeCache ? t.montrerSolde : t.masquerSolde} />
-            ) : null}
-            <Commande icone="Refresh" libelle={t.actualiserAria}
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: espaces.md }}>
+            <Commande icone="Refresh" libelle={t.cmdSolde} aide={t.actualiserAria}
                       onPress={() => setOperation(operationDe("solde", t.consulterSolde, []))} />
+            <Commande icone="Hash" libelle={t.cmdUssd} aide={t.ussdAria}
+                      onPress={() => router.push({ pathname: "/ussd",
+                                                   params: { carte: active.iccid } })} />
             {/* Les coordonnées à donner pour être payé — la fiche s'ouvre
                 ICI, comme sur le web. Ce bouton renvoyait aux Réglages :
                 un détour, pour la chose qu'on montre le plus souvent. */}
-            <Commande icone="Identite" libelle={t.coordonneesAria}
+            <Commande icone="Identite" libelle={t.cmdCoordonnees} aide={t.coordonneesAria}
                       onPress={() => setCoordonnees(true)} />
           </View>
         </Entree>
@@ -364,26 +368,37 @@ function PuceCarte({ carte, actif, onPress }: {
   );
 }
 
-/** Une commande ronde, sous la carte. */
-function Commande({ icone, libelle, onPress }: {
-  icone: NomIcone; libelle: string; onPress: () => void;
+/** Une commande ronde, sous la carte : le cercle, et son NOM dessous —
+ *  comme les applications d'opérateur que tout le monde a déjà dans la
+ *  main. L'aide vocale lit le nom, puis la phrase qui dit ce qu'il fait. */
+function Commande({ icone, libelle, aide, onPress }: {
+  icone: NomIcone; libelle: string; aide: string; onPress: () => void;
 }) {
   const appui = useAppui();
   return (
-    <Animated.View style={appui.style}>
+    <Animated.View style={[{ width: LARGEUR_COMMANDE }, appui.style]}>
       <Pressable onPress={onPress} {...appui} accessibilityRole="button"
-                 accessibilityLabel={libelle}
-                 style={{
-                   width: 46, height: 46, borderRadius: rayons.rond,
-                   borderWidth: 1, borderColor: couleurs.trait,
-                   backgroundColor: couleurs.surfaceHaute,
-                   alignItems: "center", justifyContent: "center",
-                 }}>
-        <Icone nom={icone} taille={19} couleur={couleurs.encreDouce} />
+                 accessibilityLabel={libelle} accessibilityHint={aide}
+                 style={{ alignItems: "center", gap: espaces.xs }}>
+        <View style={{
+          width: 52, height: 52, borderRadius: rayons.rond,
+          borderWidth: 1, borderColor: couleurs.trait,
+          backgroundColor: couleurs.surfaceHaute,
+          alignItems: "center", justifyContent: "center",
+        }}>
+          <Icone nom={icone} taille={21} couleur={couleurs.encre} />
+        </View>
+        <Texte taille={textes.legende} poids="moyen" style={{ textAlign: "center" }}>
+          {libelle}
+        </Texte>
       </Pressable>
     </Animated.View>
   );
 }
+
+/** Assez large pour « Coordonnées » sur une ligne ; trois tiennent sur 320.
+ *  `squelettes.tsx` reprend la même mesure pour sa forme d'attente. */
+const LARGEUR_COMMANDE = 88;
 
 function BoutonGeste({ libelle, icone, onPress }: {
   libelle: string; icone: NomIcone; onPress: () => void;

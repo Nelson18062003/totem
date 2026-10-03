@@ -1,7 +1,9 @@
 // La boîte de réception : les SMS reçus par les cartes.
 //
 // Le pendant mobile de `web/app/encaissements/`. Même ordre, mêmes filtres :
-// la recherche, puis la carte, puis la nature — du plus large au plus fin.
+// la recherche, puis la carte, puis la nature — du plus large au plus fin —
+// et la DATE : aujourd'hui, hier, sept jours, ce mois, ou des jours choisis
+// au calendrier, avec ce que la période a fait entrer et sortir.
 // Les messages se groupent par JOUR, comme une messagerie.
 //
 // Le texte de l'opérateur s'affiche mot pour mot, dans la langue où la SIM
@@ -23,8 +25,17 @@ import { SqueletteListe } from "@/squelettes";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
+import { Calendrier } from "@/calendrier";
+import { Feuille } from "@/feuille";
+import { chargerDonnees } from "@/api/guichet";
 import { textesSms } from "@noyau/textes/sms";
-import { fcfa, type Categorie, type Paiement } from "@noyau/types";
+import { FUSEAU_DEFAUT, fcfa, jourLocal, type Categorie, type Paiement } from "@noyau/types";
+import {
+  bornesDe, dansBornes, depuisPourLaBase, nomDesJours, totauxDe, type Periode,
+} from "@noyau/periodes";
+
+// Ce que la plateforme rapporte au plus pour une période (voir `MAX_SMS`).
+const SMS_PAR_PERIODE = 1000;
 
 // Les natures proposées en filtre, dans l'ordre où on les cherche.
 const FILTRES: Categorie[] = ["encaissement", "envoi", "transfert", "publicite"];
@@ -97,12 +108,62 @@ export default function Encaissements() {
     }
   }, [params.recherche, params.moment]);
 
-  const paiements = donnees?.paiements ?? [];
   const sims = donnees?.sims ?? [];
+
+  // ── LA DATE ───────────────────────────────────────────────────────────
+  const [periode, setPeriode] = useState<Periode>({ genre: "tout" });
+  const [calendrier, setCalendrier] = useState(false);
+  const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
+  const bornes = useMemo(() => bornesDe(periode, Date.now(), fuseau), [periode, fuseau]);
+  const recents = donnees?.paiements ?? [];
+  const nomDePeriode = periode.genre === "tout" || !bornes ? null
+    : periode.genre === "jours" ? nomDesJours(bornes, langue)
+    : periode.genre === "aujourdhui" ? t.periodeAujourdhui
+    : periode.genre === "hier" ? t.periodeHier
+    : periode.genre === "semaine" ? t.periodeSemaine
+    : t.periodeMois;
+  // La liste de choix ouverte : la date, la carte, ou le type.
+  const [feuille, setFeuille] = useState<null | "date" | "carte" | "type">(null);
+
+  // LES DEUX CENTS DERNIERS NE COUVRENT PAS « CE MOIS ». Filtrer sur ce que
+  // l'écran a déjà aurait rendu une période à moitié vide, sans le dire —
+  // sur une caisse à quarante SMS par jour, deux cents s'arrêtent au
+  // cinquième jour. On ne s'en contente que s'ils remontent AVANT le
+  // premier jour demandé (ou s'ils sont toute la caisse) ; sinon, on demande
+  // la période à la plateforme, qui la découpe dans la base.
+  const couverte = bornes == null
+    || recents.length < 200
+    || (recents.length > 0 && recents[recents.length - 1].jour < bornes.de);
+  const [duneP, setDuneP] = useState<{ de: string; lignes: Paiement[] } | null>(null);
+  const [chercheP, setChercheP] = useState(false);
+  const [refusP, setRefusP] = useState(false);
+  const [essaiP, setEssaiP] = useState(0);
+  useEffect(() => {
+    if (couverte || !bornes) return;
+    let vivant = true;
+    setChercheP(true); setRefusP(false);
+    chargerDonnees(langue, { sms: SMS_PAR_PERIODE, recus: 0,
+                             depuis: depuisPourLaBase(bornes) })
+      .then((d) => { if (vivant) setDuneP({ de: bornes.de, lignes: d.paiements }); })
+      .catch(() => { if (vivant) setRefusP(true); })
+      .finally(() => { if (vivant) setChercheP(false); });
+    return () => { vivant = false; };
+    // La période se résume à ses bornes ; `recents` change à chaque SMS.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [couverte, bornes?.de, bornes?.a, langue, essaiP]);
+
+  const paiements = couverte ? recents
+    : duneP && bornes && duneP.de === bornes.de ? duneP.lignes : [];
+  // La plateforme a-t-elle coupé ? Elle rend au plus mille lignes, les plus
+  // récentes : si la plus ancienne est encore DANS la période, le début de
+  // la période manque — et on le dit plutôt que de laisser croire au total.
+  const tronquee = !couverte && bornes != null && paiements.length >= SMS_PAR_PERIODE
+    && paiements[paiements.length - 1].jour >= bornes.de;
 
   const filtres = useMemo(() => {
     const q = recherche.trim().toLowerCase();
     return paiements.filter((p) => {
+      if (!dansBornes(p, bornes)) return false;
       if (carte && p.sim !== carte) return false;
       // La nature CHOISIE par le propriétaire l'emporte sur la catégorie
       // devinée — comme la couleur, l'icône et le pli des soldes de cet
@@ -118,7 +179,10 @@ export default function Encaissements() {
               p.montant == null ? "" : String(p.montant)]
         .some((v) => (v ?? "").toLowerCase().includes(q));
     });
-  }, [paiements, recherche, carte, categorie]);
+  }, [paiements, recherche, carte, categorie, bornes]);
+
+  // Ce que la période (et les autres filtres) a fait entrer et sortir.
+  const totaux = useMemo(() => totauxDe(filtres), [filtres]);
 
   // Groupés par jour, dans l'ordre où ils sont arrivés.
   // ON NE REND PAS CE QUE PERSONNE NE REGARDE.
@@ -201,6 +265,17 @@ export default function Encaissements() {
   // mémoire, seul son affichage est reposé.
   const places = useRef(new Map<string, { y: number; h: number }>());
   const [defilement, setDefilement] = useState(0);
+  // LES PLACES SE MESURENT POUR UNE LISTE, PAS POUR TOUTES. Après un filtre,
+  // « hier » n'est plus au trentième écran mais en haut ; sa place d'avant
+  // le faisait croire loin dessous, et il restait reposé — la carte du total
+  // annonçait 21 SMS au-dessus d'une liste vide. Vu sur une capture. Une
+  // liste neuve oublie donc les places de l'ancienne, ICI, pendant le rendu :
+  // un effet arriverait un rendu trop tard.
+  const placesDe = useRef(filtres);
+  if (placesDe.current !== filtres) {
+    places.current.clear();
+    placesDe.current = filtres;
+  }
   // Une marge d'un écran de chaque côté : on ne relâche que ce qui est
   // franchement hors de vue, sans quoi un petit va-et-vient du doigt
   // ferait clignoter le haut de l'écran.
@@ -288,43 +363,90 @@ export default function Encaissements() {
           </View>
         </Entree>
 
-        {/* Les cartes, puis les natures — du plus large au plus fin. */}
+        {/* LES FILTRES, EN UNE RANGÉE : la date, la carte, le type. Ils
+            tenaient en trois rangées de pastilles qui défilaient de côté —
+            un écran touffu, sans ordre, que le propriétaire a trouvé
+            illisible. Chaque bouton dit maintenant CE qu'il filtre, ou ce
+            qui est choisi ; le choix se fait dans une liste, une seule
+            chose à la fois. */}
         <Entree delai={120}>
-          <View style={{ gap: espaces.sm }}>
-            <Rangee>
-              <Puce libelle={t.toutesLesCartes} actif={carte === null}
-                    onPress={() => setCarte(null)} />
-              {sims.map((s) => (
-                <Puce key={s.iccid} libelle={s.libelle} actif={carte === s.libelle}
-                      onPress={() => setCarte(s.libelle)} />
-              ))}
-            </Rangee>
-            <Rangee>
-              <Puce libelle={t.toutesLesCategories} actif={categorie === null}
-                    onPress={() => setCategorie(null)} />
-              {FILTRES.map((c) => (
-                <Puce key={c} libelle={t.cat[c]} actif={categorie === c}
-                      icone={iconeDe(c)} onPress={() => setCategorie(c)} />
-              ))}
-            </Rangee>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center",
+                         gap: espaces.sm }}>
+            <BoutonFiltre icone="Calendrier" etiquette={t.filtreDateAria}
+                          libelle={nomDePeriode ?? t.filtreDate} actif={nomDePeriode != null}
+                          onPress={() => setFeuille("date")} />
+            {sims.length > 1 ? (
+              <BoutonFiltre icone="Wallet" etiquette={t.filtreCarteAria}
+                            libelle={carte ?? t.filtreCarte} actif={carte != null}
+                            onPress={() => setFeuille("carte")} />
+            ) : null}
+            <BoutonFiltre icone={categorie ? iconeDe(categorie) : "List"}
+                          etiquette={t.filtreTypeAria}
+                          libelle={categorie ? t.cat[categorie] : t.filtreType}
+                          actif={categorie != null}
+                          onPress={() => setFeuille("type")} />
+            {nomDePeriode != null || carte != null || categorie != null ? (
+              <Pressable accessibilityRole="button" hitSlop={8}
+                         onPress={() => { setPeriode({ genre: "tout" }); setCarte(null);
+                                          setCategorie(null); }}
+                         style={avecAppui({ paddingHorizontal: espaces.xs })}>
+                <Texte taille={textes.petit} ton="doux"
+                       style={{ textDecorationLine: "underline" }}>
+                  {t.effacerFiltres}
+                </Texte>
+              </Pressable>
+            ) : null}
           </View>
         </Entree>
 
         {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+        {refusP ? (
+          <Accroc message={t.periodeImpossible} onReessayer={() => setEssaiP((n) => n + 1)} />
+        ) : null}
 
-        {jours.length === 0 && chargement && !erreur ? (
+        {/* LE TOTAL DE LA PÉRIODE — ce qu'on cherchait en filtrant. Il ne
+            compte que ce qui porte un montant et un sens : une publicité,
+            un échec, un solde ne sont ni entrés ni sortis. */}
+        {bornes && !chercheP && filtres.length ? (
+          <Carte style={{ padding: espaces.lg, gap: espaces.sm }}>
+            <Texte taille={textes.petit} ton="pale">
+              {nomDePeriode} · {t.totalNombre(totaux.nombre)}
+            </Texte>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.lg }}>
+              <View style={{ gap: 2 }}>
+                <Texte taille={textes.legende} ton="pale">{t.totalRecu}</Texte>
+                <Texte poids="demi" chiffresAlignes style={{ color: couleurs.positif }}>
+                  {totaux.recu ? "+" : ""}{fcfa(totaux.recu, langue)}
+                </Texte>
+              </View>
+              <View style={{ gap: 2 }}>
+                <Texte taille={textes.legende} ton="pale">{t.totalEnvoye}</Texte>
+                <Texte poids="demi" chiffresAlignes>
+                  {totaux.envoye ? "−" : ""}{fcfa(totaux.envoye, langue)}
+                </Texte>
+              </View>
+            </View>
+            {tronquee ? (
+              <Texte taille={textes.legende} ton="alerte" style={{ lineHeight: 18 }}>
+                {t.periodeTronquee}
+              </Texte>
+            ) : null}
+          </Carte>
+        ) : null}
+
+        {jours.length === 0 && (chargement || chercheP) && !erreur ? (
           // L'écran le plus long à charger de l'application : c'est celui qui
           // avait le plus besoin de dire qu'il travaille.
           <SqueletteListe lignes={6} />
         ) : null}
 
-        {jours.length === 0 && !chargement && !erreur ? (
+        {jours.length === 0 && !chargement && !chercheP && !erreur && !refusP ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
             <Texte poids="demi">
-              {recherche || carte || categorie ? t.aucunResultatTitre : t.aucunSmsTitre}
+              {recherche || carte || categorie || bornes ? t.aucunResultatTitre : t.aucunSmsTitre}
             </Texte>
             <Texte ton="doux" taille={textes.petit} style={{ textAlign: "center", lineHeight: 20 }}>
-              {recherche || carte || categorie ? t.aucunResultatDetail : t.aucunSmsDetail}
+              {recherche || carte || categorie || bornes ? t.aucunResultatDetail : t.aucunSmsDetail}
             </Texte>
           </Carte>
         ) : null}
@@ -428,47 +550,122 @@ export default function Encaissements() {
         <FicheSms paiement={ouvert} onFermer={() => setOuvert(null)}
                   onChange={recharger} />
       ) : null}
+      {feuille === "date" ? (
+        <FeuilleChoix titre={t.filtreDateTitre} onFermer={() => setFeuille(null)}
+          choisie={periode.genre}
+          options={[
+            { cle: "tout", libelle: t.periodeTout },
+            { cle: "aujourdhui", libelle: t.periodeAujourdhui },
+            { cle: "hier", libelle: t.periodeHier },
+            { cle: "semaine", libelle: t.periodeSemaine },
+            { cle: "mois", libelle: t.periodeMois },
+            { cle: "jours", libelle: periode.genre === "jours" && bornes
+                ? `${t.periodeChoisir} · ${nomDesJours(bornes, langue)}` : t.periodeChoisir,
+              icone: "Calendrier" },
+          ]}
+          onChoisir={(cle) => {
+            setFeuille(null);
+            if (cle === "jours") setCalendrier(true);
+            else setPeriode({ genre: cle as Exclude<Periode["genre"], "jours"> });
+          }} />
+      ) : null}
+      {feuille === "carte" ? (
+        <FeuilleChoix titre={t.filtreCarteTitre} onFermer={() => setFeuille(null)}
+          choisie={carte ?? ""}
+          options={[{ cle: "", libelle: t.toutesLesCartes },
+                    ...sims.map((x) => ({ cle: x.libelle, libelle: x.libelle }))]}
+          onChoisir={(cle) => { setFeuille(null); setCarte(cle || null); }} />
+      ) : null}
+      {feuille === "type" ? (
+        <FeuilleChoix titre={t.filtreTypeTitre} onFermer={() => setFeuille(null)}
+          choisie={categorie ?? ""}
+          options={[{ cle: "", libelle: t.toutesLesCategories },
+                    ...FILTRES.map((c) => ({ cle: c, libelle: t.cat[c], icone: iconeDe(c) }))]}
+          onChoisir={(cle) => { setFeuille(null); setCategorie((cle || null) as Categorie | null); }} />
+      ) : null}
+      {calendrier ? (
+        <Calendrier langue={langue} aujourdhui={jourLocal(new Date(), fuseau)}
+                    depart={periode.genre === "jours" ? bornes : null}
+                    onFermer={() => setCalendrier(false)}
+                    onChoisir={(b) => { setPeriode({ genre: "jours", de: b.de, a: b.a });
+                                        setCalendrier(false); }} />
+      ) : null}
     </SafeAreaView>
   );
 }
 
 /** Une rangée de filtres qui glisse horizontalement : sur un écran étroit,
  *  quatre natures ne tiennent pas de front. */
-function Rangee({ children }: { children: React.ReactNode }) {
-  return (
-    <Defilement horizontal showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: espaces.sm, paddingRight: espaces.lg }}>
-      {children}
-    </Defilement>
-  );
-}
-
-function Puce({ libelle, actif, icone, onPress }: {
-  libelle: string; actif: boolean; icone?: NomIcone; onPress: () => void;
+/** Un bouton de filtre : ce qu'il filtre (« Date »), ou ce qui est choisi
+ *  (« Hier ») — rempli de sombre dès qu'il filtre quelque chose, pour qu'on
+ *  voie d'un coup d'œil que la liste n'est pas entière. */
+function BoutonFiltre({ libelle, etiquette, actif, icone, onPress }: {
+  libelle: string; etiquette: string; actif: boolean; icone: NomIcone; onPress: () => void;
 }) {
+  const teinte = actif ? couleurs.surfaceHaute : couleurs.encreDouce;
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`${etiquette} : ${libelle}`}
       onPress={onPress}
-      accessibilityState={{ selected: actif }}
       style={avecAppui({
         flexDirection: "row", alignItems: "center", gap: espaces.xs,
-        paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+        minHeight: 40, paddingLeft: espaces.md, paddingRight: espaces.sm,
         borderRadius: rayons.rond,
-        borderWidth: actif ? 0 : 1, borderColor: couleurs.trait,
+        borderWidth: 1, borderColor: actif ? couleurs.accent : couleurs.trait,
         backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
       })}
     >
-      {icone ? (
-        <Icone nom={icone} taille={14}
-               couleur={actif ? couleurs.surfaceHaute : couleurs.encreDouce} />
-      ) : null}
-      <Texte taille={textes.petit} poids="moyen"
-             ton={actif ? "normal" : "doux"}
-             style={actif ? { color: couleurs.surfaceHaute } : undefined}>
+      <Icone nom={icone} taille={15} couleur={teinte} />
+      <Texte taille={textes.petit} poids="moyen" style={{ color: actif ? teinte : couleurs.encre }}>
         {libelle}
       </Texte>
+      {/* Le chevron tourné vers le bas : « ça s'ouvre ». */}
+      <View style={{ transform: [{ rotate: "90deg" }] }}>
+        <Icone nom="Chevron" taille={13} couleur={teinte} />
+      </View>
     </Pressable>
+  );
+}
+
+/** La liste d'un filtre : une option par ligne, une coche sur la choisie. */
+function FeuilleChoix({ titre, options, choisie, onChoisir, onFermer }: {
+  titre: string;
+  options: { cle: string; libelle: string; icone?: NomIcone }[];
+  choisie: string;
+  onChoisir: (cle: string) => void;
+  onFermer: () => void;
+}) {
+  const langue = useLangue();
+  return (
+    <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
+             entete={<Texte taille={textes.intertitre} poids="demi">{titre}</Texte>}>
+      <Carte>
+        {options.map((o, i) => {
+          const elle = o.cle === choisie;
+          return (
+            <View key={o.cle || "tout"}>
+              {i > 0 ? <Filet /> : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: elle }}
+                accessibilityLabel={o.libelle}
+                onPress={() => onChoisir(o.cle)}
+                style={({ pressed }) => ({
+                  flexDirection: "row", alignItems: "center", gap: espaces.md,
+                  minHeight: 52, paddingHorizontal: espaces.lg,
+                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
+                })}
+              >
+                {o.icone ? <Icone nom={o.icone} taille={18} couleur={couleurs.encreDouce} /> : null}
+                <Texte poids={elle ? "demi" : "normal"} style={{ flex: 1 }}>{o.libelle}</Texte>
+                {elle ? <Icone nom="Check" taille={18} couleur={couleurs.encre} /> : null}
+              </Pressable>
+            </View>
+          );
+        })}
+      </Carte>
+    </Feuille>
   );
 }
 

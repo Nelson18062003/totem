@@ -75,6 +75,8 @@ cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # douze écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
 cd mobile && node scripts/verifier-l-affichage.mjs /tmp/apercu # tout, partout
 #   (chaque écran, quatorze tailles ; même export — voir l'en-tête du script)
+cd mobile && node scripts/verifier-les-dates.mjs /tmp/apercu # le filtre par date
+#   (même export ; sème la caisse s'il la trouve trop maigre)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -657,6 +659,36 @@ puis ouvre la feuille de partage du téléphone sur le fichier. La brique de
 partage est CHERCHÉE, pas exigée : une application compilée avant elle
 reçoit cette mise à jour à distance, et une application qui plante au
 démarrage ne peut plus recevoir la correction.
+
+`verifier-les-dates` garde le filtre par date des SMS : « aujourd'hui »,
+« hier », sept jours, ce mois, et des jours choisis au calendrier. Il
+demande à la PLATEFORME combien chaque jour porte, et exige que l'écran dise
+le même nombre et le même total reçu, au franc près. Il choisit surtout des
+jours du MOIS DERNIER : l'écran ne garde que les deux cents SMS les plus
+récents, et une période plus ancienne doit être demandée à la plateforme —
+filtrée sur le téléphone, elle s'affichait vide sans un mot. Le témoin qui
+oublie de la demander échoue.
+
+**Un total juste sur une liste vide reste un écran faux.** La première
+version annonçait « Hier · 21 SMS » au-dessus de… rien. La liste repose les
+jours loin de l'écran d'après leur PLACE mesurée — et elle gardait les places
+de la liste d'avant le filtre, où « hier » était trente écrans plus bas. Le
+même piège attendait depuis toujours la recherche. Vu sur une capture ; le
+harnais compte maintenant les lignes à l'écran, et le témoin sans la
+correction y échoue.
+
+**Une icône seule ne se lit que si on la connaît déjà.** Les trois cercles
+sous la carte de l'accueil et trois des quatre onglets étaient muets : ceux
+à qui le propriétaire montrait l'application ne savaient pas à quoi ils
+servaient. Chacun porte maintenant son nom. L'œil qui cache le solde est
+monté SUR la carte, contre ce qu'il cache.
+
+**Trois rangées de pastilles ne sont pas des filtres, c'est du bruit.** Le
+filtre par date est d'abord arrivé en troisième rangée défilante, sous les
+cartes et au-dessus des natures : « touffu, en désordre », a jugé le
+propriétaire. Les filtres tiennent maintenant en UNE rangée — Date, Carte,
+Type — et chaque bouton dit ce qui est choisi ; le choix se fait dans une
+liste, une chose à la fois.
 
 **« Un générateur, un document » ne suffit pas si chaque appelant prépare
 ses données.** Le PDF des coordonnées n'a qu'un générateur, et son

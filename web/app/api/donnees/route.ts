@@ -24,6 +24,12 @@ function borne(valeur: string | null, defaut: number, plafond: number): number {
   return Math.min(Math.max(0, Math.trunc(n)), plafond);
 }
 
+function instant(valeur: string | null): string | undefined {
+  if (!valeur) return undefined;
+  const t = Date.parse(valeur);
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+}
+
 /**
  * Les données de la plateforme, en JSON, pour l'application du téléphone.
  *
@@ -60,6 +66,10 @@ export async function GET(req: Request) {
       : params.get("lignes") != null
         ? borne(params.get("lignes"), 0, MAX_SMS)
         : undefined,
+    // Le filtre par date de l'écran des SMS : seulement ce qui a été relevé
+    // depuis cet instant. Un instant illisible est ignoré plutôt que transmis
+    // à la base — il ne rapporterait rien, et l'écran croirait la période vide.
+    depuis: instant(params.get("depuis")),
   };
 
   // LA DÉMONSTRATION : les mêmes écrans, sur un jeu inventé. Elle passe

@@ -25,6 +25,13 @@ const en = {
   aucuneCarteDetail:
     "As soon as the terminal sees a SIM, its balance and the counter will appear here.",
   actualiserAria: "Refresh the balance: ask the network",
+  // Les trois commandes sous la carte, NOMMÉES. Un cercle sans mot ne
+  // disait rien à qui découvrait l'application : on ne savait pas à quoi
+  // servaient ces boutons. Un nom court, sous chaque icône.
+  cmdSolde: "Balance",
+  cmdUssd: "USSD code",
+  cmdCoordonnees: "My details",
+  ussdAria: "Dial a USSD code on this card",
   masquerSolde: "Hide the balance",
   montrerSolde: "Show the balance",
   interrogerReseau: "Ask the network",
@@ -108,6 +115,10 @@ const fr: typeof en = {
   aucuneCarteDetail:
     "Dès qu’une SIM sera vue par le terminal, son solde et le guichet apparaîtront ici.",
   actualiserAria: "Actualiser le solde : interroger le réseau",
+  cmdSolde: "Solde",
+  cmdUssd: "Code USSD",
+  cmdCoordonnees: "Coordonnées",
+  ussdAria: "Composer un code USSD sur cette carte",
   masquerSolde: "Masquer le solde",
   montrerSolde: "Afficher le solde",
   interrogerReseau: "Interroger le réseau",

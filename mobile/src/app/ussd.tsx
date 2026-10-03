@@ -15,7 +15,7 @@ import {
   KeyboardAvoidingView, Pressable, View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { useMargeDuBas, ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone } from "@/icones";
@@ -34,7 +34,11 @@ export default function CadranUssd() {
   const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
 
   const cartes = (donnees?.sims ?? []).filter((s) => s.enPlace);
-  const [choisie, setChoisie] = useState<string | null>(null);
+  // Arriver depuis l'accueil, c'est arriver SUR la carte qu'on y regardait :
+  // le bouton « Code USSD » passe son ICCID.
+  const { carte: demandee } = useLocalSearchParams<{ carte?: string }>();
+  const [choisie, setChoisie] = useState<string | null>(
+    typeof demandee === "string" ? demandee : null);
   const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   const [saisie, setSaisie] = useState("");
   const [operation, setOperation] = useState<Operation | null>(null);

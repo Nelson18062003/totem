@@ -271,10 +271,12 @@ try {
   console.log("\nLa boîte de réception :");
   await page.getByRole("tab", { name: /^SMS$/ }).first().click();
   await attendre(2500);
-  await sonder("un filtre (« toutes les puces »)",
-               page.getByRole("button", { name: /^(All SIMs|Toutes les puces)$/ }).first());
-  await sonder("un filtre de nature (« entrées »)",
-               page.getByRole("button", { name: /^(Money in|Entrées)$/ }).first());
+  // Les filtres tiennent en une rangée de boutons (Date, Carte, Type) depuis
+  // que trois rangées de pastilles ont été jugées illisibles.
+  await sonder("le filtre « Date »",
+               page.getByRole("button", { name: /^(Filter by date|Filtrer par date) : / }).first());
+  await sonder("le filtre « Type »",
+               page.getByRole("button", { name: /^(Filter by kind|Filtrer par type) : / }).first());
 
   // ── CE QU'UNE AIDE TECHNIQUE ENTEND ─────────────────────────────────
   //
