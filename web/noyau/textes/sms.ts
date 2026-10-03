@@ -28,7 +28,9 @@ const en = {
   ouvrirRecu: "Open the receipt (PDF)",
   refaireRecu: "Rebuild the receipt",
   ouvertureRecu: "Opening…",
-  lienRecuImpossible: "The receipt could not be opened. Check the connection, then try again.",
+  partagerRecu: "Share the receipt",
+  preparationRecu: "Preparing the PDF…",
+  lienRecuImpossible: "The receipt could not be prepared. Check the connection, then try again.",
   toutesLesCartes: "All SIMs",
   soldesRepetes: (n: number) =>
     n === 1 ? "1 earlier balance check" : `${n} earlier balance checks`,
@@ -56,11 +58,11 @@ const en = {
   regenerationEnCours:
     "The terminal is rebuilding the document with today's reading — about "
     + "twenty seconds, then open the PDF again.",
-  regenerationFaite: "Document rebuilt — open the PDF: it is the new one.",
+  regenerationFaite: "Receipt rebuilt ✓",
   // Le reçu vient d'être fabriqué. La fiche ouverte porte encore
   // l'ancienne version du paiement : on le DIT, plutôt que de laisser le
   // bouton reprendre son libellé d'avant comme si rien ne s'était passé.
-  recuEtabli: "Receipt created — reopen this message to open the PDF.",
+  recuEtabli: "Receipt ready ✓",
   regenerationLente:
     "The terminal is taking longer than expected. The PDF will be replaced "
     + "as soon as it finishes — try opening it again in a minute.",
@@ -118,7 +120,9 @@ const fr: typeof en = {
   ouvrirRecu: "Ouvrir le reçu (PDF)",
   refaireRecu: "Refaire le reçu",
   ouvertureRecu: "Ouverture…",
-  lienRecuImpossible: "Le reçu n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
+  partagerRecu: "Partager le reçu",
+  preparationRecu: "Préparation du PDF…",
+  lienRecuImpossible: "Le reçu n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   toutesLesCartes: "Toutes les cartes",
   soldesRepetes: (n) =>
     n === 1 ? "1 consultation de solde plus tôt" : `${n} consultations de solde plus tôt`,
@@ -145,8 +149,8 @@ const fr: typeof en = {
   regenerationEnCours:
     "Le terminal refait le document avec la lecture du jour — une vingtaine "
     + "de secondes, puis rouvrez le PDF.",
-  regenerationFaite: "Document refait — ouvrez le PDF : c'est le nouveau.",
-  recuEtabli: "Reçu établi — rouvrez ce message pour ouvrir le PDF.",
+  regenerationFaite: "Reçu refait ✓",
+  recuEtabli: "Reçu prêt ✓",
   regenerationLente:
     "Le terminal prend plus de temps que prévu. Le PDF sera remplacé dès "
     + "qu'il aura fini — réessayez de l'ouvrir dans une minute.",

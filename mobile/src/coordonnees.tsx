@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { Pressable, Share, View } from "react-native";
 import { router } from "expo-router";
-import * as Navigateur from "expo-web-browser";
+import { nomDeFichier, partagerDocument } from "@/partage";
 
 import { Carte, Filet, Texte, appuiTexte } from "@/ui";
 import { Icone } from "@/icones";
@@ -53,16 +53,17 @@ export function Coordonnees({ carte, langue, onFermer }: {
   };
 
   // Le PDF — LE MÊME document que le bouton « Télécharger » du web (un seul
-  // générateur, lib/pdf-rib). Il s'ouvre dans le navigateur du système par
-  // un lien signé de dix minutes ; de là, Android le télécharge ou le
-  // partage comme n'importe quel fichier.
+  // générateur, lib/pdf-rib). Il part comme un FICHIER, par la feuille de
+  // partage du téléphone (voir src/partage.ts) — plus par une page web.
   const [pdf, setPdf] = useState<"repos" | "envoi" | "refus">("repos");
   const ouvrirPdf = async () => {
     if (pdf === "envoi") return;
     setPdf("envoi");
     try {
       const { url } = await lienCoordonnees(carte.iccid);
-      await Navigateur.openBrowserAsync(url);
+      await partagerDocument(
+        url, nomDeFichier(`Coordonnees-${carte.libelle || carte.numero}`, "pdf"),
+        "pdf", t.coordPdf);
       setPdf("repos");
     } catch {
       setPdf("refus");

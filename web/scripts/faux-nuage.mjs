@@ -250,6 +250,12 @@ function reponsePour(commande) {
   // écrit dans sa table ; le faux se contente d'acquiescer — l'écran qui
   // attend « faite » doit pouvoir dérouler son chemin heureux.
   if (type === "identite" || type === "raccourci") return "C'est note.";
+  // Le reçu : la phrase du vrai robot (totem/pilotage.py), numéro compris —
+  // l'application y lit le numéro pour proposer le partage tout de suite.
+  if (type === "recu") {
+    return "Reçu TM-2026-1003-0042 en fabrication : il sera archivé et "
+      + "téléchargeable dans un instant.";
+  }
   if (type === "ussd") {
     const code = String(parametres.code ?? "");
     // Un code complet (avec le numéro et le montant dedans) va droit au code
@@ -267,7 +273,15 @@ function reponsePour(commande) {
   // Comme un vrai opérateur : ce qu'on va signer, PUIS la demande du code.
   // Un écran qui ne montrerait que « votre code secret » ferait signer à
   // l'aveugle — et sans ces lignes ici, aucun harnais ne pourrait le voir.
-  return "Depot de 5 000 FCFA vers JEAN DUPONT (677998877).\nFrais : 0 FCFA.\n"
+  //
+  // AUSSI LONG QU'UN VRAI ÉCRAN. Un écran USSD tient au plus 182 caractères,
+  // et ceux qui réclament le code secret s'en approchent : montant, nom,
+  // numéro, frais, commission, solde. L'ancienne réponse en faisait 97 —
+  // elle tenait partout, et l'écran du code a passé tous les essais en
+  // cachant le message sur un petit iPhone. Une donnée d'essai trop sage
+  // cache le défaut au lieu de le montrer.
+  return "Depot de 5 000 FCFA vers JEAN DUPONT KAMGA NGONO (677998877).\n"
+    + "Frais : 0 FCFA. Commission : 25 FCFA.\nSolde apres : 407 500 FCFA.\n"
     + "Confirmer l'operation ?\nEntrez votre code secret:";
 }
 

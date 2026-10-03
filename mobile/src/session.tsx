@@ -8,7 +8,7 @@ import {
   createContext, useCallback, useContext, useEffect, useState, type ReactNode,
 } from "react";
 import {
-  creerCompte, fermerSession, ouvrirSession, sessionVivante,
+  fermerSession, ouvrirSession, sessionVivante,
 } from "@/api/guichet";
 import type { Langue } from "@noyau/langue";
 
@@ -17,9 +17,6 @@ type Boite = {
   connecte: boolean | null;
   /** Se connecter. Sans courriel, c'est la clé de secours qu'on présente. */
   ouvrir: (courriel: string, motdepasse: string, langue: Langue) => Promise<void>;
-  /** Créer un compte. Rend `true` si l'on entre tout de suite (le premier
-   *  compte est celui du propriétaire), `false` si le compte attend. */
-  inscrire: (courriel: string, motdepasse: string, langue: Langue) => Promise<boolean>;
   fermer: () => Promise<void>;
   /** À appeler quand le guichet a répondu « session expirée ». */
   perdue: () => void;
@@ -28,7 +25,6 @@ type Boite = {
 const Contexte = createContext<Boite>({
   connecte: null,
   ouvrir: async () => {},
-  inscrire: async () => false,
   fermer: async () => {},
   perdue: () => {},
 });
@@ -46,15 +42,6 @@ export function FournisseurSession({ children }: { children: ReactNode }) {
       setConnecte(true);
     }, []);
 
-  const inscrire = useCallback(
-    async (courriel: string, motdepasse: string, langue: Langue) => {
-      const r = await creerCompte(courriel, motdepasse, langue);
-      // Un compte en attente ne connecte personne : l'écran le dit, et le
-      // verrou reste fermé. Le basculer ici mènerait à un écran vide.
-      if (r.entre) setConnecte(true);
-      return r.entre;
-    }, []);
-
   const fermer = useCallback(async () => {
     await fermerSession();
     setConnecte(false);
@@ -63,7 +50,7 @@ export function FournisseurSession({ children }: { children: ReactNode }) {
   const perdue = useCallback(() => setConnecte(false), []);
 
   return (
-    <Contexte.Provider value={{ connecte, ouvrir, inscrire, fermer, perdue }}>
+    <Contexte.Provider value={{ connecte, ouvrir, fermer, perdue }}>
       {children}
     </Contexte.Provider>
   );

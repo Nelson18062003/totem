@@ -23,10 +23,12 @@
 // donc dans une « variable » GitHub, pas dans un « secret » : la ranger
 // comme un secret laisserait croire qu'elle en est un.
 //
-// SANS ARGUMENT, le script ne fait rien et le dit. Une compilation ne doit
-// pas échouer parce que le réglage n'est pas encore posé : l'application
-// demandera l'adresse à l'écran, comme avant. C'est moins bien, ce n'est
-// pas cassé.
+// SANS ARGUMENT, le script garde l'adresse qu'app.json porte déjà — c'est
+// le cas ordinaire, puisque la nôtre y est écrite. S'il n'y en a AUCUNE, il
+// refuse : l'écran de connexion ne sait plus la demander (le propriétaire
+// a fait retirer ce champ — une URL sous les yeux de personnes qui n'en ont
+// que faire), et une application sans adresse ne pourrait se connecter
+// nulle part. Avant, c'était « moins bien, pas cassé » ; ce serait cassé.
 
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -50,13 +52,14 @@ if (!brute) {
     console.log(`Le paquet en porte déjà une : ${deja}`);
     console.log("L'écran de connexion ne la demandera pas.");
   } else {
-    console.log("Et il n'en porte aucune : l'application demandera l'adresse");
-    console.log("à l'écran de connexion.");
-    console.log("");
-    console.log("Pour ne plus jamais la taper : GitHub → le dépôt → Settings →");
-    console.log("Secrets and variables → Actions → onglet « Variables » →");
-    console.log("New repository variable → nom : ADRESSE_PLATEFORME,");
-    console.log("valeur : l'adresse de votre plateforme.");
+    console.error("Et il n'en porte aucune. L'écran de connexion ne demande plus");
+    console.error("d'adresse : l'application ne pourrait se connecter nulle part.");
+    console.error("");
+    console.error("À poser une fois : GitHub → le dépôt → Settings →");
+    console.error("Secrets and variables → Actions → onglet « Variables » →");
+    console.error("New repository variable → nom : ADRESSE_PLATEFORME,");
+    console.error("valeur : l'adresse de votre plateforme.");
+    process.exit(1);
   }
   process.exit(0);
 }

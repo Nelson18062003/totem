@@ -130,6 +130,30 @@ const compter = () => {
 const identites = () =>
   [...document.querySelectorAll("[data-ligne]")].map((e) => e.getAttribute("data-ligne"));
 
+/** Les consultations de solde répétées se replient derrière la plus récente
+ *  (« 2 earlier balance checks ») : elles sont à UN GESTE, pas hors de
+ *  portée. Le harnais ouvre donc chaque pli qu'il croise, comme le ferait le
+ *  propriétaire.
+ *
+ *  Il a fallu se tromper pour l'apprendre. Le pli ne se forme que si rien ne
+ *  tombe ENTRE deux consultations, et celles du faux nuage datent de « il y
+ *  a 40, 55 et 70 minutes ». Sur la caisse dense (cent vingt par jour, une
+ *  toutes les dix minutes), un encaissement les sépare chacune : pas de pli,
+ *  harnais vert. Sur la caisse que cet en-tête recommande (vingt par jour,
+ *  une par heure), au moins deux se suivent : le pli se forme, et le harnais
+ *  criait « 199 sur 200, un encaissement hors de portée » — sur une
+ *  consultation de solde repliée. Mesuré les deux fois, sur le même code :
+ *  le harnais ne gardait que la caisse sur laquelle on l'avait écrit. */
+const PLI = /^\d+ (earlier balance checks?|consultations? de solde plus tôt)$/;
+let plisOuverts = 0;
+const deplier = async () => {
+  for (const pli of await page.getByText(PLI).all()) {
+    if (!(await pli.isVisible().catch(() => false))) continue;
+    await pli.click().catch(() => {});
+    plisOuverts++;
+  }
+};
+
 console.log("");
 try {
   await page.goto(APERCU, { waitUntil: "networkidle" });
@@ -177,6 +201,7 @@ try {
   // se reposaient avant qu'on les regarde. Tant que la liste ne relâchait
   // rien, la faute ne se voyait pas : tout ce qu'on avait dépassé était
   // encore là à la fin.
+  await deplier();
   const vues = new Set(await page.evaluate(identites));
   let plafond = auDepart, stable = 0, avant = 0;
   for (let i = 0; i < 14 && stable < 3; i++) {
@@ -187,6 +212,7 @@ try {
       for (const id of await page.evaluate(identites)) vues.add(id);
     }
     await attendre(700);
+    await deplier();
     for (const id of await page.evaluate(identites)) vues.add(id);
     plafond = Math.max(plafond, await page.evaluate(compter));
     stable = vues.size === avant ? stable + 1 : 0;
@@ -236,7 +262,8 @@ try {
 
   console.log(`  au premier affichage : ${auDepart} lignes montées, `
     + `${visibles} visibles, ${noeuds} nœuds`);
-  console.log(`  après avoir descendu : ${atteintes} lignes atteintes`);
+  console.log(`  après avoir descendu : ${atteintes} lignes atteintes`
+    + (plisOuverts ? ` (${plisOuverts} pli(s) de soldes ouvert(s) en chemin)` : ""));
   console.log(`  et il en reste montées : ${enFin} (${noeudsEnFin} nœuds),`
     + ` au plus fort ${plafond}`);
 

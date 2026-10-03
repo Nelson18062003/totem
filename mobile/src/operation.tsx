@@ -577,7 +577,7 @@ export function OperationPopup({
             onEnvoyer={(v) => void repondre(v)} langue={langue} />
         ) : (
           <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)}
-            t={t} reduit={reduit}
+            t={t} reduit={reduit} serre={pave}
             // Un menu : son titre ici, ses choix en boutons. Toute autre
             // chose — une question, la demande du code, la réponse libre —
             // se lit en entier, telle que l'opérateur l'a écrite.
@@ -878,8 +878,10 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
  * parle, ce qu'il dit, mot pour mot, et ses choix en boutons. Il entre en
  * montant doucement : on voit qu'un nouvel écran est arrivé.
  */
-function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, onAutre }: {
+function EcranOperateur({ texte, copie, op, couleur, t, reduit, serre, choix, onChoix, onAutre }: {
   texte: string; copie: string; op: string; couleur: string; t: T; reduit: boolean;
+  /** Le pavé du code partage l'écran : le message se fait plus compact. */
+  serre?: boolean;
   choix: { numero: string; libelle: string }[];
   onChoix: (numero: string) => void;
   onAutre?: () => void;
@@ -888,7 +890,8 @@ function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, 
     <Animated.View style={{ flex: 1 }}
       entering={reduit ? undefined : FadeInDown.duration(240)}>
       <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.md }}>
-        <CarteOperateur texte={texte} copie={copie} op={op} couleur={couleur} t={t} />
+        <CarteOperateur texte={texte} copie={copie} op={op} couleur={couleur} t={t}
+                        serre={serre} />
         {choix.length ? (
           <View style={{ gap: espaces.sm }}>
             {choix.map((c) => (
@@ -911,9 +914,18 @@ function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, 
 
 /** Le message de l'opérateur, dans sa carte : qui parle, le texte entier,
  *  « Copier ». */
-function CarteOperateur({ texte, copie, op, couleur, t }: {
-  texte: string; copie: string; op: string; couleur: string; t: T;
+function CarteOperateur({ texte, copie, op, couleur, t, serre }: {
+  texte: string; copie: string; op: string; couleur: string; t: T; serre?: boolean;
 }) {
+  const { height } = useWindowDimensions();
+  // CE QU'ON SIGNE DOIT TENIR À L'ÉCRAN AVEC LE PAVÉ. Sur un petit iPhone,
+  // le message de l'opérateur en grand (20 points) et le pavé du code
+  // dessous ne tenaient pas ensemble : on ne voyait plus que la fin —
+  // « Entrez votre code secret » — et l'on signait sans lire le montant ni
+  // le nom. Quand le pavé est là et que l'écran est court, le message passe
+  // à la taille du texte courant : un écran USSD fait au plus 182
+  // caractères, qui tiennent alors en entier au-dessus du pavé.
+  const compact = serre && height < 900;
   const [copiee, setCopiee] = useState(false);
   const copier = () => {
     // Le presse-papiers du cœur de React Native : présent dans l'application
@@ -942,7 +954,8 @@ function CarteOperateur({ texte, copie, op, couleur, t }: {
       {/* Le texte du réseau, mot pour mot : jamais traduit, toujours entier,
           et sélectionnable — appui long → Copier. */}
       {texte ? (
-        <Texte selectable taille={textes.intertitre} style={{ lineHeight: 27 }}>
+        <Texte selectable taille={compact ? textes.corps : textes.intertitre}
+               style={{ lineHeight: compact ? 22 : 27 }}>
           {texte}
         </Texte>
       ) : null}
@@ -1046,8 +1059,10 @@ function Pave({ onChiffre, onEffacer, etiquetteEffacer }: {
   etiquetteEffacer: string;
 }) {
   const { height } = useWindowDimensions();
-  // Un petit écran (iPhone SE) garde la place du bouton sous le pavé.
-  const haut = height < 700 ? 46 : 54;
+  // La hauteur d'une touche suit celle de l'écran : sur un petit téléphone,
+  // chaque point gagné sur le pavé va au message de l'opérateur, au-dessus.
+  // Quarante points restent une touche confortable sous le pouce.
+  const haut = height < 700 ? 40 : height < 800 ? 44 : height < 900 ? 50 : 54;
   const rangees: (string | null)[][] = [
     ["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], [null, "0", "⌫"],
   ];
@@ -1082,12 +1097,14 @@ function Pave({ onChiffre, onEffacer, etiquetteEffacer }: {
 function GrosBouton({ libelle, onPress, desactive }: {
   libelle: string; onPress: () => void; desactive?: boolean;
 }) {
+  const { height } = useWindowDimensions();
   return (
     <View style={{ paddingHorizontal: espaces.lg }}>
       <Pressable accessibilityRole="button" disabled={desactive} onPress={onPress}
         accessibilityState={{ disabled: Boolean(desactive) }}
         style={({ pressed }) => ({
-          height: 56, borderRadius: 14, alignItems: "center", justifyContent: "center",
+          height: height < 800 ? 48 : 56,
+          borderRadius: 14, alignItems: "center", justifyContent: "center",
           backgroundColor: desactive ? couleurs.surface3
             : pressed ? couleurs.accentAppui : couleurs.accent,
           transform: [{ scale: pressed && !desactive ? 0.98 : 1 }],
@@ -1129,6 +1146,10 @@ function PastilleCarte({ libelle, operateur }: { libelle: string; operateur: str
  */
 function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }) {
   const [code, setCode] = useState("");
+  const { height } = useWindowDimensions();
+  // Sur un écran court, la note (« jamais enregistré ») se tait : le cadenas
+  // le dit déjà, et ses deux lignes reviennent au message de l'opérateur.
+  const court = height < 800;
   const valider = () => {
     if (code.length < LONGUEUR_CODE_MIN) return;
     onValider(code);
@@ -1137,15 +1158,17 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }
   return (
     // Posé SOUS l'échange, pas à sa place : le message qui réclame le code
     // — ce qu'on va signer — reste lisible juste au-dessus.
-    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait, paddingTop: espaces.md }}>
+    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait,
+                   paddingTop: court ? espaces.sm : espaces.md }}>
       <View style={{ alignItems: "center", gap: espaces.xs }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-          <Icone nom="Lock" taille={18} couleur={couleurs.encre} />
-          <Texte taille={textes.intertitre} poids="demi">{t.codeTitre}</Texte>
+          <Icone nom="Lock" taille={court ? 16 : 18} couleur={couleurs.encre} />
+          <Texte taille={court ? textes.corps : textes.intertitre} poids="demi">{t.codeTitre}</Texte>
         </View>
-        <Texte taille={textes.legende} ton="pale">{t.codeNote}</Texte>
+        {court ? null : <Texte taille={textes.legende} ton="pale">{t.codeNote}</Texte>}
         <View accessibilityLabel={t.chiffresComposes(code.length)}
-              style={{ flexDirection: "row", gap: espaces.md, marginVertical: espaces.sm,
+              style={{ flexDirection: "row", gap: espaces.md,
+                       marginVertical: court ? espaces.xs : espaces.sm,
                        height: 16, alignItems: "center" }}>
           {Array.from({ length: Math.max(LONGUEUR_CODE_MIN, code.length) }).map((_, i) => (
             <View key={i} style={{

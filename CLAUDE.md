@@ -73,6 +73,8 @@ cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android empo
 cd mobile && node scripts/verifier-le-paquet.mjs iphone # …et le paquet iPhone
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # douze écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
+cd mobile && node scripts/verifier-l-affichage.mjs /tmp/apercu # tout, partout
+#   (chaque écran, quatorze tailles ; même export — voir l'en-tête du script)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -597,6 +599,67 @@ dépassé était encore là à la fin.
 Il descend à la MOLETTE, jamais en réglant `scrollTop` : régler la propriété
 ne déclenche pas le gestionnaire de react-native-web, et le harnais concluait
 « la liste s'arrête » sur une liste qui marchait.
+
+Il OUVRE les plis de soldes qu'il croise. Les consultations de solde répétées
+se replient derrière la plus récente : elles sont à un geste, pas hors de
+portée. Il criait pourtant « 199 sur 200, un encaissement hors de portée »
+sur la caisse que son propre en-tête recommande, et sortait vert sur la
+caisse dense — le même code, mesuré les deux fois. Sur la caisse dense, un
+encaissement tombe entre chaque consultation et le pli ne se forme jamais.
+**Un harnais ne garde que la caisse sur laquelle on l'a écrit**, tant qu'on
+ne l'a pas lancé sur une autre.
+
+`verifier-l-affichage` ouvre TOUT, à quatorze tailles : la connexion, les
+quatre onglets, les écrans des réglages, la fiche d'un SMS (reçu établi,
+reçu refait, coordonnées), et un dépôt jusqu'au pavé du code. Le harnais des
+formats ne mesurait que la boîte de réception ; pendant ce temps, sur un
+petit iPhone, l'écran du code secret ne montrait plus que « Entrez votre
+code secret » — le montant et le nom qu'on allait signer étaient passés
+SOUS le pavé — et, dans la fiche, l'icône du bouton du reçu sortait du
+bouton. Aucun des deux n'était dans la boîte de réception.
+
+**Le propriétaire avait vu juste, à l'œil, et le harnais lui donne raison.**
+Lancé sur l'ancienne application, il trouve exactement ce qu'il avait
+signalé : 16 points de message cachés sous le pavé sur l'iPhone SE, 43 sur
+un petit Android, la barre d'onglets qui déborde de 2 points sur un écran
+de 320 quand « Operations » est choisi, un nom abrégé dans la fiche. Sur la nouvelle : 14 tailles,
+tout vert.
+
+Il reconnaît l'écran à son CONTENU, pas à une marque posée pour lui : une
+marque n'existerait que dans le code neuf, et le harnais ne pourrait pas
+dire ce que l'ancien faisait — un témoin qu'on ne peut pas lancer sur
+l'ancien code n'en est pas un. Et il cherche ce qui couvre un bouton APRÈS
+l'avoir amené à l'écran : un bouton sous la barre d'onglets flottante n'est
+pas caché, il est plus bas.
+
+**Une donnée d'essai trop sage, troisième fois — sur un écran USSD.** Le
+faux nuage servait « Votre code secret », une ligne. Un vrai dépôt MTN en
+porte cinq : montant, nom, numéro, frais, solde après. L'écran tenait la
+ligne et perdait les cinq. Le faux nuage sert maintenant 177 caractères.
+
+**Un reçu se partage comme un FICHIER, jamais comme un lien.** Le bouton
+ouvrait le lien signé dans le navigateur ; le « partager » du navigateur
+envoyait… le lien, qui expire au bout de dix minutes, et le client recevait
+« …/api/recu/… » sur WhatsApp. `mobile/src/partage.ts` télécharge le
+fichier, vérifie que c'est bien un PDF (un lien expiré rend une page
+d'erreur, et l'envoyer sous le nom « Recu-….pdf » serait pire que rien),
+puis ouvre la feuille de partage du téléphone sur le fichier. La brique de
+partage est CHERCHÉE, pas exigée : une application compilée avant elle
+reçoit cette mise à jour à distance, et une application qui plante au
+démarrage ne peut plus recevoir la correction.
+
+**Un nom de commerce n'a pas de longueur.** Le lecteur de SMS bornait le nom
+du client à quarante caractères : un encaissement de 4 231 500 F s'affichait
+« Inconnu », et son reçu disait « De : — » — le numéro partait avec le nom.
+La fiche, elle, coupait le nom à deux lignes : « STE. NOUVELLE BRASSERIE DU
+LITTORAL ET DES HAUTS PLATEAUX DE L'OUEST SARL » en fait 75. La borne du
+lecteur est maintenant un garde-fou (120), pas une règle sur les noms : ce
+qui borne un nom, c'est la ponctuation et le numéro. Le balayage
+— chaque vrai SMS des tests, réécrit avec huit noms difficiles — a trouvé
+deux défauts qu'aucun test ne voyait : le point de « ETS. KAMDEM » coupait
+la phrase, et la phrase coupée contenait « ECHEC » (« STE SANS ECHEC ») —
+le SMS ENTIER disparaissait comme une opération échouée ; et « SARL 2 »
+collait au numéro qui suivait.
 
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une

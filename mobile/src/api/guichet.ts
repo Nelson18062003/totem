@@ -6,10 +6,6 @@
 // serveur non. Voir `docs/MOBILE.md`.
 
 import * as Coffre from "./coffre";
-// L'adresse n'est pas un secret : elle a son rangement à elle. Voir
-// `reglage.ts` — le coffre refuse d'écrire hors du téléphone, ce qui
-// est juste pour un jeton et absurde pour une adresse.
-import * as Reglage from "./reglage";
 import type { Donnees } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 import type { ReponseEssai } from "@noyau/essai";
@@ -62,12 +58,11 @@ async function avecDelai(
 //   3. Une valeur par défaut reste commode, mais elle n'est qu'une
 //      proposition — jamais une garantie.
 //
-// L'ordre : ce que le propriétaire a réglé, sinon `EXPO_PUBLIC_ADRESSE`
-// (pratique pour viser une préversion ou un serveur local sans toucher au
-// code), sinon `app.json`. Rien de secret ne passe par là : une adresse
-// n'est pas un secret, et tout ce qui porte `EXPO_PUBLIC_` entre dans le
-// paquet, donc devient public.
-const CLE_ADRESSE = "totem.adresse";
+// L'ordre : `EXPO_PUBLIC_ADRESSE` (pratique pour viser une préversion ou un
+// serveur local sans toucher au code), sinon `app.json`. L'écran qui
+// permettait de la changer a disparu : voir `adressePlateforme`. Rien de
+// secret ne passe par là : une adresse n'est pas un secret, et tout ce qui
+// porte `EXPO_PUBLIC_` entre dans le paquet, donc devient public.
 
 const ADRESSE_LIVREE: string =
   process.env.EXPO_PUBLIC_ADRESSE ||
@@ -112,24 +107,17 @@ export function adresseValable(brute: string): boolean {
   }
 }
 
-/** L'adresse en service : celle du propriétaire, sinon celle livrée. */
+/** L'adresse en service : celle livrée avec l'application, et elle seule.
+ *
+ *  Elle se changeait depuis l'écran de connexion. Ce réglage ne se montre
+ *  plus — il mettait une URL sous les yeux de personnes qui n'en ont que
+ *  faire, et une porte pour envoyer son mot de passe ailleurs. Une adresse
+ *  rangée par une ancienne version est donc IGNORÉE : sans l'écran qui la
+ *  corrigeait, une adresse fausse rendrait le téléphone muet pour toujours. */
 export async function adressePlateforme(): Promise<string> {
   if (adresseEnMemoire !== null) return adresseEnMemoire;
-  const rangee = await Reglage.lire(CLE_ADRESSE);
-  adresseEnMemoire = rangee && adresseValable(rangee)
-    ? normaliserAdresse(rangee) : ADRESSE_LIVREE;
+  adresseEnMemoire = ADRESSE_LIVREE;
   return adresseEnMemoire;
-}
-
-/** Le propriétaire corrige l'adresse. Rend `false` si elle ne tient pas
- *  debout — mieux vaut refuser que de ranger une adresse qui ne marchera
- *  jamais. */
-export async function definirAdresse(brute: string): Promise<boolean> {
-  if (!adresseValable(brute)) return false;
-  const a = normaliserAdresse(brute);
-  await Reglage.ecrire(CLE_ADRESSE, a);
-  adresseEnMemoire = a;
-  return true;
 }
 
 /** Ce qu'on a trouvé au bout de l'adresse. */
@@ -139,14 +127,6 @@ export type EtatPlateforme =
   | "absente"           // quelque chose répond, mais ce n'est pas un TOTEM
   | "injoignable";      // rien ne répond : réseau coupé, ou adresse morte
 
-/** Peut-on encore créer un compte sur cette plateforme ?
- *
- *  Non dès qu'il y en a un : l'inscription ne sert qu'à poser le tout premier
- *  compte, celui du propriétaire. L'écran s'en sert pour ne pas proposer un
- *  bouton qui ne mènerait qu'à un refus. */
-let inscriptionOuverte = false;
-export const peutSInscrire = (): boolean => inscriptionOuverte;
-
 /**
  * « Y a-t-il un TOTEM au bout de cette adresse ? »
  *
@@ -155,11 +135,6 @@ export const peutSInscrire = (): boolean => inscriptionOuverte;
  * ni nom, ni chiffre, ni adresse de base.
  */
 export async function verifierPlateforme(adresse?: string): Promise<EtatPlateforme> {
-  // Le drapeau retombe AVANT de sonder : sans cela, il gardait la valeur de
-  // la plateforme PRÉCÉDENTE — on pointait l'application vers un serveur
-  // mort ou étranger, et l'écran offrait encore « créer un compte » sur la
-  // foi d'une autre maison.
-  inscriptionOuverte = false;
   const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
   if (!adresseValable(base)) return "absente";
   try {
@@ -172,7 +147,6 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
     // Le drapeau doit être là. Un serveur quelconque qui rendrait 200 sur
     // n'importe quel chemin ne passe pas cette porte.
     if (corps?.totem !== true) return "absente";
-    inscriptionOuverte = corps.inscription === true;
     return corps.configuree === true ? "trouvee" : "non-configuree";
   } catch {
     return "injoignable";
@@ -229,40 +203,6 @@ export async function ouvrirSession(
   }
   await Coffre.ecrire(CLE_JETON, corps.jeton);
   await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
-}
-
-/** Ce qu'une inscription peut donner. */
-export type Inscription =
-  | { entre: true }        // le propriétaire : il entre tout de suite
-  | { entre: false };      // un invité : le compte attend une approbation
-
-/**
- * Crée un compte.
- *
- * Le PREMIER compte de la plateforme est celui du propriétaire : il entre
- * immédiatement, et la session est rangée ici même. Tous les suivants sont
- * créés mais n'ouvrent rien tant que le propriétaire ne les a pas approuvés
- * — d'où `entre: false`, qui n'est pas une erreur.
- */
-export async function creerCompte(
-  courriel: string, motdepasse: string, langue: Langue,
-): Promise<Inscription> {
-  const base = await adressePlateforme();
-  const r = await avecDelai(`${base}/api/inscription?langue=${langue}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel, motdepasse }),
-  });
-  const corps = await r.json().catch(() => ({}));
-  if (!r.ok && r.status !== 202) {
-    throw new ErreurGuichet(corps?.erreur ?? "inscription refusée", r.status);
-  }
-  if (corps?.proprietaire && corps?.jeton) {
-    await Coffre.ecrire(CLE_JETON, corps.jeton);
-    await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
-    return { entre: true };
-  }
-  return { entre: false };
 }
 
 export async function fermerSession(): Promise<void> {

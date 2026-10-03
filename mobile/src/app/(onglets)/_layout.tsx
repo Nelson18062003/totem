@@ -9,7 +9,7 @@
 // L'Analyse et la console USSD se rejoignent depuis les écrans qui les
 // appellent, pas depuis la barre.
 
-import { Platform, Pressable, View, type ViewStyle } from "react-native";
+import { Platform, Pressable, View, useWindowDimensions, type ViewStyle } from "react-native";
 import Animated, {
   interpolateColor, useAnimatedStyle, useDerivedValue, withTiming, Easing,
 } from "react-native-reanimated";
@@ -232,6 +232,13 @@ function Pilule({ actif, libelle, icone, onPress }: {
     ),
   }));
 
+  // UN ÉCRAN ÉTROIT (320 points) NE TENAIT PAS LA BARRE. L'onglet choisi
+  // déplie son nom ; « Operations », le plus long, la faisait déborder de
+  // deux points — la page entière glissait de côté. Mesuré par
+  // `verifier-l-affichage`. Sous 360 points, chaque onglet rend huit points
+  // de marge : la barre en gagne trente-deux.
+  const etroit = useWindowDimensions().width < 360;
+
   const nom = useAnimatedStyle(() => ({
     opacity: ouvert.value,
     maxWidth: ouvert.value * 140,
@@ -261,7 +268,7 @@ function Pilule({ actif, libelle, icone, onPress }: {
         style={[{
           flexDirection: "row", alignItems: "center",
           height: 44,
-          paddingHorizontal: espaces.lg,
+          paddingHorizontal: etroit ? espaces.md : espaces.lg,
           borderRadius: rayons.rond,
         }, fond]}
       >
