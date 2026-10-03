@@ -980,6 +980,7 @@ class TestLesNomsDeLaVraieVie(unittest.TestCase):
     NOMS = [
         "NGONO Marie",
         "MBARGA ESSOMBA TCHOUPO DIEUDONNE ROSINE TRADING SARL",   # 52
+        "STE. NOUVELLE BRASSERIE DU LITTORAL ET DES HAUTS PLATEAUX DE L'OUEST SARL",  # 75
         "NORTON GAUSS BONZINI SARL 1",
         "ETS. KAMDEM ET FILS",
         "J. DUPONT",
@@ -1033,9 +1034,26 @@ class TestLesNomsDeLaVraieVie(unittest.TestCase):
         self.assertEqual(p.emetteur.nom, "GARANTIE EXCHANGE SA")
         self.assertEqual(p.beneficiaire.nom, "WONDER PHONE")
 
+    def test_un_point_d_abreviation_ne_fait_pas_un_echec(self):
+        # « STE SANS ECHEC … ETS. KAMDEM … reussi » : le point de « ETS. »
+        # coupait la phrase, « ECHEC » restait seul, et le transfert entier
+        # passait pour une opération échouée. Trouvé par le balayage.
+        p = analyser("Transfert de 690000007 STE SANS ECHEC vers 696103864 "
+                     "ETS. KAMDEM ET FILS reussi. Montant Net: 40000 FCFA.")
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 40000)
+        self.assertEqual(p.beneficiaire.nom, "ETS. KAMDEM ET FILS")
+
+    def test_le_chiffre_d_une_raison_sociale_ne_colle_pas_au_numero(self):
+        # « … SARL 2 690000000 » donnait le numéro « 2690000000 ».
+        p = analyser("Debit de NOUVELLE BRASSERIE SARL 2 690000000. Compte du "
+                     "beneficiaire credite de 15000 FCFA.")
+        self.assertEqual(p.numero, "690000000")
+        self.assertEqual(p.nom, "NOUVELLE BRASSERIE SARL 2")
+
     def test_un_nom_demesure_n_avale_pas_le_message(self):
         # Au-delà de la borne, on renonce au NOM — jamais au montant.
-        nom = "X" * 100
+        nom = "X" * 150
         p = analyser(f"Vous avez recu 25 000 FCFA de {nom} (670000005). "
                      "Nouveau solde: 872 500 FCFA.")
         self.assertIsNotNone(p)

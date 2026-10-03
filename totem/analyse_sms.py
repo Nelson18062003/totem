@@ -236,7 +236,7 @@ RE_PROSPECTUS = re.compile(
 def _parle_dune_operation(norme):
     """Un geste d'opération CONSTATÉ quelque part — pas une invitation
     (« Pour un retrait, composez… »), pas une condition."""
-    for phrase in re.split(r"[.!?\n]+", norme):
+    for phrase in _phrases(norme):
         if not RE_GESTE.search(phrase):
             continue
         if RE_CONDITIONNEL.search(phrase) or RE_PROSPECTUS.search(phrase):
@@ -250,7 +250,7 @@ def _echec_constate(norme):
     que `est_echec()` — réservé aux messages qui ne parlent QUE d'un solde,
     où aucun nom de client ne peut le porter par accident."""
     return any(RE_MOT_ECHEC.search(ph) and not RE_CONDITIONNEL.search(ph)
-               for ph in re.split(r"[.!?\n]+", norme))
+               for ph in _phrases(norme))
 
 # LA LONGUEUR D'UN NOM. Elle était de quarante caractères, et c'était trop
 # court pour la vraie vie : « NZOPPA TEKE LAMINE GAEL KAMILAH CONNECTION
@@ -258,10 +258,15 @@ def _echec_constate(norme):
 # trouvant plus rien à accrocher, le NUMÉRO partait avec lui : un
 # encaissement de 4 231 500 F s'affichait « Inconnu », et son reçu PDF
 # disait « De : — ». Ce sont justement les raisons sociales — les gros
-# clients, les gros montants — qui ont les noms longs. Quatre-vingts tient
-# les plus longs des opérateurs, et la ponctuation borne le nom de toute
-# façon : il ne peut pas avaler la phrase suivante.
-NOM_MAX = 80
+# clients, les gros montants — qui ont les noms longs.
+#
+# POURQUOI UNE BORNE QUAND MÊME. Ce n'est pas une règle sur les noms : c'est
+# un garde-fou du LECTEUR. Ce qui borne un nom, c'est la ponctuation et le
+# numéro qui le suit ; la borne ne sert que le jour où un message n'a ni
+# l'un ni l'autre là où on les attend, pour que le lecteur ne prenne pas une
+# phrase entière pour un nom. Un écran SMS fait 160 caractères ; cent vingt
+# laisse passer tout nom réel, et rien qui n'en soit pas un.
+NOM_MAX = 120
 
 # UN POINT DANS UN NOM N'EST PAS LA FIN D'UNE PHRASE. « ETS. KAMDEM »,
 # « J. DUPONT », « STE. NOUVELLE » : le point de l'abréviation coupait le
@@ -288,6 +293,18 @@ def _sans_abreviations(norme, initiales=False):
     return motif.sub(lambda m: m.group(0)[:-1] + "\x00", norme)
 
 
+def _phrases(norme):
+    """Le message découpé en phrases — sans couper aux points d'abréviation.
+
+    Trois règles lisent phrase par phrase (l'échec, le geste constaté, l'échec
+    d'un relevé). Le point de « ETS. KAMDEM » les coupait en deux : dans « …
+    STE SANS ECHEC vers 696103864 ETS. KAMDEM ET FILS reussi », la première
+    moitié gardait « ECHEC » sans son « reussi », et un vrai transfert de
+    40 000 F passait pour une opération échouée — le SMS entier disparaissait.
+    Trouvé par le balayage des noms difficiles sur le corpus."""
+    return re.split(r"[.!?\n]+", _sans_abreviations(norme, initiales=True))
+
+
 # Une partie : un mot-charnière, puis un NUMÉRO — jamais un montant (la
 # devise ou une décimale qui suivent le trahissent), jamais une suite de
 # chiffres démesurée. Le nom viendra après, sans contrainte de forme.
@@ -299,9 +316,16 @@ RE_PARTIE = re.compile(
 # Où s'arrête un nom : à la ponctuation, au prochain mot-charnière, au mot de
 # réussite ou d'échec. Entre ces bornes, TOUT est permis — chiffres,
 # apostrophes, esperluettes : c'est le client qui choisit sa raison sociale.
+#
+# « DE » ET « PAR » NE FERMENT UN NOM QUE DEVANT UN NUMÉRO. Ils sont aussi
+# dans les raisons sociales — « PHARMACIE DE LA GARE », « … DE L'OUEST
+# SARL » — et le nom s'y arrêtait : « STE NOUVELLE BRASSERIE DU LITTORAL ET
+# DES HAUTS PLATEAUX » au lieu du nom entier. Quand ils ouvrent l'autre
+# partie, un numéro les suit (« de 690… ») ; dans un nom, jamais.
 RE_FIN_NOM = re.compile(
     r"[.;,:\n]"
-    r"|\b(?:from|de|par|to|vers|reussi\w*|effectue\w*|confirme\w*"
+    r"|\b(?:de|par)\s+\+?[0-9]"
+    r"|\b(?:from|to|vers|reussi\w*|effectue\w*|confirme\w*"
     r"|succes\b|success\w*|completed|valide\w*|failed|echoue\w*)\b")
 
 # Un champ étiqueté d'argent (« Montant Net : », « New balance: »…). Deux ou
@@ -318,7 +342,10 @@ RE_TIERS = re.compile(
     r"\b(?:de|from|by|a|to|vers|chez)\s+"
     r"(?P<nom>[^().,;:\n]{2,%d}?)?\s*"
     r"(?:\(\s*(?P<num1>[+0-9][0-9\s]{6,20})\s*\)" % NOM_MAX +
-    r"|(?P<num2>\b[+0-9][0-9\s]{7,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
+    # Un numéro nu commence par DEUX chiffres au moins : « … SARL 2 690000000 »
+    # faisait le numéro « 2690000000 » — le chiffre de la raison sociale
+    # collé au téléphone. Les opérateurs écrivent leurs numéros d'un bloc.
+    r"|(?P<num2>\b\+?[0-9]{2}[0-9\s]{6,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
 
 # Les libellés les plus longs d'abord : « ID transaction » avant « id ».
 #
@@ -517,7 +544,7 @@ def est_echec(norme):
         toujours sa phrase avec le mot de réussite du transfert, et ne doit
         jamais confisquer l'argent d'un client.
     """
-    for phrase in re.split(r"[.!?\n]+", norme):
+    for phrase in _phrases(norme):
         m = RE_MOT_ECHEC.search(phrase)
         if not m or RE_CONDITIONNEL.search(phrase):
             continue
