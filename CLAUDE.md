@@ -90,6 +90,19 @@ coup ce qu'aucun test n'avait vu : « Depot de 5٥٠٠٠0000 FCFA » se lisait
 550 000 000 FCFA, parce que Python voit un chiffre dans « ٥ » comme dans « 5 »
 — et le SMS s'affichant tel qu'il est arrivé, l'écart était invisible.
 
+**Un nom trop long ne doit pas emporter le numéro.** Un encaissement MTN de
+4 231 500 F s'affichait « Inconnu », et son reçu disait « De : — » : la raison
+sociale de l'expéditeur faisait quarante-huit caractères, le lecteur en
+refusait plus de quarante, et la règle qui ne trouvait plus de nom ne
+gardait pas non plus le numéro. Même chute pour « ETS. KAMDEM », dont le
+point coupait la règle. Rejoués sur neuf vrais formats et des noms de la vraie
+vie, vingt-sept lectures sur soixante-trois perdaient la partie ; le
+harnais ne le voyait pas, il ne vérifie que ce que le lecteur INVENTE, pas
+ce qu'il PERD. Ce sont les raisons sociales — les gros clients, les gros
+montants — qui ont les noms longs : **une donnée d'essai trop sage cache le
+défaut au lieu de le montrer**, encore. `TestLesNomsDeLaVraieVie` garde
+la grille.
+
 `eprouver-la-chaine` part des OCTETS du modem et va jusqu'à l'écran :
 décodage PDU, recollage d'un message long, lecture du montant, journal du Pi,
 montée au nuage, relecture par la plateforme. Chaque maillon avait ses tests ;

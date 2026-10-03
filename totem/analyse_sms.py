@@ -252,6 +252,42 @@ def _echec_constate(norme):
     return any(RE_MOT_ECHEC.search(ph) and not RE_CONDITIONNEL.search(ph)
                for ph in re.split(r"[.!?\n]+", norme))
 
+# LA LONGUEUR D'UN NOM. Elle était de quarante caractères, et c'était trop
+# court pour la vraie vie : « NZOPPA TEKE LAMINE GAEL KAMILAH CONNECTION
+# GROUP » en fait quarante-huit. Le nom était refusé — et, la règle ne
+# trouvant plus rien à accrocher, le NUMÉRO partait avec lui : un
+# encaissement de 4 231 500 F s'affichait « Inconnu », et son reçu PDF
+# disait « De : — ». Ce sont justement les raisons sociales — les gros
+# clients, les gros montants — qui ont les noms longs. Quatre-vingts tient
+# les plus longs des opérateurs, et la ponctuation borne le nom de toute
+# façon : il ne peut pas avaler la phrase suivante.
+NOM_MAX = 80
+
+# UN POINT DANS UN NOM N'EST PAS LA FIN D'UNE PHRASE. « ETS. KAMDEM »,
+# « J. DUPONT », « STE. NOUVELLE » : le point de l'abréviation coupait le
+# nom en deux, et, comme pour un nom trop long, le numéro partait avec.
+# On ne garde que les abréviations qui OUVRENT un nom (« ETS. », « STE. »,
+# « MR. ») : celles qui le FERMENT — « SARL. », « SA. », « CIE. » — sont
+# aussi, le plus souvent, la fin de la phrase (« … 3 FRERES SARL. Net
+# amount »), et les traverser avalerait la suite dans le nom.
+#
+# L'initiale d'une lettre (« J. DUPONT ») n'est permise que là où un NUMÉRO
+# suit forcément le nom (« de J. DUPONT (6…) ») : après un numéro, chez
+# Orange, « … vers 690000001 NGONO M. Montant : … » finit la phrase.
+_OUVRE_UN_NOM = r"ets|etab|ste|st|mr|mme|mlle|dr|pr"
+RE_ABREVIATION = re.compile(r"\b(?:%s)\.(?=\s+[a-z])" % _OUVRE_UN_NOM)
+RE_ABREVIATION_OU_INITIALE = re.compile(
+    r"\b(?:%s|[a-z])\.(?=\s+[a-z])" % _OUVRE_UN_NOM)
+
+
+def _sans_abreviations(norme, initiales=False):
+    """Le texte normalisé, ses points d'abréviation remplacés par un
+    caractère neutre de même longueur — les positions ne bougent pas, et le
+    nom se reprend ensuite dans le texte d'origine, point compris."""
+    motif = RE_ABREVIATION_OU_INITIALE if initiales else RE_ABREVIATION
+    return motif.sub(lambda m: m.group(0)[:-1] + "\x00", norme)
+
+
 # Une partie : un mot-charnière, puis un NUMÉRO — jamais un montant (la
 # devise ou une décimale qui suivent le trahissent), jamais une suite de
 # chiffres démesurée. Le nom viendra après, sans contrainte de forme.
@@ -280,8 +316,8 @@ RE_CHAMP_ARGENT = re.compile(
 # donnait le SOLDE comme numéro du tiers — la devise qui suit l'écarte.
 RE_TIERS = re.compile(
     r"\b(?:de|from|by|a|to|vers|chez)\s+"
-    r"(?P<nom>[^().,;:\n]{2,40}?)?\s*"
-    r"(?:\(\s*(?P<num1>[+0-9][0-9\s]{6,20})\s*\)"
+    r"(?P<nom>[^().,;:\n]{2,%d}?)?\s*"
+    r"(?:\(\s*(?P<num1>[+0-9][0-9\s]{6,20})\s*\)" % NOM_MAX +
     r"|(?P<num2>\b[+0-9][0-9\s]{7,20}\b)(?!\s*(?:f\s*cfa|fcfa|xaf|cfa|f\b)))")
 
 # Les libellés les plus longs d'abord : « ID transaction » avant « id ».
@@ -616,7 +652,7 @@ def _nettoyer_nom(brut):
     if not brut:
         return None
     nom = re.sub(r"\s+", " ", brut).strip(" .,;:-'\"")
-    if len(nom) < 2 or len(nom) > 40:
+    if len(nom) < 2 or len(nom) > NOM_MAX:
         return None
     if re.fullmatch(r"[0-9\s+]+", nom):      # ce n'est qu'un numéro
         return None
@@ -638,7 +674,7 @@ def _tel_quel(m, groupe, norme, propre):
     if len(norme) == len(propre):
         debut, fin = m.span(groupe)
         return propre[debut:fin]
-    return m.group(groupe)
+    return m.group(groupe).replace("\x00", ".")   # voir _sans_abreviations
 
 
 def _morceau(norme, propre, debut, fin):
@@ -653,7 +689,7 @@ def _extraire_tiers(norme, propre):
     """Retrouve le nom et le numéro de l'autre partie. On cherche dans le
     texte normalisé pour la robustesse, mais on récupère le nom dans le texte
     d'origine pour garder ses accents et ses majuscules."""
-    m = RE_TIERS.search(norme)
+    m = RE_TIERS.search(_sans_abreviations(norme, initiales=True))
     if not m:
         return None, None
     numero_brut = m.group("num1") or m.group("num2")
@@ -726,9 +762,10 @@ def _parties_de_loperation(norme, propre):
     """
     emetteur = beneficiaire = None
     premiere = None
-    for m in RE_PARTIE.finditer(norme):
+    lisible = _sans_abreviations(norme)
+    for m in RE_PARTIE.finditer(lisible):
         debut_nom = m.end("numero")
-        fenetre = norme[debut_nom:debut_nom + 80]
+        fenetre = lisible[debut_nom:debut_nom + NOM_MAX + 20]
         borne = RE_FIN_NOM.search(fenetre)
         fin_nom = debut_nom + (borne.start() if borne else len(fenetre))
         nom = _nettoyer_nom(_morceau(norme, propre, debut_nom, fin_nom))

@@ -934,3 +934,110 @@ class TestChiffresEtrangers(unittest.TestCase):
                      "Nouveau solde: 412 500 FCFA.")
         self.assertEqual(p.montant, 20000)
         self.assertEqual(p.solde_apres, 412500)
+
+
+class TestLesNomsDeLaVraieVie(unittest.TestCase):
+    """Le nom et le numéro de l'autre partie, sur les noms que portent les
+    vrais clients — longs, abrégés, chiffrés.
+
+    Le défaut vécu : un encaissement MTN de 4 231 500 F, envoyé par une
+    raison sociale de quarante-huit caractères, s'affichait « Inconnu », et
+    son reçu disait « De : — ». Le lecteur refusait tout nom de plus de
+    quarante caractères — et le NUMÉRO partait avec le nom. Même chute pour
+    un nom abrégé (« ETS. KAMDEM ») : le point coupait la règle en deux.
+    Sur neuf vrais formats et sept noms, vingt-sept lectures perdaient la
+    partie. Les noms et numéros ci-dessous sont inventés.
+    """
+
+    # Neuf vrais formats, MTN et Orange, français et anglais ; {N} est le nom.
+    FORMATS = [
+        "You have received 4231500 XAF from {N} (237670000001) on your mobile "
+        "money account at 2026-10-03 13:57:27. Message from sender: . Your new "
+        "balance:4231500 XAF. Financial Transaction Id: 19059017372.",
+        "You have transferred 50000 XAF to {N} (237670000002) from your mobile "
+        "money account 93368555 at 2026-08-02 21:22:17 FEES 0 FCFA. Your new "
+        "balance: 6330 XAF. Message from sender: ",
+        "Cash in of 500000 XAF on 2026-08-08 17:36:26 to {N} (237670000003) has "
+        "been successfully completed. Transaction ID:18269064283. Message:. "
+        "Your new balance: 506330 XAF.",
+        "Cash out initiated by {N} (237670000004) on 2026-08-08 10:00:00 is "
+        "successfully completed. You can payout the amount: 500000 XAF in cash "
+        "to the customer. Transaction ID: 18292698523",
+        "Vous avez recu 25 000 FCFA de {N} (670000005). Ref: PP250730.0947.A12345. "
+        "Nouveau solde: 872 500 FCFA.",
+        "Vous avez envoye 80 000 FCFA a {N} (670000006). Frais: 800 FCFA. "
+        "Nouveau solde: 797 500 FCFA",
+        "Transfert de 690000007 {N} vers 696103864 WONDER PHONE reussi. Details: "
+        "ID transaction: PP260731.1319.B45805, Montant Transaction: 184137FCFA, "
+        "Frais: 0 FCFA",
+        "Depot vers 690000008 {N} reussi from 696103864 WONDER PHONE. Montant "
+        "transaction : 10000FCFA",
+        "Successful transfer from 690000009 {N} to 696103864 WONDER PHONE. "
+        "Details: Transaction ID: PP260805.1402.C55918, Transaction amount: "
+        "1300000 FCFA",
+    ]
+
+    NOMS = [
+        "NGONO Marie",
+        "MBARGA ESSOMBA TCHOUPO DIEUDONNE ROSINE TRADING SARL",   # 52
+        "NORTON GAUSS BONZINI SARL 1",
+        "ETS. KAMDEM ET FILS",
+        "J. DUPONT",
+        "KAMGA & FILS SARL",
+        "N'DJOCK JEAN-PIERRE",
+        "ETABLISSEMENTS NKENGAFAC MBOUNGOU JEANNE CLAIRE EPSE TCHOUMI",  # 60
+    ]
+
+    def _partie(self, p, nom):
+        """La partie qui porte ce nom — tiers simple ou partie d'une
+        opération à deux parties."""
+        for x in (p.emetteur, p.beneficiaire):
+            if x and x.nom == nom:
+                return x.nom, x.numero
+        return p.nom, p.numero
+
+    def test_chaque_format_garde_le_nom_entier_et_le_numero(self):
+        for modele in self.FORMATS:
+            # Après un numéro (Orange), une initiale « J. » ne se distingue
+            # pas d'une fin de phrase : voir le test suivant.
+            apres_numero = modele.find("{N}") > 0 and modele[
+                :modele.find("{N}")].rstrip()[-1:].isdigit()
+            for nom in self.NOMS:
+                if apres_numero and nom == "J. DUPONT":
+                    continue
+                with self.subTest(format=modele[:30], nom=nom):
+                    p = analyser(modele.replace("{N}", nom))
+                    self.assertIsNotNone(p)
+                    lu, numero = self._partie(p, nom)
+                    self.assertEqual(lu, nom)
+                    self.assertTrue(numero)
+
+    def test_apres_un_numero_l_initiale_se_perd_mais_pas_le_numero(self):
+        # Le compromis, écrit : « vers 690000008 J. DUPONT » perd le nom
+        # (« J » seul n'en est pas un), jamais le numéro…
+        p = analyser("Depot vers 690000008 J. DUPONT reussi from 696103864 "
+                     "WONDER PHONE. Montant transaction : 10000FCFA")
+        self.assertEqual(p.beneficiaire.numero, "690000008")
+        # … parce que c'est ainsi que finit une phrase chez Orange, et que
+        # la traverser avalerait la suite dans le nom.
+        p = analyser("Depot vers 690000008 NGONO Marie reussi from 696103864 "
+                     "KAMGA P. Montant transaction : 10000FCFA")
+        self.assertEqual(p.emetteur.nom, "KAMGA P")
+        self.assertEqual(p.montant, 10000)
+
+    def test_le_point_d_une_phrase_borne_toujours_le_nom(self):
+        # Le point d'abréviation n'ouvre pas la porte à la phrase suivante.
+        p = analyser("Transfert de 690000007 GARANTIE EXCHANGE SA vers "
+                     "696103864 WONDER PHONE reussi. Montant transaction : "
+                     "5000FCFA")
+        self.assertEqual(p.emetteur.nom, "GARANTIE EXCHANGE SA")
+        self.assertEqual(p.beneficiaire.nom, "WONDER PHONE")
+
+    def test_un_nom_demesure_n_avale_pas_le_message(self):
+        # Au-delà de la borne, on renonce au NOM — jamais au montant.
+        nom = "X" * 100
+        p = analyser(f"Vous avez recu 25 000 FCFA de {nom} (670000005). "
+                     "Nouveau solde: 872 500 FCFA.")
+        self.assertIsNotNone(p)
+        self.assertEqual(p.montant, 25000)
+        self.assertNotEqual(p.nom, nom)
