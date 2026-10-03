@@ -39,6 +39,7 @@ faux nuage, une plateforme lancée pour l'occasion.
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -141,7 +142,12 @@ def main():
              "SUPABASE_CLE": "peu-importe",
              "SESSION_SECRET": "secret-de-la-chaine",
              "TOTEM_MOT_DE_PASSE": "cle-de-secours-chaine"},
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        # Son PROPRE groupe de processus. « npx » lance le vrai serveur en
+        # dessous : tuer « npx » seul le laissait vivant, port occupé — la
+        # chaîne ne tournait qu'une fois, puis refusait de repartir (ou,
+        # pire, un autre harnais aurait mesuré CE serveur, et son vieux code).
+        start_new_session=True)
 
     try:
         for _ in range(90):
@@ -292,7 +298,10 @@ def main():
         verifier("l'emplacement abîmé est libéré, pas gardé pour toujours",
                  any(9 in lot for lot in modem3.efface), str(modem3.efface))
     finally:
-        plateforme.kill()
+        try:
+            os.killpg(plateforme.pid, signal.SIGTERM)    # le groupe entier
+        except ProcessLookupError:
+            pass
         faux_nuage.kill()
 
     print("\n✓ La chaîne tient, des octets du modem jusqu'à l'écran.\n"

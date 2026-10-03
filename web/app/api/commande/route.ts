@@ -1,10 +1,10 @@
 import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
 import {
-  carteDeLaSession, carteDuSms, creerCommande, relie, terminalVise,
+  carteDeLaSession, carteDuSms, creerCommande, relie, terminalDeLaCarte,
 } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
-import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
+import { maniement, sujetDe, TOUT, voitLaCarte } from "@/lib/portee";
 import {
   GESTES_DE_DEMONSTRATION, demandeJouee, estDemonstration,
 } from "@/lib/demonstration";
@@ -202,6 +202,14 @@ export async function POST(req: Request) {
     }
   }
 
+  // QUI DEMANDE. Le menu USSD d'une carte appartient à une PERSONNE : la
+  // carte refuse d'y écrire la réponse de quelqu'un d'autre (voir
+  // totem/compte.py). C'est la plateforme qui le dit, d'après la session —
+  // jamais l'écran : `par` n'est pas dans les champs recopiés plus haut, un
+  // téléphone ne peut donc pas se faire passer pour un autre.
+  const par = await sujetDe(req);
+  if (par) parametres.par = par;
+
   // UNE RÉPONSE QUI NE DIT PAS SA CARTE PREND CELLE DE SA SESSION.
   //
   // L'application installée sur les téléphones (la 1.0.0) nomme la carte en
@@ -210,18 +218,20 @@ export async function POST(req: Request) {
   // carte est confiée ouvrait sa session, puis se voyait refuser son propre
   // code secret — « cette carte ne vous a pas été confiée ». Sur sa carte.
   //
-  // La carte d'une réponse, c'est celle de la session où elle tombe : on la
-  // retrouve dans la dernière ouverture déposée pour ce terminal, et on
-  // l'écrit dans la demande. La portée se vérifie ensuite sur ELLE, comme si
-  // l'écran l'avait nommée — et le robot, qui la lit aussi, refuse de poser
-  // la réponse dans une session ouverte sur une autre carte. Le propriétaire
-  // y gagne autant : son code secret ne tombe plus dans le menu qu'un autre
-  // parcourt sur une autre carte.
-  let terminal = terminalCible;
+  // La carte d'une réponse, c'est celle de la session où elle tombe : celle
+  // de la dernière ouverture déposée PAR LA MÊME PERSONNE. Pas « la dernière
+  // ouverture du terminal » : le robot tient maintenant un menu par carte et
+  // par personne, et la dernière ouverture du terminal peut être celle de
+  // quelqu'un d'autre, sur une autre carte — la réponse de la première
+  // personne serait alors refusée par sa propre carte. Et pas « le dernier
+  // terminal vivant » non plus : la session peut être sur un autre boîtier.
+  //
+  // La portée se vérifie ensuite sur cette carte, comme si l'écran l'avait
+  // nommée — et la carte elle-même, au robot, refuse d'écrire une réponse
+  // dans un menu qui n'est pas à cette personne.
   if ((genre === "ussd_reponse" || genre === "ussd_fin")
       && typeof parametres.carte !== "string" && relie) {
-    terminal = terminalCible || (await terminalVise());
-    const carte = terminal ? await carteDeLaSession(terminal) : null;
+    const carte = await carteDeLaSession(par, terminalCible);
     if (carte) parametres.carte = carte;
   }
 
@@ -259,6 +269,22 @@ export async function POST(req: Request) {
 
   if (!relie) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
+  }
+
+  // À QUEL TERMINAL. Une demande qui nomme sa carte part au terminal qui la
+  // porte — jamais « au dernier qui a donné signe de vie », qui, dès deux
+  // boîtiers, composerait chez un autre (ou nulle part). Une demande sans
+  // carte (actualiser, raccourci, application d'avant le ciblage) garde
+  // l'ancien chemin.
+  const carteVisee = genre === "identite" ? parametres.iccid
+    : genre.startsWith("ussd") ? parametres.carte : undefined;
+  let terminal = terminalCible;
+  if (!terminal && typeof carteVisee === "string" && carteVisee) {
+    terminal = await terminalDeLaCarte(carteVisee);
+    if (!terminal) {
+      return Response.json(
+        { erreur: erreurApi(langue, "carteDansAucunTerminal") }, { status: 409 });
+    }
   }
   const id = await creerCommande(genre, parametres, terminal, cleIntention);
   if (id == null) {

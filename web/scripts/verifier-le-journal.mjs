@@ -64,6 +64,10 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     SESSION_SECRET: "secret-du-journal", TOTEM_MOT_DE_PASSE: "cle-de-secours-journal",
   },
   stdio: "ignore",
+  // Son PROPRE groupe de processus : « npx » lance le vrai serveur en
+  // dessous, et tuer « npx » seul le laissait vivant, port occupé — le
+  // harnais suivant refusait de démarrer, ou mesurait CE serveur-là.
+  detached: true,
 });
 
 /** Le texte visible d'une page, balises retirées. */
@@ -165,7 +169,7 @@ try {
   verifier("et l'incident s'y lit encore",
     enFrancais.includes("redémarré"), "");
 } finally {
-  serveur.kill("SIGKILL");
+  try { process.kill(-serveur.pid, "SIGKILL"); } catch { /* déjà parti */ }
   nuage.kill("SIGKILL");
 }
 

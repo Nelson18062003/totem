@@ -78,6 +78,16 @@ export async function porteeDe(req?: Request): Promise<Portee | null> {
   return porteeDuCompte(id);
 }
 
+/** Le SUJET de la session qui demande (« c:12 », « secours »), ou `null`
+ *  sans session — et sans verrou (développement local). Il désigne la
+ *  personne qui tient un menu USSD : deux comptes sur la même carte ne se
+ *  prennent plus la main l'un à l'autre. */
+export async function sujetDe(req?: Request): Promise<string | null> {
+  const secret = process.env.SESSION_SECRET || "";
+  if (!secret) return null;
+  return sujetDeSession(secret, await jetonPresente(req));
+}
+
 /** Ce qu'une portée devient dans un lien signé : « tout », ou le numéro du
  *  compte (« c12 »). Jamais la liste des cartes : elle est relue au moment où
  *  le lien sert, pas figée au moment où il a été fait. */

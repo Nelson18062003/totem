@@ -76,6 +76,10 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     NODE_ENV: "production",
   },
   stdio: "ignore",
+  // Son PROPRE groupe de processus : « npx » lance le vrai serveur en
+  // dessous, et tuer « npx » seul le laissait vivant, port occupé — le
+  // harnais suivant refusait de démarrer, ou mesurait CE serveur-là.
+  detached: true,
 });
 
 let nav;
@@ -222,7 +226,7 @@ try {
     plaintes.length === 0, plaintes.slice(0, 2).join(" | "));
 } finally {
   if (nav) await nav.close();
-  serveur.kill("SIGKILL");
+  try { process.kill(-serveur.pid, "SIGKILL"); } catch { /* déjà parti */ }
   nuage.kill("SIGKILL");
 }
 
