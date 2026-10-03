@@ -112,19 +112,18 @@ It is not a payment service, a wallet, or a bank. No money moves through it and 
 
 English and French.`;
 
-// La note pour l'examinateur : ce qu'il doit savoir pour ne pas refuser
-// une application qu'il ne peut pas comprendre en trente secondes.
-const notesExamen = `TOTEM is a private management interface for the owner of Mobile Money SIM cards. The SIM cards sit in a terminal (a Raspberry Pi with a GSM modem) that the owner keeps at their shop; the app talks to the owner's own platform, which talks to that terminal.
-
-The account below is a built-in DEMONSTRATION account. It shows invented data only (two demo SIM cards, their balances and operator SMS), so you can use every screen freely.
-
-Please note:
-- No money moves through TOTEM and it holds no funds. For a real owner, operations (deposit, transfer) are USSD sessions run on their own SIM card, exactly as if they typed *126# on that phone.
-- In the demonstration account, operations are SIMULATED end to end: you can run a full deposit or transfer (number, amount, the operator's confirmation screen, a PIN of your choice). Nothing is sent to any network and no money moves.
-- The Mobile Money PIN is typed only at the moment of an operation and is never stored.
-- The app is meant for the owner and the sellers they entrust cards to; it is distributed as an unlisted app.
-
-Sign in with the email and password below.`;
+// La note pour l'examinateur. Apple l'a demandée EN ENTIER à la première
+// soumission (« Guideline 2.1 — Information Needed ») : un compte neuf doit
+// tout dire — à quoi sert l'application, pour qui, comment y entrer, quels
+// services elle appelle. Le texte vit dans docs/APPLE-REPONSE-2.1.md, le
+// même qu'on envoie en réponse à Apple : écrit deux fois, il divergerait.
+const notesExamen = (() => {
+  const doc = require("fs").readFileSync(
+    require("path").join(__dirname, "../docs/APPLE-REPONSE-2.1.md"), "utf8");
+  const bloc = /```\n([\s\S]*?)```/.exec(doc);
+  if (!bloc) throw new Error("docs/APPLE-REPONSE-2.1.md : le texte pour Apple est introuvable.");
+  return bloc[1].trim();
+})();
 
 module.exports = {
   configVersion: 0,
