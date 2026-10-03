@@ -52,6 +52,10 @@ if (!(await portLibre(PORT))) {
 const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: MOTDEPASSE },
   stdio: "ignore",
+  // Son PROPRE groupe de processus : « npx » lance le vrai serveur en
+  // dessous, et tuer « npx » seul le laissait vivant, port occupé — le
+  // harnais suivant refusait de démarrer, ou mesurait CE serveur-là.
+  detached: true,
 });
 
 try {
@@ -401,6 +405,6 @@ try {
     ? "\n✓ Le verrou tient : toutes les vérifications passent.\n"
     : `\n✗ ${echecs} vérification(s) en échec.\n`);
 } finally {
-  serveur.kill();
+  try { process.kill(-serveur.pid, "SIGTERM"); } catch { /* déjà parti */ }
 }
 process.exit(echecs === 0 ? 0 : 1);

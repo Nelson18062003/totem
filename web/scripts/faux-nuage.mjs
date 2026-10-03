@@ -26,12 +26,36 @@ import { createServer } from "node:http";
 const maintenant = () => new Date().toISOString();
 const il_y_a = (min) => new Date(Date.now() - min * 60000).toISOString();
 
+// UNE FLOTTE, SUR DEMANDE (FAUX_FLOTTE=1). Un seul boîtier ne peut pas
+// montrer une demande partie au MAUVAIS boîtier : il n'y en a pas d'autre.
+// Avec la flotte, un second boîtier — « akwa-faux » — a donné signe de vie
+// PLUS RÉCEMMENT que celui de Douala, et porte une carte à lui ; une troisième
+// carte a été retirée il y a une heure et demie. C'est exactement la
+// situation où « le dernier terminal vivant » se trompe.
+// Voir scripts/verifier-l-adressage.mjs.
+const FLOTTE = process.env.FAUX_FLOTTE === "1";
+const CARTES_DE_LA_FLOTTE = FLOTTE ? [
+  { terminal: "akwa-faux",
+    iccid: "89237010000000009999", operateur: "MTN", libelle: "MTN ·9999",
+    nom: "BOUTIQUE AKWA", numero: "677000999",
+    premiere_vue: il_y_a(60 * 24 * 3), derniere_vue: maintenant() },
+  { terminal: "douala-faux",
+    iccid: "89237020000000007777", operateur: "Orange", libelle: "Orange ·7777",
+    nom: "", numero: "",
+    premiere_vue: il_y_a(60 * 24 * 60), derniere_vue: il_y_a(90) },
+] : [];
+
 const tables = () => ({
   beneficiaires,
   terminaux: [{
-    id: "douala-faux", nom: "Douala (faux)", vu_le: maintenant(),
+    id: "douala-faux", nom: "Douala (faux)",
+    // En flotte, Douala n'est PAS le dernier à avoir parlé : Akwa l'est.
+    vu_le: FLOTTE ? il_y_a(1) : maintenant(),
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
-  }],
+  }, ...(FLOTTE ? [{
+    id: "akwa-faux", nom: "Akwa (faux)", vu_le: maintenant(),
+    version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
+  }] : [])],
   // La console lit ces trois registres. Vides ici : personne n'y écrit
   // encore, et c'est justement l'état que ses écrans doivent savoir dire.
   // Les freins, eux, se remplissent quand on essaie des mots de passe — la
@@ -57,6 +81,7 @@ const tables = () => ({
       iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
       nom: "", numero: "699001122",
       premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: maintenant() },
+    ...CARTES_DE_LA_FLOTTE,
   ],
   comptes: [
     { terminal: "douala-faux",
@@ -319,9 +344,15 @@ const serveur = createServer(async (req, res) => {
     if (parType) {
       const type = parType.replace("eq.", "");
       const terminal = (url.searchParams.get("terminal") ?? "").replace("eq.", "");
+      // « parametres->>par=eq.c:12 » : la dernière ouverture d'UNE personne.
+      // La vraie base sait filtrer dans le JSON ; sans cette imitation, le
+      // faux nuage rendrait la dernière ouverture de n'importe qui, et aucun
+      // harnais ne verrait une réponse partir vers la session d'un autre.
+      const par = (url.searchParams.get("parametres->>par") ?? "").replace("eq.", "");
       const limite = Number(url.searchParams.get("limit") ?? 1000);
       const lignes = [...commandes.values()]
-        .filter((x) => x.type === type && (!terminal || x.terminal === terminal))
+        .filter((x) => x.type === type && (!terminal || x.terminal === terminal)
+          && (!par || String(x.parametres?.par ?? "") === par))
         .sort((x, y) => url.searchParams.get("order") === "id.desc" ? y.id - x.id : x.id - y.id)
         .slice(0, limite)
         .map((x) => ({ id: x.id, type: x.type, parametres: x.parametres ?? {},

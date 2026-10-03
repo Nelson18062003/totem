@@ -9,6 +9,22 @@ l'échanger : deux SIM MTN successives sont deux comptes distincts, avec deux
 soldes et deux historiques. C'est l'**ICCID** de la carte qui les sépare, pas
 l'opérateur. Un compte porte donc l'identité de la carte du moment, et sait
 dire quand elle a été remplacée (`relire_carte`).
+
+À QUI EST LA SESSION
+--------------------
+Une carte ne tient qu'un menu USSD à la fois : c'est une règle du réseau, pas
+du robot. Plusieurs mains peuvent pourtant vouloir ce menu — Telegram, et sur
+la plateforme chaque personne qui tient la carte. Le robot gardait cette
+réponse en TROIS endroits (le guichet web, Telegram, le modem) qui se
+prévenaient par des appels croisés. Entre deux avertissements, une réponse
+pouvait partir dans le menu de quelqu'un d'autre — et cette réponse peut être
+un code secret.
+
+Une vérification faite AVANT d'écrire ne garantit rien : entre les deux,
+quelqu'un a pu écrire. La règle est donc tenue ICI, sous le verrou du modem,
+au moment même où l'on écrit : la carte sait qui tient sa session
+(`titulaire`), et elle refuse d'écrire la réponse de quelqu'un d'autre
+(`SessionTenue`). Aucun registre ailleurs ne peut plus la contredire.
 """
 
 import threading
@@ -16,6 +32,24 @@ import threading
 from .carte import Carte
 from .modem import USSD_OUVERTE, ErreurModem
 from .textes import t
+
+# Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
+# (TELEGRAM, None) pour les administrateurs du robot, (WEB, "c:12") pour le
+# compte n° 12 de la plateforme. Deux personnes sur la plateforme ne sont pas
+# « le web » : ce sont deux titulaires.
+WEB = "web"
+TELEGRAM = "telegram"
+
+
+class SessionTenue(Exception):
+    """La session USSD de cette carte n'est pas (ou plus) à celui qui écrit.
+
+    `titulaire` dit qui la tient — ou None si elle s'est refermée."""
+
+    def __init__(self, titulaire):
+        super().__init__(t("the card's USSD session belongs to someone else",
+                           "la session USSD de la carte est à quelqu'un d'autre"))
+        self.titulaire = titulaire
 
 
 class Compte:
@@ -27,6 +61,9 @@ class Compte:
         # simulation) et on le renomme tout seul si la carte change.
         self.libelle = libelle or self.carte.libelle
         self.session_ouverte = False    # une session USSD par compte
+        # QUI tient cette session : (canal, personne), ou None. Ne se lit et
+        # ne s'écrit que sous `verrou` — voir l'en-tête du module.
+        self.titulaire = None
         self.dernier_menu = ""
         self.echecs = 0                 # compteur du chien de garde
         # Une panne de modem s'annonce une fois, pas à chaque tour de
@@ -63,29 +100,75 @@ class Compte:
         return f"{self.libelle} · {sim} · {force}{etat}"
 
     # ---- USSD -------------------------------------------------------------
-    def ussd_demarrer(self, code):
+    #
+    # `qui` est le titulaire qui écrit. Absent (None), la carte se comporte
+    # comme avant : l'écriture passe, et la session n'a pas de titulaire
+    # nommé. Présent, il est VÉRIFIÉ sous le verrou du modem.
+
+    def ussd_demarrer(self, code, qui=None, si_libre=False):
+        """Ouvre une session. `si_libre` : refuser (`SessionTenue`) si un
+        AUTRE titulaire tient un menu ouvert sur cette carte, au lieu de le
+        remplacer. C'est le geste de la plateforme ; Telegram, lui, reprend
+        la main (un administrateur est au bout du fil)."""
         with self.verrou:
-            etat, reponse = self.modem.ussd_demarrer(code)
-        self._suite(etat, reponse)
+            if (si_libre and self.session_ouverte
+                    and self.titulaire != qui):
+                raise SessionTenue(self.titulaire)
+            etat, reponse = self._echanger(self.modem.ussd_demarrer, code)
+            self._suite(etat, reponse, qui)
         return reponse
 
-    def ussd_repondre(self, reponse_utilisateur):
+    def ussd_repondre(self, reponse_utilisateur, qui=None):
+        """Répond au menu ouvert — seulement s'il est à `qui`. Sinon rien ne
+        part au réseau : la réponse (peut-être un code secret) ne tombe
+        jamais dans le menu d'un autre."""
         with self.verrou:
-            etat, reponse = self.modem.ussd_repondre(reponse_utilisateur)
-        self._suite(etat, reponse)
+            if qui is not None and not (self.session_ouverte
+                                        and self.titulaire == qui):
+                raise SessionTenue(self.titulaire if self.session_ouverte
+                                   else None)
+            etat, reponse = self._echanger(self.modem.ussd_repondre,
+                                           reponse_utilisateur)
+            self._suite(etat, reponse, qui)
         return reponse
 
-    def ussd_annuler(self):
+    def ussd_annuler(self, qui=None):
+        """Raccroche. Avec `qui`, seulement sa propre session (ou une session
+        sans titulaire) : on ne coupe pas l'opération d'un autre. Rend True
+        si la ligne a été raccrochée."""
         with self.verrou:
+            if (qui is not None and self.session_ouverte
+                    and self.titulaire not in (None, qui)):
+                return False
             try:
                 self.modem.ussd_annuler()
             except Exception:
                 pass
-        self.session_ouverte = False
-        self.dernier_menu = ""
+            self.session_ouverte = False
+            self.titulaire = None
+            self.dernier_menu = ""
+        return True
 
-    def _suite(self, etat, reponse):
+    def tenue_par(self, qui):
+        """Cette carte a-t-elle un menu ouvert, tenu par `qui` ?"""
+        with self.verrou:
+            return self.session_ouverte and self.titulaire == qui
+
+    def _echanger(self, envoi, charge):
+        """Un échange avec le réseau. S'il échoue, on ne sait plus où en est
+        le menu : DANS LE DOUTE, PERSONNE N'Y RÉPOND. La session est
+        considérée close et sans titulaire ; la suivante se recompose."""
+        try:
+            return envoi(charge)
+        except Exception:
+            self.session_ouverte = False
+            self.titulaire = None
+            self.dernier_menu = ""
+            raise
+
+    def _suite(self, etat, reponse, qui=None):
         self.session_ouverte = etat == USSD_OUVERTE
+        self.titulaire = qui if self.session_ouverte else None
         self.dernier_menu = reponse if self.session_ouverte else ""
 
     def iccid(self):
@@ -177,7 +260,8 @@ class Compte:
     def redemarrer(self):
         with self.verrou:
             self.modem.redemarrer()
-        self.session_ouverte = False
+            self.session_ouverte = False
+            self.titulaire = None
         self.echecs = 0
 
 
@@ -193,4 +277,5 @@ def libelles_uniques(comptes):
     return comptes
 
 
-__all__ = ["Compte", "libelles_uniques", "ErreurModem"]
+__all__ = ["Compte", "libelles_uniques", "ErreurModem", "SessionTenue",
+           "WEB", "TELEGRAM"]

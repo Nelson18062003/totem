@@ -90,9 +90,9 @@ const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: "cle-de-secours-du-parcours",
   },
   stdio: "ignore",
-  // Son PROPRE groupe : « npx » lance le vrai serveur en dessous, et tuer
-  // « npx » seul le laissait vivant, port occupé — l'essai suivant aurait
-  // mesuré CE serveur-là.
+  // Son PROPRE groupe de processus : « npx » lance le vrai serveur en
+  // dessous, et tuer « npx » seul le laissait vivant, port occupé — le
+  // harnais suivant refusait de démarrer, ou mesurait CE serveur-là.
   detached: true,
 });
 
@@ -244,7 +244,7 @@ try {
     : `\n✗ ${echecs} vérification(s) en échec.\n`);
 } finally {
   if (nav) await nav.close().catch(() => {});
-  try { process.kill(-serveur.pid, "SIGTERM"); } catch { serveur.kill(); }
+  try { process.kill(-serveur.pid, "SIGTERM"); } catch { /* déjà parti */ }
   nuage.kill();
 }
 process.exit(echecs === 0 ? 0 : 1);

@@ -35,7 +35,7 @@ from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
 from .recu import (numero_de_recu, numero_lisible, recu_solde,
                    recu_transfert)
 from .codes import catalogue, cle as cle_code
-from .compte import ErreurModem, libelles_uniques
+from .compte import TELEGRAM, ErreurModem, SessionTenue, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
 from .notification import composer, envoyer, lire_les_accuses
@@ -148,7 +148,18 @@ def _accord(nb, singulier_en, pluriel_en, singulier_fr, pluriel_fr):
              f"{nb} {singulier_fr if nb == 1 else pluriel_fr}")
 
 
+# Le titulaire des menus ouverts depuis Telegram : les administrateurs du
+# robot, sans distinction — le robot ne mène qu'une session Telegram à la fois.
+TITULAIRE_TELEGRAM = (TELEGRAM, None)
+
+
 class Robot:
+    # Un fil par carte (« un poste ») relève ses SMS et relit sa puce. Tant
+    # qu'ils ne sont pas lancés (essais, démo), le tour de surveillance le
+    # fait lui-même, carte après carte, comme avant. Au niveau de la classe :
+    # un robot construit sans son __init__ (les essais) le porte aussi.
+    postes = False
+
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
                  delai_session=180, chemin_base=None, nuage=None,
@@ -432,6 +443,7 @@ class Robot:
               f"{detail}\nVersion : {mono(version())}{avertissement}"),
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
+        self._lancer_postes()
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
         if self.nuage:
             # Synchronisation en tâche de fond : elle rattrape son retard
@@ -661,11 +673,10 @@ class Robot:
 
     def _ouvrir_session(self, compte, code, canal):
         # Le guichet à distance s'efface devant Telegram — un humain est au
-        # bout du fil. Encore faut-il le lui dire : sa session resterait
-        # ouverte dans ses livres, et sa réponse suivante — qui peut être un
-        # code secret — partirait dans le menu qu'on vient d'ouvrir ici.
-        if self.pilotage is not None:
-            self.pilotage.ceder(compte)
+        # bout du fil. Il n'y a plus personne à prévenir : en composant ici,
+        # la carte change de titulaire (voir `compte.py`), et la réponse
+        # suivante de la plateforme — qui peut être un code secret — est
+        # refusée par la carte elle-même, au moment d'écrire.
         # Un nouveau code composé, c'est une nouvelle opération : la trace
         # repart à zéro, sans quoi elle accumulerait deux parcours distincts.
         self.trace = []
@@ -877,9 +888,18 @@ class Robot:
             if nouveau:
                 self.journal.ussd("envoyé", texte, compte.libelle,
                               compte.carte.iccid)
-                reponse = compte.ussd_demarrer(texte)
+                reponse = compte.ussd_demarrer(texte, qui=TITULAIRE_TELEGRAM)
             else:
-                reponse = compte.ussd_repondre(texte)
+                reponse = compte.ussd_repondre(texte, qui=TITULAIRE_TELEGRAM)
+        except SessionTenue:
+            # Le menu n'est plus à Telegram : il s'est refermé, ou une autre
+            # main l'a ouvert sur la carte depuis. Rien n'est parti au réseau.
+            self._cloturer_session(
+                t(f"⚠️ [{echap(compte.libelle)}] This menu is no longer open "
+                  "here — nothing was sent. Dial the code again.",
+                  f"⚠️ [{echap(compte.libelle)}] Ce menu n'est plus ouvert "
+                  "ici — rien n'a été envoyé. Recomposez le code."))
+            return
         except ErreurModem as e:
             self._cloturer_session(f"⚠️ [{echap(compte.libelle)}] {echap(e)}")
             return
@@ -1362,7 +1382,9 @@ class Robot:
 
     def _annuler(self, canal):
         compte = self.session_compte or self.courant
-        compte.ussd_annuler()
+        # Seulement le menu de Telegram : celui qu'une personne mène depuis
+        # la plateforme sur la même carte ne se coupe pas d'ici.
+        compte.ussd_annuler(qui=TITULAIRE_TELEGRAM)
         if self.msg_session:
             self.transport.retirer_boutons(self.msg_session, canal=self.canal_session)
         self._reinitialiser_session()
@@ -1692,7 +1714,55 @@ class Robot:
                 # isolée. Mais « ne devrait pas » a déjà tué ce fil une fois
                 # — on note, et le tour suivant a lieu quoi qu'il arrive.
                 self._noter(f"tour de surveillance interrompu : {e}")
-            self._attendre_sms(self.pause_sms)
+            if self.postes:
+                # Les postes guettent chacun leur modem. Guetter ici aussi
+                # volerait leurs annonces de SMS (lire l'annonce la consomme).
+                self._dormir(self.pause_sms)
+            else:
+                self._attendre_sms(self.pause_sms)
+
+    def _dormir(self, delai):
+        fin = time.time() + delai
+        while self.actif and time.time() < fin:
+            time.sleep(min(0.5, max(0.0, fin - time.time())))
+
+    # ---- un poste par carte ------------------------------------------------
+    #
+    # UN SEUL FIL relevait les SMS de TOUTES les cartes, l'une après l'autre.
+    # Or une carte en plein menu USSD garde son modem jusqu'à trente secondes
+    # (le réseau répond quand il veut) : pendant ce temps, le fil restait
+    # planté devant elle, et les encaissements des AUTRES cartes attendaient
+    # — sur des modems libres. Un modem qui ne répond plus faisait pareil, à
+    # chaque tour. Plus il y a de cartes, plus chacune attend les autres.
+    #
+    # Chaque carte a maintenant son fil, qui ne parle qu'à SON modem : ce qui
+    # arrive à l'une — un menu, une panne, une puce changée — ne retarde
+    # jamais l'autre. Le reste du tour (santé, reçus, courrier, bilan) ne
+    # touche aucun modem et reste commun.
+
+    def _lancer_postes(self):
+        self.postes = True
+        for compte in self.comptes:
+            threading.Thread(target=self._poste, args=(compte,), daemon=True,
+                             name=f"poste {compte.libelle}").start()
+
+    def _poste(self, compte):
+        """Le fil d'UNE carte : relire sa puce de temps en temps, relever ses
+        SMS, guetter son modem. Bâti, comme la surveillance, pour ne jamais
+        mourir : un poste muet, c'est une caisse dont plus rien n'arrive."""
+        prochaine_carte = time.time() + VERIF_CARTES_SECONDES
+        while self.actif:
+            try:
+                if time.time() >= prochaine_carte:
+                    prochaine_carte = time.time() + VERIF_CARTES_SECONDES
+                    # Avant la relève : si la puce a été échangée, les
+                    # messages qui suivent appartiennent à la nouvelle carte.
+                    self._etape(f"recensement {compte.libelle}",
+                                lambda: self._recenser_carte(compte))
+                self._relever_sms(compte)
+            except Exception as e:
+                self._noter(f"relève SMS {compte.libelle} : {e}")
+            self._attendre_sms(self.pause_sms, comptes=[compte])
 
     def _tour_de_surveillance(self):
         """Un tour complet de surveillance, par étapes isolées : celle qui
@@ -1700,16 +1770,19 @@ class Robot:
         au journal et ne prive ni les étapes suivantes, ni le tour d'après."""
         # Avant de relever les SMS : si la puce a été échangée, les
         # messages qui suivent appartiennent à la nouvelle carte.
-        if time.time() >= self._prochaines_cartes:
-            self._prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
-            self._etape("recensement des cartes", self._recenser_cartes)
-        for compte in self.comptes:
-            # Rien de ce qui touche une carte ne doit pouvoir arrêter la
-            # relève des autres.
-            try:
-                self._relever_sms(compte)
-            except Exception as e:
-                self._noter(f"relève SMS {compte.libelle} : {e}")
+        if not self.postes:
+            # Sans postes (essais, démo) : le tour relève lui-même, carte
+            # après carte. En service, chaque carte a son fil (`_poste`).
+            if time.time() >= self._prochaines_cartes:
+                self._prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
+                self._etape("recensement des cartes", self._recenser_cartes)
+            for compte in self.comptes:
+                # Rien de ce qui touche une carte ne doit pouvoir arrêter la
+                # relève des autres.
+                try:
+                    self._relever_sms(compte)
+                except Exception as e:
+                    self._noter(f"relève SMS {compte.libelle} : {e}")
         self._etape("expiration de session", self._expirer_session)
         # La santé du Pi change lentement : inutile de la lire à chaque tour.
         if time.time() >= self._prochaine_sante:
@@ -1736,7 +1809,7 @@ class Robot:
         if self._rapport_quotidien():
             sauvegarder_journal(self.chemin_base)
 
-    def _attendre_sms(self, delai):
+    def _attendre_sms(self, delai, comptes=None):
         """Dort au plus `delai` secondes entre deux tours — mais se réveille
         DÈS qu'un modem annonce un SMS (« +CMTI »). La détection devient ainsi
         quasi immédiate : le SMS est relevé, notifié sur Telegram et poussé au
@@ -1744,7 +1817,7 @@ class Robot:
         sécurité, au cas où une annonce se perdrait."""
         fin = time.time() + delai
         while self.actif and time.time() < fin:
-            for compte in self.comptes:
+            for compte in (self.comptes if comptes is None else comptes):
                 # Ne pas lire le port pendant un menu USSD ouvert : la réponse
                 # attendue par la session n'est pas à nous.
                 if getattr(compte, "session_ouverte", False):
@@ -1776,22 +1849,26 @@ class Robot:
         ce qui rend le remplacement d'une SIM visible sans rien redémarrer.
         """
         for compte in self.comptes:
-            try:
-                ancienne = compte.relire_carte()
-            except Exception as e:
-                self.journal.evenement(f"lecture carte {compte.libelle} : {e}")
-                continue
-            if not compte.carte.identifiee:
-                continue
-            etat = self.journal.voir_carte(compte.carte, compte.imei)
-            if silencieux:
-                continue
-            if ancienne:
-                self._annoncer_changement_carte(compte, ancienne, etat)
-            elif etat == "nouvelle":
-                # Première lecture réussie sur un modem dont l'ICCID était
-                # jusque-là illisible : ce n'est pas un remplacement.
-                self.journal.evenement(f"carte identifiée : {compte.libelle}")
+            self._recenser_carte(compte, silencieux)
+
+    def _recenser_carte(self, compte, silencieux=False):
+        """La puce de CE modem a-t-elle changé ? (Voir `_recenser_cartes`.)"""
+        try:
+            ancienne = compte.relire_carte()
+        except Exception as e:
+            self.journal.evenement(f"lecture carte {compte.libelle} : {e}")
+            return
+        if not compte.carte.identifiee:
+            return
+        etat = self.journal.voir_carte(compte.carte, compte.imei)
+        if silencieux:
+            return
+        if ancienne:
+            self._annoncer_changement_carte(compte, ancienne, etat)
+        elif etat == "nouvelle":
+            # Première lecture réussie sur un modem dont l'ICCID était
+            # jusque-là illisible : ce n'est pas un remplacement.
+            self.journal.evenement(f"carte identifiée : {compte.libelle}")
 
     def _annoncer_changement_carte(self, compte, ancienne, etat):
         """Une puce a été retirée et une autre insérée. C'est l'événement le
@@ -2626,7 +2703,7 @@ class Robot:
                 return
             if time.time() - self.dernier_echange < self.delai_session:
                 return
-            compte.ussd_annuler()
+            compte.ussd_annuler(qui=TITULAIRE_TELEGRAM)
             self.journal.evenement(f"session USSD expirée ({compte.libelle})")
             self._cloturer_session(
                 t("⌛ USSD session expired (no answer for too long). The "

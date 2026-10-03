@@ -346,8 +346,22 @@ peuvent frapper le même numéro le même jour, et le mauvais document sortirait
 *En place* : une demande de reçu part désormais au terminal qui a REÇU le
 SMS (plus jamais « le dernier qui a donné signe de vie »), et un reçu ne se
 rattache à un paiement que dans sa famille (préfixe TM/TS) et sur son
-terminal. *Reste à faire* avant un vrai deuxième boîtier : le terminal dans
-l'adresse de téléchargement des reçus, et un écran multi-terminaux.
+terminal. Une demande USSD part au terminal qui PORTE sa carte, et une carte
+que personne ne porte est refusée sur-le-champ (`verifier-l-adressage`).
+*Reste à faire* avant un vrai deuxième boîtier : le terminal dans l'adresse
+de téléchargement des reçus, et un écran multi-terminaux. La suite — les
+boutiques, une clé par boîtier — est dans `ARCHITECTURE-ECHELLE.md`.
+
+### ✅ Deux personnes, deux cartes, le même boîtier
+La seconde lisait « une autre opération est en cours sur le terminal, sur une
+autre carte » : le robot ne tenait qu'un menu pour tout le boîtier, et
+relevait les SMS de toutes les cartes dans un seul fil.
+
+*En place* : un poste par carte. Chaque carte relève ses SMS dans son fil, a
+sa file de demandes, et tient elle-même son menu — c'est elle qui refuse,
+sous le verrou de son modem, la réponse de quelqu'un d'autre. Deux personnes
+sur la MÊME carte attendent leur tour : une carte ne tient qu'un menu USSD à
+la fois, c'est le réseau qui le veut.
 
 ---
 
