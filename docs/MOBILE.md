@@ -406,8 +406,9 @@ Conséquences, dans l'ordre où on les a vécues :
   qui ne répond que « oui, un TOTEM habite ici ». Tant que la réponse n'est
   pas oui, le champ du mot de passe reste fermé. Un mot de passe ne part plus
   vers une adresse qui n'a pas montré patte blanche.
-- **Le propriétaire peut corriger l'adresse depuis l'écran de connexion**,
-  sans attendre une nouvelle compilation.
+- **Le propriétaire pouvait corriger l'adresse depuis l'écran de
+  connexion.** Ce champ a été retiré depuis (§ 5 ter) : l'adresse vient du
+  paquet, et d'elle seule.
 - **`https` obligatoire**, sauf pour la machine locale (un `127.0.0.1` ne
   quitte pas l'appareil). En `http`, le mot de passe voyagerait en clair.
 - Le verrou vérifie que `/api/plateforme` ne dit rien d'autre que ces trois
@@ -470,10 +471,20 @@ Le propriétaire ne devrait **jamais** avoir à taper l'adresse de son serveur.
 On ouvre l'application, on met son courriel et son mot de passe, on entre.
 C'est tout.
 
-Le champ « Changer l'adresse » existe parce que l'adresse livrée était fausse
-(§ 5 bis), et qu'on l'a retirée plutôt que d'en deviner une seconde. Mais un
-champ vide reporte le travail sur la personne, à chaque installation. C'était
-la mauvaise réponse.
+Le champ « Changer l'adresse » a existé parce que l'adresse livrée était
+fausse (§ 5 bis), et qu'on l'avait retirée plutôt que d'en deviner une
+seconde. Mais un champ vide reporte le travail sur la personne, à chaque
+installation. C'était la mauvaise réponse.
+
+**Il n'existe plus.** L'écran de connexion ne montre que le courriel et le
+mot de passe : une URL sous les yeux de personnes qui n'en ont que faire, et
+une porte pour envoyer son mot de passe ailleurs, c'était deux défauts pour
+aucun service. Une adresse rangée par une ancienne version est ignorée — sans
+l'écran qui la corrigeait, une adresse fausse rendrait le téléphone muet pour
+toujours. Si la plateforme ne répond pas, l'écran le dit et propose de
+réessayer ; si ce qui répond n'est pas un TOTEM, il dit de s'adresser à qui
+gère le TOTEM. Et l'application ne crée plus de compte : pendant la bêta
+fermée, c'est le propriétaire qui fait entrer les gens, depuis ses Réglages.
 
 ### Le réglage, posé une fois
 
@@ -510,8 +521,10 @@ Le script exige `https`. Le mot de passe du propriétaire passe par cette
 adresse ; en clair, il voyagerait à la vue de tout le réseau traversé. Mieux
 vaut refuser une compilation que livrer une application qui fuit.
 
-Sans réglage posé, rien n'échoue : l'application demande l'adresse à l'écran,
-comme avant. Moins bien, pas cassé.
+Sans réglage posé, l'adresse d'`app.json` reste en place — la nôtre y est
+écrite. S'il n'y en avait aucune, la compilation s'arrêterait : l'écran ne
+sait plus la demander, et une application sans adresse ne se connecterait
+nulle part.
 
 ---
 

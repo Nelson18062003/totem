@@ -46,6 +46,11 @@ const en = {
   // anglais quel que soit l'écran.
   reseauEnPanne:
     "The platform is not answering. Check the connection, then try again.",
+  // Quand ce qui répond n'est pas un TOTEM, ou un TOTEM qui ne sait pas
+  // encore connecter : on ne montre ni adresse ni réglage — l'application
+  // n'en propose plus. On dit seulement à qui s'adresser.
+  connexionIndisponible:
+    "Sign-in is not available right now. Contact the person who runs your TOTEM.",
   // Sans nommer les variables d'environnement : leurs noms sont du jargon
   // pour le propriétaire, ET les écrire ici les ferait entrer dans le paquet
   // de l'application, où le contrôle des secrets les attend au tournant. La
@@ -114,6 +119,8 @@ const fr: typeof en = {
     "Cette adresse ne répond pas. Vérifiez la connexion, puis l’adresse.",
   reseauEnPanne:
     "La plateforme ne répond pas. Vérifiez la connexion, puis réessayez.",
+  connexionIndisponible:
+    "La connexion n’est pas possible pour le moment. Contactez la personne qui gère votre TOTEM.",
   plateformeNonConfiguree:
     "Le TOTEM est bien là, mais la connexion n’y est pas encore configurée. " +
     "Aucun mot de passe ne peut marcher tant que les réglages de la " +

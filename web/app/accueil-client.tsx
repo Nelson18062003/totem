@@ -12,6 +12,7 @@ import {
   IconRefresh, IconWallet,
 } from "./icons";
 import { BoutonCopier, Coordonnees, formaterNumero } from "./coordonnees";
+import { numeroACopier } from "@noyau/coordonnees";
 import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
@@ -162,7 +163,7 @@ function CarteSim({
         {/* Le numéro se copie d'un geste, contre lui : c'est ce qu'on donne
             le plus souvent, et le chercher à la main était pénible. */}
         {carte.numero && (
-          <BoutonCopier clair valeur={formaterNumero(carte.numero)}
+          <BoutonCopier clair valeur={numeroACopier(carte.numero)}
             libelle={t.copierNumero} libelleFait={t.numeroCopie} />
         )}
       </div>

@@ -19,7 +19,7 @@ import { useMemo, useState } from "react";
 import { RefreshControl, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import * as Navigateur from "expo-web-browser";
+import { nomDeFichier, partagerDocument } from "@/partage";
 
 import { Defilement, Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
@@ -252,7 +252,10 @@ function ExportBilan({ langue }: { langue: Langue }) {
     setRefus(false);
     try {
       const { url } = await lienBilan(jours);
-      await Navigateur.openBrowserAsync(url);
+      // Le fichier lui-même, par la feuille de partage — au comptable par
+      // courriel, dans Drive — et non une page à télécharger.
+      await partagerDocument(url, nomDeFichier(`Bilan-TOTEM-${jours}-jours`, "csv"),
+                             "csv", t.exporterBilan);
     } catch {
       setRefus(true);
     } finally {

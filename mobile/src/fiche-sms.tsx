@@ -16,7 +16,7 @@ import { Carte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
 import { useGesteUnique } from "@/geste";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import * as Navigateur from "expo-web-browser";
+import { nomDeFichier, partagerDocument } from "@/partage";
 import {
   definirNature, deposerCommande, lienRecu, lireCommande, marquerLu,
 } from "@/api/guichet";
@@ -99,17 +99,31 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
   /** Demander le reçu au terminal QUI A REÇU ce SMS — jamais au dernier qui
    *  a donné signe de vie : `sourceId` ne veut rien dire dans un autre
    *  journal, et le reçu porterait sur une autre opération. */
-  // OUVRIR le reçu — le geste pour lequel un reçu existe : le montrer, le
-  // partager. Le PDF s'ouvre dans le navigateur du système, muni d'un lien
-  // signé de dix minutes (voir web/lib/lien-signe.ts) : de là, le partage
-  // d'Android fait le reste — WhatsApp compris.
+  // PARTAGER le reçu — le geste pour lequel un reçu existe. Le PDF est
+  // téléchargé dans le téléphone puis part par la feuille de partage, comme
+  // un vrai fichier : WhatsApp reçoit le document, pas un lien vers une
+  // page (voir src/partage.ts).
   const [ouverture, setOuverture] = useState<"repos" | "envoi" | "refus">("repos");
+  // Le numéro du reçu : celui de la ligne, ou celui que le robot vient de
+  // rendre (voir `etablirRecu`).
+  const [recu, setRecu] = useState<string | null>(p.recu);
   const ouvrirRecu = async () => {
-    if (!p.recu || ouverture === "envoi") return;
+    if (!recu || ouverture === "envoi") return;
     setOuverture("envoi");
     try {
-      const { url } = await lienRecu(p.recu);
-      await Navigateur.openBrowserAsync(url);
+      // Un reçu tout juste établi met quelques secondes à être archivé : le
+      // premier essai peut tomber avant lui. On réessaie un peu, sans bruit.
+      for (let essai = 0; ; essai++) {
+        try {
+          const { url } = await lienRecu(recu);
+          await partagerDocument(url, nomDeFichier(`Recu-${recu}`, "pdf"), "pdf",
+                                 t.partagerRecu);
+          break;
+        } catch (e) {
+          if (essai >= 5) throw e;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
       setOuverture("repos");
     } catch {
       setOuverture("refus");
@@ -138,7 +152,14 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
       for (let i = 0; i < 25; i++) {
         await new Promise((r) => setTimeout(r, 1200));
         const c = await lireCommande(id).catch(() => null);
-        if (c?.etat === "faite") { setEtabli("fait"); onChange?.(); return true; }
+        if (c?.etat === "faite") {
+          // Le robot répond « Reçu TM-2026-1003-1193 en fabrication… » : le
+          // numéro y est. La fiche peut donc proposer le partage TOUT DE
+          // SUITE — elle demandait avant de la refermer et de la rouvrir.
+          const n = /\bT[A-Z]-\d{4}-\d{4}-\d+\b/.exec(c.resultat ?? "")?.[0];
+          if (n) setRecu(n);
+          setEtabli("fait"); onChange?.(); return true;
+        }
         if (c?.etat === "echouee") { setEtabli("refus"); return false; }
       }
       // Vingt-cinq essais, trente secondes : le terminal n'a pas répondu.
@@ -176,11 +197,15 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
               fiche — pour tout voir. « NKENGAFAC MBOUNGOU J… » ne dit pas
               qui a payé, et c'est justement la question qu'on se pose en
               ouvrant. Le nom passe donc à la ligne.
-              Deux lignes suffisent à tout nom d'état civil ; au-delà, on
-              coupe, parce qu'un en-tête qui pousse le contenu hors de
-              l'écran est un autre défaut. */}
-          <Texte taille={textes.intertitre} poids="demi" numberOfLines={2}
-                 selectable style={{ marginTop: espaces.xs }}>
+              « Deux lignes suffisent à tout nom d'état civil », disait ce
+              commentaire — et c'était faux pour les RAISONS SOCIALES, qui
+              sont justement les gros clients : « NKENGAFAC MBOUNGOU
+              JEANNE-CLAIRE EPSE … » sur un téléphone de 360 points. Le nom
+              passe donc en entier ; long, il se fait plus petit, pour que
+              l'en-tête ne pousse pas le contenu hors de l'écran.
+              `verifier-l-affichage` refuse tout texte abrégé dans une fiche. */}
+          <Texte taille={(p.tiers || p.nom).length > 32 ? textes.corps + 1 : textes.intertitre}
+                 poids="demi" selectable style={{ marginTop: espaces.xs }}>
             {p.tiers || p.nom}
           </Texte>
         </>
@@ -203,9 +228,9 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 déposait une SECONDE commande pour le même SMS. */}
             <Pressable
               accessibilityRole="button"
-              onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
+              onPress={() => void (recu ? ouvrirRecu() : etablirRecu())}
               disabled={ouverture === "envoi" || etabli === "envoi"
-                        || gesteRecu.occupe || (!p.recu && etabli === "fait")}
+                        || gesteRecu.occupe || (!recu && etabli === "fait")}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
                 gap: espaces.sm, paddingVertical: espaces.md,
@@ -213,11 +238,13 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
               })}
             >
-              <Icone nom="Doc" taille={17} couleur={couleurs.surfaceHaute} />
-              <Texte poids="demi" taille={textes.petit}
-                     style={{ color: couleurs.surfaceHaute }}>
-                {p.recu
-                  ? (ouverture === "envoi" ? t.ouvertureRecu : t.ouvrirRecu)
+              <Icone nom={recu ? "Partage" : "Doc"} taille={17} couleur={couleurs.surfaceHaute} />
+              {/* `flexShrink` : un libellé long se replie DANS le bouton.
+                  Sans lui, il poussait l'icône hors du bouton, à gauche. */}
+              <Texte poids="demi" taille={textes.petit} numberOfLines={2}
+                     style={{ color: couleurs.surfaceHaute, flexShrink: 1, textAlign: "center" }}>
+                {recu
+                  ? (ouverture === "envoi" ? t.preparationRecu : t.partagerRecu)
                   : etabli === "envoi" ? t.demandeAuTerminal
                   : etabli === "fait" ? t.recuEtabli
                   : t.etablirRecu}
@@ -226,7 +253,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
 
             {/* REFAIRE le reçu : le second geste, discret. Il sert quand la
                 nature vient d'être rechoisie — même numéro, document neuf. */}
-            {p.recu && p.sourceId != null ? (
+            {recu && p.sourceId != null ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => void etablirRecu()}
@@ -239,9 +266,12 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                   backgroundColor: pressed ? couleurs.surface2 : "transparent",
                 })}
               >
-                <Texte poids="moyen" taille={textes.petit} ton="doux">
+                <Texte poids="moyen" taille={textes.petit} ton="doux"
+                       style={{ flexShrink: 1, textAlign: "center" }}>
                   {etabli === "envoi" ? t.demandeAuTerminal
-                    : etabli === "fait" ? t.regenerationFaite : t.refaireRecu}
+                    // Établi pour la première fois, ou refait : deux mots.
+                    : etabli === "fait" ? (p.recu ? t.regenerationFaite : t.recuEtabli)
+                    : t.refaireRecu}
                 </Texte>
               </Pressable>
             ) : null}

@@ -4,24 +4,20 @@ import { langueDemandee } from "@/lib/langue-serveur";
 import { pdfCoordonnees } from "@/lib/pdf-rib";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { erreurApi } from "@noyau/textes/api";
+import { serviceMobileMoney } from "@noyau/coordonnees";
 
 export const dynamic = "force-dynamic";
-
-/** Le nom commercial du service — la ligne « réseau » de la fiche. */
-function service(operateur: string): string {
-  if (operateur === "MTN") return "MTN Mobile Money";
-  if (operateur === "Orange") return "Orange Money";
-  return operateur || "Mobile Money";
-}
 
 /**
  * La fiche des coordonnées d'une carte, en PDF — le « RIB » de la SIM.
  *
  * Sur le web, ce document s'assemble dans le navigateur (même générateur,
- * `lib/pdf-rib`) ; le téléphone, lui, l'ouvre dans le navigateur du système,
- * qui n'a ni cookie ni jeton — d'où cette route, atteignable par un lien
- * signé de dix minutes (voir lib/lien-signe.ts, genre « coordonnees »).
- * UN générateur, UN document : le PDF du téléphone est celui du web.
+ * `lib/pdf-rib`) ; le téléphone, lui, le TÉLÉCHARGE pour le partager comme un
+ * fichier (`mobile/src/partage.ts`), sans cookie ni jeton — d'où cette route,
+ * atteignable par un lien signé de dix minutes (voir lib/lien-signe.ts,
+ * genre « coordonnees »). UN générateur, UN document : le PDF du téléphone
+ * est celui du web — numéro mis en forme compris, depuis que c'est le
+ * générateur qui s'en charge.
  */
 export async function GET(
   req: Request,
@@ -51,7 +47,7 @@ export async function GET(
     nom,
     numero: carte.numero,
     operateur: carte.operateur,
-    service: service(carte.operateur),
+    service: serviceMobileMoney(carte.operateur),
     libelle: carte.libelle,
     titre: t.coordonneesTitre,
     etiquetteNom: t.coordNom,

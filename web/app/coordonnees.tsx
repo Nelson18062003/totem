@@ -12,33 +12,28 @@ import { IconCopy, IconDownload, IconEye, IconIdentite } from "./icons";
 // On le re-exporte d'ici pour que les écrans qui l'importaient ne bougent pas.
 import { formaterNumero } from "@noyau/numero";
 export { formaterNumero };
+import {
+  ceQueCopierEmporte, numeroACopier, serviceMobileMoney, texteACopier,
+} from "@noyau/coordonnees";
 import { LogoOperateur } from "./logos-operateurs";
 
 /**
  * Les coordonnées d'une carte — le « RIB » de la SIM. Le propriétaire les
  * montre à qui veut lui envoyer de l'argent : son nom, son numéro, son
- * réseau. D'un geste il les copie (pour les coller dans un message), les
- * ouvre pour les relire, ou les télécharge en PDF — un vrai fichier, comme
- * le relevé d'identité d'une banque.
+ * réseau. D'un geste il copie son nom et son numéro (pour les coller dans un
+ * message), les ouvre pour les relire, ou les télécharge en PDF — un vrai
+ * fichier, comme le relevé d'identité d'une banque.
  *
  * Aucune donnée n'est inventée : le numéro vient de ce que la carte déclare
  * ou de ce que le propriétaire a inscrit, le nom de ce qu'il a inscrit dans
  * les Réglages. Sans nom, la fiche le dit et renvoie aux Réglages.
  */
 
-/** « 237652236856 » → « +237 652 23 68 56 » : un numéro se lit par tranches. */
-
-/** Le nom commercial du service — ce qu'on écrit sur la ligne « réseau ». */
-function service(operateur: string): string {
-  if (operateur === "MTN") return "MTN Mobile Money";
-  if (operateur === "Orange") return "Orange Money";
-  return operateur || "Mobile Money";
-}
 
 /**
  * Un geste de copie, partout le même : il dit ce qu'il a fait, puis
  * s'efface. Sur la carte, il vit contre le numéro ; dans la feuille, il
- * emporte les coordonnées entières.
+ * copie le nom seul, ou le numéro seul.
  */
 export function BoutonCopier({
   valeur,
@@ -68,7 +63,10 @@ export function BoutonCopier({
       onClick={copier}
       aria-label={fait ? libelleFait : libelle}
       title={fait ? libelleFait : libelle}
-      className={`grid size-7 shrink-0 place-items-center rounded-full border transition ${
+      // Le rond fait 28 px ; sous le doigt, la zone en fait 44 (le pseudo-
+      // élément l'élargit sans grossir le dessin) — la plateforme s'ouvre
+      // aussi sur un téléphone.
+      className={`relative grid size-7 shrink-0 place-items-center rounded-full border transition before:absolute before:-inset-2 before:content-[''] ${
         clair
           ? "border-white/35 text-white/80 hover:border-white hover:text-white"
           : "border-line text-ink-soft hover:border-ink hover:text-ink"
@@ -94,15 +92,20 @@ export function Coordonnees({
 
   const nom = carte.nom.trim();
   const numero = formaterNumero(carte.numero);
-  const reseau = service(carte.operateur);
+  const reseau = serviceMobileMoney(carte.operateur);
 
-  // Le texte à coller dans un message : nom, numéro, réseau — chacun sur sa
-  // ligne, sans étiquette, prêt à envoyer tel quel.
-  const texteACopier = [nom, numero, reseau].filter(Boolean).join("\n");
+  // Le texte à coller dans un message : le nom et le numéro, chacun sur sa
+  // ligne, sans étiquette. Pas le réseau : le propriétaire l'effaçait à
+  // chaque fois (voir `noyau/coordonnees.ts`). Le téléphone copie le même.
+  const aCopier = texteACopier(nom, carte.numero);
+  // Ce qu'il emporte, pour le dire juste — et rien quand il n'y a rien.
+  const emporte = ceQueCopierEmporte(nom, carte.numero);
+  const libelleCopier = emporte === "nom" ? t.coordCopierNom
+    : emporte === "numero" ? t.copierNumero : t.coordCopierNomNumero;
 
   const copier = async () => {
     try {
-      await navigator.clipboard.writeText(texteACopier);
+      await navigator.clipboard.writeText(aCopier);
       setCopie(true);
       setTimeout(() => setCopie(false), 2000);
     } catch {
@@ -154,12 +157,18 @@ export function Coordonnees({
       onFermer={() => setOuvert(false)}
       pied={
         <div className="flex flex-col gap-2">
-          <button
-            onClick={copier}
-            className="flex w-full items-center justify-center gap-2 rounded-btn bg-ink py-3 text-small font-medium text-white transition hover:opacity-90"
-          >
-            <IconCopy size={16} /> {copie ? t.coordCopie : t.coordCopier}
-          </button>
+          {/* Une carte sans nom ni numéro n'a rien à copier : le bouton
+              s'efface plutôt que de vider le presse-papiers en disant
+              « Copié » — comme sur le téléphone. */}
+          {emporte && (
+            <button
+              onClick={copier}
+              title={libelleCopier}
+              className="flex w-full items-center justify-center gap-2 rounded-btn bg-ink py-3 text-small font-medium text-white transition hover:opacity-90"
+            >
+              <IconCopy size={16} /> {copie ? t.coordCopie : t.coordCopier}
+            </button>
+          )}
           <div className="flex gap-2">
             <button
               onClick={voir}
@@ -187,7 +196,7 @@ export function Coordonnees({
               <dd className="mt-1 text-small leading-relaxed text-ink-faint">{t.coordSansNom}</dd>
             )}
           </div>
-          {nom && <BoutonCopier valeur={nom} libelle={t.coordCopier} libelleFait={t.coordCopie} />}
+          {nom && <BoutonCopier valeur={nom} libelle={t.coordCopierNom} libelleFait={t.nomCopie} />}
         </div>
         <div className="flex items-start justify-between gap-3 border-b border-line py-3.5">
           <div className="min-w-0">
@@ -195,7 +204,8 @@ export function Coordonnees({
             <dd className="mt-1 text-body font-semibold tabnums">{numero || "—"}</dd>
           </div>
           {numero && (
-            <BoutonCopier valeur={numero} libelle={t.coordCopier} libelleFait={t.coordCopie} />
+            <BoutonCopier valeur={numeroACopier(carte.numero)} libelle={t.copierNumero}
+                          libelleFait={t.numeroCopie} />
           )}
         </div>
         <div className="flex items-center justify-between gap-3 py-3.5">
