@@ -676,6 +676,17 @@ puces, le choix) arrivaient dans un autre ordre, et la puce tombait juste.
 sur deux** ; la rangée redemande maintenant à chacune des trois. Sans le
 défilement, l'étape échoue à 320 points — c'est son témoin.
 
+**Une correction peut aveugler le harnais d'à côté, sans un mot.** La
+relecture de l'accueil a donné aux cartes un ordre stable, par ICCID. La
+carte que ce harnais retenait — « la dernière » — est devenue la troisième,
+visible sans défilement à toutes les tailles : relancé, le témoin sans
+défilement est passé VERT partout. Rien n'avait cassé, rien ne le disait ;
+l'étape ne prouvait simplement plus rien. Elle exige maintenant que la puce
+retenue soit la dernière de la rangée. Et « visible » se mesure dans ce qui
+la rogne : en deux colonnes, la rangée vit dans la colonne de gauche, et une
+puce dans la fenêtre peut être hors de sa rangée. **Un témoin se relance
+après chaque correction voisine**, pas seulement le jour où on l'écrit.
+
 **Un solde se date au JOUR, pas seulement à l'heure.** « Solde relevé à
 21:54 » ne disait pas lequel : le lendemain matin, le solde de la veille
 s'annonçait comme celui de maintenant — le chiffre pour lequel on ouvre

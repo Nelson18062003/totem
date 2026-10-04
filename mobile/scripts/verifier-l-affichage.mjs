@@ -389,7 +389,9 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     const modele = j.sims?.[0];
     if (modele) {
       j.sims = [...j.sims, ...[["MTN ·3501", "MTN"], ["MTN ·6414", "MTN"], ["Orange ·4177", "Orange"]]
-        .map(([libelle, operateur], i) => ({ ...modele, iccid: `89237000000000000${i}99`, libelle, operateur }))];
+        // Des ICCID qui se rangent APRÈS les vraies cartes : l'accueil trie par
+        // ICCID, et « Orange ·4177 » doit rester la dernière de la rangée.
+        .map(([libelle, operateur], i) => ({ ...modele, iccid: `89237090000000000${i}99`, libelle, operateur }))];
     }
     // LE BOÎTIER SE TAIT, COMME LA PLATEFORME LE DIT AUJOURD'HUI : carte par
     // carte. Le harnais ne touchait que le boîtier d'en tête ; depuis que la
@@ -407,7 +409,7 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   // La carte choisie est la DERNIÈRE (Orange ·4177), retenue d'une
   // ouverture à l'autre : l'accueil doit la ramener à l'écran tout seul. La
   // première puce, elle, est toujours visible — la vérifier ne prouvait rien.
-  await page.evaluate(() => localStorage.setItem("totem.carte.choisie", "89237000000000000299"));
+  await page.evaluate(() => localStorage.setItem("totem.carte.choisie", "89237090000000000299"));
   await page.goto(APERCU, { waitUntil: "networkidle" });
   await attendreTexte(page, /FCFA/);
   await attendreTexte(page, /Terminal (silent|muet|offline|hors ligne)/).catch(() => {});
@@ -439,6 +441,11 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
       }));
     const uneLigne = puces.length >= 5 && puces.every((p) => Math.abs(p.haut - puces[0].haut) <= 1);
     const choisie = puces.find((p) => p.choisie);
+    // LA DERNIÈRE, OU L'ÉTAPE NE PROUVE RIEN. Depuis que les cartes se
+    // rangent par ICCID, la carte retenue ici était devenue la TROISIÈME —
+    // visible sans défilement à toutes les tailles —, et le témoin sans
+    // défilement passait au vert partout, sans un mot.
+    const derniere = choisie && puces.every((p) => p.gauche <= choisie.gauche);
     const visible = choisie && /4177/.test(choisie.nom)
       && choisie.gauche >= choisie.bordG - 1 && choisie.droite <= choisie.bordD + 1;
     const muet = await page.evaluate(() => /Terminal (silent|muet|offline|hors ligne)/.test(document.body.innerText));
@@ -446,6 +453,7 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     if (!uneLigne) fautes.push(`puces sur ${new Set(puces.map((p) => p.haut)).size} lignes (${puces.length} puces)`);
     if (!choisie) fautes.push("aucune puce ne se dit choisie");
     else if (!/4177/.test(choisie.nom)) fautes.push(`la carte retenue est oubliée (choisie : ${choisie.nom})`);
+    else if (!derniere) fautes.push("la carte retenue n'est plus la dernière de la rangée : l'étape ne prouve plus rien");
     else if (!visible) fautes.push("la puce choisie est hors de l'écran");
     if (!muet) fautes.push("le terminal muet n'est pas signalé");
     if (fautes.length) defauts += fautes.length;
