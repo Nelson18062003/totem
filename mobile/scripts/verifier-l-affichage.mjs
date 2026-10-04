@@ -400,7 +400,7 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   await page.evaluate(() => localStorage.setItem("totem.carte.choisie", "89237000000000000299"));
   await page.goto(APERCU, { waitUntil: "networkidle" });
   await attendreTexte(page, /FCFA/);
-  await attendreTexte(page, /Terminal silent|Terminal muet/).catch(() => {});
+  await attendreTexte(page, /Terminal (silent|muet|offline|hors ligne)/).catch(() => {});
   await page.waitForTimeout(800);      // le défilement de la rangée est animé
   {
     // AVANT la mesure : `mesurer` fait défiler jusqu'à l'écran ce qu'il
@@ -415,7 +415,7 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     const uneLigne = puces.length >= 5 && puces.every((p) => Math.abs(p.haut - puces[0].haut) <= 1);
     const choisie = puces.find((p) => p.choisie);
     const visible = choisie && /4177/.test(choisie.nom) && choisie.gauche >= 0 && choisie.droite <= w;
-    const muet = await page.evaluate(() => /Terminal silent|Terminal muet/.test(document.body.innerText));
+    const muet = await page.evaluate(() => /Terminal (silent|muet|offline|hors ligne)/.test(document.body.innerText));
     const fautes = [];
     if (!uneLigne) fautes.push(`puces sur ${new Set(puces.map((p) => p.haut)).size} lignes (${puces.length} puces)`);
     if (!choisie) fautes.push("aucune puce ne se dit choisie");

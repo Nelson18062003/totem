@@ -57,8 +57,11 @@ cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
 cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT sonné
 cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur rien
 cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
+cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne retire rien
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
+cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
+cd mobile && node scripts/verifier-le-guichet.mjs # chaque demande finit, et dit vrai
 cd mobile && node scripts/verifier-l-echelle.mjs # rien ne grossit sans limite
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
@@ -748,6 +751,70 @@ DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
 application installée se démonte — tout ce qui entre dans ce fichier est
 public, pour toujours. À relancer avant toute compilation destinée au
 magasin.
+
+**LA ROUE NE TOURNE QUE SOUS LE DOIGT.** Le propriétaire, sur ses deux
+téléphones : « un truc de chargement en haut qui a calé ; tout part vers le
+bas ; il faut redémarrer ». Une première correction avait séparé deux
+drapeaux et passé TOUS les harnais au vert — et la roue restait plantée.
+**Aucun harnais ne pouvait la voir** : c'est un objet natif, et l'export web
+n'en dessine pas. Une enquête (six enquêteurs, chacun contredit) a trouvé
+non pas une cause mais cinq : la roue suivait le CHARGEMENT et non le doigt
+(sur iPhone, une roue montrée sans geste fait descendre le contenu de sa
+hauteur — le « tout part vers le bas ») ; elle était partagée par les quatre
+onglets ; un appel pouvait ne jamais finir ; un onglet raté une fois restait
+gris pour toujours ; des réponses croisées s'écrasaient. **Un compteur
+calculé reste vrai pour toujours si une promesse ne finit jamais** : la
+première correction ne pouvait pas tenir. Celle-ci ne répare pas le drapeau,
+elle COUPE LE FIL : la roue vit dans `useRoue`, levée par le doigt, baissée à
+la fin de SA relecture, vingt secondes au plus.
+
+`verifier-la-roue` fait tourner le VRAI `donnees.tsx` sous le VRAI React,
+dans Node, sans un port : les écrans y sont des coquilles, le guichet est
+piloté à la main (réponse, échec, silence éternel), et chaque valeur que le
+`RefreshControl` natif RECEVRAIT est notée. Le cahier d'avant, pris sur main,
+y échoue huit fois sur neuf ; le neuvième scénario — des SMS « en route » qui
+reprogrammaient deux relectures à chaque relecture, un pouls revenu par la
+petite porte — a son témoin à part : la condition retirée, il compte sept
+relectures au lieu de trois. Il refuse aussi tout `<RefreshControl>` écrit
+ailleurs que dans `useRoue`.
+
+**Le fetch du téléphone n'est pas celui de React Native.** Expo 57 le
+remplace par le sien, qui rend la main dès les EN-TÊTES ; sur iPhone, la
+lecture du corps n'attend que l'état « corps complet », et une coupure à ce
+moment la laisse en suspens pour toujours — même un abandon ne la réveille
+pas. Le délai de quinze secondes s'effaçait aux en-têtes. Une première
+vérification, faite ici, avait conclu le contraire en lisant
+`whatwg-fetch` : c'était le bon code, mais pas celui qui tourne. **On lit le
+code qui S'EXÉCUTE, pas celui qui porte le bon nom.** `verifier-le-guichet`
+met le vrai guichet devant de faux fetch (corps sans fin, corps tronqué,
+page de portail, 500 sans JSON) et exige un rejet avant l'échéance, jamais
+`{}`, toujours une phrase du dictionnaire.
+
+**« Terminal muet » ne disait rien.** Ni ce que c'est, ni si l'argent arrive,
+ni quoi faire — et l'appui menait aux Réglages, qui répétaient « muet ».
+L'alerte dit maintenant « Terminal hors ligne » et ouvre une explication :
+le boîtier de la boutique ne donne plus de nouvelles, les clients peuvent
+toujours payer, voici quoi vérifier sur place. Et une coupure de courant de
+dix minutes déclarait toutes les cartes « retirées » : la présence d'une
+carte a maintenant trois états, et « inconnue » n'est jamais « retirée ».
+`verifier-le-boitier-muet` le garde, avec la base qui note elle-même quand
+elle entend chaque boîtier.
+
+**Le temps réel, c'est la notification — prise au sérieux.** Pas de pouls
+(le propriétaire l'a refusé en août, et il avait raison) : une relecture à
+la notification, et une seconde si rien n'a bougé, parce qu'elle arrive
+souvent avant le SMS en base ; le retour depuis l'ARRIÈRE-PLAN seulement
+(tirer le centre de notifications ne doit rien recharger) ; un onglet vieux
+de trente secondes ; trois relectures après une opération. Côté boîtier, une
+sonnerie qui n'a pas pu partir pendant une coupure d'Internet est retenue,
+et rejouée APRÈS la montée de son SMS — regroupée, datée, code masqué.
+
+**Une demande abandonnée s'annule.** L'écran attendait trente secondes puis
+renonçait sans rien retirer : un boîtier revenu des heures plus tard
+composait encore le transfert, numéro et montant compris. L'écran annule
+maintenant, et ne dit « rien n'est parti » que si l'annulation a PRIS ; le
+robot, lui, ne compose jamais une demande de plus d'une minute, mesurée sur
+l'horloge de la base.
 
 **Les deux paquets tiennent la même promesse.** `verifier-le-paquet` ne
 regardait qu'Android, parce qu'il n'y avait qu'Android ; un secret qui
