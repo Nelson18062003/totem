@@ -6,9 +6,9 @@
 // sur une capture d'écran de fiche publique, c'est le prénom du propriétaire
 // qui part faire le tour du monde.
 //
-// On le tire donc du COURRIEL du compte connecté. Pas d'un champ « prénom »
-// à saisir : une case de plus à remplir pour une salutation, et une donnée
-// personnelle de plus à garder, alors que le courriel est déjà là.
+// On prend le PRÉNOM que la personne a saisi en créant son compte. Les
+// comptes d'avant l'inscription publique n'en ont pas : pour eux seuls, on
+// le tire du COURRIEL.
 
 import { textesAccueil } from "./textes/accueil";
 import type { Langue } from "./langue";
@@ -28,9 +28,19 @@ export function prenomDuCourriel(courriel: string | null | undefined): string {
   return brut.charAt(0).toUpperCase() + brut.slice(1).toLowerCase();
 }
 
-/** La salutation complète, nom ou pas. */
-export function salutation(langue: Langue, courriel?: string | null): string {
+/**
+ * La salutation complète, nom ou pas.
+ *
+ * LE PRÉNOM SAISI D'ABORD. L'inscription publique le demande : le deviner
+ * du courriel alors qu'on l'a, c'était saluer « nom+test1@gmail.com » d'un
+ * « Bonjour, Nom », et « kamdemjp@yahoo.fr » d'un « Bonjour, Kamdemjp ». Le
+ * courriel ne sert plus qu'aux comptes d'avant, qui n'ont pas de prénom.
+ */
+export function salutation(
+  langue: Langue, courriel?: string | null, prenom?: string | null,
+): string {
   const t = textesAccueil[langue];
-  const nom = prenomDuCourriel(courriel);
+  const saisi = (prenom ?? "").trim().split(/\s+/)[0] ?? "";
+  const nom = saisi || prenomDuCourriel(courriel);
   return nom ? t.bonjour.replace("{nom}", nom) : t.bonjourSeul;
 }

@@ -5,10 +5,11 @@
 // lui est réservée (403 pour les autres), et l'écran se tait alors de
 // lui-même — un invité ne voit même pas qu'elle existe.
 //
-// L'inscription libre est fermée dès le premier compte : créer un compte
-// ICI est le seul chemin pour faire entrer quelqu'un : le propriétaire donne
-// le prénom, le nom, le courriel, et choisit le mot de passe qu'il
-// transmettra lui-même.
+// L'inscription est publique : chacun crée son compte dans l'application.
+// Créer un compte ICI sert au propriétaire qui pose lui-même quelqu'un : il
+// donne le prénom, le nom, le courriel, et choisit le mot de passe qu'il
+// transmettra. Une puce envoyée par un inscrit s'attribue d'après le CODE DE
+// COMPTE joint à la puce — jamais d'après une adresse e-mail.
 //
 // LES CARTES DE CHACUN. Un invité ne voit que les cartes qu'on lui confie
 // ici, et rien du tout tant qu'on ne lui en a confié aucune. L'avertissement
@@ -109,6 +110,9 @@ export function SectionQui({ langue, proprietaire, sims }: {
   const [cartes, setCartes] = useState<CarteAConfier[]>([]);
   // Le compte dont on choisit les cartes, ou aucun.
   const [enChoix, setEnChoix] = useState<number | null>(null);
+  // Le code de compte tapé pour chaque compte du grand public (voir
+  // web/lib/code-de-compte.ts) : il accompagne chaque attribution.
+  const [codes, setCodes] = useState<Record<number, string>>({});
   // La carte dont l'attribution part en ce moment (« compte-iccid »).
   const [bascule, setBascule] = useState<string | null>(null);
   const [permis, setPermis] = useState<boolean | null>(null);
@@ -258,7 +262,9 @@ export function SectionQui({ langue, proprietaire, sims }: {
     setBascule(`${c.id}-${iccid}`);
     setMot(null);
     try {
-      await agirSurCompte({ id: c.id, iccid, geste: confiee ? "retirer" : "attribuer" });
+      await agirSurCompte(confiee
+        ? { id: c.id, iccid, geste: "retirer" }
+        : { id: c.id, iccid, geste: "attribuer", code: codes[c.id] ?? "" });
       setRate(false);
     } catch (e) {
       setRate(true);
@@ -418,6 +424,18 @@ export function SectionQui({ langue, proprietaire, sims }: {
                 ) : null}
                 {c.cartes !== null && enChoix === c.id ? (
                   <View style={{ gap: espaces.xs, marginTop: espaces.xs }}>
+                    {/* LE CODE DE COMPTE, pour un compte du grand public : la
+                        puce va au compte qui porte le code joint à la puce,
+                        jamais à celui d'une adresse e-mail. */}
+                    {c.codeExige ? (
+                      <View style={{ gap: espaces.xs }}>
+                        <Saisie libelle={t.codeDeCompteLibelle} valeur={codes[c.id] ?? ""}
+                                onChange={(v) => setCodes((d) => ({ ...d, [c.id]: v }))} />
+                        <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
+                          {t.codeDeCompteAide}
+                        </Texte>
+                      </View>
+                    ) : null}
                     {cartes.length === 0 ? (
                       <Texte taille={textes.legende} ton="pale">{t.cartesAucuneDansLaMaison}</Texte>
                     ) : null}

@@ -11,7 +11,7 @@ const en = {
   titre: "Settings",
   sousTitre: "The terminal, the accounts, security.",
   proprietaire: "Terminal owner",
-  titulaire: "Holds the cards entrusted to them",
+  titulaire: "Your TOTEM account",
 
   // --- Le terminal
   terminal: "Terminal",
@@ -84,9 +84,9 @@ const en = {
   libellesCodes: {
     menu: "Menu",
     depot: "Deposit",
-    retrait: "Withdrawal",
+    retrait: "Withdraw",
     transfert: "Transfer",
-    solde: "Balance",
+    solde: "Check balance",
     mon_numero: "My number",
   } as Record<string, string | undefined>,
   modifierCode: "Edit this code",
@@ -160,13 +160,13 @@ const en = {
   aucunAutreCompte: "No other account yet.",
 
   // --- Créer un compte pour quelqu'un d'autre ---------------------------
-  // Le seul chemin qui reste pour faire entrer quelqu'un : l'inscription
-  // libre est fermée, et doit le rester.
+  // L'inscription est PUBLIQUE : chacun crée son compte dans l'application.
+  // Ce chemin-ci sert au propriétaire qui pose LUI-MÊME quelqu'un.
   creerCompte: "Create an account",
   creerCompteAide:
-    "Sign-up is closed to everyone. This is the only way to let someone in — " +
-    "you create the account, you hand over the password, and you can block " +
-    "or delete it whenever you want.",
+    "Anyone can create their own account in the app. This is for setting one " +
+    "up yourself for someone — you create the account, you hand over the " +
+    "password, and you can block or delete it whenever you want.",
   creerPrenom: "First name",
   creerNom: "Last name",
   creerCourriel: "Their email",
@@ -195,6 +195,12 @@ const en = {
   cartesAucune: "None yet: this account sees nothing.",
   cartesToutes: "Every card — the owner sees everything.",
   cartesConfier: "Entrust cards",
+  // LE CODE DE COMPTE, recopié depuis l'enveloppe de la puce : c'est lui —
+  // et non l'adresse e-mail — qui dit à quel compte la puce appartient.
+  codeDeCompteLibelle: "Account code sent with the SIM",
+  codeDeCompteAide:
+    "Type the code that came with the SIM card. Never assign a card on the "
+    + "strength of an email address: anyone could have signed up with it first.",
   cartesFermer: "Done",
   cartesConfiee: "Entrusted",
   cartesRetiree: "absent from the terminal",
@@ -315,16 +321,47 @@ const en = {
   noteLangue:
     "Every screen follows — dates, amounts, alerts. What the operator sends is never translated: it stays word for word, as the SIM received it.",
 
+  // --- Les boutons de l'accueil, choisis par la personne
+  accueilTitre: "Home buttons",
+  accueilNote: (max: number) =>
+    `The round buttons under the card. Tick the ones you use, in the order you like — ${max} at most. They apply to this phone.`,
+  accueilChoisi: (n: number) => `Position ${n}`,
+  accueilMonter: (nom: string) => `Move ${nom} up`,
+  accueilDescendre: (nom: string) => `Move ${nom} down`,
+  accueilPlein: (max: number) => `${max} buttons already: untick one first.`,
+  accueilRetablir: "Restore the original home",
+
   // --- La sortie
   seDeconnecter: "Sign out",
   deconnexion: "Signing out…",
+
+  // --- SUPPRIMER MON COMPTE. Apple l'exige dès qu'on peut créer un compte
+  // dans l'application, et c'est juste : on doit pouvoir partir aussi
+  // simplement qu'on est venu. On dit CE QUI s'efface, et ce qui ne
+  // s'efface pas — l'argent n'est jamais chez TOTEM.
+  supprimerCompte: "Delete my account",
+  supprimerTitre: "Delete your account",
+  supprimerEfface:
+    "Your account is deleted for good: your name, address, phone number, " +
+    "email address and password fingerprint, and the sessions open on " +
+    "your phones. You will no longer see your cards in TOTEM.",
+  supprimerArgent:
+    "Your money is not affected: it stays in your Mobile Money accounts, " +
+    "with the operator. TOTEM never holds any.",
+  supprimerPuce:
+    "If TOTEM holds your SIM card, write to us to get it back.",
+  ecrireATotem: "Write to TOTEM",
+  supprimerMotDePasse: "Type your password to confirm",
+  supprimerBouton: "Delete my account for good",
+  supprimerEnCours: "Deleting…",
+  supprimerManque: "Type your password to confirm.",
 };
 
 const fr: typeof en = {
   titre: "Réglages",
   sousTitre: "Le terminal, les comptes, la sécurité.",
   proprietaire: "Propriétaire du terminal",
-  titulaire: "Titulaire des cartes qui lui sont confiées",
+  titulaire: "Votre compte TOTEM",
 
   terminal: "Terminal",
   enLigne: "En ligne",
@@ -383,7 +420,7 @@ const fr: typeof en = {
     depot: "Dépôt",
     retrait: "Retrait",
     transfert: "Transfert",
-    solde: "Solde",
+    solde: "Voir mon solde",
     mon_numero: "Mon numéro",
   } as Record<string, string | undefined>,
   modifierCode: "Modifier ce code",
@@ -451,9 +488,10 @@ const fr: typeof en = {
 
   creerCompte: "Créer un compte",
   creerCompteAide:
-    "L’inscription est fermée à tout le monde. C’est le seul moyen de faire " +
-    "entrer quelqu’un — vous créez le compte, vous transmettez le mot de " +
-    "passe, et vous pouvez le bloquer ou le supprimer quand vous voulez.",
+    "Chacun peut créer son compte dans l’application. Ceci sert à poser " +
+    "vous-même un compte pour quelqu’un — vous créez le compte, vous " +
+    "transmettez le mot de passe, et vous pouvez le bloquer ou le supprimer " +
+    "quand vous voulez.",
   creerPrenom: "Prénom",
   creerNom: "Nom",
   creerCourriel: "Son courriel",
@@ -475,6 +513,10 @@ const fr: typeof en = {
   cartesAucune: "Aucune pour l’instant : ce compte ne voit rien.",
   cartesToutes: "Toutes — le propriétaire voit tout.",
   cartesConfier: "Confier des cartes",
+  codeDeCompteLibelle: "Code de compte joint à la puce",
+  codeDeCompteAide:
+    "Tapez le code reçu avec la puce. N’attribuez jamais une carte d’après une "
+    + "adresse e-mail : n’importe qui a pu s’inscrire avec avant la personne.",
   cartesFermer: "Terminé",
   cartesConfiee: "Confiée",
   cartesRetiree: "absente du terminal",
@@ -567,8 +609,34 @@ const fr: typeof en = {
   noteLangue:
     "Tout l’écran suit — dates, montants, alertes. Ce que l’opérateur envoie n’est jamais traduit : mot pour mot, tel que la carte l’a reçu.",
 
+  accueilTitre: "Boutons de l’accueil",
+  accueilNote: (max) =>
+    `Les boutons ronds sous la carte. Cochez ceux qui vous servent, dans l’ordre qui vous plaît — ${max} au plus. Le choix vaut pour ce téléphone.`,
+  accueilChoisi: (n) => `Place ${n}`,
+  accueilMonter: (nom) => `Monter ${nom}`,
+  accueilDescendre: (nom) => `Descendre ${nom}`,
+  accueilPlein: (max) => `Déjà ${max} boutons : décochez-en un d’abord.`,
+  accueilRetablir: "Rétablir l’accueil d’origine",
+
   seDeconnecter: "Se déconnecter",
   deconnexion: "Déconnexion…",
+
+  supprimerCompte: "Supprimer mon compte",
+  supprimerTitre: "Supprimer votre compte",
+  supprimerEfface:
+    "Votre compte est supprimé pour de bon : vos nom, adresse, numéro de " +
+    "téléphone, adresse e-mail et empreinte du mot de passe, et les sessions " +
+    "ouvertes sur vos téléphones. Vous ne verrez plus vos cartes dans TOTEM.",
+  supprimerArgent:
+    "Votre argent n’est pas touché : il reste sur vos comptes Mobile Money, " +
+    "chez l’opérateur. TOTEM n’en détient jamais.",
+  supprimerPuce:
+    "Si TOTEM garde votre puce, écrivez-nous pour la récupérer.",
+  ecrireATotem: "Écrire à TOTEM",
+  supprimerMotDePasse: "Tapez votre mot de passe pour confirmer",
+  supprimerBouton: "Supprimer mon compte pour de bon",
+  supprimerEnCours: "Suppression…",
+  supprimerManque: "Tapez votre mot de passe pour confirmer.",
 };
 
 export const textesReglages = { en, fr } as const;

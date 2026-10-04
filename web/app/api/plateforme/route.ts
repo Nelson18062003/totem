@@ -1,5 +1,6 @@
 import { relie } from "@/lib/serveur";
 import { inscriptionPossible } from "@/lib/porte";
+import { courrielDeContact } from "@/lib/contact";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,10 @@ export const dynamic = "force-dynamic";
  * faut bien pouvoir frapper à la porte avant d'avoir la clé.
  *
  * CE QU'ELLE NE DIT PAS. Aucun nom, aucun chiffre, aucune adresse de base,
- * aucune version. Seulement de quoi répondre à deux questions que l'écran de
- * connexion pose déjà à voix haute : « est-ce bien un TOTEM » et « la
- * connexion peut-elle aboutir ». Sans la seconde, un propriétaire dont les
+ * aucune version — hormis l'adresse de contact, publique de toute façon.
+ * Seulement de quoi répondre à deux questions que l'écran de connexion
+ * pose déjà à voix haute : « est-ce bien un TOTEM » et « la connexion
+ * peut-elle aboutir ». Sans la seconde, un propriétaire dont les
  * variables ne sont pas posées chercherait son mot de passe pendant des
  * heures — le serveur, lui, sait qu'aucun mot de passe ne marchera.
  */
@@ -43,14 +45,19 @@ export async function GET() {
   const configuree = Boolean(process.env.SESSION_SECRET)
     && (relie || Boolean(process.env.TOTEM_MOT_DE_PASSE));
 
-  // Peut-on encore créer un compte ici ? Non, dès qu'il y en a un. L'écran
-  // s'en sert pour ne PAS proposer une inscription qui serait refusée : un
-  // bouton qui mène toujours à un refus est un bouton de trop.
-  //
-  // Cela ne révèle rien qu'on ne sache déjà : « cette plateforme a un
-  // propriétaire » est vrai de toutes les plateformes en service, et
-  // n'apprend à personne qui il est.
+  // Peut-on créer un compte ici ? Oui, tant que la base des comptes répond :
+  // TOTEM est une application grand public, ouverte à l'inscription. L'écran
+  // s'en sert pour ne PAS proposer une inscription qui échouerait — quand la
+  // base se tait, « Créer un compte » mènerait à un refus.
   const inscription = (await inscriptionPossible()) === true;
 
-  return Response.json({ totem: true, configuree, relie, inscription });
+  // L'ADRESSE OÙ ÉCRIRE À TOTEM — la seule adresse que cette route donne,
+  // et elle est déjà publique (la page /confidentialite l'affiche à tout
+  // le monde). Un compte neuf n'a qu'un geste pour avancer, « Contacter
+  // TOTEM » : sans elle ici, l'application ouvrait la politique de
+  // confidentialité, l'adresse tout en bas. Absente (variable non posée) :
+  // `null`, et l'application garde la page en secours.
+  return Response.json({
+    totem: true, configuree, relie, inscription, contact: courrielDeContact(),
+  });
 }

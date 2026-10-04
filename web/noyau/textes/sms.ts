@@ -67,6 +67,12 @@ const en = {
   ouvertureRecu: "Opening…",
   partagerRecu: "Share the receipt",
   preparationRecu: "Preparing the PDF…",
+  // Le reçu d'un SMS tout juste arrivé : le boîtier le dépose tout seul,
+  // dans les secondes qui suivent. On l'ATTEND — on ne propose pas de
+  // l'établir (voir `recuAttendu`).
+  recuEnPreparation: "Receipt on its way…",
+  // « Refaire » sans rien changer : le document en place EST le bon.
+  recuDejaAJour: "This receipt is already up to date ✓",
   lienRecuImpossible: "The receipt could not be prepared. Check the connection, then try again.",
   toutesLesCartes: "All SIMs",
   soldesRepetes: (n: number) =>
@@ -187,6 +193,8 @@ const fr: typeof en = {
   ouvertureRecu: "Ouverture…",
   partagerRecu: "Partager le reçu",
   preparationRecu: "Préparation du PDF…",
+  recuEnPreparation: "Reçu en préparation…",
+  recuDejaAJour: "Ce reçu est déjà à jour ✓",
   lienRecuImpossible: "Le reçu n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   toutesLesCartes: "Toutes les cartes",
   soldesRepetes: (n) =>

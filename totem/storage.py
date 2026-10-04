@@ -288,6 +288,32 @@ class Journal:
             # cette colonne un écran en français recevait un PDF dans la
             # langue du robot. Vide : la langue du robot, comme avant.
             self._ajouter_colonne_si_absente("recus", "langue")
+            # Les reprises du DÉPÔT sur la plateforme, comptées à part de
+            # celles de Telegram. Les deux chemins se partageaient « essais » :
+            # le dépôt attendait que Telegram ait pris le document, et l'échec
+            # de l'un comptait pour l'autre. Chacun a maintenant son compte.
+            self._ajouter_colonne_si_absente("recus", "essais_archive",
+                                             "INTEGER DEFAULT 0")
+            # L'EMPREINTE du document déposé sur la plateforme : posée par
+            # `recu_archive`, et par lui seul. « archive = 1 » ne voulait pas
+            # dire « déposé » : l'ancien code le posait aussi en RENONÇANT
+            # (soixante échecs Telegram — dix minutes de panne —, ou un
+            # document qui ne se fabriquait plus). Ces lignes-là passaient
+            # pour déposées, et « Établir le reçu » répondait « prêt » sur
+            # un document que la plateforme n'avait jamais reçu.
+            #
+            # Vide : on ne SAIT PAS si la plateforme l'a. Les lignes d'avant
+            # cette colonne sont toutes dans ce cas ; une redemande les
+            # redépose. Celles que l'ancien code a abandonnées à Telegram
+            # (essais ≥ 60) n'ont, elles, presque sûrement jamais été
+            # déposées : elles repartent dans la file tout de suite.
+            neuve = "empreinte" not in {
+                r[1] for r in self.conn.execute("PRAGMA table_info(recus)")}
+            self._ajouter_colonne_si_absente("recus", "empreinte")
+            if neuve:
+                self.conn.execute(
+                    "UPDATE recus SET archive = 0, essais_archive = 0 "
+                    "WHERE archive = 1 AND essais >= 60")
             self.conn.commit()
 
     def _reprendre_recus(self):
@@ -706,7 +732,8 @@ class Journal:
             return None
 
     def programmer_recu(self, source_id, genre, numero, reference=None,
-                        source="sms", nature=None, langue=None):
+                        source="sms", nature=None, langue=None,
+                        langue_robot=None):
         """Inscrit un reçu à fabriquer. Renvoie le numéro EN VIGUEUR pour ce
         message (celui inscrit, qui peut différer du numéro proposé si le
         document existait déjà), ou None si rien ne le désigne.
@@ -718,7 +745,12 @@ class Journal:
         `nature` : le choix du propriétaire, quand la demande vient de la
         plateforme. Redemander le reçu d'un message avec une AUTRE nature
         refabrique le document — même numéro, nouveau genre — au lieu de
-        resservir l'ancien.
+        resservir l'ancien. La MÊME nature, elle, ne refait rien : le
+        document déjà déposé est le bon.
+
+        `langue_robot` : la langue d'un document inscrit sans langue (un
+        reçu né d'un SMS entrant suit celle du robot). Elle sert à dire si
+        l'écran qui redemande parle une AUTRE langue que le document.
         """
         try:
             with self.verrou:
@@ -733,8 +765,8 @@ class Journal:
             with self.verrou:
                 quand = self._maintenant()
                 existante = self.conn.execute(
-                    "SELECT genre, nature FROM recus "
-                    "WHERE source = ? AND source_id = ?",
+                    "SELECT genre, nature, langue, archive, empreinte "
+                    "FROM recus WHERE source = ? AND source_id = ?",
                     (source, source_id)).fetchone()
                 if existante is None:
                     # LA RÉFÉRENCE D'UN AUTRE MESSAGE — et le reçu d'un
@@ -770,7 +802,7 @@ class Journal:
                         # pas. Aucun reçu vaut mieux que celui d'un autre.
                         return None
                 if existante is not None:
-                    genre_avant, nature_avant = existante
+                    genre_avant, nature_avant = existante[0], existante[1]
                     # Le document CHANGE (autre genre, ou autre nature — donc
                     # un autre titre) : il repart entier, Telegram compris.
                     # Sinon, « régénérer » refait le document en silence :
@@ -789,7 +821,8 @@ class Journal:
                                 "UPDATE recus SET genre = ?, "
                                 "nature = COALESCE(?, nature), "
                                 "langue = COALESCE(?, langue), reference = ?, "
-                                "date = ?, envoye = 0, archive = 0, essais = 0 "
+                                "date = ?, envoye = 0, archive = 0, essais = 0, "
+                                "essais_archive = 0, empreinte = NULL "
                                 "WHERE source = ? AND source_id = ?",
                                 (genre, nature or None, langue or None,
                                  reference or None, quand, source, source_id))
@@ -798,16 +831,36 @@ class Journal:
                                 "UPDATE recus SET genre = ?, "
                                 "nature = COALESCE(?, nature), "
                                 "langue = COALESCE(?, langue), date = ?, "
-                                "envoye = 0, archive = 0, essais = 0 "
+                                "envoye = 0, archive = 0, essais = 0, "
+                                "essais_archive = 0, empreinte = NULL "
                                 "WHERE source = ? AND source_id = ?",
                                 (genre, nature or None, langue or None,
                                  quand, source, source_id))
-                    else:
+                    elif autre_langue(langue, existante[2], langue_robot):
+                        # Même document, autre langue d'écran : seule
+                        # l'archive se refait, Telegram garde le sien.
                         self.conn.execute(
-                            "UPDATE recus SET archive = 0, essais = 0, "
-                            "langue = COALESCE(?, langue), "
+                            "UPDATE recus SET archive = 0, essais_archive = 0, empreinte = NULL, "
+                            "langue = ?, date = ? "
+                            "WHERE source = ? AND source_id = ?",
+                            (langue, quand, source, source_id))
+                    elif existante[3] == 0 or not existante[4]:
+                        # Pas encore déposé — ou rien ne PROUVE qu'il l'a été
+                        # (pas d'empreinte : abandonné, ou hérité de l'ancien
+                        # code) : la demande d'une personne le remet en TÊTE
+                        # de file (la date porte l'urgence) et efface le
+                        # compte des accrocs — c'est elle qui attend.
+                        self.conn.execute(
+                            "UPDATE recus SET archive = 0, essais_archive = 0, empreinte = NULL, "
                             "date = ? WHERE source = ? AND source_id = ?",
-                            (langue or None, quand, source, source_id))
+                            (quand, source, source_id))
+                    # Sinon : un document est DÉPOSÉ, avec son empreinte, et
+                    # ni le genre, ni la nature, ni la langue n'ont changé.
+                    # La ligne reste telle quelle : c'est au ROBOT de dire si
+                    # le document a changé quand même — l'identité inscrite
+                    # aux Réglages y entre, et elle ne vit pas dans cette
+                    # ligne. Il le refait en mémoire et compare l'empreinte
+                    # (voir `Robot._recu_apres_coup`).
                 self.conn.commit()
                 # Le numéro EN VIGUEUR : celui de la ligne de ce message —
                 # jamais celui recalculé du jour, qui peut différer si le
@@ -840,7 +893,8 @@ class Journal:
         Telegram n'est pas concerné — seul le document du cloud se refait."""
         with self.verrou:
             self.conn.execute(
-                "UPDATE recus SET archive = 0, essais = 0 WHERE id = ?",
+                "UPDATE recus SET archive = 0, essais_archive = 0, empreinte = NULL "
+                "WHERE id = ?",
                 (identifiant,))
             self.conn.commit()
 
@@ -855,14 +909,14 @@ class Journal:
             try:
                 self.conn.execute(
                     "UPDATE recus SET genre = ?, reference = ?, "
-                    "archive = 0, essais = 0 WHERE id = ?",
+                    "archive = 0, essais_archive = 0, empreinte = NULL WHERE id = ?",
                     (genre, reference or None, identifiant))
             except sqlite3.IntegrityError:
                 # La référence est déjà tenue par un autre document : on
                 # corrige le genre sans elle.
                 self.conn.execute(
-                    "UPDATE recus SET genre = ?, archive = 0, essais = 0 "
-                    "WHERE id = ?", (genre, identifiant))
+                    "UPDATE recus SET genre = ?, archive = 0, "
+                    "essais_archive = 0, empreinte = NULL WHERE id = ?", (genre, identifiant))
             self.conn.commit()
 
     def recus_a_envoyer(self, apres_secondes=0, limite=5):
@@ -886,8 +940,20 @@ class Journal:
                 "WHERE r.envoye = 0 AND r.date <= ? ORDER BY r.id LIMIT ?",
                 (avant, limite)).fetchall()
 
-    def recus_a_archiver(self, limite=5):
-        """Les reçus partis sur Telegram mais pas encore déposés dans le cloud.
+    def recus_a_archiver(self, limite=5, source=None, source_id=None):
+        """Les reçus pas encore déposés sur la plateforme — que Telegram les
+        ait pris ou non.
+
+        IL N'Y A PLUS D'ORDRE ENTRE LES DEUX. Le dépôt attendait que Telegram
+        ait accepté le document (« envoye = 1 ») : dix secondes de délai
+        voulu pour l'alerte, un tour de surveillance, l'envoi — et si
+        Telegram était lent ou en panne, l'application n'avait RIEN, alors
+        que le propriétaire avait déjà le PDF dans sa conversation… ou ne
+        l'avait nulle part. La plateforme reçoit maintenant le document dès
+        qu'il est inscrit ; Telegram suit, de son côté, à son rythme.
+
+        `source`, `source_id` : un seul reçu — celui qu'une personne vient de
+        demander, déposé dans la foulée de sa demande.
 
         Les plus récemment DEMANDÉS d'abord. Le cas vécu : une mise à jour du
         lecteur remet 143 vieux reçus à archiver, et le propriétaire, au même
@@ -907,9 +973,12 @@ class Journal:
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
-                "WHERE r.envoye = 1 AND r.archive = 0 "
-                "ORDER BY r.date DESC, r.id DESC LIMIT ?",
-                (limite,)).fetchall()
+                "WHERE r.archive = 0 "
+                + ("AND r.source = ? AND r.source_id = ? "
+                   if source_id is not None else "")
+                + "ORDER BY r.date DESC, r.id DESC LIMIT ?",
+                ((source or "sms", source_id, limite)
+                 if source_id is not None else (limite,))).fetchall()
 
     def recu_envoye(self, identifiant):
         with self.verrou:
@@ -917,19 +986,92 @@ class Journal:
                               "WHERE id = ?", (identifiant,))
             self.conn.commit()
 
-    def recu_archive(self, identifiant):
+    def recu_archive(self, identifiant, empreinte=None, ligne=None):
+        """Le document est sur la plateforme, pour de bon — avec SON
+        empreinte. Rend False si rien n'est marqué.
+
+        `ligne` : celle lue avec le lot. Le dépôt prend le temps d'un envoi
+        par la 3G ; si le propriétaire a changé la nature PENDANT ce temps,
+        le document qui vient de partir est l'ancien. On ne marque alors
+        RIEN : la ligne reste à déposer, avec son nouveau contenu. (Marquer
+        quand même laissait la plateforme sur l'ancien document, et le
+        journal le croyait à jour.)"""
         with self.verrou:
-            self.conn.execute("UPDATE recus SET archive = 1 WHERE id = ?",
-                              (identifiant,))
+            if ligne is None:
+                faits = self.conn.execute(
+                    "UPDATE recus SET archive = 1, essais_archive = 0, "
+                    "empreinte = ? WHERE id = ?",
+                    (empreinte, identifiant)).rowcount
+            else:
+                _, genre, _, date, _, _, _, nature, langue = ligne
+                faits = self.conn.execute(
+                    "UPDATE recus SET archive = 1, essais_archive = 0, "
+                    "empreinte = ? WHERE id = ? AND archive = 0 "
+                    "AND genre = ? AND date = ? AND nature IS ? "
+                    "AND langue IS ?",
+                    (empreinte, identifiant, genre, date, nature,
+                     langue)).rowcount
+            self.conn.commit()
+        return faits > 0
+
+    def recu_de(self, source_id, source="sms"):
+        """La ligne de fabrication du reçu de ce message (même forme que
+        `recus_a_archiver`), suivie de son empreinte — déposé ou non."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT r.id, r.genre, r.numero, r.date, "
+                "       COALESCE(s.texte, u.texte, ''), "
+                "       COALESCE(s.compte, u.compte, ''), "
+                "       COALESCE(s.iccid, u.iccid, ''), r.nature, r.langue, "
+                "       r.empreinte "
+                "FROM recus r "
+                "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
+                "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
+                "WHERE r.source = ? AND r.source_id = ?",
+                (source, source_id)).fetchone()
+
+    def recu_abandonne_au_depot(self, identifiant):
+        """On renonce à déposer ce document (il ne se fabrique plus). Sans
+        empreinte : c'est ce qui le distingue d'un document vraiment
+        déposé, et ce qui permet à une demande de la plateforme de le
+        relancer."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE recus SET archive = 1, empreinte = NULL, "
+                "essais_archive = MAX(essais_archive, 1) WHERE id = ?",
+                (identifiant,))
             self.conn.commit()
 
+    def recu_depot_echoue(self, identifiant, essais_max=60):
+        """Un accroc de FABRICATION au dépôt. Compté pour le dépôt seul : il
+        ne retire rien à Telegram, qui a ses propres reprises."""
+        with self.verrou:
+            self.conn.execute("UPDATE recus SET essais_archive = essais_archive + 1 "
+                              "WHERE id = ?", (identifiant,))
+            self.conn.execute("UPDATE recus SET archive = 1, empreinte = NULL "
+                              "WHERE id = ? AND essais_archive >= ?",
+                              (identifiant, essais_max))
+            self.conn.commit()
+
+    def recu_en_place(self, source_id, source="sms"):
+        """Le reçu de ce message est-il DÉPOSÉ sur la plateforme ? (Et non
+        pas seulement inscrit, ou abandonné.)"""
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT archive, empreinte FROM recus "
+                "WHERE source = ? AND source_id = ?",
+                (source, source_id)).fetchone()
+        return bool(ligne) and ligne[0] == 1 and bool(ligne[1])
+
     def recu_echoue(self, identifiant, essais_max=60):
-        """Compte l'échec, et renonce au bout d'un long moment : un document
-        qu'on n'arrive jamais à fabriquer ne doit pas bloquer les suivants."""
+        """Un accroc TELEGRAM : compté, et l'on renonce au bout d'un long
+        moment — un document qu'on n'arrive jamais à envoyer ne doit pas
+        bloquer les suivants. Le dépôt sur la plateforme n'en dépend pas :
+        renoncer à Telegram ne renonce PAS à la plateforme."""
         with self.verrou:
             self.conn.execute("UPDATE recus SET essais = essais + 1 "
                               "WHERE id = ?", (identifiant,))
-            self.conn.execute("UPDATE recus SET envoye = 1, archive = 1 "
+            self.conn.execute("UPDATE recus SET envoye = 1 "
                               "WHERE id = ? AND essais >= ?",
                               (identifiant, essais_max))
             self.conn.commit()
@@ -1242,6 +1384,16 @@ class Journal:
             )])
         # BOM : Excel ouvre alors correctement les accents.
         return b"\xef\xbb\xbf" + tampon.getvalue().encode("utf-8")
+
+
+def autre_langue(demandee, inscrite, langue_robot=None):
+    """L'écran qui redemande un reçu parle-t-il une AUTRE langue que le
+    document en place ? Sans langue demandée : non — une redemande sans
+    langue ne défait jamais celle d'un document. Un document inscrit sans
+    langue est dans celle du robot."""
+    if not demandee:
+        return False
+    return demandee != (inscrite or langue_robot or demandee)
 
 
 def montant_recu(texte, numeros=()):

@@ -227,7 +227,9 @@ export default async function Reglages() {
 
       {/* CE QUI S'EST PASSÉ. Le terminal tenait son journal depuis toujours
           et personne ne le lisait : aucun écran ne l'affichait. Il est ici,
-          là où l'on va quand quelque chose ne va pas. */}
+          là où l'on va quand quelque chose ne va pas. Réservé au
+          propriétaire : c'est le journal de TOTEM, pas celui d'un compte. */}
+      {proprietaire && (
       <section>
         <Link
           href="/journal"
@@ -240,6 +242,7 @@ export default async function Reglages() {
           <span aria-hidden className="text-ink-faint">›</span>
         </Link>
       </section>
+      )}
 
       {/* Sécurité */}
       <section>
@@ -260,6 +263,19 @@ export default async function Reglages() {
           <div className="mt-3">
             <SectionMotDePasse />
           </div>
+        )}
+        {/* SUPPRIMER MON COMPTE — le même geste que dans l'application, sur
+            la page publique qui le fait (mot de passe redemandé). Pas pour
+            le propriétaire de la plateforme : c'est lui qui attribue les
+            cartes, la plateforme le refuserait. */}
+        {moi && moi.role !== "proprietaire" && (
+          <Link
+            href="/suppression"
+            className="mt-3 flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4 text-body font-medium text-negative transition hover:border-ink-faint"
+          >
+            <span className="flex-1">{t.supprimerCompte}</span>
+            <span aria-hidden className="text-ink-faint">›</span>
+          </Link>
         )}
       </section>
       </div>

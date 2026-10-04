@@ -29,8 +29,9 @@ export async function donneesMontrees(
   return chargerDonnees(langue, (await porteeDe(req)) ?? RIEN, bornes);
 }
 
-/** Le terminal que la coquille affiche en haut de chaque page. */
+/** Le terminal que la coquille affiche en haut de chaque page — celui qui
+ *  porte les cartes de la personne, et aucun si elle n'en a pas. */
 export async function terminalMontre(langue: Langue): Promise<EtatTerminal | null> {
   if (await estDemonstration()) return chargerTerminalDeDemonstration(langue);
-  return chargerTerminal(langue);
+  return chargerTerminal(langue, (await porteeDe()) ?? RIEN);
 }

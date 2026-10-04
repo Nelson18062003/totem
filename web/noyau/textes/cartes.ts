@@ -13,7 +13,7 @@ const en = {
   soldeLe: (h: string) => `checked at ${h}`,
   soldeLeHier: (h: string) => `checked yesterday at ${h}`,
   soldeLeDate: (j: string, h: string) => `checked on ${j} at ${h}`,
-  analyseSous: "This week, best days, top customers",
+  analyseSous: "This week, best days, top senders",
   carte: (fin: string) => `card ${fin}`,
   itinerance: (reseau: string) => `roaming on ${reseau}`,
   repartition: "Breakdown",
@@ -32,7 +32,7 @@ const en = {
   // puces (son signe de vie arrive avant ses cartes). On nomme l'objet (le
   // boîtier), pas une cause qu'on ignore — courant ou Internet.
   boitierSansNouvelles:
-    "No recent news of this card: the shop's box went quiet, or has just come back. "
+    "No recent news of this card: the TOTEM box that holds your card went quiet, or has just come back. "
     + "What you see here dates from before.",
 };
 
@@ -45,7 +45,7 @@ const fr: typeof en = {
   soldeLe: (h) => `consulté à ${h}`,
   soldeLeHier: (h) => `consulté hier à ${h}`,
   soldeLeDate: (j, h) => `consulté le ${j} à ${h}`,
-  analyseSous: "La semaine, les meilleurs jours, les meilleurs clients",
+  analyseSous: "La semaine, les meilleurs jours, qui vous envoie le plus",
   carte: (fin) => `carte ${fin}`,
   itinerance: (reseau) => `itinérance sur ${reseau}`,
   repartition: "Répartition",
@@ -55,7 +55,7 @@ const fr: typeof en = {
   bilanRetiree: (n, d) => `${n} paiement${n > 1 ? "s" : ""} · retirée le ${d}`,
   signalInconnu: "signal inconnu",
   boitierSansNouvelles:
-    "Pas de nouvelles récentes de cette carte : le boîtier de la boutique s’est tu, "
+    "Pas de nouvelles récentes de cette carte : le boîtier TOTEM qui porte votre carte s’est tu, "
     + "ou vient de revenir. Ce qui s’affiche ici date d’avant.",
 };
 

@@ -285,6 +285,8 @@ const tables = () => ({
     })),
   ],
   recus: [
+    // Ceux que le robot a DÉPOSÉS pendant l'essai (`outils/eprouver-le-recu.py`).
+    ...recusDeposes,
     // Un reçu DÉJÀ établi, pour l'encaissement de NKENGAFAC M. (même
     // référence). Sans lui, aucun écran d'essai ne peut montrer l'état
     // « le reçu existe, on l'ouvre » — le bouton principal de la fiche.
@@ -354,6 +356,13 @@ let prochainBeneficiaire = 1;
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
+// LES REÇUS DU ROBOT. Le faux nuage ne savait pas les recevoir : la fiche
+// « recus » d'un dépôt tombait dans la table des SMS (l'écriture générique
+// plus bas range tout ce qu'elle reçoit parmi les paiements), et le fichier
+// lui-même n'avait nulle part où aller. Personne ne pouvait donc mesurer le
+// trajet d'un reçu, du SMS jusqu'au téléphone.
+const recusDeposes = [];             // fiches « recus », clé (terminal, numero)
+const fichiersDeposes = new Map();   // chemin dans le seau → octets
 // Les essais de mot de passe comptés, comme la table « freins ».
 const freins = new Map();
 
@@ -390,7 +399,7 @@ let hoquetsServis = 0;
 // migrée ne l'a pas (« /essai/base?effacement=non ») : c'est là que la
 // plateforme doit tenir la promesse seule.
 let effacementParLaBase = true;
-const GARDES_D_UNE_DEMANDE_CLOSE = ["secret", "carte", "iccid", "par", "langue"];
+const GARDES_D_UNE_DEMANDE_CLOSE = ["secret", "carte", "iccid", "par", "langue", "reseau"];
 function regleDeLaBase(commande) {
   if (!effacementParLaBase) return;
   if (!["faite", "echouee"].includes(commande.etat)) return;
@@ -424,7 +433,56 @@ function servir(enregistree) {
     enregistree.parametres = typeof carte === "string"
       ? { secret: true, carte } : { secret: true };
   }
+  // CE QUE LE RÉSEAU A DIT DE LA SESSION, comme le vrai robot le joint
+  // (`pilotage._etat_du_reseau`) : il attend une réponse, ou il a fermé.
+  if (enregistree.type === "ussd" || enregistree.type === "ussd_reponse") {
+    enregistree.parametres = {
+      ...(enregistree.parametres ?? {}),
+      reseau: /reussie|terminee/i.test(enregistree.resultat) ? "fini" : "attend",
+    };
+  }
 }
+
+// UN MESSAGE LONG QUI SE TOURNE COMME UNE PAGE — le vrai écran d'un « Float
+// Transfer » MTN vers une raison sociale longue (nom inventé, même
+// longueur). Il ne pose aucune question et finit par « 00. Next » ; l'écran
+// le prenait pour une fin. Activé par :
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/page-longue?oui=1"
+//
+// Là où le réseau demanderait le code secret (après le montant, ou tout de
+// suite pour un code complet), il sert d'abord la page → « 00 » →
+// « 1. Confirm » → « 1 » → seulement alors le code secret.
+let pageLongue = false;
+let etapeDeLaPage = 0;       // 0 : pas encore servie ; 1 : servie ; 2 : « Confirm » servi
+const CONFIRMER = "Fees: 0 FCFA. Commission: 25 FCFA.\n1. Confirm\n2. Cancel";
+const CODE_APRES_LA_PAGE = "Depot de 5 000 FCFA vers 237670000123.\nEntrez votre code secret:";
+/** Le tour de la page, quand elle est en jeu ; sinon `null`. */
+function tourDeLaPage(texte) {
+  if (!pageLongue) return null;
+  if (etapeDeLaPage === 0) { etapeDeLaPage = 1; return PAGE_LONGUE; }
+  if (etapeDeLaPage === 1 && texte === "00") { etapeDeLaPage = 2; return CONFIRMER; }
+  if (etapeDeLaPage === 2 && texte === "1") { etapeDeLaPage = 3; return CODE_APRES_LA_PAGE; }
+  // APRÈS LE CODE, UNE QUESTION ENCORE : l'écran se déclarait terminé dès la
+  // réponse au code, quoi qu'elle dise. Ici, l'opérateur demande encore.
+  if (etapeDeLaPage === 3 && texte === "(code)") { etapeDeLaPage = 4; return QUESTION_APRES_LE_CODE; }
+  if (etapeDeLaPage === 4 && texte === "1") {
+    etapeDeLaPage = 5;
+    return "Depot de 5 000 FCFA effectue avec succes. Nouveau solde: 407 500 FCFA.";
+  }
+  return null;
+}
+// LA CONFIRMATION DU NUMÉRO — un vrai écran MTN : il nomme le numéro et
+// attend « 1 ». Activée par :
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/confirmation-numero?oui=1"
+let confirmationNumero = false;
+const CONFIRMATION_DU_NUMERO =
+  "Please confirm the recipient phone 677998877 is correct (1=Yes 2=No):";
+const QUESTION_APRES_LE_CODE ="Confirmez-vous le depot de 5 000 FCFA ?\n1. Oui\n2. Non";
+const PAGE_LONGUE = "Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE "
+  + "QUINCAILLERIE DU LITTORAL ET DES HAUTS PLATEAUX SARL MBALLA JEAN having "
+  + "mobile number 237670000123.\n00. Next";
 
 function reponsePour(commande) {
   const { type, parametres } = commande;
@@ -443,16 +501,33 @@ function reponsePour(commande) {
     const code = String(parametres.code ?? "");
     // Un code complet (avec le numéro et le montant dedans) va droit au code
     // secret ; un code d'entrée ouvre le menu.
+    etapeDeLaPage = 0;                 // une session neuve : la page est à venir
     if (code.split("*").length > 3) {
+      if (pageLongue) return tourDeLaPage(code);
       return "Confirmer le transfert de 5 000 FCFA vers 677998877 ?\nEntrez votre code secret:";
     }
     return "MTN MoMo\n1. Transfert d'argent\n2. Retrait\n3. Paiement\n4. Mon compte\n5. Mon solde";
   }
   // Une réponse dans la session : on avance dans le scénario.
   const n = commande.tour ?? 0;
-  if (parametres.secret) return "Operation reussie. Nouveau solde: 407 500 FCFA.";
+  if (parametres.secret) {
+    return (pageLongue && etapeDeLaPage === 3 && tourDeLaPage("(code)"))
+      || "Operation reussie. Nouveau solde: 407 500 FCFA.";
+  }
+  if (pageLongue && etapeDeLaPage > 0) {
+    const suite = tourDeLaPage(String(parametres.texte ?? ""));
+    if (suite) return suite;
+  }
   if (n === 0) return "Entrez le numero du beneficiaire:";
+  // UNE QUESTION QUI NOMME UN NUMÉRO ET ATTEND « 1 ». L'écran la lisait
+  // « numéro » et n'acceptait plus que huit chiffres : « 1 » laissait
+  // Envoyer éteint, on ne pouvait que raccrocher.
+  if (confirmationNumero && n === 1) return CONFIRMATION_DU_NUMERO;
+  if (confirmationNumero && n === 2) {
+    return String(parametres.texte ?? "") === "1" ? "Entrez le montant:" : "Choix invalide.";
+  }
   if (n === 1) return "Entrez le montant:";
+  if (pageLongue && etapeDeLaPage === 0) return tourDeLaPage("");
   // Comme un vrai opérateur : ce qu'on va signer, PUIS la demande du code.
   // Un écran qui ne montrerait que « votre code secret » ferait signer à
   // l'aveugle — et sans ces lignes ici, aucun harnais ne pourrait le voir.
@@ -542,6 +617,14 @@ const serveur = createServer(async (req, res) => {
   //
   //     curl -X POST "http://127.0.0.1:4999/essai/taire?terminal=douala-faux&minutes=11"
   //     curl -X POST "http://127.0.0.1:4999/essai/reveiller?terminal=douala-faux"
+  if (req.method === "POST" && chemin === "/essai/page-longue") {
+    pageLongue = url.searchParams.get("oui") === "1";
+    return repondre({ pageLongue });
+  }
+  if (req.method === "POST" && chemin === "/essai/confirmation-numero") {
+    confirmationNumero = url.searchParams.get("oui") === "1";
+    return repondre({ confirmationNumero });
+  }
   if (req.method === "POST" && chemin === "/essai/taire") {
     const terminal = url.searchParams.get("terminal") || "douala-faux";
     muets.set(terminal, Number(url.searchParams.get("minutes") || 11));
@@ -692,9 +775,12 @@ const serveur = createServer(async (req, res) => {
     // Ce que la plateforme demande, comme PostgREST le rend : la carte d'une
     // commande se lit dans ses paramètres — c'est elle qui dit à qui la
     // commande appartient.
+    // `reseau:parametres->>reseau` : PostgREST rend la clé sous ce nom.
+    const reseau = /reseau/.test(url.searchParams.get("select") || "")
+      ? { reseau: c?.parametres?.reseau ?? null } : {};
     return repondre(c ? [{ id: c.id, type: c.type, parametres: c.parametres ?? {},
                            terminal: c.terminal ?? null, etat: c.etat,
-                           resultat: c.resultat }] : []);
+                           resultat: c.resultat, ...reseau }] : []);
   }
 
   // Un SMS qui tombe PENDANT qu'on regarde. Sans cela, impossible d'éprouver
@@ -751,6 +837,59 @@ const serveur = createServer(async (req, res) => {
       }
     }
     return repondre({ semes: smsEnPlus.length });
+  }
+
+  // UNE CAISSE POUR LE RELEVÉ DE COMPTE (scripts/verifier-le-releve.mjs).
+  // Celle de « /essai/semer » est trop sage pour un relevé : un seul montant,
+  // un seul tiers, aucune référence, aucun solde, aucune sortie. Ici, sur
+  // DEUX cartes du même réseau (8901 et, en flotte, 9999) : des entrées et
+  // des sorties avec leurs frais, un solde annoncé après CHAQUE mouvement
+  // (tenu dans l'ordre des jours), une référence unique par ligne, un nom de
+  // soixante-quinze caractères, et un tiers piégé pour le tableur.
+  //
+  //     curl -X POST "http://127.0.0.1:4999/essai/semer-releve?jours=180&parJour=40"
+  if (req.method === "POST" && chemin === "/essai/semer-releve") {
+    const jours = Number(url.searchParams.get("jours") || 180);
+    const parJour = Number(url.searchParams.get("parJour") || 40);
+    const pas = Math.floor((20 * 3600000) / Math.max(1, parJour));
+    const NOM_LONG = "STE. NOUVELLE BRASSERIE DU LITTORAL ET DES HAUTS PLATEAUX DE L'OUEST SARL";
+    let semes = 0;
+    for (const [iccid, compte, prefixe] of [
+      ["89237010000000008901", "MTN ·8901", "A"], ["89237010000000009999", "MTN ·9999", "B"],
+    ]) {
+      let solde = 500000;
+      let n = 0;
+      // Du plus ancien au plus récent : le solde se tient dans l'ordre.
+      for (let j = jours - 1; j >= 0; j--) {
+        for (let k = 0; k < parJour; k++) {
+          const t = new Date(Date.now() - j * 86400000);
+          t.setUTCHours(2, 0, 0, 0);
+          const quand = new Date(t.getTime() + k * pas);
+          if (quand.getTime() > Date.now()) continue;
+          n++;
+          const sortie = k % 5 === 4;
+          const montant = sortie ? 2000 + (n % 7) * 100 : 1000 + (n % 13) * 25;
+          const frais = sortie ? 50 : null;
+          solde += sortie ? -(montant + frais) : montant;
+          const tiers = n === 42 && prefixe === "A" ? '=HYPERLINK("http://vol.example","clic")'
+            : n % 97 === 5 ? NOM_LONG : `CLIENT ${prefixe}${n % 50}`;
+          const iso = quand.toISOString();
+          smsEnPlus.push({
+            id: 600000 + smsEnPlus.length, source_id: 600 + smsEnPlus.length,
+            terminal: prefixe === "A" ? "douala-faux" : "akwa-faux", compte, carte: iccid,
+            expediteur: "MTNMobileMoney", categorie: sortie ? "envoi" : "encaissement",
+            sens: sortie ? "sortie" : "entree", montant, frais, commission: null,
+            tiers, numero: `67700${String(n % 10000).padStart(4, "0")}`,
+            reference: `R${prefixe}${String(n).padStart(6, "0")}`, solde_apres: solde,
+            texte: `${sortie ? "Transfert de" : "Vous avez recu"} ${montant} FCFA `
+              + `${sortie ? "vers" : "de"} ${tiers}. Nouveau solde: ${solde} FCFA.`,
+            nature: null, emis_le: iso, recu_le: iso, moment: iso, lu_le: iso,
+          });
+          semes++;
+        }
+      }
+    }
+    return repondre({ semes });
   }
 
   // --- LES APPAREILS (les téléphones à faire sonner) ----------------------
@@ -863,7 +1002,14 @@ const serveur = createServer(async (req, res) => {
     });
 
     if (req.method === "GET") {
-      const trouvees = vise();
+      // L'ORDRE ET LA LIMITE, comme la vraie base : la plateforme demande
+      // les plus récents d'abord, puis les remet dans l'ordre d'arrivée.
+      let trouvees = vise();
+      if ((url.searchParams.get("order") ?? "").startsWith("cree_le.desc")) {
+        trouvees = [...trouvees].reverse();
+      }
+      const limite = Number(url.searchParams.get("limit"));
+      if (Number.isInteger(limite) && limite > 0) trouvees = trouvees.slice(0, limite);
       // « prefer: count=exact » veut le total dans « content-range », et c'est
       // ce total que la plateforme lit pour savoir si un compte existe déjà.
       return repondre(trouvees, 200, {
@@ -892,10 +1038,28 @@ const serveur = createServer(async (req, res) => {
           return repondre({ code: "23505", message: "duplicate key value violates "
             + "unique constraint \"utilisateurs_un_seul_proprietaire\"" }, 409);
         }
+        // LES BORNES DE L'INSCRIPTION PUBLIQUE — celles que la vraie base
+        // tient (migrations/20261004_inscription_publique.sql). Sans elles
+        // ici, un harnais ne pourrait pas voir la plateforme envoyer à la
+        // base ce que la base refuserait.
+        if (u.telephone != null && !/^\+?[0-9]{6,15}$/.test(String(u.telephone))) {
+          return repondre({ code: "23514", message: "utilisateurs_telephone_forme" }, 400);
+        }
+        if (u.adresse != null) {
+          const a = String(u.adresse).trim();
+          if (a.length < 1 || a.length > 200) {
+            return repondre({ code: "23514", message: "utilisateurs_adresse_forme" }, 400);
+          }
+        }
+        if ((u.prenom != null && String(u.prenom).length > 80)
+            || (u.nom != null && String(u.nom).length > 80)) {
+          return repondre({ code: "23514", message: "utilisateurs_nom_forme" }, 400);
+        }
         const ligne = {
           id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
           role: u.role ?? "invite", approuve: Boolean(u.approuve),
           prenom: u.prenom ?? null, nom: u.nom ?? null,
+          adresse: u.adresse ?? null, telephone: u.telephone ?? null,
           cree_le: maintenant(), vu_le: null,
         };
         utilisateurs.set(ligne.id, ligne);
@@ -932,9 +1096,47 @@ const serveur = createServer(async (req, res) => {
         for (let k = attributions.length - 1; k >= 0; k--) {
           if (attributions[k].utilisateur === u.id) attributions.splice(k, 1);
         }
+        // …et ses téléphones aussi (« appareils_utilisateur_fk », on delete
+        // cascade). Sans cette ligne, la suppression de son compte laissait
+        // ses téléphones inscrits ici — et aucun harnais ne l'aurait vu.
+        for (const [jeton, a] of appareils) {
+          if (a.utilisateur != null && Number(a.utilisateur) === u.id) appareils.delete(jeton);
+        }
+        // « on delete set null » : ce qu'il a créé reste, sans son nom.
+        for (const b of beneficiaires) if (b.cree_par === u.id) b.cree_par = null;
       }
       return repondre([], 204);
     }
+  }
+
+  // --- LES REÇUS DÉPOSÉS PAR LE ROBOT -------------------------------------
+  //
+  // Le fichier va dans le seau « recus » (« x-upsert » : un dépôt refait
+  // écrase l'ancien), puis sa fiche dans la table, fusionnée sur
+  // (terminal, numero) comme la vraie base le fait.
+  const seau = /^\/storage\/v1\/object\/recus\/(.+)$/.exec(chemin);
+  if (seau && req.method === "POST") {
+    const morceaux = [];
+    for await (const mm of req) morceaux.push(mm);
+    fichiersDeposes.set(decodeURIComponent(seau[1]), Buffer.concat(morceaux));
+    return repondre({ Key: `recus/${seau[1]}` }, 200);
+  }
+  if (seau && req.method === "GET") {
+    const octets = fichiersDeposes.get(decodeURIComponent(seau[1]));
+    if (!octets) return repondre({ message: "objet introuvable" }, 404);
+    res.writeHead(200, { "content-type": "application/pdf" });
+    return res.end(octets);
+  }
+  if (chemin === "/rest/v1/recus" && req.method === "POST") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    for (const fiche of [].concat(JSON.parse(brut || "[]"))) {
+      const deja = recusDeposes.find(
+        (r) => r.terminal === fiche.terminal && r.numero === fiche.numero);
+      if (deja) Object.assign(deja, fiche);
+      else recusDeposes.push({ ...fiche });
+    }
+    return repondre([], 201);
   }
 
   // --- CE QUE LE ROBOT ÉCRIT ---------------------------------------------
@@ -1023,12 +1225,21 @@ const serveur = createServer(async (req, res) => {
         const v = l[champ];
         switch (op) {
           case "is": return valeur === "null" ? v == null : v != null;
+          // « not.is.null » — l'ouverture d'un relevé cherche le dernier SMS
+          // qui porte un solde. Ignoré, le filtre rendait n'importe quel SMS.
+          case "not": return valeur === "is.null" ? v != null : true;
           case "eq": return String(v) === valeur;
           case "neq": return String(v) !== valeur;
           case "gte": return v != null && String(v) >= valeur;
           case "gt": return v != null && String(v) > valeur;
           case "lte": return v != null && String(v) <= valeur;
           case "lt": return v != null && String(v) < valeur;
+          // « like.TM-*-0042 » : l'étoile est le joker de PostgREST.
+          case "like": {
+            const motif = decodeURIComponent(valeur)
+              .replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+            return v != null && new RegExp(`^${motif}$`).test(String(v));
+          }
           // « in.("a","b") » — la portée d'un invité passe par là. Sans ce
           // filtre, le faux nuage rendait TOUT, et la plateforme devait
           // refiltrer seule : un harnais n'aurait pas vu un filtre oublié.

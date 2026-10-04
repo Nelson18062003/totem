@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { remplirVariables } from "@noyau/codes";
-import { champPourQuestion, demandeUnCode, lireEcran } from "@noyau/ussd";
+import { lireEcran, type EtatDuReseau } from "@noyau/ussd";
+import {
+  ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, champAServir, etapePeutPartir, reponseDuBoitier,
+  reponseLibre, reponsePrete, restantsApresReponse, type EcranRecu,
+} from "@noyau/deroule";
 import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
 import { nomDuBeneficiaire, nomPropre, numeroPropre } from "@noyau/beneficiaires";
-import { montantSaisi, numeroSaisi } from "@noyau/saisie";
+import { apresEffacement, enFormeDansLeChamp, montantSaisi, numeroSaisi } from "@noyau/saisie";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { BarreArret, BoutonFermer, type SortieRetenue } from "./feuille";
@@ -79,12 +83,24 @@ export type Operation = {
   recents?: (ClientRecent & { enregistre?: boolean })[];
 };
 
-type Msg = { de: "reseau" | "vous"; texte: string };
-type Issue = "reussie" | "refusee" | "interrompue" | "reponse";
+// `reseau` : ce que le RÉSEAU a dit de la session avec ce message, rapporté
+// par le boîtier. Absent d'un boîtier d'avant : on lit le texte.
+// `de: "totem"` : une phrase du BOÎTIER (un refus), jamais rangée comme un
+// écran de l'opérateur — elle n'est pas de lui.
+type Msg = { de: "reseau" | "vous" | "totem"; texte: string; reseau?: EtatDuReseau };
+// « incertaine » : l'écran ne sait pas ce qu'est devenue la demande (le code
+// est peut-être parti). Ni coche, ni croix.
+type Issue = "reussie" | "refusee" | "interrompue" | "incertaine" | "reponse";
+
+const PAUSE_MS = 1200;
+/** L'écran renonce sur une issue qu'il ne connaît pas : « regardez vos SMS ». */
+class Incertain extends Error {}
 
 const MONTANTS = [1000, 5000, 10000, 25000];
 const LONGUEUR_CODE_MIN = 4;
-const LONGUEUR_CODE_MAX = 6;
+// Douze, pas six : le pavé coupait sans rien dire au sixième chiffre, et un
+// code plus long (certains comptes, certains services) partait tronqué.
+const LONGUEUR_CODE_MAX = 12;
 
 type TypeSaisie = "numero" | "montant" | "texte";
 
@@ -138,6 +154,11 @@ export function OperationPopup({
   const raccrochageDu = useRef(false);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  // L'erreur dit-elle une issue INCONNUE (le code est peut-être parti) ?
+  const [incertaine, setIncertaine] = useState(false);
+  // Une phrase de TOTEM au-dessus de l'écran de l'opérateur (un bouton
+  // appris qui s'est arrêté) — jamais dans sa carte.
+  const [avis, setAvis] = useState<string | null>(null);
   const [pas, setPas] = useState(0);
   const [details, setDetails] = useState(false);
   const [libre, setLibre] = useState(false);
@@ -149,16 +170,61 @@ export function OperationPopup({
   const avecCarte = (p: Record<string, unknown>) =>
     operation.carte ? { ...p, carte: operation.carte } : p;
 
+  // Ce qui partirait pour chaque champ : ce que l'écran a annoncé.
+  const propres = () => Object.fromEntries(operation.champs.map(
+    (c) => [c.cle, valeurPropre(c.type, valeurs[c.cle] ?? "")]));
+
+  // LA DEMANDE EN VOL : déposée, pas encore rendue par le boîtier.
+  // « Raccrocher » l'annule d'abord — sans quoi le boîtier, qui sert la file
+  // de la carte dans l'ordre, composait le code secret PUIS raccrochait.
+  const enVol = useRef<{ id: number; secret: boolean } | null>(null);
+  // L'écran a raccroché pendant un vol : ce qui revient ne s'écrit plus.
+  const arrete = useRef(false);
+  // L'écran est-il encore là ? Une relecture en cours s'arrête au départ.
+  const vivant = useRef(true);
+  // Le dernier écran de l'opérateur, lu par `repondre` au moment de l'appui.
+  const ecranCourant = useRef<EcranRecu>({ texte: "" });
+
+  /** La réponse du boîtier : un ÉCRAN de l'opérateur, rangé à son nom tel
+   *  qu'il l'a écrit (vide compris) ; ou un REFUS du boîtier, phrase de
+   *  TOTEM qui ne passe pas pour un message de MTN. */
+  const conclure = (
+    c: { etat?: string; resultat?: string | null; reseau?: unknown }, secretEnVol: boolean,
+  ): EcranRecu | null => {
+    setAttente(false);
+    setAvis(null);
+    // Un nouvel écran de l'opérateur : on repart de SES choix.
+    setLibre(false);
+    const lu = reponseDuBoitier(c);
+    if (!lu || lu.genre === "refus") {
+      const texte = lu?.texte || t.echec;
+      setFil((f) => [...f, { de: "totem", texte }]);
+      setErreur(texte);
+      setIncertaine(secretEnVol);
+      // Le boîtier a pu laisser la carte sur un menu : on raccrochera.
+      setEnSession(true);
+      return null;
+    }
+    const recu: EcranRecu = { texte: lu.texte, reseau: lu.reseau };
+    ecranCourant.current = recu;
+    setFil((f) => [...f, { de: "reseau", texte: lu.texte, reseau: lu.reseau }]);
+    setEnSession(true);
+    return recu;
+  };
+
   const envoyer = async (
     genre: "ussd" | "ussd_reponse",
     parametres: Record<string, unknown>,
     bulle?: Msg,
     // Jointe au seul envoi qui peut porter un transfert complet : l'ouverture.
     cle?: string,
-  ): Promise<string | null> => {
+  ): Promise<EcranRecu | null> => {
+    if (arrete.current) return null;
     setAttente(true);
     setErreur(null);
+    setIncertaine(false);
     if (bulle) setFil((f) => [...f, bulle]);
+    const secretEnVol = parametres.secret === true;
     try {
       const r = await fetch("/api/commande", {
         method: "POST",
@@ -167,59 +233,93 @@ export function OperationPopup({
         // lit que la réponse vient du titulaire de cette carte, et le robot
         // dans quelle session la poser.
         body: JSON.stringify({ type: genre, parametres: avecCarte(parametres), cle }),
-      });
+      }).catch(() => null);
+      if (!r) {
+        // La réponse s'est perdue : le code secret a peut-être été déposé.
+        if (secretEnVol) throw new Incertain(t.telephoneSansTotem);
+        throw new Error(t.demandePasPartie);
+      }
       if (!r.ok) {
         const corps = await r.json().catch(() => null);
         throw new Error(corps?.erreur || t.demandePasPartie);
       }
       const { id } = (await r.json()) as { id: number };
-      const relire = () => fetch(`/api/commande/${id}`, { cache: "no-store" })
-        .then((x) => (x.ok ? x.json() : null))
-        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null } | null>;
-      const finie = (c: { etat?: string } | null) =>
-        Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
-      const conclure = (c: { etat?: string; resultat?: string | null }) => {
-        setAttente(false);
-        const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-        setFil((f) => [...f, { de: "reseau", texte }]);
-        // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
-        // en « autre réponse » aurait caché les boutons du menu suivant.
-        setLibre(false);
-        if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
-        setEnSession(true);
-        return texte;
-      };
-      for (let i = 0; i < 25; i++) {
-        await new Promise((res) => setTimeout(res, 1200));
-        const c = await relire();
-        if (c && finie(c)) return conclure(c);
+      // L'écran a été quitté (ou raccroché) pendant le dépôt : personne ne
+      // suivra cette demande — elle s'annule, puis la ligne se raccroche.
+      if (!vivant.current || arrete.current) {
+        void abandonner(id).finally(posterFin);
+        return null;
       }
+      enVol.current = { id, secret: secretEnVol };
+      // UNE RELECTURE A SON ÉCHÉANCE. Le site comptait des TOURS (25 × 1,2 s)
+      // et chaque relecture était un fetch sans borne : sur une connexion
+      // lente, l'attente durait des minutes, et continuait après la
+      // fermeture de la fenêtre. Comme au téléphone : l'horloge, un
+      // abandon par relecture, l'arrêt au départ.
+      type Lu = { etat?: string; resultat?: string | null; reseau?: unknown };
+      const relire = async (reste: number): Promise<Lu | null> => {
+        const ctrl = new AbortController();
+        const minuteur = setTimeout(() => ctrl.abort(), Math.max(1500, reste));
+        try {
+          const x = await fetch(`/api/commande/${id}`, { cache: "no-store", signal: ctrl.signal });
+          return x.ok ? ((await x.json()) as Lu) : null;
+        } catch {
+          return null;
+        } finally {
+          clearTimeout(minuteur);
+        }
+      };
+      const finie = (c: Lu | null): c is Lu =>
+        Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
+      /** Relit jusqu'à l'échéance : la demande finie, null, ou « parti ». */
+      const guetter = async (echeance: number): Promise<Lu | null | "parti"> => {
+        while (Date.now() < echeance) {
+          await new Promise((res) => setTimeout(res, PAUSE_MS));
+          if (!vivant.current || arrete.current) return "parti";
+          const c = await relire(echeance - Date.now());
+          if (!vivant.current || arrete.current) return "parti";
+          if (finie(c)) return c;
+        }
+        return null;
+      };
+      const premiere = await guetter(Date.now() + ATTENTE_DU_BOITIER_MS);
+      if (premiere === "parti") return null;
+      if (premiere) { enVol.current = null; return conclure(premiere, secretEnVol); }
       // On renonce : la demande s'ANNULE, et l'écran ne dit « rien n'est
       // parti » que si l'annulation a pris (voir abandon.ts). Finie
-      // entre-temps, elle a une réponse : on la relit et on la MONTRE.
+      // entre-temps, elle a une réponse : on la relit et on la MONTRE. Prise
+      // en main par le boîtier, elle attend peut-être encore le réseau : on
+      // continue de relire, au lieu d'annoncer un échec.
       const issue = await abandonner(id);
-      if (issue === "finie") {
-        const c = await relire();
-        if (c && finie(c)) return conclure(c);
+      if (!vivant.current || arrete.current) return null;
+      if (issue === "finie" || issue === "en_cours") {
+        const suite = await guetter(Date.now() + (issue === "finie" ? PAUSE_MS + 1500 : PROLONGATION_MS));
+        if (suite === "parti") return null;
+        if (suite) { enVol.current = null; return conclure(suite, secretEnVol); }
       }
-      throw new Error(phraseDAbandon(issue, t));
+      enVol.current = null;
+      if (issue === "rien_parti") throw new Error(phraseDAbandon(issue, t));
+      throw new Incertain(phraseDAbandon(issue, t));
     } catch (e) {
+      if (!vivant.current || arrete.current) return null;
       setErreur(e instanceof Error ? e.message : t.accroc);
+      setIncertaine(e instanceof Incertain);
       setAttente(false);
       return null;
     }
   };
 
   // Après chaque réponse du réseau : répondre tout seul si on sait, sinon
-  // laisser la main (pavé pour le code, une question pour le reste).
-  const derouler = async (texte: string | null) => {
-    while (texte) {
-      if (demandeUnCode(texte)) return;              // le pavé prend la main
-      const champ = champPourQuestion(texte, restants.current);
-      if (!champ) return;                            // question inattendue : à vous
+  // laisser la main (pavé pour le code, une question pour le reste). « Si on
+  // sait » se décide dans le noyau (`champAServir`) : jamais sur une
+  // confirmation, ni sur un écran qui porte déjà la valeur.
+  const derouler = async (recu: EcranRecu | null) => {
+    while (recu) {
+      const champ = champAServir(recu, restants.current, propres());
+      if (!champ) return;                            // à vous
       restants.current = restants.current.filter((c) => c !== champ);
       const valeur = valeurPropre(champ.type, valeurs[champ.cle] ?? "");
-      texte = await envoyer("ussd_reponse", { texte: valeur }, { de: "vous", texte: valeur });
+      recu = await envoyer("ussd_reponse", { texte: valeur }, { de: "vous", texte: valeur });
     }
   };
 
@@ -236,9 +336,7 @@ export function OperationPopup({
     // et le code part ENTIER. Un trou sans réponse ne part jamais. Ce qui
     // remplit un trou, c'est ce que l'écran a annoncé (« Partira : … ») —
     // jamais le texte collé tel quel, dont « +237 » ferait un autre numéro.
-    const propres = Object.fromEntries(operation.champs.map(
-      (c) => [c.cle, valeurPropre(c.type, valeurs[c.cle] ?? "")]));
-    const { etapes, consommees, manquantes } = remplirVariables(brutes, propres);
+    const { etapes, consommees, manquantes } = remplirVariables(brutes, propres());
     if (manquantes.length) {
       setErreur(t.trouSansReponse(manquantes.map((m) => `{${m}}`).join(", ")));
       setFini(true);
@@ -247,16 +345,20 @@ export function OperationPopup({
     if (consommees.length) {
       restants.current = restants.current.filter((c) => !consommees.includes(c.cle));
     }
-    let texte = await envoyer(
+    let recu = await envoyer(
       "ussd",
       operation.carte ? { code: etapes[0], carte: operation.carte } : { code: etapes[0] },
       { de: "vous", texte: etapes[0] },
       cleOperation.current);
-    for (const e of etapes.slice(1)) {
-      if (texte == null) return;
-      texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });
+    // UN TRAJET APPRIS REGARDE L'ÉCRAN AVANT CHAQUE PAS (`etapePeutPartir`) :
+    // si l'écran ne propose pas l'étape suivante, on s'arrête, le message
+    // reste entier, et TOTEM dit pourquoi il n'a pas continué.
+    for (let i = 1; i < etapes.length; i++) {
+      if (recu == null) return;
+      if (!etapePeutPartir(brutes[i], recu)) { setAvis(t.trajetArrete(etapes[i])); return; }
+      recu = await envoyer("ussd_reponse", { texte: etapes[i] }, { de: "vous", texte: etapes[i] });
     }
-    await derouler(texte);
+    await derouler(recu);
   };
 
   // Sans formulaire, la session part toute seule à l'ouverture.
@@ -269,16 +371,26 @@ export function OperationPopup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Quitter l'écran autrement (navigation, « précédent ») raccroche.
+  // Quitter l'écran autrement (navigation, « précédent ») raccroche — et
+  // annule d'abord ce qui est encore en vol.
   useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
-  useEffect(() => () => { if (raccrochageDu.current) posterFin(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => {
+    vivant.current = false;
+    const vol = enVol.current;
+    enVol.current = null;
+    if (vol) void abandonner(vol.id).finally(posterFin);
+    else if (raccrochageDu.current) posterFin();
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // FERMER L'ONGLET NE DOIT PAS LAISSER LA SIM EN LIGNE : `sendBeacon` part
   // même quand la page disparaît.
   useEffect(() => {
     const enPartant = () => {
-      if (!raccrochageDu.current) return;
+      if (!raccrochageDu.current && !enVol.current) return;
       raccrochageDu.current = false;
+      const vol = enVol.current;
+      enVol.current = null;
+      if (vol) navigator.sendBeacon?.(`/api/commande/${vol.id}/annuler`);
       navigator.sendBeacon?.(
         "/api/commande",
         new Blob([JSON.stringify({ type: "ussd_fin", parametres: avecCarte({}) })],
@@ -295,9 +407,11 @@ export function OperationPopup({
     if (repondEnCours.current) return;
     repondEnCours.current = true;
     try {
-      const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
-                                  { de: "vous", texte: "••••" });
-      if (texte) { setFini(true); onTermine?.(); }
+      // Pas de fin forcée après le code : un opérateur qui demande encore
+      // quelque chose (« 1. Confirm ») doit pouvoir recevoir sa réponse.
+      // C'est ce qu'il écrit — et ce que dit le réseau — qui finit (`conclu`).
+      await envoyer("ussd_reponse", { texte: code, secret: true },
+                    { de: "vous", texte: "••••" });
     } finally {
       repondEnCours.current = false;
     }
@@ -307,6 +421,9 @@ export function OperationPopup({
     if (!v || repondEnCours.current) return;
     repondEnCours.current = true;
     try {
+      // UNE RÉPONSE TAPÉE CONSOMME LA QUESTION : le montant tapé à la main ne
+      // repart pas tout seul sur la confirmation qui le récapitule.
+      restants.current = restantsApresReponse(ecranCourant.current, restants.current, propres(), v);
       await derouler(await envoyer("ussd_reponse", { texte: v }, { de: "vous", texte: v }));
     } finally {
       repondEnCours.current = false;
@@ -314,32 +431,52 @@ export function OperationPopup({
   };
 
   // L'ordre de raccrochage, sans faire attendre l'écran.
-  const posterFin = () => {
+  function posterFin() {
     raccrochageDu.current = false;
     fetch("/api/commande", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "ussd_fin", parametres: avecCarte({}) }),
     }).catch(() => {});
+  }
+  // RACCROCHER RETIENT D'ABORD CE QUI EST EN VOL. Si l'annulation n'a pas
+  // pris, le code est peut-être parti : on le DIT au lieu de fermer.
+  const raccrocher = async () => {
+    const vol = enVol.current;
+    if (!vol) { posterFin(); onFermer(); return; }
+    arrete.current = true;
+    enVol.current = null;
+    const issue = await abandonner(vol.id);
+    posterFin();
+    if (issue === "rien_parti") { onFermer(); return; }
+    if (!vivant.current) return;
+    setAttente(false);
+    setErreur(t.reponsePeutEtrePartie);
+    setIncertaine(true);
+    setFini(true);
   };
-  const raccrocher = () => { posterFin(); onFermer(); };
   const fermerSession = () => {
-    if (attente && !fini) posterFin();
+    if (attente && !fini && !enVol.current) posterFin();
     onFermer();
   };
 
-  const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
-  const ecran = lireEcran(dernier);
-  const pave = enSession && !attente && !fini && ecran.attend === "secret";
+  const dernierMsg = [...fil].reverse().find((m) => m.de === "reseau");
+  const dernier = dernierMsg?.texte ?? "";
+  // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
+  // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
+  const ecran = lireEcran(dernier, dernierMsg?.reseau);
+  // « Répondre autre chose » (`libre`) range le pavé : le champ prend sa place.
+  const pave = enSession && !attente && !fini && ecran.attend === "secret" && !libre;
 
   // L'OPÉRATEUR A CONCLU : un écran qui ne demande plus rien termine.
-  const conclu = enSession && !attente && Boolean(dernier) && ecran.attend === "rien";
+  // Un écran VIDE de l'opérateur est un écran : on le compte (`dernierMsg`).
+  const conclu = enSession && !attente && Boolean(dernierMsg) && ecran.attend === "rien";
   useEffect(() => {
     if (conclu && !fini && !libre) { setFini(true); onTermine?.(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conclu, fini, libre]);
 
-  const issue: Issue = erreur ? "interrompue"
+  const issue: Issue = erreur ? (incertaine ? "incertaine" : "interrompue")
     : ecran.issue === "refusee" ? "refusee"
       : ecran.issue === "reussie" ? "reussie" : "reponse";
   const termine = fini || Boolean(erreur);
@@ -351,7 +488,7 @@ export function OperationPopup({
   const retenue: SortieRetenue | null =
     etape === "session" && enSession && !termine
       ? { question: t.raccrocherQuestion, arreter: t.raccrocherCourt,
-          garder: t.garderSession, onArreter: raccrocher }
+          garder: t.garderSession, onArreter: () => void raccrocher() }
       : etape === "saisie" && saisieEntamee
         ? { question: t.jeterQuestion, arreter: t.jeter,
             garder: t.continuerSaisie, onArreter: onFermer }
@@ -399,7 +536,7 @@ export function OperationPopup({
         type={champ.type} valeur={valeurs[champ.cle] ?? ""}
         onChange={(v) => set(champ.cle, v)}
         recents={champ.type === "numero" ? operation.recents : undefined}
-        onRecent={(n) => { set(champ.cle, n); setPas((p) => p + 1); }}
+        onRecent={(n) => { set(champ.cle, enFormeDansLeChamp("numero", n, langue)); setPas((p) => p + 1); }}
         bouton={t.continuer} onValider={() => setPas((p) => p + 1)} langue={langue} />
     );
   } else if (etape === "saisie") {
@@ -433,13 +570,17 @@ export function OperationPopup({
     vue = (
       <Fin issue={issue}
         titre={issue === "reussie" ? t.opReussie : issue === "refusee" ? t.opRefusee
-          : issue === "interrompue" ? t.opInterrompue : t.opReponse}
-        texte={erreur ?? (ecran.texte || dernier)}
-        note={issue === "reussie" ? t.confirmationSms : undefined}
+          : issue === "interrompue" ? t.opInterrompue
+            : issue === "incertaine" ? t.opIncertaine : t.opReponse}
+        texte={erreur ?? (ecran.texte || dernier || t.ecranVide)}
+        note={issue === "reussie" ? t.confirmationSms
+          : issue === "incertaine" ? t.noteIncertaine : undefined}
         fil={fil} details={details} onDetails={() => setDetails((d) => !d)}
+        // Le réseau a dit qu'il avait fermé : répondre ne mènerait nulle part.
         repondreQuandMeme={issue === "reponse" && conclu && !libre
+          && dernierMsg?.reseau !== "fini"
           ? () => { setLibre(true); setFini(false); } : undefined}
-        bouton={t.termine} onTerminer={enSession && !fini ? raccrocher : onFermer} t={t}
+        bouton={t.termine} onTerminer={enSession && !fini ? () => void raccrocher() : onFermer} t={t}
         proposition={proposer && operation.carte ? (
           <ProposerBeneficiaire carte={operation.carte} numero={numeroDuTransfert}
             nomInitial={nomLu ?? nomDuDestinataire ?? ""} tb={tb} onFait={onTermine} />
@@ -451,9 +592,28 @@ export function OperationPopup({
     // Une seule vue pour toute la session : elle ne se remonte pas à chaque
     // message, l'échange défile sous les yeux au lieu de clignoter.
     cleVue = "session";
-    const menu = !pave && !attente && ecran.choix.length > 0 && !libre;
-    const question = !pave && !attente && !menu && Boolean(dernier)
+    // TOUT CE QUE LE RÉSEAU ATTEND SE RÉPOND ICI : menu, page, question,
+    // ou — après « Répondre autre chose » — la demande du code.
+    const repondable = !pave && !attente && Boolean(dernierMsg)
       && (libre || ecran.attend !== "rien");
+    // Ce que TOTEM dit, À CÔTÉ de l'opérateur et jamais dans sa carte : un
+    // bouton appris qui s'est arrêté, un écran que l'opérateur a laissé vide.
+    const entete = (
+      <div className="flex flex-col gap-3">
+        {avis && <p aria-live="polite" className="px-1 text-small text-ink-soft">{avis}</p>}
+        {dernier ? (
+          <CarteOperateur texte={dernier} copie={dernier} op={op}
+                          couleur={couleurOperateur(op)} t={t} />
+        ) : (
+          <p className="px-1 text-small text-ink-soft">{t.ecranVide}</p>
+        )}
+      </div>
+    );
+    // PROTÉGÉ DÈS QUE LE MESSAGE PARLE DU CODE. Un menu « Entrez votre code
+    // secret / 1. Valider / 0. Retour » reste un menu (ses choix en boutons),
+    // mais ce qu'on tape librement dessous peut être le code : il part masqué,
+    // avec le drapeau « secret », et ne s'affiche jamais dans l'échange.
+    const secretement = ecran.parleDuCode && (libre || ecran.attend !== "secret");
     const typeQuestion: TypeSaisie = libre ? "texte"
       : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
     // Ce qu'on vient d'envoyer — « 1 », un numéro, « •••• » — reste écrit
@@ -461,28 +621,26 @@ export function OperationPopup({
     const envoye = [...fil].reverse().find((m) => m.de === "vous")?.texte ?? null;
     vue = (
       <div className="flex min-h-0 flex-1 flex-col">
-        {attente || !dernier ? (
+        {attente || !dernierMsg ? (
           <Patience key={`patience-${fil.length}`} couleur={couleurOperateur(op)}
-            texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
-            envoye={dernier ? envoye : null} t={t} />
-        ) : question ? (
-          // Une question : le champ juste SOUS le message, comme dans la
-          // fenêtre d'un téléphone — pas en bas de l'écran, loin de lui.
-          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion}
-            entete={<CarteOperateur texte={dernier} copie={dernier} op={op}
-                                    couleur={couleurOperateur(op)} t={t} />}
+            texte={!dernierMsg ? t.connexionA(op) : t.onParleA(op)}
+            envoye={dernierMsg ? envoye : null} t={t} />
+        ) : repondable ? (
+          // LE MESSAGE DE L'OPÉRATEUR, INTACT — rien n'en est retiré. Dessous,
+          // ses choix en boutons, puis la zone de réponse, toujours là.
+          <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`} type={typeQuestion}
+            entete={entete}
+            choix={ecran.choix} onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
-            onEnvoyer={(v) => void repondre(v)} langue={langue} />
+            secretement={secretement}
+            onRevenir={libre && ecran.attend === "secret" ? () => setLibre(false) : undefined}
+            onEnvoyer={(v) => void (secretement ? secret(v) : repondre(v))} langue={langue} />
         ) : (
           <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)} t={t}
-            // Un menu : son titre ici, ses choix en boutons. Toute autre
-            // chose — une question, la demande du code, la réponse libre —
-            // se lit en entier, telle que l'opérateur l'a écrite.
-            texte={menu ? ecran.texte : dernier} copie={dernier}
-            choix={menu ? ecran.choix : []} onChoix={(n) => void repondre(n)}
-            onAutre={menu ? () => setLibre(true) : undefined} />
+            texte={dernier} copie={dernier} choix={[]} onChoix={(n) => void repondre(n)} />
         )}
-        {pave && <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} />}
+        {pave && <EtapeCode key={`code-${fil.length}`} onValider={secret}
+                            onAutre={() => setLibre(true)} t={t} />}
       </div>
     );
   }
@@ -562,17 +720,27 @@ function nomDe(recents: Operation["recents"], numero: string): string | undefine
  * dessous ce qui partira réellement. Quand il ne sait pas lire UN numéro
  * (deux numéros différents dans le même collage), il le dit, et rien ne part.
  */
-function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true }: {
+function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true, masque = false,
+                      libre = false }: {
   type: TypeSaisie; valeur: string; onChange: (v: string) => void;
   langue: "fr" | "en"; autoFocus?: boolean;
+  /** Ce qu'on tape ne s'affiche pas (une réponse pendant le code secret). */
+  masque?: boolean;
+  /** Une réponse à l'opérateur : le type ne choisit que le clavier, rien
+   *  n'est refusé (`reponseLibre`). « 1 », « 00 », « # » partent tels quels. */
+  libre?: boolean;
 }) {
   const t = textesGuichet[langue];
-  const propre = valeurPropre(type, valeur);
+  const propre = libre ? reponseLibre(type, valeur) : valeurPropre(type, valeur);
   const brut = valeur.trim();
   // Ce qu'on annonce sous le champ — seulement quand ce n'est pas déjà ce
   // qu'on lit dedans : « 677998877 » tapé tel quel n'a pas besoin d'écho.
   let annonce: { texte: string; doute?: boolean } | null = null;
-  if (brut && type === "numero") {
+  if (libre) {
+    // Pas de « numéro introuvable » sous un « 1 » : seul l'écho d'un collage
+    // nettoyé, pour qu'on sache ce qui part.
+    if (brut && propre && !masque && propre !== brut) annonce = { texte: t.partira(propre) };
+  } else if (brut && type === "numero") {
     if (propre.length >= 8) {
       const vu = formaterNumero(propre);
       if (vu !== brut && propre !== brut) annonce = { texte: t.partira(vu) };
@@ -590,17 +758,28 @@ function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true }: {
           par-dessus le soulignement : deux traits pour un seul champ. */}
       <div className="flex items-baseline gap-2 rounded-t-xl border-b-2 border-ink px-2 pb-1 transition-colors focus-within:bg-surface-raised">
         <input
-          value={valeur} onChange={(e) => onChange(e.target.value)} autoFocus={autoFocus}
+          // Le numéro et le montant s'écrivent lisibles à mesure qu'on tape
+          // (« 677 12 34 56 », « 250 000 ») — pas une réponse libre à
+          // l'opérateur, où « 00 » et « # » partent tels quels.
+          value={valeur} autoFocus={autoFocus}
+          onChange={(e) => onChange(!libre && (type === "numero" || type === "montant")
+            ? enFormeDansLeChamp(type, apresEffacement(valeur, e.target.value), langue)
+            : e.target.value)}
+          type={masque ? "password" : "text"}
           // Le bon clavier sur un téléphone, et rien d'autre : le champ
           // accepte quand même tout ce qu'on y colle.
-          inputMode={type === "numero" ? "tel" : type === "montant" ? "numeric" : "text"}
+          // Pendant la session, le pavé « tel » porte « * » et « # » : « # »
+          // (retour) doit pouvoir se taper même sur une question de montant.
+          inputMode={type === "numero" || (libre && type === "montant") ? "tel"
+            : type === "montant" ? "numeric" : "text"}
           autoComplete="off" spellCheck={false}
           placeholder={type === "numero" ? t.numeroPlaceholder
             : type === "montant" ? "0" : t.reponsePlaceholder}
           aria-label={type === "numero" ? t.numeroPlaceholder
             : type === "montant" ? t.combien : t.reponsePlaceholder}
           className={`min-w-0 flex-1 bg-transparent py-2 outline-none focus-visible:outline-none placeholder:text-ink-faint ${
-            type === "texte" ? "text-title" : "tabnums text-[30px] font-semibold tracking-tight"} ${
+            type === "texte" ? "text-title"
+              : `tabnums font-semibold ${libre ? "text-[30px] tracking-tight" : "text-[36px] tracking-wide"}`} ${
             type === "montant" ? "text-right" : ""}`} />
         {type === "montant" && <span className="text-heading font-medium text-ink-faint">FCFA</span>}
       </div>
@@ -635,7 +814,7 @@ function EtapeSaisie({
         {type === "montant" && (
           <div className="flex flex-wrap gap-2">
             {MONTANTS.map((m) => (
-              <button key={m} type="button" onClick={() => onChange(String(m))}
+              <button key={m} type="button" onClick={() => onChange(enFormeDansLeChamp("montant", String(m), langue))}
                 className={`tabnums rounded-full px-3.5 py-1.5 text-small font-medium transition ${Number(propre) === m ? "bg-ink text-white" : "bg-surface-2 hover:bg-surface-3"}`}>
                 {nombre(m, langue)}
               </button>
@@ -674,26 +853,54 @@ function EtapeSaisie({
  * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
  * recevoir de réponse.
  */
-function ZoneReponse({ type, entete, recents, onEnvoyer, langue }: {
+function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onChoix,
+                      secretement = false, onRevenir }: {
   type: TypeSaisie;
   entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onEnvoyer: (valeur: string) => void; langue: "fr" | "en";
+  /** Les choix lus dans le message : des RACCOURCIS, jamais à la place du champ. */
+  choix?: { numero: string; libelle: string }[];
+  onChoix?: (numero: string) => void;
+  /** Pendant le code secret : la réponse part protégée comme un code. */
+  secretement?: boolean;
+  onRevenir?: () => void;
 }) {
   const t = textesGuichet[langue];
   const [valeur, setValeur] = useState("");
-  const valide = pret(type, valeur);
+  // LE TYPE NE REFUSE RIEN. Un écran lu « numéro » qui demandait en fait
+  // « 1=Oui 2=Non » laissait Envoyer éteint sur « 1 ». Voir `@noyau/deroule`.
+  const valide = reponsePrete(type, valeur);
   const envoyer = () => {
     if (!valide) return;
-    onEnvoyer(valeurPropre(type, valeur));
+    onEnvoyer(reponseLibre(type, valeur));
     setValeur("");
   };
+  // UNE ZONE DE RÉPONSE, TOUJOURS — comme sur le téléphone, où chaque
+  // message de l'opérateur arrive avec sa case à remplir.
   return (
     <form onSubmit={(e) => { e.preventDefault(); envoyer(); }}
       className="flex min-h-0 flex-1 flex-col">
       <div className="ecran flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
         {entete}
-        <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue} />
+        {choix.length > 0 && onChoix && (
+          <div className="flex flex-col gap-2">
+            {choix.map((c) => (
+              <button type="button" key={`${c.numero}-${c.libelle}`} onClick={() => onChoix(c.numero)}
+                className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2 active:scale-[.98]">
+                <span className="tabnums grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-small text-ink-soft">{c.numero}</span>
+                <span className="flex-1">{c.libelle}</span>
+                <IconChevron size={16} className="text-ink-faint" />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <p className="text-small font-medium text-ink-soft">{t.votreReponse}</p>
+          <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue}
+                       autoFocus={choix.length === 0} masque={secretement} libre />
+          {secretement && <p className="text-caption text-ink-faint">{t.reponseProtegee}</p>}
+        </div>
         {recents?.length ? (
           <div className="overflow-x-auto pb-1">
             <div className="flex w-max gap-3">
@@ -703,6 +910,12 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue }: {
             </div>
           </div>
         ) : null}
+        {onRevenir && (
+          <button type="button" onClick={onRevenir}
+            className="self-center p-2 text-small text-ink-soft underline underline-offset-4 transition hover:text-ink">
+            {t.revenirAuPave}
+          </button>
+        )}
       </div>
       <div className="pt-2">
         <GrosBouton libelle={t.envoyer} desactive={!valide} type="submit" />
@@ -863,7 +1076,9 @@ function GrosBouton({ libelle, onClick, desactive, type = "button", autoFocus }:
 /** LE CODE SECRET. Des points, le pavé, « Valider ». Les chiffres ne vivent
  *  que dans l'état de ce composant : jamais affichés, jamais dans un champ
  *  du navigateur (qui les retiendrait), oubliés dès l'envoi. */
-function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: (typeof textesGuichet)["fr"] }) {
+function EtapeCode({ onValider, onAutre, t }: {
+  onValider: (code: string) => void; onAutre: () => void; t: (typeof textesGuichet)["fr"];
+}) {
   const [code, setCode] = useState("");
   const valider = () => {
     if (code.length < LONGUEUR_CODE_MIN) return;
@@ -899,6 +1114,12 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: (ty
         </div>
       </div>
       <Pave onChiffre={taper} onEffacer={effacer} etiquetteEffacer={t.effacerDernier} />
+      {/* Le pavé n'est pas une prison : on peut toujours répondre autre
+          chose — et ce qu'on tape part protégé comme un code. */}
+      <button type="button" onClick={onAutre}
+        className="mb-2 self-center rounded-btn border border-line bg-surface-raised px-4 py-2 text-small font-medium transition hover:bg-surface-2">
+        {t.repondreAutrement}
+      </button>
       <GrosBouton libelle={t.valider} desactive={code.length < LONGUEUR_CODE_MIN} onClick={valider} />
     </div>
   );
@@ -913,8 +1134,11 @@ function Fin({
   bouton: string; onTerminer: () => void; t: (typeof textesGuichet)["fr"];
   proposition?: React.ReactNode;
 }) {
-  const Icone = issue === "reussie" ? IconCheck : issue === "reponse" ? IconBubble : IconClose;
-  const fond = issue === "reussie" ? "bg-positive-vif" : issue === "reponse" ? "bg-ink" : "bg-negative";
+  // « incertaine » : ni coche ni croix — on ne sait pas, on le dit.
+  const Icone = issue === "reussie" ? IconCheck
+    : issue === "reponse" || issue === "incertaine" ? IconBubble : IconClose;
+  const fond = issue === "reussie" ? "bg-positive-vif"
+    : issue === "reponse" || issue === "incertaine" ? "bg-ink" : "bg-negative";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-1 flex-col items-center gap-4 overflow-y-auto px-6 py-6 text-center">
@@ -933,7 +1157,8 @@ function Fin({
         {note && <p className="text-small text-ink-faint">{note}</p>}
         {proposition}
         {repondreQuandMeme && (
-          <button type="button" onClick={repondreQuandMeme} className="text-small text-ink-soft underline underline-offset-4">
+          <button type="button" onClick={repondreQuandMeme}
+            className="rounded-btn border-[1.5px] border-ink px-5 py-2.5 text-body font-semibold transition hover:bg-surface-2">
             {t.repondreQuandMeme}
           </button>
         )}

@@ -29,44 +29,55 @@ export type CoordonneesRib = {
 const LARGEUR = 420;
 const HAUTEUR = 595;
 
-const ENCRE = "0.141 0.118 0.090";      // #241E17
-const GRIS = "0.545 0.506 0.459";       // #8B8175
-const TRAIT = "0.890 0.863 0.820";      // #E3DCD1
-const LATERITE = "0.698 0.227 0.055";   // #B23A0E
+export const ENCRE = "0.141 0.118 0.090";      // #241E17
+export const GRIS = "0.545 0.506 0.459";       // #8B8175
+export const TRAIT = "0.890 0.863 0.820";      // #E3DCD1
+export const LATERITE = "0.698 0.227 0.055";   // #B23A0E
 
 // « La Tresse » — les deux brins, tels que brand/generer.py fait autorité.
-const BRIN_A =
+export const BRIN_A =
   "M16 4.4C17.54 5.302 22.6 6.462 22.6 8.267C22.6 10.071 19.08 10.329 16 12.133" +
   "C12.92 13.938 9.4 14.196 9.4 16C9.4 17.804 12.92 18.062 16 19.867" +
   "C19.08 21.671 22.6 21.929 22.6 23.733C22.6 25.538 17.54 26.698 16 27.6";
-const BRIN_B =
+export const BRIN_B =
   "M16 4.4C14.46 5.302 9.4 6.462 9.4 8.267C9.4 10.071 12.92 10.329 16 12.133" +
   "C19.08 13.938 22.6 14.196 22.6 16C22.6 17.804 19.08 18.062 16 19.867" +
   "C12.92 21.671 9.4 21.929 9.4 23.733C9.4 25.538 14.46 26.698 16 27.6";
 
-/** Le texte réduit au latin-1 : ce que WinAnsiEncoding sait montrer. */
-function latin1(texte: string): string {
+// Ce que WinAnsiEncoding range AU-DELÀ du latin-1, aux places 0x80–0x9F :
+// l'apostrophe typographique du dictionnaire (« d’ouverture »), les tirets,
+// les points de suspension. Sans cette table, chacun devenait « ? » —
+// « Solde d?ouverture » en tête du relevé. Le signe moins et les espaces
+// fines se ramènent à leurs cousins ordinaires.
+const WINANSI: Record<string, string> = {
+  "‘": "\x91", "’": "\x92", "“": "\x93", "”": "\x94",
+  "•": "\x95", "–": "\x96", "—": "\x97", "…": "\x85",
+  "€": "\x80", "−": "-", " ": " ", " ": " ",
+};
+
+/** Le texte réduit à ce que WinAnsiEncoding sait montrer. */
+export function latin1(texte: string): string {
   let sortie = "";
   for (const c of texte) {
     const p = c.codePointAt(0) ?? 63;
-    sortie += p <= 0xff ? String.fromCharCode(p) : "?";
+    sortie += p <= 0xff ? String.fromCharCode(p) : WINANSI[c] ?? "?";
   }
   return sortie;
 }
 
 /** Une chaîne PDF : les parenthèses et la barre oblique s'échappent. */
-function chaine(texte: string): string {
+export function chaine(texte: string): string {
   return latin1(texte).replace(/[\\()]/g, (c) => "\\" + c);
 }
 
-function texte(x: number, y: number, corps: number, police: "F1" | "F2",
+export function texte(x: number, y: number, corps: number, police: "F1" | "F2",
                couleur: string, contenu: string): string {
   return `BT ${couleur} rg /${police} ${corps} Tf 1 0 0 1 ${x} ${y} Tm ` +
          `(${chaine(contenu)}) Tj ET\n`;
 }
 
 /** Un brin de la tresse, retourné : le SVG descend, le PDF monte. */
-function brin(d: string, x: number, y: number, k: number): string {
+export function brin(d: string, x: number, y: number, k: number): string {
   const nombres = (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
   const px = (v: number) => (x + v * k).toFixed(2);
   const py = (v: number) => (y + (32 - v) * k).toFixed(2);
@@ -95,7 +106,7 @@ function ellipse(cx: number, cy: number, rx: number, ry: number): string {
  * Orange : le carré et le mot en blanc. MTN : l'ovale jaune et le sigle.
  * Un opérateur sans marque garde son libellé écrit, comme à l'écran.
  */
-function marqueReseau(operateur: string, libelle: string,
+export function marqueReseau(operateur: string, libelle: string,
                       x: number, y: number): string {
   const nom = (operateur || "").trim().toLowerCase();
   if (nom.startsWith("orange")) {
@@ -162,16 +173,35 @@ function flux(c: CoordonneesRib): string {
 
 /** Le fichier complet, prêt à être remis au propriétaire. */
 export function pdfCoordonnees(c: CoordonneesRib): Uint8Array<ArrayBuffer> {
-  const contenu = flux(c);
+  return assemblerPdf([{ largeur: LARGEUR, hauteur: HAUTEUR, contenu: flux(c) }]);
+}
+
+/**
+ * L'assemblage d'un PDF de N pages — la fiche des coordonnées en a une, le
+ * relevé de compte autant qu'il en faut. Deux polices standard (Helvetica,
+ * Helvetica-Bold), aucune image, aucune compression : le document se lit
+ * avec un éditeur de texte, et un harnais peut y chercher chaque référence.
+ */
+export function assemblerPdf(
+  pages: { largeur: number; hauteur: number; contenu: string }[],
+): Uint8Array<ArrayBuffer> {
+  // 1 catalogue, 2 arbre des pages, 3 et 4 les polices ; puis, par page,
+  // la page et son contenu.
+  const kids = pages.map((_, i) => `${5 + 2 * i} 0 R`).join(" ");
   const objets = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${LARGEUR} ${HAUTEUR}] ` +
-      "/Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
+    `<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
-    `<< /Length ${contenu.length} >>\nstream\n${contenu}endstream`,
   ];
+  pages.forEach((p, i) => {
+    objets.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${p.largeur} ${p.hauteur}] ` +
+      `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + 2 * i} 0 R >>`);
+    // La longueur se compte en OCTETS du latin-1 : un caractère, un octet.
+    const contenu = latin1(p.contenu);
+    objets.push(`<< /Length ${contenu.length} >>\nstream\n${contenu}endstream`);
+  });
 
   let fichier = "%PDF-1.4\n";
   const decalages: number[] = [];

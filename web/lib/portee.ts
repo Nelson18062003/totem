@@ -22,7 +22,8 @@
 import { cookies } from "next/headers";
 import { COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, sujetDeSession } from "@/lib/session";
 import { cartesDe, utilisateurParId } from "@/lib/serveur";
-import { verifierLien } from "@/lib/lien-signe";
+import { idDuLienDeReleve, verifierLien } from "@/lib/lien-signe";
+import { demonstrationOuverte } from "@/lib/demonstration";
 import { compteConnecte, estProprietaire } from "@/lib/qui";
 
 export type Portee =
@@ -119,6 +120,28 @@ export async function porteeDuLienDeBilan(
   if (!secret || !jours || !qui || !/^(?:tout|c\d{1,12})$/.test(qui)) return RIEN;
   const bon = await verifierLien(secret, "bilan", `${jours}.${qui}`, expiration, signature);
   if (!bon) return RIEN;
+  if (qui === "tout") return TOUT;
+  return porteeDuCompte(Number(qui.slice(1)));
+}
+
+/**
+ * Ce qu'un lien de RELEVÉ DE COMPTE ouvre : la portée de la personne pour
+ * qui il a été fait — relue MAINTENANT, une carte retirée ce matin ne se
+ * relève plus cet après-midi —, la vitrine de démonstration (« demo », qui ne
+ * lit jamais la base), ou RIEN. La signature, qui couvre la carte, la période,
+ * le format et la personne, est revérifiée ici même si le verrou l'a déjà
+ * fait.
+ */
+export async function porteeDuLienDeReleve(
+  adresse: URLSearchParams,
+): Promise<Portee | "demonstration"> {
+  const secret = process.env.SESSION_SECRET || "";
+  const id = idDuLienDeReleve(adresse);
+  if (!secret || !id) return RIEN;
+  const bon = await verifierLien(secret, "releve", id, adresse.get("e"), adresse.get("s"));
+  if (!bon) return RIEN;
+  const qui = adresse.get("q") ?? "";
+  if (qui === "demo") return demonstrationOuverte() ? "demonstration" : RIEN;
   if (qui === "tout") return TOUT;
   return porteeDuCompte(Number(qui.slice(1)));
 }

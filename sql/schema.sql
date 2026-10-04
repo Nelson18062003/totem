@@ -643,7 +643,9 @@ create trigger terminaux_entendu before insert or update on terminaux
 -- le robot et la plateforme gardent déjà : le drapeau, la carte (un ICCID
 -- n'a rien de secret, il est imprimé sur la puce), la personne qui l'a
 -- demandée et sa langue — c'est d'après elles que la plateforme dit à qui
--- est la demande.
+-- est la demande. Et « reseau » : ce que le réseau a dit de la session
+-- (« attend » une réponse, ou « fini ») — sans lui, l'écran devine sur le
+-- texte, et une page « 00. Next » passait pour une fin.
 --
 -- « en cours » n'y touche pas, à dessein : le robot qui vient de la
 -- réclamer doit encore lire le code pour le composer.
@@ -657,7 +659,7 @@ begin
     new.parametres := coalesce(
       (select jsonb_object_agg(cle, valeur)
          from jsonb_each(new.parametres) as gardes(cle, valeur)
-        where cle in ('secret', 'carte', 'iccid', 'par', 'langue')),
+        where cle in ('secret', 'carte', 'iccid', 'par', 'langue', 'reseau')),
       '{}'::jsonb);
   end if;
   return new;
@@ -812,6 +814,40 @@ alter table beneficiaires enable row level security;
 
 alter table utilisateurs add column if not exists prenom text;
 alter table utilisateurs add column if not exists nom    text;
+
+-- ===========================================================================
+-- 3. L'INSCRIPTION PUBLIQUE : L'ADRESSE, LE TÉLÉPHONE, ET LEURS BORNES
+-- ===========================================================================
+--
+-- TOTEM est une application grand public : n'importe qui crée son compte
+-- dans l'application (prénom, nom, adresse, courriel, téléphone, mot de
+-- passe) et entre aussitôt — sans rien voir tant qu'aucune carte ne lui est
+-- attribuée. Facultatifs EN BASE (les comptes d'avant n'en ont pas) ; c'est
+-- la plateforme qui les exige à l'inscription. La base, elle, borne leur
+-- forme. Voir migrations/20261004_inscription_publique.sql.
+
+alter table utilisateurs add column if not exists adresse   text;
+alter table utilisateurs add column if not exists telephone text;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                  where conname = 'utilisateurs_telephone_forme') then
+    alter table utilisateurs add constraint utilisateurs_telephone_forme
+      check (telephone is null or telephone ~ '^\+?[0-9]{6,15}$');
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conname = 'utilisateurs_adresse_forme') then
+    alter table utilisateurs add constraint utilisateurs_adresse_forme
+      check (adresse is null
+             or (char_length(btrim(adresse)) between 1 and 200));
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conname = 'utilisateurs_nom_forme') then
+    alter table utilisateurs add constraint utilisateurs_nom_forme
+      check ((prenom is null or char_length(prenom) <= 80)
+             and (nom is null or char_length(nom) <= 80));
+  end if;
+end $$;
 
 
 alter table terminaux  enable row level security;

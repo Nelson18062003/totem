@@ -1108,8 +1108,12 @@ function FeuilleChoix({ titre, options, choisie, onChoisir, onFermer }: {
 }
 
 function iconeDe(c: Categorie): NomIcone {
-  if (c === "encaissement" || c === "depot") return "ArrowDown";
-  if (c === "envoi" || c === "retrait") return "ArrowUp";
+  if (c === "encaissement") return "ArrowDown";
+  if (c === "envoi") return "ArrowUp";
+  // Un dépôt et un retrait n'ont pas de sens fixe : chez l'agent, le retrait
+  // du client FAIT ENTRER l'argent et le dépôt le fait sortir ; chez le
+  // client, c'est l'inverse. Une flèche y mentirait une fois sur deux.
+  if (c === "depot" || c === "retrait") return "Bank";
   if (c === "transfert") return "Transfer";
   if (c === "publicite") return "Megaphone";
   if (c === "solde") return "Refresh";

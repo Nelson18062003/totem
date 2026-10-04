@@ -32,6 +32,7 @@ import { formaterNumero } from "@noyau/numero";
 import { textesReglages } from "@noyau/textes/reglages";
 import { textesAccueil } from "@noyau/textes/accueil";
 import type { Langue } from "@noyau/langue";
+import { apresEffacement, enFormeDansLeChamp } from "@noyau/saisie";
 import type { Sim } from "@noyau/types";
 
 /**
@@ -299,7 +300,8 @@ function FicheCarte({ sim, langue, terminal, onFermer, onChange }: {
         <Champ libelle={ta.coordNom} valeur={nom} onChange={(v) => setNom(v.slice(0, 40))}
                aide={t.nomPlaceholder} />
         <Champ libelle={ta.coordNumero} valeur={numero}
-               onChange={(v) => setNumero(v.replace(/[^\d\s]/g, ""))}
+               onChange={(v) => setNumero(enFormeDansLeChamp("numero",
+                 apresEffacement(numero, v.replace(/[^\d\s]/g, "")), langue))}
                aide="696 10 38 64" clavier="phone-pad" />
         {etat === "erreur" ? (
           <Texte taille={textes.petit} ton="negatif" style={{ lineHeight: 20 }}>

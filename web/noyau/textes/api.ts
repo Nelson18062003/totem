@@ -8,6 +8,9 @@ const en = {
   motDePasseIncorrect: "wrong password",
   demandeInconnue: "unknown request",
   codeVide: "empty code",
+  codeTropLong: "this code is longer than an operator screen allows (182 characters): nothing was dialled — shorten it in Settings.",
+  codeMalForme: "this is not a USSD code — it must start with * or # and end with #. Nothing was dialled.",
+  reponseTropLongue: "this reply is longer than an operator screen allows (182 characters): nothing was sent.",
   carteOuValeurManquante: "missing card or value",
   nonReliee: "platform not connected",
   nonRelieeBase: "platform not connected to the database",
@@ -30,18 +33,39 @@ const en = {
   // 429. On ne dit pas combien de temps il reste : ce serait un chronomètre
   // offert à qui mesure. On ne dit pas non plus si le compte existe.
   tropDEssais: "too many attempts. Wait a few minutes and try again.",
+  // Un compte que le propriétaire a FERMÉ. Les inscriptions publiques
+  // entrent tout de suite ; celui-ci a été refermé à la main.
   compteEnAttente:
-    "This account is waiting for the owner's approval. It cannot open " +
-    "anything yet.",
+    "This account has been closed by TOTEM. Contact support to reopen it.",
   courrielInvalide: "that does not look like an email address",
   motDePasseTropCourt: "the password must be at least 12 characters long",
   courrielDejaPris: "an account already exists with this email",
-  // Fermé, et non « réservé » : il n'y a rien à demander à personne. La
-  // plateforme suit l'argent d'une seule personne ; elle n'attend pas de
-  // visiteurs.
-  inscriptionsFermees:
-    "This platform already has its owner. No new account can be created.",
   inscriptionImpossible: "the account could not be created",
+  // L'INSCRIPTION PUBLIQUE. Un courriel déjà pris reçoit CETTE phrase, et
+  // aucune autre : « ce courriel a déjà un compte » dirait à un inconnu qui
+  // est inscrit ici. Elle invite à se connecter, ce qui suffit à celui qui
+  // a vraiment un compte.
+  inscriptionRefusee:
+    "This account could not be created. If you already have one, sign in.",
+  adresseManquante: "the address is needed: street, city, country",
+  telephoneInvalide:
+    "this phone number does not look right: 8 to 15 digits, with the country code if you like",
+  champTropLong: "a field is too long",
+  // LA SUPPRESSION DE SON COMPTE.
+  proprietaireNeSeSupprimePas:
+    "The TOTEM platform owner's account cannot be deleted from the app: it is "
+    + "the one that assigns cards to everyone else.",
+  vitrineNeSeSupprimePas:
+    "The demo account cannot be deleted: it belongs to no one.",
+  // La vitrine n'a pas de boîtier : un reçu se fabrique dans le boîtier, à
+  // partir d'un vrai SMS d'opérateur. On le DIT à l'examinateur, au lieu du
+  // « seul le propriétaire peut faire cela » d'avant, qui ne voulait rien
+  // dire pour lui.
+  recuPasEnDemonstration:
+    "In the demo account, no receipt is made: a receipt is produced by the "
+    + "TOTEM box from a real operator SMS, and the demo has no box.",
+  aucunCompteASupprimer: "this session is not tied to any account: there is nothing to delete",
+  suppressionImpossible: "the account could not be deleted. Try again in a moment.",
   reserveAuProprietaire: "only the owner can do this",
   carteNonConfiee: "this card has not been entrusted to you",
   beneficiaireIncomplet: "a beneficiary needs a card, a number of 8 to 15 digits and a name",
@@ -59,6 +83,12 @@ const en = {
   nomManquant: "the first name and the last name are both needed",
   proprietaireVoitTout: "the owner already sees every card",
   carteInconnue: "this card is not known to the platform",
+  // Une puce s'attribue d'après le CODE DE COMPTE que la personne a joint à
+  // sa puce — jamais d'après une adresse e-mail, que n'importe qui peut
+  // avoir prise avant elle (voir lib/code-de-compte.ts).
+  codeDeCompteFaux:
+    "This account code does not match this account. Assign the SIM using the "
+    + "account code sent with it, never using an email address.",
   // Une demande vise une CARTE, et part au terminal qui la porte. Aucun ne
   // l'a vue depuis dix minutes : on le dit tout de suite, plutôt que
   // d'envoyer la demande au hasard ou de faire attendre l'écran.
@@ -70,15 +100,15 @@ const en = {
   // alors pour un écran qui a abandonné depuis longtemps. On dit l'OBJET
   // (le boîtier), pas une cause qu'on ignore : courant ou Internet, la
   // plateforme ne sait pas les distinguer.
-  boitierMuet: "The shop's box has stopped checking in: nothing was sent.",
+  boitierMuet: "The TOTEM box that holds your card has stopped checking in: nothing was sent.",
   // Écrit dans la demande elle-même quand l'écran l'abandonne avant que le
   // boîtier ne la prenne. C'est aussi à ces mots qu'on la reconnaît annulée.
-  demandeAnnulee: "Cancelled from the app before the shop's box picked it up: nothing was sent.",
+  demandeAnnulee: "Cancelled from the app before the TOTEM box that holds your card picked it up: nothing was sent.",
   // La base n'a pas répondu à l'annulation : on ne sait pas si elle a pris.
   // Surtout ne pas dire « rien n'est parti ».
   annulationIncertaine:
     "the cancellation could not be confirmed: the request may still go out "
-    + "when the shop's box picks it up.",
+    + "when the TOTEM box that holds your card picks it up.",
 };
 
 const fr: typeof en = {
@@ -86,6 +116,9 @@ const fr: typeof en = {
   motDePasseIncorrect: "mot de passe incorrect",
   demandeInconnue: "demande inconnue",
   codeVide: "code vide",
+  codeTropLong: "ce code dépasse ce qu’un écran d’opérateur peut porter (182 caractères) : rien n’a été composé — raccourcissez-le aux Réglages.",
+  codeMalForme: "ce n’est pas un code USSD — il commence par * ou # et finit par #. Rien n’a été composé.",
+  reponseTropLongue: "cette réponse dépasse ce qu’un écran d’opérateur peut porter (182 caractères) : rien n’est parti.",
   carteOuValeurManquante: "carte ou valeur manquante",
   nonReliee: "plateforme non reliée",
   nonRelieeBase: "plateforme non reliée à la base",
@@ -103,14 +136,29 @@ const fr: typeof en = {
   identifiantsIncorrects: "courriel ou mot de passe incorrect",
   tropDEssais: "trop d’essais. Attendez quelques minutes et recommencez.",
   compteEnAttente:
-    "Ce compte attend l’approbation du propriétaire. Il n’ouvre encore rien.",
+    "Ce compte a été fermé par TOTEM. Contactez l’assistance pour le rouvrir.",
   courrielInvalide: "cela ne ressemble pas à une adresse de courriel",
   motDePasseTropCourt: "le mot de passe doit faire au moins 12 caractères",
   courrielDejaPris: "un compte existe déjà avec ce courriel",
-  inscriptionsFermees:
-    "Cette plateforme a déjà son propriétaire. Aucun nouveau compte ne peut " +
-    "être créé.",
   inscriptionImpossible: "le compte n’a pas pu être créé",
+  inscriptionRefusee:
+    "Impossible de créer ce compte. Si vous en avez déjà un, connectez-vous.",
+  adresseManquante: "il faut l’adresse : rue, ville, pays",
+  telephoneInvalide:
+    "ce numéro de téléphone ne semble pas juste : 8 à 15 chiffres, avec l’indicatif si vous voulez",
+  champTropLong: "un champ est trop long",
+  proprietaireNeSeSupprimePas:
+    "Le compte du propriétaire de la plateforme TOTEM ne se supprime pas depuis "
+    + "l’application : c’est lui qui attribue les cartes à tous les autres.",
+  vitrineNeSeSupprimePas:
+    "Le compte de démonstration ne se supprime pas : il n’appartient à personne.",
+  recuPasEnDemonstration:
+    "Le compte de démonstration n’établit pas de reçu : un reçu est fabriqué "
+    + "par le boîtier TOTEM à partir d’un vrai SMS d’opérateur, et la "
+    + "démonstration n’a pas de boîtier.",
+  aucunCompteASupprimer:
+    "cette session ne correspond à aucun compte : il n’y a rien à supprimer",
+  suppressionImpossible: "le compte n’a pas pu être supprimé. Réessayez dans un instant.",
   reserveAuProprietaire: "seul le propriétaire peut faire cela",
   carteNonConfiee: "cette carte ne vous a pas été confiée",
   beneficiaireIncomplet: "un bénéficiaire demande une carte, un numéro de 8 à 15 chiffres et un nom",
@@ -122,16 +170,19 @@ const fr: typeof en = {
   nomManquant: "il faut le prénom et le nom",
   proprietaireVoitTout: "le propriétaire voit déjà toutes les cartes",
   carteInconnue: "cette carte n’est pas connue de la plateforme",
+  codeDeCompteFaux:
+    "Ce code de compte ne correspond pas à ce compte. Attribuez la puce d’après "
+    + "le code joint à la puce, jamais d’après une adresse e-mail.",
   carteDansAucunTerminal:
     "cette carte n’est dans aucun terminal en ce moment — retirée, ou son "
     + "terminal est éteint. Rien n’a été composé.",
-  boitierMuet: "Le boîtier de la boutique ne donne plus de nouvelles : rien n’est parti.",
+  boitierMuet: "Le boîtier TOTEM qui porte votre carte ne donne plus de nouvelles : rien n’est parti.",
   demandeAnnulee:
-    "Annulée depuis l’application avant que le boîtier de la boutique ne la prenne : "
+    "Annulée depuis l’application avant que le boîtier TOTEM qui porte votre carte ne la prenne : "
     + "rien n’est parti.",
   annulationIncertaine:
     "l’annulation n’a pas pu être confirmée : la demande peut encore partir quand "
-    + "le boîtier de la boutique la prendra.",
+    + "le boîtier TOTEM qui porte votre carte la prendra.",
 };
 
 export const textesApi = { en, fr } as const;

@@ -1,4 +1,9 @@
-// Les textes de l'écran de connexion — le verrou de la plateforme.
+// Les textes de l'écran de connexion — et de la création de compte.
+//
+// TOTEM EST UNE APPLICATION GRAND PUBLIC. N'importe qui la télécharge, crée
+// son compte et entre tout de suite ; il ajoute ensuite sa carte. Ces textes
+// ne parlent donc plus « du propriétaire du terminal » : la personne qui les
+// lit est chez elle, et c'est son compte.
 
 const en = {
   titre: "Sign in",
@@ -11,12 +16,17 @@ const en = {
   sousTitre:
     "Your Mobile Money SIM cards stay in the country. From here you run " +
     "them — every card, every receipt — wherever you are.",
-  reserve: "For the terminal's owner only.",
+  reserve: "Your Mobile Money accounts, wherever you are.",
   motDePasse: "Password",
   verification: "Checking…",
   seConnecter: "Sign in",
   motDePasseIncorrect: "Wrong password.",
   connexionImpossible: "Can't sign in right now. Try again.",
+  // Dit UNE fois, en revenant de « Supprimer mon compte » : sans lui, la
+  // suppression ressemblait trait pour trait à une simple déconnexion.
+  compteSupprime:
+    "Your account has been deleted. Your money has not moved: it is still " +
+    "with your operator.",
   notePin:
     "The Mobile Money PIN is never asked for here. It is only entered " +
     "during an operation, and is never stored anywhere.",
@@ -87,7 +97,7 @@ const en = {
   // encore connecter : on ne montre ni adresse ni réglage — l'application
   // n'en propose plus. On dit seulement à qui s'adresser.
   connexionIndisponible:
-    "Sign-in is not available right now. Contact the person who runs your TOTEM.",
+    "Sign-in is not available right now. Try again a little later.",
   // Sans nommer les variables d'environnement : leurs noms sont du jargon
   // pour le propriétaire, ET les écrire ici les ferait entrer dans le paquet
   // de l'application, où le contrôle des secrets les attend au tournant. La
@@ -109,11 +119,36 @@ const en = {
   creerUnCompte: "Create an account",
   jAiDejaUnCompte: "I already have an account",
   inscriptionTitre: "Create your account",
+  // CRÉER SON COMPTE. Six champs, et rien de plus : on ne demande que ce
+  // qui sert à attribuer une carte à la bonne personne et à la joindre.
   inscriptionSousTitre:
-    "The first account created is the owner's. The ones after it wait for " +
-    "the owner to open the door.",
-  premierCompte:
-    "No account exists yet. The one you create now will be the owner's.",
+    "Your account opens right away. You then add your SIM card, and reach " +
+    "your Mobile Money accounts from wherever you are.",
+  pasEncoreDeCompte: "New to TOTEM?",
+  prenom: "First name",
+  nom: "Last name",
+  adresse: "Address",
+  adresseExemple: "Street, city, country",
+  telephone: "Phone number",
+  telephoneExemple: "+237 6 77 12 34 56",
+  creerMonCompte: "Create my account",
+  creation: "Creating your account…",
+  champsManquants: "Fill in every field to create your account.",
+  courrielInvalide: "This email address does not look right.",
+  telephoneInvalide: "This phone number does not look right.",
+  motDePasseTropCourt: "The password needs at least 12 characters.",
+  // Neutre, À DESSEIN : « ce courriel a déjà un compte » dirait à un inconnu
+  // qui est inscrit ici. La plateforme répond la même chose.
+  inscriptionImpossible:
+    "This account could not be created. If you already have one, sign in.",
+  // Le code PIN Mobile Money n'a rien à faire ici — on le redit au moment où
+  // l'on choisit un mot de passe, pour qu'aucun des deux ne serve à l'autre.
+  inscriptionNotePin:
+    "Choose a password of your own. Never use your Mobile Money PIN: TOTEM " +
+    "never asks for it here.",
+  conditionsAvant: "By creating an account, you accept the ",
+  conditionsLien: "privacy policy",
+  conditionsApres: ".",
   motDePasseConseil: "At least 12 characters. Length beats complication.",
   confirmerMotDePasse: "Repeat the password",
   motsDePasseDifferents: "The two passwords are not the same.",
@@ -134,12 +169,15 @@ const fr: typeof en = {
   sousTitre:
     "Vos cartes SIM Mobile Money restent au pays. D’ici, vous les pilotez — " +
     "chaque carte, chaque reçu — d’où que vous soyez.",
-  reserve: "Accès réservé au propriétaire du terminal.",
+  reserve: "Vos comptes Mobile Money, où que vous soyez.",
   motDePasse: "Mot de passe",
   verification: "Vérification…",
   seConnecter: "Se connecter",
   motDePasseIncorrect: "Mot de passe incorrect.",
   connexionImpossible: "Connexion impossible pour l’instant. Réessayez.",
+  compteSupprime:
+    "Votre compte a été supprimé. Votre argent n’a pas bougé : il est " +
+    "toujours chez votre opérateur.",
   notePin:
     "Le code PIN Mobile Money n’est jamais demandé ici. Il ne se saisit " +
     "qu’au moment d’une opération, et n’est enregistré nulle part.",
@@ -174,7 +212,7 @@ const fr: typeof en = {
     "Le service qui fait sonner le téléphone est injoignable. Vérifiez la " +
     "connexion, puis réessayez.",
   connexionIndisponible:
-    "La connexion n’est pas possible pour le moment. Contactez la personne qui gère votre TOTEM.",
+    "La connexion n’est pas possible pour le moment. Réessayez un peu plus tard.",
   plateformeNonConfiguree:
     "Le TOTEM est bien là, mais la connexion n’y est pas encore configurée. " +
     "Aucun mot de passe ne peut marcher tant que les réglages de la " +
@@ -188,16 +226,34 @@ const fr: typeof en = {
   annuler: "Annuler",
   adresseInvalide: "Ce n’est pas une adresse web. Elle doit commencer par https://",
 
-  courriel: "Courriel",
+  courriel: "Adresse e-mail",
   creerUnCompte: "Créer un compte",
   jAiDejaUnCompte: "J’ai déjà un compte",
   inscriptionTitre: "Créez votre compte",
   inscriptionSousTitre:
-    "Le premier compte créé est celui du propriétaire. Les suivants attendent " +
-    "qu’il leur ouvre la porte.",
-  premierCompte:
-    "Aucun compte n’existe encore. Celui que vous créez maintenant sera celui " +
-    "du propriétaire.",
+    "Votre compte s’ouvre tout de suite. Vous ajoutez ensuite votre carte SIM, " +
+    "et vous atteignez vos comptes Mobile Money d’où que vous soyez.",
+  pasEncoreDeCompte: "Nouveau sur TOTEM ?",
+  prenom: "Prénom",
+  nom: "Nom",
+  adresse: "Adresse",
+  adresseExemple: "Rue, ville, pays",
+  telephone: "Numéro de téléphone",
+  telephoneExemple: "+237 6 77 12 34 56",
+  creerMonCompte: "Créer mon compte",
+  creation: "Création du compte…",
+  champsManquants: "Remplissez chaque champ pour créer votre compte.",
+  courrielInvalide: "Cette adresse e-mail ne semble pas juste.",
+  telephoneInvalide: "Ce numéro de téléphone ne semble pas juste.",
+  motDePasseTropCourt: "Le mot de passe demande au moins 12 caractères.",
+  inscriptionImpossible:
+    "Impossible de créer ce compte. Si vous en avez déjà un, connectez-vous.",
+  inscriptionNotePin:
+    "Choisissez un mot de passe à vous. Jamais votre code PIN Mobile Money : " +
+    "TOTEM ne le demande pas ici.",
+  conditionsAvant: "En créant un compte, vous acceptez la ",
+  conditionsLien: "politique de confidentialité",
+  conditionsApres: ".",
   motDePasseConseil: "Au moins 12 caractères. La longueur vaut mieux que la complication.",
   confirmerMotDePasse: "Répétez le mot de passe",
   motsDePasseDifferents: "Les deux mots de passe ne sont pas les mêmes.",

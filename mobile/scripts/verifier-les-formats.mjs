@@ -133,7 +133,7 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
   const r = await fetch("http://127.0.0.1:3120/api/inscription", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+    body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
   });
   if (!r.ok && r.status !== 409 && r.status !== 403) {
     console.error(`  ⚠️  le compte d'essai n'a pas pu être créé (${r.status}).`);
@@ -147,7 +147,7 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
   if (r.status === 403) {
     const c = await fetch("http://127.0.0.1:3120/api/connexion", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+      body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
     });
     if (!c.ok) {
       console.error("  ✗ Les inscriptions sont fermées par un AUTRE compte :");

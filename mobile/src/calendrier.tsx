@@ -9,6 +9,12 @@
 // applications de réservation, que tout le monde a déjà fait. Un troisième
 // appui recommence. Les jours à venir ne se touchent pas : aucun SMS n'y
 // est encore arrivé.
+//
+// LA GRILLE SE PRÊTE. Le relevé de compte choisit lui aussi deux jours ; il
+// vit DÉJÀ dans une feuille, et une feuille ouverte par-dessus une autre se
+// perd sur iPhone (une fenêtre qui se présente pendant qu'une autre se
+// retire ne s'affiche pas). Il pose donc la grille seule, dans sa propre
+// feuille — `GrilleCalendrier` —, et le geste reste le même partout.
 
 import { useState } from "react";
 import { Pressable, View } from "react-native";
@@ -20,6 +26,20 @@ import { semainesDuMois, nomDesJours, type Bornes } from "@noyau/periodes";
 import { textesSms } from "@noyau/textes/sms";
 import type { Langue } from "@noyau/langue";
 
+/** Un choix en cours : un premier jour, puis peut-être le dernier. */
+export type ChoixDeJours = { de: string; a: string | null } | null;
+
+/** Un appui sur un jour : le premier, puis le second (dans l'ordre), puis on
+ *  recommence. */
+export function toucherLeJour(choix: ChoixDeJours, jour: string): ChoixDeJours {
+  if (!choix || choix.a !== null) return { de: jour, a: null };
+  return jour < choix.de ? { de: jour, a: choix.de } : { de: choix.de, a: jour };
+}
+
+/** La période que dessine un choix en cours. */
+export const bornesDuChoixDeJours = (choix: ChoixDeJours): Bornes | null =>
+  choix ? { de: choix.de, a: choix.a ?? choix.de } : null;
+
 export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: {
   langue: Langue;
   /** « 2026-10-03 » — le jour de la caisse. */
@@ -30,30 +50,9 @@ export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: 
   onFermer: () => void;
 }) {
   const t = textesSms[langue];
-  const [choix, setChoix] = useState<{ de: string; a: string | null } | null>(
+  const [choix, setChoix] = useState<ChoixDeJours>(
     depart ? { de: depart.de, a: depart.a } : null);
-  // Le mois montré : celui du choix en cours, sinon le mois de la caisse.
-  const repere = (choix?.de ?? aujourdhui).slice(0, 7);
-  const [mois, setMois] = useState({ a: Number(repere.slice(0, 4)), m: Number(repere.slice(5, 7)) });
-
-  const decaler = (n: number) => setMois(({ a, m }) => {
-    const total = a * 12 + (m - 1) + n;
-    return { a: Math.floor(total / 12), m: (total % 12) + 1 };
-  });
-  const moisCourant = `${mois.a}-${String(mois.m).padStart(2, "0")}` >= aujourdhui.slice(0, 7);
-
-  const toucher = (jour: string) => {
-    if (!choix || choix.a !== null) setChoix({ de: jour, a: null });
-    else setChoix(jour < choix.de ? { de: jour, a: choix.de } : { de: choix.de, a: jour });
-  };
-  const bornes: Bornes | null = choix ? { de: choix.de, a: choix.a ?? choix.de } : null;
-
-  const titreMois = new Intl.DateTimeFormat(langue === "en" ? "en-GB" : "fr-FR", {
-    month: "long", year: "numeric", timeZone: "UTC",
-  }).format(new Date(Date.UTC(mois.a, mois.m - 1, 1)));
-  // Lundi d'abord, en lettres courtes de la langue de l'ÉCRAN.
-  const initiales = langue === "en"
-    ? ["M", "T", "W", "T", "F", "S", "S"] : ["L", "M", "M", "J", "V", "S", "D"];
+  const bornes = bornesDuChoixDeJours(choix);
 
   return (
     <Feuille
@@ -87,6 +86,41 @@ export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: 
         </Pressable>
       }
     >
+      <GrilleCalendrier langue={langue} aujourdhui={aujourdhui} bornes={bornes}
+                        onToucher={(jour) => setChoix((c) => toucherLeJour(c, jour))} />
+    </Feuille>
+  );
+}
+
+/** Le mois, ses flèches et ses jours — sans feuille autour. */
+export function GrilleCalendrier({ langue, aujourdhui, bornes, onToucher }: {
+  langue: Langue;
+  aujourdhui: string;
+  /** La période à dessiner (le choix en cours). */
+  bornes: Bornes | null;
+  onToucher: (jour: string) => void;
+}) {
+  const t = textesSms[langue];
+  // Le mois montré : celui du choix en cours, sinon le mois de la caisse.
+  const repere = (bornes?.de ?? aujourdhui).slice(0, 7);
+  const [mois, setMois] = useState({ a: Number(repere.slice(0, 4)), m: Number(repere.slice(5, 7)) });
+
+  const decaler = (n: number) => setMois(({ a, m }) => {
+    const total = a * 12 + (m - 1) + n;
+    return { a: Math.floor(total / 12), m: (total % 12) + 1 };
+  });
+  const moisCourant = `${mois.a}-${String(mois.m).padStart(2, "0")}` >= aujourdhui.slice(0, 7);
+  const toucher = onToucher;
+
+  const titreMois = new Intl.DateTimeFormat(langue === "en" ? "en-GB" : "fr-FR", {
+    month: "long", year: "numeric", timeZone: "UTC",
+  }).format(new Date(Date.UTC(mois.a, mois.m - 1, 1)));
+  // Lundi d'abord, en lettres courtes de la langue de l'ÉCRAN.
+  const initiales = langue === "en"
+    ? ["M", "T", "W", "T", "F", "S", "S"] : ["L", "M", "M", "J", "V", "S", "D"];
+
+  return (
+    <View>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: espaces.md }}>
         <BoutonIcone nom="Chevron" etiquette={t.moisPrecedent} onPress={() => decaler(-1)}
                      style={{ transform: [{ rotate: "180deg" }] }} />
@@ -143,6 +177,6 @@ export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: 
           </View>
         ))}
       </View>
-    </Feuille>
+    </View>
   );
 }

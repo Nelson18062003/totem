@@ -182,6 +182,9 @@ type LignePaiement = {
   compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
+  // Lus par le robot dans le SMS (`analyse_sms.py`) ; absents d'une base
+  // pas encore migrée. Le relevé de compte les montre.
+  frais?: number | null; commission?: number | null; montant_brut?: number | null;
   categorie?: string | null; nature?: string | null;
   emis_le?: string | null; recu_le: string;
   // Quand le propriétaire a ouvert ce SMS sur la plateforme. `null` = pas
@@ -259,10 +262,36 @@ function versTerminal(
 /** Le terminal seul — pour la coquille, qui n'a pas besoin du reste.
  *  Avant, elle rechargeait TOUT (SMS et reçus compris) à chaque page :
  *  chaque clic payait deux fois le plein tarif. */
-export async function chargerTerminal(langue: Langue): Promise<EtatTerminal | null> {
-  const terminaux = await lire<LigneTerminal>(
-    "terminaux?select=*&order=vu_le.desc.nullslast&limit=50");
-  return versTerminal(leBoitierMontre(terminaux), langue);
+export async function chargerTerminal(
+  langue: Langue, portee: Portee,
+): Promise<EtatTerminal | null> {
+  // RIEN À MONTRER sans carte : un inscrit du grand public n'a pas de
+  // boîtier, et celui d'un autre client ne le regarde pas.
+  if (!portee.tout && portee.cartes.length === 0) return null;
+  const [terminaux, siens] = await Promise.all([
+    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=50"),
+    portee.tout ? Promise.resolve(null)
+      : lire<{ terminal?: string | null }>(
+          `cartes?select=terminal&iccid=in.${listeDeCartes(portee.cartes)}`),
+  ]);
+  return versTerminal(leBoitierMontre(boitiersDeSesCartes(terminaux, siens)), langue);
+}
+
+/**
+ * Les boîtiers qu'une personne a le droit de voir : TOUS pour le
+ * propriétaire (`siens` vaut null), sinon ceux qui portent SES cartes.
+ *
+ * `leBoitierMontre` prend le DERNIER boîtier entendu dans toute la flotte.
+ * Avec l'inscription publique, le client B voyait donc le nom, la version et
+ * la santé du boîtier que le client A venait de brancher chez lui — et un
+ * inscrit sans carte, celui de TOTEM.
+ */
+function boitiersDeSesCartes<T extends { id: string }>(
+  terminaux: T[], siens: { terminal?: string | null }[] | null,
+): T[] {
+  if (siens === null) return terminaux;
+  const ids = new Set(siens.map((c) => c.terminal).filter((t): t is string => Boolean(t)));
+  return terminaux.filter((t) => ids.has(t.id));
 }
 
 /** Une liste d'ICCID prête pour un filtre « in.(…) ». Chaque valeur est
@@ -282,9 +311,38 @@ export function chargerDonneesDeDemonstration(
     tablesDeDemonstration(), () => chargerDonnees(langue, { tout: true }, bornes));
 }
 
+/** Une lecture entière DANS la démonstration : tout `lire` y répond depuis
+ *  le jeu inventé, sans jamais toucher la base. Le relevé de compte s'en sert
+ *  pour la vitrine — ses deux questions à la base passent ainsi par le même
+ *  mur. */
+export function dansLaDemonstration<T>(faire: () => Promise<T>): Promise<T> {
+  return sourceDeDemonstration.run(tablesDeDemonstration(), faire);
+}
+
+/**
+ * Le dernier solde ANNONCÉ par l'opérateur sur une carte, dans un SMS relevé
+ * avant `avant` (ISO) — l'ouverture d'un relevé quand la lecture de la
+ * période ne la porte pas. `null` : aucun SMS ne l'a dit, et le relevé
+ * écrira « non connu », jamais 0.
+ *
+ * La réponse est REVÉRIFIÉE ici : la carte, le solde, l'heure. Un service
+ * distant qui ignorerait un filtre (la vitrine n'en applique aucun) ne doit
+ * pas faire passer le solde d'une autre carte, ou d'après, pour une ouverture.
+ */
+export async function soldeAnnonceAvant(iccid: string, avant: string): Promise<number | null> {
+  if (!/^[A-Za-z0-9]{1,32}$/.test(iccid)) return null;
+  const lignes = await lire<LignePaiement>(
+    `paiements?select=*&carte=eq.${iccid}&solde_apres=not.is.null`
+    + `&recu_le=lt.${encodeURIComponent(avant)}&order=recu_le.desc&limit=1`);
+  const l = lignes.find((x) => x.carte === iccid && x.solde_apres != null
+    && Date.parse(x.emis_le || x.recu_le) < Date.parse(avant));
+  return l ? Number(l.solde_apres) : null;
+}
+
 /** Le terminal de la démonstration, pour la coquille du site. */
 export function chargerTerminalDeDemonstration(langue: Langue): Promise<EtatTerminal | null> {
-  return sourceDeDemonstration.run(tablesDeDemonstration(), () => chargerTerminal(langue));
+  return sourceDeDemonstration.run(
+    tablesDeDemonstration(), () => chargerTerminal(langue, { tout: true }));
 }
 
 export async function chargerDonnees(
@@ -324,8 +382,14 @@ export async function chargerDonnees(
   //
   // Absent, il vaut « autant que `sms` » : qui n'a rien précisé veut tout ce
   // qu'il a demandé.
-  bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean;
-             lignes?: number },
+  //
+  // `jusqua` : la borne de FIN, exclue (ISO). Sans elle, une période PASSÉE
+  // lue sur une caisse chargée gardait les lignes les plus RÉCENTES — la
+  // limite mord sur « recu_le.desc » — c'est-à-dire celles qui sont hors de
+  // la période : un relevé de janvier à mars, demandé en octobre, sortait
+  // amputé ou vide. Elle se prend large, comme `depuis`.
+  bornes?: { sms?: number; recus?: number; depuis?: string; jusqua?: string;
+             compter?: boolean; lignes?: number },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
@@ -334,8 +398,9 @@ export async function chargerDonnees(
   // relevé en retard après une coupure porte donc une heure de relève
   // postérieure à son heure d'émission : la borne est prise LARGE, et le
   // tri fin se fait ensuite sur l'heure qui fait foi.
-  const filtreDate = bornes?.depuis
-    ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "";
+  const filtreDate = (bornes?.depuis
+    ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "")
+    + (bornes?.jusqua ? `&recu_le=lt.${encodeURIComponent(bornes.jusqua)}` : "");
   // « select=* » à dessein : exiger une colonne par son nom rend l'écran
   // VIDE quand la base a une migration de retard (la requête entière est
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
@@ -374,7 +439,10 @@ export async function chargerDonnees(
       : Promise.resolve([] as LigneRecu[]),
     // Les boutons appris par le robot. Table absente (base pas migrée) :
     // `lire` rend [] sans bruit — les écrans montrent juste moins de boutons.
-    lire<LigneRaccourci>("raccourcis?select=*&order=id"),
+    //
+    // Un inscrit sans carte n'en reçoit aucun : le carnet du propriétaire
+    // ne le regarde pas (filtré par opérateur plus bas pour les autres).
+    rien ? vide<LigneRaccourci>() : lire<LigneRaccourci>("raccourcis?select=*&order=id"),
     // Le carnet des bénéficiaires, carte par carte — même portée que le
     // reste. Table absente (base pas migrée) : un carnet vide, sans bruit.
     rien ? vide<Beneficiaire>()
@@ -421,7 +489,11 @@ export async function chargerDonnees(
   // L'HEURE DE LA RÉPONSE, prise une fois : l'âge de chaque boîtier et
   // `serveurA` se mesurent au même instant, sur la même horloge.
   const maintenant = Date.now();
-  const terminal = versTerminal(leBoitierMontre(terminaux), langue, maintenant);
+  // LE TERMINAL MONTRÉ, choisi parmi ceux qui portent les cartes de la
+  // personne — aucun sans carte (voir `boitiersDeSesCartes`).
+  const terminal = rien ? null : versTerminal(
+    leBoitierMontre(boitiersDeSesCartes(terminaux, portee.tout ? null : cartes)),
+    langue, maintenant);
   const boitiers = new Map(terminaux.map((t) => [t.id, t]));
   const plusRecentes = cartesLesPlusRecentes(portee.tout ? cartesBrutes : vuesDeLaFlotte);
   const aujourdhui = jourLocal(new Date(maintenant), FUSEAU);
@@ -506,6 +578,10 @@ export async function chargerDonnees(
       nature: parNature(l.nature),
       reference: l.reference ?? "",
       soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
+      // Seulement quand le SMS en parle : mille SMS sans frais ne doivent pas
+      // payer deux clés vides chacun sur le réseau mobile du téléphone.
+      ...(l.frais == null ? {} : { frais: Number(l.frais) }),
+      ...(l.commission == null ? {} : { commission: Number(l.commission) }),
       smsBrut: l.texte,
       recu: recuDe(l),
       sourceId: l.source_id ?? null,
@@ -587,10 +663,14 @@ export async function chargerDonnees(
   });
 
   // Les boutons appris, par opérateur — le pendant web du carnet du robot.
+  // Celui qui tient des cartes ne reçoit que les boutons de LEURS
+  // opérateurs : c'est de quoi les manier, rien de plus.
+  const sesOperateurs = new Set(sims.map((x) => x.operateur));
   const raccourcis: Record<string, RaccourciAppris[]> = {};
   for (const b of boutons) {
     const etapes = (b.etapes ?? "").split(",").filter(Boolean);
     if (!b.operateur || !etapes.length) continue;
+    if (!portee.tout && !sesOperateurs.has(b.operateur)) continue;
     (raccourcis[b.operateur] ??= []).push({
       nom: b.nom, libelle: b.libelle || b.nom, etapes,
     });
@@ -621,6 +701,52 @@ export async function chargerFicheRecu(
   );
   const fiche = fiches.find((f) => f.numero === propre);
   return fiche ? { etabliLe: fiche.etabli_le ?? null } : null;
+}
+
+/**
+ * LE REÇU DE CE SMS EST-IL LÀ ? Une question minuscule, posée par la fiche
+ * d'un SMS d'argent qui attend son document (voir `recuAttendu` dans le
+ * noyau) : quelques fois, sur une minute au plus — jamais un pouls.
+ *
+ * Avant, le téléphone apprenait l'arrivée du SMS (la notification), jamais
+ * celle du reçu, déposé quelques secondes plus tard : la fiche restait sur
+ * « Établir le reçu », et l'on refaisait un document qui existait déjà.
+ *
+ * Le lien est celui de l'écran (`recuDe` dans `chargerDonnees`) : par la
+ * référence d'opérateur, sinon par le numéro de ligne du journal, dans la
+ * famille « TM- » et sur le même boîtier. La portée se vérifie sur la ligne
+ * du SMS : un SMS d'une carte qui n'est pas la sienne n'a pas de reçu ici.
+ */
+export async function recuDuSms(id: number, portee: Portee): Promise<string | null> {
+  if (!relie || !Number.isInteger(id) || id <= 0) return null;
+  if (!portee.tout && portee.cartes.length === 0) return null;
+  const sms = (await lire<{
+    id: number; carte: string | null; reference: string | null;
+    source_id?: number | null; terminal?: string | null;
+  }>(`paiements?select=id,carte,reference,source_id,terminal&id=eq.${id}&limit=1`))
+    .find((l) => l.id === id);
+  if (!sms) return null;
+  // Revérifiée ici, ligne par ligne : un filtre qu'un service distant
+  // ignorerait ne doit rien laisser passer.
+  if (!portee.tout && (sms.carte == null || !portee.cartes.includes(sms.carte))) return null;
+  const memeBoitier = (r: { terminal?: string | null }) =>
+    r.terminal == null || sms.terminal == null || r.terminal === sms.terminal;
+  if (sms.reference) {
+    const parReference = (await lire<{ numero: string; reference: string | null; terminal?: string | null }>(
+      `recus?select=numero,reference,terminal&reference=eq.${encodeURIComponent(sms.reference)}&limit=5`))
+      .find((r) => r.reference === sms.reference && memeBoitier(r));
+    if (parReference) return parReference.numero;
+  }
+  if (sms.source_id == null) return null;
+  // « TM-2026-0731-0042 » : le numéro finit par la ligne du journal, sur
+  // quatre chiffres au moins. On demande les numéros qui FINISSENT ainsi,
+  // puis on revérifie le nombre exact (« …-10042 » finit aussi par 0042).
+  const fin = String(sms.source_id).padStart(4, "0");
+  const candidats = await lire<{ numero: string; terminal?: string | null }>(
+    `recus?select=numero,terminal&numero=like.TM-*-${fin}&order=etabli_le.desc&limit=20`);
+  return candidats.find((r) => /^TM-/.test(r.numero)
+    && Number(/-(\d+)$/.exec(r.numero)?.[1]) === sms.source_id
+    && memeBoitier(r))?.numero ?? null;
 }
 
 /**
@@ -1169,11 +1295,19 @@ export async function carteDeLaCommande(id: number): Promise<string | null> {
 
 export async function lireCommande(
   id: number,
-): Promise<{ etat: string; resultat: string | null } | null> {
-  const lignes = await lire<{ id: number; etat: string; resultat: string | null }>(
-    `commandes?select=id,etat,resultat&id=eq.${id}&limit=1`);
+): Promise<{ etat: string; resultat: string | null; reseau?: "attend" | "fini" } | null> {
+  // `parametres->reseau` seulement, jamais les paramètres entiers : ils
+  // portent le code composé, et parfois, fugitivement, un code secret.
+  const lignes = await lire<{
+    id: number; etat: string; resultat: string | null; reseau?: unknown;
+  }>(`commandes?select=id,etat,resultat,reseau:parametres->>reseau&id=eq.${id}&limit=1`);
   const c = lignes.find((x) => x.id === id);
-  return c ? { etat: c.etat, resultat: c.resultat } : null;
+  if (!c) return null;
+  // Ce que le RÉSEAU a dit de la session USSD, rapporté par le boîtier :
+  // « attend » une réponse, ou « fini ». Absent d'un boîtier d'avant —
+  // l'écran lit alors le texte, comme avant.
+  const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
+  return reseau ? { etat: c.etat, resultat: c.resultat, reseau } : { etat: c.etat, resultat: c.resultat };
 }
 
 /** Qui a déposé cette demande (`par`, nommé par la plateforme), sur quelle
@@ -1298,6 +1432,11 @@ export type Utilisateur = {
    *  le compte. Vides pour un compte d'avant (la colonne n'existait pas). */
   prenom: string;
   nom: string;
+  /** L'adresse postale et le téléphone donnés à l'inscription publique —
+   *  de quoi joindre la personne pour installer sa carte. Vides pour un
+   *  compte d'avant, ou créé par le propriétaire sans les connaître. */
+  adresse: string;
+  telephone: string;
   role: "proprietaire" | "invite";
   approuve: boolean;
   creeLe: string | null;
@@ -1307,6 +1446,7 @@ export type Utilisateur = {
 type LigneUtilisateur = {
   id: number; courriel: string; empreinte: string;
   prenom?: string | null; nom?: string | null;
+  adresse?: string | null; telephone?: string | null;
   role: string; approuve: boolean;
   cree_le: string | null; vu_le: string | null;
 };
@@ -1316,6 +1456,8 @@ const versUtilisateur = (l: LigneUtilisateur): Utilisateur => ({
   courriel: l.courriel,
   prenom: l.prenom ?? "",
   nom: l.nom ?? "",
+  adresse: l.adresse ?? "",
+  telephone: l.telephone ?? "",
   role: l.role === "proprietaire" ? "proprietaire" : "invite",
   approuve: Boolean(l.approuve),
   creeLe: l.cree_le,
@@ -1416,18 +1558,30 @@ export async function utilisateurParId(id: number): Promise<Utilisateur | null> 
 export async function creerUtilisateur(
   courriel: string, empreinte: string,
   role: "proprietaire" | "invite", approuve: boolean,
-  // Le prénom et le nom, quand le propriétaire les a donnés. Ils ne partent
-  // que s'ils sont remplis : l'inscription du tout premier compte n'en a pas.
-  identite: { prenom?: string; nom?: string } = {},
+  // Ce qu'on sait de la personne. Chaque champ ne part que s'il est rempli :
+  // le propriétaire qui crée un vendeur ne connaît pas forcément son adresse.
+  identite: { prenom?: string; nom?: string; adresse?: string; telephone?: string } = {},
 ): Promise<Utilisateur | "refuse" | null> {
   const ligne: Record<string, unknown> = { courriel, empreinte, role, approuve };
   if (identite.prenom) ligne.prenom = identite.prenom;
   if (identite.nom) ligne.nom = identite.nom;
+  if (identite.adresse) ligne.adresse = identite.adresse;
+  if (identite.telephone) ligne.telephone = identite.telephone;
   const r = await ecrire("utilisateurs", "POST", [ligne]);
   if (!r) return null;
   // 409 : une contrainte d'unicité a parlé (code Postgres 23505).
   if (r.status === 409) return "refuse";
-  if (!r.ok) return null;
+  if (!r.ok) {
+    // UNE BASE PAS ENCORE MIGRÉE se dit ici, en clair, dans le journal du
+    // serveur : sans les colonnes « adresse » et « telephone », AUCUNE
+    // inscription ne passe — et l'écran ne peut dire que « impossible ».
+    const texte = await r.text().catch(() => "");
+    if (defautDeSchema(texte)) {
+      console.error("La table « utilisateurs » n'a pas encore les colonnes de "
+        + "l'inscription publique : jouez migrations/20261004_inscription_publique.sql.");
+    }
+    return null;
+  }
   const lignes = (await r.json().catch(() => [])) as LigneUtilisateur[];
   return lignes[0] ? versUtilisateur(lignes[0]) : null;
 }
@@ -1451,8 +1605,12 @@ export async function listerUtilisateurs(): Promise<Utilisateur[]> {
     // migration du 1er octobre — les nommer rendrait la liste VIDE sur une
     // base en retard. L'empreinte arrive avec l'étoile, mais `versUtilisateur`
     // ne la recopie pas : elle ne sort pas d'ici.
-    "utilisateurs?select=*&order=cree_le.asc&limit=200");
-  return lignes.map(versUtilisateur);
+    //
+    // LES PLUS RÉCENTS D'ABORD, puis remis dans l'ordre d'arrivée. Avec
+    // l'inscription publique, « les deux cents premiers » excluaient
+    // justement ceux qui attendent leur puce : les derniers inscrits.
+    "utilisateurs?select=*&order=cree_le.desc&limit=500");
+  return lignes.map(versUtilisateur).reverse();
 }
 
 /** Pose une nouvelle empreinte de mot de passe. L'appelant a déjà prouvé

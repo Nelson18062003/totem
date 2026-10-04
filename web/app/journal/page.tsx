@@ -1,6 +1,7 @@
 import { langueServeur } from "@/lib/langue-serveur";
 import { lireIncidents, relie } from "@/lib/serveur";
 import { estDemonstration } from "@/lib/demonstration";
+import { exigerPouvoir } from "@/lib/garde";
 import { FUSEAU } from "@/lib/fuseau";
 import { journalPour } from "@noyau/textes/journal";
 import { jourLocal } from "@noyau/types";
@@ -26,6 +27,12 @@ export const dynamic = "force-dynamic";
 const LOCALE = { fr: "fr-FR", en: "en-GB" } as const;
 
 export default async function Journal() {
+  // RÉSERVÉ À CELUI QUI ADMINISTRE — le propriétaire, ou la clé de secours.
+  // Le middleware refuse déjà avant le premier octet ; la page refuse aussi,
+  // AVANT toute lecture : deux portes valent mieux qu'une. Un inscrit du
+  // grand public n'a rien à lire ici — les boîtiers des autres, leurs pannes,
+  // les incidents de la plateforme.
+  await exigerPouvoir("administrer");
   const langue = await langueServeur();
   const t = journalPour(langue);
 

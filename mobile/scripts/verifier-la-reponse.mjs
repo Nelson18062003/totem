@@ -148,7 +148,7 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
 }
 await fetch("http://127.0.0.1:3120/api/inscription", {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+  body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
 }).catch(() => {});
 
 const nav = await chromium.launch({ args: ["--disable-web-security"] });
@@ -264,7 +264,7 @@ try {
   await sonder("l'œil, sur la carte, qui masque le solde",
                page.getByLabel(/Hide the balance|Masquer le solde/).first());
   await sonder("« actualiser », à côté de l'âge du solde",
-               page.getByRole("button", { name: /^(Refresh the balance|Actualiser le solde)/ }).first());
+               page.getByRole("button", { name: /^(Check balance|Voir mon solde)/ }).first());
   // Les puces des cartes n'existent qu'à partir de deux cartes : la sonde
   // vise la SECONDE, celle qu'on touche pour changer.
   const puces = page.getByRole("button", { name: /^(Select the|Choisir la carte) / });
@@ -288,6 +288,22 @@ try {
                page.getByRole("button", { name: /^(Filter by date|Filtrer par date) : / }).first());
   await sonder("le filtre « Type »",
                page.getByRole("button", { name: /^(Filter by kind|Filtrer par type) : / }).first());
+
+  // ── L'ONGLET OPÉRATIONS ──────────────────────────────────────────────
+  // Les gestes d'argent y sont des TUILES (et les consultations des
+  // demi-tuiles) depuis que l'écran a été rangé : de nouveaux boutons, qui
+  // doivent répondre sous le doigt comme les anciens. On vise le bouton
+  // VISIBLE : l'accueil quitté reste dans le document, retiré.
+  console.log("\nL'onglet Opérations :");
+  await page.getByRole("tab", { name: /^(Operations|Opérations)$/ }).first().click();
+  await attendre(1500);
+  await sonder("la tuile « Dépôt »",
+               page.getByRole("button", { name: /^(Deposit|Dépôt)$/ }).locator("visible=true").first());
+  await sonder("la demi-tuile « Voir mon solde »",
+               page.getByRole("button", { name: /^(Check balance|Voir mon solde)$/ }).locator("visible=true").first());
+  await sonder("la ligne « Code USSD »",
+               page.getByRole("button").filter({ hasText: /^(USSD code|Code USSD)/ })
+                 .locator("visible=true").first());
 
   // ── CE QU'UNE AIDE TECHNIQUE ENTEND ─────────────────────────────────
   //

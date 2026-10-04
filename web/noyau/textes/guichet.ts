@@ -14,20 +14,16 @@ const en = {
   // --- Le guichet -------------------------------------------------------------
   depot: "Deposit",
   depotSous: "Top up a Mobile Money account",
-  depotTitre: "Money deposit",
-  retrait: "Withdrawal",
+  retrait: "Withdraw",
   retraitSous: "At an agent",
-  retraitTitre: "Money withdrawal",
   transfert: "Transfer",
   transfertSous: "Send to a number",
-  transfertTitre: "Money transfer",
   numeroACrediter: "Number to top up",
   numeroAgent: "Agent's number",
   numeroBeneficiaire: "Recipient's number",
   montantFcfa: "Amount (FCFA)",
   exempleVingtMille: "20,000",
   exempleCinquanteMille: "50,000",
-  consulterSolde: "Check the balance",
   monNumero: "My number",
   soldeSous: "Ask the network for the exact balance",
   monNumeroSous: "The network tells you this card's number",
@@ -41,6 +37,20 @@ const en = {
     `No ${op} codes have been collected in the field yet — a digit that moves ` +
     "money is not something to guess. Add them in Settings.",
   carteVisee: "Card the operations run on",
+  // L'onglet Opérations, rangé : la carte, les trois gestes d'argent, puis
+  // « Consulter » et « Outils ». Des intertitres en casse normale — une
+  // étiquette en capitales se lit comme un réglage technique.
+  depuisLaCarte: "From card",
+  operationsDepuis: (l: string) => `Operations from card ${l}`,
+  groupeConsulter: "Check",
+  groupeOutils: "Tools",
+  monSolde: "Check balance",
+  // LE MENU DE L'OPÉRATEUR, tel qu'on le compose sur le téléphone (*126#,
+  // #148#…) : un bouton à part entière, pas un réglage caché dans « Code
+  // USSD ». Le même nom chez tous les opérateurs — un geste, un nom.
+  menu: "Menu",
+  menuSous: "Opens the operator's menu: you choose at each step",
+  champNumero: "Number",
 
   // --- Le pop-up d'une opération ----------------------------------------------
   preparation: "Getting ready",
@@ -55,6 +65,20 @@ const en = {
   lancer: "Start",
   terminalCompose: "the terminal is dialling…",
   reponseVide: "(empty reply)",
+  // Dit par TOTEM, HORS de la carte de l'opérateur : l'opérateur n'a rien
+  // écrit, on ne lui prête pas une phrase.
+  ecranVide: "The operator's screen is empty. It may still be waiting for a reply.",
+  // Un refus du BOÎTIER sur le code secret : on ne sait pas s'il est parti.
+  opIncertaine: "Outcome not confirmed",
+  noteIncertaine: "Check your SMS before trying again.",
+  // Un bouton appris s'arrête quand l'écran ne propose pas son étape.
+  trajetArrete: (etape: string) =>
+    `The operator's screen does not offer “${etape}”, the next step of this button: `
+    + "the rest was not sent. Read the screen and reply yourself.",
+  // « Raccrocher » arrivé trop tard pour retenir la dernière réponse.
+  reponsePeutEtrePartie:
+    "Hung up — but your last reply had already reached the TOTEM box: it may have been "
+    + "sent to the operator. Check your SMS before trying again.",
   echec: "Failed.",
   demandePasPartie: "the request could not be sent",
   terminalMuet: "the terminal did not answer — is it switched on, and up to date?",
@@ -63,9 +87,9 @@ const en = {
   // boîtier l'a déjà en main : elle peut encore aboutir, et le dire autrement
   // ferait recommencer un transfert qui part peut-être.
   sansReponseRienParti:
-    "The shop's box did not answer: the request has been cancelled, nothing was sent.",
+    "The TOTEM box that holds your card did not answer: the request has been cancelled, nothing was sent.",
   sansReponseEnCours:
-    "The shop's box has taken the request but has not answered yet: it may "
+    "The TOTEM box that holds your card has taken the request but has not answered yet: it may "
     + "still go through. Check your SMS before trying again.",
   // Le TÉLÉPHONE n'a pas joint la plateforme pendant l'attente : ce n'est
   // pas le boîtier qui s'est tu, et on n'a pas pu annuler.
@@ -73,13 +97,13 @@ const en = {
     "Your phone can't reach TOTEM right now: check its connection. The request "
     + "may still go through — check your SMS before trying again.",
   sansReponseIncertaine:
-    "The shop's box did not answer, and the cancellation could not be "
+    "The TOTEM box that holds your card did not answer, and the cancellation could not be "
     + "confirmed: the request may still go out. Check your SMS before trying again.",
   // Le boîtier a FINI la demande pendant que l'écran renonçait — mais sa
   // réponse n'a pas pu être relue. On ne dit ni « rien n'est parti », ni
   // « elle peut encore aboutir » : elle est finie, et on ne sait pas comment.
   sansReponseFinie:
-    "The shop's box finished the request just now, but its answer could not be "
+    "The TOTEM box that holds your card finished the request just now, but its answer could not be "
     + "read back. Check your SMS before trying again.",
   accroc: "small hitch — please try again",
   trouSansReponse: (noms: string) =>
@@ -117,6 +141,11 @@ const en = {
   reseauDemandeMontant: "The network asks for an amount",
   reseauDemandeReponse: "The network is waiting for a reply",
   autreReponse: "Type another reply",
+  // Pendant le code secret : répondre autre chose reste possible, et ce
+  // qu'on tape part protégé comme un code (jamais gardé, jamais affiché).
+  repondreAutrement: "Reply something else",
+  reponseProtegee: "Treated like a secret code: never shown, never kept.",
+  revenirAuPave: "Back to the keypad",
   voirEchange: "See the exchange with the operator",
   masquerEchange: "Hide the exchange",
   vous: "You",
@@ -128,7 +157,6 @@ const en = {
   repondreQuandMeme: "Reply to the operator anyway",
   recap: "Summary",
   recapOperation: "Operation",
-  recapDepuis: "From the card",
   recapVers: "To",
   recapMontant: "Amount",
   clientsRecents: "Recent",
@@ -172,20 +200,16 @@ const fr: typeof en = {
 
   depot: "Dépôt",
   depotSous: "Créditer un compte Mobile Money",
-  depotTitre: "Dépôt d’argent",
   retrait: "Retrait",
   retraitSous: "Chez un agent",
-  retraitTitre: "Retrait d’argent",
   transfert: "Transfert",
   transfertSous: "Envoyer vers un numéro",
-  transfertTitre: "Transfert d’argent",
   numeroACrediter: "Numéro à créditer",
   numeroAgent: "Numéro de l’agent",
   numeroBeneficiaire: "Numéro du bénéficiaire",
   montantFcfa: "Montant (FCFA)",
   exempleVingtMille: "20 000",
   exempleCinquanteMille: "50 000",
-  consulterSolde: "Consulter le solde",
   monNumero: "Mon numéro",
   soldeSous: "Demander au réseau le solde exact",
   monNumeroSous: "Le réseau vous dit le numéro de cette carte",
@@ -199,6 +223,14 @@ const fr: typeof en = {
     `Aucun code ${op} n’a encore été relevé sur le terrain — on ne devine ` +
     "pas un chiffre qui déplace de l’argent. Ajoutez-les dans les Réglages.",
   carteVisee: "Carte des opérations",
+  depuisLaCarte: "Depuis la carte",
+  operationsDepuis: (l) => `Opérations depuis la carte ${l}`,
+  groupeConsulter: "Consulter",
+  groupeOutils: "Outils",
+  monSolde: "Voir mon solde",
+  menu: "Menu",
+  menuSous: "Ouvre le menu de l’opérateur : vous choisissez à chaque étape",
+  champNumero: "Numéro",
 
   preparation: "Préparation",
   sessionEnCours: "Session en cours",
@@ -212,22 +244,31 @@ const fr: typeof en = {
   lancer: "Lancer",
   terminalCompose: "le terminal compose…",
   reponseVide: "(réponse vide)",
+  ecranVide: "L’écran de l’opérateur est vide. Il attend peut-être encore une réponse.",
+  opIncertaine: "Résultat non confirmé",
+  noteIncertaine: "Regardez vos SMS avant de recommencer.",
+  trajetArrete: (etape: string) =>
+    `L’écran de l’opérateur ne propose pas « ${etape} », l’étape suivante de ce bouton : `
+    + "la suite n’est pas partie. Lisez l’écran, puis répondez vous-même.",
+  reponsePeutEtrePartie:
+    "Raccroché — mais votre dernière réponse était déjà chez le boîtier TOTEM : elle a "
+    + "peut-être été envoyée à l’opérateur. Regardez vos SMS avant de recommencer.",
   echec: "Échec.",
   demandePasPartie: "la demande n’a pas pu partir",
   terminalMuet: "le terminal n’a pas répondu — est-il allumé, et à jour ?",
   sansReponseRienParti:
-    "Le boîtier de la boutique n’a pas répondu : la demande est annulée, rien n’est parti.",
+    "Le boîtier TOTEM qui porte votre carte n’a pas répondu : la demande est annulée, rien n’est parti.",
   sansReponseEnCours:
-    "Le boîtier de la boutique a pris la demande mais n’a pas encore répondu : "
+    "Le boîtier TOTEM qui porte votre carte a pris la demande mais n’a pas encore répondu : "
     + "elle peut encore aboutir. Regardez vos SMS avant de recommencer.",
   telephoneSansTotem:
     "Votre téléphone n’arrive pas à joindre TOTEM : vérifiez sa connexion. La demande "
     + "peut quand même aboutir — regardez vos SMS avant de recommencer.",
   sansReponseIncertaine:
-    "Le boîtier de la boutique n’a pas répondu, et l’annulation n’a pas pu être "
+    "Le boîtier TOTEM qui porte votre carte n’a pas répondu, et l’annulation n’a pas pu être "
     + "confirmée : la demande peut encore partir. Regardez vos SMS avant de recommencer.",
   sansReponseFinie:
-    "Le boîtier de la boutique vient de finir la demande, mais sa réponse n’a pas "
+    "Le boîtier TOTEM qui porte votre carte vient de finir la demande, mais sa réponse n’a pas "
     + "pu être relue. Regardez vos SMS avant de recommencer.",
   accroc: "petit accroc — réessayez",
   trouSansReponse: (noms) =>
@@ -263,6 +304,9 @@ const fr: typeof en = {
   reseauDemandeMontant: "Le réseau demande un montant",
   reseauDemandeReponse: "Le réseau attend une réponse",
   autreReponse: "Taper une autre réponse",
+  repondreAutrement: "Répondre autre chose",
+  reponseProtegee: "Traitée comme un code secret : jamais affichée, jamais gardée.",
+  revenirAuPave: "Revenir au pavé",
   voirEchange: "Voir l’échange avec l’opérateur",
   masquerEchange: "Masquer l’échange",
   vous: "Vous",
@@ -274,7 +318,6 @@ const fr: typeof en = {
   repondreQuandMeme: "Répondre quand même à l’opérateur",
   recap: "Récapitulatif",
   recapOperation: "Opération",
-  recapDepuis: "Depuis la carte",
   recapVers: "Vers",
   recapMontant: "Montant",
   clientsRecents: "Récents",

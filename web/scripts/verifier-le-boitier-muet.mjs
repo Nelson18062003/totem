@@ -200,8 +200,11 @@ function barresDeLAccueil(html) {
 const ancienneEnPlace = (derniereVue) => Date.now() - Date.parse(derniereVue) < 10 * MIN;
 const ancienEnLigne = (vuLe) => Date.now() - Date.parse(vuLe) < 3 * MIN;
 
-const MUET_FR = "Le boîtier de la boutique ne donne plus de nouvelles : rien n’est parti.";
-const MUET_EN = "The shop's box has stopped checking in: nothing was sent.";
+// « Le boîtier TOTEM qui porte votre carte », et non plus « de la
+// boutique » : TOTEM est grand public, la puce d'un particulier est le plus
+// souvent dans un boîtier de TOTEM, pas dans une boutique.
+const MUET_FR = "Le boîtier TOTEM qui porte votre carte ne donne plus de nouvelles : rien n’est parti.";
+const MUET_EN = "The TOTEM box that holds your card has stopped checking in: nothing was sent.";
 const RETIREES = /Cartes retirées|Removed cards/;
 const AUCUNE = /Aucune carte dans le terminal|No card in the terminal/;
 const SANS_NOUVELLES = /Pas de nouvelles récentes de cette carte/;
@@ -578,7 +581,7 @@ try {
     const lue = await lireApi(`/api/commande/${a.id}?langue=fr`, patron);
     verifier("annulée depuis un écran français : la demande le dit en français",
       [x.annulee, lue.resultat], [true,
-        "Annulée depuis l’application avant que le boîtier de la boutique ne la prenne : "
+        "Annulée depuis l’application avant que le boîtier TOTEM qui porte votre carte ne la prenne : "
         + "rien n’est parti."]);
     await allure("normal");
   }

@@ -18,14 +18,15 @@ import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { nomDeFichier, partagerDocument } from "@/partage";
 import {
-  definirNature, deposerCommande, lienRecu, lireCommande, marquerLu,
+  definirNature, deposerCommande, lienRecu, lireCommande, marquerLu, recuDuSms,
 } from "@/api/guichet";
 import { useMaintenant, useRetouche } from "@/donnees";
 import { useLangue } from "@/langue";
 import { NATURES } from "@noyau/natures";
 import { libelleJour } from "@noyau/periodes";
 import {
-  categorieDe, estArgent, ICONE_CATEGORIE, LONG_MESSAGE, texteSurEcran,
+  categorieDe, estArgent, etatDeLaReponseRecu, FENETRE_DU_RECU_MS,
+  ICONE_CATEGORIE, LONG_MESSAGE, recuAttendu, texteSurEcran,
 } from "@noyau/sms";
 import { textesSms } from "@noyau/textes/sms";
 import {
@@ -181,6 +182,42 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
   // Le numéro du reçu : celui de la ligne, ou celui que le robot vient de
   // rendre (voir `etablirRecu`).
   const [recu, setRecu] = useState<string | null>(p.recu);
+
+  // LE REÇU QUI ARRIVE TOUT SEUL. Un SMS d'argent tout juste reçu a son
+  // reçu en route : le boîtier le dépose sur la plateforme dans les
+  // secondes qui suivent. La fiche disait pourtant « Établir le reçu » —
+  // le téléphone apprend l'arrivée du SMS, jamais celle du reçu — et l'on
+  // refaisait à la main un document déjà en chemin, parfois déjà dans
+  // Telegram. Pendant la fenêtre où il doit arriver, la fiche l'ATTEND
+  // (« Reçu en préparation… ») et demande à la plateforme, toutes les
+  // trois secondes, s'il est là. Bornée : la fenêtre, et la fiche ouverte.
+  // Jamais un pouls — fermée ou la fenêtre passée, elle se tait.
+  const [attendu, setAttendu] = useState(() => recuAttendu(p, Date.now()));
+  useEffect(() => {
+    if (!attendu || recu) return;
+    const fin = Date.parse(p.recuLe) + FENETRE_DU_RECU_MS;
+    const renoncer = new AbortController();
+    let minuterie: ReturnType<typeof setTimeout> | undefined;
+    const guetter = async () => {
+      if (renoncer.signal.aborted) return;
+      const n = await recuDuSms(Number(p.id), renoncer.signal).catch(() => null);
+      if (renoncer.signal.aborted) return;
+      if (n) {
+        setRecu(n);
+        retoucher({ recu: n });
+        setAttendu(false);
+        return;
+      }
+      if (Date.now() >= fin) { setAttendu(false); return; }
+      minuterie = setTimeout(guetter, Math.min(3000, Math.max(0, fin - Date.now())));
+    };
+    void guetter();
+    return () => { renoncer.abort(); if (minuterie) clearTimeout(minuterie); };
+    // Une fois par SMS ouvert ; `retoucher` change à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.id, attendu]);
+  const enPreparation = attendu && !recu && etabli === "repos";
+
   const ouvrirRecu = async () => {
     if (!recu || ouverture === "envoi") return;
     setOuverture("envoi");
@@ -222,9 +259,16 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
   // perdue et où la personne recommence de bonne foi.
   const gesteRecu = useGesteUnique();
 
+  // « Refaire » SANS rien changer : le boîtier rend le document en place,
+  // tout de suite, sans le refabriquer — et c'est LUI qui le dit (« déjà à
+  // jour »), après avoir comparé l'empreinte du document. La fiche le
+  // déduisait de l'égalité des numéros ; or un document refait (identité
+  // des Réglages, autre langue) garde son numéro.
+  const [dejaAJour, setDejaAJour] = useState(false);
   const etablirRecu = (natureVoulue?: Categorie) => gesteRecu.lancer(async (cle) => {
     if (p.sourceId == null) return;
     const natureDemandee = natureVoulue ?? nature;
+    setDejaAJour(false);
     setEtabli("envoi");
     // Chaque `return;` sans verdict ci-dessous est la fiche FERMÉE : un
     // silence, que `useGesteUnique` ne traduit en aucune vibration. La
@@ -246,6 +290,7 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
           // SUITE — elle demandait avant de la refermer et de la rouvrir.
           const n = /\bT[A-Z]-\d{4}-\d{4}-\d+\b/.exec(c.resultat ?? "")?.[0];
           if (n) { setRecu(n); retoucher({ recu: n }); }
+          setDejaAJour(etatDeLaReponseRecu(c.resultat) === "inchange");
           setEtabli("fait"); onChange?.(); return true;
         }
         if (c?.etat === "echouee") { setEtabli("refus"); return false; }
@@ -318,7 +363,7 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
             <Pressable
               accessibilityRole="button"
               onPress={() => void (recu ? ouvrirRecu() : etablirRecu())}
-              disabled={ouverture === "envoi" || etabli === "envoi"
+              disabled={ouverture === "envoi" || etabli === "envoi" || enPreparation
                         || gesteRecu.occupe || (!recu && etabli === "fait")}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
@@ -334,6 +379,7 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
                      style={{ color: couleurs.surfaceHaute, flexShrink: 1, textAlign: "center" }}>
                 {recu
                   ? (ouverture === "envoi" ? t.preparationRecu : t.partagerRecu)
+                  : enPreparation ? t.recuEnPreparation
                   : etabli === "envoi" ? t.demandeAuTerminal
                   : etabli === "fait" ? t.recuEtabli
                   : t.etablirRecu}
@@ -359,7 +405,9 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
                        style={{ flexShrink: 1, textAlign: "center" }}>
                   {etabli === "envoi" ? t.demandeAuTerminal
                     // Établi pour la première fois, ou refait : deux mots.
-                    : etabli === "fait" ? (p.recu ? t.regenerationFaite : t.recuEtabli)
+                    : etabli === "fait"
+                      ? (dejaAJour ? t.recuDejaAJour
+                        : p.recu ? t.regenerationFaite : t.recuEtabli)
                     : t.refaireRecu}
                 </Texte>
               </Pressable>

@@ -418,20 +418,111 @@ export async function ouvrirSession(
     if (e.statut === 401 && !raisonDonnee(objetJson(e.texte))) {
       throw new ErreurGuichet(textesConnexion[langue].motDePasseIncorrect, 401, "refus");
     }
-    const corps = lireReponse(e);
-    // JAMAIS UN JETON ABSENT DANS LE COFFRE. Une réponse coupée qui aurait
-    // perdu le jeton rangeait « undefined » comme une session ouverte :
-    // l'écran passait le verrou, puis chaque demande revenait refusée.
-    const jeton = corps.jeton;
-    const expire = Number(corps.expire);
-    if (typeof jeton !== "string" || !jeton || !Number.isFinite(expire) || expire <= 0) {
-      throw new Panne("incomplete");
-    }
-    await Coffre.ecrire(CLE_JETON, jeton);
-    await Coffre.ecrire(CLE_ECHEANCE, String(expire));
+    await rangerLeJeton(lireReponse(e));
   } catch (e) {
     throw versErreurGuichet(e, langue);
   }
+}
+
+/**
+ * Range le jeton qu'une réponse apporte — celle de la connexion comme celle
+ * de l'inscription : les deux portes ouvrent la même session, elles la
+ * rangent donc de la même façon.
+ *
+ * JAMAIS UN JETON ABSENT DANS LE COFFRE. Une réponse coupée qui aurait
+ * perdu le jeton rangeait « undefined » comme une session ouverte : l'écran
+ * passait le verrou, puis chaque demande revenait refusée.
+ */
+async function rangerLeJeton(corps: Record<string, unknown>): Promise<void> {
+  const jeton = corps.jeton;
+  const expire = Number(corps.expire);
+  if (typeof jeton !== "string" || !jeton || !Number.isFinite(expire) || expire <= 0) {
+    throw new Panne("incomplete");
+  }
+  await Coffre.ecrire(CLE_JETON, jeton);
+  await Coffre.ecrire(CLE_ECHEANCE, String(expire));
+}
+
+/** Ce qu'on donne pour créer son compte — et rien de plus. */
+export type FicheInscription = {
+  prenom: string; nom: string; adresse: string;
+  telephone: string; courriel: string; motdepasse: string;
+};
+
+/**
+ * CRÉER SON COMPTE, depuis le téléphone.
+ *
+ * TOTEM est ouvert à tous : n'importe qui télécharge l'application et crée
+ * son compte. Le compte est actif tout de suite — il entre, et voit « Ajouter
+ * ma carte » tant qu'aucune carte ne lui est attribuée. Ouvrir la porte à
+ * tous ne donne accès à rien : un compte neuf ne voit QUE les cartes qu'on
+ * lui attribue, et il n'en a aucune.
+ *
+ * Mêmes garanties que la connexion, parce que c'est la même porte : une
+ * échéance sur tout l'échange, une réponse coupée qui est une PANNE, et
+ * jamais un jeton absent rangé dans le coffre. Le mot de passe ne survit
+ * pas à cet appel.
+ *
+ * Un refus porte la phrase de la plateforme, dans la langue demandée. Elle
+ * ne dit jamais « ce courriel a déjà un compte » : on ne fait pas savoir à
+ * un inconnu qui est inscrit ici.
+ */
+export async function inscrire(fiche: FicheInscription, langue: Langue): Promise<void> {
+  try {
+    const base = await adressePlateforme();
+    const e = await echanger(`${base}/api/inscription?langue=${langue}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(fiche),
+    });
+    await rangerLeJeton(lireReponse(e));
+  } catch (e) {
+    throw versErreurGuichet(e, langue);
+  }
+}
+
+/**
+ * SUPPRIMER SON COMPTE, depuis l'application — Apple l'exige dès qu'on peut
+ * en créer un, et c'est juste : on doit pouvoir partir aussi simplement
+ * qu'on est venu.
+ *
+ * Le mot de passe est redemandé : un téléphone prêté, déverrouillé, ne doit
+ * pas suffire à effacer le compte de quelqu'un. La plateforme refuse le
+ * propriétaire de la plateforme et la vitrine, avec une phrase que l'écran
+ * montre telle quelle.
+ *
+ * Ne ferme PAS la session lui-même : c'est l'écran qui le fait, par la même
+ * porte que la déconnexion — pour que le cahier se ferme avec.
+ */
+export function supprimerMonCompte(motdepasse: string, langue: Langue): Promise<{ ok: true }> {
+  return demander("/api/moi/suppression", {
+    method: "POST", body: JSON.stringify({ motdepasse }),
+  }, { langue, motDePasseRedemande: true });
+}
+
+/**
+ * OÙ ÉCRIRE À TOTEM. L'adresse n'est PAS écrite dans l'application : elle
+ * vit sur la plateforme (`CONTACT_COURRIEL`), que le propriétaire change sans
+ * nous — une adresse inventée ici promettrait une boîte qui n'existe pas.
+ *
+ * Si la plateforme la donne (`contact` dans `/api/plateforme`), on rend un
+ * lien `mailto:` ; sinon, la page de la plateforme qui l'affiche
+ * (`/confidentialite`), qui elle renvoie à défaut vers la fiche du magasin.
+ */
+export async function ouContacterTotem(): Promise<string> {
+  const base = await adressePlateforme();
+  try {
+    const e = await echanger(`${base}/api/plateforme`, {
+      method: "GET", headers: { accept: "application/json" },
+    });
+    const c = objetJson(e.texte)?.contact;
+    if (typeof c === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(c)) {
+      return `mailto:${c}`;
+    }
+  } catch {
+    // Le réseau a toussé : la page fera aussi bien.
+  }
+  return `${base}/confidentialite`;
 }
 
 export async function fermerSession(): Promise<void> {
@@ -467,7 +558,15 @@ function avecLangue(chemin: string, langue: Langue): string {
 async function demander<T>(
   chemin: string,
   options: RequestInit = {},
-  reglages: { langue?: Langue; renoncer?: AbortSignal } = {},
+  reglages: {
+    langue?: Langue; renoncer?: AbortSignal;
+    /** Cette porte REVÉRIFIE le mot de passe (supprimer son compte) : un
+     *  401 qui donne sa raison y veut dire « mot de passe refusé », pas
+     *  « session terminée ». Sans ce drapeau, un mot de passe mal tapé
+     *  fermait la session — et l'écran disait « reconnectez-vous » à
+     *  quelqu'un qui s'était seulement trompé d'une lettre. */
+    motDePasseRedemande?: boolean;
+  } = {},
 ): Promise<T> {
   // `langueDeLEcran` ne rejette jamais : au pire, la langue par défaut.
   const langue = reglages.langue ?? (await langueDeLEcran());
@@ -483,7 +582,23 @@ async function demander<T>(
         authorization: `Bearer ${jeton}`,
         ...(options.body ? { "content-type": "application/json" } : {}),
       },
-    }, { renoncer: reglages.renoncer, corpsInutile: (s) => s === 401 });
+    }, {
+      renoncer: reglages.renoncer,
+      corpsInutile: (s) => s === 401 && !reglages.motDePasseRedemande,
+    });
+
+    // LES DEUX 401 SE SÉPARENT PAR LE CONTRAT, pas par la présence d'une
+    // phrase. Le verrou de la plateforme répond lui aussi 401 AVEC une
+    // phrase quand le jeton ne vaut plus rien (compte supprimé ailleurs,
+    // fermé par TOTEM, périmé) — mais il ajoute `raison: "session"`. Celui-là
+    // ferme la session, plus bas ; seul l'autre veut dire « mot de passe
+    // refusé ». Avant, un compte déjà supprimé lisait « sign-in required »
+    // sous le champ, recommençait sans fin, et le coffre gardait le jeton.
+    if (e.statut === 401 && reglages.motDePasseRedemande) {
+      const corps = objetJson(e.texte);
+      const raison = raisonDonnee(corps);
+      if (raison && corps?.raison !== "session") throw new ErreurGuichet(raison, 401, "refus");
+    }
 
     // Session périmée ou révoquée : on efface le coffre pour que l'écran
     // suivant présente la connexion au lieu de boucler sur des refus.
@@ -564,10 +679,15 @@ export function deposerCommande(
 }
 
 /** L'état d'une demande déposée : le terminal a-t-il répondu ? */
-export function lireCommande(
+export async function lireCommande(
   id: number, renoncer?: AbortSignal,
-): Promise<{ etat: string; resultat: string | null }> {
-  return demander(`/api/commande/${id}`, {}, { renoncer });
+): Promise<{ etat: string; resultat: string | null; reseau?: "attend" | "fini" }> {
+  const c = await demander<{ etat: string; resultat: string | null; reseau?: unknown }>(
+    `/api/commande/${id}`, {}, { renoncer });
+  // Ce que le réseau a dit de la session : seulement une des deux valeurs
+  // connues — toute autre chose vaut « on ne sait pas », et l'écran lit le texte.
+  const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
+  return { etat: c.etat, resultat: c.resultat, ...(reseau ? { reseau } : {}) };
 }
 
 /** RETIRE une demande que l'écran abandonne — si le boîtier ne l'a pas
@@ -628,6 +748,18 @@ export function lienRecu(numero: string): Promise<{ url: string }> {
   return demander(`/api/recu/${encodeURIComponent(numero)}/lien`);
 }
 
+/** « Le reçu de ce SMS est-il là ? » — le numéro, ou `null`.
+ *
+ *  Posée par la fiche d'un SMS d'argent tout juste arrivé, quelques fois sur
+ *  une minute au plus (voir `recuAttendu` dans le noyau) : le boîtier dépose
+ *  le reçu tout seul, et la fiche bascule sur « Partager le reçu » dès qu'il
+ *  est là. L'identifiant est celui de la LIGNE en base (`p.id`). */
+export async function recuDuSms(id: number, renoncer?: AbortSignal): Promise<string | null> {
+  const r = await demander<{ recu?: unknown }>(
+    `/api/recu-du-sms?id=${encodeURIComponent(String(id))}`, {}, { renoncer });
+  return typeof r.recu === "string" && r.recu ? r.recu : null;
+}
+
 /** « Est-ce que mon téléphone sonne ? »
  *
  *  Fait envoyer une notification d'essai aux appareils inscrits. Rend
@@ -644,6 +776,9 @@ export type CompteInscrit = {
   id: number; courriel: string; prenom?: string; nom?: string;
   role: string; approuve: boolean;
   creeLe: string | null; vuLe: string | null; cartes: string[] | null;
+  /** Compte de l'inscription publique : une puce ne lui est attribuée
+   *  qu'avec le CODE DE COMPTE joint à la puce (la plateforme refuse sans). */
+  codeExige?: boolean;
 };
 
 /** Une carte de la maison, qu'on peut confier à quelqu'un. */
@@ -659,13 +794,14 @@ export function listerComptes(): Promise<{ comptes: CompteInscrit[]; cartes?: Ca
 }
 
 /** Un geste du propriétaire sur un compte : laisser entrer, bloquer,
- *  supprimer, en créer un (l'inscription libre est fermée) — et confier ou
- *  reprendre une carte. */
+ *  supprimer, en créer un pour quelqu'un — et attribuer ou reprendre une
+ *  carte. C'est ainsi qu'une puce reçue par TOTEM arrive dans le compte de
+ *  la personne qui l'a envoyée. */
 export function agirSurCompte(
   corps:
     | { id: number; geste: "approuver" | "fermer" | "supprimer" }
     | { geste: "creer"; prenom: string; nom: string; courriel: string; motdepasse: string }
-    | { id: number; iccid: string; geste: "attribuer" | "retirer" },
+    | { id: number; iccid: string; geste: "attribuer" | "retirer"; code?: string },
 ): Promise<unknown> {
   return demander("/api/comptes", { method: "POST", body: JSON.stringify(corps) });
 }
@@ -681,6 +817,16 @@ export function lienCoordonnees(iccid: string): Promise<{ url: string }> {
  *  l'afficher. La signature couvre le nombre de jours. */
 export function lienBilan(jours: number): Promise<{ url: string }> {
   return demander(`/api/bilan/lien?jours=${jours}`);
+}
+
+/** Un lien signé vers un RELEVÉ DE COMPTE : une carte (ou « tout »), deux
+ *  jours de la caisse, PDF ou CSV. La signature couvre les quatre — et pour
+ *  qui il a été fait. */
+export function lienReleve(
+  carte: string, de: string, a: string, format: "pdf" | "csv",
+): Promise<{ url: string }> {
+  const q = new URLSearchParams({ carte, de, a, format });
+  return demander(`/api/releve/lien?${q.toString()}`);
 }
 
 /** Le carnet des bénéficiaires d'une carte : enregistrer (ou renommer celui

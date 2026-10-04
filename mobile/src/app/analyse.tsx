@@ -11,6 +11,11 @@
 // plateforme) : la caisse peut être à Douala et le téléphone à Paris, un
 // encaissement de 23 h reste dans son jour.
 //
+// LE RELEVÉ DE COMPTE vit ici aussi (`releve.tsx`) : toutes les cartes, ou
+// une, sur la période qu'on veut, en PDF ou en CSV. Le bilan de la semaine,
+// du mois ou du trimestre reste à côté — c'est un autre objet, l'export de
+// cet écran.
+//
 // L'export CSV passe par le navigateur du système, muni d'un lien signé :
 // c'est lui qui sait TÉLÉCHARGER un fichier — l'application ne sait que
 // l'afficher. Même chemin que le reçu et la fiche des coordonnées.
@@ -37,6 +42,8 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { lienBilan } from "@/api/guichet";
+import { FeuilleReleve } from "@/releve";
+import { textesReleve } from "@noyau/textes/releve";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { textesUssd } from "@noyau/textes/ussd";
 import { resumeSemaine } from "@noyau/analyse";
@@ -55,6 +62,8 @@ export default function Analyse() {
 
   const paiements = donnees?.paiements;
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
+  const sims = donnees?.sims ?? [];
+  const [releve, setReleve] = useState(false);
 
   // LA SEMAINE TOURNE À MINUIT, MÊME ÉCRAN OUVERT. Le calcul prenait
   // `Date.now()` au moment du rendu : restée ouverte depuis la veille,
@@ -258,7 +267,34 @@ export default function Analyse() {
             ) : null}
           </>
         )}
+
+        {/* LE RELEVÉ DE COMPTE — même quand la semaine est calme : un
+            trimestre passé se relève quand même. */}
+        {sims.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setReleve(true)}
+            style={({ pressed }) => ({
+              flexDirection: "row", alignItems: "center", gap: espaces.md,
+              padding: espaces.lg, borderRadius: rayons.bouton, borderWidth: 1,
+              borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+            })}
+          >
+            <Icone nom="Doc" taille={18} couleur={couleurs.encre} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Texte poids="demi">{textesReleve[langue].titre}</Texte>
+              <Texte taille={textes.legende} ton="pale">{textesReleve[langue].explication}</Texte>
+            </View>
+          </Pressable>
+        ) : null}
       </Defilement>
+
+      {releve ? (
+        <FeuilleReleve langue={langue} fuseau={fuseau} onFermer={() => setReleve(false)}
+                       cartes={sims.map((s) => ({ iccid: s.iccid, numero: s.numero,
+                                                  libelle: s.libelle, operateur: s.operateur }))} />
+      ) : null}
     </SafeAreaView>
   );
 }

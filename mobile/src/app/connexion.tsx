@@ -1,16 +1,17 @@
-// Le verrou de l'application.
+// La porte de l'application : se connecter, ou créer son compte.
 //
-// UN COURRIEL ET UN MOT DE PASSE, et rien d'autre. Le mot de passe n'est
-// jamais rangé : seulement son empreinte, sur la plateforme, qui ne se
-// remonte pas. Ce qui se range dans le coffre du téléphone, c'est le JETON
-// rendu par la plateforme.
+// UN COURRIEL ET UN MOT DE PASSE pour entrer. Le mot de passe n'est jamais
+// rangé : seulement son empreinte, sur la plateforme, qui ne se remonte pas.
+// Ce qui se range dans le coffre du téléphone, c'est le JETON rendu par la
+// plateforme.
 //
-// PAS D'INSCRIPTION ICI, À DESSEIN. C'est le propriétaire qui crée les
-// comptes, un par un, depuis ses Réglages : tant que TOTEM est en essai
-// fermé, personne ne vient se créer un compte lui-même. L'écran savait
-// pourtant le proposer — sur une plateforme sans aucun compte — et une
-// testeuse a cru qu'on l'invitait à s'inscrire. La porte n'existe plus dans
-// l'application ; le tout premier compte se crée sur le site.
+// L'INSCRIPTION EST ICI, ET C'EST UNE DÉCISION. TOTEM est une application
+// grand public, publiée sur l'App Store et le Play Store : n'importe qui la
+// télécharge, crée son compte (`inscription.tsx`) et entre tout de suite.
+// Il fut un temps où cette porte avait été retirée — TOTEM était alors un
+// outil fermé, dont le propriétaire créait les comptes à la main. Ce temps
+// est fini : `verifier-le-paquet` exige maintenant que l'inscription soit
+// dans le paquet.
 //
 // PAS D'ADRESSE NON PLUS. L'écran montrait « Plateforme —
 // https://totemlabs.app », et un lien pour la changer : une URL que
@@ -28,7 +29,9 @@
 // sondage qui a raté n'est pas une porte fermée.
 
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Pressable, View } from "react-native";
+import {
+  ActivityIndicator, BackHandler, KeyboardAvoidingView, Pressable, View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ChampTexte, Defilement,
@@ -41,6 +44,7 @@ import { Bienvenue, accueilDejaVu } from "@/bienvenue";
 import { useChangerLangue, useLangue } from "@/langue";
 import { useSession } from "@/session";
 import { verifierPlateforme, type EtatPlateforme } from "@/api/guichet";
+import { Inscription } from "@/inscription";
 import { textesConnexion } from "@noyau/textes/connexion";
 import { autreLangue } from "@noyau/langue";
 import { polices } from "@/theme/jetons";
@@ -49,13 +53,32 @@ export default function Connexion() {
   const langue = useLangue();
   const changerLangue = useChangerLangue();
   const t = textesConnexion[langue];
-  const { ouvrir } = useSession();
+  const { ouvrir, avis: avisDeSession, oublierAvis } = useSession();
+  // « Votre compte a été supprimé » : lu UNE fois, puis oublié par la
+  // session — un retour à la connexion plus tard ne le redit pas.
+  const [supprime] = useState(avisDeSession === "compteSupprime");
+  useEffect(() => { if (avisDeSession) oublierAvis(); }, [avisDeSession, oublierAvis]);
 
   const [courriel, setCourriel] = useState("");
   const [motdepasse, setMotdepasse] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
+  // Se connecter, ou créer son compte : deux écrans, une seule porte.
+  const [inscription, setInscription] = useState(false);
+
+  // LE RETOUR D'ANDROID ramène de « Créer un compte » à la connexion. Sans
+  // lui, l'inscription n'étant pas une route mais un état de cet écran (la
+  // racine), le geste « retour » QUITTAIT l'application — et les six champs
+  // tapés partaient avec.
+  useEffect(() => {
+    if (!inscription) return;
+    const abonnement = BackHandler.addEventListener("hardwareBackPress", () => {
+      setInscription(false);
+      return true;
+    });
+    return () => abonnement.remove();
+  }, [inscription]);
 
   // Ce qu'on a trouvé au bout de l'adresse livrée. `null` = pas encore su.
   const [etat, setEtat] = useState<EtatPlateforme | null>(null);
@@ -112,6 +135,10 @@ export default function Connexion() {
   if (!accueilli) {
     return <Bienvenue onFini={() => setAccueilli(true)} />;
   }
+  if (inscription) {
+    return <Inscription porteOuverte={porteOuverte} avis={avis}
+                        onRetour={() => setInscription(false)} />;
+  }
 
   return (
     // Le même fond neutre que le reste de l'application : le propriétaire a
@@ -139,6 +166,15 @@ export default function Connexion() {
               {t.titre}
             </Texte>
           </Entree>
+
+          {supprime ? (
+            <Carte style={{ padding: espaces.lg }}>
+              <Texte taille={textes.petit} style={{ lineHeight: 20 }}
+                     accessibilityLiveRegion="polite">
+                {t.compteSupprime}
+              </Texte>
+            </Carte>
+          ) : null}
 
           <Entree delai={80}>
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
@@ -246,7 +282,27 @@ export default function Connexion() {
           </Carte>
           </Entree>
 
-          {/* Le pied : la langue, et rien d'autre. */}
+          {/* CRÉER UN COMPTE — visible sans chercher, sous la carte. La
+              plupart de ceux qui ouvrent l'application pour la première
+              fois n'ont pas encore de compte : c'est pour eux. */}
+          <Entree delai={100}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => { setErreur(null); setInscription(true); }}
+              style={({ pressed }) => ({
+                borderWidth: 1, borderColor: couleurs.trait,
+                borderRadius: rayons.bouton,
+                backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+                paddingVertical: espaces.md, paddingHorizontal: espaces.lg,
+                alignItems: "center", gap: 2,
+              })}
+            >
+              <Texte taille={textes.petit} ton="doux">{t.pasEncoreDeCompte}</Texte>
+              <Texte poids="demi">{t.creerUnCompte}</Texte>
+            </Pressable>
+          </Entree>
+
+          {/* Le pied : la langue. */}
           <Entree delai={120} style={{ gap: espaces.lg, alignItems: "center" }}>
             {/* La bascule de langue : un drapeau et le nom de l'AUTRE langue,
                 dans une pastille visible — celle qui la cherche la voit. */}

@@ -7,7 +7,7 @@ import { etapesGeste } from "@noyau/codes";
 import { textesGuichet } from "@noyau/textes/guichet";
 import type { RaccourciAppris, Sim } from "@noyau/types";
 import {
-  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash, IconPersonnes,
+  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconGrid, IconHash, IconPersonnes,
   IconInbox, IconPhone, IconRefresh, IconWallet,
 } from "../icons";
 import { useLangue } from "../langue";
@@ -54,31 +54,37 @@ export function Guichet({
   const operations = [
     {
       titre: t.depot, sous: t.depotSous, Icone: IconArrowDown,
-      fabrique: (): Operation => operationDe("depot", t.depotTitre, [
+      fabrique: (): Operation => operationDe("depot", t.depot, [
         { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
       ]),
     },
     {
       titre: t.retrait, sous: t.retraitSous, Icone: IconWallet,
-      fabrique: (): Operation => operationDe("retrait", t.retraitTitre, [
+      fabrique: (): Operation => operationDe("retrait", t.retrait, [
         { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
       ]),
     },
     {
       titre: t.transfert, sous: t.transfertSous, Icone: IconArrowUp,
-      fabrique: (): Operation => operationDe("transfert", t.transfertTitre, [
+      fabrique: (): Operation => operationDe("transfert", t.transfert, [
         { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleCinquanteMille, type: "montant" },
       ]),
+    },
+    // LE MENU DE L'OPÉRATEUR, un bouton à part entière : tout ce que les
+    // trois gestes ne couvrent pas (le « Float » d'un agent…) y passe.
+    {
+      titre: t.menu, sous: t.menuSous, Icone: IconGrid,
+      fabrique: (): Operation => operationDe("menu", t.menu, []),
     },
   ].filter((o) => o.fabrique().code);
 
   const consultations = [
     {
-      l: t.consulterSolde, Icone: IconRefresh,
-      fabrique: (): Operation => operationDe("solde", t.consulterSolde, []),
+      l: t.monSolde, Icone: IconRefresh,
+      fabrique: (): Operation => operationDe("solde", t.monSolde, []),
     },
     {
       l: t.monNumero, Icone: IconPhone,

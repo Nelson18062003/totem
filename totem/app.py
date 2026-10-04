@@ -78,8 +78,14 @@ RE_DEMANDE_CODE = re.compile(
     # clair, et s'inscrivait tel quel dans la table `ussd` — laquelle part dans
     # le fichier de sauvegarde posté sur Telegram. La quatrième fuite du code
     # secret, et par le mot le plus banal de tous.
-    r"\bn\.?i\.?p\.?\b|\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel"
-    r"|mot\s+de\s+passe|password|passcode|passphrase",
+    #
+    # « \bpin\b » ne voyait ni « mPIN », ni « PINCODE », ni « PIN2 », ni
+    # « PIN_MoMo » ; « secret » pas « clé secrète » ; « mot de passe » pas
+    # « mot-de-passe ». Le même vocabulaire vit dans le noyau
+    # (web/noyau/ussd.ts, RE_SECRET).
+    r"\bn\.?i\.?p\.?\b|(?:\b|m|e-?)pin(?:\d|_|code|\b)|\bp\.i\.n\b|\bmdp\b"
+    r"|\bcodes?\b|secr[eè]t|confidentiel|confidential|mot[\s-]*de[\s-]*passe"
+    r"|password|passcode|passphrase",
     re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
@@ -87,9 +93,50 @@ RE_DEMANDE_CODE = re.compile(
 # heures : « 10:44 » n'est pas un choix de menu. On écarte donc ce qui a la
 # forme d'un horodatage, faute de quoi l'heure en tête d'un message d'opérateur
 # se change en bouton, et surtout désarme la garde du code secret ci-dessous.
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(?!\d{2}(?:\D|$))(\S.*)$")
+#
+# On n'écarte QUE l'heure (« 10:44 ») et la date (« 12-05-2026 ») : la première
+# version refusait tout libellé commençant par deux chiffres, et « 1. 50 Mo »,
+# « 2. 25 000 F » cessaient d'être des choix. Même règle dans le noyau
+# (web/noyau/ussd.ts, SEPARATEUR).
+RE_OPTION = re.compile(
+    r"^\s*(\d{1,2})\s*"
+    r"(?:[.)\-]\s*(?!\d{1,2}[.\-/](?:\d{4}\b|\d{1,2}(?![\d.,])))"
+    r"|:\s*(?!\d{2}(?:\D|$)))"
+    r"(\S.*)$")
 # UN MENU A AU MOINS DEUX CHOIX. Une seule ligne numérotée ne fait pas un menu.
 MENU_MINIMUM = 2
+# LA GARDE DU CODE regarde ce qui est DEMANDÉ, pas seulement s'il y a des
+# options : MTN et Orange posent « 0. Retour / 00. Accueil » au pied de leur
+# écran du code secret, et ces deux lignes suffisaient à faire « un menu » —
+# pas de pavé, le code se tapait dans la conversation, entrait dans un
+# raccourci rejouable et s'écrivait en clair au journal. La même règle vit
+# dans le noyau (web/noyau/ussd.ts, `codeDemande`).
+RE_NAVIGATION = re.compile(
+    r"^(?:next|suivant|suite|la\s+suite|page\s+suivante|nxt|more|plus|back|retour"
+    r"|pr[ée]c[ée]dent|previous|prev|accueil|home|main\s+menu|menu|confirm(?:er)?"
+    r"|valider|annuler|cancel|quitter|exit|oui|non|yes|no)\b", re.I)
+_VERBES_SAISIE = (r"entre[zr]|saisi(?:r|ssez)|tape[zr]|indique[zr]|r[ée]pond|veuillez"
+                  r"|compose[zr]|renseigne[zr]|\benter\b|\btype\b|reply|please|input"
+                  r"|provide|\bdial\b")
+RE_SAISIE = re.compile(_VERBES_SAISIE + r"|[?:]\s*$", re.I)
+RE_VERBE_CHOIX = re.compile(r"choisi(?:r|ssez)|choose|select", re.I)
+# Une phrase qui NOMME le code sans le demander : une mise en garde, ou un
+# code qu'on vous DONNE (« Code de retrait : 4821 »).
+RE_MISE_EN_GARDE = re.compile(
+    r"jamais|never|ne\s+(?:le\s+|la\s+|les\s+)?(?:partag|communiqu|divulgu|donn"
+    r"|transm|r[ée]v[ée]l)|do\s+not\s+(?:share|disclose|give)"
+    r"|don'?t\s+(?:share|disclose|give)", re.I)
+RE_CODE_DONNE = re.compile(
+    r"(?:\bcodes?\b|\bpin\b|\bn\.?i\.?p\b)(?:\s+(?:de|du|d'|of|for)\s*[A-Za-zÀ-ÿ']+){0,2}"
+    r"\s*(?::|=|est|is)?\s*\d{4,}", re.I)
+
+
+def _phrases(texte):
+    """Les phrases d'un texte — une par ligne, et coupées après . ! ? ;"""
+    return [p.strip() for p in re.sub(r"([.!?;])[ \t]+", r"\1\n", texte).split("\n")
+            if p.strip()]
+
+
 # Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
 # permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
 RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount|how\s+much|\bsum\b", re.I)
@@ -111,7 +158,23 @@ SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 # Le délai entre l'annonce du SMS et le reçu qui la suit. Assez pour que les
 # deux messages ne se bousculent pas dans la conversation ni dans les limites
 # de Telegram, assez peu pour qu'on n'ait pas le temps de s'impatienter.
+#
+# CE DÉLAI NE VAUT QUE POUR TELEGRAM. Il retardait aussi le dépôt sur la
+# plateforme, qui n'avait lieu qu'APRÈS l'envoi Telegram : le téléphone
+# attendait dix secondes de délai, un tour de surveillance, puis Telegram —
+# et rien du tout si Telegram était en panne. La plateforme reçoit
+# maintenant le document dès qu'il est inscrit (voir `_fil_du_depot`).
 DELAI_RECU = 10
+# Le fil du dépôt dort au plus ce temps quand rien ne l'appelle : c'est le
+# filet qui rattrape un réveil perdu. Après un accroc réseau, il réessaie
+# vite, puis de moins en moins souvent, jusqu'à ce plafond.
+PAUSE_DEPOT = 30
+PREMIERE_REPRISE_DEPOT = 2
+# Une demande de l'application attend au plus ce temps que le fil du dépôt
+# ait fini son lot. Au-delà, elle répond « en route » : le fil s'en charge.
+ATTENTE_DU_FIL = 5
+# Le nom du fil : un test vérifie que le démarrage du robot le lance.
+FIL_DU_DEPOT = "dépôt des reçus"
 # Le nom commercial du service, tel qu'il apparaît en pied de reçu.
 SERVICES = {"Orange": "Orange Money", "MTN": "MTN MoMo"}
 
@@ -148,6 +211,19 @@ COMMANDES_BOT = [
                           "Relancer le modem du compte courant")),
     ("aide", ("Help", "Aide")),
 ]
+
+
+class NumeroDeRecu(str):
+    """Le numéro d'un reçu rendu à une demande de l'application, avec ce qui
+    lui est arrivé (`etat`) : « inchange », « depose » ou « en_route »."""
+    etat = None
+
+
+def empreinte_de(pdf):
+    """L'empreinte d'un document : ce qui dit, sans le relire, si celui qu'on
+    vient de refaire est celui que la plateforme a déjà. Un PDF de TOTEM est
+    déterministe — mêmes entrées, mêmes octets."""
+    return hashlib.sha256(bytes(pdf)).hexdigest()
 
 
 def _accord(nb, singulier_en, pluriel_en, singulier_fr, pluriel_fr):
@@ -216,6 +292,12 @@ class Robot:
         # sait pas de quel côté d'un transfert il se trouve.
         self.numeros = dict(numeros or {})
         self.recus = recus      # joindre un reçu PDF aux opérations comprises
+        # Le dépôt des reçus sur la plateforme a son propre fil, réveillé dès
+        # qu'un reçu est inscrit. Un seul passage à la fois ; Telegram, de
+        # son côté, a son verrou — l'un ne fait jamais attendre l'autre.
+        self._reveil_depot = threading.Event()
+        self._verrou_depot = threading.Lock()
+        self._verrou_envoi = threading.Lock()
         self.actif = True
         self.verrou = threading.RLock()
         self.courant = self.comptes[0] if self.comptes else None
@@ -467,6 +549,7 @@ class Robot:
             # Synchronisation en tâche de fond : elle rattrape son retard
             # quand le réseau le permet, et n'interrompt jamais le robot.
             self.nuage.demarrer(comptes=self.comptes, sante=self.sante)
+            self.lancer_le_depot()
             # Le guichet à distance : l'application web dépose ses demandes
             # dans la base, ce fil les exécute sur les vraies SIM.
             self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
@@ -493,6 +576,7 @@ class Robot:
         self.actif = False
         if self.pilotage:
             self.pilotage.arreter()
+        self._reveil_depot.set()        # que le fil du dépôt voie l'arrêt
         self.journal.evenement(ARRET_PROPRE)
 
     # ---- messages et clics ------------------------------------------------
@@ -963,9 +1047,34 @@ class Robot:
         pavé ne s'ouvrait donc pas, le code se tapait dans la conversation,
         s'affichait en clair sur la carte de session, et s'inscrivait tel quel
         dans la table `ussd` — laquelle part ensuite dans le fichier de
-        sauvegarde posté sur Telegram. Un menu, c'est au moins DEUX choix."""
-        _, options = cls._analyser_menu(menu)
-        return len(options) < MENU_MINIMUM and bool(RE_DEMANDE_CODE.search(menu))
+        sauvegarde posté sur Telegram. Un menu, c'est au moins DEUX choix.
+
+        ET DEUX LIGNES DE NAVIGATION NE FONT PAS UN MENU. « Entrez votre code
+        secret / 0. Retour / 00. Accueil » : le code y est DEMANDÉ, le pavé
+        s'ouvre. Une mise en garde (« Ne partagez jamais votre code ») ou un
+        code qu'on vous donne (« Code de retrait : 4821 ») ne demande rien."""
+        texte = (menu or "").replace("\r", "")
+        entete, options = cls._analyser_menu(texte)
+        if len(options) < MENU_MINIMUM:
+            # Pas un menu : tout est sujet, rien n'est un choix.
+            entete, options = [l.strip() for l in texte.split("\n") if l.strip()], []
+        sujet = "\n".join(entete)
+        if not RE_DEMANDE_CODE.search(sujet):
+            return False
+        # Mises en garde et codes donnés écartés — sauf s'ils demandent.
+        utiles = [p for p in _phrases(sujet)
+                  if RE_SAISIE.search(p)
+                  or not (RE_MISE_EN_GARDE.search(p) or RE_CODE_DONNE.search(p))]
+        nomme = [p for p in utiles if RE_DEMANDE_CODE.search(p)]
+        if not nomme and not any(RE_SAISIE.search(p) for p in utiles):
+            return False
+        # UN CODE DEMANDÉ l'emporte sur les options ; un code seulement NOMMÉ
+        # (« Gerer mon code secret ») laisse un vrai menu être un menu — la
+        # navigation (« 0. Retour », « 00. Accueil ») n'en est pas un.
+        vrais_choix = [o for o in options if not RE_NAVIGATION.match(o[1])]
+        le_demande = any(RE_SAISIE.search(p) and not RE_VERBE_CHOIX.search(p)
+                         for p in nomme)
+        return not vrais_choix or le_demande
 
     @staticmethod
     def _analyser_menu(menu):
@@ -2197,11 +2306,12 @@ class Robot:
     # ---- reçus PDF ---------------------------------------------------------
     # Un reçu ne se fabrique jamais dans le fil du SMS : l'alerte doit partir
     # tout de suite, et l'échec d'un document ne doit pas faire perdre
-    # l'annonce d'un encaissement. Le SMS est donc seulement inscrit, et la
-    # boucle de surveillance s'en occupe une dizaine de secondes plus tard.
+    # l'annonce d'un encaissement. Le SMS est donc seulement inscrit. Le fil
+    # du dépôt le porte aussitôt sur la plateforme ; la boucle de
+    # surveillance l'envoie sur Telegram une dizaine de secondes plus tard.
 
     def _programmer_recu(self, source_id, texte, source="sms", nature=None,
-                         langue=None, expliquer=False):
+                         langue=None, expliquer=False, reveiller=True):
         """Inscrit ce message pour un reçu, s'il en mérite un.
 
         `source` : « sms » pour un encaissement, « ussd » pour un solde lu au
@@ -2236,9 +2346,10 @@ class Robot:
             # Le numéro EN VIGUEUR peut être celui d'un document déjà inscrit
             # (même message redemandé un autre jour, même référence) : c'est
             # lui qu'on annonce, jamais un numéro qui n'existe pas.
-            return self.journal.programmer_recu(
+            inscrit = self.journal.programmer_recu(
                 source_id, motif.genre, numero, motif.reference,
-                source=source, nature=nature, langue=langue)
+                source=source, nature=nature, langue=langue,
+                langue_robot=langue_active())
         except Exception as e:
             if expliquer:
                 raise           # une panne se raconte comme une panne
@@ -2246,6 +2357,11 @@ class Robot:
             # interrompue est une perte d'argent. On note, et on continue.
             self.journal.evenement(f"reçu non programmé : {e}")
             return None
+        if inscrit and reveiller:
+            # Le fil du dépôt part TOUT DE SUITE : la plateforme n'attend ni
+            # le délai de Telegram ni le tour de surveillance suivant.
+            self._reveil_depot.set()
+        return inscrit
 
     def _recu_apres_coup(self, source_id, nature=None, langue=None):
         """Établit (ou ré-établit) le reçu d'un SMS passé, à la demande de
@@ -2253,19 +2369,189 @@ class Robot:
         reçu redemandé reprend exactement le même — mais une autre nature
         refabrique le document sous son nouveau titre.
 
-        `langue` : celle de l'écran qui demande. Elle voyage jusqu'au PDF —
-        la fabrication est différée, sans elle un écran en français recevait
-        un document dans la langue du robot."""
+        `langue` : celle de l'écran qui demande. Elle voyage jusqu'au PDF.
+
+        Rend le numéro avec CE QUI LUI EST ARRIVÉ (`NumeroDeRecu.etat`) :
+        « inchange » — le document en place est déjà le bon —, « depose »,
+        ou « en_route » si le dépôt n'a pas pu se faire tout de suite. C'est
+        sur ce mot que l'écran dit « déjà à jour », jamais sur l'égalité des
+        numéros : un document refait garde son numéro."""
         texte = self.journal.texte_sms(source_id)
         if not texte:
             return None
-        return self._programmer_recu(source_id, texte, nature=nature,
-                                     langue=langue, expliquer=True)
+        # Sans réveiller le fil : c'est ICI que le document se dépose. Le
+        # réveiller aussi le faisait partir DEUX fois, deux envois de 57 Ko
+        # par la 3G pour une seule demande.
+        numero = self._programmer_recu(source_id, texte, nature=nature,
+                                       langue=langue, expliquer=True,
+                                       reveiller=False)
+        if not numero:
+            return numero
+        etat = "en_route"
+        try:
+            etat = self._servir_la_demande(source_id)
+        except Exception as e:
+            self._noter(f"dépôt du reçu {numero} : {e}")
+        if etat == "en_route":
+            self._reveil_depot.set()        # le fil reprendra, à son rythme
+        rendu = NumeroDeRecu(numero)
+        rendu.etat = etat
+        return rendu
+
+    def _servir_la_demande(self, source_id):
+        """UNE PERSONNE ATTEND CE DOCUMENT, l'écran ouvert. Il est déposé
+        ici, dans le fil de sa demande, AVANT de lui répondre.
+
+        Sous le verrou du dépôt, comme le fil : deux dépôts croisés du même
+        reçu pouvaient finir sur l'ANCIEN document. L'attente du verrou est
+        bornée — le fil peut être au milieu d'un lot par la 3G — et passé
+        ce délai la demande rend « en_route » : le fil s'en chargera."""
+        if not (self.recus and self.nuage and self.nuage.actif):
+            return "en_route"
+        if not self._verrou_depot.acquire(timeout=ATTENTE_DU_FIL):
+            return "en_route"
+        try:
+            ligne = self.journal.recu_de(source_id)
+            if ligne is None:
+                return "en_route"
+            if self.journal.recu_en_place(source_id):
+                # Genre, nature et langue n'ont pas bougé, et un document est
+                # déposé. Mais ce qui entre dans le PDF ne vit pas tout dans
+                # la ligne : le nom et le numéro inscrits aux Réglages y
+                # sont. On le refait EN MÉMOIRE (une quinzaine de
+                # millisecondes) et l'on compare à l'empreinte déposée.
+                _, pdf, _ = self._fabriquer_recu(ligne[:9])
+                if pdf is not None and empreinte_de(pdf) == ligne[9]:
+                    return "inchange"
+                self.journal.rearchiver_recu(ligne[0])
+            self._deposer_lot(self.journal.recus_a_archiver(
+                source_id=source_id))
+        finally:
+            self._verrou_depot.release()
+        return "depose" if self.journal.recu_en_place(source_id) else "en_route"
+
+    # ---- le dépôt sur la plateforme, puis Telegram -------------------------
+
+    def lancer_le_depot(self):
+        """Démarre le fil qui dépose les reçus sur la plateforme."""
+        if not (self.recus and self.nuage):
+            return None
+        fil = threading.Thread(target=self._fil_du_depot, daemon=True,
+                               name=FIL_DU_DEPOT)
+        fil.start()
+        return fil
+
+    def _fil_du_depot(self):
+        """Dépose chaque reçu dès qu'il est inscrit — et ne meurt jamais.
+
+        Réveillé par `_programmer_recu`, il ne dort jamais plus de
+        PAUSE_DEPOT. Après un accroc (plateforme injoignable, document qui
+        ne se fabrique pas), il réessaie après 2 s, puis 4, 8… jusqu'à
+        PAUSE_DEPOT : une coupure d'Internet ne doit ni retarder le retour,
+        ni marteler un réseau absent — et un accroc passager ne doit pas
+        brûler en une seconde les soixante essais d'un document."""
+        attente, reprise = 0, 1
+        while self.actif:
+            if attente:
+                self._reveil_depot.wait(timeout=attente)
+            self._reveil_depot.clear()
+            if not self.actif:
+                break
+            try:
+                reste = self._deposer_recus()
+            except Exception as e:
+                self._noter(f"dépôt des reçus : {e}")
+                reste = True
+            if reste == "plein":
+                attente, reprise = 0, 1           # la suite, tout de suite
+            elif reste is True:
+                # Un accroc : 2 s, puis 4, 8… jusqu'au plafond.
+                attente = min(PAUSE_DEPOT, max(PREMIERE_REPRISE_DEPOT,
+                                               reprise * 2))
+                reprise = attente
+            else:
+                attente = PAUSE_DEPOT             # tout est déposé
+                reprise = 1
 
     def _distribuer_recus(self):
-        """Fabrique, envoie, puis archive les reçus mûrs."""
+        """Dépose sur la plateforme, PUIS envoie sur Telegram — deux chemins
+        indépendants : l'échec de l'un ne retient jamais l'autre.
+
+        Le tour de surveillance passe ici à chaque tour : pour le dépôt, ce
+        n'est qu'un filet (son fil s'en charge, voir `_fil_du_depot`) ; pour
+        Telegram, c'est le chemin ordinaire, avec son délai."""
         if not self.recus:
             return
+        # Le fil du dépôt est déjà dessus ? Inutile de l'attendre.
+        if (self.nuage and self.nuage.actif
+                and self._verrou_depot.acquire(blocking=False)):
+            try:
+                self._deposer_lot(self.journal.recus_a_archiver())
+            except Exception as e:
+                self._noter(f"dépôt des reçus : {e}")
+            finally:
+                self._verrou_depot.release()
+        self._envoyer_recus()
+
+    def _deposer_recus(self):
+        """Dépose sur la plateforme les reçus qui n'y sont pas encore. Voir
+        `_deposer_lot` pour ce qu'il rend."""
+        if not (self.recus and self.nuage and self.nuage.actif):
+            return None
+        with self._verrou_depot:
+            return self._deposer_lot(self.journal.recus_a_archiver())
+
+    def _deposer_lot(self, lignes):
+        """Rend None s'il n'y avait rien à faire, « plein » si le lot entier
+        a AVANCÉ (il en reste peut-être), True si un accroc l'a interrompu
+        ou laissé un document en file (à reprendre plus tard), False sinon.
+
+        « Plein » ne se dit que d'un lot qui a avancé. Un lot de cinq
+        documents qui échouent tous à la fabrication se disait « plein »
+        aussi : le fil repartait aussitôt, et les soixante essais prévus
+        pour s'étaler sur une longue panne brûlaient en dix millisecondes."""
+        if not lignes:
+            return None
+        accroc = bouge = False
+        for ligne in lignes:
+            try:
+                nom, pdf, _ = self._fabriquer_recu(ligne)
+            except Exception as e:
+                # Pas en silence : sans ce mot, l'icône n'apparaîtrait jamais
+                # sur la plateforme et personne ne saurait pourquoi.
+                self._noter(f"reçu {ligne[2]} non déposé : {e}")
+                self.journal.recu_depot_echoue(ligne[0])
+                accroc = True
+                continue
+            if pdf is None:
+                self._noter(f"reçu {ligne[2]} non déposé : le message ne "
+                            "se lit plus sous ce genre")
+                self.journal.recu_abandonne_au_depot(ligne[0])
+            elif self.nuage.archiver_recu(nom, pdf, self._fiche_recu(ligne)):
+                # Marqué SEULEMENT si la ligne n'a pas bougé pendant l'envoi.
+                # Sinon le document qui vient de partir est l'ancien : la
+                # ligne reste en file, et le passage suivant dépose le bon.
+                if not self.journal.recu_archive(
+                        ligne[0], empreinte_de(pdf), ligne=ligne):
+                    bouge = True
+            else:
+                # Réseau absent : la file reste telle quelle, on repassera.
+                return True
+        if accroc:
+            return True
+        return "plein" if (len(lignes) >= 5 or bouge) else False
+
+    def _envoyer_recus(self):
+        """Envoie sur Telegram les reçus mûrs — DELAI_RECU après leur
+        inscription, pour que l'alerte texte du SMS arrive la première."""
+        if not self._verrou_envoi.acquire(blocking=False):
+            return
+        try:
+            self._envoyer_recus_sans_verrou()
+        finally:
+            self._verrou_envoi.release()
+
+    def _envoyer_recus_sans_verrou(self):
         for ligne in self.journal.recus_a_envoyer(DELAI_RECU):
             identifiant = ligne[0]
             try:
@@ -2289,28 +2575,8 @@ class Robot:
             else:
                 # Réseau absent : on repassera. Le document n'est pas perdu,
                 # il n'a simplement pas encore été fabriqué pour de bon.
+                # La plateforme, elle, l'a déjà (ou l'aura sans attendre).
                 self.journal.recu_echoue(identifiant)
-                break
-
-        if not (self.nuage and self.nuage.actif):
-            return
-        for ligne in self.journal.recus_a_archiver():
-            try:
-                nom, pdf, _ = self._fabriquer_recu(ligne)
-            except Exception as e:
-                # Inutile d'insister — mais pas en silence : le PDF est bien
-                # parti sur Telegram, il manquera au cloud, et il faut
-                # pouvoir comprendre pourquoi l'icône n'apparaît jamais.
-                self._noter(f"reçu {ligne[2]} non archivé : {e}")
-                self.journal.recu_archive(ligne[0])
-                continue
-            if pdf is None:
-                self._noter(f"reçu {ligne[2]} non archivé : le message ne "
-                            "se lit plus sous ce genre")
-                self.journal.recu_archive(ligne[0])
-            elif self.nuage.archiver_recu(nom, pdf, self._fiche_recu(ligne)):
-                self.journal.recu_archive(ligne[0])
-            else:
                 break
 
     def _fabriquer_recu(self, ligne):

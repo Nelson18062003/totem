@@ -13,6 +13,10 @@
 //   PARTAGER le nom, le numéro ET le réseau, par WhatsApp ou par SMS — à
 //            quelqu'un qui ne connaît pas encore la carte.
 //   LE PDF   le document qu'on imprime ou qu'on joint.
+//   LE RELEVÉ les mouvements d'argent de la carte sur une période — la pièce
+//            qu'on remet au comptable. Il s'ouvre DANS cette feuille (voir
+//            `releve.tsx`) : une feuille par-dessus une autre se perd sur
+//            iPhone.
 //
 // Aucune donnée n'est inventée : le numéro vient de ce que la carte déclare
 // ou de ce que le propriétaire a inscrit, le nom de ce qu'il a inscrit dans
@@ -29,6 +33,8 @@ import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { LogoOperateur } from "@/logos-operateurs";
 import { lienCoordonnees } from "@/api/guichet";
+import { ReleveCorps } from "@/releve";
+import { textesReleve } from "@noyau/textes/releve";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
 import {
@@ -63,13 +69,18 @@ function useCopie(annonce: string): [boolean, (texte: string) => void] {
   return [fait, copier];
 }
 
-export function Coordonnees({ carte, langue, onFermer }: {
+export function Coordonnees({ carte, langue, fuseau, onFermer }: {
   carte: { iccid: string; nom: string; numero: string;
            operateur: string; libelle: string };
   langue: Langue;
+  /** Le fuseau de la caisse — c'est lui qui dit quel jour on est. */
+  fuseau?: string;
   onFermer: () => void;
 }) {
   const t = textesAccueil[langue];
+  const tr = textesReleve[langue];
+  // La fiche, ou le relevé de la carte — dans la MÊME feuille.
+  const [vue, setVue] = useState<"fiche" | "releve">("fiche");
   const nom = carte.nom.trim();
   const numero = formaterNumero(carte.numero);
   const reseau = serviceMobileMoney(carte.operateur);
@@ -117,15 +128,31 @@ export function Coordonnees({ carte, langue, onFermer }: {
         <>
           <Texte taille={textes.legende} ton="pale"
                  style={{ textTransform: "uppercase", letterSpacing: 1 }}>
-            {carte.libelle}
+            {vue === "releve" ? numero || carte.libelle : carte.libelle}
           </Texte>
           <Texte taille={textes.intertitre} poids="demi"
                  style={{ marginTop: espaces.xs }}>
-            {t.coordonneesTitre}
+            {vue === "releve" ? tr.titre : t.coordonneesTitre}
           </Texte>
         </>
       }
-      pied={
+      pied={vue === "releve" ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setVue("fiche")}
+          style={({ pressed }) => ({
+            flexDirection: "row", alignItems: "center", justifyContent: "center",
+            gap: espaces.sm, paddingVertical: espaces.md,
+            borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.trait,
+            backgroundColor: pressed ? couleurs.surface2 : "transparent",
+          })}
+        >
+          <View style={{ transform: [{ rotate: "180deg" }] }}>
+            <Icone nom="Chevron" taille={14} couleur={couleurs.encreDouce} />
+          </View>
+          <Texte poids="moyen" taille={textes.petit} ton="doux">{tr.retour}</Texte>
+        </Pressable>
+      ) : (
         <View style={{ gap: espaces.sm }}>
           {/* COPIER et PARTAGER côte à côte : la feuille ne gagne pas une
               rangée de boutons, et ne mange pas l'écran d'un petit
@@ -201,9 +228,33 @@ export function Coordonnees({ carte, langue, onFermer }: {
               {t.coordPdfImpossible}
             </Texte>
           ) : null}
+          {/* LE RELEVÉ DE COMPTE de cette carte : tous ses mouvements
+              d'argent sur une période, comme un relevé bancaire. */}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setVue("releve")}
+            style={({ pressed }) => ({
+              flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: espaces.sm, paddingVertical: espaces.md,
+              borderRadius: rayons.bouton, borderWidth: 1,
+              borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : "transparent",
+            })}
+          >
+            <Icone nom="Doc" taille={16} couleur={couleurs.encreDouce} />
+            <Texte poids="moyen" taille={textes.petit} ton="doux"
+                   style={{ flexShrink: 1, textAlign: "center" }}>
+              {tr.ouvrir}
+            </Texte>
+          </Pressable>
         </View>
-      }
+      )}
     >
+      {vue === "releve" ? (
+        <ReleveCorps langue={langue} fuseau={fuseau}
+                     cartes={[{ iccid: carte.iccid, numero: carte.numero,
+                                libelle: carte.libelle, operateur: carte.operateur }]} />
+      ) : (<>
       <Carte>
         <Rangee libelle={t.coordNom} accessoire={nom ? (
           <BoutonCopier valeur={nom} libelle={t.coordCopierNom}
@@ -243,6 +294,7 @@ export function Coordonnees({ carte, langue, onFermer }: {
              style={{ marginTop: espaces.md, lineHeight: 18 }}>
         {t.coordPied}
       </Texte>
+      </>)}
     </Feuille>
   );
 }

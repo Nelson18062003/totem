@@ -26,33 +26,37 @@
 // large (tablette, pliable ouvert, écran partagé) elle passe à deux colonnes
 // — la carte et ses gestes d'un côté, les mouvements de l'autre.
 
-import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
+import { AjouterMaCarte } from "@/ajouter-ma-carte";
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
+import { FeuilleReleve } from "@/releve";
 import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
-import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
 import { SqueletteCaisse, SqueletteListe, SqueletteRonds } from "@/squelettes";
 import { OperationPopup, type Operation } from "@/operation";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
-import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { cartesAMontrer, useCarteChoisie } from "@/carte-choisie";
+import { descriptionDesRonds, useRonds } from "@/ronds-accueil";
+import type { Rond } from "@noyau/ronds";
 import {
   carteEnPause, FicheTerminalHorsLigne, PastilleHorsLigne, silenceDepuis,
 } from "@/terminal-hors-ligne";
-import { toucherChoix } from "@/toucher";
+import { PucesCartes } from "@/puces-cartes";
 import {
-  ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, LIGNE_ROND, LIGNES_MOUVEMENTS,
+  ECART_ROND, HAUTEUR_ETAT, LIGNE_ROND, LIGNES_MOUVEMENTS,
   LIGNES_MOUVEMENTS_LARGE, NOM_ROND, ROND,
 } from "@/mesures-accueil";
-import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
+import { couleurOperateur, couleurs, espaces, rayons, textes } from "@/theme/jetons";
+import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
@@ -102,6 +106,7 @@ export default function Accueil() {
   const [operation, setOperation] = useState<Operation | null>(null);
   const [smsOuvert, setSmsOuvert] = useState<Paiement | null>(null);
   const [coordonnees, setCoordonnees] = useState(false);
+  const [releve, setReleve] = useState(false);
   const [ficheTerminal, setFicheTerminal] = useState(false);
 
   // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
@@ -127,9 +132,10 @@ export default function Accueil() {
     void Coffre.ecrire(CLE_NOMBRE_CARTES, String(cartes.length)).catch(() => {});
   }, [donnees, cartes.length]);
 
-  const operationDe = (cle: string, titre: string, champs: Operation["champs"]): Operation => {
+  const operationDe = (cle: string, titre: string, icone: NomIcone,
+                       champs: Operation["champs"]): Operation => {
     const et = active ? etapesGeste(active.operateur, cle, raccourcis[active.operateur] ?? []) : [];
-    return { titre, code: et[0] ?? "", etapes: et, champs,
+    return { titre, icone, code: et[0] ?? "", etapes: et, champs,
              carte: active?.iccid, terminal: donnees?.terminal?.id ?? null,
              carteLibelle: active?.libelle, operateur: active?.operateur,
              recents: aQui(donnees?.beneficiaires,
@@ -139,24 +145,56 @@ export default function Accueil() {
   // LES GESTES D'ARGENT. Un geste dont on ne connaît pas le code ne
   // s'affiche PAS : un bouton qui composerait au hasard vaut moins que pas
   // de bouton du tout.
-  type Geste = { libelle: string; aide: string; icone: NomIcone; fabrique: () => Operation };
+  // UN NOM PAR GESTE, le même partout : « Dépôt · Retrait · Transfert », sur
+  // le rond, dans Opérations, et en tête du parcours qu'il ouvre. L'accueil
+  // disait « Retrait » sur le rond et « Retrait d'argent » en tête, l'anglais
+  // « Withdraw » ici et « Withdrawal » là.
+  type Geste = { cle: Rond; libelle: string; aide: string; icone: NomIcone;
+                 fabrique: () => Operation };
   const tous: Geste[] = active == null ? [] : [
-    { libelle: t.depot, aide: tg.depotSous, icone: "ArrowDown",
-      fabrique: () => operationDe("depot", t.depotTitre, [
+    { cle: "depot", libelle: tg.depot, aide: tg.depotSous, icone: "ArrowDown",
+      fabrique: () => operationDe("depot", tg.depot, "ArrowDown", [
         { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { libelle: t.rondRetrait, aide: tg.retraitSous, icone: "Billet",
-      fabrique: () => operationDe("retrait", t.retraitTitre, [
+    { cle: "retrait", libelle: tg.retrait, aide: tg.retraitSous, icone: "Billet",
+      fabrique: () => operationDe("retrait", tg.retrait, "Billet", [
         { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { libelle: t.transfert, aide: tg.transfertSous, icone: "ArrowUp",
-      fabrique: () => operationDe("transfert", t.transfertTitre, [
+    { cle: "transfert", libelle: tg.transfert, aide: tg.transfertSous, icone: "ArrowUp",
+      fabrique: () => operationDe("transfert", tg.transfert, "ArrowUp", [
         { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" }]) },
   ];
   const gestes = tous.filter((g) => g.fabrique().code);
-  const actualiser = active && operationDe("solde", t.consulterSolde, []).code
-    ? () => setOperation(operationDe("solde", t.consulterSolde, [])) : null;
+
+  // Ce que fait chaque rond. `boitier` : il passe par le boîtier de la carte
+  // (il pâlit quand celui-ci se tait). `null` : rien à composer — le rond
+  // ne s'affiche pas.
+  const choix = useRonds();
+  const descriptions = descriptionDesRonds(langue);
+  const actionDuRond = (r: Rond, carte: Sim):
+    { boitier: boolean; faire: () => void } | null => {
+    const composer = (cle: string, titre: string, icone: NomIcone,
+                      champs: Operation["champs"] = []) => {
+      const o = operationDe(cle, titre, icone, champs);
+      return o.code ? { boitier: true, faire: () => setOperation(o) } : null;
+    };
+    const geste = tous.find((g) => g.cle === r);
+    if (geste) return geste.fabrique().code
+      ? { boitier: true, faire: () => setOperation(geste.fabrique()) } : null;
+    if (r === "menu") return composer("menu", tg.menu, "Grid");
+    if (r === "solde") return composer("solde", tg.monSolde, "Refresh");
+    if (r === "mon_numero") return composer("mon_numero", tg.monNumero, "Phone");
+    // Recevoir ne passe pas par le boîtier : ce sont le nom et le numéro, à
+    // donner à qui paie. Il reste toujours actif — les bénéficiaires aussi.
+    if (r === "recevoir") return { boitier: false, faire: () => setCoordonnees(true) };
+    if (r === "beneficiaires") return { boitier: false, faire: () => router.push("/beneficiaires") };
+    if (r === "releve") return { boitier: false, faire: () => setReleve(true) };
+    return { boitier: true,
+             faire: () => router.push({ pathname: "/ussd", params: { carte: carte.iccid } }) };
+  };
+  const actualiser = active && operationDe("solde", tg.monSolde, "Refresh", []).code
+    ? () => setOperation(operationDe("solde", tg.monSolde, "Refresh", [])) : null;
 
   // L'ARGENT QUI VIENT DE BOUGER — toutes cartes, et rien d'autre : ni les
   // consultations de solde, ni les échecs, ni les codes, ni les publicités.
@@ -187,8 +225,8 @@ export default function Accueil() {
     <Entree delai={60}>
       <View>
         {cartes.length > 1 ? (
-          <PucesCartes cartes={cartes} active={active.iccid} deux={deux}
-                       marge={ecran.marge} t={t} />
+          <PucesCartes cartes={cartes} active={active.iccid} pleine={deux}
+                       marge={ecran.marge} langue={langue} />
         ) : null}
         <Caisse carte={active} langue={langue} soldeCache={soldeCache}
                 onBasculerSolde={basculerSolde} signalFige={seTait} />
@@ -202,7 +240,14 @@ export default function Accueil() {
     // tant que les chiffres n'étaient pas là : le propriétaire ne pouvait
     // pas distinguer « ça arrive » de « c'est cassé ».
     <SqueletteCaisse puces={plusieurs} />
-  ) : erreur ? null : (
+  ) : erreur ? null : donnees?.proprietaire === false ? (
+    // UN COMPTE SANS CARTE — le plus souvent, quelqu'un qui vient de créer
+    // son compte. Il n'a pas de boîtier : ni « hors ligne », ni « aucune
+    // carte dans le terminal ». On lui dit comment AJOUTER sa carte.
+    <Entree delai={60}>
+      <AjouterMaCarte langue={langue} code={donnees.codeCompte} />
+    </Entree>
+  ) : (
     // La panne passe AVANT la carte vide : hors ligne, « aucune carte »
     // serait un mensonge.
     <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
@@ -231,18 +276,20 @@ export default function Accueil() {
       <View>
         <View style={{ flexDirection: "row", justifyContent: "center",
                        width: "100%", maxWidth: 460, alignSelf: "center" }}>
-          {gestes.map((g) => (
-            <Rond key={g.libelle} icone={g.icone} libelle={g.libelle} aide={g.aide}
-                  enPause={seTait}
-                  onPress={() => (seTait ? expliquer() : setOperation(g.fabrique()))} />
-          ))}
-          {/* Recevoir ne passe pas par le boîtier : ce sont le nom et le
-              numéro, à donner à qui paie. Il reste toujours actif. */}
-          <Rond icone="Identite" libelle={t.rondRecevoir} aide={t.recevoirAria}
-                onPress={() => setCoordonnees(true)} />
-          <Rond icone="Hash" libelle={t.rondUssd} aide={t.ussdAria} enPause={seTait}
-                onPress={() => (seTait ? expliquer()
-                  : router.push({ pathname: "/ussd", params: { carte: active.iccid } }))} />
+          {/* LES RONDS CHOISIS, dans l'ordre choisi (Réglages → Accueil).
+              Un rond qui passe par le boîtier pâlit quand il se tait ; un
+              geste dont on ne connaît pas le code ne s'affiche pas. */}
+          {choix.map((r) => {
+            const d = descriptions[r];
+            const action = actionDuRond(r, active);
+            if (!action) return null;
+            return (
+              <Rond key={r} icone={d.icone} libelle={d.libelle} aide={d.aide}
+                    operateur={r === "menu" ? active.operateur : undefined}
+                    enPause={action.boitier && seTait}
+                    onPress={() => (action.boitier && seTait ? expliquer() : action.faire())} />
+            );
+          })}
         </View>
         {gestes.length === 0 ? (
           // Aucun code relevé pour cet opérateur : on le DIT, et on mène
@@ -346,7 +393,7 @@ export default function Accueil() {
                    adjustsFontSizeToFit minimumFontScale={0.75}
                    accessibilityRole="header"
                    style={{ flex: 1, letterSpacing: -0.3 }}>
-              {salutation(langue, donnees?.courriel)}
+              {salutation(langue, donnees?.courriel, donnees?.prenom)}
             </Texte>
             <BoutonIcone nom="Settings" etiquette={t.reglages}
                          onPress={() => router.push("/reglages")} />
@@ -379,119 +426,23 @@ export default function Accueil() {
       {ficheTerminal ? (
         <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
                                 fuseau={fuseau} langue={langue} onReverifier={recharger}
-                                onFermer={() => setFicheTerminal(false)} />
+                                onFermer={() => setFicheTerminal(false)}
+                                chezTotem={donnees?.proprietaire === false} />
       ) : null}
 
       {coordonnees && active ? (
-        <Coordonnees langue={langue} onFermer={() => setCoordonnees(false)}
+        <Coordonnees langue={langue} fuseau={fuseau} onFermer={() => setCoordonnees(false)}
                      carte={{ iccid: active.iccid, nom: active.nom,
                               numero: active.numero,
                               operateur: active.operateur, libelle: active.libelle }} />
       ) : null}
+
+      {releve && active ? (
+        <FeuilleReleve langue={langue} fuseau={fuseau} onFermer={() => setReleve(false)}
+                       cartes={[{ iccid: active.iccid, numero: active.numero,
+                                  libelle: active.libelle, operateur: active.operateur }]} />
+      ) : null}
     </SafeAreaView>
-  );
-}
-
-/**
- * LES CARTES, EN PUCES, SUR UNE LIGNE. Elles passaient sur deux lignes avec
- * quatre cartes ; un logo et les quatre chiffres suffisent à les distinguer
- * — le nom long est sur la carte elle-même. Au-delà de la largeur, la
- * rangée défile, et ramène la carte choisie en vue : sinon la carte
- * affichée n'aurait aucune puce allumée visible.
- */
-function PucesCartes({ cartes, active, deux, marge, t }: {
-  cartes: Sim[]; active: string; deux: boolean; marge: number; t: T;
-}) {
-  const rangee = useRef<ScrollView>(null);
-  // TROIS MESURES, DANS N'IMPORTE QUEL ORDRE : la largeur de la rangée, la
-  // place de chaque puce, et le choix — qui, retenu d'une ouverture à
-  // l'autre, arrive avec les données, APRÈS une rangée déjà mesurée. La
-  // première version ne regardait qu'au changement de choix ou de largeur :
-  // la puce choisie venait d'apparaître, pas encore mesurée, et plus rien ne
-  // la ramenait — elle restait hors de l'écran, selon l'ordre d'arrivée.
-  // Chacune des trois mesures redemande donc, et seule la dernière agit.
-  const places = useRef(new Map<string, { x: number; w: number }>());
-  const largeur = useRef(0);
-  const decalage = useRef(0);
-  const bord = deux ? 0 : marge;
-  const amener = useRef(() => {});
-  amener.current = () => {
-    const p = places.current.get(active);
-    const l = largeur.current;
-    if (!p || !l) return;
-    const gauche = p.x - decalage.current;
-    // Déjà en vue : on ne bouge rien sous le doigt.
-    if (gauche >= bord - 1 && gauche + p.w <= l - bord + 1) return;
-    const x = gauche + p.w > l - bord ? p.x + p.w - l + bord : p.x - bord;
-    rangee.current?.scrollTo({ x: Math.max(0, x), animated: true });
-  };
-  useEffect(() => amener.current(), [active, bord]);
-
-  return (
-    <Defilement
-      ref={rangee}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentInsetAdjustmentBehavior="never"
-      onLayout={(e) => { largeur.current = e.nativeEvent.layout.width; amener.current(); }}
-      onScroll={(e) => { decalage.current = e.nativeEvent.contentOffset.x; }}
-      scrollEventThrottle={32}
-      style={{ marginHorizontal: deux ? 0 : -marge, flexGrow: 0,
-               marginBottom: espaces.md }}
-      contentContainerStyle={{ paddingHorizontal: deux ? 0 : marge, gap: ECART_PUCES,
-                               alignItems: "center" }}
-    >
-      {cartes.map((c) => (
-        <View key={c.iccid}
-              onLayout={(e) => {
-                places.current.set(c.iccid,
-                  { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width });
-                if (c.iccid === active) amener.current();
-              }}>
-          <PuceCarte carte={c} actif={c.iccid === active} t={t} />
-        </View>
-      ))}
-    </Defilement>
-  );
-}
-
-/** Une puce : le logo de l'opérateur, et la fin du libellé (« 8901 »). */
-function PuceCarte({ carte, actif, t }: { carte: Sim; actif: boolean; t: T }) {
-  const appui = useAppui();
-  const reconnu = operateurReconnu(carte.operateur);
-  const fin = /·\s*(\S+)$/.exec(carte.libelle)?.[1];
-  return (
-    <Animated.View style={appui.style}>
-      {/* Toucher la puce DÉJÀ allumée retient aussi le choix : sans cela,
-          la carte montrée par défaut n'était jamais retenue, et changeait
-          avec l'ordre de la plateforme. */}
-      <Pressable onPress={() => { choisirCarte(carte.iccid); if (!actif) toucherChoix(); }}
-                 {...appui}
-                 accessibilityRole="button"
-                 // `aria-selected` EN PLUS : react-native-web ignore
-                 // `accessibilityState`, et la puce choisie ne se disait
-                 // « choisie » à personne dans l'aperçu web.
-                 accessibilityState={{ selected: actif }} aria-selected={actif}
-                 accessibilityLabel={t.choisirCarte(carte.libelle)}
-                 hitSlop={{ top: 4, bottom: 4 }}
-                 style={{
-                   height: HAUTEUR_PUCE,
-                   flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                   paddingHorizontal: espaces.sm + 2,
-                   borderRadius: rayons.bouton,
-                   // Le trait dans les DEUX états : sans lui d'un côté, la
-                   // puce choisie changeait de taille de deux points.
-                   borderWidth: 1, borderColor: actif ? couleurs.accent : couleurs.trait,
-                   backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
-                 }}>
-        {reconnu ? <LogoOperateur operateur={carte.operateur} taille={14} /> : null}
-        <Texte taille={textes.petit} poids={actif ? "demi" : "moyen"} chiffresAlignes
-               ton={actif ? "normal" : "doux"}
-               style={actif ? { color: couleurs.surfaceHaute } : undefined}>
-          {reconnu && fin ? fin : carte.libelle}
-        </Texte>
-      </Pressable>
-    </Animated.View>
   );
 }
 
@@ -563,8 +514,11 @@ function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser,
  * deux lignes réservées : un nom long passe à la ligne sur un petit écran
  * sans rien pousser.
  */
-function Rond({ icone, libelle, aide, onPress, enPause = false }: {
+function Rond({ icone, libelle, aide, onPress, enPause = false, operateur }: {
   icone: NomIcone; libelle: string; aide: string; onPress: () => void;
+  /** Le rond du Menu porte la marque de l'opérateur : son logo, et un cadre
+   *  à sa couleur. Une grille grise ne disait pas quel menu on ouvrait. */
+  operateur?: string;
   /** Le boîtier se tait : le geste reste à sa place (rien ne saute), pâli,
    *  et l'appui explique pourquoi il ne part pas. */
   enPause?: boolean;
@@ -586,11 +540,14 @@ function Rond({ icone, libelle, aide, onPress, enPause = false }: {
           <>
             <View style={{
               width: ROND, height: ROND, borderRadius: rayons.rond,
-              borderWidth: 1, borderColor: couleurs.trait,
+              borderWidth: operateur ? 2 : 1,
+              borderColor: operateur ? couleurOperateur(operateur) : couleurs.trait,
               backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
               alignItems: "center", justifyContent: "center",
             }}>
-              <Icone nom={icone} taille={22} couleur={couleurs.encre} />
+              {operateur && operateurReconnu(operateur)
+                ? <LogoOperateur operateur={operateur} taille={22} />
+                : <Icone nom={icone} taille={22} couleur={couleurs.encre} />}
             </View>
             <View style={{ height: NOM_ROND, width: "100%" }}>
               <Texte taille={etroit ? 11 : textes.legende} poids="moyen"

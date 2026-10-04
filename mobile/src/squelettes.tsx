@@ -9,7 +9,7 @@
 // l'écran le DIT (voir `verifier-les-ecrans`). Une forme d'attente qui
 // resterait indéfiniment serait un mensonge de plus.
 
-import { View } from "react-native";
+import { View, useWindowDimensions } from "react-native";
 
 import { Carte } from "@/ui";
 import { Squelette } from "@/animations";
@@ -17,7 +17,8 @@ import { RAPPORT_CARTE } from "@/caisse";
 import { useEcran } from "@/ecran";
 import { espaces, rayons } from "@/theme/jetons";
 import {
-  ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, NOM_ROND, ROND,
+  ECART_PUCES, ECART_ROND, HAUTEUR_DEMI, HAUTEUR_ETAT, HAUTEUR_PUCE, HAUTEUR_TUILE,
+  HAUTEUR_TUILE_COLONNE, NOM_ROND, ROND, tuilesEnColonne,
 } from "@/mesures-accueil";
 
 /** La hauteur qu'occupera la VRAIE carte, calculée comme elle la calcule.
@@ -138,6 +139,64 @@ export function SqueletteAnalyse() {
                        style={{ flex: 1 }} />
           ))}
         </View>
+      </View>
+    </View>
+  );
+}
+
+/** Combien de formes montre l'onglet Opérations à froid — le nombre des
+ *  composants ci-dessous, que `verifier-l-attente` peut exiger. */
+export const FORMES_OPERATIONS = 9;
+
+/**
+ * L'ONGLET OPÉRATIONS, À FROID : la carte, les trois gestes, « Consulter »,
+ * « Outils » — à leur place et à leur hauteur. Il ne sert que si l'on ouvre
+ * Opérations AVANT que l'accueil ait rempli le cahier (une notification qui
+ * y mène, par exemple) ; l'écran rendait alors… rien, un blanc.
+ */
+export function SqueletteOperations() {
+  const { width, fontScale } = useWindowDimensions();
+  const colonne = tuilesEnColonne(width, fontScale);
+  return (
+    <View style={{ gap: espaces.lg }}>
+      <View style={{ gap: espaces.sm }}>
+        {/* « Depuis la carte » : sa ligne, sans forme — un mot se devine. */}
+        <View style={{ height: 17 }} />
+        <Squelette largeur={96} hauteur={HAUTEUR_PUCE} rayon={rayons.bouton} />
+      </View>
+      <View style={{ flexDirection: colonne ? "column" : "row", gap: espaces.sm }}>
+        {[0, 1, 2].map((i) => (
+          <Squelette key={i} largeur={colonne ? "100%" : 0}
+                     hauteur={colonne ? HAUTEUR_TUILE_COLONNE : HAUTEUR_TUILE}
+                     rayon={rayons.bouton} style={colonne ? undefined : { flex: 1 }} />
+        ))}
+      </View>
+      {/* Le menu de l'opérateur : une rangée pleine largeur. */}
+      <Squelette largeur="100%" hauteur={HAUTEUR_DEMI} rayon={rayons.bouton} />
+      <View style={{ gap: espaces.sm }}>
+        <View style={{ height: 24 }} />
+        <View style={{ flexDirection: colonne ? "column" : "row", gap: espaces.sm }}>
+          {[0, 1].map((i) => (
+            <Squelette key={i} largeur={colonne ? "100%" : 0} hauteur={HAUTEUR_DEMI}
+                       rayon={rayons.bouton} style={colonne ? undefined : { flex: 1 }} />
+          ))}
+        </View>
+        {/* Le relevé de compte, pleine largeur, sous les deux consultations. */}
+        <Squelette largeur="100%" hauteur={HAUTEUR_DEMI} rayon={rayons.bouton} />
+      </View>
+      <View style={{ gap: espaces.sm }}>
+        <View style={{ height: 24 }} />
+        <Carte>
+          {[58, 44, 36].map((l, i) => (
+            <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: espaces.md,
+                                   paddingHorizontal: espaces.lg, height: 50,
+                                   borderTopWidth: i === 0 ? 0 : 1,
+                                   borderTopColor: "#ececec" }}>
+              <View style={{ width: 18 }} />
+              <Squelette largeur={`${l}%`} hauteur={16} />
+            </View>
+          ))}
+        </Carte>
       </View>
     </View>
   );

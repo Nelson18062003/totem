@@ -45,11 +45,13 @@ node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait
+python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-les-cartes.mjs  # chacun ne voit que ses cartes
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
+cd web && node scripts/verifier-le-releve.mjs   # le relevé de compte, période passée comprise
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
 cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
@@ -70,6 +72,7 @@ cd mobile && node scripts/verifier-la-reponse.mjs # le bouton se fait reconnaît
 cd mobile && node scripts/verifier-le-cahier.mjs # un seul cahier, et hors ligne
 cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
+cd mobile && node scripts/verifier-la-page-longue.mjs # une page qui se tourne n'est pas une fin
 cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
 #   (même chaîne que verifier-les-formats — voir l'en-tête du script)
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android emporte
@@ -80,6 +83,8 @@ cd mobile && node scripts/verifier-l-affichage.mjs /tmp/apercu # tout, partout
 #   (chaque écran, quatorze tailles ; même export — voir l'en-tête du script)
 cd mobile && node scripts/verifier-les-dates.mjs /tmp/apercu # le filtre par date
 #   (même export ; sème la caisse s'il la trouve trop maigre)
+cd mobile && node scripts/verifier-les-transitions.mjs /tmp/apercu # le passage se voit
+#   (même export ; image par image, la barre aussi, puis « Réduire les animations »)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -123,11 +128,49 @@ d'effacer dans le modem, donc un SMS peut être relu au redémarrage : il doit
 être reconnu, pas recompté. Aveugler le garde-fou fait passer 157 500 F à
 315 000 F.
 
+`eprouver-le-recu` chronomètre le trajet d'un reçu, du SMS relevé par le
+boîtier jusqu'à la fiche du téléphone. « Ça prend trop de temps pour générer
+les PDF », disait le propriétaire — et il devait « refaire le reçu » sur le
+téléphone alors que Telegram l'avait déjà. Fabriquer le PDF prend quinze
+millisecondes : **la lenteur était dans l'ORDRE, pas dans la fabrication.**
+Le reçu attendait dix secondes (le délai qui laisse l'alerte texte partir la
+première sur Telegram), le tour suivant, l'envoi Telegram — et n'allait sur
+la plateforme qu'APRÈS. Mesuré : 17 s avec Telegram rapide, JAMAIS avec
+Telegram en panne, 16 s pour une demande faite depuis l'application. Après :
+1,1 s dans les trois cas, et la demande est déposée avant que le boîtier ne
+réponde. **Un délai voulu pour un destinataire ne doit pas retenir les
+autres** : le dépôt a son fil (`_fil_du_depot`), Telegram garde son délai,
+chacun ses reprises. Et le téléphone apprenait l'arrivée du SMS, jamais
+celle du reçu : la fiche d'un SMS d'argent récent l'ATTEND maintenant
+(`recuAttendu`, noyau) et demande `/api/recu-du-sms` quelques fois sur une
+minute et demie — une attente bornée, pas un pouls. Le témoin rejoue
+l'ancien ordre et doit échouer ; « refaire » un reçu inchangé rend celui
+qui existe, sans le refabriquer.
+
+**« Inchangé » se décide sur ce qui entre dans le document, et « déposé »
+se PROUVE.** La première version jugeait « rien n'a changé » sur la nature
+et la langue — or le nom inscrit aux Réglages entre aussi dans le PDF, et
+l'on lisait « Ce reçu est déjà à jour ✓ » au-dessus de l'ancien. Le boîtier
+refait maintenant le document en mémoire et compare son EMPREINTE à celle
+qu'il a déposée ; c'est sa phrase, pas l'égalité des numéros, qui fait dire
+« déjà à jour » à l'écran (`etatDeLaReponseRecu`, noyau). Et « archive = 1 »
+ne voulait pas dire « déposé » : l'ancien code le posait aussi en renonçant,
+après dix minutes de Telegram en panne. Seule l'empreinte, posée par le
+dépôt réussi et par lui seul, dit que la plateforme a le document. Un dépôt
+ne se marque que si la ligne n'a pas bougé pendant l'envoi, et tous les
+dépôts passent sous le même verrou : sinon un changement de nature pendant
+l'envoi par la 3G laissait l'ANCIEN document en place. Le démarrage du robot
+est gardé par un test (`TestLeDemarrage`) : le harnais lance le fil lui-même,
+et le retirer du démarrage laissait tout vert.
+
 `verifier-les-comptes` déroule la vie entière d'un compte contre un vrai
-serveur : la première inscription (celle du propriétaire), une deuxième qui
-doit attendre, l'approbation, la fermeture, la clé de secours. Il cherche
-surtout à prendre en défaut — un compte non approuvé qui entrerait, un invité
-qui administrerait, un message qui dirait si un courriel a un compte ici.
+serveur : la première inscription (celle du propriétaire), puis les
+inscriptions PUBLIQUES — TOTEM est grand public : n'importe qui crée son
+compte et entre tout de suite, mais ne voit RIEN de la maison tant qu'aucune
+carte ne lui est attribuée, et une carte ne s'attribue qu'avec son code de
+compte. Puis la fermeture, la suppression de son propre compte, la clé de
+secours. Il cherche surtout à prendre en défaut — un inscrit qui verrait une
+carte, un terminal ou le journal d'un autre, un invité qui administrerait.
 
 Il lance aussi TROIS inscriptions ENSEMBLE sur une plateforme neuve. Elles
 donnaient trois propriétaires : la plateforme comptait les comptes, voyait
@@ -199,6 +242,25 @@ que le fichier DISE quand il est coupé. Pour qu'il puisse prendre en défaut, l
 faux nuage a d'abord dû apprendre à mentir comme la vraie base : il rendait le
 total APRÈS avoir appliqué la limite — « mille lignes sur mille » quand elle en
 avait deux mille quatre cents.
+
+`verifier-le-releve` garde le RELEVÉ DE COMPTE : une carte (ou toutes), une
+période choisie librement, en PDF ou en CSV, chaque carte désignée par son
+NUMÉRO. Il sème six mois à quarante mouvements par jour sur deux cartes MTN
+et demande le relevé d'il y a quatre à trois mois. La base rend ses lignes
+de la plus récente à la plus ancienne et s'arrête au plafond : **sans borne
+de FIN, une période passée gardait les lignes d'aujourd'hui** — celles qui
+sont hors de la période — et le relevé de janvier, demandé en octobre,
+sortait vide. `chargerDonnees` a donc appris `jusqua`. Le harnais compare au
+faux nuage interrogé directement (le nombre, les références une à une, les
+totaux au franc près), réécrit en quelques lignes la lecture d'avant comme
+témoin — elle doit perdre la période —, et la borne retirée du code le fait
+échouer dix-huit fois. Il LIT le PDF : chaque référence exactement une fois,
+aucune perdue ni doublée à un saut de page. Un relevé ne porte que l'argent
+— jamais un code, ni en PDF ni en CSV : un relevé remis à un comptable est
+un groupe. Les soldes d'ouverture et de clôture se LISENT dans les annonces
+de l'opérateur ; faute d'annonce, « non connu », jamais 0. **Un solde
+calculé présenté comme annoncé est un faux** ; l'écart du rapprochement se
+montre, il ne se corrige pas.
 
 `verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
 lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante
@@ -883,6 +945,191 @@ d'`app.json` part tel quel dans le `Info.plist` de l'application. La
 convention `"//quelquechose"` du dépôt ne vaut qu'au niveau d'Expo, qui ignore
 ce qu'il ne connaît pas — écrite un cran trop bas, elle embarque de la prose
 française dans le paquet installé. Vu au prébuild, pas deviné.
+
+**Ce qu'on écrit à Apple décide de ce qu'est l'application.** Apple a mis la
+1.1.0 en attente (« 2.1 – Information Needed ») et rappelait la règle 3.2 :
+une application faite pour UNE entreprise n'a pas sa place sur l'App Store
+public. La réponse préparée disait justement cela — « outil privé », « le
+propriétaire et ses vendeurs », « agents », « distribution non répertoriée
+demandée » : elle aurait fait refuser l'application, sur un cadrage que
+personne n'avait décidé, recopié de fiche en fiche jusqu'à passer pour un
+fait. **La décision du
+propriétaire : TOTEM est GRAND PUBLIC** — n'importe qui crée son compte dans
+l'application, le compte s'ouvre tout de suite, TOTEM y rattache sa carte, et
+le compte se supprime dans les Réglages. Ni outil privé, ni application
+financière. Une donnée de cadrage mal posée se propage comme une donnée
+d'essai trop sage : textes des magasins, note à l'examinateur, formulaires
+de confidentialité, écrans. Elle se corrige partout à la fois
+(`docs/APPLE-REPONSE-2.1.md`, `docs/APP-STORE.md`, `docs/PLAY-STORE.md`,
+`mobile/store.config.js`), et rien n'y est écrit qui ne soit vrai dans le
+code.
+
+**Ouvrir la porte à tous change ce que chaque écran montre.** Les écrans
+avaient été pensés pour UNE maison : le propriétaire et ses vendeurs. Avec
+l'inscription publique, un compte neuf sans carte lisait encore « Ce qui
+s'est passé » (les boîtiers de tous les clients, leurs pannes), recevait le
+nom et la santé du DERNIER boîtier entendu dans toute la flotte, le carnet des
+raccourcis du propriétaire — et le robot lisait les cent téléphones vus le
+plus récemment sur TOUTE la plateforme avant de garder ceux qui entendent la
+carte : cent inscrits suffisaient à faire taire le titulaire. Chaque lecture
+« de la maison » se demande maintenant : « de QUELLE maison ? » —
+`/journal` est réservé à qui administre, le terminal montré est celui qui
+porte SES cartes, et le tri des téléphones se fait dans la requête
+(`tests/test_notification.py`, avec son témoin).
+
+**Une adresse e-mail tapée n'est la preuve de rien.** Le compte s'ouvre
+tout de suite et rien ne vérifie l'adresse : attribuer une puce « au compte
+de telle adresse », c'était la donner à quiconque avait créé ce compte AVANT
+la personne. La puce s'attribue d'après le CODE DE COMPTE
+(`web/lib/code-de-compte.ts`), montré seulement au titulaire, joint à sa
+puce, recopié par le propriétaire — et la route refuse sans lui
+(`verifier-les-comptes`, témoin compris).
+
+**Un geste d'argent ne pèse pas comme un outil.** L'onglet Opérations
+alignait neuf rangées identiques — même rond, même chevron, une phrase sous
+chacune : « Dépôt » avait le poids de « Mon numéro », et le propriétaire le
+trouvait « éclaté, mal organisé ». Il est rangé en trois étages : les trois
+gestes d'argent en tuiles pleines, « Consulter » en demi-tuiles, « Outils » en
+lignes discrètes. Les phrases ne sont pas perdues : l'aide vocale les dit
+encore. Le cadran USSD ne relistait plus que « *126# » quatre fois : il écrit
+le TRAJET entier de chaque raccourci (`trajet`, noyau).
+
+**Un objet, un nom — et c'est un test qui le dit, pas ce paragraphe.** Une
+première version l'annonçait ici alors que « Withdrawal » restait aux
+Réglages → Codes (là où mène le cadran) et sur l'accueil du site, « Money
+withdrawal » en tête du parcours sur le site, et que le même solde
+s'appelait « Consulter le solde » ou « Mon solde » selon l'écran d'où l'on
+partait. `noyau/tests/gestes.test.ts` compare maintenant, langue par langue,
+le guichet, l'accueil, les Réglages des codes et le cadran, avec l'état
+d'avant pour témoin. Une seule exception, écrite dans le test : la nature
+d'un SMS dit « Withdrawal » — un relevé nomme l'opération faite, un bouton le
+geste à faire.
+
+**Une transition se lit dans le code et ne prouve rien.** Le propriétaire :
+« il n'y a pas de transition, rien ». `verifier-les-transitions` regarde
+l'écran IMAGE PAR IMAGE sur les trajets qu'il a nommés (Accueil → Comptes →
+SMS → Opérations, et retour) et exige une image intermédiaire, le bon sens
+d'arrivée, aucune image où les deux écrans dépassent 0,2 d'opacité, moins de
+300 ms — et, avec « Réduire les animations », rien qui glisse. Sa première
+version demandait « jamais les deux au-dessus de 0,5 » : un fondu enchaîné,
+dont les opacités font 1 à elles deux, ne pouvait PAS échouer — et le mode
+réduit en était un, deux écrans mêlés à 0,65 et 0,35. **Une exigence sans
+témoin qui la fasse échouer n'exige rien** : la sonde mesure maintenant un
+fondu enchaîné fabriqué, et doit le prendre.
+
+**La barre se regarde aussi, image par image.** Le nom de l'onglet visé
+passait au blanc dès l'appui ; la pastille sombre arrivait 240 ms plus tard :
+« Opérations » blanc sur la barre blanche, invisible, à CHAQUE changement
+d'onglet — la mini-animation que le propriétaire voit le plus souvent. Le
+harnais ne regardait que les écrans. La couleur suit maintenant la pastille
+(deux couches par onglet), et le harnais calcule le contraste du nom sur ce
+qui est dessous, à chaque image.
+
+**Une première impression se mesure à froid.** Le harnais ouvrait chaque
+onglet une fois « pour qu'il existe », puis mesurait : 216 ms. La seule
+ouverture où Opérations jouait sa cascade d'entrée — 120 ms de délai, 260 de
+montée, PAR-DESSUS le glissement : 355 à 410 ms — n'était jamais mesurée. Il
+la mesure d'abord, sur une connexion neuve ; la cascade est retirée, le
+glissement suffit.
+
+**Ce que le web montre bien peut détruire sur le téléphone.** Dès qu'une
+transition est demandée, l'aperçu web laisse l'écran quitté AFFICHÉ, à
+opacité nulle, sous l'écran actif (la valeur animée qui devait le retirer
+n'y est jamais relue) : `SceneDOnglet` le retire. La première version le
+faisait par `display: none`, partout. Sur iPhone (nouvelle architecture),
+`display: none` fait SAUTER la vue au montage : la liste des SMS, sa
+position, la roue — détruites trois cents millisecondes après chaque départ,
+refaites au retour. Aucun harnais du navigateur ne pouvait le voir : sur le
+web, `display: none` garde tout. La règle vit dans `src/scene-onglet.ts`,
+web seulement, et `verifier-la-roue` l'exécute pour chaque plateforme, avec
+l'ancienne règle pour témoin. Et la vérification du retrait a d'abord menti
+elle-même : elle cherchait le titre parmi les `div` alors qu'il est rendu en
+`<h1>` — introuvable, l'écran passait pour « retiré ». **Introuvable n'est
+jamais « absent »** : c'est un échec.
+
+**Un texte d'exemple se coupe sans un mot.** Le cadran disait « Tapez un
+code, ex. *126# » dans un champ de 134 points sur un écran de 320 : on lisait
+« Type a code, e.g. * » — c'était le code, la seule chose utile, qui
+disparaissait, et à 360 points en français aussi. Aucun harnais ne le
+voyait : un texte d'exemple n'est pas un élément, il ne déborde de rien.
+`verifier-l-affichage` mesure maintenant chaque texte d'exemple contre la
+place du champ, dans les DEUX langues.
+
+**Le texte laisse deviner ; le réseau SAIT.** Un « Float Transfer » MTN vers
+une raison sociale longue : l'opérateur coupe son message et le termine par
+« 00. Next ». Pas de verbe, pas de « ? », une seule ligne numérotée —
+l'écran le lisait comme une FIN : « Réponse de l'opérateur », « Terminé », et
+un petit lien « répondre quand même ». La suite (« Confirm », puis le code
+secret) ne venait qu'en tapant « 00 » à l'aveugle, sur de l'argent. Le modem,
+lui, savait depuis toujours (+CUSD: 1 « j'attends », 0 « j'ai fini ») ; le
+robot le gardait pour lui. Il le joint maintenant à sa réponse
+(`parametres.reseau`, dans les paramètres et pas dans une colonne : une
+colonne absente d'une base pas migrée ferait échouer l'écriture ENTIÈRE), et
+la règle de la base qui efface le code secret le garde. Sans lui — un boîtier
+d'avant —, une dernière ligne en forme de choix devient un bouton. Et une
+page qui nomme « mobile number » sans en demander ne se remplit plus toute
+seule avec le numéro du bénéficiaire. `verifier-la-page-longue` joue le dépôt
+entier ; l'application d'avant y lit « Terminé », comme le propriétaire.
+
+**Le message de l'opérateur ne se retouche pas, et la réponse ne se cache
+pas.** La première correction de « 00. Next » RETIRAIT la ligne du message
+pour en faire un bouton, et laissait la zone de réponse derrière un petit
+lien gris. Le propriétaire : « son message doit être intact, comme il
+l'affiche » ; « sur un téléphone, il y a toujours une zone de texte ». Le
+message s'affiche maintenant tel quel ; les choix qu'on y lit sont des
+raccourcis EN PLUS ; la zone de réponse est toujours là ; et sous le pavé du
+code, « Répondre autre chose » — ce qu'on y tape part protégé comme un code.
+Le même écran se déclarait « terminé » dès la réponse au code, quoi que dise
+l'opérateur ensuite : c'est l'opérateur, et le réseau, qui finissent.
+
+**Un audit adverse trouve ce qu'on n'a pas imaginé — à condition de le
+contredire.** Quatre enquêteurs sur le parcours USSD (lecture, caractères,
+déroulé, boîtier), un contradicteur par constat : 48 constats, 46 tenus.
+Parmi eux, une demande de code suivie de « 0. Retour / 00. Accueil » passait
+pour un menu (le code partait en clair) ; « mPIN », « clé secrète »,
+« mot-de-passe » n'étaient pas des codes ; un transfert RÉUSSI qui disait
+« pour annuler, tapez… » s'affichait refusé ; un guillemet dans un nom
+coupait le message ; un délai dépassé disait « échec » d'un code peut-être
+parti — on refaisait le transfert. `noyau/tests/garde-du-code.json` est jugé
+par le robot ET par le noyau : si l'un change sa règle, l'autre échoue.
+
+**Un témoin se fige.** Les tests du déroulé prenaient pour « comportement
+d'avant » la lecture du noyau ; corrigée le même jour par un autre chantier,
+le témoin s'est mis à passer, et les tests à échouer pour la mauvaise
+raison. L'ancienne lecture est maintenant recopiée telle quelle
+(`noyau/tests/temoins/`) : un témoin qui suit le code du jour ne témoigne de
+rien.
+
+**Un chiffre qu'on tape se lit comme on le dit.** « 677123456 » et
+« 1250000 » en 24 points : « c'est illisible », a dit le propriétaire — on
+ne voit ni le chiffre qui manque au numéro, ni le zéro de trop au montant,
+sur de l'argent. Le champ écrit maintenant « 677 12 34 56 » et
+« 1 250 000 » À MESURE qu'on tape, en 32 points (`enFormeDansLeChamp`,
+noyau, le même pour le téléphone et le site) ; effacer après un espace
+efface le chiffre d'avant (`apresEffacement`), sinon la touche semblait
+morte. Ce n'est qu'une façon de MONTRER : ce qui part reste `numeroSaisi` /
+`montantSaisi`. Jamais sur une réponse libre à l'opérateur, où « 00 » et
+« # » partent tels quels ; jamais sur ce qu'on ne sait pas lire (une phrase
+collée reste telle quelle).
+
+**Le liquide et l'argent électronique vont en sens CONTRAIRES.** « CashOut
+success to <client> from <agent> » : l'agent remet des espèces au client, et
+l'argent électronique du client arrive chez l'agent. Lu à la lettre, « from »
+désignait le payeur, et la puce commerciale affichait « Retrait −500 000 » sur
+un argent qui venait d'ENTRER — pendant que le Cash out MTN, même geste, se
+lisait en entrée. Un test l'affirmait, sur un vrai SMS : **un test qui fige
+une lecture ne prouve pas qu'elle est juste**. `TestLaCaisseDeLAgent` exige
+la même réponse des deux opérateurs, en anglais et en français ; le retrait
+français ne se retourne que sur un SMS d'agent (une commission), jamais côté
+client.
+
+**Un bouton qu'on cherche est un bouton qui manque.** Le menu de l'opérateur
+n'était qu'un chiffre à droite de « Code USSD » : tout ce que les trois gestes
+ne couvrent pas — le « Float » d'un agent — passait par le cadran. C'est un
+bouton dans Opérations, et un rond de l'accueil. Les ronds se choisissent dans
+les Réglages (`noyau/ronds.ts` : cinq au plus, un au moins, un choix abîmé
+rend l'accueil d'origine) ; le choix vit sur le téléphone et n'ouvre aucun
+droit.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

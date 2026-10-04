@@ -24,3 +24,22 @@ export const NOM_ROND = LIGNE_ROND * 2;
 /** Les derniers mouvements montrés sur l'accueil. */
 export const LIGNES_MOUVEMENTS = 3;
 export const LIGNES_MOUVEMENTS_LARGE = 6;
+
+// --- L'onglet Opérations ----------------------------------------------------
+//
+// Les mêmes raisons que l'accueil : la forme d'attente (`SqueletteOperations`)
+// et l'écran lisent ces mesures, une fois.
+
+/** Une tuile de geste d'argent (Dépôt, Retrait, Transfert), côte à côte. */
+export const HAUTEUR_TUILE = 96;
+/** La même, en COLONNE — écran étroit ou texte agrandi : une rangée pleine
+ *  largeur, le rond à gauche, le nom à côté. Jamais un nom coupé. */
+export const HAUTEUR_TUILE_COLONNE = 60;
+/** Une demi-tuile de « Consulter » (Mon solde, Mon numéro). */
+export const HAUTEUR_DEMI = 56;
+
+/** Les tuiles passent en colonne sous 340 points de large, ou dès que le
+ *  réglage « taille du texte » dépasse 1,2 : trois noms côte à côte ne
+ *  tiendraient plus entiers. */
+export const tuilesEnColonne = (largeur: number, echelleTexte: number): boolean =>
+  largeur < 340 || echelleTexte > 1.2;

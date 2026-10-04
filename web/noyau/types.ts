@@ -106,6 +106,12 @@ export type Paiement = {
   nature: Categorie | null; // choisie par le propriétaire (pour le reçu)
   reference: string;
   soldeApres: number | null;
+  // Les frais et la commission que l'opérateur annonce dans le SMS, lus par
+  // le robot (`analyse_sms.py`). Optionnels : une application déjà installée
+  // reçoit des réponses d'avant, et une base pas encore migrée ne les a pas.
+  // `null` : le SMS n'en dit rien — ce qui n'est pas « zéro ».
+  frais?: number | null;
+  commission?: number | null;
   smsBrut: string;
   recu: string | null;      // numéro du reçu PDF archivé, s'il existe
   sourceId: number | null;  // la ligne du journal du terminal (pour établir un reçu)
@@ -163,6 +169,14 @@ export type Donnees = {
   // personne par son prénom — et rien d'autre. `null` pour une session
   // ouverte par la clé de secours, qui ne désigne personne.
   courriel?: string | null;
+  // Le prénom saisi à l'inscription : c'est lui qui salue. Le courriel ne
+  // sert plus que pour les comptes d'avant, qui n'ont pas de prénom.
+  prenom?: string | null;
+  // LE CODE DE COMPTE (« K7QM-4XHT ») — ce que la personne joint à sa puce
+  // pour que TOTEM la lui attribue. Jamais l'adresse e-mail : n'importe qui
+  // peut l'avoir prise avant elle. `null` pour le propriétaire, la vitrine
+  // et la clé de secours, qui ne reçoivent pas de puce ainsi.
+  codeCompte?: string | null;
   // Celui qui regarde est-il le propriétaire (ou la clé de secours) ? Faux :
   // il tient les cartes qu'on lui a confiées, et ne voit pas ce qui
   // n'appartient à aucune carte — le carnet des boutons, les comptes.

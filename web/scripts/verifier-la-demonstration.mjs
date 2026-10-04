@@ -183,15 +183,27 @@ try {
     verifier("aucun SMS du faux nuage", brut.includes("8901") || brut.includes("4432"), false);
     verifier("pas le vrai terminal", brut.includes("Douala (faux)"), false);
     // Les pages du site : le même chemin, par le cookie.
-    for (const page of ["/", "/cartes", "/encaissements", "/actions", "/analyse", "/journal"]) {
+    // « Ce qui s'est passé » (/journal) est le journal de TOTEM : réservé à
+    // qui administre. La vitrine y est renvoyée à l'accueil (307), comme
+    // n'importe quel inscrit — vérifié plus bas.
+    for (const page of ["/", "/cartes", "/encaissements", "/actions", "/analyse"]) {
       const p = await appel(B, page, { cookie });
       const corps = await p.text();
       verifier(`la page ${page} ne montre aucune vraie carte`,
         [p.status, corps.includes("8901") || corps.includes("4432") || corps.includes("Douala (faux)")],
         [200, false]);
     }
+    const journal = await appel(B, "/journal", { cookie });
+    verifier("« Ce qui s'est passé » : refusé à la vitrine (renvoi à l'accueil)",
+      [journal.status, /Douala \(faux\)|douala-faux/.test(await journal.text())], [307, false]);
     const accueil = await (await appel(B, "/", { cookie })).text();
-    verifier("l'accueil du site montre la vitrine", accueil.includes("CLIENT DÉMO"), true);
+    verifier("l'accueil du site montre la vitrine", accueil.includes("FAMILLE DÉMO"), true);
+    // GRAND PUBLIC : la vitrine montre les comptes d'une personne, pas la
+    // caisse d'un commerce — c'est ce qui avait fait arrêter l'examen (3.2).
+    verifier("…celle d'une personne, pas d'une boutique et de ses clients",
+      // En capitales, comme le jeu les écrit : « FournisseurLangue », le nom
+      // d'un composant dans la page, n'est pas un fournisseur.
+      /BOUTIQUE D[ÉE]MO|CLIENT D[ÉE]MO|FOURNISSEUR D[ÉE]MO/.test(accueil), false);
   }
 
   console.log("\nLE PROPRIÉTAIRE, LUI, NE VOIT PAS LA VITRINE");

@@ -44,3 +44,12 @@ test("aucun prénom n'est écrit en dur dans les textes", () => {
   assert.ok(salutation("fr", "amina@exemple.cm").includes("Amina"));
   assert.ok(!salutation("fr", "amina@exemple.cm").includes("Nelson"));
 });
+
+test("le prénom saisi à l'inscription passe avant le courriel", () => {
+  // Le courriel recommandé pour la vidéo d'Apple donnait « Bonjour, Nom ».
+  assert.equal(salutation("fr", "nom+test1@gmail.com", "Awa"), "Bonjour, Awa");
+  assert.equal(salutation("en", "kamdemjp@yahoo.fr", "Jean-Pierre"), "Hello, Jean-Pierre");
+  // Un compte d'avant n'a pas de prénom : le courriel reprend la main.
+  assert.equal(salutation("fr", "nelson@exemple.cm", null), "Bonjour, Nelson");
+  assert.equal(salutation("fr", "nelson@exemple.cm", "  "), "Bonjour, Nelson");
+});

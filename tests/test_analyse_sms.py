@@ -639,13 +639,16 @@ class TestCashOutAnglais(unittest.TestCase):
         self.assertEqual(analyser(self.REEL).montant, 500000)
 
     def test_les_deux_parties_dans_le_bon_sens(self):
-        """L'ordre est l'inverse du transfert anglais : le bénéficiaire suit
-        « to », l'émetteur suit « from »."""
+        """« to » nomme le client, « from » l'agent — mais c'est le liquide
+        qui va de l'agent au client. L'ARGENT ÉLECTRONIQUE va du client
+        (« to ») vers l'agent (« from ») : c'est lui qui paie. Ce test
+        affirmait l'inverse, et la puce commerciale lisait « −500 000 » sur
+        un argent qui venait d'arriver."""
         p = analyser(self.REEL)
-        self.assertEqual(p.beneficiaire.numero, "693377266")
-        self.assertEqual(p.beneficiaire.nom, "MANGA")
-        self.assertEqual(p.emetteur.numero, "696103864")
-        self.assertEqual(p.emetteur.nom, "WONDER PHONE")
+        self.assertEqual(p.emetteur.numero, "693377266")
+        self.assertEqual(p.emetteur.nom, "MANGA")
+        self.assertEqual(p.beneficiaire.numero, "696103864")
+        self.assertEqual(p.beneficiaire.nom, "WONDER PHONE")
 
     def test_la_reference(self):
         self.assertEqual(analyser(self.REEL).reference, "CO260808.1609.D57821")
@@ -660,14 +663,17 @@ class TestCashOutAnglais(unittest.TestCase):
         Deviner ici retournerait le libellé du reçu."""
         self.assertIsNone(analyser(self.REEL).sens)
 
-    def test_le_sens_se_tranche_avec_nos_numeros(self):
+    def test_sur_la_puce_de_l_agent_c_est_une_entree(self):
+        """Le client retire chez nous : son argent électronique arrive sur
+        notre puce commerciale. Une ENTRÉE — comme le Cash out MTN."""
         p = analyser(self.REEL, numeros=["696103864"])
-        self.assertEqual(p.sens, "sortie")
-        self.assertEqual(p.tiers, "MANGA")
-
-    def test_vu_de_l_autre_cote_c_est_une_entree(self):
-        p = analyser(self.REEL, numeros=["693377266"])
         self.assertEqual(p.sens, "entree")
+        self.assertEqual(p.tiers, "MANGA")
+        self.assertEqual(p.montant, 500000)
+
+    def test_vu_du_client_c_est_une_sortie(self):
+        p = analyser(self.REEL, numeros=["693377266"])
+        self.assertEqual(p.sens, "sortie")
         self.assertEqual(p.tiers, "WONDER PHONE")
 
     def test_la_categorie_est_un_retrait(self):
@@ -687,6 +693,82 @@ class TestCashOutAnglais(unittest.TestCase):
 
     def test_ce_n_est_pas_pris_pour_une_interrogation_de_solde(self):
         self.assertIsNone(solde_annonce(self.REEL))
+
+
+class TestLaCaisseDeLAgent(unittest.TestCase):
+    """Sur une puce COMMERCIALE, le même geste se compte pareil chez les deux
+    opérateurs, en anglais comme en français : un RETRAIT du client fait
+    ENTRER l'argent électronique chez l'agent ; un DÉPÔT le fait SORTIR.
+
+    Le Cash out MTN se lisait en entrée, le CashOut Orange en sortie : deux
+    réponses contraires à la même question, sur 500 000 F. Noms et numéros
+    inventés ; formes recopiées de vrais SMS."""
+
+    AGENT = "696100001"
+    CLIENT = "690000002"
+
+    def _sens(self, texte):
+        p = analyser(texte, numeros=[self.AGENT])
+        self.assertIsNotNone(p, texte)
+        return p.sens
+
+    def test_les_retraits_entrent(self):
+        for texte in (
+            # Orange, anglais
+            f"CashOut success to {self.CLIENT} ESSAI CLIENT from {self.AGENT} "
+            "BOUTIQUE ESSAI. The details are as follows: transaction amount: "
+            "75000 FCFA, charges: 0 FCFA, commission: 0 FCFA, TXN id "
+            ":CO261004.1538.A00001",
+            # Orange, français — le modèle du dépôt d'agent, côté retrait
+            f"Retrait vers {self.CLIENT} ESSAI CLIENT reussi from {self.AGENT} "
+            "BOUTIQUE ESSAI. Informations detaillees : Montant transaction : "
+            "75000FCFA, ID de Transaction : CO261004.1538.A00002, Frais : "
+            "0FCFA, Commission : 0 FCFA, Nouveau Solde : 2773937.6FCFA.",
+            # MTN, anglais
+            f"Cash out initiated by ESSAI CLIENT (237{self.CLIENT}) on "
+            "2026-10-04 15:38:00 is successfully completed. You can payout "
+            "the amount: 75000 XAF in cash to the customer. Your new balance: "
+            "1831330 XAF. Added commission: 300 XAF.",
+        ):
+            self.assertEqual(self._sens(texte), "entree", texte[:40])
+            self.assertEqual(categoriser(texte), "retrait", texte[:40])
+
+    def test_les_depots_sortent(self):
+        for texte in (
+            f"Depot vers {self.CLIENT} ESSAI CLIENT reussi from {self.AGENT} "
+            "BOUTIQUE ESSAI. Informations detaillees : Montant transaction : "
+            "10000FCFA, ID de Transaction : CI261004.1355.A00003, Frais : "
+            "0FCFA, Commission : 0 FCFA, Montant Net Debite : 10000FCFA, "
+            "Nouveau Solde : 2773937.6FCFA.",
+            f"CashIn success to {self.CLIENT} ESSAI CLIENT from {self.AGENT} "
+            "BOUTIQUE ESSAI. The details are as follows: transaction amount: "
+            "10000 FCFA, charges: 0 FCFA, commission: 0 FCFA, TXN id "
+            ":CI261004.1355.A00004",
+        ):
+            self.assertEqual(self._sens(texte), "sortie", texte[:40])
+            self.assertEqual(categoriser(texte), "depot", texte[:40])
+
+    def test_un_retrait_cote_client_ne_se_retourne_pas(self):
+        """Sans commission, ce n'est pas un SMS d'agent : « vers » nomme
+        l'agent qui REÇOIT. Le retourner ferait du client un encaisseur."""
+        texte = (f"Retrait de 30000 FCFA vers {self.AGENT} BOUTIQUE ESSAI reussi "
+                 f"from {self.CLIENT} ESSAI CLIENT. Frais: 300 FCFA")
+        p = analyser(texte, numeros=[self.CLIENT])
+        self.assertIsNotNone(p)
+        self.assertEqual(p.sens, "sortie")
+
+    def test_le_temoin(self):
+        """L'ancienne lecture — sans le retournement — doit échouer ici."""
+        from totem import analyse_sms
+        garde = analyse_sms._retrait_chez_l_agent
+        analyse_sms._retrait_chez_l_agent = lambda *a: False
+        try:
+            texte = (f"CashOut success to {self.CLIENT} ESSAI CLIENT from "
+                     f"{self.AGENT} BOUTIQUE ESSAI. transaction amount: 75000 "
+                     "FCFA, commission: 0 FCFA")
+            self.assertEqual(analyser(texte, numeros=[self.AGENT]).sens, "sortie")
+        finally:
+            analyse_sms._retrait_chez_l_agent = garde
 
 
 class TestReleveMoMoParSms(unittest.TestCase):

@@ -4,6 +4,7 @@ import { COURRIEL_DEMONSTRATION, estDemonstration } from "@/lib/demonstration";
 import { compteConnecte, estProprietaire } from "@/lib/qui";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
+import { codeDuCompte } from "@/lib/code-de-compte";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,10 @@ export async function GET(req: Request) {
   // AVANT le test de la base — elle n'en a pas besoin, et ne la lit jamais.
   if (await estDemonstration(req)) {
     const donnees = await donneesMontrees(langue, bornes, req);
-    return Response.json({ ...donnees, courriel: COURRIEL_DEMONSTRATION, proprietaire: false });
+    return Response.json({
+      ...donnees, courriel: COURRIEL_DEMONSTRATION, prenom: null, codeCompte: null,
+      proprietaire: false,
+    });
   }
 
   if (!relie) {
@@ -94,5 +98,13 @@ export async function GET(req: Request) {
   const moi = await compteConnecte(req);
   const proprietaire = !process.env.SESSION_SECRET || await estProprietaire(req);
 
-  return Response.json({ ...donnees, courriel: moi?.courriel ?? null, proprietaire });
+  return Response.json({
+    ...donnees,
+    courriel: moi?.courriel ?? null,
+    prenom: moi?.prenom || null,
+    // Le code de compte n'est montré QU'À SON TITULAIRE : c'est lui qui le
+    // joint à sa puce (voir lib/code-de-compte.ts).
+    codeCompte: moi && moi.role !== "proprietaire" ? await codeDuCompte(moi.id) : null,
+    proprietaire,
+  });
 }

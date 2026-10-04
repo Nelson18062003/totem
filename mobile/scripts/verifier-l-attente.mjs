@@ -64,12 +64,12 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
 {
   const inscription = await fetch("http://127.0.0.1:3120/api/inscription", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+    body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
   });
   if (inscription.status === 403) {
     const porte = await fetch("http://127.0.0.1:3120/api/connexion", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+      body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
     });
     if (!porte.ok) {
       console.error("\n✗ Les inscriptions sont fermées par un AUTRE compte :");
@@ -195,9 +195,11 @@ console.log("\n  Chaque onglet montre quelque chose pendant qu'il charge");
     // montrer — le nombre est celui des composants, et un écart signale soit
     // une forme perdue, soit une forme de trop.
     //
-    // « Actions » n'en a aucune, et c'est voulu : il ne lit que l'état du
-    // terminal (`sms: 0`), un aller-retour minuscule — rien à faire attendre.
-    // On exige alors qu'il ne soit pas blanc.
+    // « Actions » n'en montre AUCUNE ici, et c'est juste : on y arrive
+    // depuis l'accueil, qui a déjà rempli le cahier partagé — la carte et
+    // ses gestes sont là tout de suite. Ses neuf formes ne servent qu'À
+    // FROID (ouvert directement, cahier vide) : c'est la section suivante
+    // qui les exige. On exige ici qu'il ne soit pas blanc.
     const ONGLETS = [
       ["Cartes", /^(Accounts|Comptes)$/, 2],
       ["Boîte", /^(SMS|Messages)$/, 24],
@@ -237,6 +239,89 @@ console.log("\n  Chaque onglet montre quelque chose pendant qu'il charge");
     if (!retourOk) echecs++;
     console.log(`  ${retourOk ? "✓" : "✗"} Accueil    revenu instantanément `
       + `(${auRetour} forme${auRetour > 1 ? "s" : ""}, chiffres ${chiffresLa ? "déjà là" : "ABSENTS"})`);
+  } finally { await page.close(); }
+}
+
+// ---------------------------------------------------------------------------
+// OPÉRATIONS, OUVERT À FROID.
+//
+// Ouvert directement — une notification qui y mène, un lien —, le cahier
+// vide, l'onglet rendait… rien : un écran blanc sous son titre, le temps de
+// la requête. Il montre maintenant la forme de l'écran qui arrive : la
+// puce, les trois gestes, le menu de l'opérateur, les deux consultations,
+// le relevé de compte, les trois outils — ONZE formes
+// (`FORMES_OPERATIONS`), comptées par leur marque. Et l'intitulé
+// « Outils », placé sous tout ce que les formes remplacent, ne doit pas
+// sauter à l'arrivée de la carte.
+// ---------------------------------------------------------------------------
+console.log("\n  Opérations, ouvert à froid : onze formes, et rien ne saute");
+{
+  const FORMES_OPERATIONS = 11;
+  const page = await nav.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  try {
+    // L'aperçu est servi sans renvoi vers index.html : l'adresse /actions
+    // reçoit la page de l'application, comme le ferait un lien.
+    await page.route(/127\.0\.0\.1:3210\/actions$/, async (route) => {
+      const html = await (await fetch(`${APERCU}/`)).text();
+      await route.fulfill({ status: 200, contentType: "text/html", body: html });
+    });
+    await page.goto(APERCU, { waitUntil: "networkidle" });
+    for (let i = 0; i < 40; i++) {
+      const pret = await page.locator('input[type="email"]').first()
+        .evaluate((e) => !e.readOnly).catch(() => false);
+      if (pret) break;
+      await attendre(500);
+    }
+    await page.locator('input[type="email"]').first().fill(COURRIEL);
+    await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
+    await page.getByText(/^Sign in$|^Se connecter$/).last().click();
+    await page.waitForFunction(
+      () => !![...document.querySelectorAll("div")].find((e) => /FCFA/.test(e.textContent || "")),
+      null, { timeout: 25000 });
+    // À FROID : le cahier gardé sur le téléphone est vidé — sans quoi
+    // l'écran montre, à raison, les chiffres du dernier passage.
+    await page.evaluate(() => localStorage.removeItem("cahier-totem"));
+    await page.route("**/api/donnees**", async (route) => {
+      await attendre(3000);
+      await route.continue();
+    });
+    await page.goto(`${APERCU}/actions`, { waitUntil: "domcontentloaded" });
+    let formes = 0;
+    for (let i = 0; i < 20 && !formes; i++) {
+      await attendre(150);
+      formes = await page.evaluate(() => document.querySelectorAll("[data-squelette]").length);
+    }
+    const okFormes = formes === FORMES_OPERATIONS;
+    if (!okFormes) echecs++;
+    console.log(`  ${okFormes ? "✓" : "✗"} Opérations ${formes} formes pendant l'attente `
+      + `(attendu ${FORMES_OPERATIONS})`);
+    // Le repère : le HAUT de la première rangée d'« Outils ». Pendant
+    // l'attente, c'est la rangée qui porte la 9e forme ; à l'arrivée, le
+    // bouton « Recevoir de l'argent ».
+    const enAttente = await page.evaluate(() => {
+      const f = [...document.querySelectorAll("[data-squelette]")][8];
+      return f ? Math.round(f.parentElement.getBoundingClientRect().top) : null;
+    });
+    await page.waitForFunction(
+      () => /(Receive money|Recevoir de l.argent)/.test(document.body.innerText),
+      null, { timeout: 20000 }).catch(() => {});
+    await attendre(800);
+    const arrive = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("body *")]
+        .filter((e) => /^(Receive money|Recevoir de l.argent)$/.test(e.textContent?.trim() || "")).pop();
+      const rangee = el?.closest('[role="button"]');
+      return rangee ? Math.round(rangee.getBoundingClientRect().top) : null;
+    });
+    if (enAttente == null || arrive == null) {
+      console.log("  ✗ Opérations le repère est introuvable — rien n'a été mesuré");
+      echecs++;
+    } else {
+      const saut = Math.abs(enAttente - arrive);
+      const ok = saut <= SAUT_TOLERE;
+      if (!ok) echecs++;
+      console.log(`  ${ok ? "✓" : "✗"} Opérations la première rangée d'outils passe de `
+        + `${enAttente} à ${arrive} px — saut de ${saut} px`);
+    }
   } finally { await page.close(); }
 }
 

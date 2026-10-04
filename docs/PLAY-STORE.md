@@ -3,19 +3,27 @@
 > Ce qu'il faut remplir, et ce qu'il faut y écrire. Les réponses sont
 > déduites de ce que l'application fait **réellement** — pas de ce qu'une
 > application de ce genre fait d'habitude.
+>
+> **TOTEM est une application grand public** (décision du propriétaire) :
+> n'importe qui la télécharge, crée son compte dans l'application, et
+> atteint ses comptes Mobile Money d'où qu'il soit. Les réponses ci-dessous
+> sont celles d'une application ouverte à tous — la même chose que ce qui
+> est dit à Apple (`docs/APP-STORE.md`, `docs/APPLE-REPONSE-2.1.md`).
 
 ---
 
 ## Avant tout : la politique de confidentialité
 
-Google Play **refuse** une application financière sans politique de
-confidentialité à une adresse publique.
+Google Play **refuse** une application sans politique de confidentialité à
+une adresse publique, et la vérifie contre le formulaire *Sécurité des
+données*.
 
 Elle est en ligne : **https://totemlabs.app/confidentialite**
 
 Elle s'ouvre sans compte — un examinateur y arrive depuis un lien collé dans
 un formulaire, et une page derrière le verrou ferait refuser l'application
 sans plus d'explication. Le script du verrou vérifie qu'elle reste ouverte.
+Elle nomme tout ce qui est collecté, champ par champ, et pourquoi.
 
 > ⚠️ **Une chose à régler avant de coller ce lien.** Le courriel de contact
 > vient de la variable d'environnement `CONTACT_COURRIEL` sur Vercel. Tant
@@ -26,273 +34,182 @@ sans plus d'explication. Le script du verrou vérifie qu'elle reste ouverte.
 
 ---
 
-## La page de suppression des données
+## La suppression du compte
 
-Le formulaire *Sécurité des données* demande une **URL de suppression des
-données** dès qu'on répond « oui » à « proposez-vous un moyen de demander la
-suppression ? ».
+Google exige, pour une application où l'on crée un compte, **deux** chemins :
+la suppression **dans l'application**, et une **adresse web** où l'on peut la
+demander sans l'application.
 
-Elle est en ligne : **https://totemlabs.app/suppression**
+- **Dans l'application** : **Réglages → Supprimer mon compte**, confirmé par
+  le mot de passe. Le compte est supprimé aussitôt.
+- **Sur le web** : **https://totemlabs.app/suppression** — c'est l'adresse à
+  coller dans *URL de suppression des données*.
 
-Google exige trois choses de cette page, et refuse le lien s'il en manque
-une. La page les porte toutes les trois :
+Google refuse le lien s'il manque l'une de ces trois choses. La page les
+porte toutes les trois :
 
-1. **Nommer l'application ou l'éditeur** de la fiche — elle nomme TOTEM et le
-   nom de paquet `com.bonzinilabs.totem` ;
-2. **Décrire la marche à suivre** — écrire depuis l'adresse du compte, objet
-   « SUPPRIMER », réponse de confirmation, effacement sous 30 jours ;
+1. **Nommer l'application ou l'éditeur** de la fiche — elle nomme TOTEM,
+   Bonzinilabs et le nom de paquet `com.bonzinilabs.totem` ;
+2. **Décrire la marche à suivre** — dans l'application, par le formulaire
+   de la page (adresse e-mail et mot de passe), ou par courriel si l'on ne
+   peut plus se connecter ;
 3. **Dire ce qui est effacé et ce qui est gardé**, avec les délais — le
-   compte, les jetons de notification et les sessions partent ; les écritures
-   du terminal (SMS, paiements, reçus) restent, parce qu'elles appartiennent
-   au propriétaire des cartes et ne sont pas des données personnelles de qui
-   demande.
+   compte (nom, adresse, e-mail, téléphone, empreinte du mot de passe), les
+   attributions de cartes, les jetons de notification et les sessions
+   partent aussitôt ; les messages d'une carte suivent la carte, et
+   s'effacent sur demande quand elle est retirée, sous 30 jours.
 
-Elle est ouverte sans compte, comme la politique. Le script du verrou vérifie
-qu'elle le reste, qu'elle nomme bien l'application, et qu'elle n'affiche pas
-d'adresse inventée.
+Elle est ouverte sans compte, comme la politique.
+
+Le compte du propriétaire de la plateforme et la vitrine de démonstration
+ne se suppriment pas par ce chemin — la page le dit.
 
 ---
 
 ## Informations de connexion (App access)
 
-Google demande comment un examinateur passe le verrou. TOTEM est entièrement
-derrière une connexion : il faut donc **lui donner un compte qui marche**.
+Tout est derrière une connexion : l'examinateur a besoin d'un compte qui
+marche. Il pourrait en créer un lui-même, mais un compte neuf n'a pas
+encore de carte : il ne verrait que « Ajouter ma carte ». **Donnez-lui la
+vitrine de démonstration**, la même qu'à Apple.
 
-**Ne donnez pas le vôtre.** Créez-en un pour l'examen :
-
-**Réglages → Qui peut se connecter → Créer un compte**
-
-Puis dans la Play Console, choisir « Toutes les fonctionnalités nécessitent
-un accès spécial » et remplir :
+Dans la Play Console, choisir « Toutes les fonctionnalités nécessitent un
+accès spécial » (ou « Certaines fonctionnalités… ») et remplir :
 
 | Champ | Valeur |
 |---|---|
-| Nom des identifiants | `Examen Google` |
-| Nom d'utilisateur | le courriel créé |
-| Mot de passe | celui choisi |
-| Instructions | « Sign in with the email and password above. The app shows the Mobile Money SIM cards held in the owner's terminal. » |
+| Nom des identifiants | `Compte de démonstration` |
+| Nom d'utilisateur | `examen@totemlabs.app` |
+| Mot de passe | `TOTEM-Examen-2026` |
+| Instructions | « Anyone can create an account in the app ("Create an account"); a new account shows "Add my card" until a SIM card is assigned to it. This demo account shows two invented SIM cards. Deposit / Withdrawal / Transfer are simulated end to end: enter any number and amount, then any 4-digit PIN; nothing reaches any network. To test account deletion (Settings > Delete my account), create your own account: the demo account cannot be deleted. » |
 
-⚠️ **Ce compte ne voit que les cartes que vous lui confiez** — confiez-lui-en
-une, sinon il verra une application vide. Supprimez-le une fois l'examen
-terminé : même écran, bouton *Supprimer*.
+Ne donnez **jamais** un vrai compte avec une vraie carte : l'examinateur
+pourrait y lancer un vrai transfert.
 
 ---
 
 ## Sécurité des données (Data safety)
 
-Le formulaire le plus piégeux du Play Store : il doit correspondre **au mot
-près** à la politique de confidentialité. Une contradiction entre les deux
-est un motif de refus, et elle se voit.
+Il doit correspondre **au mot près** à la politique de confidentialité. Une
+contradiction entre les deux est un motif de refus, et elle se voit.
 
 ### Collecte et partage
 
 | Question | Réponse | Pourquoi |
 |---|---|---|
-| L'app collecte-t-elle des données ? | **Oui** | Un seul élément, ci-dessous. |
+| L'app collecte-t-elle des données ? | **Oui** | Voir la liste ci-dessous. |
 | Les données sont-elles chiffrées en transit ? | **Oui** | Tout passe en HTTPS ; l'application refuse une adresse en `http` (sauf la machine locale). |
-| Peut-on demander la suppression ? | **Oui** | Coller `https://totemlabs.app/suppression` dans *URL de suppression des données*. |
-| Les comptes sont-ils créés dans l'application ? | **Non** | L'inscription libre est fermée : le propriétaire crée les comptes lui-même. |
-| Peut-on se connecter avec un compte créé hors de l'application ? | **Oui** | Le compte est créé par le propriétaire, puis utilisé dans l'application. Sous « comment ces comptes sont-ils créés », cocher **par le développeur ou l'entreprise** — c'est exactement ce qui se passe. |
+| Peut-on demander la suppression ? | **Oui** | Dans l'application, et `https://totemlabs.app/suppression`. |
+| Les comptes sont-ils créés dans l'application ? | **Oui** | « Créer un compte », sur l'écran de connexion. |
+| Peut-on se connecter avec un compte créé hors de l'application ? | **Oui** | La page web `https://totemlabs.app/inscription` crée le même compte. |
 
-### Le seul type de données à déclarer
+**« Partagé » veut dire, chez Google, transmis à un tiers pour son propre
+usage.** Les hébergeurs (Vercel, Supabase) et les services de notification
+(Expo, Google FCM) travaillent pour le compte de TOTEM : ce n'est pas un
+partage au sens du formulaire. Il en va de même de **Telegram**, par lequel
+chaque boîtier envoie une copie des SMS et des reçus dans la discussion
+privée de qui le fait fonctionner : un prestataire, nommé dans la politique
+de confidentialité. Rien n'est vendu, ni cédé à qui que ce soit.
 
-| Champ | Réponse |
-|---|---|
-| Type | **Identifiants de l'appareil** (*Device or other IDs*) |
-| Collecté | **Oui** |
-| Partagé | **Oui** — avec Expo et Google (FCM), pour acheminer la notification |
-| Facultatif ou obligatoire | **Facultatif** — refuser les notifications n'empêche rien d'autre |
-| Finalité | **Notifications / messagerie de l'application** |
+### Les types de données à déclarer
 
-C'est le jeton de notification, et rien d'autre.
+Pour chacun : **collecté**, **non partagé**, **non traité de manière
+éphémère** (sauf le jeton, voir plus bas), finalité **Fonctionnalité de
+l'application** (et **Gestion du compte** pour les coordonnées).
 
-### Ce qu'il faut répondre NON, et ne pas cocher par excès de prudence
+| Catégorie Google | Type | Obligatoire ? | Ce que c'est chez TOTEM |
+|---|---|---|---|
+| Informations personnelles | **Nom** | Obligatoire | prénom et nom, donnés à l'inscription |
+| Informations personnelles | **Adresse e-mail** | Obligatoire | l'identifiant de connexion |
+| Informations personnelles | **Adresse** | Obligatoire | pour envoyer ou reprendre la puce ou le boîtier |
+| Informations personnelles | **Numéro de téléphone** | Obligatoire | pour joindre la personne au sujet de sa carte |
+| Messages | **SMS ou MMS** | Obligatoire | les SMS reçus par les cartes de la personne, dans leur boîtier |
+| Informations financières | **Autres informations financières** | Obligatoire | les soldes et montants que portent ces SMS |
+| Activité dans l'application | **Autre contenu généré par l'utilisateur** | Facultatif | les bénéficiaires enregistrés (noms et numéros) |
+| Identifiants de l'appareil | **Identifiants de l'appareil ou autres** | Facultatif | le jeton de notification ; refuser les notifications n'empêche rien d'autre |
 
-Cocher « au cas où » n'est pas prudent : c'est déclarer faux, et cela oblige à
-justifier une collecte qui n'existe pas.
+**Les SMS sont lus par le modem du boîtier, pas par le téléphone.**
+L'application ne demande aucune autorisation SMS (`app.json` : liste vide).
+On les déclare quand même : ils sont rangés sur la plateforme au nom de la
+personne, et l'application les lui montre. Les taire serait faux.
+
+### Ce qu'il faut répondre NON
+
+Cocher « au cas où » n'est pas prudent : c'est déclarer faux.
 
 - ❌ Position — l'application n'y touche pas
-- ❌ Informations personnelles (nom, courriel, téléphone)
-- ❌ Informations financières — **elles ne quittent jamais le terminal du propriétaire** ; l'application les affiche, elle ne les collecte pas pour elle-même
-- ❌ Messages (SMS, courriels) — **les SMS sont lus par le modem du terminal, pas par le téléphone.** L'application ne demande aucune autorisation SMS
-- ❌ Photos, fichiers, contacts, calendrier, micro, appareil photo
-- ❌ Activité dans l'application, historique de navigation, recherches
-- ❌ Rapports de plantage, diagnostics — aucun outil de ce genre n'est installé
-
-### Le courriel du compte
-
-Le propriétaire crée un compte avec un courriel, qui vit dans **sa** base
-Supabase. Il n'est envoyé à personne d'autre, jamais.
-
-Google demande de déclarer ce que l'**application** collecte et transmet à
-des tiers. Ici le courriel ne quitte pas l'infrastructure du propriétaire.
-Dans le doute, on peut le déclarer — **Adresse e-mail**, collectée,
-**non partagée**, obligatoire, finalité **Gestion du compte**. C'est
-défendable, et déclarer plus que le strict nécessaire ne fait pas refuser une
-application ; l'inverse, si.
+- ❌ Photos, vidéos, fichiers, contacts, calendrier, micro, appareil photo
+- ❌ Historique de navigation, recherches, applications installées
+- ❌ Rapports de plantage, diagnostics, données de performance — aucun
+  outil de ce genre n'est installé
+- ❌ Publicité, mesure d'audience, suivi — rien de tout cela
 
 ---
 
 ## Fonctionnalités financières (Financial features)
 
-L'application affiche des mouvements Mobile Money : la déclaration s'impose.
+TOTEM n'est **pas** une application financière : il ne détient aucun argent,
+n'en fait transiter aucun, n'est ni banque ni portefeuille. Il est l'écran
+d'un boîtier qui porte les cartes SIM de la personne. Mais il affiche des
+soldes Mobile Money : Google pose la question, on y répond.
 
 | Question | Réponse |
 |---|---|
 | L'app propose-t-elle des prêts personnels ? | **Non** |
 | Est-ce une app bancaire ? | **Non** |
 | Gestion de portefeuille / cryptomonnaies ? | **Non** |
-| Paiements ou virements ? | **Non** — l'application ne déplace aucun argent. Elle affiche ce que l'opérateur a fait, et dépose des demandes que le propriétaire exécute lui-même sur sa propre SIM |
+| Paiements ou virements ? | **À trancher avec le propriétaire — et ne pas répondre « Non » sans réfléchir.** La description annonce « dépôt, retrait, transfert » : répondre « Non » contredirait la fiche que l'examinateur a sous les yeux. Ce qui est vrai : TOTEM ne propose aucun service de paiement à lui ; il permet au titulaire de lancer, sur SON compte Mobile Money, les opérations du menu USSD de son opérateur, que l'opérateur autorise avec le code du titulaire. Si le formulaire offre une rubrique « transferts d'argent » ou « autre », la cocher avec cette phrase dans la case d'explication est plus juste qu'un « Non ». |
 | Assurances, placements, jeux d'argent ? | **Non** |
-
-**La phrase qui résume, et elle est vraie** : TOTEM est une interface de
-gestion pour le propriétaire de ses propres cartes SIM — il remplace les
-menus USSD par des écrans. Aucun fonds ne transite, aucun compte de tiers
-n'est touché, aucun service financier n'est proposé à qui que ce soit.
 
 ---
 
 ## La fiche du magasin
 
+Les descriptions sont **les mêmes** que sur l'App Store : elles vivent dans
+`mobile/store.config.js` (`descriptionFr`, `descriptionEn`) — les copier de
+là, pas d'ici, pour qu'elles ne divergent pas.
+
+> **Trois règles de cadrage, et elles comptent toutes les trois.**
+>
+> 1. **Pour tout le monde.** TOTEM s'adresse à quiconque a un compte Mobile
+>    Money — pas à « une boutique », pas à « ses vendeurs », pas aux
+>    « agents ». Une fiche qui décrit une seule entreprise se fait renvoyer
+>    vers une distribution privée.
+> 2. **On ne suit pas l'argent.** TOTEM n'en déplace pas et n'en détient
+>    pas : il rend atteignables des comptes qui sont déjà ceux de la
+>    personne. Dire « suivre l'argent » ferait poser des questions de
+>    service financier auxquelles la réponse est non.
+> 3. **On ne nomme aucun pays.** Le Mobile Money, le réseau qui tombe et
+>    la vie loin de chez soi ne sont pas une particularité d'un seul pays.
+>    On cite les opérateurs à titre d'exemple, jamais comme une liste
+>    fermée.
+
 ### Nom (30 caractères max)
 
 ```
-TOTEM
+TOTEM by Bonzinilabs
 ```
+
+*(20 caractères — le même nom que sur l'App Store.)*
 
 ### Description courte (80 caractères max)
 
 **Anglais**
 ```
-Manage your Mobile Money SIM cards from anywhere. No more USSD menus.
+Your Mobile Money accounts, from anywhere in the world.
 ```
-*(69 caractères)*
+*(55 caractères)*
 
 **Français**
 ```
-Gérez vos cartes SIM Mobile Money d'où que vous soyez. Fini les codes USSD.
+Vos comptes Mobile Money, d'où que vous soyez dans le monde.
 ```
-*(74 caractères)*
+*(60 caractères)*
 
 ### Description complète (4000 caractères max)
 
-> **Deux règles de cadrage, et elles comptent toutes les deux.**
->
-> 1. **On ne suit pas l'argent.** TOTEM n'en déplace pas et n'en détient
->    pas : il rend gérables des cartes SIM que les menus USSD rendent
->    pénibles. Le produit, c'est l'interface. Dire « suivre l'argent »
->    ferait poser des questions de service financier auxquelles la réponse
->    est non.
-> 2. **On ne nomme aucun pays.** Le Mobile Money, le réseau qui tombe et les
->    menus USSD ne sont pas une particularité camerounaise : c'est le
->    quotidien du Nigeria, de la Côte d'Ivoire, du Ghana, du Sénégal, du
->    Kenya. Écrire « au Cameroun » enfermerait la fiche dans un seul marché
->    — et ferait croire à tous les autres que ce n'est pas pour eux.
->    On cite les opérateurs à titre d'exemple, jamais comme une liste
->    fermée.
-
-**Anglais**
-```
-Your Mobile Money SIM cards stay where they are. You do not.
-
-Anyone who runs a Mobile Money line knows the drill: *126#, wait, press 1,
-wait, press 4, mistype, start over. One menu at a time, on a small screen,
-with the SIM card physically in your hand. And when the network drops, you
-start again from the beginning.
-
-TOTEM replaces that with a proper interface.
-
-Your SIM cards sit in a terminal you keep — at the shop, at home, wherever
-you like. You reach them from your phone, from anywhere in the world.
-
-WHAT YOU CAN DO
-
-• Run every card from one screen. MTN, Orange, Moov, Airtel, Wave, and
-  whatever your country uses — each SIM keeps its own name, its own history,
-  its own balance.
-• Turn a USSD sequence into a button. Show TOTEM the path once, and it
-  becomes a button you press. It learns your operator's menus; nothing is
-  hard-coded for one network.
-• Read every operator message in full, exactly as the SIM received it.
-• Keep a PDF receipt for each transaction, ready to send to a customer.
-• Share a card's details — name, number, network — in one gesture, or as a
-  proper PDF document.
-• Get a notification the moment something happens on a card.
-
-BUILT FOR A NETWORK THAT DROPS
-
-Internet goes down; the cards keep working. The terminal keeps its own
-journal and catches up when the network returns. Nothing is lost, and
-nothing is invented: when an operator message cannot be read with certainty,
-TOTEM says so rather than guessing.
-
-Your Mobile Money PIN is never stored, never logged, never put in a message.
-It is typed at the moment of an operation and kept nowhere afterwards. Every
-message you receive stays yours to read in full — in the list, on its card,
-and in the notification itself, at a glance, the way your messaging app shows
-one. What shows on your locked screen is your choice, in your phone's settings.
-
-WHAT TOTEM IS NOT
-
-It is not a payment service, a wallet, or a bank. No money moves through it
-and it holds no funds. It is an interface onto SIM cards you already own,
-for the person who owns them.
-
-English and French, both complete.
-```
-
-**Français**
-```
-Vos cartes SIM Mobile Money restent où elles sont. Vous, non.
-
-Qui tient une ligne Mobile Money connaît la manœuvre : *126#, attendre,
-taper 1, attendre, taper 4, se tromper, recommencer. Un menu à la fois, sur
-un petit écran, la carte SIM à la main. Et quand le réseau lâche, on reprend
-depuis le début.
-
-TOTEM remplace tout cela par une vraie interface.
-
-Vos cartes SIM sont dans un terminal que vous gardez — à la boutique, à la
-maison, où vous voulez. Vous les atteignez depuis votre téléphone, d'où que
-vous soyez dans le monde.
-
-CE QUE VOUS POUVEZ FAIRE
-
-• Piloter chaque carte depuis un seul écran. MTN, Orange, Moov, Airtel,
-  Wave, et ce que votre pays utilise — chaque SIM garde son nom, son
-  historique, son solde.
-• Transformer un parcours USSD en bouton. Montrez le chemin une fois à
-  TOTEM, et il devient un bouton. Il apprend les menus de votre opérateur ;
-  rien n'est écrit d'avance pour un seul réseau.
-• Lire chaque message de l'opérateur en entier, tel que la SIM l'a reçu.
-• Garder un reçu PDF pour chaque opération, prêt à envoyer à un client.
-• Partager les coordonnées d'une carte — nom, numéro, réseau — d'un geste,
-  ou en vrai document PDF.
-• Être prévenu à la seconde où quelque chose se passe sur une carte.
-
-FAIT POUR UN RÉSEAU QUI TOMBE
-
-Internet lâche ; les cartes, elles, continuent de fonctionner. Le terminal
-tient son propre journal et rattrape son retard au retour du réseau. Rien ne
-se perd, et rien ne s'invente : quand un message d'opérateur ne peut pas
-être lu avec certitude, TOTEM le dit plutôt que de deviner.
-
-Votre code PIN Mobile Money n'est jamais enregistré, jamais journalisé,
-jamais mis dans un message. Il se saisit au moment d'une opération et n'est
-conservé nulle part ensuite. Chaque message que vous recevez reste à vous, à
-lire en entier — dans la liste, sur sa fiche, et jusque dans la notification,
-d'un coup d'œil, comme le fait votre application de messages. Ce qui s'affiche
-sur votre écran verrouillé est votre choix, dans les réglages de votre
-téléphone.
-
-CE QUE TOTEM N'EST PAS
-
-Ni un service de paiement, ni un portefeuille, ni une banque. Aucun argent
-n'y transite et il ne détient aucun fonds. C'est une interface sur des
-cartes SIM qui sont déjà les vôtres, pour la personne qui les possède.
-
-En français et en anglais, entièrement.
-```
+Celle de `mobile/store.config.js`, en anglais et en français (un peu plus
+de 2 000 caractères chacune).
 
 ---
 
@@ -359,7 +276,12 @@ Questionnaire à remplir. Toutes les réponses sont **Non** : pas de violence,
 pas de contenu sexuel, pas de jeu d'argent, pas de substances, pas de
 contenu généré par les utilisateurs, pas de partage de position.
 
-Catégorie : **Finance**.
+Catégorie : **Outils** — la même que la catégorie principale de l'App Store
+(« Utilitaires », `mobile/store.config.js`). TOTEM est l'écran d'un boîtier
+qui porte des cartes SIM, pas un service financier ; « Finance » reste en
+catégorie SECONDAIRE chez Apple parce que l'application montre des soldes
+et lance les opérations de l'opérateur. Choix à confirmer par le
+propriétaire.
 
 ---
 
@@ -422,18 +344,24 @@ lien pour le déposer à la main, comme avant.
 
 ## L'ordre des choses
 
-1. Poser `CONTACT_COURRIEL` sur Vercel, redéployer, vérifier les DEUX pages
+1. Mettre la plateforme à niveau : migration
+   `migrations/20261004_inscription_publique.sql` dans Supabase, puis
+   déploiement (voir `docs/APP-STORE.md`, étape 1).
+2. Poser `CONTACT_COURRIEL` sur Vercel, redéployer, vérifier les DEUX pages
    (`/confidentialite` et `/suppression`) : l'adresse doit s'y afficher.
-2. Créer l'application dans la Play Console (nom, langue par défaut anglais).
-3. Coller le lien de la politique de confidentialité.
-4. Remplir *Sécurité des données* — les réponses sont ci-dessus.
-5. Remplir *Fonctionnalités financières*.
-6. Remplir la classification du contenu.
-7. Fiche du magasin : descriptions, icône, captures.
-8. Poser `GOOGLE_PLAY_CLE` (voir ci-dessus), puis compiler un paquet `essai`
-   (AAB) : il part seul sur la **piste d'essai interne**.
-9. L'installer soi-même, l'utiliser quelques jours.
-10. Puis la production.
+3. Créer l'application dans la Play Console (nom « TOTEM by Bonzinilabs »,
+   langue par défaut anglais, **application**, **gratuite**).
+4. Coller le lien de la politique de confidentialité.
+5. *Accès à l'application* : la vitrine de démonstration (ci-dessus).
+6. *Sécurité des données* — les réponses sont ci-dessus.
+7. *Fonctionnalités financières*.
+8. La classification du contenu.
+9. Fiche du magasin : descriptions, icône, captures.
+10. Poser `GOOGLE_PLAY_CLE` (voir ci-dessus), puis compiler un paquet
+    `essai` (AAB) : il part seul sur la **piste d'essai interne**.
+11. L'installer soi-même : créer un compte, voir « Ajouter ma carte », le
+    supprimer. Puis l'utiliser quelques jours avec une vraie carte.
+12. Puis la production, **dans tous les pays**.
 
 Le compte d'organisation BONZINILABS est **dispensé** de la règle des 12
 testeurs pendant 14 jours, qui s'applique aux comptes personnels.

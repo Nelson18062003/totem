@@ -16,9 +16,10 @@
 # Le compte de l'examinateur, lui, n'a rien à ranger : c'est la vitrine de
 # démonstration de la plateforme (web/lib/demonstration.ts), dont les
 # identifiants sont écrits dans la fiche, à dessein — ils n'ouvrent que des
-# données inventées. Voir docs/APP-STORE.md pour la suite —
-# le formulaire « app non répertoriée » et la soumission, qu'Apple réserve au
-# titulaire du compte.
+# données inventées. Voir docs/APP-STORE.md pour la suite — la confidentialité
+# de l'app, la réponse à l'examen et la soumission, qu'Apple réserve au
+# titulaire du compte. TOTEM est une application GRAND PUBLIC, sur l'App
+# Store public : aucune distribution « non répertoriée ».
 
 name: Fiche App Store
 
@@ -160,6 +161,7 @@ jobs:
             echo "informations pour l'examinateur sont dans App Store Connect."
             echo ""
             echo "Reste ce qu'Apple réserve au titulaire du compte — voir"
-            echo "**docs/APP-STORE.md** : la confidentialité de l'app, le"
-            echo "formulaire « non répertoriée », puis « Soumettre pour examen »."
+            echo "**docs/APP-STORE.md** : la confidentialité de l'app, la"
+            echo "réponse à l'examen (docs/APPLE-REPONSE-2.1.md), puis « Soumettre"
+            echo "à nouveau ». Application grand public : pas de distribution non répertoriée."
           } >> $GITHUB_STEP_SUMMARY

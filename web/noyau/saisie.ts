@@ -18,6 +18,8 @@
 // Règle pure, sans navigateur : le noyau, partagé par la plateforme et le
 // téléphone, qui lisent ainsi un même collage de la même façon.
 
+import { nombre } from "./types";
+
 // Une suite de chiffres, avec ce qui les sépare d'ordinaire dans un numéro
 // recopié : espaces (même insécables), points, tirets, parenthèses. JAMAIS
 // un retour à la ligne : deux lignes collées sont deux choses, et les
@@ -74,4 +76,81 @@ export function montantSaisi(brut: string): number {
   // qu'on tape, c'est un numéro collé au mauvais endroit.
   if (!chiffres || chiffres.length > 9) return 0;
   return Number(chiffres);
+}
+
+// ---------------------------------------------------------------------------
+// CE QUE LE CHAMP MONTRE PENDANT QU'ON TAPE.
+//
+// « 677998877 » et « 250000 » se lisaient mal : neuf chiffres collés, on ne
+// voit pas qu'il en manque un, et un zéro de trop sur un montant ne saute pas
+// aux yeux — sur de l'argent. Le propriétaire : « ce n'est pas formaté, c'est
+// illisible ». Le champ écrit donc le numéro comme on le dit au Cameroun
+// (« 677 12 34 56 ») et le montant par milliers (« 250 000 »), À MESURE
+// qu'on tape.
+//
+// Ce n'est qu'une façon de MONTRER : ce qui part au réseau reste
+// `numeroSaisi` / `montantSaisi`, qui relisent cette forme sans peine. Et
+// rien n'est réécrit quand on ne sait pas lire : une phrase collée, deux
+// numéros, une écriture étrangère restent tels quels — l'annonce sous le
+// champ dit le doute.
+// ---------------------------------------------------------------------------
+
+/** « 677123456 » → « 677 12 34 56 », groupé à mesure : « 6771 » → « 677 1 ». */
+function groupesDuNumero(chiffres: string): string {
+  const morceaux = [chiffres.slice(0, 3), chiffres.slice(3, 5), chiffres.slice(5, 7), chiffres.slice(7, 9)];
+  const debut = morceaux.filter(Boolean).join(" ");
+  return chiffres.length > 9 ? `${debut} ${chiffres.slice(9)}` : debut;
+}
+
+/**
+ * Le texte à montrer dans le champ, mis en forme — ou le texte tel quel quand
+ * il ne se lit pas comme UN numéro / UN montant.
+ */
+export function enFormeDansLeChamp(
+  type: "numero" | "montant", brut: string, langue: "fr" | "en",
+): string {
+  const texte = brut ?? "";
+  if (type === "numero") {
+    // Seulement ce qui s'écrit dans un numéro. Une lettre, et c'est un
+    // collage avec du texte autour : on n'y touche pas.
+    if (!/^[\d\s+().\-  ]*$/.test(texte)) return texte;
+    const chiffres = texte.replace(/\D/g, "");
+    if (!chiffres) return texte.trim() === "+" ? "+" : "";
+    // L'indicatif en cours de frappe (« +237 6… ») : on le garde devant,
+    // jusqu'à ce que le numéro soit complet — il tombe alors de lui-même.
+    const indicatif = chiffres.startsWith("237") && chiffres.length < 12
+      && (texte.trim().startsWith("+") || chiffres.length > 9);
+    const lu = numeroSaisi(texte);
+    if (!indicatif && lu && lu.length <= 9) return groupesDuNumero(lu);
+    if (indicatif) {
+      const reste = chiffres.slice(3);
+      return reste ? `+237 ${groupesDuNumero(reste)}` : "+237";
+    }
+    return groupesDuNumero(chiffres);
+  }
+  // Le montant : des chiffres et ce qui les sépare — ou un montant collé avec
+  // son unité (« 5 000 FCFA »), qu'on ramène à son nombre.
+  // Le séparateur de milliers de l'ÉCRAN s'efface avant de lire : en anglais,
+  // c'est la virgule. Sans cela, « 5,000 » dont on efface un zéro devenait
+  // « 5,00 », lu comme cinq francs et zéro centime — le montant tombait à 5.
+  const sansGroupes = langue === "en"
+    ? texte.replace(/,/g, "") : texte.replace(/[\s\u00a0\u202f]/g, "");
+  const m = montantSaisi(sansGroupes);
+  if (m > 0) return nombre(m, langue);
+  return /^[\s\d]*$/.test(texte) ? texte.replace(/\s/g, "") : texte;
+}
+
+/**
+ * Effacer un ESPACE de la mise en forme ne doit pas être un coup pour rien :
+ * la forme le remettrait aussitôt, et la touche « effacer » semblerait ne
+ * rien faire. Quand le texte a raccourci sans que les chiffres changent, on
+ * efface le chiffre qui précédait.
+ */
+export function apresEffacement(avant: string, apres: string): string {
+  const chiffres = (s: string) => s.replace(/\D/g, "");
+  if (apres.length < avant.length && chiffres(apres) === chiffres(avant) && chiffres(apres)) {
+    const c = chiffres(apres);
+    return c.slice(0, -1);
+  }
+  return apres;
 }

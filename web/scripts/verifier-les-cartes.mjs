@@ -184,6 +184,19 @@ try {
     const bilan = await (await lire("/api/bilan?jours=90", vendeur)).text();
     verifier("le bilan ne porte que la carte Orange",
       [bilan.includes(ORANGE), bilan.includes(MTN)], [true, false]);
+
+    // Le relevé de compte : le même mur que le bilan (scripts/verifier-le-releve.mjs
+    // l'attaque en entier, liens signés compris).
+    const jourDe = (t) => new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" })
+      .format(new Date(t));
+    const [jour, semaine] = [jourDe(Date.now()), jourDe(Date.now() - 7 * 86400000)];
+    const releve = await (await lire(
+      `/api/releve?carte=tout&de=${semaine}&a=${jour}&format=csv`, vendeur)).text();
+    verifier("le relevé « toutes mes cartes » ne porte que la carte Orange",
+      [releve.includes(ORANGE), releve.includes(MTN)], [true, false]);
+    verifier("le relevé de la carte MTN lui est refusé",
+      (await lire(`/api/releve?carte=${MTN}&de=${semaine}&a=${jour}&format=pdf`,
+        vendeur)).status, 404);
   }
 
   console.log("\nLE VENDEUR CHERCHE CE QUI N'EST PAS À LUI");
@@ -256,8 +269,13 @@ try {
       lu = r.ok ? await r.json() : { statut: r.status };
     }
     verifier("il lit la réponse à SON code secret", lu?.etat, "faite");
-    verifier("le code s'est effacé, la carte est restée",
-      await brute(code.id), { secret: true, carte: ORANGE });
+    // Restent le drapeau, la carte, et ce que le réseau a dit de la session
+    // (« reseau », que le robot joint à sa réponse) — jamais le code.
+    const restes = { ...(await brute(code.id) ?? {}) };
+    const dit = restes.reseau;
+    delete restes.reseau;
+    verifier("le code s'est effacé, la carte est restée", restes, { secret: true, carte: ORANGE });
+    verifier("ce que le réseau a dit survit au code", ["attend", "fini"].includes(dit), true);
     verifier("l'application d'avant raccroche sans nommer la carte : passe",
       (await commande({ type: "ussd_fin" }, vendeur)).statut, 200);
     verifier("il raccroche SA session",
