@@ -30,7 +30,8 @@ au moment même où l'on écrit : la carte sait qui tient sa session
 import threading
 
 from .carte import Carte
-from .modem import USSD_OUVERTE, ErreurModem
+from .modem import (USSD_OUVERTE, ErreurModem, MenuReferme, ReponseNonRecue,
+                    ReponseRefusee)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -157,10 +158,33 @@ class Compte:
     def _echanger(self, envoi, charge):
         """Un échange avec le réseau. S'il échoue, on ne sait plus où en est
         le menu : DANS LE DOUTE, PERSONNE N'Y RÉPOND. La session est
-        considérée close et sans titulaire ; la suivante se recompose."""
+        considérée close et sans titulaire ; la suivante se recompose.
+
+        ET LE DOUTE SE RÉSOUT EN RACCROCHANT, PAS EN OUBLIANT. La carte
+        oubliait sa session sans rien dire au réseau : un réseau lent qui
+        n'avait pas répondu en trente secondes gardait son menu ouvert, et
+        le code composé ensuite — même commande AT pour ouvrir et pour
+        répondre — y tombait comme une RÉPONSE, dans un écran de montant
+        ou de numéro. On raccroche donc la ligne (AT+CUSD=2).
+
+        Deux exceptions, où l'on sait exactement où l'on en est :
+        une réponse REFUSÉE avant d'être écrite (`ReponseRefusee`) ne change
+        rien au menu, qui reste à son titulaire ; un menu que le réseau
+        avait déjà refermé (`MenuReferme`) n'a rien à raccrocher."""
         try:
             return envoi(charge)
+        except ReponseRefusee:
+            raise
+        except MenuReferme:
+            self.session_ouverte = False
+            self.titulaire = None
+            self.dernier_menu = ""
+            raise
         except Exception:
+            try:
+                self.modem.ussd_annuler()
+            except Exception:
+                pass    # le raccrochage est un geste de prudence, pas une condition
             self.session_ouverte = False
             self.titulaire = None
             self.dernier_menu = ""
@@ -278,4 +302,5 @@ def libelles_uniques(comptes):
 
 
 __all__ = ["Compte", "libelles_uniques", "ErreurModem", "SessionTenue",
+           "ReponseRefusee", "MenuReferme", "ReponseNonRecue",
            "WEB", "TELEGRAM"]

@@ -58,8 +58,9 @@ import time
 
 from datetime import datetime, timedelta
 
-from .analyse_sms import solde_annonce
-from .compte import WEB, TELEGRAM, SessionTenue
+from .analyse_sms import _normaliser, solde_annonce
+from .compte import (WEB, TELEGRAM, MenuReferme, ReponseNonRecue,
+                     ReponseRefusee, SessionTenue)
 from .declencheur import NATURES, RefusRecu
 from .nuage import _horodatage
 from .textes import t
@@ -390,6 +391,10 @@ class Pilotage:
             self.journal.evenement(t(f"remote desk: failure ({genre})",
                                      f"guichet à distance : échec ({genre})"))
 
+        # Un 0x00 fait refuser TOUTE l'écriture par la base (text comme
+        # jsonb) : la demande restait « en cours » pour toujours.
+        if isinstance(resultat, str) and "\x00" in resultat:
+            resultat = resultat.replace("\x00", "\ufffd")
         final = {"etat": etat, "resultat": resultat,
                  "traitee_le": _horodatage()}
         # L'EFFACEMENT DU CODE VOYAGE AVEC LA DERNIÈRE ÉCRITURE, toujours.
@@ -812,12 +817,24 @@ class Pilotage:
             reponse = compte.ussd_demarrer(code, qui=qui, si_libre=True)
         except SessionTenue as tenue:
             raise RefusPoli(self._expliquer_tenue(tenue.titulaire, langue))
-        self.journal.evenement(t(
-            f"remote desk: {code} ({compte.libelle})",
-            f"guichet à distance : {code} ({compte.libelle})"))
+        except ReponseRefusee as refus:
+            raise RefusPoli(_caracteres_refuses(refus, langue))
+        except ReponseNonRecue:
+            self._journaliser_composition(code, compte)
+            return self._peut_avoir_abouti(compte, langue)
+        self._journaliser_composition(code, compte)
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
         return reponse, self._etat_du_reseau(compte, qui)
+
+    def _journaliser_composition(self, code, compte):
+        """Le journal « Ce qui s'est passé » se garde longtemps et se lit à
+        plusieurs : il reçoit le service composé, jamais le numéro du
+        bénéficiaire ni le montant que le raccourci y a placés."""
+        lisible = code_pour_le_journal(code)
+        self.journal.evenement(t(
+            f"remote desk: {lisible} ({compte.libelle})",
+            f"guichet à distance : {lisible} ({compte.libelle})"))
 
     @staticmethod
     def _etat_du_reseau(compte, qui):
@@ -934,9 +951,51 @@ class Pilotage:
                 "Ce menu n'est plus le vôtre (il s'est refermé, ou a été "
                 "repris) — rien n'a été envoyé. Recomposez le code.",
                 langue=langue))
+        except MenuReferme:
+            # Le réseau avait refermé le menu pendant qu'on lisait : la
+            # réponse — peut-être le code secret — n'est PAS partie.
+            with self._garde:
+                self._vie.pop(compte, None)
+            raise RefusPoli(t(
+                "The operator closed this menu before your reply — nothing "
+                "was sent. Dial the code again.",
+                "L'opérateur a refermé ce menu avant votre réponse — rien "
+                "n'est parti. Recomposez le code.", langue=langue))
+        except ReponseRefusee as refus:
+            # Rien n'est écrit au réseau. L'écran va conclure : on raccroche
+            # pour que la carte ne reste pas sur un menu que personne ne voit.
+            compte.ussd_annuler(qui=qui)
+            with self._garde:
+                self._vie.pop(compte, None)
+            raise RefusPoli(_caracteres_refuses(refus, langue))
+        except ReponseNonRecue:
+            return self._peut_avoir_abouti(compte, langue)
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
         return reponse, self._etat_du_reseau(compte, qui)
+
+    def _peut_avoir_abouti(self, compte, langue=None):
+        """La demande est PARTIE, et le réseau ne l'a pas confirmée à temps.
+
+        « Le terminal n'a pas pu faire » était faux : le code secret était
+        déjà chez l'opérateur, et MTN répond parfois en trente-cinq secondes
+        sur la 3G de Douala. Le propriétaire recommençait le dépôt — qui
+        partait deux fois. Ce n'est ni un échec ni une réussite : on dit ce
+        qu'on sait, et où regarder. La carte a raccroché (voir
+        `Compte._echanger`), le réseau dit donc « fini »."""
+        with self._garde:
+            self._vie.pop(compte, None)
+        self.journal.evenement(t(
+            f"remote desk: sent, no reply from the network in time "
+            f"({compte.libelle})",
+            f"guichet à distance : parti, sans réponse du réseau à temps "
+            f"({compte.libelle})"))
+        return t(
+            "Your request went out, but the network did not answer in time: "
+            "it may have gone through. Check your SMS before trying again.",
+            "Votre demande est partie, mais le réseau n'a pas répondu à "
+            "temps : elle a pu aboutir. Regardez vos SMS avant de "
+            "recommencer.", langue=langue), "fini"
 
     def _noter_session(self, compte, qui):
         with self._garde:
@@ -949,11 +1008,65 @@ class Pilotage:
         """Si le réseau vient d'annoncer un solde, la base le reflète tout de
         suite : c'est exactement ce que « consulter le solde » venait chercher."""
         try:
+            if solde_douteux(reponse or ""):
+                return
             solde = solde_annonce(reponse or "")
             if solde is not None and compte.carte.identifiee:
                 self.nuage.publier_solde(compte.carte.iccid, solde)
         except Exception:
             pass    # un solde non relevé n'est pas une panne de session
+
+
+# UN SOLDE QUI N'EST PAS CELUI DU PORTE-MONNAIE. Chaque écran USSD passait
+# par `_relever_solde` : « Solde commission: 2500 FCFA » devenait le solde de
+# la carte à l'accueil, daté d'aujourd'hui — et l'on remet de l'argent sur la
+# foi de ce chiffre. Dans le doute, on ne publie rien : le vrai relevé de
+# solde reviendra.
+RE_SOLDE_QUALIFIE = re.compile(
+    r"\b(?:solde|balance)\s+(?:de\s+|du\s+|des\s+|d\s*)?"
+    r"(?:commission|bonus|epargne|pret|credit|internet|data|airtime|sms"
+    r"|appel|a\s+rembourser|savings|loan)")
+RE_AUTRE_COMPTE = re.compile(
+    r"\b(?:pret|loan|epargne|savings|internet|forfait|data|valid\s+until"
+    r"|valable\s+jusqu|expire)")
+
+
+def solde_douteux(texte):
+    """Ce texte parle-t-il d'un autre solde que celui du porte-monnaie ?"""
+    norme = _normaliser(texte or "")
+    return bool(RE_SOLDE_QUALIFIE.search(norme) or RE_AUTRE_COMPTE.search(norme))
+
+
+RE_SEGMENT_CODE = re.compile(r"[^*#]+")
+
+
+def code_pour_le_journal(code):
+    """Le code composé, tel que le journal peut le garder.
+
+    Le service reste lisible (« *126*9* »), mais toute suite de quatre
+    chiffres ou plus — un numéro, un montant, parfois un code secret collé
+    en fin de raccourci — devient « … ». Le premier segment, le numéro du
+    service, n'est jamais masqué : « *8001# » se lit."""
+    premier = [True]
+
+    def masquer(m):
+        if premier[0]:
+            premier[0] = False
+            return m.group(0)
+        return "…" if sum(c.isdigit() for c in m.group(0)) >= 4 else m.group(0)
+
+    return RE_SEGMENT_CODE.sub(masquer, code or "")
+
+
+def _caracteres_refuses(refus, langue=None):
+    vus = " ".join(f"« {c} »" for c in refus.caracteres)
+    return t(
+        f"This reply contains characters the operator's network cannot "
+        f"receive ({vus}) — nothing was sent. Type it again with ordinary "
+        f"letters and digits.",
+        f"Cette réponse contient des caractères que le réseau de "
+        f"l'opérateur ne reçoit pas ({vus}) — rien n'est parti. Retapez-la "
+        f"avec des lettres et des chiffres ordinaires.", langue=langue)
 
 
 def _sur_la_carte(compte, iccid):
