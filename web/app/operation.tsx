@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { remplirVariables } from "@noyau/codes";
-import { lireEcran, type EtatDuReseau } from "@noyau/ussd";
+import {
+  lignesDuMessage, lireEcran, menuEnTuiles, type EtatDuReseau, type MorceauDuMenu,
+} from "@noyau/ussd";
 import {
   ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, champAServir, etapePeutPartir, reponseDuBoitier,
   reponseLibre, reponsePrete, restantsApresReponse, type EcranRecu,
@@ -465,6 +467,11 @@ export function OperationPopup({
   // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
   // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
   const ecran = lireEcran(dernier, dernierMsg?.reseau);
+  // Le message dans son ordre, une seule fois : le titre dans la carte,
+  // chaque choix en tuile à l'endroit où l'opérateur l'a écrit. Voir
+  // `lignesDuMessage` et `menuEnTuiles` (noyau).
+  const decoupe = lignesDuMessage(dernier, ecran.choix);
+  const enTuiles = menuEnTuiles(decoupe.lignes);
   // « Répondre autre chose » (`libre`) range le pavé : le champ prend sa place.
   const pave = enSession && !attente && !fini && ecran.attend === "secret" && !libre;
 
@@ -602,7 +609,7 @@ export function OperationPopup({
       <div className="flex flex-col gap-3">
         {avis && <p aria-live="polite" className="px-1 text-small text-ink-soft">{avis}</p>}
         {dernier ? (
-          <CarteOperateur texte={dernier} copie={dernier} op={op}
+          <CarteOperateur texte={enTuiles.titre} copie={dernier} op={op}
                           couleur={couleurOperateur(op)} t={t} />
         ) : (
           <p className="px-1 text-small text-ink-soft">{t.ecranVide}</p>
@@ -626,11 +633,13 @@ export function OperationPopup({
             texte={!dernierMsg ? t.connexionA(op) : t.onParleA(op)}
             envoye={dernierMsg ? envoye : null} t={t} />
         ) : repondable ? (
-          // LE MESSAGE DE L'OPÉRATEUR, INTACT — rien n'en est retiré. Dessous,
-          // ses choix en boutons, puis la zone de réponse, toujours là.
+          // LE MESSAGE DE L'OPÉRATEUR, ENTIER ET UNE SEULE FOIS : le titre
+          // dans la carte, ses choix en tuiles dans l'ordre où il les a
+          // écrits. La zone de réponse reste au pied, toujours visible.
           <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`} type={typeQuestion}
             entete={entete}
-            choix={ecran.choix} onChoix={(n) => void repondre(n)}
+            suite={enTuiles.suite} choix={decoupe.restants} aDesChoix={ecran.choix.length > 0}
+            onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
             secretement={secretement}
             onRevenir={libre && ecran.attend === "secret" ? () => setLibre(false) : undefined}
@@ -854,7 +863,7 @@ function EtapeSaisie({
  * recevoir de réponse.
  */
 function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onChoix,
-                      secretement = false, onRevenir }: {
+                      secretement = false, onRevenir, aDesChoix = false, suite = [] }: {
   type: TypeSaisie;
   entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
@@ -865,6 +874,10 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onC
   /** Pendant le code secret : la réponse part protégée comme un code. */
   secretement?: boolean;
   onRevenir?: () => void;
+  /** Le message porte des choix : le champ ne prend pas la main tout seul. */
+  aDesChoix?: boolean;
+  /** Ce qui suit le titre, dans l'ordre de l'opérateur : tuiles et texte. */
+  suite?: MorceauDuMenu[];
 }) {
   const t = textesGuichet[langue];
   const [valeur, setValeur] = useState("");
@@ -883,8 +896,21 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onC
       className="flex min-h-0 flex-1 flex-col">
       <div className="ecran flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
         {entete}
-        {choix.length > 0 && onChoix && (
+        {(suite.length > 0 || choix.length > 0) && onChoix && (
           <div className="flex flex-col gap-2">
+            {suite.map((m, i) => m.numero ? (
+              <button type="button" key={`${i}-${m.numero}`} onClick={() => onChoix(m.numero)}
+                className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2 active:scale-[.98]">
+                <span className="tabnums grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-small text-ink-soft">{m.numero}</span>
+                <span className="flex-1">{m.libelle}</span>
+                <IconChevron size={16} className="text-ink-faint" />
+              </button>
+            ) : (
+              // Une ligne de l'opérateur entre deux choix (« … ») : à sa place.
+              <p key={`${i}-texte`} className="whitespace-pre-line px-4 text-body text-ink-soft">{m.texte}</p>
+            ))}
+            {/* Ce que le message porte sans ligne à lui (« …815. 00. Next ») :
+                il reste écrit dans la carte, et se touche ici. */}
             {choix.map((c) => (
               <button type="button" key={`${c.numero}-${c.libelle}`} onClick={() => onChoix(c.numero)}
                 className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2 active:scale-[.98]">
@@ -895,12 +921,6 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onC
             ))}
           </div>
         )}
-        <div className="flex flex-col gap-1">
-          <p className="text-small font-medium text-ink-soft">{t.votreReponse}</p>
-          <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue}
-                       autoFocus={choix.length === 0} masque={secretement} libre />
-          {secretement && <p className="text-caption text-ink-faint">{t.reponseProtegee}</p>}
-        </div>
         {recents?.length ? (
           <div className="overflow-x-auto pb-1">
             <div className="flex w-max gap-3">
@@ -916,6 +936,14 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onC
             {t.revenirAuPave}
           </button>
         )}
+      </div>
+      {/* LA ZONE DE RÉPONSE NE DÉFILE PAS : la case est toujours sous les
+          yeux, quelle que soit la longueur du menu. */}
+      <div className="flex flex-col gap-1 border-t border-line px-6 pt-3">
+        <p className="text-small font-medium text-ink-soft">{t.votreReponse}</p>
+        <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue}
+                     autoFocus={!aDesChoix} masque={secretement} libre />
+        {secretement && <p className="text-caption text-ink-faint">{t.reponseProtegee}</p>}
       </div>
       <div className="pt-2">
         <GrosBouton libelle={t.envoyer} desactive={!valide} type="submit" />
