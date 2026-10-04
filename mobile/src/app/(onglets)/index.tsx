@@ -27,7 +27,7 @@
 // — la carte et ses gestes d'un côté, les mouvements de l'autre.
 
 import { useEffect, useRef, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -43,20 +43,21 @@ import { OperationPopup, type Operation } from "@/operation";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
-import { choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { boitierSeTait, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
 import { toucherChoix } from "@/toucher";
 import {
   ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, LIGNE_ROND, LIGNES_MOUVEMENTS,
   LIGNES_MOUVEMENTS_LARGE, NOM_ROND, ROND,
 } from "@/mesures-accueil";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import { useDonnees } from "@/donnees";
+import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { clientsRecents } from "@noyau/recents";
 import { aQui } from "@noyau/beneficiaires";
 import { estMouvement } from "@noyau/sms";
-import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { jourCourt, jourDuReleve, libelleJour } from "@noyau/periodes";
 import {
   FUSEAU_DEFAUT, fcfa, jourLocal, type EtatTerminal, type Paiement, type Sim,
 } from "@noyau/types";
@@ -79,11 +80,16 @@ export default function Accueil() {
   const t = textesAccueil[langue];
   const tg = textesGuichet[langue];
   const ecran = useEcran();
-  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 30, recus: 60 });
+  const { donnees, attente, erreur, recharger, actualiser: relireEnSilence, duCahier } =
+    useDonnees({ sms: 30, recus: 60 });
+  // La roue de « tirer » : sous le doigt, sur cet écran, et nulle part
+  // ailleurs — voir `useRoue`.
+  const roue = useRoue();
+  const maintenant = useMaintenant();
 
   const sims = donnees?.sims ?? [];
-  const enPlace = sims.filter((s) => s.enPlace);
-  const cartes = enPlace.length ? enPlace : sims;
+  // Un ordre qui ne bouge pas : voir `cartesAMontrer`.
+  const cartes = cartesAMontrer(sims);
   const raccourcis = donnees?.raccourcis ?? {};
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
 
@@ -94,6 +100,7 @@ export default function Accueil() {
   const [operation, setOperation] = useState<Operation | null>(null);
   const [smsOuvert, setSmsOuvert] = useState<Paiement | null>(null);
   const [coordonnees, setCoordonnees] = useState(false);
+  const [ficheTerminal, setFicheTerminal] = useState(false);
 
   // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
   // jamais APPARAÎTRE puis se cacher — dans ce sens-là, c'est trop tard.
@@ -157,11 +164,16 @@ export default function Accueil() {
   const deux = ecran.deuxColonnes;
   const mouvements = (donnees?.paiements ?? []).filter(estMouvement)
     .slice(0, deux ? LIGNES_MOUVEMENTS_LARGE : LIGNES_MOUVEMENTS);
-  const aujourdhui = jourLocal(new Date(), fuseau);
+  const aujourdhui = jourLocal(new Date(maintenant), fuseau);
+
+  // LE BOÎTIER SE TAIT : les gestes d'argent restent à leur place, mais
+  // l'appui explique au lieu de composer — une demande déposée pendant que
+  // le boîtier se tait partait des heures plus tard, à son retour.
+  const seTait = boitierSeTait(donnees, duCahier) || active?.presence === "inconnue";
 
   // Rien de ce qui arrive avec les données ne doit faire SAUTER l'écran : la
   // forme d'attente de chaque bloc a la hauteur du vrai (`mesures-accueil`).
-  const enAttente = !active && chargement;
+  const enAttente = !active && attente;
 
   const blocCarte = active ? (
     <Entree delai={60}>
@@ -171,9 +183,10 @@ export default function Accueil() {
                        marge={ecran.marge} t={t} />
         ) : null}
         <Caisse carte={active} langue={langue} soldeCache={soldeCache}
-                onBasculerSolde={basculerSolde} />
-        <LigneEtat carte={active} terminal={donnees?.terminal ?? null} fuseau={fuseau}
-                   langue={langue} t={t} onActualiser={actualiser} />
+                onBasculerSolde={basculerSolde} signalFige={seTait} />
+        <LigneEtat carte={active} seTait={seTait} maintenant={maintenant} fuseau={fuseau}
+                   langue={langue} t={t} onActualiser={actualiser}
+                   onTerminal={() => setFicheTerminal(true)} />
       </View>
     </Entree>
   ) : enAttente ? (
@@ -191,6 +204,14 @@ export default function Accueil() {
              style={{ textAlign: "center", lineHeight: 20 }}>
         {t.aucuneCarteDetail}
       </Texte>
+      {/* Sans aucune carte, le boîtier qui se tait doit encore se dire :
+          inviter à « attendre une SIM » quand la vraie panne est un boîtier
+          éteint, c'est envoyer chercher au mauvais endroit. */}
+      {seTait ? (
+        <View style={{ marginTop: espaces.sm }}>
+          <PastilleHorsLigne t={t} onPress={() => setFicheTerminal(true)} />
+        </View>
+      ) : null}
     </Carte>
   );
 
@@ -204,13 +225,16 @@ export default function Accueil() {
                        width: "100%", maxWidth: 460, alignSelf: "center" }}>
           {gestes.map((g) => (
             <Rond key={g.libelle} icone={g.icone} libelle={g.libelle} aide={g.aide}
-                  onPress={() => setOperation(g.fabrique())} />
+                  enPause={seTait}
+                  onPress={() => (seTait ? setFicheTerminal(true) : setOperation(g.fabrique()))} />
           ))}
+          {/* Recevoir ne passe pas par le boîtier : ce sont le nom et le
+              numéro, à donner à qui paie. Il reste toujours actif. */}
           <Rond icone="Identite" libelle={t.rondRecevoir} aide={t.recevoirAria}
                 onPress={() => setCoordonnees(true)} />
-          <Rond icone="Hash" libelle={t.rondUssd} aide={t.ussdAria}
-                onPress={() => router.push({ pathname: "/ussd",
-                                             params: { carte: active.iccid } })} />
+          <Rond icone="Hash" libelle={t.rondUssd} aide={t.ussdAria} enPause={seTait}
+                onPress={() => (seTait ? setFicheTerminal(true)
+                  : router.push({ pathname: "/ussd", params: { carte: active.iccid } }))} />
         </View>
         {gestes.length === 0 ? (
           // Aucun code relevé pour cet opérateur : on le DIT, et on mène
@@ -301,10 +325,7 @@ export default function Accueil() {
           width: "100%",
           alignSelf: "center",
         }}
-        refreshControl={
-          <RefreshControl refreshing={chargement} onRefresh={recharger}
-                          tintColor={couleurs.encrePale} />
-        }
+        refreshControl={roue}
       >
         {/* L'EN-TÊTE : le salut, et l'engrenage. « Overview » est parti — il
             ne disait rien ; le salut, lui, accueille. Le graphe de l'Analyse
@@ -324,7 +345,7 @@ export default function Accueil() {
           </View>
         </Entree>
 
-        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+        {erreur ? <Accroc message={erreur} onReessayer={() => void recharger()} /> : null}
 
         {deux ? (
           <View style={{ flexDirection: "row", gap: espaces.xl, alignItems: "flex-start" }}>
@@ -338,12 +359,18 @@ export default function Accueil() {
 
       {operation ? (
         <OperationPopup operation={operation} onFermer={() => setOperation(null)}
-                        onTermine={recharger} />
+                        onTermine={() => relireEnSilence({ suivi: true })} />
       ) : null}
 
       {smsOuvert ? (
-        <FicheSms paiement={smsOuvert} onFermer={() => setSmsOuvert(null)}
-                  onChange={recharger} />
+        <FicheSms paiement={smsOuvert} onFermer={() => setSmsOuvert(null)} fuseau={fuseau}
+                  onChange={() => relireEnSilence()} />
+      ) : null}
+
+      {ficheTerminal && donnees?.terminal ? (
+        <FicheTerminalHorsLigne terminal={donnees.terminal} maintenant={maintenant}
+                                fuseau={fuseau} langue={langue}
+                                onFermer={() => setFicheTerminal(false)} />
       ) : null}
 
       {coordonnees && active ? (
@@ -426,7 +453,10 @@ function PuceCarte({ carte, actif, t }: { carte: Sim; actif: boolean; t: T }) {
   const fin = /·\s*(\S+)$/.exec(carte.libelle)?.[1];
   return (
     <Animated.View style={appui.style}>
-      <Pressable onPress={() => { if (!actif) { choisirCarte(carte.iccid); toucherChoix(); } }}
+      {/* Toucher la puce DÉJÀ allumée retient aussi le choix : sans cela,
+          la carte montrée par défaut n'était jamais retenue, et changeait
+          avec l'ordre de la plateforme. */}
+      <Pressable onPress={() => { choisirCarte(carte.iccid); if (!actif) toucherChoix(); }}
                  {...appui}
                  accessibilityRole="button"
                  // `aria-selected` EN PLUS : react-native-web ignore
@@ -462,11 +492,10 @@ function PuceCarte({ carte, actif, t }: { carte: Sim; actif: boolean; t: T }) {
  * lignes de texte y tiennent) : l'alerte du terminal vient s'y loger au
  * lieu de pousser l'écran.
  */
-function LigneEtat({ carte, terminal, fuseau, langue, t, onActualiser }: {
-  carte: Sim; terminal: EtatTerminal | null; fuseau: string; langue: "en" | "fr"; t: T;
-  onActualiser: (() => void) | null;
+function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser, onTerminal }: {
+  carte: Sim; seTait: boolean; maintenant: number; fuseau: string; langue: "en" | "fr"; t: T;
+  onActualiser: (() => void) | null; onTerminal: () => void;
 }) {
-  const muet = terminal != null && !terminal.enLigne;
   let texte: string;
   if (!carte.enPlace) texte = t.carteMuette(carte.derniereVue);
   else if (carte.solde == null) texte = t.aucunSoldeCourt;
@@ -476,7 +505,7 @@ function LigneEtat({ carte, terminal, fuseau, langue, t, onActualiser }: {
     // d'hier s'annonçait comme celui de maintenant — le chiffre pour lequel
     // on ouvre l'application. Une plateforme pas encore à jour n'envoie pas
     // l'instant : on garde alors l'heure seule, comme avant.
-    const jour = jourDuReleve(carte.soldeLe, Date.now(), fuseau);
+    const jour = jourDuReleve(carte.soldeLe, maintenant, fuseau);
     texte = jour?.genre === "hier" ? t.soldeReleveHier(carte.soldeMaj)
       : jour?.genre === "avant" ? t.soldeReleveLe(jourCourt(jour.cle, langue), carte.soldeMaj)
       : t.soldeReleve(carte.soldeMaj);
@@ -490,21 +519,12 @@ function LigneEtat({ carte, terminal, fuseau, langue, t, onActualiser }: {
              style={{ flex: 1, lineHeight: 16 }}>
         {texte}
       </Texte>
-      {muet ? (
-        <Pressable onPress={() => router.push("/reglages")}
-                   accessibilityRole="button"
-                   accessibilityLabel={t.terminalMuetAria(terminal!.majTexte)}
-                   hitSlop={{ top: 6, bottom: 6 }}
-                   style={({ pressed }) => ({
-                     height: HAUTEUR_ETAT, flexDirection: "row", alignItems: "center",
-                     gap: espaces.xs + 2, paddingHorizontal: espaces.md,
-                     borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.alerte,
-                     backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
-                   })}>
-          <Pastille couleur={couleurs.alerte} />
-          <Texte taille={textes.petit} poids="moyen" ton="alerte">{t.terminalMuetCourt}</Texte>
-          <Icone nom="Chevron" taille={12} couleur={couleurs.alerte} />
-        </Pressable>
+      {seTait ? (
+        // LE BOÎTIER SE TAIT, à la place d'« Actualiser » — qui partirait
+        // vers un boîtier qui ne répond pas. L'appui EXPLIQUE (ce que c'est,
+        // l'argent qui arrive quand même, quoi faire à la boutique) au lieu
+        // de mener aux Réglages, qui répétaient « muet » sans rien dire.
+        <PastilleHorsLigne t={t} onPress={onTerminal} />
       ) : carte.enPlace && onActualiser ? (
         // « Actualiser » remplace le cercle « Solde » : il pose la question
         // au réseau, juste à côté de la réponse qu'il va remplacer.
@@ -526,6 +546,29 @@ function LigneEtat({ carte, terminal, fuseau, langue, t, onActualiser }: {
   );
 }
 
+/** « Terminal hors ligne › » — d'une ligne, à hauteur fixe : elle prend la
+ *  place d'« Actualiser » sans rien pousser. */
+function PastilleHorsLigne({ t, onPress }: { t: T; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress}
+               accessibilityRole="button"
+               accessibilityLabel={t.horsLigneTitre}
+               hitSlop={{ top: 6, bottom: 6 }}
+               style={({ pressed }) => ({
+                 height: HAUTEUR_ETAT, flexDirection: "row", alignItems: "center",
+                 gap: espaces.xs + 2, paddingHorizontal: espaces.md,
+                 borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.alerte,
+                 backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+               })}>
+      <Pastille couleur={couleurs.alerte} />
+      <Texte taille={textes.petit} poids="moyen" ton="alerte" numberOfLines={1}>
+        {t.terminalMuetCourt}
+      </Texte>
+      <Icone nom="Chevron" taille={12} couleur={couleurs.alerte} />
+    </Pressable>
+  );
+}
+
 /**
  * UN ROND D'ACTION : le cercle, et son NOM dessous — comme les applications
  * d'opérateur que tout le monde a déjà dans la main. Tous du même dessin :
@@ -534,8 +577,11 @@ function LigneEtat({ carte, terminal, fuseau, langue, t, onActualiser }: {
  * deux lignes réservées : un nom long passe à la ligne sur un petit écran
  * sans rien pousser.
  */
-function Rond({ icone, libelle, aide, onPress }: {
+function Rond({ icone, libelle, aide, onPress, enPause = false }: {
   icone: NomIcone; libelle: string; aide: string; onPress: () => void;
+  /** Le boîtier se tait : le geste reste à sa place (rien ne saute), pâli,
+   *  et l'appui explique pourquoi il ne part pas. */
+  enPause?: boolean;
 }) {
   const appui = useAppui();
   // UN MOT NE SE COUPE PAS EN DEUX. Sur 320 points, une colonne fait 57 :
@@ -546,7 +592,7 @@ function Rond({ icone, libelle, aide, onPress }: {
   // quoi qu'il arrive.
   const etroit = useWindowDimensions().width < 360;
   return (
-    <Animated.View style={[{ width: "20%" }, appui.style]}>
+    <Animated.View style={[{ width: "20%", opacity: enPause ? 0.45 : 1 }, appui.style]}>
       <Pressable onPress={onPress} {...appui} accessibilityRole="button"
                  accessibilityLabel={libelle} accessibilityHint={aide}
                  style={{ alignItems: "center", gap: ECART_ROND }}>
@@ -610,7 +656,10 @@ function LigneMouvement({ paiement: p, langue, aujourdhui, nommerCarte, onPress 
           </Texte>
         </View>
         <Texte taille={textes.legende} ton="pale" numberOfLines={1}>
-          {p.jour === aujourdhui ? p.heure : `${p.date} · ${p.heure}`}
+          {/* Le jour se dit ICI, avec l'heure de l'écran : « p.date » est un
+              « Aujourd'hui » écrit par la plateforme LA VEILLE, et relu du
+              cahier le lendemain matin. */}
+          {p.jour === aujourdhui ? p.heure : `${libelleJour(p.jour, aujourdhui, langue)} · ${p.heure}`}
         </Texte>
       </View>
       <View style={{ alignItems: "flex-end", gap: 2 }}>

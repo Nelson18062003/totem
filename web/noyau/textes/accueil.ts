@@ -44,8 +44,29 @@ const en = {
   soldeReleveLe: (j: string, h: string) => `Balance checked on ${j} at ${h}`,
   aucunSoldeCourt: "No balance yet",
   actualiser: "Refresh",
-  terminalMuetCourt: "Terminal silent",
-  terminalMuetAria: (q: string) => `The terminal is not answering (${q}): open its settings`,
+  // « Terminal muet » ne disait rien à qui ne connaît pas le système : ni ce
+  // que c'est, ni si l'argent arrive, ni quoi faire. Hors ligne se comprend
+  // partout ; l'appui ouvre une explication, plus les Réglages.
+  terminalMuetCourt: "Terminal offline",
+  terminalMuetAria: (q: string) => `The terminal is offline (${q}): what it means and what to do`,
+  horsLigneTitre: "The terminal is offline",
+  horsLigneDepuis: (d: string) => `The TOTEM box at the shop hasn't been in touch since ${d}.`,
+  horsLigneSansHeure: "The TOTEM box at the shop isn't in touch any more.",
+  horsLigneArgent:
+    "Your customers can still pay you: the money reaches your account at the operator. "
+    + "Their SMS will appear here as soon as the box is back.",
+  horsLigneEnAttendant:
+    "Until then, the balance and the latest transactions are those of that time, "
+    + "and operations from the app can't go out.",
+  horsLigneSurPlace: "At the shop",
+  horsLigneQuoiFaire:
+    "Check that the box and the internet router are switched on. If they are, "
+    + "unplug the box, count to ten, and plug it back in.",
+  horsLigneFin: "This alert goes away by itself as soon as the box is back in touch.",
+  horsLigneCompris: "OK",
+  horsLigneVoir: "Operations can't go out. Tap to see what to do.",
+  horsLigneHier: (h: string) => `yesterday at ${h}`,
+  horsLigneLe: (j: string, h: string) => `${j} at ${h}`,
   // Les cinq ronds sous la carte : un verbe chacun, court.
   rondRetrait: "Withdraw",
   rondRecevoir: "Receive",
@@ -146,8 +167,26 @@ const fr: typeof en = {
   soldeReleveLe: (j, h) => `Solde relevé le ${j} à ${h}`,
   aucunSoldeCourt: "Aucun solde connu",
   actualiser: "Actualiser",
-  terminalMuetCourt: "Terminal muet",
-  terminalMuetAria: (q) => `Le terminal ne répond plus (${q}) : ouvrir ses réglages`,
+  terminalMuetCourt: "Terminal hors ligne",
+  terminalMuetAria: (q) => `Le terminal est hors ligne (${q}) : ce que cela veut dire, et quoi faire`,
+  horsLigneTitre: "Le terminal est hors ligne",
+  horsLigneDepuis: (d) => `Le boîtier TOTEM de la boutique n’a plus donné de nouvelles depuis ${d}.`,
+  horsLigneSansHeure: "Le boîtier TOTEM de la boutique ne donne plus de nouvelles.",
+  horsLigneArgent:
+    "Vos clients peuvent toujours vous payer : l’argent arrive sur votre compte chez l’opérateur. "
+    + "Leurs SMS s’afficheront ici dès que le boîtier reviendra.",
+  horsLigneEnAttendant:
+    "En attendant, le solde et les derniers mouvements sont ceux de ce moment-là, "
+    + "et les opérations depuis l’application ne peuvent pas partir.",
+  horsLigneSurPlace: "À la boutique",
+  horsLigneQuoiFaire:
+    "Vérifiez que le boîtier et le routeur Internet sont allumés. S’ils le sont, "
+    + "débranchez le boîtier, comptez jusqu’à dix, puis rebranchez-le.",
+  horsLigneFin: "Cette alerte disparaît d’elle-même dès que le boîtier redonne des nouvelles.",
+  horsLigneCompris: "Compris",
+  horsLigneVoir: "Les opérations ne peuvent pas partir. Touchez pour savoir quoi faire.",
+  horsLigneHier: (h) => `hier à ${h}`,
+  horsLigneLe: (j, h) => `le ${j} à ${h}`,
   rondRetrait: "Retrait",
   rondRecevoir: "Recevoir",
   rondUssd: "Code USSD",

@@ -1,6 +1,6 @@
 import { carteDeLaCommande, lireCommande } from "@/lib/serveur";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
-import { langueServeur } from "@/lib/langue-serveur";
+import { langueDemandee } from "@/lib/langue-serveur";
 import { estDemonstration, reponseJouee } from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -11,7 +11,7 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const langue = await langueServeur();
+  const langue = await langueDemandee(req);
   // La démonstration ne lit jamais la table des commandes : sa réponse se
   // calcule à partir du numéro, et un vrai numéro n'en est pas une.
   if (await estDemonstration(req)) {

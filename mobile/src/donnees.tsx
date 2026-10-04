@@ -12,70 +12,96 @@
 // touche « Comptes » : il RECOURT chercher le MÊME chiffre, vieux de dix
 // secondes. Sept écrans appelaient ce hook.
 //
-// Ce que cela coûtait :
-//
-//   — LE FORFAIT. Le même téléchargement, payé quatre fois. À Douala, la
-//     donnée mobile se paie au mégaoctet, et l'écran des cartes descendait
-//     265 Ko à lui seul avant qu'on ne le borne.
-//
-//   — L'ÉCRAN VIDE. Sans réseau, l'employé « Comptes » revient les mains
-//     vides et l'écran ne montre RIEN — alors que l'employé « Accueil »
-//     avait le chiffre en poche trente secondes plus tôt.
-//
 // Il y a maintenant UN cahier, tenu ici, que tous les écrans lisent. Le
 // premier qui va au guichet y écrit ; les autres lisent. Et le cahier est
 // recopié SUR LE TÉLÉPHONE (voir `api/cahier.ts`) : le matin, sans réseau,
 // l'application montre les chiffres d'hier soir en disant qu'ils datent,
 // au lieu d'un écran gris.
 //
-// CHAQUE ÉCRAN NE DEMANDE PAS LA MÊME CHOSE, et c'est ce qui rend la chose
-// moins simple qu'il n'y paraît. L'analyse veut mille SMS ; les Actions n'en
-// veulent aucun. Le cahier porte donc TOUJOURS le plus grand besoin des
-// écrans montés : servir plus que demandé est sans danger (l'accueil ne
-// montre que les quatre derniers de toute façon), servir MOINS ne l'est pas
-// — l'analyse calculerait un mois faux sur un mois tronqué, sans le dire.
+// CHAQUE ÉCRAN NE DEMANDE PAS LA MÊME CHOSE. L'analyse veut mille SMS ; les
+// Actions n'en veulent aucun. Le cahier porte donc TOUJOURS le plus grand
+// besoin des écrans montés : servir plus que demandé est sans danger,
+// servir MOINS ne l'est pas — l'analyse calculerait un mois faux sur un mois
+// tronqué, sans le dire.
 //
-// ET SURTOUT : SE TENIR À JOUR TOUT SEUL.
+// LA ROUE N'APPARTIENT PLUS AU CAHIER — ET C'EST TOUTE L'HISTOIRE.
 //
-// Deux déclencheurs, et ils suffisent :
+// Le propriétaire, sur ses deux téléphones : « un truc de chargement en haut
+// qui a calé ; tout part vers le bas ; il faut redémarrer l'application ».
+// Une première correction avait séparé deux drapeaux et passé ses harnais au
+// vert — et la roue restait plantée. Une enquête (six enquêteurs, chacun
+// contredit) a trouvé pourquoi, et ce n'était pas UNE cause :
 //
-//   1. LA NOTIFICATION. Quand le robot fait sonner, il vient précisément de
-//      se passer quelque chose : on recharge à la seconde. C'est le canal
-//      temps réel — celui de Telegram, celui de toutes les applications
-//      modernes. Il marche écran allumé comme téléphone en poche.
+//   — La roue de « tirer pour rafraîchir » suivait le CHARGEMENT, pas le
+//     doigt. Ouverture, premier passage sur un onglet, SMS non lu ouvert,
+//     opération finie : elle tournait sans qu'on ait tiré. Or sur iPhone,
+//     pour montrer cette roue sans geste, React Native DESCEND lui-même le
+//     contenu de sa hauteur (`setContentOffset`) — « tout part vers le bas ».
+//     Et le drapeau étant partagé, les quatre onglets tournaient ensemble.
+//   — Un appel pouvait ne JAMAIS finir : le fetch d'Expo rend la main aux
+//     en-têtes, et une coupure pendant le corps laissait la lecture en
+//     suspens pour toujours. Le compteur restait à un, la roue aussi, sur
+//     des chiffres pourtant à jour. Seul un redémarrage la retirait.
+//   — Un écran non couvert dont le chargement « discret » échouait restait
+//     en formes grises et en roue POUR TOUJOURS : personne ne réessayait.
 //
-//   2. LE RETOUR AU PREMIER PLAN. Le filet de sécurité : une notification a
-//      pu se perdre (réseau coupé au mauvais moment), et l'écran peut dater
-//      de deux heures. Revenir devant l'application recharge, toujours.
+// Aucun harnais ne pouvait le voir : la roue est un objet natif, et l'export
+// web n'en dessine pas. Une correction de drapeau ne pouvait donc pas tenir.
+// Celle-ci ne corrige pas le drapeau : elle le SUPPRIME. La roue vit dans
+// `useRoue`, sur l'écran qu'on tire, levée par le doigt et baissée à la fin
+// de SA relecture, vingt secondes au plus quoi qu'il arrive. Aucun
+// chargement ne peut plus la faire apparaître — il n'y a plus de fil entre
+// les deux. `verifier-la-roue` l'exige, et l'ancien cahier y échoue.
 //
-// IL Y AVAIT UN TROISIÈME : un « pouls » qui interrogeait la plateforme
-// toutes les quinze secondes. Il a été RETIRÉ, et il faut dire pourquoi,
-// parce que la tentation de le remettre reviendra.
+// CE QUE LE CAHIER DIT À CHAQUE ÉCRAN, à la place :
 //
-// Ce pouls n'était pas un choix d'architecture : c'était une béquille posée
-// sur des notifications qui n'avaient jamais marché (le jeton du téléphone
-// était refusé à l'inscription — voir sonnerie.tsx). Interroger un serveur
-// en boucle pour lui demander « du neuf ? », c'est payer en batterie et en
-// forfait ce que la notification apporte gratuitement, en plus vite. Le
-// propriétaire l'a dit sans détour, et il avait raison. La béquille est
-// tombée le jour où la jambe a guéri — un vrai SMS a fait sonner un vrai
-// téléphone AVANT que ce fichier ne perde son pouls, jamais l'inverse.
+//   `donnees`  ce qu'il a et qui SUFFIT à cet écran — sinon rien ;
+//   `attente`  cet écran n'a encore rien et aucun échec n'est connu : des
+//              formes grises, jamais une roue ;
+//   `erreur`   cet écran n'a rien ET le dernier essai a échoué : un message
+//              et « Réessayer ». Il ne s'efface qu'au SUCCÈS — un nouvel
+//              essai qui part ne le fait plus disparaître sous les yeux.
 //
-// Ces deux déclencheurs vivent maintenant ICI, une seule fois, au lieu de
-// sept : une notification déclenchait sept rechargements simultanés.
+// SE TENIR À JOUR TOUT SEUL — SANS POULS.
+//
+// Un pouls qui interrogeait la plateforme toutes les quinze secondes a été
+// retiré en août, et le propriétaire avait raison : « ce n'est pas comme ça
+// qu'on construit une application ». Le temps réel, c'est la NOTIFICATION.
+// Ce qui manquait, c'était de la prendre au sérieux :
+//
+//   1. LA NOTIFICATION arrive souvent AVANT que le SMS soit en base : on
+//      relit tout de suite, puis une seconde fois cinq secondes plus tard si
+//      rien n'avait changé. Une fois. C'est un accusé, pas une boucle.
+//   2. LE RETOUR DEPUIS L'ARRIÈRE-PLAN — et seulement de là. Tirer le centre
+//      de notifications d'un iPhone fait passer l'application par
+//      « inactive » : cela ne doit rien recharger.
+//   3. LE RETOUR SUR UN ONGLET dont les chiffres ont plus de trente secondes.
+//   4. APRÈS UN GESTE (une opération finie), trois relectures espacées pour
+//      attraper le SMS de l'opérateur, qui arrive quelques secondes après.
+//   5. APRÈS UN ÉCHEC, de nouveaux essais espacés (3 s, 10 s, 30 s, puis
+//      chaque minute) jusqu'au premier succès. Ce n'est pas un pouls : cela
+//      s'arrête dès que ça marche.
+//
+// Tout cela est SILENCIEUX : aucune roue, aucune forme grise sur un écran
+// qui a déjà ses chiffres. Les chiffres changent, c'est tout.
 
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef,
-  useState, type ReactNode,
+  useState, type ReactElement, type ReactNode,
 } from "react";
-import { AppState, View } from "react-native";
+import {
+  AppState, RefreshControl, View, type AppStateStatus, type RefreshControlProps,
+} from "react-native";
 import * as Notifications from "expo-notifications";
+import { useFocusEffect, useIsFocused } from "expo-router";
 import { chargerDonnees, ErreurGuichet } from "@/api/guichet";
 import * as Cahier from "@/api/cahier";
 import { useLangue } from "@/langue";
 import { textesConnexion } from "@noyau/textes/connexion";
 import { useSession } from "@/session";
+import { couleurs } from "@/theme/jetons";
 import type { Donnees } from "@noyau/types";
+import type { Langue } from "@noyau/langue";
 
 /** Ce qu'un écran demande. Les valeurs par défaut sont celles de la
  *  plateforme (`web/app/api/donnees/route.ts`) : un écran qui ne précise
@@ -85,6 +111,33 @@ export type Bornes = { sms?: number; recus?: number; lignes?: number };
 type BornesPleines = { sms: number; recus: number; lignes: number };
 
 const DEFAUT: BornesPleines = { sms: 200, recus: 200, lignes: 200 };
+
+// --- Les délais, tous ici --------------------------------------------------
+
+/** Après un échec, quand réessayer. Puis chaque minute, jusqu'au succès. */
+const REESSAIS_MS = [3_000, 10_000, 30_000, 60_000];
+/** La seconde lecture après une notification, si la première n'a rien vu. */
+const RELECTURE_NOTIFICATION_MS = 5_000;
+/** Après une opération : le SMS de l'opérateur arrive quelques secondes après. */
+const SUIVIS_OPERATION_MS = [5_000, 15_000, 30_000];
+/** Le terminal dit avoir des SMS pas encore transmis : on repasse, deux fois. */
+const SUIVIS_EN_ATTENTE_MS = [20_000, 60_000];
+/** Des chiffres relus du téléphone, et la plateforme qui ne répond pas :
+ *  au bout de ce délai, on dit qu'ils datent — pas avant. Annoncer « Pas de
+ *  réseau » pendant la première seconde d'un téléphone bien connecté, c'est
+ *  ce qui faisait sauter l'écran à chaque ouverture. */
+const LENT_MS = 8_000;
+/** Revenir sur un onglet dont les chiffres ont plus que cela : on relit. */
+const FRAIS_MS = 30_000;
+/** Ce qui a été servi il y a moins que cela se redemande avec le reste :
+ *  quitter l'Analyse ne doit pas jeter ses mille SMS à la notification
+ *  suivante, pour les retélécharger deux minutes plus tard. */
+const RECENT_MS = 5 * 60_000;
+/** La roue tirée ne tourne jamais plus que cela, quoi que fasse le réseau. */
+const TIRER_MAX_MS = 20_000;
+/** L'horloge de l'écran : les « aujourd'hui », « hier », « il y a 3 min »
+ *  se refont sans requête. */
+const HORLOGE_MS = 60_000;
 
 function pleines(b?: Bornes): BornesPleines {
   const sms = b?.sms ?? DEFAUT.sms;
@@ -97,9 +150,8 @@ function pleines(b?: Bornes): BornesPleines {
 }
 
 /** Ce qui est au cahier suffit-il à qui demande ceci ? Servir PLUS que
- *  demandé est sans danger — l'accueil ne montre que les quatre derniers de
- *  toute façon. Servir MOINS ne l'est pas : l'analyse calculerait un mois
- *  faux sur un mois tronqué, sans le dire. */
+ *  demandé est sans danger. Servir MOINS ne l'est pas : l'analyse
+ *  calculerait un mois faux sur un mois tronqué, sans le dire. */
 function couvre(servies: BornesPleines, demandees: BornesPleines): boolean {
   return servies.sms >= demandees.sms
       && servies.recus >= demandees.recus
@@ -108,8 +160,7 @@ function couvre(servies: BornesPleines, demandees: BornesPleines): boolean {
 
 /** Le plus grand besoin des écrans montés. Trois nombres, et il faut les
  *  trois : les Comptes comptent sur mille SMS sans en vouloir un seul, la
- *  boîte de réception en veut deux cents. Réunir cela en un seul nombre
- *  rapporterait mille lignes à qui n'en veut pas. */
+ *  boîte de réception en veut deux cents. */
 function reunir(toutes: BornesPleines[]): BornesPleines {
   if (!toutes.length) return DEFAUT;
   return {
@@ -119,88 +170,146 @@ function reunir(toutes: BornesPleines[]): BornesPleines {
   };
 }
 
+const memesBornes = (a: BornesPleines, b: BornesPleines) =>
+  a.sms === b.sms && a.recus === b.recus && a.lignes === b.lignes;
+
+/** Deux réponses identiques donnent LE MÊME objet : sans cela, chaque
+ *  notification refaisait le rendu de deux cents lignes pour rien — et la
+ *  liste des SMS se recoupait sous le doigt. */
+function memeContenu(a: Donnees, b: Donnees): boolean {
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
+/** Ce qu'une notification est censée faire changer : le dernier SMS, leur
+ *  nombre, les soldes. Sert à savoir si la première relecture l'a vu. */
+function empreinte(d: Donnees | null): string {
+  if (!d) return "";
+  return [
+    d.paiements[0]?.id ?? "", d.paiements.length,
+    ...d.sims.map((s) => `${s.iccid}:${s.solde ?? ""}`),
+  ].join("|");
+}
+
+const attendre = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 type Etat = {
+  /** Ce qui suffit à CET écran — sinon `null`. */
   donnees: Donnees | null;
-  chargement: boolean;
+  /** Cet écran n'a encore rien et aucun échec n'est connu : des formes
+   *  grises. Jamais une roue. */
+  attente: boolean;
+  /** Cet écran n'a rien ET le dernier essai a échoué. Ne s'efface qu'au
+   *  succès. Un écran qui a ses chiffres ne reçoit jamais d'erreur : la
+   *  ligne d'âge et le bandeau disent qu'ils datent. */
   erreur: string | null;
-  /** Rechargement à la demande — le geste « tirer pour rafraîchir ». */
-  recharger: () => void;
-  /** Quand la plateforme a répondu, en millisecondes. `null` si rien encore.
-   *  Sert à dire « relevé hier à 18 h » quand ce qu'on montre vient du
-   *  téléphone et non du réseau. */
+  /** Le geste « tirer » — rend la main à la fin de la relecture. Les écrans
+   *  ne l'appellent pas eux-mêmes pour leur roue : voir `useRoue`. Ils
+   *  l'utilisent pour « Réessayer ». */
+  recharger: () => Promise<void>;
+  /** Relire EN SILENCE, après un geste (SMS lu, nature posée, réglage
+   *  changé). `suivi` : après une opération, relire encore trois fois
+   *  pour attraper le SMS de l'opérateur. */
+  actualiser: (options?: { suivi?: boolean }) => void;
+  /** Quand la plateforme a répondu, en millisecondes. `null` si rien encore. */
   quand: number | null;
   /** Vrai quand ce qui est à l'écran a été relu du téléphone et que la
    *  plateforme n'a pas encore répondu depuis. */
   duCahier: boolean;
 };
 
-type Partage = Etat & {
+type Echec = { message: string; a: number };
+
+type EnVol = {
+  n: number; bornes: BornesPleines; langue: Langue;
+  promesse: Promise<void>; ctrl: AbortController;
+};
+
+type Partage = {
+  donnees: Donnees | null;
+  servies: BornesPleines | null;
+  quand: number | null;
+  duCahier: boolean;
+  echec: Echec | null;
+  lent: boolean;
+  enRoute: boolean;
+  recharger: () => Promise<void>;
+  actualiser: (options?: { suivi?: boolean }) => void;
+  retoucher: (f: (d: Donnees) => Donnees) => void;
   inscrire: (id: number, b: BornesPleines) => void;
   retirer: (id: number) => void;
-  servies: BornesPleines | null;
 };
 
 const Contexte = createContext<Partage | null>(null);
+const Horloge = createContext<number>(Date.now());
 
 export function FournisseurDonnees({ children }: { children: ReactNode }) {
   const langue = useLangue();
   const { connecte, perdue } = useSession();
 
   const [donnees, setDonnees] = useState<Donnees | null>(null);
+  // Les bornes de ce qui est À L'ÉCRAN, exactement — jamais plus grandes :
+  // Comptes croirait compter sur mille SMS une réponse qui en compte trente.
   const [servies, setServies] = useState<BornesPleines | null>(null);
-  // UN DRAPEAU NE SE RÉUNIT PAS — et celui-ci en portait deux.
-  //
-  // « chargement » répondait à la fois à « on n'a pas encore de réponse »
-  // (ce qui fait afficher les formes grises) et à « un chargement est en
-  // cours » (ce qui fait tourner la roue de « tirer pour rafraîchir »). Ce
-  // sont deux questions différentes, et les confondre a fait exactement ce
-  // qu'on pouvait craindre : le drapeau restait vrai, plus personne ne
-  // savait laquelle des deux il affirmait, et la roue tournait en haut des
-  // quatre onglets sur des écrans qui affichaient pourtant leurs chiffres.
-  //
-  // MESURÉ SUR UN VRAI TÉLÉPHONE : tirer vers le bas et relâcher ne la
-  // débloquait pas. Elle repartait, s'arrêtait, et restait. C'est la
-  // signature d'un drapeau qui ment — pas d'un chargement qui traîne.
-  //
-  // Deux états séparés, donc, et un drapeau CALCULÉ à partir d'eux : il ne
-  // peut plus rester vrai tout seul, puisqu'il n'est plus rangé nulle part.
-  //
-  //   `enVol`   les chargements VISIBLES en cours. Les discrets — retour
-  //             devant l'application, notification, besoin qui grandit — n'y
-  //             entrent pas : faire clignoter l'écran à chaque SMS serait
-  //             pire que de ne pas rafraîchir.
-  //   `repondu` a-t-on eu une réponse, ne serait-ce qu'une fois ? Un échec
-  //             compte : on a répondu « non ». Ce qui fait cesser les formes
-  //             grises, c'est de SAVOIR, pas de réussir.
-  const [enVol, setEnVol] = useState(0);
-  const [repondu, setRepondu] = useState(false);
-  const chargement = enVol > 0 || !repondu;
-  const [erreur, setErreur] = useState<string | null>(null);
+  const [langueServie, setLangueServie] = useState<Langue | null>(null);
   const [quand, setQuand] = useState<number | null>(null);
   const [duCahier, setDuCahier] = useState(false);
+  const [echec, setEchec] = useState<Echec | null>(null);
+  const [lent, setLent] = useState(false);
+  const [enRoute, setEnRoute] = useState(false);
+  const [maintenant, setMaintenant] = useState(() => Date.now());
+
+  // --- Ce que les fonctions stables lisent ---------------------------------
+  const connecteRef = useRef(connecte);
+  connecteRef.current = connecte;
+  const langueRef = useRef(langue);
+  langueRef.current = langue;
+  const perdueRef = useRef(perdue);
+  perdueRef.current = perdue;
+  const donneesRef = useRef(donnees);
+  donneesRef.current = donnees;
+  const serviesRef = useRef(servies);
+  serviesRef.current = servies;
+  const quandRef = useRef(quand);
+  quandRef.current = quand;
+
+  // UNE SESSION FERMÉE OUBLIE TOUT — Y COMPRIS CE QUI ÉTAIT EN ROUTE. Sans
+  // ce numéro, une réponse partie sous le propriétaire arrivait après sa
+  // déconnexion : le vendeur qui se connectait ensuite voyait les soldes et
+  // les SMS de toutes les cartes, et le cahier était réécrit après sa
+  // fermeture.
+  const generation = useRef(0);
+  // LES RÉPONSES SONT NUMÉROTÉES. Deux relectures se croisent (notification
+  // et retour devant l'application) : la plus ancienne arrivait la dernière
+  // et effaçait l'encaissement que la plus récente venait de montrer.
+  const seq = useRef(0);
+  const applique = useRef(0);
+  const enVol = useRef<EnVol | null>(null);
+  const echecsDeSuite = useRef(0);
+  const suiviEnAttente = useRef(false);
+  const cahierRelu = useRef(false);
+  // La plateforme a-t-elle déjà répondu ? Le cahier arrive APRÈS elle sur un
+  // téléphone rapide : il ne doit alors rien dire.
+  const reseauARepondu = useRef(false);
+  const minuteries = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   // Le registre des écrans montés. Un `ref` et non un état : s'inscrire ne
   // doit pas provoquer un rendu de toute l'application — c'est le BESOIN
   // calculé qui compte, et lui est un état.
   const registre = useRef(new Map<number, BornesPleines>());
 
-  // `null` tant qu'AUCUN écran ne s'est inscrit — et ce n'est pas la même
-  // chose qu'un besoin par défaut. Mesuré : le cahier partait au guichet
-  // AVANT que le premier écran n'ait dit ce qu'il voulait, et ramenait
-  // 88 Ko de valeurs par défaut que la descente suivante remplaçait aussitôt.
-  // « Personne n'a encore demandé » et « on demande ce qui se fait
-  // d'habitude » sont deux états différents ; les confondre coûtait un
-  // chargement entier.
+  // `null` tant qu'AUCUN écran ne s'est inscrit — ce n'est pas la même chose
+  // qu'un besoin par défaut : le cahier partait au guichet avant que le
+  // premier écran n'ait dit ce qu'il voulait, et ramenait 88 Ko de valeurs
+  // par défaut que la descente suivante remplaçait aussitôt.
   const [besoin, setBesoin] = useState<BornesPleines | null>(null);
+  const besoinRef = useRef(besoin);
+  besoinRef.current = besoin;
 
   const recalculer = useCallback(() => {
     setBesoin((avant) => {
       if (!registre.current.size) return null;
       const neuf = reunir([...registre.current.values()]);
-      // Même besoin : on garde l'objet précédent, sinon chaque montage
-      // relancerait un chargement pour rien.
-      return (avant && neuf.sms === avant.sms && neuf.recus === avant.recus
-              && neuf.lignes === avant.lignes) ? avant : neuf;
+      return avant && memesBornes(avant, neuf) ? avant : neuf;
     });
   }, []);
 
@@ -214,20 +323,104 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
     recalculer();
   }, [recalculer]);
 
+  const plusTard = useCallback((ms: number, f: () => void) => {
+    const m = setTimeout(() => { minuteries.current.delete(m); f(); }, ms);
+    minuteries.current.add(m);
+  }, []);
+
+  /**
+   * ALLER AU GUICHET. Une seule porte, pour tous les déclencheurs.
+   *
+   * `forcer` : partir même si une relecture couvrant le besoin est déjà en
+   * route. Une NOTIFICATION force : la relecture en vol est partie avant le
+   * SMS, s'y joindre le manquerait. Le reste se joint à elle — c'est ce qui
+   * évite deux descentes quand on touche une notification qui ramène aussi
+   * l'application au premier plan.
+   */
+  const charger = useCallback((options: { forcer?: boolean } = {}): Promise<void> => {
+    const b0 = besoinRef.current;
+    if (!b0 || connecteRef.current !== true) return Promise.resolve();
+    const s = serviesRef.current;
+    const q = quandRef.current;
+    const b = s && q != null && Date.now() - q < RECENT_MS ? reunir([b0, s]) : b0;
+    const lg = langueRef.current;
+    const vol = enVol.current;
+    if (!options.forcer && vol && vol.langue === lg && couvre(vol.bornes, b)) return vol.promesse;
+
+    const n = ++seq.current;
+    const gen = generation.current;
+    const ctrl = new AbortController();
+    setEnRoute(true);
+    const promesse = (async () => {
+      try {
+        const d = await chargerDonnees(lg, b, ctrl.signal);
+        if (gen !== generation.current || n < applique.current) return;
+        applique.current = n;
+        echecsDeSuite.current = 0;
+        setDonnees((avant) => (avant && memeContenu(avant, d) ? avant : d));
+        setServies((avant) => (avant && memesBornes(avant, b) ? avant : b));
+        setLangueServie(lg);
+        setQuand(Date.now());
+        setDuCahier(false);
+        setEchec(null);
+        setLent(false);
+        reseauARepondu.current = true;
+        void Cahier.ecrire({ quand: Date.now(), bornes: b, donnees: d }).catch(() => {});
+        // Le terminal dit avoir des SMS pas encore transmis : on repasse,
+        // deux fois, puis on s'arrête — l'écran ne promet plus « elle se met
+        // à jour toute seule » sans le faire. UNE fois par épisode : chaque
+        // relecture qui retrouvait « en attente » en reprogrammait deux
+        // autres, et cela devenait une relecture toutes les vingt secondes —
+        // le pouls qu'on avait retiré, revenu par la petite porte.
+        const enAttente = (d.terminal?.enAttente ?? 0) > 0;
+        if (enAttente && !suiviEnAttente.current) {
+          suiviEnAttente.current = true;
+          for (const ms of SUIVIS_EN_ATTENTE_MS) plusTard(ms, () => void charger());
+        }
+        if (!enAttente) suiviEnAttente.current = false;
+      } catch (e) {
+        if (gen !== generation.current) return;
+        // Session expirée : ce n'est pas une erreur à afficher, c'est un
+        // retour au verrou. La racine s'en charge dès que l'état bascule.
+        if (e instanceof ErreurGuichet && e.statut === 401) { perdueRef.current(); return; }
+        // Une relecture plus récente a déjà réussi : cet échec ne dit rien
+        // de ce qui est à l'écran.
+        if (n < applique.current) return;
+        echecsDeSuite.current += 1;
+        // Le guichet parle la langue de l'écran ; tout le reste — une panne
+        // de réseau, un corps illisible — reçoit la phrase du dictionnaire.
+        setEchec({
+          message: e instanceof ErreurGuichet && e.message
+            ? e.message : textesConnexion[lg].reseauEnPanne,
+          a: Date.now(),
+        });
+      } finally {
+        if (enVol.current?.n === n) {
+          enVol.current = null;
+          if (gen === generation.current) setEnRoute(false);
+        }
+      }
+    })();
+    enVol.current = { n, bornes: b, langue: lg, promesse, ctrl };
+    return promesse;
+  }, [plusTard]);
+
   // --- Le cahier du téléphone, relu UNE fois au démarrage -----------------
   //
   // Il n'est relu que si la session tient : un cahier lisible sans mot de
   // passe montrerait les SMS du propriétaire à qui ouvrirait un téléphone
   // perdu. Et il est EFFACÉ dès que la session tombe.
-  const cahierRelu = useRef(false);
-  // La plateforme a-t-elle déjà répondu ? Le cahier arrive APRÈS elle sur un
-  // téléphone rapide : il ne doit alors rien dire, et surtout pas « ces
-  // chiffres datent » sur des chiffres qui viennent d'arriver.
-  const reseauARepondu = useRef(false);
   useEffect(() => {
     if (connecte === false) {
-      setDonnees(null); setServies(null); setQuand(null); setDuCahier(false);
-      setRepondu(false); setEnVol(0);
+      generation.current += 1;
+      enVol.current?.ctrl.abort();
+      enVol.current = null;
+      for (const m of minuteries.current) clearTimeout(m);
+      minuteries.current.clear();
+      setDonnees(null); setServies(null); setLangueServie(null); setQuand(null);
+      setDuCahier(false); setEchec(null); setLent(false); setEnRoute(false);
+      echecsDeSuite.current = 0;
+      suiviEnAttente.current = false;
       cahierRelu.current = false;
       reseauARepondu.current = false;
       void Cahier.fermer();
@@ -235,182 +428,216 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
     }
     if (connecte !== true || cahierRelu.current) return;
     cahierRelu.current = true;
+    const gen = generation.current;
     void Cahier.lire().then((page) => {
-      // Si la plateforme a déjà répondu entre-temps, on ne l'écrase pas :
-      // le réseau a toujours raison contre le cahier.
-      if (!page || reseauARepondu.current) return;
-      setDonnees((deja) => (deja ? deja : page.donnees));
-      setServies((deja) => (deja ? deja : page.bornes));
-      setQuand((deja) => (deja ? deja : page.quand));
-      setDuCahier((deja) => (deja ? deja : true));
-      // Le cahier a répondu : on sait quoi montrer, les formes grises
-      // s'effacent même si le réseau, lui, n'a encore rien dit.
-      setRepondu(true);
-    });
+      // Le réseau a toujours raison contre le cahier ; et une session
+      // tombée entre-temps n'en veut plus rien.
+      if (!page || reseauARepondu.current || gen !== generation.current) return;
+      setDonnees((deja) => deja ?? page.donnees);
+      setServies((deja) => deja ?? page.bornes);
+      setQuand((deja) => deja ?? page.quand);
+      setDuCahier(true);
+    }).catch(() => { /* cahier illisible : on attend le réseau */ });
   }, [connecte]);
 
-  /**
-   * `discret` : recharger SANS afficher le voile de chargement. C'est ce qui
-   * distingue une mise à jour automatique d'un geste volontaire. Faire
-   * clignoter l'écran à chaque notification serait pire que de ne rien
-   * rafraîchir du tout.
-   */
-  const charger = useCallback(async (discret = false) => {
-    if (!besoin) return;         // personne n'a rien demandé : rien à aller chercher
-    if (!discret) setEnVol((n) => n + 1);
-    setErreur(null);
-    try {
-      const d = await chargerDonnees(langue, besoin);
-      setDonnees(d);
-      setServies(besoin);
-      setQuand(Date.now());
-      setDuCahier(false);
-      reseauARepondu.current = true;
-      void Cahier.ecrire({ quand: Date.now(), bornes: besoin, donnees: d });
-    } catch (e) {
-      // Session expirée : ce n'est pas une erreur à afficher, c'est un
-      // retour au verrou. La racine s'en charge dès que l'état bascule.
-      if (e instanceof ErreurGuichet && e.statut === 401) {
-        perdue();
-        return;
-      }
-      // Une mise à jour automatique qui échoue ne DOIT PAS effacer ce qui
-      // est déjà à l'écran ni afficher une erreur : le réseau tombe souvent,
-      // et l'écran resterait rouge pour une coupure de trois secondes. La
-      // prochaine notification ou le prochain retour à l'écran rechargera.
-      //
-      // Le guichet parle déjà la langue de l'écran ; une panne de RÉSEAU,
-      // elle, jette un message brut du système (« Failed to fetch »,
-      // « Network request failed ») — en anglais quel que soit l'écran.
-      // On lui substitue la phrase du dictionnaire.
-      //
-      // ET SI LE CAHIER PORTE QUELQUE CHOSE, ce n'est plus une erreur du
-      // tout : c'est un écran qui date, et qui le dit. Un commerçant sans
-      // réseau préfère le solde d'hier à un carré rouge.
-      if (!discret && !donnees) {
-        setErreur(e instanceof ErreurGuichet && e.message
-          ? e.message
-          : textesConnexion[langue].reseauEnPanne);
-      }
-    } finally {
-      // CE QUI COMMENCE FINIT. « repondu » passe à vrai même sur un échec :
-      // la question a reçu sa réponse, et les formes grises n'ont plus lieu
-      // d'être — l'écran a mieux à dire, un message ou de vieux chiffres.
-      setRepondu(true);
-      if (!discret) setEnVol((n) => Math.max(0, n - 1));
-    }
-  }, [langue, besoin, perdue, donnees]);
+  // Des chiffres relus du téléphone, et la plateforme qui ne répond pas
+  // encore : on ne dit « ça date » qu'au bout de quelques secondes.
+  useEffect(() => {
+    if (!duCahier) { setLent(false); return; }
+    const m = setTimeout(() => setLent(true), LENT_MS);
+    return () => clearTimeout(m);
+  }, [duCahier]);
 
-  // Le chargement part quand le besoin grandit — et seulement alors. Un
-  // écran qui demande MOINS que ce qui est déjà au cahier ne déclenche rien :
-  // c'est tout l'objet du cahier.
-  //
-  // SAUF SI CE QUI EST À L'ÉCRAN VIENT DU CAHIER LUI-MÊME. Ouvrir
-  // l'application sur un onglet qui demande peu (« Opérations » : aucun
-  // SMS) trouvait son besoin « couvert » par les chiffres du dernier
-  // passage — et ne demandait JAMAIS rien à la plateforme. Le bandeau
-  // « Pas de réseau » restait affiché sur un téléphone parfaitement
-  // connecté, pour toujours. Vu sur les captures de la fiche App Store, pas
-  // deviné. Des chiffres relus du téléphone ne couvrent aucun besoin : ils
-  // tiennent l'écran en attendant la réponse, c'est tout.
+  // LE BESOIN QUI GRANDIT, OU UNE LANGUE QUI CHANGE. Un écran qui demande
+  // MOINS que ce qui est au cahier ne déclenche rien : c'est tout l'objet du
+  // cahier. Des chiffres relus du téléphone ne couvrent aucun besoin — ils
+  // tiennent l'écran en attendant. Une autre langue non plus : les « il y a
+  // 3 min » de la plateforme resteraient dans l'ancienne.
   const besoinCouvert = besoin === null
-    || (servies !== null && !duCahier && couvre(servies, besoin));
+    || (servies !== null && !duCahier && langueServie === langue && couvre(servies, besoin));
   useEffect(() => {
-    if (connecte !== true) return;
-    // Le besoin est couvert : rien à aller chercher. Il n'y a plus de drapeau
-    // à baisser ici — il se calcule.
-    if (besoinCouvert) return;
-    void charger(donnees !== null);   // discret si l'on a déjà de quoi montrer
-    // `charger` change à chaque rendu (il dépend de `donnees`) : le suivre
-    // ici relancerait une boucle. Ce qui décide est le besoin et sa
-    // couverture.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connecte, besoin, besoinCouvert]);
+    if (connecte !== true || besoinCouvert) return;
+    void charger();
+  }, [connecte, besoin, besoinCouvert, langue, charger]);
 
-  // --- 1. Le retour au premier plan ---------------------------------------
+  // APRÈS UN ÉCHEC, ON RÉESSAIE — ESPACÉ, ET SEULEMENT DEVANT. Avant, un
+  // échec « discret » ne relançait rien : l'onglet restait gris pour
+  // toujours, et seul un redémarrage le débloquait.
   useEffect(() => {
-    const abonnement = AppState.addEventListener("change", (etat) => {
-      if (etat === "active") void charger(true);   // l'écran peut dater de deux heures
+    if (!echec || connecte !== true) return;
+    const k = Math.min(Math.max(echecsDeSuite.current - 1, 0), REESSAIS_MS.length - 1);
+    const m = setTimeout(() => {
+      if (AppState.currentState === "active") void charger();
+    }, REESSAIS_MS[k]);
+    return () => clearTimeout(m);
+  }, [echec, connecte, charger]);
+
+  // --- Le retour au premier plan — depuis l'ARRIÈRE-PLAN seulement --------
+  useEffect(() => {
+    let parti = false;
+    const abonnement = AppState.addEventListener("change", (etat: AppStateStatus) => {
+      if (etat === "background") parti = true;
+      if (etat === "active") {
+        setMaintenant(Date.now());
+        // « inactive » puis « active » sans être passé par l'arrière-plan :
+        // le centre de notifications, une demande d'autorisation. On n'a
+        // pas quitté l'application : rien à recharger.
+        if (parti) void charger();
+        parti = false;
+      }
     });
     return () => abonnement.remove();
   }, [charger]);
 
-  // --- 2. La notification --------------------------------------------------
+  // --- La notification : relire, et relire encore si rien n'a bougé -------
   useEffect(() => {
-    // Le robot vient de faire sonner : il s'est passé quelque chose, et on
-    // le sait à la seconde. L'écran est ainsi déjà à jour quand la personne
-    // ouvre l'application depuis la notification.
-    const recue = Notifications.addNotificationReceivedListener(() => {
-      void charger(true);
-    });
-    const touchee = Notifications.addNotificationResponseReceivedListener(() => {
-      void charger(true);
-    });
-    return () => {
-      recue.remove();
-      touchee.remove();
+    const quandSonne = () => {
+      const avant = empreinte(donneesRef.current);
+      void charger({ forcer: true }).then(() => {
+        // Le robot fait sonner au moment où il LIT le SMS ; la ligne arrive
+        // en base un peu après. Si la première relecture n'a rien vu, on
+        // repasse une fois — pas davantage.
+        if (empreinte(donneesRef.current) === avant) {
+          plusTard(RELECTURE_NOTIFICATION_MS, () => void charger({ forcer: true }));
+        }
+      });
     };
-  }, [charger]);
+    const recue = Notifications.addNotificationReceivedListener(quandSonne);
+    const touchee = Notifications.addNotificationResponseReceivedListener(quandSonne);
+    return () => { recue.remove(); touchee.remove(); };
+  }, [charger, plusTard]);
+
+  // --- L'horloge de l'écran — sans requête --------------------------------
+  // Une application restée ouverte depuis hier soir disait encore
+  // « Aujourd'hui » des paiements d'hier : rien ne refaisait le rendu.
+  useEffect(() => {
+    const m = setInterval(() => {
+      if (AppState.currentState === "active") setMaintenant(Date.now());
+    }, HORLOGE_MS);
+    return () => clearInterval(m);
+  }, []);
+
+  const recharger = useCallback(() => charger({ forcer: true }), [charger]);
+  const actualiser = useCallback((options?: { suivi?: boolean }) => {
+    void charger({ forcer: true });
+    if (options?.suivi) {
+      for (const ms of SUIVIS_OPERATION_MS) plusTard(ms, () => void charger());
+    }
+  }, [charger, plusTard]);
+  // Ce que l'écran sait déjà (un SMS lu, une nature posée) se montre TOUT
+  // DE SUITE, sans attendre la plateforme ni faire tourner quoi que ce soit.
+  const retoucher = useCallback((f: (d: Donnees) => Donnees) => {
+    setDonnees((d) => (d ? f(d) : d));
+  }, []);
 
   const boite = useMemo<Partage>(() => ({
-    donnees, chargement, erreur, quand, duCahier, servies,
-    recharger: () => void charger(),
-    inscrire, retirer,
-  }), [donnees, chargement, erreur, quand, duCahier, servies,
-       charger, inscrire, retirer]);
+    donnees, servies, quand, duCahier, echec, lent, enRoute,
+    recharger, actualiser, retoucher, inscrire, retirer,
+  }), [donnees, servies, quand, duCahier, echec, lent, enRoute,
+       recharger, actualiser, retoucher, inscrire, retirer]);
 
   return (
     <Contexte.Provider value={boite}>
-      {/* LE TÉMOIN DU CHARGEMENT — web seulement, comme `data-squelette` et
-          `data-ligne`.
-          `dataSet` devient un attribut `data-*` sur le web et n'existe pas
-          dans le paquet du téléphone : il ne coûte rien à l'application
-          installée. Il est ici, à côté du drapeau lui-même, plutôt que sur
-          chacun des quatre écrans — une marque posée quatre fois s'oublie
-          la cinquième.
-          Ce qu'il permet : `verifier-le-cahier` coupe le réseau, laisse un
-          rechargement discret échouer, et exige que ce témoin ait disparu.
-          Sans lui, la roue plantée ne se voyait que sur un vrai téléphone,
-          et seulement en itinérance. */}
-      {chargement
-        ? <View
-            {...({ dataSet: { chargement: "1" } } as object)}
-            pointerEvents="none"
-            style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
-          />
-        : null}
-      {children}
+      <Horloge.Provider value={maintenant}>
+        {/* LE TÉMOIN DU CHARGEMENT — web seulement, comme `data-squelette` et
+            `data-ligne`. `dataSet` devient un attribut `data-*` sur le web et
+            n'existe pas dans le paquet du téléphone. Il dit qu'une relecture
+            est EN ROUTE — et `verifier-le-cahier` exige qu'il disparaisse
+            quand le réseau a refusé. */}
+        {enRoute
+          ? <View
+              {...({ dataSet: { chargement: "1" } } as object)}
+              pointerEvents="none"
+              style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}
+            />
+          : null}
+        {children}
+      </Horloge.Provider>
     </Contexte.Provider>
   );
 }
 
-/**
- * L'ÂGE DE CE QUI EST À L'ÉCRAN — et rien d'autre.
- *
- * Le bandeau « pas de réseau » n'a besoin ni des soldes, ni des SMS : il veut
- * savoir si ce qu'on regarde vient du téléphone, et de quand. Il passait donc
- * par `useDonnees` avec des bornes à zéro — et le harnais des écrans le
- * prenait, à juste titre, pour un écran qui lit les données sans jamais dire
- * la panne. Exempter le harnais aurait été le rendre aveugle ; il valait
- * mieux que le bandeau demande exactement ce qu'il regarde.
- *
- * Il ne s'inscrit au registre pour rien : il ne fait donc jamais grandir ce
- * que l'application descend.
- */
-export function useAgeDesChiffres(): { duCahier: boolean; quand: number | null } {
+function usePartage(): Partage {
   const partage = useContext(Contexte);
-  return { duCahier: partage?.duCahier ?? false, quand: partage?.quand ?? null };
+  if (!partage) {
+    throw new Error(
+      "Le cahier n'est pas monté : un écran lit les données hors du FournisseurDonnees.");
+  }
+  return partage;
+}
+
+/**
+ * L'ÂGE DE CE QUI EST À L'ÉCRAN — et s'il faut le dire.
+ *
+ * `horsLigne` : le dernier essai a échoué, OU les chiffres relus du
+ * téléphone attendent la plateforme depuis plusieurs secondes. Le bandeau
+ * ne s'affichait que sur la PROVENANCE (« relu du fichier ») : à chaque
+ * ouverture d'un téléphone bien connecté, il apparaissait une seconde et
+ * faisait sauter l'écran — et une application restée ouverte depuis hier
+ * soir, dont le rechargement échouait, montrait les chiffres d'hier soir
+ * sans un mot.
+ *
+ * Il ne s'inscrit à aucun besoin : il ne fait jamais grandir ce que
+ * l'application descend.
+ */
+export function useAgeDesChiffres(): { duCahier: boolean; quand: number | null; horsLigne: boolean } {
+  const p = useContext(Contexte);
+  if (!p) return { duCahier: false, quand: null, horsLigne: false };
+  const horsLigne = p.donnees !== null && (p.echec !== null || (p.duCahier && p.lent));
+  return { duCahier: p.duCahier, quand: p.quand, horsLigne };
+}
+
+/** L'heure de l'écran, refaite chaque minute et au retour devant
+ *  l'application. Tout ce qui dit « aujourd'hui », « hier » ou « il y a »
+ *  la lit, plutôt que `Date.now()` figé au dernier rendu. */
+export function useMaintenant(): number {
+  return useContext(Horloge);
+}
+
+/** Corriger sur place ce qu'on sait déjà (un SMS lu, une nature posée). */
+export function useRetouche(): (f: (d: Donnees) => Donnees) => void {
+  return usePartage().retoucher;
+}
+
+/**
+ * LA ROUE DE « TIRER POUR RAFRAÎCHIR » — la seule de l'application.
+ *
+ * Levée par le DOIGT, baissée à la fin de SA relecture, et au plus tard au
+ * bout de vingt secondes, quoi que fasse le réseau. Un écran qui n'est pas
+ * devant ne la montre jamais : allumée puis éteinte hors de la fenêtre,
+ * iOS n'en revenait pas proprement.
+ *
+ * C'est le seul endroit de l'application qui dessine un `RefreshControl` —
+ * `verifier-la-roue` refuse tout autre.
+ */
+export function useRoue(): ReactElement<RefreshControlProps> {
+  const { recharger } = usePartage();
+  const devant = useIsFocused();
+  const [tire, setTire] = useState(false);
+  const vivant = useRef(true);
+  useEffect(() => {
+    vivant.current = true;
+    return () => { vivant.current = false; };
+  }, []);
+  // Quitter l'écran pendant qu'elle tourne la range : au retour, elle ne
+  // doit pas réapparaître sans geste.
+  useEffect(() => { if (!devant) setTire(false); }, [devant]);
+  const onRefresh = useCallback(() => {
+    setTire(true);
+    void Promise.race([recharger(), attendre(TIRER_MAX_MS)])
+      .finally(() => { if (vivant.current) setTire(false); });
+  }, [recharger]);
+  return (
+    <RefreshControl refreshing={tire && devant} onRefresh={onRefresh}
+                    tintColor={couleurs.encrePale} />
+  );
 }
 
 let prochainId = 1;
 
 export function useDonnees(bornes?: Bornes): Etat {
-  const partage = useContext(Contexte);
-  if (!partage) {
-    throw new Error(
-      "useDonnees hors du FournisseurDonnees : le cahier n'est pas monté.");
-  }
-  const { inscrire, retirer, servies } = partage;
+  const partage = usePartage();
+  const { inscrire, retirer, servies, actualiser } = partage;
 
   const sms = bornes?.sms;
   const recus = bornes?.recus;
@@ -427,17 +654,26 @@ export function useDonnees(bornes?: Bornes): Etat {
     return () => retirer(n);
   }, [inscrire, retirer, miennes]);
 
-  // CE QUI EST AU CAHIER SUFFIT-IL À CET ÉCRAN ? Servir plus que demandé est
-  // sans danger ; servir moins ne l'est pas — l'analyse calculerait un mois
-  // faux sur un mois tronqué, sans le dire. Tant que le cahier ne couvre pas
-  // ce que CET écran demande, il montre son attente.
-  const suffisant = servies !== null && couvre(servies, miennes);
+  // REVENIR SUR UN ONGLET dont les chiffres ont plus de trente secondes :
+  // on relit, en silence. Passer d'un onglet à l'autre ne rafraîchissait
+  // rien — l'écran restait sur le solde du moment où on l'avait ouvert.
+  const quandRef = useRef(partage.quand);
+  quandRef.current = partage.quand;
+  useFocusEffect(useCallback(() => {
+    const q = quandRef.current;
+    if (q != null && Date.now() - q > FRAIS_MS) actualiser();
+  }, [actualiser]));
+
+  // CE QUI EST AU CAHIER SUFFIT-IL À CET ÉCRAN ? Tant qu'il ne couvre pas ce
+  // que CET écran demande, il montre son attente — ou sa panne.
+  const suffisant = servies !== null && partage.donnees !== null && couvre(servies, miennes);
 
   return {
     donnees: suffisant ? partage.donnees : null,
-    chargement: suffisant ? partage.chargement : true,
-    erreur: partage.erreur,
+    attente: !suffisant && partage.echec === null,
+    erreur: !suffisant && partage.echec !== null ? partage.echec.message : null,
     recharger: partage.recharger,
+    actualiser,
     quand: suffisant ? partage.quand : null,
     duCahier: suffisant ? partage.duCahier : false,
   };

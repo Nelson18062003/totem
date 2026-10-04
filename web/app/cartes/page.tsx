@@ -66,14 +66,24 @@ export default async function Comptes() {
                     {t.carte(s.iccid.slice(-8))}
                     {s.itinerance && ` · ${t.itinerance(s.reseau)}`}
                   </p>
+                  {/* Son boîtier s'est tu : la carte reste ici, à sa place —
+                      ni « en place » affirmé, ni « retirée » inventé. */}
+                  {s.presence === "inconnue" && (
+                    <p className={`mt-2 text-caption leading-relaxed ${i === 0 ? "text-white/70" : "text-ink-soft"}`}>
+                      {t.boitierSansNouvelles}
+                    </p>
+                  )}
                 </div>
-                {s.signal != null && (
-                  <span className={`flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
-                    i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
-                  }`}>
-                    <span className="size-1.5 rounded-full bg-positive-vif" /> {s.signal}/31
-                  </span>
-                )}
+                {/* Le signal : 0 à 31, ou « inconnu » — jamais « 99/31 » sur
+                    une pastille verte. Figé (grisé) quand le boîtier se tait. */}
+                <span className={`flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
+                  i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
+                }`}>
+                  <span className={`size-1.5 rounded-full ${
+                    s.signal == null || s.presence === "inconnue" ? "bg-ink-faint"
+                      : s.signal <= 2 ? "bg-negative" : "bg-positive-vif"}`} />
+                  {s.signal == null ? t.signalInconnu : `${s.signal}/31`}
+                </span>
               </div>
             </div>
           ))}

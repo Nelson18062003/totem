@@ -30,6 +30,9 @@ import os
 import re
 import sqlite3
 import threading
+import time
+import uuid
+from collections import namedtuple
 from datetime import datetime, timedelta
 
 from .analyse_sms import analyser
@@ -124,6 +127,36 @@ def refermer(chemin):
         pass
 
 
+# Une sonnerie retenue, telle que le journal la rend. Voir la table
+# « sonneries » et `Journal.sonneries_retenues`.
+Sonnerie = namedtuple("Sonnerie", (
+    "id", "sms_id", "date", "iccid", "libelle", "expediteur", "texte",
+    "paiement", "demarrage", "monotone", "servis", "emis_le", "transmise"))
+
+_DEMARRAGE = None
+
+
+def demarrage_courant():
+    """Ce qui distingue CE démarrage du Pi des précédents.
+
+    L'horloge monotone ne recule jamais et ne saute pas quand l'heure se
+    corrige — mais elle repart de zéro à chaque démarrage. Deux lectures ne
+    se comparent donc que dans le même démarrage : c'est ce que dit cet
+    identifiant. Linux le donne ; ailleurs, on en tire un par processus,
+    ce qui est plus prudent que juste (un redémarrage du robot passe alors
+    pour un redémarrage du Pi)."""
+    global _DEMARRAGE
+    if _DEMARRAGE is None:
+        try:
+            with open("/proc/sys/kernel/random/boot_id", encoding="ascii") as f:
+                _DEMARRAGE = f.read().strip() or None
+        except OSError:
+            _DEMARRAGE = None
+        if not _DEMARRAGE:
+            _DEMARRAGE = f"processus-{uuid.uuid4()}"
+    return _DEMARRAGE
+
+
 class Journal:
     def __init__(self, chemin="totem.db"):
         try:
@@ -157,6 +190,25 @@ class Journal:
                     essais INTEGER DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS evenements(
                     id INTEGER PRIMARY KEY, date TEXT, texte TEXT);
+                -- Sonneries retenues : un SMS dont les téléphones n'ont pas
+                -- pu être prévenus, parce que le boîtier n'avait plus
+                -- Internet. Elles repartent au retour du réseau, regroupées,
+                -- une fois leur SMS monté au nuage, tant qu'elles ont moins
+                -- d'une demi-heure. Le texte est celui de l'écran verrouillé :
+                -- code à usage unique masqué.
+                --   sms_id     le SMS qu'elle annonce : c'est lui qui donne
+                --              l'ordre, et qui dit s'il est déjà au nuage ;
+                --   demarrage  le démarrage du Pi qui l'a retenue, et
+                --   monotone   l'horloge monotone à cet instant : son âge se
+                --              mesure sans l'heure murale du Pi, que la
+                --              coupure de courant a pu laisser fausse ;
+                --   servis     les empreintes des téléphones déjà prévenus —
+                --              jamais leurs jetons.
+                CREATE TABLE IF NOT EXISTS sonneries(
+                    id INTEGER PRIMARY KEY, sms_id INTEGER, date TEXT,
+                    iccid TEXT, libelle TEXT, expediteur TEXT, texte TEXT,
+                    paiement INTEGER DEFAULT 0, demarrage TEXT, monotone REAL,
+                    servis TEXT DEFAULT '');
                 -- La mémoire du robot entre deux démarrages : de petites
                 -- valeurs nommées (l'empreinte du lecteur de SMS…). Rien
                 -- d'important n'y vit : la perdre ne perd aucune donnée.
@@ -955,6 +1007,78 @@ class Journal:
             self.conn.executemany(
                 f"UPDATE {table} SET envoye = 1 WHERE id = ?",
                 [(i,) for i in ids])
+            self.conn.commit()
+
+    def retenir_sonnerie(self, sms_id, iccid, libelle, expediteur, texte,
+                         paiement=False):
+        """Note qu'un SMS n'a pas pu faire sonner les téléphones. Rend combien
+        de sonneries attendent maintenant, celle-ci comprise.
+
+        `sms_id` : la ligne du SMS dans ce journal (None s'il n'y en a pas).
+        L'heure murale n'est gardée que pour mémoire : l'âge se mesure sur
+        l'horloge monotone, dans le même démarrage du Pi."""
+        with self.verrou:
+            self.conn.execute(
+                "INSERT INTO sonneries(sms_id, date, iccid, libelle, expediteur, "
+                "texte, paiement, demarrage, monotone) VALUES(?,?,?,?,?,?,?,?,?)",
+                (sms_id, self._maintenant(), iccid or "", libelle or "",
+                 expediteur or "", texte or "", 1 if paiement else 0,
+                 demarrage_courant(), time.monotonic()))
+            self.conn.commit()
+            (n,) = self.conn.execute("SELECT COUNT(*) FROM sonneries").fetchone()
+        return n
+
+    def sonneries_retenues(self):
+        """Les sonneries retenues (`Sonnerie`), dans l'ordre de leurs SMS.
+
+        L'ordre est celui du JOURNAL DES SMS, pas celui de la table : chaque
+        SMS fait sonner dans son propre fil, et ces fils échouent dans
+        n'importe quel ordre. Rangées par ordre d'échec, « Dernier : » de la
+        notification montrait un paiement qui n'était pas le dernier.
+
+        `transmise` : le SMS est au nuage (ou n'existe pas au journal). Un
+        téléphone qu'on fait sonner pour un SMS ouvre l'application aussitôt —
+        elle doit l'y trouver. `emis_le` : l'heure RÉSEAU du SMS."""
+        with self.verrou:
+            lignes = self.conn.execute(
+                "SELECT s.id, s.sms_id, s.date, s.iccid, s.libelle, "
+                "s.expediteur, s.texte, s.paiement, s.demarrage, s.monotone, "
+                "COALESCE(s.servis, ''), sms.emis_le, "
+                "CASE WHEN sms.id IS NULL THEN 1 "
+                "ELSE COALESCE(sms.envoye, 0) END "
+                "FROM sonneries s LEFT JOIN sms ON sms.id = s.sms_id "
+                "ORDER BY s.sms_id, s.id").fetchall()
+        return [Sonnerie(i, sms_id, d, c, l, e, tx, bool(p), dem, mono,
+                         frozenset(servis.split()), emis, bool(envoye))
+                for (i, sms_id, d, c, l, e, tx, p, dem, mono, servis, emis,
+                     envoye) in lignes]
+
+    def noter_sonneries_servies(self, ids, empreintes):
+        """Ces téléphones (leurs empreintes) ont reçu ces sonneries : un
+        rattrapage suivant ne les leur renverra pas."""
+        empreintes = [e for e in empreintes if e]
+        if not ids or not empreintes:
+            return
+        with self.verrou:
+            for i in ids:
+                ligne = self.conn.execute(
+                    "SELECT COALESCE(servis, '') FROM sonneries WHERE id = ?",
+                    (i,)).fetchone()
+                if ligne is None:
+                    continue
+                deja = ligne[0].split()
+                tout = deja + [e for e in empreintes if e not in deja]
+                self.conn.execute("UPDATE sonneries SET servis = ? WHERE id = ?",
+                                  (" ".join(tout), i))
+            self.conn.commit()
+
+    def oublier_sonneries(self, ids):
+        """Retire des sonneries retenues : parties, ou trop vieilles."""
+        if not ids:
+            return
+        with self.verrou:
+            self.conn.executemany("DELETE FROM sonneries WHERE id = ?",
+                                  [(i,) for i in ids])
             self.conn.commit()
 
     def sms_en_attente(self):

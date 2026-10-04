@@ -34,28 +34,107 @@ const il_y_a = (min) => new Date(Date.now() - min * 60000).toISOString();
 // situation où « le dernier terminal vivant » se trompe.
 // Voir scripts/verifier-l-adressage.mjs.
 const FLOTTE = process.env.FAUX_FLOTTE === "1";
-const CARTES_DE_LA_FLOTTE = FLOTTE ? [
+
+// UN BOÎTIER QU'ON FAIT TAIRE (« /essai/taire »). Ici, chaque boîtier était
+// toujours vivant : son signe de vie se recalculait à « maintenant » à chaque
+// lecture. Aucun essai ne pouvait donc montrer ce que la plateforme dit d'un
+// boîtier coupé du courant — ni ce qu'elle fait d'une demande déposée pour
+// lui. Un boîtier muet garde ce qu'il avait écrit AU MOMENT de se taire : son
+// dernier signe de vie, et la dernière fois qu'il a vu ses cartes — un peu
+// avant (il relit ses puces toutes les minutes).
+const muets = new Map();             // terminal → depuis combien de minutes
+// L'heure du SOLDE d'une carte, imposée par un essai (« /essai/solde-maj ») :
+// `null` pour « la base a la colonne, et elle est vide ». Sans cela, aucun
+// essai ne distinguait une colonne vide d'une colonne absente — et la
+// plateforme remplaçait « on ne sait pas » par l'heure du signe de vie.
+const heuresDeSolde = new Map();      // iccid → minutes, ou null
+
+// L'HORLOGE DE CHAQUE PI (« /essai/horloge »). Le vrai boîtier date ce qu'il
+// écrit — son signe de vie, la dernière vue de ses cartes — sur SON heure,
+// qui peut retarder d'une heure après une coupure de courant. Ici, tous les
+// boîtiers avaient l'heure exacte : aucun essai ne pouvait voir la
+// plateforme mesurer un silence sur l'horloge de celui qui se tait.
+const retards = new Map();           // terminal → minutes de retard
+const horloge = (terminal, minutesAvant) =>
+  il_y_a(minutesAvant + (retards.get(terminal) ?? 0));
+
+// L'OREILLE DE LA BASE (sql/schema.sql, déclencheur « terminaux_entendu ») :
+// l'heure où la base a ENTENDU le boîtier, et depuis quand il parle sans
+// interruption — sur l'horloge de la base, pas sur la sienne. Une base pas
+// encore migrée ne les a pas (« /essai/base?oreille=non »).
+let oreille = true;
+const revenus = new Map();           // terminal → instant (ms) de son retour
+// Le boîtier revenu dont les cartes n'ont PAS encore été republiées
+// (« /essai/reveiller?cartes=plus-tard », puis « /essai/cartes ») : le vrai
+// robot envoie son signe de vie et ses cartes par deux chemins séparés, et
+// les cartes arrivent jusqu'à une minute après. Ici, le réveil rafraîchissait
+// les deux ensemble — la panne du retour était invisible.
+const cartesPasRelues = new Map();   // terminal → minutes : vues pour la dernière fois avant
+// Une carte qu'un boîtier vivant ne voit plus (« /essai/carte-perdue ») — y
+// compris la SEULE carte d'un boîtier, qui n'en voit alors plus aucune.
+const cartesPerdues = new Map();     // iccid → minutes depuis la dernière vue
+// Un boîtier sorti de la flotte (« /essai/retirer ») : volé, grillé.
+const retires = new Map();           // terminal → instant (ms) de la mise hors service
+
+/** Depuis combien de minutes on n'a plus entendu ce boîtier. */
+const silence = (terminal, sinon) => muets.get(terminal) ?? sinon;
+/** Son dernier signe de vie, daté par LUI. */
+const signeDeVie = (terminal, sinon) => horloge(terminal, silence(terminal, sinon));
+/** La dernière vue de ses cartes en place, datée par lui : un peu avant de
+ *  se taire, ou avant son retour tant qu'il ne les a pas republiées. */
+const vueParLe = (terminal) => horloge(terminal,
+  muets.has(terminal) ? muets.get(terminal) + 0.5
+    : cartesPasRelues.has(terminal) ? cartesPasRelues.get(terminal) + 0.5 : 0);
+
+/** Une ligne de « terminaux », telle que la base la porte. */
+function boitier(id, nom, minutes) {
+  const ligne = {
+    id, nom, vu_le: signeDeVie(id, minutes),
+    version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
+  };
+  if (oreille) {
+    ligne.entendu_le = il_y_a(silence(id, minutes));
+    ligne.revenu_le = revenus.has(id) ? new Date(revenus.get(id)).toISOString()
+      : il_y_a(silence(id, minutes) + 60 * 24);
+  }
+  if (retires.has(id)) {
+    ligne.retire_le = new Date(retires.get(id)).toISOString();
+    ligne.retire_motif = "essai : boîtier volé";
+  }
+  return ligne;
+}
+
+// Des FONCTIONS, comme `tables` : figées au démarrage, leurs heures
+// vieillissaient — la carte d'Akwa passait pour retirée au bout de dix
+// minutes d'essai, et un boîtier qu'on faisait taire ne se taisait pas.
+const cartesDeLaFlotte = () => FLOTTE ? [
   { terminal: "akwa-faux",
     iccid: "89237010000000009999", operateur: "MTN", libelle: "MTN ·9999",
     nom: "BOUTIQUE AKWA", numero: "677000999",
-    premiere_vue: il_y_a(60 * 24 * 3), derniere_vue: maintenant() },
+    premiere_vue: il_y_a(60 * 24 * 3), derniere_vue: vueParLe("akwa-faux") },
   { terminal: "douala-faux",
     iccid: "89237020000000007777", operateur: "Orange", libelle: "Orange ·7777",
     nom: "", numero: "",
-    premiere_vue: il_y_a(60 * 24 * 60), derniere_vue: il_y_a(90) },
+    premiere_vue: il_y_a(60 * 24 * 60), derniere_vue: horloge("douala-faux", 90) },
+] : [];
+// La carte d'Akwa a un compte, et son modem ne sait pas dire son signal :
+// « 99 », ce que répond un vrai modem sans réseau. L'écran en tirait quatre
+// barres pleines.
+const comptesDeLaFlotte = () => FLOTTE ? [
+  { terminal: "akwa-faux",
+    iccid: "89237010000000009999", libelle: "MTN ·9999", operateur: "MTN",
+    reseau: "MTN CM", itinerance: false, numero: "677000999",
+    solde: 12000, signal: 99, maj: signeDeVie("akwa-faux", 1),
+    solde_maj: il_y_a(30) },
 ] : [];
 
 const tables = () => ({
   beneficiaires,
-  terminaux: [{
-    id: "douala-faux", nom: "Douala (faux)",
+  terminaux: [
     // En flotte, Douala n'est PAS le dernier à avoir parlé : Akwa l'est.
-    vu_le: FLOTTE ? il_y_a(1) : maintenant(),
-    version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
-  }, ...(FLOTTE ? [{
-    id: "akwa-faux", nom: "Akwa (faux)", vu_le: maintenant(),
-    version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
-  }] : [])],
+    boitier("douala-faux", "Douala (faux)", FLOTTE ? 1 : 0),
+    ...(FLOTTE ? [boitier("akwa-faux", "Akwa (faux)", 0)] : []),
+  ],
   // La console lit ces trois registres. Vides ici : personne n'y écrit
   // encore, et c'est justement l'état que ses écrans doivent savoir dire.
   // Les freins, eux, se remplissent quand on essaie des mots de passe — la
@@ -76,13 +155,15 @@ const tables = () => ({
     { terminal: "douala-faux",
       iccid: "89237010000000008901", operateur: "MTN", libelle: "MTN ·8901",
       nom: "ETS NKENGAFAC", numero: "677123456",
-      premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: maintenant() },
+      premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: vueParLe("douala-faux") },
     { terminal: "douala-faux",
       iccid: "89237020000000004432", operateur: "Orange", libelle: "Orange ·4432",
       nom: "", numero: "699001122",
-      premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: maintenant() },
-    ...CARTES_DE_LA_FLOTTE,
-  ],
+      premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: vueParLe("douala-faux") },
+    ...cartesDeLaFlotte(),
+  ].map((c) => cartesPerdues.has(c.iccid)
+    ? { ...c, derniere_vue: horloge(c.terminal, cartesPerdues.get(c.iccid)) }
+    : c),
   comptes: [
     { terminal: "douala-faux",
       iccid: "89237010000000008901", libelle: "MTN ·8901", operateur: "MTN",
@@ -92,7 +173,11 @@ const tables = () => ({
       iccid: "89237020000000004432", libelle: "Orange ·4432", operateur: "Orange",
       reseau: "Orange CM", itinerance: false, numero: "699001122",
       solde: 87300, signal: 18, maj: il_y_a(40) },
-  ],
+    ...comptesDeLaFlotte(),
+  ].map((c) => heuresDeSolde.has(c.iccid)
+    ? { ...c, solde_maj: heuresDeSolde.get(c.iccid) == null ? null
+        : il_y_a(heuresDeSolde.get(c.iccid)) }
+    : c),
   paiements: [
     ...[...smsEnPlus].reverse(),
     // UN NOM VOLONTAIREMENT LONG. La fiche coupait son titre à une ligne :
@@ -243,6 +328,50 @@ const smsEnPlus = [];
 // Les essais de mot de passe comptés, comme la table « freins ».
 const freins = new Map();
 
+// LE ROBOT JOUÉ, ET CE QUI PEUT LE RETENIR. Il RÉCLAME une demande avant de
+// la composer, comme le vrai (`reclamer`, totem/nuage.py) : « en cours »
+// seulement si elle est ENCORE en attente — une demande annulée entre-temps
+// ne se compose plus. Il ne réclamait rien : il passait la demande à
+// « faite » d'office, et aucun essai ne pouvait voir une annulation perdre
+// la course, ni la gagner.
+//
+// Il attend tant que son boîtier se tait (« /essai/taire ») : c'est
+// exactement ce que fait le vrai, qui compose à son retour ce qu'on lui a
+// laissé. Et il se règle (« /essai/robot ») :
+//   — « pause » : il ne réclame rien — le boîtier vit, mais n'a pas encore
+//     relevé la demande ;
+//   — « lent »  : il réclame, puis ne finit pas — la demande reste « en
+//     cours », comme pendant une vraie session USSD ;
+//   — « normal ».
+let allure = "normal";
+
+function servir(enregistree) {
+  if (enregistree.etat === "en_attente") {
+    if (allure === "pause" || muets.has(enregistree.terminal)) {
+      setTimeout(() => servir(enregistree), 200);
+      return;
+    }
+    enregistree.etat = "en_cours";       // la réclamation : il la tient
+  }
+  if (enregistree.etat !== "en_cours") return;   // annulée, ou déjà finie
+  if (allure === "lent") {
+    setTimeout(() => servir(enregistree), 200);
+    return;
+  }
+  enregistree.etat = "faite";
+  enregistree.resultat = reponsePour(enregistree);
+  // LE CODE SECRET S'EFFACE, COMME CHEZ LE VRAI ROBOT : il ne reste que
+  // le drapeau et la carte (`_parametres_masques`). Sans cette
+  // imitation, la commande gardait ici ses paramètres d'origine, et
+  // aucun harnais ne pouvait voir qu'un effacement trop large rendait
+  // la réponse illisible à celui dont c'est la carte.
+  if (enregistree.parametres?.secret) {
+    const carte = enregistree.parametres.carte;
+    enregistree.parametres = typeof carte === "string"
+      ? { secret: true, carte } : { secret: true };
+  }
+}
+
 function reponsePour(commande) {
   const { type, parametres } = commande;
   if (type === "ussd_fin") return "Session terminee.";
@@ -324,32 +453,121 @@ const serveur = createServer(async (req, res) => {
     const enregistree = { ...c, id, tour, etat: "en_attente", resultat: null, depose: Date.now() };
     commandes.set(id, enregistree);
     // Le « robot » répond après un instant, comme le vrai le ferait.
-    setTimeout(() => {
-      enregistree.etat = "faite";
-      enregistree.resultat = reponsePour(enregistree);
-      // LE CODE SECRET S'EFFACE, COMME CHEZ LE VRAI ROBOT : il ne reste que
-      // le drapeau et la carte (`_parametres_masques`). Sans cette
-      // imitation, la commande gardait ici ses paramètres d'origine, et
-      // aucun harnais ne pouvait voir qu'un effacement trop large rendait
-      // la réponse illisible à celui dont c'est la carte.
-      if (enregistree.parametres?.secret) {
-        const carte = enregistree.parametres.carte;
-        enregistree.parametres = typeof carte === "string"
-          ? { secret: true, carte } : { secret: true };
-      }
-    }, 700);
+    setTimeout(() => servir(enregistree), 700);
     return repondre([{ id }]);
+  }
+
+  // UNE ÉCRITURE CONDITIONNELLE, comme PostgREST la fait : les filtres de
+  // l'adresse (« id=eq.12&etat=eq.en_attente ») font partie de l'écriture.
+  // Une ligne qui ne les remplit plus n'est PAS touchée, et la réponse le
+  // dit — une liste vide. C'est sur ce « rien n'a changé » que repose
+  // l'annulation : sans cette imitation, une annulation arrivée trop tard
+  // passait pour réussie, et l'écran aurait dit « rien n'est parti » d'une
+  // demande en train de se composer.
+  if (req.method === "PATCH" && chemin === "/rest/v1/commandes") {
+    let brut = "";
+    for await (const m of req) brut += m;
+    const champs = JSON.parse(brut || "{}");
+    const filtres = [...url.searchParams].filter(([k]) => k !== "select");
+    const vise = [...commandes.values()].filter((x) => filtres.every(([k, v]) => {
+      const [op, ...reste] = v.split(".");
+      return op === "eq" && String(x[k]) === reste.join(".");
+    }));
+    for (const x of vise) Object.assign(x, champs);
+    if (/return=representation/.test(req.headers.prefer || "")) {
+      return repondre(vise.map((x) => ({ id: x.id, etat: x.etat, resultat: x.resultat })));
+    }
+    res.writeHead(204);
+    return res.end();
+  }
+
+  // Faire taire un boîtier, ou le réveiller :
+  //
+  //     curl -X POST "http://127.0.0.1:4999/essai/taire?terminal=douala-faux&minutes=11"
+  //     curl -X POST "http://127.0.0.1:4999/essai/reveiller?terminal=douala-faux"
+  if (req.method === "POST" && chemin === "/essai/taire") {
+    const terminal = url.searchParams.get("terminal") || "douala-faux";
+    muets.set(terminal, Number(url.searchParams.get("minutes") || 11));
+    return repondre({ muet: terminal, depuis: muets.get(terminal) });
+  }
+  // Le réveil fait ce que fait la base : elle note son RETOUR (« revenu_le »).
+  // Avec « cartes=plus-tard », il redonne signe de vie AVANT de republier
+  // ses cartes, comme le vrai robot ; « /essai/cartes » les republie.
+  if (req.method === "POST" && chemin === "/essai/reveiller") {
+    const terminal = url.searchParams.get("terminal") || "douala-faux";
+    const avant = muets.get(terminal);
+    muets.delete(terminal);
+    if (avant != null) {
+      revenus.set(terminal, Date.now());
+      if (url.searchParams.get("cartes") === "plus-tard") cartesPasRelues.set(terminal, avant);
+    }
+    return repondre({ muets: [...muets.keys()], cartesPasRelues: [...cartesPasRelues.keys()] });
+  }
+  if (req.method === "POST" && chemin === "/essai/cartes") {
+    cartesPasRelues.delete(url.searchParams.get("terminal") || "douala-faux");
+    return repondre({ cartesPasRelues: [...cartesPasRelues.keys()] });
+  }
+  // Le temps qui passe depuis son retour, sans attendre trois minutes :
+  //     curl -X POST ".../essai/revenu?terminal=akwa-faux&minutes=10"
+  if (req.method === "POST" && chemin === "/essai/revenu") {
+    const terminal = url.searchParams.get("terminal") || "douala-faux";
+    revenus.set(terminal, Date.now() - Number(url.searchParams.get("minutes") || 0) * 60000);
+    return repondre({ terminal, revenu: new Date(revenus.get(terminal)).toISOString() });
+  }
+  //     curl -X POST ".../essai/horloge?terminal=douala-faux&retard=8"
+  if (req.method === "POST" && chemin === "/essai/horloge") {
+    const terminal = url.searchParams.get("terminal") || "douala-faux";
+    const retard = Number(url.searchParams.get("retard") || 0);
+    if (retard) retards.set(terminal, retard); else retards.delete(terminal);
+    return repondre({ terminal, retard });
+  }
+  //     curl -X POST ".../essai/base?oreille=non"   (une base pas encore migrée)
+  if (req.method === "POST" && chemin === "/essai/base") {
+    oreille = url.searchParams.get("oreille") !== "non";
+    return repondre({ oreille });
+  }
+  //     curl -X POST ".../essai/retirer?terminal=akwa-faux"   (&annuler=1)
+  if (req.method === "POST" && chemin === "/essai/retirer") {
+    const terminal = url.searchParams.get("terminal") || "douala-faux";
+    if (url.searchParams.get("annuler")) retires.delete(terminal);
+    else retires.set(terminal, Date.now());
+    return repondre({ retires: [...retires.keys()] });
+  }
+  //     curl -X POST ".../essai/carte-perdue?iccid=…&minutes=20"   (&annuler=1)
+  if (req.method === "POST" && chemin === "/essai/carte-perdue") {
+    const iccid = url.searchParams.get("iccid") || "";
+    if (url.searchParams.get("annuler")) cartesPerdues.delete(iccid);
+    else cartesPerdues.set(iccid, Number(url.searchParams.get("minutes") || 20));
+    return repondre({ cartesPerdues: [...cartesPerdues.keys()] });
+  }
+  //     curl -X POST "http://127.0.0.1:4999/essai/solde-maj?iccid=…&minutes=null"
+  if (req.method === "POST" && chemin === "/essai/solde-maj") {
+    const iccid = url.searchParams.get("iccid") || "";
+    const minutes = url.searchParams.get("minutes");
+    heuresDeSolde.set(iccid, minutes == null || minutes === "null" ? null : Number(minutes));
+    return repondre({ iccid, minutes: heuresDeSolde.get(iccid) });
+  }
+  // L'allure du robot joué : « pause », « lent » ou « normal » (voir `servir`).
+  if (req.method === "POST" && chemin === "/essai/robot") {
+    const voulue = url.searchParams.get("allure") || "normal";
+    allure = ["pause", "lent"].includes(voulue) ? voulue : "normal";
+    return repondre({ allure });
   }
 
   // Lecture d'une commande.
   if (chemin === "/rest/v1/commandes") {
     // Retrouver une demande PAR SA CLÉ : c'est ce que fait la plateforme après
     // un 409, pour rendre la demande déjà créée au lieu d'un échec.
+    // Le guichet la cherche aussi AVANT de juger le boîtier, tous boîtiers
+    // confondus : il lit sa clé, sa carte et qui l'a déposée.
     const parCle = url.searchParams.get("cle");
     if (parCle) {
       const cle = parCle.replace("eq.", "");
-      const c = [...commandes.values()].find((x) => x.cle === cle);
-      return repondre(c ? [{ id: c.id, etat: c.etat, resultat: c.resultat }] : []);
+      const terminal = (url.searchParams.get("terminal") ?? "").replace("eq.", "");
+      const c = [...commandes.values()]
+        .find((x) => x.cle === cle && (!terminal || x.terminal === terminal));
+      return repondre(c ? [{ id: c.id, cle: c.cle, etat: c.etat, resultat: c.resultat,
+                             parametres: c.parametres ?? {}, terminal: c.terminal }] : []);
     }
     // La DERNIÈRE ouverture d'un terminal : c'est là que la plateforme lit
     // la carte d'une réponse qui ne dit pas la sienne. Filtres, ordre et

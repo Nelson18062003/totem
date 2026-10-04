@@ -98,3 +98,15 @@ test("le jour d'un relevé de solde : aujourd'hui, hier, ou une date — vus de 
   assert.equal(jourDuReleve(null, maintenant, DOUALA), null);
   assert.equal(jourDuReleve("pas une date", maintenant, DOUALA), null);
 });
+
+test("le jour d'un SMS se dit au moment où on le lit, pas au moment où il est arrivé", async () => {
+  const { libelleJour } = await import("../periodes");
+  // Écrit « Aujourd'hui » le 3 au soir, relu le 4 au matin : c'est « Hier ».
+  assert.equal(libelleJour("2026-10-03", "2026-10-03", "fr"), "Aujourd’hui");
+  assert.equal(libelleJour("2026-10-03", "2026-10-04", "fr"), "Hier");
+  assert.equal(libelleJour("2026-10-03", "2026-10-04", "en"), "Yesterday");
+  assert.equal(libelleJour("2026-09-28", "2026-10-04", "fr"), "28 septembre");
+  assert.equal(libelleJour("2026-09-28", "2026-10-04", "en"), "28 September");
+  // Le 1er mars, la veille est le 28 ou le 29 février.
+  assert.equal(libelleJour("2028-02-29", "2028-03-01", "fr"), "Hier");
+});

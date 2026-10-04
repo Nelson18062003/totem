@@ -9,6 +9,7 @@ import { BarreArret, BoutonFermer } from "../feuille";
 import { IconHash } from "../icons";
 import { useLangue } from "../langue";
 import { PaveSecret } from "../pave-secret";
+import { abandonner, phraseDAbandon } from "../abandon";
 
 /**
  * La console USSD, branchée sur le vrai réseau. Chaque code composé part dans
@@ -126,24 +127,38 @@ export function ConsoleUssd({
         throw new Error(corps?.erreur || t.demandePasPartie);
       }
       const { id } = (await r.json()) as { id: number };
+      const relire = () => fetch(`/api/commande/${id}`, { cache: "no-store" })
+        .then((x) => (x.ok ? x.json() : null))
+        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null } | null>;
+      const finie = (c: { etat?: string } | null) =>
+        Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
+      const conclure = (c: { etat?: string; resultat?: string | null }) => {
+        if (generation.current !== gen) return null;
+        const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
+        setFil((f) => [...f, { de: "reseau", texte }]);
+        setEnSession(c.etat === "faite");
+        setAttente(false);
+        return c.etat === "faite" ? texte : null;
+      };
       // Le terminal relève ses demandes toutes les quelques secondes : on
       // attend sa réponse, sans jamais prétendre l'avoir avant lui.
       for (let i = 0; i < 25; i++) {
         await new Promise((res) => setTimeout(res, 1200));
-        if (generation.current !== gen) return null;   // écran refermé entre-temps
-        const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
-          .then((x) => (x.ok ? x.json() : null))
-          .catch(() => null);
-        if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          if (generation.current !== gen) return null;
-          const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-          setFil((f) => [...f, { de: "reseau", texte }]);
-          setEnSession(c.etat === "faite");
-          setAttente(false);
-          return c.etat === "faite" ? texte : null;
-        }
+        // Écran refermé entre-temps : personne n'attend plus la réponse. Si
+        // le boîtier ne l'a pas encore prise, elle ne doit plus partir.
+        if (generation.current !== gen) { void abandonner(id); return null; }
+        const c = await relire();
+        if (c && finie(c)) return conclure(c);
       }
-      throw new Error(t.terminalMuet);
+      // On renonce : la demande s'ANNULE, et l'écran ne dit « rien n'est
+      // parti » que si l'annulation a pris (voir abandon.ts). Finie
+      // entre-temps, elle a une réponse : on la relit et on la MONTRE.
+      const issue = await abandonner(id);
+      if (issue === "finie") {
+        const c = await relire();
+        if (c && finie(c)) return conclure(c);
+      }
+      throw new Error(phraseDAbandon(issue, t));
     } catch (e) {
       if (generation.current !== gen) return null;
       setErreur(e instanceof Error ? e.message : t.accroc);

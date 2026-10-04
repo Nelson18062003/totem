@@ -22,6 +22,18 @@ const en = {
     "They are no longer in the terminal, but their record is intact. Put one back in and it shows up again just as it was.",
   bilanRetiree: (n: number, d: string) =>
     `${n} ${n === 1 ? "payment" : "payments"} · removed ${d}`,
+  // Le modem a répondu « 99 » — il ne sait pas. Ce n'est PAS « pas de
+  // réseau » (ce libellé est celui du téléphone hors ligne) : on dit ce
+  // qu'on sait, c'est-à-dire rien.
+  signalInconnu: "signal unknown",
+  // Une carte dont on ne sait RIEN de récent : ni « en place », ni
+  // « retirée ». Deux raisons, et la phrase est vraie pour les deux : le
+  // boîtier s'est tu, ou il vient de revenir et n'a pas encore relu ses
+  // puces (son signe de vie arrive avant ses cartes). On nomme l'objet (le
+  // boîtier), pas une cause qu'on ignore — courant ou Internet.
+  boitierSansNouvelles:
+    "No recent news of this card: the shop's box went quiet, or has just come back. "
+    + "What you see here dates from before.",
 };
 
 const fr: typeof en = {
@@ -41,6 +53,10 @@ const fr: typeof en = {
   retireesDetail:
     "Elles ne sont plus dans le terminal, mais leur journal est intact. Les remettre le fait ressortir tel quel.",
   bilanRetiree: (n, d) => `${n} paiement${n > 1 ? "s" : ""} · retirée le ${d}`,
+  signalInconnu: "signal inconnu",
+  boitierSansNouvelles:
+    "Pas de nouvelles récentes de cette carte : le boîtier de la boutique s’est tu, "
+    + "ou vient de revenir. Ce qui s’affiche ici date d’avant.",
 };
 
 export const textesCartes = { en, fr } as const;

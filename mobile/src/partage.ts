@@ -60,8 +60,9 @@ export function nomDeFichier(base: string, extension: "pdf" | "csv"): string {
 }
 
 /** Ce que le partage a donné : `fichier` (le vrai fichier est parti),
- *  `navigateur` (l'ancien chemin, faute de brique), ou une erreur levée. */
-export type Partage = "fichier" | "navigateur";
+ *  `navigateur` (l'ancien chemin, faute de brique), `abandon` (l'écran qui
+ *  l'avait demandé n'est plus là : rien ne s'ouvre), ou une erreur levée. */
+export type Partage = "fichier" | "navigateur" | "abandon";
 
 /**
  * Télécharge le document au bout d'un lien signé, puis ouvre la feuille de
@@ -71,9 +72,17 @@ export type Partage = "fichier" | "navigateur";
  * d'erreur, pas un PDF, et l'envoyer à un client sous le nom « Recu-….pdf »
  * serait pire que de ne rien envoyer — l'écran dit alors que ça n'a pas
  * marché, au lieu de partager un fichier illisible.
+ *
+ * `encore` — l'écran qui demande est-il toujours là ? Le téléchargement
+ * prend plusieurs secondes sur un réseau lent : on refermait la fiche d'un
+ * SMS, et la feuille de partage s'ouvrait quand même, par-dessus la liste,
+ * pour un geste qu'on croyait abandonné. La question se pose donc APRÈS le
+ * téléchargement et AVANT la feuille ; la réponse « non » efface le fichier
+ * et rend `abandon`, sans erreur — ce n'est pas un échec, c'est un silence.
  */
 export async function partagerDocument(
   url: string, nom: string, type: "pdf" | "csv", titre: string,
+  encore?: () => boolean,
 ): Promise<Partage> {
   // Le navigateur de l'ordinateur sait déjà télécharger : rien à changer.
   if (Platform.OS === "web") {
@@ -96,6 +105,10 @@ export async function partagerDocument(
   if (type === "pdf" ? debut !== "%PDF-" : debut.trimStart().startsWith("<")) {
     recu.delete();
     throw new Error("document illisible");
+  }
+  if (encore && !encore()) {
+    recu.delete();
+    return "abandon";
   }
 
   if (brique) {

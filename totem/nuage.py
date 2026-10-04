@@ -27,6 +27,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 
 from .analyse_sms import analyser, categoriser
 from .textes import t
@@ -34,6 +36,20 @@ from .version import version
 
 DELAI = 15          # secondes avant d'abandonner une requête
 LOT = 100           # lignes envoyées par requête
+# LE SIGNE DE VIE a son fil, sa cadence et son délai à lui.
+#
+# Il partait en tête du tour de transmission, une fois l'échéance passée — et
+# ce tour pouvait l'attendre : un réveil par SMS relançait une attente de
+# soixante secondes pleines, une requête ratée coûtait quinze secondes, la
+# lecture du signal attendait la fin d'une session USSD. L'intervalle entre
+# deux signes de vie montait ainsi jusqu'à deux minutes, et un simple hoquet
+# d'Internet suffisait à faire paraître « muet » un boîtier bien vivant.
+#
+# Il part maintenant à heure fixe, dans un fil qui ne fait que ça, avec un
+# délai court : un signe de vie qui met quinze secondes à arriver n'en est
+# plus un. Et un échec se rattrape dix secondes plus tard, pas une minute.
+SIGNE_DE_VIE_DELAI = 5
+SIGNE_DE_VIE_REPRISE = 10
 # Après un réveil, on laisse une seconde aux arrivées voisines de rejoindre le
 # même envoi. Trois SMS reçus coup sur coup partent alors ensemble.
 DEBOUNCE = 1
@@ -118,9 +134,29 @@ class Nuage:
         # Levé dès qu'une ligne entre au journal : le pont n'attend plus le
         # prochain battement pour transmettre ce qu'il sait déjà.
         self._reveil = threading.Event()
+        # Levé à l'arrêt : le fil du signe de vie ne dort pas jusqu'au bout.
+        self._arret = threading.Event()
+        # L'état du Pi (température, disque…), fourni au démarrage.
+        self._sante = None
+        # Un signe de vie à la fois, et le retard qu'il a annoncé : c'est ce
+        # qui permet de republier ce retard quand une poussée l'a changé,
+        # sans qu'un signe de vie parti AVANT la poussée n'arrive après elle
+        # et ne remette l'ancien chiffre en place.
+        self._verrou_signe = threading.RLock()
+        self._en_attente_publie = None
+        # L'heure de la base, la dernière qu'elle a donnée (en-tête « Date »
+        # de ses réponses), et l'instant MONOTONE où on l'a lue. Voir
+        # `heure_de_la_base`.
+        self._heure_base = None
+        # Appelé (sans argument) à la fin de chaque tour de transmission, une
+        # fois les SMS poussés : le robot y rejoue les sonneries que la
+        # coupure a retenues — APRÈS que leurs SMS sont dans la base. Il ne
+        # doit rien faire de long : il est appelé depuis le fil des
+        # transmissions.
+        self.apres_transmission = None
 
     # ---- requêtes ---------------------------------------------------------
-    def _requete(self, methode, chemin, corps=None, entetes=None):
+    def _requete(self, methode, chemin, corps=None, entetes=None, delai=DELAI):
         url = f"{self.url}/rest/v1/{chemin}"
         donnees = json.dumps(corps).encode() if corps is not None else None
         req = urllib.request.Request(url, data=donnees, method=methode)
@@ -130,16 +166,21 @@ class Nuage:
         req.add_header("Prefer", "return=minimal")
         for nom, valeur in (entetes or {}).items():
             req.add_header(nom, valeur)
-        with urllib.request.urlopen(req, timeout=DELAI) as rep:
+        with urllib.request.urlopen(req, timeout=delai) as rep:
+            self._noter_l_heure(rep)
             return rep.status
 
     def _requete_corps(self, methode, chemin, corps=None, entetes=None):
-        """Comme `_requete`, mais on LIT la réponse.
+        """Comme `_requete`, mais on LIT la réponse — et l'heure de la base.
 
         `_requete` demande « return=minimal » : la base ne dit alors pas
         quelles lignes ont bougé. Pour une prise en charge conditionnelle,
         c'est précisément ce qu'il faut savoir — une liste vide veut dire
         « personne n'a bougé, un autre était là avant toi ».
+
+        Rend `(lignes, heure)` : `heure` est l'en-tête « Date » de la réponse,
+        l'horloge du SERVEUR au moment où il a répondu (None s'il n'en met
+        pas). C'est elle qui mesure l'âge d'une demande, pas celle du Pi.
         """
         url = f"{self.url}/rest/v1/{chemin}"
         donnees = json.dumps(corps).encode() if corps is not None else None
@@ -151,7 +192,32 @@ class Nuage:
         for nom, valeur in (entetes or {}).items():
             req.add_header(nom, valeur)
         with urllib.request.urlopen(req, timeout=DELAI) as rep:
-            return json.loads(rep.read().decode() or "[]")
+            heure = self._noter_l_heure(rep)
+            return json.loads(rep.read().decode() or "[]"), heure
+
+    def _noter_l_heure(self, reponse):
+        """Retient l'heure que la base vient de donner, et la rend (None si
+        elle n'en donne pas)."""
+        try:
+            heure = _heure_de_l_en_tete(reponse.headers.get("Date"))
+        except Exception:
+            return None
+        if heure is not None:
+            self._heure_base = (heure, time.monotonic())
+        return heure
+
+    def heure_de_la_base(self):
+        """L'heure de la base MAINTENANT, ou None si elle ne l'a jamais dite.
+
+        La dernière heure qu'elle a donnée, avancée du temps écoulé depuis sur
+        l'horloge MONOTONE du Pi. Ni l'une ni l'autre ne dépend de l'heure
+        murale du Pi : après une coupure de courant, celle-ci repart de sa
+        dernière sauvegarde, avec des heures de retard, puis saute quand le
+        réseau revient. Ce qui se mesure avec elle se mesure faux."""
+        if self._heure_base is None:
+            return None
+        heure, lue_a = self._heure_base
+        return heure + timedelta(seconds=time.monotonic() - lue_a)
 
     def _tenter_insert(self, table, lignes, cle_unicite,
                        resolution="ignore-duplicates"):
@@ -316,28 +382,63 @@ class Nuage:
                 pass
 
     # ---- envois -----------------------------------------------------------
-    def enregistrer_terminal(self, sante=None):
+    def enregistrer_terminal(self, sante=None, delai=DELAI):
         """Annonce le terminal et son état. Sert aussi de signe de vie :
-        sans nouvelles, l'application web saura le dire."""
-        ligne = {
-            "id": self.terminal,
-            "nom": self.terminal,
-            "vu_le": _horodatage(),
-            "sante": sante or {},
-            # Quelle version tourne réellement sur ce Pi. Sans elle, « le
-            # correctif n'existe pas » et « le correctif existe mais n'est pas
-            # déployé » se ressemblent exactement, vus de loin.
-            "version": version(),
-        }
-        return self._inserer_ou_mettre_a_jour("terminaux", [ligne], "id")
+        sans nouvelles, l'application web saura le dire.
 
-    def _inserer_ou_mettre_a_jour(self, table, lignes, cle_unicite):
+        Sans `sante`, on publie l'état COURANT — le retard de transmission
+        compté à l'instant, et la santé du Pi. L'« Actualiser » de la
+        plateforme appelait cette méthode sans rien, et effaçait ainsi le
+        retard et la santé jusqu'au signe de vie suivant."""
+        with self._verrou_signe:
+            if sante is None:
+                sante = self._etat_du_terminal()
+            ligne = {
+                "id": self.terminal,
+                "nom": self.terminal,
+                "vu_le": _horodatage(),
+                "sante": sante or {},
+                # Quelle version tourne réellement sur ce Pi. Sans elle, « le
+                # correctif n'existe pas » et « le correctif existe mais n'est
+                # pas déployé » se ressemblent exactement, vus de loin.
+                "version": version(),
+            }
+            fait = self._inserer_ou_mettre_a_jour("terminaux", [ligne], "id",
+                                                  delai=delai)
+            if fait and isinstance(sante, dict) and "en_attente" in sante:
+                self._en_attente_publie = sante["en_attente"]
+            return fait
+
+    def _etat_du_terminal(self):
+        """Ce que le signe de vie porte : le retard, et la santé du Pi.
+
+        Le retard, ce sont les SMS relevés mais pas encore transmis. La
+        plateforme peut ainsi dire « je suis en retard » plutôt que de montrer
+        une boîte de réception incomplète comme si elle était à jour. On ne
+        compte que les SMS : les événements et les cartes, souvent en
+        transit, feraient clignoter le bandeau pour rien."""
+        info = {}
+        try:
+            info["en_attente"] = self.journal.sms_en_attente()
+        except Exception:
+            pass
+        if self._sante is not None:
+            try:
+                resume = self._sante.resume()
+            except Exception:
+                resume = None
+            if resume:
+                info["resume"] = resume
+        return info
+
+    def _inserer_ou_mettre_a_jour(self, table, lignes, cle_unicite, delai=DELAI):
         if not lignes:
             return True
         try:
             self._requete(
                 "POST", f"{table}?on_conflict={cle_unicite}", lignes,
-                {"Prefer": "return=minimal,resolution=merge-duplicates"})
+                {"Prefer": "return=minimal,resolution=merge-duplicates"},
+                delai=delai)
             self.derniere_erreur = None
             return True
         except Exception as e:
@@ -366,7 +467,7 @@ class Nuage:
                     "operateur": c.carte.operateur,
                     "reseau": c.carte.reseau or None,
                     "itinerance": c.carte.itinerance,
-                    "signal": c.signal(),
+                    "signal": _signal_publiable(c.signal()),
                     "maj": _horodatage(),
                 })
             except Exception:
@@ -627,7 +728,7 @@ class Nuage:
             self.derniere_erreur = str(e)
             return []
 
-    def appareils(self, iccid=None):
+    def appareils(self, iccid=None, lever=False):
         """Les téléphones à faire sonner pour un SMS arrivé sur la carte
         `iccid`.
 
@@ -635,6 +736,12 @@ class Nuage:
         robot vient lire la liste au moment d'annoncer un paiement. Aucun
         appareil, ou nuage injoignable : on rend une liste vide, et le
         propriétaire reçoit son message sur Telegram comme toujours.
+
+        `lever` : une panne LÈVE au lieu de rendre une liste vide. « Personne
+        à faire sonner » et « je n'ai pas pu demander qui » se ressemblaient
+        exactement : un paiement reçu pendant une coupure d'Internet ne
+        faisait jamais sonner, ni pendant ni après, sans un mot au journal.
+        Le robot a besoin de la différence pour retenir la sonnerie.
 
         CHACUN ENTEND SES CARTES. Un téléphone sans compte (colonne vide)
         est celui du propriétaire : il sonne pour tout. Un téléphone inscrit
@@ -689,6 +796,8 @@ class Nuage:
                     or l.get("utilisateur") in admis][:PAR_ENVOI]
         except Exception as e:
             self.derniere_erreur = str(e)
+            if lever:
+                raise
             return []
 
     def _comptes_qui_entendent(self, ids, iccid):
@@ -734,21 +843,35 @@ class Nuage:
         reprenait — après l'avoir déjà exécutée. Ici, on ne commence pas
         tant qu'on n'a pas gagné la ligne.
 
-        Rend True seulement si la ligne était bien à prendre ET qu'on l'a
-        prise. Dans le doute — réseau coupé, réponse illisible — c'est False :
-        ne rien faire est toujours rattrapable, composer deux fois ne l'est
-        pas.
+        Rend une `Prise` (vraie) seulement si la ligne était bien à prendre ET
+        qu'on l'a prise. Dans le doute — réseau coupé, réponse illisible —
+        c'est False : ne rien faire est toujours rattrapable, composer deux
+        fois ne l'est pas.
+
+        LA PRISE DIT AUSSI L'ÂGE DE LA DEMANDE. Une demande déposée pendant
+        que le boîtier se taisait restait « en attente » sans limite : à son
+        retour, des heures plus tard, il composait le transfert — numéro et
+        montant compris — alors que l'écran avait abandonné depuis longtemps
+        et que le propriétaire croyait l'opération partie aux oubliettes.
+        La base rend la ligne prise, avec son heure de dépôt, et l'en-tête
+        de sa réponse donne SON heure : l'écart entre les deux est l'âge vrai
+        de la demande, mesuré sur une seule horloge — celle du Pi peut avoir
+        des heures de retard après une coupure de courant.
         """
         try:
-            lignes = self._requete_corps(
+            lignes, heure_base = self._requete_corps(
                 "PATCH",
                 f"commandes?id=eq.{int(identifiant)}&etat=eq.en_attente",
                 {"etat": "en_cours"})
             self.derniere_erreur = None
-            return bool(lignes)
         except Exception as e:
             self.derniere_erreur = str(e)
             return False
+        if not lignes:
+            return False
+        ligne = lignes[0] if isinstance(lignes, list) else None
+        depose = ligne.get("demandee_le") if isinstance(ligne, dict) else None
+        return Prise(_age_de_la_demande(depose, heure_base))
 
     def commande_maj(self, identifiant, champs):
         """Fait avancer une demande : résultat, échec, effacement du secret.
@@ -823,9 +946,16 @@ class Nuage:
     # ---- boucle -----------------------------------------------------------
     def demarrer(self, comptes=None, sante=None):
         """Lance la synchronisation en tâche de fond. Sans configuration,
-        ne fait rien du tout — le robot fonctionne exactement pareil."""
+        ne fait rien du tout — le robot fonctionne exactement pareil.
+
+        Deux fils : celui du signe de vie, qui ne fait que ça, à heure fixe ;
+        et celui des transmissions (SMS, événements, cartes, état des SIM).
+        Rend le second."""
         if not self.actif:
             return None
+        self._sante = sante
+        self._fil_signe = threading.Thread(target=self._battre, daemon=True)
+        self._fil_signe.start()
         fil = threading.Thread(
             target=self._boucle, args=(comptes or [], sante), daemon=True)
         fil.start()
@@ -834,6 +964,78 @@ class Nuage:
     def arreter(self):
         self._marche = False
         self._reveil.set()      # ne pas attendre la fin du sommeil pour sortir
+        self._arret.set()
+
+    def _battre(self):
+        """Le fil du signe de vie : à heure fixe, et rien d'autre.
+
+        Rien ne le retarde — ni une poussée de mille lignes, ni un SMS qui
+        réveille la transmission, ni un modem occupé par une session USSD :
+        rien de tout cela ne passe par ce fil. Un signe de vie raté se
+        retente dix secondes plus tard ; un signe de vie réussi fixe le
+        suivant à une pause de son DÉPART, pas de son arrivée.
+
+        LE RÉSEAU REVENU NE S'ANNONCE PAS QU'À LA PLATEFORME. Le signe de vie
+        retente toutes les dix secondes, la transmission seulement à son
+        échéance : au retour d'Internet, le boîtier publiait « 3 messages en
+        cours de transmission », puis les gardait jusqu'à une minute de
+        plus. Le premier signe de vie qui passe après un échec — ou qui
+        annonce des SMS en retard — réveille donc la transmission. C'est un
+        événement, pas un pouls : il n'arrive que si quelque chose attend.
+        """
+        prochain = time.monotonic()
+        echecs = 0
+        while self._marche:
+            reste = prochain - time.monotonic()
+            if reste > 0 and self._arret.wait(reste):
+                break
+            if not self._marche:
+                break
+            depart = time.monotonic()
+            try:
+                vivant = self.enregistrer_terminal(delai=SIGNE_DE_VIE_DELAI)
+            except Exception as e:
+                self.derniere_erreur = str(e)
+                vivant = False
+            if vivant:
+                prochain = depart + self.pause
+                if echecs or self._en_attente_publie:
+                    self._reveil.set()
+                echecs = 0
+            else:
+                echecs += 1
+                prochain = time.monotonic() + min(SIGNE_DE_VIE_REPRISE,
+                                                  self.pause)
+
+    def _apres_la_transmission(self):
+        """Fin d'un tour de transmission : ce qui attendait que les SMS soient
+        dans la base peut partir (les sonneries retenues, côté robot)."""
+        if self.apres_transmission is None:
+            return
+        try:
+            self.apres_transmission()
+        except Exception:
+            pass    # la transmission, elle, est faite : rien d'autre ne compte ici
+
+    def _republier_le_retard(self):
+        """Après une poussée, le retard que la plateforme affiche doit être
+        celui qui RESTE.
+
+        Il était compté et publié AVANT la poussée qui, dans la foulée,
+        transmettait justement ces SMS : la plateforme affichait « 3 messages
+        en cours de transmission » pendant toute une minute au-dessus d'une
+        liste qui les contenait déjà. On republie donc dès qu'une poussée l'a
+        fait bouger. Sous le verrou du signe de vie : un signe de vie parti
+        avant la poussée ne peut pas arriver après elle avec l'ancien chiffre.
+        """
+        with self._verrou_signe:
+            try:
+                reste = self.journal.sms_en_attente()
+            except Exception:
+                return False
+            if reste == self._en_attente_publie:
+                return True
+            return self.enregistrer_terminal(delai=SIGNE_DE_VIE_DELAI)
 
     def reveiller(self):
         """« J'ai quelque chose à transmettre, maintenant. »
@@ -849,28 +1051,23 @@ class Nuage:
         self._reveil.set()
 
     def _boucle(self, comptes, sante):
+        """Le fil des transmissions. Le signe de vie n'y passe plus (voir
+        `_battre`) : ce fil peut traîner sans que le boîtier paraisse muet."""
         premier = True
         prochain_etat = 0.0
         while self._marche:
             try:
-                # L'état du terminal et des SIM change lentement : on le
-                # republie au rythme de fond, pas à chaque paiement.
+                # L'état des SIM change lentement : on le republie au rythme
+                # de fond, pas à chaque paiement.
                 if time.monotonic() >= prochain_etat:
                     prochain_etat = time.monotonic() + self.pause
-                    etat = sante.resume() if sante else None
-                    # On publie AUSSI le retard de synchro : les SMS relevés
-                    # mais pas encore transmis. La plateforme peut ainsi dire
-                    # « je suis en retard » plutôt que de montrer une boîte de
-                    # réception incomplète comme si elle était à jour. On ne
-                    # compte que les SMS : les événements et les cartes, souvent
-                    # en transit, feraient clignoter le bandeau pour rien.
-                    info = {"en_attente": self.journal.sms_en_attente()}
-                    if etat:
-                        info["resume"] = etat
-                    self.enregistrer_terminal(info)
                     self.publier_comptes(comptes)
                     self.publier_raccourcis()
                 envoyes = self._pousser_tout()
+                if envoyes:
+                    # Ce qui reste VRAIMENT à transmettre, maintenant que
+                    # la poussée est passée.
+                    self._republier_le_retard()
                 if premier and envoyes:
                     self.journal.evenement(t(
                         f"cloud: {envoyes} line(s) sent at startup",
@@ -879,10 +1076,16 @@ class Nuage:
             except Exception as e:
                 # Un cloud injoignable est normal : on note, on continue.
                 self.derniere_erreur = str(e)
+            # APRÈS la poussée : une sonnerie rattrapée fait ouvrir
+            # l'application, qui doit y trouver le paiement qu'elle annonce.
+            self._apres_la_transmission()
             # Réveil immédiat sur nouvelle ligne, sinon battement de fond —
-            # qui reste indispensable : il rejoue ce qu'une coupure a retenu
-            # et sert de signe de vie au terminal.
-            if self._reveil.wait(timeout=self.pause):
+            # qui reste indispensable : il rejoue ce qu'une coupure a retenu.
+            # On attend jusqu'à l'ÉCHÉANCE, pas une pause pleine : un réveil
+            # par SMS relançait soixante secondes d'attente à chaque fois, et
+            # l'état des SIM glissait jusqu'à deux minutes.
+            attente = min(self.pause, max(0.0, prochain_etat - time.monotonic()))
+            if self._reveil.wait(timeout=attente):
                 self._reveil.clear()
                 # Laisser une seconde aux arrivées quasi simultanées de se
                 # joindre au même envoi, plutôt que d'ouvrir trois connexions.
@@ -918,6 +1121,103 @@ class Nuage:
         if not reste:
             return t("cloud up to date", "cloud à jour")
         return t(f"cloud · {reste} waiting", f"cloud · {reste} en attente")
+
+
+class Prise:
+    """Une demande gagnée par CE robot — et ce qu'on sait de son âge.
+
+    Vraie, comme l'était le « True » d'avant : `if not nuage.reclamer(…)` se
+    lit toujours de la même façon. `age` : les secondes écoulées entre le
+    dépôt de la demande et sa prise, sur l'horloge de la base ; None quand
+    on ne peut pas le savoir (heure de dépôt absente ou illisible)."""
+
+    __slots__ = ("age",)
+
+    def __init__(self, age=None):
+        self.age = age
+
+    def __bool__(self):
+        return True
+
+    def __repr__(self):
+        return f"Prise(age={self.age!r})"
+
+
+def _signal_publiable(valeur):
+    """La force du signal telle que la plateforme doit la lire : 0 à 31, ou
+    RIEN.
+
+    Le modem répond 99 quand il ne sait pas — pas de réseau, antenne
+    débranchée, ou modem qui ne répond plus (la lecture rend aussi 99 au
+    bout de deux secondes de silence). Publié tel quel, 99 dessinait quatre
+    barres pleines sur une carte SANS réseau : 99/31, c'est plus que le
+    maximum. Inconnu se dit `None`, jamais un nombre."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
+        return None
+    return valeur if 0 <= valeur <= 31 else None
+
+
+def _heure_de_l_en_tete(valeur):
+    """L'en-tête HTTP « Date » (« Sun, 04 Oct 2026 09:12:33 GMT »), en heure
+    consciente de son fuseau, ou None."""
+    if not valeur:
+        return None
+    try:
+        heure = parsedate_to_datetime(valeur)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if heure is None or heure.tzinfo is None:
+        return None
+    return heure
+
+
+_RE_FRACTION = re.compile(r"^(.*T\d\d:\d\d:\d\d)\.(\d+)(.*)$")
+
+
+def lire_instant(texte):
+    """Une heure de la base (« 2026-10-04T09:12:33.1234+00:00 »), ou None.
+
+    PostgreSQL tronque les zéros des fractions (« .1234 »), écrit parfois
+    « +00 » sans les minutes, et d'autres écrivent « Z » : ce que
+    `fromisoformat` d'avant Python 3.11 refuse. Une heure sans fuseau ne
+    dit pas de quel instant elle parle : None."""
+    if not isinstance(texte, str) or not texte.strip():
+        return None
+    s = texte.strip()
+    if len(s) > 10 and s[10] == " ":
+        s = s[:10] + "T" + s[11:]
+    s = re.sub(r"[zZ]$", "+00:00", s)
+    s = re.sub(r"([+-]\d\d)$", r"\1:00", s)
+    m = _RE_FRACTION.match(s)
+    if m:
+        s = f"{m.group(1)}.{(m.group(2) + '000000')[:6]}{m.group(3)}"
+    try:
+        instant = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    return instant if instant.tzinfo is not None else None
+
+
+def _age_de_la_demande(depose, heure_base):
+    """Secondes entre le dépôt d'une demande et maintenant, ou None.
+
+    `heure_base` est l'heure de la base au moment de la prise (en-tête de sa
+    réponse) : la même horloge que celle qui a écrit `depose`. Sans elle, on
+    retombe sur l'horloge du Pi — mieux que rien, mais elle peut avoir des
+    heures de retard après une coupure de courant : un écart NÉGATIF
+    au-delà de l'arrondi ne se croit pas, il dit que les horloges ne
+    s'accordent pas, donc qu'on ne sait pas."""
+    instant = lire_instant(depose)
+    if instant is None:
+        return None
+    maintenant = heure_base or datetime.now(timezone.utc)
+    age = (maintenant - instant).total_seconds()
+    # L'en-tête « Date » n'a pas de fraction de seconde : la base, elle, en a.
+    # Une demande prise dans la seconde de son dépôt paraît donc avoir un âge
+    # légèrement négatif. C'est un arrondi, pas un désaccord.
+    if age < -5:
+        return None
+    return max(0.0, age)
 
 
 def _horodatage(iso=None):

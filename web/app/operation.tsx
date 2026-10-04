@@ -13,6 +13,7 @@ import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { BarreArret, BoutonFermer, type SortieRetenue } from "./feuille";
 import { IconBubble, IconCheck, IconChevron, IconClose, IconLock, IconPersonnes } from "./icons";
 import { useLangue } from "./langue";
+import { abandonner, phraseDAbandon } from "./abandon";
 
 /**
  * Une opération, du premier chiffre au code secret — le même parcours que
@@ -172,24 +173,36 @@ export function OperationPopup({
         throw new Error(corps?.erreur || t.demandePasPartie);
       }
       const { id } = (await r.json()) as { id: number };
+      const relire = () => fetch(`/api/commande/${id}`, { cache: "no-store" })
+        .then((x) => (x.ok ? x.json() : null))
+        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null } | null>;
+      const finie = (c: { etat?: string } | null) =>
+        Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
+      const conclure = (c: { etat?: string; resultat?: string | null }) => {
+        setAttente(false);
+        const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
+        setFil((f) => [...f, { de: "reseau", texte }]);
+        // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
+        // en « autre réponse » aurait caché les boutons du menu suivant.
+        setLibre(false);
+        if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
+        setEnSession(true);
+        return texte;
+      };
       for (let i = 0; i < 25; i++) {
         await new Promise((res) => setTimeout(res, 1200));
-        const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
-          .then((x) => (x.ok ? x.json() : null))
-          .catch(() => null);
-        if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          setAttente(false);
-          const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-          setFil((f) => [...f, { de: "reseau", texte }]);
-          // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
-          // en « autre réponse » aurait caché les boutons du menu suivant.
-          setLibre(false);
-          if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
-          setEnSession(true);
-          return texte;
-        }
+        const c = await relire();
+        if (c && finie(c)) return conclure(c);
       }
-      throw new Error(t.terminalMuet);
+      // On renonce : la demande s'ANNULE, et l'écran ne dit « rien n'est
+      // parti » que si l'annulation a pris (voir abandon.ts). Finie
+      // entre-temps, elle a une réponse : on la relit et on la MONTRE.
+      const issue = await abandonner(id);
+      if (issue === "finie") {
+        const c = await relire();
+        if (c && finie(c)) return conclure(c);
+      }
+      throw new Error(phraseDAbandon(issue, t));
     } catch (e) {
       setErreur(e instanceof Error ? e.message : t.accroc);
       setAttente(false);

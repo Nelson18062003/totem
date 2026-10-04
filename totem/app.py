@@ -25,25 +25,34 @@ import shutil
 import signal
 import tempfile
 import threading
+import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .analyse_sms import (analyser, categoriser, formater_montant,
                           masquer_le_code, solde_annonce)
 from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
                           motif_du_sms, motif_selon_nature, raison_du_refus)
-from .recu import (numero_de_recu, numero_lisible, recu_solde,
-                   recu_transfert)
+from .recu import (heure_en_lettres, numero_de_recu, numero_lisible,
+                   recu_solde, recu_transfert)
 from .codes import catalogue, cle as cle_code
 from .compte import TELEGRAM, ErreurModem, SessionTenue, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
-from .notification import composer, envoyer, lire_les_accuses
+from .notification import (PEUT_ETRE_PARTIE, composer, composer_rattrapage,
+                           envoyer, lire_les_accuses)
+from .nuage import lire_instant
+from .storage import demarrage_courant
 
 # Combien de secondes laisser à Apple et Google avant de lire leurs accusés.
 # Ils reviennent d'ordinaire en quelques secondes ; on attend dans un fil à
 # part, rien ne patiente derrière.
 ATTENTE_DES_ACCUSES = 20
+# Une sonnerie retenue par une coupure ne repart que si elle a moins de ce
+# délai : au-delà, elle n'annonce plus rien — le propriétaire a eu le temps
+# d'ouvrir l'application. Son âge se mesure sans l'heure murale du Pi (voir
+# `age_de_la_sonnerie`).
+SONNERIE_PERIMEE_S = 30 * 60
 from .pilotage import Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import langue_active, t
@@ -192,6 +201,15 @@ class Robot:
             # (reçu/envoyé) part ainsi jusqu'à la plateforme, au lieu d'un
             # éternel « à confirmer ».
             self.nuage.fournir_numeros = self._nos_numeros
+            # Les sonneries qu'une coupure a retenues repartent au retour du
+            # réseau, à la fin du tour de transmission qui a monté leurs SMS
+            # — le premier signe de vie qui passe le réveille sans attendre.
+            # Avant, elles partaient du signe de vie lui-même : le téléphone
+            # sonnait, on ouvrait l'application, et les paiements annoncés
+            # n'y étaient pas encore.
+            self.nuage.apres_transmission = self._rejouer_les_sonneries
+        # Un seul rattrapage de sonneries à la fois.
+        self._rattrapage = threading.Lock()
         self.pilotage = None    # le guichet à distance, démarré avec le nuage
         # Les numéros des puces, déclarés dans la configuration. Une SIM
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
@@ -2133,7 +2151,7 @@ class Robot:
                     sms_id = self.journal.sms(
                         expediteur, texte, compte.libelle, compte.carte.iccid,
                         emis_le=heure_reseau)
-                    self._notifier_sms(compte, expediteur, texte)
+                    self._notifier_sms(compte, expediteur, texte, sms_id)
                     # Le reçu ne part pas maintenant : l'alerte doit arriver la
                     # première, et un PDF ne doit jamais retarder l'annonce
                     # d'un encaissement. Il est seulement inscrit ; la boucle
@@ -2474,7 +2492,7 @@ class Robot:
             self._sauvegarde(canal="alertes", automatique=True)
         return True
 
-    def _notifier_sms(self, compte, expediteur, texte):
+    def _notifier_sms(self, compte, expediteur, texte, sms_id=None):
         """Tous les SMS arrivent de la même façon : aucun n'est mis en
         sourdine. Un message d'opérateur peut annoncer une suspension de
         compte ou une opération non voulue — rien ne doit passer inaperçu.
@@ -2551,9 +2569,12 @@ class Robot:
         # invité approuvé en a un, et un aperçu s'affiche sur un écran
         # VERROUILLÉ, que n'importe qui peut lire par-dessus une épaule.
         self._faire_sonner(expediteur, compte.libelle, masquer_le_code(texte),
-                           iccid=compte.carte.iccid if compte.carte.identifiee else None)
+                           iccid=compte.carte.iccid if compte.carte.identifiee else None,
+                           paiement=bool(paiement and paiement.sens == "entree"),
+                           sms_id=sms_id)
 
-    def _faire_sonner(self, expediteur, libelle, texte, iccid=None):
+    def _faire_sonner(self, expediteur, libelle, texte, iccid=None, paiement=False,
+                      sms_id=None):
         """Fait sonner les téléphones qui se sont inscrits.
 
         Rien ici ne peut retarder ni empêcher l'annonce Telegram : elle est
@@ -2564,6 +2585,14 @@ class Robot:
 
         Ce qui s'affiche se décide dans `notification.composer` : le message
         reçu, en aperçu, tel qu'il est arrivé.
+
+        UNE SONNERIE QUI N'A PAS PU PARTIR N'EST PLUS PERDUE. Pendant une
+        coupure d'Internet du boîtier, la liste des téléphones ne se lisait
+        pas, une liste vide en tenait lieu, et rien ne partait — ni pendant,
+        ni après, sans un mot au journal. Le client avait payé, le téléphone
+        se taisait, et le propriétaire concluait qu'il n'avait pas payé. La
+        sonnerie est maintenant RETENUE (`_retenir_la_sonnerie`) et repart au
+        retour du réseau (`_rejouer_les_sonneries`).
         """
         if not self.nuage:
             return
@@ -2576,9 +2605,26 @@ class Robot:
         def porter():
             try:
                 # Le propriétaire, et ceux à qui CETTE carte est confiée.
-                appareils = self.nuage.appareils(iccid)
-                billets = []
-                servis, soucis = envoyer(appareils, titre, corps, acceptes=billets)
+                try:
+                    appareils = self.nuage.appareils(iccid, lever=True)
+                except Exception:
+                    # On n'a pas pu DEMANDER qui faire sonner : le boîtier
+                    # n'a plus Internet, ou la base ne répond pas.
+                    self._retenir_la_sonnerie(sms_id, iccid, libelle,
+                                              expediteur, texte, paiement)
+                    return
+                billets, injoignables = [], []
+                servis, soucis = envoyer(appareils, titre, corps, acceptes=billets,
+                                         injoignables=injoignables)
+                if injoignables and not servis:
+                    # La liste s'est lue, mais le guichet des notifications
+                    # n'a SÛREMENT rien reçu. (Une réponse perdue après
+                    # l'envoi n'est pas de ce côté-là : la notification est
+                    # peut-être partie, et la renvoyer ferait sonner deux
+                    # fois le même paiement.)
+                    self._retenir_la_sonnerie(sms_id, iccid, libelle,
+                                              expediteur, texte, paiement)
+                    return
                 # L'ACCUSÉ, PAS SEULEMENT LE BILLET. Le refus d'Apple (clé de
                 # notification absente du projet) n'arrive qu'après coup :
                 # sans cette lecture, un iPhone muet comptait pour servi à
@@ -2597,6 +2643,184 @@ class Robot:
 
         threading.Thread(target=porter, daemon=True).start()
 
+    def _retenir_la_sonnerie(self, sms_id, iccid, libelle, expediteur, texte,
+                             paiement):
+        """Met de côté une sonnerie qui n'a pas pu partir, jusqu'au retour du
+        réseau. Elle est écrite dans le journal du Pi, comme le courrier
+        Telegram en souffrance : un redémarrage pendant la coupure ne la
+        perd pas. Le texte est celui de l'écran verrouillé — code masqué.
+
+        La première de la coupure se dit au journal ; les suivantes se
+        comptent, et le compte se dit au retour (`_rattraper_les_sonneries`)."""
+        try:
+            retenues = self.journal.retenir_sonnerie(
+                sms_id, iccid, libelle, expediteur, texte, paiement)
+        except Exception:
+            return
+        if retenues == 1:
+            self._noter("sonnerie retenue : le boîtier n'a pas pu joindre les "
+                        "téléphones (Internet coupé ?) — elle repartira au "
+                        "retour du réseau")
+
+    def _rejouer_les_sonneries(self):
+        """Appelé à la fin de chaque tour de transmission vers le nuage. S'il
+        y a des sonneries retenues, un fil à part les rattrape : le fil des
+        transmissions, lui, ne doit rien attendre."""
+        try:
+            if not self.journal.sonneries_retenues():
+                return
+        except Exception:
+            return
+        if not self._rattrapage.acquire(blocking=False):
+            return      # un rattrapage est déjà en route
+
+        def rattraper():
+            try:
+                self._rattraper_les_sonneries()
+            except Exception:
+                pass    # elles restent retenues : le tour de transmission suivant y revient
+            finally:
+                self._rattrapage.release()
+
+        threading.Thread(target=rattraper, daemon=True).start()
+
+    def _rattraper_les_sonneries(self):
+        """Fait sonner, en UNE notification, ce que la coupure a retenu.
+
+        Cinq règles :
+          — une sonnerie ne part qu'une fois SON SMS dans la base : le
+            téléphone qui sonne fait ouvrir l'application, qui doit y trouver
+            le paiement annoncé — pas « 3 messages en cours de transmission »
+            au-dessus d'une liste qui ne les a pas ;
+          — seules les sonneries de la dernière demi-heure repartent, et cette
+            demi-heure ne se mesure pas sur l'heure murale du Pi (voir
+            `age_de_la_sonnerie`). Les autres sont dites au journal, et
+            oubliées ;
+          — CHACUN ENTEND SES CARTES, au rattrapage comme à l'heure : chaque
+            téléphone reçoit une notification qui ne parle que des cartes
+            qu'il entend ;
+          — CHACUN N'EST PRÉVENU QU'UNE FOIS. Ce qui est servi se retient par
+            téléphone, pas par sonnerie : si le réseau retombe au milieu du
+            rattrapage, le propriétaire déjà prévenu ne reçoit pas une
+            seconde fois, comme un paiement neuf, ce que le vendeur attend
+            encore ;
+          — si le réseau retombe, rien n'est oublié : le tour suivant y
+            reviendra.
+
+        AUCUNE DONNÉE PERSONNELLE au journal : des nombres, et une cause.
+        """
+        retenues = self.journal.sonneries_retenues()
+        if not retenues:
+            return
+        try:
+            heure_base = self.nuage.heure_de_la_base()
+        except Exception:
+            heure_base = None
+        fraiches, perimees, sans_heure = [], [], []
+        for s in retenues:
+            age = age_de_la_sonnerie(s, heure_base)
+            if age is not None and age > SONNERIE_PERIMEE_S:
+                perimees.append(s)
+            elif not s.transmise:
+                continue        # son SMS n'est pas encore dans la base : elle attend
+            elif age is None:
+                sans_heure.append(s)
+            else:
+                fraiches.append((s, age))
+        self._oublier_les_sonneries_tardives(perimees, sans_heure)
+        if not fraiches:
+            return
+
+        # Qui entend quoi : la liste des téléphones se lit carte par carte.
+        cartes_de = {}
+        for iccid in dict.fromkeys(s.iccid for s, _ in fraiches):
+            try:
+                jetons = self.nuage.appareils(iccid or None, lever=True)
+            except Exception:
+                return      # toujours coupé : tout reste retenu
+            for jeton in jetons:
+                cartes_de.setdefault(jeton, set()).add(iccid)
+        servis = {s.id: set(s.servis) for s, _ in fraiches}
+        # Ce que chaque téléphone n'a pas encore reçu ; ceux qui attendent
+        # EXACTEMENT les mêmes sonneries reçoivent la même notification, en
+        # un seul envoi.
+        groupes = {}
+        for jeton, cartes in cartes_de.items():
+            marque = empreinte_du_telephone(jeton)
+            cle = tuple(s.id for s, _ in fraiches
+                        if s.iccid in cartes and marque not in servis[s.id])
+            if cle:
+                groupes.setdefault(cle, []).append(jeton)
+
+        anglais = langue_active() == "en"
+        attendus = reussis = 0
+        soucis, billets = [], []
+        for cle, jetons in groupes.items():
+            liste = [(s, age) for s, age in fraiches if s.id in cle]
+            titre, corps = composer_rattrapage(
+                [(s.libelle, s.expediteur, s.texte, s.paiement,
+                  heure_de_reception(s, age, heure_base)) for s, age in liste],
+                anglais=anglais, nom=self.nom)
+            injoignables = []
+            ok, ennuis = envoyer(jetons, titre, corps, acceptes=billets,
+                                 injoignables=injoignables)
+            attendus += len(jetons)
+            reussis += ok
+            soucis += ennuis
+            # Prévenus : tout ce qui n'est pas SÛREMENT resté en route. Un
+            # refus définitif ou une réponse perdue ne se renvoient pas.
+            marques = [empreinte_du_telephone(j) for j in jetons
+                       if j not in injoignables]
+            self.journal.noter_sonneries_servies(cle, marques)
+            for i in cle:
+                servis[i].update(marques)
+        # Une sonnerie est faite quand tous les téléphones qui l'entendent
+        # l'ont reçue — ou quand aucun ne l'entend.
+        parties = [s for s, _ in fraiches
+                   if all(empreinte_du_telephone(j) in servis[s.id]
+                          for j, cartes in cartes_de.items() if s.iccid in cartes)]
+        self.journal.oublier_sonneries([s.id for s in parties])
+        if parties:
+            n = len(parties)
+            suite = (" : rejouée au retour du réseau" if n == 1 else
+                     " : regroupées en une notification au retour du réseau")
+            if not cartes_de:
+                suite = " : aucun téléphone à prévenir au retour du réseau"
+            self._noter(
+                ("1 sonnerie n'a pas pu partir pendant la coupure d'Internet"
+                 if n == 1 else
+                 f"{n} sonneries n'ont pas pu partir pendant la coupure "
+                 "d'Internet") + suite)
+        if billets:
+            time.sleep(ATTENTE_DES_ACCUSES)
+            refus = lire_les_accuses(billets)
+            reussis -= len(refus)
+            soucis = soucis + refus
+        if attendus:
+            self._dire_si_les_telephones_se_taisent(attendus, reussis, soucis)
+
+    def _oublier_les_sonneries_tardives(self, perimees, sans_heure):
+        """Les sonneries qui ne sonneront plus : dites au journal, en nombre."""
+        if perimees:
+            self.journal.oublier_sonneries([s.id for s in perimees])
+            n = len(perimees)
+            self._noter(
+                "1 sonnerie n'a pas pu partir pendant la coupure d'Internet — "
+                "trop ancienne pour sonner encore (plus de 30 min)" if n == 1 else
+                f"{n} sonneries n'ont pas pu partir pendant la coupure "
+                "d'Internet — trop anciennes pour sonner encore (plus de 30 min)")
+        if sans_heure:
+            self.journal.oublier_sonneries([s.id for s in sans_heure])
+            n = len(sans_heure)
+            self._noter(
+                ("1 sonnerie n'a pas pu partir pendant la coupure d'Internet"
+                 if n == 1 else
+                 f"{n} sonneries n'ont pas pu partir pendant la coupure "
+                 "d'Internet")
+                + " — le boîtier a redémarré depuis, et l'heure du message "
+                "ne se laisse plus établir : on ne fait pas sonner un "
+                "paiement dont on ne sait pas l'âge")
+
     def _dire_si_les_telephones_se_taisent(self, attendus, servis, soucis):
         """Écrit au journal quand les téléphones ne sonnent pas.
 
@@ -2611,7 +2835,12 @@ class Robot:
         AUCUNE DONNÉE PERSONNELLE N'ENTRE ICI : un compte, et une cause. Le
         journal se garde longtemps et se lit à plusieurs.
         """
-        if attendus and not servis:
+        if attendus and not servis and soucis and all(
+                souci == PEUT_ETRE_PARTIE for souci in soucis):
+            # Le guichet a reçu la notification, sa réponse s'est perdue :
+            # « muets » serait affirmer ce qu'on ne sait pas.
+            etat = "peut-être prévenus — le guichet n'a pas répondu à temps"
+        elif attendus and not servis:
             etat = "muets : " + " · ".join(dict.fromkeys(soucis)) if soucis \
                 else "muets, sans raison donnée par le guichet"
         elif servis < attendus:
@@ -2791,3 +3020,54 @@ class Robot:
               f"✅ {etiquette}{gras('Le modem répond de nouveau')}\n"
               f"Signal : {compte.signal()}/31"), canal=canal)
         return True
+
+
+def empreinte_du_telephone(jeton):
+    """Ce que le journal garde d'un téléphone déjà prévenu : une empreinte,
+    jamais le jeton. Le jeton suffit, à lui seul, pour faire sonner ce
+    téléphone ; le journal, lui, part en sauvegarde."""
+    return hashlib.sha256(str(jeton).encode("utf-8")).hexdigest()[:16]
+
+
+def age_de_la_sonnerie(sonnerie, heure_base):
+    """Depuis combien de secondes une sonnerie attend, ou None si on ne peut
+    pas le savoir.
+
+    PAS AVEC L'HEURE MURALE DU PI. La coupure la plus courante à Douala est
+    celle du COURANT : elle éteint le Pi, le routeur et Starlink ensemble. Le
+    Pi n'a pas de pile ; il redémarre avec l'heure de sa dernière sauvegarde,
+    des heures en retard, et ne la corrige qu'au retour d'Internet. Une
+    sonnerie retenue entre les deux était datée de cette heure fausse, puis
+    comparée à l'heure juste : retenue il y a une minute, elle paraissait
+    vieille de deux heures, et on la jetait « trop ancienne ».
+
+    Dans le même démarrage, l'âge se lit sur l'horloge MONOTONE, qu'aucun
+    réglage de l'heure ne fait sauter. D'un démarrage à l'autre, elle repart
+    de zéro : on compare alors l'heure RÉSEAU du SMS (donnée par l'opérateur)
+    à l'heure de la base (`Nuage.heure_de_la_base`) — deux horloges qui ne
+    sont pas celle du Pi. Sans l'une ou l'autre, on ne sait pas.
+    """
+    if sonnerie.demarrage == demarrage_courant() and sonnerie.monotone is not None:
+        return max(0.0, time.monotonic() - sonnerie.monotone)
+    instant = lire_instant(sonnerie.emis_le)
+    if instant is None or heure_base is None:
+        return None
+    age = (heure_base - instant).total_seconds()
+    # Un SMS « reçu dans le futur » de plus de cinq minutes ne dit pas un
+    # âge : il dit que les horloges ne s'accordent pas.
+    return max(0.0, age) if age > -300 else None
+
+
+def heure_de_reception(sonnerie, age, heure_base):
+    """L'heure à écrire dans la notification rattrapée (« 14 h 05 »).
+
+    L'heure RÉSEAU du SMS quand on l'a, telle que l'opérateur l'a écrite ;
+    sinon, maintenant moins l'âge — maintenant pris à la base, ou, faute de
+    mieux, au Pi, dont l'heure est revenue avec le réseau."""
+    instant = lire_instant(sonnerie.emis_le)
+    if instant is None:
+        if age is None:
+            return None
+        maintenant = heure_base or datetime.now(timezone.utc)
+        instant = (maintenant - timedelta(seconds=age)).astimezone()
+    return heure_en_lettres(instant)

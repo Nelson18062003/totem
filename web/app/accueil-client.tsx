@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { etapesGeste } from "@noyau/codes";
 import { FUSEAU_DEFAUT, nombre, type RaccourciAppris, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { textesCartes } from "@noyau/textes/cartes";
 import { useLangue } from "@/app/langue";
 import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconPuceSim,
@@ -19,12 +20,20 @@ import { OperationPopup, type Operation } from "./operation";
 import type { ClientRecent } from "@noyau/recents";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 
-/** Le signal en quatre barres — rempli au niveau, lisible sans chiffres. */
-function BarresSignal({ niveau }: { niveau: number }) {
-  const pleines = Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+/** Le signal en quatre barres — rempli au niveau, lisible sans chiffres.
+ *
+ *  `null` : INCONNU. Le modem répond « 99 » quand il ne sait pas, et ce 99
+ *  dessinait quatre barres pleines sur une carte qui ne captait rien. Un
+ *  signal inconnu se dessine vide et se dit « inconnu » ; un relevé figé
+ *  (le boîtier se tait) se dessine grisé — il ne dit plus rien de maintenant. */
+function BarresSignal({ niveau, fige, inconnu }: {
+  niveau: number | null; fige: boolean; inconnu: string;
+}) {
+  const pleines = niveau == null ? 0 : Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+  const libelle = niveau == null ? inconnu : `Signal ${niveau}/31`;
   return (
-    <span className="flex shrink-0 items-end gap-[3px] pb-1" role="img"
-      aria-label={`Signal ${niveau}/31`} title={`Signal ${niveau}/31`}>
+    <span className={`flex shrink-0 items-end gap-[3px] pb-1 ${fige ? "opacity-50" : ""}`} role="img"
+      aria-label={libelle} title={libelle}>
       {[5, 8, 11, 14].map((h, i) => (
         <span key={h} style={{ height: h }}
           className={`w-[3px] rounded-full ${i < pleines ? "bg-white/90" : "bg-white/30"}`} />
@@ -42,7 +51,7 @@ const CLE_SOLDE_CACHE = "totem_solde_cache";
 export type CarteGuichet = Pick<
   Sim,
   "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "soldeLe" | "signal"
-  | "iccid" | "enPlace" | "derniereVue"
+  | "iccid" | "enPlace" | "derniereVue" | "presence"
 > & {
   /** Le fuseau du TERMINAL : c'est lui qui dit si le relevé était hier. */
   fuseau?: string;
@@ -121,7 +130,8 @@ function CarteSim({
           l'actualisation — hors du chemin du chiffre. */}
       <div className="flex items-center justify-start gap-3">
         <span className="flex shrink-0 items-center gap-3">
-          {carte.signal != null && <BarresSignal niveau={carte.signal} />}
+          <BarresSignal niveau={carte.signal} fige={carte.presence === "inconnue"}
+            inconnu={textesCartes[langue].signalInconnu} />
           {carte.solde != null && (
             <button
               onClick={(e) => { e.stopPropagation(); basculerSolde(); }}
@@ -162,6 +172,11 @@ function CarteSim({
       <p className="mt-2 text-small text-white/75">
         {!carte.enPlace
           ? t.carteMuette(carte.derniereVue)
+          // Le boîtier s'est tu : la carte n'est pas « retirée », on ne sait
+          // rien de maintenant — et on le dit, au lieu d'un solde qui
+          // paraîtrait frais.
+          : carte.presence === "inconnue"
+            ? textesCartes[langue].boitierSansNouvelles
           : carte.solde == null
             ? t.aucunSoldeConnu
             : carte.soldeMaj

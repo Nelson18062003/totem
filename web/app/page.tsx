@@ -58,6 +58,7 @@ export default async function Accueil() {
             numero: c.numero, nom: c.nom, solde: c.solde,
             soldeMaj: c.soldeMaj, soldeLe: c.soldeLe, fuseau, signal: c.signal,
             iccid: c.iccid, enPlace: c.enPlace, derniereVue: c.derniereVue,
+            presence: c.presence,
           }))}
           raccourcis={raccourcis}
           aQui={aQuiParCarte(beneficiaires, paiements, cartes.map((c) => c.iccid))}

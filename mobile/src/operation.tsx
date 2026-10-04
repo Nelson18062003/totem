@@ -65,11 +65,15 @@ import { Icone, type NomIcone } from "@/icones";
 import {
   couleurOperateur, couleurs, espaces, polices, rayons, textes,
 } from "@/theme/jetons";
-import { agirSurBeneficiaire, deposerCommande, lireCommande } from "@/api/guichet";
+import {
+  agirSurBeneficiaire, annulerCommande, deposerCommande, ErreurGuichet, lireCommande,
+} from "@/api/guichet";
+import { useSession } from "@/session";
 import { useLangue } from "@/langue";
 import { toucherDepart, toucherEchec, toucherReussite } from "@/toucher";
 import { copierTexte } from "@/presse-papiers";
 import { remplirVariables } from "@noyau/codes";
+import { issueDeLAnnulation, phraseDAbandon } from "@noyau/abandon";
 import {
   champPourQuestion, demandeUnCode, lireEcran, type TypeChamp,
 } from "@noyau/ussd";
@@ -112,10 +116,16 @@ export type Operation = {
 
 type Msg = { de: "reseau" | "vous"; texte: string };
 
-// Combien de fois on interroge la base en attendant la réponse du réseau.
-// 25 × 1,2 s ≈ trente secondes : au-delà, le terminal est considéré muet.
-const TOURS = 25;
+// COMBIEN DE TEMPS on attend la réponse du boîtier — À L'HORLOGE. On
+// comptait des TOURS (25 × 1,2 s ≈ 30 s), mais chaque relecture peut prendre
+// jusqu'à trente secondes sur un mauvais réseau : l'écran « On parle à MTN… »
+// durait alors jusqu'à six minutes et quarante-cinq secondes. Trente
+// secondes, c'est trente secondes.
+const ATTENTE_MAX_MS = 30_000;
 const PAUSE_MS = 1200;
+/** Sans une seule relecture réussie depuis ce délai, ce n'est plus le
+ *  boîtier qui se tait : c'est le TÉLÉPHONE qui n'arrive pas à joindre TOTEM. */
+const TELEPHONE_MUET_MS = 10_000;
 
 /** Des montants qu'on tape tous les jours — un geste au lieu de six chiffres. */
 const MONTANTS = [1000, 5000, 10000, 25000];
@@ -156,6 +166,7 @@ export function OperationPopup({
 }) {
   const langue = useLangue();
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
 
   const [etape, setEtape] = useState<"saisie" | "session">(
     operation.champs.length ? "saisie" : "session");
@@ -201,6 +212,19 @@ export function OperationPopup({
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
 
+  /** La réponse du réseau est là : on la montre, et on dit où l'on en est. */
+  const servir = (c: { etat: string; resultat: string | null }): string | null => {
+    setAttente(false);
+    const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
+    setFil((f) => [...f, { de: "reseau", texte }]);
+    // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
+    // en « autre réponse » aurait caché les boutons du menu suivant.
+    setLibre(false);
+    if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
+    setEnSession(true);
+    return texte;
+  };
+
   /** Dépose une demande et attend la réponse du réseau. */
   const envoyer = async (
     genre: "ussd" | "ussd_reponse",
@@ -218,24 +242,52 @@ export function OperationPopup({
       // dans quelle session la poser.
       const demande = avecCarte(parametres);
       const { id } = await deposerCommande(genre, demande, operation.terminal, cle);
-      for (let i = 0; i < TOURS; i++) {
+      const depart = Date.now();
+      let joint = depart;            // la dernière fois que la plateforme a répondu
+      while (Date.now() - depart < ATTENTE_MAX_MS) {
         await new Promise((r) => setTimeout(r, PAUSE_MS));
         if (!vivant.current) return null;
-        const c = await lireCommande(id).catch(() => null);
-        if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          setAttente(false);
-          const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-          setFil((f) => [...f, { de: "reseau", texte }]);
-          // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
-          // en « autre réponse » aurait caché les boutons du menu suivant.
-          setLibre(false);
-          if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
-          setEnSession(true);
-          return texte;
+        // Une relecture ne mange jamais plus que le temps qui reste.
+        const reste = Math.max(1500, ATTENTE_MAX_MS - (Date.now() - depart));
+        const ctrl = new AbortController();
+        const minuteur = setTimeout(() => ctrl.abort(), reste);
+        let c: { etat: string; resultat: string | null } | null = null;
+        try {
+          c = await lireCommande(id, ctrl.signal);
+          joint = Date.now();
+        } catch (e) {
+          // Session expirée : le verrou, pas un message d'opération.
+          if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
+        } finally {
+          clearTimeout(minuteur);
         }
+        if (!vivant.current) return null;
+        if (c && (c.etat === "faite" || c.etat === "echouee")) return servir(c);
       }
-      throw new Error(t.terminalMuet);
+      // L'ÉCRAN RENONCE — ET LE DIT JUSTE.
+      //
+      // Le téléphone n'a pas joint la plateforme depuis dix secondes : ce
+      // n'est pas le boîtier qu'on attend, c'est le réseau du téléphone. On
+      // ne peut pas annuler sans réseau : la demande est peut-être partie.
+      if (Date.now() - joint > TELEPHONE_MUET_MS) throw new Error(t.telephoneSansTotem);
+      // Le boîtier n'a pas répondu : on ANNULE. Un boîtier revenu des heures
+      // plus tard composait encore la demande — numéro et montant compris —
+      // pour un écran qui avait abandonné. « Rien n'est parti » ne se dit que
+      // si l'annulation a PRIS ; sinon le boîtier l'a en main, et la dire
+      // abandonnée ferait recommencer un transfert qui part peut-être.
+      const annulation = await annulerCommande(id).catch(() => null);
+      const issue = annulation ? issueDeLAnnulation(true, annulation) : "incertain";
+      // Il l'a FINIE entre notre dernier coup d'œil et l'annulation : sa
+      // réponse existe — on la montre, plutôt que d'envoyer guetter ses SMS.
+      if (issue === "finie") {
+        const c = await lireCommande(id).catch(() => null);
+        if (!vivant.current) return null;
+        if (c && (c.etat === "faite" || c.etat === "echouee")) return servir(c);
+      }
+      throw new Error(phraseDAbandon(issue, t));
     } catch (e) {
+      if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
+      if (!vivant.current) return null;
       // Le guichet rend déjà ses messages dans la bonne langue : tels quels.
       setErreur(e instanceof Error && e.message ? e.message : t.accroc);
       setAttente(false);
@@ -691,6 +743,7 @@ function ChampSaisie({ type, valeur, onChange, onValider, langue }: {
   onValider: () => void; langue: "fr" | "en";
 }) {
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
   const propre = valeurPropre(type, valeur);
   const brut = valeur.trim();
   // Ce qu'on annonce sous le champ — seulement quand ce n'est pas déjà ce
@@ -769,6 +822,7 @@ function EtapeSaisie({
   langue: "fr" | "en";
 }) {
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
   const valide = pret(type, valeur);
   const propre = valeurPropre(type, valeur);
   const valider = () => { if (valide) onValider(); };
@@ -844,6 +898,7 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
   reduit: boolean;
 }) {
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
   const [valeur, setValeur] = useState("");
   const valide = pret(type, valeur);
   const envoyer = () => {

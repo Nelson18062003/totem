@@ -240,6 +240,116 @@ console.log("\n  Chaque onglet montre quelque chose pendant qu'il charge");
   } finally { await page.close(); }
 }
 
+// ---------------------------------------------------------------------------
+// LES RÉGLAGES NE SE COMPOSENT PLUS EN SECOUSSES.
+//
+// « Sécurité » et « Se déconnecter » s'affichaient, puis descendaient d'un
+// bloc entier une à trois secondes plus tard : la liste « Qui peut se
+// connecter » arrivait au-dessus d'eux. Sa place est maintenant gardée, à la
+// hauteur du dernier nombre de comptes connu — et ce nombre est rangé SUR LE
+// TÉLÉPHONE : on vient aux Réglages une fois par mois, et la mémoire se perd
+// à chaque lancement. Un premier jet ne le gardait qu'en mémoire ; il aurait
+// passé ce contrôle s'il ne mesurait que deux visites de suite. On mesure
+// donc APRÈS UN RELANCEMENT complet (`goto` : la mémoire repart de zéro, le
+// rangement reste).
+//
+// LE TÉMOIN : le même relancement, avec un nombre rangé FAUX. La forme est
+// alors trop haute, et « Sécurité » doit remonter à l'arrivée de la liste.
+// Si la mesure ne voit pas ce saut-là, elle ne voit rien, et elle le dit.
+// ---------------------------------------------------------------------------
+console.log("\n  Réglages : « Sécurité » ne bouge pas quand la liste des comptes arrive");
+{
+  const page = await nav.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  try {
+    await page.goto(APERCU, { waitUntil: "networkidle" });
+    for (let i = 0; i < 40; i++) {
+      const pret = await page.locator('input[type="email"]').first()
+        .evaluate((e) => !e.readOnly).catch(() => false);
+      if (pret) break;
+      await attendre(500);
+    }
+    await page.locator('input[type="email"]').first().fill(COURRIEL);
+    await page.locator('input[type="password"]').first().fill(MOTDEPASSE);
+    await page.getByText(/^Sign in$|^Se connecter$/).last().click();
+
+    // La LISTE des comptes met trois secondes — le temps de voir la forme.
+    // Les gestes sur les comptes (POST) passent sans attendre.
+    await page.route("**/api/comptes**", async (route) => {
+      if (route.request().method() === "GET") await attendre(3000);
+      await route.continue();
+    });
+
+    /** Le haut du titre « Sécurité » : tout ce qui se compose au-dessus de
+     *  lui le pousse. L'élément le plus intérieur qui porte ce texte. */
+    const securite = () => {
+      const el = [...document.querySelectorAll("body *")]
+        .filter((e) => /^(Security|Sécurité)$/.test(e.textContent?.trim() || "")).pop();
+      return el ? Math.round(el.getBoundingClientRect().top) : null;
+    };
+    /** La liste est là : le courriel du compte connecté s'y lit en entier. */
+    const listeLa = (courriel) => [...document.querySelectorAll("body *")]
+      .some((e) => (e.textContent || "").trim() === courriel);
+
+    /** Depuis l'accueil chargé : ouvrir les Réglages, mesurer « Sécurité »
+     *  pendant que la liste arrive, puis une fois qu'elle est là. */
+    const visite = async () => {
+      await page.waitForFunction(
+        () => !![...document.querySelectorAll("div")].find((e) => /FCFA/.test(e.textContent || "")),
+        null, { timeout: 25000 });
+      await page.getByLabel(/^(Settings|Réglages)$/).first().click();
+      let pendant = null;
+      for (let i = 0; i < 40 && pendant === null; i++) {
+        pendant = await page.evaluate(securite);
+        if (pendant === null) await attendre(100);
+      }
+      // ON ATTEND L'ÉTAT : si la liste était déjà là, rien n'a été mesuré
+      // pendant l'attente — et la visite le dit au lieu de passer en vert.
+      const deja = await page.evaluate(listeLa, COURRIEL);
+      await page.waitForFunction(listeLa, COURRIEL, { timeout: 20000 }).catch(() => {});
+      await attendre(600);
+      const apres = await page.evaluate(securite);
+      return { pendant, apres, deja };
+    };
+    const relancer = () => page.goto(APERCU, { waitUntil: "networkidle" });
+    const range = () => page.evaluate(() => localStorage.getItem("totem.qui.comptes"));
+
+    // 1. Une première visite, sur un téléphone neuf : le nombre se range.
+    await visite();
+    const nombre = Number(await range());
+    if (!Number.isInteger(nombre) || nombre < 1) {
+      console.log("  ✗ Réglages   le nombre de comptes n'est PAS rangé sur le téléphone");
+      echecs++;
+    } else {
+      // 2. Le témoin : un nombre rangé faux, puis un relancement.
+      const faux = nombre >= 4 ? 1 : nombre + 3;
+      await page.evaluate((n) => localStorage.setItem("totem.qui.comptes", String(n)), faux);
+      await relancer();
+      const temoin = await visite();
+      // 3. Le vrai : la visite du témoin a rangé le bon nombre en partant.
+      await relancer();
+      const vrai = await visite();
+
+      const decrire = (v) => (v.pendant === null || v.apres === null
+        ? "« Sécurité » introuvable"
+        : `« Sécurité » passe de ${v.pendant} à ${v.apres} px — saut de ${Math.abs(v.pendant - v.apres)} px`);
+      const saut = (v) => (v.pendant === null || v.apres === null ? null : Math.abs(v.pendant - v.apres));
+
+      const temoinVu = !temoin.deja && saut(temoin) !== null && saut(temoin) > SAUT_TOLERE;
+      if (!temoinVu) {
+        console.log(`  ✗ témoin      ${faux} comptes rangés pour ${nombre} : la mesure ne voit `
+          + `pas le saut qu'elle doit voir (${decrire(temoin)}${temoin.deja ? ", liste déjà là" : ""})`);
+        echecs++;
+      } else {
+        console.log(`  ✓ témoin      ${faux} comptes rangés pour ${nombre} : ${decrire(temoin)}`);
+        const ok = !vrai.deja && saut(vrai) !== null && saut(vrai) <= SAUT_TOLERE;
+        if (!ok) echecs++;
+        console.log(`  ${ok ? "✓" : "✗"} relancé     ${nombre} compte${nombre > 1 ? "s" : ""} rangé`
+          + `${nombre > 1 ? "s" : ""} : ${decrire(vrai)}${vrai.deja ? " — LISTE DÉJÀ LÀ, rien n'a été mesuré" : ""}`);
+      }
+    }
+  } finally { await page.close(); }
+}
+
 await nav.close();
 
 console.log(echecs === 0

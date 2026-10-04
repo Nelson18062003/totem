@@ -18,18 +18,17 @@
 
 import { Platform, Pressable, View, useWindowDimensions, type ViewStyle } from "react-native";
 import Animated, {
-  interpolateColor, useAnimatedStyle, useDerivedValue, withTiming, Easing,
+  interpolateColor, useAnimatedStyle, useDerivedValue, withTiming, Easing, FadeIn, FadeOut,
 } from "react-native-reanimated";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useSafeAreaInsets as useMarges } from "react-native-safe-area-context";
-import { Texte } from "@/ui";
+import { HAUTEUR_BARRE_ONGLETS, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { textesCharpente } from "@noyau/textes/charpente";
 import { ageVu } from "@noyau/types";
 import { useLangue } from "@/langue";
-import { useAgeDesChiffres } from "@/donnees";
+import { useAgeDesChiffres, useMaintenant } from "@/donnees";
 import { toucherChoix } from "@/toucher";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
@@ -51,7 +50,6 @@ export default function Onglets() {
 
   return (
     <>
-    <BandeauHorsLigne />
     <Tabs
       tabBar={(props) => <BarreFlottante {...props} />}
       screenOptions={{
@@ -63,47 +61,65 @@ export default function Onglets() {
         <Tabs.Screen key={o.nom} name={o.nom} options={{ title: t[o.cle] as string }} />
       ))}
     </Tabs>
+    <BandeauHorsLigne />
     </>
   );
 }
 
 /**
- * « CES CHIFFRES DATENT » — au-dessus des quatre onglets, une seule fois.
+ * « CES CHIFFRES DATENT » — une pastille au-dessus de la barre, une seule fois.
  *
  * Sans réseau, l'application montre ce qu'elle avait au dernier passage
  * plutôt qu'un écran vide. C'est un progrès — et un DANGER si elle se tait :
  * un solde d'hier présenté comme celui de maintenant, c'est de l'argent
  * qu'on remet à quelqu'un en croyant qu'il est arrivé.
  *
- * Le bandeau ne s'affiche donc QUE dans ce cas : ce qui est à l'écran vient
- * du téléphone, et la plateforme n'a pas répondu depuis. Dès qu'elle répond,
- * il disparaît sans un geste.
+ * DEUX DÉFAUTS, et le propriétaire voyait les deux :
  *
- * Il ne demande RIEN au guichet : il lit l'âge de ce qui est déjà au cahier,
- * et ne s'inscrit à aucun besoin — passer par `useDonnees` avec des bornes à
- * zéro marchait, mais le faisait passer pour un écran qui lit les données
- * sans jamais dire la panne (voir `verifier-les-ecrans`).
+ *   — Il s'affichait à CHAQUE OUVERTURE, même bien connecté : il suivait la
+ *     PROVENANCE des chiffres (relus du téléphone), pas une panne. Pendant
+ *     la seconde de la première requête, « Pas de réseau » apparaissait…
+ *     puis disparaissait. Il ne parle plus qu'après un ÉCHEC réel, ou après
+ *     huit secondes sans réponse (voir `useAgeDesChiffres`).
+ *   — Il était posé AU-DESSUS des onglets, dans le flux : tout l'écran
+ *     descendait à son apparition et remontait à sa disparition, et la
+ *     marge de l'encoche était comptée deux fois. C'était le « tout part
+ *     vers le bas ». Il FLOTTE maintenant au-dessus de la barre d'onglets,
+ *     sans rien pousser, et ne capte aucun doigt.
+ *
+ * Il ne demande RIEN au guichet : il lit l'état du cahier.
  */
 function BandeauHorsLigne() {
   const langue = useLangue();
-  const marges = useMarges();
-  const { duCahier, quand } = useAgeDesChiffres();
-  if (!duCahier || quand == null) return null;
+  const bas = useSafeAreaInsets().bottom;
+  const maintenant = useMaintenant();
+  const { horsLigne, quand } = useAgeDesChiffres();
+  if (!horsLigne || quand == null) return null;
   const t = textesCharpente[langue];
   return (
-    <View style={{
-      paddingTop: marges.top + espaces.sm,
-      paddingBottom: espaces.sm,
-      paddingHorizontal: espaces.lg,
-      backgroundColor: couleurs.surface2,
-      borderBottomWidth: 1, borderBottomColor: couleurs.trait,
-      flexDirection: "row", alignItems: "center", gap: espaces.sm,
-    }}>
-      <Icone nom="Refresh" taille={14} couleur={couleurs.encreDouce} />
-      <Texte taille={textes.legende} ton="doux" style={{ flex: 1 }}>
-        {t.horsLigne} · {t.horsLigneDetail(ageVu(quand, Date.now(), langue))}
-      </Texte>
-    </View>
+    <Animated.View
+      entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)}
+      pointerEvents="none"
+      accessibilityLiveRegion="polite"
+      style={{
+        position: "absolute", left: 0, right: 0,
+        bottom: Math.max(bas, espaces.md) + HAUTEUR_BARRE_ONGLETS + espaces.sm,
+        alignItems: "center", paddingHorizontal: espaces.lg,
+      }}
+    >
+      <View style={{
+        flexDirection: "row", alignItems: "center", gap: espaces.sm,
+        paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+        borderRadius: rayons.rond, maxWidth: 520,
+        backgroundColor: couleurs.accent,
+      }}>
+        <Icone nom="Refresh" taille={13} couleur={couleurs.surfaceHaute} />
+        <Texte taille={textes.legende} style={{ color: couleurs.surfaceHaute, flexShrink: 1 }}
+               numberOfLines={2}>
+          {t.horsLigne} · {t.horsLigneDetail(ageVu(quand, maintenant, langue))}
+        </Texte>
+      </View>
+    </Animated.View>
   );
 }
 

@@ -10,6 +10,7 @@ import unittest
 
 from totem.compte import TELEGRAM, WEB, Compte
 from totem.modem import USSD_FERMEE, USSD_OUVERTE
+from totem.nuage import Prise
 from totem.pilotage import Pilotage, RefusPoli
 
 
@@ -34,6 +35,9 @@ class FauxNuage:
         self.reclamation_perdue = False   # un autre robot l'a prise
         self.orphelines = []              # prises en charge, jamais finies
         self.limites_demandees = []
+        # L'âge des demandes au moment de leur prise, comme la base le
+        # mesure : une seconde, le cas ordinaire d'un boîtier qui écoute.
+        self.age_des_demandes = 1.0
 
     def commandes_en_attente(self):
         return []
@@ -59,7 +63,7 @@ class FauxNuage:
         if self.echouer_maj:
             return False
         self.maj.append((identifiant, {"etat": "en_cours"}))
-        return True
+        return Prise(self.age_des_demandes)
 
     def publier_solde(self, iccid, solde):
         self.soldes.append((iccid, solde))

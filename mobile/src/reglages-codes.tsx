@@ -19,8 +19,9 @@ import { ChampTexte, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { useGesteUnique } from "@/geste";
+import { useRetouche } from "@/donnees";
 import { deposerCommande } from "@/api/guichet";
-import { attendreCommande } from "@/reglages-cartes";
+import { attendreCommande, motDuRefus } from "@/reglages-cartes";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { aDesVariables, codesUssd, CLES_GUICHET, type CodeUssd } from "@noyau/codes";
 import { textesReglages } from "@noyau/textes/reglages";
@@ -174,6 +175,7 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
   // Un appui, une demande. L'état React ne se ferme qu'au rendu suivant :
   // deux appuis rapprochés partaient tous les deux.
   const geste = useGesteUnique();
+  const retoucher = useRetouche();
 
   const poser = (action: "definir" | "supprimer", corps: string[]) =>
     geste.lancer(async (cleIntention) => {
@@ -194,12 +196,27 @@ function FicheCode({ operateur, rang, langue, terminal, onFermer, onChange }: {
           : (resultat.resultat || t.aRefuse));
         return false;
       }
+      // Le carnet du robot a changé : la ligne se montre TOUT DE SUITE telle
+      // qu'elle est maintenant, puis le cahier relu en silence le confirme.
+      retoucher((d) => {
+        const autres = (d.raccourcis?.[operateur] ?? []).filter((r) => r.nom !== cle);
+        return {
+          ...d,
+          raccourcis: {
+            ...d.raccourcis,
+            [operateur]: action === "supprimer"
+              ? autres : [...autres, { nom: cle, libelle, etapes: corps }],
+          },
+        };
+      });
       onChange();
       onFermer();
       return true;
-    } catch {
+    } catch (e) {
+      // Le refus de la plateforme, dans ses mots : « le boîtier ne donne
+      // plus de nouvelles : rien n'est parti » ne se devine pas.
       setEtat("erreur");
-      setMessage(t.pasPartie);
+      setMessage(motDuRefus(e, t.pasPartie));
       return false;
     }
   });

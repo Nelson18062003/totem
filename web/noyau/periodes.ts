@@ -147,3 +147,22 @@ export function jourDuReleve(
   if (cle === decalerJour(aujourdhui, -1)) return { genre: "hier" };
   return { genre: "avant", cle };
 }
+
+/**
+ * « Aujourd'hui », « Hier » ou « 28 septembre » — le jour d'une clé, dit
+ * RELATIVEMENT à `aujourdhui`, au moment où l'écran le dessine.
+ *
+ * La plateforme écrivait ce libellé à SON heure, au moment de répondre, et
+ * le téléphone le rangeait tel quel dans son cahier : relu le lendemain
+ * matin, un paiement d'hier s'affichait « Aujourd'hui · 18:32 ». Un libellé
+ * relatif fabriqué ailleurs et plus tôt ment dès que le jour tourne ; il se
+ * forme donc là où on le lit, et la plateforme se sert de la même fonction.
+ */
+export function libelleJour(cle: string, aujourdhui: string, langue: Langue): string {
+  if (cle === aujourdhui) return langue === "en" ? "Today" : "Aujourd’hui";
+  if (cle === decalerJour(aujourdhui, -1)) return langue === "en" ? "Yesterday" : "Hier";
+  const [a, m, j] = cle.split("-").map(Number);
+  return new Intl.DateTimeFormat(langue === "en" ? "en-GB" : "fr-FR", {
+    day: "numeric", month: "long", timeZone: "UTC",
+  }).format(new Date(Date.UTC(a, m - 1, j)));
+}

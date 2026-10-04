@@ -24,6 +24,15 @@
 // S'il partait ailleurs, la flotte ne serait pas montée, et le reste ne
 // prouverait rien.
 //
+// L'ÉCRAN QUI NOMME UN BOÎTIER. Le téléphone envoie avec chaque geste le
+// terminal qu'IL croit vivant (« le dernier à avoir parlé »), et ce champ
+// passait AVANT la carte : un dépôt sur la carte d'Akwa partait à Douala, qui
+// répondait « cette carte n'est pas dans le terminal ». Le harnais n'envoyait
+// jamais ce champ — il éprouvait le chemin du site, pas celui du téléphone,
+// et sortait vert. Il l'envoie maintenant, et exige que la CARTE l'emporte.
+// Son témoin : une demande sans carte qui nomme un boîtier part bien à
+// celui-là — le champ est lu, il n'est simplement plus cru pour une carte.
+//
 // Comme ses frères, il sert le code COMPILÉ : lancez « npx next build »
 // avant, sans quoi il mesurerait l'application d'hier.
 
@@ -137,6 +146,29 @@ try {
     const i = await deposer({ type: "identite",
       parametres: { iccid: MTN_AKWA, nom: "BOUTIQUE AKWA" } }, patron);
     verifier("le nom d'une carte part au boîtier qui la porte", i.terminal, "akwa-faux");
+  }
+
+  console.log("\nL'ÉCRAN NOMME UN AUTRE BOÎTIER : C'EST LA CARTE QUI DÉCIDE");
+  {
+    const temoin = await deposer({ type: "solde", parametres: {}, terminal: "douala-faux" }, patron);
+    verifier("LE TÉMOIN : sans carte, le boîtier nommé est écouté (douala-faux)",
+      temoin.terminal, "douala-faux");
+    const d = await deposer({ type: "ussd", parametres: { code: "*126#", carte: MTN_DOUALA },
+      terminal: "akwa-faux" }, patron);
+    verifier("un code sur MTN ·8901 qui nomme akwa-faux part à douala-faux", d.terminal, "douala-faux");
+    const a = await deposer({ type: "ussd", parametres: { code: "*126#", carte: MTN_AKWA },
+      terminal: "douala-faux" }, patron);
+    verifier("un code sur MTN ·9999 qui nomme douala-faux part à akwa-faux", a.terminal, "akwa-faux");
+    const r = await deposer({ type: "ussd_reponse", parametres: { texte: "1", carte: MTN_AKWA },
+      terminal: "douala-faux" }, patron);
+    verifier("la réponse aussi suit sa carte, pas l'écran", r.terminal, "akwa-faux");
+    const i = await deposer({ type: "identite", parametres: { iccid: MTN_AKWA, nom: "AKWA" },
+      terminal: "douala-faux" }, patron);
+    verifier("le nom d'une carte aussi", i.terminal, "akwa-faux");
+    const x = await deposer({ type: "ussd", parametres: { code: "#150#", carte: RETIREE },
+      terminal: "douala-faux" }, patron);
+    verifier("une carte retirée reste refusée, même si l'écran nomme son ancien boîtier",
+      [x.statut, x.terminal], [409, null]);
   }
 
   console.log("\nUNE CARTE QUE PERSONNE NE PORTE EST REFUSÉE SUR-LE-CHAMP");

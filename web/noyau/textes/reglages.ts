@@ -30,6 +30,12 @@ const en = {
   aucuneCarte: "No card has been seen by the terminal yet.",
   carte: (fin: string) => `card ${fin}`,
   retireeJournal: (d: string) => `removed ${d} · record kept`,
+  // Le signal que le modem ne sait pas dire (il répond « 99 »).
+  signalInconnu: "signal unknown",
+  // Une carte dont le boîtier ne donne pas de nouvelles récentes — il s'est
+  // tu, ou vient de revenir sans avoir relu ses puces : on ne sait pas si
+  // elle est là.
+  presenceInconnue: "no recent news",
   noteIccid:
     "A card is known by its ICCID, never by the network it picks up: an MTN chip stays “MTN” even abroad, roaming. Changing cards opens a separate account — balances never mix, and the old card finds its record again if it comes back.",
   // La note sur le numéro se compose en trois morceaux, autour du mot mis en
@@ -335,6 +341,8 @@ const fr: typeof en = {
   aucuneCarte: "Aucune carte encore vue par le terminal.",
   carte: (fin) => `carte ${fin}`,
   retireeJournal: (d) => `retirée le ${d} · journal conservé`,
+  signalInconnu: "signal inconnu",
+  presenceInconnue: "sans nouvelles récentes",
   noteIccid:
     "Une carte est identifiée par son ICCID, jamais par le réseau capté : une puce MTN reste « MTN » même à l’étranger, en itinérance. Changer de carte ouvre un compte distinct — les soldes ne se mélangent pas, et l’ancienne retrouve son journal si on la remet.",
   noteNumeroAvant: "Le ",

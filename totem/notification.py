@@ -7,7 +7,9 @@ posée dans le nuage. Trois raisons, et la première suffirait :
      `None` dans le doute ; cette ignorance-là est la matière première d'une
      notification honnête, et elle vit ici. Une fonction du nuage ne verrait
      que la ligne écrite en base, sans savoir ce qui a été perdu en chemin.
-  2. Il a déjà la file d'attente : une coupure Internet ne perd rien.
+  2. Il a déjà la file d'attente : une coupure Internet ne perd rien. La
+     sonnerie qu'elle a empêchée est retenue, et repart au retour du réseau
+     (voir `Robot._rattraper_les_sonneries` et `composer_rattrapage`).
   3. Une pièce mobile de moins.
 
 CE QU'UNE NOTIFICATION MONTRE
@@ -110,7 +112,104 @@ CAUSES = {
 }
 
 
-def envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
+def composer_rattrapage(sonneries, anglais=False, nom="TOTEM"):
+    """La notification qui rattrape les sonneries qu'une coupure a retenues.
+
+    `sonneries` : [(libellé de la carte, expéditeur, texte, paiement, heure)],
+    de la plus ancienne à la plus récente. `heure` est l'heure de réception
+    déjà écrite (« 14 h 05 »), ou None si on ne la sait pas. Le texte est
+    déjà celui de l'écran verrouillé (code à usage unique masqué) : on ne le
+    démasque pas ici.
+
+    UNE seule notification : au retour du réseau, dix sonneries d'affilée
+    noieraient le volet et ne diraient rien de plus. Elle dit combien, et de
+    quoi — paiements reçus ou autres messages, comme l'a lu le robot — puis
+    montre le DERNIER message tel qu'il est arrivé.
+
+    ELLE DIT TOUJOURS QU'ELLE EST EN RETARD, même seule. Rejouée telle
+    qu'elle serait partie à l'heure, une sonnerie retenue vingt-cinq minutes
+    ressemblait trait pour trait à un paiement qui vient d'arriver — et au
+    comptoir, quelqu'un peut montrer son téléphone qui sonne pour faire
+    croire qu'il vient de payer.
+    """
+    if not sonneries:
+        return None
+
+    def t(en, fr):
+        return en if anglais else fr
+
+    libelles = {s[0] for s in sonneries}
+    titre = sonneries[-1][0] if len(libelles) == 1 else nom
+    _, expediteur, texte, _, heure = sonneries[-1]
+    message = _apercu(texte) or t(f"A message from {expediteur}",
+                                  f"Un message de {expediteur}")
+    if len(sonneries) == 1:
+        if heure:
+            phrase = t(f"Received at {heure}, during the outage: ",
+                       f"Reçu à {heure}, pendant la coupure : ")
+        else:
+            phrase = t("Received during the outage: ",
+                       "Reçu pendant la coupure : ")
+        return titre, _apercu(phrase + message)
+
+    paiements = sum(1 for s in sonneries if s[3])
+    autres = len(sonneries) - paiements
+    if not autres:
+        phrase = t(f"{paiements} payments received during the outage.",
+                   f"{paiements} paiements reçus pendant la coupure.")
+    elif not paiements:
+        phrase = t(f"{autres} messages received during the outage.",
+                   f"{autres} messages reçus pendant la coupure.")
+    else:
+        phrase = t(
+            f"{paiements} payment{'s' if paiements > 1 else ''} and "
+            f"{autres} message{'s' if autres > 1 else ''} received during "
+            "the outage.",
+            f"{paiements} paiement{'s' if paiements > 1 else ''} et "
+            f"{autres} message{'s' if autres > 1 else ''} reçus pendant la "
+            "coupure.")
+    if heure:
+        phrase += " " + t(f"Latest, at {heure}: ", f"Dernier, à {heure} : ")
+    else:
+        phrase += " " + t("Latest: ", "Dernier : ")
+    return titre, _apercu(phrase + message)
+
+
+# Ce que dit le journal quand le guichet a REÇU la notification mais que sa
+# réponse s'est perdue : on ne sait pas si elle est partie.
+PEUT_ETRE_PARTIE = "le guichet n'a pas répondu à temps — la notification est peut-être partie"
+
+
+def _a_renvoyer_plus_tard(erreur):
+    """Vrai seulement si la notification n'a SÛREMENT pas été servie, et
+    qu'un nouvel essai a un sens : c'est la seule qu'on peut renvoyer plus
+    tard sans risque de faire sonner deux fois.
+
+    `urlopen` ne range dans `URLError` que ce qui échoue AVANT la fin de
+    l'envoi : nom introuvable, connexion refusée, réseau injoignable, délai
+    dépassé en se connectant. La requête n'est pas arrivée entière, le
+    guichet n'a rien pu servir. Une réponse d'erreur (`HTTPError`) dit ce
+    que le guichet en a fait : 5xx et 429, il ne l'a pas servie et le dit ;
+    un autre refus (4xx) se répéterait à l'identique.
+
+    Ce qui échoue APRÈS l'envoi — la réponse qui tarde au-delà du délai, la
+    connexion coupée en la lisant — n'est PAS de ce côté-là : la requête est
+    partie entière, et le guichet l'a peut-être servie. On l'avait comptée
+    parmi les « injoignables », et la sonnerie rejouée au signe de vie
+    suivant faisait sonner DEUX fois le même paiement, à l'identique : sur
+    de l'argent, deux sonneries font croire à deux paiements.
+    """
+    if isinstance(erreur, urllib.error.HTTPError):
+        return erreur.code >= 500 or erreur.code == 429
+    return isinstance(erreur, urllib.error.URLError)
+
+
+def _peut_etre_partie(erreur):
+    """La requête est partie entière, et sa réponse s'est perdue."""
+    return not isinstance(erreur, urllib.error.URLError)
+
+
+def envoyer(jetons, titre, corps, ouvrir=None, acceptes=None, injoignables=None):
     """Pousse la notification vers les appareils enregistrés.
 
     Rend `(servis, soucis)` : combien d'appareils le guichet a ACCEPTÉS, et
@@ -134,6 +233,14 @@ def envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
 
     `acceptes`, s'il est donné, reçoit l'identifiant de chaque billet
     accepté : c'est avec lui qu'on ira chercher l'accusé (`lire_les_accuses`).
+
+    `injoignables`, s'il est donné, reçoit les jetons qu'on n'a SÛREMENT pas
+    pu remettre au guichet (voir `_a_renvoyer_plus_tard`) : réseau coupé avant
+    l'envoi, ou guichet en panne qui le dit (5xx, 429). Ceux-là n'ont rien
+    reçu, et réessayer plus tard a un sens — le robot retient la sonnerie.
+    Un refus (4xx) se répéterait à l'identique ; une réponse perdue APRÈS
+    l'envoi laisse la notification peut-être partie : ni l'un ni l'autre ne
+    se renvoie.
     """
     jetons = [j for j in jetons if isinstance(j, str) and j.startswith("Expo")]
     if not jetons or not corps:
@@ -180,11 +287,18 @@ def envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
                     soucis.append(f"le guichet a répondu {reponse.status}")
                     continue
                 rendu = json.loads(reponse.read().decode("utf-8"))
-        except (urllib.error.URLError, OSError, TimeoutError):
-            # Réseau coupé, guichet muet : on n'insiste pas. Le SMS est déjà
-            # dans le journal et dans Telegram ; la notification n'était que
-            # le raccourci.
-            soucis.append("le guichet n'a pas répondu")
+        except (urllib.error.URLError, OSError, TimeoutError) as e:
+            # Réseau coupé, guichet muet : on n'insiste pas ici. Le SMS est
+            # déjà dans le journal et dans Telegram ; et l'appelant, s'il le
+            # demande, apprend quels téléphones n'ont SÛREMENT rien reçu.
+            if isinstance(e, urllib.error.HTTPError):
+                soucis.append(f"le guichet a répondu {e.code}")
+            elif _peut_etre_partie(e):
+                soucis.append(PEUT_ETRE_PARTIE)
+            else:
+                soucis.append("le guichet n'a pas répondu")
+            if injoignables is not None and _a_renvoyer_plus_tard(e):
+                injoignables.extend(m["to"] for m in lot)
             continue
         except (ValueError, UnicodeDecodeError):
             # Une réponse qu'on ne sait pas lire ne se compte pas comme une

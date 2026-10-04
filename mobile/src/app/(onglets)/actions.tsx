@@ -6,18 +6,19 @@
 // l'argent serait irresponsable. Un geste sans code connu ne s'affiche pas.
 
 import { useState } from "react";
-import { RefreshControl, View, Pressable } from "react-native";
+import { View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
 import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte, avecAppui } from "@/ui";
 import { Coordonnees } from "@/coordonnees";
-import { choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { boitierSeTait, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
 import { toucherChoix } from "@/toucher";
-import { type NomIcone } from "@/icones";
+import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
-import { useDonnees } from "@/donnees";
+import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
 import { clientsRecents } from "@noyau/recents";
@@ -25,6 +26,8 @@ import { aQui } from "@noyau/beneficiaires";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesUssd } from "@noyau/textes/ussd";
+import { textesAccueil } from "@noyau/textes/accueil";
+import { FUSEAU_DEFAUT } from "@noyau/types";
 
 export default function Actions() {
   // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
@@ -36,7 +39,11 @@ export default function Actions() {
   // Aucune ligne demandée : l'accueil, toujours monté, en met déjà trente
   // au cahier partagé — les clients récents se lisent là, sans que cet
   // onglet devienne un écran lourd qui ferait attendre.
-  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 0, recus: 0 });
+  const { donnees, attente, erreur, recharger, actualiser, duCahier } =
+    useDonnees({ sms: 0, recus: 0 });
+  const roue = useRoue();
+  const maintenant = useMaintenant();
+  const [ficheTerminal, setFicheTerminal] = useState(false);
 
   const [operation, setOperation] = useState<Operation | null>(null);
   // LA MÊME CARTE QUE L'ACCUEIL. Chaque écran gardait la sienne : on
@@ -45,8 +52,14 @@ export default function Actions() {
   const choisie = useCarteChoisie();
   const [coordonnees, setCoordonnees] = useState(false);
 
-  const cartes = (donnees?.sims ?? []).filter((s) => s.enPlace);
+  // Les cartes en place, dans le même ordre stable que l'accueil.
+  const cartes = cartesAMontrer(donnees?.sims ?? []).filter((s) => s.enPlace);
   const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
+  // Le boîtier se tait : composer déposerait une demande qu'il exécuterait
+  // à son retour, des heures plus tard. L'appui explique, comme sur l'accueil.
+  const seTait = boitierSeTait(donnees, duCahier) || carte?.presence === "inconnue";
+  const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
+  const ta = textesAccueil[langue];
   const raccourcis = donnees?.raccourcis ?? {};
 
   if (!carte) {
@@ -54,20 +67,20 @@ export default function Actions() {
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <Defilement
           contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
-          refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
+          refreshControl={roue}
         >
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
           {/* La panne AVANT l'état vide : hors ligne, « aucune carte »
               serait un mensonge. ET LE CHARGEMENT AVANT LES DEUX : au
-              premier rendu, `donnees` est nul et `chargement` vrai, si bien
+              premier rendu, `donnees` est nul et l'écran en `attente`, si bien
               que l'écran annonçait « Aucune carte dans le terminal » à
               chaque ouverture, le temps de la requête. Pour un propriétaire,
               cette phrase parle d'un boîtier à 300 km — l'afficher par
               défaut apprend à ne plus la croire, et c'est justement le jour
               où elle sera vraie qu'on l'ignorera. */}
           {erreur ? (
-            <Accroc message={erreur} onReessayer={recharger} />
-          ) : chargement ? null : (
+            <Accroc message={erreur} onReessayer={() => void recharger()} />
+          ) : attente ? null : (
             <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
               <Texte poids="demi">{t.aucuneCarte}</Texte>
               <Texte ton="doux" taille={textes.petit} style={{ textAlign: "center", lineHeight: 20 }}>
@@ -138,9 +151,31 @@ export default function Actions() {
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
       <Defilement
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
-        refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger} />}
+        refreshControl={roue}
       >
         <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
+
+        {seTait ? (
+          // Le boîtier se tait : on le dit EN TÊTE, avant les gestes qui ne
+          // partiront pas — et l'appui dit ce qu'on peut faire.
+          <Pressable accessibilityRole="button" onPress={() => setFicheTerminal(true)}
+                     style={avecAppui({
+                       flexDirection: "row", alignItems: "center", gap: espaces.md,
+                       padding: espaces.lg, borderRadius: rayons.carte,
+                       borderWidth: 1, borderColor: couleurs.alerte,
+                       backgroundColor: couleurs.surfaceHaute,
+                     })}>
+            <View style={{ width: 10, height: 10, borderRadius: 5,
+                           backgroundColor: couleurs.alerte }} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Texte poids="demi" ton="alerte">{ta.horsLigneTitre}</Texte>
+              <Texte taille={textes.petit} ton="doux" style={{ lineHeight: 19 }}>
+                {ta.horsLigneVoir}
+              </Texte>
+            </View>
+            <Icone nom="Chevron" taille={14} couleur={couleurs.alerte} />
+          </Pressable>
+        ) : null}
 
         {/* La carte visée. Avec deux SIM en place, c'est ICI que se décide sur
             laquelle on compose — se tromper enverrait l'argent depuis la
@@ -157,7 +192,7 @@ export default function Actions() {
                 <Pressable
                   accessibilityRole="button"
                   key={c.iccid}
-                  onPress={() => { if (!active) { choisirCarte(c.iccid); toucherChoix(); } }}
+                  onPress={() => { choisirCarte(c.iccid); if (!active) toucherChoix(); }}
                   accessibilityState={{ selected: active }}
                   style={avecAppui({
                     paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
@@ -189,7 +224,8 @@ export default function Actions() {
               <View key={g.titre}>
                 {i > 0 ? <Filet /> : null}
                 <LigneAction titre={g.titre} sous={g.sous} icone={g.icone}
-                             onPress={() => setOperation(g.fabrique())} />
+                             onPress={() => (seTait ? setFicheTerminal(true)
+                                             : setOperation(g.fabrique()))} />
               </View>
             ))}
           </Carte>
@@ -203,7 +239,8 @@ export default function Actions() {
                 <View key={c.titre}>
                   {i > 0 ? <Filet /> : null}
                   <LigneAction titre={c.titre} sous={c.sous} icone={c.icone}
-                               onPress={() => setOperation(c.fabrique())} />
+                               onPress={() => (seTait ? setFicheTerminal(true)
+                                               : setOperation(c.fabrique()))} />
                 </View>
               ))}
             </Carte>
@@ -240,9 +277,17 @@ export default function Actions() {
         <OperationPopup
           operation={operation}
           onFermer={() => setOperation(null)}
-          // Une session aboutie a pu changer le solde : on relit.
-          onTermine={recharger}
+          // Une session aboutie a pu changer le solde : on relit — EN
+          // SILENCE, et encore trois fois pour attraper le SMS de
+          // l'opérateur, qui arrive quelques secondes après.
+          onTermine={() => actualiser({ suivi: true })}
         />
+      ) : null}
+
+      {ficheTerminal && donnees?.terminal ? (
+        <FicheTerminalHorsLigne terminal={donnees.terminal} maintenant={maintenant}
+                                fuseau={fuseau} langue={langue}
+                                onFermer={() => setFicheTerminal(false)} />
       ) : null}
     </SafeAreaView>
   );

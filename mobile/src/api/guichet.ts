@@ -7,36 +7,236 @@
 
 import * as Coffre from "./coffre";
 import type { Donnees } from "@noyau/types";
-import type { Langue } from "@noyau/langue";
+import { LANGUE_DEFAUT, langueDe, type Langue } from "@noyau/langue";
 import type { ReponseEssai } from "@noyau/essai";
+import { textesConnexion } from "@noyau/textes/connexion";
 
 // L'adresse de la plateforme. Elle vient de la configuration d'Expo pour
 // qu'une compilation d'essai puisse viser un déploiement de préversion sans
 // toucher au code.
 import Constants from "expo-constants";
 
-// UN DÉLAI MAXIMAL SUR CHAQUE REQUÊTE — sinon l'application se fige en
-// silence. À Douala, une connexion à demi ouverte (le TCP tient, plus rien ne
-// revient) laisse `fetch` en suspens POUR TOUJOURS : ni succès, ni échec. Le
-// bouton reste sur « Vérification… », le tourniquet tourne sans fin, et le
-// message honnête « réseau en panne » ne s'affiche jamais — car il vit dans
-// le `catch` d'une promesse qui ne rejette pas. React Native ne met aucun
-// délai par défaut ; on en pose un.
+// UNE ÉCHÉANCE SUR TOUT L'ÉCHANGE — LES EN-TÊTES ET LE CORPS.
 //
-// Quinze secondes : large pour un réseau lent, assez court pour qu'une
-// coupure se dise plutôt que de se taire. Au-delà, `fetch` rejette comme une
-// panne réseau ordinaire, et tout le code d'erreur existant s'applique.
-const DELAI_MS = 15000;
+// À Douala, une connexion à demi ouverte (le TCP tient, plus rien ne revient)
+// laisse une demande en suspens POUR TOUJOURS : ni succès, ni échec. Le
+// bouton reste sur « Vérification… », la roue tourne sans fin, et le message
+// honnête « réseau en panne » ne s'affiche jamais — car il vit dans le
+// `catch` d'une promesse qui ne rejette pas.
+//
+// Il y avait un délai de quinze secondes, et il ne protégeait de rien. Il
+// s'arrêtait dès que `fetch` rendait la main — or le `fetch` du téléphone
+// (celui d'Expo 57, qui remplace celui de React Native) rend la main dès les
+// EN-TÊTES, avant le corps. Ce qui se passait ensuite n'était gardé par
+// personne :
+//
+//   — sur iPhone, une coupure APRÈS les en-têtes laisse la lecture du corps
+//     en suspens pour toujours (elle n'attend que « corps complet », et la
+//     coupure pose « erreur reçue ») ; même une annulation ne la réveille
+//     pas. La roue restait plantée en haut des quatre onglets, sur des
+//     chiffres pourtant à jour, jusqu'au redémarrage de l'application ;
+//   — sur Android, une coupure rend le MORCEAU reçu comme si c'était tout,
+//     et le `{}` de secours le faisait passer pour une boutique vide :
+//     « Aucune carte », recopié dans le cahier du téléphone.
+//
+// D'où trois règles, et elles tiennent ensemble :
+//
+//   1. L'échéance est une course EN JAVASCRIPT contre tout l'échange, pas
+//      une annulation confiée au module natif : c'est la seule chose qui
+//      rende la main à coup sûr, quel que soit l'état où le natif s'est
+//      coincé. L'annulation suit, mais seulement pour libérer la connexion.
+//   2. Le corps se lit en TEXTE, puis se déchiffre ici. Un corps illisible,
+//      coupé, ou une page web à la place de la plateforme est une PANNE,
+//      jamais `{}` — et jamais un jeton absent rangé dans le coffre.
+//   3. Toute erreur sort du guichet en PHRASE du dictionnaire, dans la
+//      langue de l'écran (`versErreurGuichet`). Plus jamais « fetch failed:
+//      … » ni « Network request failed » sous les yeux du propriétaire.
+//
+// Quinze secondes pour les en-têtes : large pour un réseau lent, assez court
+// pour qu'une coupure se dise plutôt que de se taire. Trente au total : le
+// corps de l'Analyse (mille SMS) doit pouvoir descendre sur un réseau lent.
+// `verifier-le-guichet` met ce code devant le fetch d'Expo tel qu'il se
+// comporte vraiment, et exige qu'il rende la main avant l'échéance.
+const ECHEANCE_EN_TETES_MS = 15_000;
+const ECHEANCE_TOTALE_MS = 30_000;
 
-async function avecDelai(
-  url: string, options: RequestInit = {},
-): Promise<Response> {
-  const minuteur = new AbortController();
-  const stop = setTimeout(() => minuteur.abort(), DELAI_MS);
+/** Ce qui a manqué, en un mot — pour que les écrans puissent choisir sans
+ *  lire la phrase. */
+export type NaturePanne =
+  | "reseau"       // rien n'est revenu à temps : réseau coupé, plateforme muette
+  | "incomplete"   // une réponse est arrivée, mais coupée ou illisible
+  | "interceptee"  // une page web à la place de la plateforme (wifi d'hôtel…)
+  | "plateforme"   // la plateforme dit avoir un problème (5xx)
+  | "refus"        // la plateforme a répondu non (4xx)
+  | "session"      // la session est terminée (401)
+  | "abandon";     // l'écran a renoncé, ou la réponse vise une session passée
+
+/** Ce que le guichet rend quand une demande n'aboutit pas.
+ *
+ *  `message` est TOUJOURS une phrase pour le propriétaire, dans la langue de
+ *  l'écran : la raison donnée par la plateforme, ou une phrase du
+ *  dictionnaire. `statut` vaut 0 quand aucune réponse utilisable n'est
+ *  revenue. */
+export class ErreurGuichet extends Error {
+  constructor(
+    message: string,
+    readonly statut: number,
+    readonly nature: NaturePanne = statut >= 500 ? "plateforme" : "refus",
+  ) {
+    super(message);
+    this.name = "ErreurGuichet";
+  }
+}
+
+/** Une panne reconnue mais pas encore DITE. Elle ne sort jamais du guichet :
+ *  `versErreurGuichet` en fait une phrase, dans la langue de l'écran. */
+class Panne {
+  constructor(readonly nature: NaturePanne, readonly statut = 0) {}
+}
+
+/** Ce qui est revenu du réseau : un statut, et le corps en texte — `null`
+ *  quand on n'a pas eu besoin de le lire. */
+type Echange = { statut: number; texte: string | null };
+
+/**
+ * UN ÉCHANGE avec la plateforme, borné de bout en bout.
+ *
+ * `renoncer` : le signal de l'appelant (le cahier qui se ferme avec la
+ * session). Il rend la main TOUT DE SUITE, par la même course.
+ *
+ * `corpsInutile` : un statut pour lequel le corps ne servira pas (le 401
+ * d'une demande signée). On n'attend pas un corps qu'on ne lira pas — il
+ * pourrait ne jamais arriver.
+ */
+function echanger(
+  url: string,
+  init: RequestInit,
+  reglages: { renoncer?: AbortSignal; corpsInutile?: (statut: number) => boolean } = {},
+): Promise<Echange> {
+  const { renoncer, corpsInutile } = reglages;
+  if (renoncer?.aborted) return Promise.reject(new Panne("abandon"));
+
+  const prise = new AbortController();
+  let arreter: (p: Panne) => void = () => {};
+  const coupure = new Promise<never>((_, rejeter) => { arreter = rejeter; });
+  // La course est déjà jouée quand cette promesse rejette tard : personne
+  // ne l'écoute plus, et elle ne doit pas le crier.
+  coupure.catch(() => {});
+
+  // D'abord rendre la main, PUIS libérer la connexion. Dans cet ordre : sur
+  // iPhone, l'annulation ne réveille rien — c'est la course qui tranche.
+  const couper = (nature: NaturePanne) => {
+    arreter(new Panne(nature));
+    prise.abort();
+  };
+  const auTotal = setTimeout(() => couper("reseau"), ECHEANCE_TOTALE_MS);
+  let auxEnTetes: ReturnType<typeof setTimeout> | null =
+    setTimeout(() => couper("reseau"), ECHEANCE_EN_TETES_MS);
+  const auRenoncement = () => couper("abandon");
+  renoncer?.addEventListener("abort", auRenoncement);
+
+  const travail = (async (): Promise<Echange> => {
+    const r = await fetch(url, { ...init, signal: prise.signal });
+    if (auxEnTetes !== null) { clearTimeout(auxEnTetes); auxEnTetes = null; }
+    if (corpsInutile?.(r.status)) {
+      prise.abort();
+      return { statut: r.status, texte: null };
+    }
+    // Le corps, sous la MÊME échéance : c'est ici que tout se jouait.
+    return { statut: r.status, texte: await r.text() };
+  })();
+  // Perdante, la lecture peut rejeter bien plus tard (ou jamais) : on la
+  // laisse finir dans son coin.
+  travail.catch(() => {});
+
+  return Promise.race([travail, coupure]).finally(() => {
+    clearTimeout(auTotal);
+    if (auxEnTetes !== null) clearTimeout(auxEnTetes);
+    renoncer?.removeEventListener("abort", auRenoncement);
+  });
+}
+
+/** Le corps déchiffré : un OBJET JSON, ou rien. Jamais `{}` inventé. */
+function objetJson(texte: string | null): Record<string, unknown> | null {
+  if (!texte) return null;
   try {
-    return await fetch(url, { ...options, signal: minuteur.signal });
-  } finally {
-    clearTimeout(stop);
+    const v: unknown = JSON.parse(texte);
+    return v !== null && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Une page web (« <!doctype html>… ») là où la plateforme parle JSON. */
+function pageWeb(texte: string | null): boolean {
+  return Boolean(texte && texte.trimStart().startsWith("<"));
+}
+
+/** La raison que la plateforme donne elle-même, si elle en donne une : elle
+ *  est dans la langue que la demande a DITE (`avecLangue`) — pour les routes
+ *  qui la lisent dans l'adresse (`langueDemandee`). */
+function raisonDonnee(corps: Record<string, unknown> | null): string | null {
+  const e = corps?.erreur;
+  return typeof e === "string" && e.trim() ? e : null;
+}
+
+/**
+ * Ce que dit une réponse : l'objet attendu, ou une erreur.
+ *
+ * Un 2xx dont le corps ne se déchiffre pas est une PANNE. C'était `{}`,
+ * et `{}` ressemblait à une boutique vide.
+ */
+function lireReponse(e: Echange): Record<string, unknown> {
+  const corps = objetJson(e.texte);
+  if (e.statut >= 200 && e.statut < 300) {
+    if (corps) return corps;
+    throw new Panne(pageWeb(e.texte) ? "interceptee" : "incomplete");
+  }
+  const raison = raisonDonnee(corps);
+  const nature: NaturePanne = e.statut >= 500 ? "plateforme" : "refus";
+  if (raison) throw new ErreurGuichet(raison, e.statut, nature);
+  // 511 : « identifiez-vous d'abord » — c'est le réseau qui parle.
+  if (e.statut === 511) throw new Panne("interceptee", e.statut);
+  throw new Panne(nature, e.statut);
+}
+
+const PHRASES: Record<NaturePanne, keyof typeof textesConnexion.fr> = {
+  reseau: "reseauEnPanne",
+  incomplete: "reponseIncomplete",
+  interceptee: "reseauIntercepte",
+  plateforme: "plateformeEnPanne",
+  refus: "demandeRefusee",
+  session: "sessionExpiree",
+  abandon: "demandeAbandonnee",
+};
+
+/**
+ * TOUTE ERREUR, EN UNE PHRASE QUE LE PROPRIÉTAIRE PEUT LIRE.
+ *
+ * La seule porte de sortie des erreurs du guichet — et les écrans peuvent
+ * s'en servir pour ce qui ne vient pas de lui. Une erreur du réseau
+ * (« Network request failed », « fetch failed: … »), un statut sans raison,
+ * un corps illisible, un abandon : chacun reçoit sa phrase du dictionnaire.
+ * Une raison donnée par la plateforme elle-même passe telle quelle.
+ */
+export function versErreurGuichet(e: unknown, langue: Langue): ErreurGuichet {
+  if (e instanceof ErreurGuichet) return e;
+  const t = textesConnexion[langue] ?? textesConnexion[LANGUE_DEFAUT];
+  if (e instanceof Panne) {
+    return new ErreurGuichet(t[PHRASES[e.nature]] as string, e.statut, e.nature);
+  }
+  return new ErreurGuichet(t.reseauEnPanne, 0, "reseau");
+}
+
+/** La langue de l'écran, pour une demande qui ne l'a pas dite : celle que
+ *  `langue.tsx` range dans le coffre à chaque changement, sous ce nom. */
+const CLE_LANGUE = "totem.langue";
+export async function langueDeLEcran(): Promise<Langue> {
+  try {
+    return langueDe(await Coffre.lire(CLE_LANGUE));
+  } catch {
+    return LANGUE_DEFAUT;
   }
 }
 
@@ -138,17 +338,34 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
   const base = normaliserAdresse(adresse ?? (await adressePlateforme()));
   if (!adresseValable(base)) return "absente";
   try {
-    const r = await avecDelai(`${base}/api/plateforme`, {
+    const e = await echanger(`${base}/api/plateforme`, {
       method: "GET",
       headers: { accept: "application/json" },
     });
-    if (!r.ok) return "absente";
-    const corps = await r.json().catch(() => null);
+    // « Identifiez-vous d'abord » : c'est le réseau qui répond, pas une
+    // adresse habitée par autre chose qu'un TOTEM.
+    if (e.statut === 511) return "injoignable";
+    // UNE PANNE PASSAGÈRE N'EST PAS « PAS UN TOTEM ». Un 502 ou un 504 de
+    // l'hébergeur (une fonction qui démarre trop lentement), un 429 (trop
+    // de demandes), un 408 : c'est la bonne maison, qui ne répond pas CETTE
+    // fois. « Absente » fermait les champs et disait au propriétaire de
+    // « contacter la personne qui gère votre TOTEM » — c'est lui.
+    // « Injoignable » propose de réessayer.
+    if (e.statut >= 500 || e.statut === 408 || e.statut === 429) return "injoignable";
+    if (e.statut < 200 || e.statut >= 300) return "absente";
+    const corps = objetJson(e.texte);
+    // Une PAGE WEB complète, c'est quelqu'un d'autre qui habite là : le mot
+    // de passe n'y part pas. Un corps COUPÉ, c'est le réseau qui a lâché —
+    // le prendre pour « pas un TOTEM » fermait la porte sur une simple
+    // coupure, et faisait chercher du mauvais côté.
+    if (!corps) return pageWeb(e.texte) ? "absente" : "injoignable";
     // Le drapeau doit être là. Un serveur quelconque qui rendrait 200 sur
     // n'importe quel chemin ne passe pas cette porte.
-    if (corps?.totem !== true) return "absente";
+    if (corps.totem !== true) return "absente";
     return corps.configuree === true ? "trouvee" : "non-configuree";
   } catch {
+    // Rien à temps, ou rien du tout : l'écran le dit au lieu de rester sur
+    // « Vérification… » pour toujours.
     return "injoignable";
   }
 }
@@ -157,12 +374,6 @@ export async function verifierPlateforme(adresse?: string): Promise<EtatPlatefor
 // visage — et jamais dans un fichier ordinaire.
 const CLE_JETON = "totem.jeton";
 const CLE_ECHEANCE = "totem.jeton.echeance";
-
-export class ErreurGuichet extends Error {
-  constructor(message: string, readonly statut: number) {
-    super(message);
-  }
-}
 
 /** Vrai si la session est encore valable dans plus d'une journée. */
 export async function sessionVivante(): Promise<boolean> {
@@ -190,19 +401,32 @@ export async function sessionVivante(): Promise<boolean> {
 export async function ouvrirSession(
   courriel: string, motdepasse: string, langue: Langue,
 ): Promise<void> {
-  const base = await adressePlateforme();
-  const r = await avecDelai(`${base}/api/session?langue=${langue}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(
-      courriel ? { courriel, motdepasse } : { motdepasse }),
-  });
-  const corps = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    throw new ErreurGuichet(corps?.erreur ?? "connexion refusée", r.status);
+  try {
+    const base = await adressePlateforme();
+    const e = await echanger(`${base}/api/session?langue=${langue}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        courriel ? { courriel, motdepasse } : { motdepasse }),
+    });
+    // Un refus sans raison lisible, à CETTE porte, c'est le mot de passe.
+    if (e.statut === 401 && !raisonDonnee(objetJson(e.texte))) {
+      throw new ErreurGuichet(textesConnexion[langue].motDePasseIncorrect, 401, "refus");
+    }
+    const corps = lireReponse(e);
+    // JAMAIS UN JETON ABSENT DANS LE COFFRE. Une réponse coupée qui aurait
+    // perdu le jeton rangeait « undefined » comme une session ouverte :
+    // l'écran passait le verrou, puis chaque demande revenait refusée.
+    const jeton = corps.jeton;
+    const expire = Number(corps.expire);
+    if (typeof jeton !== "string" || !jeton || !Number.isFinite(expire) || expire <= 0) {
+      throw new Panne("incomplete");
+    }
+    await Coffre.ecrire(CLE_JETON, jeton);
+    await Coffre.ecrire(CLE_ECHEANCE, String(expire));
+  } catch (e) {
+    throw versErreurGuichet(e, langue);
   }
-  await Coffre.ecrire(CLE_JETON, corps.jeton);
-  await Coffre.ecrire(CLE_ECHEANCE, String(corps.expire));
 }
 
 export async function fermerSession(): Promise<void> {
@@ -210,36 +434,84 @@ export async function fermerSession(): Promise<void> {
   await Coffre.effacer(CLE_ECHEANCE);
 }
 
-/** Une demande signée par le jeton du coffre. */
-async function demander<T>(chemin: string, options: RequestInit = {}): Promise<T> {
-  const jeton = await Coffre.lire(CLE_JETON);
-  if (!jeton) throw new ErreurGuichet("session absente", 401);
+/**
+ * LE CHEMIN, AVEC LA LANGUE DE L'ÉCRAN — une fois, et une seule.
+ *
+ * Le téléphone n'a pas de cookie : la plateforme ne connaît sa langue que
+ * si l'adresse la DIT (`?langue=fr`), et sans elle répond en anglais. Seules
+ * trois demandes la disaient. Les autres revenaient avec une raison en
+ * anglais sur un écran français — « The owner already sees every card. » —
+ * et l'écran la montrait telle quelle, puisqu'une raison donnée par la
+ * plateforme passe sans traduction.
+ */
+function avecLangue(chemin: string, langue: Langue): string {
+  if (/[?&]langue=/.test(chemin)) return chemin;
+  return `${chemin}${chemin.includes("?") ? "&" : "?"}langue=${langue}`;
+}
 
-  const base = await adressePlateforme();
-  const r = await avecDelai(`${base}${chemin}`, {
-    ...options,
-    headers: {
-      ...options.headers,
-      authorization: `Bearer ${jeton}`,
-      ...(options.body ? { "content-type": "application/json" } : {}),
-    },
-  });
+/**
+ * Une demande signée par le jeton du coffre.
+ *
+ * `langue` : celle de l'écran qui demande. Absente, c'est celle que le
+ * coffre a retenue — la même, puisque l'écran l'y range à chaque changement.
+ * Elle se décide AVANT l'envoi : elle part avec la demande (`avecLangue`),
+ * et c'est elle que parlent les phrases du dictionnaire au retour.
+ * `renoncer` : pour qu'un écran (ou le cahier, à la déconnexion) puisse
+ * abandonner une demande en route.
+ */
+async function demander<T>(
+  chemin: string,
+  options: RequestInit = {},
+  reglages: { langue?: Langue; renoncer?: AbortSignal } = {},
+): Promise<T> {
+  // `langueDeLEcran` ne rejette jamais : au pire, la langue par défaut.
+  const langue = reglages.langue ?? (await langueDeLEcran());
+  try {
+    const jeton = await Coffre.lire(CLE_JETON);
+    if (!jeton) throw new Panne("session", 401);
 
-  // Session périmée ou révoquée : on efface le coffre pour que l'écran
-  // suivant présente la connexion au lieu de boucler sur des refus.
-  if (r.status === 401) {
-    await fermerSession();
-    throw new ErreurGuichet("session expirée", 401);
+    const base = await adressePlateforme();
+    const e = await echanger(`${base}${avecLangue(chemin, langue)}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        authorization: `Bearer ${jeton}`,
+        ...(options.body ? { "content-type": "application/json" } : {}),
+      },
+    }, { renoncer: reglages.renoncer, corpsInutile: (s) => s === 401 });
+
+    // Session périmée ou révoquée : on efface le coffre pour que l'écran
+    // suivant présente la connexion au lieu de boucler sur des refus.
+    //
+    // MAIS SEULEMENT LA SESSION QUI A ÉTÉ REFUSÉE. Une demande partie avant
+    // une déconnexion peut revenir refusée APRÈS qu'une autre personne s'est
+    // connectée sur le même téléphone — le vendeur à qui l'on passe
+    // l'appareil. Fermer alors le coffre le déconnectait, lui, pour un refus
+    // qui ne le concernait pas.
+    if (e.statut === 401) {
+      const actuel = await Coffre.lire(CLE_JETON).catch(() => null);
+      if (actuel && actuel !== jeton) throw new Panne("abandon");
+      if (actuel) await fermerSession();
+      throw new Panne("session", 401);
+    }
+    return lireReponse(e) as T;
+  } catch (e) {
+    throw versErreurGuichet(e, langue);
   }
-  const corps = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    throw new ErreurGuichet(corps?.erreur ?? `erreur ${r.status}`, r.status);
-  }
-  return corps as T;
+}
+
+/** La forme MINIMALE d'une lecture de la plateforme : sans ses deux listes,
+ *  ce n'est pas une caisse, c'est une réponse abîmée. La prendre quand même
+ *  affichait « Aucune carte » — et le cahier du téléphone la gardait pour
+ *  le lendemain matin. Le cahier s'en sert aussi, avant de relire une page. */
+export function donneesValables(d: unknown): d is Donnees {
+  const x = d as { sims?: unknown; paiements?: unknown } | null;
+  return Boolean(x) && typeof x === "object"
+    && Array.isArray(x!.sims) && Array.isArray(x!.paiements);
 }
 
 /** Les caisses, les SMS, le terminal — la même lecture que les pages web. */
-export function chargerDonnees(
+export async function chargerDonnees(
   langue: Langue,
   // `lignes` : COMPTER LOIN, RAPPORTER PEU. L'écran des cartes veut des
   // compteurs calculés sur mille SMS, pas les mille SMS. Sans cette borne il
@@ -255,13 +527,18 @@ export function chargerDonnees(
   // les deux cents derniers SMS sur le téléphone aurait rendu « ce mois »
   // vide au-delà de quelques jours, sans le dire.
   bornes?: { sms?: number; recus?: number; lignes?: number; depuis?: string },
+  // `renoncer` : le cahier abandonne ce qui est en route quand la session
+  // se ferme — la réponse d'avant ne doit rien écrire pour la suivante.
+  renoncer?: AbortSignal,
 ): Promise<Donnees> {
   const q = new URLSearchParams({ langue });
   if (bornes?.sms != null) q.set("sms", String(bornes.sms));
   if (bornes?.recus != null) q.set("recus", String(bornes.recus));
   if (bornes?.lignes != null) q.set("lignes", String(bornes.lignes));
   if (bornes?.depuis) q.set("depuis", bornes.depuis);
-  return demander<Donnees>(`/api/donnees?${q}`);
+  const d = await demander<unknown>(`/api/donnees?${q}`, {}, { langue, renoncer });
+  if (!donneesValables(d)) throw versErreurGuichet(new Panne("incomplete"), langue);
+  return d;
 }
 
 /** Dépose une demande pour le terminal de Douala (solde, USSD, reçu…). */
@@ -282,8 +559,27 @@ export function deposerCommande(
 }
 
 /** L'état d'une demande déposée : le terminal a-t-il répondu ? */
-export function lireCommande(id: number): Promise<{ etat: string; resultat: string | null }> {
-  return demander(`/api/commande/${id}`);
+export function lireCommande(
+  id: number, renoncer?: AbortSignal,
+): Promise<{ etat: string; resultat: string | null }> {
+  return demander(`/api/commande/${id}`, {}, { renoncer });
+}
+
+/** RETIRE une demande que l'écran abandonne — si le boîtier ne l'a pas
+ *  encore prise. `annulee: false` veut dire qu'il l'a en main (ou l'a
+ *  finie) : l'écran ne doit SURTOUT PAS dire « rien n'est parti ».
+ *
+ *  Une réponse qui ne dit pas clairement oui ou non n'est pas un non : c'est
+ *  une panne, et l'écran dit alors qu'il ne sait pas. */
+export async function annulerCommande(
+  id: number,
+): Promise<{ annulee: boolean; etat?: string }> {
+  const r = await demander<{ annulee?: unknown; etat?: unknown }>(
+    `/api/commande/${id}/annuler`, { method: "POST" });
+  if (typeof r.annulee !== "boolean") {
+    throw versErreurGuichet(new Panne("incomplete"), await langueDeLEcran());
+  }
+  return { annulee: r.annulee, etat: typeof r.etat === "string" ? r.etat : undefined };
 }
 
 /** Classe un SMS : le propriétaire décide sa nature, pour l'affichage et le
@@ -333,7 +629,7 @@ export function lienRecu(numero: string): Promise<{ url: string }> {
  *  combien ont été servis, et combien ont été retirés parce que le service
  *  de notification les déclare éteints. */
 export function essaiNotification(langue: Langue): Promise<ReponseEssai> {
-  return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" });
+  return demander(`/api/essai-notification?langue=${langue}`, { method: "POST" }, { langue });
 }
 
 /** Un compte de la plateforme, tel que la liste du propriétaire le montre :

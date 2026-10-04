@@ -35,12 +35,20 @@ const OEIL = 36;
 /** ISO/IEC 7810 ID-1 : 85,60 / 53,98. La proportion d'une vraie carte. */
 export const RAPPORT_CARTE = 85.6 / 53.98;
 
-/** Le signal, en quatre barres — lisible sans chiffre. */
-function BarresSignal({ niveau }: { niveau: number }) {
-  const pleines = Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+/** Le signal, en quatre barres — lisible sans chiffre.
+ *
+ *  UNE CARTE SANS RÉSEAU AVAIT QUATRE BARRES PLEINES. Le modem répond 99
+ *  quand il ne sait pas — antenne débranchée, zone sans couverture —, et
+ *  99 / 31 × 4, ramené à 4, dessinait un signal parfait. Hors de 0..31, le
+ *  signal est INCONNU : aucune barre pleine. Et quand le boîtier se tait,
+ *  le relevé est figé : les barres pâlissent plutôt que d'affirmer. */
+function BarresSignal({ niveau, fige }: { niveau: number; fige: boolean }) {
+  const inconnu = !(niveau >= 0 && niveau <= 31);
+  const pleines = inconnu ? 0 : Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}
-          accessibilityLabel={`Signal ${niveau}/31`}>
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3,
+                   opacity: fige ? 0.4 : 1 }}
+          accessibilityLabel={inconnu ? "Signal ?" : `Signal ${niveau}/31`}>
       {[6, 9, 12, 15].map((h, i) => (
         <View key={h} style={{
           width: 3, height: h, borderRadius: 2,
@@ -57,7 +65,7 @@ export type CarteCaisse = Pick<
   | "iccid" | "enPlace" | "derniereVue"
 >;
 
-export function Caisse({ carte, langue, soldeCache, onBasculerSolde }: {
+export function Caisse({ carte, langue, soldeCache, onBasculerSolde, signalFige = false }: {
   carte: CarteCaisse;
   langue: Langue;
   soldeCache: boolean;
@@ -66,6 +74,8 @@ export function Caisse({ carte, langue, soldeCache, onBasculerSolde }: {
    *  cachait : un œil se pose à côté de ce qu'il regarde — comme sur le web,
    *  comme dans les applications d'opérateur. */
   onBasculerSolde?: () => void;
+  /** Le boîtier se tait : le signal affiché est un vieux relevé. */
+  signalFige?: boolean;
 }) {
   const t = textesAccueil[langue];
   const ecran = useEcran();
@@ -179,7 +189,9 @@ export function Caisse({ carte, langue, soldeCache, onBasculerSolde }: {
               </Texte>
             ) : null}
           </View>
-          {carte.signal != null ? <BarresSignal niveau={carte.signal} /> : null}
+          {carte.signal != null
+            ? <BarresSignal niveau={carte.signal} fige={signalFige} />
+            : null}
         </View>
 
         {/* Au milieu : le solde. C'est ce qu'on vient voir.

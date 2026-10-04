@@ -1,4 +1,4 @@
-import { langueServeur } from "@/lib/langue-serveur";
+import { langueDemandee } from "@/lib/langue-serveur";
 import { compteConnecte } from "@/lib/qui";
 import { maniement, TOUT, voitLaCarte } from "@/lib/portee";
 import {
@@ -22,7 +22,9 @@ export const dynamic = "force-dynamic";
  * reste, et tient donc aussi hors ligne sur le téléphone).
  */
 export async function POST(req: Request) {
-  const langue = await langueServeur();
+  // La langue de l'écran qui demande : le téléphone la dit dans l'adresse,
+  // il n'a pas le cookie du site.
+  const langue = await langueDemandee(req);
   const main = process.env.SESSION_SECRET ? await maniement(req) : TOUT;
   if (!main) {
     return Response.json(

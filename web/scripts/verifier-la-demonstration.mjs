@@ -156,6 +156,16 @@ try {
   verifier("des boutons d'opération, MTN et Orange",
     Object.values(d.raccourcis ?? {}).map((l) => l.length >= 4), [true, true]);
   verifier("un terminal en ligne", d.terminal?.enLigne, true);
+  // Ce que le téléphone lit maintenant : l'instant du signe de vie, son âge
+  // mesuré par la plateforme, l'heure de la réponse — et pour chaque carte,
+  // ce qu'on sait VRAIMENT de sa présence. La vitrine passe par le même
+  // chemin que les vrais écrans : elle doit les porter aussi.
+  verifier("son dernier signe de vie, et son âge en secondes",
+    [typeof d.terminal?.vuLe, typeof d.terminal?.vuIlYa === "number" && d.terminal.vuIlYa < 300],
+    ["string", true]);
+  verifier("l'heure de la réponse", typeof d.serveurA === "string" && !Number.isNaN(Date.parse(d.serveurA)), true);
+  verifier("ses cartes sont en place, et le disent",
+    (d.sims ?? []).map((s) => [s.presence, s.enPlace]), [["en_place", true], ["en_place", true]]);
   verifier("elle se présente sous son nom, sans administrer",
     [d.courriel, d.proprietaire], [COURRIEL, false]);
 

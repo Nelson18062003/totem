@@ -1,9 +1,10 @@
 import { variablesInconnues } from "@noyau/codes";
 import { estNature } from "@noyau/natures";
 import {
-  carteDeLaSession, carteDuSms, creerCommande, relie, terminalDeLaCarte,
+  boitierMuet, carteDeLaSession, carteDuSms, creerCommande, demandeDuGeste, relie,
+  terminalDeLaCarte, terminalVise,
 } from "@/lib/serveur";
-import { langueServeur } from "@/lib/langue-serveur";
+import { langueDemandee } from "@/lib/langue-serveur";
 import { maniement, sujetDe, TOUT, voitLaCarte } from "@/lib/portee";
 import {
   GESTES_DE_DEMONSTRATION, demandeJouee, estDemonstration,
@@ -40,7 +41,11 @@ const GENRES = new Set([
  * qui ne doit laisser aucune trace ici — le robot le masque en base sitôt lu.
  */
 export async function POST(req: Request) {
-  const langue = await langueServeur();
+  // LA LANGUE DE L'ÉCRAN : l'adresse d'abord (`?langue=fr`), puis le cookie.
+  // Le téléphone n'a pas de cookie : avec le cookie seul, il recevait ses
+  // refus en anglais — « The shop's box has stopped checking in » sur un
+  // téléphone réglé en français — et le robot lui répondait en anglais.
+  const langue = await langueDemandee(req);
 
   // LA DÉMONSTRATION NE DÉPOSE RIEN. Aucune ligne n'entre dans la table des
   // commandes, aucun robot ne la lit : la « réponse de l'opérateur » est
@@ -111,6 +116,11 @@ export async function POST(req: Request) {
   // Le terminal visé, quand la demande concerne un SMS précis : celui qui l'a
   // reçu. Sans lui, la demande part au dernier terminal qui a donné signe de
   // vie — juste avec deux boîtiers, `source_id` viserait le mauvais journal.
+  //
+  // Il ne sert QU'AUX DEMANDES SANS CARTE. Le téléphone l'envoie aussi avec
+  // un geste sur une carte — le terminal qu'IL croit vivant, « le dernier à
+  // avoir parlé » — et ce champ passait avant la carte : dès deux boîtiers,
+  // un dépôt sur une carte d'Akwa partait à Douala. Voir plus bas.
   const terminalCible = typeof corps?.terminal === "string"
     ? corps.terminal.replace(/[^\w.-]/g, "").slice(0, 64)
     : null;
@@ -271,19 +281,61 @@ export async function POST(req: Request) {
     return Response.json({ erreur: erreurApi(langue, "nonRelieeBase") }, { status: 503 });
   }
 
+  // CE GESTE A-T-IL DÉJÀ SA DEMANDE ? On le regarde AVANT de juger le
+  // boîtier. Un geste rejoué — la réponse du premier envoi s'est perdue —
+  // pendant que le boîtier se tait s'entendait dire « rien n'est parti »,
+  // alors que sa demande attendait dans la base et partirait à son retour,
+  // sans que l'écran puisse la suivre ni l'annuler. La même clé rend la même
+  // demande, quoi qu'il soit arrivé au boîtier depuis. Celle d'un autre ne
+  // se rend pas : on continue comme si de rien n'était.
+  if (cleIntention) {
+    const deja = await demandeDuGeste(cleIntention);
+    if (deja
+        && (!deja.par || !par || deja.par === par)
+        && (main.tout || (deja.carte != null && voitLaCarte(main, deja.carte)))) {
+      return Response.json({ id: deja.id });
+    }
+  }
+
   // À QUEL TERMINAL. Une demande qui nomme sa carte part au terminal qui la
   // porte — jamais « au dernier qui a donné signe de vie », qui, dès deux
-  // boîtiers, composerait chez un autre (ou nulle part). Une demande sans
-  // carte (actualiser, raccourci, application d'avant le ciblage) garde
-  // l'ancien chemin.
+  // boîtiers, composerait chez un autre (ou nulle part). Et jamais au
+  // terminal que l'ÉCRAN nomme : une application installée l'envoie avec
+  // chaque geste, et c'est la carte qui sait où elle est, pas l'écran.
+  //
+  // Une demande sans carte (actualiser, raccourci, reçu d'un SMS précis)
+  // garde l'ancien chemin : le terminal nommé, à défaut le dernier vivant.
   const carteVisee = genre === "identite" ? parametres.iccid
     : genre.startsWith("ussd") ? parametres.carte : undefined;
-  let terminal = terminalCible;
-  if (!terminal && typeof carteVisee === "string" && carteVisee) {
-    terminal = await terminalDeLaCarte(carteVisee);
-    if (!terminal) {
+  let terminal: string | null;
+  if (typeof carteVisee === "string" && carteVisee) {
+    const adresse = await terminalDeLaCarte(carteVisee);
+    // Son boîtier parle et ne la voit plus, ou il est sorti de la flotte :
+    // personne ne la composera.
+    if (!adresse || adresse.presence === "retiree") {
       return Response.json(
-        { erreur: erreurApi(langue, "carteDansAucunTerminal") }, { status: 409 });
+        { erreur: erreurApi(langue, "carteDansAucunTerminal"), raison: "carte_absente" },
+        { status: 409 });
+    }
+    // Son boîtier se tait : RIEN NE PART. Déposée quand même, la demande
+    // attendrait son retour, et il la composerait des heures plus tard pour
+    // un écran qui a abandonné.
+    if (adresse.muet) {
+      return Response.json(
+        { erreur: erreurApi(langue, "boitierMuet"), raison: "boitier_muet" },
+        { status: 409 });
+    }
+    // En place — ou « inconnue » d'un boîtier qui parle : il vient de
+    // revenir et n'a pas encore republié ses cartes. Elle part chez lui, et
+    // c'est lui qui dira si la puce n'y est plus.
+    terminal = adresse.terminal;
+  } else {
+    terminal = terminalCible || (await terminalVise());
+    // Même règle sans carte : on ne dépose rien pour un boîtier qui se tait.
+    if (terminal && await boitierMuet(terminal)) {
+      return Response.json(
+        { erreur: erreurApi(langue, "boitierMuet"), raison: "boitier_muet" },
+        { status: 409 });
     }
   }
   const id = await creerCommande(genre, parametres, terminal, cleIntention);

@@ -207,6 +207,73 @@ try {
       "calendrier, mois dernier",
       `${vu.nombre} SMS, +${vu.recu} reçus (la plateforme : ${e.nombre}, +${e.recu})`);
   }
+
+  // ── CHANGER D'AVIS AVANT LA RÉPONSE NE COINCE RIEN ──────────────────────
+  //
+  // Choisir des jours anciens (demandés à la plateforme), puis « Hier »
+  // avant que la réponse n'arrive : l'écran d'avant restait « en recherche »
+  // pour toujours. Le drapeau était posé à la main, et seul le `finally` de
+  // la PREMIÈRE demande le baissait — or changer de période l'avait
+  // annulée. Le total « Hier · N SMS » n'apparaissait jamais ; un jour sans
+  // SMS montrait des formes grises sans fin au lieu de « aucun résultat ».
+  //
+  // Le harnais RETIENT trois secondes la réponse d'une période demandée à
+  // part (`depuis=`) : sans cela, la plateforme locale répond avant qu'un
+  // doigt — ou un harnais — ait le temps de changer d'avis, et le contrôle
+  // passerait sans avoir rien joué.
+  //
+  // TÉMOIN : l'écran d'avant (chercheP posé à la main) n'affiche jamais le
+  // total d'« Hier » ici.
+  {
+    const retenue = /\/api\/donnees\?[^#]*depuis=/;
+    let retenues = 0;
+    await page.route(retenue, async (route) => {
+      retenues++;
+      await page.waitForTimeout(3000).catch(() => {});
+      await route.continue().catch(() => {});
+    });
+    // D'abord une période que l'écran tient déjà : le calendrier s'ouvre
+    // alors sur le mois en cours, et « Mois précédent » mène au mois dernier.
+    if (await ouvrirDate()) {
+      await page.getByRole("button", { name: "Today", exact: true }).first().click();
+      await page.waitForTimeout(600);
+    }
+    const ouvertCal = await ouvrirDate();
+    const choisirCal = page.getByRole("button", { name: /^(Pick dates|Choisir les jours)/ });
+    if (!ouvertCal || !(await choisirCal.count())) {
+      noter(false, "changer d'avis", "filtre absent");
+    } else {
+      await choisirCal.first().click();
+      await page.getByRole("button", { name: /^(Previous month|Mois précédent)$/ }).first().click();
+      const nomCourt = (cle) => new Intl.DateTimeFormat("en-GB", {
+        day: "numeric", month: "short", timeZone: "UTC",
+      }).format(new Date(`${cle}T00:00:00Z`));
+      await page.getByRole("button", { name: nomCourt(`${moisDernier}-10`), exact: true }).first().click();
+      await page.getByRole("button", { name: nomCourt(`${moisDernier}-14`), exact: true }).first().click();
+      await page.getByText(/^Show these SMS/).last().click();
+      // Et tout de suite, avant la réponse : « Hier ».
+      await ouvrirDate();
+      await page.getByRole("button", { name: "Yesterday", exact: true }).first().click();
+      const hier = decaler(aujourdhui, -1);
+      const e = attendu(hier, hier);
+      if (e.nombre === 0) {
+        await voir(/No result|Aucun résultat/, 10000).catch(() => {});
+        const vide = await page.evaluate(() => /No result|Aucun résultat/i.test(document.body.innerText));
+        noter(vide && retenues > 0, "changer d'avis",
+          `« Hier » sans SMS, l'écran le dit${vide ? "" : " — PAS (coincé en recherche)"}`
+          + (retenues ? "" : " — aucune demande retenue : rien n'a été joué"));
+      } else {
+        await voir(new RegExp(`·\\s*${e.nombre}\\s*SMS`), 10000).catch(() => {});
+        const vu = await lireTotal();
+        noter(vu.nombre === e.nombre && retenues > 0, "changer d'avis",
+          (vu.nombre === e.nombre
+            ? `« Hier · ${vu.nombre} SMS » s'affiche`
+            : `le total d'« Hier » n'apparaît pas (coincé en recherche ?) — attendu ${e.nombre}`)
+          + (retenues ? "" : " — aucune demande retenue : rien n'a été joué"));
+      }
+    }
+    await page.unroute(retenue);
+  }
 } finally {
   await nav.close();
   fichiers.close();
