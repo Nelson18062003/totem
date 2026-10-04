@@ -173,11 +173,25 @@ function reunir(toutes: BornesPleines[]): BornesPleines {
 const memesBornes = (a: BornesPleines, b: BornesPleines) =>
   a.sms === b.sms && a.recus === b.recus && a.lignes === b.lignes;
 
-/** Deux réponses identiques donnent LE MÊME objet : sans cela, chaque
- *  notification refaisait le rendu de deux cents lignes pour rien — et la
- *  liste des SMS se recoupait sous le doigt. */
-function memeContenu(a: Donnees, b: Donnees): boolean {
-  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+/** Ce qu'une réponse dit du MONDE, sans ce qu'elle dit d'elle-même :
+ *  l'heure du serveur, l'âge du signe de vie et sa phrase changent à chaque
+ *  appel. Les comparer faisait de deux réponses identiques deux réponses
+ *  différentes — toujours —, et la promesse ci-dessous ne tenait jamais. */
+function contenu(d: Donnees): string {
+  const { serveurA: _ignore, terminal, ...reste } = d;
+  const t = terminal ? { ...terminal, vuIlYa: undefined, majTexte: undefined } : terminal;
+  try { return JSON.stringify({ ...reste, terminal: t }); } catch { return String(Math.random()); }
+}
+
+/** Deux réponses qui disent la même chose du monde gardent LES MÊMES
+ *  tableaux : sans cela, chaque notification refaisait le rendu de deux
+ *  cents lignes pour rien — et la liste des SMS se recoupait sous le doigt.
+ *  Le terminal, lui, est toujours pris neuf : son âge compte. */
+function retenir(avant: Donnees | null, d: Donnees): Donnees {
+  if (avant && contenu(avant) === contenu(d)) {
+    return { ...avant, terminal: d.terminal, serveurA: d.serveurA };
+  }
+  return d;
 }
 
 /** Ce qu'une notification est censée faire changer : le dernier SMS, leur
@@ -217,11 +231,16 @@ type Etat = {
   duCahier: boolean;
 };
 
-type Echec = { message: string; a: number };
+/** Un échec, et de QUELLE NATURE : « Pas de réseau » ne se dit que du
+ *  réseau. Une plateforme qui répond mal se dit autrement — sans quoi le
+ *  propriétaire coupe et rallume son wifi pour rien. */
+type Echec = { message: string; a: number; reseau: boolean };
 
 type EnVol = {
   n: number; bornes: BornesPleines; langue: Langue;
-  promesse: Promise<void>; ctrl: AbortController;
+  /** Rend les données APPLIQUÉES — `null` si la réponse a été écartée ou
+   *  a échoué. */
+  promesse: Promise<Donnees | null>; ctrl: AbortController;
 };
 
 type Partage = {
@@ -337,9 +356,9 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
    * évite deux descentes quand on touche une notification qui ramène aussi
    * l'application au premier plan.
    */
-  const charger = useCallback((options: { forcer?: boolean } = {}): Promise<void> => {
+  const charger = useCallback((options: { forcer?: boolean } = {}): Promise<Donnees | null> => {
     const b0 = besoinRef.current;
-    if (!b0 || connecteRef.current !== true) return Promise.resolve();
+    if (!b0 || connecteRef.current !== true) return Promise.resolve(null);
     const s = serviesRef.current;
     const q = quandRef.current;
     const b = s && q != null && Date.now() - q < RECENT_MS ? reunir([b0, s]) : b0;
@@ -351,13 +370,15 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
     const gen = generation.current;
     const ctrl = new AbortController();
     setEnRoute(true);
-    const promesse = (async () => {
+    const promesse = (async (): Promise<Donnees | null> => {
       try {
         const d = await chargerDonnees(lg, b, ctrl.signal);
-        if (gen !== generation.current || n < applique.current) return;
+        if (gen !== generation.current || n < applique.current) return null;
         applique.current = n;
         echecsDeSuite.current = 0;
-        setDonnees((avant) => (avant && memeContenu(avant, d) ? avant : d));
+        const retenu = retenir(donneesRef.current, d);
+        donneesRef.current = retenu;
+        setDonnees(retenu);
         setServies((avant) => (avant && memesBornes(avant, b) ? avant : b));
         setLangueServie(lg);
         setQuand(Date.now());
@@ -378,22 +399,26 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
           for (const ms of SUIVIS_EN_ATTENTE_MS) plusTard(ms, () => void charger());
         }
         if (!enAttente) suiviEnAttente.current = false;
+        return retenu;
       } catch (e) {
-        if (gen !== generation.current) return;
+        if (gen !== generation.current) return null;
         // Session expirée : ce n'est pas une erreur à afficher, c'est un
         // retour au verrou. La racine s'en charge dès que l'état bascule.
-        if (e instanceof ErreurGuichet && e.statut === 401) { perdueRef.current(); return; }
+        if (e instanceof ErreurGuichet && e.statut === 401) { perdueRef.current(); return null; }
         // Une relecture plus récente a déjà réussi : cet échec ne dit rien
         // de ce qui est à l'écran.
-        if (n < applique.current) return;
+        if (n < applique.current) return null;
         echecsDeSuite.current += 1;
         // Le guichet parle la langue de l'écran ; tout le reste — une panne
         // de réseau, un corps illisible — reçoit la phrase du dictionnaire.
+        const nature = e instanceof ErreurGuichet ? e.nature : "reseau";
         setEchec({
           message: e instanceof ErreurGuichet && e.message
             ? e.message : textesConnexion[lg].reseauEnPanne,
           a: Date.now(),
+          reseau: nature === "reseau" || nature === "interceptee",
         });
+        return null;
       } finally {
         if (enVol.current?.n === n) {
           enVol.current = null;
@@ -473,6 +498,13 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   }, [echec, connecte, charger]);
 
   // --- Le retour au premier plan — depuis l'ARRIÈRE-PLAN seulement --------
+  //
+  // SAUF APRÈS UN ÉCHEC. Un essai espacé qui tombait pendant un passage par
+  // « inactive » — le centre de contrôle qu'on ouvre justement pour
+  // rallumer les données mobiles — ne faisait rien, et rien ne le
+  // reprogrammait : le message de panne restait, le réseau revenu.
+  const echecRef = useRef(echec);
+  echecRef.current = echec;
   useEffect(() => {
     let parti = false;
     const abonnement = AppState.addEventListener("change", (etat: AppStateStatus) => {
@@ -482,7 +514,7 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
         // « inactive » puis « active » sans être passé par l'arrière-plan :
         // le centre de notifications, une demande d'autorisation. On n'a
         // pas quitté l'application : rien à recharger.
-        if (parti) void charger();
+        if (parti || echecRef.current) void charger();
         parti = false;
       }
     });
@@ -493,11 +525,13 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
   useEffect(() => {
     const quandSonne = () => {
       const avant = empreinte(donneesRef.current);
-      void charger({ forcer: true }).then(() => {
+      void charger({ forcer: true }).then((vues) => {
         // Le robot fait sonner au moment où il LIT le SMS ; la ligne arrive
-        // en base un peu après. Si la première relecture n'a rien vu, on
-        // repasse une fois — pas davantage.
-        if (empreinte(donneesRef.current) === avant) {
+        // en base un peu après. Si la première relecture n'a rien vu — ou
+        // n'a rien rapporté —, on repasse une fois, pas davantage. On compare
+        // ce qu'elle a APPLIQUÉ : l'état de l'écran n'est mis à jour qu'au
+        // rendu suivant, et la comparaison disait toujours « rien vu ».
+        if (!vues || empreinte(vues) === avant) {
           plusTard(RELECTURE_NOTIFICATION_MS, () => void charger({ forcer: true }));
         }
       });
@@ -517,7 +551,8 @@ export function FournisseurDonnees({ children }: { children: ReactNode }) {
     return () => clearInterval(m);
   }, []);
 
-  const recharger = useCallback(() => charger({ forcer: true }), [charger]);
+  const recharger = useCallback(
+    () => charger({ forcer: true }).then(() => undefined), [charger]);
   const actualiser = useCallback((options?: { suivi?: boolean }) => {
     void charger({ forcer: true });
     if (options?.suivi) {
@@ -580,11 +615,17 @@ function usePartage(): Partage {
  * Il ne s'inscrit à aucun besoin : il ne fait jamais grandir ce que
  * l'application descend.
  */
-export function useAgeDesChiffres(): { duCahier: boolean; quand: number | null; horsLigne: boolean } {
+export function useAgeDesChiffres(): {
+  duCahier: boolean; quand: number | null; horsLigne: boolean;
+  /** « reseau » : le téléphone n'atteint pas TOTEM. « plateforme » : elle
+   *  répond, mais mal (panne, réponse coupée). */
+  panne: "reseau" | "plateforme" | null;
+} {
   const p = useContext(Contexte);
-  if (!p) return { duCahier: false, quand: null, horsLigne: false };
+  if (!p) return { duCahier: false, quand: null, horsLigne: false, panne: null };
   const horsLigne = p.donnees !== null && (p.echec !== null || (p.duCahier && p.lent));
-  return { duCahier: p.duCahier, quand: p.quand, horsLigne };
+  const panne = !horsLigne ? null : p.echec && !p.echec.reseau ? "plateforme" : "reseau";
+  return { duCahier: p.duCahier, quand: p.quand, horsLigne, panne };
 }
 
 /** L'heure de l'écran, refaite chaque minute et au retour devant

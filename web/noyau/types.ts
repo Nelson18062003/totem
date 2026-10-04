@@ -42,6 +42,14 @@ export type Sim = {
   // RETOUR d'un boîtier : il redonne signe de vie avant de relire ses cartes.
   // Absent d'une plateforme pas encore à jour.
   presence?: "en_place" | "retiree" | "inconnue";
+  // L'état du boîtier QUI PORTE CETTE CARTE — pas du boîtier montré en tête
+  // (le dernier entendu). Avec deux boîtiers, l'écran disait « Terminal hors
+  // ligne » sur une carte d'un boîtier qui parlait, et datait le silence avec
+  // l'heure de l'autre. « inconnue » seule ne dit pas qu'il se tait : elle
+  // dit aussi « il vient de revenir ». Facultatifs : une plateforme pas
+  // encore à jour ne les envoie pas, et le téléphone lit alors `terminal`.
+  boitierMuet?: boolean;
+  boitierVuLe?: string | null;
   premiereVue: string;
   derniereVue: string;
   nbPaiements: number;

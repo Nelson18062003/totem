@@ -139,6 +139,10 @@ function monde(source) {
   const etat = { connecte: true, ferme: false, devant: "accueil", montes: ["accueil"] };
   const appState = new Set();
   const notifs = new Set();
+  const AppStateFaux = {
+    currentState: "active",
+    addEventListener: (_e, f) => { appState.add(f); return { remove: () => appState.delete(f) }; },
+  };
   const roues = {};          // nom -> { valeurs: [], tirages: 0, onRefresh }
   const ecrans = {};
   class ErreurGuichet extends Error { constructor(m, s) { super(m); this.statut = s; } }
@@ -156,10 +160,7 @@ function monde(source) {
     react: React,
     "react/jsx-runtime": require(join(MOBILE, "node_modules/react/jsx-runtime")),
     "react-native": {
-      AppState: {
-        currentState: "active",
-        addEventListener: (_e, f) => { appState.add(f); return { remove: () => appState.delete(f) }; },
-      },
+      AppState: AppStateFaux,
       View: () => null,
       RefreshControl,
     },
@@ -242,7 +243,13 @@ function monde(source) {
     },
     async tirer(nom) { roues[nom]?.onRefresh?.(); await pause(20); },
     async notification() { for (const f of notifs) f({}); await pause(20); },
-    async appState(...etats) { for (const e of etats) { for (const f of appState) f(e); await pause(10); } },
+    async appState(...etats) {
+      for (const e of etats) {
+        AppStateFaux.currentState = e;
+        for (const f of appState) f(e);
+        await pause(10);
+      }
+    },
     async deconnecter() { etat.connecte = false; await rendre(); },
     roueAllumee: (nom) => Boolean(roues[nom]?.valeurs.at(-1)),
     roueAEteAllumee: (nom) => Boolean(roues[nom]?.valeurs.includes(true)),
@@ -353,6 +360,34 @@ const SCENARIOS = [
       if (!m.ecrans.accueil.erreur) return "l'erreur s'efface dès qu'un nouvel essai PART";
       await m.repondreAuxEnSuspens();
       return m.ecrans.accueil.erreur ? "l'erreur reste après le succès" : null;
+    },
+  },
+  {
+    nom: "Un essai perdu pendant « inactive » reprend au retour",
+    pourquoi: "on ouvre le centre de contrôle pour rallumer les données : l'essai tombait dedans, et plus rien ne repartait",
+    async jouer(m) {
+      await m.demarrer();
+      await m.repondre(0, { ok: false });          // pas de réseau
+      await m.appState("inactive");                // le centre de contrôle s'ouvre…
+      await laisserPasser(5);                      // …l'essai de 3 s tombe dedans
+      const n = m.appels.length;
+      await m.appState("active");                  // on le referme, réseau rallumé
+      await pause(30);
+      if (m.appels.length === n) return "au retour, rien ne repart : le message de panne reste, réseau revenu";
+      await m.repondreAuxEnSuspens();
+      return m.ecrans.accueil.erreur ? "le nouvel essai a réussi, et le message de panne reste" : null;
+    },
+  },
+  {
+    nom: "Une notification qui a vu le SMS ne relit pas une seconde fois",
+    pourquoi: "la seconde relecture partait toujours : deux téléchargements par SMS, quarante fois par jour",
+    async jouer(m) {
+      await m.demarrer(); await m.repondreAuxEnSuspens();
+      await m.notification();
+      const n = m.appels.length;
+      await m.repondre(n - 1, { version: 2 });     // la première relecture VOIT le SMS
+      await laisserPasser(7);
+      return m.appels.length === n ? null : "une seconde relecture est partie pour un SMS déjà vu";
     },
   },
   {

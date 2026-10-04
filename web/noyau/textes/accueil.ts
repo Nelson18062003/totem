@@ -14,7 +14,7 @@ const en = {
   reglages: "Settings",
   terminal: "Terminal",
   enLigne: "Online",
-  muet: "Silent",
+  muet: "Offline",
   emplacement: "Location",
   version: "Version",
   sante: "Device health",
@@ -62,7 +62,12 @@ const en = {
   horsLigneQuoiFaire:
     "Check that the box and the internet router are switched on. If they are, "
     + "unplug the box, count to ten, and plug it back in.",
-  horsLigneFin: "This alert goes away by itself as soon as the box is back in touch.",
+  // L'alerte NE disparaît PAS d'elle-même : rien ne relit sans un geste (pas
+  // de pouls, à dessein). La phrase le promettait ; elle dit quoi faire.
+  horsLigneFin: "Once the box is plugged back in, tap “Check again”.",
+  horsLigneReverifier: "Check again",
+  horsLigneVerification: "Checking…",
+  horsLigneToujours: (h: string) => `Still offline — checked at ${h}.`,
   horsLigneCompris: "OK",
   horsLigneVoir: "Operations can't go out. Tap to see what to do.",
   horsLigneHier: (h: string) => `yesterday at ${h}`,
@@ -143,7 +148,7 @@ const fr: typeof en = {
   reglages: "Réglages",
   terminal: "Terminal",
   enLigne: "En ligne",
-  muet: "Muet",
+  muet: "Hors ligne",
   emplacement: "Emplacement",
   version: "Version",
   sante: "Santé du boîtier",
@@ -182,7 +187,10 @@ const fr: typeof en = {
   horsLigneQuoiFaire:
     "Vérifiez que le boîtier et le routeur Internet sont allumés. S’ils le sont, "
     + "débranchez le boîtier, comptez jusqu’à dix, puis rebranchez-le.",
-  horsLigneFin: "Cette alerte disparaît d’elle-même dès que le boîtier redonne des nouvelles.",
+  horsLigneFin: "Une fois le boîtier rebranché, touchez « Revérifier ».",
+  horsLigneReverifier: "Revérifier",
+  horsLigneVerification: "Vérification…",
+  horsLigneToujours: (h) => `Toujours hors ligne — vérifié à ${h}.`,
   horsLigneCompris: "Compris",
   horsLigneVoir: "Les opérations ne peuvent pas partir. Touchez pour savoir quoi faire.",
   horsLigneHier: (h) => `hier à ${h}`,

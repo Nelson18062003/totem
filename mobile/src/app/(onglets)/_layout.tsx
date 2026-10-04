@@ -93,7 +93,7 @@ function BandeauHorsLigne() {
   const langue = useLangue();
   const bas = useSafeAreaInsets().bottom;
   const maintenant = useMaintenant();
-  const { horsLigne, quand } = useAgeDesChiffres();
+  const { horsLigne, quand, panne } = useAgeDesChiffres();
   if (!horsLigne || quand == null) return null;
   const t = textesCharpente[langue];
   return (
@@ -116,7 +116,8 @@ function BandeauHorsLigne() {
         <Icone nom="Refresh" taille={13} couleur={couleurs.surfaceHaute} />
         <Texte taille={textes.legende} style={{ color: couleurs.surfaceHaute, flexShrink: 1 }}
                numberOfLines={2}>
-          {t.horsLigne} · {t.horsLigneDetail(ageVu(quand, maintenant, langue))}
+          {panne === "plateforme" ? t.plateformeEnPanneCourt : t.horsLigne}
+          {" · "}{t.horsLigneDetail(ageVu(quand, maintenant, langue))}
         </Texte>
       </View>
     </Animated.View>

@@ -18,7 +18,7 @@ const en = {
 
   // L'état du terminal, au pied du menu
   terminalActif: "Terminal active",
-  terminalMuet: "Terminal silent",
+  terminalMuet: "Terminal offline",
   aucunTerminal: "No terminal connected",
 
   // Le bandeau « Non relié » — le texte encadre les deux noms de variables,
@@ -34,6 +34,8 @@ const en = {
   // d'hier présenté comme celui de maintenant est pire qu'un écran vide :
   // on décide dessus.
   horsLigne: "No network",
+  // La plateforme répond, mais mal : ce n'est pas le réseau du téléphone.
+  plateformeEnPanneCourt: "TOTEM isn't answering properly",
   horsLigneDetail: (age: string) => `Figures from your last visit, ${age}.`,
 
   // Les SMS
@@ -56,7 +58,7 @@ const fr: typeof en = {
   deplierMenu: "Déplier le menu",
 
   terminalActif: "Terminal actif",
-  terminalMuet: "Terminal muet",
+  terminalMuet: "Terminal hors ligne",
   aucunTerminal: "Aucun terminal relié",
 
   nonRelie: "Non relié",
@@ -67,6 +69,7 @@ const fr: typeof en = {
     " (voir docs/CLOUD.md), puis rechargez : les vraies données du terminal apparaîtront.",
 
   horsLigne: "Pas de réseau",
+  plateformeEnPanneCourt: "TOTEM ne répond pas correctement",
   horsLigneDetail: (age: string) => `Chiffres de votre dernier passage, ${age}.`,
 
   nonLu: "non lu",

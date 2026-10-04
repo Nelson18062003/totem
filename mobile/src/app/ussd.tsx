@@ -25,7 +25,7 @@
 // composait un autre code. L'état se dit maintenant dans la rangée du champ,
 // à hauteur fixe : le catalogue ne bouge plus, quoi qu'il arrive au boîtier.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView, Pressable, View,
 } from "react-native";
@@ -37,29 +37,20 @@ import { Squelette } from "@/animations";
 import { Icone } from "@/icones";
 import { carteRetiree } from "@/reglages-cartes";
 import { OperationPopup, type Operation } from "@/operation";
-import { boitierSeTait, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
+import { carteEnPause, FicheTerminalHorsLigne, silenceDepuis } from "@/terminal-hors-ligne";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
-import { useDonnees, useMaintenant } from "@/donnees";
+import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { aDesVariables, codesUssd } from "@noyau/codes";
 import { textesUssd } from "@noyau/textes/ussd";
 import { textesAccueil } from "@noyau/textes/accueil";
-import { FUSEAU_DEFAUT, type EtatTerminal } from "@noyau/types";
+import { FUSEAU_DEFAUT } from "@noyau/types";
 
 /** La rangée du cadran — le champ et « Composer », ou l'état du boîtier qui
  *  se tait — a une hauteur FIXE : l'une prend la place de l'autre sans que
  *  rien, dessous, ne bouge. Assez pour le champ sous le plus grand texte
  *  permis (16 × 1,35, et ses marges). */
 const HAUTEUR_CADRAN = 54;
-
-/** La fiche « hors ligne » d'une carte dont on ne sait pas QUEL boîtier se
- *  tait : sans heure. Le boîtier que la plateforme décrit est le dernier à
- *  avoir parlé — peut-être un AUTRE, bien vivant, et son heure, à peu près
- *  « maintenant », aurait été donnée pour celle du silence. */
-const BOITIER_SANS_HEURE: EtatTerminal = {
-  id: "", nom: "", enLigne: false, majTexte: "", version: "", sante: "",
-  enAttente: 0, vuLe: null, vuIlYa: null,
-};
 
 export default function CadranUssd() {
   // La barre de navigation d'Android couvrait la dernière ligne du catalogue.
@@ -69,6 +60,9 @@ export default function CadranUssd() {
   const { donnees, attente, erreur, recharger, actualiser, duCahier } =
     useDonnees({ sms: 0, recus: 0 });
   const maintenant = useMaintenant();
+  // Tirer pour revérifier : la fiche « hors ligne » le dit, il faut que le
+  // geste existe aussi ici.
+  const roue = useRoue();
   const [ficheTerminal, setFicheTerminal] = useState(false);
 
   // Une carte dont le boîtier se tait reste au cadran : on ne la SAIT pas
@@ -90,16 +84,14 @@ export default function CadranUssd() {
   // d'après la carte elle-même, dont on ne sait plus rien. La même règle que
   // l'accueil et les Opérations (`terminal-hors-ligne.tsx`) : un écran qui
   // dirait autre chose qu'eux serait cru à tort.
-  const boitierMuet = boitierSeTait(donnees, duCahier);
-  const seTait = boitierMuet || carte?.presence === "inconnue";
+  // Seulement si le boîtier QUI PORTE cette carte se tait — et la fiche
+  // donne SON heure, jamais celle d'un autre boîtier (voir `carteEnPause`).
+  const seTait = carteEnPause(donnees, duCahier, carte);
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
-  // De quel silence parle la fiche. Le boîtier décrit par la plateforme est
-  // le DERNIER à avoir parlé : s'il se tait, tous se taisent, et son heure
-  // est celle du silence — exacte quand la boutique n'en a qu'un. S'il parle
-  // encore, c'est un autre boîtier qui tient cette carte : on ne sait pas
-  // depuis quand, et on ne l'invente pas.
-  const terminalDeLaFiche: EtatTerminal = boitierMuet && donnees?.terminal
-    ? donnees.terminal : BOITIER_SANS_HEURE;
+  const depuisSilence = silenceDepuis(donnees, duCahier, carte);
+  // « Revérifier » a parlé, et le boîtier est revenu : la fiche se referme.
+  useEffect(() => { if (ficheTerminal && !seTait) setFicheTerminal(false); }, [ficheTerminal, seTait]);
+  const expliquer = () => { setFicheTerminal(true); actualiser(); };
 
   // Composer, c'est ouvrir la MÊME session que les gestes du guichet :
   // l'ICCID voyage avec le code, le robot compose sur CETTE carte.
@@ -107,7 +99,7 @@ export default function CadranUssd() {
     if (!carte || !etapes.length) return;
     // Rien ne part vers un boîtier muet : on explique, au lieu de laisser
     // trente secondes de « le terminal compose… » pour finir en échec.
-    if (seTait) { setFicheTerminal(true); return; }
+    if (seTait) { expliquer(); return; }
     setOperation({
       titre, code: etapes[0], etapes, champs: [],
       carte: carte.iccid, terminal: donnees?.terminal?.id ?? null,
@@ -119,7 +111,7 @@ export default function CadranUssd() {
     const code = saisie.trim();
     if (!code) return;
     // Le code tapé reste dans le champ : au retour du boîtier, un appui suffit.
-    if (seTait) { setFicheTerminal(true); return; }
+    if (seTait) { expliquer(); return; }
     setSaisie("");
     ouvrir(code, [code]);
   };
@@ -130,7 +122,8 @@ export default function CadranUssd() {
           feuille.tsx). Le cadran vit en haut, mais un téléphone couché n'a
           que quelques lignes au-dessus du clavier. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
-      <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg,
+      <Defilement refreshControl={roue}
+                  contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg,
                                            paddingBottom: margeBas }}
                   keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
@@ -167,7 +160,7 @@ export default function CadranUssd() {
             </Carte>
           </>
         ) : !carte && seTait ? (
-          <BoitierMuet onPress={() => setFicheTerminal(true)} />
+          <BoitierMuet onPress={expliquer} />
         ) : !carte ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
@@ -214,7 +207,7 @@ export default function CadranUssd() {
                 code déjà tapé reste en mémoire : au retour du boîtier, il
                 est encore là. */}
             {seTait ? (
-              <BoitierMuet onPress={() => setFicheTerminal(true)} />
+              <BoitierMuet onPress={expliquer} />
             ) : (
               <View style={{ flexDirection: "row", gap: espaces.sm, height: HAUTEUR_CADRAN }}>
                 <View style={{
@@ -331,12 +324,13 @@ export default function CadranUssd() {
                         // Un code a pu changer le solde : on relit EN SILENCE,
                         // et encore trois fois pour attraper le SMS de
                         // l'opérateur, qui arrive quelques secondes après.
-                        onTermine={() => actualiser({ suivi: true })} />
+                        onTermine={() => actualiser({ suivi: true })}
+                        onRefus={() => actualiser()} />
       ) : null}
 
       {ficheTerminal ? (
-        <FicheTerminalHorsLigne terminal={terminalDeLaFiche} maintenant={maintenant}
-                                fuseau={fuseau} langue={langue}
+        <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
+                                fuseau={fuseau} langue={langue} onReverifier={recharger}
                                 onFermer={() => setFicheTerminal(false)} />
       ) : null}
     </SafeAreaView>

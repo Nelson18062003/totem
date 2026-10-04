@@ -39,7 +39,7 @@ const en = {
   etat: {
     actif: "Reporting",
     en_retard: "Late",
-    muet: "Silent",
+    muet: "Offline",
     jamais: "Never reported",
     retire: "Out of service",
   },
@@ -249,7 +249,7 @@ const fr: typeof en = {
   etat: {
     actif: "Parle",
     en_retard: "En retard",
-    muet: "Muet",
+    muet: "Hors ligne",
     jamais: "N'a jamais parlé",
     retire: "Hors service",
   },

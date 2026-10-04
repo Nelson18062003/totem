@@ -189,9 +189,9 @@ export function Caisse({ carte, langue, soldeCache, onBasculerSolde, signalFige 
               </Texte>
             ) : null}
           </View>
-          {carte.signal != null
-            ? <BarresSignal niveau={carte.signal} fige={signalFige} />
-            : null}
+          {/* Inconnu, le signal se dessine VIDE — disparaître ne disait pas
+              pourquoi les opérations échouent. */}
+          <BarresSignal niveau={carte.signal ?? -1} fige={signalFige} />
         </View>
 
         {/* Au milieu : le solde. C'est ce qu'on vient voir.

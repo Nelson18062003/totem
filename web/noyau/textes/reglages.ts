@@ -16,7 +16,7 @@ const en = {
   // --- Le terminal
   terminal: "Terminal",
   enLigne: "Online",
-  muet: "Silent",
+  muet: "Offline",
   misAJour: (d: string) => `updated ${d}`,
   nom: "Name",
   version: "Version",
@@ -328,7 +328,7 @@ const fr: typeof en = {
 
   terminal: "Terminal",
   enLigne: "En ligne",
-  muet: "Muet",
+  muet: "Hors ligne",
   misAJour: (d) => `mis à jour ${d}`,
   nom: "Nom",
   version: "Version",

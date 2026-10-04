@@ -9,8 +9,8 @@ const en = {
   titre: "Messages received",
   enCoursDeTransmission: (n: number) =>
     n === 1
-      ? "The terminal has 1 message still on its way — this list may not be complete yet. It updates by itself."
-      : `The terminal has ${n} messages still on their way — this list may not be complete yet. It updates by itself.`,
+      ? "The terminal has 1 message still on its way — this list may not be complete yet. Pull down to see how far it has got."
+      : `The terminal has ${n} messages still on their way — this list may not be complete yet. Pull down to see how far it has got.`,
   recherchePlaceholder: "Name, number, amount, message text",
   effacerRecherche: "Clear the search",
   tousLesOperateurs: "All",
@@ -138,8 +138,8 @@ const fr: typeof en = {
   titre: "SMS reçus",
   enCoursDeTransmission: (n) =>
     n === 1
-      ? "Le terminal a 1 message en cours de transmission — cette liste n’est peut-être pas encore complète. Elle se met à jour toute seule."
-      : `Le terminal a ${n} messages en cours de transmission — cette liste n’est peut-être pas encore complète. Elle se met à jour toute seule.`,
+      ? "Le terminal a 1 message en cours de transmission — cette liste n’est peut-être pas encore complète. Tirez vers le bas pour voir où elle en est."
+      : `Le terminal a ${n} messages en cours de transmission — cette liste n’est peut-être pas encore complète. Tirez vers le bas pour voir où elle en est.`,
   recherchePlaceholder: "Nom, numéro, montant, texte du SMS",
   effacerRecherche: "Effacer la recherche",
   tousLesOperateurs: "Tous",

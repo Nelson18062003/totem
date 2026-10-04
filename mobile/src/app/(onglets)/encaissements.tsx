@@ -60,6 +60,7 @@ import { Entree } from "@/animations";
 import { SqueletteListe } from "@/squelettes";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { useAgeDesChiffres, useDonnees, useMaintenant, useRoue } from "@/donnees";
+import { boitierSeTait } from "@/terminal-hors-ligne";
 import { useLangue } from "@/langue";
 import { useSession } from "@/session";
 import { Calendrier } from "@/calendrier";
@@ -638,13 +639,15 @@ export default function Encaissements() {
   // « pas de réseau » (qui l'emporte : des chiffres qui datent ne disent
   // rien de ce qui est en route), et ne pousse rien.
   //
-  // « Elle se met à jour toute seule » est vrai maintenant : tant que le
-  // terminal annonce des SMS en route, le cahier repasse de lui-même (voir
-  // `SUIVIS_EN_ATTENTE_MS` dans `donnees.tsx`). Avant, rien ne repassait.
+  // Elle ne promet plus « elle se met à jour toute seule » : le cahier
+  // repasse deux fois (voir `SUIVIS_EN_ATTENTE_MS` dans `donnees.tsx`), puis
+  // s'arrête — pas de pouls. Une longue transmission se suit en tirant.
   // Des chiffres relus du téléphone n'en disent rien non plus : ce compte
   // date du dernier passage.
   const enAttente = donnees?.terminal?.enAttente ?? 0;
-  const avis = enAttente > 0 && !horsLigne && !duCahier;
+  // Un boîtier qui se tait ne transmet rien : son dernier compte n'est pas
+  // « en cours de transmission » — et l'accueil dit déjà « hors ligne ».
+  const avis = enAttente > 0 && !horsLigne && !duCahier && !boitierSeTait(donnees, duCahier);
   const [hauteurAvis, setHauteurAvis] = useState(0);
 
   return (

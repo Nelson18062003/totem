@@ -15,22 +15,55 @@
 // Ce n'est PAS une carte qui capte mal : ça, ce sont les barres de signal
 // sur la carte. Ici, c'est tout le boîtier qui ne parle plus.
 
-import { Pressable, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { Feuille } from "@/feuille";
-import { Carte, Texte } from "@/ui";
+import { Carte, Pastille, Texte } from "@/ui";
+import { HAUTEUR_ETAT } from "@/mesures-accueil";
 import { Icone } from "@/icones";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
-import type { Donnees, EtatTerminal } from "@noyau/types";
+import type { Donnees, Sim } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 
-/** Le boîtier se tait-il ? D'après la plateforme, au moment de sa réponse —
- *  jamais d'après l'horloge du téléphone, qui peut avoir des minutes
- *  d'écart. Des chiffres relus du téléphone n'en disent rien : le bandeau
- *  « Pas de réseau » parle alors à sa place. */
+/** Le boîtier montré en tête se tait-il ? D'après la plateforme, au moment
+ *  de sa réponse — jamais d'après l'horloge du téléphone, qui peut avoir des
+ *  minutes d'écart. Des chiffres relus du téléphone n'en disent rien : le
+ *  bandeau « Pas de réseau » parle alors à sa place. */
 export function boitierSeTait(donnees: Donnees | null, duCahier = false): boolean {
   return Boolean(donnees?.terminal && !donnees.terminal.enLigne && !duCahier);
+}
+
+/**
+ * CETTE CARTE EST-ELLE EN PAUSE ? — la règle, écrite UNE fois.
+ *
+ * Seulement si SON boîtier se tait. Le premier jet mettait en pause toute
+ * carte de présence « inconnue » : or « inconnue » veut dire aussi « son
+ * boîtier vient de revenir et n'a pas encore relu ses puces ». L'accueil
+ * affichait alors « Terminal hors ligne » sur un boîtier qui parlait — et,
+ * avec deux boîtiers, prenait l'état du mauvais. La plateforme dit
+ * maintenant, carte par carte, si le boîtier QUI LA PORTE se tait ; une
+ * plateforme pas encore à jour ne le dit pas, et l'on retombe sur le boîtier
+ * montré en tête. Rien ne se conclut de chiffres relus du téléphone.
+ */
+export function carteEnPause(
+  donnees: Donnees | null, duCahier: boolean, carte?: Sim | null,
+): boolean {
+  if (duCahier || !donnees) return false;
+  if (carte && typeof carte.boitierMuet === "boolean") return carte.boitierMuet;
+  return boitierSeTait(donnees);
+}
+
+/** L'instant du silence à montrer : celui du boîtier DE LA CARTE — jamais
+ *  celui d'un autre boîtier, qui parle peut-être. `null` : on ne le sait pas,
+ *  et la fiche le dit sans heure. */
+export function silenceDepuis(
+  donnees: Donnees | null, duCahier: boolean, carte?: Sim | null,
+): string | null {
+  if (!carteEnPause(donnees, duCahier, carte)) return null;
+  if (carte && typeof carte.boitierMuet === "boolean") return carte.boitierVuLe ?? null;
+  return donnees?.terminal?.vuLe ?? null;
 }
 
 function heureDans(iso: string, fuseau: string, langue: Langue): string {
@@ -39,28 +72,44 @@ function heureDans(iso: string, fuseau: string, langue: Langue): string {
   }).format(new Date(iso));
 }
 
-/** « 14:05 », « hier à 14:05 », « le 28 sept. à 14:05 » — ou `null` si la
- *  plateforme n'envoie pas encore l'instant du dernier signe de vie. */
+/** « 14:05 », « hier à 14:05 », « le 28 sept. à 14:05 » — ou `null`. */
 export function depuisQuand(
-  terminal: EtatTerminal, maintenant: number, fuseau: string, langue: Langue,
+  vuLe: string | null, maintenant: number, fuseau: string, langue: Langue,
 ): string | null {
-  if (!terminal.vuLe || !Number.isFinite(Date.parse(terminal.vuLe))) return null;
+  if (!vuLe || !Number.isFinite(Date.parse(vuLe))) return null;
   const t = textesAccueil[langue];
-  const h = heureDans(terminal.vuLe, fuseau, langue);
-  const jour = jourDuReleve(terminal.vuLe, maintenant, fuseau);
+  const h = heureDans(vuLe, fuseau, langue);
+  const jour = jourDuReleve(vuLe, maintenant, fuseau);
   if (jour?.genre === "hier") return t.horsLigneHier(h);
   if (jour?.genre === "avant") return t.horsLigneLe(jourCourt(jour.cle, langue), h);
   return h;
 }
 
-/** L'explication, en feuille : ce qui se passe, l'argent, ce qui ne marche
- *  plus, et ce qu'on fait sur place. */
-export function FicheTerminalHorsLigne({ terminal, maintenant, fuseau, langue, onFermer }: {
-  terminal: EtatTerminal; maintenant: number; fuseau: string; langue: Langue;
+/**
+ * L'explication, en feuille : ce qui se passe, l'argent, ce qui ne marche
+ * plus, ce qu'on fait sur place — et « Revérifier ».
+ *
+ * La première version promettait « cette alerte disparaît d'elle-même » :
+ * rien ne relit sans un geste (pas de pouls, à dessein), et le propriétaire
+ * qui venait de rebrancher le boîtier voyait l'alerte rester, et
+ * recommençait. « Revérifier » pose la question tout de suite ; si le
+ * boîtier est revenu, l'écran qui a ouvert la feuille la referme.
+ */
+export function FicheTerminalHorsLigne({ vuLe, maintenant, fuseau, langue, onFermer, onReverifier }: {
+  vuLe: string | null; maintenant: number; fuseau: string; langue: Langue;
   onFermer: () => void;
+  onReverifier: () => Promise<void>;
 }) {
   const t = textesAccueil[langue];
-  const depuis = depuisQuand(terminal, maintenant, fuseau, langue);
+  const depuis = depuisQuand(vuLe, maintenant, fuseau, langue);
+  const [verif, setVerif] = useState<"repos" | "en_cours" | number>("repos");
+  const vivante = useRef(true);
+  useEffect(() => () => { vivante.current = false; }, []);
+  const reverifier = () => {
+    if (verif === "en_cours") return;
+    setVerif("en_cours");
+    void onReverifier().finally(() => { if (vivante.current) setVerif(Date.now()); });
+  };
   return (
     <Feuille
       visible
@@ -76,19 +125,38 @@ export function FicheTerminalHorsLigne({ terminal, maintenant, fuseau, langue, o
         </View>
       }
       pied={
-        <Pressable
-          accessibilityRole="button"
-          onPress={onFermer}
-          style={({ pressed }) => ({
-            alignItems: "center", paddingVertical: espaces.md,
-            borderRadius: rayons.bouton,
-            backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
-          })}
-        >
-          <Texte poids="demi" style={{ color: couleurs.surfaceHaute }}>
-            {t.horsLigneCompris}
-          </Texte>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: espaces.sm }}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={reverifier}
+            disabled={verif === "en_cours"}
+            style={({ pressed }) => ({
+              flex: 1, flexDirection: "row", gap: espaces.sm,
+              alignItems: "center", justifyContent: "center", paddingVertical: espaces.md,
+              borderRadius: rayons.bouton,
+              backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
+            })}
+          >
+            {verif === "en_cours"
+              ? <ActivityIndicator size="small" color={couleurs.surfaceHaute} />
+              : <Icone nom="Refresh" taille={16} couleur={couleurs.surfaceHaute} />}
+            <Texte poids="demi" style={{ color: couleurs.surfaceHaute }}>
+              {verif === "en_cours" ? t.horsLigneVerification : t.horsLigneReverifier}
+            </Texte>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onFermer}
+            style={({ pressed }) => ({
+              flex: 1, alignItems: "center", justifyContent: "center",
+              paddingVertical: espaces.md, borderRadius: rayons.bouton,
+              borderWidth: 1, borderColor: couleurs.trait,
+              backgroundColor: pressed ? couleurs.surface2 : "transparent",
+            })}
+          >
+            <Texte poids="moyen" ton="doux">{t.horsLigneCompris}</Texte>
+          </Pressable>
+        </View>
       }
     >
       <View style={{ gap: espaces.md }}>
@@ -113,10 +181,40 @@ export function FicheTerminalHorsLigne({ terminal, maintenant, fuseau, langue, o
             {t.horsLigneQuoiFaire}
           </Texte>
         </View>
-        <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
-          {t.horsLigneFin}
+        {/* Une hauteur réservée : la ligne « toujours hors ligne » vient s'y
+            poser sans pousser les boutons sous le doigt. */}
+        <Texte taille={textes.legende} ton={typeof verif === "number" ? "alerte" : "pale"}
+               style={{ lineHeight: 18, minHeight: 36 }}>
+          {typeof verif === "number"
+            ? t.horsLigneToujours(heureDans(new Date(verif).toISOString(), fuseau, langue))
+            : t.horsLigneFin}
         </Texte>
       </View>
     </Feuille>
+  );
+}
+
+/** « Terminal hors ligne › » — d'une ligne, à hauteur fixe : elle prend la
+ *  place d'« Actualiser » sur l'accueil, et se pose dans la rangée du titre
+ *  d'Opérations, sans jamais rien pousser sous le doigt. */
+export function PastilleHorsLigne({ langue, onPress }: { langue: Langue; onPress: () => void }) {
+  const t = textesAccueil[langue];
+  return (
+    <Pressable onPress={onPress}
+               accessibilityRole="button"
+               accessibilityLabel={t.horsLigneTitre}
+               hitSlop={{ top: 6, bottom: 6 }}
+               style={({ pressed }) => ({
+                 height: HAUTEUR_ETAT, flexDirection: "row", alignItems: "center",
+                 gap: espaces.xs + 2, paddingHorizontal: espaces.md,
+                 borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.alerte,
+                 backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+               })}>
+      <Pastille couleur={couleurs.alerte} />
+      <Texte taille={textes.petit} poids="moyen" ton="alerte" numberOfLines={1}>
+        {t.terminalMuetCourt}
+      </Texte>
+      <Icone nom="Chevron" taille={12} couleur={couleurs.alerte} />
+    </Pressable>
   );
 }

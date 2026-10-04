@@ -82,6 +82,10 @@ export class ErreurGuichet extends Error {
     message: string,
     readonly statut: number,
     readonly nature: NaturePanne = statut >= 500 ? "plateforme" : "refus",
+    /** Le mot de la plateforme, quand elle en donne un (« boitier_muet »,
+     *  « carte_absente ») : les écrans s'en servent pour se remettre à jour
+     *  — la phrase, elle, est pour le propriétaire. */
+    readonly raison?: string,
   ) {
     super(message);
     this.name = "ErreurGuichet";
@@ -195,7 +199,8 @@ function lireReponse(e: Echange): Record<string, unknown> {
   }
   const raison = raisonDonnee(corps);
   const nature: NaturePanne = e.statut >= 500 ? "plateforme" : "refus";
-  if (raison) throw new ErreurGuichet(raison, e.statut, nature);
+  const mot = typeof corps?.raison === "string" ? corps.raison : undefined;
+  if (raison) throw new ErreurGuichet(raison, e.statut, nature, mot);
   // 511 : « identifiez-vous d'abord » — c'est le réseau qui parle.
   if (e.statut === 511) throw new Panne("interceptee", e.statut);
   throw new Panne(nature, e.statut);

@@ -5,7 +5,7 @@
 // (`@noyau/codes`) — jamais devinés : deviner des chiffres qui déplacent de
 // l'argent serait irresponsable. Un geste sans code connu ne s'affiche pas.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -13,7 +13,9 @@ import { router } from "expo-router";
 import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte, avecAppui } from "@/ui";
 import { Coordonnees } from "@/coordonnees";
 import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
-import { boitierSeTait, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
+import {
+  carteEnPause, FicheTerminalHorsLigne, PastilleHorsLigne, silenceDepuis,
+} from "@/terminal-hors-ligne";
 import { toucherChoix } from "@/toucher";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
@@ -26,7 +28,6 @@ import { aQui } from "@noyau/beneficiaires";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesUssd } from "@noyau/textes/ussd";
-import { textesAccueil } from "@noyau/textes/accueil";
 import { FUSEAU_DEFAUT } from "@noyau/types";
 
 export default function Actions() {
@@ -57,9 +58,12 @@ export default function Actions() {
   const carte = cartes.find((c) => c.iccid === choisie) ?? cartes[0];
   // Le boîtier se tait : composer déposerait une demande qu'il exécuterait
   // à son retour, des heures plus tard. L'appui explique, comme sur l'accueil.
-  const seTait = boitierSeTait(donnees, duCahier) || carte?.presence === "inconnue";
+  // Seulement si le boîtier QUI PORTE cette carte se tait (`carteEnPause`).
+  const seTait = carteEnPause(donnees, duCahier, carte ?? null);
+  const depuisSilence = silenceDepuis(donnees, duCahier, carte ?? null);
+  const expliquer = () => { setFicheTerminal(true); actualiser(); };
+  useEffect(() => { if (ficheTerminal && !seTait) setFicheTerminal(false); }, [ficheTerminal, seTait]);
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
-  const ta = textesAccueil[langue];
   const raccourcis = donnees?.raccourcis ?? {};
 
   if (!carte) {
@@ -153,29 +157,15 @@ export default function Actions() {
         contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg, paddingBottom: margeBas }}
         refreshControl={roue}
       >
-        <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
-
-        {seTait ? (
-          // Le boîtier se tait : on le dit EN TÊTE, avant les gestes qui ne
-          // partiront pas — et l'appui dit ce qu'on peut faire.
-          <Pressable accessibilityRole="button" onPress={() => setFicheTerminal(true)}
-                     style={avecAppui({
-                       flexDirection: "row", alignItems: "center", gap: espaces.md,
-                       padding: espaces.lg, borderRadius: rayons.carte,
-                       borderWidth: 1, borderColor: couleurs.alerte,
-                       backgroundColor: couleurs.surfaceHaute,
-                     })}>
-            <View style={{ width: 10, height: 10, borderRadius: 5,
-                           backgroundColor: couleurs.alerte }} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Texte poids="demi" ton="alerte">{ta.horsLigneTitre}</Texte>
-              <Texte taille={textes.petit} ton="doux" style={{ lineHeight: 19 }}>
-                {ta.horsLigneVoir}
-              </Texte>
-            </View>
-            <Icone nom="Chevron" taille={14} couleur={couleurs.alerte} />
-          </Pressable>
-        ) : null}
+        {/* Le titre, et — quand le boîtier se tait — la pastille dans la MÊME
+            rangée, à hauteur fixe. Posée en tête de l'écran, l'alerte
+            apparaissait à la réponse de la plateforme et poussait les gestes
+            d'argent sous le doigt qui s'en approchait. */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md,
+                       minHeight: 44 }}>
+          <Texte taille={textes.titre} poids="demi" style={{ flex: 1 }}>{t.titre}</Texte>
+          {seTait ? <PastilleHorsLigne langue={langue} onPress={expliquer} /> : null}
+        </View>
 
         {/* La carte visée. Avec deux SIM en place, c'est ICI que se décide sur
             laquelle on compose — se tromper enverrait l'argent depuis la
@@ -223,9 +213,8 @@ export default function Actions() {
             {gestes.map((g, i) => (
               <View key={g.titre}>
                 {i > 0 ? <Filet /> : null}
-                <LigneAction titre={g.titre} sous={g.sous} icone={g.icone}
-                             onPress={() => (seTait ? setFicheTerminal(true)
-                                             : setOperation(g.fabrique()))} />
+                <LigneAction titre={g.titre} sous={g.sous} icone={g.icone} enPause={seTait}
+                             onPress={() => (seTait ? expliquer() : setOperation(g.fabrique()))} />
               </View>
             ))}
           </Carte>
@@ -238,9 +227,8 @@ export default function Actions() {
               {consultations.map((c, i) => (
                 <View key={c.titre}>
                   {i > 0 ? <Filet /> : null}
-                  <LigneAction titre={c.titre} sous={c.sous} icone={c.icone}
-                               onPress={() => (seTait ? setFicheTerminal(true)
-                                               : setOperation(c.fabrique()))} />
+                  <LigneAction titre={c.titre} sous={c.sous} icone={c.icone} enPause={seTait}
+                               onPress={() => (seTait ? expliquer() : setOperation(c.fabrique()))} />
                 </View>
               ))}
             </Carte>
@@ -281,12 +269,13 @@ export default function Actions() {
           // SILENCE, et encore trois fois pour attraper le SMS de
           // l'opérateur, qui arrive quelques secondes après.
           onTermine={() => actualiser({ suivi: true })}
+          onRefus={() => actualiser()}
         />
       ) : null}
 
-      {ficheTerminal && donnees?.terminal ? (
-        <FicheTerminalHorsLigne terminal={donnees.terminal} maintenant={maintenant}
-                                fuseau={fuseau} langue={langue}
+      {ficheTerminal ? (
+        <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
+                                fuseau={fuseau} langue={langue} onReverifier={recharger}
                                 onFermer={() => setFicheTerminal(false)} />
       ) : null}
     </SafeAreaView>

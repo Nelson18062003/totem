@@ -158,11 +158,16 @@ function nomDe(recents: Operation["recents"], numero: string): string | undefine
 }
 
 export function OperationPopup({
-  operation, onFermer, onTermine,
+  operation, onFermer, onTermine, onRefus,
 }: {
   operation: Operation;
   onFermer: () => void;
   onTermine?: () => void;
+  /** La plateforme a refusé parce que le boîtier se tait ou que la carte
+   *  n'y est plus : l'écran d'où l'on vient doit se remettre à jour, sans
+   *  quoi il restait « en ligne » et chaque nouvel essai prenait le même
+   *  refus. */
+  onRefus?: () => void;
 }) {
   const langue = useLangue();
   const t = textesGuichet[langue];
@@ -241,7 +246,21 @@ export function OperationPopup({
       // lit que la réponse vient du titulaire de cette carte, et le robot
       // dans quelle session la poser.
       const demande = avecCarte(parametres);
-      const { id } = await deposerCommande(genre, demande, operation.terminal, cle);
+      const { id } = await deposerCommande(genre, demande, operation.terminal, cle)
+        .catch((e: unknown) => {
+          // LE CODE SECRET EST PEUT-ÊTRE PARTI. Sa réponse s'est perdue en
+          // route — connexion à demi ouverte, corps coupé après les
+          // en-têtes, 504 d'un hébergeur après l'écriture —, mais la demande
+          // a pu être créée, et le boîtier la composera. Dire « réessayez »,
+          // c'était inviter à un second transfert. Seul un refus EXPLICITE
+          // de la plateforme (une raison donnée) dit que rien n'est parti.
+          const secretPeutEtreParti = parametres.secret === true
+            && !(e instanceof ErreurGuichet && e.nature === "refus")
+            && !(e instanceof ErreurGuichet && e.nature === "session")
+            && !(e instanceof ErreurGuichet && e.nature === "plateforme" && e.raison);
+          if (secretPeutEtreParti) throw new Error(t.telephoneSansTotem);
+          throw e;
+        });
       const depart = Date.now();
       let joint = depart;            // la dernière fois que la plateforme a répondu
       while (Date.now() - depart < ATTENTE_MAX_MS) {
@@ -287,6 +306,8 @@ export function OperationPopup({
       throw new Error(phraseDAbandon(issue, t));
     } catch (e) {
       if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
+      if (e instanceof ErreurGuichet
+          && (e.raison === "boitier_muet" || e.raison === "carte_absente")) onRefus?.();
       if (!vivant.current) return null;
       // Le guichet rend déjà ses messages dans la bonne langue : tels quels.
       setErreur(e instanceof Error && e.message ? e.message : t.accroc);

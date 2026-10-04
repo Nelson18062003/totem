@@ -99,6 +99,8 @@ export default function Reglages() {
   // faute d'avoir été relu. On dit alors seulement de quand datent les
   // dernières nouvelles.
   const seTait = boitierSeTait(donnees, duCahier);
+  // « Revérifier » a parlé, et le boîtier est revenu : la fiche se referme.
+  useEffect(() => { if (ficheTerminal && !seTait) setFicheTerminal(false); }, [ficheTerminal, seTait]);
   const ageS = terminal?.vuIlYa != null && quand != null
     ? terminal.vuIlYa + Math.max(0, maintenant - quand) / 1000 : null;
   const ilYa = ageS != null
@@ -192,7 +194,7 @@ export default function Reglages() {
                       <Texte ton="alerte">{ta.terminalMuetCourt}</Texte>
                       <Texte taille={textes.petit} ton="pale" chiffresAlignes
                              style={{ marginLeft: "auto" }}>
-                        {depuisQuand(terminal, maintenant, fuseau, langue) ?? ilYa}
+                        {depuisQuand(terminal?.vuLe ?? null, maintenant, fuseau, langue) ?? ilYa}
                       </Texte>
                       <Icone nom="Chevron" taille={14} couleur={couleurs.alerte} />
                     </View>
@@ -317,8 +319,8 @@ export default function Reglages() {
       </KeyboardAvoidingView>
 
       {ficheTerminal && terminal ? (
-        <FicheTerminalHorsLigne terminal={terminal} maintenant={maintenant}
-                                fuseau={fuseau} langue={langue}
+        <FicheTerminalHorsLigne vuLe={terminal.vuLe ?? null} maintenant={maintenant}
+                                fuseau={fuseau} langue={langue} onReverifier={recharger}
                                 onFermer={() => setFicheTerminal(false)} />
       ) : null}
     </SafeAreaView>

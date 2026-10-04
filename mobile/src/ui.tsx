@@ -422,8 +422,11 @@ export function BoutonIcone({
  * ce qu'elle fait, et le chevron. Celle de l'onglet Opérations — sortie ici
  * parce que l'onglet Comptes en a besoin aussi (la ligne « Analyse »).
  */
-export function LigneAction({ titre, sous, icone, onPress }: {
+export function LigneAction({ titre, sous, icone, onPress, enPause = false }: {
   titre: string; sous?: string; icone: NomIcone; onPress: () => void;
+  /** Le boîtier se tait : la ligne reste à sa place, pâlie, et l'appui
+   *  explique au lieu de composer — comme les ronds de l'accueil. */
+  enPause?: boolean;
 }) {
   return (
     <Pressable
@@ -432,6 +435,7 @@ export function LigneAction({ titre, sous, icone, onPress }: {
       style={({ pressed }) => ({
         flexDirection: "row", alignItems: "center", gap: espaces.md,
         padding: espaces.lg,
+        opacity: enPause ? 0.45 : 1,
         backgroundColor: pressed ? couleurs.surface2 : "transparent",
       })}
     >

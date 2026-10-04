@@ -234,19 +234,27 @@ function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
         </View>
         {/* Un signal hors de 0..31 est INCONNU (le modem dit 99) : il
             s'affichait « 99/31 » sur un point vert, comme un signal parfait.
-            Faible, il passe à l'orange. */}
-        {s.signal != null && s.signal >= 0 && s.signal <= 31 ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                         paddingHorizontal: espaces.sm, paddingVertical: 3,
-                         borderRadius: rayons.petit,
-                         backgroundColor: sombre ? "rgba(255,255,255,0.1)" : couleurs.surface2 }}>
-            <View style={{ width: 6, height: 6, borderRadius: rayons.rond,
-                           backgroundColor: s.signal <= 7 ? couleurs.alerte : couleurs.positifVif }} />
-            <Texte taille={textes.legende} chiffresAlignes style={{ color: doux }}>
-              {s.signal}/31
-            </Texte>
-          </View>
-        ) : null}
+            Il se DIT maintenant inconnu — disparaître ne disait rien de
+            pourquoi les opérations échouent. Faible, il passe à l'orange ;
+            figé (le boîtier se tait), le point est gris. */}
+        {(() => {
+          const connu = s.signal != null && s.signal >= 0 && s.signal <= 31;
+          const fige = s.boitierMuet === true || s.presence === "inconnue";
+          const point = !connu || fige ? couleurs.encrePale
+            : (s.signal as number) <= 7 ? couleurs.alerte : couleurs.positifVif;
+          return (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
+                           paddingHorizontal: espaces.sm, paddingVertical: 3,
+                           borderRadius: rayons.petit,
+                           backgroundColor: sombre ? "rgba(255,255,255,0.1)" : couleurs.surface2 }}>
+              <View style={{ width: 6, height: 6, borderRadius: rayons.rond,
+                             backgroundColor: point }} />
+              <Texte taille={textes.legende} chiffresAlignes style={{ color: doux }}>
+                {connu ? `${s.signal}/31` : t.signalInconnu}
+              </Texte>
+            </View>
+          );
+        })()}
       </View>
 
       <View style={{ gap: 2 }}>
@@ -279,6 +287,14 @@ function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
           {s.itinerance && s.reseau ? ` · ${t.itinerance(s.reseau)}` : ""}
         </Texte>
       </View>
+      {/* Pas de nouvelles récentes de cette carte : son boîtier s'est tu, ou
+          vient de revenir. Ce qui s'affiche date d'avant — on le dit, comme
+          le site, plutôt qu'un point vert qui fait croire au direct. */}
+      {s.boitierMuet === true || s.presence === "inconnue" ? (
+        <Texte taille={textes.legende} style={{ color: doux, lineHeight: 17 }}>
+          {t.boitierSansNouvelles}
+        </Texte>
+      ) : null}
     </View>
   );
 }

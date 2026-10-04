@@ -33,7 +33,7 @@ import { router } from "expo-router";
 
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
-import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Pastille, Texte,
+import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
@@ -44,7 +44,9 @@ import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
 import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
-import { boitierSeTait, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
+import {
+  carteEnPause, FicheTerminalHorsLigne, PastilleHorsLigne, silenceDepuis,
+} from "@/terminal-hors-ligne";
 import { toucherChoix } from "@/toucher";
 import {
   ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, LIGNE_ROND, LIGNES_MOUVEMENTS,
@@ -169,7 +171,13 @@ export default function Accueil() {
   // LE BOÎTIER SE TAIT : les gestes d'argent restent à leur place, mais
   // l'appui explique au lieu de composer — une demande déposée pendant que
   // le boîtier se tait partait des heures plus tard, à son retour.
-  const seTait = boitierSeTait(donnees, duCahier) || active?.presence === "inconnue";
+  // Seulement si le boîtier QUI PORTE cette carte se tait (`carteEnPause`).
+  const seTait = carteEnPause(donnees, duCahier, active ?? null);
+  const depuisSilence = silenceDepuis(donnees, duCahier, active ?? null);
+  // Ouvrir l'explication pose aussi la question, en silence : la réponse
+  // fraîche peut dire que le boîtier est revenu — la fiche se referme alors.
+  const expliquer = () => { setFicheTerminal(true); relireEnSilence(); };
+  useEffect(() => { if (ficheTerminal && !seTait) setFicheTerminal(false); }, [ficheTerminal, seTait]);
 
   // Rien de ce qui arrive avec les données ne doit faire SAUTER l'écran : la
   // forme d'attente de chaque bloc a la hauteur du vrai (`mesures-accueil`).
@@ -186,7 +194,7 @@ export default function Accueil() {
                 onBasculerSolde={basculerSolde} signalFige={seTait} />
         <LigneEtat carte={active} seTait={seTait} maintenant={maintenant} fuseau={fuseau}
                    langue={langue} t={t} onActualiser={actualiser}
-                   onTerminal={() => setFicheTerminal(true)} />
+                   onTerminal={() => expliquer()} />
       </View>
     </Entree>
   ) : enAttente ? (
@@ -209,7 +217,7 @@ export default function Accueil() {
           éteint, c'est envoyer chercher au mauvais endroit. */}
       {seTait ? (
         <View style={{ marginTop: espaces.sm }}>
-          <PastilleHorsLigne t={t} onPress={() => setFicheTerminal(true)} />
+          <PastilleHorsLigne langue={langue} onPress={() => expliquer()} />
         </View>
       ) : null}
     </Carte>
@@ -226,14 +234,14 @@ export default function Accueil() {
           {gestes.map((g) => (
             <Rond key={g.libelle} icone={g.icone} libelle={g.libelle} aide={g.aide}
                   enPause={seTait}
-                  onPress={() => (seTait ? setFicheTerminal(true) : setOperation(g.fabrique()))} />
+                  onPress={() => (seTait ? expliquer() : setOperation(g.fabrique()))} />
           ))}
           {/* Recevoir ne passe pas par le boîtier : ce sont le nom et le
               numéro, à donner à qui paie. Il reste toujours actif. */}
           <Rond icone="Identite" libelle={t.rondRecevoir} aide={t.recevoirAria}
                 onPress={() => setCoordonnees(true)} />
           <Rond icone="Hash" libelle={t.rondUssd} aide={t.ussdAria} enPause={seTait}
-                onPress={() => (seTait ? setFicheTerminal(true)
+                onPress={() => (seTait ? expliquer()
                   : router.push({ pathname: "/ussd", params: { carte: active.iccid } }))} />
         </View>
         {gestes.length === 0 ? (
@@ -359,7 +367,8 @@ export default function Accueil() {
 
       {operation ? (
         <OperationPopup operation={operation} onFermer={() => setOperation(null)}
-                        onTermine={() => relireEnSilence({ suivi: true })} />
+                        onTermine={() => relireEnSilence({ suivi: true })}
+                        onRefus={() => relireEnSilence()} />
       ) : null}
 
       {smsOuvert ? (
@@ -367,9 +376,9 @@ export default function Accueil() {
                   onChange={() => relireEnSilence()} />
       ) : null}
 
-      {ficheTerminal && donnees?.terminal ? (
-        <FicheTerminalHorsLigne terminal={donnees.terminal} maintenant={maintenant}
-                                fuseau={fuseau} langue={langue}
+      {ficheTerminal ? (
+        <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
+                                fuseau={fuseau} langue={langue} onReverifier={recharger}
                                 onFermer={() => setFicheTerminal(false)} />
       ) : null}
 
@@ -524,7 +533,7 @@ function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser,
         // vers un boîtier qui ne répond pas. L'appui EXPLIQUE (ce que c'est,
         // l'argent qui arrive quand même, quoi faire à la boutique) au lieu
         // de mener aux Réglages, qui répétaient « muet » sans rien dire.
-        <PastilleHorsLigne t={t} onPress={onTerminal} />
+        <PastilleHorsLigne langue={langue} onPress={onTerminal} />
       ) : carte.enPlace && onActualiser ? (
         // « Actualiser » remplace le cercle « Solde » : il pose la question
         // au réseau, juste à côté de la réponse qu'il va remplacer.
@@ -543,29 +552,6 @@ function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser,
         </Pressable>
       ) : null}
     </View>
-  );
-}
-
-/** « Terminal hors ligne › » — d'une ligne, à hauteur fixe : elle prend la
- *  place d'« Actualiser » sans rien pousser. */
-function PastilleHorsLigne({ t, onPress }: { t: T; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress}
-               accessibilityRole="button"
-               accessibilityLabel={t.horsLigneTitre}
-               hitSlop={{ top: 6, bottom: 6 }}
-               style={({ pressed }) => ({
-                 height: HAUTEUR_ETAT, flexDirection: "row", alignItems: "center",
-                 gap: espaces.xs + 2, paddingHorizontal: espaces.md,
-                 borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.alerte,
-                 backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
-               })}>
-      <Pastille couleur={couleurs.alerte} />
-      <Texte taille={textes.petit} poids="moyen" ton="alerte" numberOfLines={1}>
-        {t.terminalMuetCourt}
-      </Texte>
-      <Icone nom="Chevron" taille={12} couleur={couleurs.alerte} />
-    </Pressable>
   );
 }
 
