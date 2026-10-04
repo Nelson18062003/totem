@@ -662,6 +662,52 @@ export async function chargerFicheRecu(
 }
 
 /**
+ * LE REÇU DE CE SMS EST-IL LÀ ? Une question minuscule, posée par la fiche
+ * d'un SMS d'argent qui attend son document (voir `recuAttendu` dans le
+ * noyau) : quelques fois, sur une minute au plus — jamais un pouls.
+ *
+ * Avant, le téléphone apprenait l'arrivée du SMS (la notification), jamais
+ * celle du reçu, déposé quelques secondes plus tard : la fiche restait sur
+ * « Établir le reçu », et l'on refaisait un document qui existait déjà.
+ *
+ * Le lien est celui de l'écran (`recuDe` dans `chargerDonnees`) : par la
+ * référence d'opérateur, sinon par le numéro de ligne du journal, dans la
+ * famille « TM- » et sur le même boîtier. La portée se vérifie sur la ligne
+ * du SMS : un SMS d'une carte qui n'est pas la sienne n'a pas de reçu ici.
+ */
+export async function recuDuSms(id: number, portee: Portee): Promise<string | null> {
+  if (!relie || !Number.isInteger(id) || id <= 0) return null;
+  if (!portee.tout && portee.cartes.length === 0) return null;
+  const sms = (await lire<{
+    id: number; carte: string | null; reference: string | null;
+    source_id?: number | null; terminal?: string | null;
+  }>(`paiements?select=id,carte,reference,source_id,terminal&id=eq.${id}&limit=1`))
+    .find((l) => l.id === id);
+  if (!sms) return null;
+  // Revérifiée ici, ligne par ligne : un filtre qu'un service distant
+  // ignorerait ne doit rien laisser passer.
+  if (!portee.tout && (sms.carte == null || !portee.cartes.includes(sms.carte))) return null;
+  const memeBoitier = (r: { terminal?: string | null }) =>
+    r.terminal == null || sms.terminal == null || r.terminal === sms.terminal;
+  if (sms.reference) {
+    const parReference = (await lire<{ numero: string; reference: string | null; terminal?: string | null }>(
+      `recus?select=numero,reference,terminal&reference=eq.${encodeURIComponent(sms.reference)}&limit=5`))
+      .find((r) => r.reference === sms.reference && memeBoitier(r));
+    if (parReference) return parReference.numero;
+  }
+  if (sms.source_id == null) return null;
+  // « TM-2026-0731-0042 » : le numéro finit par la ligne du journal, sur
+  // quatre chiffres au moins. On demande les numéros qui FINISSENT ainsi,
+  // puis on revérifie le nombre exact (« …-10042 » finit aussi par 0042).
+  const fin = String(sms.source_id).padStart(4, "0");
+  const candidats = await lire<{ numero: string; terminal?: string | null }>(
+    `recus?select=numero,terminal&numero=like.TM-*-${fin}&order=etabli_le.desc&limit=20`);
+  return candidats.find((r) => /^TM-/.test(r.numero)
+    && Number(/-(\d+)$/.exec(r.numero)?.[1]) === sms.source_id
+    && memeBoitier(r))?.numero ?? null;
+}
+
+/**
  * Ce reçu appartient-il à une carte que la personne peut voir ?
  *
  * Un numéro de reçu se DEVINE (« TM-2026-0731-0042 », puis 0043…) : sans

@@ -483,6 +483,25 @@ class Pilotage:
         self.journal.evenement(t(
             f"remote desk: receipt {numero} requested",
             f"guichet à distance : reçu {numero} demandé"))
+        # Le robot a déposé le document AVANT de répondre (voir
+        # `Robot._recu_apres_coup`) : la réponse dit ce qui est vrai
+        # maintenant. TROIS phrases, et l'écran choisit sa réaction sur la
+        # phrase (voir `etatDeLaReponseRecu` dans le noyau) — jamais en
+        # comparant des numéros : un document refait garde le sien. Le
+        # numéro figure dans les trois : l'écran l'y lit.
+        etat = getattr(numero, "etat", None)
+        if etat is None:
+            en_place = getattr(self.journal, "recu_en_place", None)
+            etat = "depose" if en_place and en_place(source_id) else None
+        if etat == "inchange":
+            return t(f"Receipt {numero} already up to date: nothing has "
+                     "changed, it can be shared now.",
+                     f"Reçu {numero} déjà à jour : rien n'a changé, il se "
+                     "partage dès maintenant.", langue=langue)
+        if etat == "depose":
+            return t(f"Receipt {numero} is ready: it can be shared now.",
+                     f"Reçu {numero} prêt : il se partage dès maintenant.",
+                     langue=langue)
         return t(f"Receipt {numero} is being made: it will be archived and "
                  "ready to download in a moment.",
                  f"Reçu {numero} en fabrication : il sera archivé et "

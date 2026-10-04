@@ -285,6 +285,8 @@ const tables = () => ({
     })),
   ],
   recus: [
+    // Ceux que le robot a DÉPOSÉS pendant l'essai (`outils/eprouver-le-recu.py`).
+    ...recusDeposes,
     // Un reçu DÉJÀ établi, pour l'encaissement de NKENGAFAC M. (même
     // référence). Sans lui, aucun écran d'essai ne peut montrer l'état
     // « le reçu existe, on l'ouvre » — le bouton principal de la fiche.
@@ -354,6 +356,13 @@ let prochainBeneficiaire = 1;
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
+// LES REÇUS DU ROBOT. Le faux nuage ne savait pas les recevoir : la fiche
+// « recus » d'un dépôt tombait dans la table des SMS (l'écriture générique
+// plus bas range tout ce qu'elle reçoit parmi les paiements), et le fichier
+// lui-même n'avait nulle part où aller. Personne ne pouvait donc mesurer le
+// trajet d'un reçu, du SMS jusqu'au téléphone.
+const recusDeposes = [];             // fiches « recus », clé (terminal, numero)
+const fichiersDeposes = new Map();   // chemin dans le seau → octets
 // Les essais de mot de passe comptés, comme la table « freins ».
 const freins = new Map();
 
@@ -970,6 +979,36 @@ const serveur = createServer(async (req, res) => {
     }
   }
 
+  // --- LES REÇUS DÉPOSÉS PAR LE ROBOT -------------------------------------
+  //
+  // Le fichier va dans le seau « recus » (« x-upsert » : un dépôt refait
+  // écrase l'ancien), puis sa fiche dans la table, fusionnée sur
+  // (terminal, numero) comme la vraie base le fait.
+  const seau = /^\/storage\/v1\/object\/recus\/(.+)$/.exec(chemin);
+  if (seau && req.method === "POST") {
+    const morceaux = [];
+    for await (const mm of req) morceaux.push(mm);
+    fichiersDeposes.set(decodeURIComponent(seau[1]), Buffer.concat(morceaux));
+    return repondre({ Key: `recus/${seau[1]}` }, 200);
+  }
+  if (seau && req.method === "GET") {
+    const octets = fichiersDeposes.get(decodeURIComponent(seau[1]));
+    if (!octets) return repondre({ message: "objet introuvable" }, 404);
+    res.writeHead(200, { "content-type": "application/pdf" });
+    return res.end(octets);
+  }
+  if (chemin === "/rest/v1/recus" && req.method === "POST") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    for (const fiche of [].concat(JSON.parse(brut || "[]"))) {
+      const deja = recusDeposes.find(
+        (r) => r.terminal === fiche.terminal && r.numero === fiche.numero);
+      if (deja) Object.assign(deja, fiche);
+      else recusDeposes.push({ ...fiche });
+    }
+    return repondre([], 201);
+  }
+
   // --- CE QUE LE ROBOT ÉCRIT ---------------------------------------------
   //
   // Le terminal de Douala POUSSE ses SMS ici (« POST /rest/v1/paiements » avec
@@ -1062,6 +1101,12 @@ const serveur = createServer(async (req, res) => {
           case "gt": return v != null && String(v) > valeur;
           case "lte": return v != null && String(v) <= valeur;
           case "lt": return v != null && String(v) < valeur;
+          // « like.TM-*-0042 » : l'étoile est le joker de PostgREST.
+          case "like": {
+            const motif = decodeURIComponent(valeur)
+              .replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+            return v != null && new RegExp(`^${motif}$`).test(String(v));
+          }
           // « in.("a","b") » — la portée d'un invité passe par là. Sans ce
           // filtre, le faux nuage rendait TOUT, et la plateforme devait
           // refiltrer seule : un harnais n'aurait pas vu un filtre oublié.

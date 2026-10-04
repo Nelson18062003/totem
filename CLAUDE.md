@@ -45,6 +45,7 @@ node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait
+python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-les-cartes.mjs  # chacun ne voit que ses cartes
@@ -122,6 +123,41 @@ harnais rejoue aussi la coupure de courant — le robot journalise AVANT
 d'effacer dans le modem, donc un SMS peut être relu au redémarrage : il doit
 être reconnu, pas recompté. Aveugler le garde-fou fait passer 157 500 F à
 315 000 F.
+
+`eprouver-le-recu` chronomètre le trajet d'un reçu, du SMS relevé par le
+boîtier jusqu'à la fiche du téléphone. « Ça prend trop de temps pour générer
+les PDF », disait le propriétaire — et il devait « refaire le reçu » sur le
+téléphone alors que Telegram l'avait déjà. Fabriquer le PDF prend quinze
+millisecondes : **la lenteur était dans l'ORDRE, pas dans la fabrication.**
+Le reçu attendait dix secondes (le délai qui laisse l'alerte texte partir la
+première sur Telegram), le tour suivant, l'envoi Telegram — et n'allait sur
+la plateforme qu'APRÈS. Mesuré : 17 s avec Telegram rapide, JAMAIS avec
+Telegram en panne, 16 s pour une demande faite depuis l'application. Après :
+1,1 s dans les trois cas, et la demande est déposée avant que le boîtier ne
+réponde. **Un délai voulu pour un destinataire ne doit pas retenir les
+autres** : le dépôt a son fil (`_fil_du_depot`), Telegram garde son délai,
+chacun ses reprises. Et le téléphone apprenait l'arrivée du SMS, jamais
+celle du reçu : la fiche d'un SMS d'argent récent l'ATTEND maintenant
+(`recuAttendu`, noyau) et demande `/api/recu-du-sms` quelques fois sur une
+minute et demie — une attente bornée, pas un pouls. Le témoin rejoue
+l'ancien ordre et doit échouer ; « refaire » un reçu inchangé rend celui
+qui existe, sans le refabriquer.
+
+**« Inchangé » se décide sur ce qui entre dans le document, et « déposé »
+se PROUVE.** La première version jugeait « rien n'a changé » sur la nature
+et la langue — or le nom inscrit aux Réglages entre aussi dans le PDF, et
+l'on lisait « Ce reçu est déjà à jour ✓ » au-dessus de l'ancien. Le boîtier
+refait maintenant le document en mémoire et compare son EMPREINTE à celle
+qu'il a déposée ; c'est sa phrase, pas l'égalité des numéros, qui fait dire
+« déjà à jour » à l'écran (`etatDeLaReponseRecu`, noyau). Et « archive = 1 »
+ne voulait pas dire « déposé » : l'ancien code le posait aussi en renonçant,
+après dix minutes de Telegram en panne. Seule l'empreinte, posée par le
+dépôt réussi et par lui seul, dit que la plateforme a le document. Un dépôt
+ne se marque que si la ligne n'a pas bougé pendant l'envoi, et tous les
+dépôts passent sous le même verrou : sinon un changement de nature pendant
+l'envoi par la 3G laissait l'ANCIEN document en place. Le démarrage du robot
+est gardé par un test (`TestLeDemarrage`) : le harnais lance le fil lui-même,
+et le retirer du démarrage laissait tout vert.
 
 `verifier-les-comptes` déroule la vie entière d'un compte contre un vrai
 serveur : la première inscription (celle du propriétaire), puis les

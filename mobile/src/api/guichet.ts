@@ -743,6 +743,18 @@ export function lienRecu(numero: string): Promise<{ url: string }> {
   return demander(`/api/recu/${encodeURIComponent(numero)}/lien`);
 }
 
+/** « Le reçu de ce SMS est-il là ? » — le numéro, ou `null`.
+ *
+ *  Posée par la fiche d'un SMS d'argent tout juste arrivé, quelques fois sur
+ *  une minute au plus (voir `recuAttendu` dans le noyau) : le boîtier dépose
+ *  le reçu tout seul, et la fiche bascule sur « Partager le reçu » dès qu'il
+ *  est là. L'identifiant est celui de la LIGNE en base (`p.id`). */
+export async function recuDuSms(id: number, renoncer?: AbortSignal): Promise<string | null> {
+  const r = await demander<{ recu?: unknown }>(
+    `/api/recu-du-sms?id=${encodeURIComponent(String(id))}`, {}, { renoncer });
+  return typeof r.recu === "string" && r.recu ? r.recu : null;
+}
+
 /** « Est-ce que mon téléphone sonne ? »
  *
  *  Fait envoyer une notification d'essai aux appareils inscrits. Rend

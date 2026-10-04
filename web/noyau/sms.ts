@@ -75,3 +75,56 @@ export const texteSurEcran = (p: Paiement): string => p.smsBrut;
 /** Au-delà de cette taille, l'écran replie le message : la preuve reste à un
  *  geste, mais elle ne chasse plus les détails. */
 export const LONG_MESSAGE = 380;
+
+/**
+ * LE REÇU EST-IL ATTENDU ? Un SMS d'argent tout juste arrivé reçoit son
+ * reçu tout seul : le boîtier le dépose sur la plateforme dans les secondes
+ * qui suivent. Pendant cette fenêtre, la fiche dit « Reçu en préparation… »
+ * et guette — elle ne propose PAS « Établir le reçu ».
+ *
+ * Avant, elle le proposait : le téléphone apprenait l'arrivée du SMS, jamais
+ * celle du reçu, et l'on refaisait un document qui était déjà en route — ou
+ * déjà dans Telegram. Passé la fenêtre sans reçu, la fiche revient à
+ * « Établir le reçu » : le boîtier était peut-être hors ligne, ou ce message
+ * ne donne pas droit à un reçu ; c'est au geste de le demander.
+ *
+ * Une minute et demie : le dépôt prend quelques secondes, et la fenêtre
+ * couvre un aller-retour réseau lent, une reprise après un accroc. Une
+ * heure réseau un peu en avance sur le téléphone (jusqu'à une minute) reste
+ * « récente » ; au-delà, l'heure est suspecte et l'on n'attend rien.
+ */
+export const FENETRE_DU_RECU_MS = 90_000;
+
+export function recuAttendu(
+  p: Paiement,
+  maintenant: number,
+): boolean {
+  if (p.recu || p.sourceId == null || !estArgent(p)) return false;
+  const arrive = Date.parse(p.recuLe);
+  if (!Number.isFinite(arrive)) return false;
+  const age = maintenant - arrive;
+  return age > -60_000 && age < FENETRE_DU_RECU_MS;
+}
+
+/**
+ * CE QUE LE BOÎTIER A FAIT D'UNE DEMANDE DE REÇU — lu dans sa phrase.
+ *
+ * « Déjà à jour » se décide CHEZ LE BOÎTIER : il refait le document en
+ * mémoire et compare son empreinte à celle qu'il a déposée. Les écrans le
+ * déduisaient de l'égalité des numéros — or un document refait (l'identité
+ * inscrite aux Réglages, une autre langue) GARDE son numéro, et l'on lisait
+ * « Ce reçu est déjà à jour ✓ » au-dessus de l'ancien PDF.
+ *
+ *  - « inchange » : rien n'a changé, le document en place est le bon ;
+ *  - « pret »     : le document vient d'être déposé, il s'ouvre maintenant ;
+ *  - « en_route » : il n'est PAS encore sur la plateforme (dépôt raté, ou
+ *    boîtier d'avant cette règle) — on guette, on n'ouvre pas de lien vide.
+ */
+export type EtatReponseRecu = "inchange" | "pret" | "en_route";
+
+export function etatDeLaReponseRecu(resultat: string | null | undefined): EtatReponseRecu {
+  const r = resultat ?? "";
+  if (/déjà à jour|already up to date/i.test(r)) return "inchange";
+  if (/\bprêt\b|is ready/i.test(r)) return "pret";
+  return "en_route";
+}
