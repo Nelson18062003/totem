@@ -98,7 +98,9 @@ class Incertain extends Error {}
 
 const MONTANTS = [1000, 5000, 10000, 25000];
 const LONGUEUR_CODE_MIN = 4;
-const LONGUEUR_CODE_MAX = 6;
+// Douze, pas six : le pavé coupait sans rien dire au sixième chiffre, et un
+// code plus long (certains comptes, certains services) partait tronqué.
+const LONGUEUR_CODE_MAX = 12;
 
 type TypeSaisie = "numero" | "montant" | "texte";
 
@@ -607,7 +609,11 @@ export function OperationPopup({
         )}
       </div>
     );
-    const secretement = libre && ecran.attend === "secret";
+    // PROTÉGÉ DÈS QUE LE MESSAGE PARLE DU CODE. Un menu « Entrez votre code
+    // secret / 1. Valider / 0. Retour » reste un menu (ses choix en boutons),
+    // mais ce qu'on tape librement dessous peut être le code : il part masqué,
+    // avec le drapeau « secret », et ne s'affiche jamais dans l'échange.
+    const secretement = ecran.parleDuCode && (libre || ecran.attend !== "secret");
     const typeQuestion: TypeSaisie = libre ? "texte"
       : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
     // Ce qu'on vient d'envoyer — « 1 », un numéro, « •••• » — reste écrit
@@ -624,10 +630,10 @@ export function OperationPopup({
           // ses choix en boutons, puis la zone de réponse, toujours là.
           <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`} type={typeQuestion}
             entete={entete}
-            choix={secretement ? [] : ecran.choix} onChoix={(n) => void repondre(n)}
+            choix={ecran.choix} onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
             secretement={secretement}
-            onRevenir={secretement ? () => setLibre(false) : undefined}
+            onRevenir={libre && ecran.attend === "secret" ? () => setLibre(false) : undefined}
             onEnvoyer={(v) => void (secretement ? secret(v) : repondre(v))} langue={langue} />
         ) : (
           <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)} t={t}

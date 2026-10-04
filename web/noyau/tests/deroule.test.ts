@@ -15,7 +15,8 @@ import {
   champAServir, codeAComposer, estUneConfirmation, etapePeutPartir,
   reponseDuBoitier, reponseLibre, reponsePrete, restantsApresReponse, texteDeReponse,
 } from "../deroule";
-import { champPourQuestion, demandeUnCode, lireEcran } from "../ussd";
+import { lireEcran } from "../ussd";
+import * as lectureAvant from "./temoins/ussd-avant";
 import { remplirVariables, verdictCode } from "../codes";
 import { montantSaisi, numeroSaisi } from "../saisie";
 
@@ -72,7 +73,7 @@ test("un numéro collé avec « +237 » part propre ; ce qu'on ne sait pas netto
 
 /** LE TÉMOIN : `derouler` d'avant — `champPourQuestion` seul. */
 const servirAvant = <T extends { type: "numero" | "montant" }>(texte: string, restants: T[]) =>
-  demandeUnCode(texte) ? undefined : champPourQuestion(texte, restants);
+  lectureAvant.demandeUnCode(texte) ? undefined : lectureAvant.champPourQuestion(texte, restants);
 
 test("les vraies questions se servent toutes seules", () => {
   assert.equal(champAServir({ texte: "Entrez le numero du beneficiaire:", reseau: "attend" },
