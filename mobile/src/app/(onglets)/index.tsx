@@ -34,6 +34,7 @@ import { router } from "expo-router";
 import { AjouterMaCarte } from "@/ajouter-ma-carte";
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
+import { FeuilleReleve } from "@/releve";
 import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
@@ -54,7 +55,8 @@ import {
   ECART_ROND, HAUTEUR_ETAT, LIGNE_ROND, LIGNES_MOUVEMENTS,
   LIGNES_MOUVEMENTS_LARGE, NOM_ROND, ROND,
 } from "@/mesures-accueil";
-import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
+import { couleurOperateur, couleurs, espaces, rayons, textes } from "@/theme/jetons";
+import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
@@ -104,6 +106,7 @@ export default function Accueil() {
   const [operation, setOperation] = useState<Operation | null>(null);
   const [smsOuvert, setSmsOuvert] = useState<Paiement | null>(null);
   const [coordonnees, setCoordonnees] = useState(false);
+  const [releve, setReleve] = useState(false);
   const [ficheTerminal, setFicheTerminal] = useState(false);
 
   // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
@@ -186,6 +189,7 @@ export default function Accueil() {
     // donner à qui paie. Il reste toujours actif — les bénéficiaires aussi.
     if (r === "recevoir") return { boitier: false, faire: () => setCoordonnees(true) };
     if (r === "beneficiaires") return { boitier: false, faire: () => router.push("/beneficiaires") };
+    if (r === "releve") return { boitier: false, faire: () => setReleve(true) };
     return { boitier: true,
              faire: () => router.push({ pathname: "/ussd", params: { carte: carte.iccid } }) };
   };
@@ -281,6 +285,7 @@ export default function Accueil() {
             if (!action) return null;
             return (
               <Rond key={r} icone={d.icone} libelle={d.libelle} aide={d.aide}
+                    operateur={r === "menu" ? active.operateur : undefined}
                     enPause={action.boitier && seTait}
                     onPress={() => (action.boitier && seTait ? expliquer() : action.faire())} />
             );
@@ -431,6 +436,12 @@ export default function Accueil() {
                               numero: active.numero,
                               operateur: active.operateur, libelle: active.libelle }} />
       ) : null}
+
+      {releve && active ? (
+        <FeuilleReleve langue={langue} fuseau={fuseau} onFermer={() => setReleve(false)}
+                       cartes={[{ iccid: active.iccid, numero: active.numero,
+                                  libelle: active.libelle, operateur: active.operateur }]} />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -503,8 +514,11 @@ function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser,
  * deux lignes réservées : un nom long passe à la ligne sur un petit écran
  * sans rien pousser.
  */
-function Rond({ icone, libelle, aide, onPress, enPause = false }: {
+function Rond({ icone, libelle, aide, onPress, enPause = false, operateur }: {
   icone: NomIcone; libelle: string; aide: string; onPress: () => void;
+  /** Le rond du Menu porte la marque de l'opérateur : son logo, et un cadre
+   *  à sa couleur. Une grille grise ne disait pas quel menu on ouvrait. */
+  operateur?: string;
   /** Le boîtier se tait : le geste reste à sa place (rien ne saute), pâli,
    *  et l'appui explique pourquoi il ne part pas. */
   enPause?: boolean;
@@ -526,11 +540,14 @@ function Rond({ icone, libelle, aide, onPress, enPause = false }: {
           <>
             <View style={{
               width: ROND, height: ROND, borderRadius: rayons.rond,
-              borderWidth: 1, borderColor: couleurs.trait,
+              borderWidth: operateur ? 2 : 1,
+              borderColor: operateur ? couleurOperateur(operateur) : couleurs.trait,
               backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
               alignItems: "center", justifyContent: "center",
             }}>
-              <Icone nom={icone} taille={22} couleur={couleurs.encre} />
+              {operateur && operateurReconnu(operateur)
+                ? <LogoOperateur operateur={operateur} taille={22} />
+                : <Icone nom={icone} taille={22} couleur={couleurs.encre} />}
             </View>
             <View style={{ height: NOM_ROND, width: "100%" }}>
               <Texte taille={etroit ? 11 : textes.legende} poids="moyen"

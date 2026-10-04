@@ -16,7 +16,11 @@
 // propriétaire le joue — numéro, montant, « Confirmer » — puis
 //   1. pas d'écran de fin sur la page : un bouton « Next » ;
 //   2. « Next » mène au menu suivant, dont « Confirm » est un bouton ;
-//   3. « Confirm » mène au pavé du code secret.
+//   3. « Confirm » mène au pavé du code secret ;
+//   4. le message de l'opérateur reste INTACT, et une zone de réponse est
+//      toujours là, sous lui ; sous le pavé, « Répondre autre chose » ;
+//   5. après le code, l'opérateur peut encore demander : l'écran ne se
+//      déclare pas terminé de lui-même.
 //
 // LE TÉMOIN : sur l'application d'avant, l'étape 1 échoue — on y lit
 // « Terminé ». Un harnais qui ne peut pas voir la panne d'hier ne garde rien.
@@ -114,6 +118,13 @@ try {
           "pas d'écran de fin sur une page qui se tourne",
           /Terminé/.test(ecran) ? "on y lit « Terminé »" : "");
   verdict(/237670000123\./.test(ecran), "le message entier reste lisible");
+  // LE MESSAGE INTACT : « 00. Next » fait partie de ce que l'opérateur a
+  // écrit. La première correction le retirait du message pour en faire un
+  // bouton — le propriétaire : « son message doit être intact ».
+  verdict(/237670000123\.\s*00\. Next/.test(ecran), "le message garde « 00. Next », tel qu'écrit");
+  // UNE ZONE DE RÉPONSE, TOUJOURS — pas derrière un petit lien.
+  verdict(await page.locator("input:visible").count() > 0 && /Votre réponse/.test(ecran),
+          "la zone de réponse est là, sous le message");
   const suivant = visible("button", /Next/);
   if (!verdict(await suivant.count() > 0, "« Next » est un bouton")) throw new Error("arrêt");
 
@@ -123,7 +134,27 @@ try {
   const confirmer = visible("button", /^1\s*Confirm$|^Confirm$/);
   if (!verdict(Boolean(menu) && await confirmer.count() > 0, "« Confirm » est un bouton")) throw new Error("arrêt");
   await confirmer.click();
-  verdict(Boolean(await attendreUnDe([/Entrez votre code secret/])), "le pavé du code secret arrive");
+  if (!verdict(Boolean(await attendreUnDe([/Entrez votre code secret/])), "le pavé du code secret arrive")) {
+    throw new Error("arrêt");
+  }
+  await attendre(600);
+  // LE PAVÉ N'EST PAS UNE PRISON : on peut répondre autre chose.
+  const autrement = visible("button", /^Répondre autre chose$/);
+  verdict(await autrement.count() > 0, "« Répondre autre chose » est visible sous le pavé");
+
+  console.log("\nAprès le code, l'opérateur demande encore :");
+  for (const c of ["1", "2", "3", "4"]) {
+    await page.getByRole("button", { name: new RegExp(`^${c}$`) }).locator("visible=true").first().click();
+  }
+  await page.getByText(/^Valider$/).last().click();
+  const apres = await attendreUnDe([/Confirmez-vous/, /Terminé/]);
+  const ecranApres = await texte();
+  verdict(Boolean(apres) && /Confirmez-vous/.test(ecranApres) && !/^Terminé$/m.test(ecranApres),
+          "la question qui suit le code s'affiche, sans « Terminé »");
+  const oui = visible("button", /^1\s*Oui$|^Oui$/);
+  if (!verdict(await oui.count() > 0, "« Oui » est un bouton")) throw new Error("arrêt");
+  await oui.click();
+  verdict(Boolean(await attendreUnDe([/effectue avec succes/])), "l'opération va jusqu'au bout");
 } catch (e) {
   if (e.message !== "arrêt") verdict(false, "le parcours", e.message);
   const ecran = await texte().catch(() => "");

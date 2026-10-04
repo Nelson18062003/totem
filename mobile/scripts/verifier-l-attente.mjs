@@ -249,14 +249,14 @@ console.log("\n  Chaque onglet montre quelque chose pendant qu'il charge");
 // vide, l'onglet rendait… rien : un écran blanc sous son titre, le temps de
 // la requête. Il montre maintenant la forme de l'écran qui arrive : la
 // puce, les trois gestes, le menu de l'opérateur, les deux consultations,
-// les trois outils — DIX formes (`FORMES_OPERATIONS`), comptées par leur
-// marque. Et l'intitulé
+// le relevé de compte, les trois outils — ONZE formes
+// (`FORMES_OPERATIONS`), comptées par leur marque. Et l'intitulé
 // « Outils », placé sous tout ce que les formes remplacent, ne doit pas
 // sauter à l'arrivée de la carte.
 // ---------------------------------------------------------------------------
-console.log("\n  Opérations, ouvert à froid : dix formes, et rien ne saute");
+console.log("\n  Opérations, ouvert à froid : onze formes, et rien ne saute");
 {
-  const FORMES_OPERATIONS = 10;
+  const FORMES_OPERATIONS = 11;
   const page = await nav.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   try {
     // L'aperçu est servi sans renvoi vers index.html : l'adresse /actions
@@ -296,10 +296,10 @@ console.log("\n  Opérations, ouvert à froid : dix formes, et rien ne saute");
     console.log(`  ${okFormes ? "✓" : "✗"} Opérations ${formes} formes pendant l'attente `
       + `(attendu ${FORMES_OPERATIONS})`);
     // Le repère : le HAUT de la première rangée d'« Outils ». Pendant
-    // l'attente, c'est la rangée qui porte la 8e forme ; à l'arrivée, le
+    // l'attente, c'est la rangée qui porte la 9e forme ; à l'arrivée, le
     // bouton « Recevoir de l'argent ».
     const enAttente = await page.evaluate(() => {
-      const f = [...document.querySelectorAll("[data-squelette]")][7];
+      const f = [...document.querySelectorAll("[data-squelette]")][8];
       return f ? Math.round(f.parentElement.getBoundingClientRect().top) : null;
     });
     await page.waitForFunction(

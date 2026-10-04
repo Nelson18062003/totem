@@ -298,9 +298,11 @@ export function OperationPopup({
     if (repondEnCours.current) return;
     repondEnCours.current = true;
     try {
-      const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
-                                  { de: "vous", texte: "••••" });
-      if (texte) { setFini(true); onTermine?.(); }
+      // Pas de fin forcée après le code : un opérateur qui demande encore
+      // quelque chose (« 1. Confirm ») doit pouvoir recevoir sa réponse.
+      // C'est ce qu'il écrit — et ce que dit le réseau — qui finit (`conclu`).
+      await envoyer("ussd_reponse", { texte: code, secret: true },
+                    { de: "vous", texte: "••••" });
     } finally {
       repondEnCours.current = false;
     }
@@ -336,7 +338,8 @@ export function OperationPopup({
   // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
   // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
   const ecran = lireEcran(dernier, dernierMsg?.reseau);
-  const pave = enSession && !attente && !fini && ecran.attend === "secret";
+  // « Répondre autre chose » (`libre`) range le pavé : le champ prend sa place.
+  const pave = enSession && !attente && !fini && ecran.attend === "secret" && !libre;
 
   // L'OPÉRATEUR A CONCLU : un écran qui ne demande plus rien termine.
   const conclu = enSession && !attente && Boolean(dernier) && ecran.attend === "rien";
@@ -459,9 +462,11 @@ export function OperationPopup({
     // Une seule vue pour toute la session : elle ne se remonte pas à chaque
     // message, l'échange défile sous les yeux au lieu de clignoter.
     cleVue = "session";
-    const menu = !pave && !attente && ecran.choix.length > 0 && !libre;
-    const question = !pave && !attente && !menu && Boolean(dernier)
+    // TOUT CE QUE LE RÉSEAU ATTEND SE RÉPOND ICI : menu, page, question,
+    // ou — après « Répondre autre chose » — la demande du code.
+    const repondable = !pave && !attente && Boolean(dernier)
       && (libre || ecran.attend !== "rien");
+    const secretement = libre && ecran.attend === "secret";
     const typeQuestion: TypeSaisie = libre ? "texte"
       : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
     // Ce qu'on vient d'envoyer — « 1 », un numéro, « •••• » — reste écrit
@@ -473,24 +478,23 @@ export function OperationPopup({
           <Patience key={`patience-${fil.length}`} couleur={couleurOperateur(op)}
             texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
             envoye={dernier ? envoye : null} t={t} />
-        ) : question ? (
-          // Une question : le champ juste SOUS le message, comme dans la
-          // fenêtre d'un téléphone — pas en bas de l'écran, loin de lui.
-          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion}
+        ) : repondable ? (
+          // LE MESSAGE DE L'OPÉRATEUR, INTACT — rien n'en est retiré. Dessous,
+          // ses choix en boutons, puis la zone de réponse, toujours là.
+          <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`} type={typeQuestion}
             entete={<CarteOperateur texte={dernier} copie={dernier} op={op}
                                     couleur={couleurOperateur(op)} t={t} />}
+            choix={secretement ? [] : ecran.choix} onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
-            onEnvoyer={(v) => void repondre(v)} langue={langue} />
+            secretement={secretement}
+            onRevenir={secretement ? () => setLibre(false) : undefined}
+            onEnvoyer={(v) => void (secretement ? secret(v) : repondre(v))} langue={langue} />
         ) : (
           <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)} t={t}
-            // Un menu : son titre ici, ses choix en boutons. Toute autre
-            // chose — une question, la demande du code, la réponse libre —
-            // se lit en entier, telle que l'opérateur l'a écrite.
-            texte={menu ? ecran.texte : dernier} copie={dernier}
-            choix={menu ? ecran.choix : []} onChoix={(n) => void repondre(n)}
-            onAutre={menu ? () => setLibre(true) : undefined} />
+            texte={dernier} copie={dernier} choix={[]} onChoix={(n) => void repondre(n)} />
         )}
-        {pave && <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} />}
+        {pave && <EtapeCode key={`code-${fil.length}`} onValider={secret}
+                            onAutre={() => setLibre(true)} t={t} />}
       </div>
     );
   }
@@ -570,9 +574,11 @@ function nomDe(recents: Operation["recents"], numero: string): string | undefine
  * dessous ce qui partira réellement. Quand il ne sait pas lire UN numéro
  * (deux numéros différents dans le même collage), il le dit, et rien ne part.
  */
-function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true }: {
+function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true, masque = false }: {
   type: TypeSaisie; valeur: string; onChange: (v: string) => void;
   langue: "fr" | "en"; autoFocus?: boolean;
+  /** Ce qu'on tape ne s'affiche pas (une réponse pendant le code secret). */
+  masque?: boolean;
 }) {
   const t = textesGuichet[langue];
   const propre = valeurPropre(type, valeur);
@@ -599,6 +605,7 @@ function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true }: {
       <div className="flex items-baseline gap-2 rounded-t-xl border-b-2 border-ink px-2 pb-1 transition-colors focus-within:bg-surface-raised">
         <input
           value={valeur} onChange={(e) => onChange(e.target.value)} autoFocus={autoFocus}
+          type={masque ? "password" : "text"}
           // Le bon clavier sur un téléphone, et rien d'autre : le champ
           // accepte quand même tout ce qu'on y colle.
           inputMode={type === "numero" ? "tel" : type === "montant" ? "numeric" : "text"}
@@ -682,11 +689,18 @@ function EtapeSaisie({
  * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
  * recevoir de réponse.
  */
-function ZoneReponse({ type, entete, recents, onEnvoyer, langue }: {
+function ZoneReponse({ type, entete, recents, onEnvoyer, langue, choix = [], onChoix,
+                      secretement = false, onRevenir }: {
   type: TypeSaisie;
   entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onEnvoyer: (valeur: string) => void; langue: "fr" | "en";
+  /** Les choix lus dans le message : des RACCOURCIS, jamais à la place du champ. */
+  choix?: { numero: string; libelle: string }[];
+  onChoix?: (numero: string) => void;
+  /** Pendant le code secret : la réponse part protégée comme un code. */
+  secretement?: boolean;
+  onRevenir?: () => void;
 }) {
   const t = textesGuichet[langue];
   const [valeur, setValeur] = useState("");
@@ -696,12 +710,31 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue }: {
     onEnvoyer(valeurPropre(type, valeur));
     setValeur("");
   };
+  // UNE ZONE DE RÉPONSE, TOUJOURS — comme sur le téléphone, où chaque
+  // message de l'opérateur arrive avec sa case à remplir.
   return (
     <form onSubmit={(e) => { e.preventDefault(); envoyer(); }}
       className="flex min-h-0 flex-1 flex-col">
       <div className="ecran flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
         {entete}
-        <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue} />
+        {choix.length > 0 && onChoix && (
+          <div className="flex flex-col gap-2">
+            {choix.map((c) => (
+              <button type="button" key={`${c.numero}-${c.libelle}`} onClick={() => onChoix(c.numero)}
+                className="flex items-center gap-3 rounded-2xl border border-line bg-surface-raised px-4 py-3.5 text-left text-body font-medium transition hover:bg-surface-2 active:scale-[.98]">
+                <span className="tabnums grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-small text-ink-soft">{c.numero}</span>
+                <span className="flex-1">{c.libelle}</span>
+                <IconChevron size={16} className="text-ink-faint" />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <p className="text-small font-medium text-ink-soft">{t.votreReponse}</p>
+          <ChampSaisie type={type} valeur={valeur} onChange={setValeur} langue={langue}
+                       autoFocus={choix.length === 0} masque={secretement} />
+          {secretement && <p className="text-caption text-ink-faint">{t.reponseProtegee}</p>}
+        </div>
         {recents?.length ? (
           <div className="overflow-x-auto pb-1">
             <div className="flex w-max gap-3">
@@ -711,6 +744,12 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue }: {
             </div>
           </div>
         ) : null}
+        {onRevenir && (
+          <button type="button" onClick={onRevenir}
+            className="self-center p-2 text-small text-ink-soft underline underline-offset-4 transition hover:text-ink">
+            {t.revenirAuPave}
+          </button>
+        )}
       </div>
       <div className="pt-2">
         <GrosBouton libelle={t.envoyer} desactive={!valide} type="submit" />
@@ -871,7 +910,9 @@ function GrosBouton({ libelle, onClick, desactive, type = "button", autoFocus }:
 /** LE CODE SECRET. Des points, le pavé, « Valider ». Les chiffres ne vivent
  *  que dans l'état de ce composant : jamais affichés, jamais dans un champ
  *  du navigateur (qui les retiendrait), oubliés dès l'envoi. */
-function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: (typeof textesGuichet)["fr"] }) {
+function EtapeCode({ onValider, onAutre, t }: {
+  onValider: (code: string) => void; onAutre: () => void; t: (typeof textesGuichet)["fr"];
+}) {
   const [code, setCode] = useState("");
   const valider = () => {
     if (code.length < LONGUEUR_CODE_MIN) return;
@@ -907,6 +948,12 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: (ty
         </div>
       </div>
       <Pave onChiffre={taper} onEffacer={effacer} etiquetteEffacer={t.effacerDernier} />
+      {/* Le pavé n'est pas une prison : on peut toujours répondre autre
+          chose — et ce qu'on tape part protégé comme un code. */}
+      <button type="button" onClick={onAutre}
+        className="mb-2 self-center rounded-btn border border-line bg-surface-raised px-4 py-2 text-small font-medium transition hover:bg-surface-2">
+        {t.repondreAutrement}
+      </button>
       <GrosBouton libelle={t.valider} desactive={code.length < LONGUEUR_CODE_MIN} onClick={valider} />
     </div>
   );
@@ -941,7 +988,8 @@ function Fin({
         {note && <p className="text-small text-ink-faint">{note}</p>}
         {proposition}
         {repondreQuandMeme && (
-          <button type="button" onClick={repondreQuandMeme} className="text-small text-ink-soft underline underline-offset-4">
+          <button type="button" onClick={repondreQuandMeme}
+            className="rounded-btn border-[1.5px] border-ink px-5 py-2.5 text-body font-semibold transition hover:bg-surface-2">
             {t.repondreQuandMeme}
           </button>
         )}

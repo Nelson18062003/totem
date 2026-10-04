@@ -32,6 +32,8 @@ import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Tex
 import { Animated, useAppui, useMouvementReduit } from "@/animations";
 import { AjouterMaCarteCourt } from "@/ajouter-ma-carte";
 import { Coordonnees } from "@/coordonnees";
+import { FeuilleReleve } from "@/releve";
+import { textesReleve } from "@noyau/textes/releve";
 import { cartesAMontrer, useCarteChoisie } from "@/carte-choisie";
 import { ChoixDeLaCarte } from "@/puces-cartes";
 import { carteRetiree } from "@/reglages-cartes";
@@ -43,11 +45,13 @@ import { Icone, type NomIcone } from "@/icones";
 import {
   HAUTEUR_DEMI, HAUTEUR_TUILE, HAUTEUR_TUILE_COLONNE, tuilesEnColonne,
 } from "@/mesures-accueil";
-import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
+import { couleurOperateur, couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { OperationPopup, type ChampOperation, type Operation } from "@/operation";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { etapesGeste } from "@noyau/codes";
+import { serviceMobileMoney } from "@noyau/coordonnees";
+import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { clientsRecents } from "@noyau/recents";
 import { aQui } from "@noyau/beneficiaires";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
@@ -81,6 +85,8 @@ export default function Actions() {
   // LA MÊME CARTE QUE L'ACCUEIL ET LE CADRAN (`carte-choisie.ts`).
   const choisie = useCarteChoisie();
   const [coordonnees, setCoordonnees] = useState(false);
+  const [releve, setReleve] = useState(false);
+  const tr = textesReleve[langue];
 
   // LA MÊME RÈGLE DE CARTES QUE LE CADRAN : toutes, sauf celles qu'on SAIT
   // retirées. L'écran ne gardait que les cartes « en place » — et quand le
@@ -258,23 +264,28 @@ export default function Actions() {
         )}
 
         {menu ? (
-          <DemiTuile titre={menu.titre} aide={menu.aide} icone={menu.icone} valeur={codeMenu}
-                     colonne enPause={enPause} onPress={() => lancer(menu)} />
+          <TuileMenu titre={menu.titre} aide={menu.aide} operateur={op} code={codeMenu ?? ""}
+                     enPause={enPause} onPress={() => lancer(menu)} />
         ) : null}
 
-        {consultations.length ? (
-          <View style={{ gap: espaces.sm }}>
+        {/* « Consulter » est toujours là : le relevé n'attend aucun code. */}
+        <View style={{ gap: espaces.sm }}>
             <Texte taille={textes.intertitre} poids="demi" accessibilityRole="header">
               {t.groupeConsulter}
             </Texte>
-            <View style={{ flexDirection: colonne ? "column" : "row", gap: espaces.sm }}>
+            {consultations.length ? <View style={{ flexDirection: colonne ? "column" : "row", gap: espaces.sm }}>
               {consultations.map((c) => (
                 <DemiTuile key={c.cle} titre={c.titre} aide={c.aide} icone={c.icone}
                            colonne={colonne} enPause={enPause} onPress={() => lancer(c)} />
               ))}
-            </View>
-          </View>
-        ) : null}
+            </View> : null}
+            {/* LE RELEVÉ DE COMPTE de cette carte. Il ne vivait que dans la
+                fiche « Recevoir de l'argent » et dans l'Analyse : « où est-ce
+                que je le retrouve ? ». Il ne passe pas par le boîtier (c'est
+                la plateforme qui l'établit) : il ne pâlit jamais. */}
+            <DemiTuile titre={tr.titre} aide={tr.explication} icone="Doc"
+                       colonne enPause={false} onPress={() => setReleve(true)} />
+        </View>
 
         {/* LES OUTILS : ce qui ne déplace pas d'argent. Plus bas, plus
             légers. Recevoir ne passe pas par le boîtier (le nom et le numéro
@@ -301,6 +312,13 @@ export default function Actions() {
           </Carte>
         </View>
       </Defilement>
+
+      {releve ? (
+        <FeuilleReleve langue={langue} fuseau={donnees?.fuseau || FUSEAU_DEFAUT}
+                       onFermer={() => setReleve(false)}
+                       cartes={[{ iccid: carte.iccid, numero: carte.numero, libelle: carte.libelle,
+                                  operateur: carte.operateur }]} />
+      ) : null}
 
       {coordonnees ? (
         <Coordonnees langue={langue} fuseau={fuseau} onFermer={() => setCoordonnees(false)}
@@ -375,6 +393,53 @@ function TuileArgent({ titre, aide, icone, colonne, enPause, onPress }: {
           <Icone nom={icone} taille={colonne ? 18 : 20} couleur={couleurs.surfaceHaute} />
         </View>
         <Texte poids="demi" style={{ textAlign: colonne ? "left" : "center" }}>{titre}</Texte>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/** LE MENU DE L'OPÉRATEUR — la porte de tout ce que les trois gestes ne
+ *  couvrent pas. La première version était une demi-tuile grise, une icône
+ *  de grille et un code pâle : « on ne voit même pas ce qui est écrit ». Il
+ *  porte maintenant la marque de l'opérateur (son logo, un cadre à sa
+ *  couleur — un liseré, jamais un aplat), son nom en clair, et le code dans
+ *  une pastille foncée, lisible d'un coup d'œil. Même hauteur qu'avant : la
+ *  forme d'attente ne bouge pas. */
+function TuileMenu({ titre, aide, operateur, code, enPause, onPress }: {
+  titre: string; aide: string; operateur: string; code: string; enPause: boolean;
+  onPress: () => void;
+}) {
+  const appui = useAppui();
+  const pause = usePause(enPause);
+  const service = serviceMobileMoney(operateur);
+  return (
+    <Animated.View style={[appui.style, pause]}>
+      <Pressable onPressIn={appui.onPressIn} onPressOut={appui.onPressOut} onPress={onPress}
+                 accessibilityRole="button" accessibilityLabel={`${titre}, ${service}`}
+                 accessibilityHint={aide}
+                 style={({ pressed }) => ({
+                   minHeight: HAUTEUR_DEMI,
+                   flexDirection: "row", alignItems: "center", gap: espaces.md,
+                   paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+                   borderRadius: rayons.bouton, borderWidth: 2,
+                   borderColor: couleurOperateur(operateur),
+                   backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+                 })}>
+        {operateurReconnu(operateur)
+          ? <LogoOperateur operateur={operateur} taille={26} />
+          : <Icone nom="Grid" taille={22} couleur={couleurs.encre} />}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Texte poids="demi" taille={textes.intertitre}>{titre}</Texte>
+          <Texte taille={textes.legende} ton="doux">{service}</Texte>
+        </View>
+        {code ? (
+          <View style={{ paddingHorizontal: espaces.sm, paddingVertical: 4,
+                         borderRadius: rayons.petit, backgroundColor: couleurs.encre }}>
+            <Texte taille={textes.petit} poids="demi" chiffresAlignes
+                   style={{ color: couleurs.surfaceHaute }}>{code}</Texte>
+          </View>
+        ) : null}
+        <Icone nom="Chevron" taille={18} couleur={couleurs.encreDouce} />
       </Pressable>
     </Animated.View>
   );

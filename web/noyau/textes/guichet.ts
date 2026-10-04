@@ -44,7 +44,7 @@ const en = {
   operationsDepuis: (l: string) => `Operations from card ${l}`,
   groupeConsulter: "Check",
   groupeOutils: "Tools",
-  monSolde: "My balance",
+  monSolde: "Check balance",
   // LE MENU DE L'OPÉRATEUR, tel qu'on le compose sur le téléphone (*126#,
   // #148#…) : un bouton à part entière, pas un réglage caché dans « Code
   // USSD ». Le même nom chez tous les opérateurs — un geste, un nom.
@@ -127,6 +127,11 @@ const en = {
   reseauDemandeMontant: "The network asks for an amount",
   reseauDemandeReponse: "The network is waiting for a reply",
   autreReponse: "Type another reply",
+  // Pendant le code secret : répondre autre chose reste possible, et ce
+  // qu'on tape part protégé comme un code (jamais gardé, jamais affiché).
+  repondreAutrement: "Reply something else",
+  reponseProtegee: "Treated like a secret code: never shown, never kept.",
+  revenirAuPave: "Back to the keypad",
   voirEchange: "See the exchange with the operator",
   masquerEchange: "Hide the exchange",
   vous: "You",
@@ -208,7 +213,7 @@ const fr: typeof en = {
   operationsDepuis: (l) => `Opérations depuis la carte ${l}`,
   groupeConsulter: "Consulter",
   groupeOutils: "Outils",
-  monSolde: "Mon solde",
+  monSolde: "Voir mon solde",
   menu: "Menu",
   menuSous: "Ouvre le menu de l’opérateur : vous choisissez à chaque étape",
   champNumero: "Numéro",
@@ -276,6 +281,9 @@ const fr: typeof en = {
   reseauDemandeMontant: "Le réseau demande un montant",
   reseauDemandeReponse: "Le réseau attend une réponse",
   autreReponse: "Taper une autre réponse",
+  repondreAutrement: "Répondre autre chose",
+  reponseProtegee: "Traitée comme un code secret : jamais affichée, jamais gardée.",
+  revenirAuPave: "Revenir au pavé",
   voirEchange: "Voir l’échange avec l’opérateur",
   masquerEchange: "Masquer l’échange",
   vous: "Vous",

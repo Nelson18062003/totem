@@ -463,8 +463,16 @@ function tourDeLaPage(texte) {
   if (etapeDeLaPage === 0) { etapeDeLaPage = 1; return PAGE_LONGUE; }
   if (etapeDeLaPage === 1 && texte === "00") { etapeDeLaPage = 2; return CONFIRMER; }
   if (etapeDeLaPage === 2 && texte === "1") { etapeDeLaPage = 3; return CODE_APRES_LA_PAGE; }
+  // APRÈS LE CODE, UNE QUESTION ENCORE : l'écran se déclarait terminé dès la
+  // réponse au code, quoi qu'elle dise. Ici, l'opérateur demande encore.
+  if (etapeDeLaPage === 3 && texte === "(code)") { etapeDeLaPage = 4; return QUESTION_APRES_LE_CODE; }
+  if (etapeDeLaPage === 4 && texte === "1") {
+    etapeDeLaPage = 5;
+    return "Depot de 5 000 FCFA effectue avec succes. Nouveau solde: 407 500 FCFA.";
+  }
   return null;
 }
+const QUESTION_APRES_LE_CODE = "Confirmez-vous le depot de 5 000 FCFA ?\n1. Oui\n2. Non";
 const PAGE_LONGUE = "Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE "
   + "QUINCAILLERIE DU LITTORAL ET DES HAUTS PLATEAUX SARL MBALLA JEAN having "
   + "mobile number 237670000123.\n00. Next";
@@ -495,7 +503,10 @@ function reponsePour(commande) {
   }
   // Une réponse dans la session : on avance dans le scénario.
   const n = commande.tour ?? 0;
-  if (parametres.secret) return "Operation reussie. Nouveau solde: 407 500 FCFA.";
+  if (parametres.secret) {
+    return (pageLongue && etapeDeLaPage === 3 && tourDeLaPage("(code)"))
+      || "Operation reussie. Nouveau solde: 407 500 FCFA.";
+  }
   if (pageLongue && etapeDeLaPage > 0) {
     const suite = tourDeLaPage(String(parametres.texte ?? ""));
     if (suite) return suite;

@@ -55,7 +55,7 @@ const en = {
   ajouterCarteContacter: "Contact TOTEM",
   ajouterCarteVoir: "How to add my card",
   ajouterCarteCourt: "No card on your account yet.",
-  actualiserAria: "Refresh the balance: ask the network",
+  actualiserAria: "Check balance: ask the network for the exact balance",
   // Les trois commandes sous la carte, NOMMÉES. Un cercle sans mot ne
   // disait rien à qui découvrait l'application : on ne savait pas à quoi
   // servaient ces boutons. Un nom court, sous chaque icône.
@@ -74,7 +74,9 @@ const en = {
   soldeReleveHier: (h: string) => `Balance checked yesterday at ${h}`,
   soldeReleveLe: (j: string, h: string) => `Balance checked on ${j} at ${h}`,
   aucunSoldeCourt: "No balance yet",
-  actualiser: "Refresh",
+  // « Actualiser » ne disait pas ce qu'on obtient. Le bouton porte le nom
+  // du geste : on veut CONNAÎTRE son solde.
+  actualiser: "Check balance",
   // « Terminal muet » ne disait rien à qui ne connaît pas le système : ni ce
   // que c'est, ni si l'argent arrive, ni quoi faire. Hors ligne se comprend
   // partout ; l'appui ouvre une explication, plus les Réglages.
@@ -129,7 +131,7 @@ const en = {
   retrait: "Withdraw",
   transfert: "Transfer",
   solde: "Balance",
-  monSolde: "My balance",
+  monSolde: "Check balance",
   monNumero: "My number",
   menu: "Menu",
   numeroACrediter: "Number to credit",
@@ -220,7 +222,7 @@ const fr: typeof en = {
   ajouterCarteContacter: "Contacter TOTEM",
   ajouterCarteVoir: "Comment ajouter ma carte",
   ajouterCarteCourt: "Aucune carte sur votre compte pour l’instant.",
-  actualiserAria: "Actualiser le solde : interroger le réseau",
+  actualiserAria: "Voir mon solde : demander au réseau le solde exact",
   cmdSolde: "Solde",
   cmdUssd: "Code USSD",
   cmdCoordonnees: "Coordonnées",
@@ -234,7 +236,7 @@ const fr: typeof en = {
   soldeReleveHier: (h) => `Solde relevé hier à ${h}`,
   soldeReleveLe: (j, h) => `Solde relevé le ${j} à ${h}`,
   aucunSoldeCourt: "Aucun solde connu",
-  actualiser: "Actualiser",
+  actualiser: "Voir mon solde",
   terminalMuetCourt: "Terminal hors ligne",
   terminalMuetAria: (q) => `Le terminal est hors ligne (${q}) : ce que cela veut dire, et quoi faire`,
   horsLigneTitre: "Le terminal est hors ligne",
@@ -275,7 +277,7 @@ const fr: typeof en = {
   retrait: "Retrait",
   transfert: "Transfert",
   solde: "Solde",
-  monSolde: "Mon solde",
+  monSolde: "Voir mon solde",
   monNumero: "Mon numéro",
   menu: "Menu",
   numeroACrediter: "Numéro à créditer",

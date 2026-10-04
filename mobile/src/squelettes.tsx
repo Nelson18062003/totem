@@ -181,6 +181,8 @@ export function SqueletteOperations() {
                        rayon={rayons.bouton} style={colonne ? undefined : { flex: 1 }} />
           ))}
         </View>
+        {/* Le relevé de compte, pleine largeur, sous les deux consultations. */}
+        <Squelette largeur="100%" hauteur={HAUTEUR_DEMI} rayon={rayons.bouton} />
       </View>
       <View style={{ gap: espaces.sm }}>
         <View style={{ height: 24 }} />

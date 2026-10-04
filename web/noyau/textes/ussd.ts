@@ -56,7 +56,7 @@ const en = {
         depot: "Deposit",
         retrait: "Withdraw",
         transfert: "Transfer",
-        solde: "My balance",
+        solde: "Check balance",
         mon_numero: "My number",
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
@@ -151,7 +151,7 @@ const fr: typeof en = {
         depot: "Dépôt",
         retrait: "Retrait",
         transfert: "Transfert",
-        solde: "Mon solde",
+        solde: "Voir mon solde",
         mon_numero: "Mon numéro",
       } as Record<string, string | undefined>
     )[cle] ?? defaut,

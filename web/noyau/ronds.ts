@@ -19,7 +19,7 @@
 
 export const RONDS = [
   "depot", "retrait", "transfert", "menu", "solde", "mon_numero",
-  "recevoir", "ussd", "beneficiaires",
+  "recevoir", "ussd", "beneficiaires", "releve",
 ] as const;
 export type Rond = (typeof RONDS)[number];
 

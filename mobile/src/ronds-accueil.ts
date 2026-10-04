@@ -12,6 +12,7 @@ import { rondsChoisis, RONDS_PAR_DEFAUT, type Rond } from "@noyau/ronds";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
+import { textesReleve } from "@noyau/textes/releve";
 import type { NomIcone } from "@/icones";
 
 const CLE = "totem.accueil.ronds";
@@ -73,5 +74,7 @@ export function descriptionDesRonds(langue: "en" | "fr"): Record<Rond, Descripti
     recevoir: { libelle: t.rondRecevoir, aide: t.recevoirAria, icone: "Identite" },
     ussd: { libelle: t.rondUssd, aide: t.ussdAria, icone: "Hash" },
     beneficiaires: { libelle: tb.titre, aide: tb.sous, icone: "Personnes" },
+    releve: { libelle: textesReleve[langue].titre, aide: textesReleve[langue].explication,
+              icone: "Doc" },
   };
 }

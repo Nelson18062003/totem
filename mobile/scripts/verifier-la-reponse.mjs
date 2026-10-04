@@ -264,7 +264,7 @@ try {
   await sonder("l'œil, sur la carte, qui masque le solde",
                page.getByLabel(/Hide the balance|Masquer le solde/).first());
   await sonder("« actualiser », à côté de l'âge du solde",
-               page.getByRole("button", { name: /^(Refresh the balance|Actualiser le solde)/ }).first());
+               page.getByRole("button", { name: /^(Check balance|Voir mon solde)/ }).first());
   // Les puces des cartes n'existent qu'à partir de deux cartes : la sonde
   // vise la SECONDE, celle qu'on touche pour changer.
   const puces = page.getByRole("button", { name: /^(Select the|Choisir la carte) / });
@@ -299,8 +299,8 @@ try {
   await attendre(1500);
   await sonder("la tuile « Dépôt »",
                page.getByRole("button", { name: /^(Deposit|Dépôt)$/ }).locator("visible=true").first());
-  await sonder("la demi-tuile « Mon solde »",
-               page.getByRole("button", { name: /^(My balance|Mon solde)$/ }).locator("visible=true").first());
+  await sonder("la demi-tuile « Voir mon solde »",
+               page.getByRole("button", { name: /^(Check balance|Voir mon solde)$/ }).locator("visible=true").first());
   await sonder("la ligne « Code USSD »",
                page.getByRole("button").filter({ hasText: /^(USSD code|Code USSD)/ })
                  .locator("visible=true").first());

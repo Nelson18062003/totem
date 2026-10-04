@@ -10,7 +10,7 @@ import { textesCartes } from "@noyau/textes/cartes";
 import { useLangue } from "@/app/langue";
 import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconPuceSim,
-  IconRefresh, IconWallet,
+  IconGrid, IconRefresh, IconWallet,
 } from "./icons";
 import { BoutonCopier, Coordonnees, formaterNumero } from "./coordonnees";
 import { numeroACopier } from "@noyau/coordonnees";
@@ -304,7 +304,10 @@ export function AccueilGuichet({
         { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" },
       ]),
     },
-    { label: t.solde, Icone: IconRefresh, fabrique: (): Operation => solde(active) },
+    // Le menu de l'opérateur, comme sur le téléphone : la porte de tout ce
+    // que les trois gestes ne couvrent pas.
+    { label: t.menu, Icone: IconGrid, fabrique: (): Operation => operationDe("menu", t.menu, []) },
+    { label: t.monSolde, Icone: IconRefresh, fabrique: (): Operation => solde(active) },
     {
       label: t.monNumero, Icone: IconPhone,
       fabrique: (): Operation => operationDe("mon_numero", t.monNumero, []),

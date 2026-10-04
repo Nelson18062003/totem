@@ -416,9 +416,13 @@ export function OperationPopup({
     try {
       // La bulle affichée n'est PAS le code : quatre points. Le code ne
       // traverse que la requête, et le robot le masque en base sitôt lu.
-      const texte = await envoyer("ussd_reponse", { texte: code, secret: true },
-                                  { de: "vous", texte: "••••" });
-      if (texte) { setFini(true); onTermine?.(); }
+      // PAS DE FIN FORCÉE APRÈS LE CODE. L'écran se déclarait terminé dès
+      // la réponse au code, quoi qu'elle dise : un opérateur qui demande
+      // ENCORE quelque chose après le code (« 1. Confirm », un second code)
+      // ne pouvait plus recevoir de réponse. C'est ce que l'opérateur écrit
+      // — et ce que le réseau dit — qui décide de la fin (`conclu`).
+      await envoyer("ussd_reponse", { texte: code, secret: true },
+                    { de: "vous", texte: "••••" });
     } finally {
       repondEnCours.current = false;
     }
@@ -461,7 +465,8 @@ export function OperationPopup({
   // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
   // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
   const ecran = lireEcran(dernier, dernierMsg?.reseau);
-  const pave = enSession && !attente && !fini && ecran.attend === "secret";
+  // « Répondre autre chose » (`libre`) range le pavé : le champ prend sa place.
+  const pave = enSession && !attente && !fini && ecran.attend === "secret" && !libre;
   const reduit = useMouvementReduit();
   const insets = useSafeAreaInsets();
   const [details, setDetails] = useState(false);
@@ -659,9 +664,12 @@ export function OperationPopup({
     // Une seule vue pour toute la session : elle ne se remonte pas à chaque
     // message, l'échange défile sous les yeux au lieu de clignoter.
     cleVue = "session";
-    const menu = !pave && !attente && ecran.choix.length > 0 && !libre;
-    const question = !pave && !attente && !menu && Boolean(dernier)
+    // TOUT CE QUE LE RÉSEAU ATTEND SE RÉPOND ICI : un menu, une page, une
+    // question, ou — après « Répondre autre chose » — la demande du code.
+    const repondable = !pave && !attente && Boolean(dernier)
       && (libre || ecran.attend !== "rien");
+    // Pendant le code secret, ce qu'on tape librement part protégé.
+    const secretement = libre && ecran.attend === "secret";
     const typeQuestion: TypeSaisie = libre ? "texte"
       : ecran.attend === "numero" ? "numero" : ecran.attend === "montant" ? "montant" : "texte";
     // Ce qu'on vient d'envoyer — « 1 », un numéro, « •••• » — reste écrit
@@ -673,25 +681,28 @@ export function OperationPopup({
           <Patience key={`patience-${fil.length}`} couleur={couleurOperateur(op)} reduit={reduit}
             texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
             envoye={dernier ? envoye : null} t={t} />
-        ) : question ? (
-          // Une question : le champ juste SOUS le message, comme dans la
-          // fenêtre d'un téléphone — pas en bas de l'écran, loin de lui.
-          <ZoneReponse key={`question-${fil.length}`} type={typeQuestion} reduit={reduit}
+        ) : repondable ? (
+          // LE MESSAGE DE L'OPÉRATEUR, INTACT — « 00. Next » compris : on ne
+          // retire rien de ce qu'il a écrit. Dessous, ses choix en boutons
+          // (des raccourcis), puis la zone de réponse, toujours là.
+          <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`}
+            type={typeQuestion} reduit={reduit}
             entete={<CarteOperateur texte={dernier} copie={dernier} op={op}
                                     couleur={couleurOperateur(op)} t={t} />}
+            choix={secretement ? [] : ecran.choix}
+            onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
-            onEnvoyer={(v) => void repondre(v)} langue={langue} />
+            secretement={secretement}
+            onRevenir={secretement ? () => setLibre(false) : undefined}
+            onEnvoyer={(v) => void (secretement ? secret(v) : repondre(v))} langue={langue} />
         ) : (
+          // La demande du code : le message entier, compact, au-dessus du pavé.
           <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)}
             t={t} reduit={reduit} serre={pave}
-            // Un menu : son titre ici, ses choix en boutons. Toute autre
-            // chose — une question, la demande du code, la réponse libre —
-            // se lit en entier, telle que l'opérateur l'a écrite.
-            texte={menu ? ecran.texte : dernier} copie={dernier}
-            choix={menu ? ecran.choix : []} onChoix={(n) => void repondre(n)}
-            onAutre={menu ? () => setLibre(true) : undefined} />
+            texte={dernier} copie={dernier} choix={[]} onChoix={(n) => void repondre(n)} />
         )}
-        {pave ? <EtapeCode key={`code-${fil.length}`} onValider={secret} t={t} /> : null}
+        {pave ? <EtapeCode key={`code-${fil.length}`} onValider={secret}
+                           onAutre={() => setLibre(true)} t={t} /> : null}
       </View>
     );
   }
@@ -810,9 +821,13 @@ function Montant({ valeur, langue, grand, vide }: {
  * `ChampTexte` lui ajoute la barre « Terminé » qui manque aux claviers de
  * chiffres, et la feuille se pousse au-dessus de lui.
  */
-function ChampSaisie({ type, valeur, onChange, onValider, langue }: {
+function ChampSaisie({ type, valeur, onChange, onValider, langue, focus = true, masque = false }: {
   type: TypeSaisie; valeur: string; onChange: (v: string) => void;
   onValider: () => void; langue: "fr" | "en";
+  /** Le clavier s'ouvre tout seul — pas sur un menu, où il couvrirait les choix. */
+  focus?: boolean;
+  /** Ce qu'on tape ne s'affiche pas (une réponse pendant le code secret). */
+  masque?: boolean;
 }) {
   const t = textesGuichet[langue];
   const { perdue } = useSession();
@@ -842,7 +857,8 @@ function ChampSaisie({ type, valeur, onChange, onValider, langue }: {
         <ChampTexte
           value={valeur}
           onChangeText={onChange}
-          autoFocus
+          autoFocus={focus}
+          secureTextEntry={masque}
           keyboardType={type === "numero" ? "phone-pad" : type === "montant" ? "number-pad" : "default"}
           autoCorrect={false}
           autoCapitalize="none"
@@ -961,16 +977,23 @@ function EtapeSaisie({
  * opérateur qui demandait un motif, un nom, une référence ne pouvait pas
  * recevoir de réponse.
  */
-function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
+function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix = [], onChoix,
+                      secretement = false, onRevenir }: {
   type: TypeSaisie;
   entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
   onEnvoyer: (valeur: string) => void;
   langue: "fr" | "en";
   reduit: boolean;
+  /** Les choix que l'écran de l'opérateur propose — des RACCOURCIS. Le
+   *  message reste entier au-dessus ; le champ reste là en dessous. */
+  choix?: { numero: string; libelle: string }[];
+  onChoix?: (numero: string) => void;
+  /** Pendant le code secret : la réponse part protégée comme un code. */
+  secretement?: boolean;
+  onRevenir?: () => void;
 }) {
   const t = textesGuichet[langue];
-  const { perdue } = useSession();
   const [valeur, setValeur] = useState("");
   const valide = pret(type, valeur);
   const envoyer = () => {
@@ -978,14 +1001,32 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
     onEnvoyer(valeurPropre(type, valeur));
     setValeur("");
   };
+  // UNE ZONE DE RÉPONSE, TOUJOURS. Sur le téléphone, chaque message de
+  // l'opérateur arrive avec sa case à remplir ; ici, la case se cachait
+  // derrière un petit lien « Taper une autre réponse » qu'on ne voyait pas.
+  // Les choix lus dans le message sont des raccourcis en plus — jamais à
+  // la place : si la lecture se trompe, on tape ce qu'on veut.
   return (
     <Animated.View style={{ flex: 1 }}
       entering={reduit ? undefined : FadeInDown.duration(240)}>
       <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}>
         {entete}
-        <View style={{ paddingHorizontal: espaces.xs }}>
+        {choix.length && onChoix ? (
+          <View style={{ gap: espaces.sm }}>
+            {choix.map((c) => (
+              <Choix key={`${c.numero}-${c.libelle}`} numero={c.numero} libelle={c.libelle}
+                     onPress={() => onChoix(c.numero)} />
+            ))}
+          </View>
+        ) : null}
+        <View style={{ paddingHorizontal: espaces.xs, gap: espaces.xs }}>
+          <Texte taille={textes.petit} ton="doux" poids="moyen">{t.votreReponse}</Texte>
           <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
-                       onValider={envoyer} langue={langue} />
+                       onValider={envoyer} langue={langue}
+                       focus={choix.length === 0} masque={secretement} />
+          {secretement ? (
+            <Texte taille={textes.legende} ton="pale">{t.reponseProtegee}</Texte>
+          ) : null}
         </View>
         {recents?.length ? (
           <Defilement horizontal showsHorizontalScrollIndicator={false}
@@ -994,6 +1035,15 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
               <Visage key={r.numero} client={r} choisi={false} onPress={() => onEnvoyer(r.numero)} />
             ))}
           </Defilement>
+        ) : null}
+        {onRevenir ? (
+          <Pressable accessibilityRole="button" onPress={onRevenir} hitSlop={8}
+            style={({ pressed }) => ({ alignSelf: "center", padding: espaces.sm,
+                                        opacity: pressed ? 0.5 : 1 })}>
+            <Texte taille={textes.petit} ton="doux" style={{ textDecorationLine: "underline" }}>
+              {t.revenirAuPave}
+            </Texte>
+          </Pressable>
         ) : null}
       </Defilement>
       <GrosBouton libelle={t.envoyer} desactive={!valide} onPress={envoyer} />
@@ -1284,7 +1334,9 @@ function RangeeRecap({ etiquette, children }: { etiquette: string; children: Rea
  * taxi, dans une file), une vibration par chiffre (son rythme donne la
  * longueur du code).
  */
-function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }) {
+function EtapeCode({ onValider, onAutre, t }: {
+  onValider: (code: string) => void; onAutre: () => void; t: T;
+}) {
   const [code, setCode] = useState("");
   const { height } = useWindowDimensions();
   // Sur un écran court, la note (« jamais enregistré ») se tait : le cadenas
@@ -1322,6 +1374,20 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }
       <Pave onChiffre={(x) => setCode((v) => (v.length >= LONGUEUR_CODE_MAX ? v : v + x))}
             onEffacer={() => setCode((v) => v.slice(0, -1))}
             etiquetteEffacer={t.effacerDernier} />
+      {/* LE PAVÉ N'EST PAS UNE PRISON. La lecture a vu « code » dans le
+          message ; elle peut se tromper, ou l'opérateur attendre autre chose
+          (« 1 » pour confirmer, « 0 » pour revenir). On peut toujours
+          répondre autrement — et ce qu'on tape alors part protégé comme un
+          code, au cas où ce SERAIT le code. */}
+      <Pressable accessibilityRole="button" onPress={onAutre}
+        style={({ pressed }) => ({
+          alignSelf: "center", marginTop: court ? 0 : espaces.xs,
+          paddingVertical: espaces.sm, paddingHorizontal: espaces.lg,
+          borderRadius: rayons.bouton, borderWidth: 1, borderColor: couleurs.trait,
+          backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+        })}>
+        <Texte taille={textes.petit} poids="moyen">{t.repondreAutrement}</Texte>
+      </Pressable>
       <GrosBouton libelle={t.valider} desactive={code.length < LONGUEUR_CODE_MIN}
                   onPress={valider} />
     </View>
@@ -1418,11 +1484,15 @@ function Fin({
         ) : null}
         {proposition}
         {repondreQuandMeme ? (
-          <Pressable accessibilityRole="button" onPress={repondreQuandMeme} hitSlop={8}
-            style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-            <Texte taille={textes.petit} ton="doux" style={{ textDecorationLine: "underline" }}>
-              {t.repondreQuandMeme}
-            </Texte>
+          // Un vrai bouton, pas un lien gris : quand le boîtier ne dit pas
+          // si le réseau attend encore, c'est la seule porte vers la suite.
+          <Pressable accessibilityRole="button" onPress={repondreQuandMeme}
+            style={({ pressed }) => ({
+              paddingVertical: espaces.md, paddingHorizontal: espaces.xl,
+              borderRadius: rayons.bouton, borderWidth: 1.5, borderColor: couleurs.encre,
+              backgroundColor: pressed ? couleurs.surface2 : "transparent",
+            })}>
+            <Texte poids="demi">{t.repondreQuandMeme}</Texte>
           </Pressable>
         ) : null}
 
