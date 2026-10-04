@@ -450,9 +450,21 @@ function servir(enregistree) {
 //
 //     curl -X POST "http://127.0.0.1:4999/essai/page-longue?oui=1"
 //
-// Un code complet (le dépôt) passe alors par : la page → « 00 » →
-// « 1. Confirm » → « 1 » → le code secret.
+// Là où le réseau demanderait le code secret (après le montant, ou tout de
+// suite pour un code complet), il sert d'abord la page → « 00 » →
+// « 1. Confirm » → « 1 » → seulement alors le code secret.
 let pageLongue = false;
+let etapeDeLaPage = 0;       // 0 : pas encore servie ; 1 : servie ; 2 : « Confirm » servi
+const CONFIRMER = "Fees: 0 FCFA. Commission: 25 FCFA.\n1. Confirm\n2. Cancel";
+const CODE_APRES_LA_PAGE = "Depot de 5 000 FCFA vers 237670000123.\nEntrez votre code secret:";
+/** Le tour de la page, quand elle est en jeu ; sinon `null`. */
+function tourDeLaPage(texte) {
+  if (!pageLongue) return null;
+  if (etapeDeLaPage === 0) { etapeDeLaPage = 1; return PAGE_LONGUE; }
+  if (etapeDeLaPage === 1 && texte === "00") { etapeDeLaPage = 2; return CONFIRMER; }
+  if (etapeDeLaPage === 2 && texte === "1") { etapeDeLaPage = 3; return CODE_APRES_LA_PAGE; }
+  return null;
+}
 const PAGE_LONGUE = "Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE "
   + "QUINCAILLERIE DU LITTORAL ET DES HAUTS PLATEAUX SARL MBALLA JEAN having "
   + "mobile number 237670000123.\n00. Next";
@@ -474,8 +486,9 @@ function reponsePour(commande) {
     const code = String(parametres.code ?? "");
     // Un code complet (avec le numéro et le montant dedans) va droit au code
     // secret ; un code d'entrée ouvre le menu.
+    etapeDeLaPage = 0;                 // une session neuve : la page est à venir
     if (code.split("*").length > 3) {
-      if (pageLongue) return PAGE_LONGUE;
+      if (pageLongue) return tourDeLaPage(code);
       return "Confirmer le transfert de 5 000 FCFA vers 677998877 ?\nEntrez votre code secret:";
     }
     return "MTN MoMo\n1. Transfert d'argent\n2. Retrait\n3. Paiement\n4. Mon compte\n5. Mon solde";
@@ -483,12 +496,13 @@ function reponsePour(commande) {
   // Une réponse dans la session : on avance dans le scénario.
   const n = commande.tour ?? 0;
   if (parametres.secret) return "Operation reussie. Nouveau solde: 407 500 FCFA.";
-  if (pageLongue && n === 0) return "Fees: 0 FCFA. Commission: 25 FCFA.\n1. Confirm\n2. Cancel";
-  if (pageLongue && n === 1) {
-    return "Depot de 5 000 FCFA vers 237670000123.\nEntrez votre code secret:";
+  if (pageLongue && etapeDeLaPage > 0) {
+    const suite = tourDeLaPage(String(parametres.texte ?? ""));
+    if (suite) return suite;
   }
   if (n === 0) return "Entrez le numero du beneficiaire:";
   if (n === 1) return "Entrez le montant:";
+  if (pageLongue && etapeDeLaPage === 0) return tourDeLaPage("");
   // Comme un vrai opérateur : ce qu'on va signer, PUIS la demande du code.
   // Un écran qui ne montrerait que « votre code secret » ferait signer à
   // l'aveugle — et sans ces lignes ici, aucun harnais ne pourrait le voir.

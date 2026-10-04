@@ -27,7 +27,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 
-const APERCU = "http://127.0.0.1:3210";
+const APERCU = process.env.APERCU || "http://127.0.0.1:3210";
 const PLATEFORME = "http://127.0.0.1:3120";
 const NUAGE = "http://127.0.0.1:4999";
 const COURRIEL = "essai@totem.test";

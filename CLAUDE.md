@@ -71,6 +71,7 @@ cd mobile && node scripts/verifier-la-reponse.mjs # le bouton se fait reconnaît
 cd mobile && node scripts/verifier-le-cahier.mjs # un seul cahier, et hors ligne
 cd mobile && node scripts/verifier-les-fiches.mjs # une fiche ne cache rien
 cd mobile && node scripts/verifier-l-attente.mjs # l'attente ne fait pas sauter
+cd mobile && node scripts/verifier-la-page-longue.mjs # une page qui se tourne n'est pas une fin
 cd mobile && node scripts/verifier-les-listes.mjs # la liste ne monte pas tout
 #   (même chaîne que verifier-les-formats — voir l'en-tête du script)
 cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android emporte
@@ -1033,6 +1034,41 @@ disparaissait, et à 360 points en français aussi. Aucun harnais ne le
 voyait : un texte d'exemple n'est pas un élément, il ne déborde de rien.
 `verifier-l-affichage` mesure maintenant chaque texte d'exemple contre la
 place du champ, dans les DEUX langues.
+
+**Le texte laisse deviner ; le réseau SAIT.** Un « Float Transfer » MTN vers
+une raison sociale longue : l'opérateur coupe son message et le termine par
+« 00. Next ». Pas de verbe, pas de « ? », une seule ligne numérotée —
+l'écran le lisait comme une FIN : « Réponse de l'opérateur », « Terminé », et
+un petit lien « répondre quand même ». La suite (« Confirm », puis le code
+secret) ne venait qu'en tapant « 00 » à l'aveugle, sur de l'argent. Le modem,
+lui, savait depuis toujours (+CUSD: 1 « j'attends », 0 « j'ai fini ») ; le
+robot le gardait pour lui. Il le joint maintenant à sa réponse
+(`parametres.reseau`, dans les paramètres et pas dans une colonne : une
+colonne absente d'une base pas migrée ferait échouer l'écriture ENTIÈRE), et
+la règle de la base qui efface le code secret le garde. Sans lui — un boîtier
+d'avant —, une dernière ligne en forme de choix devient un bouton. Et une
+page qui nomme « mobile number » sans en demander ne se remplit plus toute
+seule avec le numéro du bénéficiaire. `verifier-la-page-longue` joue le dépôt
+entier ; l'application d'avant y lit « Terminé », comme le propriétaire.
+
+**Le liquide et l'argent électronique vont en sens CONTRAIRES.** « CashOut
+success to <client> from <agent> » : l'agent remet des espèces au client, et
+l'argent électronique du client arrive chez l'agent. Lu à la lettre, « from »
+désignait le payeur, et la puce commerciale affichait « Retrait −500 000 » sur
+un argent qui venait d'ENTRER — pendant que le Cash out MTN, même geste, se
+lisait en entrée. Un test l'affirmait, sur un vrai SMS : **un test qui fige
+une lecture ne prouve pas qu'elle est juste**. `TestLaCaisseDeLAgent` exige
+la même réponse des deux opérateurs, en anglais et en français ; le retrait
+français ne se retourne que sur un SMS d'agent (une commission), jamais côté
+client.
+
+**Un bouton qu'on cherche est un bouton qui manque.** Le menu de l'opérateur
+n'était qu'un chiffre à droite de « Code USSD » : tout ce que les trois gestes
+ne couvrent pas — le « Float » d'un agent — passait par le cadran. C'est un
+bouton dans Opérations, et un rond de l'accueil. Les ronds se choisissent dans
+les Réglages (`noyau/ronds.ts` : cinq au plus, un au moins, un choix abîmé
+rend l'accueil d'origine) ; le choix vit sur le téléphone et n'ouvre aucun
+droit.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

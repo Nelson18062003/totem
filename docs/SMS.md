@@ -57,8 +57,8 @@ catégories, détectées à partir du texte (`analyse_sms.py`) :
 | `encaissement` | « Vous avez reçu 25 000 FCFA de … » | oui |
 | `envoi` | « Vous avez envoyé 10 000 FCFA à … » | oui |
 | `transfert` | « Transfert de X vers Y réussi » | oui |
-| `depot` | « Dépôt vers … réussi » | oui |
-| `retrait` | « Retrait de … » | oui |
+| `depot` | « Dépôt vers … réussi » — sur une puce d'agent, l'argent SORT | oui |
+| `retrait` | « Retrait de … », « CashOut success to … from … » — sur une puce d'agent, l'argent ENTRE | oui |
 | `solde` | « Le solde de votre compte est de … » | oui |
 | `echec` | « Transfert … échoué », « Opération annulée » | non — rien ne s'est passé |
 | `code` | « Le code de … est : 515318 » | non — pas de reçu, mais le SMS se lit en entier |
