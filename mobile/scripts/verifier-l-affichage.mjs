@@ -417,14 +417,30 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     // trouve recouvert — une puce coupée au bord en fait partie. Vérifiée
     // après, elle était ramenée par le harnais lui-même, et l'étape sortait
     // verte sur une puce que la capture montrait hors de l'écran.
+    // VISIBLE, C'EST DANS CE QUI LA ROGNE — pas dans la fenêtre. Sur une
+    // colonne, la rangée occupe toute la largeur et les deux se confondent ;
+    // en deux colonnes (600 points et plus), la rangée vit dans la colonne de
+    // GAUCHE, et c'est elle qui coupe : une puce rangée à x = 400 est dans la
+    // fenêtre, et hors de sa rangée. Comparée à la fenêtre, elle passait pour
+    // visible sur un pliable ouvert ou une tablette.
     const puces = await page.evaluate(() => [...document.querySelectorAll('[role="button"]')]
       .filter((e) => /^(Select the|Choisir la carte) /.test(e.getAttribute("aria-label") || ""))
-      .map((e) => { const r = e.getBoundingClientRect();
-                    return { haut: Math.round(r.top), choisie: e.getAttribute("aria-selected") === "true",
-                             nom: e.getAttribute("aria-label"), gauche: r.left, droite: r.right }; }));
+      .map((e) => {
+        const r = e.getBoundingClientRect();
+        let bordG = 0, bordD = innerWidth;
+        for (let p = e.parentElement; p; p = p.parentElement) {
+          if (getComputedStyle(p).overflowX !== "visible") {
+            const pr = p.getBoundingClientRect();
+            bordG = Math.max(bordG, pr.left); bordD = Math.min(bordD, pr.right);
+          }
+        }
+        return { haut: Math.round(r.top), choisie: e.getAttribute("aria-selected") === "true",
+                 nom: e.getAttribute("aria-label"), gauche: r.left, droite: r.right, bordG, bordD };
+      }));
     const uneLigne = puces.length >= 5 && puces.every((p) => Math.abs(p.haut - puces[0].haut) <= 1);
     const choisie = puces.find((p) => p.choisie);
-    const visible = choisie && /4177/.test(choisie.nom) && choisie.gauche >= 0 && choisie.droite <= w;
+    const visible = choisie && /4177/.test(choisie.nom)
+      && choisie.gauche >= choisie.bordG - 1 && choisie.droite <= choisie.bordD + 1;
     const muet = await page.evaluate(() => /Terminal (silent|muet|offline|hors ligne)/.test(document.body.innerText));
     const fautes = [];
     if (!uneLigne) fautes.push(`puces sur ${new Set(puces.map((p) => p.haut)).size} lignes (${puces.length} puces)`);
