@@ -533,13 +533,43 @@ class Journal:
                 " WHERE COALESCE(envoye, 0) = 0 ORDER BY derniere_vue LIMIT ?",
                 (limite,)).fetchall()
 
-    def marquer_cartes_envoyees(self, iccids):
+    def marquer_cartes_envoyees(self, iccids, telles_que_parties=None):
+        """Note que ces cartes sont arrivées au nuage.
+
+        `telles_que_parties` : {iccid: (derniere_vue, numero, nom)} — ce que
+        l'envoi PORTAIT. Une carte ne se marque que si elle n'a pas bougé
+        depuis.
+
+        LA COURSE QU'ON FERME. Le poste de chaque carte relit sa puce toutes
+        les minutes et remet `envoye` à 0 ; l'envoi, lui, lit la carte, part
+        sur le réseau (jusqu'à quinze secondes à Douala), puis marque. Une
+        relecture tombée entre les deux était effacée par ce marquage : la
+        date neuve restait dans le Pi, la plateforme gardait l'ancienne
+        jusqu'à la relecture suivante — une minute de plus. Or la
+        plateforme compare cette date au signe de vie pour dire si la puce
+        est encore là : chaque minute perdue rapproche une carte bien en
+        place du verdict « retirée ». Même chose pour un nom ou un numéro
+        changé depuis Telegram pendant l'envoi.
+
+        Sans `telles_que_parties` (un appel d'avant), on marque comme avant,
+        sans condition.
+        """
         if not iccids:
             return
         with self.verrou:
-            self.conn.executemany(
-                "UPDATE cartes SET envoye = 1 WHERE iccid = ?",
-                [(i,) for i in iccids])
+            if telles_que_parties is None:
+                self.conn.executemany(
+                    "UPDATE cartes SET envoye = 1 WHERE iccid = ?",
+                    [(i,) for i in iccids])
+            else:
+                # « IS » et non « = » : une date absente (NULL) se compare
+                # aussi, au lieu de ne jamais rien marquer.
+                self.conn.executemany(
+                    "UPDATE cartes SET envoye = 1 WHERE iccid = ?"
+                    " AND derniere_vue IS ?"
+                    " AND COALESCE(numero, '') = ? AND COALESCE(nom, '') = ?",
+                    [(i, *telles_que_parties[i]) for i in iccids
+                     if i in telles_que_parties])
             self.conn.commit()
 
     @staticmethod

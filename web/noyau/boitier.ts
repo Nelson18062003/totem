@@ -44,11 +44,29 @@ export const SANS_NOUVELLES_S = 5 * 60;
  * Le boîtier parle, mais ne voit plus la carte depuis plus que cela (en
  * SECONDES) : elle est retirée.
  *
- * Il relit ses puces toutes les minutes et pousse la date avec son signe de
- * vie ; trois minutes laissent passer une relecture retardée par une session
- * USSD sans crier au vol.
+ * DEUX DATES, DEUX TRAJETS — ET L'ÉCART ENTRE ELLES. On compare la dernière
+ * vue de la carte au dernier signe de vie, toutes deux écrites par le
+ * boîtier. Le poste de chaque carte relit sa puce environ toutes les
+ * minutes (jusqu'à 70 s quand une session USSD la retient) ; la date n'en
+ * part que plus tard, avec un envoi de cartes. Le seuil doit donc couvrir
+ * une relecture PLUS le temps que la date met à arriver.
+ *
+ * Ce temps-là a changé, et c'est ce que ce seuil avait oublié. Le signe de
+ * vie a pris un fil à lui, à heure fixe ; les cartes sont restées dans le
+ * tour des transmissions, à leur rythme. Sans incident, l'écart montait
+ * déjà à deux minutes (une relecture, plus un tour de décalage) ; un seul
+ * tour raté — Internet capricieux, le petit signe de vie passe, la poussée
+ * échoue — le portait à 3 min 10 s, et une carte bien en place était dite
+ * RETIRÉE : l'accueil faisait disparaître ses gestes.
+ *
+ * Le robot d'aujourd'hui renvoie ses cartes dans la foulée de chaque signe
+ * de vie (totem/nuage.py, `_battre`) : l'écart retombe à une relecture.
+ * Mais les boîtiers déjà installés gardent l'ancien pas jusqu'à leur mise à
+ * jour. Cinq minutes couvrent une relecture et près de trois tours ratés
+ * d'un robot d'hier — comme `SANS_NOUVELLES_S`, une vraie absence se dit
+ * deux minutes plus tard, et c'est le prix assumé.
  */
-export const ABSENCE_S = 3 * 60;
+export const ABSENCE_S = 5 * 60;
 
 /**
  * Le temps (en SECONDES) qu'on laisse à un boîtier REVENU pour republier ses
@@ -172,12 +190,28 @@ export function presenceDeLaCarte(
   return aReluSesCartes(boitier) ? "retiree" : "inconnue";
 }
 
-/** Le boîtier a-t-il republié ses cartes depuis qu'il est revenu ? */
+/**
+ * Le boîtier a-t-il republié ses cartes depuis qu'il est revenu ?
+ *
+ * Une carte « fraîche » ne le prouve que si elle a été vue APRÈS son retour.
+ * Après une coupure de courant de deux à cinq minutes, les dates d'avant la
+ * coupure sont encore à moins de `ABSENCE_S` du premier signe de vie : la
+ * plus récente passait pour une relecture, et une carte vue un peu plus tôt
+ * que les autres était dite « retirée » — le temps que le boîtier relise
+ * ses puces, une minute environ. L'instant du retour, sur SON horloge, est
+ * son dernier signe de vie moins le temps qu'il parle depuis
+ * (`revenuIlYa − vuIlYa`, mesurés par la base). Une base d'avant ne le dit
+ * pas : on garde alors la règle d'avant, faute de mieux.
+ */
 function aReluSesCartes(boitier: Boitier): boolean {
+  const revenu = boitier.revenuIlYa;
+  const retourConnu = revenu != null && Number.isFinite(revenu);
+  if (retourConnu && revenu > RELECTURE_S) return true;
   const fraiche = ecart(boitier.vuLe, boitier.carteLaPlusRecente);
-  if (fraiche != null && fraiche <= ABSENCE_S) return true;
-  return boitier.revenuIlYa != null && Number.isFinite(boitier.revenuIlYa)
-    && boitier.revenuIlYa > RELECTURE_S;
+  if (fraiche == null || fraiche > ABSENCE_S) return false;
+  const vu = boitier.vuIlYa;
+  if (!retourConnu || vu == null || !Number.isFinite(vu)) return true;
+  return fraiche <= Math.max(0, revenu - vu);
 }
 
 /** Ce que lisent les applications d'avant `presence` : seule une carte qu'on
@@ -199,4 +233,48 @@ export function enPlaceSelon(presence: Presence): boolean {
 export function signalLu(brut: unknown): number | null {
   const n = typeof brut === "string" && brut.trim() !== "" ? Number(brut) : brut;
   return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 31 ? n : null;
+}
+
+/**
+ * Combien de barres, sur quatre, dessinent ce signal — pour le site ET le
+ * téléphone. Un signal inconnu (hors de 0 à 31, ou absent) n'en remplit
+ * aucune : 99 dessinait quatre barres pleines sur une carte sans réseau.
+ *
+ * Les barres sont le premier verdict qu'on lit sur le signal, avant même le
+ * chiffre : c'est sur elles que se règle `signalFaible`, pas l'inverse.
+ */
+export function barresDuSignal(n: number | null | undefined): number {
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n > 31) return 0;
+  return Math.min(4, Math.round((n / 31) * 4));
+}
+
+/**
+ * Au plus cette force (échelle du modem, 0 à 31), le signal est FAIBLE :
+ * exactement ce que `barresDuSignal` dessine avec AU PLUS UNE BARRE sur
+ * quatre (une barre va de 4 à 11 ; zéro, de 0 à 3).
+ *
+ * Le seuil a d'abord été écrit 7, avec le même commentaire — « au plus une
+ * barre » — sans être confronté au dessin : une MTN à 9/31 montrait alors
+ * UNE barre sur l'accueil et un point VERT sur l'onglet Comptes, une MTN à
+ * 7/31 la même barre et un point orange. Deux verdicts pour une même
+ * donnée, entre les barres et la pastille cette fois. Le test du noyau
+ * balaie maintenant les 32 forces contre le dessin.
+ */
+export const SIGNAL_FAIBLE = 11;
+
+/**
+ * Ce signal est-il faible ? Pour le site ET le téléphone.
+ *
+ * Le même changement en avait écrit deux : rouge à 2 et moins sur le site,
+ * orange à 7 et moins sur le téléphone. Une MTN qui captait à 5/31 avait
+ * donc un point VERT sur l'onglet Comptes du site et un point ORANGE sur
+ * celui du téléphone, au même instant — deux verdicts pour une seule
+ * donnée. Un seul seuil, ici, réglé sur les barres : une barre (ou aucune)
+ * veut toujours dire « faible », et rien d'autre ne le veut dire.
+ *
+ * Un signal inconnu (`null`, voir `signalLu`) n'est ni faible ni fort :
+ * l'écran dit « inconnu », il ne colore rien.
+ */
+export function signalFaible(n: number | null | undefined): boolean {
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= SIGNAL_FAIBLE;
 }

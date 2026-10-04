@@ -48,6 +48,11 @@ const muets = new Map();             // terminal → depuis combien de minutes
 // essai ne distinguait une colonne vide d'une colonne absente — et la
 // plateforme remplaçait « on ne sait pas » par l'heure du signe de vie.
 const heuresDeSolde = new Map();      // iccid → minutes, ou null
+// LE SIGNAL d'une carte, imposé par un essai (« /essai/signal »). Les cartes
+// de Douala captaient toujours à 22 et 18 sur 31 — deux barres et plus — et
+// aucun essai ne pouvait voir la pastille de l'onglet Comptes rester VERTE
+// sur une carte qui n'avait qu'une barre sur l'accueil.
+const signaux = new Map();           // iccid → force (0 à 31, ou 99)
 
 // L'HORLOGE DE CHAQUE PI (« /essai/horloge »). Le vrai boîtier date ce qu'il
 // écrit — son signe de vie, la dernière vue de ses cartes — sur SON heure,
@@ -75,6 +80,24 @@ const cartesPasRelues = new Map();   // terminal → minutes : vues pour la dern
 const cartesPerdues = new Map();     // iccid → minutes depuis la dernière vue
 // Un boîtier sorti de la flotte (« /essai/retirer ») : volé, grillé.
 const retires = new Map();           // terminal → instant (ms) de la mise hors service
+// UN TOUR DE TRANSMISSION RATÉ (« /essai/cartes-en-retard »). Le boîtier
+// parle, son signe de vie est frais — mais la poussée de ses cartes a
+// échoué : la base porte des cartes vues `secondes` AVANT ce signe de vie
+// (horloge du boîtier). Un robot d'hier envoyait ses cartes dans le tour des
+// transmissions, une minute après son signe de vie, et ne retentait qu'au
+// tour suivant : 3 min 10 s d'écart d'un seul hoquet, et la plateforme
+// disait « retirée » d'une carte bien en place. Ici, signe de vie et cartes
+// avançaient toujours ensemble — l'écart ne pouvait pas se voir.
+const cartesEnRetard = new Map();    // terminal → secondes derrière son signe de vie
+
+// UNE CARTE DONT ON NE CONNAÎT PAS LE BOÎTIER (« /essai/carte-sans-boitier ») :
+// une ligne sans « terminal », comme une base d'avant la flotte en garde.
+// La plateforme n'a alors rien à dire de son boîtier — ni « muet », ni heure.
+const cartesSansBoitier = new Set(); // iccid
+
+// Le silence ordinaire de chaque boîtier, en minutes, quand aucun essai ne
+// l'a fait taire : en flotte, Douala n'est PAS le dernier à avoir parlé.
+const silenceOrdinaire = (terminal) => (terminal === "douala-faux" && FLOTTE ? 1 : 0);
 
 /** Depuis combien de minutes on n'a plus entendu ce boîtier. */
 const silence = (terminal, sinon) => muets.get(terminal) ?? sinon;
@@ -84,7 +107,10 @@ const signeDeVie = (terminal, sinon) => horloge(terminal, silence(terminal, sino
  *  se taire, ou avant son retour tant qu'il ne les a pas republiées. */
 const vueParLe = (terminal) => horloge(terminal,
   muets.has(terminal) ? muets.get(terminal) + 0.5
-    : cartesPasRelues.has(terminal) ? cartesPasRelues.get(terminal) + 0.5 : 0);
+    : cartesPasRelues.has(terminal) ? cartesPasRelues.get(terminal) + 0.5
+      : cartesEnRetard.has(terminal)
+        ? silence(terminal, silenceOrdinaire(terminal)) + cartesEnRetard.get(terminal) / 60
+        : 0);
 
 /** Une ligne de « terminaux », telle que la base la porte. */
 function boitier(id, nom, minutes) {
@@ -132,8 +158,8 @@ const tables = () => ({
   beneficiaires,
   terminaux: [
     // En flotte, Douala n'est PAS le dernier à avoir parlé : Akwa l'est.
-    boitier("douala-faux", "Douala (faux)", FLOTTE ? 1 : 0),
-    ...(FLOTTE ? [boitier("akwa-faux", "Akwa (faux)", 0)] : []),
+    boitier("douala-faux", "Douala (faux)", silenceOrdinaire("douala-faux")),
+    ...(FLOTTE ? [boitier("akwa-faux", "Akwa (faux)", silenceOrdinaire("akwa-faux"))] : []),
   ],
   // La console lit ces trois registres. Vides ici : personne n'y écrit
   // encore, et c'est justement l'état que ses écrans doivent savoir dire.
@@ -161,6 +187,9 @@ const tables = () => ({
       nom: "", numero: "699001122",
       premiere_vue: il_y_a(60 * 24 * 10), derniere_vue: vueParLe("douala-faux") },
     ...cartesDeLaFlotte(),
+    ...[...cartesSansBoitier].map((iccid) => ({ terminal: null,
+      iccid, operateur: "MTN", libelle: `MTN ·${iccid.slice(-4)}`, nom: "", numero: "",
+      premiere_vue: il_y_a(60 * 24 * 90), derniere_vue: il_y_a(60 * 24) })),
   ].map((c) => cartesPerdues.has(c.iccid)
     ? { ...c, derniere_vue: horloge(c.terminal, cartesPerdues.get(c.iccid)) }
     : c),
@@ -177,7 +206,7 @@ const tables = () => ({
   ].map((c) => heuresDeSolde.has(c.iccid)
     ? { ...c, solde_maj: heuresDeSolde.get(c.iccid) == null ? null
         : il_y_a(heuresDeSolde.get(c.iccid)) }
-    : c),
+    : c).map((c) => signaux.has(c.iccid) ? { ...c, signal: signaux.get(c.iccid) } : c),
   paiements: [
     ...[...smsEnPlus].reverse(),
     // UN NOM VOLONTAIREMENT LONG. La fiche coupait son titre à une ligne :
@@ -345,6 +374,31 @@ const freins = new Map();
 //   — « normal ».
 let allure = "normal";
 
+// UN HOQUET DE LA BASE, SUR UNE LECTURE PRÉCISE (« /essai/hoquet »). La
+// plateforme relit une demande avant de l'annuler, pour en effacer le code
+// secret ; `lire` rend une liste VIDE quand la base ne répond pas. Ici, la
+// base répondait toujours : aucun essai ne pouvait voir une annulation
+// partir sans ce masquage. Le hoquet vise la lecture par ce qu'elle
+// demande (`select`), et compte ceux qu'il a servis — un hoquet qui ne
+// tomberait jamais ferait passer l'essai pour rien.
+const hoquets = new Map();           // select → combien de lectures refuser encore
+let hoquetsServis = 0;
+
+// LA RÈGLE DE LA BASE « commandes_code_efface » (sql/schema.sql), imitée :
+// une demande secrète qui se FERME (« faite », « échouée ») perd son code
+// dans la même écriture — quel qu'en soit l'auteur. Une base pas encore
+// migrée ne l'a pas (« /essai/base?effacement=non ») : c'est là que la
+// plateforme doit tenir la promesse seule.
+let effacementParLaBase = true;
+const GARDES_D_UNE_DEMANDE_CLOSE = ["secret", "carte", "iccid", "par", "langue"];
+function regleDeLaBase(commande) {
+  if (!effacementParLaBase) return;
+  if (!["faite", "echouee"].includes(commande.etat)) return;
+  if (commande.parametres?.secret !== true) return;
+  commande.parametres = Object.fromEntries(Object.entries(commande.parametres)
+    .filter(([cle]) => GARDES_D_UNE_DEMANDE_CLOSE.includes(cle)));
+}
+
 function servir(enregistree) {
   if (enregistree.etat === "en_attente") {
     if (allure === "pause" || muets.has(enregistree.terminal)) {
@@ -473,7 +527,10 @@ const serveur = createServer(async (req, res) => {
       const [op, ...reste] = v.split(".");
       return op === "eq" && String(x[k]) === reste.join(".");
     }));
-    for (const x of vise) Object.assign(x, champs);
+    for (const x of vise) {
+      Object.assign(x, champs);
+      regleDeLaBase(x);
+    }
     if (/return=representation/.test(req.headers.prefer || "")) {
       return repondre(vise.map((x) => ({ id: x.id, etat: x.etat, resultat: x.resultat })));
     }
@@ -522,9 +579,34 @@ const serveur = createServer(async (req, res) => {
     return repondre({ terminal, retard });
   }
   //     curl -X POST ".../essai/base?oreille=non"   (une base pas encore migrée)
+  //     curl -X POST ".../essai/base?effacement=non" (sans « commandes_code_efface »)
   if (req.method === "POST" && chemin === "/essai/base") {
-    oreille = url.searchParams.get("oreille") !== "non";
-    return repondre({ oreille });
+    if (url.searchParams.has("oreille")) oreille = url.searchParams.get("oreille") !== "non";
+    if (url.searchParams.has("effacement")) {
+      effacementParLaBase = url.searchParams.get("effacement") !== "non";
+    }
+    return repondre({ oreille, effacement: effacementParLaBase });
+  }
+  //     curl -X POST ".../essai/cartes-en-retard?terminal=douala-faux&secondes=190"   (&annuler=1)
+  if (req.method === "POST" && chemin === "/essai/cartes-en-retard") {
+    const terminal = url.searchParams.get("terminal") || "douala-faux";
+    if (url.searchParams.get("annuler")) cartesEnRetard.delete(terminal);
+    else cartesEnRetard.set(terminal, Number(url.searchParams.get("secondes") || 190));
+    return repondre({ cartesEnRetard: Object.fromEntries(cartesEnRetard) });
+  }
+  //     curl -X POST ".../essai/carte-sans-boitier?iccid=…"   (&annuler=1)
+  if (req.method === "POST" && chemin === "/essai/carte-sans-boitier") {
+    const iccid = url.searchParams.get("iccid") || "";
+    if (url.searchParams.get("annuler")) cartesSansBoitier.delete(iccid);
+    else if (/^\d{19,20}$/.test(iccid)) cartesSansBoitier.add(iccid);
+    return repondre({ cartesSansBoitier: [...cartesSansBoitier] });
+  }
+  //     curl -X POST ".../essai/hoquet?select=id,parametres&fois=1"
+  if (req.method === "POST" && chemin === "/essai/hoquet") {
+    const select = url.searchParams.get("select") || "";
+    const fois = Number(url.searchParams.get("fois") ?? 1);
+    if (fois > 0) hoquets.set(select, fois); else hoquets.delete(select);
+    return repondre({ hoquets: Object.fromEntries(hoquets), servis: hoquetsServis });
   }
   //     curl -X POST ".../essai/retirer?terminal=akwa-faux"   (&annuler=1)
   if (req.method === "POST" && chemin === "/essai/retirer") {
@@ -539,6 +621,13 @@ const serveur = createServer(async (req, res) => {
     if (url.searchParams.get("annuler")) cartesPerdues.delete(iccid);
     else cartesPerdues.set(iccid, Number(url.searchParams.get("minutes") || 20));
     return repondre({ cartesPerdues: [...cartesPerdues.keys()] });
+  }
+  //     curl -X POST ".../essai/signal?iccid=…&valeur=9"   (&annuler=1)
+  if (req.method === "POST" && chemin === "/essai/signal") {
+    const iccid = url.searchParams.get("iccid") || "";
+    if (url.searchParams.get("annuler")) signaux.delete(iccid);
+    else signaux.set(iccid, Number(url.searchParams.get("valeur")));
+    return repondre({ signaux: Object.fromEntries(signaux) });
   }
   //     curl -X POST "http://127.0.0.1:4999/essai/solde-maj?iccid=…&minutes=null"
   if (req.method === "POST" && chemin === "/essai/solde-maj") {
@@ -556,6 +645,12 @@ const serveur = createServer(async (req, res) => {
 
   // Lecture d'une commande.
   if (chemin === "/rest/v1/commandes") {
+    const select = url.searchParams.get("select") ?? "";
+    if ((hoquets.get(select) ?? 0) > 0) {
+      hoquets.set(select, hoquets.get(select) - 1);
+      hoquetsServis++;
+      return repondre({ message: "hoquet d'essai : la base ne répond pas" }, 503);
+    }
     // Retrouver une demande PAR SA CLÉ : c'est ce que fait la plateforme après
     // un 409, pour rendre la demande déjà créée au lieu d'un échec.
     // Le guichet la cherche aussi AVANT de juger le boîtier, tous boîtiers

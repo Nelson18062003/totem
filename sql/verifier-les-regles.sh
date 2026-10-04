@@ -325,6 +325,92 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# LE CODE SECRET NE SURVIT PAS À UNE DEMANDE CLOSE.
+#
+# Une réponse « secrète » attend le robot avec le code en clair ; c'est lui
+# qui l'efface en la traitant. Annulée depuis l'écran, elle n'était jamais
+# traitée — et si la plateforme ne parvenait pas à relire la demande pour
+# masquer le code, l'annulation l'y laissait pour toujours. La base le
+# retire maintenant dans la MÊME écriture que la fermeture (déclencheur
+# « commandes_code_efface »), quel que soit l'auteur de l'écriture.
+#
+# Il ne doit RIEN retirer d'autre : ni le code d'une demande encore « en
+# cours » (le robot vient de la réclamer et doit le composer), ni les
+# paramètres d'une demande qui n'a rien de secret, ni la carte et la
+# personne, qui disent à qui est la demande.
+#
+# LE TÉMOIN : déclencheur débranché, la même annulation garde le code.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Le code secret ne survit pas à une demande close"
+CARTE_ESSAI=89237010000000008901
+reponse() {
+  $P -d totem -tAc "insert into commandes(terminal, type, parametres, etat)
+    values ('douala', 'ussd_reponse',
+            '{\"texte\": \"4821\", \"secret\": true, \"carte\": \"$CARTE_ESSAI\",
+              \"par\": \"c:1\", \"langue\": \"fr\"}'::jsonb,
+            'en_attente') returning id;" | head -1
+}
+parametres() { $P -d totem -tAc "select parametres::text from commandes where id = $1;"; }
+garde() {   # garde <id> : la carte, la personne et le drapeau sont-ils là ?
+  $P -d totem -tAc "select parametres->>'carte' = '$CARTE_ESSAI'
+                       and parametres->>'par' = 'c:1'
+                       and parametres->>'secret' = 'true'
+                     from commandes where id = $1;"
+}
+# L'annulation de la plateforme quand sa relecture a échoué : elle écrit
+# l'état, sans paramètres.
+ID=$(reponse)
+$P -d totem -c "update commandes set etat = 'echouee', resultat = 'Annulée'
+                 where id = $ID and etat = 'en_attente';" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✗ annulée sans relecture, la demande garde le code : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+elif [ "$(garde "$ID")" = "t" ]; then
+  echo "  ✓ annulée, même sans relecture : le code s'en va ; restent la carte et la personne"
+else
+  echo "  ✗ le code est parti, mais la carte ou la personne avec : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
+# Le robot la réclame : il doit encore lire le code. Puis il la finit.
+ID=$(reponse)
+$P -d totem -c "update commandes set etat = 'en_cours' where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✓ « en cours » : le code reste lisible pour le robot qui le compose"
+else
+  echo "  ✗ « en cours » : le code a disparu avant d'être composé : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
+$P -d totem -c "update commandes set etat = 'faite', resultat = 'Operation reussie'
+                 where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✗ « faite » sans que le robot ait masqué : le code est resté"
+  echecs=$((echecs + 1))
+else
+  echo "  ✓ « faite » : le code s'en va aussi, même si le robot a oublié"
+fi
+# Une demande qui n'a rien de secret garde ses paramètres en se fermant.
+ID=$(nouvelle)
+$P -d totem -c "update commandes set etat = 'echouee' where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q '677998877'; then
+  echo "  ✓ une demande sans secret, close, garde ses paramètres"
+else
+  echo "  ✗ une demande sans secret a perdu ses paramètres : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
+# LE TÉMOIN : sans le déclencheur, la même annulation garde le code.
+ID=$(reponse)
+$P -d totem -c "alter table commandes disable trigger commandes_code_efface;
+  update commandes set etat = 'echouee' where id = $ID and etat = 'en_attente';
+  alter table commandes enable trigger commandes_code_efface;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✓ le témoin : sans le déclencheur, l'annulée garde le code en clair"
+else
+  echo "  ✗ le témoin a perdu le code sans le déclencheur : ces essais ne prouvent rien"
+  echecs=$((echecs + 1))
+fi
+
+# ---------------------------------------------------------------------------
 # L'OREILLE DE LA BASE : QUAND ELLE A ENTENDU CHAQUE BOÎTIER.
 #
 # « entendu_le » et « revenu_le » sont tenus par un déclencheur (voir

@@ -21,6 +21,7 @@ import { useLangue } from "@/langue";
 import { textesCartes } from "@noyau/textes/cartes";
 import { FUSEAU_DEFAUT, fcfa, nombre, type Sim } from "@noyau/types";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { signalFaible, signalLu } from "@noyau/boitier";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import type { Langue } from "@noyau/langue";
 
@@ -235,13 +236,14 @@ function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
         {/* Un signal hors de 0..31 est INCONNU (le modem dit 99) : il
             s'affichait « 99/31 » sur un point vert, comme un signal parfait.
             Il se DIT maintenant inconnu — disparaître ne disait rien de
-            pourquoi les opérations échouent. Faible, il passe à l'orange ;
-            figé (le boîtier se tait), le point est gris. */}
+            pourquoi les opérations échouent. Faible — la règle du noyau, la
+            même que le site et que les barres de l'accueil —, il passe à
+            l'orange ; figé (le boîtier se tait), le point est gris. */}
         {(() => {
-          const connu = s.signal != null && s.signal >= 0 && s.signal <= 31;
+          const connu = signalLu(s.signal) !== null;
           const fige = s.boitierMuet === true || s.presence === "inconnue";
           const point = !connu || fige ? couleurs.encrePale
-            : (s.signal as number) <= 7 ? couleurs.alerte : couleurs.positifVif;
+            : signalFaible(s.signal) ? couleurs.alerte : couleurs.positifVif;
           return (
             <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
                            paddingHorizontal: espaces.sm, paddingVertical: 3,

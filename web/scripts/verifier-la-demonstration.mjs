@@ -166,6 +166,13 @@ try {
   verifier("l'heure de la réponse", typeof d.serveurA === "string" && !Number.isNaN(Date.parse(d.serveurA)), true);
   verifier("ses cartes sont en place, et le disent",
     (d.sims ?? []).map((s) => [s.presence, s.enPlace]), [["en_place", true], ["en_place", true]]);
+  // L'état du boîtier PAR CARTE : le téléphone ne met une carte en pause que
+  // si SON boîtier se tait. Une vitrine qui ne le porterait pas montrerait à
+  // l'examinateur des gestes réglés sur le boîtier d'en tête.
+  verifier("chaque carte dit que SON boîtier parle, avec l'heure où il a été entendu",
+    (d.sims ?? []).map((s) => [s.boitierMuet,
+      typeof s.boitierVuLe === "string" && s.boitierVuLe === d.terminal?.vuLe]),
+    [[false, true], [false, true]]);
   verifier("elle se présente sous son nom, sans administrer",
     [d.courriel, d.proprietaire], [COURRIEL, false]);
 

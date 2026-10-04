@@ -624,6 +624,49 @@ drop trigger if exists terminaux_entendu on terminaux;
 create trigger terminaux_entendu before insert or update on terminaux
   for each row execute function terminaux_entendu();
 
+-- ---------------------------------------------------------------------------
+-- LE CODE SECRET NE SURVIT PAS À UNE DEMANDE CLOSE.
+--
+-- Une réponse qui porte le code secret (« secret » vrai) attend le boîtier
+-- avec le code EN CLAIR dans « parametres » : c'est le robot qui l'efface,
+-- en la traitant. Une demande que personne ne traitera — annulée depuis
+-- l'écran — ne passait donc jamais par cet effacement. La plateforme
+-- relisait la demande pour masquer le code dans son annulation ; quand
+-- cette relecture échouait (un hoquet de la base), l'annulation partait
+-- quand même, réussissait… et le code restait dans une ligne « échouée »
+-- que plus personne ne relit, pour toujours.
+--
+-- C'est donc la BASE qui le retire, dans la même écriture que le passage à
+-- « faite » ou « échouée » — qui que soit l'auteur de cette écriture : la
+-- plateforme qui annule, le robot qui finit, une main dans l'éditeur. Les
+-- deux réussissent ensemble ou échouent ensemble. Ce qui reste est ce que
+-- le robot et la plateforme gardent déjà : le drapeau, la carte (un ICCID
+-- n'a rien de secret, il est imprimé sur la puce), la personne qui l'a
+-- demandée et sa langue — c'est d'après elles que la plateforme dit à qui
+-- est la demande.
+--
+-- « en cours » n'y touche pas, à dessein : le robot qui vient de la
+-- réclamer doit encore lire le code pour le composer.
+-- ---------------------------------------------------------------------------
+create or replace function commandes_code_efface() returns trigger
+language plpgsql as $$
+begin
+  if new.etat in ('faite', 'echouee')
+     and jsonb_typeof(new.parametres) = 'object'
+     and new.parametres->>'secret' = 'true' then
+    new.parametres := coalesce(
+      (select jsonb_object_agg(cle, valeur)
+         from jsonb_each(new.parametres) as gardes(cle, valeur)
+        where cle in ('secret', 'carte', 'iccid', 'par', 'langue')),
+      '{}'::jsonb);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists commandes_code_efface on commandes;
+create trigger commandes_code_efface before insert or update on commandes
+  for each row execute function commandes_code_efface();
+
 -- --- Alertes : ce qui va mal, et ce qu'on en a fait ------------------------
 -- Trois heures et jamais moins : ouverte, vue, close. « Vue » n'est pas
 -- « close » — fondre les deux ferait disparaître de l'écran des choses que

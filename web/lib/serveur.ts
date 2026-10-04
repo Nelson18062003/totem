@@ -549,8 +549,20 @@ export async function chargerDonnees(
     // le signe de vie arrivé avant les cartes les déclarait retirées encore
     // une minute. Sorti de la flotte, il ne reviendra pas : retirée.
     const hote = c.terminal ? boitiers.get(c.terminal) : undefined;
-    const presence: Presence = presenceDeLaCarte(
-      boitierVu(hote, plusRecentes, maintenant), c.derniere_vue);
+    const vu = boitierVu(hote, plusRecentes, maintenant);
+    const presence: Presence = presenceDeLaCarte(vu, c.derniere_vue);
+    // L'ÉTAT DE SON BOÎTIER À ELLE — pas celui du boîtier montré en tête
+    // (le dernier entendu). Avec deux boîtiers, le téléphone disait
+    // « Terminal hors ligne » sur la carte d'un boîtier qui parlait, et
+    // datait le silence de l'autre avec l'heure du premier. Et « inconnue »
+    // seule ne dit pas qu'il se tait : elle dit aussi « il vient de
+    // revenir ». Le même verdict que le guichet (`terminalDeLaCarte`) :
+    // l'écran ne met en pause que ce que la plateforme refuserait.
+    // L'instant est celui de `terminal.vuLe` — l'heure où la base l'a
+    // entendu, sur SON horloge. Une carte sans boîtier connu n'en dit rien.
+    const sonBoitier = c.terminal
+      ? { boitierMuet: boitierSansNouvelles(vu.vuIlYa), boitierVuLe: entenduLe(hote) }
+      : {};
     return {
       iccid: c.iccid,
       libelle: compte?.libelle || c.libelle || `Carte ·${c.iccid.slice(-4)}`,
@@ -566,6 +578,7 @@ export async function chargerDonnees(
       signal: signalLu(compte?.signal),
       enPlace: enPlaceSelon(presence),
       presence,
+      ...sonBoitier,
       premiereVue: dateCourte(c.premiere_vue, langue),
       derniereVue: dateCourte(c.derniere_vue, langue),
       nbPaiements: entrees.length,
@@ -1224,9 +1237,21 @@ export async function annulerCommande(
   // sans ceci, le code resterait dans la base pour toujours, sur une ligne
   // « échouée » que personne ne relit. On garde ce que le robot garde — le
   // drapeau, la carte — et la personne, qui dit à qui est la demande.
+  //
+  // SANS RELECTURE, PAS D'ÉCRITURE. `lire` rend une liste VIDE quand la base
+  // hoquette : on ne savait plus si la demande portait un code, on écrivait
+  // quand même l'annulation — qui réussissait — et le code restait dans la
+  // ligne close, pour toujours. Une annulation dont on ne peut pas masquer
+  // le code n'est pas faite : `null`, et l'écran dit « incertaine » (elle
+  // peut encore partir — regardez vos SMS). Une base à jour le retire de
+  // toute façon dans la même écriture que la fermeture (déclencheur
+  // « commandes_code_efface », sql/schema.sql) ; ceci tient la promesse sur
+  // une base qui n'a pas encore reçu la migration.
   const avant = await lire<{ id: number; parametres: Record<string, unknown> | null }>(
     `commandes?select=id,parametres&id=eq.${id}&limit=1`);
-  const parametres = avant.find((x) => x.id === id)?.parametres;
+  const relue = avant.find((x) => x.id === id);
+  if (!relue) return null;
+  const parametres = relue.parametres;
   if (parametres?.secret === true) {
     champs.parametres = Object.fromEntries(Object.entries(parametres)
       .filter(([cle]) => ["secret", "carte", "par", "langue"].includes(cle)));

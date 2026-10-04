@@ -26,11 +26,22 @@
 //     une demande qu'il a prise n'est JAMAIS dite annulée ; on n'annule que
 //     les siennes ;
 //   · LE SIGNAL « 99 » devient inconnu ; l'heure d'un solde vide reste vide ;
+//   · UN SIGNAL FAIBLE se dit pareil partout : la carte que l'accueil
+//     dessine d'une seule barre porte le point ORANGE sur la page Comptes ;
 //   · LA LANGUE DE L'ÉCRAN : le refus et l'annulation parlent la langue que
 //     le téléphone demande (« ?langue=fr »), pas celle d'un cookie qu'il n'a
 //     pas ;
 //   · UN GESTE REJOUÉ pendant que le boîtier se tait retrouve SA demande
 //     (même clé), au lieu de s'entendre dire « rien n'est parti » ;
+//   · CHAQUE CARTE PORTE L'ÉTAT DE SON BOÎTIER (`boitierMuet`,
+//     `boitierVuLe`) — pas celui du boîtier montré en tête : deux boîtiers,
+//     l'un muet, et la carte du muet le dit, avec SON heure ;
+//   · L'ANNULATION SANS RELECTURE : si la plateforme ne peut pas relire la
+//     demande pour en effacer le code secret, elle n'annule pas — et une
+//     base à jour efface le code d'elle-même en fermant la demande ;
+//   · UN TOUR DE TRANSMISSION RATÉ : signe de vie frais, cartes vues 3 min
+//     10 s avant lui par un boîtier qui parle depuis longtemps — « en
+//     place » ou « inconnue », jamais « retirée » ;
 //   · LE RETOUR : le signe de vie revient AVANT les cartes — aucune n'est
 //     dite retirée tant qu'il ne les a pas republiées ;
 //   · UN BOÎTIER QUI NE VOIT PLUS AUCUNE CARTE : retirée une fois le délai de
@@ -170,6 +181,21 @@ async function attendreEtat(id, etat, ms = 6000) {
 const proche = (a, b) => typeof a === "string" && typeof b === "string"
   && Math.abs(Date.parse(a) - Date.parse(b)) < 5000;
 
+// LE POINT DU SIGNAL, sur la page Comptes : force → classe de couleur, lue
+// dans le HTML que la plateforme a VRAIMENT rendu (« 9/31 » suit son point).
+const POINT = /(<span class="size-1\.5 rounded-full )([^"]*?)("\s*><\/span>(?:<!-- -->)?)(\d+)\/31/g;
+const pointsDuSignal = (html) =>
+  new Map([...html.matchAll(POINT)].map((m) => [Number(m[4]), m[2].trim()]));
+/** La même page, chaque point recoloré par une AUTRE expression — celle
+ *  d'avant : le contrôle doit la prendre en défaut. */
+const recolorer = (html, couleur) =>
+  html.replace(POINT, (_, avant, _c, apres, n) => `${avant}${couleur(Number(n))}${apres}${n}/31`);
+/** Les barres de l'accueil : la force annoncée, et combien sont pleines. */
+function barresDeLAccueil(html) {
+  const m = /aria-label="Signal (\d+)\/31"[^>]*>((?:<span[^>]*><\/span>){4})/.exec(html);
+  return m ? { force: Number(m[1]), pleines: (m[2].match(/bg-white\/90/g) ?? []).length } : null;
+}
+
 // LES ANCIENNES RÈGLES — les témoins, réécrits ici en une ligne chacun.
 const ancienneEnPlace = (derniereVue) => Date.now() - Date.parse(derniereVue) < 10 * MIN;
 const ancienEnLigne = (vuLe) => Date.now() - Date.parse(vuLe) < 3 * MIN;
@@ -268,6 +294,43 @@ try {
     await reveiller("douala-faux");
   }
 
+  console.log("\nCHAQUE CARTE PORTE L'ÉTAT DE SON BOÎTIER, PAS CELUI DU BOÎTIER MONTRÉ");
+  {
+    await taire("douala-faux", 11);
+    const d = await lireApi("/api/donnees?sms=0&recus=0", patron);
+    const s = Object.fromEntries((d.sims ?? []).map((x) => [x.iccid, x]));
+    const douala = (await brut("terminaux", "&id=eq.douala-faux"))[0];
+    const akwa = (await brut("terminaux", "&id=eq.akwa-faux"))[0];
+    // LE TÉMOIN : l'écran qui lisait le boîtier d'EN TÊTE — le dernier
+    // entendu — disait la carte de Douala « en ligne », ou la datait de
+    // l'heure d'Akwa.
+    verifier("LE TÉMOIN : le boîtier montré en tête est Akwa, qui parle",
+      [d.terminal?.id, d.terminal?.enLigne], ["akwa-faux", true]);
+    verifier("LE TÉMOIN : son heure n'est pas celle de Douala",
+      proche(d.terminal?.vuLe, douala.entendu_le), false);
+    verifier("les cartes de Douala : leur boîtier se tait",
+      DE_DOUALA.map((i) => s[i]?.boitierMuet), [true, true, true]);
+    verifier("…depuis SON heure à lui, celle où la base l'a entendu",
+      DE_DOUALA.map((i) => proche(s[i]?.boitierVuLe, douala.entendu_le)), [true, true, true]);
+    verifier("la carte d'Akwa : son boîtier parle, avec SON heure",
+      [s[MTN_AKWA]?.boitierMuet, proche(s[MTN_AKWA]?.boitierVuLe, akwa.entendu_le)], [false, true]);
+    // « inconnue » ne veut pas dire « il se tait » : il vient de revenir, et
+    // n'a pas encore republié ses cartes. Rien ne doit se mettre en pause.
+    await reveiller("douala-faux", "plus-tard");
+    const r = Object.fromEntries(((await lireApi("/api/donnees?sms=0&recus=0", patron)).sims ?? [])
+      .map((x) => [x.iccid, x]));
+    verifier("revenu, cartes pas encore relues : « inconnue », mais son boîtier PARLE",
+      [r[MTN_DOUALA]?.presence, r[MTN_DOUALA]?.boitierMuet], ["inconnue", false]);
+    await essai("cartes?terminal=douala-faux");
+    // Une carte dont on ne connaît pas le boîtier n'en dit rien.
+    await essai("carte-sans-boitier?iccid=89237010000000005555");
+    const x = await sims();
+    verifier("une carte sans boîtier connu : ni « muet », ni heure",
+      [Boolean(x["89237010000000005555"]), "boitierMuet" in (x["89237010000000005555"] ?? {}),
+       "boitierVuLe" in (x["89237010000000005555"] ?? {})], [true, false, false]);
+    await essai("carte-sans-boitier?iccid=89237010000000005555&annuler=1");
+  }
+
   console.log("\nRIEN NE PART VERS UN BOÎTIER QUI SE TAIT");
   {
     await taire("douala-faux", 6);
@@ -336,6 +399,47 @@ try {
     verifier("annulée, le code a disparu ; restent le drapeau et la carte",
       [xp.annulee, JSON.stringify(apres).includes("4821"), apres.secret, apres.carte],
       [true, false, true, MTN_DOUALA]);
+
+    // LA RELECTURE QUI ÉCHOUE. Pour effacer le code, la plateforme relit la
+    // demande ; quand la base hoquetait sur cette lecture, `lire` rendait une
+    // liste vide, l'annulation partait SANS masquer… et réussissait : le
+    // code restait dans une demande close, pour toujours. D'abord sur une
+    // base qui n'a pas encore la règle « commandes_code_efface ».
+    await essai("base?effacement=non");
+    const secrete = (texte) => deposer({ type: "ussd_reponse",
+      parametres: { texte, secret: true, carte: MTN_DOUALA } }, patron);
+    const fermerSansRelire = (id) => fetch(`${N}/rest/v1/commandes?id=eq.${id}&etat=eq.en_attente`, {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ etat: "echouee", resultat: "Annulée" }) });
+    const hoquet = async (fois) =>
+      (await (await essai(`hoquet?select=id,parametres&fois=${fois}`)).json()).servis;
+    const pin2 = await secrete("5937");
+    const servisAvant = await hoquet(1);
+    const xh = await annuler(pin2.id, patron, "fr");
+    const servis = (await hoquet(0)) - servisAvant;
+    verifier("LE TÉMOIN : la relecture qui précède l'annulation a bien échoué", servis, 1);
+    const ligne = await commandeBrute(pin2.id);
+    verifier("sans relecture, pas d'annulation : « incertaine » (502), rien d'écrit",
+      [xh.statut, ligne?.etat], [502, "en_attente"]);
+    const temoinPin = await secrete("6048");
+    await fermerSansRelire(temoinPin.id);
+    const t1 = await commandeBrute(temoinPin.id);
+    verifier("LE TÉMOIN : écrite sans relecture, l'annulation laisse le code dans la demande close",
+      [t1?.etat, t1?.parametres?.texte], ["echouee", "6048"]);
+    const redemandee = await annuler(pin2.id, patron, "fr");
+    const apres2 = (await commandeBrute(pin2.id))?.parametres ?? {};
+    verifier("redemandée, la relecture passe : l'annulation prend, et le code s'en va",
+      [redemandee.statut, redemandee.annulee, JSON.stringify(apres2).includes("5937"), apres2.carte],
+      [200, true, false, MTN_DOUALA]);
+    // UNE BASE À JOUR retire le code d'elle-même, dans la MÊME écriture que
+    // la fermeture — même écrite sans relecture.
+    await essai("base?effacement=oui");
+    const basePin = await secrete("7159");
+    await fermerSansRelire(basePin.id);
+    const t2 = await commandeBrute(basePin.id);
+    verifier("une base à jour : fermée sans relecture, la demande perd quand même son code",
+      [t2?.etat, JSON.stringify(t2?.parametres ?? {}).includes("7159"), t2?.parametres?.carte],
+      ["echouee", false, MTN_DOUALA]);
     await allure("normal");
   }
 
@@ -393,6 +497,47 @@ try {
     const s = await sims();
     verifier("la plateforme le rend inconnu (null), pas « 99 »", s[MTN_AKWA]?.signal, null);
     verifier("un vrai signal passe tel quel", s[MTN_DOUALA]?.signal, 22);
+  }
+
+  console.log("\nUN SIGNAL FAIBLE : UNE BARRE SUR L'ACCUEIL, UN POINT ORANGE SUR COMPTES");
+  {
+    // Trois cartes qui n'ont qu'UNE barre (une barre va de 4 à 11 sur 31).
+    // L'ancienne page Comptes (« rouge à 2 et moins ») leur donnait un point
+    // VERT ; le premier seuil commun (7) en laissait encore verte une à
+    // 9/31. Quelle que soit la carte que l'accueil montre, elle est faible.
+    const FORCES = { [MTN_DOUALA]: 9, [ORANGE_DOUALA]: 5, [MTN_AKWA]: 10 };
+    for (const [iccid, valeur] of Object.entries(FORCES)) {
+      await essai(`signal?iccid=${iccid}&valeur=${valeur}`);
+    }
+    const s = await sims();
+    verifier("la plateforme les rend telles quelles",
+      Object.keys(FORCES).map((i) => s[i]?.signal), Object.values(FORCES));
+    const comptes = await page("/cartes", cookie);
+    const points = pointsDuSignal(comptes);
+    verifier("la page Comptes : une barre, un point ORANGE — 9, 5 et 10 sur 31",
+      [points.get(9), points.get(5), points.get(10)], ["bg-alert", "bg-alert", "bg-alert"]);
+    // LES TÉMOINS : la MÊME page, chaque point recoloré par une expression
+    // d'avant, passée au même contrôle. Il doit les prendre en défaut.
+    const site = pointsDuSignal(recolorer(comptes, (n) => (n <= 2 ? "bg-negative" : "bg-positive-vif")));
+    verifier("LE TÉMOIN : l'ancienne page (rouge à 2 et moins) les laisse vertes",
+      [site.get(9), site.get(5), site.get(10)],
+      ["bg-positive-vif", "bg-positive-vif", "bg-positive-vif"]);
+    const sept = pointsDuSignal(recolorer(comptes, (n) => (n <= 7 ? "bg-alert" : "bg-positive-vif")));
+    verifier("LE TÉMOIN : le seuil 7 laisse verte la MTN à 9/31, qui n'a qu'une barre",
+      [sept.get(9), sept.get(5)], ["bg-positive-vif", "bg-alert"]);
+    // UN SEUL VERDICT : la carte que l'accueil dessine avec une barre porte
+    // le point orange sur Comptes. Les barres viennent du noyau, la couleur
+    // aussi — ici, on regarde ce que les DEUX pages ont rendu.
+    const accueil = barresDeLAccueil(await page("/", cookie));
+    verifier("l'accueil dessine sa carte avec une seule barre",
+      [Object.values(FORCES).includes(accueil?.force), accueil?.pleines], [true, 1]);
+    verifier("…et Comptes lui donne le point orange : un seul verdict",
+      points.get(accueil?.force), "bg-alert");
+    // Deux barres : ce n’est plus « faible », le point redevient vert.
+    await essai(`signal?iccid=${MTN_DOUALA}&valeur=12`);
+    verifier("12/31, deux barres : le point est vert",
+      pointsDuSignal(await page("/cartes", cookie)).get(12), "bg-positive-vif");
+    for (const iccid of Object.keys(FORCES)) await essai(`signal?iccid=${iccid}&annuler=1`);
   }
 
   console.log("\nL'HEURE D'UN SOLDE : CELLE DU SOLDE, OU RIEN");
@@ -466,6 +611,36 @@ try {
     await allure("normal");
     verifier("revenu, le boîtier compose la demande — une fois",
       await attendreEtat(premier.id, "faite"), true);
+  }
+
+  console.log("\nUN TOUR DE TRANSMISSION RATÉ : DES CARTES EN RETARD SUR LE SIGNE DE VIE");
+  {
+    // Internet capricieux : le petit signe de vie passe, la poussée des
+    // cartes échoue. Un robot d'hier ne la retentait qu'au tour suivant.
+    await essai("revenu?terminal=douala-faux&minutes=60");
+    await essai("cartes-en-retard?terminal=douala-faux&secondes=190");
+    const t = (await brut("terminaux", "&id=eq.douala-faux"))[0];
+    const cartes = (await brut("cartes"))
+      .filter((c) => [MTN_DOUALA, ORANGE_DOUALA].includes(c.iccid));
+    const retard = (c) => (Date.parse(t.vu_le) - Date.parse(c.derniere_vue)) / 1000;
+    verifier("le nuage porte des cartes vues 3 min 10 s avant un signe de vie frais",
+      [cartes.length, cartes.every((c) => Math.abs(retard(c) - 190) <= 3),
+       (Date.now() - Date.parse(t.entendu_le)) / 1000 < 120], [2, true, true]);
+    verifier("par un boîtier qui parle depuis une heure : il a relu ses puces",
+      (Date.now() - Date.parse(t.revenu_le)) / 1000 > 3000, true);
+    const regleDesTroisMinutes = (c) => (retard(c) > 180 ? "retiree" : "en_place");
+    verifier("LE TÉMOIN : la règle des trois minutes les dit retirées",
+      cartes.map(regleDesTroisMinutes), ["retiree", "retiree"]);
+    const s = await sims();
+    verifier("la plateforme : « en place » ou « inconnue », jamais « retirée »",
+      [MTN_DOUALA, ORANGE_DOUALA].map((i) => ["en_place", "inconnue"].includes(s[i]?.presence)),
+      [true, true]);
+    verifier("…et toujours « en place » pour les applications d'avant",
+      [MTN_DOUALA, ORANGE_DOUALA].map((i) => s[i]?.enPlace), [true, true]);
+    const d = await deposer({ type: "ussd", parametres: { code: "*126#", carte: MTN_DOUALA } },
+      patron, "fr");
+    verifier("une demande sur la MTN part chez lui", [d.statut, d.terminal], [200, "douala-faux"]);
+    await essai("cartes-en-retard?terminal=douala-faux&annuler=1");
   }
 
   console.log("\nAU RETOUR, LES CARTES NE SONT PAS RETIRÉES AVANT D'AVOIR ÉTÉ RELUES");

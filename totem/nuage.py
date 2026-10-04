@@ -50,6 +50,11 @@ LOT = 100           # lignes envoyées par requête
 # plus un. Et un échec se rattrape dix secondes plus tard, pas une minute.
 SIGNE_DE_VIE_DELAI = 5
 SIGNE_DE_VIE_REPRISE = 10
+# LES CARTES SUIVENT LE SIGNE DE VIE (voir `_battre`) : un petit lot — un
+# boîtier porte quelques puces, pas cent — et, s'il n'a pas suivi, trois
+# reprises rapides au plus avant de revenir au pas ordinaire.
+CARTES_DU_SIGNE = 20
+CARTES_REPRISES = 3
 # Après un réveil, on laisse une seconde aux arrivées voisines de rejoindre le
 # même envoi. Trois SMS reçus coup sur coup partent alors ensemble.
 DEBOUNCE = 1
@@ -144,6 +149,9 @@ class Nuage:
         # et ne remette l'ancien chiffre en place.
         self._verrou_signe = threading.RLock()
         self._en_attente_publie = None
+        # Un seul envoi de cartes à la fois, quel que soit le fil (voir
+        # `pousser_cartes`).
+        self._verrou_cartes = threading.Lock()
         # L'heure de la base, la dernière qu'elle a donnée (en-tête « Date »
         # de ses réponses), et l'instant MONOTONE où on l'a lue. Voir
         # `heure_de_la_base`.
@@ -220,7 +228,7 @@ class Nuage:
         return heure + timedelta(seconds=time.monotonic() - lue_a)
 
     def _tenter_insert(self, table, lignes, cle_unicite,
-                       resolution="ignore-duplicates"):
+                       resolution="ignore-duplicates", delai=DELAI):
         """Insertion rejouable qui DIT ce qui s'est passé :
           « ok »     — inséré (les doublons sont ignorés ou fusionnés).
           « reseau » — cloud injoignable ou panne passagère (5xx) : on garde
@@ -250,7 +258,8 @@ class Nuage:
             try:
                 self._requete(
                     "POST", f"{table}?on_conflict={cle_unicite}", lignes,
-                    {"Prefer": f"return=minimal,resolution={resolution}"})
+                    {"Prefer": f"return=minimal,resolution={resolution}"},
+                    delai=delai)
                 self.derniere_erreur = None
                 if retirees:
                     self._signaler_degrade(table, retirees)
@@ -319,7 +328,7 @@ class Nuage:
             pass
 
     def _pousser_lot(self, table, cle_unicite, ids, charge, marquer, sujet,
-                     resolution="ignore-duplicates"):
+                     resolution="ignore-duplicates", delai=None):
         """Envoie un lot avec reprise ligne par ligne : les bonnes lignes
         passent, une ligne refusée pour de bon (4xx propre à elle) est écartée
         et signalée, une coupure garde TOUT pour réessayer. Une colonne
@@ -330,8 +339,12 @@ class Nuage:
         Une seule ligne empoisonnée ne peut donc plus geler toute une file —
         ni pour les paiements, ni pour les événements, ni pour les cartes.
         `marquer(liste_ids)` marque les lignes transmises ; `sujet` les nomme
-        dans les messages."""
-        etat = self._tenter_insert(table, charge, cle_unicite, resolution)
+        dans les messages. `delai` : celui de chaque requête, quand
+        l'appelant ne peut pas attendre le délai ordinaire (le fil du signe
+        de vie)."""
+        en_plus = {} if delai is None else {"delai": delai}
+        etat = self._tenter_insert(table, charge, cle_unicite, resolution,
+                                   **en_plus)
         if etat == "ok":
             marquer(ids)
             return len(ids)
@@ -342,7 +355,8 @@ class Nuage:
             return 0
         envoyes = 0
         for id_local, ligne in zip(ids, charge):
-            e = self._tenter_insert(table, [ligne], cle_unicite, resolution)
+            e = self._tenter_insert(table, [ligne], cle_unicite, resolution,
+                                    **en_plus)
             if e in ("reseau", "schema"):
                 if e == "schema":
                     self._alerter(id_local)
@@ -522,7 +536,7 @@ class Nuage:
         self._raccourcis_publies = lignes
         return True
 
-    def pousser_cartes(self):
+    def pousser_cartes(self, limite=LOT, delai=None):
         """Envoie le registre des cartes vues, y compris celles retirées.
 
         C'est ce qui permet à l'application web de montrer l'historique d'une
@@ -531,31 +545,50 @@ class Nuage:
         De l'IMSI, seuls les cinq premiers chiffres partent : ils donnent le
         pays et l'opérateur, ce qui suffit à expliquer le nom du compte. Le
         reste identifie l'abonné et n'a rien à faire dans le cloud.
+
+        Deux fils l'appellent — celui du signe de vie et celui des
+        transmissions — mais un seul envoi de cartes à la fois : deux envois
+        croisés pouvaient faire arriver une date plus VIEILLE après une plus
+        neuve, et la plateforme aurait gardé la vieille.
         """
-        lignes_locales = self.journal.cartes_non_envoyees(LOT)
+        with self._verrou_cartes:
+            return self._pousser_cartes(limite, delai)
+
+    def _pousser_cartes(self, limite, delai):
+        """`pousser_cartes`, verrou déjà pris."""
+        lignes_locales = self.journal.cartes_non_envoyees(limite)
         if not lignes_locales:
             return 0
         ids = [l[0] for l in lignes_locales]
-        charge = [{
-            "terminal": self.terminal,
-            "iccid": iccid,
-            "imsi_prefixe": (imsi or "")[:5],
-            "operateur": operateur,
-            "libelle": libelle,
-            # Le nom commercial du compte, déclaré depuis Telegram. C'est lui
-            # que l'application web affiche, et qui paraît sur les reçus.
-            "nom": self.journal.identite(iccid)[1] or None,
-            "numero": numero or None,
-            "imei": imei or None,
-            "premiere_vue": _horodatage(premiere),
-            "derniere_vue": _horodatage(derniere),
-        } for (iccid, imsi, operateur, libelle, numero, imei,
-               premiere, derniere) in lignes_locales]
+        # Ce que l'envoi porte, carte par carte : on ne marquera « envoyée »
+        # que la carte qui n'a pas bougé depuis (voir
+        # `marquer_cartes_envoyees`).
+        parties = {}
+        charge = []
+        for (iccid, imsi, operateur, libelle, numero, imei,
+             premiere, derniere) in lignes_locales:
+            nom = self.journal.identite(iccid)[1]
+            parties[iccid] = (derniere, numero or "", nom or "")
+            charge.append({
+                "terminal": self.terminal,
+                "iccid": iccid,
+                "imsi_prefixe": (imsi or "")[:5],
+                "operateur": operateur,
+                "libelle": libelle,
+                # Le nom commercial du compte, déclaré depuis Telegram. C'est
+                # lui que l'application web affiche, et qui paraît sur les
+                # reçus.
+                "nom": nom or None,
+                "numero": numero or None,
+                "imei": imei or None,
+                "premiere_vue": _horodatage(premiere),
+                "derniere_vue": _horodatage(derniere),
+            })
         # « merge » : une carte déjà connue se met à jour (derniere_vue…).
         return self._pousser_lot(
             "cartes", "terminal,iccid", ids, charge,
-            self.journal.marquer_cartes_envoyees, t("card", "carte"),
-            resolution="merge-duplicates")
+            lambda faits: self.journal.marquer_cartes_envoyees(faits, parties),
+            t("card", "carte"), resolution="merge-duplicates", delai=delai)
 
     def pousser_paiements(self):
         """Envoie les SMS pas encore transmis. Renvoie le nombre envoyé.
@@ -948,9 +981,9 @@ class Nuage:
         """Lance la synchronisation en tâche de fond. Sans configuration,
         ne fait rien du tout — le robot fonctionne exactement pareil.
 
-        Deux fils : celui du signe de vie, qui ne fait que ça, à heure fixe ;
-        et celui des transmissions (SMS, événements, cartes, état des SIM).
-        Rend le second."""
+        Deux fils : celui du signe de vie, à heure fixe, suivi de près par
+        les cartes revues depuis ; et celui des transmissions (SMS,
+        événements, le reste des cartes, état des SIM). Rend le second."""
         if not self.actif:
             return None
         self._sante = sante
@@ -967,13 +1000,27 @@ class Nuage:
         self._arret.set()
 
     def _battre(self):
-        """Le fil du signe de vie : à heure fixe, et rien d'autre.
+        """Le fil du signe de vie : à heure fixe — et les cartes avec lui.
 
         Rien ne le retarde — ni une poussée de mille lignes, ni un SMS qui
         réveille la transmission, ni un modem occupé par une session USSD :
         rien de tout cela ne passe par ce fil. Un signe de vie raté se
         retente dix secondes plus tard ; un signe de vie réussi fixe le
         suivant à une pause de son DÉPART, pas de son arrivée.
+
+        LES CARTES PARTENT DANS LA FOULÉE. La plateforme compare la date du
+        signe de vie à la dernière vue de chaque carte pour dire si la puce
+        est encore là. Quand le signe de vie a pris son fil à lui, les
+        cartes sont restées dans le tour des transmissions : la première
+        date montait à l'heure, la seconde à son rythme à elle — l'écart
+        grimpait jusqu'à deux minutes sans incident, et un seul tour de
+        transmission raté (Internet capricieux, un lot de SMS qui traîne)
+        suffisait à faire dire « retirée » d'une carte bien en place. Elles
+        repartent donc ensemble : un petit lot de cartes après chaque signe
+        de vie réussi. Une coupure les fait vieillir ensemble, comme avant.
+        Si les cartes n'ont pas suivi, on retente vite — quelques fois
+        seulement : une table que la base refuse ne doit pas faire parler
+        le boîtier toutes les dix secondes sur le forfait de la boutique.
 
         LE RÉSEAU REVENU NE S'ANNONCE PAS QU'À LA PLATEFORME. Le signe de vie
         retente toutes les dix secondes, la transmission seulement à son
@@ -985,6 +1032,7 @@ class Nuage:
         """
         prochain = time.monotonic()
         echecs = 0
+        reprises_cartes = 0
         while self._marche:
             reste = prochain - time.monotonic()
             if reste > 0 and self._arret.wait(reste):
@@ -1002,10 +1050,37 @@ class Nuage:
                 if echecs or self._en_attente_publie:
                     self._reveil.set()
                 echecs = 0
+                if self._cartes_avec_le_signe():
+                    reprises_cartes = 0
+                elif reprises_cartes < CARTES_REPRISES:
+                    reprises_cartes += 1
+                    prochain = min(prochain, time.monotonic()
+                                   + min(SIGNE_DE_VIE_REPRISE, self.pause))
             else:
                 echecs += 1
                 prochain = time.monotonic() + min(SIGNE_DE_VIE_REPRISE,
                                                   self.pause)
+
+    def _cartes_avec_le_signe(self):
+        """Le petit lot de cartes qui suit un signe de vie réussi (voir
+        `_battre`). Rend False si des cartes attendaient et ne sont pas
+        toutes passées.
+
+        Si le fil des transmissions est déjà en train d'envoyer des cartes,
+        on ne l'attend pas longtemps : elles sont en route."""
+        if not self._verrou_cartes.acquire(timeout=SIGNE_DE_VIE_DELAI):
+            return True
+        try:
+            attendues = len(self.journal.cartes_non_envoyees(CARTES_DU_SIGNE))
+            if not attendues:
+                return True
+            return self._pousser_cartes(
+                CARTES_DU_SIGNE, SIGNE_DE_VIE_DELAI) >= attendues
+        except Exception as e:
+            self.derniere_erreur = str(e)
+            return False
+        finally:
+            self._verrou_cartes.release()
 
     def _apres_la_transmission(self):
         """Fin d'un tour de transmission : ce qui attendait que les SMS soient

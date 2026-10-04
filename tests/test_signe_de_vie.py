@@ -19,10 +19,13 @@ fil, réécrit en vingt lignes : si les mêmes exigences PASSAIENT sur lui, la
 mesure ne verrait rien, et l'essai s'arrête en le disant.
 """
 
+import itertools
 import json
 import threading
 import time
+import types
 import unittest
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import totem.nuage as module_nuage
@@ -47,6 +50,14 @@ class Banc:
         self.panne = False
         self.signes_refuses = 0     # combien de signes de vie refuser encore
         self.lenteur_paiements = 0.0
+        # Les SMS qui traînent PUIS échouent : ils restent en attente, et
+        # chaque tour de transmission les retente — et traîne encore.
+        self.paiements_en_panne = False
+        # Les cartes : (instant d'arrivée, [(iccid, derniere_vue)…]).
+        self.cartes = []
+        self.cartes_refusees = 0    # combien d'envois de cartes refuser encore
+        self.cartes_tentees = []    # (instant, refusé ?) de chaque envoi de cartes
+        self.pendant_cartes = None  # appelé PENDANT qu'un envoi de cartes arrive
         self.verrou = threading.Lock()
         banc = self
 
@@ -71,9 +82,26 @@ class Banc:
                     return
                 if table == "paiements":
                     time.sleep(banc.lenteur_paiements)
+                    if banc.paiements_en_panne:
+                        soi.send_error(503)
+                        return
                     with banc.verrou:
                         banc.paiements.extend(corps)
                         banc.paiements_le.append(time.monotonic())
+                if table == "cartes":
+                    if banc.pendant_cartes:
+                        banc.pendant_cartes()
+                    with banc.verrou:
+                        refuse = banc.cartes_refusees > 0
+                        if refuse:
+                            banc.cartes_refusees -= 1
+                        banc.cartes_tentees.append((time.monotonic(), refuse))
+                        if not refuse:
+                            banc.cartes.append((time.monotonic(), [
+                                (c["iccid"], c["derniere_vue"]) for c in corps]))
+                    if refuse:
+                        soi.send_error(503)
+                        return
                 soi.send_response(201)
                 soi.end_headers()
 
@@ -367,6 +395,329 @@ class SigneDeVie(unittest.TestCase):
         self.assertTrue(pont.enregistrer_terminal())
         (_, sante), = banc.signes
         self.assertEqual(sante.get("en_attente"), 1)
+
+
+ICCID = "89237010000000008901"
+
+
+def carte_vue():
+    """La puce que le poste d'une carte relit, comme `voir_carte` la reçoit."""
+    return types.SimpleNamespace(iccid=ICCID, imsi="624010000000001",
+                                 operateur="MTN", libelle="MTN ·8901",
+                                 numero="")
+
+
+def horloge_qui_avance(journal):
+    """Le journal date à la SECONDE : deux relectures dans la même seconde
+    portent la même date, et l'essai ne verrait pas la plus neuve. Chaque
+    relecture reçoit ici une date à elle, une seconde après la précédente."""
+    depart = datetime(2026, 10, 4, 14, 5, 0)
+    n = itertools.count()
+    journal._maintenant = lambda: (
+        depart + timedelta(seconds=next(n))).isoformat(timespec="seconds")
+
+
+class NuageSansCartesAuSigne(Nuage):
+    """LE TÉMOIN : le pont d'hier. Le signe de vie a son fil ; les cartes
+    restent dans le tour des transmissions, à leur rythme."""
+
+    def _cartes_avec_le_signe(self):
+        return True
+
+
+class NuageSansReprise(Nuage):
+    """LE TÉMOIN de la reprise : les cartes suivent le signe de vie, mais un
+    envoi raté attend le signe de vie suivant — une pause entière."""
+
+    def _cartes_avec_le_signe(self):
+        super()._cartes_avec_le_signe()
+        return True
+
+
+class LesCartesSuiventLeSigneDeVie(unittest.TestCase):
+    """La plateforme dit une carte RETIRÉE quand sa dernière vue a trop de
+    retard sur le signe de vie. Les deux dates doivent donc voyager
+    ensemble : un signe de vie qui arrive sans les cartes revues avant lui
+    creuse l'écart — et un tour de transmission raté suffisait à le porter
+    au-delà du seuil, sur une carte bien en place."""
+
+    def setUp(self):
+        self.vrais = (module_nuage.DEBOUNCE, module_nuage.SIGNE_DE_VIE_REPRISE,
+                      module_nuage.CARTES_REPRISES)
+        module_nuage.DEBOUNCE = 0.0
+        self.bancs, self.ponts = [], []
+
+    def tearDown(self):
+        for pont in self.ponts:
+            pont.arreter()
+        for banc in self.bancs:
+            banc.fermer()
+        (module_nuage.DEBOUNCE, module_nuage.SIGNE_DE_VIE_REPRISE,
+         module_nuage.CARTES_REPRISES) = self.vrais
+
+    def monter(self, classe, pause):
+        banc = Banc()
+        journal = Journal(":memory:")
+        horloge_qui_avance(journal)
+        pont = classe(banc.url, "cle", "douala", journal, pause=pause)
+        self.bancs.append(banc)
+        self.ponts.append(pont)
+        return banc, journal, pont
+
+    def deux_fois(self, scenario, temoin):
+        manques = scenario(Nuage)
+        self.assertEqual(manques, [], "le pont d'aujourd'hui")
+        self.assertNotEqual(
+            scenario(temoin), [],
+            "LE TÉMOIN PASSE : le pont d'avant tient les mêmes exigences, "
+            "l'essai ne mesure donc rien")
+
+    @staticmethod
+    def battre_seul(pont):
+        """Le fil du signe de vie, sans celui des transmissions : ce qui
+        part, c'est lui qui l'envoie."""
+        fil = threading.Thread(target=pont._battre, daemon=True)
+        fil.start()
+        return fil
+
+    def test_une_transmission_qui_traine_ne_retarde_plus_les_cartes(self):
+        """Des SMS en souffrance : chaque tour de transmission les retente et
+        traîne 2,5 s avant d'échouer. Le signe de vie, lui, part toutes les
+        0,5 s. Le poste de la carte la relit toutes les 0,25 s. Chaque date
+        de relecture doit arriver au nuage dans la foulée du signe de vie
+        suivant — pas au tour de transmission suivant."""
+        pause = 0.5
+
+        def scenario(classe):
+            banc, journal, pont = self.monter(classe, pause)
+            banc.lenteur_paiements = 2.5
+            banc.paiements_en_panne = True
+            journal.sms("MobileMoney", "Vous avez recu 5 000 FCFA de 677000111", "MTN")
+            journal.voir_carte(carte_vue())
+            pont.demarrer()
+            relectures = []
+            fin = time.monotonic() + 4.0
+            while time.monotonic() < fin:
+                time.sleep(0.25)
+                journal.voir_carte(carte_vue())
+                ((date,),) = journal.conn.execute(
+                    "SELECT derniere_vue FROM cartes WHERE iccid = ?", (ICCID,))
+                relectures.append((time.monotonic(), date))
+            # De quoi laisser arriver le tour de transmission suivant : le
+            # témoin doit sortir un retard MESURÉ, pas un « jamais ».
+            time.sleep(3.0)
+            pont.arreter()
+            with banc.verrou:
+                arrivees = [(t, max(d for _, d in lot)) for t, lot in banc.cartes]
+            retards = []
+            for vue_a, date in relectures[:-4]:
+                recues = [t for t, d in arrivees
+                          if module_nuage._horodatage(date) <= d and t >= vue_a]
+                retards.append(min(recues) - vue_a if recues else float("inf"))
+            pire = max(retards)
+            if pire > pause + 0.4:
+                return [f"une date de relecture a mis {pire:.2f} s à arriver "
+                        f"(signe de vie toutes les {pause} s)"]
+            return []
+
+        self.deux_fois(scenario, NuageSansCartesAuSigne)
+
+    def test_un_envoi_de_cartes_rate_se_retente_vite(self):
+        """Le signe de vie passe, les cartes qui le suivent sont refusées
+        (un hoquet). Elles repartent dix secondes plus tard — ici 0,1 s —
+        et non au signe de vie suivant, une pause entière (ici 2 s)."""
+        module_nuage.SIGNE_DE_VIE_REPRISE = 0.1
+        pause = 2.0
+
+        def scenario(classe):
+            banc, journal, pont = self.monter(classe, pause)
+            banc.cartes_refusees = 1
+            journal.voir_carte(carte_vue())
+            self.battre_seul(pont)
+            time.sleep(1.0)
+            pont.arreter()
+            with banc.verrou:
+                tentees = list(banc.cartes_tentees)
+                arrivees = list(banc.cartes)
+            if not tentees or not tentees[0][1]:
+                return ["le premier envoi de cartes n'a pas été refusé"]
+            if not arrivees:
+                return ["après le hoquet, les cartes ne sont pas reparties dans la seconde"]
+            ecart = arrivees[0][0] - tentees[0][0]
+            if ecart > 0.6:
+                return [f"les cartes sont reparties {ecart:.2f} s après le hoquet"]
+            return []
+
+        self.deux_fois(scenario, NuageSansReprise)
+
+    def test_une_table_refusee_ne_fait_pas_parler_le_boitier_sans_fin(self):
+        """La base refuse les cartes pour de bon. Le boîtier retente vite
+        TROIS fois, puis revient au pas ordinaire : il ne parle pas toutes
+        les dix secondes sur le forfait de la boutique."""
+        module_nuage.SIGNE_DE_VIE_REPRISE = 0.05
+        pause = 1.0
+
+        def scenario(reprises):
+            module_nuage.CARTES_REPRISES = reprises
+            banc, journal, pont = self.monter(Nuage, pause)
+            banc.cartes_refusees = 10 ** 6
+            journal.voir_carte(carte_vue())
+            self.battre_seul(pont)
+            time.sleep(1.5)
+            pont.arreter()
+            with banc.verrou:
+                return len(banc.signes)
+
+        # Un signe de vie, trois reprises, puis un au bout d'une pause.
+        self.assertLessEqual(scenario(3), 6)
+        # LE TÉMOIN : sans borne, il en envoie vingt fois plus.
+        self.assertGreater(scenario(10 ** 6), 12,
+                           "le témoin devait parler sans fin : l'essai ne "
+                           "mesure rien")
+
+
+class LaCourseDuMarquage(unittest.TestCase):
+    """L'envoi lit la carte, part sur le réseau, puis la marque « envoyée ».
+    Une relecture tombée PENDANT l'envoi remettait `envoye` à 0 — et le
+    marquage l'effaçait : la date neuve restait dans le Pi, la plateforme
+    gardait l'ancienne jusqu'à la relecture suivante."""
+
+    def pousser_pendant(self, geste, marquage_d_avant=False):
+        banc = Banc()
+        self.addCleanup(banc.fermer)
+        journal = Journal(":memory:")
+        horloge_qui_avance(journal)
+        journal.voir_carte(carte_vue())
+        if marquage_d_avant:
+            vrai = journal.marquer_cartes_envoyees
+            journal.marquer_cartes_envoyees = (
+                lambda iccids, telles_que_parties=None: vrai(iccids))
+        pont = Nuage(banc.url, "cle", "douala", journal)
+        banc.pendant_cartes = lambda: (geste(journal), setattr(banc, "pendant_cartes", None))
+        self.assertEqual(pont.pousser_cartes(), 1)
+        return journal
+
+    def test_une_relecture_pendant_l_envoi_repart(self):
+        journal = self.pousser_pendant(lambda j: j.voir_carte(carte_vue()))
+        attente = journal.cartes_non_envoyees()
+        self.assertEqual(len(attente), 1, "la date neuve s'est perdue")
+        self.assertEqual(attente[0][-1], "2026-10-04T14:05:01")
+
+    def test_un_nom_change_pendant_l_envoi_repart(self):
+        journal = self.pousser_pendant(
+            lambda j: j.definir_identite(ICCID, nom="ETS NKENGAFAC"))
+        self.assertEqual(len(journal.cartes_non_envoyees()), 1,
+                         "le nom déclaré pendant l'envoi s'est perdu")
+
+    def test_une_carte_qui_n_a_pas_bouge_est_marquee(self):
+        journal = self.pousser_pendant(lambda j: None)
+        self.assertEqual(journal.cartes_non_envoyees(), [])
+
+    def test_temoin_le_marquage_d_avant_perdait_la_relecture(self):
+        journal = self.pousser_pendant(lambda j: j.voir_carte(carte_vue()),
+                                       marquage_d_avant=True)
+        self.assertEqual(journal.cartes_non_envoyees(), [],
+                         "le témoin devait perdre la date neuve : sans cela, "
+                         "l'essai ne prouve rien")
+
+
+class VerrouQuiNeRetientPersonne:
+    """Le verrou du témoin : il dit oui à tout le monde, tout de suite."""
+
+    def acquire(self, blocking=True, timeout=-1):
+        return True
+
+    def release(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class NuageSansVerrouDesCartes(Nuage):
+    """LE TÉMOIN : le pont d'aujourd'hui, moins le verrou des cartes — deux
+    envois partis de deux fils peuvent se croiser."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._verrou_cartes = VerrouQuiNeRetientPersonne()
+
+
+class DeuxEnvoisDeCartesCroises(unittest.TestCase):
+    """Deux fils envoient des cartes : celui du signe de vie
+    (`_cartes_avec_le_signe`) et celui des transmissions (`pousser_cartes`).
+
+    LA COURSE. Le premier lit la carte (date d1) et part. Le poste de la
+    carte la relit (d2). Le second lit d2 et part. Sa requête arrive la
+    PREMIÈRE ; celle de d1 arrive après, et la fusion de la base garde d1.
+    Le marquage conditionnel ne rattrape rien ici : le premier ne marque pas
+    (d1 n'est plus la date du Pi), le second marque (d2 l'est). Le nuage
+    garde la vieille date, le Pi croit lui avoir donné la neuve — et
+    l'écart avec le signe de vie grandit d'une relecture, de quoi
+    rapprocher une carte bien en place du verdict « retirée ».
+
+    Le banc RETIENT le premier envoi pendant la relecture et le départ du
+    second ; il ne le lâche qu'une fois le second arrivé — ou au bout de
+    0,6 s, si le second attend son tour comme il le doit.
+
+    L'exigence : la dernière date que le nuage a reçue est la plus neuve du
+    Pi — ou la carte reste à envoyer."""
+
+    def croiser(self, classe, premier, second):
+        banc = Banc()
+        self.addCleanup(banc.fermer)
+        journal = Journal(":memory:")
+        horloge_qui_avance(journal)
+        journal.voir_carte(carte_vue())                       # d1
+        pont = classe(banc.url, "cle", "douala", journal)
+        retenu, lache, second_arrive = (threading.Event() for _ in range(3))
+        rang = itertools.count()
+
+        def pendant():
+            if next(rang) == 0:
+                retenu.set()
+                lache.wait(5)
+            else:
+                second_arrive.set()
+
+        banc.pendant_cartes = pendant
+        fil1 = threading.Thread(target=getattr(pont, premier), daemon=True)
+        fil1.start()
+        if not retenu.wait(5):
+            return ["le premier envoi n'est jamais arrivé au banc"]
+        journal.voir_carte(carte_vue())                       # d2, pendant l'envoi
+        fil2 = threading.Thread(target=getattr(pont, second), daemon=True)
+        fil2.start()
+        second_arrive.wait(0.6)
+        lache.set()
+        fil1.join(10)
+        fil2.join(10)
+        ((neuve,),) = journal.conn.execute(
+            "SELECT derniere_vue FROM cartes WHERE iccid = ?", (ICCID,))
+        with banc.verrou:
+            recues = [d for _, lot in banc.cartes for i, d in lot if i == ICCID]
+        if len(recues) < 2:
+            return [f"{len(recues)} envoi(s) arrivé(s) sur 2 : le scénario n'est pas monté"]
+        if recues[-1] == module_nuage._horodatage(neuve) or journal.cartes_non_envoyees():
+            return []
+        return [f"le nuage garde {recues[-1]}, le Pi a {neuve} et la croit envoyée"]
+
+    def deux_fois(self, premier, second):
+        self.assertEqual(self.croiser(Nuage, premier, second), [],
+                         "le pont d'aujourd'hui")
+        self.assertNotEqual(
+            self.croiser(NuageSansVerrouDesCartes, premier, second), [],
+            "LE TÉMOIN PASSE : sans le verrou, les envois ne se croisent pas "
+            "— l'essai ne mesure donc rien")
+
+    def test_le_signe_de_vie_d_abord_les_transmissions_ensuite(self):
+        self.deux_fois("_cartes_avec_le_signe", "pousser_cartes")
+
+    def test_les_transmissions_d_abord_le_signe_de_vie_ensuite(self):
+        self.deux_fois("pousser_cartes", "_cartes_avec_le_signe")
 
 
 class SignalInconnu(unittest.TestCase):

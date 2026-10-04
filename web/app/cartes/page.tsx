@@ -6,6 +6,7 @@ import { IconWallet } from "../icons";
 import { LogoOperateur, operateurReconnu } from "../logos-operateurs";
 import { Vide } from "../vide";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { signalFaible } from "@noyau/boitier";
 
 export const dynamic = "force-dynamic";
 
@@ -75,13 +76,16 @@ export default async function Comptes() {
                   )}
                 </div>
                 {/* Le signal : 0 à 31, ou « inconnu » — jamais « 99/31 » sur
-                    une pastille verte. Figé (grisé) quand le boîtier se tait. */}
+                    une pastille verte. Figé (grisé) quand le boîtier se tait.
+                    « Faible » se décide dans le noyau, une fois pour le site
+                    et le téléphone, et sur le dessin des barres : la carte
+                    qui n'a qu'une barre sur l'accueil a ici un point orange. */}
                 <span className={`flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
                   i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
                 }`}>
                   <span className={`size-1.5 rounded-full ${
                     s.signal == null || s.presence === "inconnue" ? "bg-ink-faint"
-                      : s.signal <= 2 ? "bg-negative" : "bg-positive-vif"}`} />
+                      : signalFaible(s.signal) ? "bg-alert" : "bg-positive-vif"}`} />
                   {s.signal == null ? t.signalInconnu : `${s.signal}/31`}
                 </span>
               </div>

@@ -816,6 +816,39 @@ maintenant, et ne dit « rien n'est parti » que si l'annulation a PRIS ; le
 robot, lui, ne compose jamais une demande de plus d'une minute, mesurée sur
 l'horloge de la base.
 
+**Chaque morceau était juste ; c'est aux JOINTURES qu'il cassait.** Une
+relecture des passages entre le téléphone, la plateforme et le robot a
+retenu vingt défauts qu'aucun harnais d'un seul côté ne pouvait voir :
+
+- **Une carte se met en pause d'après SON boîtier, pas celui d'en tête.**
+  Avec deux boîtiers, l'accueil prenait l'état du premier venu ; et une carte
+  « inconnue » — son boîtier vient de revenir — passait pour hors ligne. La
+  plateforme dit maintenant, carte par carte, si le boîtier qui la porte se
+  tait (`boitierMuet`, `boitierVuLe`), et le téléphone n'a qu'une règle
+  (`carteEnPause`).
+- **« Cette alerte disparaît d'elle-même » était une promesse fausse.** Rien
+  ne relit sans un geste — pas de pouls, à dessein : le propriétaire qui
+  venait de rebrancher le boîtier voyait l'alerte rester. La fiche dit
+  « Revérifier », et se referme quand le boîtier est revenu.
+- **Un code secret ne se dit jamais « réessayez ».** Quand l'envoi de la
+  réponse n'est pas confirmé, elle est peut-être déjà partie chez
+  l'opérateur : réessayer, c'est risquer le transfert deux fois. L'écran dit
+  « la demande peut quand même aboutir — regardez vos SMS ». Et une demande
+  close perd son code dans la MÊME écriture (`commandes_code_efface`) : une
+  annulation qui ne relit pas la ligne n'écrit plus rien.
+- **Un seuil, un dessin.** « Signal faible » valait 2 sur le site, 7 sur le
+  téléphone, et « une barre » couvrait 4 à 11 : une MTN à 9/31 montrait UNE
+  barre et un point VERT. `signalFaible` et `barresDuSignal` vivent dans le
+  noyau, et un test balaie les 32 forces contre le dessin.
+- **Une date d'avant la coupure n'est pas une relecture.** Après deux à cinq
+  minutes sans courant, la carte la plus récente datait d'AVANT : à moins de
+  cinq minutes du premier signe de vie, elle passait pour relue, et une carte
+  vue un peu plus tôt était dite « retirée ». Une carte ne prouve la
+  relecture que vue APRÈS le retour, que la base date (`revenu_le`).
+- **Le signe de vie et les cartes repartent ensemble**, un seul envoi de
+  cartes à la fois : deux envois croisés laissaient la date ancienne arriver
+  la dernière, et le Pi croyait la neuve envoyée.
+
 **Les deux paquets tiennent la même promesse.** `verifier-le-paquet` ne
 regardait qu'Android, parce qu'il n'y avait qu'Android ; un secret qui
 fuirait dans le paquet iPhone fuirait tout autant — une application installée

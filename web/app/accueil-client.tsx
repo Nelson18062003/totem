@@ -19,6 +19,7 @@ import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
 import type { ClientRecent } from "@noyau/recents";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { barresDuSignal } from "@noyau/boitier";
 
 /** Le signal en quatre barres — rempli au niveau, lisible sans chiffres.
  *
@@ -29,7 +30,9 @@ import { jourCourt, jourDuReleve } from "@noyau/periodes";
 function BarresSignal({ niveau, fige, inconnu }: {
   niveau: number | null; fige: boolean; inconnu: string;
 }) {
-  const pleines = niveau == null ? 0 : Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+  // Le dessin vient du noyau : c'est sur lui que se règle le point « faible »
+  // de l'onglet Comptes — une barre ou moins, et il est orange.
+  const pleines = barresDuSignal(niveau);
   const libelle = niveau == null ? inconnu : `Signal ${niveau}/31`;
   return (
     <span className={`flex shrink-0 items-end gap-[3px] pb-1 ${fige ? "opacity-50" : ""}`} role="img"

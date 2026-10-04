@@ -25,6 +25,7 @@ import { LogoOperateur, couleurOperateur, operateurReconnu } from "@/logos-opera
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
+import { barresDuSignal, signalLu } from "@noyau/boitier";
 import { nombre, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import type { Langue } from "@noyau/langue";
@@ -41,10 +42,13 @@ export const RAPPORT_CARTE = 85.6 / 53.98;
  *  quand il ne sait pas — antenne débranchée, zone sans couverture —, et
  *  99 / 31 × 4, ramené à 4, dessinait un signal parfait. Hors de 0..31, le
  *  signal est INCONNU : aucune barre pleine. Et quand le boîtier se tait,
- *  le relevé est figé : les barres pâlissent plutôt que d'affirmer. */
+ *  le relevé est figé : les barres pâlissent plutôt que d'affirmer.
+ *
+ *  Le dessin vient du noyau (`barresDuSignal`), comme celui du site : c'est
+ *  sur lui que se règle « signal faible » — une barre ou moins. */
 function BarresSignal({ niveau, fige }: { niveau: number; fige: boolean }) {
-  const inconnu = !(niveau >= 0 && niveau <= 31);
-  const pleines = inconnu ? 0 : Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+  const inconnu = signalLu(niveau) === null;
+  const pleines = barresDuSignal(niveau);
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3,
                    opacity: fige ? 0.4 : 1 }}
