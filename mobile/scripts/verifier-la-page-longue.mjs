@@ -146,8 +146,21 @@ try {
   console.log("\nLa page suivante :");
   await suivant.click();
   const menu = await attendreUnDe([/Confirm\b/]);
-  const confirmer = visible("button", /^1\s*Confirm$|^Confirm$/);
+  // CHAQUE LIGNE UNE SEULE FOIS : le titre dans la carte, « 1. Confirm » en
+  // tuile à sa place. Une version affichait le message entier PUIS chaque
+  // choix en tuile — neuf lignes en devenaient dix-huit, et la case de
+  // réponse partait sous le pli. Le propriétaire : « tu as tué
+  // l'expérience ».
+  const confirmer = visible("button", /^1\s*[.):-]?\s*Confirm$|^Confirm$/);
   if (!verdict(Boolean(menu) && await confirmer.count() > 0, "« Confirm » est un bouton")) throw new Error("arrêt");
+  const ecranMenu = await texte();
+  const fois = (ecranMenu.match(/Cancel/g) ?? []).length;
+  verdict(fois === 1, "chaque choix ne s'affiche qu'une fois", `« Cancel » ${fois} fois`);
+  const boite = await page.locator("input:visible").last().boundingBox();
+  const hauteur = page.viewportSize()?.height ?? 0;
+  verdict(Boolean(boite) && boite.y + boite.height <= hauteur,
+          "la case de réponse est à l'écran sans défiler",
+          boite ? `bas à ${Math.round(boite.y + boite.height)} pour ${hauteur}` : "introuvable");
   await confirmer.click();
   if (!verdict(Boolean(await attendreUnDe([/Entrez votre code secret/])), "le pavé du code secret arrive")) {
     throw new Error("arrêt");
@@ -166,7 +179,7 @@ try {
   const ecranApres = await texte();
   verdict(Boolean(apres) && /Confirmez-vous/.test(ecranApres) && !/^Terminé$/m.test(ecranApres),
           "la question qui suit le code s'affiche, sans « Terminé »");
-  const oui = visible("button", /^1\s*Oui$|^Oui$/);
+  const oui = visible("button", /^1\s*[.):-]?\s*Oui$|^Oui$/);
   if (!verdict(await oui.count() > 0, "« Oui » est un bouton")) throw new Error("arrêt");
   await oui.click();
   verdict(Boolean(await attendreUnDe([/effectue avec succes/])), "l'opération va jusqu'au bout");

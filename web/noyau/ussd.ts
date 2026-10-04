@@ -469,3 +469,86 @@ function lireLeTexte(brut: string | null | undefined): EcranReseau {
   if (fin) return { texte: question, choix, attend: "choix", issue: null, parleDuCode };
   return { texte, choix: [], attend: "rien", issue: issueDe(texte), parleDuCode };
 }
+
+// ---------------------------------------------------------------------------
+// LE MESSAGE SE LIT DANS SON ORDRE, ET UNE SEULE FOIS.
+//
+// Les choix d'un menu sont des TUILES qu'on touche — c'est ce que le
+// propriétaire aimait. Mais chaque ligne de l'opérateur doit rester
+// quelque part, à sa place, et une seule fois :
+//
+//   — une version retirait « 00. Next » sans le montrer nulle part :
+//     « pourquoi tu as supprimé ça du message de l'opérateur ? » ;
+//   — la suivante affichait le message entier PUIS chaque choix en tuile :
+//     neuf lignes en devenaient dix-huit, « tu as tué l'expérience ».
+//
+// On découpe donc le message en lignes, dans l'ordre : une ligne qui porte
+// UN choix devient sa tuile, à l'endroit où l'opérateur l'a écrite ; les
+// autres restent du texte (le titre, « … », une mise en garde). Ce qui ne
+// tient pas sur une ligne à lui — deux choix sur une ligne (« 00.Next
+// 0.Back »), une navigation collée à la phrase (« …815. 00. Next ») —
+// reste dans le texte tel quel et ressort dans `restants`, en tuiles sous
+// le message.
+// ---------------------------------------------------------------------------
+
+/** Une ligne du message, telle que l'opérateur l'a écrite ; `numero` si
+ *  la toucher revient à répondre ce choix. */
+export type LigneDuMessage = { texte: string; numero?: string; libelle?: string };
+
+const RE_DEBUT_DE_CHOIX = /^[ \t]*(\d{1,2}|[#*])[ \t]*(?:[.):>\-][ \t]*|[ \t]+)?(.*?)[ \t]*$/;
+
+export function lignesDuMessage(
+  texte: string | null | undefined, choix: readonly ChoixReseau[],
+): { lignes: LigneDuMessage[]; restants: ChoixReseau[] } {
+  const lignes: LigneDuMessage[] = [];
+  const pris = new Set<ChoixReseau>();
+  for (const brute of (texte ?? "").replace(/\r/g, "").split("\n")) {
+    const m = RE_DEBUT_DE_CHOIX.exec(brute);
+    const c = m ? choix.find((x) => !pris.has(x) && x.numero === m[1]
+                                    && x.libelle === m[2]) : undefined;
+    if (c) { pris.add(c); lignes.push({ texte: brute, numero: c.numero, libelle: c.libelle }); }
+    else lignes.push({ texte: brute });
+  }
+  // UNE SEULE LIGNE DE CHOIX NE FAIT PAS UN MENU. « …having mobile number
+  // 237…. / 00. Next » est une page de texte qui se tourne : son message
+  // reste ENTIER dans la carte — le propriétaire l'a demandé —, et « Next »
+  // se touche sous lui.
+  if (lignes.filter((l) => l.numero).length < 2) {
+    for (const l of lignes) { delete l.numero; delete l.libelle; }
+    pris.clear();
+  }
+  // Les blancs du bout ne s'affichent pas ; ceux du milieu, si — l'opérateur
+  // les a mis (« …8:Bank & Finance / / … / 9:Next »).
+  while (lignes.length && !lignes[lignes.length - 1].texte.trim()) lignes.pop();
+  while (lignes.length && !lignes[0].texte.trim()) lignes.shift();
+  return { lignes, restants: choix.filter((x) => !pris.has(x)) };
+}
+
+/** Un morceau de ce qui suit le titre : une tuile, ou du texte de l'opérateur. */
+export type MorceauDuMenu =
+  | { texte: string; numero?: undefined; libelle?: undefined }
+  | { texte: string; numero: string; libelle: string };
+
+/**
+ * Le titre (ce qui précède le premier choix sur sa ligne, mot pour mot) et
+ * la suite, dans l'ordre : tuiles et lignes de texte. Sans choix sur une
+ * ligne à lui, le titre est le message entier. Les lignes de texte qui se
+ * suivent restent un seul morceau ; les blancs entre deux tuiles tombent —
+ * l'espace entre tuiles les remplace.
+ */
+export function menuEnTuiles(lignes: readonly LigneDuMessage[]): {
+  titre: string; suite: MorceauDuMenu[];
+} {
+  const premier = lignes.findIndex((l) => l.numero);
+  if (premier < 0) return { titre: lignes.map((l) => l.texte).join("\n"), suite: [] };
+  const titre = lignes.slice(0, premier).map((l) => l.texte).join("\n").trim();
+  const suite: MorceauDuMenu[] = [];
+  for (const l of lignes.slice(premier)) {
+    if (l.numero) { suite.push({ texte: l.texte, numero: l.numero, libelle: l.libelle ?? l.texte.trim() }); continue; }
+    const avant = suite[suite.length - 1];
+    if (avant && !avant.numero) avant.texte += `\n${l.texte}`;
+    else suite.push({ texte: l.texte });
+  }
+  for (const m of suite) if (!m.numero) m.texte = m.texte.trim();
+  return { titre, suite: suite.filter((m) => m.numero || m.texte) };
+}
