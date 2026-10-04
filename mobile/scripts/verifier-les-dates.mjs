@@ -101,6 +101,19 @@ const moisDernier = mo === 1 ? `${an - 1}-12` : `${an}-${String(mo - 1).padStart
 const choisis = { de: `${moisDernier}-05`, a: `${moisDernier}-09` };
 const plusAncienDesDeuxCents = lignes[Math.min(199, lignes.length - 1)]?.jour ?? aujourdhui;
 
+// MA VÉRITÉ DOIT COUVRIR LES JOURS CHOISIS. Elle ne lit que les mille SMS les
+// plus récents ; sur une caisse semée deux fois (quarante par jour), ils ne
+// remontaient plus jusqu'au 5 du mois dernier, et le harnais concluait
+// « la plateforme : 0 » — puis accusait l'écran, qui montrait cent SMS.
+// Une vérité trop courte ne témoigne de rien : on s'arrête, et on le dit.
+const plusAncienLu = lignes[lignes.length - 1]?.jour ?? aujourdhui;
+if (lignes.length >= 1000 && plusAncienLu > choisis.de) {
+  console.error(`\n✗ Ma vérité ne couvre pas les jours choisis : les mille SMS lus ne remontent `
+    + `qu'au ${plusAncienLu}, après le ${choisis.de}.\n  Semez la caisse UNE fois `
+    + "(voir l'en-tête), sur un faux nuage neuf.");
+  process.exit(1);
+}
+
 const PERIODES = [
   ["Today", aujourdhui, aujourdhui],
   ["Yesterday", decaler(aujourdhui, -1), decaler(aujourdhui, -1)],
