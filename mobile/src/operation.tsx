@@ -50,7 +50,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert, Clipboard, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
+  Alert, Keyboard, KeyboardAvoidingView, Modal, Pressable, View,
   useWindowDimensions,
 } from "react-native";
 import {
@@ -65,10 +65,15 @@ import { Icone, type NomIcone } from "@/icones";
 import {
   couleurOperateur, couleurs, espaces, polices, rayons, textes,
 } from "@/theme/jetons";
-import { agirSurBeneficiaire, deposerCommande, lireCommande } from "@/api/guichet";
+import {
+  agirSurBeneficiaire, annulerCommande, deposerCommande, ErreurGuichet, lireCommande,
+} from "@/api/guichet";
+import { useSession } from "@/session";
 import { useLangue } from "@/langue";
 import { toucherDepart, toucherEchec, toucherReussite } from "@/toucher";
+import { copierTexte } from "@/presse-papiers";
 import { remplirVariables } from "@noyau/codes";
+import { issueDeLAnnulation, phraseDAbandon } from "@noyau/abandon";
 import {
   champPourQuestion, demandeUnCode, lireEcran, type TypeChamp,
 } from "@noyau/ussd";
@@ -111,10 +116,16 @@ export type Operation = {
 
 type Msg = { de: "reseau" | "vous"; texte: string };
 
-// Combien de fois on interroge la base en attendant la réponse du réseau.
-// 25 × 1,2 s ≈ trente secondes : au-delà, le terminal est considéré muet.
-const TOURS = 25;
+// COMBIEN DE TEMPS on attend la réponse du boîtier — À L'HORLOGE. On
+// comptait des TOURS (25 × 1,2 s ≈ 30 s), mais chaque relecture peut prendre
+// jusqu'à trente secondes sur un mauvais réseau : l'écran « On parle à MTN… »
+// durait alors jusqu'à six minutes et quarante-cinq secondes. Trente
+// secondes, c'est trente secondes.
+const ATTENTE_MAX_MS = 30_000;
 const PAUSE_MS = 1200;
+/** Sans une seule relecture réussie depuis ce délai, ce n'est plus le
+ *  boîtier qui se tait : c'est le TÉLÉPHONE qui n'arrive pas à joindre TOTEM. */
+const TELEPHONE_MUET_MS = 10_000;
 
 /** Des montants qu'on tape tous les jours — un geste au lieu de six chiffres. */
 const MONTANTS = [1000, 5000, 10000, 25000];
@@ -147,14 +158,20 @@ function nomDe(recents: Operation["recents"], numero: string): string | undefine
 }
 
 export function OperationPopup({
-  operation, onFermer, onTermine,
+  operation, onFermer, onTermine, onRefus,
 }: {
   operation: Operation;
   onFermer: () => void;
   onTermine?: () => void;
+  /** La plateforme a refusé parce que le boîtier se tait ou que la carte
+   *  n'y est plus : l'écran d'où l'on vient doit se remettre à jour, sans
+   *  quoi il restait « en ligne » et chaque nouvel essai prenait le même
+   *  refus. */
+  onRefus?: () => void;
 }) {
   const langue = useLangue();
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
 
   const [etape, setEtape] = useState<"saisie" | "session">(
     operation.champs.length ? "saisie" : "session");
@@ -200,6 +217,19 @@ export function OperationPopup({
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
 
+  /** La réponse du réseau est là : on la montre, et on dit où l'on en est. */
+  const servir = (c: { etat: string; resultat: string | null }): string | null => {
+    setAttente(false);
+    const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
+    setFil((f) => [...f, { de: "reseau", texte }]);
+    // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
+    // en « autre réponse » aurait caché les boutons du menu suivant.
+    setLibre(false);
+    if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
+    setEnSession(true);
+    return texte;
+  };
+
   /** Dépose une demande et attend la réponse du réseau. */
   const envoyer = async (
     genre: "ussd" | "ussd_reponse",
@@ -216,25 +246,69 @@ export function OperationPopup({
       // lit que la réponse vient du titulaire de cette carte, et le robot
       // dans quelle session la poser.
       const demande = avecCarte(parametres);
-      const { id } = await deposerCommande(genre, demande, operation.terminal, cle);
-      for (let i = 0; i < TOURS; i++) {
+      const { id } = await deposerCommande(genre, demande, operation.terminal, cle)
+        .catch((e: unknown) => {
+          // LE CODE SECRET EST PEUT-ÊTRE PARTI. Sa réponse s'est perdue en
+          // route — connexion à demi ouverte, corps coupé après les
+          // en-têtes, 504 d'un hébergeur après l'écriture —, mais la demande
+          // a pu être créée, et le boîtier la composera. Dire « réessayez »,
+          // c'était inviter à un second transfert. Seul un refus EXPLICITE
+          // de la plateforme (une raison donnée) dit que rien n'est parti.
+          const secretPeutEtreParti = parametres.secret === true
+            && !(e instanceof ErreurGuichet && e.nature === "refus")
+            && !(e instanceof ErreurGuichet && e.nature === "session")
+            && !(e instanceof ErreurGuichet && e.nature === "plateforme" && e.raison);
+          if (secretPeutEtreParti) throw new Error(t.telephoneSansTotem);
+          throw e;
+        });
+      const depart = Date.now();
+      let joint = depart;            // la dernière fois que la plateforme a répondu
+      while (Date.now() - depart < ATTENTE_MAX_MS) {
         await new Promise((r) => setTimeout(r, PAUSE_MS));
         if (!vivant.current) return null;
-        const c = await lireCommande(id).catch(() => null);
-        if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          setAttente(false);
-          const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-          setFil((f) => [...f, { de: "reseau", texte }]);
-          // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
-          // en « autre réponse » aurait caché les boutons du menu suivant.
-          setLibre(false);
-          if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
-          setEnSession(true);
-          return texte;
+        // Une relecture ne mange jamais plus que le temps qui reste.
+        const reste = Math.max(1500, ATTENTE_MAX_MS - (Date.now() - depart));
+        const ctrl = new AbortController();
+        const minuteur = setTimeout(() => ctrl.abort(), reste);
+        let c: { etat: string; resultat: string | null } | null = null;
+        try {
+          c = await lireCommande(id, ctrl.signal);
+          joint = Date.now();
+        } catch (e) {
+          // Session expirée : le verrou, pas un message d'opération.
+          if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
+        } finally {
+          clearTimeout(minuteur);
         }
+        if (!vivant.current) return null;
+        if (c && (c.etat === "faite" || c.etat === "echouee")) return servir(c);
       }
-      throw new Error(t.terminalMuet);
+      // L'ÉCRAN RENONCE — ET LE DIT JUSTE.
+      //
+      // Le téléphone n'a pas joint la plateforme depuis dix secondes : ce
+      // n'est pas le boîtier qu'on attend, c'est le réseau du téléphone. On
+      // ne peut pas annuler sans réseau : la demande est peut-être partie.
+      if (Date.now() - joint > TELEPHONE_MUET_MS) throw new Error(t.telephoneSansTotem);
+      // Le boîtier n'a pas répondu : on ANNULE. Un boîtier revenu des heures
+      // plus tard composait encore la demande — numéro et montant compris —
+      // pour un écran qui avait abandonné. « Rien n'est parti » ne se dit que
+      // si l'annulation a PRIS ; sinon le boîtier l'a en main, et la dire
+      // abandonnée ferait recommencer un transfert qui part peut-être.
+      const annulation = await annulerCommande(id).catch(() => null);
+      const issue = annulation ? issueDeLAnnulation(true, annulation) : "incertain";
+      // Il l'a FINIE entre notre dernier coup d'œil et l'annulation : sa
+      // réponse existe — on la montre, plutôt que d'envoyer guetter ses SMS.
+      if (issue === "finie") {
+        const c = await lireCommande(id).catch(() => null);
+        if (!vivant.current) return null;
+        if (c && (c.etat === "faite" || c.etat === "echouee")) return servir(c);
+      }
+      throw new Error(phraseDAbandon(issue, t));
     } catch (e) {
+      if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
+      if (e instanceof ErreurGuichet
+          && (e.raison === "boitier_muet" || e.raison === "carte_absente")) onRefus?.();
+      if (!vivant.current) return null;
       // Le guichet rend déjà ses messages dans la bonne langue : tels quels.
       setErreur(e instanceof Error && e.message ? e.message : t.accroc);
       setAttente(false);
@@ -577,7 +651,7 @@ export function OperationPopup({
             onEnvoyer={(v) => void repondre(v)} langue={langue} />
         ) : (
           <EcranOperateur key={`ecran-${fil.length}`} op={op} couleur={couleurOperateur(op)}
-            t={t} reduit={reduit}
+            t={t} reduit={reduit} serre={pave}
             // Un menu : son titre ici, ses choix en boutons. Toute autre
             // chose — une question, la demande du code, la réponse libre —
             // se lit en entier, telle que l'opérateur l'a écrite.
@@ -690,6 +764,7 @@ function ChampSaisie({ type, valeur, onChange, onValider, langue }: {
   onValider: () => void; langue: "fr" | "en";
 }) {
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
   const propre = valeurPropre(type, valeur);
   const brut = valeur.trim();
   // Ce qu'on annonce sous le champ — seulement quand ce n'est pas déjà ce
@@ -768,6 +843,7 @@ function EtapeSaisie({
   langue: "fr" | "en";
 }) {
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
   const valide = pret(type, valeur);
   const propre = valeurPropre(type, valeur);
   const valider = () => { if (valide) onValider(); };
@@ -843,6 +919,7 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
   reduit: boolean;
 }) {
   const t = textesGuichet[langue];
+  const { perdue } = useSession();
   const [valeur, setValeur] = useState("");
   const valide = pret(type, valeur);
   const envoyer = () => {
@@ -878,8 +955,10 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit }: {
  * parle, ce qu'il dit, mot pour mot, et ses choix en boutons. Il entre en
  * montant doucement : on voit qu'un nouvel écran est arrivé.
  */
-function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, onAutre }: {
+function EcranOperateur({ texte, copie, op, couleur, t, reduit, serre, choix, onChoix, onAutre }: {
   texte: string; copie: string; op: string; couleur: string; t: T; reduit: boolean;
+  /** Le pavé du code partage l'écran : le message se fait plus compact. */
+  serre?: boolean;
   choix: { numero: string; libelle: string }[];
   onChoix: (numero: string) => void;
   onAutre?: () => void;
@@ -888,7 +967,8 @@ function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, 
     <Animated.View style={{ flex: 1 }}
       entering={reduit ? undefined : FadeInDown.duration(240)}>
       <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.md }}>
-        <CarteOperateur texte={texte} copie={copie} op={op} couleur={couleur} t={t} />
+        <CarteOperateur texte={texte} copie={copie} op={op} couleur={couleur} t={t}
+                        serre={serre} />
         {choix.length ? (
           <View style={{ gap: espaces.sm }}>
             {choix.map((c) => (
@@ -911,19 +991,25 @@ function EcranOperateur({ texte, copie, op, couleur, t, reduit, choix, onChoix, 
 
 /** Le message de l'opérateur, dans sa carte : qui parle, le texte entier,
  *  « Copier ». */
-function CarteOperateur({ texte, copie, op, couleur, t }: {
-  texte: string; copie: string; op: string; couleur: string; t: T;
+function CarteOperateur({ texte, copie, op, couleur, t, serre }: {
+  texte: string; copie: string; op: string; couleur: string; t: T; serre?: boolean;
 }) {
+  const { height } = useWindowDimensions();
+  // CE QU'ON SIGNE DOIT TENIR À L'ÉCRAN AVEC LE PAVÉ. Sur un petit iPhone,
+  // le message de l'opérateur en grand (20 points) et le pavé du code
+  // dessous ne tenaient pas ensemble : on ne voyait plus que la fin —
+  // « Entrez votre code secret » — et l'on signait sans lire le montant ni
+  // le nom. Quand le pavé est là et que l'écran est court, le message passe
+  // à la taille du texte courant : un écran USSD fait au plus 182
+  // caractères, qui tiennent alors en entier au-dessus du pavé.
+  const compact = serre && height < 900;
   const [copiee, setCopiee] = useState(false);
   const copier = () => {
-    // Le presse-papiers du cœur de React Native : présent dans l'application
-    // déjà installée, donc rien à refabriquer pour l'offrir. Le texte reste
-    // de toute façon sélectionnable à l'appui long.
-    try {
-      Clipboard.setString(copie);
-      setCopiee(true);
-      setTimeout(() => setCopiee(false), 1600);
-    } catch { /* l'appui long sur le texte reste là */ }
+    // Voir `presse-papiers.ts`. Le texte reste de toute façon sélectionnable
+    // à l'appui long.
+    if (!copierTexte(copie)) return;
+    setCopiee(true);
+    setTimeout(() => setCopiee(false), 1600);
   };
   return (
     <View style={{
@@ -942,7 +1028,8 @@ function CarteOperateur({ texte, copie, op, couleur, t }: {
       {/* Le texte du réseau, mot pour mot : jamais traduit, toujours entier,
           et sélectionnable — appui long → Copier. */}
       {texte ? (
-        <Texte selectable taille={textes.intertitre} style={{ lineHeight: 27 }}>
+        <Texte selectable taille={compact ? textes.corps : textes.intertitre}
+               style={{ lineHeight: compact ? 22 : 27 }}>
           {texte}
         </Texte>
       ) : null}
@@ -1046,8 +1133,10 @@ function Pave({ onChiffre, onEffacer, etiquetteEffacer }: {
   etiquetteEffacer: string;
 }) {
   const { height } = useWindowDimensions();
-  // Un petit écran (iPhone SE) garde la place du bouton sous le pavé.
-  const haut = height < 700 ? 46 : 54;
+  // La hauteur d'une touche suit celle de l'écran : sur un petit téléphone,
+  // chaque point gagné sur le pavé va au message de l'opérateur, au-dessus.
+  // Quarante points restent une touche confortable sous le pouce.
+  const haut = height < 700 ? 40 : height < 800 ? 44 : height < 900 ? 50 : 54;
   const rangees: (string | null)[][] = [
     ["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], [null, "0", "⌫"],
   ];
@@ -1082,12 +1171,14 @@ function Pave({ onChiffre, onEffacer, etiquetteEffacer }: {
 function GrosBouton({ libelle, onPress, desactive }: {
   libelle: string; onPress: () => void; desactive?: boolean;
 }) {
+  const { height } = useWindowDimensions();
   return (
     <View style={{ paddingHorizontal: espaces.lg }}>
       <Pressable accessibilityRole="button" disabled={desactive} onPress={onPress}
         accessibilityState={{ disabled: Boolean(desactive) }}
         style={({ pressed }) => ({
-          height: 56, borderRadius: 14, alignItems: "center", justifyContent: "center",
+          height: height < 800 ? 48 : 56,
+          borderRadius: 14, alignItems: "center", justifyContent: "center",
           backgroundColor: desactive ? couleurs.surface3
             : pressed ? couleurs.accentAppui : couleurs.accent,
           transform: [{ scale: pressed && !desactive ? 0.98 : 1 }],
@@ -1129,6 +1220,10 @@ function PastilleCarte({ libelle, operateur }: { libelle: string; operateur: str
  */
 function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }) {
   const [code, setCode] = useState("");
+  const { height } = useWindowDimensions();
+  // Sur un écran court, la note (« jamais enregistré ») se tait : le cadenas
+  // le dit déjà, et ses deux lignes reviennent au message de l'opérateur.
+  const court = height < 800;
   const valider = () => {
     if (code.length < LONGUEUR_CODE_MIN) return;
     onValider(code);
@@ -1137,15 +1232,17 @@ function EtapeCode({ onValider, t }: { onValider: (code: string) => void; t: T }
   return (
     // Posé SOUS l'échange, pas à sa place : le message qui réclame le code
     // — ce qu'on va signer — reste lisible juste au-dessus.
-    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait, paddingTop: espaces.md }}>
+    <View style={{ borderTopWidth: 1, borderColor: couleurs.trait,
+                   paddingTop: court ? espaces.sm : espaces.md }}>
       <View style={{ alignItems: "center", gap: espaces.xs }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-          <Icone nom="Lock" taille={18} couleur={couleurs.encre} />
-          <Texte taille={textes.intertitre} poids="demi">{t.codeTitre}</Texte>
+          <Icone nom="Lock" taille={court ? 16 : 18} couleur={couleurs.encre} />
+          <Texte taille={court ? textes.corps : textes.intertitre} poids="demi">{t.codeTitre}</Texte>
         </View>
-        <Texte taille={textes.legende} ton="pale">{t.codeNote}</Texte>
+        {court ? null : <Texte taille={textes.legende} ton="pale">{t.codeNote}</Texte>}
         <View accessibilityLabel={t.chiffresComposes(code.length)}
-              style={{ flexDirection: "row", gap: espaces.md, marginVertical: espaces.sm,
+              style={{ flexDirection: "row", gap: espaces.md,
+                       marginVertical: court ? espaces.xs : espaces.sm,
                        height: 16, alignItems: "center" }}>
           {Array.from({ length: Math.max(LONGUEUR_CODE_MIN, code.length) }).map((_, i) => (
             <View key={i} style={{

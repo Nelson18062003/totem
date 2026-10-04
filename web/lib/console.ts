@@ -30,24 +30,35 @@
 import { lire, relie } from "./base";
 import { FUSEAU } from "./fuseau";
 import type { Langue } from "@noyau/langue";
+import { SANS_NOUVELLES_S, presenceDeLaCarte, signalLu } from "@noyau/boitier";
+import {
+  boitierVu, cartesLesPlusRecentes, entenduLe, type LigneBoitier,
+} from "./boitiers";
 
 export { relie };
 
 const LOCALE: Record<Langue, string> = { en: "en-GB", fr: "fr-FR" };
 
 // --- Les seuils de la surveillance -----------------------------------------
-// Le robot republie son état au rythme de fond de « totem/nuage.py ». Trois
-// minutes sans nouvelle, c'est déjà un battement manqué ; une demi-heure, c'est
-// une machine dont plus personne ne sait rien. Les deux seuils sont ici, en
-// clair, parce qu'ils décident de ce qui monte en tête d'écran.
-const ACTIF_MS = 3 * 60 * 1000;
+// Le robot republie son état au rythme de fond de « totem/nuage.py ». Passé
+// le seuil « sans nouvelles » du noyau — LE MÊME que celui des écrans du
+// propriétaire, écrit une seule fois (`SANS_NOUVELLES_S`) — le boîtier est en
+// retard ; une demi-heure, c'est une machine dont plus personne ne sait rien.
+// Trois minutes, c'était trop serré : un simple hoquet d'Internet allumait
+// l'alerte sur un boîtier bien vivant.
+const ACTIF_MS = SANS_NOUVELLES_S * 1000;
 const MUET_MS = 30 * 60 * 1000;
 
-// Une carte est « en place » si le terminal l'a vue il y a moins de dix
-// minutes — la même durée que lib/serveur.ts, et pour la même raison. Mais
-// cette déduction ne vaut QUE si le terminal parle encore : c'est lui qui voit
-// les puces, et un boîtier muet ne voit plus rien.
-const EN_PLACE_MS = 10 * 60 * 1000;
+// LA PRÉSENCE D'UNE CARTE se juge par la règle du noyau
+// (`presenceDeLaCarte`), avec la MÊME lecture des boîtiers que les écrans du
+// propriétaire (lib/boitiers.ts) : retirée si son boîtier parle, a relu ses
+// puces et ne la voit plus — ou s'il est sorti de la flotte ; inconnue s'il
+// se tait. La console comptait encore « en retard » (jusqu'à trente
+// minutes) comme un boîtier qui parle, et déclarait donc retirée, entre dix
+// et trente minutes de silence, une carte que personne n'avait touchée.
+// Elle disait à l'inverse « inconnue » les cartes d'un boîtier mis hors
+// service, pendant que les écrans du propriétaire les gardaient en place :
+// deux lectures, deux réponses.
 
 // --- Ce que la base contient (colonnes de sql/schema.sql) -------------------
 // « select=* » partout, à dessein : exiger une colonne par son nom rend
@@ -57,11 +68,11 @@ const EN_PLACE_MS = 10 * 60 * 1000;
 // porte sur une colonne ajoutée par « sql/migration-console.sql » : le tri se
 // fait ici, en mémoire, sur sept lignes.
 
-type LigneTerminal = {
-  id: string; nom: string | null; vu_le: string | null; version: string | null;
+type LigneTerminal = LigneBoitier & {
+  nom: string | null; version: string | null;
   sante?: { resume?: string; en_attente?: number } | null;
   commerce?: string | null; lieu?: string | null;
-  retire_le?: string | null; retire_motif?: string | null;
+  retire_motif?: string | null;
   cree_le?: string | null;
 };
 
@@ -83,6 +94,8 @@ type LigneCompte = {
   operateur: string | null; reseau: string | null; itinerance: boolean;
   numero: string | null; solde: number | null; signal: number | null;
   maj: string;
+  // L'heure du solde ; absente d'une base pas encore migrée.
+  solde_maj?: string | null;
 };
 
 type LigneAlerte = {
@@ -194,10 +207,6 @@ export function momentLisible(ts: string | null | undefined, langue: Langue): st
   }).format(new Date(ts));
 }
 
-function ecoule(ts: string | null | undefined): number | null {
-  return ts ? Date.now() - new Date(ts).getTime() : null;
-}
-
 // --- La vivacité d'un boîtier ----------------------------------------------
 
 /**
@@ -210,10 +219,13 @@ function ecoule(ts: string | null | undefined): number | null {
  */
 export type Vivacite = "actif" | "en_retard" | "muet" | "jamais" | "retire";
 
-export function vivacite(vuLe: string | null, retireLe?: string | null): Vivacite {
+/** `entendu` : l'heure où la BASE a entendu son dernier signe de vie (à
+ *  défaut, la date qu'il a écrite — voir `entenduLe`). Compté sur l'horloge
+ *  du Pi, un boîtier remis en marche une heure en retard paraissait muet. */
+export function vivacite(entendu: string | null, retireLe?: string | null): Vivacite {
   if (retireLe) return "retire";
-  if (!vuLe) return "jamais";
-  const ms = Date.now() - new Date(vuLe).getTime();
+  if (!entendu) return "jamais";
+  const ms = Date.now() - new Date(entendu).getTime();
   if (ms < ACTIF_MS) return "actif";
   if (ms < MUET_MS) return "en_retard";
   return "muet";
@@ -513,8 +525,9 @@ function versTerminal(
   alertes: Alerte[],
   langue: Langue,
 ): TerminalDeFlotte {
-  const vie = vivacite(l.vu_le, l.retire_le);
+  const vie = vivacite(entenduLe(l), l.retire_le);
   const siennes = cartes.filter((c) => c.terminal === l.id);
+  const plusRecentes = cartesLesPlusRecentes(siennes);
 
   // Les commerces desservis : celui qui héberge le boîtier, plus tous ceux qui
   // ont une puce dedans. Deux commerçants peuvent partager un comptoir, et
@@ -529,13 +542,7 @@ function versTerminal(
 
   // Une carte n'est « en place » que si le boîtier parle encore : lui seul la
   // voit. Muet, il ne permet de conclure ni à la présence ni à l'absence.
-  const parle = vie === "actif" || vie === "en_retard";
-  const enPlace = parle
-    ? siennes.filter((c) => {
-        const ms = ecoule(c.derniere_vue);
-        return ms !== null && ms < EN_PLACE_MS;
-      }).length
-    : 0;
+  const enPlace = siennes.filter((c) => etatDeLaCarte(l, c, plusRecentes) === "en_place").length;
 
   return {
     id: l.id,
@@ -543,8 +550,8 @@ function versTerminal(
     lieu: l.lieu ?? "",
     commerces: [...noms],
     vivacite: vie,
-    vuLe: l.vu_le,
-    depuis: ecartLisible(l.vu_le, langue),
+    vuLe: entenduLe(l),
+    depuis: ecartLisible(entenduLe(l), langue),
     version: l.version ?? "",
     sante: l.sante?.resume ?? "",
     enAttente: l.sante?.en_attente ?? null,
@@ -556,22 +563,28 @@ function versTerminal(
   };
 }
 
+/** L'état d'une carte, d'après SON boîtier — la règle du noyau, la même que
+ *  sur les écrans du propriétaire. Un boîtier sorti de la flotte ne
+ *  reviendra pas : ses cartes sont retirées. */
+function etatDeLaCarte(
+  hote: LigneTerminal | undefined, c: LigneCarte, plusRecentes: Map<string, string>,
+): EtatCarte {
+  if (!hote) return "inconnu";
+  const presence = presenceDeLaCarte(boitierVu(hote, plusRecentes, Date.now()), c.derniere_vue);
+  return presence === "inconnue" ? "inconnu" : presence;
+}
+
 function versCarte(
   c: LigneCarte,
   comptes: LigneCompte[],
   terminaux: Map<string, LigneTerminal>,
   commerces: Map<string, LigneCommerce>,
+  plusRecentes: Map<string, string>,
 ): CarteDuRegistre {
   const compte = comptes.find((x) => x.terminal === c.terminal && x.iccid === c.iccid);
   const hote = terminaux.get(c.terminal);
-  const vie = vivacite(hote?.vu_le ?? null, hote?.retire_le ?? null);
-  const parle = vie === "actif" || vie === "en_retard";
-  const vueRecemment = (() => {
-    const ms = ecoule(c.derniere_vue);
-    return ms !== null && ms < EN_PLACE_MS;
-  })();
-
-  const etat: EtatCarte = !parle ? "inconnu" : vueRecemment ? "en_place" : "retiree";
+  const vie = vivacite(entenduLe(hote), hote?.retire_le ?? null);
+  const etat = etatDeLaCarte(hote, c, plusRecentes);
 
   return {
     iccid: c.iccid,
@@ -589,8 +602,14 @@ function versCarte(
     // montre quand même, avec l'heure du relevé, parce que « ce qu'il restait
     // quand elle est partie » est exactement la question qu'on se pose.
     solde: compte?.solde == null ? null : Number(compte.solde),
-    soldeLe: compte?.maj ?? null,
-    signal: compte?.signal ?? null,
+    // L'heure du SOLDE (« solde_maj »), pas celle de la ligne, que le signe
+    // de vie remet à jour chaque minute. On ne retombe sur « maj » que si la
+    // colonne manque (base pas migrée) ; présente et vide, elle dit « on ne
+    // sait pas », et on ne le cache pas.
+    soldeLe: compte?.solde == null ? null
+      : (compte.solde_maj === undefined ? compte.maj : compte.solde_maj) ?? null,
+    // 99, « je ne sais pas » du modem, n'est pas un signal.
+    signal: signalLu(compte?.signal),
     itinerance: compte?.itinerance ?? false,
     reseau: compte?.reseau ?? "",
     premiereVue: c.premiere_vue,
@@ -616,6 +635,9 @@ async function lireLeSocle(langue: Langue) {
     commerces,
     parId,
     cartes,
+    // La plus fraîche des cartes de chaque boîtier : dit s'il a relu ses
+    // puces depuis son retour.
+    plusRecentes: cartesLesPlusRecentes(cartes),
     comptes,
     alertes: alertes.map((a) => versAlerte(a, parId, langue)),
   };
@@ -688,7 +710,8 @@ export async function chargerFicheTerminal(
   const terminal = versTerminal(ligne, socle.parId, socle.cartes, socle.alertes, langue);
   const cartes = socle.cartes
     .filter((c) => c.terminal === propre)
-    .map((c) => versCarte(c, socle.comptes, new Map([[ligne.id, ligne]]), socle.parId))
+    .map((c) => versCarte(c, socle.comptes, new Map([[ligne.id, ligne]]), socle.parId,
+                          socle.plusRecentes))
     .sort(parEtatDeCarte);
 
   return {
@@ -738,7 +761,7 @@ export async function chargerRegistreDesCartes(
 
   const cartes = socle.cartes
     .map((c) => ({
-      ...versCarte(c, socle.comptes, parId, socle.parId),
+      ...versCarte(c, socle.comptes, parId, socle.parId, socle.plusRecentes),
       confieeA: attributions
         .filter((a) => a.iccid === c.iccid)
         .map((a) => courrielDe.get(a.utilisateur))

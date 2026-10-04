@@ -30,6 +30,7 @@
 
 import { Platform } from "react-native";
 import type { Donnees } from "@noyau/types";
+import { donneesValables } from "./guichet";
 
 const NOM = "cahier-totem.json";
 
@@ -81,6 +82,9 @@ export async function lire(): Promise<Page | null> {
 }
 
 export async function ecrire(page: Page): Promise<void> {
+  // Une page abîmée ne s'écrit pas : elle remplacerait la dernière bonne,
+  // et le lendemain matin, hors ligne, c'est elle qu'on relirait.
+  if (!valide(page)) return;
   if (Platform.OS === "web") return ecrireAuNavigateur(page);
   const f = await fichier();
   if (!f) return;
@@ -109,9 +113,18 @@ export async function fermer(): Promise<void> {
 
 // --- Le même cahier, dans le rangement du navigateur ---------------------
 
+/** Une page qu'on peut montrer : sa date, ce qu'elle couvre, et une caisse
+ *  qui a la forme d'une caisse. Une coupure de réseau pendant la lecture
+ *  donnait `{}` — il suffisait de « des données » pour passer, et l'on
+ *  relisait le lendemain une boutique vide, « Aucune carte ». La forme est
+ *  la même que celle que le guichet exige d'une réponse (`donneesValables`). */
 function valide(page: unknown): Page | null {
   const p = page as Page | null;
-  if (!p || typeof p.quand !== "number" || !p.donnees || !p.bornes) return null;
+  if (!p || typeof p !== "object" || typeof p.quand !== "number") return null;
+  const b = p.bornes as Partial<Page["bornes"]> | undefined;
+  const nombre = (n: unknown) => typeof n === "number" && Number.isFinite(n);
+  if (!b || !nombre(b.sms) || !nombre(b.recus) || !nombre(b.lignes)) return null;
+  if (!donneesValables(p.donnees)) return null;
   return p;
 }
 

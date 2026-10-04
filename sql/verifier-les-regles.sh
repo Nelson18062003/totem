@@ -119,6 +119,13 @@ done
 # « column "vu" does not exist ». On rejoue donc les migrations sur une table
 # abîmée à dessein.
 # ---------------------------------------------------------------------------
+# LE COMPTE DES ÉCHECS COMMENCE ICI, AVANT LA PREMIÈRE VÉRIFICATION. Il était
+# remis à zéro plus bas, APRÈS le rattrapage des migrations : un échec de
+# rattrapage s'affichait « ✗ », puis s'effaçait du total, et le script
+# concluait « les règles tiennent ». Un harnais qui oublie ses échecs ne
+# garde rien.
+echecs=0
+
 echo ""
 echo "Les migrations rattrapent une table déjà là, mal formée"
 $P -d totem -c "drop table if exists freins cascade;
@@ -150,7 +157,6 @@ fi
 echo ""
 echo "Ce que la base doit REFUSER"
 
-echecs=0
 # refuser « ce que ça fait » « le SQL »
 refuser() {
   if $P -d totem -c "$2" >/dev/null 2>&1; then
@@ -221,6 +227,285 @@ accepter "une demande sans intention passe (le robot, les vieux écrans)" \
   "insert into commandes(terminal, type, parametres, etat, cle)
      values ('douala', 'ussd', '{}'::jsonb, 'en_attente', null),
            ('douala', 'ussd', '{}'::jsonb, 'en_attente', null);"
+
+# ---------------------------------------------------------------------------
+# ANNULER ET RÉCLAMER : DES DEUX, UN SEUL GAGNE.
+#
+# L'écran qui renonce annule sa demande (« en attente » → « échouée ») ; le
+# robot qui la relève la réclame (« en attente » → « en cours »). Les deux
+# écritures portent la MÊME condition — « et elle est encore en attente » —
+# et c'est la base qui tranche, sous le verrou de la ligne.
+#
+# CE BLOC ÉPROUVE LA BASE, PAS LE CODE — et il le dit. Il rejoue à la main
+# les deux écritures, avec leur condition, et vérifie que PostgreSQL les
+# sérialise : la seconde attend que la première ait fini, relit la ligne, et
+# ne la touche pas. C'est la promesse sur laquelle reposent le faux nuage
+# (qui l'imite) et les deux côtés du code. Retirer la condition du CODE ne
+# le fait PAS échouer ; ce qui garde le code est ailleurs :
+#   — la plateforme (`annulerCommande`, web/lib/serveur.ts) : le harnais
+#     verifier-le-boitier-muet, allure « lent », exige qu'une annulation
+#     arrivée pendant la composition ne prenne pas ;
+#   — le robot (`reclamer`, totem/nuage.py) : ses propres tests.
+#
+# L'ORDRE NE TIENT PAS À UNE DURÉE. La première écriture part en arrière-
+# plan et garde sa transaction ouverte (pg_sleep) ; on n'envoie la seconde
+# qu'une fois la première VUE en train d'attendre dans pg_stat_activity —
+# donc sa ligne déjà prise. Un « sleep 0.3 » supposait que la connexion
+# s'ouvre en moins de trois dixièmes : sur une machine chargée, l'ordre
+# s'inversait et le premier cas sortait ✗ à tort.
+#
+# LE TÉMOIN : une écriture sans la condition écrase l'annulation — c'est la
+# condition qui protège, pas l'ordre des écritures.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Annuler et réclamer : des deux, un seul gagne (la base, pas le code)"
+nouvelle() {
+  $P -d totem -tAc "insert into commandes(terminal, type, parametres, etat)
+    values ('douala', 'ussd', '{\"code\": \"*126*1*677998877*5000#\"}'::jsonb,
+            'en_attente') returning id;" | head -1
+}
+# Attend que la transaction d'arrière-plan soit DANS son pg_sleep : son
+# écriture est faite, la ligne est à elle. Rend 0 si elle y est.
+attendreLaPremiere() {
+  for _ in $(seq 1 100); do
+    n=$($P -d totem -tAc "select count(*) from pg_stat_activity
+                          where wait_event = 'PgSleep';")
+    [ "$n" = "1" ] && return 0
+    sleep 0.05
+  done
+  return 1
+}
+# Le robot réclame le premier, et garde la ligne ; l'annulation arrive
+# pendant ce temps.
+ID=$(nouvelle)
+psql -h /tmp -p "$PORT" -U totem -d totem -q -c "begin;
+  update commandes set etat = 'en_cours' where id = $ID and etat = 'en_attente';
+  select pg_sleep(1); commit;" >/dev/null 2>&1 &
+if attendreLaPremiere; then
+  annulee=$($P -d totem -tAc "update commandes set etat = 'echouee'
+    where id = $ID and etat = 'en_attente' returning id;" | grep -c . || true)
+else
+  annulee="?"
+fi
+wait
+etat=$($P -d totem -tAc "select etat from commandes where id = $ID;")
+if [ "$annulee" = "0" ] && [ "$etat" = "en_cours" ]; then
+  echo "  ✓ le robot l'a prise : l'annulation arrivée pendant ne prend pas"
+else
+  echo "  ✗ annulation arrivée pendant la réclamation : $annulee ligne(s) annulée(s), état « $etat »"
+  echecs=$((echecs + 1))
+fi
+# L'annulation passe la première, et garde la ligne ; le robot arrive pendant.
+ID=$(nouvelle)
+psql -h /tmp -p "$PORT" -U totem -d totem -q -c "begin;
+  update commandes set etat = 'echouee' where id = $ID and etat = 'en_attente';
+  select pg_sleep(1); commit;" >/dev/null 2>&1 &
+if attendreLaPremiere; then
+  reclamee=$($P -d totem -tAc "update commandes set etat = 'en_cours'
+    where id = $ID and etat = 'en_attente' returning id;" | grep -c . || true)
+else
+  reclamee="?"
+fi
+wait
+etat=$($P -d totem -tAc "select etat from commandes where id = $ID;")
+if [ "$reclamee" = "0" ] && [ "$etat" = "echouee" ]; then
+  echo "  ✓ annulée la première : le robot ne la réclame plus, rien ne part"
+else
+  echo "  ✗ réclamation arrivée pendant l'annulation : $reclamee ligne(s) prise(s), état « $etat »"
+  echecs=$((echecs + 1))
+fi
+# LE TÉMOIN : sans la condition, la réclamation écrase l'annulation.
+$P -d totem -c "update commandes set etat = 'en_cours' where id = $ID;" >/dev/null
+etat=$($P -d totem -tAc "select etat from commandes where id = $ID;")
+if [ "$etat" = "en_cours" ]; then
+  echo "  ✓ le témoin : sans la condition, l'annulée repart « en cours »"
+else
+  echo "  ✗ le témoin n'a rien écrasé (« $etat ») : ces deux essais ne prouvent rien"
+  echecs=$((echecs + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# LE CODE SECRET NE SURVIT PAS À UNE DEMANDE CLOSE.
+#
+# Une réponse « secrète » attend le robot avec le code en clair ; c'est lui
+# qui l'efface en la traitant. Annulée depuis l'écran, elle n'était jamais
+# traitée — et si la plateforme ne parvenait pas à relire la demande pour
+# masquer le code, l'annulation l'y laissait pour toujours. La base le
+# retire maintenant dans la MÊME écriture que la fermeture (déclencheur
+# « commandes_code_efface »), quel que soit l'auteur de l'écriture.
+#
+# Il ne doit RIEN retirer d'autre : ni le code d'une demande encore « en
+# cours » (le robot vient de la réclamer et doit le composer), ni les
+# paramètres d'une demande qui n'a rien de secret, ni la carte et la
+# personne, qui disent à qui est la demande.
+#
+# LE TÉMOIN : déclencheur débranché, la même annulation garde le code.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Le code secret ne survit pas à une demande close"
+CARTE_ESSAI=89237010000000008901
+reponse() {
+  $P -d totem -tAc "insert into commandes(terminal, type, parametres, etat)
+    values ('douala', 'ussd_reponse',
+            '{\"texte\": \"4821\", \"secret\": true, \"carte\": \"$CARTE_ESSAI\",
+              \"par\": \"c:1\", \"langue\": \"fr\"}'::jsonb,
+            'en_attente') returning id;" | head -1
+}
+parametres() { $P -d totem -tAc "select parametres::text from commandes where id = $1;"; }
+garde() {   # garde <id> : la carte, la personne et le drapeau sont-ils là ?
+  $P -d totem -tAc "select parametres->>'carte' = '$CARTE_ESSAI'
+                       and parametres->>'par' = 'c:1'
+                       and parametres->>'secret' = 'true'
+                     from commandes where id = $1;"
+}
+# L'annulation de la plateforme quand sa relecture a échoué : elle écrit
+# l'état, sans paramètres.
+ID=$(reponse)
+$P -d totem -c "update commandes set etat = 'echouee', resultat = 'Annulée'
+                 where id = $ID and etat = 'en_attente';" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✗ annulée sans relecture, la demande garde le code : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+elif [ "$(garde "$ID")" = "t" ]; then
+  echo "  ✓ annulée, même sans relecture : le code s'en va ; restent la carte et la personne"
+else
+  echo "  ✗ le code est parti, mais la carte ou la personne avec : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
+# Le robot la réclame : il doit encore lire le code. Puis il la finit.
+ID=$(reponse)
+$P -d totem -c "update commandes set etat = 'en_cours' where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✓ « en cours » : le code reste lisible pour le robot qui le compose"
+else
+  echo "  ✗ « en cours » : le code a disparu avant d'être composé : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
+$P -d totem -c "update commandes set etat = 'faite', resultat = 'Operation reussie'
+                 where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✗ « faite » sans que le robot ait masqué : le code est resté"
+  echecs=$((echecs + 1))
+else
+  echo "  ✓ « faite » : le code s'en va aussi, même si le robot a oublié"
+fi
+# Une demande qui n'a rien de secret garde ses paramètres en se fermant.
+ID=$(nouvelle)
+$P -d totem -c "update commandes set etat = 'echouee' where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q '677998877'; then
+  echo "  ✓ une demande sans secret, close, garde ses paramètres"
+else
+  echo "  ✗ une demande sans secret a perdu ses paramètres : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
+# LE TÉMOIN : sans le déclencheur, la même annulation garde le code.
+ID=$(reponse)
+$P -d totem -c "alter table commandes disable trigger commandes_code_efface;
+  update commandes set etat = 'echouee' where id = $ID and etat = 'en_attente';
+  alter table commandes enable trigger commandes_code_efface;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✓ le témoin : sans le déclencheur, l'annulée garde le code en clair"
+else
+  echo "  ✗ le témoin a perdu le code sans le déclencheur : ces essais ne prouvent rien"
+  echecs=$((echecs + 1))
+fi
+
+# ---------------------------------------------------------------------------
+# L'OREILLE DE LA BASE : QUAND ELLE A ENTENDU CHAQUE BOÎTIER.
+#
+# « entendu_le » et « revenu_le » sont tenus par un déclencheur (voir
+# schema.sql) : c'est d'eux que la plateforme mesure le silence d'un boîtier
+# et attend qu'il ait relu ses cartes. On les éprouve comme le robot les
+# touche — une annonce PostgREST, insertion qui devient mise à jour — et
+# comme la console les touche — un renommage, une mise hors service.
+#
+# Pour simuler une coupure sans attendre dix minutes, on recule les heures
+# d'une ligne déclencheur DÉBRANCHÉ (seul le propriétaire de la table le
+# peut), puis on le rebranche avant l'essai.
+# ---------------------------------------------------------------------------
+echo ""
+echo "L'oreille de la base : quand elle a entendu chaque boîtier"
+# annonce <id> <écart de SON horloge, en secondes> — comme le robot.
+annonce() {
+  $P -d totem -c "insert into terminaux (id, nom, vu_le, version)
+      values ('$1', '$1', now() + interval '$2 seconds', 'essai')
+    on conflict (id) do update
+      set nom = excluded.nom, vu_le = excluded.vu_le, version = excluded.version;" >/dev/null
+}
+# reculer <id> <entendu il y a (s)> <son horloge en retard de (s)> <revenu il y a (s)>
+reculer() {
+  $P -d totem -c "alter table terminaux disable trigger terminaux_entendu;
+    update terminaux set entendu_le = now() - interval '$2 seconds',
+                         vu_le = now() - interval '$2 seconds' - interval '$3 seconds',
+                         revenu_le = now() - interval '$4 seconds'
+     where id = '$1';
+    alter table terminaux enable trigger terminaux_entendu;" >/dev/null
+}
+age() { $P -d totem -tAc "select round(extract(epoch from now() - $2))::int
+                           from terminaux where id = '$1';"; }
+ouiNon() { # ouiNon <condition vraie ?> <libellé> <détail si faux>
+  if [ "$1" = "t" ]; then echo "  ✓ $2"; else echo "  ✗ $2 — $3"; echecs=$((echecs + 1)); fi
+}
+
+# Un Pi qui redémarre une heure en retard.
+annonce oreille -3600
+ouiNon "$($P -d totem -tAc "select entendu_le is not null and now() - entendu_le < interval '5 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "le silence se mesure sur l'heure de la BASE : entendu à l'instant" \
+  "entendu il y a $(age oreille entendu_le) s"
+ouiNon "$($P -d totem -tAc "select now() - vu_le > interval '3000 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "le témoin : compté sur la date du Pi, ce boîtier bien vivant paraîtrait muet" \
+  "la date du Pi n'est pas en retard : l'essai ne prouve rien"
+
+# Ce qui n'est pas un signe de vie ne fait pas bouger l'oreille.
+reculer oreille 600 0 7200
+$P -d totem -c "update terminaux set nom = 'Akwa', lieu = 'Douala · Akwa',
+                retire_motif = 'essai' where id = 'oreille';" >/dev/null
+ouiNon "$($P -d totem -tAc "select now() - entendu_le > interval '590 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "un renommage n'est pas un signe de vie : l'oreille ne bouge pas" \
+  "entendu il y a $(age oreille entendu_le) s"
+$P -d totem -c "update terminaux set entendu_le = now(), revenu_le = now()
+                where id = 'oreille';" >/dev/null
+ouiNon "$($P -d totem -tAc "select now() - entendu_le > interval '590 seconds'
+                              and now() - revenu_le > interval '7000 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "on ne règle pas l'oreille à la main : la valeur d'avant reste" \
+  "entendu il y a $(age oreille entendu_le) s, revenu il y a $(age oreille revenu_le) s"
+
+# Dix minutes de silence, puis il revient : c'est un retour.
+annonce oreille 0
+ouiNon "$($P -d totem -tAc "select now() - revenu_le < interval '5 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "dix minutes de silence, puis un signe de vie : la base note son retour" \
+  "revenu il y a $(age oreille revenu_le) s"
+
+# Un battement ordinaire (30 s) ne remet pas le retour à zéro.
+reculer oreille 30 0 7200
+annonce oreille 0
+ouiNon "$($P -d totem -tAc "select now() - revenu_le > interval '7000 seconds'
+                              and now() - entendu_le < interval '5 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "un battement ordinaire : entendu à l'instant, mais pas « revenu »" \
+  "revenu il y a $(age oreille revenu_le) s — chaque battement passerait pour un retour"
+
+# Son horloge remise à l'heure (une heure de bond) compte comme un retour :
+# ce qu'il avait dit de ses cartes est daté de l'ancienne heure.
+reculer oreille 30 3600 7200
+annonce oreille 0
+ouiNon "$($P -d totem -tAc "select now() - revenu_le < interval '5 seconds'
+                            from terminaux where id = 'oreille';")" \
+  "une horloge remise à l'heure compte comme un retour" \
+  "revenu il y a $(age oreille revenu_le) s"
+
+# Inscrit sans avoir jamais parlé : la base ne l'a pas entendu.
+$P -d totem -c "insert into terminaux (id, nom) values ('jamais-vu', 'neuf');" >/dev/null
+ouiNon "$($P -d totem -tAc "select entendu_le is null and revenu_le is null
+                            from terminaux where id = 'jamais-vu';")" \
+  "un boîtier inscrit qui n'a jamais parlé n'est pas « entendu »" \
+  "il passerait pour vivant sans avoir jamais rien dit"
+$P -d totem -c "delete from terminaux where id in ('oreille', 'jamais-vu');" >/dev/null
 
 # ---------------------------------------------------------------------------
 # LE FREIN COMPTE JUSTE, MÊME QUAND TOUT ARRIVE EN MÊME TEMPS.

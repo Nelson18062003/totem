@@ -22,8 +22,34 @@ export type Sim = {
   // L'heure de l'interrogation réseau qui a donné ce solde (« 09:47 »).
   // Les écrans l'habillent d'une phrase dans la langue du moment.
   soldeMaj: string | null;
+  // L'INSTANT du relevé (ISO), pour dire son JOUR. « 21:54 » tout seul ne
+  // dit pas si c'était ce soir ou hier soir : un solde d'hier s'annonçait
+  // comme celui d'aujourd'hui. Facultatif : une plateforme pas encore à jour
+  // ne l'envoie pas, et l'écran retombe alors sur l'heure seule.
+  soldeLe?: string | null;
+  // `null` : signal INCONNU — le modem répond 99 quand il ne sait pas, et
+  // l'écran dessinait alors quatre barres pleines sur une carte sans réseau.
   signal: number | null;
+  // Vrai sauf pour une carte qu'on SAIT retirée. Les applications déjà
+  // installées ne lisent que lui : une carte dont on ne sait rien (le boîtier
+  // se tait) y reste donc « en place » plutôt que de passer pour retirée.
   enPlace: boolean;
+  // Ce qu'on sait VRAIMENT de la présence de la carte. « inconnue » : le
+  // boîtier qui la porte ne donne plus de nouvelles — on ne peut ni dire
+  // qu'elle est là, ni qu'elle est partie. Une coupure de courant de dix
+  // minutes déclarait toutes les cartes « retirées », et l'accueil faisait
+  // disparaître les gestes. Aussi « inconnue » pendant la minute qui suit le
+  // RETOUR d'un boîtier : il redonne signe de vie avant de relire ses cartes.
+  // Absent d'une plateforme pas encore à jour.
+  presence?: "en_place" | "retiree" | "inconnue";
+  // L'état du boîtier QUI PORTE CETTE CARTE — pas du boîtier montré en tête
+  // (le dernier entendu). Avec deux boîtiers, l'écran disait « Terminal hors
+  // ligne » sur une carte d'un boîtier qui parlait, et datait le silence avec
+  // l'heure de l'autre. « inconnue » seule ne dit pas qu'il se tait : elle
+  // dit aussi « il vient de revenir ». Facultatifs : une plateforme pas
+  // encore à jour ne les envoie pas, et le téléphone lit alors `terminal`.
+  boitierMuet?: boolean;
+  boitierVuLe?: string | null;
   premiereVue: string;
   derniereVue: string;
   nbPaiements: number;
@@ -121,6 +147,15 @@ export type EtatTerminal = {
   // Ce que le robot a relevé mais pas encore transmis au cloud : quand c'est
   // significatif, la plateforme le dit plutôt que de paraître à jour.
   enAttente: number;
+  // L'INSTANT du dernier signe de vie, et son ÂGE en secondes mesuré par la
+  // plateforme au moment de répondre. `enLigne` et `majTexte` étaient une
+  // photo prise au chargement : « il y a 12 s » restait écrit des heures, et
+  // l'alerte ne s'allumait pas quand le boîtier tombait application ouverte.
+  // Le téléphone fait vieillir cet âge lui-même, sans requête — et ne compare
+  // jamais l'instant à SA propre horloge, qui peut avoir des minutes d'écart.
+  // Facultatifs : une plateforme pas encore à jour ne les envoie pas.
+  vuLe?: string | null;
+  vuIlYa?: number | null;
 };
 
 export type Donnees = {
@@ -150,6 +185,10 @@ export type Donnees = {
   // dur, et un paiement de 23 h changerait de jour selon l'écran.
   // Optionnel : une plateforme pas encore à jour ne casse aucun écran.
   fuseau?: string;
+  // L'instant de la réponse, horloge de la plateforme. Avec lui, le
+  // téléphone sait de quand datent les chiffres sans se fier à sa propre
+  // horloge. Facultatif : une plateforme pas encore à jour ne l'envoie pas.
+  serveurA?: string;
   // Vrai quand la base avait PLUS de SMS que ce que cette lecture rapporte.
   // Seul l'export comptable s'en sert : un bilan amputé doit le dire, sans
   // quoi il se lit comme un bilan complet.

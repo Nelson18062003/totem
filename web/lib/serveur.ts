@@ -21,7 +21,16 @@ import type { Beneficiaire, Donnees, EtatTerminal, Paiement, RaccourciAppris, Si
 import { estNature } from "@noyau/natures";
 import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
+import { libelleJour } from "@noyau/periodes";
+import {
+  ageDuSigneDeVie, boitierSansNouvelles, enPlaceSelon, presenceDeLaCarte, signalLu,
+  type Presence,
+} from "@noyau/boitier";
+import { textesApi } from "@noyau/textes/api";
 import type { Portee } from "./portee";
+import {
+  boitierVu, cartesLesPlusRecentes, entenduLe, leBoitierMontre, type LigneBoitier,
+} from "./boitiers";
 
 const url = process.env.SUPABASE_URL;
 const cle = process.env.SUPABASE_CLE;
@@ -136,16 +145,22 @@ async function lire<T>(chemin: string): Promise<T[]> {
 
 // --- Ce que le robot écrit (colonnes de sql/schema.sql) ----------------------
 
-type LigneTerminal = {
-  id: string; nom: string | null; vu_le: string | null; version: string | null;
+// `vu_le`, et l'oreille de la base (`entendu_le`, `revenu_le`), et la
+// sortie de flotte : voir lib/boitiers.ts.
+type LigneTerminal = LigneBoitier & {
+  nom: string | null; version: string | null;
   sante?: { resume?: string; en_attente?: number } | null;
 };
 type LigneCarte = {
+  // Le boîtier qui a vu cette carte (la base tient une ligne par boîtier et
+  // par carte). C'est D'APRÈS LUI qu'on juge si elle est là.
+  terminal?: string | null;
   iccid: string; operateur: string | null; libelle: string | null;
   nom?: string | null; numero: string | null;
   premiere_vue: string | null; derniere_vue: string | null;
 };
 type LigneCompte = {
+  terminal?: string | null;
   iccid: string | null; libelle: string; operateur: string | null;
   reseau: string | null; itinerance: boolean; numero: string | null;
   solde: number | null; signal: number | null; maj: string;
@@ -186,18 +201,6 @@ function heure(ts: string): string {
   }).format(new Date(ts));
 }
 
-function libelleJour(ts: string, langue: Langue): string {
-  const jour = jourLocal(new Date(ts), FUSEAU);
-  const present = new Date();
-  if (jour === jourLocal(present, FUSEAU)) return langue === "en" ? "Today" : "Aujourd’hui";
-  if (jour === jourLocal(new Date(present.getTime() - 86_400_000), FUSEAU)) {
-    return langue === "en" ? "Yesterday" : "Hier";
-  }
-  return new Intl.DateTimeFormat(LOCALE[langue], {
-    day: "numeric", month: "long", timeZone: FUSEAU,
-  }).format(new Date(ts));
-}
-
 function dateCourte(ts: string | null, langue: Langue): string {
   if (!ts) return "—";
   return new Intl.DateTimeFormat(LOCALE[langue], {
@@ -205,36 +208,52 @@ function dateCourte(ts: string | null, langue: Langue): string {
   }).format(new Date(ts));
 }
 
-function ecartHumain(ts: string | null, langue: Langue): string {
-  if (!ts) return langue === "en" ? "never seen" : "jamais vu";
-  const s = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+// L'âge, ARRONDI VERS LE BAS : 4 min 55 s se dit « il y a 4 min ». Arrondi
+// au plus près, 175 s et 185 s s'écrivaient tous deux « il y a 3 min » —
+// l'un sous « actif », l'autre sous « muet », de part et d'autre du seuil.
+function ecartHumain(age: number | null, langue: Langue): string {
+  if (age == null) return langue === "en" ? "never seen" : "jamais vu";
+  const s = Math.max(0, Math.floor(age));
   const forme = (n: number, unite: string) =>
     langue === "en" ? `${n} ${unite} ago` : `il y a ${n} ${unite}`;
   if (s < 60) return forme(s, "s");
-  if (s < 3600) return forme(Math.round(s / 60), "min");
-  if (s < 86_400) return forme(Math.round(s / 3600), "h");
-  return forme(Math.round(s / 86_400), langue === "en" ? "d" : "j");
+  if (s < 3600) return forme(Math.floor(s / 60), "min");
+  if (s < 86_400) return forme(Math.floor(s / 3600), "h");
+  return forme(Math.floor(s / 86_400), langue === "en" ? "d" : "j");
 }
-
-// Une carte est « en place » si le terminal l'a vue il y a moins de dix
-// minutes : au-delà, elle a été retirée (ou le terminal s'est tu — et alors
-// c'est lui qu'on signale comme muet).
-const EN_PLACE_MS = 10 * 60 * 1000;
 
 // --- Le chargement complet ---------------------------------------------------
 
-function versTerminal(t: LigneTerminal | undefined, langue: Langue): EtatTerminal | null {
-  return t
-    ? {
-        id: t.id,
-        nom: t.nom || t.id.charAt(0).toUpperCase() + t.id.slice(1),
-        enLigne: Boolean(t.vu_le && Date.now() - new Date(t.vu_le).getTime() < 3 * 60 * 1000),
-        majTexte: ecartHumain(t.vu_le, langue),
-        version: t.version ?? "",
-        sante: t.sante?.resume ?? "",
-        enAttente: t.sante?.en_attente ?? 0,
-      }
-    : null;
+/**
+ * Ce qu'on dit d'un boîtier, mesuré à `maintenant` — l'horloge de la
+ * PLATEFORME, au moment de répondre.
+ *
+ * `vuLe` et `vuIlYa` voyagent avec la réponse : le téléphone fait vieillir
+ * l'âge lui-même entre deux lectures, sans requête, et ne compare jamais
+ * l'instant à sa propre horloge. `enLigne` et `majTexte` restent pour les
+ * applications déjà installées — une photo prise ici, qu'elles affichent
+ * telle quelle.
+ */
+function versTerminal(
+  t: LigneTerminal | undefined, langue: Langue, maintenant = Date.now(),
+): EtatTerminal | null {
+  if (!t) return null;
+  const vuIlYa = ageDuSigneDeVie(t.entendu_le, t.vu_le, maintenant);
+  return {
+    id: t.id,
+    nom: t.nom || t.id.charAt(0).toUpperCase() + t.id.slice(1),
+    enLigne: !boitierSansNouvelles(vuIlYa),
+    majTexte: ecartHumain(vuIlYa, langue),
+    version: t.version ?? "",
+    sante: t.sante?.resume ?? "",
+    enAttente: t.sante?.en_attente ?? 0,
+    // L'instant d'où l'âge se mesure : l'heure où la BASE l'a entendu,
+    // quand elle la connaît. La date que le Pi a écrite peut avoir une
+    // heure de retard après une coupure de courant — le téléphone
+    // afficherait « muet depuis 13:05 » d'un boîtier entendu à 14:05.
+    vuLe: entenduLe(t),
+    vuIlYa,
+  };
 }
 
 /** Le terminal seul — pour la coquille, qui n'a pas besoin du reste.
@@ -242,8 +261,8 @@ function versTerminal(t: LigneTerminal | undefined, langue: Langue): EtatTermina
  *  chaque clic payait deux fois le plein tarif. */
 export async function chargerTerminal(langue: Langue): Promise<EtatTerminal | null> {
   const terminaux = await lire<LigneTerminal>(
-    "terminaux?select=*&order=vu_le.desc.nullslast&limit=1");
-  return versTerminal(terminaux[0], langue);
+    "terminaux?select=*&order=vu_le.desc.nullslast&limit=50");
+  return versTerminal(leBoitierMontre(terminaux), langue);
 }
 
 /** Une liste d'ICCID prête pour un filtre « in.(…) ». Chaque valeur est
@@ -332,8 +351,13 @@ export async function chargerDonnees(
   const filtreCarte = portee.tout ? "" : `&iccid=in.${dans}`;
   const filtrePaiement = portee.tout ? "" : `&carte=in.${dans}`;
   const vide = <T,>() => Promise.resolve([] as T[]);
-  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons, carnet] = await Promise.all([
-    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=1"),
+  const [terminaux, cartesBrutes, comptesBruts, releve, recus, boutons, carnet,
+         vuesDeLaFlotte] = await Promise.all([
+    // TOUS les boîtiers, pas « le dernier qui a parlé » : chaque carte se
+    // juge d'après le SIEN. Dès deux boîtiers, celui qui tombait ne se
+    // voyait pas tant que l'autre parlait. L'écran montre comme « le
+    // terminal » le dernier entendu (`leBoitierMontre`).
+    lire<LigneTerminal>("terminaux?select=*&order=vu_le.desc.nullslast&limit=50"),
     rien ? vide<LigneCarte>()
       : lire<LigneCarte>(`cartes?select=*${filtreCarte}&order=derniere_vue.desc.nullslast`),
     rien ? vide<LigneCompte>() : lire<LigneCompte>(`comptes?select=*${filtreCarte}`),
@@ -356,6 +380,15 @@ export async function chargerDonnees(
     rien ? vide<Beneficiaire>()
       : lire<Beneficiaire>(
           `beneficiaires?select=id,carte,numero,nom${filtrePaiement}&order=nom.asc&limit=500`),
+    // La plus récente vue de CHAQUE boîtier, toutes cartes confondues — y
+    // compris celles qu'on ne montre pas à cette personne. Elle ne sort pas
+    // d'ici : elle sert seulement à dire si son boîtier a relu ses puces.
+    // Sans elle, celui à qui on n'a confié qu'une carte verrait cette
+    // carte « inconnue » dès qu'on la retire, faute de voir les autres.
+    // Le propriétaire a déjà toutes les cartes sous la main.
+    portee.tout || rien ? vide<{ terminal?: string | null; derniere_vue: string | null }>()
+      : lire<{ terminal?: string | null; derniere_vue: string | null }>(
+          "cartes?select=terminal,derniere_vue"),
   ]);
 
   // Revérifié ici, ligne par ligne : ce que la base a filtré, on le
@@ -363,7 +396,21 @@ export async function chargerDonnees(
   // distant (ni d'un faux nuage qui ignorerait un filtre).
   const visible = (iccid: string | null | undefined) =>
     portee.tout || (iccid != null && portee.cartes.includes(iccid));
-  const cartes = cartesBrutes.filter((c) => visible(c.iccid));
+  // UNE carte, UNE ligne. La base en tient une par boîtier qui l'a vue : une
+  // puce passée d'un boîtier à l'autre y figure deux fois. On garde celle du
+  // boîtier qui l'a vue en DERNIER — c'est là qu'elle est, et c'est là que
+  // ses demandes partent (`terminalDeLaCarte`).
+  const instant = (iso: string | null) => (iso ? Date.parse(iso) || 0 : 0);
+  const laPlusRecente = new Map<string, LigneCarte>();
+  for (const c of cartesBrutes) {
+    if (!visible(c.iccid)) continue;
+    const deja = laPlusRecente.get(c.iccid);
+    if (!deja || instant(c.derniere_vue) > instant(deja.derniere_vue)) {
+      laPlusRecente.set(c.iccid, c);
+    }
+  }
+  // L'ordre reste celui de la base : les plus récemment vues d'abord.
+  const cartes = cartesBrutes.filter((c) => laPlusRecente.get(c.iccid) === c);
   const comptes = comptesBruts.filter((c) => visible(c.iccid));
   const lignes = releve.lignes.filter((l) => visible(l.carte));
   // La base avait-elle plus à donner que ce qu'on a demandé ? La réponse
@@ -371,7 +418,13 @@ export async function chargerDonnees(
   // ici, au moment de la lecture.
   const smsTronques = releve.total != null && releve.total > releve.lignes.length;
 
-  const terminal = versTerminal(terminaux[0], langue);
+  // L'HEURE DE LA RÉPONSE, prise une fois : l'âge de chaque boîtier et
+  // `serveurA` se mesurent au même instant, sur la même horloge.
+  const maintenant = Date.now();
+  const terminal = versTerminal(leBoitierMontre(terminaux), langue, maintenant);
+  const boitiers = new Map(terminaux.map((t) => [t.id, t]));
+  const plusRecentes = cartesLesPlusRecentes(portee.tout ? cartesBrutes : vuesDeLaFlotte);
+  const aujourdhui = jourLocal(new Date(maintenant), FUSEAU);
 
   // Le numéro d'un reçu se termine par l'identifiant de la ligne du journal
   // (« TM-2026-0731-0042 » → 42) : c'est un lien EXACT avec son SMS — mais
@@ -439,7 +492,11 @@ export async function chargerDonnees(
       numero: l.numero ?? "",
       montant: l.montant == null ? null : Number(l.montant),
       heure: heure(moment(l)),
-      date: libelleJour(moment(l), langue),
+      // Le libellé du NOYAU, celui que le téléphone forme lui-même : un
+      // « Aujourd'hui » ne s'écrit que d'une façon. Il reste envoyé pour les
+      // applications déjà installées ; les nouvelles le reforment à partir
+      // de `jour`, au moment de dessiner — relu le lendemain, il mentait.
+      date: libelleJour(jourLocal(new Date(moment(l)), FUSEAU), aujourdhui, langue),
       jour: jourLocal(new Date(moment(l)), FUSEAU),
       recuLe: moment(l),
       // Catégorie devinée ; « message » à défaut (vieux SMS sans la colonne,
@@ -460,7 +517,9 @@ export async function chargerDonnees(
     }));
 
   const sims: Sim[] = cartes.map((c) => {
-    const compte = comptes.find((x) => x.iccid === c.iccid);
+    // Le compte relevé par LE boîtier qui porte la carte, à défaut un autre.
+    const compte = comptes.find((x) => x.iccid === c.iccid && x.terminal === c.terminal)
+      ?? comptes.find((x) => x.iccid === c.iccid);
     const entrees = lignes.filter((l) => l.carte === c.iccid && l.sens === "entree");
     // Le solde vient du terminal, point : une réponse USSD, ou un SMS de
     // relevé envoyé par l'opérateur (MTN répond ainsi en itinérance).
@@ -471,13 +530,39 @@ export async function chargerDonnees(
     // les soixante secondes. Le solde paraissait donc toujours frais, même
     // vieux de plusieurs heures : la phrase qui devait rassurer sur son âge
     // était précisément celle qui le masquait. « solde_maj » date le solde
-    // lui-même ; à défaut (base pas encore migrée), on retombe sur « maj »,
-    // comme avant.
-    const soldeMaj = solde != null && compte
-      ? heure(compte.solde_maj ?? compte.maj) : null;
-    const enPlace = Boolean(
-      c.derniere_vue && Date.now() - new Date(c.derniere_vue).getTime() < EN_PLACE_MS,
-    );
+    // lui-même.
+    //
+    // On ne retombe sur « maj » que si la COLONNE manque (base pas encore
+    // migrée : `undefined`). Une colonne présente mais VIDE dit « on ne sait
+    // pas quand ce solde a été relevé » — et « je ne sais pas » ne se
+    // remplace pas par l'heure du dernier signe de vie, qui avance toute
+    // seule et ferait paraître frais un solde de la veille.
+    const instantDuSolde = solde != null && compte
+      ? (compte.solde_maj === undefined ? compte.maj : compte.solde_maj) ?? null
+      : null;
+    const soldeMaj = instantDuSolde ? heure(instantDuSolde) : null;
+    // Le même instant, entier : l'écran en tire le JOUR (« hier à 21:54 »).
+    const soldeLe = instantDuSolde;
+    // LA PRÉSENCE, JUGÉE D'APRÈS SON BOÎTIER. Muet, il ne permet de conclure
+    // ni à la présence ni à l'absence : « inconnue ». Une coupure de courant
+    // de dix minutes déclarait toutes les cartes retirées — et, au retour,
+    // le signe de vie arrivé avant les cartes les déclarait retirées encore
+    // une minute. Sorti de la flotte, il ne reviendra pas : retirée.
+    const hote = c.terminal ? boitiers.get(c.terminal) : undefined;
+    const vu = boitierVu(hote, plusRecentes, maintenant);
+    const presence: Presence = presenceDeLaCarte(vu, c.derniere_vue);
+    // L'ÉTAT DE SON BOÎTIER À ELLE — pas celui du boîtier montré en tête
+    // (le dernier entendu). Avec deux boîtiers, le téléphone disait
+    // « Terminal hors ligne » sur la carte d'un boîtier qui parlait, et
+    // datait le silence de l'autre avec l'heure du premier. Et « inconnue »
+    // seule ne dit pas qu'il se tait : elle dit aussi « il vient de
+    // revenir ». Le même verdict que le guichet (`terminalDeLaCarte`) :
+    // l'écran ne met en pause que ce que la plateforme refuserait.
+    // L'instant est celui de `terminal.vuLe` — l'heure où la base l'a
+    // entendu, sur SON horloge. Une carte sans boîtier connu n'en dit rien.
+    const sonBoitier = c.terminal
+      ? { boitierMuet: boitierSansNouvelles(vu.vuIlYa), boitierVuLe: entenduLe(hote) }
+      : {};
     return {
       iccid: c.iccid,
       libelle: compte?.libelle || c.libelle || `Carte ·${c.iccid.slice(-4)}`,
@@ -488,8 +573,12 @@ export async function chargerDonnees(
       numero: compte?.numero || c.numero || "",
       solde,
       soldeMaj,
-      signal: compte?.signal ?? null,
-      enPlace,
+      soldeLe,
+      // 99 (« je ne sais pas », dit le modem) n'est pas un signal : `null`.
+      signal: signalLu(compte?.signal),
+      enPlace: enPlaceSelon(presence),
+      presence,
+      ...sonBoitier,
       premiereVue: dateCourte(c.premiere_vue, langue),
       derniereVue: dateCourte(c.derniere_vue, langue),
       nbPaiements: entrees.length,
@@ -509,6 +598,7 @@ export async function chargerDonnees(
 
   return {
     relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques,
+    serveurA: new Date(maintenant).toISOString(),
     // Revérifiés ici, comme les SMS : la portée ne dépend pas d'un filtre
     // distant.
     beneficiaires: carnet.filter((b) => visible(b.carte)),
@@ -599,14 +689,17 @@ export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
 // L'application dépose une demande ; le robot de Douala la relève, l'exécute
 // sur la vraie SIM, et écrit le résultat ici même.
 
+/** Le boîtier d'une demande qui ne vise aucune carte : le dernier entendu,
+ *  parmi ceux qui sont encore en service. */
 export async function terminalVise(): Promise<string | null> {
-  const t = await lire<{ id: string }>(
-    "terminaux?select=id&order=vu_le.desc.nullslast&limit=1");
-  return t[0]?.id ?? null;
+  const t = await lire<LigneTerminal>(
+    "terminaux?select=*&order=vu_le.desc.nullslast&limit=50");
+  return leBoitierMontre(t)?.id ?? null;
 }
 
 /**
- * LE TERMINAL QUI PORTE CETTE CARTE — ou `null` si aucun ne la porte.
+ * LE TERMINAL QUI PORTE CETTE CARTE — et ce qu'on sait d'elle et de lui.
+ * `null` : aucun boîtier ne l'a jamais vue.
  *
  * Une demande qui vise une carte partait au terminal « le dernier à avoir
  * donné signe de vie ». Avec un seul boîtier, c'était le bon. Avec deux, un
@@ -616,19 +709,93 @@ export async function terminalVise(): Promise<string | null> {
  * Une demande vise une CARTE, pas un boîtier : elle part à celui qui a vu
  * la carte en dernier. Chaque terminal rafraîchit `derniere_vue` à chaque
  * relecture de ses puces (environ toutes les minutes) ; une carte déplacée
- * d'un boîtier à l'autre suit donc d'elle-même. Vue nulle part depuis
- * `EN_PLACE_MS` : elle est retirée, ou son terminal est éteint — on ne
- * dépose rien, la demande n'aurait personne pour la composer.
+ * d'un boîtier à l'autre suit donc d'elle-même.
+ *
+ * DEUX REFUS, ET ILS NE SE CONFONDENT PAS :
+ *   — `muet` : son boîtier ne donne plus de nouvelles. Une demande déposée
+ *     maintenant attendrait son retour — des heures, peut-être — et il la
+ *     composerait alors, numéro et montant compris, pour un écran qui a
+ *     abandonné depuis longtemps ;
+ *   — `presence: "retiree"` : le boîtier parle et ne la voit plus, ou il
+ *     est sorti de la flotte.
+ * La règle « vue il y a moins de dix minutes » confondait les deux : une
+ * coupure de courant passait pour un retrait, et un boîtier muet depuis six
+ * minutes recevait encore des demandes.
+ *
+ * « inconnue » D'UN BOÎTIER QUI PARLE n'est pas un refus : il vient de
+ * revenir et n'a pas encore republié ses cartes. La demande part chez lui ;
+ * il compose si la puce est là, et répond lui-même « cette carte n'est pas
+ * dans le terminal » sinon. La refuser, c'était renvoyer chaque geste de la
+ * minute qui suit une coupure.
  */
-export async function terminalDeLaCarte(iccid: string): Promise<string | null> {
+export async function terminalDeLaCarte(
+  iccid: string,
+): Promise<{ terminal: string; presence: Presence; muet: boolean } | null> {
   if (!/^[A-Za-z0-9]{1,32}$/.test(iccid)) return null;
   const vues = await lire<{ terminal: string; derniere_vue: string | null }>(
     `cartes?select=terminal,derniere_vue&iccid=eq.${iccid}`
     + "&order=derniere_vue.desc.nullslast&limit=1");
   const vue = vues[0];
-  if (!vue?.terminal || !vue.derniere_vue) return null;
-  const age = Date.now() - new Date(vue.derniere_vue).getTime();
-  return age < EN_PLACE_MS ? vue.terminal : null;
+  if (!vue?.terminal) return null;
+  const id = encodeURIComponent(vue.terminal);
+  const [lignes, siennes] = await Promise.all([
+    lire<LigneTerminal>(`terminaux?select=*&id=eq.${id}&limit=1`),
+    // La plus fraîche de SES cartes : dit s'il a relu ses puces depuis son
+    // retour.
+    lire<{ terminal?: string | null; derniere_vue: string | null }>(
+      `cartes?select=terminal,derniere_vue&terminal=eq.${id}`
+      + "&order=derniere_vue.desc.nullslast&limit=1"),
+  ]);
+  const hote = lignes.find((x) => x.id === vue.terminal);
+  const boitier = boitierVu(hote, cartesLesPlusRecentes(siennes), Date.now());
+  return {
+    terminal: vue.terminal,
+    presence: presenceDeLaCarte(boitier, vue.derniere_vue),
+    muet: boitierSansNouvelles(boitier.vuIlYa),
+  };
+}
+
+/** Ce boîtier se tait-il ? Mesuré depuis l'heure où la base l'a entendu.
+ *  Inconnu de la base : oui — on ne dépose rien pour un boîtier dont on ne
+ *  sait rien. */
+export async function boitierMuet(id: string): Promise<boolean> {
+  const t = (await lire<LigneTerminal>(
+    `terminaux?select=*&id=eq.${encodeURIComponent(id)}&limit=1`)).find((x) => x.id === id);
+  return boitierSansNouvelles(ageDuSigneDeVie(t?.entendu_le, t?.vu_le, Date.now()));
+}
+
+/**
+ * LA DEMANDE DÉJÀ DÉPOSÉE POUR CE GESTE — même clé d'intention, quel que
+ * soit le boîtier où elle attend. `null` : ce geste n'a encore rien déposé.
+ *
+ * Le guichet la cherche AVANT de juger le boîtier. Un geste rejoué (la
+ * réponse du premier envoi s'est perdue en route) pendant que le boîtier
+ * se tait s'entendait dire « rien n'est parti » — alors que sa demande
+ * attendait dans la base, et partirait au retour du boîtier, sans que
+ * l'écran ait d'identifiant pour la suivre ni l'annuler. Une vérification
+ * faite avant l'écriture ne garantissait rien ; c'est la clé qui garantit.
+ *
+ * Rend aussi à QUI elle est (`par`, nommé par la plateforme) et sur quelle
+ * carte : le guichet ne rend pas la demande d'un autre.
+ */
+export async function demandeDuGeste(
+  cleIntention: string,
+): Promise<{ id: number; par: string | null; carte: string | null } | null> {
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(cleIntention)) return null;
+  const lignes = await lire<{
+    id: number; cle?: string | null; parametres: Record<string, unknown> | null;
+  }>(`commandes?select=id,cle,parametres&cle=eq.${encodeURIComponent(cleIntention)}`
+     + "&order=id.asc&limit=1");
+  // Revérifiée ici : on ne s'en remet pas au filtre d'un service distant.
+  const c = lignes.find((x) => x.cle === cleIntention);
+  if (!c) return null;
+  const par = c.parametres?.par;
+  const carte = c.parametres?.carte ?? c.parametres?.iccid;
+  return {
+    id: c.id,
+    par: typeof par === "string" ? par : null,
+    carte: typeof carte === "string" ? carte : await carteDeLaCommande(c.id),
+  };
 }
 
 export async function creerCommande(
@@ -670,9 +837,15 @@ export async function creerCommande(
     // la première plutôt qu'un échec — l'écran suit alors la commande qui
     // existe, exactement comme s'il n'avait envoyé qu'une fois.
     if (r.status === 409 && cleIntention) {
-      const deja = await lire<{ id: number }>(
-        `commandes?select=id&terminal=eq.${encodeURIComponent(terminal)}`
+      const deja = await lire<{ id: number; parametres: Record<string, unknown> | null }>(
+        `commandes?select=id,parametres&terminal=eq.${encodeURIComponent(terminal)}`
         + `&cle=eq.${encodeURIComponent(cleIntention)}&limit=1`);
+      // La demande d'un AUTRE ne se rend pas : on ne suit que les siennes.
+      // (`par` absent : une demande d'avant, ou dont le robot a effacé le
+      // code secret — on la rend, comme avant.)
+      const auteur = deja[0]?.parametres?.par;
+      if (typeof auteur === "string" && typeof parametres.par === "string"
+          && auteur !== parametres.par) return null;
       return deja[0]?.id ?? null;
     }
     return null;
@@ -1001,6 +1174,109 @@ export async function lireCommande(
     `commandes?select=id,etat,resultat&id=eq.${id}&limit=1`);
   const c = lignes.find((x) => x.id === id);
   return c ? { etat: c.etat, resultat: c.resultat } : null;
+}
+
+/** Qui a déposé cette demande (`par`, nommé par la plateforme), sur quelle
+ *  carte, et où elle en est — sans jamais rendre ses paramètres. `par` est
+ *  absent d'une demande d'avant, ou d'une réponse dont le robot a effacé le
+ *  code secret (il ne garde que le drapeau et la carte). */
+export async function auteurDeLaCommande(
+  id: number,
+): Promise<{ par: string | null; carte: string | null; etat: string } | null> {
+  const lignes = await lire<{
+    id: number; etat: string; terminal: string | null;
+    parametres: Record<string, unknown> | null;
+  }>(`commandes?select=id,etat,terminal,parametres&id=eq.${id}&limit=1`);
+  const c = lignes.find((x) => x.id === id);
+  if (!c) return null;
+  const par = c.parametres?.par;
+  return {
+    par: typeof par === "string" ? par : null,
+    carte: await carteDeLaCommande(id),
+    etat: c.etat,
+  };
+}
+
+/** Les phrases qu'une ANNULATION écrit dans le résultat, dans les deux
+ *  langues : c'est à elles qu'on reconnaît, plus tard, une demande annulée
+ *  depuis l'écran — le robot n'écrit jamais ces mots-là. */
+const PHRASES_D_ANNULATION = new Set(
+  Object.values(textesApi).map((t) => t.demandeAnnulee));
+
+/**
+ * ANNULER une demande que le boîtier n'a pas encore prise.
+ *
+ * L'écran abandonne au bout d'une trentaine de secondes sans réponse. Il ne
+ * retirait rien : la demande restait « en attente », et un boîtier revenu
+ * des heures plus tard la composait — numéro et montant compris — pour un
+ * écran qui avait dit « le terminal n'a pas répondu » depuis longtemps.
+ *
+ * LA CONDITION FAIT TOUT. Le passage « en attente » → « échouée » ne se fait
+ * QUE si la demande est encore en attente : le filtre `etat=eq.en_attente`
+ * fait partie de l'écriture, donc du même verrou de ligne que la réclamation
+ * du robot (`reclamer`, totem/nuage.py), qui pose la même condition. Des
+ * deux, un seul gagne, et chacun le sait :
+ *   — l'annulation a pris : le robot ne la prendra plus, RIEN n'est parti ;
+ *   — elle n'a pas pris : le robot l'a déjà en main (ou l'a finie) — l'écran
+ *     ne doit SURTOUT PAS dire « rien n'est parti ».
+ *
+ * Rend « annulee », l'état où elle se trouvait (elle n'a pas pris), ou
+ * `null` quand la base n'a pas répondu — et alors on ne sait pas.
+ */
+export async function annulerCommande(
+  id: number, langue: Langue,
+): Promise<{ annulee: boolean; etat: string } | null> {
+  if (!relie || !Number.isInteger(id)) return null;
+  const champs: Record<string, unknown> = {
+    etat: "echouee", resultat: textesApi[langue].demandeAnnulee,
+    traitee_le: new Date().toISOString(),
+  };
+  // LE CODE SECRET NE SURVIT PAS À UNE ANNULATION. Une réponse qui le porte
+  // attend le robot avec lui, en clair ; c'est le robot qui l'efface, en la
+  // traitant (`_parametres_masques`). Annulée, elle ne sera jamais traitée :
+  // sans ceci, le code resterait dans la base pour toujours, sur une ligne
+  // « échouée » que personne ne relit. On garde ce que le robot garde — le
+  // drapeau, la carte — et la personne, qui dit à qui est la demande.
+  //
+  // SANS RELECTURE, PAS D'ÉCRITURE. `lire` rend une liste VIDE quand la base
+  // hoquette : on ne savait plus si la demande portait un code, on écrivait
+  // quand même l'annulation — qui réussissait — et le code restait dans la
+  // ligne close, pour toujours. Une annulation dont on ne peut pas masquer
+  // le code n'est pas faite : `null`, et l'écran dit « incertaine » (elle
+  // peut encore partir — regardez vos SMS). Une base à jour le retire de
+  // toute façon dans la même écriture que la fermeture (déclencheur
+  // « commandes_code_efface », sql/schema.sql) ; ceci tient la promesse sur
+  // une base qui n'a pas encore reçu la migration.
+  const avant = await lire<{ id: number; parametres: Record<string, unknown> | null }>(
+    `commandes?select=id,parametres&id=eq.${id}&limit=1`);
+  const relue = avant.find((x) => x.id === id);
+  if (!relue) return null;
+  const parametres = relue.parametres;
+  if (parametres?.secret === true) {
+    champs.parametres = Object.fromEntries(Object.entries(parametres)
+      .filter(([cle]) => ["secret", "carte", "par", "langue"].includes(cle)));
+  }
+  // La condition `etat=eq.en_attente` fait partie de l'écriture : si le
+  // robot l'a réclamée entre la lecture ci-dessus et maintenant, rien n'est
+  // touché — ni l'état, ni ses paramètres. Seul l'identifiant revient :
+  // la ligne entière porterait le code qu'on vient d'effacer.
+  const r = await ecrire(
+    `commandes?id=eq.${id}&etat=eq.en_attente&select=id`, "PATCH", champs);
+  if (!r?.ok) return null;
+  const changees = (await r.json().catch(() => null)) as { id: number }[] | null;
+  if (!Array.isArray(changees)) return null;
+  if (changees.some((c) => c.id === id)) return { annulee: true, etat: "echouee" };
+  // Rien n'a changé : elle n'était plus en attente. Où en est-elle ?
+  const lignes = await lire<{ id: number; etat: string; resultat: string | null }>(
+    `commandes?select=id,etat,resultat&id=eq.${id}&limit=1`);
+  const c = lignes.find((x) => x.id === id);
+  if (!c) return null;
+  // Une annulation REDEMANDÉE (la réponse de la première s'est perdue en
+  // route) retrouve la sienne : c'est le même geste, il a pris.
+  if (c.etat === "echouee" && c.resultat && PHRASES_D_ANNULATION.has(c.resultat)) {
+    return { annulee: true, etat: c.etat };
+  }
+  return { annulee: false, etat: c.etat };
 }
 
 // ---------------------------------------------------------------------------

@@ -25,8 +25,11 @@ import * as Notifications from "expo-notifications";
 import * as Appareil from "expo-device";
 import Constants from "expo-constants";
 
-import { enregistrerAppareil, ErreurGuichet } from "@/api/guichet";
+import {
+  enregistrerAppareil, ErreurGuichet, langueDeLEcran, versErreurGuichet,
+} from "@/api/guichet";
 import { couleurs } from "@/theme/jetons";
+import { textesConnexion } from "@noyau/textes/connexion";
 
 // Application ouverte au moment où la notification arrive : on la montre
 // quand même. Un encaissement pendant qu'on regarde l'écran reste une
@@ -127,6 +130,137 @@ export async function peutEncoreDemander(): Promise<boolean> {
 }
 
 /**
+ * UN DÉLAI PAR ÉTAPE — car chacune pouvait ne JAMAIS rendre la main.
+ *
+ * Le jeton d'Expo se demande par un `fetch` sans délai ; sur iPhone, le
+ * jeton d'Apple attend un rappel qui peut ne pas venir hors ligne ; l'envoi
+ * à la plateforme subissait le corps qui ne finit pas (voir `guichet.ts`).
+ * Une seule étape muette, et l'inscription restait « en cours » pour
+ * toujours : chaque nouvel essai la REJOIGNAIT, la carte des Réglages
+ * tournait sans fin, et un téléphone dont le jeton avait changé ne se
+ * réinscrivait plus jamais.
+ *
+ * Chaque étape court donc contre sa propre échéance. Une étape qui la
+ * dépasse est une panne qui se DIT — « le téléphone n'a pas répondu à
+ * temps » — et l'inscription réessaie comme pour un réseau coupé.
+ *
+ * La demande de permission a le délai le plus long : c'est une PERSONNE qui
+ * lit le message du système, puis répond. On ne l'abandonne pas pendant
+ * qu'elle lit.
+ */
+const DELAI_SYSTEME_MS = 10_000;      // le canal, la permission déjà donnée
+const DELAI_ACCORD_MS = 120_000;      // la demande de permission, à une personne
+const DELAI_JETON_MS = 30_000;        // le service de notification
+const DELAI_ENVOI_MS = 40_000;        // la plateforme (le guichet borne déjà à 30 s)
+
+/** Une étape du téléphone qui n'a pas rendu la main à temps. */
+class EtapeMuette extends Error {}
+
+function avant<T>(travail: Promise<T>, ms: number): Promise<T> {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  const echeance = new Promise<never>((_, rejeter) => {
+    minuteur = setTimeout(() => rejeter(new EtapeMuette()), ms);
+  });
+  // Perdante, l'étape peut encore échouer plus tard : personne ne l'écoute.
+  travail.catch(() => {});
+  return Promise.race([travail, echeance]).finally(() => clearTimeout(minuteur));
+}
+
+/** La phrase d'une étape muette, dans la langue de l'écran — jamais le
+ *  message brut du système, qui n'existe pas ici : il n'a rien dit. */
+async function phraseDuSilence(): Promise<string> {
+  return textesConnexion[await langueDeLEcran()].telephoneSansReponse;
+}
+
+/**
+ * LE SERVICE DE JETON N'A PAS PU ÊTRE JOINT — et il le dit en anglais
+ * technique.
+ *
+ * Hors ligne, expo-notifications rejette avec le code
+ * « ERR_NOTIFICATIONS_NETWORK_ERROR » et ce message : « Error encountered
+ * while fetching Expo token: TypeError: fetch failed: The Internet
+ * connection appears to be offline.. ». Les Réglages le montraient mot pour
+ * mot sous l'état du téléphone, et le gardaient jusqu'au verdict suivant.
+ * Sur Android, le service de Google dit « SERVICE_NOT_AVAILABLE » pour la
+ * même raison. C'est le cas le plus courant — l'application qui s'ouvre
+ * sans réseau — et il mérite une phrase, pas un message d'erreur.
+ *
+ * Tout le reste GARDE les mots du système : « Default FirebaseApp is not
+ * initialized », ou le droit Apple qui manque au paquet, désignent la
+ * panne d'un mot, et cette panne ne se répare pas en réessayant.
+ */
+function serviceInjoignable(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === "ERR_NOTIFICATIONS_NETWORK_ERROR") return true;
+  const m = e instanceof Error ? e.message : String(e);
+  return /fetch failed|network request failed|appears to be offline|SERVICE_NOT_AVAILABLE/i.test(m);
+}
+
+/** Ce qu'une tentative a donné : son état, et ce qui l'a arrêtée. */
+type Issue = { etat: EtatSonnerie; souci: string | null };
+
+async function essayer(): Promise<Issue> {
+  // Un émulateur n'a pas les services Google : Expo n'a pas de jeton à
+  // rendre, et insister ne ferait qu'un message d'erreur au démarrage.
+  if (!Appareil.isDevice) return { etat: "simulateur", souci: null };
+
+  let accord: string;
+  try {
+    await avant(declarerLeCanal(), DELAI_SYSTEME_MS);
+    ({ status: accord } = await avant(Notifications.getPermissionsAsync(), DELAI_SYSTEME_MS));
+    if (accord !== "granted") {
+      ({ status: accord } = await avant(Notifications.requestPermissionsAsync(), DELAI_ACCORD_MS));
+    }
+  } catch (e) {
+    if (e instanceof EtapeMuette) return { etat: "echec", souci: await phraseDuSilence() };
+    throw e;
+  }
+  if (accord !== "granted") return { etat: "refusee", souci: null };
+
+  const projectId = projet();
+  if (!projectId) return { etat: "sansProjet", souci: null };
+
+  let jeton: string | undefined;
+  try {
+    ({ data: jeton } = await avant(
+      Notifications.getExpoPushTokenAsync({ projectId }), DELAI_JETON_MS));
+  } catch (e) {
+    if (e instanceof EtapeMuette) return { etat: "sansJeton", souci: await phraseDuSilence() };
+    // Le réseau qui manque se dit dans la langue de l'écran.
+    if (serviceInjoignable(e)) {
+      return {
+        etat: "sansJeton",
+        souci: textesConnexion[await langueDeLEcran()].serviceSonnerieInjoignable,
+      };
+    }
+    // ON GARDE LE MESSAGE. C'est ici que se joue la panne la plus opaque :
+    // sans Firebase dans le paquet, Android répond « Default FirebaseApp is
+    // not initialized » — une phrase qui dit tout. L'avaler, comme je le
+    // faisais, laissait « aucun téléphone inscrit » et rien d'autre.
+    return { etat: "sansJeton", souci: e instanceof Error ? e.message : String(e) };
+  }
+  if (!jeton) return { etat: "sansJeton", souci: null };
+
+  try {
+    await avant(
+      enregistrerAppareil(jeton, Platform.OS, Appareil.modelName ?? ""), DELAI_ENVOI_MS);
+  } catch (e) {
+    if (e instanceof ErreurGuichet && e.statut === 403) return { etat: "reservee", souci: null };
+    // Réseau coupé, session expirée : le jeton est bon, c'est le dépôt qui
+    // a manqué. On réessaiera — et le propriétaire peut réessayer lui-même.
+    // Le guichet parle déjà la langue de l'écran ; une étape muette aussi,
+    // et ce qui ne viendrait pas du guichet passe par SA porte de sortie :
+    // jamais le message brut d'un `fetch`.
+    const langue = await langueDeLEcran();
+    const souci = e instanceof EtapeMuette
+      ? textesConnexion[langue].reseauEnPanne
+      : versErreurGuichet(e, langue).message;
+    return { etat: "echec", souci };
+  }
+  return { etat: "inscrit", souci: null };
+}
+
+/**
  * Inscrit CE téléphone auprès de la plateforme, et DIT ce qui s'est passé.
  *
  * Aucun de ces cas n'est une panne de l'application : elle marche
@@ -135,47 +269,10 @@ export async function peutEncoreDemander(): Promise<boolean> {
  * distingue.
  */
 export async function inscrireLAppareil(): Promise<EtatSonnerie> {
-  // Un émulateur n'a pas les services Google : Expo n'a pas de jeton à
-  // rendre, et insister ne ferait qu'un message d'erreur au démarrage.
   dernierSouci = null;
-  if (!Appareil.isDevice) return "simulateur";
-
-  await declarerLeCanal();
-
-  const { status: dejaDonne } = await Notifications.getPermissionsAsync();
-  let accord = dejaDonne;
-  if (accord !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    accord = status;
-  }
-  if (accord !== "granted") return "refusee";
-
-  const projectId = projet();
-  if (!projectId) return "sansProjet";
-
-  let jeton: string | undefined;
-  try {
-    ({ data: jeton } = await Notifications.getExpoPushTokenAsync({ projectId }));
-  } catch (e) {
-    // ON GARDE LE MESSAGE. C'est ici que se joue la panne la plus opaque :
-    // sans Firebase dans le paquet, Android répond « Default FirebaseApp is
-    // not initialized » — une phrase qui dit tout. L'avaler, comme je le
-    // faisais, laissait « aucun téléphone inscrit » et rien d'autre.
-    dernierSouci = e instanceof Error ? e.message : String(e);
-    return "sansJeton";
-  }
-  if (!jeton) return "sansJeton";
-
-  try {
-    await enregistrerAppareil(jeton, Platform.OS, Appareil.modelName ?? "");
-  } catch (e) {
-    if (e instanceof ErreurGuichet && e.statut === 403) return "reservee";
-    dernierSouci = e instanceof Error ? e.message : String(e);
-    // Réseau coupé, session expirée : le jeton est bon, c'est le dépôt qui
-    // a manqué. On réessaiera — et le propriétaire peut réessayer lui-même.
-    return "echec";
-  }
-  return "inscrit";
+  const { etat, souci } = await essayer();
+  dernierSouci = souci;
+  return etat;
 }
 
 /**
@@ -199,15 +296,73 @@ const A_REESSAYER: ReadonlySet<EtatSonnerie> = new Set(["echec", "sansJeton"]);
  *  revient revient vite, et s'il ne revient pas, on cesse de le harceler. */
 const ATTENTES = [2_000, 5_000, 15_000, 60_000];
 
-/** Une seule inscription à la fois, et pas deux à la suite. Sans ces deux
- *  garde-fous, un retour à l'écran pendant un réessai en lancerait un
- *  second, et l'écoute du jeton pourrait boucler sur elle-même. */
-let enCours: Promise<EtatSonnerie> | null = null;
+/** Une seule inscription QUI PARLE à la fois, et pas deux à la suite. Sans
+ *  ces deux garde-fous, un retour à l'écran pendant un réessai en lancerait
+ *  un second, et l'écoute du jeton pourrait boucler sur elle-même. (Une
+ *  tentative remplacée peut finir son essai dans son coin : elle se tait.) */
+type Tentative = {
+  depuis: number;
+  promesse: Promise<EtatSonnerie>;
+  /** Vrai pendant l'attente entre deux essais ; faux pendant un essai. */
+  dort: boolean;
+  /** Le début de l'essai en cours. */
+  essaiDepuis: number;
+  /** Vrai dès qu'une tentative plus neuve parle à sa place. */
+  remplacee: boolean;
+  rendre: (r: EtatSonnerie | Promise<EtatSonnerie>) => void;
+};
+let enCours: Tentative | null = null;
 let dernierEtat: EtatSonnerie = "echec";
 let derniereTentative = 0;
 const REPOS = 20_000;
 
+/** Au-delà, une tentative qui DORT entre deux réessais (2, 5, 15, puis
+ *  60 s) ne se rejoint plus : on en lance une neuve. La rejoindre, c'était
+ *  faire tourner la carte des Réglages quatre-vingts secondes, et
+ *  « Réessayer » ne faisait que rejoindre la même attente. */
+const TROP_LONG = 30_000;
+
+/** Un essai qui TRAVAILLE depuis plus longtemps que la somme de ses
+ *  échéances a laissé une étape lui échapper : on ne le rejoint plus. Cela
+ *  ne devrait jamais arriver — c'est le filet sous le filet, et il ne sert
+ *  qu'à ce qui n'est pas pressé : une PERSONNE qui appuie n'attend pas un
+ *  essai en cours (voir `Demandeur`). Écrit comme une somme pour qu'il
+ *  reste AU-DELÀ des échéances si l'une d'elles change. */
+const PLAFOND_ESSAI =
+  2 * DELAI_SYSTEME_MS + DELAI_ACCORD_MS + DELAI_JETON_MS + DELAI_ENVOI_MS + 30_000;
+
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * QUI DEMANDE — et donc ce qu'on a le droit de faire de l'essai en route.
+ *
+ *   « personne »   quelqu'un a APPUYÉ (« Réessayer », « Inscrire ce
+ *                  téléphone »). Il veut une réponse MAINTENANT : un essai
+ *                  neuf part tout de suite, même si un autre travaille.
+ *   « branchement » l'ouverture de session, ou l'écoute du jeton. Forcé (le
+ *                  repos ne l'arrête pas), mais il REJOINT l'essai qui
+ *                  travaille.
+ *   « fond »       un retour à l'écran, l'ouverture des Réglages : rien ne
+ *                  presse, il rejoint ce qui est en route.
+ *
+ * POURQUOI UNE PERSONNE NE REJOINT PLUS L'ESSAI QUI TRAVAILLE. Elle le
+ * rejoignait, et cela s'est mesuré : une connexion à demi ouverte, le
+ * service de jeton qui se tait, chaque essai qui tombe à son échéance de
+ * trente secondes ; le réseau revient, on appuie sur « Réessayer » — et le
+ * bouton reste occupé QUATRE-VINGT-SEPT secondes, le temps que l'essai muet
+ * tombe, puis que la série de réessais aille au bout. Un essai parti quand
+ * le réseau manquait n'a plus rien à dire : il attend une réponse qui ne
+ * viendra pas.
+ *
+ * POURQUOI L'ÉCOUTE DU JETON, ELLE, REJOINT TOUJOURS. Obtenir le jeton fait
+ * annoncer le jeton (expo-notifications émet « onDevicePushToken » à CHAQUE
+ * obtention, sur iPhone comme sur Android), et l'annonce force une
+ * inscription. Si elle remplaçait l'essai qui travaille, le neuf obtiendrait
+ * le jeton, qui en forcerait un troisième, et ainsi sans fin — 1 201
+ * demandes de jeton en deux minutes, mesuré. Une personne, elle, appuie à
+ * la vitesse d'une personne, et le bouton reste occupé jusqu'à sa réponse.
+ */
+type Demandeur = "personne" | "branchement" | "fond";
 
 /**
  * Inscrire ce téléphone, et INSISTER tant que cela peut encore marcher.
@@ -220,37 +375,85 @@ const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *
  * Aucune application ne demande cela. Ce bouton était l'aveu que
  * l'inscription ne se réparait pas toute seule. Elle se répare maintenant.
+ *
+ * `force` : une PERSONNE a appuyé — l'essai neuf part tout de suite, même
+ * si un autre est en route (voir `Demandeur`). Sans `force`, c'est le fond :
+ * on rejoint ce qui est en route, et l'on rend le dernier état connu
+ * pendant le repos.
  */
 export function inscrireAvecPatience(force = false): Promise<EtatSonnerie> {
-  // Une tentative déjà en route se REJOINT — on n'invente pas un échec.
-  // L'écran des réglages, ouvert pendant l'inscription du démarrage,
-  // affichait « l'inscription a échoué » pour une inscription qui allait
-  // réussir trois secondes plus tard, et rien ne corrigeait ce mensonge.
-  if (enCours) return enCours;
+  return inscrire(force ? "personne" : "fond");
+}
+
+function inscrire(qui: Demandeur): Promise<EtatSonnerie> {
+  const t = enCours;
+  if (t) {
+    // Une tentative qui TRAVAILLE se REJOINT — on n'invente pas un échec.
+    // L'écran des réglages, ouvert pendant l'inscription du démarrage,
+    // affichait « l'inscription a échoué » pour une inscription qui allait
+    // réussir trois secondes plus tard, et rien ne corrigeait ce mensonge.
+    //
+    // Le branchement la rejoint même FORCÉ, et c'est ce qui empêche la
+    // boucle de l'écoute du jeton. Chaque étape a son échéance : l'essai
+    // rendra la main. Seule une personne qui appuie ne l'attend pas.
+    const coincee = Date.now() - t.essaiDepuis > PLAFOND_ESSAI;
+    if (!t.dort && !coincee && qui !== "personne") return t.promesse;
+    // Une tentative qui DORT entre deux essais se rejoint si elle est
+    // récente et que personne n'insiste.
+    if (t.dort && qui === "fond" && Date.now() - t.depuis < TROP_LONG) return t.promesse;
+    // Sinon — un appui, ou une attente ancienne — on ne l'attend plus.
+    // Une neuve part MAINTENANT, et ceux qui attendaient l'ancienne
+    // reçoivent la réponse de la neuve : personne ne reste sur une attente
+    // que plus rien ne fera aboutir. L'ancienne, si elle travaillait, finit
+    // dans son coin et se tait (`remplacee`) : son échec tardif n'écrase
+    // pas la réponse de la neuve.
+    t.remplacee = true;
+    const neuve = lancer();
+    t.rendre(neuve);
+    return neuve;
+  }
   // Dans la période de repos, on rend le DERNIER état connu : « echec »
   // vingt secondes après une réussite était l'autre moitié du mensonge.
-  if (!force && Date.now() - derniereTentative < REPOS) {
+  if (qui === "fond" && Date.now() - derniereTentative < REPOS) {
     return Promise.resolve(dernierEtat);
   }
+  return lancer();
+}
+
+function lancer(): Promise<EtatSonnerie> {
   derniereTentative = Date.now();
-  enCours = (async () => {
+  let rendre: Tentative["rendre"] = () => {};
+  const promesse = new Promise<EtatSonnerie>((r) => { rendre = r; });
+  const t: Tentative = {
+    depuis: Date.now(), essaiDepuis: Date.now(), dort: false,
+    promesse, remplacee: false, rendre,
+  };
+  enCours = t;
+  void (async () => {
+    let issue: Issue;
     try {
-      let etat = await inscrireLAppareil();
+      issue = await essayer();
       for (const attente of ATTENTES) {
-        if (!A_REESSAYER.has(etat)) break;
+        if (t.remplacee || !A_REESSAYER.has(issue.etat)) break;
+        t.dort = true;
         await dormir(attente);
-        etat = await inscrireLAppareil();
+        t.dort = false;
+        if (t.remplacee) break;
+        t.essaiDepuis = Date.now();
+        issue = await essayer();
       }
-      dernierEtat = etat;
-      return etat;
     } catch {
-      dernierEtat = "echec";
-      return "echec";
-    } finally {
-      enCours = null;
+      issue = { etat: "echec", souci: null };
     }
+    // Remplacée : la neuve a déjà répondu à sa place, et c'est elle qui
+    // dira l'état et le souci. Celle-ci se tait.
+    if (t.remplacee) return;
+    enCours = null;
+    dernierEtat = issue.etat;
+    dernierSouci = issue.souci;
+    rendre(issue.etat);
   })();
-  return enCours;
+  return promesse;
 }
 
 /**
@@ -279,14 +482,14 @@ export function useSonnerie(connecte: boolean | null): void {
   useEffect(() => {
     if (!connecte) return;
 
-    void inscrireAvecPatience(true);
+    void inscrire("branchement");
 
     const auRetour = AppState.addEventListener("change", (etat) => {
-      if (etat === "active") void inscrireAvecPatience();
+      if (etat === "active") void inscrire("fond");
     });
 
     const auJeton = Notifications.addPushTokenListener(() => {
-      setTimeout(() => { void inscrireAvecPatience(true); }, 0);
+      setTimeout(() => { void inscrire("branchement"); }, 0);
     });
 
     return () => {

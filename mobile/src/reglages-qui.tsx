@@ -18,24 +18,94 @@
 // clavier : protégé par app/reglages.tsx — la section vit dans l'écran des
 // réglages, dont le KeyboardAvoidingView pousse le formulaire au-dessus du
 // clavier (vérifié par scripts/verifier-le-clavier.mjs).
+//
+// SA PLACE EST GARDÉE PENDANT QU'ELLE ARRIVE. La section rendait `null` tant
+// que la liste n'était pas là, puis surgissait une à trois secondes plus
+// tard — titre, aide, une rangée par compte — AU-DESSUS de « Sécurité » et
+// de « Se déconnecter », qu'elle poussait d'un bloc, environ 250 points,
+// juste au moment où le doigt pouvait s'en approcher. Elle montre
+// maintenant son titre et des formes grises à la hauteur du dernier nombre
+// de comptes connu.
+//
+// ET CE NOMBRE EST GARDÉ SUR LE TÉLÉPHONE. Le premier jet ne le gardait
+// qu'en mémoire — perdue à chaque lancement. Or on vient ici une fois par
+// mois : presque chaque visite était une « première », la forme prenait la
+// hauteur de deux comptes, et « Sécurité » remontait de deux cents points
+// pour le propriétaire seul, ou descendait d'autant avec trois comptes. Un
+// nombre de comptes n'est ni un secret ni une donnée personnelle : il se
+// range avec les réglages ordinaires (`api/reglage.ts`).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
-import { ChampTexte, Carte, Filet, Texte } from "@/ui";
+import { Accroc, ChampTexte, Carte, Filet, Texte } from "@/ui";
+import { Squelette } from "@/animations";
+import { carteRetiree, motDuRefus } from "@/reglages-cartes";
 import { useGesteUnique } from "@/geste";
+import * as Reglage from "@/api/reglage";
 import { agirSurCompte, ErreurGuichet, listerComptes,
          type CarteAConfier, type CompteInscrit } from "@/api/guichet";
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
-import { dateVue } from "@noyau/types";
+import { dateVue, type Sim } from "@noyau/types";
 import { textesReglages } from "@noyau/textes/reglages";
-import { textesConnexion } from "@noyau/textes/connexion";
 import type { Langue } from "@noyau/langue";
 
-export function SectionQui({ langue }: { langue: Langue }) {
+/** Le nombre de comptes à la dernière lecture — rien d'autre n'est gardé
+ *  d'une visite à l'autre : la liste elle-même est relue à chaque fois, et
+ *  une session suivante ne doit pas apercevoir celle d'avant. Il vit en
+ *  mémoire ET sur le téléphone : la mémoire se perd à chaque lancement. */
+const CLE_NOMBRE = "totem.qui.comptes";
+let nombreConnu: number | null = null;
+let relecture: Promise<void> | null = null;
+
+/** Relire le nombre rangé sur le téléphone — une fois par lancement. Elle
+ *  part dès le chargement de ce fichier, bien avant qu'on ouvre les
+ *  Réglages : la forme a sa bonne hauteur dès le premier rendu. */
+function relireLeNombre(): Promise<void> {
+  relecture ??= Reglage.lire(CLE_NOMBRE).then((v) => {
+    const n = Number(v);
+    if (nombreConnu === null && v !== null && Number.isInteger(n) && n >= 1) nombreConnu = n;
+  }).catch(() => { /* rien de rangé : on fera sans */ });
+  return relecture;
+}
+void relireLeNombre();
+
+function retenirLeNombre(n: number) {
+  if (n === nombreConnu) return;
+  nombreConnu = n;
+  void Reglage.ecrire(CLE_NOMBRE, String(n));
+}
+
+/** Sans rien de rangé — la toute première visite sur ce téléphone — on
+ *  attend UN compte : le propriétaire seul, qui vient d'installer TOTEM et
+ *  n'a encore confié de carte à personne. C'est la première visite la plus
+ *  probable, et la seule qui reste. */
+const NOMBRE_PAR_DEFAUT = 1;
+/** Au-delà, la forme ne grandit plus : six comptes, c'est déjà une grande
+ *  maison, et une forme plus haute que l'écran n'annonce plus rien. */
+const NOMBRE_MAX_DE_FORMES = 6;
+
+export function SectionQui({ langue, proprietaire, sims }: {
+  langue: Langue;
+  /** D'après le cahier. `false` : la section n'existe pas pour cette
+   *  personne — inutile de la montrer en attente pour la retirer ensuite.
+   *  Absent (cahier vide, plateforme ancienne) : on demande, on verra. */
+  proprietaire?: boolean;
+  /** Les cartes du cahier : c'est leur `presence` qui dit si une carte est
+   *  vraiment absente, ou si son boîtier se tait. */
+  sims: Sim[];
+}) {
   const t = textesReglages[langue];
-  const tc = textesConnexion[langue];
   const [comptes, setComptes] = useState<CompteInscrit[] | null>(null);
+  // Combien de rangées la forme d'attente doit tenir. Déjà connu si la
+  // relecture du téléphone a fini — c'est presque toujours le cas.
+  const [attendus, setAttendus] = useState<number | null>(nombreConnu);
+  useEffect(() => {
+    if (attendus !== null) return;
+    let vivant = true;
+    void relireLeNombre().then(() => { if (vivant) setAttendus(nombreConnu); });
+    return () => { vivant = false; };
+  }, [attendus]);
   const [cartes, setCartes] = useState<CarteAConfier[]>([]);
   // Le compte dont on choisit les cartes, ou aucun.
   const [enChoix, setEnChoix] = useState<number | null>(null);
@@ -57,24 +127,39 @@ export function SectionQui({ langue }: { langue: Langue }) {
   // pas : le premier tait la section (403, comme au web), le second se DIT
   // — sinon le propriétaire conclut que l'écran n'existe pas, pendant qu'un
   // invité attend son approbation.
-  const [accroc, setAccroc] = useState(false);
+  //
+  // La lecture ne peut plus rester en suspens : le guichet borne TOUT
+  // l'échange, corps compris, à trente secondes (`api/guichet.ts`). Au-delà,
+  // elle échoue — et l'échec se dit ici, avec « Réessayer », au lieu de
+  // formes grises qui battraient sans fin au-dessus de « Sécurité ».
+  const [accroc, setAccroc] = useState<string | null>(null);
+  // LES LECTURES SONT NUMÉROTÉES. Celle de l'ouverture peut revenir APRÈS
+  // celle qui suit un geste : elle remettrait la liste d'avant le geste.
+  const derniere = useRef(0);
   const charger = useCallback(async () => {
+    const n = ++derniere.current;
     try {
       const r = await listerComptes();
+      if (n !== derniere.current) return;
+      retenirLeNombre((r.comptes ?? []).length);
       setComptes(r.comptes ?? []);
       setCartes(r.cartes ?? []);
       setPermis(true);
-      setAccroc(false);
+      setAccroc(null);
     } catch (e) {
+      if (n !== derniere.current) return;
       if (e instanceof ErreurGuichet && e.statut === 403) {
         setPermis(false);
         return;
       }
-      setAccroc(true);
+      setAccroc(motDuRefus(e, t.actionRatee));
     }
-  }, []);
+  }, [t]);
 
-  useEffect(() => { void charger(); }, [charger]);
+  useEffect(() => {
+    if (proprietaire === false) return;
+    void charger();
+  }, [charger, proprietaire]);
 
   const agir = async (c: CompteInscrit, geste: "approuver" | "fermer" | "supprimer") => {
     const faire = async () => {
@@ -86,8 +171,9 @@ export function SectionQui({ langue }: { langue: Langue }) {
       } catch (e) {
         // Un geste raté se DIT : un « Approuver » silencieusement perdu
         // laisse l'invité dehors et le propriétaire persuadé du contraire.
+        // Dans les mots du guichet — jamais « Network request failed ».
         setRate(true);
-        setMot(e instanceof Error && e.message ? e.message : t.pasPartie);
+        setMot(motDuRefus(e, t.actionRatee));
       } finally {
         // Réussi ou non, la liste rechargée dit l'état réel.
         await charger();
@@ -113,7 +199,15 @@ export function SectionQui({ langue }: { langue: Langue }) {
       ]);
       return;
     }
-    await faire();
+    // LAISSER ENTRER SE CONFIRME AUSSI. C'est le geste qui ouvre la caisse
+    // à quelqu'un, et son bouton est le plus visible de la rangée : un doigt
+    // qui le touche en croyant toucher autre chose — l'écran venait de
+    // bouger sous lui — ne doit pas suffire. Le courriel se relit dans la
+    // question : c'est sur lui qu'on décide.
+    Alert.alert(t.approuver, c.courriel, [
+      { text: t.annuler, style: "cancel" },
+      { text: t.approuver, onPress: () => void faire() },
+    ]);
   };
 
   // `if (creation)` ne garde rien : l'état React ne se ferme qu'au rendu
@@ -150,7 +244,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
       return true;
     } catch (e) {
       setRate(true);
-      setMot(e instanceof Error && e.message ? e.message : t.creerBouton);
+      setMot(motDuRefus(e, t.actionRatee));
       return false;
     } finally {
       setCreation(false);
@@ -168,7 +262,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
       setRate(false);
     } catch (e) {
       setRate(true);
-      setMot(e instanceof Error && e.message ? e.message : t.pasPartie);
+      setMot(motDuRefus(e, t.actionRatee));
     } finally {
       await charger();
       setBascule(null);
@@ -178,37 +272,75 @@ export function SectionQui({ langue }: { langue: Langue }) {
   const nomDeCarte = (iccid: string) =>
     cartes.find((x) => x.iccid === iccid)?.libelle ?? `··${iccid.slice(-4)}`;
 
+  /** « Absente du terminal » seulement pour une carte qu'on SAIT retirée.
+   *  Le cahier sait si le boîtier se tait — et une carte dont on ne sait
+   *  rien n'est pas absente : on dit alors que son boîtier ne donne plus de
+   *  nouvelles. Une plateforme d'avant `presence` ne dit que `enPlace`. */
+  const presenceDite = (carte: CarteAConfier): string => {
+    const vue = sims.find((x) => x.iccid === carte.iccid);
+    // La liste des comptes porte aussi la présence, quand la plateforme est
+    // à jour : elle sert quand le cahier n'a pas encore cette carte.
+    const presence = vue?.presence
+      ?? (carte as CarteAConfier & { presence?: Sim["presence"] }).presence;
+    if (presence === "inconnue") return ` · ${t.presenceInconnue}`;
+    return carteRetiree({ enPlace: vue?.enPlace ?? carte.enPlace, presence })
+      ? ` · ${t.cartesRetiree}` : "";
+  };
+
   // Pas le propriétaire : la section se tait, comme au web.
-  if (permis === false) return null;
+  if (permis === false || proprietaire === false) return null;
   // Le premier chargement a raté : on le dit, avec de quoi réessayer —
   // disparaître en silence ferait croire que la section n'existe pas.
   if (accroc && comptes == null) {
     return (
       <View style={{ gap: espaces.sm }}>
         <Texte taille={textes.intertitre} poids="demi">{t.qui}</Texte>
-        <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
-          <Texte taille={textes.petit} ton="negatif" style={{ lineHeight: 20 }}>
-            {t.pasPartie}
-          </Texte>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void charger()}
-            style={({ pressed }) => ({
-              alignSelf: "flex-start",
-              paddingHorizontal: espaces.lg, paddingVertical: espaces.sm,
-              borderRadius: rayons.bouton, borderWidth: 1,
-              borderColor: couleurs.trait,
-              backgroundColor: pressed ? couleurs.surface2 : couleurs.surfaceHaute,
-            })}
-          >
-            <Texte taille={textes.petit} poids="moyen">{tc.reessayer}</Texte>
-          </Pressable>
-        </Carte>
+        <Accroc message={accroc} onReessayer={() => void charger()} />
       </View>
     );
   }
-  // Encore en route.
-  if (comptes == null) return null;
+  // Encore en route : le titre, l'aide, et une forme par compte attendu, à
+  // la hauteur EXACTE de la rangée qu'elle remplace — celle du propriétaire
+  // (trois lignes et « toutes les cartes » : 151 points), puis celles des
+  // autres (deux boutons, et « Confier des cartes » : 251 points). Les
+  // lignes de texte sont des formes posées dans une boîte de la hauteur de
+  // la ligne : une forme de 14 points pour une ligne qui en fait 17, trois
+  // fois par rangée, et l'écran sautait encore.
+  if (comptes == null) {
+    const combien = Math.min(Math.max(attendus ?? NOMBRE_PAR_DEFAUT, 1), NOMBRE_MAX_DE_FORMES);
+    return (
+      <View style={{ gap: espaces.sm }}>
+        <Texte taille={textes.intertitre} poids="demi">{t.qui}</Texte>
+        <Texte taille={textes.legende} ton="pale" style={{ lineHeight: 18 }}>
+          {t.quiAide}
+        </Texte>
+        <Carte>
+          {Array.from({ length: combien }, (_, i) => (
+            <View key={i}>
+              {i > 0 ? <Filet /> : null}
+              <View style={{ padding: espaces.lg, gap: espaces.sm }}>
+                <View style={{ gap: 2 }}>
+                  <LigneGrise hauteur={17} largeur="45%" />
+                  <LigneGrise hauteur={15} largeur="70%" />
+                  <LigneGrise hauteur={15} largeur="55%" />
+                </View>
+                {i > 0 ? <Squelette largeur="50%" hauteur={44} /> : null}
+                <Squelette hauteur={i > 0 ? 108 : 60} />
+              </View>
+            </View>
+          ))}
+          {/* Seul, le propriétaire a sous sa rangée « aucun autre compte ». */}
+          {combien === 1 ? (
+            <View style={{ padding: espaces.lg }}>
+              <LigneGrise hauteur={15} largeur="50%" />
+            </View>
+          ) : null}
+        </Carte>
+        {/* « Créer un compte » : 8 + 17 + 8, et le trait du bord. */}
+        <Squelette largeur="40%" hauteur={35} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ gap: espaces.sm }}>
@@ -317,7 +449,7 @@ export function SectionQui({ langue }: { langue: Langue }) {
                             <Texte taille={textes.petit} poids="moyen">{carte.libelle}</Texte>
                             <Texte taille={textes.legende} ton="pale" selectable>
                               {[carte.nom, carte.numero].filter(Boolean).join(" · ") || carte.iccid}
-                              {carte.enPlace ? "" : ` · ${t.cartesRetiree}`}
+                              {presenceDite(carte)}
                             </Texte>
                           </View>
                           {enRoute ? <ActivityIndicator size="small" color={couleurs.encrePale} />
@@ -419,6 +551,16 @@ export function SectionQui({ langue }: { langue: Langue }) {
           {mot}
         </Texte>
       ) : null}
+    </View>
+  );
+}
+
+/** Une ligne de texte qui n'est pas encore là : une forme fine, posée au
+ *  milieu d'une boîte qui a la hauteur de la ligne qu'elle remplace. */
+function LigneGrise({ hauteur, largeur }: { hauteur: number; largeur: `${number}%` }) {
+  return (
+    <View style={{ height: hauteur, justifyContent: "center" }}>
+      <Squelette largeur={largeur} hauteur={Math.max(hauteur - 5, 8)} />
     </View>
   );
 }

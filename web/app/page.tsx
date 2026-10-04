@@ -17,7 +17,8 @@ export default async function Accueil() {
   // Uniquement pour la salutation : on lit qui est connecté.
   const moi = await compteConnecte();
   const t = textesAccueil[langue];
-  const { terminal, sims, paiements, raccourcis, beneficiaires } = await donneesMontrees(langue, { sms: 30, recus: 60 });
+  const { terminal, sims, paiements, raccourcis, beneficiaires, fuseau } =
+    await donneesMontrees(langue, { sms: 30, recus: 60 });
   // TOUTES les cartes en place — Orange ET MTN, chacune avec son solde. Si
   // plus aucune n'est « en place » (terminal muet, cloud en retard), on
   // montre quand même les cartes connues, avec leur état dit franchement :
@@ -55,8 +56,9 @@ export default async function Accueil() {
           cartes={cartes.map((c) => ({
             libelle: c.libelle, operateur: c.operateur,
             numero: c.numero, nom: c.nom, solde: c.solde,
-            soldeMaj: c.soldeMaj, signal: c.signal,
+            soldeMaj: c.soldeMaj, soldeLe: c.soldeLe, fuseau, signal: c.signal,
             iccid: c.iccid, enPlace: c.enPlace, derniereVue: c.derniereVue,
+            presence: c.presence,
           }))}
           raccourcis={raccourcis}
           aQui={aQuiParCarte(beneficiaires, paiements, cartes.map((c) => c.iccid))}

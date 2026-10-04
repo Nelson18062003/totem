@@ -5,20 +5,25 @@
 // troisième n'apparaît que s'il a lieu d'être : retirer une carte ne perd
 // rien — son journal reste consultable, et son total avec.
 
-import { RefreshControl, View } from "react-native";
+import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, Texte } from "@/ui";
+import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte } from "@/ui";
+import { router } from "expo-router";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree } from "@/animations";
 import { SqueletteCartes } from "@/squelettes";
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import { useDonnees } from "@/donnees";
+import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { textesCartes } from "@noyau/textes/cartes";
-import { fcfa, nombre, type Sim } from "@noyau/types";
+import { FUSEAU_DEFAUT, fcfa, nombre, type Sim } from "@noyau/types";
+import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { signalFaible, signalLu } from "@noyau/boitier";
+import { formaterNumero } from "@noyau/numero";
+import { textesAnalyse } from "@noyau/textes/analyse";
 import type { Langue } from "@noyau/langue";
 
 export default function Comptes() {
@@ -36,11 +41,14 @@ export default function Comptes() {
   // les renvoyait tous, textes compris : 264 Ko sur une connexion mobile pour
   // afficher quatre cartes. Les compteurs restent justes ; les lignes
   // s'arrêtent au serveur.
-  const { donnees, chargement, erreur, recharger } =
+  const { donnees, attente, erreur, recharger } =
     useDonnees({ sms: 1000, recus: 0, lignes: 0 });
+  const roue = useRoue();
 
   const sims = donnees?.sims ?? [];
-  const enPlace = sims.filter((s) => s.enPlace);
+  // Le même ordre stable que l'accueil : la plateforme range par « dernière
+  // vue », qui change chaque minute.
+  const enPlace = sims.filter((s) => s.enPlace).sort((a, b) => a.iccid.localeCompare(b.iccid));
   const retirees = sims.filter((s) => !s.enPlace);
   const total = enPlace.reduce((s, x) => s + (x.solde ?? 0), 0);
 
@@ -52,23 +60,31 @@ export default function Comptes() {
           paddingBottom: margeBas, gap: espaces.xl,
           maxWidth: 1100, width: "100%", alignSelf: "center",
         }}
-        refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger}
-                                        tintColor={couleurs.encrePale} />}
+        refreshControl={roue}
       >
         <Entree montee={6}>
           <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
         </Entree>
 
+        {/* L'ANALYSE, NOMMÉE. Elle n'avait qu'une icône de graphe dans le
+            coin de l'accueil — que personne ne reconnaissait. Elle vit ici,
+            sur une ligne qui dit ce qu'on y trouve : c'est l'onglet où l'on
+            regarde ses comptes. */}
+        <Carte>
+          <LigneAction titre={textesAnalyse[langue].titre} sous={t.analyseSous} icone="Chart"
+                       onPress={() => router.push("/analyse")} />
+        </Carte>
+
         {/* La panne se dit AVANT l'état vide : sans cela, un téléphone hors
             ligne montrait « aucune carte » — une connexion en panne déguisée
             en terminal vide. */}
-        {erreur ? <Accroc message={erreur} onReessayer={recharger} /> : null}
+        {erreur ? <Accroc message={erreur} onReessayer={() => void recharger()} /> : null}
 
-        {enPlace.length === 0 && chargement && !erreur ? (
+        {enPlace.length === 0 && attente ? (
           <SqueletteCartes combien={2} />
         ) : null}
 
-        {enPlace.length === 0 && !chargement && !erreur ? (
+        {enPlace.length === 0 && !attente && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.videTitre}</Texte>
@@ -94,7 +110,8 @@ export default function Comptes() {
                     style={ecran.deuxColonnes
                       ? { flex: 1, minWidth: 280 }
                       : { alignSelf: "stretch" }}>
-              <CarteCompte sim={s} tete={i === 0} langue={langue} t={t} />
+              <CarteCompte sim={s} tete={i === 0} langue={langue} t={t}
+                           fuseau={donnees?.fuseau || FUSEAU_DEFAUT} />
             </Entree>
           ))}
         </View>
@@ -179,9 +196,15 @@ export default function Comptes() {
 }
 
 /** Une carte du compte : sombre pour la caisse de tête, claire ensuite. */
-function CarteCompte({ sim: s, tete, langue, t }: {
-  sim: Sim; tete: boolean; langue: Langue; t: (typeof textesCartes)["fr"];
+function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
+  sim: Sim; tete: boolean; langue: Langue; t: (typeof textesCartes)["fr"]; fuseau: string;
 }) {
+  // L'âge du solde AVEC son jour : « consulté à 21:54 » ne disait pas si
+  // c'était ce soir ou hier soir (voir `jourDuReleve`). L'heure est celle de
+  // l'écran, refaite chaque minute : un solde d'hier ne reste pas « aujourd'hui »
+  // parce que l'application est restée ouverte cette nuit.
+  const maintenant = useMaintenant();
+  const jour = jourDuReleve(s.soldeLe, maintenant, fuseau);
   const sombre = tete;
   const encre = sombre ? "#ffffff" : couleurs.encre;
   const doux = sombre ? "rgba(255,255,255,0.55)" : couleurs.encreDouce;
@@ -211,18 +234,30 @@ function CarteCompte({ sim: s, tete, langue, t }: {
             </Texte>
           ) : null}
         </View>
-        {s.signal != null ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                         paddingHorizontal: espaces.sm, paddingVertical: 3,
-                         borderRadius: rayons.petit,
-                         backgroundColor: sombre ? "rgba(255,255,255,0.1)" : couleurs.surface2 }}>
-            <View style={{ width: 6, height: 6, borderRadius: rayons.rond,
-                           backgroundColor: couleurs.positifVif }} />
-            <Texte taille={textes.legende} chiffresAlignes style={{ color: doux }}>
-              {s.signal}/31
-            </Texte>
-          </View>
-        ) : null}
+        {/* Un signal hors de 0..31 est INCONNU (le modem dit 99) : il
+            s'affichait « 99/31 » sur un point vert, comme un signal parfait.
+            Il se DIT maintenant inconnu — disparaître ne disait rien de
+            pourquoi les opérations échouent. Faible — la règle du noyau, la
+            même que le site et que les barres de l'accueil —, il passe à
+            l'orange ; figé (le boîtier se tait), le point est gris. */}
+        {(() => {
+          const connu = signalLu(s.signal) !== null;
+          const fige = s.boitierMuet === true || s.presence === "inconnue";
+          const point = !connu || fige ? couleurs.encrePale
+            : signalFaible(s.signal) ? couleurs.alerte : couleurs.positifVif;
+          return (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
+                           paddingHorizontal: espaces.sm, paddingVertical: 3,
+                           borderRadius: rayons.petit,
+                           backgroundColor: sombre ? "rgba(255,255,255,0.1)" : couleurs.surface2 }}>
+              <View style={{ width: 6, height: 6, borderRadius: rayons.rond,
+                             backgroundColor: point }} />
+              <Texte taille={textes.legende} chiffresAlignes style={{ color: doux }}>
+                {connu ? `${s.signal}/31` : t.signalInconnu}
+              </Texte>
+            </View>
+          );
+        })()}
       </View>
 
       <View style={{ gap: 2 }}>
@@ -237,14 +272,16 @@ function CarteCompte({ sim: s, tete, langue, t }: {
         </Texte>
         {s.solde != null && s.soldeMaj ? (
           <Texte taille={textes.legende} chiffresAlignes style={{ color: pale }}>
-            {t.soldeLe(s.soldeMaj)}
+            {jour?.genre === "hier" ? t.soldeLeHier(s.soldeMaj)
+              : jour?.genre === "avant" ? t.soldeLeDate(jourCourt(jour.cle, langue), s.soldeMaj)
+              : t.soldeLe(s.soldeMaj)}
           </Texte>
         ) : null}
       </View>
 
       <View style={{ gap: 2 }}>
         <Texte taille={textes.petit} chiffresAlignes style={{ color: doux }}>
-          {s.numero || t.numeroAbsent}
+          {s.numero ? formaterNumero(s.numero) : t.numeroAbsent}
         </Texte>
         {/* L'ICCID est ce qui distingue deux cartes du MÊME opérateur : sans
             lui, deux SIM MTN se confondraient à l'écran. */}
@@ -253,6 +290,14 @@ function CarteCompte({ sim: s, tete, langue, t }: {
           {s.itinerance && s.reseau ? ` · ${t.itinerance(s.reseau)}` : ""}
         </Texte>
       </View>
+      {/* Pas de nouvelles récentes de cette carte : son boîtier s'est tu, ou
+          vient de revenir. Ce qui s'affiche date d'avant — on le dit, comme
+          le site, plutôt qu'un point vert qui fait croire au direct. */}
+      {s.boitierMuet === true || s.presence === "inconnue" ? (
+        <Texte taille={textes.legende} style={{ color: doux, lineHeight: 17 }}>
+          {t.boitierSansNouvelles}
+        </Texte>
+      ) : null}
     </View>
   );
 }

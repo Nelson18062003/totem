@@ -223,7 +223,8 @@ class AccusesDeReception(unittest.TestCase):
         vu = []
         vrais = (totem.app.envoyer, totem.app.lire_les_accuses, totem.app.ATTENTE_DES_ACCUSES)
 
-        def faux_envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
+        def faux_envoyer(jetons, titre, corps, ouvrir=None, acceptes=None,
+                         injoignables=None):
             acceptes.append("b1")
             return 1, []
 
@@ -233,7 +234,7 @@ class AccusesDeReception(unittest.TestCase):
 
         class FauxNuage:
             @staticmethod
-            def appareils(iccid=None):
+            def appareils(iccid=None, lever=False):
                 return ["ExponentPushToken[iphone]"]
 
         class FauxRobot:
@@ -437,7 +438,8 @@ class FaireSonnerLeTelephone(unittest.TestCase):
         self.parti = threading.Event()
         self._vrai_envoyer = totem.app.envoyer
 
-        def faux_envoyer(jetons, titre, corps, ouvrir=None, acceptes=None):
+        def faux_envoyer(jetons, titre, corps, ouvrir=None, acceptes=None,
+                         injoignables=None):
             self.envois.append((list(jetons), titre, corps))
             self.parti.set()
             return len(jetons), []
@@ -446,7 +448,7 @@ class FaireSonnerLeTelephone(unittest.TestCase):
 
         class FauxNuage:
             @staticmethod
-            def appareils(iccid=None):
+            def appareils(iccid=None, lever=False):
                 return ["ExponentPushToken[abc]"]
 
         class FauxRobot:

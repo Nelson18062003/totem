@@ -136,7 +136,7 @@ export function ChampTexte(props: TextInputProps) {
  * La marge se calcule donc d'après la barre elle-même : sa hauteur, sa
  * distance au bord (voir `(onglets)/_layout.tsx`), et un souffle.
  */
-export const HAUTEUR_BARRE_ONGLETS = 58;
+export const HAUTEUR_BARRE_ONGLETS = 68;   // un onglet de 54, 6 + 6 de marge, 2 de trait
 export function useMargeSousLaBarre(): number {
   const bas = useSafeAreaInsets().bottom;
   const dessus = Math.max(bas, espaces.md) + HAUTEUR_BARRE_ONGLETS + espaces.lg;
@@ -413,6 +413,44 @@ export function BoutonIcone({
       <Animated.View style={styleAnime}>
         <Icone nom={nom} taille={taille} couleur={couleur} />
       </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
+ * Une ligne d'action : un rond avec son icône, un titre, une phrase qui dit
+ * ce qu'elle fait, et le chevron. Celle de l'onglet Opérations — sortie ici
+ * parce que l'onglet Comptes en a besoin aussi (la ligne « Analyse »).
+ */
+export function LigneAction({ titre, sous, icone, onPress, enPause = false }: {
+  titre: string; sous?: string; icone: NomIcone; onPress: () => void;
+  /** Le boîtier se tait : la ligne reste à sa place, pâlie, et l'appui
+   *  explique au lieu de composer — comme les ronds de l'accueil. */
+  enPause?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row", alignItems: "center", gap: espaces.md,
+        padding: espaces.lg,
+        opacity: enPause ? 0.45 : 1,
+        backgroundColor: pressed ? couleurs.surface2 : "transparent",
+      })}
+    >
+      <View style={{
+        width: 40, height: 40, borderRadius: rayons.rond,
+        borderWidth: 1, borderColor: couleurs.trait,
+        alignItems: "center", justifyContent: "center",
+      }}>
+        <Icone nom={icone} taille={18} couleur={couleurs.encreDouce} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Texte poids="moyen">{titre}</Texte>
+        {sous ? <Texte taille={textes.petit} ton="pale">{sous}</Texte> : null}
+      </View>
+      <Icone nom="Chevron" taille={18} couleur={couleurs.encrePale} />
     </Pressable>
   );
 }

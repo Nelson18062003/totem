@@ -1,37 +1,43 @@
 // Les quatre onglets, dans une BARRE FLOTTANTE.
 //
-// Ce n'est pas la barre standard : la plateforme pose une pilule blanche qui
-// flotte au-dessus du contenu, l'onglet actif prenant la forme d'une pilule
-// sombre AVEC son nom. Les autres restent des icônes muettes. C'est la même
-// idée ici — l'écran garde toute sa hauteur, et on voit toujours où l'on est.
+// Ce n'est pas la barre standard : une pilule blanche qui flotte au-dessus
+// du contenu, l'onglet actif posé sur un fond sombre. L'écran garde toute sa
+// hauteur, et on voit toujours où l'on est.
+//
+// CHAQUE ONGLET DIT SON NOM, TOUT LE TEMPS. Seul l'onglet choisi le disait ;
+// les trois autres étaient des icônes muettes, et ceux à qui le propriétaire
+// a montré l'application ne savaient pas où menaient « l'enveloppe » ni « la
+// grille ». Une icône seule ne se lit que si on la connaît déjà. Les icônes
+// ont changé aussi, pour ce que chacun reconnaît sans apprendre : un
+// portefeuille pour les comptes, une bulle de message pour les SMS, deux
+// flèches qui se croisent pour les opérations.
 //
 // Quatre entrées, pas une de plus : ce qu'un propriétaire vient faire.
 // L'Analyse et la console USSD se rejoignent depuis les écrans qui les
 // appellent, pas depuis la barre.
 
-import { Platform, Pressable, View, type ViewStyle } from "react-native";
+import { Platform, Pressable, View, useWindowDimensions, type ViewStyle } from "react-native";
 import Animated, {
-  interpolateColor, useAnimatedStyle, useDerivedValue, withTiming, Easing,
+  interpolateColor, useAnimatedStyle, useDerivedValue, withTiming, Easing, FadeIn, FadeOut,
 } from "react-native-reanimated";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useSafeAreaInsets as useMarges } from "react-native-safe-area-context";
-import { Texte } from "@/ui";
+import { HAUTEUR_BARRE_ONGLETS, Texte } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
 import { textesCharpente } from "@noyau/textes/charpente";
 import { ageVu } from "@noyau/types";
 import { useLangue } from "@/langue";
-import { useAgeDesChiffres } from "@/donnees";
+import { useAgeDesChiffres, useMaintenant } from "@/donnees";
 import { toucherChoix } from "@/toucher";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 
 const ONGLETS: { nom: string; cle: keyof ReturnType<typeof libelles>; icone: NomIcone }[] = [
   { nom: "index", cle: "accueil", icone: "Home" },
-  { nom: "cartes", cle: "comptes", icone: "Card" },
-  { nom: "encaissements", cle: "smsCourt", icone: "Inbox" },
-  { nom: "actions", cle: "operations", icone: "Grid" },
+  { nom: "cartes", cle: "comptes", icone: "Wallet" },
+  { nom: "encaissements", cle: "smsCourt", icone: "Bubble" },
+  { nom: "actions", cle: "operations", icone: "Transfer" },
 ];
 
 function libelles(langue: "en" | "fr") {
@@ -44,7 +50,6 @@ export default function Onglets() {
 
   return (
     <>
-    <BandeauHorsLigne />
     <Tabs
       tabBar={(props) => <BarreFlottante {...props} />}
       screenOptions={{
@@ -56,47 +61,66 @@ export default function Onglets() {
         <Tabs.Screen key={o.nom} name={o.nom} options={{ title: t[o.cle] as string }} />
       ))}
     </Tabs>
+    <BandeauHorsLigne />
     </>
   );
 }
 
 /**
- * « CES CHIFFRES DATENT » — au-dessus des quatre onglets, une seule fois.
+ * « CES CHIFFRES DATENT » — une pastille au-dessus de la barre, une seule fois.
  *
  * Sans réseau, l'application montre ce qu'elle avait au dernier passage
  * plutôt qu'un écran vide. C'est un progrès — et un DANGER si elle se tait :
  * un solde d'hier présenté comme celui de maintenant, c'est de l'argent
  * qu'on remet à quelqu'un en croyant qu'il est arrivé.
  *
- * Le bandeau ne s'affiche donc QUE dans ce cas : ce qui est à l'écran vient
- * du téléphone, et la plateforme n'a pas répondu depuis. Dès qu'elle répond,
- * il disparaît sans un geste.
+ * DEUX DÉFAUTS, et le propriétaire voyait les deux :
  *
- * Il ne demande RIEN au guichet : il lit l'âge de ce qui est déjà au cahier,
- * et ne s'inscrit à aucun besoin — passer par `useDonnees` avec des bornes à
- * zéro marchait, mais le faisait passer pour un écran qui lit les données
- * sans jamais dire la panne (voir `verifier-les-ecrans`).
+ *   — Il s'affichait à CHAQUE OUVERTURE, même bien connecté : il suivait la
+ *     PROVENANCE des chiffres (relus du téléphone), pas une panne. Pendant
+ *     la seconde de la première requête, « Pas de réseau » apparaissait…
+ *     puis disparaissait. Il ne parle plus qu'après un ÉCHEC réel, ou après
+ *     huit secondes sans réponse (voir `useAgeDesChiffres`).
+ *   — Il était posé AU-DESSUS des onglets, dans le flux : tout l'écran
+ *     descendait à son apparition et remontait à sa disparition, et la
+ *     marge de l'encoche était comptée deux fois. C'était le « tout part
+ *     vers le bas ». Il FLOTTE maintenant au-dessus de la barre d'onglets,
+ *     sans rien pousser, et ne capte aucun doigt.
+ *
+ * Il ne demande RIEN au guichet : il lit l'état du cahier.
  */
 function BandeauHorsLigne() {
   const langue = useLangue();
-  const marges = useMarges();
-  const { duCahier, quand } = useAgeDesChiffres();
-  if (!duCahier || quand == null) return null;
+  const bas = useSafeAreaInsets().bottom;
+  const maintenant = useMaintenant();
+  const { horsLigne, quand, panne } = useAgeDesChiffres();
+  if (!horsLigne || quand == null) return null;
   const t = textesCharpente[langue];
   return (
-    <View style={{
-      paddingTop: marges.top + espaces.sm,
-      paddingBottom: espaces.sm,
-      paddingHorizontal: espaces.lg,
-      backgroundColor: couleurs.surface2,
-      borderBottomWidth: 1, borderBottomColor: couleurs.trait,
-      flexDirection: "row", alignItems: "center", gap: espaces.sm,
-    }}>
-      <Icone nom="Refresh" taille={14} couleur={couleurs.encreDouce} />
-      <Texte taille={textes.legende} ton="doux" style={{ flex: 1 }}>
-        {t.horsLigne} · {t.horsLigneDetail(ageVu(quand, Date.now(), langue))}
-      </Texte>
-    </View>
+    <Animated.View
+      entering={FadeIn.duration(180)} exiting={FadeOut.duration(180)}
+      pointerEvents="none"
+      accessibilityLiveRegion="polite"
+      style={{
+        position: "absolute", left: 0, right: 0,
+        bottom: Math.max(bas, espaces.md) + HAUTEUR_BARRE_ONGLETS + espaces.sm,
+        alignItems: "center", paddingHorizontal: espaces.lg,
+      }}
+    >
+      <View style={{
+        flexDirection: "row", alignItems: "center", gap: espaces.sm,
+        paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
+        borderRadius: rayons.rond, maxWidth: 520,
+        backgroundColor: couleurs.accent,
+      }}>
+        <Icone nom="Refresh" taille={13} couleur={couleurs.surfaceHaute} />
+        <Texte taille={textes.legende} style={{ color: couleurs.surfaceHaute, flexShrink: 1 }}
+               numberOfLines={2}>
+          {panne === "plateforme" ? t.plateformeEnPanneCourt : t.horsLigne}
+          {" · "}{t.horsLigneDetail(ageVu(quand, maintenant, langue))}
+        </Texte>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -198,29 +222,15 @@ function Coque({ style, children }: { style: ViewStyle; children: React.ReactNod
   return <View style={[style, { backgroundColor: couleurs.surfaceHaute }]}>{children}</View>;
 }
 
-/** Un onglet : icône seule au repos, pilule sombre avec son nom une fois
- *  choisi. Le passage de l'un à l'autre est glissé, pas sauté. */
+/** Un onglet : son icône, et son nom dessous — toujours. L'onglet choisi
+ *  se pose sur un fond sombre ; le passage est glissé, pas sauté. */
 function Pilule({ actif, libelle, icone, onPress }: {
   actif: boolean; libelle: string; icone: NomIcone; onPress: () => void;
 }) {
-  // SUR LE FIL DE L'INTERFACE, ET NON SUR CELUI DU JAVASCRIPT.
-  //
-  // Cette animation employait l'ancienne API `Animated` de React Native avec
-  // « useNativeDriver: false », et son commentaire donnait la raison : on
-  // anime une largeur, et le pilote natif ne sait pas la prendre. C'était
-  // vrai — pour cette API-là.
-  //
-  // Reanimated, lui, sait animer une largeur et une couleur sur le fil de
-  // l'interface. Il est dans ce dépôt depuis longtemps, et l'en-tête
-  // d'`animations.tsx` explique exactement le problème que ça règle : quand
-  // l'écran charge ses données, le JavaScript est occupé, et une animation
-  // ordinaire saccade PRÉCISÉMENT à ce moment-là.
-  //
-  // C'est la barre d'onglets. On y appuie plus que sur tout le reste, et on
-  // y appuie surtout au moment de changer d'écran — c'est-à-dire au moment
-  // où le JavaScript part chercher des données. Le seul élément de
-  // l'application qui saccadait était celui qu'on touche le plus, et à
-  // l'instant précis où on le touche.
+  // SUR LE FIL DE L'INTERFACE, ET NON SUR CELUI DU JAVASCRIPT : on change
+  // d'onglet au moment précis où le JavaScript part chercher des données, et
+  // une animation ordinaire saccaderait à cet instant-là (voir
+  // `animations.tsx`). Reanimated anime la couleur hors de son chemin.
   const ouvert = useDerivedValue(
     () => withTiming(actif ? 1 : 0, { duration: 220, easing: Easing.out(Easing.cubic) }),
     [actif],
@@ -232,50 +242,48 @@ function Pilule({ actif, libelle, icone, onPress }: {
     ),
   }));
 
-  const nom = useAnimatedStyle(() => ({
-    opacity: ouvert.value,
-    maxWidth: ouvert.value * 140,
-    marginLeft: ouvert.value * espaces.sm,
-  }));
+  // QUATRE NOMS DOIVENT TENIR SUR 320 POINTS. Chaque onglet prend sa part
+  // de la largeur (jamais plus de 84 points) ; « Opérations », le plus long,
+  // tient en 11 points sur 76.
+  const { width } = useWindowDimensions();
+  const largeur = Math.min(84, Math.floor((width - 2 * espaces.lg - 12) / 4));
 
   return (
     <Pressable
       // Le toucher part à l'APPUI, avant même que l'écran change : c'est la
-      // première réponse que le doigt reçoit, et elle arrive avant le
-      // premier pixel.
+      // première réponse que le doigt reçoit.
       onPress={() => { toucherChoix(); onPress(); }}
       accessibilityRole="tab"
       accessibilityState={{ selected: actif }}
       accessibilityLabel={libelle}
       // LA PASTILLE NE RÉPOND PAS À L'APPUI, elle répond au CHOIX : elle ne
-      // se remplit qu'une fois `actif` changé, donc une fois l'écran changé.
-      // Entre les deux, l'onglet restait parfaitement immobile — mesuré à
-      // zéro pixel par `verifier-la-reponse`. Sur un téléphone lent, c'est
-      // là qu'on appuie deux fois.
+      // se remplit qu'une fois l'écran changé. Entre les deux, l'onglet
+      // restait immobile — mesuré à zéro pixel par `verifier-la-reponse`.
+      // L'opacité, elle, répond tout de suite.
       style={({ pressed }) => ({
-        borderRadius: rayons.rond, overflow: "hidden",
+        borderRadius: 22, overflow: "hidden",
         opacity: pressed ? 0.5 : 1,
       })}
     >
       <Animated.View
         style={[{
-          flexDirection: "row", alignItems: "center",
-          height: 44,
-          paddingHorizontal: espaces.lg,
-          borderRadius: rayons.rond,
+          width: largeur, height: HAUTEUR_ONGLET,
+          alignItems: "center", justifyContent: "center", gap: 2,
+          borderRadius: 22,
         }, fond]}
       >
         <Icone nom={icone} taille={22}
-               couleur={actif ? couleurs.surfaceHaute : couleurs.encrePale} />
-        {/* Le nom n'apparaît que sur l'onglet choisi : les quatre noms côte
-            à côte ne tiendraient pas sur un écran étroit. */}
-        <Animated.View style={[{ overflow: "hidden" }, nom]}>
-          <Texte poids="demi" taille={textes.petit} numberOfLines={1}
-                 style={{ color: couleurs.surfaceHaute }}>
-            {libelle}
-          </Texte>
-        </Animated.View>
+               couleur={actif ? couleurs.surfaceHaute : couleurs.encreDouce} />
+        <Texte poids={actif ? "demi" : "moyen"} taille={11}
+               style={{ color: actif ? couleurs.surfaceHaute : couleurs.encreDouce,
+                        textAlign: "center" }}>
+          {libelle}
+        </Texte>
       </Animated.View>
     </Pressable>
   );
 }
+
+/** La hauteur d'un onglet : l'icône, son nom, et de quoi respirer. La barre
+ *  entière (`HAUTEUR_BARRE_ONGLETS` dans `ui.tsx`) en découle. */
+const HAUTEUR_ONGLET = 54;

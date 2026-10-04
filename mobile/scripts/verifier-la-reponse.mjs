@@ -257,8 +257,19 @@ try {
 
   await sonder("un geste (« dépôt »)",
                page.getByText(/^Deposit$|^Dépôt$/).first());
-  await sonder("la commande ronde qui masque le solde",
+  await sonder("« recevoir » (les coordonnées à donner)",
+               page.getByRole("button", { name: /^(Receive|Recevoir)$/ }).first());
+  // L'œil vit SUR la carte depuis que le propriétaire l'a demandé : « le
+  // bouton pour cacher le solde, tu vas mettre ça sur la carte ».
+  await sonder("l'œil, sur la carte, qui masque le solde",
                page.getByLabel(/Hide the balance|Masquer le solde/).first());
+  await sonder("« actualiser », à côté de l'âge du solde",
+               page.getByRole("button", { name: /^(Refresh the balance|Actualiser le solde)/ }).first());
+  // Les puces des cartes n'existent qu'à partir de deux cartes : la sonde
+  // vise la SECONDE, celle qu'on touche pour changer.
+  const puces = page.getByRole("button", { name: /^(Select the|Choisir la carte) / });
+  if (await puces.count() > 1) await sonder("la puce d'une autre carte", puces.nth(1));
+  else console.log("  · une seule carte : pas de puces à sonder");
   await sonder("une ligne de message",
                page.getByRole("button").filter({ hasText: /FCFA/ }).first());
 
@@ -271,10 +282,12 @@ try {
   console.log("\nLa boîte de réception :");
   await page.getByRole("tab", { name: /^SMS$/ }).first().click();
   await attendre(2500);
-  await sonder("un filtre (« toutes les puces »)",
-               page.getByRole("button", { name: /^(All SIMs|Toutes les puces)$/ }).first());
-  await sonder("un filtre de nature (« entrées »)",
-               page.getByRole("button", { name: /^(Money in|Entrées)$/ }).first());
+  // Les filtres tiennent en une rangée de boutons (Date, Carte, Type) depuis
+  // que trois rangées de pastilles ont été jugées illisibles.
+  await sonder("le filtre « Date »",
+               page.getByRole("button", { name: /^(Filter by date|Filtrer par date) : / }).first());
+  await sonder("le filtre « Type »",
+               page.getByRole("button", { name: /^(Filter by kind|Filtrer par type) : / }).first());
 
   // ── CE QU'UNE AIDE TECHNIQUE ENTEND ─────────────────────────────────
   //

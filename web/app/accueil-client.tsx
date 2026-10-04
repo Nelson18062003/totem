@@ -4,25 +4,39 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { etapesGeste } from "@noyau/codes";
-import { nombre, type RaccourciAppris, type Sim } from "@noyau/types";
+import { FUSEAU_DEFAUT, nombre, type RaccourciAppris, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { textesCartes } from "@noyau/textes/cartes";
 import { useLangue } from "@/app/langue";
 import {
   IconArrowDown, IconArrowUp, IconEye, IconEyeOff, IconPhone, IconPuceSim,
   IconRefresh, IconWallet,
 } from "./icons";
 import { BoutonCopier, Coordonnees, formaterNumero } from "./coordonnees";
+import { numeroACopier } from "@noyau/coordonnees";
 import { couleurOperateur, LogoOperateur, operateurReconnu } from "./logos-operateurs";
 import { Symbole } from "./marque";
 import { OperationPopup, type Operation } from "./operation";
 import type { ClientRecent } from "@noyau/recents";
+import { jourCourt, jourDuReleve } from "@noyau/periodes";
+import { barresDuSignal } from "@noyau/boitier";
 
-/** Le signal en quatre barres — rempli au niveau, lisible sans chiffres. */
-function BarresSignal({ niveau }: { niveau: number }) {
-  const pleines = Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+/** Le signal en quatre barres — rempli au niveau, lisible sans chiffres.
+ *
+ *  `null` : INCONNU. Le modem répond « 99 » quand il ne sait pas, et ce 99
+ *  dessinait quatre barres pleines sur une carte qui ne captait rien. Un
+ *  signal inconnu se dessine vide et se dit « inconnu » ; un relevé figé
+ *  (le boîtier se tait) se dessine grisé — il ne dit plus rien de maintenant. */
+function BarresSignal({ niveau, fige, inconnu }: {
+  niveau: number | null; fige: boolean; inconnu: string;
+}) {
+  // Le dessin vient du noyau : c'est sur lui que se règle le point « faible »
+  // de l'onglet Comptes — une barre ou moins, et il est orange.
+  const pleines = barresDuSignal(niveau);
+  const libelle = niveau == null ? inconnu : `Signal ${niveau}/31`;
   return (
-    <span className="flex shrink-0 items-end gap-[3px] pb-1" role="img"
-      aria-label={`Signal ${niveau}/31`} title={`Signal ${niveau}/31`}>
+    <span className={`flex shrink-0 items-end gap-[3px] pb-1 ${fige ? "opacity-50" : ""}`} role="img"
+      aria-label={libelle} title={libelle}>
       {[5, 8, 11, 14].map((h, i) => (
         <span key={h} style={{ height: h }}
           className={`w-[3px] rounded-full ${i < pleines ? "bg-white/90" : "bg-white/30"}`} />
@@ -39,15 +53,29 @@ const CLE_SOLDE_CACHE = "totem_solde_cache";
 // Ce que l'accueil doit savoir d'une carte pour la montrer et la piloter.
 export type CarteGuichet = Pick<
   Sim,
-  "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "signal"
-  | "iccid" | "enPlace" | "derniereVue"
->;
+  "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "soldeLe" | "signal"
+  | "iccid" | "enPlace" | "derniereVue" | "presence"
+> & {
+  /** Le fuseau du TERMINAL : c'est lui qui dit si le relevé était hier. */
+  fuseau?: string;
+};
 
 /**
  * UNE carte SIM du guichet — son solde, son numéro, sa marque. Quand
  * plusieurs cartes vivent dans le terminal (Orange ET MTN), chacune a la
  * sienne, et le doigt choisit celle sur laquelle les gestes s'appliquent.
  */
+/** « Solde relevé hier à 21:54 » : l'heure seule ne disait pas QUEL jour,
+ *  et un solde d'hier s'annonçait comme celui de maintenant. Même règle que
+ *  le téléphone (`jourDuReleve`). */
+function phraseDuReleve(carte: CarteGuichet, h: string, langue: ReturnType<typeof useLangue>) {
+  const t = textesAccueil[langue];
+  const jour = jourDuReleve(carte.soldeLe, Date.now(), carte.fuseau || FUSEAU_DEFAUT);
+  return jour?.genre === "hier" ? t.soldeReleveHier(h)
+    : jour?.genre === "avant" ? t.soldeReleveLe(jourCourt(jour.cle, langue), h)
+    : t.soldeReleve(h);
+}
+
 function CarteSim({
   carte, langue, soldeCache, basculerSolde, onSolde,
 }: {
@@ -105,7 +133,8 @@ function CarteSim({
           l'actualisation — hors du chemin du chiffre. */}
       <div className="flex items-center justify-start gap-3">
         <span className="flex shrink-0 items-center gap-3">
-          {carte.signal != null && <BarresSignal niveau={carte.signal} />}
+          <BarresSignal niveau={carte.signal} fige={carte.presence === "inconnue"}
+            inconnu={textesCartes[langue].signalInconnu} />
           {carte.solde != null && (
             <button
               onClick={(e) => { e.stopPropagation(); basculerSolde(); }}
@@ -146,10 +175,15 @@ function CarteSim({
       <p className="mt-2 text-small text-white/75">
         {!carte.enPlace
           ? t.carteMuette(carte.derniereVue)
+          // Le boîtier s'est tu : la carte n'est pas « retirée », on ne sait
+          // rien de maintenant — et on le dit, au lieu d'un solde qui
+          // paraîtrait frais.
+          : carte.presence === "inconnue"
+            ? textesCartes[langue].boitierSansNouvelles
           : carte.solde == null
             ? t.aucunSoldeConnu
             : carte.soldeMaj
-              ? t.soldeMaj(carte.soldeMaj)
+              ? phraseDuReleve(carte, carte.soldeMaj, langue)
               : t.soldeSansHeure}
       </p>
       {/* Le pied : la puce SIM au trait — la carte à l'écran EST la carte
@@ -162,7 +196,7 @@ function CarteSim({
         {/* Le numéro se copie d'un geste, contre lui : c'est ce qu'on donne
             le plus souvent, et le chercher à la main était pénible. */}
         {carte.numero && (
-          <BoutonCopier clair valeur={formaterNumero(carte.numero)}
+          <BoutonCopier clair valeur={numeroACopier(carte.numero)}
             libelle={t.copierNumero} libelleFait={t.numeroCopie} />
         )}
       </div>

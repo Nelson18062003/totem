@@ -57,8 +57,11 @@ cd web && node scripts/verifier-la-console.mjs  # la console, vraiment essayée
 cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT sonné
 cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur rien
 cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
+cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne retire rien
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
+cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
+cd mobile && node scripts/verifier-le-guichet.mjs # chaque demande finit, et dit vrai
 cd mobile && node scripts/verifier-l-echelle.mjs # rien ne grossit sans limite
 cd mobile && node scripts/verifier-le-clavier.mjs # le clavier ne cache rien
 cd mobile && node scripts/verifier-les-ecrans.mjs # la panne se dit partout
@@ -73,6 +76,10 @@ cd mobile && node scripts/verifier-le-paquet.mjs # ce que le paquet Android empo
 cd mobile && node scripts/verifier-le-paquet.mjs iphone # …et le paquet iPhone
 cd mobile && node scripts/verifier-les-formats.mjs /tmp/apercu # douze écrans
 #   (l'export doit porter EXPO_PUBLIC_APERCU=1 — voir l'en-tête du script)
+cd mobile && node scripts/verifier-l-affichage.mjs /tmp/apercu # tout, partout
+#   (chaque écran, quatorze tailles ; même export — voir l'en-tête du script)
+cd mobile && node scripts/verifier-les-dates.mjs /tmp/apercu # le filtre par date
+#   (même export ; sème la caisse s'il la trouve trop maigre)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -89,6 +96,19 @@ ce qu'il écrit décide de ce qui entre au bilan. Le harnais a trouvé du premie
 coup ce qu'aucun test n'avait vu : « Depot de 5٥٠٠٠0000 FCFA » se lisait
 550 000 000 FCFA, parce que Python voit un chiffre dans « ٥ » comme dans « 5 »
 — et le SMS s'affichant tel qu'il est arrivé, l'écart était invisible.
+
+**Un nom trop long ne doit pas emporter le numéro.** Un encaissement MTN de
+4 231 500 F s'affichait « Inconnu », et son reçu disait « De : — » : la raison
+sociale de l'expéditeur faisait quarante-huit caractères, le lecteur en
+refusait plus de quarante, et la règle qui ne trouvait plus de nom ne
+gardait pas non plus le numéro. Même chute pour « ETS. KAMDEM », dont le
+point coupait la règle. Rejoués sur neuf vrais formats et des noms de la vraie
+vie, vingt-sept lectures sur soixante-trois perdaient la partie ; le
+harnais ne le voyait pas, il ne vérifie que ce que le lecteur INVENTE, pas
+ce qu'il PERD. Ce sont les raisons sociales — les gros clients, les gros
+montants — qui ont les noms longs : **une donnée d'essai trop sage cache le
+défaut au lieu de le montrer**, encore. `TestLesNomsDeLaVraieVie` garde
+la grille.
 
 `eprouver-la-chaine` part des OCTETS du modem et va jusqu'à l'écran :
 décodage PDU, recollage d'un message long, lecture du montant, journal du Pi,
@@ -360,6 +380,14 @@ Un vrai écran, avec un vrai champ, a disparu de la liste sans un mot : ni ✓ n
 ✗, juste absent. Le harnais sortait vert en gardant un écran de moins. On
 compare le nom entier.
 
+La MÊME exemption vivait encore, mot pour mot, dans `verifier-l-echelle` :
+corrigée dans un harnais, la faute restait chez son voisin, et
+`reglages-qui.tsx` échappait toujours à la borne du grossissement. **Une
+faute trouvée se cherche partout où elle a pu être recopiée.** Le même
+harnais prenait aussi un TYPE pour une balise (`useRef<ScrollView>`, qui
+n'affiche rien) : un paramètre de type suit un nom collé à lui, une balise
+non — et le témoin porte maintenant les deux.
+
 **Un contrôle qui lit ce qu'on DIT au lieu de ce qu'on FAIT ne contrôle
 rien.** La même règle vérifie que `Defilement` porte vraiment
 `keyboardShouldPersistTaps` — neuf écrans en dépendent d'un coup. Le premier
@@ -585,11 +613,263 @@ Il descend à la MOLETTE, jamais en réglant `scrollTop` : régler la propriét�
 ne déclenche pas le gestionnaire de react-native-web, et le harnais concluait
 « la liste s'arrête » sur une liste qui marchait.
 
+Il OUVRE les plis de soldes qu'il croise. Les consultations de solde répétées
+se replient derrière la plus récente : elles sont à un geste, pas hors de
+portée. Il criait pourtant « 199 sur 200, un encaissement hors de portée »
+sur la caisse que son propre en-tête recommande, et sortait vert sur la
+caisse dense — le même code, mesuré les deux fois. Sur la caisse dense, un
+encaissement tombe entre chaque consultation et le pli ne se forme jamais.
+**Un harnais ne garde que la caisse sur laquelle on l'a écrit**, tant qu'on
+ne l'a pas lancé sur une autre.
+
+`verifier-l-affichage` ouvre TOUT, à quatorze tailles : la connexion, les
+quatre onglets, les écrans des réglages, la fiche d'un SMS (reçu établi,
+reçu refait, coordonnées), et un dépôt jusqu'au pavé du code. Le harnais des
+formats ne mesurait que la boîte de réception ; pendant ce temps, sur un
+petit iPhone, l'écran du code secret ne montrait plus que « Entrez votre
+code secret » — le montant et le nom qu'on allait signer étaient passés
+SOUS le pavé — et, dans la fiche, l'icône du bouton du reçu sortait du
+bouton. Aucun des deux n'était dans la boîte de réception.
+
+**Le propriétaire avait vu juste, à l'œil, et le harnais lui donne raison.**
+Lancé sur l'ancienne application, il trouve exactement ce qu'il avait
+signalé : 16 points de message cachés sous le pavé sur l'iPhone SE, 43 sur
+un petit Android, la barre d'onglets qui déborde de 2 points sur un écran
+de 320 quand « Operations » est choisi, un nom abrégé dans la fiche. Sur la nouvelle : 14 tailles,
+tout vert.
+
+Il reconnaît l'écran à son CONTENU, pas à une marque posée pour lui : une
+marque n'existerait que dans le code neuf, et le harnais ne pourrait pas
+dire ce que l'ancien faisait — un témoin qu'on ne peut pas lancer sur
+l'ancien code n'en est pas un. Et il cherche ce qui couvre un bouton APRÈS
+l'avoir amené à l'écran : un bouton sous la barre d'onglets flottante n'est
+pas caché, il est plus bas.
+
+**Reconnaître l'écran, c'est aussi vérifier qu'on Y EST.** La première
+version ouvrait « la fiche des coordonnées » en touchant « My number » — un
+raccourci qui lance une demande USSD à l'opérateur. Elle a donc mesuré le
+menu MTN MoMo à quatorze tailles, en vert, sous le nom de « fiche des
+coordonnées », et la vraie fiche n'a jamais été regardée. Personne ne l'a vu
+dans la sortie du harnais : c'est une CAPTURE, faite pour montrer l'avant et
+l'après au propriétaire, qui l'a montré. Le harnais ouvre maintenant le
+bouton rond « coordonnées » sous la carte, et exige d'y lire le titre et la
+ligne « Réseau » avant de mesurer — sinon il s'arrête en montrant l'écran.
+
+**Une donnée d'essai trop sage, troisième fois — sur un écran USSD.** Le
+faux nuage servait « Votre code secret », une ligne. Un vrai dépôt MTN en
+porte cinq : montant, nom, numéro, frais, solde après. L'écran tenait la
+ligne et perdait les cinq. Le faux nuage sert maintenant 177 caractères.
+
+**Un harnais qui amène lui-même ce qu'il vérifie ne vérifie rien.**
+L'accueil range les cartes en puces sur UNE ligne qui défile, et ramène à
+l'écran la carte retenue d'une ouverture à l'autre. Le harnais monte donc
+cinq cartes et un terminal muet — le faux nuage n'en a que deux, et un
+terminal toujours en ligne : avec quatre cartes, les puces passaient sur
+deux lignes sans que rien le dise —, choisit d'avance la DERNIÈRE, et exige
+de la voir. Il sortait vert ; la capture la montrait dehors. Sa propre
+mesure fait défiler jusqu'à l'écran ce qu'elle trouve recouvert, et une
+puce coupée au bord en fait partie : il vérifie maintenant AVANT de mesurer.
+Même alors, il ne voyait la panne qu'en arrivant DE L'ACCUEIL : venues d'un
+autre écran, les trois mesures de la rangée (sa largeur, la place des
+puces, le choix) arrivaient dans un autre ordre, et la puce tombait juste.
+**Une correction qui dépend de l'ordre d'arrivée des mesures marche une fois
+sur deux** ; la rangée redemande maintenant à chacune des trois. Sans le
+défilement, l'étape échoue à 320 points — c'est son témoin.
+
+**Une correction peut aveugler le harnais d'à côté, sans un mot.** La
+relecture de l'accueil a donné aux cartes un ordre stable, par ICCID. La
+carte que ce harnais retenait — « la dernière » — est devenue la troisième,
+visible sans défilement à toutes les tailles : relancé, le témoin sans
+défilement est passé VERT partout. Rien n'avait cassé, rien ne le disait ;
+l'étape ne prouvait simplement plus rien. Elle exige maintenant que la puce
+retenue soit la dernière de la rangée. Et « visible » se mesure dans ce qui
+la rogne : en deux colonnes, la rangée vit dans la colonne de gauche, et une
+puce dans la fenêtre peut être hors de sa rangée. **Un témoin se relance
+après chaque correction voisine**, pas seulement le jour où on l'écrit.
+
+**Un solde se date au JOUR, pas seulement à l'heure.** « Solde relevé à
+21:54 » ne disait pas lequel : le lendemain matin, le solde de la veille
+s'annonçait comme celui de maintenant — le chiffre pour lequel on ouvre
+l'application. `jourDuReleve` (noyau) dit « aujourd'hui », « hier » ou la
+date, dans le fuseau de la CAISSE, sur le téléphone comme sur le site.
+
+**Un reçu se partage comme un FICHIER, jamais comme un lien.** Le bouton
+ouvrait le lien signé dans le navigateur ; le « partager » du navigateur
+envoyait… le lien, qui expire au bout de dix minutes, et le client recevait
+« …/api/recu/… » sur WhatsApp. `mobile/src/partage.ts` télécharge le
+fichier, vérifie que c'est bien un PDF (un lien expiré rend une page
+d'erreur, et l'envoyer sous le nom « Recu-….pdf » serait pire que rien),
+puis ouvre la feuille de partage du téléphone sur le fichier. La brique de
+partage est CHERCHÉE, pas exigée : une application compilée avant elle
+reçoit cette mise à jour à distance, et une application qui plante au
+démarrage ne peut plus recevoir la correction.
+
+`verifier-les-dates` garde le filtre par date des SMS : « aujourd'hui »,
+« hier », sept jours, ce mois, et des jours choisis au calendrier. Il
+demande à la PLATEFORME combien chaque jour porte, et exige que l'écran dise
+le même nombre et le même total reçu, au franc près. Il choisit surtout des
+jours du MOIS DERNIER : l'écran ne garde que les deux cents SMS les plus
+récents, et une période plus ancienne doit être demandée à la plateforme —
+filtrée sur le téléphone, elle s'affichait vide sans un mot. Le témoin qui
+oublie de la demander échoue.
+
+**Un total juste sur une liste vide reste un écran faux.** La première
+version annonçait « Hier · 21 SMS » au-dessus de… rien. La liste repose les
+jours loin de l'écran d'après leur PLACE mesurée — et elle gardait les places
+de la liste d'avant le filtre, où « hier » était trente écrans plus bas. Le
+même piège attendait depuis toujours la recherche. Vu sur une capture ; le
+harnais compte maintenant les lignes à l'écran, et le témoin sans la
+correction y échoue.
+
+**Une icône seule ne se lit que si on la connaît déjà.** Les trois cercles
+sous la carte de l'accueil et trois des quatre onglets étaient muets : ceux
+à qui le propriétaire montrait l'application ne savaient pas à quoi ils
+servaient. Chacun porte maintenant son nom. L'œil qui cache le solde est
+monté SUR la carte, contre ce qu'il cache.
+
+**Trois rangées de pastilles ne sont pas des filtres, c'est du bruit.** Le
+filtre par date est d'abord arrivé en troisième rangée défilante, sous les
+cartes et au-dessus des natures : « touffu, en désordre », a jugé le
+propriétaire. Les filtres tiennent maintenant en UNE rangée — Date, Carte,
+Type — et chaque bouton dit ce qui est choisi ; le choix se fait dans une
+liste, une chose à la fois.
+
+**« Un générateur, un document » ne suffit pas si chaque appelant prépare
+ses données.** Le PDF des coordonnées n'a qu'un générateur, et son
+commentaire le promettait : « le PDF du téléphone est celui du web ». Mais
+le web lui passait le numéro mis en forme, la route du téléphone le numéro
+brut — le même document disait « 677 12 34 56 » d'un côté, « 677123456 » de
+l'autre. Vu sur la capture, là encore. La mise en forme vit maintenant DANS
+le générateur, et un test du noyau fabrique le document des deux façons.
+Même règle pour ce qu'on copie : nom et numéro, sans le réseau, écrits une
+fois dans `noyau/coordonnees.ts` pour les deux surfaces.
+
+**Un nom de commerce n'a pas de longueur.** Le lecteur de SMS bornait le nom
+du client à quarante caractères : un encaissement de 4 231 500 F s'affichait
+« Inconnu », et son reçu disait « De : — » — le numéro partait avec le nom.
+La fiche, elle, coupait le nom à deux lignes : « STE. NOUVELLE BRASSERIE DU
+LITTORAL ET DES HAUTS PLATEAUX DE L'OUEST SARL » en fait 75. La borne du
+lecteur est maintenant un garde-fou (120), pas une règle sur les noms : ce
+qui borne un nom, c'est la ponctuation et le numéro. Le balayage
+— chaque vrai SMS des tests, réécrit avec huit noms difficiles — a trouvé
+deux défauts qu'aucun test ne voyait : le point de « ETS. KAMDEM » coupait
+la phrase, et la phrase coupée contenait « ECHEC » (« STE SANS ECHEC ») —
+le SMS ENTIER disparaissait comme une opération échouée ; et « SARL 2 »
+collait au numéro qui suivait.
+
 `verifier-le-paquet` compile le paquet Android et regarde ce qu'il y a
 DEDANS : le noyau partagé doit y être, aucun secret ne doit y être. Une
 application installée se démonte — tout ce qui entre dans ce fichier est
 public, pour toujours. À relancer avant toute compilation destinée au
 magasin.
+
+**LA ROUE NE TOURNE QUE SOUS LE DOIGT.** Le propriétaire, sur ses deux
+téléphones : « un truc de chargement en haut qui a calé ; tout part vers le
+bas ; il faut redémarrer ». Une première correction avait séparé deux
+drapeaux et passé TOUS les harnais au vert — et la roue restait plantée.
+**Aucun harnais ne pouvait la voir** : c'est un objet natif, et l'export web
+n'en dessine pas. Une enquête (six enquêteurs, chacun contredit) a trouvé
+non pas une cause mais cinq : la roue suivait le CHARGEMENT et non le doigt
+(sur iPhone, une roue montrée sans geste fait descendre le contenu de sa
+hauteur — le « tout part vers le bas ») ; elle était partagée par les quatre
+onglets ; un appel pouvait ne jamais finir ; un onglet raté une fois restait
+gris pour toujours ; des réponses croisées s'écrasaient. **Un compteur
+calculé reste vrai pour toujours si une promesse ne finit jamais** : la
+première correction ne pouvait pas tenir. Celle-ci ne répare pas le drapeau,
+elle COUPE LE FIL : la roue vit dans `useRoue`, levée par le doigt, baissée à
+la fin de SA relecture, vingt secondes au plus.
+
+`verifier-la-roue` fait tourner le VRAI `donnees.tsx` sous le VRAI React,
+dans Node, sans un port : les écrans y sont des coquilles, le guichet est
+piloté à la main (réponse, échec, silence éternel), et chaque valeur que le
+`RefreshControl` natif RECEVRAIT est notée. Le cahier d'avant, pris sur main,
+y échoue huit fois sur neuf ; le neuvième scénario — des SMS « en route » qui
+reprogrammaient deux relectures à chaque relecture, un pouls revenu par la
+petite porte — a son témoin à part : la condition retirée, il compte sept
+relectures au lieu de trois. Il refuse aussi tout `<RefreshControl>` écrit
+ailleurs que dans `useRoue`.
+
+**Le fetch du téléphone n'est pas celui de React Native.** Expo 57 le
+remplace par le sien, qui rend la main dès les EN-TÊTES ; sur iPhone, la
+lecture du corps n'attend que l'état « corps complet », et une coupure à ce
+moment la laisse en suspens pour toujours — même un abandon ne la réveille
+pas. Le délai de quinze secondes s'effaçait aux en-têtes. Une première
+vérification, faite ici, avait conclu le contraire en lisant
+`whatwg-fetch` : c'était le bon code, mais pas celui qui tourne. **On lit le
+code qui S'EXÉCUTE, pas celui qui porte le bon nom.** `verifier-le-guichet`
+met le vrai guichet devant de faux fetch (corps sans fin, corps tronqué,
+page de portail, 500 sans JSON) et exige un rejet avant l'échéance, jamais
+`{}`, toujours une phrase du dictionnaire.
+
+**« Terminal muet » ne disait rien.** Ni ce que c'est, ni si l'argent arrive,
+ni quoi faire — et l'appui menait aux Réglages, qui répétaient « muet ».
+L'alerte dit maintenant « Terminal hors ligne » et ouvre une explication :
+le boîtier de la boutique ne donne plus de nouvelles, les clients peuvent
+toujours payer, voici quoi vérifier sur place. Et une coupure de courant de
+dix minutes déclarait toutes les cartes « retirées » : la présence d'une
+carte a maintenant trois états, et « inconnue » n'est jamais « retirée ».
+`verifier-le-boitier-muet` le garde, avec la base qui note elle-même quand
+elle entend chaque boîtier.
+
+**Le temps réel, c'est la notification — prise au sérieux.** Pas de pouls
+(le propriétaire l'a refusé en août, et il avait raison) : une relecture à
+la notification, et une seconde si rien n'a bougé, parce qu'elle arrive
+souvent avant le SMS en base ; le retour depuis l'ARRIÈRE-PLAN seulement
+(tirer le centre de notifications ne doit rien recharger) ; un onglet vieux
+de trente secondes ; trois relectures après une opération. Côté boîtier, une
+sonnerie qui n'a pas pu partir pendant une coupure d'Internet est retenue,
+et rejouée APRÈS la montée de son SMS — regroupée, datée, code masqué.
+
+**Une demande abandonnée s'annule.** L'écran attendait trente secondes puis
+renonçait sans rien retirer : un boîtier revenu des heures plus tard
+composait encore le transfert, numéro et montant compris. L'écran annule
+maintenant, et ne dit « rien n'est parti » que si l'annulation a PRIS ; le
+robot, lui, ne compose jamais une demande de plus d'une minute, mesurée sur
+l'horloge de la base.
+
+**Chaque morceau était juste ; c'est aux JOINTURES qu'il cassait.** Une
+relecture des passages entre le téléphone, la plateforme et le robot a
+retenu vingt défauts qu'aucun harnais d'un seul côté ne pouvait voir :
+
+- **Une carte se met en pause d'après SON boîtier, pas celui d'en tête.**
+  Avec deux boîtiers, l'accueil prenait l'état du premier venu ; et une carte
+  « inconnue » — son boîtier vient de revenir — passait pour hors ligne. La
+  plateforme dit maintenant, carte par carte, si le boîtier qui la porte se
+  tait (`boitierMuet`, `boitierVuLe`), et le téléphone n'a qu'une règle
+  (`carteEnPause`).
+- **« Cette alerte disparaît d'elle-même » était une promesse fausse.** Rien
+  ne relit sans un geste — pas de pouls, à dessein : le propriétaire qui
+  venait de rebrancher le boîtier voyait l'alerte rester. La fiche dit
+  « Revérifier », et se referme quand le boîtier est revenu.
+- **Un code secret ne se dit jamais « réessayez ».** Quand l'envoi de la
+  réponse n'est pas confirmé, elle est peut-être déjà partie chez
+  l'opérateur : réessayer, c'est risquer le transfert deux fois. L'écran dit
+  « la demande peut quand même aboutir — regardez vos SMS ». Et une demande
+  close perd son code dans la MÊME écriture (`commandes_code_efface`) : une
+  annulation qui ne relit pas la ligne n'écrit plus rien.
+- **Un seuil, un dessin.** « Signal faible » valait 2 sur le site, 7 sur le
+  téléphone, et « une barre » couvrait 4 à 11 : une MTN à 9/31 montrait UNE
+  barre et un point VERT. `signalFaible` et `barresDuSignal` vivent dans le
+  noyau, et un test balaie les 32 forces contre le dessin.
+- **Une date d'avant la coupure n'est pas une relecture.** Après deux à cinq
+  minutes sans courant, la carte la plus récente datait d'AVANT : à moins de
+  cinq minutes du premier signe de vie, elle passait pour relue, et une carte
+  vue un peu plus tôt était dite « retirée ». Une carte ne prouve la
+  relecture que vue APRÈS le retour, que la base date (`revenu_le`).
+- **Le signe de vie et les cartes repartent ensemble**, un seul envoi de
+  cartes à la fois : deux envois croisés laissaient la date ancienne arriver
+  la dernière, et le Pi croyait la neuve envoyée.
+- **Un harnais qui imite la plateforme doit parler celle d'AUJOURD'HUI.**
+  `verifier-l-affichage` rendait muet le seul boîtier d'en tête ; la
+  plateforme disant désormais carte par carte « mon boîtier parle », il
+  montait une réponse qu'aucune plateforme ne ferait, et criait quatorze
+  fois « le terminal muet n'est pas signalé ». Le défaut était dans
+  l'imitation — mais c'est bien la jointure qu'il a vue la première.
+- **Un numéro s'écrit en tranches, partout.** L'accueil disait
+  « 677 12 34 56 », l'onglet Comptes juste à côté « 677123456 » : quatre
+  écrans (téléphone, site, deux pages de la console) écrivaient
+  `{s.numero || …}` sans `formaterNumero`. Vu sur une capture d'avant/après,
+  pas cherché. `noyau/tests/numeros.test.ts` balaie les deux surfaces.
 
 **Les deux paquets tiennent la même promesse.** `verifier-le-paquet` ne
 regardait qu'Android, parce qu'il n'y avait qu'Android ; un secret qui

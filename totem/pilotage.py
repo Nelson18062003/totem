@@ -94,6 +94,25 @@ FILE_AU_REPOS = 60
 # identité, raccourci — et les gestes d'une application d'avant le ciblage.
 FILE_COMMUNE = "terminal"
 
+# UNE DEMANDE QUI COMPOSE NE SE COMPOSE PAS EN RETARD.
+#
+# Rien ne périmait une demande « en attente ». Le boîtier tombait, l'écran
+# pas encore rechargé montrait toujours les gestes, le propriétaire lançait
+# un dépôt ; au bout de trente secondes l'écran abandonnait — « le terminal
+# n'a pas répondu » — et il croyait l'opération perdue. Au retour du
+# boîtier, des heures plus tard parfois, le robot composait le code, numéro
+# et montant compris, sur la carte.
+#
+# Au-delà de ce délai entre le dépôt et la prise, on ne compose plus : la
+# demande passe en échec, avec une raison claire, et rien ne part. Le délai
+# laisse de la marge à l'écran, qui abandonne au bout de trente secondes.
+# L'âge se mesure sur l'horloge de la BASE (voir `nuage.reclamer`).
+DEMANDE_PERIMEE_S = 60
+# Les demandes qui écrivent sur le réseau de l'opérateur. Les autres
+# (actualiser, reçu, identité, bouton, raccrocher) ne déplacent rien :
+# raccrocher en retard ne fait courir aucun risque.
+QUI_COMPOSENT = ("ussd", "ussd_reponse")
+
 
 class Pilotage:
     """Relève les demandes de l'application web et les exécute."""
@@ -332,16 +351,19 @@ class Pilotage:
         # et la mènera à bien ; ou le nuage est muet, et le tour suivant
         # réessaiera. Ne rien faire se rattrape toujours ; composer deux fois,
         # jamais.
-        if not self.nuage.reclamer(identifiant):
+        prise = self.nuage.reclamer(identifiant)
+        if not prise:
             return
 
         try:
             if genre == "solde":
                 resultat = self._republier(langue)
             elif genre == "ussd":
+                self._refuser_si_perimee(prise, genre, langue)
                 resultat = self._ouvrir(parametres, langue)
             elif genre == "ussd_reponse":
-                resultat = self._repondre(identifiant, parametres, langue)
+                resultat = self._repondre(identifiant, parametres, langue,
+                                          prise=prise)
             elif genre == "ussd_fin":
                 self._raccrocher(self._iccid_demande(parametres),
                                  self._qui(parametres), langue)
@@ -384,6 +406,39 @@ class Pilotage:
         if parametres.get("secret"):
             final["parametres"] = self._parametres_masques(parametres)
         self.nuage.commande_maj(identifiant, final)
+
+    def _refuser_si_perimee(self, prise, genre, langue=None):
+        """Refuse une demande qui compose quand elle a trop attendu, ou quand
+        on ne sait pas depuis quand elle attend.
+
+        Dans le doute on ne compose pas : une demande refusée se refait d'un
+        geste, un transfert parti des heures trop tard ne se reprend pas."""
+        age = getattr(prise, "age", None)
+        if age is not None and age <= DEMANDE_PERIMEE_S:
+            return
+        if age is None:
+            self.journal.evenement(t(
+                f"remote desk: request of unknown age, not dialled ({genre})",
+                f"guichet à distance : demande d'âge inconnu, non composée "
+                f"({genre})"))
+            raise RefusPoli(t(
+                "The terminal cannot tell when this request was made, so it "
+                "did not dial it. Nothing was sent — start again.",
+                "Le terminal ne sait pas quand cette demande a été faite : il "
+                "ne l'a pas composée. Rien n'est parti — recommencez.",
+                langue=langue))
+        duree = _duree_lisible(age)
+        self.journal.evenement(t(
+            f"remote desk: request too old, not dialled ({genre}, {duree})",
+            f"guichet à distance : demande trop ancienne, non composée "
+            f"({genre}, {duree})"))
+        raise RefusPoli(t(
+            f"This request waited {duree} before reaching the terminal — too "
+            "late to dial it safely. Nothing was sent: start again if you "
+            "still want it.",
+            f"Cette demande a attendu {duree} avant d'arriver au terminal — "
+            "trop tard pour la composer sans risque. Rien n'est parti : "
+            "recommencez si vous le voulez toujours.", langue=langue))
 
     def _etablir_recu(self, parametres, langue=None):
         """Le reçu d'un message passé, refabriqué depuis le SMS d'origine.
@@ -752,7 +807,7 @@ class Pilotage:
             "ne tient qu'un menu USSD à la fois). Réessayez dans un instant.",
             langue=langue)
 
-    def _repondre(self, identifiant, parametres, langue=None):
+    def _repondre(self, identifiant, parametres, langue=None, prise=None):
         texte = str(parametres.get("texte") or "")
         # L'EFFACEMENT D'ABORD, LE REFUS ENSUITE.
         #
@@ -791,6 +846,8 @@ class Pilotage:
                     "Le code secret n'a pas pu être sécurisé — il n'a pas "
                     "été composé. Vérifiez la connexion, puis réessayez.",
                     langue=langue))
+        # Trop vieille pour partir : jugé APRÈS l'effacement, comme tout refus.
+        self._refuser_si_perimee(prise, "ussd_reponse", langue)
         # À QUI EST LA RÉPONSE. Quand la demande nomme sa carte, c'est elle ;
         # la carte refusera d'écrire si son menu n'est pas à `qui` — sinon ce
         # chiffre, peut-être un code secret, tomberait dans le menu qu'une
@@ -862,6 +919,16 @@ class Pilotage:
 
 def _sur_la_carte(compte, iccid):
     return bool(compte.carte.identifiee and compte.carte.iccid == iccid)
+
+
+def _duree_lisible(secondes):
+    """« 45 s », « 3 min », « 5 h » — la même écriture dans les deux langues."""
+    s = int(round(secondes))
+    if s < 120:
+        return f"{s} s"
+    if s < 2 * 3600:
+        return f"{s // 60} min"
+    return f"{s // 3600} h"
 
 
 class RefusPoli(Exception):

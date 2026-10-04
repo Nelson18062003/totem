@@ -156,6 +156,23 @@ try {
   verifier("des boutons d'opération, MTN et Orange",
     Object.values(d.raccourcis ?? {}).map((l) => l.length >= 4), [true, true]);
   verifier("un terminal en ligne", d.terminal?.enLigne, true);
+  // Ce que le téléphone lit maintenant : l'instant du signe de vie, son âge
+  // mesuré par la plateforme, l'heure de la réponse — et pour chaque carte,
+  // ce qu'on sait VRAIMENT de sa présence. La vitrine passe par le même
+  // chemin que les vrais écrans : elle doit les porter aussi.
+  verifier("son dernier signe de vie, et son âge en secondes",
+    [typeof d.terminal?.vuLe, typeof d.terminal?.vuIlYa === "number" && d.terminal.vuIlYa < 300],
+    ["string", true]);
+  verifier("l'heure de la réponse", typeof d.serveurA === "string" && !Number.isNaN(Date.parse(d.serveurA)), true);
+  verifier("ses cartes sont en place, et le disent",
+    (d.sims ?? []).map((s) => [s.presence, s.enPlace]), [["en_place", true], ["en_place", true]]);
+  // L'état du boîtier PAR CARTE : le téléphone ne met une carte en pause que
+  // si SON boîtier se tait. Une vitrine qui ne le porterait pas montrerait à
+  // l'examinateur des gestes réglés sur le boîtier d'en tête.
+  verifier("chaque carte dit que SON boîtier parle, avec l'heure où il a été entendu",
+    (d.sims ?? []).map((s) => [s.boitierMuet,
+      typeof s.boitierVuLe === "string" && s.boitierVuLe === d.terminal?.vuLe]),
+    [[false, true], [false, true]]);
   verifier("elle se présente sous son nom, sans administrer",
     [d.courriel, d.proprietaire], [COURRIEL, false]);
 

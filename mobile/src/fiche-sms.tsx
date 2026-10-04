@@ -8,25 +8,31 @@
 // le masquage des codes à usage unique — viennent de `@noyau/sms`, partagées
 // avec la plateforme et tenues par des tests. Ici, seulement le dessin.
 
-import { useEffect, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, View } from "react-native";
 
 import { Feuille } from "@/feuille";
 import { Carte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
-import { useGesteUnique } from "@/geste";
+import { nouvelleCle, useGesteUnique } from "@/geste";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import * as Navigateur from "expo-web-browser";
+import { nomDeFichier, partagerDocument } from "@/partage";
 import {
   definirNature, deposerCommande, lienRecu, lireCommande, marquerLu,
 } from "@/api/guichet";
+import { useMaintenant, useRetouche } from "@/donnees";
 import { useLangue } from "@/langue";
 import { NATURES } from "@noyau/natures";
+import { libelleJour } from "@noyau/periodes";
 import {
   categorieDe, estArgent, ICONE_CATEGORIE, LONG_MESSAGE, texteSurEcran,
 } from "@noyau/sms";
 import { textesSms } from "@noyau/textes/sms";
-import { fcfa, type Categorie, type Paiement } from "@noyau/types";
+import {
+  FUSEAU_DEFAUT, fcfa, jourLocal, type Categorie, type Paiement,
+} from "@noyau/types";
+
+const attendre = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Les schémas de couleur des étiquettes : vert pour l'argent qui entre,
  *  ambre pour ce qui mérite un coup d'œil. Le reste demeure neutre — une
@@ -45,24 +51,74 @@ export function couleursCategorie(c: Categorie) {
 
 export const icone = (c: Categorie) => ICONE_CATEGORIE[c] as NomIcone;
 
-export function FicheSms({ paiement: p, onFermer, onChange }: {
+export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }: {
   paiement: Paiement;
   onFermer: () => void;
-  /** Après un changement (nature posée, reçu établi) : relire les données. */
+  /** Après un changement (SMS lu, nature posée, reçu établi) : relire EN
+   *  SILENCE — `actualiser()` du cahier, jamais `recharger()`. La roue
+   *  n'appartient qu'au doigt qui tire ; un geste dans une fiche qui la
+   *  faisait tourner faisait aussi descendre tout l'écran sur iPhone. */
   onChange?: () => void;
+  /** Ce que la fiche vient de changer, pour un écran qui tient sa PROPRE
+   *  copie des SMS (la période demandée à part par la boîte de réception).
+   *  Le cahier, lui, est retouché ici même. */
+  onRetouche?: (id: string, champs: Partial<Paiement>) => void;
+  /** Le fuseau de la caisse — celui qui dit si ce SMS est d'aujourd'hui. */
+  fuseau?: string;
 }) {
   const langue = useLangue();
   const t = textesSms[langue];
+  const aujourdhui = jourLocal(new Date(useMaintenant()), fuseau || FUSEAU_DEFAUT);
+  // Une clé de jour illisible (une plateforme d'avant `jour`) ne fait pas
+  // tomber la fiche : on retombe sur ce que la plateforme avait écrit.
+  const jourDit = /^\d{4}-\d{2}-\d{2}$/.test(p.jour ?? "")
+    ? libelleJour(p.jour, aujourdhui, langue) : p.date;
 
   const [nature, setNature] = useState(p.nature);
   const [choisirType, setChoisirType] = useState(false);
   const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
   const [deplie, setDeplie] = useState(false);
 
-  // Ouvrir la fiche, c'est lire le message : la pastille du menu s'éteint.
-  // Un échec ici ne se montre pas — c'est du confort, pas de l'argent.
+  // LA FICHE FERMÉE NE PARLE PLUS. Elle attendait le terminal (« Demande au
+  // terminal… », trente secondes), un lien de reçu, une réponse : on la
+  // refermait, et quelques secondes plus tard le téléphone VIBRAIT, la
+  // liste derrière se rechargeait, ou la feuille de partage s'ouvrait
+  // par-dessus un autre écran — pour un geste qu'on croyait abandonné.
+  // Chaque attente est donc suivie de la même question : la fiche est-elle
+  // encore là ? Sinon, le silence — ni vibration, ni relecture, ni partage.
+  const vivant = useRef(true);
   useEffect(() => {
-    if (p.nonLu) marquerLu(Number(p.id)).then(() => onChange?.()).catch(() => {});
+    vivant.current = true;
+    return () => { vivant.current = false; };
+  }, []);
+
+  // CE QUE LA FICHE SAIT, LA LISTE LE MONTRE TOUT DE SUITE. Un SMS lu, une
+  // nature posée, un reçu établi : le cahier est corrigé SUR PLACE, sans
+  // attendre la plateforme — c'est la relecture discrète qui suit
+  // (`onChange`) qui confirme. Avant, c'était un rechargement complet, avec
+  // la roue, pour éteindre un point bleu.
+  const retoucheCahier = useRetouche();
+  const retoucher = (champs: Partial<Paiement>) => {
+    retoucheCahier((d) => {
+      const lignes = Array.isArray(d.paiements) ? d.paiements : [];
+      if (!lignes.some((x) => x.id === p.id)) return d;
+      return { ...d, paiements: lignes.map((x) => (x.id === p.id ? { ...x, ...champs } : x)) };
+    });
+    onRetouche?.(p.id, champs);
+  };
+
+  // Ouvrir la fiche, c'est lire le message : la pastille du menu s'éteint —
+  // tout de suite. Un échec ici ne se montre pas : c'est du confort, pas de
+  // l'argent, et la relecture suivante remettra le point si la base ne l'a
+  // pas retenu.
+  useEffect(() => {
+    if (!p.nonLu) return;
+    retoucher({ nonLu: false });
+    marquerLu(Number(p.id))
+      .then(() => { if (vivant.current) onChange?.(); })
+      .catch(() => {});
+    // Une fois par SMS ouvert ; `retoucher` et `onChange` changent à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.id, p.nonLu]);
 
   const cat = categorieDe({ ...p, nature });
@@ -82,37 +138,76 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
     const avant = nature;
     setNature(n as Paiement["nature"]);
     setChoisirType(false);
+    // La liste derrière la fiche change d'icône et de couleur TOUT DE SUITE.
+    retoucher({ nature: n as Paiement["nature"] });
     try {
       await definirNature(Number(p.id), n);
-      onChange?.();
     } catch {
       // La nature n'est pas retenue : l'écran la rend — jamais une pastille
-      // que la base n'a pas. Et pas de reçu pour un classement raté.
-      setNature(avant);
+      // que la base n'a pas, ni dans la fiche ni dans la liste. Et pas de
+      // reçu pour un classement raté.
+      retoucher({ nature: avant });
+      if (vivant.current) setNature(avant);
       return;
     }
-    if (n && p.sourceId != null && (!p.recu || n !== (avant ?? p.categorie))) {
-      await etablirRecu(n);
+    const recuASuivre = n != null && p.sourceId != null
+      && (!recu || n !== (avant ?? p.categorie));
+    if (!vivant.current) {
+      // LA FICHE A ÉTÉ FERMÉE pendant que la base enregistrait la nature.
+      // Rien ne se montre plus, rien ne vibre — mais le reçu SUIT quand
+      // même : c'est ce que l'aide de l'écran a promis, et un PDF qui dirait
+      // encore « Reçu de dépôt » sous un SMS rangé en « Retrait » serait une
+      // pièce fausse. La demande part, sa propre clé d'intention avec elle ;
+      // le cahier apprendra le numéro à sa prochaine relecture.
+      if (recuASuivre && p.sourceId != null) {
+        void deposerCommande("recu", { source_id: p.sourceId, nature: n },
+                             p.terminal, nouvelleCle())
+          .catch(() => {});
+      }
+      return;
     }
+    onChange?.();
+    if (recuASuivre) await etablirRecu(n);
   };
 
   /** Demander le reçu au terminal QUI A REÇU ce SMS — jamais au dernier qui
    *  a donné signe de vie : `sourceId` ne veut rien dire dans un autre
    *  journal, et le reçu porterait sur une autre opération. */
-  // OUVRIR le reçu — le geste pour lequel un reçu existe : le montrer, le
-  // partager. Le PDF s'ouvre dans le navigateur du système, muni d'un lien
-  // signé de dix minutes (voir web/lib/lien-signe.ts) : de là, le partage
-  // d'Android fait le reste — WhatsApp compris.
+  // PARTAGER le reçu — le geste pour lequel un reçu existe. Le PDF est
+  // téléchargé dans le téléphone puis part par la feuille de partage, comme
+  // un vrai fichier : WhatsApp reçoit le document, pas un lien vers une
+  // page (voir src/partage.ts).
   const [ouverture, setOuverture] = useState<"repos" | "envoi" | "refus">("repos");
+  // Le numéro du reçu : celui de la ligne, ou celui que le robot vient de
+  // rendre (voir `etablirRecu`).
+  const [recu, setRecu] = useState<string | null>(p.recu);
   const ouvrirRecu = async () => {
-    if (!p.recu || ouverture === "envoi") return;
+    if (!recu || ouverture === "envoi") return;
     setOuverture("envoi");
     try {
-      const { url } = await lienRecu(p.recu);
-      await Navigateur.openBrowserAsync(url);
-      setOuverture("repos");
+      // Un reçu tout juste établi met quelques secondes à être archivé : le
+      // premier essai peut tomber avant lui. On réessaie un peu, sans bruit.
+      for (let essai = 0; ; essai++) {
+        try {
+          const { url } = await lienRecu(recu);
+          // Fermée entre-temps : la feuille de partage ne s'ouvre pas
+          // par-dessus un écran qui n'a rien demandé. Et la question se
+          // repose APRÈS le téléchargement du PDF, qui prend plusieurs
+          // secondes sur un réseau lent — c'est là qu'on referme la fiche.
+          if (!vivant.current) return;
+          await partagerDocument(url, nomDeFichier(`Recu-${recu}`, "pdf"), "pdf",
+                                 t.partagerRecu, () => vivant.current);
+          break;
+        } catch (e) {
+          if (!vivant.current) return;
+          if (essai >= 5) throw e;
+          await attendre(2000);
+          if (!vivant.current) return;
+        }
+      }
+      if (vivant.current) setOuverture("repos");
     } catch {
-      setOuverture("refus");
+      if (vivant.current) setOuverture("refus");
     }
   };
 
@@ -131,20 +226,35 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
     if (p.sourceId == null) return;
     const natureDemandee = natureVoulue ?? nature;
     setEtabli("envoi");
+    // Chaque `return;` sans verdict ci-dessous est la fiche FERMÉE : un
+    // silence, que `useGesteUnique` ne traduit en aucune vibration. La
+    // demande, elle, est déjà partie — le terminal fabrique le reçu, et la
+    // prochaine relecture du cahier en rapporte le numéro.
     try {
       const { id } = await deposerCommande(
         "recu", { source_id: p.sourceId, nature: natureDemandee ?? undefined },
         p.terminal, cle);
+      if (!vivant.current) return;
       for (let i = 0; i < 25; i++) {
-        await new Promise((r) => setTimeout(r, 1200));
+        await attendre(1200);
+        if (!vivant.current) return;
         const c = await lireCommande(id).catch(() => null);
-        if (c?.etat === "faite") { setEtabli("fait"); onChange?.(); return true; }
+        if (!vivant.current) return;
+        if (c?.etat === "faite") {
+          // Le robot répond « Reçu TM-2026-1003-1193 en fabrication… » : le
+          // numéro y est. La fiche peut donc proposer le partage TOUT DE
+          // SUITE — elle demandait avant de la refermer et de la rouvrir.
+          const n = /\bT[A-Z]-\d{4}-\d{4}-\d+\b/.exec(c.resultat ?? "")?.[0];
+          if (n) { setRecu(n); retoucher({ recu: n }); }
+          setEtabli("fait"); onChange?.(); return true;
+        }
         if (c?.etat === "echouee") { setEtabli("refus"); return false; }
       }
       // Vingt-cinq essais, trente secondes : le terminal n'a pas répondu.
       setEtabli("refus");
       return false;
     } catch {
+      if (!vivant.current) return;
       setEtabli("refus");
       return false;
     }
@@ -176,11 +286,15 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
               fiche — pour tout voir. « NKENGAFAC MBOUNGOU J… » ne dit pas
               qui a payé, et c'est justement la question qu'on se pose en
               ouvrant. Le nom passe donc à la ligne.
-              Deux lignes suffisent à tout nom d'état civil ; au-delà, on
-              coupe, parce qu'un en-tête qui pousse le contenu hors de
-              l'écran est un autre défaut. */}
-          <Texte taille={textes.intertitre} poids="demi" numberOfLines={2}
-                 selectable style={{ marginTop: espaces.xs }}>
+              « Deux lignes suffisent à tout nom d'état civil », disait ce
+              commentaire — et c'était faux pour les RAISONS SOCIALES, qui
+              sont justement les gros clients : « NKENGAFAC MBOUNGOU
+              JEANNE-CLAIRE EPSE … » sur un téléphone de 360 points. Le nom
+              passe donc en entier ; long, il se fait plus petit, pour que
+              l'en-tête ne pousse pas le contenu hors de l'écran.
+              `verifier-l-affichage` refuse tout texte abrégé dans une fiche. */}
+          <Texte taille={(p.tiers || p.nom).length > 32 ? textes.corps + 1 : textes.intertitre}
+                 poids="demi" selectable style={{ marginTop: espaces.xs }}>
             {p.tiers || p.nom}
           </Texte>
         </>
@@ -203,9 +317,9 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 déposait une SECONDE commande pour le même SMS. */}
             <Pressable
               accessibilityRole="button"
-              onPress={() => void (p.recu ? ouvrirRecu() : etablirRecu())}
+              onPress={() => void (recu ? ouvrirRecu() : etablirRecu())}
               disabled={ouverture === "envoi" || etabli === "envoi"
-                        || gesteRecu.occupe || (!p.recu && etabli === "fait")}
+                        || gesteRecu.occupe || (!recu && etabli === "fait")}
               style={({ pressed }) => ({
                 flexDirection: "row", alignItems: "center", justifyContent: "center",
                 gap: espaces.sm, paddingVertical: espaces.md,
@@ -213,11 +327,13 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                 backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
               })}
             >
-              <Icone nom="Doc" taille={17} couleur={couleurs.surfaceHaute} />
-              <Texte poids="demi" taille={textes.petit}
-                     style={{ color: couleurs.surfaceHaute }}>
-                {p.recu
-                  ? (ouverture === "envoi" ? t.ouvertureRecu : t.ouvrirRecu)
+              <Icone nom={recu ? "Partage" : "Doc"} taille={17} couleur={couleurs.surfaceHaute} />
+              {/* `flexShrink` : un libellé long se replie DANS le bouton.
+                  Sans lui, il poussait l'icône hors du bouton, à gauche. */}
+              <Texte poids="demi" taille={textes.petit} numberOfLines={2}
+                     style={{ color: couleurs.surfaceHaute, flexShrink: 1, textAlign: "center" }}>
+                {recu
+                  ? (ouverture === "envoi" ? t.preparationRecu : t.partagerRecu)
                   : etabli === "envoi" ? t.demandeAuTerminal
                   : etabli === "fait" ? t.recuEtabli
                   : t.etablirRecu}
@@ -226,7 +342,7 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
 
             {/* REFAIRE le reçu : le second geste, discret. Il sert quand la
                 nature vient d'être rechoisie — même numéro, document neuf. */}
-            {p.recu && p.sourceId != null ? (
+            {recu && p.sourceId != null ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => void etablirRecu()}
@@ -239,9 +355,12 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
                   backgroundColor: pressed ? couleurs.surface2 : "transparent",
                 })}
               >
-                <Texte poids="moyen" taille={textes.petit} ton="doux">
+                <Texte poids="moyen" taille={textes.petit} ton="doux"
+                       style={{ flexShrink: 1, textAlign: "center" }}>
                   {etabli === "envoi" ? t.demandeAuTerminal
-                    : etabli === "fait" ? t.regenerationFaite : t.refaireRecu}
+                    // Établi pour la première fois, ou refait : deux mots.
+                    : etabli === "fait" ? (p.recu ? t.regenerationFaite : t.recuEtabli)
+                    : t.refaireRecu}
                 </Texte>
               </Pressable>
             ) : null}
@@ -273,7 +392,11 @@ export function FicheSms({ paiement: p, onFermer, onChange }: {
 
       {/* Les détails. */}
       <Carte>
-        <Rangee libelle={t.date} valeur={t.dateEtHeure(p.date, p.heure)} />
+        {/* LE JOUR SE DIT ICI, À L'HEURE DE L'ÉCRAN. `p.date` est écrit par
+            la plateforme au moment où elle répond, et rangé tel quel dans le
+            cahier : relu le lendemain matin, un paiement d'hier disait
+            « Aujourd'hui à 18:32 ». */}
+        <Rangee libelle={t.date} valeur={t.dateEtHeure(jourDit, p.heure)} />
         {p.numero ? <><Filet /><Rangee libelle={t.numero} valeur={p.numero} /></> : null}
         {p.reference ? <><Filet /><Rangee libelle={t.reference} valeur={p.reference} /></> : null}
         {p.soldeApres != null ? (

@@ -9,6 +9,8 @@
 // (ici Helvetica) sont lues par tous les lecteurs. L'encodage WinAnsi couvre
 // le latin-1, donc les accents français.
 
+import { formaterNumero } from "@noyau/numero";
+
 export type CoordonneesRib = {
   nom: string;
   numero: string;
@@ -133,7 +135,11 @@ function flux(c: CoordonneesRib): string {
   // Les trois lignes, chacune sur son filet.
   const lignes: [string, string][] = [];
   if (c.nom.trim()) lignes.push([c.etiquetteNom, c.nom]);
-  lignes.push([c.etiquetteNumero, c.numero || "—"]);
+  // Le numéro se met en forme ICI, pas chez l'appelant. Le web le formatait
+  // avant d'appeler, la route du téléphone non : le même document disait
+  // « 677 12 34 56 » d'un côté et « 677123456 » de l'autre. La mise en forme
+  // ne change pas un numéro déjà formaté — on peut donc l'appliquer deux fois.
+  lignes.push([c.etiquetteNumero, formaterNumero(c.numero) || "—"]);
   lignes.push([c.etiquetteReseau, c.service]);
 
   haut -= 30;

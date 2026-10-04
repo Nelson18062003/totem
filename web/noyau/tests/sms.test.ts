@@ -58,3 +58,19 @@ test("seul un mouvement d'argent donne droit à un reçu", () => {
   assert.equal(estArgent(sms({ categorie: "code" })), false);
   assert.equal(estArgent(sms({ categorie: "message" })), false);
 });
+
+test("un mouvement d'argent : pas un solde, pas un échec, pas un code — un illisible, si", async () => {
+  const { estMouvement } = await import("../sms");
+  const p = (categorie: string, nature: string | null = null) =>
+    ({ categorie, nature }) as Parameters<typeof estMouvement>[0];
+  assert.equal(estMouvement(p("encaissement")), true);
+  assert.equal(estMouvement(p("envoi")), true);
+  assert.equal(estMouvement(p("solde")), false);
+  assert.equal(estMouvement(p("echec")), false);
+  assert.equal(estMouvement(p("code")), false);
+  assert.equal(estMouvement(p("publicite")), false);
+  assert.equal(estMouvement(p("illisible")), true);
+  // La nature choisie par le propriétaire l'emporte.
+  assert.equal(estMouvement(p("message", "depot")), true);
+  assert.equal(estMouvement(p("encaissement", "publicite")), false);
+});

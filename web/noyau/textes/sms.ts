@@ -9,12 +9,49 @@ const en = {
   titre: "Messages received",
   enCoursDeTransmission: (n: number) =>
     n === 1
-      ? "The terminal has 1 message still on its way — this list may not be complete yet. It updates by itself."
-      : `The terminal has ${n} messages still on their way — this list may not be complete yet. It updates by itself.`,
+      ? "The terminal has 1 message still on its way — this list may not be complete yet. Pull down to see how far it has got."
+      : `The terminal has ${n} messages still on their way — this list may not be complete yet. Pull down to see how far it has got.`,
   recherchePlaceholder: "Name, number, amount, message text",
   effacerRecherche: "Clear the search",
   tousLesOperateurs: "All",
   toutesLesCategories: "All",
+  // LE FILTRE PAR DATE. Les jours sont ceux de la caisse (voir
+  // `noyau/periodes.ts`) : « aujourd'hui » est le même jour qu'en tête de
+  // liste et dans le bilan.
+  periodeTout: "All dates",
+  periodeAujourdhui: "Today",
+  periodeHier: "Yesterday",
+  periodeSemaine: "Last 7 days",
+  periodeMois: "This month",
+  periodeChoisir: "Pick dates",
+  calendrierTitre: "Show the SMS of…",
+  calendrierAide: "Tap a day. Tap a second day to show a whole period.",
+  calendrierVoir: "Show these SMS",
+  fermer: "Close",
+  // LES FILTRES, EN UNE RANGÉE. Trois rangées de pastilles qui défilaient
+  // de côté — cartes, dates, natures — faisaient un écran touffu, sans
+  // ordre : le propriétaire l'a jugé illisible. Trois boutons, chacun dit
+  // ce qu'il filtre et ce qui est choisi ; le choix se fait dans une liste.
+  filtreDate: "Date",
+  filtreCarte: "SIM",
+  filtreType: "Type",
+  filtreDateTitre: "Show the SMS of…",
+  filtreCarteTitre: "Show the SMS of which SIM?",
+  filtreTypeTitre: "Show which kind of SMS?",
+  filtreDateAria: "Filter by date",
+  filtreCarteAria: "Filter by SIM",
+  filtreTypeAria: "Filter by kind",
+  effacerFiltres: "Clear",
+  periodeImpossible: "The SMS of this period could not be loaded. Check the connection, then try again.",
+  moisPrecedent: "Previous month",
+  moisSuivant: "Next month",
+  // Ce qu'une période a fait entrer et sortir : la question qu'on se pose
+  // en filtrant — « combien j'ai encaissé hier ? ».
+  totalRecu: "Received",
+  totalEnvoye: "Sent",
+  totalNombre: (n: number) => (n === 1 ? "1 SMS" : `${n} SMS`),
+  periodeTronquee:
+    "Only the 1,000 most recent SMS of this period are shown. Pick fewer days to see the rest.",
   aucunResultatTitre: "No message matches",
   aucunResultatDetail: "Try another word or amount, or remove a filter.",
   toutAfficher: "Show everything",
@@ -28,7 +65,9 @@ const en = {
   ouvrirRecu: "Open the receipt (PDF)",
   refaireRecu: "Rebuild the receipt",
   ouvertureRecu: "Opening…",
-  lienRecuImpossible: "The receipt could not be opened. Check the connection, then try again.",
+  partagerRecu: "Share the receipt",
+  preparationRecu: "Preparing the PDF…",
+  lienRecuImpossible: "The receipt could not be prepared. Check the connection, then try again.",
   toutesLesCartes: "All SIMs",
   soldesRepetes: (n: number) =>
     n === 1 ? "1 earlier balance check" : `${n} earlier balance checks`,
@@ -56,11 +95,11 @@ const en = {
   regenerationEnCours:
     "The terminal is rebuilding the document with today's reading — about "
     + "twenty seconds, then open the PDF again.",
-  regenerationFaite: "Document rebuilt — open the PDF: it is the new one.",
+  regenerationFaite: "Receipt rebuilt ✓",
   // Le reçu vient d'être fabriqué. La fiche ouverte porte encore
   // l'ancienne version du paiement : on le DIT, plutôt que de laisser le
   // bouton reprendre son libellé d'avant comme si rien ne s'était passé.
-  recuEtabli: "Receipt created — reopen this message to open the PDF.",
+  recuEtabli: "Receipt ready ✓",
   regenerationLente:
     "The terminal is taking longer than expected. The PDF will be replaced "
     + "as soon as it finishes — try opening it again in a minute.",
@@ -99,12 +138,40 @@ const fr: typeof en = {
   titre: "SMS reçus",
   enCoursDeTransmission: (n) =>
     n === 1
-      ? "Le terminal a 1 message en cours de transmission — cette liste n’est peut-être pas encore complète. Elle se met à jour toute seule."
-      : `Le terminal a ${n} messages en cours de transmission — cette liste n’est peut-être pas encore complète. Elle se met à jour toute seule.`,
+      ? "Le terminal a 1 message en cours de transmission — cette liste n’est peut-être pas encore complète. Tirez vers le bas pour voir où elle en est."
+      : `Le terminal a ${n} messages en cours de transmission — cette liste n’est peut-être pas encore complète. Tirez vers le bas pour voir où elle en est.`,
   recherchePlaceholder: "Nom, numéro, montant, texte du SMS",
   effacerRecherche: "Effacer la recherche",
   tousLesOperateurs: "Tous",
   toutesLesCategories: "Toutes",
+  periodeTout: "Toutes les dates",
+  periodeAujourdhui: "Aujourd’hui",
+  periodeHier: "Hier",
+  periodeSemaine: "7 derniers jours",
+  periodeMois: "Ce mois-ci",
+  periodeChoisir: "Choisir les jours",
+  calendrierTitre: "Voir les SMS du…",
+  calendrierAide: "Touchez un jour. Touchez un second jour pour voir toute une période.",
+  calendrierVoir: "Voir ces SMS",
+  fermer: "Fermer",
+  filtreDate: "Date",
+  filtreCarte: "Carte",
+  filtreType: "Type",
+  filtreDateTitre: "Voir les SMS de…",
+  filtreCarteTitre: "Voir les SMS de quelle carte ?",
+  filtreTypeTitre: "Voir quels SMS ?",
+  filtreDateAria: "Filtrer par date",
+  filtreCarteAria: "Filtrer par carte",
+  filtreTypeAria: "Filtrer par type",
+  effacerFiltres: "Effacer",
+  periodeImpossible: "Les SMS de cette période n’ont pas pu être chargés. Vérifiez la connexion, puis réessayez.",
+  moisPrecedent: "Mois précédent",
+  moisSuivant: "Mois suivant",
+  totalRecu: "Reçu",
+  totalEnvoye: "Envoyé",
+  totalNombre: (n) => (n === 1 ? "1 SMS" : `${n} SMS`),
+  periodeTronquee:
+    "Seuls les 1 000 SMS les plus récents de cette période sont affichés. Choisissez moins de jours pour voir les autres.",
   aucunResultatTitre: "Aucun SMS ne correspond",
   aucunResultatDetail: "Essayez un autre mot, un autre montant, ou retirez un filtre.",
   toutAfficher: "Tout afficher",
@@ -118,7 +185,9 @@ const fr: typeof en = {
   ouvrirRecu: "Ouvrir le reçu (PDF)",
   refaireRecu: "Refaire le reçu",
   ouvertureRecu: "Ouverture…",
-  lienRecuImpossible: "Le reçu n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
+  partagerRecu: "Partager le reçu",
+  preparationRecu: "Préparation du PDF…",
+  lienRecuImpossible: "Le reçu n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   toutesLesCartes: "Toutes les cartes",
   soldesRepetes: (n) =>
     n === 1 ? "1 consultation de solde plus tôt" : `${n} consultations de solde plus tôt`,
@@ -145,8 +214,8 @@ const fr: typeof en = {
   regenerationEnCours:
     "Le terminal refait le document avec la lecture du jour — une vingtaine "
     + "de secondes, puis rouvrez le PDF.",
-  regenerationFaite: "Document refait — ouvrez le PDF : c'est le nouveau.",
-  recuEtabli: "Reçu établi — rouvrez ce message pour ouvrir le PDF.",
+  regenerationFaite: "Reçu refait ✓",
+  recuEtabli: "Reçu prêt ✓",
   regenerationLente:
     "Le terminal prend plus de temps que prévu. Le PDF sera remplacé dès "
     + "qu'il aura fini — réessayez de l'ouvrir dans une minute.",

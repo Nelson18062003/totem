@@ -14,12 +14,19 @@
 // L'export CSV passe par le navigateur du système, muni d'un lien signé :
 // c'est lui qui sait TÉLÉCHARGER un fichier — l'application ne sait que
 // l'afficher. Même chemin que le reçu et la fiche des coordonnées.
+//
+// LES FORMES GRISES NE VIENNENT QUE SI L'ÉCRAN N'A VRAIMENT RIEN. Rouvrir
+// l'Analyse deux minutes après l'avoir quittée la faisait repartir des
+// formes grises, roue en haut, pour retélécharger mille SMS. Le cahier garde
+// maintenant ce qui vient d'être servi (voir `donnees.tsx`) : l'écran
+// retrouve sa semaine tout de suite, et la relit en silence. La roue, elle,
+// ne tourne que sous le doigt (`useRoue`).
 
 import { useMemo, useState } from "react";
-import { RefreshControl, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import * as Navigateur from "expo-web-browser";
+import { nomDeFichier, partagerDocument } from "@/partage";
 
 import { Defilement, Accroc, BoutonIcone, Carte, Filet, Texte } from "@/ui";
 import { Icone } from "@/icones";
@@ -27,14 +34,14 @@ import { Entree } from "@/animations";
 import { SqueletteAnalyse } from "@/squelettes";
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import { useDonnees } from "@/donnees";
+import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { lienBilan } from "@/api/guichet";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { textesUssd } from "@noyau/textes/ussd";
 import { resumeSemaine } from "@noyau/analyse";
 import type { Langue } from "@noyau/langue";
-import { fcfa, nombre, FUSEAU_DEFAUT } from "@noyau/types";
+import { fcfa, jourLocal, nombre, FUSEAU_DEFAUT } from "@noyau/types";
 
 export default function Analyse() {
   const langue = useLangue();
@@ -43,18 +50,30 @@ export default function Analyse() {
   // La même profondeur que la page web (1000 lignes) : à 200, la semaine
   // PRÉCÉDENTE est la première tronquée sur une caisse active, et le
   // pourcentage d'évolution ment — en bien, ce qui est pire.
-  const { donnees, chargement, erreur, recharger } = useDonnees({ sms: 1000, recus: 0 });
+  const { donnees, attente, erreur, recharger } = useDonnees({ sms: 1000, recus: 0 });
+  const roue = useRoue();
 
-  const paiements = donnees?.paiements ?? [];
+  const paiements = donnees?.paiements;
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
 
-  // Tout le comptage d'un coup, UNE fois par jeu de données — pas à chaque
-  // rendu : mille paiements se reclassent vite, mais pas au point de le
-  // refaire pour un simple changement d'état d'écran.
+  // LA SEMAINE TOURNE À MINUIT, MÊME ÉCRAN OUVERT. Le calcul prenait
+  // `Date.now()` au moment du rendu : restée ouverte depuis la veille,
+  // l'Analyse comptait encore la semaine d'hier. Il suit maintenant l'heure
+  // de l'écran — et ne se refait que quand le JOUR change, pas à chaque
+  // minute : mille paiements à reclasser, ce n'est pas rien sur un petit
+  // téléphone.
+  const maintenant = useMaintenant();
+  const aujourdhui = jourLocal(new Date(maintenant), fuseau);
+
+  // Tout le comptage d'un coup, UNE fois par jeu de données et par jour —
+  // pas à chaque rendu : mille paiements se reclassent vite, mais pas au
+  // point de le refaire pour un simple changement d'état d'écran. C'est
+  // `aujourdhui`, et non `maintenant`, qui décide de refaire le calcul.
   const { jours: septJours, total, moyenne, meilleur, max, evolution,
           clients: topClients } =
-    useMemo(() => resumeSemaine(paiements, langue, fuseau),
-            [paiements, langue, fuseau]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useMemo(() => resumeSemaine(paiements ?? [], langue, fuseau, maintenant),
+            [paiements, langue, fuseau, aujourdhui]);
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -64,8 +83,7 @@ export default function Analyse() {
           paddingBottom: espaces.xl, gap: espaces.xl,
           maxWidth: 1100, width: "100%", alignSelf: "center",
         }}
-        refreshControl={<RefreshControl refreshing={chargement} onRefresh={recharger}
-                                        tintColor={couleurs.encrePale} />}
+        refreshControl={roue}
       >
         <Entree montee={6}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
@@ -78,10 +96,16 @@ export default function Analyse() {
           </View>
         </Entree>
 
-        {erreur ? (
-          <Accroc message={erreur} onReessayer={recharger} />
-        ) : paiements.length === 0 && chargement ? (
-          <SqueletteAnalyse />
+        {/* Trois états qui ne se mélangent pas : RIEN encore (des formes
+            grises), RIEN et la plateforme ne répond pas (la panne, avec
+            « Réessayer »), ou la semaine — vide ou pleine. Une semaine sans
+            encaissement n'est dite vide que sur des chiffres REÇUS. */}
+        {!paiements ? (
+          erreur ? (
+            <Accroc message={erreur} onReessayer={() => void recharger()} />
+          ) : attente ? (
+            <SqueletteAnalyse />
+          ) : null
         ) : paiements.length === 0 ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
@@ -252,7 +276,10 @@ function ExportBilan({ langue }: { langue: Langue }) {
     setRefus(false);
     try {
       const { url } = await lienBilan(jours);
-      await Navigateur.openBrowserAsync(url);
+      // Le fichier lui-même, par la feuille de partage — au comptable par
+      // courriel, dans Drive — et non une page à télécharger.
+      await partagerDocument(url, nomDeFichier(`Bilan-TOTEM-${jours}-jours`, "csv"),
+                             "csv", t.exporterBilan);
     } catch {
       setRefus(true);
     } finally {

@@ -14,7 +14,7 @@ const en = {
   reglages: "Settings",
   terminal: "Terminal",
   enLigne: "Online",
-  muet: "Silent",
+  muet: "Offline",
   emplacement: "Location",
   version: "Version",
   sante: "Device health",
@@ -25,11 +25,61 @@ const en = {
   aucuneCarteDetail:
     "As soon as the terminal sees a SIM, its balance and the counter will appear here.",
   actualiserAria: "Refresh the balance: ask the network",
+  // Les trois commandes sous la carte, NOMMÉES. Un cercle sans mot ne
+  // disait rien à qui découvrait l'application : on ne savait pas à quoi
+  // servaient ces boutons. Un nom court, sous chaque icône.
+  cmdSolde: "Balance",
+  cmdUssd: "USSD code",
+  cmdCoordonnees: "My details",
+  ussdAria: "Dial a USSD code on this card",
   masquerSolde: "Hide the balance",
   montrerSolde: "Show the balance",
   interrogerReseau: "Ask the network",
   aucunSoldeConnu: "No balance yet: press the arrow to ask the network.",
   soldeMaj: (h: string) => `From the network query at ${h}`,
+  // LA LIGNE SOUS LA CARTE : l'âge du solde, AVEC son jour. « 21:54 » seul
+  // ne disait pas si c'était ce soir ou hier soir.
+  soldeReleve: (h: string) => `Balance checked at ${h}`,
+  soldeReleveHier: (h: string) => `Balance checked yesterday at ${h}`,
+  soldeReleveLe: (j: string, h: string) => `Balance checked on ${j} at ${h}`,
+  aucunSoldeCourt: "No balance yet",
+  actualiser: "Refresh",
+  // « Terminal muet » ne disait rien à qui ne connaît pas le système : ni ce
+  // que c'est, ni si l'argent arrive, ni quoi faire. Hors ligne se comprend
+  // partout ; l'appui ouvre une explication, plus les Réglages.
+  terminalMuetCourt: "Terminal offline",
+  terminalMuetAria: (q: string) => `The terminal is offline (${q}): what it means and what to do`,
+  horsLigneTitre: "The terminal is offline",
+  horsLigneDepuis: (d: string) => `The TOTEM box at the shop hasn't been in touch since ${d}.`,
+  horsLigneSansHeure: "The TOTEM box at the shop isn't in touch any more.",
+  horsLigneArgent:
+    "Your customers can still pay you: the money reaches your account at the operator. "
+    + "Their SMS will appear here as soon as the box is back.",
+  horsLigneEnAttendant:
+    "Until then, the balance and the latest transactions are those of that time, "
+    + "and operations from the app can't go out.",
+  horsLigneSurPlace: "At the shop",
+  horsLigneQuoiFaire:
+    "Check that the box and the internet router are switched on. If they are, "
+    + "unplug the box, count to ten, and plug it back in.",
+  // L'alerte NE disparaît PAS d'elle-même : rien ne relit sans un geste (pas
+  // de pouls, à dessein). La phrase le promettait ; elle dit quoi faire.
+  horsLigneFin: "Once the box is plugged back in, tap “Check again”.",
+  horsLigneReverifier: "Check again",
+  horsLigneVerification: "Checking…",
+  horsLigneToujours: (h: string) => `Still offline — checked at ${h}.`,
+  horsLigneCompris: "OK",
+  horsLigneVoir: "Operations can't go out. Tap to see what to do.",
+  horsLigneHier: (h: string) => `yesterday at ${h}`,
+  horsLigneLe: (j: string, h: string) => `${j} at ${h}`,
+  // Les cinq ronds sous la carte : un verbe chacun, court.
+  rondRetrait: "Withdraw",
+  rondRecevoir: "Receive",
+  rondUssd: "USSD code",
+  recevoirAria: "Your name and number, to give to whoever pays you",
+  // Ce qui vient d'arriver : l'argent seulement, toutes cartes.
+  mouvements: "Latest transactions",
+  aucunMouvement: "No money movement among the latest SMS",
   soldeSansHeure: "Last known balance.",
   carteAnonyme: (fin: string) => `card ${fin}`,
 
@@ -64,12 +114,17 @@ const en = {
   coordSansNom: "No name yet — add it in Settings so it appears here.",
   coordCopier: "Copy",
   coordCopie: "Copied",
-  // Sur le téléphone, le geste naturel n'est pas de copier mais de PARTAGER :
-  // la feuille d'Android porte WhatsApp, les SMS — et « Copier » avec.
+  // Ce que le bouton « Copier » emporte, dit en entier aux aides vocales :
+  // le nom et le numéro, pas le réseau (voir `noyau/coordonnees.ts`).
+  coordCopierNomNumero: "Copy the name and number",
+  coordCopierNom: "Copy the name",
+  nomCopie: "Name copied",
+  // Partager envoie aussi le réseau : il part chez quelqu'un qui ne connaît
+  // pas encore la carte.
   coordPartager: "Share",
   coordPdf: "Download the PDF",
   coordPdfImpossible:
-    "The PDF could not be opened. Check the connection and try again.",
+    "The PDF could not be prepared. Check the connection and try again.",
   coordVoir: "View",
   coordTelecharger: "Download",
   copierNumero: "Copy the number",
@@ -93,7 +148,7 @@ const fr: typeof en = {
   reglages: "Réglages",
   terminal: "Terminal",
   enLigne: "En ligne",
-  muet: "Muet",
+  muet: "Hors ligne",
   emplacement: "Emplacement",
   version: "Version",
   sante: "Santé du boîtier",
@@ -103,11 +158,49 @@ const fr: typeof en = {
   aucuneCarteDetail:
     "Dès qu’une SIM sera vue par le terminal, son solde et le guichet apparaîtront ici.",
   actualiserAria: "Actualiser le solde : interroger le réseau",
+  cmdSolde: "Solde",
+  cmdUssd: "Code USSD",
+  cmdCoordonnees: "Coordonnées",
+  ussdAria: "Composer un code USSD sur cette carte",
   masquerSolde: "Masquer le solde",
   montrerSolde: "Afficher le solde",
   interrogerReseau: "Interroger le réseau",
   aucunSoldeConnu: "Aucun solde connu : appuyez sur la flèche pour interroger le réseau.",
   soldeMaj: (h) => `D’après l’interrogation de ${h}`,
+  soldeReleve: (h) => `Solde relevé à ${h}`,
+  soldeReleveHier: (h) => `Solde relevé hier à ${h}`,
+  soldeReleveLe: (j, h) => `Solde relevé le ${j} à ${h}`,
+  aucunSoldeCourt: "Aucun solde connu",
+  actualiser: "Actualiser",
+  terminalMuetCourt: "Terminal hors ligne",
+  terminalMuetAria: (q) => `Le terminal est hors ligne (${q}) : ce que cela veut dire, et quoi faire`,
+  horsLigneTitre: "Le terminal est hors ligne",
+  horsLigneDepuis: (d) => `Le boîtier TOTEM de la boutique n’a plus donné de nouvelles depuis ${d}.`,
+  horsLigneSansHeure: "Le boîtier TOTEM de la boutique ne donne plus de nouvelles.",
+  horsLigneArgent:
+    "Vos clients peuvent toujours vous payer : l’argent arrive sur votre compte chez l’opérateur. "
+    + "Leurs SMS s’afficheront ici dès que le boîtier reviendra.",
+  horsLigneEnAttendant:
+    "En attendant, le solde et les derniers mouvements sont ceux de ce moment-là, "
+    + "et les opérations depuis l’application ne peuvent pas partir.",
+  horsLigneSurPlace: "À la boutique",
+  horsLigneQuoiFaire:
+    "Vérifiez que le boîtier et le routeur Internet sont allumés. S’ils le sont, "
+    + "débranchez le boîtier, comptez jusqu’à dix, puis rebranchez-le.",
+  horsLigneFin: "Une fois le boîtier rebranché, touchez « Revérifier ».",
+  horsLigneReverifier: "Revérifier",
+  horsLigneVerification: "Vérification…",
+  horsLigneToujours: (h) => `Toujours hors ligne — vérifié à ${h}.`,
+  horsLigneCompris: "Compris",
+  horsLigneVoir: "Les opérations ne peuvent pas partir. Touchez pour savoir quoi faire.",
+  horsLigneHier: (h) => `hier à ${h}`,
+  horsLigneLe: (j, h) => `le ${j} à ${h}`,
+  rondRetrait: "Retrait",
+  rondRecevoir: "Recevoir",
+  rondUssd: "Code USSD",
+  recevoirAria: "Votre nom et votre numéro, à donner à qui vous paie",
+  mouvements: "Derniers mouvements",
+  aucunMouvement: "Aucun mouvement d’argent parmi les derniers SMS",
   soldeSansHeure: "Dernier solde connu.",
   carteAnonyme: (fin) => `carte ${fin}`,
 
@@ -139,10 +232,13 @@ const fr: typeof en = {
   coordSansNom: "Aucun nom pour l’instant — ajoutez-le dans les Réglages pour qu’il apparaisse ici.",
   coordCopier: "Copier",
   coordCopie: "Copié",
+  coordCopierNomNumero: "Copier le nom et le numéro",
+  coordCopierNom: "Copier le nom",
+  nomCopie: "Nom copié",
   coordPartager: "Partager",
   coordPdf: "Télécharger le PDF",
   coordPdfImpossible:
-    "Le PDF n’a pas pu s’ouvrir. Vérifiez la connexion, puis réessayez.",
+    "Le PDF n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   coordVoir: "Voir",
   coordTelecharger: "Télécharger",
   copierNumero: "Copier le numéro",

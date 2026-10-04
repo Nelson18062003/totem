@@ -9,10 +9,13 @@
 // proportion, le coin large, la matière (un dégradé, pas un aplat), et son
 // contenu tient en trois choses — le solde, le numéro, l'opérateur. Tout le
 // reste — l'heure du relevé, l'état du terminal, les commandes — vit AUTOUR
-// d'elle, pas dessus : une carte bancaire ne porte pas de mode d'emploi.
+// d'elle, dans l'accueil, pas dessus : une carte bancaire ne porte pas de
+// mode d'emploi. Une
+// seule exception, l'œil qui cache le solde : il se pose contre ce qu'il
+// cache, sans quoi personne ne comprenait ce qu'il faisait.
 
 import { useMemo, useState } from "react";
-import { View, type ColorValue, type LayoutChangeEvent } from "react-native";
+import { Pressable, View, type ColorValue, type LayoutChangeEvent } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { Texte } from "@/ui";
@@ -22,19 +25,34 @@ import { LogoOperateur, couleurOperateur, operateurReconnu } from "@/logos-opera
 import { useEcran } from "@/ecran";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { formaterNumero } from "@noyau/numero";
+import { barresDuSignal, signalLu } from "@noyau/boitier";
 import { nombre, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
 import type { Langue } from "@noyau/langue";
 
+/** Le rond de l'œil, sur la carte. */
+const OEIL = 36;
+
 /** ISO/IEC 7810 ID-1 : 85,60 / 53,98. La proportion d'une vraie carte. */
 export const RAPPORT_CARTE = 85.6 / 53.98;
 
-/** Le signal, en quatre barres — lisible sans chiffre. */
-function BarresSignal({ niveau }: { niveau: number }) {
-  const pleines = Math.max(0, Math.min(4, Math.round((niveau / 31) * 4)));
+/** Le signal, en quatre barres — lisible sans chiffre.
+ *
+ *  UNE CARTE SANS RÉSEAU AVAIT QUATRE BARRES PLEINES. Le modem répond 99
+ *  quand il ne sait pas — antenne débranchée, zone sans couverture —, et
+ *  99 / 31 × 4, ramené à 4, dessinait un signal parfait. Hors de 0..31, le
+ *  signal est INCONNU : aucune barre pleine. Et quand le boîtier se tait,
+ *  le relevé est figé : les barres pâlissent plutôt que d'affirmer.
+ *
+ *  Le dessin vient du noyau (`barresDuSignal`), comme celui du site : c'est
+ *  sur lui que se règle « signal faible » — une barre ou moins. */
+function BarresSignal({ niveau, fige }: { niveau: number; fige: boolean }) {
+  const inconnu = signalLu(niveau) === null;
+  const pleines = barresDuSignal(niveau);
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3 }}
-          accessibilityLabel={`Signal ${niveau}/31`}>
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 3,
+                   opacity: fige ? 0.4 : 1 }}
+          accessibilityLabel={inconnu ? "Signal ?" : `Signal ${niveau}/31`}>
       {[6, 9, 12, 15].map((h, i) => (
         <View key={h} style={{
           width: 3, height: h, borderRadius: 2,
@@ -51,10 +69,17 @@ export type CarteCaisse = Pick<
   | "iccid" | "enPlace" | "derniereVue"
 >;
 
-export function Caisse({ carte, langue, soldeCache }: {
+export function Caisse({ carte, langue, soldeCache, onBasculerSolde, signalFige = false }: {
   carte: CarteCaisse;
   langue: Langue;
   soldeCache: boolean;
+  /** L'œil, SUR la carte, contre le solde qu'il cache. Il vivait sous la
+   *  carte, parmi les commandes, où l'on ne comprenait pas ce qu'il
+   *  cachait : un œil se pose à côté de ce qu'il regarde — comme sur le web,
+   *  comme dans les applications d'opérateur. */
+  onBasculerSolde?: () => void;
+  /** Le boîtier se tait : le signal affiché est un vieux relevé. */
+  signalFige?: boolean;
 }) {
   const t = textesAccueil[langue];
   const ecran = useEcran();
@@ -74,6 +99,7 @@ export function Caisse({ carte, langue, soldeCache }: {
   const largeur = Math.min(place || ecran.largeurContenu, 420);
   const hauteur = Math.round(largeur / RAPPORT_CARTE);
   const rembourrage = Math.round(largeur * 0.062);
+  const avecOeil = Boolean(onBasculerSolde) && carte.solde != null;
 
   // LE chiffre : le plus grand corps qui tienne sur une ligne, calculé sur la
   // largeur RÉELLE de la carte. Le web le fait avec des unités de conteneur ;
@@ -102,12 +128,13 @@ export function Caisse({ carte, langue, soldeCache }: {
     if (dec) em += (dec.length + 1) * 0.62 * 0.5;
     em += 0.82;                       // « FCFA » et son écart
     em *= 1.06;                       // et de quoi respirer
-    const dispo = largeur - rembourrage * 2;
+    // L'œil prend sa place sur la ligne du solde : le corps se calcule sans.
+    const dispo = largeur - rembourrage * 2 - (avecOeil ? OEIL + espaces.sm : 0);
     return {
       entier: ent, decimales: dec,
       corps: Math.min(hauteur * 0.28, dispo / em),
     };
-  }, [carte.solde, langue, soldeCache, largeur, hauteur, rembourrage]);
+  }, [carte.solde, langue, soldeCache, largeur, hauteur, rembourrage, avecOeil]);
 
   // Le dégradé : deux noirs très proches, et une pointe de la couleur de
   // l'opérateur dans l'angle. Assez pour que la surface ait une matière,
@@ -166,7 +193,9 @@ export function Caisse({ carte, langue, soldeCache }: {
               </Texte>
             ) : null}
           </View>
-          {carte.signal != null ? <BarresSignal niveau={carte.signal} /> : null}
+          {/* Inconnu, le signal se dessine VIDE — disparaître ne disait pas
+              pourquoi les opérations échouent. */}
+          <BarresSignal niveau={carte.signal ?? -1} fige={signalFige} />
         </View>
 
         {/* Au milieu : le solde. C'est ce qu'on vient voir.
@@ -178,7 +207,7 @@ export function Caisse({ carte, langue, soldeCache }: {
             tronqué est un montant faux, ici déclenché par un réglage
             d'accessibilité. La taille reste donc fixe et lisible ; les autres
             textes de l'application, eux, suivent le réglage. */}
-        <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+        <View style={{ flexDirection: "row", alignItems: "baseline", width: "100%" }}>
           <Texte poids="demi" chiffresAlignes numberOfLines={1} allowFontScaling={false}
                  style={{ fontSize: corps, lineHeight: corps * 1.05,
                           color: "#ffffff", letterSpacing: -corps * 0.025 }}>
@@ -196,6 +225,20 @@ export function Caisse({ carte, langue, soldeCache }: {
           }}>
             FCFA
           </Texte>
+          {avecOeil ? (
+            <Pressable onPress={onBasculerSolde} hitSlop={8}
+                       accessibilityRole="button"
+                       accessibilityLabel={soldeCache ? t.montrerSolde : t.masquerSolde}
+                       style={({ pressed }) => ({
+                         marginLeft: "auto", alignSelf: "center",
+                         width: OEIL, height: OEIL, borderRadius: OEIL / 2,
+                         alignItems: "center", justifyContent: "center",
+                         borderWidth: 1, borderColor: "rgba(255,255,255,0.35)",
+                         backgroundColor: pressed ? "rgba(255,255,255,0.18)" : "transparent",
+                       })}>
+              <Icone nom={soldeCache ? "Eye" : "EyeOff"} taille={18} couleur="#ffffff" />
+            </Pressable>
+          ) : null}
         </View>
 
         {/* En bas : le numéro, gravé comme sur une vraie carte. Et le nom de
@@ -219,41 +262,16 @@ export function Caisse({ carte, langue, soldeCache }: {
             </Texte>
           ) : null}
         </View>
+        {/* LA TRANCHE : un liseré d'un cheveu, comme le bord d'une vraie
+            carte qui accroche la lumière. Pas d'ombre — la charte sépare les
+            plans au trait. */}
+        <View pointerEvents="none" style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          borderRadius: Math.round(hauteur * 0.088),
+          borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+        }} />
       </LinearGradient>
 
-      {/* Hors de la carte : l'état, en une ligne. Une carte bancaire ne porte
-          pas son mode d'emploi ; on le met dessous, court. */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                     marginTop: espaces.sm, paddingHorizontal: espaces.xs }}>
-        {!carte.enPlace ? (
-          <>
-            {/* UNE DATE NUE NE PRÉVIENT PERSONNE. Cette ligne n'affichait
-                que « 28 juil. 2026 » à côté d'une croix, sous un solde
-                présenté en grand comme s'il était vivant. Le propriétaire
-                lisait donc l'argent d'il y a trois jours comme celui
-                d'aujourd'hui — et c'est le seul chiffre pour lequel il
-                ouvre l'application. La plateforme web, elle, écrit la
-                phrase entière depuis toujours (`carteMuette`) : on la dit
-                ici aussi, et on ne la coupe pas. */}
-            <Icone nom="Close" taille={13} couleur={couleurs.alerte} />
-            <Texte taille={textes.legende} ton="alerte" style={{ flex: 1 }}>
-              {t.carteMuette(carte.derniereVue)}
-            </Texte>
-          </>
-        ) : carte.soldeMaj ? (
-          <>
-            <Icone nom="Refresh" taille={13} couleur={couleurs.encrePale} />
-            <Texte taille={textes.legende} ton="pale" style={{ flex: 1 }}>
-              {/* « 09:47 » tout seul ne dit pas ce qu'est cette heure. Le
-                  reste de l'application l'habille d'une phrase ; ici on
-                  l'affichait nue. */}
-              {t.soldeMaj(carte.soldeMaj)}
-            </Texte>
-          </>
-        ) : (
-          <Texte taille={textes.legende} ton="pale">{t.aucunSoldeConnu}</Texte>
-        )}
-      </View>
     </View>
   );
 }

@@ -15,7 +15,10 @@ import { Carte } from "@/ui";
 import { Squelette } from "@/animations";
 import { RAPPORT_CARTE } from "@/caisse";
 import { useEcran } from "@/ecran";
-import { espaces } from "@/theme/jetons";
+import { espaces, rayons } from "@/theme/jetons";
+import {
+  ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, NOM_ROND, ROND,
+} from "@/mesures-accueil";
 
 /** La hauteur qu'occupera la VRAIE carte, calculée comme elle la calcule.
  *
@@ -29,53 +32,52 @@ function useHauteurCarte(): number {
   return Math.round(Math.min(ecran.largeurContenu, 420) / RAPPORT_CARTE);
 }
 
-/** La carte du solde : le grand chiffre, le numéro, le nom. */
-export function SqueletteCaisse() {
+/** Le bloc de la carte : les puces (s'il y a plusieurs cartes), la carte,
+ *  et la ligne de l'âge du solde — aux MÊMES mesures que l'accueil
+ *  (`mesures-accueil.ts`). Rien ne doit bouger au moment où le vrai bloc
+ *  prend sa place : l'écran qui saute sous le doigt est pire que l'écran
+ *  qui attend (`verifier-l-attente`). */
+export function SqueletteCaisse({ puces = true }: { puces?: boolean }) {
   const hauteur = useHauteurCarte();
   return (
-    <View style={{ gap: espaces.md }}>
-      {/* Les pastilles d'opérateur, au-dessus */}
-      <View style={{ flexDirection: "row", gap: espaces.sm, justifyContent: "center" }}>
-        {/* 35 points : la hauteur MESURÉE d'une pastille d'opérateur, pas
-            une approximation. Trois points d'écart par pastille suffisent à
-            décaler tout ce qui suit. */}
-        <Squelette largeur={132} hauteur={35} rayon={999} />
-        <Squelette largeur={132} hauteur={35} rayon={999} />
-      </View>
+    <View>
+      {/* Les puces : la seule partie dont la hauteur dépend des données. Un
+          propriétaire à une carte n'en a pas — l'accueil retient combien il
+          y en avait, et la forme le suit. */}
+      {puces ? (
+        <View style={{ flexDirection: "row", gap: ECART_PUCES, height: HAUTEUR_PUCE,
+                       marginBottom: espaces.md }}>
+          <Squelette largeur={82} hauteur={HAUTEUR_PUCE} rayon={rayons.bouton} />
+          <Squelette largeur={70} hauteur={HAUTEUR_PUCE} rayon={rayons.bouton} />
+        </View>
+      ) : null}
       {/* La carte elle-même, à la hauteur qu'elle aura vraiment — et avec le
           MÊME coin : `caisse.tsx` calcule son rayon à 8,8 % de sa hauteur,
-          la proportion d'une carte bancaire réelle. Une forme d'attente aux
-          coins d'interface, là où la vraie carte a des coins de carte, se
-          voit au moment de la substitution. */}
+          la proportion d'une carte bancaire réelle. */}
       <Squelette largeur="100%" hauteur={hauteur}
                  rayon={Math.round(hauteur * 0.088)} />
-      {/* « Relevé sur le réseau à 17:42 » — une ligne de texte, pas un trait. */}
-      <View style={{ alignItems: "center" }}>
-        <Squelette largeur={168} hauteur={16} />
-      </View>
-      {/* LES TROIS COMMANDES RONDES — masquer le solde, actualiser, partager
-          les coordonnées. Elles manquaient à cette forme, et la page SAUTAIT
-          de 72 points au moment où les vrais boutons prenaient leur place :
-          mesuré, pas supposé. Un écran qui bouge sous le doigt au moment où
-          l'on va appuyer est pire qu'un écran qui attend. */}
-      <View style={{ flexDirection: "row", justifyContent: "center",
-                     gap: espaces.lg }}>
-        {[0, 1, 2].map((i) => (
-          <Squelette key={i} largeur={46} hauteur={46} rayon={999} />
-        ))}
+      {/* « Solde relevé à 21:54 » et « Actualiser ». */}
+      <View style={{ marginTop: espaces.sm, minHeight: HAUTEUR_ETAT, flexDirection: "row",
+                     alignItems: "center", justifyContent: "space-between",
+                     paddingHorizontal: espaces.xs }}>
+        <Squelette largeur={150} hauteur={12} rayon={4} />
+        <Squelette largeur={100} hauteur={HAUTEUR_ETAT} rayon={rayons.bouton} />
       </View>
     </View>
   );
 }
 
-/** Les quatre gestes, en deux rangées de deux. */
-export function SqueletteGestes() {
+/** Les ronds d'action sous la carte : le cercle, et la place de son nom. */
+export function SqueletteRonds() {
   return (
-    <View style={{ gap: espaces.sm }}>
-      {[0, 1].map((r) => (
-        <View key={r} style={{ flexDirection: "row", gap: espaces.sm }}>
-          <Squelette largeur="100%" hauteur={74} rayon={14} style={{ flex: 1 }} />
-          <Squelette largeur="100%" hauteur={74} rayon={14} style={{ flex: 1 }} />
+    <View style={{ flexDirection: "row", justifyContent: "center",
+                   width: "100%", maxWidth: 460, alignSelf: "center" }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <View key={i} style={{ width: "20%", alignItems: "center", gap: ECART_ROND }}>
+          <Squelette largeur={ROND} hauteur={ROND} rayon={999} />
+          <View style={{ height: NOM_ROND, alignItems: "center", paddingTop: 2 }}>
+            <Squelette largeur={44} hauteur={11} rayon={4} />
+          </View>
         </View>
       ))}
     </View>

@@ -76,9 +76,13 @@ export function tablesDeDemonstration(): Record<string, Record<string, unknown>[
     };
   };
   return {
+    // Comme la vraie base : le signe de vie daté par le boîtier (`vu_le`), et
+    // l'oreille de la base — quand elle l'a entendu, depuis quand il parle
+    // sans interruption. La vitrine montre un boîtier qui va bien.
     terminaux: [{
       id: TERMINAL, nom: "Démo", vu_le: maintenant, version: "demonstration",
       sante: { resume: "démonstration", en_attente: 0 },
+      entendu_le: maintenant, revenu_le: il_y_a(60 * 24),
     }],
     cartes: [
       { terminal: TERMINAL, iccid: MTN, operateur: "MTN", libelle: "MTN ·0001",
@@ -88,13 +92,16 @@ export function tablesDeDemonstration(): Record<string, Record<string, unknown>[
         nom: "", numero: "690000002",
         premiere_vue: il_y_a(60 * 24 * 12), derniere_vue: maintenant },
     ],
+    // Comme le vrai robot : « maj » date la LIGNE (le signe de vie la
+    // rafraîchit à chaque tour), « solde_maj » date le SOLDE. Sans la
+    // seconde, la vitrine aurait daté ses soldes de « maintenant ».
     comptes: [
       { terminal: TERMINAL, iccid: MTN, libelle: "MTN ·0001", operateur: "MTN",
         reseau: "MTN", itinerance: false, numero: "670000001",
-        solde: 245000, signal: 22, maj: il_y_a(8) },
+        solde: 245000, signal: 22, maj: maintenant, solde_maj: il_y_a(8) },
       { terminal: TERMINAL, iccid: ORANGE, libelle: "Orange ·0002", operateur: "Orange",
         reseau: "Orange", itinerance: false, numero: "690000002",
-        solde: 58500, signal: 18, maj: il_y_a(35) },
+        solde: 58500, signal: 18, maj: maintenant, solde_maj: il_y_a(35) },
     ],
     paiements: [
       encaissement(12, MTN, 25000, "CLIENT DÉMO A", "670000011", 4, 245000),

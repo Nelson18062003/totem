@@ -104,9 +104,13 @@ if (!porte.ok) {
 }
 const biscuit = (porte.headers.getSetCookie?.() ?? [])
   .map((c) => c.split(";")[0]).join("; ");
-const enBase = await fetch("http://127.0.0.1:3120/api/donnees?sms=200&recus=0",
-                           { headers: { cookie: biscuit } })
-  .then((r) => r.json()).then((d) => d.paiements.length).catch(() => 0);
+const lignesEnBase = await fetch("http://127.0.0.1:3120/api/donnees?sms=200&recus=0",
+                                 { headers: { cookie: biscuit } })
+  .then((r) => r.json()).then((d) => d.paiements ?? []).catch(() => []);
+const enBase = lignesEnBase.length;
+// Le RANG de chaque ligne dans la caisse : c'est lui qui dit si une ligne
+// suivie est au-delà des quarante du premier lot.
+const rangEnBase = new Map(lignesEnBase.map((p, i) => [String(p.id), i]));
 
 const nav = await chromium.launch({
   args: ["--disable-web-security", "--disable-features=IsolateOrigins,site-per-process"],
@@ -129,6 +133,30 @@ const compter = () => {
  *  chaque rangée — la même poignée que `data-squelette`, web seulement. */
 const identites = () =>
   [...document.querySelectorAll("[data-ligne]")].map((e) => e.getAttribute("data-ligne"));
+
+/** Les consultations de solde répétées se replient derrière la plus récente
+ *  (« 2 earlier balance checks ») : elles sont à UN GESTE, pas hors de
+ *  portée. Le harnais ouvre donc chaque pli qu'il croise, comme le ferait le
+ *  propriétaire.
+ *
+ *  Il a fallu se tromper pour l'apprendre. Le pli ne se forme que si rien ne
+ *  tombe ENTRE deux consultations, et celles du faux nuage datent de « il y
+ *  a 40, 55 et 70 minutes ». Sur la caisse dense (cent vingt par jour, une
+ *  toutes les dix minutes), un encaissement les sépare chacune : pas de pli,
+ *  harnais vert. Sur la caisse que cet en-tête recommande (vingt par jour,
+ *  une par heure), au moins deux se suivent : le pli se forme, et le harnais
+ *  criait « 199 sur 200, un encaissement hors de portée » — sur une
+ *  consultation de solde repliée. Mesuré les deux fois, sur le même code :
+ *  le harnais ne gardait que la caisse sur laquelle on l'avait écrit. */
+const PLI = /^\d+ (earlier balance checks?|consultations? de solde plus tôt)$/;
+let plisOuverts = 0;
+const deplier = async () => {
+  for (const pli of await page.getByText(PLI).all()) {
+    if (!(await pli.isVisible().catch(() => false))) continue;
+    await pli.click().catch(() => {});
+    plisOuverts++;
+  }
+};
 
 console.log("");
 try {
@@ -177,6 +205,7 @@ try {
   // se reposaient avant qu'on les regarde. Tant que la liste ne relâchait
   // rien, la faute ne se voyait pas : tout ce qu'on avait dépassé était
   // encore là à la fin.
+  await deplier();
   const vues = new Set(await page.evaluate(identites));
   let plafond = auDepart, stable = 0, avant = 0;
   for (let i = 0; i < 14 && stable < 3; i++) {
@@ -187,6 +216,7 @@ try {
       for (const id of await page.evaluate(identites)) vues.add(id);
     }
     await attendre(700);
+    await deplier();
     for (const id of await page.evaluate(identites)) vues.add(id);
     plafond = Math.max(plafond, await page.evaluate(compter));
     stable = vues.size === avant ? stable + 1 : 0;
@@ -234,9 +264,78 @@ try {
     pireEcart = Math.max(pireEcart, Math.abs(apres - (a.y - 300)));
   }
 
+  // ── UNE MISE À JOUR NE RECOUPE PAS LA LISTE ───────────────────────────
+  //
+  // Le propriétaire descendait loin pour retrouver un paiement ; un SMS
+  // arrivait, ou il revenait de WhatsApp, et la liste se raccourcissait sous
+  // son doigt : le budget revenait à quarante lignes à CHAQUE mise à jour des
+  // données, pas seulement quand il changeait de critère. Il se retrouvait
+  // devant du vide, ou ailleurs, et devait redescendre.
+  //
+  // On descend donc au-delà de la quatre-vingtième ligne, on change sur la
+  // plateforme une chose qui ne change AUCUNE hauteur — la nature d'un
+  // encaissement —, puis on joue un retour devant l'application : l'onglet
+  // caché puis rendu visible, que react-native-web traduit en
+  // « arrière-plan » puis « actif ». Le cahier relit, les données changent ;
+  // la ligne qu'on regardait doit être toujours là, au même endroit.
+  //
+  // TÉMOIN : l'écran d'avant remettait le budget à quarante sur `filtres`,
+  // qui change à chaque donnée neuve — la ligne suivie y disparaît.
+  //
+  // CE QU'IL NE PEUT PAS DIRE : un SMS qui ARRIVE au-dessus de ce qu'on lit.
+  // Sur le téléphone, `maintainVisibleContentPosition` garde la ligne en
+  // place, avant de dessiner ; le web l'ignore. Un SMS ajouté ici décalerait
+  // la liste d'une ligne, et le harnais accuserait l'écran de ce que fait le
+  // navigateur. Cela ne s'éprouve que sur un vrai téléphone.
+  const maj = { mesure: false, pose: false, relu: false, avant: null, apres: null };
+  const cible = lignesEnBase.find((p) => p.montant != null && p.nature == null
+    && p.categorie !== "solde");
+  {
+    await page.mouse.move(195, 500);
+    for (let r = 0; r < 260; r++) { await page.mouse.wheel(0, -900); }
+    await attendre(1200);
+    let suivie = null;
+    for (let i = 0; i < 80 && !suivie; i++) {
+      await page.mouse.wheel(0, 400);
+      await attendre(150);
+      const vues = await page.evaluate(() => [...document.querySelectorAll("[data-ligne]")]
+        .map((e) => ({ id: e.getAttribute("data-ligne"), y: e.getBoundingClientRect().top }))
+        .filter((l) => l.y > 150 && l.y < 600));
+      suivie = vues.find((l) => (rangEnBase.get(l.id) ?? -1) >= 80) ?? null;
+    }
+    if (suivie && cible) {
+      maj.mesure = true;
+      await attendre(800);
+      const ou = (id) => document.querySelector(`[data-ligne="${id}"]`)
+        ?.getBoundingClientRect().top ?? null;
+      maj.avant = await page.evaluate(ou, suivie.id);
+      const poser = (nature) => fetch("http://127.0.0.1:3120/api/nature", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: biscuit },
+        body: JSON.stringify({ id: Number(cible.id), nature }),
+      }).then((r) => r.ok).catch(() => false);
+      maj.pose = await poser("depot");
+      const relecture = page.waitForResponse((r) => r.url().includes("/api/donnees"),
+                                             { timeout: 15000 }).catch(() => null);
+      await page.evaluate(() => {
+        const etat = (v) => Object.defineProperty(document, "visibilityState",
+                                                  { configurable: true, get: () => v });
+        etat("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+        etat("visible");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      maj.relu = !!(await relecture);
+      await attendre(1500);
+      maj.apres = await page.evaluate(ou, suivie.id);
+      await poser(null);
+    }
+  }
+
   console.log(`  au premier affichage : ${auDepart} lignes montées, `
     + `${visibles} visibles, ${noeuds} nœuds`);
-  console.log(`  après avoir descendu : ${atteintes} lignes atteintes`);
+  console.log(`  après avoir descendu : ${atteintes} lignes atteintes`
+    + (plisOuverts ? ` (${plisOuverts} pli(s) de soldes ouvert(s) en chemin)` : ""));
   console.log(`  et il en reste montées : ${enFin} (${noeudsEnFin} nœuds),`
     + ` au plus fort ${plafond}`);
 
@@ -276,6 +375,27 @@ try {
 
     console.log(`  ✓ et tout reste atteignable en descendant `
       + `(${auDepart} → ${atteintes}, sur ${enBase} en base)`);
+  }
+
+  if (!maj.mesure) {
+    console.log("  ✗ une mise à jour : rien à mesurer — aucune ligne au-delà de la"
+      + " quatre-vingtième n'a été atteinte, ou aucun encaissement à reclasser.");
+    echecs++;
+  } else if (!maj.pose || !maj.relu) {
+    console.log(`  ✗ une mise à jour : le harnais n'a pas pu la jouer `
+      + `(nature posée : ${maj.pose ? "oui" : "non"}, relecture : ${maj.relu ? "oui" : "non"}).`);
+    echecs++;
+  } else if (maj.apres == null) {
+    console.log("  ✗ une mise à jour a RECOUPÉ la liste : la ligne qu'on lisait"
+      + " n'est plus à l'écran.");
+    echecs++;
+  } else if (Math.abs(maj.apres - maj.avant) > SAUT_TOLERE) {
+    console.log(`  ✗ une mise à jour a fait bouger la ligne qu'on lisait de `
+      + `${Math.abs(maj.apres - maj.avant).toFixed(1)} pt (${SAUT_TOLERE} tolérés).`);
+    echecs++;
+  } else {
+    console.log(`  ✓ une mise à jour ne recoupe pas la liste : la ligne lue reste à sa`
+      + ` place (écart ${Math.abs(maj.apres - maj.avant).toFixed(1)} pt).`);
   }
 } finally { await nav.close(); }
 

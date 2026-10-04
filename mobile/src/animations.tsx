@@ -15,7 +15,7 @@
 //     du téléphone n'en reçoit aucune.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { AccessibilityInfo, type ViewProps } from "react-native";
+import { AccessibilityInfo, View, type ViewProps } from "react-native";
 import Animated, {
   useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
   Easing,
@@ -41,8 +41,37 @@ export function useMouvementReduit(): boolean {
  *
  * Les blocs entrent dans l'ordre où l'œil les prendrait, ce qui donne à
  * l'écran le temps de se composer au lieu d'apparaître d'un coup.
+ *
+ * UNE ENTRÉE NE SE JOUE QU'UNE FOIS — à la COMPOSITION de l'écran.
+ * `anime={false}` : le bloc est là tout de suite, sans fondu ni délai.
+ *
+ * Dans la liste des SMS, chaque jour reposé (loin de l'écran) puis remonté,
+ * chaque lot ajouté en descendant, se REMONTAIT — et rejouait son entrée :
+ * un délai, puis un fondu. En remontant vite, des journées entières
+ * passaient en blanc sous les yeux et apparaissaient une demi-seconde plus
+ * tard : on croyait l'application à la peine, ou les SMS perdus. Ce qui
+ * revient à l'écran n'« entre » pas : il était déjà là.
+ *
+ * Le choix se fait AU MONTAGE, et il tient pour toute la vie du bloc : un
+ * bloc qui a commencé son entrée la finit, même si l'écran a décidé
+ * entre-temps que la composition était terminée ; et un bloc monté sans
+ * entrée ne se met jamais à en jouer une.
  */
 export function Entree({
+  anime = true, ...proprietes
+}: ViewProps & { delai?: number; montee?: number; anime?: boolean; children?: ReactNode }) {
+  const [animer] = useState(anime);
+  if (!animer) {
+    // Une vue ordinaire : aucun crochet d'animation, aucune question au
+    // système sur « réduire les animations » — une liste en monte des
+    // dizaines en descendant.
+    const { delai: _delai, montee: _montee, ...reste } = proprietes;
+    return <View {...reste} />;
+  }
+  return <EntreeAnimee {...proprietes} />;
+}
+
+function EntreeAnimee({
   delai = 0, montee = 10, children, style, ...reste
 }: ViewProps & { delai?: number; montee?: number; children?: ReactNode }) {
   const reduit = useMouvementReduit();

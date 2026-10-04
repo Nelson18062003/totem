@@ -162,8 +162,12 @@ export default async function Reglages() {
                     </p>
                   )}
                 </div>
+                {/* Le signal : 0 à 31, ou « inconnu » quand le modem ne sait
+                    pas le dire (il répond 99) ou que le boîtier se tait. */}
                 <span className="shrink-0 self-start pt-0.5 text-small tabnums text-ink-faint">
-                  {s.enPlace && s.signal != null ? `${s.signal}/31` : "—"}
+                  {!s.enPlace ? "—"
+                    : s.presence === "inconnue" ? t.presenceInconnue
+                      : s.signal != null ? `${s.signal}/31` : t.signalInconnu}
                 </span>
               </li>
             ))}

@@ -65,6 +65,20 @@ const en = {
   carteDansAucunTerminal:
     "this card is not in any terminal right now — removed, or its terminal "
     + "is off. Nothing was dialled.",
+  // Le boîtier qui porte la carte s'est tu. Déposée quand même, la demande
+  // attendrait son retour — des heures peut-être — et il la composerait
+  // alors pour un écran qui a abandonné depuis longtemps. On dit l'OBJET
+  // (le boîtier), pas une cause qu'on ignore : courant ou Internet, la
+  // plateforme ne sait pas les distinguer.
+  boitierMuet: "The shop's box has stopped checking in: nothing was sent.",
+  // Écrit dans la demande elle-même quand l'écran l'abandonne avant que le
+  // boîtier ne la prenne. C'est aussi à ces mots qu'on la reconnaît annulée.
+  demandeAnnulee: "Cancelled from the app before the shop's box picked it up: nothing was sent.",
+  // La base n'a pas répondu à l'annulation : on ne sait pas si elle a pris.
+  // Surtout ne pas dire « rien n'est parti ».
+  annulationIncertaine:
+    "the cancellation could not be confirmed: the request may still go out "
+    + "when the shop's box picks it up.",
 };
 
 const fr: typeof en = {
@@ -111,6 +125,13 @@ const fr: typeof en = {
   carteDansAucunTerminal:
     "cette carte n’est dans aucun terminal en ce moment — retirée, ou son "
     + "terminal est éteint. Rien n’a été composé.",
+  boitierMuet: "Le boîtier de la boutique ne donne plus de nouvelles : rien n’est parti.",
+  demandeAnnulee:
+    "Annulée depuis l’application avant que le boîtier de la boutique ne la prenne : "
+    + "rien n’est parti.",
+  annulationIncertaine:
+    "l’annulation n’a pas pu être confirmée : la demande peut encore partir quand "
+    + "le boîtier de la boutique la prendra.",
 };
 
 export const textesApi = { en, fr } as const;

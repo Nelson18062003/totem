@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     })),
     cartes: sims.map((s) => ({
       iccid: s.iccid, libelle: s.libelle, operateur: s.operateur,
-      numero: s.numero, nom: s.nom, enPlace: s.enPlace,
+      numero: s.numero, nom: s.nom, enPlace: s.enPlace, presence: s.presence,
     })),
   });
 }

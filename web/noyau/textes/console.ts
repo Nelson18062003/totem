@@ -39,12 +39,12 @@ const en = {
   etat: {
     actif: "Reporting",
     en_retard: "Late",
-    muet: "Silent",
+    muet: "Offline",
     jamais: "Never reported",
     retire: "Out of service",
   },
   etatDetail: {
-    actif: "spoke within the last three minutes",
+    actif: "spoke within the last five minutes",
     en_retard: "has missed a few heartbeats",
     muet: "nothing for more than half an hour — someone has to go and look",
     jamais: "enrolled, but it has never spoken once",
@@ -166,8 +166,10 @@ const en = {
     etatEnPlace: "In place",
     etatRetiree: "Taken out",
     etatInconnu: "Not known",
+    // « inconnu » n'est pas que le silence : un boîtier qui vient de revenir
+    // n'a pas encore republié ses puces. La phrase est vraie dans les deux cas.
     etatInconnuDetail: (terminal: string) =>
-      `${terminal} is silent — nobody can say where this chip is`,
+      `${terminal} has no recent news of this chip — went quiet, or just came back`,
     itinerance: (reseau: string) => `roaming on ${reseau}`,
     soldeLe: (h: string) => `checked ${h}`,
     soldeJamais: "never checked",
@@ -247,12 +249,12 @@ const fr: typeof en = {
   etat: {
     actif: "Parle",
     en_retard: "En retard",
-    muet: "Muet",
+    muet: "Hors ligne",
     jamais: "N'a jamais parlé",
     retire: "Hors service",
   },
   etatDetail: {
-    actif: "a donné signe de vie il y a moins de trois minutes",
+    actif: "a donné signe de vie il y a moins de cinq minutes",
     en_retard: "a manqué quelques battements",
     muet: "plus rien depuis plus d'une demi-heure — il faut aller voir",
     jamais: "inscrit, mais il n'a jamais parlé une seule fois",
@@ -369,7 +371,7 @@ const fr: typeof en = {
     etatRetiree: "Retirée",
     etatInconnu: "On ne sait pas",
     etatInconnuDetail: (terminal) =>
-      `${terminal} est muet — personne ne peut dire où est cette puce`,
+      `${terminal} ne donne pas de nouvelles récentes de cette puce — muet, ou tout juste revenu`,
     itinerance: (reseau) => `en itinérance sur ${reseau}`,
     soldeLe: (h) => `consulté ${h}`,
     soldeJamais: "jamais consulté",

@@ -69,8 +69,15 @@ console.log("Le noyau partagé voyage bien avec l'application");
 ].forEach((s) => doitEtre(true, s));
 
 console.log("\nL'application ne parle qu'à la plateforme");
-["/api/session", "/api/donnees", "/api/appareil", "/api/inscription",
+["/api/session", "/api/donnees", "/api/appareil",
  "/api/plateforme", "totem.jeton"].forEach((s) => doitEtre(true, s));
+
+// …et elle ne CRÉE pas de compte. Pendant la bêta fermée, c'est le
+// propriétaire qui fait entrer les gens, depuis ses Réglages : une
+// testeuse s'était vu pousser à « créer son compte » par l'application,
+// sur un écran qui n'aurait jamais dû lui être proposé. Le jour où
+// l'inscription rouvre, c'est ici qu'on le décide — pas par mégarde.
+doitEtre(false, "/api/inscription");
 
 // Les mises à jour à distance sont-elles vraiment branchées ? Sans cette
 // adresse dans le paquet, l'application installée ne saura jamais où

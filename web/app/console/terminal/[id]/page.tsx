@@ -20,6 +20,7 @@ import { langueServeur } from "@/lib/langue-serveur";
 import { chargerFicheTerminal, dateLisible } from "@/lib/console";
 import { textesConsole } from "@noyau/textes/console";
 import { fcfa } from "@noyau/types";
+import { formaterNumero } from "@noyau/numero";
 import {
   CadreConsole, Cellule, EnTete, Etiquette, EtatDeVie, GesteInterdit,
   NomDeCommerce, Panneau, Pastille, RienADire, TableauQuiDefile,
@@ -183,7 +184,7 @@ export default async function UnTerminal({
                     <span className="block text-caption tabnums text-ink-faint">
                       {c.nom || t.cartes.nomAbsent}
                       {" · "}
-                      {c.numero || t.cartes.numeroAbsent}
+                      {c.numero ? formaterNumero(c.numero) : t.cartes.numeroAbsent}
                     </span>
                   </Cellule>
                   <Cellule>

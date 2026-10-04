@@ -46,6 +46,48 @@ const en = {
   // anglais quel que soit l'écran.
   reseauEnPanne:
     "The platform is not answering. Check the connection, then try again.",
+  // LES AUTRES PANNES DU GUICHET DU TÉLÉPHONE (`mobile/src/api/guichet.ts`).
+  // Avant elles, c'était le message du SYSTÈME qui montait jusqu'à l'écran :
+  // « fetch failed: Fetch request has been canceled », « Network request
+  // failed », « erreur 500 » — en anglais quel que soit l'écran, et sans
+  // rien dire de ce qu'on peut faire. Chaque phrase dit ce qui s'est passé,
+  // puis le geste qui a une chance de marcher.
+  //
+  // Une réponse arrivée COUPÉE n'est pas une réponse vide : la prendre pour
+  // telle affichait « Aucune carte » à la place de la panne.
+  reponseIncomplete:
+    "The platform's answer arrived cut off — the connection dropped on the " +
+    "way. Try again.",
+  // Une page web au lieu de la plateforme : le plus souvent un wifi d'hôtel
+  // ou de cybercafé qui veut d'abord qu'on s'identifie.
+  reseauIntercepte:
+    "A web page answered instead of the platform — perhaps a Wi-Fi asking " +
+    "you to sign in first. Try again, or on another network.",
+  plateformeEnPanne: "The platform ran into a problem. Try again in a moment.",
+  demandeRefusee: "The platform refused this request.",
+  sessionExpiree: "Your session has ended. Sign in again.",
+  // L'écran a renoncé à la demande (on s'est déconnecté pendant qu'elle
+  // voyageait) : elle ne se montre normalement pas, mais si elle se montre,
+  // elle dit vrai.
+  demandeAbandonnee:
+    "This request was dropped before its answer came back. Try again.",
+  // L'inscription aux notifications : une étape du TÉLÉPHONE lui-même (la
+  // permission, le service de notification) qui ne rend jamais la main.
+  telephoneSansReponse:
+    "The phone did not answer in time while signing up for notifications. " +
+    "Try again in a moment.",
+  // Le service qui fait sonner le téléphone n'a pas pu être joint — le plus
+  // souvent, pas de réseau. Il le disait lui-même, en anglais technique :
+  // « Error encountered while fetching Expo token: TypeError: fetch
+  // failed… », mot pour mot dans les Réglages.
+  serviceSonnerieInjoignable:
+    "The service that makes the phone ring could not be reached. Check the " +
+    "connection, then try again.",
+  // Quand ce qui répond n'est pas un TOTEM, ou un TOTEM qui ne sait pas
+  // encore connecter : on ne montre ni adresse ni réglage — l'application
+  // n'en propose plus. On dit seulement à qui s'adresser.
+  connexionIndisponible:
+    "Sign-in is not available right now. Contact the person who runs your TOTEM.",
   // Sans nommer les variables d'environnement : leurs noms sont du jargon
   // pour le propriétaire, ET les écrire ici les ferait entrer dans le paquet
   // de l'application, où le contrôle des secrets les attend au tournant. La
@@ -114,6 +156,25 @@ const fr: typeof en = {
     "Cette adresse ne répond pas. Vérifiez la connexion, puis l’adresse.",
   reseauEnPanne:
     "La plateforme ne répond pas. Vérifiez la connexion, puis réessayez.",
+  reponseIncomplete:
+    "La réponse de la plateforme est arrivée coupée — la connexion a lâché " +
+    "en route. Réessayez.",
+  reseauIntercepte:
+    "Une page web a répondu à la place de la plateforme — peut-être un wifi " +
+    "qui demande d’abord de s’identifier. Réessayez, ou sur un autre réseau.",
+  plateformeEnPanne: "La plateforme a rencontré un problème. Réessayez dans un instant.",
+  demandeRefusee: "La plateforme a refusé cette demande.",
+  sessionExpiree: "Votre session est terminée. Reconnectez-vous.",
+  demandeAbandonnee:
+    "Cette demande a été abandonnée avant que sa réponse n’arrive. Réessayez.",
+  telephoneSansReponse:
+    "Le téléphone n’a pas répondu à temps pendant l’inscription aux " +
+    "notifications. Réessayez dans un moment.",
+  serviceSonnerieInjoignable:
+    "Le service qui fait sonner le téléphone est injoignable. Vérifiez la " +
+    "connexion, puis réessayez.",
+  connexionIndisponible:
+    "La connexion n’est pas possible pour le moment. Contactez la personne qui gère votre TOTEM.",
   plateformeNonConfiguree:
     "Le TOTEM est bien là, mais la connexion n’y est pas encore configurée. " +
     "Aucun mot de passe ne peut marcher tant que les réglages de la " +
