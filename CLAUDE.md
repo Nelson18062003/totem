@@ -1071,6 +1071,35 @@ page qui nomme « mobile number » sans en demander ne se remplit plus toute
 seule avec le numéro du bénéficiaire. `verifier-la-page-longue` joue le dépôt
 entier ; l'application d'avant y lit « Terminé », comme le propriétaire.
 
+**Le message de l'opérateur ne se retouche pas, et la réponse ne se cache
+pas.** La première correction de « 00. Next » RETIRAIT la ligne du message
+pour en faire un bouton, et laissait la zone de réponse derrière un petit
+lien gris. Le propriétaire : « son message doit être intact, comme il
+l'affiche » ; « sur un téléphone, il y a toujours une zone de texte ». Le
+message s'affiche maintenant tel quel ; les choix qu'on y lit sont des
+raccourcis EN PLUS ; la zone de réponse est toujours là ; et sous le pavé du
+code, « Répondre autre chose » — ce qu'on y tape part protégé comme un code.
+Le même écran se déclarait « terminé » dès la réponse au code, quoi que dise
+l'opérateur ensuite : c'est l'opérateur, et le réseau, qui finissent.
+
+**Un audit adverse trouve ce qu'on n'a pas imaginé — à condition de le
+contredire.** Quatre enquêteurs sur le parcours USSD (lecture, caractères,
+déroulé, boîtier), un contradicteur par constat : 48 constats, 46 tenus.
+Parmi eux, une demande de code suivie de « 0. Retour / 00. Accueil » passait
+pour un menu (le code partait en clair) ; « mPIN », « clé secrète »,
+« mot-de-passe » n'étaient pas des codes ; un transfert RÉUSSI qui disait
+« pour annuler, tapez… » s'affichait refusé ; un guillemet dans un nom
+coupait le message ; un délai dépassé disait « échec » d'un code peut-être
+parti — on refaisait le transfert. `noyau/tests/garde-du-code.json` est jugé
+par le robot ET par le noyau : si l'un change sa règle, l'autre échoue.
+
+**Un témoin se fige.** Les tests du déroulé prenaient pour « comportement
+d'avant » la lecture du noyau ; corrigée le même jour par un autre chantier,
+le témoin s'est mis à passer, et les tests à échouer pour la mauvaise
+raison. L'ancienne lecture est maintenant recopiée telle quelle
+(`noyau/tests/temoins/`) : un témoin qui suit le code du jour ne témoigne de
+rien.
+
 **Le liquide et l'argent électronique vont en sens CONTRAIRES.** « CashOut
 success to <client> from <agent> » : l'agent remet des espèces au client, et
 l'argent électronique du client arrive chez l'agent. Lu à la lettre, « from »

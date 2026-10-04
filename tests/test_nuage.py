@@ -512,13 +512,19 @@ class TestReveilImmediat(unittest.TestCase):
         pas ouvrir trois connexions."""
         self.nuage.demarrer()
         self._attendre_paiements(0, delai=2)
-        avant = len(FauxSupabase.recu)
+        # On ne compte que les envois de SMS. Le premier tour pousse aussi les
+        # cartes et le signe de vie ; arrivés après ce point de départ, ils
+        # étaient comptés comme des envois de SMS — une fois sur six, le test
+        # échouait sans que le lot ait été coupé.
+        def envois_de_sms():
+            return sum(1 for t, _ in FauxSupabase.recu if t == "paiements")
+        avant = envois_de_sms()
         for i in range(3):
             self.journal.sms("MobileMoney",
                              f"Vous avez recu {i + 1} 000 FCFA de Client.", "MTN")
             self.nuage.reveiller()
         self.assertEqual(len(self._attendre_paiements(3)), 3)
-        requetes = len(FauxSupabase.recu) - avant
+        requetes = envois_de_sms() - avant
         self.assertLessEqual(requetes, 2, "un lot, pas une requête par SMS")
 
     def test_arreter_ne_bloque_pas_sur_le_battement(self):
