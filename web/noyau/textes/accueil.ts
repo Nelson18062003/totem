@@ -113,8 +113,8 @@ const en = {
   horsLigneVoir: "Operations can't go out. Tap to see what to do.",
   horsLigneHier: (h: string) => `yesterday at ${h}`,
   horsLigneLe: (j: string, h: string) => `${j} at ${h}`,
-  // Les cinq ronds sous la carte : un verbe chacun, court.
-  rondRetrait: "Withdraw",
+  // Les ronds sous la carte : un verbe chacun, court. « Retrait » est celui
+  // du guichet (`textesGuichet.retrait`) — un seul nom par geste.
   rondRecevoir: "Receive",
   rondUssd: "USSD code",
   recevoirAria: "Your name and number, to give to whoever pays you",
@@ -126,13 +126,10 @@ const en = {
 
   // Les gestes du guichet
   depot: "Deposit",
-  depotTitre: "Deposit money",
-  retrait: "Withdrawal",
-  retraitTitre: "Withdraw money",
+  retrait: "Withdraw",
   transfert: "Transfer",
-  transfertTitre: "Transfer money",
   solde: "Balance",
-  consulterSolde: "Check the balance",
+  monSolde: "My balance",
   monNumero: "My number",
   numeroACrediter: "Number to credit",
   numeroAgent: "Agent's number",
@@ -265,7 +262,6 @@ const fr: typeof en = {
   horsLigneVoir: "Les opérations ne peuvent pas partir. Touchez pour savoir quoi faire.",
   horsLigneHier: (h) => `hier à ${h}`,
   horsLigneLe: (j, h) => `le ${j} à ${h}`,
-  rondRetrait: "Retrait",
   rondRecevoir: "Recevoir",
   rondUssd: "Code USSD",
   recevoirAria: "Votre nom et votre numéro, à donner à qui vous paie",
@@ -275,13 +271,10 @@ const fr: typeof en = {
   carteAnonyme: (fin) => `carte ${fin}`,
 
   depot: "Dépôt",
-  depotTitre: "Dépôt d’argent",
   retrait: "Retrait",
-  retraitTitre: "Retrait d’argent",
   transfert: "Transfert",
-  transfertTitre: "Transfert d’argent",
   solde: "Solde",
-  consulterSolde: "Consulter le solde",
+  monSolde: "Mon solde",
   monNumero: "Mon numéro",
   numeroACrediter: "Numéro à créditer",
   numeroAgent: "Numéro de l’agent",

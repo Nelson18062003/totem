@@ -54,13 +54,14 @@ import {
   useWindowDimensions,
 } from "react-native";
 import {
-  Easing, FadeIn, FadeInDown, FadeInRight, useAnimatedStyle, useSharedValue,
+  Easing, FadeIn, FadeInDown, FadeInLeft, FadeInRight, useAnimatedStyle, useSharedValue,
   withRepeat, withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BoutonIcone, ChampTexte, Defilement, Texte } from "@/ui";
-import { Animated, useMouvementReduit } from "@/animations";
+import { BoutonIcone, Carte, ChampTexte, Defilement, Filet, Texte } from "@/ui";
+import { Animated, COURBE, useMouvementReduit } from "@/animations";
+import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Icone, type NomIcone } from "@/icones";
 import {
   couleurOperateur, couleurs, espaces, polices, rayons, textes,
@@ -94,6 +95,9 @@ export type ChampOperation = {
 
 export type Operation = {
   titre: string;
+  /** L'icône du geste (« ArrowDown » pour un dépôt), reprise en tête du
+   *  parcours : on voit d'un coup d'œil ce qu'on est en train de faire. */
+  icone?: NomIcone;
   code: string;                 // le code USSD composé en premier, tel quel
   champs: ChampOperation[];     // vide : la session s'ouvre directement
   /** L'ICCID de la carte visée. Sans lui, le robot composerait sur sa
@@ -509,12 +513,16 @@ export function OperationPopup({
     }
     if (etape === "session" && !termine) fermerSession(); else onFermer();
   };
+  // LE SENS DU PARCOURS SE VOIT : la question suivante arrive par la
+  // droite, la précédente revient par la gauche — comme une page qu'on
+  // tourne et qu'on retourne. Tout arrivait de la droite, retour compris.
+  const sens = useRef<"avant" | "arriere">("avant");
   // Le retour ramène à la question d'avant ; à la première, il sort.
   const reculer = () => {
-    if (etape === "saisie" && pas > 0) setPas((p) => p - 1);
+    if (etape === "saisie" && pas > 0) { sens.current = "arriere"; setPas((p) => p - 1); }
     else sortir();
   };
-  const avancer = () => setPas((p) => p + 1);
+  const avancer = () => { sens.current = "avant"; setPas((p) => p + 1); };
 
   // Le destinataire, tel qu'on le connaît : son nom s'il est dans les SMS.
   const champNumero = operation.champs.find((c) => c.type === "numero");
@@ -556,34 +564,50 @@ export function OperationPopup({
     );
   } else if (etape === "saisie") {
     cleVue = "verification";
+    // UNE FICHE, PAS UNE AFFICHE. Le montant en grand ; puis ce qu'on
+    // signe, rangée par rangée — l'opération, le destinataire, la carte —,
+    // l'étiquette à gauche, la valeur à droite, JAMAIS coupée : c'est
+    // exactement ce qu'on vient relire. Un seul bouton plein, en bas.
     vue = (
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center",
-                       paddingHorizontal: espaces.xl, gap: espaces.md }}>
-          <Texte taille={textes.petit} ton="pale">{t.verifiez}</Texte>
-          {montantChoisi ? (
-            <Montant valeur={montantChoisi} langue={langue} grand />
-          ) : (
-            <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
-              {operation.titre}
-            </Texte>
-          )}
-          {numeroChoisi ? (
-            <View style={{ alignItems: "center", gap: 2 }}>
-              <Texte taille={textes.intertitre} style={{ textAlign: "center" }}>
-                {t.vers} <Texte taille={textes.intertitre} poids="demi">
-                  {nomDuDestinataire || formaterNumero(numeroChoisi)}
-                </Texte>
+        <Defilement contentContainerStyle={{ flexGrow: 1, justifyContent: "center",
+                                             padding: espaces.xl, gap: espaces.lg }}>
+          <View style={{ alignItems: "center", gap: espaces.sm }}>
+            <Texte taille={textes.petit} ton="pale">{t.verifiez}</Texte>
+            {montantChoisi ? (
+              <Montant valeur={montantChoisi} langue={langue} grand />
+            ) : (
+              <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>
+                {operation.titre}
               </Texte>
-              {nomDuDestinataire ? (
-                <Texte ton="doux" chiffresAlignes>{formaterNumero(numeroChoisi)}</Texte>
-              ) : null}
-            </View>
-          ) : null}
-          {operation.carteLibelle ? (
-            <PastilleCarte libelle={t.depuis(operation.carteLibelle)} operateur={op} />
-          ) : null}
-        </View>
+            )}
+          </View>
+          <Carte>
+            <RangeeRecap etiquette={t.recapOperation}>
+              <Texte poids="moyen" style={{ textAlign: "right" }}>{operation.titre}</Texte>
+            </RangeeRecap>
+            {numeroChoisi ? (
+              <>
+                <Filet />
+                <RangeeRecap etiquette={t.recapVers}>
+                  {nomDuDestinataire ? (
+                    <Texte poids="demi" style={{ textAlign: "right" }}>{nomDuDestinataire}</Texte>
+                  ) : null}
+                  <Texte ton={nomDuDestinataire ? "doux" : "normal"}
+                         poids={nomDuDestinataire ? "normal" : "demi"} chiffresAlignes
+                         style={{ textAlign: "right" }}>
+                    {formaterNumero(numeroChoisi)}
+                  </Texte>
+                </RangeeRecap>
+              </>
+            ) : null}
+            {/* LA CARTE NE SE DIT QU'UNE FOIS. La fiche portait aussi une
+                rangée « Depuis la carte · MTN ·8901 », sous un en-tête qui
+                disait déjà « depuis MTN ·8901 », avec le même logo. L'en-tête
+                reste — il est là à chaque étape, jusqu'au pavé du code, à la
+                même hauteur : le retirer ici ferait sauter l'écran. */}
+          </Carte>
+        </Defilement>
         <Texte taille={textes.petit} ton="pale"
                style={{ textAlign: "center", paddingHorizontal: espaces.xl,
                         marginBottom: espaces.md }}>
@@ -685,12 +709,26 @@ export function OperationPopup({
                            style={{ transform: [{ rotate: "180deg" }] }} />
             ) : null}
           </View>
-          <View style={{ flex: 1, alignItems: "center" }}>
-            <Texte poids="demi" numberOfLines={1}>{operation.titre}</Texte>
-            {operation.carteLibelle ? (
-              <Texte taille={textes.legende} ton="pale" numberOfLines={1}>
-                {operation.carteLibelle}
+          {/* Ce qu'on fait — son icône et son nom —, et d'où ça part : le
+              logo et la carte. La même hauteur que l'ancien en-tête, au
+              point près : sur un petit écran, chaque point pris ici l'est
+              au message de l'opérateur, au-dessus du pavé du code. */}
+          <View style={{ flex: 1, alignItems: "center", gap: 2 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                           maxWidth: "100%" }}>
+              {operation.icone ? (
+                <View style={{ width: 22, height: 22, borderRadius: rayons.rond,
+                               backgroundColor: couleurs.accent, alignItems: "center",
+                               justifyContent: "center" }}>
+                  <Icone nom={operation.icone} taille={13} couleur={couleurs.surfaceHaute} />
+                </View>
+              ) : null}
+              <Texte poids="demi" numberOfLines={1} style={{ flexShrink: 1 }}>
+                {operation.titre}
               </Texte>
+            </View>
+            {operation.carteLibelle ? (
+              <PastilleCarte libelle={t.depuis(operation.carteLibelle)} operateur={op} />
             ) : null}
           </View>
           <View style={{ width: 32, alignItems: "flex-end" }}>
@@ -716,9 +754,14 @@ export function OperationPopup({
             champ du système qui reste (une réponse en lettres) ne doit pas
             finir sous le clavier. */}
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+          {/* Avancer arrive par la droite, reculer par la gauche ; la
+              session se révèle sur place. « Réduire les animations » : un
+              fondu court, rien ne glisse. */}
           <Animated.View key={cleVue} style={{ flex: 1 }}
-            entering={reduit ? undefined
-              : etape === "saisie" ? FadeInRight.duration(220) : FadeIn.duration(260)}>
+            entering={reduit ? FadeIn.duration(120)
+              : etape !== "saisie" ? FadeIn.duration(200)
+                : sens.current === "arriere" ? FadeInLeft.duration(220)
+                  : FadeInRight.duration(220)}>
             {vue}
           </Animated.View>
         </KeyboardAvoidingView>
@@ -1192,18 +1235,33 @@ function GrosBouton({ libelle, onPress, desactive }: {
   );
 }
 
-/** La carte d'où part l'opération, en pastille, à la couleur de l'opérateur. */
+/** La carte d'où part l'opération : le logo de l'opérateur et son nom, sur
+ *  une ligne de légende — sans cadre, pour ne rien prendre en hauteur. */
 function PastilleCarte({ libelle, operateur }: { libelle: string; operateur: string }) {
   return (
-    <View style={{
-      flexDirection: "row", alignItems: "center", gap: espaces.sm,
-      paddingHorizontal: espaces.md, paddingVertical: espaces.xs + 2,
-      borderRadius: rayons.rond, backgroundColor: couleurs.surfaceHaute,
-      borderWidth: 1, borderColor: couleurs.trait, marginTop: espaces.sm,
-    }}>
-      <View style={{ width: 8, height: 8, borderRadius: rayons.rond,
-                     backgroundColor: couleurOperateur(operateur) }} />
-      <Texte taille={textes.petit} ton="doux">{libelle}</Texte>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
+                   maxWidth: "100%" }}>
+      {operateurReconnu(operateur) ? (
+        <LogoOperateur operateur={operateur} taille={12} />
+      ) : (
+        <View style={{ width: 8, height: 8, borderRadius: rayons.rond,
+                       backgroundColor: couleurOperateur(operateur) }} />
+      )}
+      <Texte taille={textes.legende} ton="pale" numberOfLines={1} style={{ flexShrink: 1 }}>
+        {libelle}
+      </Texte>
+    </View>
+  );
+}
+
+/** Une rangée de la vérification : l'étiquette pâle à gauche, la valeur à
+ *  droite, entière — sur deux lignes s'il le faut, jamais coupée. */
+function RangeeRecap({ etiquette, children }: { etiquette: string; children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: espaces.md,
+                   paddingHorizontal: espaces.lg, paddingVertical: espaces.md }}>
+      <Texte taille={textes.petit} ton="pale" style={{ paddingTop: 2 }}>{etiquette}</Texte>
+      <View style={{ flex: 1, alignItems: "flex-end", gap: 2 }}>{children}</View>
     </View>
   );
 }
@@ -1309,16 +1367,28 @@ function Fin({
     : issue === "reponse" ? "Bubble" : "Close";
   const teinte = issue === "reussie" ? couleurs.positifVif
     : issue === "reponse" ? couleurs.encre : couleurs.negatif;
+  // LA COCHE SE POSE : elle grossit d'un rien en apparaissant, 240 ms —
+  // le FadeIn de 300 ms dépassait la borne de l'application. Rien ne
+  // rebondit. « Réduire les animations » : elle est là, immobile.
+  const reduit = useMouvementReduit();
+  const avance = useSharedValue(reduit ? 1 : 0);
+  useEffect(() => {
+    avance.value = reduit ? 1 : withTiming(1, { duration: 240, easing: COURBE });
+  }, [reduit, avance]);
+  const arrivee = useAnimatedStyle(() => ({
+    opacity: avance.value,
+    transform: [{ scale: 0.92 + 0.08 * avance.value }],
+  }));
   return (
     <View style={{ flex: 1 }}>
       <Defilement contentContainerStyle={{
         flexGrow: 1, justifyContent: "center", alignItems: "center",
         padding: espaces.xl, gap: espaces.lg,
       }}>
-        <Animated.View entering={FadeIn.duration(300)} style={{
+        <Animated.View style={[{
           width: 88, height: 88, borderRadius: rayons.rond, alignItems: "center",
           justifyContent: "center", backgroundColor: teinte,
-        }}>
+        }, arrivee]}>
           <Icone nom={icone} taille={40} couleur={couleurs.surfaceHaute} />
         </Animated.View>
         <Texte taille={textes.titre} poids="demi" style={{ textAlign: "center" }}>

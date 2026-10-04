@@ -83,6 +83,50 @@ if (fautives.length) {
   console.log("  ✓ aucun écran ne dessine sa propre roue : elle vient de `useRoue`, sous le doigt.");
 }
 
+// --- 1 bis. L'ONGLET QUITTÉ N'EST PAS DÉTRUIT SUR LE TÉLÉPHONE -----------
+//
+// Le passage animé d'un onglet à l'autre a d'abord retiré l'écran quitté par
+// `display: none`, partout. Sur iPhone (nouvelle architecture), le moteur de
+// rendu SAUTE au montage une vue `display: none` : la liste des SMS, sa
+// position et la roue étaient détruites trois cents millisecondes après le
+// départ, puis refaites au retour — une roue recréée en pleine relecture,
+// sans geste, c'est le « tout part vers le bas ». Aucun harnais du
+// navigateur ne peut le voir : sur le web, `display: none` garde tout.
+// On exécute donc la VRAIE règle (`src/scene-onglet.ts`) pour chaque
+// plateforme, et l'on vérifie que `_layout.tsx` ne pose aucun `display`
+// lui-même. Témoin : l'ancienne règle, réécrite ici, doit être prise.
+{
+  const regle = (fonction) => {
+    const fautes = [];
+    for (const plateforme of ["ios", "android"]) {
+      const s = fonction(false, plateforme);
+      if (s?.display === "none") fautes.push(`${plateforme} : l'onglet quitté est en « display: none » — ses vues natives sont détruites`);
+    }
+    if (fonction(false, "web")?.display !== "none") fautes.push("web : l'onglet quitté reste affiché sous l'autre");
+    if (fonction(true, "web")?.display === "none") fautes.push("web : l'onglet actif est retiré");
+    return fautes;
+  };
+  const ancienne = (visible) => ({ flex: 1, display: visible ? "flex" : "none" });
+  console.log("\nL'onglet quitté n'est pas détruit sur le téléphone :");
+  if (regle(ancienne).length === 0) {
+    console.error("  ✗ le témoin (l'ancienne règle, « display: none » partout) passe : la règle ne voit rien.");
+    process.exit(1);
+  }
+  const vraie = charger(readFileSync(join(MOBILE, "src/scene-onglet.ts"), "utf8"), {});
+  const fautes = regle(vraie.styleDeScene);
+  const mise = readFileSync(join(MOBILE, "src/app/(onglets)/_layout.tsx"), "utf8").split("\n")
+    .map((l, i) => ({ l: l.trim(), i: i + 1 }))
+    .filter(({ l }) => !l.startsWith("//") && !l.startsWith("*") && /\bdisplay\s*:/.test(l));
+  for (const { i } of mise) fautes.push(`_layout.tsx:${i} pose un « display » lui-même, hors de \`styleDeScene\``);
+  if (!/style=\{styleDeScene\(/.test(readFileSync(join(MOBILE, "src/app/(onglets)/_layout.tsx"), "utf8"))) {
+    fautes.push("_layout.tsx : `SceneDOnglet` ne passe plus par `styleDeScene`");
+  }
+  for (const f of fautes) console.log(`  ✗ ${f}`);
+  if (fautes.length) echecs += fautes.length;
+  else console.log("  ✓ iPhone et Android gardent l'onglet quitté monté ; le web le retire"
+    + " (le témoin « display: none partout » est pris).");
+}
+
 // --- 2. LE BANC : le vrai cahier, sous le vrai React --------------------
 const noop = () => {};
 const faux = () => ({
@@ -388,6 +432,25 @@ const SCENARIOS = [
       await m.repondre(n - 1, { version: 2 });     // la première relecture VOIT le SMS
       await laisserPasser(7);
       return m.appels.length === n ? null : "une seconde relecture est partie pour un SMS déjà vu";
+    },
+  },
+  {
+    nom: "Un onglet quitté puis repris pendant sa relecture ne rallume pas la roue",
+    pourquoi: "on tire sur SMS, on part sur l'Accueil, on revient avant la fin : la roue ne doit revenir que si le doigt la redemande",
+    async jouer(m) {
+      await m.demarrer(); await m.repondreAuxEnSuspens();
+      await m.ouvrir("sms"); await m.repondreAuxEnSuspens();
+      await m.tirer("sms");
+      if (!m.roueAllumee("sms")) return "le tirage n'allume même pas la roue";
+      await m.ouvrir("accueil");
+      await m.ouvrir("sms");
+      await m.repondreAuxEnSuspens();
+      if (m.roueAllumee("sms")) return "la relecture est finie, et la roue tourne encore au retour";
+      await m.ouvrir("accueil"); await m.repondreAuxEnSuspens();
+      await m.ouvrir("sms"); await m.repondreAuxEnSuspens();
+      const v = m.roues.sms?.valeurs ?? [];
+      const allumages = v.filter((x, i) => x && !v[i - 1]).length;
+      return allumages === 1 ? null : `${allumages} allumages de la roue pour un seul tirage`;
     },
   },
   {

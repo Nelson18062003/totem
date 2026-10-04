@@ -3,6 +3,35 @@
 // libellés des raccourcis (indexés par la clé du catalogue lib/codes.ts)
 // changent de langue.
 
+// Les trous d'un raccourci, dits avec des mots : « {numero} » n'apprend rien
+// à qui n'a pas écrit le code.
+const TROUS = {
+  en: { numero: "number", point: "agent", montant: "amount" },
+  fr: { numero: "numéro", point: "agent", montant: "montant" },
+} as const;
+
+/** « *126# › 1 › [numéro] » : chaque étape, les trous nommés entre crochets.
+ *  Un trou inconnu garde son nom, mais jamais ses accolades. */
+export function trajetLisible(
+  etapes: string[], mots: Record<string, string>,
+): string {
+  return etapes
+    .map((e) => e.replace(/\{([A-Za-z_]+)\}/g, (_, nom: string) => `[${mots[nom] ?? nom}]`))
+    .join(" › ");
+}
+
+/** Ce qu'un raccourci à trous va demander avant de composer. */
+function demande(vars: string[], langue: "fr" | "en"): string {
+  const numero = vars.some((v) => v === "numero" || v === "point");
+  const montant = vars.includes("montant");
+  if (langue === "en") {
+    return numero && montant ? "asks for a number and an amount"
+      : montant ? "asks for an amount" : "asks for a number";
+  }
+  return numero && montant ? "demande un numéro et un montant"
+    : montant ? "demande un montant" : "demande un numéro";
+}
+
 const en = {
   // --- La page (serveur) --------------------------------------------------------
   titre: "USSD code",
@@ -25,13 +54,35 @@ const en = {
       {
         menu: "Menu",
         depot: "Deposit",
-        retrait: "Withdrawal",
+        retrait: "Withdraw",
         transfert: "Transfer",
-        solde: "Balance",
+        solde: "My balance",
         mon_numero: "My number",
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
   carteDuCadran: "Card the dialler uses",
+  // --- Le cadran du téléphone, rangé -------------------------------------------
+  // UNE phrase, la seule de l'écran : ce qu'est un code USSD, pour qui n'en
+  // a jamais tapé — et que la réponse revient ICI.
+  explication:
+    "Codes that start with * or #, just like on your phone. The TOTEM box dials " +
+    "them on the chosen card, and the operator's reply appears here.",
+  // DANS le champ, le code seul : la phrase entière (« Type a code, e.g.
+  // *126# ») était coupée à 320 et à 360 points — et c'était justement le
+  // code d'exemple, la seule chose utile, qui disparaissait. La phrase
+  // reste pour l'aide vocale (`exempleCode`).
+  exempleCode: (c: string) => `Type a code, e.g. ${c}`,
+  exempleCodeCourt: (c: string) => `e.g. ${c}`,
+  raccourcis: "Shortcuts",
+  ouvrirMenu: (service: string) => `Open the ${service} menu`,
+  // Le TRAJET entier d'un raccourci, lisible : « *126# › 1 › [number] ».
+  // Le premier code seul (« *126# » sur chaque ligne) ne disait pas ce que
+  // chaque bouton faisait — ils commencent tous par le même menu.
+  trajet: (etapes: string[]) => trajetLisible(etapes, TROUS.en),
+  demandeUneValeur: (vars: string[]) => demande(vars, "en"),
+  noteCodeSecret: "Your secret code is typed on its own keypad and never kept.",
+  reglerCodes: "Set up the button codes",
+  titreCode: (c: string) => `Code ${c}`,
   boutonsAppris: "Your buttons",
   boutonAVariables:
     "asks for a number or an amount — run it from Operations",
@@ -100,11 +151,23 @@ const fr: typeof en = {
         depot: "Dépôt",
         retrait: "Retrait",
         transfert: "Transfert",
-        solde: "Solde",
+        solde: "Mon solde",
         mon_numero: "Mon numéro",
       } as Record<string, string | undefined>
     )[cle] ?? defaut,
   carteDuCadran: "Carte du cadran",
+  explication:
+    "Les codes qui commencent par * ou #, comme sur votre téléphone. Le boîtier " +
+    "TOTEM les compose sur la carte choisie, et la réponse de l’opérateur s’affiche ici.",
+  exempleCode: (c) => `Tapez un code, ex. ${c}`,
+  exempleCodeCourt: (c) => `ex. ${c}`,
+  raccourcis: "Raccourcis",
+  ouvrirMenu: (service) => `Ouvrir le menu ${service}`,
+  trajet: (etapes) => trajetLisible(etapes, TROUS.fr),
+  demandeUneValeur: (vars) => demande(vars, "fr"),
+  noteCodeSecret: "Le code secret se tape sur son propre pavé et n’est jamais gardé.",
+  reglerCodes: "Régler les codes des boutons",
+  titreCode: (c) => `Code ${c}`,
   boutonsAppris: "Vos boutons",
   boutonAVariables:
     "demande un numéro ou un montant — lancez-le depuis Opérations",

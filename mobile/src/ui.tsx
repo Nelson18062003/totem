@@ -422,34 +422,52 @@ export function BoutonIcone({
  * ce qu'elle fait, et le chevron. Celle de l'onglet Opérations — sortie ici
  * parce que l'onglet Comptes en a besoin aussi (la ligne « Analyse »).
  */
-export function LigneAction({ titre, sous, icone, onPress, enPause = false }: {
+export function LigneAction({ titre, sous, icone, onPress, enPause = false, valeur, discret = false }: {
   titre: string; sous?: string; icone: NomIcone; onPress: () => void;
   /** Le boîtier se tait : la ligne reste à sa place, pâlie, et l'appui
    *  explique au lieu de composer — comme les ronds de l'accueil. */
   enPause?: boolean;
+  /** Un texte pâle à droite, avant le chevron (« *126# »). C'est une
+   *  LISTE : il peut se couper, le nom jamais. */
+  valeur?: string;
+  /** Une ligne d'OUTIL, pas un geste : l'icône au trait, sans rond, une
+   *  rangée plus basse et sans phrase dessous. Un outil ne doit pas avoir
+   *  le même poids qu'un geste qui déplace de l'argent. */
+  discret?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityHint={discret ? sous : undefined}
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: "row", alignItems: "center", gap: espaces.md,
-        padding: espaces.lg,
+        paddingHorizontal: espaces.lg, paddingVertical: discret ? espaces.md + 2 : espaces.lg,
         opacity: enPause ? 0.45 : 1,
         backgroundColor: pressed ? couleurs.surface2 : "transparent",
       })}
     >
-      <View style={{
-        width: 40, height: 40, borderRadius: rayons.rond,
-        borderWidth: 1, borderColor: couleurs.trait,
-        alignItems: "center", justifyContent: "center",
-      }}>
+      {discret ? (
         <Icone nom={icone} taille={18} couleur={couleurs.encreDouce} />
-      </View>
+      ) : (
+        <View style={{
+          width: 40, height: 40, borderRadius: rayons.rond,
+          borderWidth: 1, borderColor: couleurs.trait,
+          alignItems: "center", justifyContent: "center",
+        }}>
+          <Icone nom={icone} taille={18} couleur={couleurs.encreDouce} />
+        </View>
+      )}
       <View style={{ flex: 1 }}>
         <Texte poids="moyen">{titre}</Texte>
-        {sous ? <Texte taille={textes.petit} ton="pale">{sous}</Texte> : null}
+        {sous && !discret ? <Texte taille={textes.petit} ton="pale">{sous}</Texte> : null}
       </View>
+      {valeur ? (
+        <Texte taille={textes.petit} ton="pale" chiffresAlignes numberOfLines={1}
+               style={{ flexShrink: 1, maxWidth: "40%" }}>
+          {valeur}
+        </Texte>
+      ) : null}
       <Icone nom="Chevron" taille={18} couleur={couleurs.encrePale} />
     </Pressable>
   );

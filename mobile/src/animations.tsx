@@ -15,11 +15,76 @@
 //     du téléphone n'en reçoit aucune.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { AccessibilityInfo, View, type ViewProps } from "react-native";
+import {
+  AccessibilityInfo, Animated as AnimatedRN, Easing as EasingRN, View, type ViewProps,
+} from "react-native";
 import Animated, {
   useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
   Easing,
 } from "react-native-reanimated";
+
+/** LA DURÉE D'UN CHANGEMENT D'ONGLET. Assez pour que l'œil suive d'où vient
+ *  l'écran ; assez peu pour qu'on n'attende jamais l'écran. */
+export const DUREE_ONGLET = 240;
+/** Avec « réduire les animations » : un fondu seul, plus court encore. Rien
+ *  ne glisse, rien ne grossit — mais l'écran ne « claque » pas non plus. */
+export const DUREE_REDUITE = 120;
+
+/** LA COURBE DE TOUT CE QUI SE DÉPLACE : part vite, se pose. La moitié du
+ *  chemin est faite très tôt — l'écran qui part disparaît presque aussitôt,
+ *  celui qui arrive prend le temps de se poser. */
+export const COURBE_RN = EasingRN.bezier(0.2, 0, 0, 1);
+/** La même, pour Reanimated (barre d'onglets, parcours d'une opération). */
+export const COURBE = Easing.bezier(0.2, 0, 0, 1);
+
+type ProgressionScene = { current: { progress: AnimatedRN.Value } };
+
+/**
+ * LE PASSAGE D'UN ONGLET À L'AUTRE — glissé, pas sauté.
+ *
+ * Le propriétaire : « quand je passe de l'Accueil à Comptes, à SMS ou à
+ * Opérations, il n'y a pas de transition, rien ». L'écran était remplacé
+ * d'un coup, sans dire d'où il venait.
+ *
+ * `progress` vaut −1 pour un onglet à GAUCHE de l'onglet actif, 0 pour
+ * l'actif, +1 pour un onglet à DROITE. Aller de l'Accueil à Opérations fait
+ * donc arriver l'écran par la droite, et le retour par la gauche — le sens
+ * de la barre, sans rien calculer.
+ *
+ * Jamais deux écrans l'un sur l'autre, même à demi : celui qui part
+ * s'efface sur la première moitié du trajet, celui qui arrive se révèle sur
+ * la seconde — avec ou sans « Réduire les animations ».
+ * Vingt points de glissement, pas un écran entier : un tableau de bord
+ * d'argent ne se feuillette pas comme un album.
+ *
+ * Ce sont les objets `Animated` de React Native — ceux que le navigateur
+ * des onglets anime lui-même, sur le fil natif. Aucune brique nouvelle : la
+ * transition part par une mise à jour à distance.
+ */
+export function transitionDesOnglets(reduit: boolean) {
+  return {
+    animation: "shift" as const,
+    transitionSpec: {
+      animation: "timing" as const,
+      config: { duration: reduit ? DUREE_REDUITE : DUREE_ONGLET, easing: COURBE_RN },
+    },
+    sceneStyleInterpolator: ({ current }: ProgressionScene) => ({
+      sceneStyle: {
+        // La MÊME règle d'opacité avec ou sans « Réduire les animations » :
+        // l'écran qui part s'éteint sur la première moitié, celui qui
+        // arrive s'allume sur la seconde. Le mode réduit faisait un fondu
+        // ENCHAÎNÉ (`[0, 1, 0]`) : à mi-chemin, les deux écrans mêlés à
+        // l'écran — l'Accueil à 0,65 et Opérations à 0,35, mesuré.
+        opacity: current.progress.interpolate(
+          { inputRange: [-1, -0.5, 0, 0.5, 1], outputRange: [0, 0, 1, 0, 0] }),
+        transform: [{
+          translateX: reduit ? 0 : current.progress.interpolate(
+            { inputRange: [-1, 0, 1], outputRange: [-20, 0, 20] }),
+        }],
+      },
+    }),
+  };
+}
 
 /** Le réglage système « réduire les animations ». */
 export function useMouvementReduit(): boolean {

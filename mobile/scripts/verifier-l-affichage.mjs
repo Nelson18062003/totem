@@ -241,6 +241,24 @@ const MESURER = async () => {
            texte: (racine.innerText || "").slice(0, 400) };
 };
 
+// LE TEXTE D'EXEMPLE D'UN CHAMP tient-il dans le champ ? `MESURER` ne le voit
+// pas : un « placeholder » n'est pas un élément, il ne déborde de rien, et
+// le navigateur le coupe sans un mot. Le cadran disait « Tapez un code, ex.
+// *126# » dans un champ de 134 points à 320 de large : on lisait « Type a
+// code, e.g. * » — c'était justement le code d'exemple qui disparaissait.
+// On compare la largeur du texte, à la police du champ, à la place utile.
+const MESURER_EXEMPLES = () => [...document.querySelectorAll("input[placeholder]")]
+  .filter((e) => e.placeholder && e.getBoundingClientRect().width > 0)
+  .map((e) => {
+    const s = getComputedStyle(e);
+    const toile = document.createElement("canvas").getContext("2d");
+    toile.font = `${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+    const besoin = toile.measureText(e.placeholder).width;
+    const place = e.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+    return { texte: e.placeholder, besoin: Math.ceil(besoin), place: Math.floor(place) };
+  })
+  .filter((x) => x.besoin > x.place + 1);
+
 // --- Le témoin ---------------------------------------------------------------
 {
   const page = await nav.newPage({ viewport: { width: 375, height: 667 } });
@@ -257,7 +275,19 @@ const MESURER = async () => {
     <div>${[1,2,3,4,5,6,7,8,9].map((n) => `<div role="button" tabindex="0" style="display:inline-block;width:30px">${n}</div>`).join("")}</div>
   </body>`);
   const t = await page.evaluate(MESURER);
+  // Le témoin du texte d'exemple : le même champ étroit, avec la phrase
+  // d'avant (coupée) puis le code seul (qui tient).
+  await page.setContent(`<!doctype html><body style="margin:0">
+    <input style="width:134px;padding:0;border:0;font:15px sans-serif" placeholder="Type a code, e.g. *126#">
+    <input style="width:134px;padding:0;border:0;font:15px sans-serif" placeholder="e.g. *126#">
+  </body>`);
+  const exemples = await page.evaluate(MESURER_EXEMPLES);
   await page.close();
+  if (exemples.length !== 1 || !/Type a code/.test(exemples[0].texte)) {
+    console.error("\n✗ LE TÉMOIN DU TEXTE D'EXEMPLE N'EST PAS VU : la sonde ne distingue pas"
+      + ` un exemple coupé d'un exemple entier (${JSON.stringify(exemples)}). On s'arrête.`);
+    process.exit(1);
+  }
   const vu = [t.sortDuBouton.length > 0, t.cache.length > 0, Boolean(t.signe && !t.signe.entier)];
   if (!vu.every(Boolean)) {
     console.error("\n✗ LE TÉMOIN N'EST PAS VU : la sonde ne voit pas une faute fabriquée");
@@ -265,7 +295,7 @@ const MESURER = async () => {
     console.error("  Elle ne prouverait rien sur l'application. On s'arrête.");
     process.exit(1);
   }
-  console.log("  témoin : les trois fautes fabriquées sont vues ✓");
+  console.log("  témoin : les trois fautes fabriquées sont vues ✓ ; l'exemple coupé aussi ✓");
 }
 
 // --- Le compte ---------------------------------------------------------------
@@ -393,6 +423,64 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     await mesurer(ecran);
   }
 
+  // 2 a. LES TROIS GESTES D'ARGENT d'Opérations : côte à côte d'ordinaire,
+  // L'UN SOUS L'AUTRE sous 340 points — trois noms entiers ne tiendraient
+  // plus côte à côte, et un nom coupé (« Transf… ») ou rétréci est
+  // justement ce qu'on refuse. Chaque nom doit tenir dans sa tuile.
+  {
+    await page.goto(`${APERCU}/actions`, { waitUntil: "networkidle" });
+    try { await attendreTexte(page, /(Withdraw|Retrait)/); } catch { /* vérifié tel quel */ }
+    const tuiles = await page.evaluate(() => [...document.querySelectorAll('[role="button"]')]
+      .filter((e) => /^(Deposit|Dépôt|Withdraw|Retrait|Transfer|Transfert)$/
+        .test(e.getAttribute("aria-label") || ""))
+      .filter((e) => e.getBoundingClientRect().width > 0)
+      .map((e) => {
+        const r = e.getBoundingClientRect();
+        const textes = [...e.querySelectorAll("div, span")].filter((x) => !x.children.length
+          && (x.textContent || "").trim());
+        const coupe = textes.some((x) => x.scrollWidth > x.clientWidth + 1
+          || x.getBoundingClientRect().right > r.right + 1 || x.getBoundingClientRect().left < r.left - 1);
+        return { nom: e.getAttribute("aria-label"), haut: Math.round(r.top), coupe };
+      }));
+    const colonne = w < 340;
+    const hauts = new Set(tuiles.map((t) => t.haut));
+    const fautes = [];
+    if (tuiles.length !== 3) fautes.push(`${tuiles.length} gestes d'argent trouvés au lieu de 3`);
+    else if (colonne && hauts.size !== 3) fautes.push("sous 340 points, les gestes restent côte à côte");
+    else if (!colonne && hauts.size !== 1) fautes.push("les gestes ne sont pas côte à côte");
+    for (const t of tuiles) if (t.coupe) fautes.push(`« ${t.nom} » ne tient pas dans sa tuile`);
+    if (fautes.length) defauts += fautes.length;
+    resume.push(`  ${fautes.length ? "✗" : "✓"} ${format.padEnd(18)} ${"gestes d'argent".padEnd(16)} `
+      + (fautes.length ? fautes.join(" ; ") : colonne ? "l'un sous l'autre, noms entiers" : "côte à côte, noms entiers"));
+  }
+
+  // 2 b. LE TEXTE D'EXEMPLE DU CADRAN, DANS LES DEUX LANGUES. Le français
+  // est plus long : « ex. » tenait là où « Tapez un code, ex. » ne tenait
+  // pas, et l'anglais est la langue par défaut — mesurer l'une seule
+  // laissait l'autre couper le code à 360 points.
+  {
+    const fautes = [];
+    for (const langue of ["en", "fr"]) {
+      await page.evaluate((l) => localStorage.setItem("totem.langue", l), langue);
+      await page.goto(`${APERCU}/ussd`, { waitUntil: "networkidle" });
+      try {
+        await page.waitForFunction(() => document.querySelector("input[placeholder]"), null,
+                                   { timeout: 15000 });
+      } catch {
+        fautes.push(`${langue} : aucun champ à texte d'exemple sur le cadran`);
+        continue;
+      }
+      await page.waitForTimeout(400);
+      for (const x of await page.evaluate(MESURER_EXEMPLES)) {
+        fautes.push(`${langue} : « ${x.texte} » demande ${x.besoin} pt, le champ en a ${x.place}`);
+      }
+    }
+    await page.evaluate(() => localStorage.removeItem("totem.langue"));
+    if (fautes.length) defauts += fautes.length;
+    resume.push(`  ${fautes.length ? "✗" : "✓"} ${format.padEnd(18)} ${"exemple cadran".padEnd(16)} `
+      + (fautes.length ? fautes.join(" ; ") : "entier, en anglais et en français"));
+  }
+
   // 2 bis. L'ACCUEIL TEL QUE LE PROPRIÉTAIRE L'A : QUATRE CARTES, et un
   // terminal qui se tait. Le faux nuage n'a que deux cartes et un terminal
   // toujours en ligne — une donnée d'essai trop sage, encore : les puces
@@ -446,7 +534,9 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   await attendreTexte(page, /FCFA/);
   await attendreTexte(page, /Terminal (silent|muet|offline|hors ligne)/).catch(() => {});
   await page.waitForTimeout(800);      // le défilement de la rangée est animé
-  {
+  /** La rangée des puces, sur l'écran ouvert : une ligne, la carte retenue
+   *  allumée, DERNIÈRE de la rangée, et visible dans ce qui la rogne. */
+  const verifierPuces = async (ecranMesure) => {
     // AVANT la mesure : `mesurer` fait défiler jusqu'à l'écran ce qu'il
     // trouve recouvert — une puce coupée au bord en fait partie. Vérifiée
     // après, elle était ramenée par le harnais lui-même, et l'étape sortait
@@ -489,9 +579,23 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     else if (!visible) fautes.push("la puce choisie est hors de l'écran");
     if (!muet) fautes.push("le terminal muet n'est pas signalé");
     if (fautes.length) defauts += fautes.length;
-    resume.push(`  ${fautes.length ? "✗" : "✓"} ${format.padEnd(18)} ${"4 cartes, muet".padEnd(16)} ${fautes.join(" ; ")}`);
-  }
+    resume.push(`  ${fautes.length ? "✗" : "✓"} ${format.padEnd(18)} ${ecranMesure.padEnd(16)} ${fautes.join(" ; ")}`);
+  };
+  await verifierPuces("4 cartes, muet");
   await mesurer("accueil-4-cartes");
+  // LA MÊME RANGÉE SUR OPÉRATIONS ET LE CADRAN. Les deux écrans ont repris
+  // les puces de l'accueil (`puces-cartes.tsx`) : la carte retenue — la
+  // dernière — doit y être allumée ET à l'écran, comme sur l'accueil.
+  for (const [ecran, chemin, preuve] of [
+    ["ops-5-cartes", "/actions", /(From card|Depuis la carte)/],
+    ["cadran-5-cartes", "/ussd", /(From card|Depuis la carte)/],
+  ]) {
+    await page.goto(`${APERCU}${chemin}`, { waitUntil: "networkidle" });
+    try { await attendreTexte(page, preuve); } catch { /* vérifié tel quel */ }
+    await page.waitForTimeout(800);
+    await verifierPuces(`${ecran.split("-")[0]} : puces`);
+    await mesurer(ecran);
+  }
   await page.unroute("**/api/donnees**");
   await page.evaluate(() => localStorage.removeItem("totem.carte.choisie"));
 

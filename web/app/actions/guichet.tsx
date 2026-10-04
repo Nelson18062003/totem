@@ -54,21 +54,21 @@ export function Guichet({
   const operations = [
     {
       titre: t.depot, sous: t.depotSous, Icone: IconArrowDown,
-      fabrique: (): Operation => operationDe("depot", t.depotTitre, [
+      fabrique: (): Operation => operationDe("depot", t.depot, [
         { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
       ]),
     },
     {
       titre: t.retrait, sous: t.retraitSous, Icone: IconWallet,
-      fabrique: (): Operation => operationDe("retrait", t.retraitTitre, [
+      fabrique: (): Operation => operationDe("retrait", t.retrait, [
         { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleVingtMille, type: "montant" },
       ]),
     },
     {
       titre: t.transfert, sous: t.transfertSous, Icone: IconArrowUp,
-      fabrique: (): Operation => operationDe("transfert", t.transfertTitre, [
+      fabrique: (): Operation => operationDe("transfert", t.transfert, [
         { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleCinquanteMille, type: "montant" },
       ]),
@@ -77,8 +77,8 @@ export function Guichet({
 
   const consultations = [
     {
-      l: t.consulterSolde, Icone: IconRefresh,
-      fabrique: (): Operation => operationDe("solde", t.consulterSolde, []),
+      l: t.monSolde, Icone: IconRefresh,
+      fabrique: (): Operation => operationDe("solde", t.monSolde, []),
     },
     {
       l: t.monNumero, Icone: IconPhone,

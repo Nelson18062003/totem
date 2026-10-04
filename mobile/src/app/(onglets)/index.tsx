@@ -26,8 +26,8 @@
 // large (tablette, pliable ouvert, écran partagé) elle passe à deux colonnes
 // — la carte et ses gestes d'un côté, les mouvements de l'autre.
 
-import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
@@ -37,20 +37,19 @@ import { Coordonnees } from "@/coordonnees";
 import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte,
          appuiTexte, avecAppui } from "@/ui";
 import { Icone, type NomIcone } from "@/icones";
-import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { Entree, Animated, useAppui } from "@/animations";
 import { SqueletteCaisse, SqueletteListe, SqueletteRonds } from "@/squelettes";
 import { OperationPopup, type Operation } from "@/operation";
 import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
-import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
+import { cartesAMontrer, useCarteChoisie } from "@/carte-choisie";
 import {
   carteEnPause, FicheTerminalHorsLigne, PastilleHorsLigne, silenceDepuis,
 } from "@/terminal-hors-ligne";
-import { toucherChoix } from "@/toucher";
+import { PucesCartes } from "@/puces-cartes";
 import {
-  ECART_PUCES, ECART_ROND, HAUTEUR_ETAT, HAUTEUR_PUCE, LIGNE_ROND, LIGNES_MOUVEMENTS,
+  ECART_ROND, HAUTEUR_ETAT, LIGNE_ROND, LIGNES_MOUVEMENTS,
   LIGNES_MOUVEMENTS_LARGE, NOM_ROND, ROND,
 } from "@/mesures-accueil";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
@@ -128,9 +127,10 @@ export default function Accueil() {
     void Coffre.ecrire(CLE_NOMBRE_CARTES, String(cartes.length)).catch(() => {});
   }, [donnees, cartes.length]);
 
-  const operationDe = (cle: string, titre: string, champs: Operation["champs"]): Operation => {
+  const operationDe = (cle: string, titre: string, icone: NomIcone,
+                       champs: Operation["champs"]): Operation => {
     const et = active ? etapesGeste(active.operateur, cle, raccourcis[active.operateur] ?? []) : [];
-    return { titre, code: et[0] ?? "", etapes: et, champs,
+    return { titre, icone, code: et[0] ?? "", etapes: et, champs,
              carte: active?.iccid, terminal: donnees?.terminal?.id ?? null,
              carteLibelle: active?.libelle, operateur: active?.operateur,
              recents: aQui(donnees?.beneficiaires,
@@ -140,24 +140,28 @@ export default function Accueil() {
   // LES GESTES D'ARGENT. Un geste dont on ne connaît pas le code ne
   // s'affiche PAS : un bouton qui composerait au hasard vaut moins que pas
   // de bouton du tout.
+  // UN NOM PAR GESTE, le même partout : « Dépôt · Retrait · Transfert », sur
+  // le rond, dans Opérations, et en tête du parcours qu'il ouvre. L'accueil
+  // disait « Retrait » sur le rond et « Retrait d'argent » en tête, l'anglais
+  // « Withdraw » ici et « Withdrawal » là.
   type Geste = { libelle: string; aide: string; icone: NomIcone; fabrique: () => Operation };
   const tous: Geste[] = active == null ? [] : [
-    { libelle: t.depot, aide: tg.depotSous, icone: "ArrowDown",
-      fabrique: () => operationDe("depot", t.depotTitre, [
+    { libelle: tg.depot, aide: tg.depotSous, icone: "ArrowDown",
+      fabrique: () => operationDe("depot", tg.depot, "ArrowDown", [
         { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { libelle: t.rondRetrait, aide: tg.retraitSous, icone: "Billet",
-      fabrique: () => operationDe("retrait", t.retraitTitre, [
+    { libelle: tg.retrait, aide: tg.retraitSous, icone: "Billet",
+      fabrique: () => operationDe("retrait", tg.retrait, "Billet", [
         { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { libelle: t.transfert, aide: tg.transfertSous, icone: "ArrowUp",
-      fabrique: () => operationDe("transfert", t.transfertTitre, [
+    { libelle: tg.transfert, aide: tg.transfertSous, icone: "ArrowUp",
+      fabrique: () => operationDe("transfert", tg.transfert, "ArrowUp", [
         { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" }]) },
   ];
   const gestes = tous.filter((g) => g.fabrique().code);
-  const actualiser = active && operationDe("solde", t.consulterSolde, []).code
-    ? () => setOperation(operationDe("solde", t.consulterSolde, [])) : null;
+  const actualiser = active && operationDe("solde", tg.monSolde, "Refresh", []).code
+    ? () => setOperation(operationDe("solde", tg.monSolde, "Refresh", [])) : null;
 
   // L'ARGENT QUI VIENT DE BOUGER — toutes cartes, et rien d'autre : ni les
   // consultations de solde, ni les échecs, ni les codes, ni les publicités.
@@ -188,8 +192,8 @@ export default function Accueil() {
     <Entree delai={60}>
       <View>
         {cartes.length > 1 ? (
-          <PucesCartes cartes={cartes} active={active.iccid} deux={deux}
-                       marge={ecran.marge} t={t} />
+          <PucesCartes cartes={cartes} active={active.iccid} pleine={deux}
+                       marge={ecran.marge} langue={langue} />
         ) : null}
         <Caisse carte={active} langue={langue} soldeCache={soldeCache}
                 onBasculerSolde={basculerSolde} signalFige={seTait} />
@@ -398,109 +402,6 @@ export default function Accueil() {
                               operateur: active.operateur, libelle: active.libelle }} />
       ) : null}
     </SafeAreaView>
-  );
-}
-
-/**
- * LES CARTES, EN PUCES, SUR UNE LIGNE. Elles passaient sur deux lignes avec
- * quatre cartes ; un logo et les quatre chiffres suffisent à les distinguer
- * — le nom long est sur la carte elle-même. Au-delà de la largeur, la
- * rangée défile, et ramène la carte choisie en vue : sinon la carte
- * affichée n'aurait aucune puce allumée visible.
- */
-function PucesCartes({ cartes, active, deux, marge, t }: {
-  cartes: Sim[]; active: string; deux: boolean; marge: number; t: T;
-}) {
-  const rangee = useRef<ScrollView>(null);
-  // TROIS MESURES, DANS N'IMPORTE QUEL ORDRE : la largeur de la rangée, la
-  // place de chaque puce, et le choix — qui, retenu d'une ouverture à
-  // l'autre, arrive avec les données, APRÈS une rangée déjà mesurée. La
-  // première version ne regardait qu'au changement de choix ou de largeur :
-  // la puce choisie venait d'apparaître, pas encore mesurée, et plus rien ne
-  // la ramenait — elle restait hors de l'écran, selon l'ordre d'arrivée.
-  // Chacune des trois mesures redemande donc, et seule la dernière agit.
-  const places = useRef(new Map<string, { x: number; w: number }>());
-  const largeur = useRef(0);
-  const decalage = useRef(0);
-  const bord = deux ? 0 : marge;
-  const amener = useRef(() => {});
-  amener.current = () => {
-    const p = places.current.get(active);
-    const l = largeur.current;
-    if (!p || !l) return;
-    const gauche = p.x - decalage.current;
-    // Déjà en vue : on ne bouge rien sous le doigt.
-    if (gauche >= bord - 1 && gauche + p.w <= l - bord + 1) return;
-    const x = gauche + p.w > l - bord ? p.x + p.w - l + bord : p.x - bord;
-    rangee.current?.scrollTo({ x: Math.max(0, x), animated: true });
-  };
-  useEffect(() => amener.current(), [active, bord]);
-
-  return (
-    <Defilement
-      ref={rangee}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentInsetAdjustmentBehavior="never"
-      onLayout={(e) => { largeur.current = e.nativeEvent.layout.width; amener.current(); }}
-      onScroll={(e) => { decalage.current = e.nativeEvent.contentOffset.x; }}
-      scrollEventThrottle={32}
-      style={{ marginHorizontal: deux ? 0 : -marge, flexGrow: 0,
-               marginBottom: espaces.md }}
-      contentContainerStyle={{ paddingHorizontal: deux ? 0 : marge, gap: ECART_PUCES,
-                               alignItems: "center" }}
-    >
-      {cartes.map((c) => (
-        <View key={c.iccid}
-              onLayout={(e) => {
-                places.current.set(c.iccid,
-                  { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width });
-                if (c.iccid === active) amener.current();
-              }}>
-          <PuceCarte carte={c} actif={c.iccid === active} t={t} />
-        </View>
-      ))}
-    </Defilement>
-  );
-}
-
-/** Une puce : le logo de l'opérateur, et la fin du libellé (« 8901 »). */
-function PuceCarte({ carte, actif, t }: { carte: Sim; actif: boolean; t: T }) {
-  const appui = useAppui();
-  const reconnu = operateurReconnu(carte.operateur);
-  const fin = /·\s*(\S+)$/.exec(carte.libelle)?.[1];
-  return (
-    <Animated.View style={appui.style}>
-      {/* Toucher la puce DÉJÀ allumée retient aussi le choix : sans cela,
-          la carte montrée par défaut n'était jamais retenue, et changeait
-          avec l'ordre de la plateforme. */}
-      <Pressable onPress={() => { choisirCarte(carte.iccid); if (!actif) toucherChoix(); }}
-                 {...appui}
-                 accessibilityRole="button"
-                 // `aria-selected` EN PLUS : react-native-web ignore
-                 // `accessibilityState`, et la puce choisie ne se disait
-                 // « choisie » à personne dans l'aperçu web.
-                 accessibilityState={{ selected: actif }} aria-selected={actif}
-                 accessibilityLabel={t.choisirCarte(carte.libelle)}
-                 hitSlop={{ top: 4, bottom: 4 }}
-                 style={{
-                   height: HAUTEUR_PUCE,
-                   flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                   paddingHorizontal: espaces.sm + 2,
-                   borderRadius: rayons.bouton,
-                   // Le trait dans les DEUX états : sans lui d'un côté, la
-                   // puce choisie changeait de taille de deux points.
-                   borderWidth: 1, borderColor: actif ? couleurs.accent : couleurs.trait,
-                   backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
-                 }}>
-        {reconnu ? <LogoOperateur operateur={carte.operateur} taille={14} /> : null}
-        <Texte taille={textes.petit} poids={actif ? "demi" : "moyen"} chiffresAlignes
-               ton={actif ? "normal" : "doux"}
-               style={actif ? { color: couleurs.surfaceHaute } : undefined}>
-          {reconnu && fin ? fin : carte.libelle}
-        </Texte>
-      </Pressable>
-    </Animated.View>
   );
 }
 

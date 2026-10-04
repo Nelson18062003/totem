@@ -81,6 +81,8 @@ cd mobile && node scripts/verifier-l-affichage.mjs /tmp/apercu # tout, partout
 #   (chaque écran, quatorze tailles ; même export — voir l'en-tête du script)
 cd mobile && node scripts/verifier-les-dates.mjs /tmp/apercu # le filtre par date
 #   (même export ; sème la caisse s'il la trouve trop maigre)
+cd mobile && node scripts/verifier-les-transitions.mjs /tmp/apercu # le passage se voit
+#   (même export ; image par image, la barre aussi, puis « Réduire les animations »)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -961,6 +963,76 @@ la personne. La puce s'attribue d'après le CODE DE COMPTE
 (`web/lib/code-de-compte.ts`), montré seulement au titulaire, joint à sa
 puce, recopié par le propriétaire — et la route refuse sans lui
 (`verifier-les-comptes`, témoin compris).
+
+**Un geste d'argent ne pèse pas comme un outil.** L'onglet Opérations
+alignait neuf rangées identiques — même rond, même chevron, une phrase sous
+chacune : « Dépôt » avait le poids de « Mon numéro », et le propriétaire le
+trouvait « éclaté, mal organisé ». Il est rangé en trois étages : les trois
+gestes d'argent en tuiles pleines, « Consulter » en demi-tuiles, « Outils » en
+lignes discrètes. Les phrases ne sont pas perdues : l'aide vocale les dit
+encore. Le cadran USSD ne relistait plus que « *126# » quatre fois : il écrit
+le TRAJET entier de chaque raccourci (`trajet`, noyau).
+
+**Un objet, un nom — et c'est un test qui le dit, pas ce paragraphe.** Une
+première version l'annonçait ici alors que « Withdrawal » restait aux
+Réglages → Codes (là où mène le cadran) et sur l'accueil du site, « Money
+withdrawal » en tête du parcours sur le site, et que le même solde
+s'appelait « Consulter le solde » ou « Mon solde » selon l'écran d'où l'on
+partait. `noyau/tests/gestes.test.ts` compare maintenant, langue par langue,
+le guichet, l'accueil, les Réglages des codes et le cadran, avec l'état
+d'avant pour témoin. Une seule exception, écrite dans le test : la nature
+d'un SMS dit « Withdrawal » — un relevé nomme l'opération faite, un bouton le
+geste à faire.
+
+**Une transition se lit dans le code et ne prouve rien.** Le propriétaire :
+« il n'y a pas de transition, rien ». `verifier-les-transitions` regarde
+l'écran IMAGE PAR IMAGE sur les trajets qu'il a nommés (Accueil → Comptes →
+SMS → Opérations, et retour) et exige une image intermédiaire, le bon sens
+d'arrivée, aucune image où les deux écrans dépassent 0,2 d'opacité, moins de
+300 ms — et, avec « Réduire les animations », rien qui glisse. Sa première
+version demandait « jamais les deux au-dessus de 0,5 » : un fondu enchaîné,
+dont les opacités font 1 à elles deux, ne pouvait PAS échouer — et le mode
+réduit en était un, deux écrans mêlés à 0,65 et 0,35. **Une exigence sans
+témoin qui la fasse échouer n'exige rien** : la sonde mesure maintenant un
+fondu enchaîné fabriqué, et doit le prendre.
+
+**La barre se regarde aussi, image par image.** Le nom de l'onglet visé
+passait au blanc dès l'appui ; la pastille sombre arrivait 240 ms plus tard :
+« Opérations » blanc sur la barre blanche, invisible, à CHAQUE changement
+d'onglet — la mini-animation que le propriétaire voit le plus souvent. Le
+harnais ne regardait que les écrans. La couleur suit maintenant la pastille
+(deux couches par onglet), et le harnais calcule le contraste du nom sur ce
+qui est dessous, à chaque image.
+
+**Une première impression se mesure à froid.** Le harnais ouvrait chaque
+onglet une fois « pour qu'il existe », puis mesurait : 216 ms. La seule
+ouverture où Opérations jouait sa cascade d'entrée — 120 ms de délai, 260 de
+montée, PAR-DESSUS le glissement : 355 à 410 ms — n'était jamais mesurée. Il
+la mesure d'abord, sur une connexion neuve ; la cascade est retirée, le
+glissement suffit.
+
+**Ce que le web montre bien peut détruire sur le téléphone.** Dès qu'une
+transition est demandée, l'aperçu web laisse l'écran quitté AFFICHÉ, à
+opacité nulle, sous l'écran actif (la valeur animée qui devait le retirer
+n'y est jamais relue) : `SceneDOnglet` le retire. La première version le
+faisait par `display: none`, partout. Sur iPhone (nouvelle architecture),
+`display: none` fait SAUTER la vue au montage : la liste des SMS, sa
+position, la roue — détruites trois cents millisecondes après chaque départ,
+refaites au retour. Aucun harnais du navigateur ne pouvait le voir : sur le
+web, `display: none` garde tout. La règle vit dans `src/scene-onglet.ts`,
+web seulement, et `verifier-la-roue` l'exécute pour chaque plateforme, avec
+l'ancienne règle pour témoin. Et la vérification du retrait a d'abord menti
+elle-même : elle cherchait le titre parmi les `div` alors qu'il est rendu en
+`<h1>` — introuvable, l'écran passait pour « retiré ». **Introuvable n'est
+jamais « absent »** : c'est un échec.
+
+**Un texte d'exemple se coupe sans un mot.** Le cadran disait « Tapez un
+code, ex. *126# » dans un champ de 134 points sur un écran de 320 : on lisait
+« Type a code, e.g. * » — c'était le code, la seule chose utile, qui
+disparaissait, et à 360 points en français aussi. Aucun harnais ne le
+voyait : un texte d'exemple n'est pas un élément, il ne déborde de rien.
+`verifier-l-affichage` mesure maintenant chaque texte d'exemple contre la
+place du champ, dans les DEUX langues.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

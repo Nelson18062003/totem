@@ -289,6 +289,22 @@ try {
   await sonder("le filtre « Type »",
                page.getByRole("button", { name: /^(Filter by kind|Filtrer par type) : / }).first());
 
+  // ── L'ONGLET OPÉRATIONS ──────────────────────────────────────────────
+  // Les gestes d'argent y sont des TUILES (et les consultations des
+  // demi-tuiles) depuis que l'écran a été rangé : de nouveaux boutons, qui
+  // doivent répondre sous le doigt comme les anciens. On vise le bouton
+  // VISIBLE : l'accueil quitté reste dans le document, retiré.
+  console.log("\nL'onglet Opérations :");
+  await page.getByRole("tab", { name: /^(Operations|Opérations)$/ }).first().click();
+  await attendre(1500);
+  await sonder("la tuile « Dépôt »",
+               page.getByRole("button", { name: /^(Deposit|Dépôt)$/ }).locator("visible=true").first());
+  await sonder("la demi-tuile « Mon solde »",
+               page.getByRole("button", { name: /^(My balance|Mon solde)$/ }).locator("visible=true").first());
+  await sonder("la ligne « Code USSD »",
+               page.getByRole("button").filter({ hasText: /^(USSD code|Code USSD)/ })
+                 .locator("visible=true").first());
+
   // ── CE QU'UNE AIDE TECHNIQUE ENTEND ─────────────────────────────────
   //
   // L'autre moitié de la même promesse : un bouton doit se faire
