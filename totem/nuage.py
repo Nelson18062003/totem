@@ -786,15 +786,31 @@ class Nuage:
         cartes confiées qui échoue laisse les téléphones des comptes muets
         pour ce SMS, et ceux du propriétaire sonnent comme toujours.
 
+        LE TRI PAR COMPTE SE FAIT DANS LA REQUÊTE, pas après. TOTEM est une
+        application grand public : chaque inscrit inscrit son téléphone à
+        l'ouverture, avec ou sans carte. Le robot lisait les cent téléphones
+        vus le plus récemment sur TOUTE la plateforme, PUIS gardait ceux qui
+        entendent la carte : dès cent inscrits plus récents, le téléphone du
+        titulaire sortait de la fenêtre, et plus aucun SMS d'argent ne le
+        faisait sonner — sans un mot. On demande donc d'abord QUI entend la
+        carte (le propriétaire, et les comptes à qui elle est attribuée),
+        puis les seuls téléphones de ces comptes et ceux sans compte. La
+        limite s'applique ensuite, sur cette liste-là.
+
         On ne remonte que les jetons — rien d'autre n'est utile ici.
         """
         if not self.actif:
             return []
         try:
+            admis = self._comptes_qui_entendent(iccid)
+            qui = "utilisateur.is.null"
+            if admis:
+                liste = ",".join(str(i) for i in sorted(admis))
+                qui += f",utilisateur.in.({liste})"
             try:
                 lignes = self._lire(
-                    "appareils?select=jeton,utilisateur&order=vu_le.desc"
-                    f"&limit={PAR_ENVOI * 5}")
+                    f"appareils?select=jeton,utilisateur&or=({qui})"
+                    f"&order=vu_le.desc&limit={PAR_ENVOI * 5}")
             except urllib.error.HTTPError as e:
                 # Base pas encore migrée : pas de colonne « utilisateur ».
                 # Tous les téléphones sont alors ceux du propriétaire — la
@@ -819,38 +835,45 @@ class Nuage:
                 lignes = self._lire("appareils?select=jeton&order=vu_le.desc"
                                     f"&limit={PAR_ENVOI}")
             self.derniere_erreur = None
-            lignes = [l for l in lignes
-                      if isinstance(l.get("jeton"), str) and l["jeton"]]
-            admis = self._comptes_qui_entendent(
-                {l["utilisateur"] for l in lignes
-                 if isinstance(l.get("utilisateur"), int)}, iccid)
+            # Revérifié ici, ligne par ligne : ce que la base a filtré, on le
+            # refiltre — un téléphone ne sonne pas parce qu'un service
+            # distant aurait ignoré un filtre.
             return [l["jeton"] for l in lignes
-                    if l.get("utilisateur") is None
-                    or l.get("utilisateur") in admis][:PAR_ENVOI]
+                    if isinstance(l.get("jeton"), str) and l["jeton"]
+                    and (l.get("utilisateur") is None
+                         or l.get("utilisateur") in admis)][:PAR_ENVOI]
         except Exception as e:
             self.derniere_erreur = str(e)
             if lever:
                 raise
             return []
 
-    def _comptes_qui_entendent(self, ids, iccid):
-        """Parmi ces comptes, ceux qui doivent entendre un SMS de `iccid`."""
-        if not ids:
-            return set()
+    def _comptes_qui_entendent(self, iccid):
+        """Les comptes OUVERTS qui doivent entendre un SMS de `iccid` : le
+        propriétaire, et ceux à qui la carte est attribuée.
+
+        Dans le doute — une lecture qui échoue —, personne : seuls les
+        téléphones sans compte (ceux du propriétaire d'avant les comptes)
+        sonnent alors pour ce SMS."""
         try:
-            liste = ",".join(str(i) for i in sorted(ids))
-            comptes = self._lire(
-                f"utilisateurs?select=id,role,approuve&id=in.({liste})")
-            ouverts = {c["id"]: c.get("role") for c in comptes
-                       if c.get("approuve") is True}
-            admis = {i for i, role in ouverts.items() if role == "proprietaire"}
+            admis = {c["id"] for c in self._lire(
+                         "utilisateurs?select=id,role,approuve"
+                         "&role=eq.proprietaire&approuve=is.true")
+                     if c.get("role") == "proprietaire"
+                     and c.get("approuve") is True
+                     and isinstance(c.get("id"), int)}
             carte = re.sub(r"[^A-Za-z0-9]", "", str(iccid or ""))
             if carte:
-                confiees = self._lire(
-                    f"attributions?select=utilisateur&iccid=eq.{carte}"
-                    f"&utilisateur=in.({liste})")
-                admis |= {a["utilisateur"] for a in confiees
-                          if a.get("utilisateur") in ouverts}
+                confiees = {a["utilisateur"] for a in self._lire(
+                                f"attributions?select=utilisateur&iccid=eq.{carte}")
+                            if isinstance(a.get("utilisateur"), int)}
+                if confiees:
+                    liste = ",".join(str(i) for i in sorted(confiees))
+                    admis |= {c["id"] for c in self._lire(
+                                  "utilisateurs?select=id,role,approuve"
+                                  f"&id=in.({liste})")
+                              if c.get("approuve") is True
+                              and c.get("id") in confiees}
             return admis
         except Exception:
             return set()

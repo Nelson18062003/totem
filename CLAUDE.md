@@ -124,10 +124,13 @@ d'effacer dans le modem, donc un SMS peut être relu au redémarrage : il doit
 315 000 F.
 
 `verifier-les-comptes` déroule la vie entière d'un compte contre un vrai
-serveur : la première inscription (celle du propriétaire), une deuxième qui
-doit attendre, l'approbation, la fermeture, la clé de secours. Il cherche
-surtout à prendre en défaut — un compte non approuvé qui entrerait, un invité
-qui administrerait, un message qui dirait si un courriel a un compte ici.
+serveur : la première inscription (celle du propriétaire), puis les
+inscriptions PUBLIQUES — TOTEM est grand public : n'importe qui crée son
+compte et entre tout de suite, mais ne voit RIEN de la maison tant qu'aucune
+carte ne lui est attribuée, et une carte ne s'attribue qu'avec son code de
+compte. Puis la fermeture, la suppression de son propre compte, la clé de
+secours. Il cherche surtout à prendre en défaut — un inscrit qui verrait une
+carte, un terminal ou le journal d'un autre, un invité qui administrerait.
 
 Il lance aussi TROIS inscriptions ENSEMBLE sur une plateforme neuve. Elles
 donnaient trois propriétaires : la plateforme comptait les comptes, voyait
@@ -883,6 +886,45 @@ d'`app.json` part tel quel dans le `Info.plist` de l'application. La
 convention `"//quelquechose"` du dépôt ne vaut qu'au niveau d'Expo, qui ignore
 ce qu'il ne connaît pas — écrite un cran trop bas, elle embarque de la prose
 française dans le paquet installé. Vu au prébuild, pas deviné.
+
+**Ce qu'on écrit à Apple décide de ce qu'est l'application.** Apple a mis la
+1.1.0 en attente (« 2.1 – Information Needed ») et rappelait la règle 3.2 :
+une application faite pour UNE entreprise n'a pas sa place sur l'App Store
+public. La réponse préparée disait justement cela — « outil privé », « le
+propriétaire et ses vendeurs », « agents », « distribution non répertoriée
+demandée » : elle aurait fait refuser l'application, sur un cadrage que
+personne n'avait décidé, recopié de fiche en fiche jusqu'à passer pour un
+fait. **La décision du
+propriétaire : TOTEM est GRAND PUBLIC** — n'importe qui crée son compte dans
+l'application, le compte s'ouvre tout de suite, TOTEM y rattache sa carte, et
+le compte se supprime dans les Réglages. Ni outil privé, ni application
+financière. Une donnée de cadrage mal posée se propage comme une donnée
+d'essai trop sage : textes des magasins, note à l'examinateur, formulaires
+de confidentialité, écrans. Elle se corrige partout à la fois
+(`docs/APPLE-REPONSE-2.1.md`, `docs/APP-STORE.md`, `docs/PLAY-STORE.md`,
+`mobile/store.config.js`), et rien n'y est écrit qui ne soit vrai dans le
+code.
+
+**Ouvrir la porte à tous change ce que chaque écran montre.** Les écrans
+avaient été pensés pour UNE maison : le propriétaire et ses vendeurs. Avec
+l'inscription publique, un compte neuf sans carte lisait encore « Ce qui
+s'est passé » (les boîtiers de tous les clients, leurs pannes), recevait le
+nom et la santé du DERNIER boîtier entendu dans toute la flotte, le carnet des
+raccourcis du propriétaire — et le robot lisait les cent téléphones vus le
+plus récemment sur TOUTE la plateforme avant de garder ceux qui entendent la
+carte : cent inscrits suffisaient à faire taire le titulaire. Chaque lecture
+« de la maison » se demande maintenant : « de QUELLE maison ? » —
+`/journal` est réservé à qui administre, le terminal montré est celui qui
+porte SES cartes, et le tri des téléphones se fait dans la requête
+(`tests/test_notification.py`, avec son témoin).
+
+**Une adresse e-mail tapée n'est la preuve de rien.** Le compte s'ouvre
+tout de suite et rien ne vérifie l'adresse : attribuer une puce « au compte
+de telle adresse », c'était la donner à quiconque avait créé ce compte AVANT
+la personne. La puce s'attribue d'après le CODE DE COMPTE
+(`web/lib/code-de-compte.ts`), montré seulement au titulaire, joint à sa
+puce, recopié par le propriétaire — et la route refuse sans lui
+(`verifier-les-comptes`, témoin compris).
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

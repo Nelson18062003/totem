@@ -14,7 +14,8 @@
 // reçu sortait du bouton, poussée par un libellé trop long. Aucun des deux
 // n'était dans la boîte de réception.
 //
-// Il ouvre donc TOUT : l'écran de connexion, les quatre onglets, les écrans
+// Il ouvre donc TOUT : l'écran de connexion et celui de l'inscription,
+// « Ajouter ma carte » d'un compte qui vient de naître, les quatre onglets, les écrans
 // des réglages, la fiche d'un SMS, et une opération jusqu'au pavé du code —
 // avec un message d'opérateur aussi long qu'un vrai écran USSD (182
 // caractères au plus ; le faux nuage en sert 177).
@@ -334,6 +335,37 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     process.exit(1);
   }
   await mesurer("connexion");
+
+  // 1 bis. CRÉER UN COMPTE — la porte de quiconque télécharge TOTEM. Six
+  // champs les uns sous les autres, l'œil du mot de passe, et le bouton :
+  // le plus long formulaire de l'application, sur l'écran le plus étroit.
+  // Rien ne part : on mesure, puis on revient à la connexion. L'application
+  // d'avant n'avait pas cette porte — elle échoue ici, et c'est son témoin.
+  {
+    const creer = page.getByText(/^(Create an account|Créer un compte)$/);
+    if (!(await creer.count())) {
+      defauts++;
+      resume.push(`  ✗ ${format.padEnd(18)} ${"inscription".padEnd(16)} aucune porte « Créer un compte »`);
+    } else {
+      await creer.last().click();
+      try {
+        await attendreTexte(page, /(Create my account|Créer mon compte)/);
+        // Les six champs : prénom, nom, adresse, e-mail, téléphone, mot de passe.
+        const champs = await page.locator("input:not([readonly])").count();
+        if (champs < 6) {
+          defauts++;
+          resume.push(`  ✗ ${format.padEnd(18)} ${"inscription".padEnd(16)} ${champs} champs au lieu de six`);
+        }
+        await mesurer("inscription");
+      } catch {
+        defauts++;
+        resume.push(`  ✗ ${format.padEnd(18)} ${"inscription".padEnd(16)} le formulaire ne s'ouvre pas`);
+      }
+      await page.getByText(/^(I already have an account|J’ai déjà un compte)$/).last().click();
+      await courriel.waitFor({ state: "visible", timeout: 20000 });
+    }
+  }
+
   await courriel.fill(COURRIEL);
   await page.locator('input[type="password"]').fill(MOTDEPASSE);
   await page.getByText(/^(Sign in|Se connecter)$/).last().click();
@@ -462,6 +494,39 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   await mesurer("accueil-4-cartes");
   await page.unroute("**/api/donnees**");
   await page.evaluate(() => localStorage.removeItem("totem.carte.choisie"));
+
+  // 2 ter. UN COMPTE QUI VIENT DE NAÎTRE : aucune carte, aucun boîtier. La
+  // plateforme répond ce qu'elle répond à un nouvel inscrit — `proprietaire`
+  // faux, rien dans les listes. L'accueil doit montrer « Ajouter ma carte »
+  // (les deux façons, l'aide, le contact), pas « hors ligne » ni « aucune
+  // carte dans le terminal » ; les autres onglets, le chemin vers lui.
+  await page.route("**/api/donnees**", async (route) => {
+    await route.fulfill({ status: 200, json: {
+      courriel: "awa@exemple.cm", proprietaire: false, relie: true, terminal: null,
+      sims: [], paiements: [], raccourcis: {}, beneficiaires: [],
+      fuseau: "Africa/Douala", serveurA: new Date().toISOString(),
+    } });
+  });
+  for (const [ecran, chemin] of [
+    ["sans-carte", "/"], ["sans-carte-ops", "/actions"], ["sans-carte-cpt", "/cartes"],
+  ]) {
+    await page.goto(`${APERCU}${chemin}`, { waitUntil: "networkidle" });
+    try {
+      await attendreTexte(page, /(Add my card|Ajouter ma carte)/);
+      const faux = await page.evaluate(() =>
+        /(Terminal (silent|muet|offline|hors ligne)|No card in the terminal|Aucune carte dans le terminal)/
+          .test(document.body.innerText));
+      if (faux) {
+        defauts++;
+        resume.push(`  ✗ ${format.padEnd(18)} ${ecran.padEnd(16)} un compte neuf se voit dire « hors ligne » ou « terminal »`);
+      }
+      await mesurer(ecran);
+    } catch {
+      defauts++;
+      resume.push(`  ✗ ${format.padEnd(18)} ${ecran.padEnd(16)} « Ajouter ma carte » n'apparaît pas`);
+    }
+  }
+  await page.unroute("**/api/donnees**");
 
   // 3. La fiche d'un SMS — avec son pied (le reçu).
   await page.goto(`${APERCU}/encaissements`, { waitUntil: "networkidle" });

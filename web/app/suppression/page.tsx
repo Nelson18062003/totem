@@ -4,6 +4,7 @@ import { textesSuppression } from "@noyau/textes/suppression";
 import { langueServeur } from "@/lib/langue-serveur";
 import { courrielDeContact } from "@/lib/contact";
 import { Symbole } from "../marque";
+import { FormulaireDeSuppression } from "./formulaire";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,8 @@ export const metadata: Metadata = {
  * La marche à suivre pour faire supprimer son compte et ses données.
  *
  * PUBLIQUE, et pour la même raison que la politique de confidentialité :
- * Google Play réclame une adresse ouverte, qu'un examinateur ouvre sans
- * compte depuis un formulaire. Le formulaire « Sécurité des données » refuse
+ * l'App Store et Google Play réclament une adresse ouverte, qu'un
+ * examinateur ouvre sans compte depuis un formulaire. Le formulaire « Sécurité des données » refuse
  * le lien si la page ne nomme pas l'application, ne décrit pas la marche à
  * suivre, ou ne dit pas ce qui est effacé et ce qui est gardé.
  *
@@ -46,6 +47,10 @@ export default async function Suppression() {
           <p className="mt-3">{t.commentNote}</p>
         </Bloc>
 
+        <Bloc titre={t.formulaireTitre}>
+          <FormulaireDeSuppression t={t} langue={langue} />
+        </Bloc>
+
         <Bloc titre={t.effaceTitre}>
           <Liste entrees={t.efface} />
           <p className="mt-3">{t.effaceNote}</p>
@@ -53,7 +58,7 @@ export default async function Suppression() {
 
         <Bloc titre={t.gardeTitre}>
           <Liste entrees={t.garde} />
-          <p className="mt-3">{t.gardeNote}</p>
+          {t.gardeNote && <p className="mt-3">{t.gardeNote}</p>}
         </Bloc>
 
         <Bloc titre={t.contactTitre}>

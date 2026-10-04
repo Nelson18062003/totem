@@ -194,8 +194,55 @@ refuser "deux comptes pour le même courriel" \
   "insert into utilisateurs(courriel, empreinte, role, approuve)
      values ('proprio@essai.cm', 'x', 'invite', true);"
 
+# L'INSCRIPTION PUBLIQUE. N'importe qui crée son compte : c'est exactement
+# ce qu'on écrirait pour s'emparer de la maison. Une inscription publique
+# arrive « invite » ; la plateforme ne pose jamais « proprietaire » qu'au
+# tout premier compte — et si deux inscriptions courent sur une plateforme
+# neuve, c'est l'index qui tranche. On l'essaie ici avec un compte COMPLET,
+# tel que l'application l'envoie.
+refuser "une inscription publique complète qui se dit propriétaire" \
+  "insert into utilisateurs(courriel, empreinte, role, approuve,
+                            prenom, nom, adresse, telephone)
+     values ('public@essai.cm', 'x', 'proprietaire', true,
+             'Awa', 'Ngono', 'Bonapriso, Douala', '+237677123456');"
+refuser "un téléphone qui n'en est pas un (lettres)" \
+  "insert into utilisateurs(courriel, empreinte, telephone)
+     values ('tel1@essai.cm', 'x', '06-ABC-12');"
+refuser "un téléphone trop long pour exister (16 chiffres)" \
+  "insert into utilisateurs(courriel, empreinte, telephone)
+     values ('tel2@essai.cm', 'x', '+1234567890123456');"
+refuser "une adresse faite d'espaces" \
+  "insert into utilisateurs(courriel, empreinte, adresse)
+     values ('adr1@essai.cm', 'x', '     ');"
+refuser "une adresse de 201 caractères" \
+  "insert into utilisateurs(courriel, empreinte, adresse)
+     values ('adr2@essai.cm', 'x', repeat('a', 201));"
+refuser "un prénom de 81 caractères" \
+  "insert into utilisateurs(courriel, empreinte, prenom)
+     values ('nom1@essai.cm', 'x', repeat('a', 81));"
+
 echo ""
 echo "Ce que la base doit ACCEPTER"
+
+accepter "une inscription publique complète, en invitée approuvée" \
+  "insert into utilisateurs(courriel, empreinte, role, approuve,
+                            prenom, nom, adresse, telephone)
+     values ('public@essai.cm', 'x', 'invite', true,
+             'Awa', 'Ngono', 'Bonapriso, Douala', '+237677123456');"
+accepter "un numéro sans indicatif (6 à 15 chiffres)" \
+  "update utilisateurs set telephone = '677123456' where courriel = 'public@essai.cm';"
+accepter "un compte d'avant, sans adresse ni téléphone" \
+  "insert into utilisateurs(courriel, empreinte) values ('ancien@essai.cm', 'x');"
+accepter "un compte public se supprime lui-même, et ses téléphones avec" \
+  "insert into appareils(jeton, plateforme, utilisateur)
+     select 'ExponentPushToken[public]', 'ios', id from utilisateurs
+      where courriel = 'public@essai.cm';
+   delete from utilisateurs where courriel = 'public@essai.cm';
+   do \$\$ begin
+     if exists (select 1 from appareils where jeton = 'ExponentPushToken[public]') then
+       raise exception 'restes';
+     end if;
+   end \$\$;"
 
 accepter "supprimer un invité" \
   "delete from utilisateurs where courriel = 'invite@essai.cm';"

@@ -56,59 +56,83 @@ const NOM_SUR_LE_MAGASIN = "TOTEM by Bonzinilabs";
 
 const CONFIDENTIALITE = "https://totemlabs.app/confidentialite";
 
-const descriptionFr = `Vos cartes SIM Mobile Money restent où elles sont. Vous, non.
+// LES DESCRIPTIONS — pour TOUT LE MONDE. TOTEM est une application grand
+// public (décision du propriétaire) : n'importe qui la télécharge, crée son
+// compte, et atteint ses comptes Mobile Money d'où qu'il soit. Une première
+// version parlait de « boutique », de « vendeurs », d'« agents » : elle
+// décrivait UNE entreprise, et la règle 3.2 d'Apple renvoie une application
+// d'entreprise vers d'autres distributions. Chaque ligne ci-dessous est une
+// chose que l'application fait vraiment, aujourd'hui.
 
-Qui tient une ligne Mobile Money connaît la manœuvre : *126#, attendre, taper 1, attendre, taper 4, se tromper, recommencer. Un menu à la fois, sur un petit écran, la carte SIM à la main.
+const descriptionFr = `Vos comptes Mobile Money, d'où que vous soyez.
 
-TOTEM remplace tout cela par une vraie interface. Vos cartes SIM sont dans un terminal que vous gardez — à la boutique, à la maison. Vous les atteignez depuis votre téléphone, d'où que vous soyez.
+Votre compte Mobile Money vit sur une carte SIM. Loin de chez vous, à l'étranger, sans réseau, ou simplement sans cette SIM dans votre téléphone, vous ne l'atteignez plus. TOTEM vous le rend.
+
+COMMENT ÇA MARCHE
+
+Votre carte SIM est placée dans un boîtier TOTEM, relié à Internet. L'application est l'écran de ce boîtier : vous y voyez vos cartes, et vous y faites ce que vous feriez sur le téléphone qui les porte, depuis n'importe où.
+
+COMMENCER
+
+• Créez votre compte dans l'application. Il s'ouvre tout de suite.
+• Ajoutez votre carte : envoyez votre puce à TOTEM, qui la place dans un boîtier, ou branchez votre propre boîtier TOTEM chez vous. Pas encore de compte Mobile Money ? TOTEM peut vous aider à en ouvrir un chez l'opérateur.
+• TOTEM rattache la carte à votre compte, et elle apparaît dans l'application. Vous ne voyez que vos cartes ; seule l'équipe TOTEM, qui fait fonctionner les boîtiers, y a accès.
 
 CE QUE VOUS POUVEZ FAIRE
 
 • Voir chaque carte d'un coup d'œil : son nom, son numéro, son solde.
-• Lancer un dépôt, un retrait, un transfert en répondant à une question par écran — numéro, montant — et voir le message de l'opérateur en entier avant de taper votre code.
-• Coller un numéro reçu par message : TOTEM le lit, et dit ce qui partira.
-• Lire chaque SMS de l'opérateur en entier, tel que la carte l'a reçu.
-• Garder un reçu PDF pour chaque opération, prêt à envoyer à un client.
-• Confier une carte à un vendeur : il ne voit et ne manie que celle-là.
-• Être prévenu dès que quelque chose se passe sur une carte.
+• Faire un dépôt, un retrait, un transfert, une question par écran — numéro, montant — et lire le message de l'opérateur en entier avant de taper votre code.
+• Lire chaque SMS de l'opérateur en entier, tel que la carte l'a reçu, et les retrouver par date.
+• Garder un reçu PDF de chaque opération, fabriqué par le boîtier, prêt à partager.
+• Être prévenu dès qu'un message arrive sur une carte.
 
 FAIT POUR UN RÉSEAU QUI TOMBE
 
-Sans réseau, l'application montre les chiffres du dernier passage, et dit qu'ils datent. Quand un message d'opérateur ne peut pas être lu avec certitude, TOTEM le dit plutôt que de deviner.
+Sans réseau, l'application montre les chiffres de votre dernier passage, et dit qu'ils datent. Quand un message d'opérateur ne peut pas être lu avec certitude, TOTEM le dit plutôt que de deviner.
 
-Votre code secret Mobile Money n'est jamais enregistré, jamais affiché, jamais conservé.
+Votre code secret Mobile Money ne sert qu'au moment de l'opération : il n'est jamais affiché, jamais gardé.
+
+Vous pouvez supprimer votre compte à tout moment, dans l'application : Réglages, puis Supprimer mon compte.
 
 CE QUE TOTEM N'EST PAS
 
-Ni un service de paiement, ni un portefeuille, ni une banque. Aucun argent n'y transite et il ne détient aucun fonds. C'est une interface sur des cartes SIM qui sont déjà les vôtres, pour la personne qui les possède.
+Ni une banque, ni un portefeuille, ni un service de paiement. TOTEM ne détient aucun argent et aucun argent n'y transite : vos opérations passent par le menu de votre opérateur, sur votre propre compte, comme sur votre téléphone.
 
 En français et en anglais.`;
 
-const descriptionEn = `Your Mobile Money SIM cards stay where they are. You do not.
+const descriptionEn = `Your Mobile Money accounts, wherever you are.
 
-Anyone who runs a Mobile Money line knows the drill: *126#, wait, press 1, wait, press 4, mistype, start over. One menu at a time, on a small screen, with the SIM card in your hand.
+Your Mobile Money account lives on a SIM card. Far from home, abroad, out of coverage, or simply without that SIM in your phone, you can no longer reach it. TOTEM gives it back to you.
 
-TOTEM replaces that with a proper interface. Your SIM cards sit in a terminal you keep — at the shop, at home. You reach them from your phone, from anywhere.
+HOW IT WORKS
+
+Your SIM card sits in a TOTEM box connected to the Internet. The app is the screen of that box: you see your cards there, and you do what you would do on the phone that holds them, from anywhere.
+
+GETTING STARTED
+
+• Create your account in the app. It opens right away.
+• Add your card: send your SIM card to TOTEM, which places it in a box, or plug in your own TOTEM box at home. No Mobile Money account yet? TOTEM can help you open one with the operator.
+• TOTEM links the card to your account, and it appears in the app. You see only your cards; only the TOTEM team, which runs the boxes, has access to them.
 
 WHAT YOU CAN DO
 
 • See every card at a glance: its name, its number, its balance.
-• Run a deposit, a withdrawal or a transfer by answering one question per screen — number, amount — and read the operator's full message before you type your code.
-• Paste a number you received in a message: TOTEM reads it and shows what will be sent.
-• Read every operator SMS in full, exactly as the card received it.
-• Keep a PDF receipt for each transaction, ready to send to a customer.
-• Entrust a card to a seller: they see and run that card only.
-• Get notified the moment something happens on a card.
+• Make a deposit, a withdrawal or a transfer, one question per screen — number, amount — and read the operator's full message before you type your code.
+• Read every operator SMS in full, exactly as the card received it, and find them by date.
+• Keep a PDF receipt for each operation, made by the box, ready to share.
+• Get notified as soon as a message reaches a card.
 
 BUILT FOR A NETWORK THAT DROPS
 
 Offline, the app shows the figures from your last visit and says how old they are. When an operator message cannot be read with certainty, TOTEM says so rather than guessing.
 
-Your Mobile Money PIN is never stored, never shown, never kept.
+Your Mobile Money PIN is used only at the moment of an operation: it is never shown, never kept.
+
+You can delete your account at any time, in the app: Settings, then Delete my account.
 
 WHAT TOTEM IS NOT
 
-It is not a payment service, a wallet, or a bank. No money moves through it and it holds no funds. It is an interface onto SIM cards you already own, for the person who owns them.
+It is not a bank, a wallet or a payment service. TOTEM holds no money and no money passes through it: your operations go through your operator's own menu, on your own account, just as on your phone.
 
 English and French.`;
 
@@ -129,26 +153,33 @@ module.exports = {
   configVersion: 0,
   apple: {
     ...(env("APPLE_COPYRIGHT") ? { copyright: env("APPLE_COPYRIGHT") } : {}),
-    categories: ["FINANCE", "BUSINESS"],
+    // UTILITAIRES D'ABORD. Le propriétaire : « on n'est pas une application
+    // financière », et TOTEM est l'écran d'un boîtier qui porte des cartes
+    // SIM. « BUSINESS » disait « outil d'entreprise » — le contraire d'une
+    // application grand public, et le motif 3.2 du premier arrêt : retiré.
+    // « FINANCE » reste en SECONDE place, parce que c'est vrai : on y voit
+    // des soldes et l'on y lance les opérations de l'opérateur. Le cacher
+    // serait déclarer faux. Choix à confirmer par le propriétaire.
+    categories: ["UTILITIES", "FINANCE"],
     info: {
       "fr-FR": {
         title: NOM_SUR_LE_MAGASIN,
-        subtitle: "Vos cartes Mobile Money",
+        subtitle: "Votre Mobile Money, partout",
         description: descriptionFr,
-        keywords: ["mobile money", "USSD", "SIM", "MoMo", "Orange Money", "MTN",
-                   "caisse", "dépôt", "transfert", "reçu"],
-        promoText: "Vos cartes SIM Mobile Money, d'où que vous soyez. Fini les codes USSD.",
+        keywords: ["mobile money", "MoMo", "Orange Money", "MTN", "USSD", "SIM",
+                   "solde", "transfert", "étranger", "diaspora"],
+        promoText: "Vos comptes Mobile Money, d'où que vous soyez dans le monde. Créez votre compte, ajoutez votre carte SIM, et retrouvez solde, SMS et opérations.",
         supportUrl: CONFIDENTIALITE,
         privacyPolicyUrl: CONFIDENTIALITE,
         screenshots: captures("fr-FR"),
       },
       "en-US": {
         title: NOM_SUR_LE_MAGASIN,
-        subtitle: "Your Mobile Money SIM cards",
+        subtitle: "Your Mobile Money, anywhere",
         description: descriptionEn,
-        keywords: ["mobile money", "USSD", "SIM", "MoMo", "Orange Money", "MTN",
-                   "agent", "deposit", "transfer", "receipt"],
-        promoText: "Your Mobile Money SIM cards, from anywhere. No more USSD menus.",
+        keywords: ["mobile money", "MoMo", "Orange Money", "MTN", "USSD", "SIM",
+                   "balance", "transfer", "abroad", "diaspora"],
+        promoText: "Your Mobile Money accounts, from anywhere in the world. Create your account, add your SIM card, and get your balance, SMS and operations back.",
         supportUrl: CONFIDENTIALITE,
         privacyPolicyUrl: CONFIDENTIALITE,
         screenshots: captures("en-US"),

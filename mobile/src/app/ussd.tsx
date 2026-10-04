@@ -41,6 +41,7 @@ import { carteEnPause, FicheTerminalHorsLigne, silenceDepuis } from "@/terminal-
 import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
+import { AjouterMaCarteCourt } from "@/ajouter-ma-carte";
 import { aDesVariables, codesUssd } from "@noyau/codes";
 import { textesUssd } from "@noyau/textes/ussd";
 import { textesAccueil } from "@noyau/textes/accueil";
@@ -159,6 +160,10 @@ export default function CadranUssd() {
               ))}
             </Carte>
           </>
+        ) : !carte && donnees?.proprietaire === false && !(donnees.sims ?? []).length ? (
+          // Un compte sans carte n'a pas de boîtier : ni « muet », ni
+          // « aucune carte dans le terminal » — le chemin pour en ajouter une.
+          <AjouterMaCarteCourt langue={langue} />
         ) : !carte && seTait ? (
           <BoitierMuet onPress={expliquer} />
         ) : !carte ? (
@@ -331,7 +336,8 @@ export default function CadranUssd() {
       {ficheTerminal ? (
         <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
                                 fuseau={fuseau} langue={langue} onReverifier={recharger}
-                                onFermer={() => setFicheTerminal(false)} />
+                                onFermer={() => setFicheTerminal(false)}
+                                chezTotem={donnees?.proprietaire === false} />
       ) : null}
     </SafeAreaView>
   );

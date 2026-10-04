@@ -863,7 +863,14 @@ const serveur = createServer(async (req, res) => {
     });
 
     if (req.method === "GET") {
-      const trouvees = vise();
+      // L'ORDRE ET LA LIMITE, comme la vraie base : la plateforme demande
+      // les plus récents d'abord, puis les remet dans l'ordre d'arrivée.
+      let trouvees = vise();
+      if ((url.searchParams.get("order") ?? "").startsWith("cree_le.desc")) {
+        trouvees = [...trouvees].reverse();
+      }
+      const limite = Number(url.searchParams.get("limit"));
+      if (Number.isInteger(limite) && limite > 0) trouvees = trouvees.slice(0, limite);
       // « prefer: count=exact » veut le total dans « content-range », et c'est
       // ce total que la plateforme lit pour savoir si un compte existe déjà.
       return repondre(trouvees, 200, {
@@ -892,10 +899,28 @@ const serveur = createServer(async (req, res) => {
           return repondre({ code: "23505", message: "duplicate key value violates "
             + "unique constraint \"utilisateurs_un_seul_proprietaire\"" }, 409);
         }
+        // LES BORNES DE L'INSCRIPTION PUBLIQUE — celles que la vraie base
+        // tient (migrations/20261004_inscription_publique.sql). Sans elles
+        // ici, un harnais ne pourrait pas voir la plateforme envoyer à la
+        // base ce que la base refuserait.
+        if (u.telephone != null && !/^\+?[0-9]{6,15}$/.test(String(u.telephone))) {
+          return repondre({ code: "23514", message: "utilisateurs_telephone_forme" }, 400);
+        }
+        if (u.adresse != null) {
+          const a = String(u.adresse).trim();
+          if (a.length < 1 || a.length > 200) {
+            return repondre({ code: "23514", message: "utilisateurs_adresse_forme" }, 400);
+          }
+        }
+        if ((u.prenom != null && String(u.prenom).length > 80)
+            || (u.nom != null && String(u.nom).length > 80)) {
+          return repondre({ code: "23514", message: "utilisateurs_nom_forme" }, 400);
+        }
         const ligne = {
           id: prochainCompte++, courriel: u.courriel, empreinte: u.empreinte,
           role: u.role ?? "invite", approuve: Boolean(u.approuve),
           prenom: u.prenom ?? null, nom: u.nom ?? null,
+          adresse: u.adresse ?? null, telephone: u.telephone ?? null,
           cree_le: maintenant(), vu_le: null,
         };
         utilisateurs.set(ligne.id, ligne);
@@ -932,6 +957,14 @@ const serveur = createServer(async (req, res) => {
         for (let k = attributions.length - 1; k >= 0; k--) {
           if (attributions[k].utilisateur === u.id) attributions.splice(k, 1);
         }
+        // …et ses téléphones aussi (« appareils_utilisateur_fk », on delete
+        // cascade). Sans cette ligne, la suppression de son compte laissait
+        // ses téléphones inscrits ici — et aucun harnais ne l'aurait vu.
+        for (const [jeton, a] of appareils) {
+          if (a.utilisateur != null && Number(a.utilisateur) === u.id) appareils.delete(jeton);
+        }
+        // « on delete set null » : ce qu'il a créé reste, sans son nom.
+        for (const b of beneficiaires) if (b.cree_par === u.id) b.cree_par = null;
       }
       return repondre([], 204);
     }

@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
 import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte, avecAppui } from "@/ui";
+import { AjouterMaCarteCourt } from "@/ajouter-ma-carte";
 import { Coordonnees } from "@/coordonnees";
 import { cartesAMontrer, choisirCarte, useCarteChoisie } from "@/carte-choisie";
 import {
@@ -84,7 +85,10 @@ export default function Actions() {
               où elle sera vraie qu'on l'ignorera. */}
           {erreur ? (
             <Accroc message={erreur} onReessayer={() => void recharger()} />
-          ) : attente ? null : (
+          ) : attente ? null : donnees?.proprietaire === false && !(donnees.sims ?? []).length ? (
+            // Un compte sans carte : le chemin vers « Ajouter ma carte ».
+            <AjouterMaCarteCourt langue={langue} />
+          ) : (
             <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm }}>
               <Texte poids="demi">{t.aucuneCarte}</Texte>
               <Texte ton="doux" taille={textes.petit} style={{ textAlign: "center", lineHeight: 20 }}>
@@ -276,7 +280,8 @@ export default function Actions() {
       {ficheTerminal ? (
         <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
                                 fuseau={fuseau} langue={langue} onReverifier={recharger}
-                                onFermer={() => setFicheTerminal(false)} />
+                                onFermer={() => setFicheTerminal(false)}
+                                chezTotem={donnees?.proprietaire === false} />
       ) : null}
     </SafeAreaView>
   );

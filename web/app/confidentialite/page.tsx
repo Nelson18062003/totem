@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "TOTEM — Privacy Policy",
-  // Un examinateur du Play Store arrive ici sans compte, depuis un lien
+  // Un examinateur des magasins arrive ici sans compte, depuis un lien
   // collé dans un formulaire. La page doit se suffire à elle-même.
   robots: { index: true, follow: true },
 };
@@ -17,10 +17,10 @@ export const metadata: Metadata = {
 /**
  * La politique de confidentialité.
  *
- * PUBLIQUE, et c'est la seule page de la plateforme dans ce cas avec l'écran
- * de connexion. Google Play l'exige à une adresse ouverte : un examinateur
- * l'ouvre sans compte, depuis un lien collé dans un formulaire. Une page
- * derrière le verrou ferait refuser l'application, sans plus d'explication.
+ * PUBLIQUE. L'App Store et Google Play l'exigent à une adresse ouverte : un
+ * examinateur l'ouvre sans compte, depuis un lien collé dans un formulaire.
+ * Une page derrière le verrou ferait refuser l'application, sans plus
+ * d'explication.
  *
  * Elle décrit ce que CETTE application fait, et rien d'autre. Un modèle
  * générique parlerait de cookies et de géolocalisation là où il n'y en a pas.
@@ -44,12 +44,22 @@ export default async function Confidentialite() {
 
         <Bloc titre={t.collecteTitre}>
           {t.collecte}
+          <dl className="mt-3 flex flex-col gap-2">
+            {t.collecteListe.map(([nom, pourquoi]) => (
+              <div key={nom}>
+                <dt className="inline font-medium text-ink">{nom} — </dt>
+                <dd className="inline">{pourquoi}</dd>
+              </div>
+            ))}
+          </dl>
           <ul className="mt-3 flex list-disc flex-col gap-1.5 pl-5">
-            {t.collecteListe.map((l) => <li key={l}>{l}</li>)}
+            {t.collecteNon.map((l) => <li key={l}>{l}</li>)}
           </ul>
         </Bloc>
 
         <Bloc titre={t.smsTitre}>{t.sms}</Bloc>
+
+        <Bloc titre={t.accesTitre}>{t.acces}</Bloc>
 
         <Bloc titre={t.permissionsTitre}>
           <dl className="flex flex-col gap-2">

@@ -63,9 +63,9 @@ const en = {
   // boîtier l'a déjà en main : elle peut encore aboutir, et le dire autrement
   // ferait recommencer un transfert qui part peut-être.
   sansReponseRienParti:
-    "The shop's box did not answer: the request has been cancelled, nothing was sent.",
+    "The TOTEM box that holds your card did not answer: the request has been cancelled, nothing was sent.",
   sansReponseEnCours:
-    "The shop's box has taken the request but has not answered yet: it may "
+    "The TOTEM box that holds your card has taken the request but has not answered yet: it may "
     + "still go through. Check your SMS before trying again.",
   // Le TÉLÉPHONE n'a pas joint la plateforme pendant l'attente : ce n'est
   // pas le boîtier qui s'est tu, et on n'a pas pu annuler.
@@ -73,13 +73,13 @@ const en = {
     "Your phone can't reach TOTEM right now: check its connection. The request "
     + "may still go through — check your SMS before trying again.",
   sansReponseIncertaine:
-    "The shop's box did not answer, and the cancellation could not be "
+    "The TOTEM box that holds your card did not answer, and the cancellation could not be "
     + "confirmed: the request may still go out. Check your SMS before trying again.",
   // Le boîtier a FINI la demande pendant que l'écran renonçait — mais sa
   // réponse n'a pas pu être relue. On ne dit ni « rien n'est parti », ni
   // « elle peut encore aboutir » : elle est finie, et on ne sait pas comment.
   sansReponseFinie:
-    "The shop's box finished the request just now, but its answer could not be "
+    "The TOTEM box that holds your card finished the request just now, but its answer could not be "
     + "read back. Check your SMS before trying again.",
   accroc: "small hitch — please try again",
   trouSansReponse: (noms: string) =>
@@ -216,18 +216,18 @@ const fr: typeof en = {
   demandePasPartie: "la demande n’a pas pu partir",
   terminalMuet: "le terminal n’a pas répondu — est-il allumé, et à jour ?",
   sansReponseRienParti:
-    "Le boîtier de la boutique n’a pas répondu : la demande est annulée, rien n’est parti.",
+    "Le boîtier TOTEM qui porte votre carte n’a pas répondu : la demande est annulée, rien n’est parti.",
   sansReponseEnCours:
-    "Le boîtier de la boutique a pris la demande mais n’a pas encore répondu : "
+    "Le boîtier TOTEM qui porte votre carte a pris la demande mais n’a pas encore répondu : "
     + "elle peut encore aboutir. Regardez vos SMS avant de recommencer.",
   telephoneSansTotem:
     "Votre téléphone n’arrive pas à joindre TOTEM : vérifiez sa connexion. La demande "
     + "peut quand même aboutir — regardez vos SMS avant de recommencer.",
   sansReponseIncertaine:
-    "Le boîtier de la boutique n’a pas répondu, et l’annulation n’a pas pu être "
+    "Le boîtier TOTEM qui porte votre carte n’a pas répondu, et l’annulation n’a pas pu être "
     + "confirmée : la demande peut encore partir. Regardez vos SMS avant de recommencer.",
   sansReponseFinie:
-    "Le boîtier de la boutique vient de finir la demande, mais sa réponse n’a pas "
+    "Le boîtier TOTEM qui porte votre carte vient de finir la demande, mais sa réponse n’a pas "
     + "pu être relue. Regardez vos SMS avant de recommencer.",
   accroc: "petit accroc — réessayez",
   trouSansReponse: (noms) =>

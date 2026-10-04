@@ -277,6 +277,12 @@ const PORTAIL =
   "<!doctype html><html><head><title>Connexion au Wi-Fi</title></head>" +
   "<body>Identifiez-vous pour accéder à Internet</body></html>";
 
+// Ce qu'on donne pour créer son compte — les six champs du contrat.
+const FICHE = {
+  prenom: "Awa", nom: "Ngono", adresse: "Rue 1.234, Bonamoussadi, Douala",
+  telephone: "+237 677 12 34 56", courriel: "awa@exemple.cm", motdepasse: "un-mot-de-passe-long",
+};
+
 const SERVEURS = {
   sain: { enTetes: 300, morceaux: [[450, CORPS]], complet: 600 },
   iosCoupure: { enTetes: 300, morceaux: [[800, DEBUT]], coupure: 2000 },
@@ -547,6 +553,7 @@ const EPREUVES = [
       ["agirSurBeneficiaire", (g) => g.agirSurBeneficiaire({ geste: "supprimer", id: 3 })],
       // Née après le témoin : elle n'y existe pas, on ne l'y cherche pas.
       ["annulerCommande", (g) => g.annulerCommande(7), { recente: true }],
+      ["supprimerMonCompte", (g) => g.supprimerMonCompte("mot-de-passe-long", "fr"), { recente: true }],
     ];
     const fautes = [];
     for (const [nom, f, { recente } = {}] of demandes) {
@@ -600,6 +607,111 @@ const EPREUVES = [
     if (r.etat !== "rejetee") return decrire(r);
     return r.erreur.message === "Mot de passe incorrect." && r.erreur.statut === 401
       ? null : decrire(r);
+  }],
+
+  // L'INSCRIPTION — TOTEM est grand public : on crée son compte depuis le
+  // téléphone, et la session s'ouvre aussitôt. Même porte, mêmes garanties
+  // que la connexion. Le témoin n'a pas d'inscription (l'application de
+  // l'essai fermé ne créait aucun compte) : il échoue ces épreuves en le
+  // disant, ce qui est exactement ce qu'elles gardent.
+  ["DÉFAUT", "inscription : un corps coupé ne range JAMAIS un jeton absent", async (q) => {
+    const w = monde({
+      plateforme: "android", coffreInitial: {},
+      serveur: { enTetes: 300, morceaux: [[800, '{"ok":true,"jeton":"abc.17']], coupure: 2000 },
+    });
+    const g = guichet(q, w);
+    if (typeof g.inscrire !== "function") return "l'application ne sait pas créer de compte";
+    const r = await issue(w, g.inscrire(FICHE, "fr"));
+    const range = w.coffre.ecrits.find(([k]) => k === "totem.jeton");
+    if (range) return `le coffre a reçu le jeton ${JSON.stringify(range[1])} d'une réponse coupée`;
+    return rejetPropre(r, { avant: ECHEANCE_TOTALE, phrase: "reponseIncomplete" });
+  }],
+  ["DÉFAUT", "inscription : la fiche entière part, dans la langue de l'écran, et le jeton se range", async (q) => {
+    const w = monde({
+      coffreInitial: {},
+      serveur: { enTetes: 300, morceaux: [[450, '{"ok":true,"jeton":"neuf.1791000000000","expire":1791000000000}']], complet: 600 },
+    });
+    const g = guichet(q, w);
+    if (typeof g.inscrire !== "function") return "l'application ne sait pas créer de compte";
+    const r = await issue(w, g.inscrire(FICHE, "en"));
+    if (r.etat !== "rendue") return decrire(r);
+    const appel = w.appels[0];
+    const u = new URL(appel.url);
+    if (u.pathname !== "/api/inscription") return `partie vers ${u.pathname}`;
+    if (u.searchParams.getAll("langue").join() !== "en") return `langue : ${u.search}`;
+    const corps = JSON.parse(appel.init.body);
+    const manque = Object.keys(FICHE).filter((k) => corps[k] !== FICHE[k]);
+    if (manque.length) return `la fiche est partie sans : ${manque.join(", ")}`;
+    return w.coffre.m.get("totem.jeton") === "neuf.1791000000000" ? null : "le jeton n'est pas dans le coffre";
+  }],
+  ["DÉFAUT", "inscription : le refus de la plateforme passe tel quel, et rien n'est rangé", async (q) => {
+    const phrase = "Impossible de créer ce compte. Si vous en avez déjà un, connectez-vous.";
+    const w = monde({
+      coffreInitial: {},
+      serveur: { statut: 409, enTetes: 300, morceaux: [[450, JSON.stringify({ erreur: phrase })]], complet: 600 },
+    });
+    const g = guichet(q, w);
+    if (typeof g.inscrire !== "function") return "l'application ne sait pas créer de compte";
+    const r = await issue(w, g.inscrire(FICHE, "fr"));
+    if (r.etat !== "rejetee") return decrire(r);
+    if (w.coffre.ecrits.length) return "le coffre a été écrit malgré le refus";
+    return r.erreur.message === phrase ? null : decrire(r);
+  }],
+  ["DÉFAUT", "suppression du compte : signée, avec le mot de passe, à la bonne adresse", async (q) => {
+    const w = monde({ serveur: { enTetes: 300, morceaux: [[450, '{"ok":true}']], complet: 600 } });
+    const g = guichet(q, w);
+    if (typeof g.supprimerMonCompte !== "function") return "l'application ne sait pas supprimer un compte";
+    const r = await issue(w, g.supprimerMonCompte("mot-de-passe-long", "fr"));
+    if (r.etat !== "rendue") return decrire(r);
+    const appel = w.appels[0];
+    const u = new URL(appel.url);
+    if (u.pathname !== "/api/moi/suppression") return `partie vers ${u.pathname}`;
+    if (appel.init.method !== "POST") return `méthode ${appel.init.method}`;
+    if (appel.init.headers?.authorization !== `Bearer ${JETON}`) return "partie sans le jeton de la session";
+    return JSON.parse(appel.init.body).motdepasse === "mot-de-passe-long" ? null : "partie sans le mot de passe";
+  }],
+  ["DÉFAUT", "suppression du compte : le refus (le propriétaire, la vitrine) se dit avec la phrase de la plateforme", async (q) => {
+    const phrase = "Le propriétaire de la plateforme ne peut pas supprimer son compte ici.";
+    const w = monde({ serveur: { statut: 403, enTetes: 300, morceaux: [[450, JSON.stringify({ erreur: phrase })]], complet: 600 } });
+    const g = guichet(q, w);
+    if (typeof g.supprimerMonCompte !== "function") return "l'application ne sait pas supprimer un compte";
+    const r = await issue(w, g.supprimerMonCompte("mot-de-passe-long", "fr"));
+    if (r.etat !== "rejetee") return decrire(r);
+    // Un 403 n'est pas une session perdue : le jeton reste.
+    if (w.coffre.effaces.includes("totem.jeton")) return "un refus a fermé la session";
+    return r.erreur.message === phrase && r.erreur.statut === 403 ? null : decrire(r);
+  }],
+
+  ["DÉFAUT", "suppression du compte : un mot de passe refusé (401) ne ferme PAS la session", async (q) => {
+    // Vu sur la capture : un 401 passait pour une session terminée — le
+    // coffre se vidait, et l'écran disait « reconnectez-vous » à qui
+    // s'était trompé d'une lettre.
+    const w = monde({ serveur: { statut: 401, enTetes: 300, morceaux: [[450, '{"erreur":"Mot de passe incorrect."}']], complet: 600 } });
+    const g = guichet(q, w);
+    if (typeof g.supprimerMonCompte !== "function") return "l'application ne sait pas supprimer un compte";
+    const r = await issue(w, g.supprimerMonCompte("mot-de-pas-se-faux", "fr"));
+    if (r.etat !== "rejetee") return decrire(r);
+    if (w.coffre.effaces.includes("totem.jeton")) return "un mot de passe mal tapé a fermé la session";
+    return r.erreur.message === "Mot de passe incorrect." ? null : decrire(r);
+  }],
+  ["DÉFAUT", "suppression : le 401 du VERROU (jeton mort) ferme la session, même avec sa phrase", async (q) => {
+    // LE CORPS RÉEL DU MIDDLEWARE, pas une imitation. La plateforme ne rend
+    // jamais un 401 au corps vide : quand le jeton ne vaut plus rien (compte
+    // supprimé depuis le site, fermé par TOTEM, périmé), elle répond
+    // « connexion requise » ET `raison: "session"`. L'épreuve d'avant
+    // imitait un corps vide, passait au vert, et sur la vraie plateforme la
+    // phrase s'affichait sous le champ du mot de passe comme un refus — en
+    // anglais, « sign-in required » —, le coffre gardant le jeton mort.
+    const corps = JSON.stringify({ erreur: "connexion requise", raison: "session" });
+    const w = monde({ serveur: { statut: 401, enTetes: 300, morceaux: [[450, corps]], complet: 600 } });
+    const g = guichet(q, w);
+    if (typeof g.supprimerMonCompte !== "function") return "l'application ne sait pas supprimer un compte";
+    const r = await issue(w, g.supprimerMonCompte("x", "fr"));
+    if (r.etat !== "rejetee") return decrire(r);
+    if (r.erreur.message === "connexion requise") {
+      return "la phrase du verrou s'affiche comme un mot de passe refusé";
+    }
+    return w.coffre.effaces.includes("totem.jeton") ? null : "la session refusée est restée ouverte";
   }],
 
   // « Y a-t-il un TOTEM au bout de l'adresse ? »

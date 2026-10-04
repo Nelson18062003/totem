@@ -72,12 +72,16 @@ console.log("\nL'application ne parle qu'à la plateforme");
 ["/api/session", "/api/donnees", "/api/appareil",
  "/api/plateforme", "totem.jeton"].forEach((s) => doitEtre(true, s));
 
-// …et elle ne CRÉE pas de compte. Pendant la bêta fermée, c'est le
-// propriétaire qui fait entrer les gens, depuis ses Réglages : une
-// testeuse s'était vu pousser à « créer son compte » par l'application,
-// sur un écran qui n'aurait jamais dû lui être proposé. Le jour où
-// l'inscription rouvre, c'est ici qu'on le décide — pas par mégarde.
-doitEtre(false, "/api/inscription");
+// …ET ELLE CRÉE UN COMPTE, et sait le supprimer. TOTEM est une application
+// GRAND PUBLIC : n'importe qui la télécharge, crée son compte et entre. Ce
+// contrôle exigeait l'inverse au temps de l'essai fermé — c'est ici qu'on
+// l'avait décidé, et c'est ici qu'on le défait, pas par mégarde. Apple
+// exige en plus qu'un compte créé dans l'application puisse y être
+// supprimé : les deux portes vont ensemble. Le témoin est le paquet d'avant
+// (main 808bb22) : il n'a ni l'une ni l'autre, et échoue ici.
+console.log("\nOn crée son compte dans l'application, et on peut le supprimer");
+["/api/inscription", "/api/moi/suppression", "Create my account", "Supprimer mon compte",
+ "Ajouter ma carte"].forEach((s) => doitEtre(true, s));
 
 // Les mises à jour à distance sont-elles vraiment branchées ? Sans cette
 // adresse dans le paquet, l'application installée ne saura jamais où

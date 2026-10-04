@@ -813,6 +813,40 @@ alter table beneficiaires enable row level security;
 alter table utilisateurs add column if not exists prenom text;
 alter table utilisateurs add column if not exists nom    text;
 
+-- ===========================================================================
+-- 3. L'INSCRIPTION PUBLIQUE : L'ADRESSE, LE TÉLÉPHONE, ET LEURS BORNES
+-- ===========================================================================
+--
+-- TOTEM est une application grand public : n'importe qui crée son compte
+-- dans l'application (prénom, nom, adresse, courriel, téléphone, mot de
+-- passe) et entre aussitôt — sans rien voir tant qu'aucune carte ne lui est
+-- attribuée. Facultatifs EN BASE (les comptes d'avant n'en ont pas) ; c'est
+-- la plateforme qui les exige à l'inscription. La base, elle, borne leur
+-- forme. Voir migrations/20261004_inscription_publique.sql.
+
+alter table utilisateurs add column if not exists adresse   text;
+alter table utilisateurs add column if not exists telephone text;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint
+                  where conname = 'utilisateurs_telephone_forme') then
+    alter table utilisateurs add constraint utilisateurs_telephone_forme
+      check (telephone is null or telephone ~ '^\+?[0-9]{6,15}$');
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conname = 'utilisateurs_adresse_forme') then
+    alter table utilisateurs add constraint utilisateurs_adresse_forme
+      check (adresse is null
+             or (char_length(btrim(adresse)) between 1 and 200));
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conname = 'utilisateurs_nom_forme') then
+    alter table utilisateurs add constraint utilisateurs_nom_forme
+      check ((prenom is null or char_length(prenom) <= 80)
+             and (nom is null or char_length(nom) <= 80));
+  end if;
+end $$;
+
 
 alter table terminaux  enable row level security;
 alter table cartes     enable row level security;

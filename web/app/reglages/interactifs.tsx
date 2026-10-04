@@ -586,6 +586,8 @@ type CompteAvecCartes = {
   id: number; courriel: string; prenom?: string; nom?: string;
   role: string; approuve: boolean;
   creeLe: string | null; vuLe: string | null; cartes: string[] | null;
+  /** Compte du grand public : une puce ne lui va qu'avec son CODE DE COMPTE. */
+  codeExige?: boolean;
 };
 type CarteDeLaMaison = {
   iccid: string; libelle: string; operateur: string; numero: string;
@@ -595,9 +597,10 @@ type CarteDeLaMaison = {
 /**
  * QUI PEUT SE CONNECTER, ET CE QUE CHACUN VOIT — réservé au propriétaire.
  *
- * Personne ne s'inscrit seul : c'est ici que le propriétaire crée un compte —
- * prénom, nom, courriel, et le mot de passe qu'il transmettra lui-même. Et
- * c'est ici qu'il CONFIE des cartes : un invité ne voit que
+ * Chacun crée son compte dans l'application ; ici, le propriétaire peut en
+ * poser un lui-même — prénom, nom, courriel, et le mot de passe qu'il
+ * transmettra. Et c'est ici qu'il ATTRIBUE les cartes (d'après le code de
+ * compte joint à la puce, pour un compte du grand public) : un invité ne voit que
  * celles-là, et rien du tout tant qu'on ne lui en a confié aucune.
  *
  * La même section vit dans les Réglages et dans la console (« Les gens ») :
@@ -618,6 +621,8 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
   const [rateAction, setRateAction] = useState<string | null>(null);
   // Le compte dont on choisit les cartes, ou aucun.
   const [enChoix, setEnChoix] = useState<number | null>(null);
+  // Le code de compte recopié depuis l'enveloppe de la puce, par compte.
+  const [codes, setCodes] = useState<Record<number, string>>({});
   const [ouvrirCreation, setOuvrirCreation] = useState(false);
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
@@ -674,9 +679,9 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
   }
 
   function basculer(id: number, iccid: string, confiee: boolean) {
-    void envoyer(`${id}-${iccid}`, {
-      id, iccid, geste: confiee ? "retirer" : "attribuer",
-    });
+    void envoyer(`${id}-${iccid}`, confiee
+      ? { id, iccid, geste: "retirer" }
+      : { id, iccid, geste: "attribuer", code: codes[id] ?? "" });
   }
 
   const formulaireComplet = Boolean(prenom.trim() && nom.trim() && courriel.trim())
@@ -809,6 +814,22 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
               )}
               {c.cartes !== null && enChoix === c.id && (
                 <div className="mt-2 flex flex-col gap-1.5">
+                  {/* LE CODE DE COMPTE d'un compte du grand public : la puce
+                      va au compte qui porte le code joint à la puce, jamais
+                      à celui d'une adresse e-mail. */}
+                  {c.codeExige && (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-caption text-ink-faint">{t.codeDeCompteLibelle}</span>
+                      <input
+                        value={codes[c.id] ?? ""}
+                        onChange={(e) => setCodes((d) => ({ ...d, [c.id]: e.target.value }))}
+                        autoCapitalize="characters" autoComplete="off" spellCheck={false}
+                        name={`code-de-compte-${c.id}`}
+                        className="rounded-btn border border-line bg-surface-raised px-3 py-2 text-body tracking-widest"
+                      />
+                      <span className="text-caption leading-relaxed text-ink-faint">{t.codeDeCompteAide}</span>
+                    </label>
+                  )}
                   {cartes.length === 0 && (
                     <p className="text-caption text-ink-faint">{t.cartesAucuneDansLaMaison}</p>
                   )}
@@ -856,9 +877,10 @@ export function SectionQui({ sansTitre = false }: { sansTitre?: boolean } = {}) 
         )}
       </ul>
 
-      {/* CRÉER UN COMPTE. L'inscription libre est fermée et le reste : c'est
-          le seul chemin pour faire entrer quelqu'un. Google EXIGE un compte
-          qui fonctionne pour examiner l'application. */}
+      {/* CRÉER UN COMPTE POUR QUELQU'UN. Chacun peut aussi créer le sien
+          dans l'application (inscription publique) ; ce chemin-ci reste celui
+          du propriétaire qui pose lui-même un vendeur, avec le mot de passe
+          qu'il lui transmet. */}
       {!ouvrirCreation ? (
         <button
           onClick={() => { setOuvrirCreation(true); setMotCree(null); }}

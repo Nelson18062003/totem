@@ -5,10 +5,12 @@
 // une vraie carte SIM : il pouvait y lancer un transfert, avec de vrais
 // francs derrière. Ce compte-ci n'en tient aucune.
 //
-// CE QU'IL VOIT : un jeu de données inventé — deux cartes, une caisse, des
-// SMS — servi par le même chemin que les vrais écrans (`chargerDonnees`),
-// mais dont chaque lecture répond depuis la mémoire, sans jamais toucher la
-// base. Les opérations se déroulent pour de faux : menu, numéro, montant,
+// CE QU'IL VOIT : un jeu de données inventé — deux cartes d'UNE personne,
+// ses SMS, l'argent que sa famille et ses amis lui envoient. Pas une
+// boutique ni des « clients » : TOTEM est une application grand public, et
+// l'examinateur doit voir ce que verra n'importe qui. Servi par le même
+// chemin que les vrais écrans (`chargerDonnees`), mais chaque lecture
+// répond depuis la mémoire, sans jamais toucher la base. Les opérations se déroulent pour de faux : menu, numéro, montant,
 // confirmation, code secret, « opération réussie » — sans SIM, sans réseau,
 // sans un franc.
 //
@@ -86,7 +88,7 @@ export function tablesDeDemonstration(): Record<string, Record<string, unknown>[
     }],
     cartes: [
       { terminal: TERMINAL, iccid: MTN, operateur: "MTN", libelle: "MTN ·0001",
-        nom: "BOUTIQUE DÉMO", numero: "670000001",
+        nom: "AWA DÉMO", numero: "670000001",
         premiere_vue: il_y_a(60 * 24 * 30), derniere_vue: maintenant },
       { terminal: TERMINAL, iccid: ORANGE, operateur: "Orange", libelle: "Orange ·0002",
         nom: "", numero: "690000002",
@@ -104,14 +106,14 @@ export function tablesDeDemonstration(): Record<string, Record<string, unknown>[
         solde: 58500, signal: 18, maj: maintenant, solde_maj: il_y_a(35) },
     ],
     paiements: [
-      encaissement(12, MTN, 25000, "CLIENT DÉMO A", "670000011", 4, 245000),
-      encaissement(11, MTN, 10000, "CLIENT DÉMO B", "670000012", 22, 220000),
+      encaissement(12, MTN, 25000, "FAMILLE DÉMO", "670000011", 4, 245000),
+      encaissement(11, MTN, 10000, "AMI DÉMO", "670000012", 22, 220000),
       {
         id: 10, source_id: 10, terminal: TERMINAL, carte: ORANGE, compte: "Orange ·0002",
         expediteur: "OrangeMoney", sens: "sortie", montant: 5000,
-        tiers: "FOURNISSEUR DÉMO", numero: "690000013",
+        tiers: "VOISIN DÉMO", numero: "690000013",
         reference: "DEMO.10", solde_apres: 58500,
-        texte: "Transfert de 5 000 FCFA vers FOURNISSEUR DÉMO effectue. Solde: 58 500 FCFA.",
+        texte: "Transfert de 5 000 FCFA vers VOISIN DÉMO effectue. Solde: 58 500 FCFA.",
         categorie: "envoi", nature: null,
         emis_le: il_y_a(70), recu_le: il_y_a(70), lu_le: il_y_a(65),
       },
@@ -123,12 +125,12 @@ export function tablesDeDemonstration(): Record<string, Record<string, unknown>[
         categorie: "solde", nature: null,
         emis_le: il_y_a(150), recu_le: il_y_a(150), lu_le: il_y_a(140),
       },
-      encaissement(8, MTN, 35000, "CLIENT DÉMO C", "670000014", 60 * 26, null),
-      encaissement(7, ORANGE, 15000, "CLIENT DÉMO D", "690000015", 60 * 30, null),
-      encaissement(6, MTN, 8000, "CLIENT DÉMO A", "670000011", 60 * 50, null),
-      encaissement(5, MTN, 50000, "CLIENT DÉMO E", "670000016", 60 * 75, null),
-      encaissement(4, ORANGE, 12500, "CLIENT DÉMO B", "670000012", 60 * 98, null),
-      encaissement(3, MTN, 20000, "CLIENT DÉMO C", "670000014", 60 * 122, null),
+      encaissement(8, MTN, 35000, "FRÈRE DÉMO", "670000014", 60 * 26, null),
+      encaissement(7, ORANGE, 15000, "COLLÈGUE DÉMO", "690000015", 60 * 30, null),
+      encaissement(6, MTN, 8000, "FAMILLE DÉMO", "670000011", 60 * 50, null),
+      encaissement(5, MTN, 50000, "SŒUR DÉMO", "670000016", 60 * 75, null),
+      encaissement(4, ORANGE, 12500, "AMI DÉMO", "670000012", 60 * 98, null),
+      encaissement(3, MTN, 20000, "FRÈRE DÉMO", "670000014", 60 * 122, null),
     ],
     recus: [],
     raccourcis: [

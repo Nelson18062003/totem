@@ -22,9 +22,10 @@ import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 // téléphone d'envoyer le mot de passe du propriétaire à un serveur inconnu.
 // « /inscription » et « /api/inscription » sont ouvertes pour la même raison
 // que la connexion : on ne peut pas exiger un compte de celui qui vient
-// justement en demander un. Ce qui les rend sûres n'est pas une porte fermée,
-// c'est qu'un compte neuf n'ouvre RIEN tant que le propriétaire ne l'a pas
-// approuvé (voir lib/porte.ts).
+// justement en demander un. TOTEM est une application grand public : le
+// compte neuf entre tout de suite. Ce qui protège la maison n'est pas une
+// porte fermée, c'est qu'il ne VOIT rien tant qu'aucune carte ne lui est
+// attribuée (voir lib/portee.ts).
 // « /confidentialite » est ouverte parce que Google Play l'exige à une
 // adresse publique : un examinateur l'ouvre sans compte, depuis un lien collé
 // dans un formulaire. Derrière le verrou, l'application serait refusée sans
@@ -182,7 +183,14 @@ export async function middleware(req: NextRequest) {
     // les comptes, non : il ouvre les écrans du commerce jusqu'à son
     // échéance, pas la console. Le renvoi va vers l'ACCUEIL, pas vers la
     // connexion — celui qui est là est déjà entré.
-    const versConsole = pathname === "/console" || pathname.startsWith("/console/");
+    //
+    // « CE QUI S'EST PASSÉ » (/journal) suit la même règle. Elle était faite
+    // pour le propriétaire et les vendeurs de SA maison ; avec l'inscription
+    // publique, n'importe quel téléchargeur y lisait les noms des boîtiers
+    // de tous les clients, leurs pannes, leurs heures, et le volume de la
+    // plateforme. Ce journal-là est celui de TOTEM, pas celui d'un compte.
+    const versConsole = pathname === "/console" || pathname.startsWith("/console/")
+      || pathname === "/journal" || pathname.startsWith("/journal/");
     if (versConsole && sujet !== "secours") {
       const refuserConsole = () => {
         const accueil = req.nextUrl.clone();
@@ -208,10 +216,22 @@ export async function middleware(req: NextRequest) {
 
   // Une API répond « connexion requise » (le navigateur gère) ; une page
   // renvoie vers l'écran de connexion.
+  //
+  // LA LANGUE : celle que l'adresse demande (« ?langue=fr », c'est ainsi que
+  // parle le téléphone, qui n'a pas de cookie), sinon celle du cookie. Lue
+  // dans le cookie seul, la phrase partait en anglais sur un téléphone
+  // français.
+  //
+  // `raison: "session"` DIT DE QUOI IL S'AGIT, sans compter sur la phrase.
+  // Une porte qui revérifie le mot de passe (supprimer son compte) répond
+  // AUSSI 401 quand il est faux : sans ce mot, le téléphone prenait « la
+  // session est morte » pour « mot de passe refusé », gardait le jeton mort
+  // et affichait « connexion requise » sous le champ, sans fin.
   if (pathname.startsWith("/api/")) {
-    const langue = langueDe(req.cookies.get(COOKIE_LANGUE)?.value);
+    const langue = langueDe(
+      req.nextUrl.searchParams.get("langue") ?? req.cookies.get(COOKIE_LANGUE)?.value);
     const erreur = langue === "en" ? "sign-in required" : "connexion requise";
-    return avecCsp(NextResponse.json({ erreur }, { status: 401 }));
+    return avecCsp(NextResponse.json({ erreur, raison: "session" }, { status: 401 }));
   }
   const versConnexion = req.nextUrl.clone();
   versConnexion.pathname = "/connexion";

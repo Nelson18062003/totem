@@ -5,6 +5,7 @@
 // troisième n'apparaît que s'il a lieu d'être : retirer une carte ne perd
 // rien — son journal reste consultable, et son total avec.
 
+import { AjouterMaCarteCourt } from "@/ajouter-ma-carte";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -84,7 +85,11 @@ export default function Comptes() {
           <SqueletteCartes combien={2} />
         ) : null}
 
-        {enPlace.length === 0 && !attente && !erreur ? (
+        {enPlace.length === 0 && !attente && !erreur
+          && donnees?.proprietaire === false && !(donnees.sims ?? []).length ? (
+          // Un compte sans carte : le chemin vers « Ajouter ma carte ».
+          <AjouterMaCarteCourt langue={langue} />
+        ) : enPlace.length === 0 && !attente && !erreur ? (
           <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
                           borderStyle: "dashed" }}>
             <Texte poids="demi">{t.videTitre}</Texte>

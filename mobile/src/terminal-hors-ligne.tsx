@@ -22,6 +22,8 @@ import { Carte, Pastille, Texte } from "@/ui";
 import { HAUTEUR_ETAT } from "@/mesures-accueil";
 import { Icone } from "@/icones";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { textesReglages } from "@noyau/textes/reglages";
+import { contacter } from "@/ajouter-ma-carte";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 import type { Donnees, Sim } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
@@ -95,10 +97,17 @@ export function depuisQuand(
  * recommençait. « Revérifier » pose la question tout de suite ; si le
  * boîtier est revenu, l'écran qui a ouvert la feuille la referme.
  */
-export function FicheTerminalHorsLigne({ vuLe, maintenant, fuseau, langue, onFermer, onReverifier }: {
+export function FicheTerminalHorsLigne({
+  vuLe, maintenant, fuseau, langue, onFermer, onReverifier, chezTotem = false,
+}: {
   vuLe: string | null; maintenant: number; fuseau: string; langue: Langue;
   onFermer: () => void;
   onReverifier: () => Promise<void>;
+  /** La personne n'est pas le propriétaire de la plateforme : sa carte est,
+   *  le plus souvent, dans un boîtier de TOTEM — pas chez elle. On ne lui
+   *  demande pas de débrancher un appareil qu'elle n'a pas : TOTEM est
+   *  prévenu, et elle peut nous écrire. */
+  chezTotem?: boolean;
 }) {
   const t = textesAccueil[langue];
   const depuis = depuisQuand(vuLe, maintenant, fuseau, langue);
@@ -175,11 +184,26 @@ export function FicheTerminalHorsLigne({ vuLe, maintenant, fuseau, langue, onFer
         <View style={{ gap: espaces.xs }}>
           <Texte taille={textes.legende} ton="pale"
                  style={{ textTransform: "uppercase", letterSpacing: 1 }}>
-            {t.horsLigneSurPlace}
+            {chezTotem ? t.horsLigneChezTotemTitre : t.horsLigneSurPlace}
           </Texte>
           <Texte taille={textes.petit} style={{ lineHeight: 20 }}>
-            {t.horsLigneQuoiFaire}
+            {chezTotem ? t.horsLigneChezTotem : t.horsLigneQuoiFaire}
           </Texte>
+          {chezTotem ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void contacter()}
+              style={({ pressed }) => ({
+                flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                alignSelf: "flex-start", minHeight: 44, opacity: pressed ? 0.6 : 1,
+              })}
+            >
+              <Icone nom="Mail" taille={16} couleur={couleurs.accent} />
+              <Texte taille={textes.petit} poids="moyen" style={{ color: couleurs.accent }}>
+                {textesReglages[langue].ecrireATotem}
+              </Texte>
+            </Pressable>
+          ) : null}
         </View>
         {/* Une hauteur réservée : la ligne « toujours hors ligne » vient s'y
             poser sans pousser les boutons sous le doigt. */}
@@ -187,7 +211,7 @@ export function FicheTerminalHorsLigne({ vuLe, maintenant, fuseau, langue, onFer
                style={{ lineHeight: 18, minHeight: 36 }}>
           {typeof verif === "number"
             ? t.horsLigneToujours(heureDans(new Date(verif).toISOString(), fuseau, langue))
-            : t.horsLigneFin}
+            : chezTotem ? t.horsLigneChezTotemFin : t.horsLigneFin}
         </Texte>
       </View>
     </Feuille>

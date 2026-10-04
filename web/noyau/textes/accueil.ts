@@ -24,6 +24,37 @@ const en = {
   aucuneCarte: "No card in the terminal",
   aucuneCarteDetail:
     "As soon as the terminal sees a SIM, its balance and the counter will appear here.",
+
+  // AJOUTER MA CARTE — ce que voit un compte qui vient de naître. Ce n'est
+  // PAS une panne, ni un boîtier qui se tait : la personne n'a simplement
+  // pas encore de carte. On lui dit comment en avoir une, en mots simples,
+  // et à qui écrire.
+  ajouterCarteTitre: "Add my card",
+  ajouterCarteIntro:
+    "Your account is ready. To reach your Mobile Money accounts from here, " +
+    "link your SIM card to TOTEM. Two ways:",
+  ajouterCarteEnvoyerTitre: "Send your SIM card to TOTEM",
+  ajouterCarteEnvoyer:
+    "We place it in a TOTEM box, where it stays in service. You then reach " +
+    "it from here, wherever you are.",
+  ajouterCarteBoitierTitre: "Plug in your own TOTEM box",
+  ajouterCarteBoitier:
+    "Keep your SIM card at home, in a TOTEM box connected to the Internet.",
+  ajouterCarteOuvrir:
+    "No Mobile Money account yet? TOTEM can help you open one with the operator.",
+  ajouterCarteEnsuite:
+    "Then TOTEM links the card to your account, and it appears here by " +
+    "itself. Pull the screen down to check.",
+  // LE CODE DE COMPTE, pas l'adresse e-mail : rien ne prouve qu'une adresse
+  // appartient à qui l'a tapée, et TOTEM attribuerait la puce à celui qui
+  // l'a prise le premier. Voir web/lib/code-de-compte.ts.
+  ajouterCarteCodeTitre: "Your account code",
+  ajouterCarteCode:
+    "Send this code with your SIM card, or give it to TOTEM: it is how the " +
+    "card reaches YOUR account. Give it to no one else.",
+  ajouterCarteContacter: "Contact TOTEM",
+  ajouterCarteVoir: "How to add my card",
+  ajouterCarteCourt: "No card on your account yet.",
   actualiserAria: "Refresh the balance: ask the network",
   // Les trois commandes sous la carte, NOMMÉES. Un cercle sans mot ne
   // disait rien à qui découvrait l'application : on ne savait pas à quoi
@@ -50,21 +81,31 @@ const en = {
   terminalMuetCourt: "Terminal offline",
   terminalMuetAria: (q: string) => `The terminal is offline (${q}): what it means and what to do`,
   horsLigneTitre: "The terminal is offline",
-  horsLigneDepuis: (d: string) => `The TOTEM box at the shop hasn't been in touch since ${d}.`,
-  horsLigneSansHeure: "The TOTEM box at the shop isn't in touch any more.",
+  // LE BOÎTIER QUI PORTE VOTRE CARTE — pas « celui de la boutique » : la
+  // puce d'un particulier est le plus souvent dans un boîtier de TOTEM, et
+  // il ne possède ni boutique ni boîtier.
+  horsLigneDepuis: (d: string) => `The TOTEM box that holds your card hasn't been in touch since ${d}.`,
+  horsLigneSansHeure: "The TOTEM box that holds your card isn't in touch any more.",
   horsLigneArgent:
-    "Your customers can still pay you: the money reaches your account at the operator. "
-    + "Their SMS will appear here as soon as the box is back.",
+    "Money can still reach you: it arrives in your account at the operator. "
+    + "Its SMS will appear here as soon as the box is back.",
   horsLigneEnAttendant:
     "Until then, the balance and the latest transactions are those of that time, "
     + "and operations from the app can't go out.",
-  horsLigneSurPlace: "At the shop",
+  horsLigneSurPlace: "If the box is yours",
   horsLigneQuoiFaire:
     "Check that the box and the internet router are switched on. If they are, "
     + "unplug the box, count to ten, and plug it back in.",
   // L'alerte NE disparaît PAS d'elle-même : rien ne relit sans un geste (pas
   // de pouls, à dessein). La phrase le promettait ; elle dit quoi faire.
   horsLigneFin: "Once the box is plugged back in, tap “Check again”.",
+  // Une carte placée chez TOTEM : la personne n'a rien à débrancher — le
+  // boîtier n'est pas chez elle. On ne l'envoie pas chercher une prise.
+  horsLigneChezTotemTitre: "Your card is with TOTEM",
+  horsLigneChezTotem:
+    "The box is in TOTEM's care, and TOTEM is told when it goes quiet. "
+    + "There is nothing for you to unplug. If it lasts, write to us.",
+  horsLigneChezTotemFin: "Tap “Check again” in a little while.",
   horsLigneReverifier: "Check again",
   horsLigneVerification: "Checking…",
   horsLigneToujours: (h: string) => `Still offline — checked at ${h}.`,
@@ -157,6 +198,30 @@ const fr: typeof en = {
   aucuneCarte: "Aucune carte dans le terminal",
   aucuneCarteDetail:
     "Dès qu’une SIM sera vue par le terminal, son solde et le guichet apparaîtront ici.",
+
+  ajouterCarteTitre: "Ajouter ma carte",
+  ajouterCarteIntro:
+    "Votre compte est prêt. Pour atteindre vos comptes Mobile Money d’ici, " +
+    "reliez votre carte SIM à TOTEM. Deux façons :",
+  ajouterCarteEnvoyerTitre: "Envoyer votre puce à TOTEM",
+  ajouterCarteEnvoyer:
+    "Nous la plaçons dans un boîtier TOTEM, où elle reste en service. Vous " +
+    "l’atteignez ensuite d’ici, où que vous soyez.",
+  ajouterCarteBoitierTitre: "Brancher votre propre boîtier TOTEM",
+  ajouterCarteBoitier:
+    "Gardez votre puce chez vous, dans un boîtier TOTEM relié à Internet.",
+  ajouterCarteOuvrir:
+    "Pas encore de compte Mobile Money ? TOTEM peut vous aider à l’ouvrir chez l’opérateur.",
+  ajouterCarteEnsuite:
+    "Ensuite, TOTEM relie la carte à votre compte, et elle apparaît ici " +
+    "d’elle-même. Tirez l’écran vers le bas pour vérifier.",
+  ajouterCarteCodeTitre: "Votre code de compte",
+  ajouterCarteCode:
+    "Joignez ce code à votre puce, ou donnez-le à TOTEM : c’est d’après lui " +
+    "que la carte arrive dans VOTRE compte. Ne le donnez à personne d’autre.",
+  ajouterCarteContacter: "Contacter TOTEM",
+  ajouterCarteVoir: "Comment ajouter ma carte",
+  ajouterCarteCourt: "Aucune carte sur votre compte pour l’instant.",
   actualiserAria: "Actualiser le solde : interroger le réseau",
   cmdSolde: "Solde",
   cmdUssd: "Code USSD",
@@ -175,19 +240,24 @@ const fr: typeof en = {
   terminalMuetCourt: "Terminal hors ligne",
   terminalMuetAria: (q) => `Le terminal est hors ligne (${q}) : ce que cela veut dire, et quoi faire`,
   horsLigneTitre: "Le terminal est hors ligne",
-  horsLigneDepuis: (d) => `Le boîtier TOTEM de la boutique n’a plus donné de nouvelles depuis ${d}.`,
-  horsLigneSansHeure: "Le boîtier TOTEM de la boutique ne donne plus de nouvelles.",
+  horsLigneDepuis: (d) => `Le boîtier TOTEM qui porte votre carte n’a plus donné de nouvelles depuis ${d}.`,
+  horsLigneSansHeure: "Le boîtier TOTEM qui porte votre carte ne donne plus de nouvelles.",
   horsLigneArgent:
-    "Vos clients peuvent toujours vous payer : l’argent arrive sur votre compte chez l’opérateur. "
-    + "Leurs SMS s’afficheront ici dès que le boîtier reviendra.",
+    "L’argent peut toujours vous arriver : il entre sur votre compte chez l’opérateur. "
+    + "Ses SMS s’afficheront ici dès que le boîtier reviendra.",
   horsLigneEnAttendant:
     "En attendant, le solde et les derniers mouvements sont ceux de ce moment-là, "
     + "et les opérations depuis l’application ne peuvent pas partir.",
-  horsLigneSurPlace: "À la boutique",
+  horsLigneSurPlace: "Si le boîtier est chez vous",
   horsLigneQuoiFaire:
     "Vérifiez que le boîtier et le routeur Internet sont allumés. S’ils le sont, "
     + "débranchez le boîtier, comptez jusqu’à dix, puis rebranchez-le.",
   horsLigneFin: "Une fois le boîtier rebranché, touchez « Revérifier ».",
+  horsLigneChezTotemTitre: "Votre carte est chez TOTEM",
+  horsLigneChezTotem:
+    "Le boîtier est sous la garde de TOTEM, qui est prévenu quand il se tait. "
+    + "Vous n’avez rien à débrancher. Si cela dure, écrivez-nous.",
+  horsLigneChezTotemFin: "Touchez « Revérifier » dans un moment.",
   horsLigneReverifier: "Revérifier",
   horsLigneVerification: "Vérification…",
   horsLigneToujours: (h) => `Toujours hors ligne — vérifié à ${h}.`,

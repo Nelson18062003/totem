@@ -182,8 +182,14 @@ try {
   const dit = JSON.stringify(plate);
   verifier("elle ne donne pas le mot de passe", dit.includes(MOTDEPASSE), false);
   verifier("elle ne donne pas le secret", dit.includes(SECRET), false);
-  verifier("elle ne donne que quatre clés", Object.keys(plate).sort().join(","),
-           "configuree,inscription,relie,totem");
+  // CINQ clés depuis l'inscription publique : « contact », l'adresse où
+  // écrire à TOTEM — déjà publique sur /confidentialite. « Contacter TOTEM »
+  // est le seul geste d'un compte neuf ; sans elle, il ouvrait la politique
+  // de confidentialité. Elle ne peut être qu'une adresse, ou rien.
+  verifier("elle ne donne que cinq clés", Object.keys(plate).sort().join(","),
+           "configuree,contact,inscription,relie,totem");
+  verifier("…dont « contact » : une adresse de courriel, ou rien",
+           plate.contact === null || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(plate.contact), true);
 
   console.log("\nPorte de l'application");
   const json = (corps) => ({

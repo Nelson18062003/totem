@@ -55,7 +55,9 @@ export async function POST(req: Request) {
     const genre = typeof corps?.type === "string" ? corps.type : "";
     if (!GESTES_DE_DEMONSTRATION.has(genre)) {
       return Response.json(
-        { erreur: erreurApi(langue, "reserveAuProprietaire") }, { status: 403 });
+        { erreur: erreurApi(langue, genre === "recu" ? "recuPasEnDemonstration"
+                                                     : "reserveAuProprietaire") },
+        { status: 403 });
     }
     const brut = corps?.parametres ?? {};
     return Response.json({

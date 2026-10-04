@@ -1,22 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { textesConnexion } from "@noyau/textes/connexion";
+import { useRef, useState } from "react";
+import { textesInscription } from "@noyau/textes/inscription";
 import { useLangue } from "@/app/langue";
 import { Symbole } from "../marque";
 
 /**
- * Créer un compte.
+ * Créer son compte TOTEM, depuis un navigateur.
  *
- * Cet écran est OUVERT à tout le monde, et ce n'est pas une négligence : ce
- * qui protège la plateforme n'est pas l'impossibilité de s'inscrire, c'est ce
- * qu'un compte neuf peut faire — c'est-à-dire rien. Il est créé, il attend,
- * et le propriétaire décide de lui ouvrir ou non.
+ * OUVERT à tout le monde : TOTEM est une application grand public. Le compte
+ * entre tout de suite ; il ne voit rien tant que TOTEM ne lui a pas attribué
+ * de carte — et c'est CELA qui protège la maison, pas une porte fermée.
  *
- * Une seule exception, et elle est logique : le TOUT PREMIER compte est celui
- * du propriétaire. Personne n'est là pour l'approuver, et l'attente serait
- * sans fin. C'est celui qui installe la plateforme.
+ * Six champs, les mêmes que dans l'application du téléphone : prénom, nom,
+ * adresse, courriel, téléphone, mot de passe. La plateforme refait tous les
+ * contrôles ; l'écran ne fait qu'aider à remplir juste.
  *
  * Le mot de passe se demande DEUX fois. Une faute de frappe dans un champ
  * masqué ne se voit pas, et l'on découvrirait le problème à la connexion
@@ -25,105 +24,107 @@ import { Symbole } from "../marque";
 export default function Inscription() {
   const router = useRouter();
   const langue = useLangue();
-  const t = textesConnexion[langue];
+  const t = textesInscription[langue];
 
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
+  const [adresse, setAdresse] = useState("");
+  const [telephone, setTelephone] = useState("");
   const [courriel, setCourriel] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [repete, setRepete] = useState("");
-  const [etat, setEtat] = useState<"repos" | "envoi" | "erreur" | "attente">("repos");
+  const [etat, setEtat] = useState<"repos" | "envoi" | "erreur">("repos");
   const [message, setMessage] = useState("");
+  // Un verrou SYNCHRONE : deux appuis rapprochés lisent tous les deux
+  // « repos » dans l'état React, qui ne se ferme qu'au rendu suivant.
+  const enVol = useRef(false);
 
   const assezLong = motDePasse.length >= 12;
   const pareils = motDePasse === repete;
-  const complet = Boolean(courriel) && assezLong && pareils;
+  const complet = Boolean(prenom.trim() && nom.trim() && adresse.trim()
+    && telephone.trim() && courriel.trim()) && assezLong && pareils;
 
   async function creer(e: React.FormEvent) {
     e.preventDefault();
-    if (!complet || etat === "envoi") return;
+    if (!complet || enVol.current) return;
+    enVol.current = true;
     setEtat("envoi");
     setMessage("");
     try {
-      const r = await fetch("/api/inscription", {
+      const r = await fetch(`/api/inscription?langue=${langue}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ courriel, motdepasse: motDePasse }),
+        body: JSON.stringify({
+          prenom, nom, adresse, telephone, courriel, motdepasse: motDePasse,
+        }),
       });
       const corps = await r.json().catch(() => ({}));
-      if (r.ok && corps.proprietaire) {
-        // Le propriétaire entre immédiatement : il vient de créer la maison.
+      if (r.ok && corps.ok) {
+        // Le compte est ouvert : il entre. Sans carte, l'accueil le dit.
         router.replace("/");
         router.refresh();
         return;
       }
-      if (r.ok || r.status === 202) {
-        setEtat("attente");
-        return;
-      }
       setEtat("erreur");
-      setMessage(corps?.erreur || t.connexionImpossible);
+      setMessage(corps?.erreur || t.impossible);
     } catch {
       setEtat("erreur");
-      setMessage(t.connexionImpossible);
+      setMessage(t.impossible);
+    } finally {
+      enVol.current = false;
     }
   }
 
-  if (etat === "attente") {
-    return (
-      <div className="mx-auto flex min-h-[70dvh] w-full max-w-sm flex-col justify-center py-10">
-        <Symbole size={34} className="text-laterite" />
-        <h1 className="mt-5 text-title font-semibold tracking-tight">
-          {t.compteEnAttenteTitre}
-        </h1>
-        <p className="mt-3 text-small leading-relaxed text-ink-soft">
-          {t.compteEnAttenteTexte}
-        </p>
-        <a
-          href="/connexion"
-          className="mt-8 rounded-btn border border-line py-3 text-center text-body font-medium text-ink-soft transition hover:border-ink-faint"
-        >
-          {t.jAiDejaUnCompte}
-        </a>
-      </div>
-    );
-  }
+  const champ =
+    "rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink";
 
   return (
     <div className="mx-auto flex min-h-[70dvh] w-full max-w-sm flex-col justify-center py-10">
       <div className="mb-9">
         <Symbole size={34} className="text-laterite" />
-        <h1 className="mt-5 text-title font-semibold tracking-tight">
-          {t.inscriptionTitre}
-        </h1>
-        <p className="mt-2 text-small leading-relaxed text-ink-soft">
-          {t.inscriptionSousTitre}
-        </p>
+        <h1 className="mt-5 text-title font-semibold tracking-tight">{t.titre}</h1>
+        <p className="mt-2 text-small leading-relaxed text-ink-soft">{t.sousTitre}</p>
       </div>
 
       <form onSubmit={creer} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-small text-ink-soft">{t.prenom}</span>
+            <input value={prenom} onChange={(e) => setPrenom(e.target.value)}
+              autoComplete="given-name" maxLength={60} autoFocus required className={champ} />
+          </label>
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-small text-ink-soft">{t.nom}</span>
+            <input value={nom} onChange={(e) => setNom(e.target.value)}
+              autoComplete="family-name" maxLength={60} required className={champ} />
+          </label>
+        </div>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-small text-ink-soft">{t.adresse}</span>
+          <input value={adresse} onChange={(e) => setAdresse(e.target.value)}
+            autoComplete="street-address" maxLength={200} placeholder={t.adresseExemple}
+            required className={champ} />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-small text-ink-soft">{t.telephone}</span>
+          <input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)}
+            autoComplete="tel" inputMode="tel" maxLength={24}
+            placeholder={t.telephoneExemple} required className={champ} />
+        </label>
+
         <label className="flex flex-col gap-1.5">
           <span className="text-small text-ink-soft">{t.courriel}</span>
-          <input
-            type="email"
-            value={courriel}
-            onChange={(e) => setCourriel(e.target.value)}
-            autoComplete="username"
-            autoCapitalize="none"
-            autoFocus
-            required
-            className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink"
-          />
+          <input type="email" value={courriel} onChange={(e) => setCourriel(e.target.value)}
+            autoComplete="username" autoCapitalize="none" required className={champ} />
         </label>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-small text-ink-soft">{t.motDePasse}</span>
-          <input
-            type="password"
-            value={motDePasse}
+          <input type="password" value={motDePasse}
             onChange={(e) => setMotDePasse(e.target.value)}
-            autoComplete="new-password"
-            required
-            className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink"
-          />
+            autoComplete="new-password" required className={champ} />
           <span className={`text-caption ${
             motDePasse && !assezLong ? "text-negative" : "text-ink-faint"
           }`}>
@@ -132,17 +133,11 @@ export default function Inscription() {
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-small text-ink-soft">{t.confirmerMotDePasse}</span>
-          <input
-            type="password"
-            value={repete}
-            onChange={(e) => setRepete(e.target.value)}
-            autoComplete="new-password"
-            required
-            className="rounded-btn border border-line bg-surface-raised px-3.5 py-2.5 text-body outline-none transition focus:border-ink"
-          />
+          <span className="text-small text-ink-soft">{t.confirmer}</span>
+          <input type="password" value={repete} onChange={(e) => setRepete(e.target.value)}
+            autoComplete="new-password" required className={champ} />
           {repete && !pareils && (
-            <span className="text-caption text-negative">{t.motsDePasseDifferents}</span>
+            <span className="text-caption text-negative">{t.differents}</span>
           )}
         </label>
 
@@ -151,17 +146,25 @@ export default function Inscription() {
           disabled={!complet || etat === "envoi"}
           className="mt-2 rounded-btn bg-ink py-3 text-body font-medium text-white transition hover:opacity-90 disabled:opacity-35"
         >
-          {etat === "envoi" ? t.verification : t.creerUnCompte}
+          {etat === "envoi" ? t.creation : t.creer}
         </button>
 
         {etat === "erreur" && <p className="text-small text-negative">{message}</p>}
+
+        <p className="text-caption leading-relaxed text-ink-faint">
+          {t.conditionsAvant}
+          <a href="/confidentialite" className="underline underline-offset-4">
+            {t.conditionsLien}
+          </a>
+          {t.conditionsApres}
+        </p>
       </form>
 
       <a
         href="/connexion"
         className="mt-6 text-center text-small font-medium text-ink underline underline-offset-4"
       >
-        {t.jAiDejaUnCompte}
+        {t.dejaUnCompte}
       </a>
 
       <p className="mt-10 text-caption leading-relaxed text-ink-faint">{t.notePin}</p>

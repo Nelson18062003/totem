@@ -1,13 +1,13 @@
-# Publier TOTEM sur l'App Store, en application non répertoriée
+# Publier TOTEM sur l'App Store — pour tout le monde
 
-> **Non répertoriée** : l'application est sur l'App Store, s'installe et se
-> met à jour comme n'importe quelle autre — sans TestFlight —, mais elle
-> n'apparaît dans aucune recherche ni aucun classement. On l'installe par un
-> lien direct, celui qu'on donne à ses vendeurs.
+> **TOTEM est une application grand public.** C'est la décision du
+> propriétaire. N'importe qui la trouve sur l'App Store, la télécharge, crée
+> son compte dans l'application, et atteint ses comptes Mobile Money d'où
+> qu'il soit. Ce n'est ni un outil privé pour une boutique, ni une
+> application financière, ni une distribution réservée.
 
-Apple examine une application non répertoriée **exactement** comme une
-application publique. Il faut donc une fiche complète, des captures, et un
-compte qui permet à son examinateur d'entrer — la vitrine de démonstration.
+Il n'y a donc **ni formulaire « app non répertoriée », ni lien caché** : la
+fiche est publique, l'application apparaît dans les recherches.
 
 ## Ce qui est déjà prêt dans le dépôt
 
@@ -15,106 +15,170 @@ compte qui permet à son examinateur d'entrer — la vitrine de démonstration.
 |---|---|
 | Les textes de la fiche, en français et en anglais | `mobile/store.config.js` |
 | Le nom sur l'App Store : « TOTEM by Bonzinilabs » (« TOTEM » seul est pris) | `mobile/store.config.js` |
-| Huit captures iPhone (1290 × 2796) et huit iPad (2048 × 2732) | `mobile/store/apple/screenshot/` |
+| Les captures iPhone (1290 × 2796) et iPad (2048 × 2732) | `mobile/store/apple/screenshot/` |
 | La classification d'âge (4+) | `mobile/store.config.js` |
-| La note pour l'examinateur, en anglais | `mobile/store.config.js` |
+| La réponse à Apple et la note pour l'examinateur, en anglais | `docs/APPLE-REPONSE-2.1.md` (lue par `mobile/store.config.js`) |
+| Le script de la vidéo demandée par Apple | `docs/APPLE-REPONSE-2.1.md` |
 | Le compte de l'examinateur (vitrine de démonstration) | `web/lib/demonstration.ts` |
-| Le bouton qui envoie tout chez Apple | GitHub → Actions → **« Fiche App Store »** |
+| La politique de confidentialité et la page de suppression | `https://totemlabs.app/confidentialite`, `https://totemlabs.app/suppression` |
+| Le bouton qui envoie la fiche chez Apple | GitHub → Actions → **« Fiche App Store »** |
 
 Les captures sont faites sur le faux nuage, jamais sur de vraies données : un
 montant réel ou un nom de client n'a rien à faire sur une fiche publique.
 
+## Ce qu'Apple vérifie, et ce que l'application fait
+
+| Ce qu'Apple exige | Ce que fait TOTEM |
+|---|---|
+| Un compte se crée dans l'application | « Créer un compte » sur l'écran de connexion : prénom, nom, adresse, adresse e-mail, téléphone, mot de passe. Le compte s'ouvre tout de suite. |
+| Un compte créé dans l'application se **supprime** dans l'application (règle 5.1.1 v) | **Réglages → Supprimer mon compte**, confirmé par le mot de passe. Aussi sur `https://totemlabs.app/suppression`. |
+| L'examinateur peut tout essayer | La vitrine : deux cartes inventées, opérations jouées pour de faux. |
+| On ne demande que ce qui sert | L'adresse sert à envoyer ou reprendre la puce ou le boîtier, le téléphone à joindre la personne : la politique de confidentialité le dit, champ par champ. |
+
 ## Ce que vous faites, dans l'ordre
 
-### 1. Le compte de l'examinateur : rien à faire
+### 1. Mettre la plateforme à niveau — AVANT tout le reste
+
+L'examinateur va créer un compte. Si la plateforme en ligne ne sait pas le
+faire, il voit une erreur, et l'application est refusée.
+
+1. **Supabase → SQL Editor** : coller et exécuter
+   `migrations/20261004_inscription_publique.sql`. Elle se vérifie elle-même
+   à la fin. Sans elle, toute inscription échoue.
+2. **Déployer la plateforme** (Vercel) avec la version qui porte
+   l'inscription publique et la suppression.
+3. Vérifier, depuis un navigateur : `https://totemlabs.app/inscription`
+   crée bien un compte, et `https://totemlabs.app/suppression` le supprime.
+4. **Le courriel de contact** : poser la variable `CONTACT_COURRIEL` sur
+   Vercel, puis redéployer. La page d'assistance de la fiche est
+   `https://totemlabs.app/confidentialite` ; Apple veut y trouver un moyen de
+   vous joindre, et la page n'affiche une adresse que si cette variable
+   existe.
+
+### 2. La nouvelle application
+
+L'application qui part chez Apple doit porter « Créer un compte » sur
+l'écran de connexion, et « Supprimer mon compte » dans les Réglages. Si le
+paquet déposé dans App Store Connect est plus ancien, il faut d'abord
+compiler la nouvelle : **GitHub → Actions → « Application iPhone »** (profil
+`production`). Le paquet arrive dans App Store Connect, rubrique **Build**.
+
+### 3. Le compte de l'examinateur : rien à faire
 
 La plateforme porte une **vitrine de démonstration**. Ses identifiants sont
 écrits dans la fiche, et Apple les donne à son examinateur :
 
 | | |
 |---|---|
-| Courriel | `examen@totemlabs.app` |
+| Adresse e-mail | `examen@totemlabs.app` |
 | Mot de passe | `TOTEM-Examen-2026` |
 
 Ils sont publics, et c'est voulu : la vitrine ne montre que des données
-**inventées** (deux cartes « démo », des SMS de clients « DÉMO »), ne touche à
-**aucune** de vos cartes, et ses opérations se jouent **pour de faux** —
+**inventées** (deux cartes « démo », des SMS « DÉMO »), ne touche à
+**aucune** vraie carte, et ses opérations se jouent **pour de faux** —
 numéro, montant, message de confirmation, code secret, « opération
-réussie », sans réseau et sans un franc. Elle ne voit ni vos SMS, ni votre
-terminal, ni votre journal, ni la console.
+réussie », sans réseau et sans un franc. Elle ne se supprime pas : elle sert
+à tous les examinateurs. Pour essayer la suppression, l'examinateur crée son
+propre compte — la note le lui dit.
 
 `web/scripts/verifier-la-demonstration.mjs` le vérifie contre un vrai
 serveur, à chaque fois.
 
-**Après l'accord d'Apple**, vous pouvez la fermer : variable
-`DEMONSTRATION` = `non` sur la plateforme. Les sessions déjà ouvertes
-tombent avec elle. Rouvrez-la (supprimez la variable) avant chaque nouvelle
-soumission : l'examinateur revient à chaque version.
+**La vitrine reste ouverte** tant que l'application est sur l'App Store :
+Apple revient à chaque version, et peut rouvrir l'application à tout moment.
+(`DEMONSTRATION` = `non` la ferme ; ne la fermez que si vous retirez
+l'application.)
 
-### 2. Qui Apple appelle s'il a une question : déjà fait
+### 4. Qui Apple appelle s'il a une question : déjà fait
 
 Apple exige un contact. Il est écrit dans la fiche (`mobile/store.config.js`,
-bloc `CONTACT`) : le prénom, le nom, le courriel et le téléphone du
-propriétaire. Les variables de GitHub ne se posent pas par programme ; si
-l'on en pose un jour (`APPLE_CONTACT_PRENOM`, `…_NOM`, `…_COURRIEL`,
-`…_TELEPHONE`, onglet « Variables »), elles passent devant.
+bloc `CONTACT`). Si l'on pose un jour des variables GitHub
+(`APPLE_CONTACT_PRENOM`, `…_NOM`, `…_COURRIEL`, `…_TELEPHONE`, onglet
+« Variables »), elles passent devant.
 
-### 3. Envoyer la fiche
+### 5. Renvoyer la fiche
 
 **GitHub → Actions → « Fiche App Store » → Run workflow.**
 
-S'il manque quelque chose, le travail s'arrête **avant** d'envoyer et dit
-quoi. Quand la ligne est verte, la fiche est dans App Store Connect.
+Elle emporte les nouveaux textes (application grand public) et la nouvelle
+note pour l'examinateur. S'il manque quelque chose, le travail s'arrête
+**avant** d'envoyer et dit quoi. Quand la ligne est verte, la fiche est à
+jour dans App Store Connect.
 
-### 4. Ce qu'Apple réserve au titulaire du compte
+### 6. Filmer la vidéo
 
-Ces gestes ne se font pas par programme : Apple les garde pour la personne
-qui détient le compte.
+Sur un vrai iPhone, avec la nouvelle application et la plateforme à niveau.
+Le script, pas à pas, est dans `docs/APPLE-REPONSE-2.1.md` : créer un
+compte de test, montrer « Ajouter ma carte », se connecter à la vitrine pour
+jouer une opération, puis supprimer le compte de test dans l'application.
 
-1. **App Store Connect → TOTEM → Confidentialité de l'app**, répondre :
+### 7. La confidentialité de l'app (réservé au titulaire du compte)
 
-   | Question | Réponse |
-   |---|---|
-   | Collectez-vous des données ? | **Oui** |
-   | Coordonnées → **Adresse e-mail** | Oui · *Fonctionnalité de l'app* · liée à l'identité · **pas** de suivi |
-   | Informations financières → **Autres informations financières** | Oui · *Fonctionnalité de l'app* · liée à l'identité · **pas** de suivi |
-   | Tout le reste (position, contacts, historique, diagnostics…) | **Non** |
+**App Store Connect → TOTEM → Confidentialité de l'app.** L'ancienne
+réponse ne déclarait que l'adresse e-mail : avec l'inscription publique,
+c'est faux. Elle doit correspondre **au mot près** à la politique de
+confidentialité (`web/noyau/textes/confidentialite.ts`).
 
-   Les SMS et les soldes viennent du terminal du propriétaire, vers **sa**
-   plateforme. Les déclarer est exact ; les taire serait faux.
+« Collectez-vous des données à partir de cette app ? » → **Oui**. Puis, pour
+chaque type ci-dessous : finalité **Fonctionnalité de l'app**, **liée à
+l'identité de l'utilisateur**, **non utilisée pour le suivi**.
 
-2. **Prix et disponibilité** : gratuit, et les pays où vous voulez
-   l'installer.
+| Catégorie d'Apple | Type | Ce que c'est chez TOTEM |
+|---|---|---|
+| Coordonnées | **Nom** | prénom et nom, donnés à l'inscription |
+| Coordonnées | **Adresse e-mail** | l'identifiant de connexion |
+| Coordonnées | **Numéro de téléphone** | pour joindre la personne au sujet de sa carte |
+| Coordonnées | **Adresse physique** | pour envoyer ou reprendre la puce ou le boîtier |
+| Contenu utilisateur | **E-mails ou SMS** | les SMS reçus par les cartes de la personne, affichés en entier |
+| Contenu utilisateur | **Autre contenu utilisateur** | les bénéficiaires enregistrés (noms et numéros), les demandes envoyées (codes USSD, numéros, montants tapés) |
+| Informations financières | **Autres informations financières** | les soldes et montants que portent ces SMS |
+| Identifiants | **Identifiant de l'appareil** | le jeton de notification du téléphone, pour le faire sonner |
 
-   La fiche donne `https://totemlabs.app/confidentialite` comme page
-   d'assistance : Apple veut y trouver un moyen de vous joindre. Elle
-   n'affiche votre courriel que si la plateforme porte la variable
-   `CONTACT_COURRIEL` (voir `docs/PLAY-STORE.md`). Vérifiez-le avant de
-   soumettre.
+Tout le reste — position, contacts, historique de navigation, recherches,
+achats, diagnostics, données d'usage, santé — **Non**. Aucun outil de mesure
+d'audience, de publicité ni de suivi n'est installé.
 
-3. **La version 1.1.0** : App Store Connect a préparé la fiche pour une
-   version « 1.0 » — cliquer dessus, en haut à gauche, et la renommer
-   **1.1.0**, le numéro du paquet. Puis, rubrique **Build** : choisir le
-   paquet déjà déposé (celui de TestFlight).
+Les SMS et les soldes passent par le boîtier, pas par le téléphone. Mais ils
+sont rangés sur la plateforme au nom de la personne, et l'application les
+lui montre : les déclarer est exact, les taire serait faux.
 
-4. **Le formulaire « app non répertoriée »**, envoyé par le titulaire du compte :
-   **https://developer.apple.com/contact/request/unlisted-app/**
-   Ce qu'on y écrit : *« TOTEM is a private management app for the owner of
-   Mobile Money SIM cards and the sellers he entrusts cards to. It is not
-   meant for the general public. »*
+**Telegram n'est pas un oubli.** Chaque boîtier envoie une copie des SMS
+qu'il reçoit (codes à usage unique compris) et des reçus PDF dans la
+discussion Telegram privée de qui le fait fonctionner — l'équipe TOTEM pour
+une puce confiée à TOTEM. Telegram travaille pour le compte de TOTEM (pas
+pour son propre usage) : ce n'est pas du « suivi », mais il est NOMMÉ dans
+la politique de confidentialité (`tiers`) et dans la note à l'examinateur
+(section 4). Les types déclarés ci-dessus le couvrent déjà (« E-mails ou
+SMS », « Autres informations financières »).
 
-5. **« Soumettre pour examen »**.
+### 8. Prix et disponibilité
 
-### 5. Après l'accord d'Apple
+**Gratuit**, et **tous les pays**. Rien dans l'application ne dépend du pays
+— c'est d'ailleurs l'idée : atteindre ses comptes d'où qu'on soit.
 
-L'application se télécharge par le lien
-**https://apps.apple.com/app/id6809711396**. C'est ce lien qu'on envoie aux
-vendeurs. TestFlight n'est plus nécessaire.
+### 9. Répondre à Apple, puis soumettre à nouveau
+
+1. **App Store Connect → Vérification de l'app** → ouvrir la soumission en
+   attente (« Guideline 2.1 – Information Needed »).
+2. **Version** : vérifier que la rubrique **Build** porte le paquet de
+   l'étape 2 (le nouveau). Sinon, le choisir.
+3. **« Répondre »** dans le fil de l'examen : coller le texte anglais de
+   `docs/APPLE-REPONSE-2.1.md` (ce qui est entre les ```), et **joindre la
+   vidéo**.
+4. **« Soumettre à nouveau »** (*Resubmit to App Review*).
+
+Ne remplissez **aucun** formulaire « unlisted app » : TOTEM est public.
+
+### 10. Après l'accord d'Apple
+
+La sortie n'est pas automatique (`automaticRelease: false`) : c'est vous qui
+cliquez sur **« Publier cette version »**, le jour choisi. Ensuite
+l'application se trouve sur l'App Store sous « TOTEM by Bonzinilabs ».
 
 Les corrections continuent d'arriver par **« Mise à jour »**, sans repasser
 par Apple, tant qu'aucune pièce du moteur ne change. Une nouvelle version du
 moteur repasse par **« Application iPhone »** (profil `production`) puis par
-**« Soumettre pour examen »**.
+une soumission.
 
 ## Refaire les captures
 

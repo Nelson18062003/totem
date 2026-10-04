@@ -74,9 +74,9 @@ export function freinPour(cle: string): number {
  * avant une écriture ne garantit rien, parce que quelqu'un écrit entre les
  * deux. Ici, la réservation et le comptage sont le MÊME geste.
  */
-function reserverUnEssai(cle: string): void {
+function reserverUnEssai(cle: string, commun = true): void {
   const maintenant = Date.now();
-  for (const k of [cle, SEAU_COMMUN]) {
+  for (const k of commun ? [cle, SEAU_COMMUN] : [cle]) {
     const e = essais.get(k);
     essais.set(k, e && maintenant - e.vu <= FENETRE_MS
       ? { n: e.n + 1, vu: maintenant } : { n: 1, vu: maintenant });
@@ -166,7 +166,15 @@ function freinCommun(): number {
  * refuser TOUT DE SUITE, sans vérifier le mot de passe — c'est ce refus
  * précoce qui empêche une rafale de faire calculer le serveur.
  */
-export async function attendreLeFrein(cle: string): Promise<boolean> {
+export async function attendreLeFrein(
+  cle: string,
+  // L'INSCRIPTION A SON SEAU À ELLE. Une application grand public reçoit des
+  // inscriptions de partout ; les compter dans le seau commun ralentirait le
+  // propriétaire qui se connecte chaque fois que des inconnus créent leur
+  // compte. Elle passe donc `commun: false`, avec une clé préfixée, et un
+  // mur plus bas : personne ne crée vingt comptes en un quart d'heure.
+  { commun = true, mur = MUR }: { commun?: boolean; mur?: number } = {},
+): Promise<boolean> {
   // LE COMPTEUR EST DANS LA BASE — une instruction, sous le verrou de la
   // ligne. En mémoire, il ne comptait que pour l'instance qui l'hébergeait :
   // un hébergement qui en met plusieurs en parallèle donnait à une attaque
@@ -177,20 +185,20 @@ export async function attendreLeFrein(cle: string): Promise<boolean> {
   // commun. On les demande ensemble, pour ne pas payer deux allers-retours.
   const [nAdresse, nCommun] = await Promise.all([
     compterUnEssai(cle, FENETRE_S),
-    compterUnEssai(SEAU_COMMUN, FENETRE_S),
+    commun ? compterUnEssai(SEAU_COMMUN, FENETRE_S) : Promise.resolve(0),
   ]);
 
   // La base n'a pas répondu : on retombe sur la mémoire de cette instance.
   // Un frein muet vaut mieux qu'une porte fermée au propriétaire.
   if (nAdresse === null || nCommun === null) {
-    reserverUnEssai(cle);
-    if (compte(cle) > MUR) return false;
-    const attenteLocale = Math.max(freinPour(cle), freinCommun());
+    reserverUnEssai(cle, commun);
+    if (compte(cle) > mur) return false;
+    const attenteLocale = Math.max(freinPour(cle), commun ? freinCommun() : 0);
     if (attenteLocale) await new Promise((r) => setTimeout(r, attenteLocale));
     return true;
   }
 
-  if (nAdresse > MUR) return false;
+  if (nAdresse > mur) return false;
   const attente = Math.max(delaiPour(nAdresse, LIBRES),
                            delaiPour(nCommun, LIBRES_COMMUN));
   if (attente) await new Promise((r) => setTimeout(r, attente));

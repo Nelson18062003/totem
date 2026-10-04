@@ -9,6 +9,8 @@ import { IconChevron, IconSettings } from "./icons";
 import { salutation } from "@noyau/salutation";
 import { compteConnecte } from "@/lib/qui";
 import { aQuiParCarte } from "@noyau/beneficiaires";
+import { codeDuCompte } from "@/lib/code-de-compte";
+import { courrielDeContact } from "@/lib/contact";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,15 @@ export default async function Accueil() {
   // propriétaire au mauvais endroit.
   const enPlace = sims.filter((s) => s.enPlace);
   const cartes = enPlace.length ? enPlace : sims;
+  // UN COMPTE DU GRAND PUBLIC SANS CARTE n'a ni carte « dans le terminal »
+  // ni terminal du tout : lui dire « Aucune carte dans le terminal » et
+  // « Aucun terminal ne s'est encore annoncé », c'était l'envoyer chercher
+  // une panne. Il voit « Ajouter ma carte », comme sur le téléphone, avec
+  // son CODE DE COMPTE — jamais son adresse e-mail (voir
+  // lib/code-de-compte.ts).
+  const sansCarte = sims.length === 0 && moi != null && moi.role !== "proprietaire";
+  const code = sansCarte && moi ? await codeDuCompte(moi.id) : null;
+  const contact = sansCarte ? courrielDeContact() : null;
 
   return (
     // Grand écran : le guichet à gauche, le terminal et ses détails à droite.
@@ -36,7 +47,7 @@ export default async function Accueil() {
           serrer « Vue d'ensemble ». */}
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:col-span-2">
         <div>
-          <p className="text-small text-ink-soft">{salutation(langue, moi?.courriel)}</p>
+          <p className="text-small text-ink-soft">{salutation(langue, moi?.courriel, moi?.prenom)}</p>
           <h1 className="mt-0.5 text-title font-semibold tracking-tight">{t.titre}</h1>
         </div>
         {/* La langue, en évidence dès l'accueil — quelle que soit la taille
@@ -63,6 +74,40 @@ export default async function Accueil() {
           raccourcis={raccourcis}
           aQui={aQuiParCarte(beneficiaires, paiements, cartes.map((c) => c.iccid))}
         />
+      ) : sansCarte ? (
+        <section className="flex flex-col gap-4 lg:col-start-1">
+          <div>
+            <h2 className="text-heading font-semibold">{t.ajouterCarteTitre}</h2>
+            <p className="mt-1 text-small leading-relaxed text-ink-soft">{t.ajouterCarteIntro}</p>
+          </div>
+          <div className="divide-hair rounded-card border border-line bg-surface-raised">
+            <div className="p-4">
+              <p className="text-body font-medium">{t.ajouterCarteEnvoyerTitre}</p>
+              <p className="mt-0.5 text-small leading-relaxed text-ink-soft">{t.ajouterCarteEnvoyer}</p>
+            </div>
+            <div className="p-4">
+              <p className="text-body font-medium">{t.ajouterCarteBoitierTitre}</p>
+              <p className="mt-0.5 text-small leading-relaxed text-ink-soft">{t.ajouterCarteBoitier}</p>
+            </div>
+          </div>
+          <p className="rounded-card border border-line bg-surface-raised p-4 text-small leading-relaxed">
+            {t.ajouterCarteOuvrir}
+          </p>
+          <p className="text-small leading-relaxed text-ink-soft">{t.ajouterCarteEnsuite}</p>
+          {code && (
+            <div className="rounded-card border border-line bg-surface-raised p-4" data-code-compte={code}>
+              <p className="text-small text-ink-faint">{t.ajouterCarteCodeTitre}</p>
+              <p className="mt-1 select-all text-heading font-semibold tracking-[0.15em] tabnums">{code}</p>
+              <p className="mt-1 text-small leading-relaxed text-ink-soft">{t.ajouterCarteCode}</p>
+            </div>
+          )}
+          <a
+            href={contact ? `mailto:${contact}` : "/confidentialite"}
+            className="rounded-btn bg-ink px-4 py-3 text-center text-body font-medium text-white transition hover:opacity-90"
+          >
+            {t.ajouterCarteContacter}
+          </a>
+        </section>
       ) : (
         <section className="rounded-card border border-dashed border-line px-4 py-10 text-center lg:col-start-1">
           <p className="text-body font-medium">{t.aucuneCarte}</p>
@@ -72,7 +117,9 @@ export default async function Accueil() {
         </section>
       )}
 
-      {/* Le terminal, avec ses détails techniques */}
+      {/* Le terminal, avec ses détails techniques — pas pour un compte qui
+          n'a encore aucune carte : il n'a pas de terminal. */}
+      {!sansCarte && (
       <aside className="lg:col-start-2 lg:row-span-3 lg:row-start-2">
         <h2 className="mb-3 text-heading font-semibold">{t.terminal}</h2>
         <Link href="/reglages"
@@ -112,6 +159,7 @@ export default async function Accueil() {
           )}
         </Link>
       </aside>
+      )}
 
       {/* Les derniers SMS — c'est par eux que tout arrive */}
       <section className="lg:col-start-1">

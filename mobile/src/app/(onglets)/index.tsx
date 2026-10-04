@@ -31,6 +31,7 @@ import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
+import { AjouterMaCarte } from "@/ajouter-ma-carte";
 import { Caisse } from "@/caisse";
 import { Coordonnees } from "@/coordonnees";
 import { useMargeSousLaBarre, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte,
@@ -202,7 +203,14 @@ export default function Accueil() {
     // tant que les chiffres n'étaient pas là : le propriétaire ne pouvait
     // pas distinguer « ça arrive » de « c'est cassé ».
     <SqueletteCaisse puces={plusieurs} />
-  ) : erreur ? null : (
+  ) : erreur ? null : donnees?.proprietaire === false ? (
+    // UN COMPTE SANS CARTE — le plus souvent, quelqu'un qui vient de créer
+    // son compte. Il n'a pas de boîtier : ni « hors ligne », ni « aucune
+    // carte dans le terminal ». On lui dit comment AJOUTER sa carte.
+    <Entree delai={60}>
+      <AjouterMaCarte langue={langue} code={donnees.codeCompte} />
+    </Entree>
+  ) : (
     // La panne passe AVANT la carte vide : hors ligne, « aucune carte »
     // serait un mensonge.
     <Carte style={{ padding: espaces.xl, alignItems: "center", gap: espaces.sm,
@@ -346,7 +354,7 @@ export default function Accueil() {
                    adjustsFontSizeToFit minimumFontScale={0.75}
                    accessibilityRole="header"
                    style={{ flex: 1, letterSpacing: -0.3 }}>
-              {salutation(langue, donnees?.courriel)}
+              {salutation(langue, donnees?.courriel, donnees?.prenom)}
             </Texte>
             <BoutonIcone nom="Settings" etiquette={t.reglages}
                          onPress={() => router.push("/reglages")} />
@@ -379,7 +387,8 @@ export default function Accueil() {
       {ficheTerminal ? (
         <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
                                 fuseau={fuseau} langue={langue} onReverifier={recharger}
-                                onFermer={() => setFicheTerminal(false)} />
+                                onFermer={() => setFicheTerminal(false)}
+                                chezTotem={donnees?.proprietaire === false} />
       ) : null}
 
       {coordonnees && active ? (

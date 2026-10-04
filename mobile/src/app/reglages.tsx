@@ -42,6 +42,7 @@ import { Icone } from "@/icones";
 import { SectionCartes, carteRetiree, motDuRefus } from "@/reglages-cartes";
 import { SectionCodes } from "@/reglages-codes";
 import { SectionQui } from "@/reglages-qui";
+import { FicheSupprimerMonCompte } from "@/supprimer-mon-compte";
 import { boitierSeTait, depuisQuand, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
 import { couleurs, espaces, textes } from "@/theme/jetons";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
@@ -74,6 +75,7 @@ export default function Reglages() {
   const roue = useRoue();
   const maintenant = useMaintenant();
   const [ficheTerminal, setFicheTerminal] = useState(false);
+  const [suppression, setSuppression] = useState(false);
   const terminal = donnees?.terminal ?? null;
   const fuseau = donnees?.fuseau || FUSEAU_DEFAUT;
   // Les cartes en place d'abord — c'est elles qu'on vient régler. Une carte
@@ -173,7 +175,10 @@ export default function Reglages() {
 
         {/* Le terminal. Sans rien au cahier, sa place se garde en formes
             grises ; en panne, l'Accroc ci-dessus parle seul. */}
-        {donnees || attente ? (
+        {/* Un compte SANS boîtier (quelqu'un qui vient de s'inscrire) n'a
+            pas de terminal à régler : « Aucun terminal relié » lui ferait
+            chercher une panne qui n'existe pas. La section se tait. */}
+        {(donnees || attente) && !(donnees?.proprietaire === false && !terminal) ? (
         <View style={{ gap: espaces.sm }}>
           <Texte taille={textes.intertitre} poids="demi">{t.terminal}</Texte>
           <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
@@ -304,6 +309,31 @@ export default function Reglages() {
                   <Icone nom="Close" taille={20} couleur={couleurs.negatif} />
                   <Texte ton="negatif" poids="moyen">{t.seDeconnecter}</Texte>
                 </Pressable>
+                {/* SUPPRIMER MON COMPTE — Apple l'exige dès qu'on peut en
+                    créer un. Caché au seul propriétaire de la plateforme,
+                    qui ne se supprime pas par là ; pour tout autre, la
+                    plateforme a le dernier mot, et sa phrase s'affiche. La
+                    vitrine le VOIT, à dessein : c'est par elle que
+                    l'examinateur d'Apple cherche ce bouton — la plateforme
+                    lui répond qu'un compte de démonstration ne se supprime
+                    pas. */}
+                {donnees?.proprietaire !== true ? (
+                  <>
+                    <Filet />
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setSuppression(true)}
+                      style={({ pressed }) => ({
+                        flexDirection: "row", alignItems: "center", gap: espaces.md,
+                        padding: espaces.lg,
+                        backgroundColor: pressed ? couleurs.surface2 : "transparent",
+                      })}
+                    >
+                      <Icone nom="Close" taille={20} couleur={couleurs.negatif} />
+                      <Texte ton="negatif" poids="moyen">{t.supprimerCompte}</Texte>
+                    </Pressable>
+                  </>
+                ) : null}
               </Carte>
             </View>
 
@@ -318,10 +348,15 @@ export default function Reglages() {
       </Defilement>
       </KeyboardAvoidingView>
 
+      {suppression ? (
+        <FicheSupprimerMonCompte langue={langue} onFermer={() => setSuppression(false)} />
+      ) : null}
+
       {ficheTerminal && terminal ? (
         <FicheTerminalHorsLigne vuLe={terminal.vuLe ?? null} maintenant={maintenant}
                                 fuseau={fuseau} langue={langue} onReverifier={recharger}
-                                onFermer={() => setFicheTerminal(false)} />
+                                onFermer={() => setFicheTerminal(false)}
+                                chezTotem={donnees?.proprietaire === false} />
       ) : null}
     </SafeAreaView>
   );

@@ -10,6 +10,8 @@ long est coupé (c'est un aperçu ; le journal garde l'entier).
 """
 
 import json
+import re
+import urllib.parse
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -17,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import totem.app
 from totem.app import Robot
 from totem.notification import APERCU_MAX, composer, envoyer, lire_les_accuses
-from totem.nuage import Nuage
+from totem.nuage import PAR_ENVOI, Nuage
 
 
 class TexteDeLaNotification(unittest.TestCase):
@@ -339,14 +341,15 @@ class BaseSansLaMigrationDuDeuxOctobre(unittest.TestCase):
     def test_les_telephones_sonnent_quand_meme(self):
         self.assertEqual(self.nuage.appareils("89237010000000008901"),
                          ["ExponentPushToken[samsung]", "ExponentPushToken[iphone]"])
-        self.assertEqual(len(self.demandes), 2, "la relecture sans la colonne n'a pas eu lieu")
+        lectures = [d for d in self.demandes if "/appareils?" in d]
+        self.assertEqual(len(lectures), 2, "la relecture sans la colonne n'a pas eu lieu")
 
     def test_une_autre_panne_ne_passe_pas_pour_une_base_en_retard(self):
         """Seule la colonne manquante déclenche la relecture : un vrai refus
         (clé fausse, table absente d'une autre façon) reste une panne."""
         self.REPONSE = {"code": "42501", "message": "permission denied for table appareils"}
         self.assertEqual(self.nuage.appareils("89237010000000008901"), [])
-        self.assertEqual(len(self.demandes), 1)
+        self.assertEqual(len([d for d in self.demandes if "/appareils?" in d]), 1)
 
 
 class ChacunEntendSesCartes(unittest.TestCase):
@@ -360,10 +363,14 @@ class ChacunEntendSesCartes(unittest.TestCase):
         essai = self
         self.tables = {
             "appareils": [
-                {"jeton": "ExponentPushToken[proprio-ancien]", "utilisateur": None},
-                {"jeton": "ExponentPushToken[proprio]", "utilisateur": 1},
-                {"jeton": "ExponentPushToken[vendeur]", "utilisateur": 2},
-                {"jeton": "ExponentPushToken[ferme]", "utilisateur": 3},
+                {"jeton": "ExponentPushToken[proprio-ancien]", "utilisateur": None,
+                 "vu_le": "2026-10-01T10:00:00Z"},
+                {"jeton": "ExponentPushToken[proprio]", "utilisateur": 1,
+                 "vu_le": "2026-10-01T09:00:00Z"},
+                {"jeton": "ExponentPushToken[vendeur]", "utilisateur": 2,
+                 "vu_le": "2026-10-01T08:00:00Z"},
+                {"jeton": "ExponentPushToken[ferme]", "utilisateur": 3,
+                 "vu_le": "2026-10-01T07:00:00Z"},
             ],
             "utilisateurs": [
                 {"id": 1, "role": "proprietaire", "approuve": True},
@@ -376,18 +383,47 @@ class ChacunEntendSesCartes(unittest.TestCase):
             ],
         }
         self.panne = set()
+        self.demandes = []
 
         class Base(BaseHTTPRequestHandler):
+            # Un PostgREST en miniature : il respecte les filtres, l'ordre et
+            # la LIMITE, comme le vrai. Sans la limite, la fenêtre des cent
+            # téléphones n'existerait pas ici, et le défaut non plus.
             def do_GET(soi):
-                table = soi.path.split("/rest/v1/")[1].split("?")[0]
-                if table in essai.panne:
+                essai.demandes.append(soi.path)
+                chemin, _, requete = soi.path.split("/rest/v1/")[1].partition("?")
+                if chemin in essai.panne:
                     soi.send_response(500)
                     soi.end_headers()
                     return
-                lignes = essai.tables.get(table, [])
-                if table == "attributions":
-                    iccid = soi.path.split("iccid=eq.")[1].split("&")[0]
-                    lignes = [l for l in lignes if l["iccid"] == iccid]
+                params = urllib.parse.parse_qs(requete)
+                lignes = list(essai.tables.get(chemin, []))
+
+                def regle(ligne, col, expr):
+                    op, _, val = expr.partition(".")
+                    v = ligne.get(col)
+                    if op == "eq":
+                        return str(v) == val
+                    if op == "is":
+                        return (v is None) if val == "null" else (v is (val == "true"))
+                    if op == "in":
+                        return str(v) in val.strip("()").split(",")
+                    return True
+
+                for col, (expr,) in params.items():
+                    if col in ("select", "order", "limit"):
+                        continue
+                    if col == "or":
+                        corps = expr[1:-1]
+                        clauses = re.findall(r"(\w+)\.((?:in\.\([^)]*\))|[^,]+)", corps)
+                        lignes = [l for l in lignes
+                                  if any(regle(l, c, e) for c, e in clauses)]
+                    else:
+                        lignes = [l for l in lignes if regle(l, col, expr)]
+                if "order" in params and params["order"][0].startswith("vu_le.desc"):
+                    lignes.sort(key=lambda l: l.get("vu_le") or "", reverse=True)
+                if "limit" in params:
+                    lignes = lignes[:int(params["limit"][0])]
                 corps = json.dumps(lignes).encode()
                 soi.send_response(200)
                 soi.send_header("Content-Type", "application/json")
@@ -402,6 +438,17 @@ class ChacunEntendSesCartes(unittest.TestCase):
         threading.Thread(target=self.serveur.serve_forever, daemon=True).start()
         self.nuage = Nuage(f"http://127.0.0.1:{self.serveur.server_port}",
                            "cle", "totem-test", journal=None)
+
+    def _cent_vingt_inscrits_plus_recents(self):
+        """Une plateforme grand public : cent vingt inscrits sans carte, qui
+        ont tous ouvert l'application APRÈS le titulaire et le propriétaire."""
+        for i in range(120):
+            uid = 100 + i
+            self.tables["utilisateurs"].append(
+                {"id": uid, "role": "invite", "approuve": True})
+            self.tables["appareils"].append(
+                {"jeton": f"ExponentPushToken[inscrit-{i}]", "utilisateur": uid,
+                 "vu_le": f"2026-10-02T{i // 60:02d}:{i % 60:02d}:00Z"})
 
     def tearDown(self):
         self.serveur.shutdown()
@@ -423,6 +470,33 @@ class ChacunEntendSesCartes(unittest.TestCase):
         self.panne = {"utilisateurs"}
         self.assertEqual(self.nuage.appareils(self.MTN),
                          ["ExponentPushToken[proprio-ancien]"])
+
+    def test_cent_inscrits_ne_font_pas_taire_le_titulaire(self):
+        """Grand public : chaque inscrit inscrit son téléphone, même sans
+        carte. Le titulaire et le propriétaire doivent sonner quand même, et
+        aucun des cent vingt autres."""
+        self._cent_vingt_inscrits_plus_recents()
+        sonnent = self.nuage.appareils(self.MTN)
+        self.assertEqual(sonnent, [
+            "ExponentPushToken[proprio-ancien]", "ExponentPushToken[proprio]",
+            "ExponentPushToken[vendeur]"])
+        self.assertFalse(any("inscrit-" in j for j in sonnent))
+
+    def test_temoin_l_ancienne_lecture_perd_le_titulaire(self):
+        """LE TÉMOIN : la lecture d'avant, réécrite en quelques lignes —
+        cent téléphones de TOUTE la plateforme, PUIS le tri par compte. Sur la
+        même base, elle doit perdre le titulaire ; sinon le test du dessus ne
+        prouve rien."""
+        self._cent_vingt_inscrits_plus_recents()
+        lignes = self.nuage._lire(
+            "appareils?select=jeton,utilisateur&order=vu_le.desc"
+            f"&limit={PAR_ENVOI * 5}")
+        admis = self.nuage._comptes_qui_entendent(self.MTN)
+        anciens = [l["jeton"] for l in lignes
+                   if l.get("utilisateur") is None
+                   or l.get("utilisateur") in admis][:PAR_ENVOI]
+        self.assertNotIn("ExponentPushToken[vendeur]", anciens)
+        self.assertNotIn("ExponentPushToken[proprio]", anciens)
 
 
 class FaireSonnerLeTelephone(unittest.TestCase):

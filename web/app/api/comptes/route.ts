@@ -7,6 +7,7 @@ import {
 } from "@/lib/serveur";
 import { creerParLeProprietaire } from "@/lib/porte";
 import { TOUT } from "@/lib/portee";
+import { codeDuCompte, codeNormalise } from "@/lib/code-de-compte";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,12 @@ export async function GET(req: Request) {
   return Response.json({
     comptes: comptes.map((c) => ({
       ...c,
+      // Le compte de l'inscription publique demande son CODE pour recevoir
+      // une puce : l'écran le sait d'ici, sans deviner. Le code lui-même ne
+      // sort PAS : le propriétaire le recopie depuis l'enveloppe de la puce.
+      // Affiché à côté du nom, on le recopierait depuis la liste — et l'on
+      // retomberait sur « choisir la personne d'après son adresse ».
+      codeExige: Boolean(c.telephone) && c.role !== "proprietaire",
       // Le propriétaire n'a pas de liste : il voit tout, toujours.
       cartes: c.role === "proprietaire" ? null : attributions.get(c.id) ?? [],
     })),
@@ -127,6 +134,25 @@ export async function POST(req: Request) {
     if (vise.role === "proprietaire") {
       return Response.json(
         { erreur: erreurApi(langue, "proprietaireVoitTout") }, { status: 400 });
+    }
+    // UNE PUCE S'ATTRIBUE D'APRÈS LE CODE DE COMPTE, PAS D'APRÈS L'ADRESSE.
+    // L'inscription est publique et rien ne prouve qu'une adresse appartient
+    // à qui l'a tapée : un inconnu qui crée le compte au courriel d'une
+    // autre AVANT elle recevrait sa puce, ses SMS et ses codes. Le code, lui,
+    // n'est montré qu'au titulaire, dans son application ; il le joint à sa
+    // puce, et le propriétaire le recopie ici. La règle vit dans la ROUTE —
+    // un écran qui l'oublierait ne la contourne pas.
+    //
+    // Elle vise les comptes de l'inscription publique (ils portent un
+    // téléphone : l'inscription l'exige, le propriétaire n'en saisit pas).
+    // Un compte que le propriétaire a créé lui-même pour un vendeur n'a pas
+    // de doute à lever : c'est lui qui l'a posé.
+    if (geste === "attribuer" && vise.telephone) {
+      const attendu = await codeDuCompte(id);
+      if (!attendu || codeNormalise(corps?.code) !== attendu) {
+        return Response.json(
+          { erreur: erreurApi(langue, "codeDeCompteFaux") }, { status: 409 });
+      }
     }
     if (geste === "attribuer") {
       const { sims } = await chargerDonnees(langue, TOUT, { sms: 0, recus: 0 });

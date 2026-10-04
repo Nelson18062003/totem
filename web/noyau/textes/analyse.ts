@@ -7,14 +7,14 @@ const en = {
   rienTitre: "Nothing to analyse yet",
   rienDetail:
     "As soon as payments come in, this page will show the week, the best " +
-    "days and the top customers.",
+    "days and the top senders.",
   encaissementsSemaine: "Money in this week",
   parRapportSemainePrecedente: "compared with the week before",
   moyenneParJour: "Daily average",
   meilleurJour: "Best day",
   encaissementsParJour: "Money in, day by day",
   montantsEnFcfa: "Amounts in FCFA.",
-  principauxClients: "Top customers",
+  principauxClients: "Top senders",
   nbPaiements: (n: number) => (n === 1 ? "1 payment" : `${n} payments`),
   exporterBilan: "Export the report",
   exportSemaine: "The week",
@@ -30,14 +30,14 @@ const fr: typeof en = {
   rienTitre: "Rien à analyser pour l’instant",
   rienDetail:
     "Dès que des paiements arriveront, cette page montrera la semaine, les " +
-    "meilleurs jours et les principaux clients.",
+    "meilleurs jours et ceux qui vous envoient le plus.",
   encaissementsSemaine: "Encaissements de la semaine",
   parRapportSemainePrecedente: "par rapport à la semaine précédente",
   moyenneParJour: "Moyenne par jour",
   meilleurJour: "Meilleur jour",
   encaissementsParJour: "Encaissements par jour",
   montantsEnFcfa: "Montants en FCFA.",
-  principauxClients: "Principaux clients",
+  principauxClients: "Qui vous envoie le plus",
   nbPaiements: (n) => (n > 1 ? `${n} paiements` : `${n} paiement`),
   exporterBilan: "Exporter le bilan",
   exportSemaine: "La semaine",
