@@ -75,10 +75,7 @@ import { toucherDepart, toucherEchec, toucherReussite } from "@/toucher";
 import { copierTexte } from "@/presse-papiers";
 import { remplirVariables } from "@noyau/codes";
 import { issueDeLAnnulation, phraseDAbandon } from "@noyau/abandon";
-import {
-  lignesDuMessage, lireEcran, menuEnTuiles, type EtatDuReseau, type MorceauDuMenu,
-  type TypeChamp,
-} from "@noyau/ussd";
+import { lireEcran, type EtatDuReseau, type TypeChamp } from "@noyau/ussd";
 import {
   ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, champAServir, etapePeutPartir, reponseDuBoitier,
   reponseLibre, reponsePrete, restantsApresReponse, type EcranRecu,
@@ -584,11 +581,6 @@ export function OperationPopup({
   // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
   // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
   const ecran = lireEcran(dernier, dernierMsg?.reseau);
-  // Le message dans son ordre, une seule fois : le titre dans la carte,
-  // chaque choix en tuile à l'endroit où l'opérateur l'a écrit. Voir
-  // `lignesDuMessage` et `menuEnTuiles` (noyau).
-  const decoupe = lignesDuMessage(dernier, ecran.choix);
-  const enTuiles = menuEnTuiles(decoupe.lignes);
   // « Répondre autre chose » (`libre`) range le pavé : le champ prend sa place.
   const pave = enSession && !attente && !fini && ecran.attend === "secret" && !libre;
   const reduit = useMouvementReduit();
@@ -805,7 +797,7 @@ export function OperationPopup({
                  style={{ paddingHorizontal: espaces.xs }}>{avis}</Texte>
         ) : null}
         {dernier ? (
-          <CarteOperateur texte={enTuiles.titre} copie={dernier} op={op}
+          <CarteOperateur texte={dernier} copie={dernier} op={op}
                           couleur={couleurOperateur(op)} t={t} />
         ) : (
           <Texte taille={textes.petit} ton="doux" style={{ paddingHorizontal: espaces.xs }}>
@@ -832,19 +824,16 @@ export function OperationPopup({
             texte={!dernierMsg ? t.connexionA(op) : t.onParleA(op)}
             envoye={dernierMsg ? envoye : null} t={t} />
         ) : repondable ? (
-          // LE MESSAGE DE L'OPÉRATEUR, ENTIER ET UNE SEULE FOIS — « 00. Next »
-          // compris : le titre dans la carte, ses choix en tuiles dans
-          // l'ordre où il les a écrits. La zone de réponse reste au pied de
-          // l'écran, toujours visible.
+          // LE MESSAGE DE L'OPÉRATEUR, INTACT — « 00. Next » compris : on ne
+          // retire rien de ce qu'il a écrit. Dessous, ses choix en boutons
+          // (des raccourcis), puis la zone de réponse, toujours là.
           <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`}
             type={typeQuestion} reduit={reduit}
             entete={entete}
-            suite={enTuiles.suite}
-            choix={decoupe.restants}
+            choix={ecran.choix}
             onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
             secretement={secretement}
-            aDesChoix={ecran.choix.length > 0}
             onRevenir={libre && ecran.attend === "secret" ? () => setLibre(false) : undefined}
             onEnvoyer={(v) => void (secretement ? secret(v) : repondre(v))} langue={langue} />
         ) : (
@@ -1153,7 +1142,7 @@ function EtapeSaisie({
  * recevoir de réponse.
  */
 function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix = [], onChoix,
-                      secretement = false, onRevenir, aDesChoix = false, suite = [] }: {
+                      secretement = false, onRevenir }: {
   type: TypeSaisie;
   entete: React.ReactNode;
   recents?: (ClientRecent & { enregistre?: boolean })[];
@@ -1167,10 +1156,6 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix =
   /** Pendant le code secret : la réponse part protégée comme un code. */
   secretement?: boolean;
   onRevenir?: () => void;
-  /** Le message porte des choix : le clavier ne s'ouvre pas tout seul. */
-  aDesChoix?: boolean;
-  /** Ce qui suit le titre, dans l'ordre de l'opérateur : tuiles et texte. */
-  suite?: MorceauDuMenu[];
 }) {
   const t = textesGuichet[langue];
   const [valeur, setValeur] = useState("");
@@ -1193,25 +1178,23 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix =
       entering={reduit ? undefined : FadeInDown.duration(240)}>
       <Defilement contentContainerStyle={{ padding: espaces.lg, gap: espaces.lg }}>
         {entete}
-        {(suite.length || choix.length) && onChoix ? (
+        {choix.length && onChoix ? (
           <View style={{ gap: espaces.sm }}>
-            {suite.map((m, i) => m.numero ? (
-              <Choix key={`${i}-${m.numero}`} numero={m.numero} libelle={m.libelle}
-                     onPress={() => onChoix(m.numero)} />
-            ) : (
-              // Une ligne de l'opérateur entre deux choix (« … ») : à sa place.
-              <Texte key={`${i}-texte`} ton="doux" style={{ paddingHorizontal: espaces.lg }}>
-                {m.texte}
-              </Texte>
-            ))}
-            {/* Ce que le message porte sans ligne à lui (« …815. 00. Next ») :
-                il reste écrit dans la carte, et se touche ici. */}
             {choix.map((c) => (
               <Choix key={`${c.numero}-${c.libelle}`} numero={c.numero} libelle={c.libelle}
                      onPress={() => onChoix(c.numero)} />
             ))}
           </View>
         ) : null}
+        <View style={{ paddingHorizontal: espaces.xs, gap: espaces.xs }}>
+          <Texte taille={textes.petit} ton="doux" poids="moyen">{t.votreReponse}</Texte>
+          <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
+                       onValider={envoyer} langue={langue}
+                       focus={choix.length === 0} masque={secretement} libre />
+          {secretement ? (
+            <Texte taille={textes.legende} ton="pale">{t.reponseProtegee}</Texte>
+          ) : null}
+        </View>
         {recents?.length ? (
           <Defilement horizontal showsHorizontalScrollIndicator={false}
                       contentContainerStyle={{ gap: espaces.md }}>
@@ -1230,18 +1213,6 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix =
           </Pressable>
         ) : null}
       </Defilement>
-      {/* LA ZONE DE RÉPONSE NE DÉFILE PAS : comme sur le téléphone, la case
-          est toujours sous les yeux, quel que soit la longueur du menu. */}
-      <View style={{ paddingHorizontal: espaces.lg + espaces.xs, paddingTop: espaces.sm,
-                     gap: espaces.xs, borderTopWidth: 1, borderTopColor: couleurs.trait }}>
-        <Texte taille={textes.petit} ton="doux" poids="moyen">{t.votreReponse}</Texte>
-        <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
-                     onValider={envoyer} langue={langue}
-                     focus={!aDesChoix} masque={secretement} libre />
-        {secretement ? (
-          <Texte taille={textes.legende} ton="pale">{t.reponseProtegee}</Texte>
-        ) : null}
-      </View>
       <GrosBouton libelle={t.envoyer} desactive={!valide} onPress={envoyer} />
     </Animated.View>
   );
