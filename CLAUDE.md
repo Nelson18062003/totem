@@ -848,6 +848,17 @@ retenu vingt défauts qu'aucun harnais d'un seul côté ne pouvait voir :
 - **Le signe de vie et les cartes repartent ensemble**, un seul envoi de
   cartes à la fois : deux envois croisés laissaient la date ancienne arriver
   la dernière, et le Pi croyait la neuve envoyée.
+- **Un harnais qui imite la plateforme doit parler celle d'AUJOURD'HUI.**
+  `verifier-l-affichage` rendait muet le seul boîtier d'en tête ; la
+  plateforme disant désormais carte par carte « mon boîtier parle », il
+  montait une réponse qu'aucune plateforme ne ferait, et criait quatorze
+  fois « le terminal muet n'est pas signalé ». Le défaut était dans
+  l'imitation — mais c'est bien la jointure qu'il a vue la première.
+- **Un numéro s'écrit en tranches, partout.** L'accueil disait
+  « 677 12 34 56 », l'onglet Comptes juste à côté « 677123456 » : quatre
+  écrans (téléphone, site, deux pages de la console) écrivaient
+  `{s.numero || …}` sans `formaterNumero`. Vu sur une capture d'avant/après,
+  pas cherché. `noyau/tests/numeros.test.ts` balaie les deux surfaces.
 
 **Les deux paquets tiennent la même promesse.** `verifier-le-paquet` ne
 regardait qu'Android, parce qu'il n'y avait qu'Android ; un secret qui

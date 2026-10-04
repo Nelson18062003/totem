@@ -22,6 +22,7 @@ import { textesCartes } from "@noyau/textes/cartes";
 import { FUSEAU_DEFAUT, fcfa, nombre, type Sim } from "@noyau/types";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 import { signalFaible, signalLu } from "@noyau/boitier";
+import { formaterNumero } from "@noyau/numero";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import type { Langue } from "@noyau/langue";
 
@@ -280,7 +281,7 @@ function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
 
       <View style={{ gap: 2 }}>
         <Texte taille={textes.petit} chiffresAlignes style={{ color: doux }}>
-          {s.numero || t.numeroAbsent}
+          {s.numero ? formaterNumero(s.numero) : t.numeroAbsent}
         </Texte>
         {/* L'ICCID est ce qui distingue deux cartes du MÊME opérateur : sans
             lui, deux SIM MTN se confondraient à l'écran. */}

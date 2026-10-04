@@ -7,6 +7,7 @@ import { LogoOperateur, operateurReconnu } from "../logos-operateurs";
 import { Vide } from "../vide";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 import { signalFaible } from "@noyau/boitier";
+import { formaterNumero } from "@noyau/numero";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export default async function Comptes() {
                     </p>
                   )}
                   <p className={`mt-1 text-small tabnums ${i === 0 ? "text-white/55" : "text-ink-faint"}`}>
-                    {s.numero || t.numeroAbsent}
+                    {s.numero ? formaterNumero(s.numero) : t.numeroAbsent}
                   </p>
                   {/* L'ICCID est ce qui distingue deux cartes du même opérateur. */}
                   <p className={`mt-2 text-caption tabnums ${i === 0 ? "text-white/45" : "text-ink-faint"}`}>
