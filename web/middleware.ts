@@ -3,7 +3,7 @@ import {
   COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, sujetDeSession,
 } from "@/lib/session";
 import { etatDuCompte } from "@/lib/session-vivante";
-import { verifierLien } from "@/lib/lien-signe";
+import { idDuLienDeReleve, verifierLien } from "@/lib/lien-signe";
 import { COOKIE_LANGUE, langueDe } from "@noyau/langue";
 import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 
@@ -142,6 +142,16 @@ export async function middleware(req: NextRequest) {
       && await verifierLien(secret, "bilan", `${jours}.${qui}`,
            req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return passer();
+  }
+  // Le relevé de compte : la signature couvre la CARTE, la PÉRIODE, le
+  // FORMAT et pour QUI il a été fait. Réécrit pour « tout », pour un autre
+  // trimestre ou pour un autre compte, le lien retombe sur le verrou.
+  if (pathname === "/api/releve") {
+    const id = idDuLienDeReleve(req.nextUrl.searchParams);
+    if (id && await verifierLien(secret, "releve", id,
+          req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
+      return passer();
+    }
   }
 
   // Deux façons de présenter la MÊME session, selon qui frappe :

@@ -303,7 +303,7 @@ export default function Actions() {
       </Defilement>
 
       {coordonnees ? (
-        <Coordonnees langue={langue} onFermer={() => setCoordonnees(false)}
+        <Coordonnees langue={langue} fuseau={fuseau} onFermer={() => setCoordonnees(false)}
                      carte={{ iccid: carte.iccid, nom: carte.nom, numero: carte.numero,
                               operateur: carte.operateur, libelle: carte.libelle }} />
       ) : null}

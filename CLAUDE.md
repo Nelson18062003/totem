@@ -51,6 +51,7 @@ cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
 cd web && node scripts/verifier-les-cartes.mjs  # chacun ne voit que ses cartes
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
+cd web && node scripts/verifier-le-releve.mjs   # le relevé de compte, période passée comprise
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
 cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
@@ -241,6 +242,25 @@ que le fichier DISE quand il est coupé. Pour qu'il puisse prendre en défaut, l
 faux nuage a d'abord dû apprendre à mentir comme la vraie base : il rendait le
 total APRÈS avoir appliqué la limite — « mille lignes sur mille » quand elle en
 avait deux mille quatre cents.
+
+`verifier-le-releve` garde le RELEVÉ DE COMPTE : une carte (ou toutes), une
+période choisie librement, en PDF ou en CSV, chaque carte désignée par son
+NUMÉRO. Il sème six mois à quarante mouvements par jour sur deux cartes MTN
+et demande le relevé d'il y a quatre à trois mois. La base rend ses lignes
+de la plus récente à la plus ancienne et s'arrête au plafond : **sans borne
+de FIN, une période passée gardait les lignes d'aujourd'hui** — celles qui
+sont hors de la période — et le relevé de janvier, demandé en octobre,
+sortait vide. `chargerDonnees` a donc appris `jusqua`. Le harnais compare au
+faux nuage interrogé directement (le nombre, les références une à une, les
+totaux au franc près), réécrit en quelques lignes la lecture d'avant comme
+témoin — elle doit perdre la période —, et la borne retirée du code le fait
+échouer dix-huit fois. Il LIT le PDF : chaque référence exactement une fois,
+aucune perdue ni doublée à un saut de page. Un relevé ne porte que l'argent
+— jamais un code, ni en PDF ni en CSV : un relevé remis à un comptable est
+un groupe. Les soldes d'ouverture et de clôture se LISENT dans les annonces
+de l'opérateur ; faute d'annonce, « non connu », jamais 0. **Un solde
+calculé présenté comme annoncé est un faux** ; l'écart du rapprochement se
+montre, il ne se corrige pas.
 
 `verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
 lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante

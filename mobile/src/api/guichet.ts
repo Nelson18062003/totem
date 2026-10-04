@@ -819,6 +819,16 @@ export function lienBilan(jours: number): Promise<{ url: string }> {
   return demander(`/api/bilan/lien?jours=${jours}`);
 }
 
+/** Un lien signé vers un RELEVÉ DE COMPTE : une carte (ou « tout »), deux
+ *  jours de la caisse, PDF ou CSV. La signature couvre les quatre — et pour
+ *  qui il a été fait. */
+export function lienReleve(
+  carte: string, de: string, a: string, format: "pdf" | "csv",
+): Promise<{ url: string }> {
+  const q = new URLSearchParams({ carte, de, a, format });
+  return demander(`/api/releve/lien?${q.toString()}`);
+}
+
 /** Le carnet des bénéficiaires d'une carte : enregistrer (ou renommer celui
  *  que la carte connaît déjà sous ce numéro), renommer, retirer. La lecture
  *  voyage avec les données, dans le cahier. */

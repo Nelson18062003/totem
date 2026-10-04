@@ -810,6 +810,59 @@ const serveur = createServer(async (req, res) => {
     return repondre({ semes: smsEnPlus.length });
   }
 
+  // UNE CAISSE POUR LE RELEVÉ DE COMPTE (scripts/verifier-le-releve.mjs).
+  // Celle de « /essai/semer » est trop sage pour un relevé : un seul montant,
+  // un seul tiers, aucune référence, aucun solde, aucune sortie. Ici, sur
+  // DEUX cartes du même réseau (8901 et, en flotte, 9999) : des entrées et
+  // des sorties avec leurs frais, un solde annoncé après CHAQUE mouvement
+  // (tenu dans l'ordre des jours), une référence unique par ligne, un nom de
+  // soixante-quinze caractères, et un tiers piégé pour le tableur.
+  //
+  //     curl -X POST "http://127.0.0.1:4999/essai/semer-releve?jours=180&parJour=40"
+  if (req.method === "POST" && chemin === "/essai/semer-releve") {
+    const jours = Number(url.searchParams.get("jours") || 180);
+    const parJour = Number(url.searchParams.get("parJour") || 40);
+    const pas = Math.floor((20 * 3600000) / Math.max(1, parJour));
+    const NOM_LONG = "STE. NOUVELLE BRASSERIE DU LITTORAL ET DES HAUTS PLATEAUX DE L'OUEST SARL";
+    let semes = 0;
+    for (const [iccid, compte, prefixe] of [
+      ["89237010000000008901", "MTN ·8901", "A"], ["89237010000000009999", "MTN ·9999", "B"],
+    ]) {
+      let solde = 500000;
+      let n = 0;
+      // Du plus ancien au plus récent : le solde se tient dans l'ordre.
+      for (let j = jours - 1; j >= 0; j--) {
+        for (let k = 0; k < parJour; k++) {
+          const t = new Date(Date.now() - j * 86400000);
+          t.setUTCHours(2, 0, 0, 0);
+          const quand = new Date(t.getTime() + k * pas);
+          if (quand.getTime() > Date.now()) continue;
+          n++;
+          const sortie = k % 5 === 4;
+          const montant = sortie ? 2000 + (n % 7) * 100 : 1000 + (n % 13) * 25;
+          const frais = sortie ? 50 : null;
+          solde += sortie ? -(montant + frais) : montant;
+          const tiers = n === 42 && prefixe === "A" ? '=HYPERLINK("http://vol.example","clic")'
+            : n % 97 === 5 ? NOM_LONG : `CLIENT ${prefixe}${n % 50}`;
+          const iso = quand.toISOString();
+          smsEnPlus.push({
+            id: 600000 + smsEnPlus.length, source_id: 600 + smsEnPlus.length,
+            terminal: prefixe === "A" ? "douala-faux" : "akwa-faux", compte, carte: iccid,
+            expediteur: "MTNMobileMoney", categorie: sortie ? "envoi" : "encaissement",
+            sens: sortie ? "sortie" : "entree", montant, frais, commission: null,
+            tiers, numero: `67700${String(n % 10000).padStart(4, "0")}`,
+            reference: `R${prefixe}${String(n).padStart(6, "0")}`, solde_apres: solde,
+            texte: `${sortie ? "Transfert de" : "Vous avez recu"} ${montant} FCFA `
+              + `${sortie ? "vers" : "de"} ${tiers}. Nouveau solde: ${solde} FCFA.`,
+            nature: null, emis_le: iso, recu_le: iso, moment: iso, lu_le: iso,
+          });
+          semes++;
+        }
+      }
+    }
+    return repondre({ semes });
+  }
+
   // --- LES APPAREILS (les téléphones à faire sonner) ----------------------
   if (chemin === "/rest/v1/appareils") {
     if (req.method === "POST") {
@@ -1143,6 +1196,9 @@ const serveur = createServer(async (req, res) => {
         const v = l[champ];
         switch (op) {
           case "is": return valeur === "null" ? v == null : v != null;
+          // « not.is.null » — l'ouverture d'un relevé cherche le dernier SMS
+          // qui porte un solde. Ignoré, le filtre rendait n'importe quel SMS.
+          case "not": return valeur === "is.null" ? v != null : true;
           case "eq": return String(v) === valeur;
           case "neq": return String(v) !== valeur;
           case "gte": return v != null && String(v) >= valeur;

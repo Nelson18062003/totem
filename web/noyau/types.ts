@@ -106,6 +106,12 @@ export type Paiement = {
   nature: Categorie | null; // choisie par le propriétaire (pour le reçu)
   reference: string;
   soldeApres: number | null;
+  // Les frais et la commission que l'opérateur annonce dans le SMS, lus par
+  // le robot (`analyse_sms.py`). Optionnels : une application déjà installée
+  // reçoit des réponses d'avant, et une base pas encore migrée ne les a pas.
+  // `null` : le SMS n'en dit rien — ce qui n'est pas « zéro ».
+  frais?: number | null;
+  commission?: number | null;
   smsBrut: string;
   recu: string | null;      // numéro du reçu PDF archivé, s'il existe
   sourceId: number | null;  // la ligne du journal du terminal (pour établir un reçu)

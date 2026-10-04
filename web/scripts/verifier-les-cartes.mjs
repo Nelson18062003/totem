@@ -184,6 +184,19 @@ try {
     const bilan = await (await lire("/api/bilan?jours=90", vendeur)).text();
     verifier("le bilan ne porte que la carte Orange",
       [bilan.includes(ORANGE), bilan.includes(MTN)], [true, false]);
+
+    // Le relevé de compte : le même mur que le bilan (scripts/verifier-le-releve.mjs
+    // l'attaque en entier, liens signés compris).
+    const jourDe = (t) => new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" })
+      .format(new Date(t));
+    const [jour, semaine] = [jourDe(Date.now()), jourDe(Date.now() - 7 * 86400000)];
+    const releve = await (await lire(
+      `/api/releve?carte=tout&de=${semaine}&a=${jour}&format=csv`, vendeur)).text();
+    verifier("le relevé « toutes mes cartes » ne porte que la carte Orange",
+      [releve.includes(ORANGE), releve.includes(MTN)], [true, false]);
+    verifier("le relevé de la carte MTN lui est refusé",
+      (await lire(`/api/releve?carte=${MTN}&de=${semaine}&a=${jour}&format=pdf`,
+        vendeur)).status, 404);
   }
 
   console.log("\nLE VENDEUR CHERCHE CE QUI N'EST PAS À LUI");

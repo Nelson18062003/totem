@@ -426,7 +426,7 @@ export default function Accueil() {
       ) : null}
 
       {coordonnees && active ? (
-        <Coordonnees langue={langue} onFermer={() => setCoordonnees(false)}
+        <Coordonnees langue={langue} fuseau={fuseau} onFermer={() => setCoordonnees(false)}
                      carte={{ iccid: active.iccid, nom: active.nom,
                               numero: active.numero,
                               operateur: active.operateur, libelle: active.libelle }} />

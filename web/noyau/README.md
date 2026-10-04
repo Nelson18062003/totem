@@ -11,6 +11,7 @@ seule fois**.
 | `langue.ts` | anglais / français |
 | `coordonnees.ts` | ce que la fiche des coordonnées copie (nom, numéro) et partage (et le réseau) |
 | `boitier.ts` | le boîtier de la boutique : le seuil « sans nouvelles » (cinq minutes, mesurées sur l'heure de la base), la présence d'une carte (en place, retirée, inconnue — y compris au retour, tant qu'il n'a pas relu ses cartes), le signal qui n'en est pas un (99) |
+| `releve.ts` | le relevé de compte : ce qui y entre (l'argent seul, jamais un code), les totaux au centime, le sens inconnu compté à part, les soldes LUS (« non connu » sinon), la période (366 jours au plus) et ses mots |
 | `abandon.ts` | ce qu'un écran dit quand il renonce à attendre une demande : rien n'est parti, elle peut encore aboutir, elle est finie (et on la montre), ou on ne sait pas |
 | `textes/` | le dictionnaire des deux langues, en entier |
 

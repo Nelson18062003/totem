@@ -37,7 +37,7 @@ function b64url(o: ArrayBuffer): string {
 /** Ce qu'un lien peut ouvrir. Le GENRE fait partie de ce qui est signé :
  *  un lien de reçu ne peut pas ouvrir des coordonnées ni un bilan, et
  *  ainsi de suite — chaque porte a sa propre signature. */
-export type GenreLien = "recu" | "coordonnees" | "bilan";
+export type GenreLien = "recu" | "coordonnees" | "bilan" | "releve";
 
 /** Ce que la signature couvre : le genre, l'identifiant ET l'échéance.
  *  Signer l'identifiant seul ferait un laissez-passer éternel ; l'échéance
@@ -76,3 +76,27 @@ export const signerLienRecu = (secret: string, numero: string) =>
 export const verifierLienRecu = (
   secret: string, numero: string, expiration: string | null, signature: string | null,
 ) => verifierLien(secret, "recu", numero, expiration, signature);
+
+/**
+ * Ce qu'un lien de RELEVÉ DE COMPTE couvre — la carte (ou « tout »), la
+ * période, le format, et pour QUI il a été fait — en un identifiant à signer,
+ * ou `null` si l'adresse n'a pas la forme d'un relevé.
+ *
+ * Écrit une fois, ici, parce que trois endroits le lisent : la fabrique du
+ * lien, le verrou (le middleware) et la route elle-même. Un lien réécrit pour
+ * « carte=tout », pour une autre période ou pour un autre compte ne retombe
+ * plus sur la même signature.
+ */
+export function idDuLienDeReleve(adresse: URLSearchParams): string | null {
+  const carte = adresse.get("carte") ?? "";
+  const de = adresse.get("de") ?? "";
+  const a = adresse.get("a") ?? "";
+  const format = adresse.get("format") ?? "";
+  const qui = adresse.get("q") ?? "";
+  const jour = /^\d{4}-\d{2}-\d{2}$/;
+  if (!/^(?:tout|[A-Za-z0-9]{1,32})$/.test(carte) || !jour.test(de) || !jour.test(a)
+      || !/^(?:pdf|csv)$/.test(format) || !/^(?:tout|demo|c\d{1,12})$/.test(qui)) {
+    return null;
+  }
+  return `${carte}.${de}.${a}.${format}.${qui}`;
+}

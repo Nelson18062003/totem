@@ -182,6 +182,9 @@ type LignePaiement = {
   compte: string | null; carte: string | null; sens: string;
   montant: number | null; tiers: string | null; numero: string | null;
   reference: string | null; solde_apres: number | null; texte: string;
+  // Lus par le robot dans le SMS (`analyse_sms.py`) ; absents d'une base
+  // pas encore migrée. Le relevé de compte les montre.
+  frais?: number | null; commission?: number | null; montant_brut?: number | null;
   categorie?: string | null; nature?: string | null;
   emis_le?: string | null; recu_le: string;
   // Quand le propriétaire a ouvert ce SMS sur la plateforme. `null` = pas
@@ -308,6 +311,34 @@ export function chargerDonneesDeDemonstration(
     tablesDeDemonstration(), () => chargerDonnees(langue, { tout: true }, bornes));
 }
 
+/** Une lecture entière DANS la démonstration : tout `lire` y répond depuis
+ *  le jeu inventé, sans jamais toucher la base. Le relevé de compte s'en sert
+ *  pour la vitrine — ses deux questions à la base passent ainsi par le même
+ *  mur. */
+export function dansLaDemonstration<T>(faire: () => Promise<T>): Promise<T> {
+  return sourceDeDemonstration.run(tablesDeDemonstration(), faire);
+}
+
+/**
+ * Le dernier solde ANNONCÉ par l'opérateur sur une carte, dans un SMS relevé
+ * avant `avant` (ISO) — l'ouverture d'un relevé quand la lecture de la
+ * période ne la porte pas. `null` : aucun SMS ne l'a dit, et le relevé
+ * écrira « non connu », jamais 0.
+ *
+ * La réponse est REVÉRIFIÉE ici : la carte, le solde, l'heure. Un service
+ * distant qui ignorerait un filtre (la vitrine n'en applique aucun) ne doit
+ * pas faire passer le solde d'une autre carte, ou d'après, pour une ouverture.
+ */
+export async function soldeAnnonceAvant(iccid: string, avant: string): Promise<number | null> {
+  if (!/^[A-Za-z0-9]{1,32}$/.test(iccid)) return null;
+  const lignes = await lire<LignePaiement>(
+    `paiements?select=*&carte=eq.${iccid}&solde_apres=not.is.null`
+    + `&recu_le=lt.${encodeURIComponent(avant)}&order=recu_le.desc&limit=1`);
+  const l = lignes.find((x) => x.carte === iccid && x.solde_apres != null
+    && Date.parse(x.emis_le || x.recu_le) < Date.parse(avant));
+  return l ? Number(l.solde_apres) : null;
+}
+
 /** Le terminal de la démonstration, pour la coquille du site. */
 export function chargerTerminalDeDemonstration(langue: Langue): Promise<EtatTerminal | null> {
   return sourceDeDemonstration.run(
@@ -351,8 +382,14 @@ export async function chargerDonnees(
   //
   // Absent, il vaut « autant que `sms` » : qui n'a rien précisé veut tout ce
   // qu'il a demandé.
-  bornes?: { sms?: number; recus?: number; depuis?: string; compter?: boolean;
-             lignes?: number },
+  //
+  // `jusqua` : la borne de FIN, exclue (ISO). Sans elle, une période PASSÉE
+  // lue sur une caisse chargée gardait les lignes les plus RÉCENTES — la
+  // limite mord sur « recu_le.desc » — c'est-à-dire celles qui sont hors de
+  // la période : un relevé de janvier à mars, demandé en octobre, sortait
+  // amputé ou vide. Elle se prend large, comme `depuis`.
+  bornes?: { sms?: number; recus?: number; depuis?: string; jusqua?: string;
+             compter?: boolean; lignes?: number },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
@@ -361,8 +398,9 @@ export async function chargerDonnees(
   // relevé en retard après une coupure porte donc une heure de relève
   // postérieure à son heure d'émission : la borne est prise LARGE, et le
   // tri fin se fait ensuite sur l'heure qui fait foi.
-  const filtreDate = bornes?.depuis
-    ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "";
+  const filtreDate = (bornes?.depuis
+    ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "")
+    + (bornes?.jusqua ? `&recu_le=lt.${encodeURIComponent(bornes.jusqua)}` : "");
   // « select=* » à dessein : exiger une colonne par son nom rend l'écran
   // VIDE quand la base a une migration de retard (la requête entière est
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
@@ -540,6 +578,10 @@ export async function chargerDonnees(
       nature: parNature(l.nature),
       reference: l.reference ?? "",
       soldeApres: l.solde_apres == null ? null : Number(l.solde_apres),
+      // Seulement quand le SMS en parle : mille SMS sans frais ne doivent pas
+      // payer deux clés vides chacun sur le réseau mobile du téléphone.
+      ...(l.frais == null ? {} : { frais: Number(l.frais) }),
+      ...(l.commission == null ? {} : { commission: Number(l.commission) }),
       smsBrut: l.texte,
       recu: recuDe(l),
       sourceId: l.source_id ?? null,
