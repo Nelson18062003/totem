@@ -436,6 +436,23 @@ if parametres "$ID" | grep -q 4821; then
 else
   echo "  ✓ « faite » : le code s'en va aussi, même si le robot a oublié"
 fi
+# Le robot finit la demande en y joignant ce que le RÉSEAU a dit de la
+# session (« reseau ») : il doit survivre au code — c'est souvent juste après
+# le code secret que l'opérateur demande encore une confirmation.
+ID=$(reponse)
+$P -d totem -c "update commandes set etat = 'en_cours' where id = $ID;" >/dev/null
+$P -d totem -c "update commandes set etat = 'faite', resultat = 'Confirmer ?',
+                 parametres = parametres || '{\"reseau\": \"attend\"}'::jsonb
+                 where id = $ID;" >/dev/null
+if parametres "$ID" | grep -q 4821; then
+  echo "  ✗ « faite » avec « reseau » : le code est resté"
+  echecs=$((echecs + 1))
+elif [ "$($P -d totem -tAc "select parametres->>'reseau' from commandes where id = $ID;")" = "attend" ]; then
+  echo "  ✓ « faite » : le code s'en va, ce que le réseau a dit reste"
+else
+  echo "  ✗ ce que le réseau a dit a disparu avec le code : $(parametres "$ID")"
+  echecs=$((echecs + 1))
+fi
 # Une demande qui n'a rien de secret garde ses paramètres en se fermant.
 ID=$(nouvelle)
 $P -d totem -c "update commandes set etat = 'echouee' where id = $ID;" >/dev/null

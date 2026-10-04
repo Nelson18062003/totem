@@ -216,9 +216,16 @@ export default function Actions() {
   ];
   const consultations = toutesLesConsultations.filter((c) => c.fabrique().code);
   const lancer = (g: Geste) => (enPause ? expliquer() : setOperation(g.fabrique()));
-  // Le code du menu, à droite de « Code USSD » : celui qu'on taperait sur
-  // le téléphone — le raccourci appris d'abord, comme les gestes.
+  // LE MENU DE L'OPÉRATEUR — un bouton à part entière. Il n'était qu'un
+  // chiffre à droite de « Code USSD », et le propriétaire passait par le
+  // cadran pour tout ce que les trois gestes ne couvrent pas (le « Float »
+  // d'un agent, par exemple). Son code s'affiche à droite : celui qu'on
+  // taperait sur le téléphone — le raccourci appris d'abord, comme les gestes.
   const codeMenu = etapesGeste(op, "menu", appris)[0];
+  const menu: Geste | null = codeMenu ? {
+    cle: "menu", titre: t.menu, aide: t.menuSous, icone: "Grid",
+    fabrique: () => operationDe("menu", t.menu, "Grid", []),
+  } : null;
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -249,6 +256,11 @@ export default function Actions() {
             ))}
           </View>
         )}
+
+        {menu ? (
+          <DemiTuile titre={menu.titre} aide={menu.aide} icone={menu.icone} valeur={codeMenu}
+                     colonne enPause={enPause} onPress={() => lancer(menu)} />
+        ) : null}
 
         {consultations.length ? (
           <View style={{ gap: espaces.sm }}>
@@ -283,7 +295,7 @@ export default function Actions() {
                          onPress={() => router.push("/beneficiaires")} />
             <Filet />
             <LigneAction discret titre={tu.titre} sous={tu.composerSous} icone="Hash"
-                         valeur={codeMenu} enPause={seTait}
+                         enPause={seTait}
                          onPress={() => (seTait ? expliquer()
                            : router.push({ pathname: "/ussd", params: { carte: carte.iccid } }))} />
           </Carte>
@@ -370,9 +382,11 @@ function TuileArgent({ titre, aide, icone, colonne, enPause, onPress }: {
 
 /** Une consultation — plus légère qu'un geste d'argent : un contour, une
  *  icône au trait, le nom. Elle ne déplace rien. */
-function DemiTuile({ titre, aide, icone, colonne, enPause, onPress }: {
+function DemiTuile({ titre, aide, icone, colonne, enPause, onPress, valeur }: {
   titre: string; aide: string; icone: NomIcone; colonne: boolean; enPause: boolean;
   onPress: () => void;
+  /** Ce qu'on lit à droite — le code du menu (« *126# »). */
+  valeur?: string;
 }) {
   const appui = useAppui();
   const pause = usePause(enPause);
@@ -389,7 +403,12 @@ function DemiTuile({ titre, aide, icone, colonne, enPause, onPress }: {
                    backgroundColor: pressed ? couleurs.surface2 : "transparent",
                  })}>
         <Icone nom={icone} taille={18} couleur={couleurs.encreDouce} />
-        <Texte poids="moyen" style={{ flexShrink: 1 }}>{titre}</Texte>
+        <Texte poids="moyen" style={{ flexShrink: 1, flexGrow: 1 }}>{titre}</Texte>
+        {valeur ? (
+          <Texte taille={textes.petit} ton="pale" style={{ fontVariant: ["tabular-nums"] }}>
+            {valeur}
+          </Texte>
+        ) : null}
       </Pressable>
     </Animated.View>
   );

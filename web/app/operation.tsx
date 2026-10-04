@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { remplirVariables } from "@noyau/codes";
-import { champPourQuestion, demandeUnCode, lireEcran } from "@noyau/ussd";
+import { champPourQuestion, demandeUnCode, lireEcran, type EtatDuReseau } from "@noyau/ussd";
 import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
@@ -79,7 +79,9 @@ export type Operation = {
   recents?: (ClientRecent & { enregistre?: boolean })[];
 };
 
-type Msg = { de: "reseau" | "vous"; texte: string };
+// `reseau` : ce que le RÉSEAU a dit de la session avec ce message, rapporté
+// par le boîtier. Absent d'un boîtier d'avant : on lit le texte.
+type Msg = { de: "reseau" | "vous"; texte: string; reseau?: EtatDuReseau };
 type Issue = "reussie" | "refusee" | "interrompue" | "reponse";
 
 const MONTANTS = [1000, 5000, 10000, 25000];
@@ -175,13 +177,14 @@ export function OperationPopup({
       const { id } = (await r.json()) as { id: number };
       const relire = () => fetch(`/api/commande/${id}`, { cache: "no-store" })
         .then((x) => (x.ok ? x.json() : null))
-        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null } | null>;
+        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null; reseau?: unknown } | null>;
       const finie = (c: { etat?: string } | null) =>
         Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
-      const conclure = (c: { etat?: string; resultat?: string | null }) => {
+      const conclure = (c: { etat?: string; resultat?: string | null; reseau?: unknown }) => {
         setAttente(false);
         const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-        setFil((f) => [...f, { de: "reseau", texte }]);
+        const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
+        setFil((f) => [...f, { de: "reseau", texte, reseau }]);
         // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
         // en « autre réponse » aurait caché les boutons du menu suivant.
         setLibre(false);
@@ -328,8 +331,11 @@ export function OperationPopup({
     onFermer();
   };
 
-  const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
-  const ecran = lireEcran(dernier);
+  const dernierMsg = [...fil].reverse().find((m) => m.de === "reseau");
+  const dernier = dernierMsg?.texte ?? "";
+  // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
+  // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
+  const ecran = lireEcran(dernier, dernierMsg?.reseau);
   const pave = enSession && !attente && !fini && ecran.attend === "secret";
 
   // L'OPÉRATEUR A CONCLU : un écran qui ne demande plus rien termine.
@@ -437,7 +443,9 @@ export function OperationPopup({
         texte={erreur ?? (ecran.texte || dernier)}
         note={issue === "reussie" ? t.confirmationSms : undefined}
         fil={fil} details={details} onDetails={() => setDetails((d) => !d)}
+        // Le réseau a dit qu'il avait fermé : répondre ne mènerait nulle part.
         repondreQuandMeme={issue === "reponse" && conclu && !libre
+          && dernierMsg?.reseau !== "fini"
           ? () => { setLibre(true); setFini(false); } : undefined}
         bouton={t.termine} onTerminer={enSession && !fini ? raccrocher : onFermer} t={t}
         proposition={proposer && operation.carte ? (

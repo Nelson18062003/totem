@@ -29,6 +29,7 @@ const GESTES = [
   ["transfert", "transfert"],
   ["solde", "monSolde"],
   ["mon_numero", "monNumero"],
+  ["menu", "menu"],
 ] as const;
 
 type Textes = Record<string, unknown>;

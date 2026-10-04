@@ -679,10 +679,15 @@ export function deposerCommande(
 }
 
 /** L'état d'une demande déposée : le terminal a-t-il répondu ? */
-export function lireCommande(
+export async function lireCommande(
   id: number, renoncer?: AbortSignal,
-): Promise<{ etat: string; resultat: string | null }> {
-  return demander(`/api/commande/${id}`, {}, { renoncer });
+): Promise<{ etat: string; resultat: string | null; reseau?: "attend" | "fini" }> {
+  const c = await demander<{ etat: string; resultat: string | null; reseau?: unknown }>(
+    `/api/commande/${id}`, {}, { renoncer });
+  // Ce que le réseau a dit de la session : seulement une des deux valeurs
+  // connues — toute autre chose vaut « on ne sait pas », et l'écran lit le texte.
+  const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
+  return { etat: c.etat, resultat: c.resultat, ...(reseau ? { reseau } : {}) };
 }
 
 /** RETIRE une demande que l'écran abandonne — si le boîtier ne l'a pas

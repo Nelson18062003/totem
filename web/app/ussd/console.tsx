@@ -129,14 +129,16 @@ export function ConsoleUssd({
       const { id } = (await r.json()) as { id: number };
       const relire = () => fetch(`/api/commande/${id}`, { cache: "no-store" })
         .then((x) => (x.ok ? x.json() : null))
-        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null } | null>;
+        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null; reseau?: unknown } | null>;
       const finie = (c: { etat?: string } | null) =>
         Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
-      const conclure = (c: { etat?: string; resultat?: string | null }) => {
+      const conclure = (c: { etat?: string; resultat?: string | null; reseau?: unknown }) => {
         if (generation.current !== gen) return null;
         const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
         setFil((f) => [...f, { de: "reseau", texte }]);
-        setEnSession(c.etat === "faite");
+        // Le réseau a dit qu'il avait fermé (rapporté par le boîtier) : plus
+        // de champ de réponse sous une session qui n'existe plus.
+        setEnSession(c.etat === "faite" && c.reseau !== "fini");
         setAttente(false);
         return c.etat === "faite" ? texte : null;
       };

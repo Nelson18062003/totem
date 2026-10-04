@@ -76,7 +76,7 @@ import { copierTexte } from "@/presse-papiers";
 import { remplirVariables } from "@noyau/codes";
 import { issueDeLAnnulation, phraseDAbandon } from "@noyau/abandon";
 import {
-  champPourQuestion, demandeUnCode, lireEcran, type TypeChamp,
+  champPourQuestion, demandeUnCode, lireEcran, type EtatDuReseau, type TypeChamp,
 } from "@noyau/ussd";
 import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
@@ -118,7 +118,10 @@ export type Operation = {
   recents?: (ClientRecent & { enregistre?: boolean })[];
 };
 
-type Msg = { de: "reseau" | "vous"; texte: string };
+// `reseau` : ce que le RÉSEAU a dit de la session avec ce message (rapporté
+// par le boîtier) — il attend une réponse, ou il a fermé. Absent d'un
+// boîtier d'avant : l'écran lit alors le texte.
+type Msg = { de: "reseau" | "vous"; texte: string; reseau?: EtatDuReseau };
 
 // COMBIEN DE TEMPS on attend la réponse du boîtier — À L'HORLOGE. On
 // comptait des TOURS (25 × 1,2 s ≈ 30 s), mais chaque relecture peut prendre
@@ -222,10 +225,10 @@ export function OperationPopup({
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
 
   /** La réponse du réseau est là : on la montre, et on dit où l'on en est. */
-  const servir = (c: { etat: string; resultat: string | null }): string | null => {
+  const servir = (c: { etat: string; resultat: string | null; reseau?: EtatDuReseau }): string | null => {
     setAttente(false);
     const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-    setFil((f) => [...f, { de: "reseau", texte }]);
+    setFil((f) => [...f, { de: "reseau", texte, reseau: c.reseau }]);
     // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
     // en « autre réponse » aurait caché les boutons du menu suivant.
     setLibre(false);
@@ -274,7 +277,7 @@ export function OperationPopup({
         const reste = Math.max(1500, ATTENTE_MAX_MS - (Date.now() - depart));
         const ctrl = new AbortController();
         const minuteur = setTimeout(() => ctrl.abort(), reste);
-        let c: { etat: string; resultat: string | null } | null = null;
+        let c: Awaited<ReturnType<typeof lireCommande>> | null = null;
         try {
           c = await lireCommande(id, ctrl.signal);
           joint = Date.now();
@@ -453,8 +456,11 @@ export function OperationPopup({
   // Une session vivante et non finie devra être raccrochée si l'on quitte.
   useEffect(() => { raccrochageDu.current = enSession && !fini; }, [enSession, fini]);
 
-  const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
-  const ecran = lireEcran(dernier);
+  const dernierMsg = [...fil].reverse().find((m) => m.de === "reseau");
+  const dernier = dernierMsg?.texte ?? "";
+  // LE RÉSEAU DÉCIDE si la session continue ; le texte ne fait que le
+  // laisser deviner. « Confirm: … 00. Next » s'affichait « Terminé ».
+  const ecran = lireEcran(dernier, dernierMsg?.reseau);
   const pave = enSession && !attente && !fini && ecran.attend === "secret";
   const reduit = useMouvementReduit();
   const insets = useSafeAreaInsets();
@@ -631,7 +637,9 @@ export function OperationPopup({
         onDetails={() => setDetails((d) => !d)}
         // Fini sur une simple réponse : peut-être attendait-il encore
         // quelque chose. On ne le devine pas — on rend la main.
+        // Le réseau a dit qu'il avait fermé : répondre ne mènerait nulle part.
         repondreQuandMeme={issue === "reponse" && conclu && !libre
+          && dernierMsg?.reseau !== "fini"
           ? () => { setLibre(true); setFini(false); } : undefined}
         bouton={t.termine}
         // Une session encore ouverte (un accroc en plein échange) se

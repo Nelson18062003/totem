@@ -321,6 +321,16 @@ const en = {
   noteLangue:
     "Every screen follows — dates, amounts, alerts. What the operator sends is never translated: it stays word for word, as the SIM received it.",
 
+  // --- Les boutons de l'accueil, choisis par la personne
+  accueilTitre: "Home buttons",
+  accueilNote: (max: number) =>
+    `The round buttons under the card. Tick the ones you use, in the order you like — ${max} at most. They apply to this phone.`,
+  accueilChoisi: (n: number) => `Position ${n}`,
+  accueilMonter: (nom: string) => `Move ${nom} up`,
+  accueilDescendre: (nom: string) => `Move ${nom} down`,
+  accueilPlein: (max: number) => `${max} buttons already: untick one first.`,
+  accueilRetablir: "Restore the original home",
+
   // --- La sortie
   seDeconnecter: "Sign out",
   deconnexion: "Signing out…",
@@ -598,6 +608,15 @@ const fr: typeof en = {
   langueActive: "Langue actuelle",
   noteLangue:
     "Tout l’écran suit — dates, montants, alertes. Ce que l’opérateur envoie n’est jamais traduit : mot pour mot, tel que la carte l’a reçu.",
+
+  accueilTitre: "Boutons de l’accueil",
+  accueilNote: (max) =>
+    `Les boutons ronds sous la carte. Cochez ceux qui vous servent, dans l’ordre qui vous plaît — ${max} au plus. Le choix vaut pour ce téléphone.`,
+  accueilChoisi: (n) => `Place ${n}`,
+  accueilMonter: (nom) => `Monter ${nom}`,
+  accueilDescendre: (nom) => `Descendre ${nom}`,
+  accueilPlein: (max) => `Déjà ${max} boutons : décochez-en un d’abord.`,
+  accueilRetablir: "Rétablir l’accueil d’origine",
 
   seDeconnecter: "Se déconnecter",
   deconnexion: "Déconnexion…",

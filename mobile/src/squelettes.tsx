@@ -171,6 +171,8 @@ export function SqueletteOperations() {
                      rayon={rayons.bouton} style={colonne ? undefined : { flex: 1 }} />
         ))}
       </View>
+      {/* Le menu de l'opérateur : une rangée pleine largeur. */}
+      <Squelette largeur="100%" hauteur={HAUTEUR_DEMI} rayon={rayons.bouton} />
       <View style={{ gap: espaces.sm }}>
         <View style={{ height: 24 }} />
         <View style={{ flexDirection: colonne ? "column" : "row", gap: espaces.sm }}>

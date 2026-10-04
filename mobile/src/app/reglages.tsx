@@ -42,6 +42,7 @@ import { Icone } from "@/icones";
 import { SectionCartes, carteRetiree, motDuRefus } from "@/reglages-cartes";
 import { SectionCodes } from "@/reglages-codes";
 import { SectionQui } from "@/reglages-qui";
+import { SectionAccueil } from "@/reglages-accueil";
 import { FicheSupprimerMonCompte } from "@/supprimer-mon-compte";
 import { boitierSeTait, depuisQuand, FicheTerminalHorsLigne } from "@/terminal-hors-ligne";
 import { couleurs, espaces, textes } from "@/theme/jetons";
@@ -172,6 +173,10 @@ export default function Reglages() {
             {t.noteLangue}
           </Texte>
         </View>
+
+        {/* Les boutons de l'accueil — un choix de ce téléphone, ouvert à
+            tous : il n'ouvre aucun droit. */}
+        <SectionAccueil langue={langue} />
 
         {/* Le terminal. Sans rien au cahier, sa place se garde en formes
             grises ; en panne, l'Accroc ci-dessus parle seul. */}

@@ -44,6 +44,8 @@ import { FicheSms, couleursCategorie, icone as iconeCat } from "@/fiche-sms";
 import { useEcran } from "@/ecran";
 import * as Coffre from "@/api/coffre";
 import { cartesAMontrer, useCarteChoisie } from "@/carte-choisie";
+import { descriptionDesRonds, useRonds } from "@/ronds-accueil";
+import type { Rond } from "@noyau/ronds";
 import {
   carteEnPause, FicheTerminalHorsLigne, PastilleHorsLigne, silenceDepuis,
 } from "@/terminal-hors-ligne";
@@ -144,22 +146,49 @@ export default function Accueil() {
   // le rond, dans Opérations, et en tête du parcours qu'il ouvre. L'accueil
   // disait « Retrait » sur le rond et « Retrait d'argent » en tête, l'anglais
   // « Withdraw » ici et « Withdrawal » là.
-  type Geste = { libelle: string; aide: string; icone: NomIcone; fabrique: () => Operation };
+  type Geste = { cle: Rond; libelle: string; aide: string; icone: NomIcone;
+                 fabrique: () => Operation };
   const tous: Geste[] = active == null ? [] : [
-    { libelle: tg.depot, aide: tg.depotSous, icone: "ArrowDown",
+    { cle: "depot", libelle: tg.depot, aide: tg.depotSous, icone: "ArrowDown",
       fabrique: () => operationDe("depot", tg.depot, "ArrowDown", [
         { cle: "numero", label: t.numeroACrediter, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { libelle: tg.retrait, aide: tg.retraitSous, icone: "Billet",
+    { cle: "retrait", libelle: tg.retrait, aide: tg.retraitSous, icone: "Billet",
       fabrique: () => operationDe("retrait", tg.retrait, "Billet", [
         { cle: "point", label: t.numeroAgent, aide: "650 00 00 00", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "20 000", type: "montant" }]) },
-    { libelle: tg.transfert, aide: tg.transfertSous, icone: "ArrowUp",
+    { cle: "transfert", libelle: tg.transfert, aide: tg.transfertSous, icone: "ArrowUp",
       fabrique: () => operationDe("transfert", tg.transfert, "ArrowUp", [
         { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: "50 000", type: "montant" }]) },
   ];
   const gestes = tous.filter((g) => g.fabrique().code);
+
+  // Ce que fait chaque rond. `boitier` : il passe par le boîtier de la carte
+  // (il pâlit quand celui-ci se tait). `null` : rien à composer — le rond
+  // ne s'affiche pas.
+  const choix = useRonds();
+  const descriptions = descriptionDesRonds(langue);
+  const actionDuRond = (r: Rond, carte: Sim):
+    { boitier: boolean; faire: () => void } | null => {
+    const composer = (cle: string, titre: string, icone: NomIcone,
+                      champs: Operation["champs"] = []) => {
+      const o = operationDe(cle, titre, icone, champs);
+      return o.code ? { boitier: true, faire: () => setOperation(o) } : null;
+    };
+    const geste = tous.find((g) => g.cle === r);
+    if (geste) return geste.fabrique().code
+      ? { boitier: true, faire: () => setOperation(geste.fabrique()) } : null;
+    if (r === "menu") return composer("menu", tg.menu, "Grid");
+    if (r === "solde") return composer("solde", tg.monSolde, "Refresh");
+    if (r === "mon_numero") return composer("mon_numero", tg.monNumero, "Phone");
+    // Recevoir ne passe pas par le boîtier : ce sont le nom et le numéro, à
+    // donner à qui paie. Il reste toujours actif — les bénéficiaires aussi.
+    if (r === "recevoir") return { boitier: false, faire: () => setCoordonnees(true) };
+    if (r === "beneficiaires") return { boitier: false, faire: () => router.push("/beneficiaires") };
+    return { boitier: true,
+             faire: () => router.push({ pathname: "/ussd", params: { carte: carte.iccid } }) };
+  };
   const actualiser = active && operationDe("solde", tg.monSolde, "Refresh", []).code
     ? () => setOperation(operationDe("solde", tg.monSolde, "Refresh", [])) : null;
 
@@ -243,18 +272,19 @@ export default function Accueil() {
       <View>
         <View style={{ flexDirection: "row", justifyContent: "center",
                        width: "100%", maxWidth: 460, alignSelf: "center" }}>
-          {gestes.map((g) => (
-            <Rond key={g.libelle} icone={g.icone} libelle={g.libelle} aide={g.aide}
-                  enPause={seTait}
-                  onPress={() => (seTait ? expliquer() : setOperation(g.fabrique()))} />
-          ))}
-          {/* Recevoir ne passe pas par le boîtier : ce sont le nom et le
-              numéro, à donner à qui paie. Il reste toujours actif. */}
-          <Rond icone="Identite" libelle={t.rondRecevoir} aide={t.recevoirAria}
-                onPress={() => setCoordonnees(true)} />
-          <Rond icone="Hash" libelle={t.rondUssd} aide={t.ussdAria} enPause={seTait}
-                onPress={() => (seTait ? expliquer()
-                  : router.push({ pathname: "/ussd", params: { carte: active.iccid } }))} />
+          {/* LES RONDS CHOISIS, dans l'ordre choisi (Réglages → Accueil).
+              Un rond qui passe par le boîtier pâlit quand il se tait ; un
+              geste dont on ne connaît pas le code ne s'affiche pas. */}
+          {choix.map((r) => {
+            const d = descriptions[r];
+            const action = actionDuRond(r, active);
+            if (!action) return null;
+            return (
+              <Rond key={r} icone={d.icone} libelle={d.libelle} aide={d.aide}
+                    enPause={action.boitier && seTait}
+                    onPress={() => (action.boitier && seTait ? expliquer() : action.faire())} />
+            );
+          })}
         </View>
         {gestes.length === 0 ? (
           // Aucun code relevé pour cet opérateur : on le DIT, et on mène

@@ -45,6 +45,11 @@ const en = {
   groupeConsulter: "Check",
   groupeOutils: "Tools",
   monSolde: "My balance",
+  // LE MENU DE L'OPÉRATEUR, tel qu'on le compose sur le téléphone (*126#,
+  // #148#…) : un bouton à part entière, pas un réglage caché dans « Code
+  // USSD ». Le même nom chez tous les opérateurs — un geste, un nom.
+  menu: "Menu",
+  menuSous: "Opens the operator's menu: you choose at each step",
   champNumero: "Number",
 
   // --- Le pop-up d'une opération ----------------------------------------------
@@ -204,6 +209,8 @@ const fr: typeof en = {
   groupeConsulter: "Consulter",
   groupeOutils: "Outils",
   monSolde: "Mon solde",
+  menu: "Menu",
+  menuSous: "Ouvre le menu de l’opérateur : vous choisissez à chaque étape",
   champNumero: "Numéro",
 
   preparation: "Préparation",

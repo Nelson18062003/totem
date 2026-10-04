@@ -92,6 +92,11 @@ export function champPourQuestion<T extends { type: TypeChamp }>(
   // s'ouvrait, et le champ étant consommé, la vraie question qui suivait ne
   // pouvait plus être servie. Un menu se lit, il ne se remplit pas.
   if (estUnMenu(texte)) return undefined;
+  // UNE PAGE QUI SE TOURNE N'EST PAS UNE QUESTION NON PLUS. « Confirm: Float
+  // Transfer … having mobile number 237… / 00. Next » nomme un numéro sans
+  // en demander : y répondre tout seul enverrait le numéro du bénéficiaire
+  // là où l'opérateur attend « 00 ».
+  if (lireLeTexte(texte).attend === "choix") return undefined;
 
   const correspondants = restants.filter((c) =>
     RECONNAISSANCE.some((r) => r.type === c.type && r.motif.test(texte)));
@@ -178,8 +183,82 @@ const RE_REUSSIE =
 const RE_REFUSEE =
   /[ée]chec|[ée]chou|refus|insuffisant|invalide|incorrect|erron|erreur|impossible|non\s+autoris|expir|annul|failed|failure|error|insufficient|invalid|declined|not\s+allowed|cancel/i;
 
-/** Lit un écran de l'opérateur. Ne lève jamais, n'invente rien. */
-export function lireEcran(brut: string | null | undefined): EcranReseau {
+// UN MESSAGE LONG SE TOURNE COMME UNE PAGE. Un écran USSD tient au plus 182
+// caractères ; au-delà, l'opérateur coupe et termine par la navigation :
+//
+//   « Confirm: Float Transfer for FCFA 5000 To -<NOM DE SOCIÉTÉ DE SOIXANTE
+//     LETTRES> having mobile number 237672502815.
+//     00. Next »
+//
+// Le message ne pose aucune question — pas de verbe, pas de « ? », pas de
+// « : » final — et une seule ligne numérotée ne fait pas un menu. L'écran
+// le prenait donc pour une FIN : « Terminé », et un petit lien « répondre
+// quand même ». La suite (le choix « Confirmer », puis le code secret) ne
+// venait qu'en tapant « 00 » à l'aveugle. Ce sont les raisons sociales — les
+// gros clients, les gros montants — qui ont les noms longs.
+//
+// Une DERNIÈRE ligne en forme de choix n'est pas une fin : l'opérateur dit
+// quoi taper ensuite. Elle devient un bouton. La navigation se reconnaît
+// aussi collée à la phrase (« …237672502815. 00. Next »), mais seulement
+// avec un mot de navigation : « …au 677. 12 mois » n'est pas un choix.
+const MOTS_DE_NAVIGATION =
+  "next|suivant|suite|more|plus|back|retour|pr[ée]c[ée]dent|previous|accueil|home|menu|main\\s+menu|confirm(?:er)?|valider";
+const RE_NAVIGATION_COLLEE = new RegExp(
+  `[.!?:;,]\\s+(\\d{1,2}|[#*])\\s*[.):\\-]?\\s*(${MOTS_DE_NAVIGATION})\\s*$`, "i");
+// « 98 Suivant », sans ponctuation, sur sa propre ligne : la forme souple,
+// mais avec un mot de navigation — « 12 mois offerts » n'en est pas un.
+const RE_LIGNE_NAVIGATION_SOUPLE = new RegExp(
+  `^\\s*(\\d{1,2})\\s+(${MOTS_DE_NAVIGATION})\\s*$`, "i");
+
+/** Le choix que porte la FIN du message, et le message sans lui. */
+function choixDeFin(reste: string[]): { choix: ChoixReseau; avant: string[] } | null {
+  const derniere = reste[reste.length - 1] ?? "";
+  if (reste.length >= 2) {
+    const c = RE_LIGNE_CHOIX.exec(derniere) ?? RE_LIGNE_NAVIGATION.exec(derniere)
+      ?? RE_LIGNE_NAVIGATION_SOUPLE.exec(derniere);
+    if (c) return { choix: { numero: c[1], libelle: c[2].trim() }, avant: reste.slice(0, -1) };
+  }
+  const m = RE_NAVIGATION_COLLEE.exec(derniere);
+  if (!m) return null;
+  // On garde la ponctuation qui finissait la phrase (« …237672502815. »).
+  const phrase = derniere.slice(0, m.index + 1).trim();
+  return {
+    choix: { numero: m[1], libelle: m[2].trim() },
+    avant: [...reste.slice(0, -1), phrase].filter(Boolean),
+  };
+}
+
+/** Ce que le RÉSEAU a dit de la session, quand le boîtier le rapporte :
+ *  « attend » — il attend une réponse (+CUSD: 1) ; « fini » — il a fermé
+ *  (+CUSD: 0 ou 2). Absent d'un boîtier d'avant : on lit alors le texte. */
+export type EtatDuReseau = "attend" | "fini";
+
+/** Lit un écran de l'opérateur. Ne lève jamais, n'invente rien.
+ *
+ *  `reseau` : ce que le réseau a dit de la session. C'est lui qui SAIT si
+ *  l'on peut encore répondre ; le texte ne fait que le laisser deviner. */
+export function lireEcran(
+  brut: string | null | undefined, reseau?: EtatDuReseau | null,
+): EcranReseau {
+  const lu = lireLeTexte(brut);
+  if (reseau === "fini") {
+    // Le réseau a raccroché : plus rien ne part, même si le texte demande.
+    if (lu.attend === "rien") return lu;
+    const issue = RE_REFUSEE.test(brut ?? "") ? "refusee"
+      : RE_REUSSIE.test(brut ?? "") ? "reussie" : null;
+    const texte = [lu.texte, ...lu.choix.map((c) => `${c.numero}. ${c.libelle}`)]
+      .filter(Boolean).join("\n");
+    return { texte, choix: [], attend: "rien", issue };
+  }
+  if (reseau === "attend" && lu.attend === "rien") {
+    // Il attend, et le texte ne dit pas quoi : un champ libre — jamais
+    // « Terminé » sur une session encore ouverte.
+    return { ...lu, attend: "texte", issue: null };
+  }
+  return lu;
+}
+
+function lireLeTexte(brut: string | null | undefined): EcranReseau {
   const source = (brut ?? "").replace(/\r/g, "");
   const lignes = source.split("\n");
   const choix: ChoixReseau[] = [];
@@ -205,6 +284,13 @@ export function lireEcran(brut: string | null | undefined): EcranReseau {
     const type = RECONNAISSANCE.filter((r) => r.motif.test(source)).map((r) => r.type);
     attend = type.length === 1 && RE_DEMANDE.test(source) ? type[0]
       : RE_DEMANDE.test(source) ? "texte" : "rien";
+  }
+
+  // Rien de demandé, mais la dernière ligne dit quoi taper : une page qui
+  // se tourne, pas une fin.
+  if (attend === "rien") {
+    const fin = choixDeFin(reste);
+    if (fin) return { texte: fin.avant.join("\n"), choix: [fin.choix], attend: "choix", issue: null };
   }
 
   // L'issue ne se lit que sur un message qui ne demande plus rien : « Code

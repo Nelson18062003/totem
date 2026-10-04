@@ -7,7 +7,7 @@ import { etapesGeste } from "@noyau/codes";
 import { textesGuichet } from "@noyau/textes/guichet";
 import type { RaccourciAppris, Sim } from "@noyau/types";
 import {
-  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconHash, IconPersonnes,
+  IconArrowDown, IconArrowUp, IconChart, IconChevron, IconGrid, IconHash, IconPersonnes,
   IconInbox, IconPhone, IconRefresh, IconWallet,
 } from "../icons";
 import { useLangue } from "../langue";
@@ -72,6 +72,12 @@ export function Guichet({
         { cle: "numero", label: t.numeroBeneficiaire, aide: "699 12 34 56", type: "numero" },
         { cle: "montant", label: t.montantFcfa, aide: t.exempleCinquanteMille, type: "montant" },
       ]),
+    },
+    // LE MENU DE L'OPÉRATEUR, un bouton à part entière : tout ce que les
+    // trois gestes ne couvrent pas (le « Float » d'un agent…) y passe.
+    {
+      titre: t.menu, sous: t.menuSous, Icone: IconGrid,
+      fabrique: (): Operation => operationDe("menu", t.menu, []),
     },
   ].filter((o) => o.fabrique().code);
 

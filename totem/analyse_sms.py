@@ -805,6 +805,35 @@ def _parties_de_loperation(norme, propre):
     return emetteur, beneficiaire, premiere
 
 
+def _retrait_chez_l_agent(geste, norme, emetteur, beneficiaire):
+    """Ce SMS est-il un RETRAIT vu de la puce de l'agent ?
+
+    « CashOut success to 640256463 TAFOPA from 696103864 WONDER PHONE …
+    transaction amount: 500000 FCFA, commission: 0 FCFA » — l'agent (from)
+    remet 500 000 F en ESPÈCES au client (to) ; l'argent électronique, lui,
+    va dans l'AUTRE sens : du compte du client vers celui de l'agent. Lu à la
+    lettre, « from » désignait le payeur, et la puce commerciale voyait
+    « Retrait −500 000 FCFA » sur un argent qui venait d'ARRIVER.
+
+    Orange écrit ses SMS d'agent sur un seul modèle — « vers/to <client> …
+    from <agent> » —, que l'argent entre ou sorte : le dépôt (« Depot vers
+    <client> reussi from <agent> … Montant Net Debite ») est juste tel quel,
+    le retrait doit se retourner. Le Cash out MTN (« initiated by <client> »)
+    se lisait déjà en entrée.
+
+    « Cash out » est le mot de l'agent : toujours retourné. « Retrait » et
+    « withdrawal » se lisent aussi côté client, où « vers » nomme l'agent qui
+    REÇOIT : on ne les retourne que sur un SMS d'agent — deux parties, et une
+    commission, que seul l'agent touche."""
+    if not (emetteur and beneficiaire):
+        return False
+    mot = re.sub(r"\s+", "", geste.group(0))
+    if mot == "cashout":
+        return True
+    return (mot in ("retrait", "withdraw", "withdrawal", "withdrawn")
+            and _montant_nomme(RE_COMMISSION, norme) is not None)
+
+
 def _operation_structuree(norme, propre, texte):
     """L'opération à deux parties — transfert, dépôt, retrait, CashIn/Out —
     lue comme un document : geste + réussite + parties numérotées + champs.
@@ -829,6 +858,8 @@ def _operation_structuree(norme, propre, texte):
     emetteur, beneficiaire, premiere = _parties_de_loperation(norme, propre)
     if not (emetteur or beneficiaire):
         return None, False
+    if _retrait_chez_l_agent(geste, norme, emetteur, beneficiaire):
+        emetteur, beneficiaire = beneficiaire, emetteur
 
     # Le montant : les champs étiquetés d'abord (le net d'Orange fait foi),
     # la tête de phrase ensuite (« Depot de 50000 FCFA vers … » — jamais plus

@@ -399,7 +399,7 @@ let hoquetsServis = 0;
 // migrée ne l'a pas (« /essai/base?effacement=non ») : c'est là que la
 // plateforme doit tenir la promesse seule.
 let effacementParLaBase = true;
-const GARDES_D_UNE_DEMANDE_CLOSE = ["secret", "carte", "iccid", "par", "langue"];
+const GARDES_D_UNE_DEMANDE_CLOSE = ["secret", "carte", "iccid", "par", "langue", "reseau"];
 function regleDeLaBase(commande) {
   if (!effacementParLaBase) return;
   if (!["faite", "echouee"].includes(commande.etat)) return;
@@ -433,7 +433,29 @@ function servir(enregistree) {
     enregistree.parametres = typeof carte === "string"
       ? { secret: true, carte } : { secret: true };
   }
+  // CE QUE LE RÉSEAU A DIT DE LA SESSION, comme le vrai robot le joint
+  // (`pilotage._etat_du_reseau`) : il attend une réponse, ou il a fermé.
+  if (enregistree.type === "ussd" || enregistree.type === "ussd_reponse") {
+    enregistree.parametres = {
+      ...(enregistree.parametres ?? {}),
+      reseau: /reussie|terminee/i.test(enregistree.resultat) ? "fini" : "attend",
+    };
+  }
 }
+
+// UN MESSAGE LONG QUI SE TOURNE COMME UNE PAGE — le vrai écran d'un « Float
+// Transfer » MTN vers une raison sociale longue (nom inventé, même
+// longueur). Il ne pose aucune question et finit par « 00. Next » ; l'écran
+// le prenait pour une fin. Activé par :
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/page-longue?oui=1"
+//
+// Un code complet (le dépôt) passe alors par : la page → « 00 » →
+// « 1. Confirm » → « 1 » → le code secret.
+let pageLongue = false;
+const PAGE_LONGUE = "Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE "
+  + "QUINCAILLERIE DU LITTORAL ET DES HAUTS PLATEAUX SARL MBALLA JEAN having "
+  + "mobile number 237670000123.\n00. Next";
 
 function reponsePour(commande) {
   const { type, parametres } = commande;
@@ -453,6 +475,7 @@ function reponsePour(commande) {
     // Un code complet (avec le numéro et le montant dedans) va droit au code
     // secret ; un code d'entrée ouvre le menu.
     if (code.split("*").length > 3) {
+      if (pageLongue) return PAGE_LONGUE;
       return "Confirmer le transfert de 5 000 FCFA vers 677998877 ?\nEntrez votre code secret:";
     }
     return "MTN MoMo\n1. Transfert d'argent\n2. Retrait\n3. Paiement\n4. Mon compte\n5. Mon solde";
@@ -460,6 +483,10 @@ function reponsePour(commande) {
   // Une réponse dans la session : on avance dans le scénario.
   const n = commande.tour ?? 0;
   if (parametres.secret) return "Operation reussie. Nouveau solde: 407 500 FCFA.";
+  if (pageLongue && n === 0) return "Fees: 0 FCFA. Commission: 25 FCFA.\n1. Confirm\n2. Cancel";
+  if (pageLongue && n === 1) {
+    return "Depot de 5 000 FCFA vers 237670000123.\nEntrez votre code secret:";
+  }
   if (n === 0) return "Entrez le numero du beneficiaire:";
   if (n === 1) return "Entrez le montant:";
   // Comme un vrai opérateur : ce qu'on va signer, PUIS la demande du code.
@@ -551,6 +578,10 @@ const serveur = createServer(async (req, res) => {
   //
   //     curl -X POST "http://127.0.0.1:4999/essai/taire?terminal=douala-faux&minutes=11"
   //     curl -X POST "http://127.0.0.1:4999/essai/reveiller?terminal=douala-faux"
+  if (req.method === "POST" && chemin === "/essai/page-longue") {
+    pageLongue = url.searchParams.get("oui") === "1";
+    return repondre({ pageLongue });
+  }
   if (req.method === "POST" && chemin === "/essai/taire") {
     const terminal = url.searchParams.get("terminal") || "douala-faux";
     muets.set(terminal, Number(url.searchParams.get("minutes") || 11));
@@ -701,9 +732,12 @@ const serveur = createServer(async (req, res) => {
     // Ce que la plateforme demande, comme PostgREST le rend : la carte d'une
     // commande se lit dans ses paramètres — c'est elle qui dit à qui la
     // commande appartient.
+    // `reseau:parametres->>reseau` : PostgREST rend la clé sous ce nom.
+    const reseau = /reseau/.test(url.searchParams.get("select") || "")
+      ? { reseau: c?.parametres?.reseau ?? null } : {};
     return repondre(c ? [{ id: c.id, type: c.type, parametres: c.parametres ?? {},
                            terminal: c.terminal ?? null, etat: c.etat,
-                           resultat: c.resultat }] : []);
+                           resultat: c.resultat, ...reseau }] : []);
   }
 
   // Un SMS qui tombe PENDANT qu'on regarde. Sans cela, impossible d'éprouver

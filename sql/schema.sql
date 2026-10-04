@@ -643,7 +643,9 @@ create trigger terminaux_entendu before insert or update on terminaux
 -- le robot et la plateforme gardent déjà : le drapeau, la carte (un ICCID
 -- n'a rien de secret, il est imprimé sur la puce), la personne qui l'a
 -- demandée et sa langue — c'est d'après elles que la plateforme dit à qui
--- est la demande.
+-- est la demande. Et « reseau » : ce que le réseau a dit de la session
+-- (« attend » une réponse, ou « fini ») — sans lui, l'écran devine sur le
+-- texte, et une page « 00. Next » passait pour une fin.
 --
 -- « en cours » n'y touche pas, à dessein : le robot qui vient de la
 -- réclamer doit encore lire le code pour le composer.
@@ -657,7 +659,7 @@ begin
     new.parametres := coalesce(
       (select jsonb_object_agg(cle, valeur)
          from jsonb_each(new.parametres) as gardes(cle, valeur)
-        where cle in ('secret', 'carte', 'iccid', 'par', 'langue')),
+        where cle in ('secret', 'carte', 'iccid', 'par', 'langue', 'reseau')),
       '{}'::jsonb);
   end if;
   return new;

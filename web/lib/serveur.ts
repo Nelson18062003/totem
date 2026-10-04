@@ -1253,11 +1253,19 @@ export async function carteDeLaCommande(id: number): Promise<string | null> {
 
 export async function lireCommande(
   id: number,
-): Promise<{ etat: string; resultat: string | null } | null> {
-  const lignes = await lire<{ id: number; etat: string; resultat: string | null }>(
-    `commandes?select=id,etat,resultat&id=eq.${id}&limit=1`);
+): Promise<{ etat: string; resultat: string | null; reseau?: "attend" | "fini" } | null> {
+  // `parametres->reseau` seulement, jamais les paramètres entiers : ils
+  // portent le code composé, et parfois, fugitivement, un code secret.
+  const lignes = await lire<{
+    id: number; etat: string; resultat: string | null; reseau?: unknown;
+  }>(`commandes?select=id,etat,resultat,reseau:parametres->>reseau&id=eq.${id}&limit=1`);
   const c = lignes.find((x) => x.id === id);
-  return c ? { etat: c.etat, resultat: c.resultat } : null;
+  if (!c) return null;
+  // Ce que le RÉSEAU a dit de la session USSD, rapporté par le boîtier :
+  // « attend » une réponse, ou « fini ». Absent d'un boîtier d'avant —
+  // l'écran lit alors le texte, comme avant.
+  const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
+  return reseau ? { etat: c.etat, resultat: c.resultat, reseau } : { etat: c.etat, resultat: c.resultat };
 }
 
 /** Qui a déposé cette demande (`par`, nommé par la plateforme), sur quelle

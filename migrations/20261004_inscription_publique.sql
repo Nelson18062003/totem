@@ -121,3 +121,56 @@ begin
 
   delete from utilisateurs where id = essai;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- CE QUE LE RÉSEAU A DIT DE LA SESSION SURVIT AU CODE SECRET.
+--
+-- Le boîtier joint maintenant à sa réponse « reseau » : « attend » (le réseau
+-- attend une réponse, +CUSD: 1) ou « fini » (il a fermé). L'écran le
+-- devinait sur le texte, et un message long terminé par « 00. Next » passait
+-- pour une fin — « Terminé » sur une session encore ouverte.
+--
+-- La règle qui efface le code d'une demande secrète close ne garde que
+-- quelques clés ; « reseau » doit en être, sinon il disparaît juste après
+-- le code secret — là où l'opérateur demande souvent encore une
+-- confirmation. Rien d'autre ne change : la règle garde exactement ce
+-- qu'elle gardait, plus ce mot. Rejouable sans risque.
+-- ---------------------------------------------------------------------------
+create or replace function commandes_code_efface() returns trigger
+language plpgsql as $$
+begin
+  if new.etat in ('faite', 'echouee')
+     and jsonb_typeof(new.parametres) = 'object'
+     and new.parametres->>'secret' = 'true' then
+    new.parametres := coalesce(
+      (select jsonb_object_agg(cle, valeur)
+         from jsonb_each(new.parametres) as gardes(cle, valeur)
+        where cle in ('secret', 'carte', 'iccid', 'par', 'langue', 'reseau')),
+      '{}'::jsonb);
+  end if;
+  return new;
+end $$;
+
+-- Vérifiée sur place : une demande secrète close garde « reseau », perd son code.
+do $$
+declare
+  essai bigint;
+  t text;
+  restes jsonb;
+begin
+  select id into t from terminaux limit 1;
+  if t is null then return; end if;     -- base neuve : rien à essayer
+  insert into commandes (terminal, type, parametres, etat)
+    values (t, 'ussd_reponse',
+            '{"secret": true, "texte": "1234", "reseau": "attend"}'::jsonb, 'en_cours')
+    returning id into essai;
+  update commandes set etat = 'faite' where id = essai
+    returning parametres into restes;
+  delete from commandes where id = essai;
+  if restes ? 'texte' then
+    raise exception 'VÉRIFICATION ÉCHOUÉE : le code secret a survécu à la fermeture.';
+  end if;
+  if restes->>'reseau' is distinct from 'attend' then
+    raise exception 'VÉRIFICATION ÉCHOUÉE : « reseau » a été effacé avec le code.';
+  end if;
+end $$;

@@ -355,15 +355,16 @@ class Pilotage:
         if not prise:
             return
 
+        reseau = None       # ce que le réseau a dit de la session USSD
         try:
             if genre == "solde":
                 resultat = self._republier(langue)
             elif genre == "ussd":
                 self._refuser_si_perimee(prise, genre, langue)
-                resultat = self._ouvrir(parametres, langue)
+                resultat, reseau = self._ouvrir(parametres, langue)
             elif genre == "ussd_reponse":
-                resultat = self._repondre(identifiant, parametres, langue,
-                                          prise=prise)
+                resultat, reseau = self._repondre(identifiant, parametres,
+                                                  langue, prise=prise)
             elif genre == "ussd_fin":
                 self._raccrocher(self._iccid_demande(parametres),
                                  self._qui(parametres), langue)
@@ -405,6 +406,13 @@ class Pilotage:
         # déjà fait ne coûte rien.
         if parametres.get("secret"):
             final["parametres"] = self._parametres_masques(parametres)
+        # CE QUE LE RÉSEAU A DIT voyage dans les paramètres, pas dans une
+        # colonne : une colonne absente d'une base pas encore migrée ferait
+        # échouer TOUTE l'écriture — la réponse avec. Une clé de plus dans
+        # un objet ne casse rien ; un écran d'avant l'ignore.
+        if reseau and etat == "faite":
+            base = final.get("parametres", parametres)
+            final["parametres"] = {**base, "reseau": reseau}
         self.nuage.commande_maj(identifiant, final)
 
     def _refuser_si_perimee(self, prise, genre, langue=None):
@@ -809,7 +817,19 @@ class Pilotage:
             f"guichet à distance : {code} ({compte.libelle})"))
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
-        return reponse
+        return reponse, self._etat_du_reseau(compte, qui)
+
+    @staticmethod
+    def _etat_du_reseau(compte, qui):
+        """Ce que le RÉSEAU a dit de la session (+CUSD: 1 — il attend une
+        réponse ; 0 ou 2 — il a fermé), tel que la carte l'a noté.
+
+        L'écran le devinait sur le texte, et devinait mal : « Confirm: Float
+        Transfer … 00. Next » ne pose aucune question, et il l'affichait
+        « Terminé » sur une session que le réseau tenait encore ouverte —
+        la suite (« Confirmer », puis le code secret) ne venait qu'en tapant
+        « 00 » à l'aveugle. Le boîtier, lui, SAIT : il le dit."""
+        return "attend" if compte.tenue_par(qui) else "fini"
 
     @staticmethod
     def _expliquer_tenue(titulaire, langue=None):
@@ -916,7 +936,7 @@ class Pilotage:
                 langue=langue))
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
-        return reponse
+        return reponse, self._etat_du_reseau(compte, qui)
 
     def _noter_session(self, compte, qui):
         with self._garde:

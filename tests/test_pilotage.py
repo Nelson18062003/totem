@@ -226,7 +226,8 @@ class TestGuichet(unittest.TestCase):
                     "parametres": {"texte": "1234", "secret": True}})
         self.assertNotIn("1234", str(nuage.maj))
         derniere = nuage.maj[-1][1]
-        self.assertEqual(derniere.get("parametres"), {"secret": True})
+        # Le drapeau, et ce que le réseau a dit de la session — rien d'autre.
+        self.assertEqual(derniere.get("parametres"), {"secret": True, "reseau": "fini"})
 
     def test_une_demande_deja_prise_n_est_pas_rejouee(self):
         """Deux robots, une seule demande — et de l'argent au bout.
@@ -353,6 +354,67 @@ class TestGuichet(unittest.TestCase):
         self.assertFalse(compte.session_ouverte)
         self.assertFalse(compte.session_ouverte)
         self.assertEqual(nuage.maj[-1][1]["resultat"], "Session closed.")
+
+
+class TestCeQueLeReseauADit(unittest.TestCase):
+    """Le boîtier dit à l'écran si le RÉSEAU attend encore une réponse.
+
+    L'écran le devinait sur le texte : « Confirm: Float Transfer for FCFA
+    5000 To -<raison sociale longue> having mobile number 2376…. / 00. Next »
+    ne pose aucune question, et il affichait « Terminé » sur une session que
+    le réseau tenait ouverte — la suite (« Confirmer », puis le code secret)
+    ne venait qu'en tapant « 00 » à l'aveugle. Le modem, lui, le SAIT
+    (+CUSD: 1 ou 0) : la réponse le porte maintenant."""
+
+    PAGE = ("Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE "
+            "QUINCAILLERIE DU LITTORAL SARL having mobile number "
+            "237670000123.\n00. Next")
+
+    def _final(self, nuage, identifiant):
+        return [c for i, c in nuage.maj if i == identifiant and "etat" in c][-1]
+
+    def test_une_page_ouverte_dit_attend(self):
+        compte = FauxCompte([("ouverte", self.PAGE)])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 1, "type": "ussd",
+                    "parametres": {"code": "*126*9*670000123*5000#"}})
+        final = self._final(nuage, 1)
+        self.assertEqual(final["etat"], "faite")
+        self.assertEqual(final["parametres"]["reseau"], "attend")
+        # Les paramètres d'origine restent : rien n'est perdu en route.
+        self.assertEqual(final["parametres"]["code"], "*126*9*670000123*5000#")
+
+    def test_une_fin_dit_fini(self):
+        compte = FauxCompte([("fermee", "Votre solde est de 5 000 FCFA.")])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 2, "type": "ussd", "parametres": {"code": "#150#"}})
+        self.assertEqual(self._final(nuage, 2)["parametres"]["reseau"], "fini")
+
+    def test_apres_le_code_secret_le_reseau_est_dit_sans_le_code(self):
+        # Juste après le code secret, l'opérateur demande souvent encore une
+        # confirmation : c'est là que le signal compte le plus.
+        compte = FauxCompte([
+            ("ouverte", "Entrez votre code secret"),
+            ("ouverte", "1. Confirmer\n2. Annuler"),
+        ])
+        p, nuage = pilote(compte)
+        p._traiter({"id": 3, "type": "ussd", "parametres": {"code": "#150#"}})
+        p._traiter({"id": 4, "type": "ussd_reponse",
+                    "parametres": {"texte": "1234", "secret": True}})
+        final = self._final(nuage, 4)
+        self.assertEqual(final["parametres"], {"secret": True, "reseau": "attend"})
+        self.assertNotIn("1234", str([c for i, c in nuage.maj if i == 4]))
+
+    def test_un_refus_ne_dit_rien_du_reseau(self):
+        # Rien n'a été composé : le réseau n'a rien dit, on n'invente pas.
+        compte = FauxCompte([])
+        compte.session_ouverte = True
+        compte.titulaire = (TELEGRAM, None)
+        p, nuage = pilote(compte)
+        p._traiter({"id": 5, "type": "ussd", "parametres": {"code": "#150#"}})
+        final = self._final(nuage, 5)
+        self.assertEqual(final["etat"], "echouee")
+        self.assertNotIn("parametres", final)
 
 
 class TestLaLangueDeLaDemande(unittest.TestCase):
@@ -725,7 +787,10 @@ class TestChacunSaCarte(unittest.TestCase):
         masque = {"secret": True, "carte": mtn.carte.iccid}
         # Les DEUX écritures qui effacent : avant de composer, et la finale.
         self.assertEqual(ecritures[1], {"parametres": masque})
-        self.assertEqual(ecritures[-1]["parametres"], masque)
+        # La finale y joint ce que le réseau a dit de la session — rien d'autre.
+        finale = dict(ecritures[-1]["parametres"])
+        self.assertIn(finale.pop("reseau"), ("attend", "fini"))
+        self.assertEqual(finale, masque)
         self.assertEqual(ecritures[-1]["etat"], "faite")
         self.assertNotIn("1234", str(ecritures))
         self.assertEqual(mtn.recu[-1], "1234")

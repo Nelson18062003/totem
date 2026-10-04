@@ -179,6 +179,16 @@ def main():
             (4, fabriquer_pdu("Retrait effectué : 5000 FCFA. Solde : 895000 FCFA.",
                               expediteur="MTNMobileMoney", ucs2=True,
                               quand=maintenant)),
+            # 5. UN RETRAIT CHEZ L'AGENT : le client retire, l'argent
+            # électronique ARRIVE sur notre puce commerciale. « from » nomme
+            # l'agent — c'est-à-dire nous — et se lisait comme le payeur :
+            # « −75 000 » sur un argent qui venait d'entrer.
+            (5, fabriquer_pdu(
+                "CashOut success to 690000002 ESSAI CLIENT from 696100001 "
+                "BOUTIQUE ESSAI. The details are as follows: transaction "
+                "amount: 75000 FCFA, charges: 0 FCFA, commission: 0 FCFA, "
+                "TXN id :CO261004.1538.A00001",
+                expediteur="OrangeMoney", quand=maintenant)),
         ]
         modem = modem_pdu(*pdus)
         journal = Journal(":memory:")
@@ -197,14 +207,20 @@ def main():
             def accuser(self, *a, **k): pass
             def retirer_boutons(self, *a, **k): pass
 
-        robot = Robot([compte], TransportMuet(), journal, nom="T", pause_sms=1)
+        # Le numéro de NOTRE puce : c'est lui qui dit de quel côté du
+        # CashOut on se trouve.
+        robot = Robot([compte], TransportMuet(), journal, nom="T", pause_sms=1,
+                      numeros={compte.libelle.lower(): "696100001"})
+        # Le branchement que fait le vrai démarrage (`app.py`, « nuage= ») :
+        # c'est par lui que la montée au nuage sait de quel côté on est.
+        nuage.fournir_numeros = robot._nos_numeros
         robot._relever_sms(compte)
 
         lignes = journal.derniers_sms(20, ())
         textes = [t for _, _, t, _ in lignes]
-        # QUATRE PDU, TROIS MESSAGES : deux d'entre eux sont les deux moitiés
+        # CINQ PDU, QUATRE MESSAGES : deux d'entre eux sont les deux moitiés
         # d'un seul SMS. Le recolleur doit les rendre comme un.
-        verifier("quatre PDU donnent trois messages", len(lignes) == 3,
+        verifier("cinq PDU donnent quatre messages", len(lignes) == 4,
                  f"{len(lignes)} lignes")
         verifier("le message long est recollé, montant intact",
                  any("130000 FCFA" in t for t in textes),
@@ -217,12 +233,12 @@ def main():
         brutes = journal.sms_non_envoyes(20)
         heures = [l[6] for l in brutes]
         verifier("chaque message porte son heure réseau",
-                 all(h for h in heures), f"{sum(1 for h in heures if h)}/3")
+                 all(h for h in heures), f"{sum(1 for h in heures if h)}/{len(heures)}")
         verifier("l'encaissement d'il y a trois heures garde SON heure",
                  any(h and h.startswith(veille.strftime("%Y-%m-%dT%H")) for h in heures))
 
         envoyes = nuage.pousser_paiements()
-        verifier("le nuage les accepte tous les trois", envoyes == 3,
+        verifier("le nuage les accepte tous les quatre", envoyes == 4,
                  f"{envoyes} envoyés")
 
         # --- LA PLATEFORME : le même argent, relu par un autre code --------
@@ -245,6 +261,16 @@ def main():
                      str(ordinaire["sens"]))
             verifier("le tiers est la personne, pas l'opérateur",
                      ordinaire["tiers"] == "ABENA Rose", str(ordinaire["tiers"]))
+
+        retrait = next((p for p in donnees["paiements"]
+                        if "CashOut" in p["smsBrut"]), None)
+        verifier("le retrait chez l'agent est une ENTRÉE à l'écran",
+                 retrait is not None and retrait["sens"] == "in"
+                 and retrait["montant"] == 75000,
+                 f"{retrait['sens']} {retrait['montant']}" if retrait else "absent")
+        verifier("celui qui a payé est le client, pas la boutique",
+                 retrait is not None and retrait["tiers"] == "ESSAI CLIENT",
+                 str(retrait["tiers"]) if retrait else "absent")
 
         long_ = next((p for p in donnees["paiements"] if "KAMGA" in p["smsBrut"]), None)
         verifier("le message long vaut 130 000 à l'écran, pas 13",

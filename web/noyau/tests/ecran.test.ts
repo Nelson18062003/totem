@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lireEcran } from "../ussd";
+import { champPourQuestion, lireEcran } from "../ussd";
 
 test("un menu devient des choix, avec le libellé de l'opérateur mot pour mot", () => {
   const e = lireEcran("MTN MoMo\n1. Transfert d'argent\n2. Retrait\n3) Paiement\n10 - Mon compte");
@@ -146,3 +146,64 @@ for (const [brut, issue] of FINS) {
     assert.deepEqual([e.attend, e.issue], ["rien", issue]);
   });
 }
+
+// UN MESSAGE LONG SE TOURNE COMME UNE PAGE. Le vrai écran d'un « Float
+// Transfer » MTN vers une raison sociale longue (nom inventé, même longueur) :
+// aucune question, une seule ligne numérotée — l'écran le prenait pour une
+// fin et affichait « Terminé ». La suite ne venait qu'en tapant « 00 » à
+// l'aveugle.
+const PAGE_LONGUE =
+  "Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE QUINCAILLERIE DU LITTORAL "
+  + "ET DES HAUTS PLATEAUX SARL MBALLA JEAN having mobile number 237670000123.";
+
+test("un message long qui finit par « 00. Next » n'est pas une fin : c'est un bouton", () => {
+  for (const brut of [`${PAGE_LONGUE}\n00. Next`, `${PAGE_LONGUE} 00. Next`,
+                      `${PAGE_LONGUE}\n98 Suivant`, `${PAGE_LONGUE}\n#. Retour`]) {
+    const e = lireEcran(brut);
+    assert.equal(e.attend, "choix", brut.slice(-12));
+    assert.equal(e.choix.length, 1, brut.slice(-12));
+    assert.equal(e.issue, null);
+    // Le message reste entier à l'écran, sans la ligne devenue bouton.
+    assert.ok(e.texte.endsWith("237670000123."), e.texte.slice(-20));
+  }
+  assert.deepEqual(lireEcran(`${PAGE_LONGUE} 00. Next`).choix, [{ numero: "00", libelle: "Next" }]);
+});
+
+test("une vraie fin reste une fin — une phrase qui finit par un nombre n'est pas un choix", () => {
+  for (const fin of [
+    "Operation reussie. Nouveau solde: 407 500 FCFA.",
+    "Votre forfait est valable 30 jours. 12 mois offerts",
+    "Transfert de 5 000 FCFA vers 677998877 reussi. Ref 2026.10",
+    "Echec de la transaction : solde insuffisant.",
+  ]) {
+    assert.equal(lireEcran(fin).attend, "rien", fin);
+  }
+});
+
+test("le RÉSEAU décide : ouverte, jamais « Terminé » ; fermée, jamais de champ", () => {
+  // Le boîtier rapporte ce que le réseau a dit (+CUSD: 1 ou 0). Le texte
+  // ne fait que le laisser deviner.
+  const sansIndice = "Votre demande est en cours de traitement.";
+  assert.equal(lireEcran(sansIndice).attend, "rien");
+  assert.equal(lireEcran(sansIndice, "attend").attend, "texte");
+  assert.equal(lireEcran(sansIndice, "attend").issue, null);
+  // Fermée : la page « 00. Next » n'a plus de suite — pas de bouton mort.
+  const fermee = lireEcran(`${PAGE_LONGUE}\n00. Next`, "fini");
+  assert.equal(fermee.attend, "rien");
+  assert.deepEqual(fermee.choix, []);
+  assert.match(fermee.texte, /00\. Next$/);
+  // Le pavé du code ne s'ouvre pas sur une session que le réseau a fermée.
+  assert.equal(lireEcran("Entrez votre code secret", "fini").attend, "rien");
+  // Et le code secret reste le code secret quand il attend.
+  assert.equal(lireEcran("Entrez votre code secret", "attend").attend, "secret");
+});
+
+test("une page qui se tourne ne se remplit pas toute seule avec le numéro", () => {
+  // Elle nomme un numéro (« having mobile number ») sans en demander : le
+  // champ « numéro » encore à servir partait là où l'opérateur attend « 00 ».
+  const champs = [{ type: "numero" as const }, { type: "montant" as const }];
+  assert.equal(champPourQuestion(`${PAGE_LONGUE}\n00. Next`, champs), undefined);
+  assert.equal(champPourQuestion(`${PAGE_LONGUE} 00. Next`, champs), undefined);
+  // La vraie question, elle, se remplit toujours.
+  assert.equal(champPourQuestion("Entrez le numero du beneficiaire:", champs)?.type, "numero");
+});
