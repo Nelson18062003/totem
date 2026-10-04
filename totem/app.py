@@ -78,8 +78,14 @@ RE_DEMANDE_CODE = re.compile(
     # clair, et s'inscrivait tel quel dans la table `ussd` — laquelle part dans
     # le fichier de sauvegarde posté sur Telegram. La quatrième fuite du code
     # secret, et par le mot le plus banal de tous.
-    r"\bn\.?i\.?p\.?\b|\bpin\b|\bmdp\b|\bcodes?\b|secret|confidentiel"
-    r"|mot\s+de\s+passe|password|passcode|passphrase",
+    #
+    # « \bpin\b » ne voyait ni « mPIN », ni « PINCODE », ni « PIN2 », ni
+    # « PIN_MoMo » ; « secret » pas « clé secrète » ; « mot de passe » pas
+    # « mot-de-passe ». Le même vocabulaire vit dans le noyau
+    # (web/noyau/ussd.ts, RE_SECRET).
+    r"\bn\.?i\.?p\.?\b|(?:\b|m|e-?)pin(?:\d|_|code|\b)|\bp\.i\.n\b|\bmdp\b"
+    r"|\bcodes?\b|secr[eè]t|confidentiel|confidential|mot[\s-]*de[\s-]*passe"
+    r"|password|passcode|passphrase",
     re.I)
 # Une option de menu : « 1. Texte », « 2) Texte », « 3- Texte », « 04 : Texte ».
 # Le séparateur est obligatoire, sinon « 1 000 FCFA » passerait pour une option.
@@ -87,9 +93,50 @@ RE_DEMANDE_CODE = re.compile(
 # heures : « 10:44 » n'est pas un choix de menu. On écarte donc ce qui a la
 # forme d'un horodatage, faute de quoi l'heure en tête d'un message d'opérateur
 # se change en bouton, et surtout désarme la garde du code secret ci-dessous.
-RE_OPTION = re.compile(r"^\s*(\d{1,2})\s*[.):\-]\s*(?!\d{2}(?:\D|$))(\S.*)$")
+#
+# On n'écarte QUE l'heure (« 10:44 ») et la date (« 12-05-2026 ») : la première
+# version refusait tout libellé commençant par deux chiffres, et « 1. 50 Mo »,
+# « 2. 25 000 F » cessaient d'être des choix. Même règle dans le noyau
+# (web/noyau/ussd.ts, SEPARATEUR).
+RE_OPTION = re.compile(
+    r"^\s*(\d{1,2})\s*"
+    r"(?:[.)\-]\s*(?!\d{1,2}[.\-/](?:\d{4}\b|\d{1,2}(?![\d.,])))"
+    r"|:\s*(?!\d{2}(?:\D|$)))"
+    r"(\S.*)$")
 # UN MENU A AU MOINS DEUX CHOIX. Une seule ligne numérotée ne fait pas un menu.
 MENU_MINIMUM = 2
+# LA GARDE DU CODE regarde ce qui est DEMANDÉ, pas seulement s'il y a des
+# options : MTN et Orange posent « 0. Retour / 00. Accueil » au pied de leur
+# écran du code secret, et ces deux lignes suffisaient à faire « un menu » —
+# pas de pavé, le code se tapait dans la conversation, entrait dans un
+# raccourci rejouable et s'écrivait en clair au journal. La même règle vit
+# dans le noyau (web/noyau/ussd.ts, `codeDemande`).
+RE_NAVIGATION = re.compile(
+    r"^(?:next|suivant|suite|la\s+suite|page\s+suivante|nxt|more|plus|back|retour"
+    r"|pr[ée]c[ée]dent|previous|prev|accueil|home|main\s+menu|menu|confirm(?:er)?"
+    r"|valider|annuler|cancel|quitter|exit|oui|non|yes|no)\b", re.I)
+_VERBES_SAISIE = (r"entre[zr]|saisi(?:r|ssez)|tape[zr]|indique[zr]|r[ée]pond|veuillez"
+                  r"|compose[zr]|renseigne[zr]|\benter\b|\btype\b|reply|please|input"
+                  r"|provide|\bdial\b")
+RE_SAISIE = re.compile(_VERBES_SAISIE + r"|[?:]\s*$", re.I)
+RE_VERBE_CHOIX = re.compile(r"choisi(?:r|ssez)|choose|select", re.I)
+# Une phrase qui NOMME le code sans le demander : une mise en garde, ou un
+# code qu'on vous DONNE (« Code de retrait : 4821 »).
+RE_MISE_EN_GARDE = re.compile(
+    r"jamais|never|ne\s+(?:le\s+|la\s+|les\s+)?(?:partag|communiqu|divulgu|donn"
+    r"|transm|r[ée]v[ée]l)|do\s+not\s+(?:share|disclose|give)"
+    r"|don'?t\s+(?:share|disclose|give)", re.I)
+RE_CODE_DONNE = re.compile(
+    r"(?:\bcodes?\b|\bpin\b|\bn\.?i\.?p\b)(?:\s+(?:de|du|d'|of|for)\s*[A-Za-zÀ-ÿ']+){0,2}"
+    r"\s*(?::|=|est|is)?\s*\d{4,}", re.I)
+
+
+def _phrases(texte):
+    """Les phrases d'un texte — une par ligne, et coupées après . ! ? ;"""
+    return [p.strip() for p in re.sub(r"([.!?;])[ \t]+", r"\1\n", texte).split("\n")
+            if p.strip()]
+
+
 # Invites qui précèdent une saisie de montant ou de bénéficiaire : elles
 # permettent de rappeler à l'écran ce qu'on s'apprête réellement à valider.
 RE_DEMANDE_MONTANT = re.compile(r"montant|somme|amount|how\s+much|\bsum\b", re.I)
@@ -1000,9 +1047,34 @@ class Robot:
         pavé ne s'ouvrait donc pas, le code se tapait dans la conversation,
         s'affichait en clair sur la carte de session, et s'inscrivait tel quel
         dans la table `ussd` — laquelle part ensuite dans le fichier de
-        sauvegarde posté sur Telegram. Un menu, c'est au moins DEUX choix."""
-        _, options = cls._analyser_menu(menu)
-        return len(options) < MENU_MINIMUM and bool(RE_DEMANDE_CODE.search(menu))
+        sauvegarde posté sur Telegram. Un menu, c'est au moins DEUX choix.
+
+        ET DEUX LIGNES DE NAVIGATION NE FONT PAS UN MENU. « Entrez votre code
+        secret / 0. Retour / 00. Accueil » : le code y est DEMANDÉ, le pavé
+        s'ouvre. Une mise en garde (« Ne partagez jamais votre code ») ou un
+        code qu'on vous donne (« Code de retrait : 4821 ») ne demande rien."""
+        texte = (menu or "").replace("\r", "")
+        entete, options = cls._analyser_menu(texte)
+        if len(options) < MENU_MINIMUM:
+            # Pas un menu : tout est sujet, rien n'est un choix.
+            entete, options = [l.strip() for l in texte.split("\n") if l.strip()], []
+        sujet = "\n".join(entete)
+        if not RE_DEMANDE_CODE.search(sujet):
+            return False
+        # Mises en garde et codes donnés écartés — sauf s'ils demandent.
+        utiles = [p for p in _phrases(sujet)
+                  if RE_SAISIE.search(p)
+                  or not (RE_MISE_EN_GARDE.search(p) or RE_CODE_DONNE.search(p))]
+        nomme = [p for p in utiles if RE_DEMANDE_CODE.search(p)]
+        if not nomme and not any(RE_SAISIE.search(p) for p in utiles):
+            return False
+        # UN CODE DEMANDÉ l'emporte sur les options ; un code seulement NOMMÉ
+        # (« Gerer mon code secret ») laisse un vrai menu être un menu — la
+        # navigation (« 0. Retour », « 00. Accueil ») n'en est pas un.
+        vrais_choix = [o for o in options if not RE_NAVIGATION.match(o[1])]
+        le_demande = any(RE_SAISIE.search(p) and not RE_VERBE_CHOIX.search(p)
+                         for p in nomme)
+        return not vrais_choix or le_demande
 
     @staticmethod
     def _analyser_menu(menu):

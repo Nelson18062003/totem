@@ -1,0 +1,40 @@
+{
+ "_": "Les mêmes écrans, jugés par le robot (tests/test_garde_du_code.py) et par le noyau (web/noyau/tests/ecran-pieges.test.ts) : les deux doivent tomber d’accord sur le pavé du code secret.",
+ "pave": [
+  "Entrez votre code secret\n0. Retour\n00. Accueil",
+  "Enter your PIN:\n99. Back\n00. Home",
+  "Transfert de 5000 FCFA a JEAN.\nEntrez votre code secret pour valider\n#. Retour\n0. Annuler\n00. Menu",
+  "Confirm: Float Transfer 5000 to X\nEnter PIN:\n0. Back\n00. Next",
+  "Entrez votre PIN pour confirmer\n0. Retour\n00. Accueil",
+  "Entrez votre code PIN pour confirmer\n0: Retour\n00: Accueil",
+  "Enter MoMo PIN:\n1. Forgot PIN\n2. Cancel",
+  "Entrez votre code secret\n1. Valider\n0. Retour",
+  "Enter your mPIN",
+  "Enter your MPIN:",
+  "Entrez votre clé secrète",
+  "Saisissez votre mot-de-passe",
+  "Enter your PINCODE",
+  "Enter P.I.N.",
+  "Enter PIN2",
+  "Entrez votre PIN_MoMo",
+  "Entrez votre code secret",
+  "Confirmez avec votre code secret :",
+  "Veuillez saisir votre NIP:",
+  "10:44\nEntrez votre code secret",
+  "1. Entrez votre code PIN pour confirmer",
+  "Code PIN incorrect. Il vous reste 2 essais.",
+  "Ne partagez jamais votre code PIN. Entrez-le :"
+ ],
+ "pas_de_pave": [
+  "Retrait de 10000 FCFA. Code de retrait: 4821. Valable 24h. 00. Next",
+  "Vous allez envoyer 5000 FCFA a JOHN 677123456. Ne partagez jamais votre code PIN.\n1. Confirmer",
+  "Transfert effectue. Nouveau solde: 12 000 FCFA. Ne communiquez jamais votre code secret.",
+  "Code promo\n1. 10 Go 30j\n2. 20 Go 30j",
+  "Gerer mon code secret\n1) Changer\n2) Retour",
+  "1:Modifier code secret\n2:Mot de passe oublie",
+  "Choisissez une option pour votre code secret :\n1. Changer\n2. Voir",
+  "Entrez le numero du beneficiaire",
+  "Votre opinion compte",
+  "Forfaits:\n1. 50 Mo\n2. 25 SMS\n3. 100 Mo\n0. Retour"
+ ]
+}

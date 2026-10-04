@@ -118,9 +118,9 @@ const CODES = [
   "Saisir votre NIP:",
   // Des puces ne font pas un menu : le pavé s'ouvre quand même.
   "Transfert vers JEAN\n* Montant: 5000\n* Frais: 0\nEntrez votre code secret",
-  // Une forme souple QUI PARLE DE CODE n'est pas un menu : dans le doute,
-  // le pavé — jamais un champ en clair.
-  "Code secret\n1 Changer mon code\n2 Retour",
+  // Une demande de code suivie de sa seule NAVIGATION reste une demande de
+  // code, quelle que soit la forme des lignes.
+  "Code secret\n1 Valider\n2 Retour",
   "Code incorrect. Entrez votre code secret",
 ];
 
