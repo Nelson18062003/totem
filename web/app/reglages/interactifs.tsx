@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { changerLangue, useLangue } from "@/app/langue";
+import { apresEffacement, enFormeDansLeChamp } from "@noyau/saisie";
 import { aDesVariables, CLES_GUICHET, codesUssd, type CodeUssd } from "@noyau/codes";
 import { LANGUES } from "@noyau/langue";
 import { textesReglages } from "@noyau/textes/reglages";
@@ -121,7 +122,8 @@ export function ReglageNumero({
           autoFocus
           inputMode="tel"
           disabled={etat === "envoi"}
-          onChange={(e) => setBrouillon(e.target.value.replace(/[^\d\s]/g, ""))}
+          onChange={(e) => setBrouillon(enFormeDansLeChamp("numero",
+            apresEffacement(brouillon, e.target.value.replace(/[^\d\s]/g, "")), langue))}
           onKeyDown={(e) => e.key === "Enter" && enregistrer()}
           placeholder="696103864"
           className="w-32 rounded-btn border border-ink bg-surface-raised px-2.5 py-1.5 text-right text-body tabnums outline-none disabled:opacity-50"

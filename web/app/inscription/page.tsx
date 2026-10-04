@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { textesInscription } from "@noyau/textes/inscription";
 import { useLangue } from "@/app/langue";
+import { apresEffacement, enFormeDansLeChamp } from "@noyau/saisie";
 import { Symbole } from "../marque";
 
 /**
@@ -109,7 +110,8 @@ export default function Inscription() {
 
         <label className="flex flex-col gap-1.5">
           <span className="text-small text-ink-soft">{t.telephone}</span>
-          <input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)}
+          <input type="tel" value={telephone}
+            onChange={(e) => setTelephone(enFormeDansLeChamp("numero", apresEffacement(telephone, e.target.value), langue))}
             autoComplete="tel" inputMode="tel" maxLength={24}
             placeholder={t.telephoneExemple} required className={champ} />
         </label>

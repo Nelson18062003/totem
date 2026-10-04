@@ -11,7 +11,7 @@ import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
 import { nomDuBeneficiaire, nomPropre, numeroPropre } from "@noyau/beneficiaires";
-import { montantSaisi, numeroSaisi } from "@noyau/saisie";
+import { apresEffacement, enFormeDansLeChamp, montantSaisi, numeroSaisi } from "@noyau/saisie";
 import { textesGuichet } from "@noyau/textes/guichet";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { BarreArret, BoutonFermer, type SortieRetenue } from "./feuille";
@@ -536,7 +536,7 @@ export function OperationPopup({
         type={champ.type} valeur={valeurs[champ.cle] ?? ""}
         onChange={(v) => set(champ.cle, v)}
         recents={champ.type === "numero" ? operation.recents : undefined}
-        onRecent={(n) => { set(champ.cle, n); setPas((p) => p + 1); }}
+        onRecent={(n) => { set(champ.cle, enFormeDansLeChamp("numero", n, langue)); setPas((p) => p + 1); }}
         bouton={t.continuer} onValider={() => setPas((p) => p + 1)} langue={langue} />
     );
   } else if (etape === "saisie") {
@@ -758,7 +758,13 @@ function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true, masque 
           par-dessus le soulignement : deux traits pour un seul champ. */}
       <div className="flex items-baseline gap-2 rounded-t-xl border-b-2 border-ink px-2 pb-1 transition-colors focus-within:bg-surface-raised">
         <input
-          value={valeur} onChange={(e) => onChange(e.target.value)} autoFocus={autoFocus}
+          // Le numéro et le montant s'écrivent lisibles à mesure qu'on tape
+          // (« 677 12 34 56 », « 250 000 ») — pas une réponse libre à
+          // l'opérateur, où « 00 » et « # » partent tels quels.
+          value={valeur} autoFocus={autoFocus}
+          onChange={(e) => onChange(!libre && (type === "numero" || type === "montant")
+            ? enFormeDansLeChamp(type, apresEffacement(valeur, e.target.value), langue)
+            : e.target.value)}
           type={masque ? "password" : "text"}
           // Le bon clavier sur un téléphone, et rien d'autre : le champ
           // accepte quand même tout ce qu'on y colle.
@@ -772,7 +778,8 @@ function ChampSaisie({ type, valeur, onChange, langue, autoFocus = true, masque 
           aria-label={type === "numero" ? t.numeroPlaceholder
             : type === "montant" ? t.combien : t.reponsePlaceholder}
           className={`min-w-0 flex-1 bg-transparent py-2 outline-none focus-visible:outline-none placeholder:text-ink-faint ${
-            type === "texte" ? "text-title" : "tabnums text-[30px] font-semibold tracking-tight"} ${
+            type === "texte" ? "text-title"
+              : `tabnums font-semibold ${libre ? "text-[30px] tracking-tight" : "text-[36px] tracking-wide"}`} ${
             type === "montant" ? "text-right" : ""}`} />
         {type === "montant" && <span className="text-heading font-medium text-ink-faint">FCFA</span>}
       </div>
@@ -807,7 +814,7 @@ function EtapeSaisie({
         {type === "montant" && (
           <div className="flex flex-wrap gap-2">
             {MONTANTS.map((m) => (
-              <button key={m} type="button" onClick={() => onChange(String(m))}
+              <button key={m} type="button" onClick={() => onChange(enFormeDansLeChamp("montant", String(m), langue))}
                 className={`tabnums rounded-full px-3.5 py-1.5 text-small font-medium transition ${Number(propre) === m ? "bg-ink text-white" : "bg-surface-2 hover:bg-surface-3"}`}>
                 {nombre(m, langue)}
               </button>

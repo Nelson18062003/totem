@@ -1100,6 +1100,18 @@ raison. L'ancienne lecture est maintenant recopiée telle quelle
 (`noyau/tests/temoins/`) : un témoin qui suit le code du jour ne témoigne de
 rien.
 
+**Un chiffre qu'on tape se lit comme on le dit.** « 677123456 » et
+« 1250000 » en 24 points : « c'est illisible », a dit le propriétaire — on
+ne voit ni le chiffre qui manque au numéro, ni le zéro de trop au montant,
+sur de l'argent. Le champ écrit maintenant « 677 12 34 56 » et
+« 1 250 000 » À MESURE qu'on tape, en 32 points (`enFormeDansLeChamp`,
+noyau, le même pour le téléphone et le site) ; effacer après un espace
+efface le chiffre d'avant (`apresEffacement`), sinon la touche semblait
+morte. Ce n'est qu'une façon de MONTRER : ce qui part reste `numeroSaisi` /
+`montantSaisi`. Jamais sur une réponse libre à l'opérateur, où « 00 » et
+« # » partent tels quels ; jamais sur ce qu'on ne sait pas lire (une phrase
+collée reste telle quelle).
+
 **Le liquide et l'argent électronique vont en sens CONTRAIRES.** « CashOut
 success to <client> from <agent> » : l'agent remet des espèces au client, et
 l'argent électronique du client arrive chez l'agent. Lu à la lettre, « from »

@@ -8,6 +8,7 @@ import { nomPropre, numeroPropre } from "@noyau/beneficiaires";
 import { formaterNumero } from "@noyau/numero";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { useLangue } from "../langue";
+import { apresEffacement, enFormeDansLeChamp } from "@noyau/saisie";
 import { IconPlus } from "../icons";
 
 type CarteCarnet = { iccid: string; libelle: string; operateur: string };
@@ -134,8 +135,9 @@ export function Carnet({ cartes, carnet, vus }: {
             <p className="font-semibold">{t.ajouter}</p>
             <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder={t.nomAide} autoFocus
               className="rounded-btn border border-line bg-surface px-3.5 py-2.5 outline-none focus:border-ink" />
-            <input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder={t.numero}
-              inputMode="tel" className="tabnums rounded-btn border border-line bg-surface px-3.5 py-2.5 outline-none focus:border-ink" />
+            <input value={numero} placeholder={t.numero}
+              onChange={(e) => setNumero(enFormeDansLeChamp("numero", apresEffacement(numero, e.target.value), langue))}
+              inputMode="tel" className="tabnums rounded-btn border border-line bg-surface px-3.5 py-2.5 text-heading tracking-wide outline-none focus:border-ink" />
             <div className="flex gap-2">
               <button type="button" onClick={() => setAjout(false)}
                 className="flex-1 rounded-btn border border-line py-2.5 text-small font-medium text-ink-soft">{t.annuler}</button>

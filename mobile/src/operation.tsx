@@ -84,7 +84,7 @@ import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
 import { nomDuBeneficiaire, nomPropre, numeroPropre } from "@noyau/beneficiaires";
-import { montantSaisi, numeroSaisi } from "@noyau/saisie";
+import { apresEffacement, enFormeDansLeChamp, montantSaisi, numeroSaisi } from "@noyau/saisie";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesGuichet } from "@noyau/textes/guichet";
 
@@ -685,7 +685,7 @@ export function OperationPopup({
         valeur={valeurs[champ.cle] ?? ""}
         onChange={(v) => set(champ.cle, v)}
         recents={champ.type === "numero" ? operation.recents : undefined}
-        onRecent={(n) => { set(champ.cle, n); avancer(); }}
+        onRecent={(n) => { set(champ.cle, enFormeDansLeChamp("numero", n, langue)); avancer(); }}
         bouton={t.continuer}
         onValider={avancer}
         langue={langue}
@@ -1001,13 +1001,22 @@ function ChampSaisie({ type, valeur, onChange, onValider, langue, focus = true, 
     }
   }
   const chiffres = type !== "texte";
+  // LE NUMÉRO ET LE MONTANT S'ÉCRIVENT LISIBLES, À MESURE QU'ON TAPE :
+  // « 677 12 34 56 », « 250 000 ». Neuf chiffres collés, on ne voyait pas
+  // qu'il en manquait un ; un zéro de trop ne sautait pas aux yeux. Pas sur
+  // une réponse libre à l'opérateur : « 00 », « # » y partent tels quels.
+  const enForme = !libre && (type === "numero" || type === "montant");
+  const changer = (v: string) => onChange(
+    enForme ? enFormeDansLeChamp(type, apresEffacement(valeur, v), langue) : v);
+  // Assez grands pour se lire d'un coup d'œil, le téléphone à bout de bras.
+  const tailleChiffres = enForme ? 32 : 24;
   return (
     <View style={{ alignSelf: "stretch" }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm,
                      borderBottomWidth: 2, borderColor: couleurs.encre }}>
         <ChampTexte
           value={valeur}
-          onChangeText={onChange}
+          onChangeText={changer}
           autoFocus={focus}
           secureTextEntry={masque}
           // Pendant la session, le pavé du téléphone porte « * » et « # » :
@@ -1030,13 +1039,14 @@ function ChampSaisie({ type, valeur, onChange, onValider, langue, focus = true, 
             // l'écran, à droite.
             flex: 1, minWidth: 0, paddingVertical: espaces.sm, color: couleurs.encre,
             fontFamily: chiffres ? polices.demi : polices.moyen,
-            fontSize: chiffres ? 24 : textes.titre,
+            fontSize: chiffres ? tailleChiffres : textes.titre,
             fontVariant: chiffres ? ["tabular-nums"] : undefined,
+            letterSpacing: enForme ? 0.5 : undefined,
             textAlign: type === "montant" ? "right" : "left",
           }}
         />
         {type === "montant" ? (
-          <Texte taille={textes.intertitre} ton="pale" poids="moyen">FCFA</Texte>
+          <Texte taille={enForme ? textes.titre : textes.intertitre} ton="pale" poids="moyen">FCFA</Texte>
         ) : null}
       </View>
       <Texte taille={textes.petit} ton={annonce?.doute ? "negatif" : "doux"}
@@ -1082,7 +1092,7 @@ function EtapeSaisie({
             {MONTANTS.map((m) => {
               const choisi = Number(propre) === m;
               return (
-                <Pressable key={m} accessibilityRole="button" onPress={() => onChange(String(m))}
+                <Pressable key={m} accessibilityRole="button" onPress={() => onChange(enFormeDansLeChamp("montant", String(m), langue))}
                   style={({ pressed }) => ({
                     paddingHorizontal: espaces.md, paddingVertical: espaces.sm,
                     borderRadius: rayons.rond,

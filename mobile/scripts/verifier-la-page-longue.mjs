@@ -107,10 +107,20 @@ try {
   await attendre(1200);
   await visible("button", /^Dépôt$/).click();
   await attendre(1500);
-  await page.locator("input:visible").last().fill("670000123");
+  // LE FORMULAIRE S'ÉCRIT LISIBLE : « 670 00 01 23 », « 5 000 » — et en
+  // grand. Neuf chiffres collés en 24 points, « c'est illisible ».
+  console.log("\nLe formulaire :");
+  const champ = () => page.locator("input:visible").last();
+  const taille = async () => parseFloat(await champ().evaluate((e) => getComputedStyle(e).fontSize));
+  await champ().fill("670000123");
+  verdict(await champ().inputValue() === "670 00 01 23", "le numéro s'écrit « 670 00 01 23 »",
+          await champ().inputValue());
+  verdict(await taille() >= 30, "les chiffres du numéro sont grands", `${await taille()} px`);
   await page.getByText(/^Continuer$/).last().click();
   await attendre(900);
-  await page.locator("input:visible").last().fill("5000");
+  await champ().fill("5000");
+  verdict(await champ().inputValue() === "5 000", "le montant s'écrit « 5 000 »", await champ().inputValue());
+  verdict(await taille() >= 30, "les chiffres du montant sont grands", `${await taille()} px`);
   await page.getByText(/^Continuer$/).last().click();
   await attendre(1200);
   await page.getByText(/^Confirmer$/).last().click();

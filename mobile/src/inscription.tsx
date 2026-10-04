@@ -31,6 +31,7 @@ import { Symbole } from "@/marque";
 import { Entree } from "@/animations";
 import { useGesteUnique } from "@/geste";
 import { useLangue } from "@/langue";
+import { apresEffacement, enFormeDansLeChamp } from "@noyau/saisie";
 import { useSession } from "@/session";
 import { adressePlateforme, versErreurGuichet } from "@/api/guichet";
 import { textesConnexion } from "@noyau/textes/connexion";
@@ -183,7 +184,9 @@ export function Inscription({ porteOuverte, avis, onRetour }: {
                           editable={modifiable} style={champ} />
 
               <Etiquette>{t.telephone}</Etiquette>
-              <ChampTexte value={telephone} onChangeText={changer(setTelephone)}
+              <ChampTexte value={telephone}
+                          onChangeText={changer((v) => setTelephone(
+                            enFormeDansLeChamp("numero", apresEffacement(telephone, v), langue)))}
                           placeholder={t.telephoneExemple}
                           placeholderTextColor={couleurs.encrePale}
                           autoComplete="tel" textContentType="telephoneNumber"

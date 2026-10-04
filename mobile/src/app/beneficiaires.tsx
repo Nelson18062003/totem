@@ -41,6 +41,7 @@ import { couleurs, couleurOperateur, espaces, polices, rayons, textes } from "@/
 import { useDonnees, useRetouche } from "@/donnees";
 import { useGesteUnique } from "@/geste";
 import { useLangue } from "@/langue";
+import { apresEffacement, enFormeDansLeChamp } from "@noyau/saisie";
 import { agirSurBeneficiaire, ErreurGuichet } from "@/api/guichet";
 import { clientsRecents } from "@noyau/recents";
 import { nomPropre, numeroPropre } from "@noyau/beneficiaires";
@@ -351,9 +352,12 @@ export default function Beneficiaires() {
             <ChampTexte value={nom} onChangeText={setNom} placeholder={t.nomAide}
                         placeholderTextColor={couleurs.encrePale} autoCapitalize="words"
                         style={champ} />
-            <ChampTexte value={numero} onChangeText={setNumero} placeholder={t.numero}
+            {/* Le numéro s'écrit lisible à mesure qu'on tape : « 677 12 34 56 ». */}
+            <ChampTexte value={numero}
+                        onChangeText={(v) => setNumero(enFormeDansLeChamp("numero", apresEffacement(numero, v), langue))}
+                        placeholder={t.numero}
                         placeholderTextColor={couleurs.encrePale} keyboardType="phone-pad"
-                        style={champ} />
+                        style={[champ, { fontSize: 22, fontVariant: ["tabular-nums"], letterSpacing: 0.5 }]} />
             <View style={{ flexDirection: "row", gap: espaces.sm }}>
               <Bouton libelle={t.annuler} contour
                       onPress={() => { setAjout(false); setSouci(null); }} />

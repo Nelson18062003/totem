@@ -210,16 +210,27 @@ try {
   await page.evaluate(() => navigator.clipboard.writeText("+237 6 77 99 88 77"));
   await champs.first().click();
   await page.keyboard.press("Control+V");
-  verifier("le numéro collé est dans le champ, tel quel",
-           await champs.first().inputValue(), "+237 6 77 99 88 77");
+  // Le collage reste accepté — et s'écrit LISIBLE, sans l'indicatif :
+  // « 677 99 88 77 », comme on le dit. Neuf chiffres collés se lisaient mal.
+  verifier("le numéro collé s'écrit lisible dans le champ",
+           await champs.first().inputValue(), "677 99 88 77");
   const lu = await fenetre.innerText();
-  verifier("l'écran dit ce qui partira : 677 99 88 77", lu.includes("677 99 88 77"), true);
+  // Ce qui partira se lit dans le champ lui-même, ou dessous.
+  verifier("l'écran dit ce qui partira : 677 99 88 77",
+           lu.includes("677 99 88 77") || (await champs.first().inputValue()) === "677 99 88 77", true);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(500);
 
-  await fenetre.locator("input").first().pressSequentially("5 000 FCFA");
-  verifier("le montant s'écrit comme on veut",
-           await fenetre.locator("input").first().inputValue(), "5 000 FCFA");
+  // « 5 000 » en français, « 5,000 » en anglais : le séparateur de l'écran.
+  const montantVu = async () => (await fenetre.locator("input").first().inputValue()).replace(",", " ");
+  await fenetre.locator("input").first().pressSequentially("5000");
+  verifier("le montant s'écrit par milliers, à mesure qu'on tape", await montantVu(), "5 000");
+  // Effacer revient en arrière d'un chiffre — en anglais aussi, où « 5,00 »
+  // se lisait cinq francs et zéro centime.
+  await page.keyboard.press("Backspace");
+  verifier("effacer retire un chiffre", await montantVu(), "500");
+  await fenetre.locator("input").first().pressSequentially("0 FCFA");
+  verifier("tapé avec son unité, il reste un montant", await montantVu(), "5 000");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(500);
   await fenetre.getByRole("button", { name: /^(Confirmer|Confirm)$/ }).click();
