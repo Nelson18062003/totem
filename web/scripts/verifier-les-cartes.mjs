@@ -269,8 +269,13 @@ try {
       lu = r.ok ? await r.json() : { statut: r.status };
     }
     verifier("il lit la réponse à SON code secret", lu?.etat, "faite");
-    verifier("le code s'est effacé, la carte est restée",
-      await brute(code.id), { secret: true, carte: ORANGE });
+    // Restent le drapeau, la carte, et ce que le réseau a dit de la session
+    // (« reseau », que le robot joint à sa réponse) — jamais le code.
+    const restes = { ...(await brute(code.id) ?? {}) };
+    const dit = restes.reseau;
+    delete restes.reseau;
+    verifier("le code s'est effacé, la carte est restée", restes, { secret: true, carte: ORANGE });
+    verifier("ce que le réseau a dit survit au code", ["attend", "fini"].includes(dit), true);
     verifier("l'application d'avant raccroche sans nommer la carte : passe",
       (await commande({ type: "ussd_fin" }, vendeur)).statut, 200);
     verifier("il raccroche SA session",
