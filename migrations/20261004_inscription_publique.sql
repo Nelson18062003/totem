@@ -31,6 +31,17 @@
 --
 -- Aucun compte existant n'est modifié. Les colonnes neuves sont vides pour
 -- les comptes d'avant, et le restent.
+--
+-- C'EST LA SEULE MIGRATION DE CETTE LIVRAISON. Elle fait deux choses, dans
+-- cet ordre :
+--   1. l'adresse et le téléphone du compte, avec leurs bornes, puis une
+--      vérification qui essaie ce qui est interdit ;
+--   2. la règle qui efface le code secret d'une demande close garde
+--      désormais aussi « reseau » — ce que le réseau a dit de la session
+--      (« il attend une réponse » / « il a fini ») — puis une vérification
+--      sur place.
+-- Le relevé de compte, le Menu, le CashOut et le reste n'ont besoin
+-- d'aucune autre modification de la base.
 
 -- ===========================================================================
 -- 1. L'ADRESSE ET LE TÉLÉPHONE
