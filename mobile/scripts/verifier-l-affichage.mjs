@@ -391,7 +391,17 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
       j.sims = [...j.sims, ...[["MTN ·3501", "MTN"], ["MTN ·6414", "MTN"], ["Orange ·4177", "Orange"]]
         .map(([libelle, operateur], i) => ({ ...modele, iccid: `89237000000000000${i}99`, libelle, operateur }))];
     }
-    if (j.terminal) j.terminal = { ...j.terminal, enLigne: false };
+    // LE BOÎTIER SE TAIT, COMME LA PLATEFORME LE DIT AUJOURD'HUI : carte par
+    // carte. Le harnais ne touchait que le boîtier d'en tête ; depuis que la
+    // plateforme dit, pour chaque carte, si SON boîtier se tait — et que
+    // l'écran la croit —, il montait une réponse que la plateforme ne
+    // ferait jamais (en tête muet, toutes les cartes « il parle »), et
+    // criait « le terminal muet n'est pas signalé » quatorze fois.
+    if (j.terminal) {
+      const vuLe = new Date(Date.now() - 15 * 60_000).toISOString();
+      j.terminal = { ...j.terminal, enLigne: false, vuLe };
+      j.sims = (j.sims ?? []).map((s) => ({ ...s, boitierMuet: true, boitierVuLe: vuLe }));
+    }
     await route.fulfill({ status: reponse.status, json: j });
   });
   // La carte choisie est la DERNIÈRE (Orange ·4177), retenue d'une
