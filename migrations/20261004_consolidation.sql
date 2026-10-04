@@ -1,22 +1,33 @@
 -- ===========================================================================
--- 4 OCTOBRE 2026 — LA BASE ÉCOUTE LES BOÎTIERS
+-- 4 OCTOBRE 2026 — LA BASE ÉCOUTE LES BOÎTIERS, ET LE CODE SECRET NE SURVIT
+-- PAS À UNE DEMANDE CLOSE
 -- ===========================================================================
 --
 -- À exécuter dans Supabase : SQL Editor → New query → coller → Run.
--- Rejouable : chaque instruction vérifie ce qui est déjà en place.
+-- Une seule fois suffit ; rejouable sans risque : chaque instruction vérifie
+-- ce qui est déjà en place (colonnes « if not exists », fonctions qui se
+-- remplacent, déclencheurs qui se reposent).
 --
--- Une coupure de courant de dix minutes à la boutique faisait déclarer TOUTES
--- les cartes « retirées » sur le téléphone : les gestes d'argent
--- disparaissaient, puis réapparaissaient au retour. Et un boîtier dont
--- l'horloge avait pris du retard paraissait muet alors qu'il parlait, et la
--- plateforme refusait ses demandes. La base note maintenant elle-même quand
--- elle entend chaque boîtier, et depuis quand il parle sans interruption :
--- la plateforme ne conclut plus qu'une carte est partie avant que le boîtier
--- ait eu le temps de la relire.
+-- Deux parties, indépendantes, dans cet ordre :
 --
--- Rien n'est effacé. Les colonnes se remplissent au prochain signe de vie de
--- chaque boîtier, une minute au plus après l'exécution.
+--   1. LA BASE ÉCOUTE LES BOÎTIERS. Une coupure de courant de dix minutes à
+--      la boutique faisait déclarer TOUTES les cartes « retirées » sur le
+--      téléphone ; et un boîtier dont l'horloge retardait paraissait muet
+--      alors qu'il parlait. La base note maintenant elle-même quand elle
+--      entend chaque boîtier, et depuis quand il parle sans interruption.
+--
+--   2. LE CODE SECRET NE SURVIT PAS À UNE DEMANDE CLOSE. Une annulation
+--      depuis le téléphone pouvait laisser le code secret d'une opération en
+--      clair dans la base, pour toujours. La base l'efface elle-même, au
+--      moment où une demande se ferme, et rattrape celles qui l'ont gardé.
+--
+-- Rien d'autre n'est effacé. Les nouvelles colonnes se remplissent au
+-- prochain signe de vie de chaque boîtier, une minute au plus après.
 
+-- ===========================================================================
+-- 1. LA BASE ÉCOUTE LES BOÎTIERS
+-- ===========================================================================
+--
 -- L'OREILLE DE LA BASE : QUAND ELLE A ENTENDU CHAQUE BOÎTIER.
 --
 -- « vu_le » est daté par le boîtier lui-même, sur l'horloge du Pi — et c'est
@@ -88,3 +99,40 @@ end $$;
 drop trigger if exists terminaux_entendu on terminaux;
 create trigger terminaux_entendu before insert or update on terminaux
   for each row execute function terminaux_entendu();
+
+-- ===========================================================================
+-- 2. LE CODE SECRET NE SURVIT PAS À UNE DEMANDE CLOSE
+-- ===========================================================================
+--
+-- demandée et sa langue — c'est d'après elles que la plateforme dit à qui
+-- est la demande.
+--
+-- « en cours » n'y touche pas, à dessein : le robot qui vient de la
+-- réclamer doit encore lire le code pour le composer.
+-- ---------------------------------------------------------------------------
+create or replace function commandes_code_efface() returns trigger
+language plpgsql as $$
+begin
+  if new.etat in ('faite', 'echouee')
+     and jsonb_typeof(new.parametres) = 'object'
+     and new.parametres->>'secret' = 'true' then
+    new.parametres := coalesce(
+      (select jsonb_object_agg(cle, valeur)
+         from jsonb_each(new.parametres) as gardes(cle, valeur)
+        where cle in ('secret', 'carte', 'iccid', 'par', 'langue')),
+      '{}'::jsonb);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists commandes_code_efface on commandes;
+create trigger commandes_code_efface before insert or update on commandes
+  for each row execute function commandes_code_efface();
+
+-- RATTRAPAGE : les demandes déjà closes qui auraient gardé leur code. La
+-- mise à jour passe par le déclencheur ci-dessus, qui fait le tri.
+update commandes set parametres = parametres
+ where etat in ('faite', 'echouee')
+   and jsonb_typeof(parametres) = 'object'
+   and parametres->>'secret' = 'true'
+   and parametres ? 'texte';
