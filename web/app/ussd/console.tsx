@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { aDesVariables, codesUssd } from "@noyau/codes";
 import { demandeUnCode } from "@noyau/ussd";
+import {
+  ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, etapePeutPartir, reponseDuBoitier, type EcranRecu,
+} from "@noyau/deroule";
 import { textesUssd } from "@noyau/textes/ussd";
 import type { RaccourciAppris, Sim } from "@noyau/types";
 import { BarreArret, BoutonFermer } from "../feuille";
@@ -59,6 +62,9 @@ export function ConsoleUssd({
   const [enSession, setEnSession] = useState(false);
   const [attente, setAttente] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Une phrase de TOTEM (un bouton appris qui s'est arrêté), à côté du
+  // message de l'opérateur — jamais dedans.
+  const [avis, setAvis] = useState<string | null>(null);
   const [confirme, setConfirme] = useState(false);
   // Le numéro de génération : fermer l'écran le fait avancer, et toute
   // réponse d'une génération passée est jetée — un écran refermé ne se
@@ -101,7 +107,7 @@ export function ConsoleUssd({
     // Jointe à la composition : le cadran accepte un code complet tapé à la
     // main — donc un transfert entier, qu'on ne veut pas jouer deux fois.
     cle?: string,
-  ): Promise<string | null> => {
+  ): Promise<EcranRecu | null> => {
     if (attente || envoiEnCours.current) return null;
     envoiEnCours.current = true;
     if (genre === "ussd" && typeof parametres.carte === "string") {
@@ -127,39 +133,67 @@ export function ConsoleUssd({
         throw new Error(corps?.erreur || t.demandePasPartie);
       }
       const { id } = (await r.json()) as { id: number };
-      const relire = () => fetch(`/api/commande/${id}`, { cache: "no-store" })
-        .then((x) => (x.ok ? x.json() : null))
-        .catch(() => null) as Promise<{ etat?: string; resultat?: string | null } | null>;
-      const finie = (c: { etat?: string } | null) =>
-        Boolean(c && (c.etat === "faite" || c.etat === "echouee"));
-      const conclure = (c: { etat?: string; resultat?: string | null }) => {
+      type Lu = { etat?: string; resultat?: string | null; reseau?: unknown };
+      // UNE RELECTURE A SON ÉCHÉANCE : l'horloge, pas des tours, et un abandon
+      // par relecture — un fetch suspendu tenait l'écran indéfiniment.
+      const relire = async (reste: number): Promise<Lu | null> => {
+        const ctrl = new AbortController();
+        const minuteur = setTimeout(() => ctrl.abort(), Math.max(1500, reste));
+        try {
+          const x = await fetch(`/api/commande/${id}`, { cache: "no-store", signal: ctrl.signal });
+          return x.ok ? ((await x.json()) as Lu) : null;
+        } catch {
+          return null;
+        } finally {
+          clearTimeout(minuteur);
+        }
+      };
+      const conclure = (c: Lu): EcranRecu | null => {
         if (generation.current !== gen) return null;
-        const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-        setFil((f) => [...f, { de: "reseau", texte }]);
+        const lu = reponseDuBoitier(c);
+        setAttente(false);
+        if (!lu || lu.genre === "refus") {
+          // UN REFUS DU BOÎTIER EST UNE PHRASE DE TOTEM, pas un écran de
+          // l'opérateur : il s'affiche comme une erreur, et la carte — que
+          // le boîtier a pu laisser sur un menu — se raccroche.
+          setErreur(lu?.texte || t.echec);
+          setEnSession(false);
+          posterFin();
+          return null;
+        }
+        // L'écran de l'opérateur, tel qu'il l'a écrit — vide compris.
+        setFil((f) => [...f, { de: "reseau", texte: lu.texte }]);
         // Même quand le réseau dit avoir fermé, la session reste « à
         // raccrocher » en partant : raccrocher une session close ne coûte
         // rien, en laisser une pendue sur la carte bloque l'opération suivante.
-        setEnSession(c.etat === "faite");
-        setAttente(false);
-        return c.etat === "faite" ? texte : null;
+        setEnSession(true);
+        return { texte: lu.texte, reseau: lu.reseau };
       };
-      // Le terminal relève ses demandes toutes les quelques secondes : on
-      // attend sa réponse, sans jamais prétendre l'avoir avant lui.
-      for (let i = 0; i < 25; i++) {
-        await new Promise((res) => setTimeout(res, 1200));
-        // Écran refermé entre-temps : personne n'attend plus la réponse. Si
-        // le boîtier ne l'a pas encore prise, elle ne doit plus partir.
-        if (generation.current !== gen) { void abandonner(id); return null; }
-        const c = await relire();
-        if (c && finie(c)) return conclure(c);
-      }
+      /** Relit jusqu'à l'échéance : la demande finie, null, ou « parti ». */
+      const guetter = async (echeance: number): Promise<Lu | null | "parti"> => {
+        while (Date.now() < echeance) {
+          await new Promise((res) => setTimeout(res, 1200));
+          // Écran refermé entre-temps : personne n'attend plus la réponse. Si
+          // le boîtier ne l'a pas encore prise, elle ne doit plus partir.
+          if (generation.current !== gen) { void abandonner(id); return "parti"; }
+          const c = await relire(echeance - Date.now());
+          if (c && (c.etat === "faite" || c.etat === "echouee")) return c;
+        }
+        return null;
+      };
+      // Le terminal relève ses demandes toutes les quelques secondes, puis
+      // attend le réseau jusqu'à trente : l'écran attend plus que lui.
+      const premiere = await guetter(Date.now() + ATTENTE_DU_BOITIER_MS);
+      if (premiere === "parti") return null;
+      if (premiere) return conclure(premiere);
       // On renonce : la demande s'ANNULE, et l'écran ne dit « rien n'est
       // parti » que si l'annulation a pris (voir abandon.ts). Finie
-      // entre-temps, elle a une réponse : on la relit et on la MONTRE.
+      // entre-temps, ou encore en main du boîtier : on relit et on MONTRE.
       const issue = await abandonner(id);
-      if (issue === "finie") {
-        const c = await relire();
-        if (c && finie(c)) return conclure(c);
+      if (issue === "finie" || issue === "en_cours") {
+        const suite = await guetter(Date.now() + (issue === "finie" ? 2700 : PROLONGATION_MS));
+        if (suite === "parti") return null;
+        if (suite) return conclure(suite);
       }
       throw new Error(phraseDAbandon(issue, t));
     } catch (e) {
@@ -176,6 +210,7 @@ export function ConsoleUssd({
     const c = code.trim();
     if (!c || enSession) return;
     setFil([]);
+    setAvis(null);
     setSaisie("");
     // L'ICCID voyage avec le code : le robot compose sur CETTE carte,
     // jamais sur « la première venue ».
@@ -195,11 +230,15 @@ export function ConsoleUssd({
     if (aDesVariables(etapes)) return;
     setFil([]);
     setSaisie("");
-    let texte = await envoyer("ussd", { code: etapes[0], carte: carte.iccid },
+    setAvis(null);
+    let recu = await envoyer("ussd", { code: etapes[0], carte: carte.iccid },
       { de: "vous", texte: etapes[0] });
     for (const etape of etapes.slice(1)) {
-      if (texte == null) return;   // le réseau n'a pas suivi : on s'arrête là
-      texte = await envoyer("ussd_reponse", { texte: etape }, { de: "vous", texte: etape });
+      if (recu == null) return;   // le réseau n'a pas suivi : on s'arrête là
+      // L'ÉCRAN D'ABORD : un choix ne part que si le menu le propose, sur une
+      // session que le réseau tient encore, et jamais sur la demande du code.
+      if (!etapePeutPartir(etape, recu)) { setAvis(t.trajetArrete(etape)); return; }
+      recu = await envoyer("ussd_reponse", { texte: etape }, { de: "vous", texte: etape });
     }
   };
 
@@ -219,7 +258,7 @@ export function ConsoleUssd({
   const raccrocher = useCallback(() => {
     generation.current++;
     posterFin();
-    setFil([]); setEnSession(false); setErreur(null);
+    setFil([]); setEnSession(false); setErreur(null); setAvis(null);
     setAttente(false); setConfirme(false);
   }, [posterFin]);
 
@@ -229,7 +268,7 @@ export function ConsoleUssd({
   const fermerEcran = useCallback(() => {
     if (attente) posterFin();
     generation.current++;
-    setFil([]); setErreur(null); setAttente(false); setConfirme(false);
+    setFil([]); setErreur(null); setAvis(null); setAttente(false); setConfirme(false);
   }, [attente, posterFin]);
 
   // LA porte de sortie : libre quand la session est finie, retenue par la
@@ -327,7 +366,8 @@ export function ConsoleUssd({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codeInitial]);
 
-  const dernier = [...fil].reverse().find((m) => m.de === "reseau")?.texte ?? "";
+  const dernierMsg = [...fil].reverse().find((m) => m.de === "reseau");
+  const dernier = dernierMsg?.texte ?? "";
   const pave = enSession && !attente && demandeUnCode(dernier);
 
   return (
@@ -461,11 +501,18 @@ export function ConsoleUssd({
               de l'opérateur a un minimum de place GARANTI : le pavé n'a pas
               le droit de l'écraser. */}
           <div className="min-h-28 flex-1 overflow-y-auto overscroll-contain p-4">
-            {dernier && (
+            {avis && (
+              <p aria-live="polite" className="mb-2 px-1 text-small text-ink-soft">{avis}</p>
+            )}
+            {dernier ? (
               <p dir="auto" className="whitespace-pre-line rounded-card bg-surface-2 px-4 py-3.5 text-body leading-relaxed">
                 {dernier}
               </p>
-            )}
+            ) : dernierMsg && !attente ? (
+              // L'opérateur n'a rien écrit : TOTEM le dit, HORS de sa carte —
+              // on ne lui prête pas « (réponse vide) ».
+              <p className="px-1 text-small text-ink-soft">{t.ecranVide}</p>
+            ) : null}
             {attente && (
               <p className="mt-2 px-1 text-caption text-ink-faint">
                 {t.terminalCompose}

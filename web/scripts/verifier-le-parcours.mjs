@@ -30,6 +30,16 @@
 //      version empilait tout l'échange, message après message ; le
 //      propriétaire l'a refusée. Les écrans déjà passés ne restent pas.
 //
+// PUIS UN DÉPÔT OÙ LE RÉSEAU FAIT CONFIRMER LE NUMÉRO (« 1=Yes 2=No ») :
+//
+//  10. l'application ne lui renvoie PAS le numéro toute seule — c'est une
+//      confirmation, pas une question ;
+//  11. « 1 » se tape et part, même si l'écran a été lu « numéro » : le type
+//      ne choisit que le clavier. LE TÉMOIN : l'écran d'avant (9bd8990)
+//      laissait Envoyer éteint sur « 1 », et la suite ne venait jamais.
+//
+// PORT_PARCOURS et PORT_NUAGE changent les ports (3141, 4999 par défaut).
+//
 // Un harnais qui ne regarde que l'écran ne prouve rien de tout cela : on
 // écoute donc AUSSI ce qui part sur le réseau.
 
@@ -40,7 +50,11 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 
-const PORT = 3141;
+const PORT = Number(process.env.PORT_PARCOURS || 3141);
+// Le faux nuage : 4999 d'habitude ; un autre port laisse tourner deux
+// copies du dépôt côte à côte sans qu'un harnais mesure le nuage de l'autre.
+const PORT_NUAGE = Number(process.env.PORT_NUAGE || 4999);
+const NUAGE = `http://127.0.0.1:${PORT_NUAGE}`;
 const B = `http://127.0.0.1:${PORT}`;
 const SECRET = "secret-d-essai-du-parcours";
 const MDP = "un-mot-de-passe-assez-long";
@@ -61,7 +75,7 @@ async function portLibre(port) {
 }
 
 // Un serveur resté ouvert ferait passer tout le parcours contre du vieux code.
-for (const port of [PORT, 4999]) {
+for (const port of [PORT, PORT_NUAGE]) {
   if (!(await portLibre(port))) {
     console.error(`\n✗ Le port ${port} est déjà occupé — arrêtez l'essai précédent.`);
     process.exit(1);
@@ -82,11 +96,13 @@ await new Promise((resoudre, rejeter) => {
     new Error("la compilation a échoué — le parcours ne peut rien prouver"))));
 });
 
-const nuage = spawn("node", ["scripts/faux-nuage.mjs"], { stdio: "ignore" });
+const nuage = spawn("node", ["scripts/faux-nuage.mjs"], {
+  stdio: "ignore", env: { ...process.env, PORT: String(PORT_NUAGE) },
+});
 const serveur = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: {
     ...process.env,
-    SUPABASE_URL: "http://127.0.0.1:4999", SUPABASE_CLE: "peu-importe",
+    SUPABASE_URL: NUAGE, SUPABASE_CLE: "peu-importe",
     SESSION_SECRET: SECRET, TOTEM_MOT_DE_PASSE: "cle-de-secours-du-parcours",
   },
   stdio: "ignore",
@@ -238,6 +254,55 @@ try {
   const secretDepot = demandes.slice(demandes.findLastIndex((d) => d.type === "ussd"))
     .find((d) => d.parametres?.secret === true);
   verifier("le code du dépôt part avec son drapeau", Boolean(secretDepot), true);
+
+  // UNE RÉPONSE TAPÉE PART TOUJOURS. Le réseau demande « Confirmez le
+  // numéro 677998877 ? (1=Oui 2=No) » : l'écran lit « numéro », et le champ
+  // n'acceptait plus que huit chiffres — « 1 » laissait Envoyer éteint, on ne
+  // pouvait que raccrocher. Et l'application ne doit PAS y renvoyer le
+  // numéro toute seule : c'est une confirmation, pas une question.
+  console.log("\nLe réseau fait confirmer le numéro : on répond « 1 »");
+  await fenetre.getByRole("button", { name: /^(Terminé|Done)$/ }).click().catch(() => {});
+  await page.waitForTimeout(500);
+  await fetch(`${NUAGE}/essai/confirmation-numero?oui=1`, { method: "POST" });
+  await page.goto(`${B}/actions`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: /MTN/ }).first().click();
+  await page.getByRole("button", { name: /^(Dépôt|Deposit)/ }).first().click();
+  const f2 = page.getByRole("dialog");
+  await f2.waitFor({ timeout: 5000 });
+  await f2.locator("input").first().fill("677998877");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(400);
+  await f2.locator("input").first().fill("5000");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(400);
+  await f2.getByRole("button", { name: /^(Confirmer|Confirm)$/ }).click();
+  let vuConfirmation = false;
+  for (let i = 0; i < 40 && !vuConfirmation; i++) {
+    await page.waitForTimeout(500);
+    vuConfirmation = (await f2.innerText()).includes("Please confirm the recipient phone");
+  }
+  verifier("l'écran de confirmation est montré, intact", vuConfirmation, true);
+  const debut2 = demandes.findLastIndex((d) => d.type === "ussd");
+  const numerosPartis = () => demandes.slice(debut2)
+    .filter((d) => String(d.parametres?.texte ?? "") === "677998877").length;
+  verifier("le numéro n'est pas renvoyé tout seul à la confirmation", numerosPartis(), 1);
+  const reponse = f2.locator("input").last();
+  await reponse.fill("1");
+  const envoyerBouton = f2.getByRole("button", { name: /^(Envoyer|Send)$/ });
+  verifier("« 1 » se tape, et Envoyer s'allume", await envoyerBouton.isEnabled(), true);
+  await reponse.press("Enter");
+  let paveConf = 0;
+  for (let i = 0; i < 40 && paveConf < 9; i++) {
+    await page.waitForTimeout(500);
+    paveConf = await f2.getByRole("button", { name: /^[0-9]$/ }).count();
+  }
+  const apresConf = demandes.slice(debut2).map((d) => String(d.parametres?.texte ?? ""));
+  // Après le numéro : un « 1 » de menu, plus tôt dans le trajet, ne compte pas.
+  verifier("« 1 » est parti tel quel, après le numéro",
+           apresConf.slice(apresConf.indexOf("677998877") + 1).includes("1"), true);
+  verifier("la suite se déroule : le montant, puis le pavé du code", paveConf >= 9, true);
+  await fetch(`${NUAGE}/essai/confirmation-numero?oui=0`, { method: "POST" });
 
   console.log(echecs === 0
     ? "\n✓ Le parcours tient : l'opération se déroule et le code reste secret.\n"

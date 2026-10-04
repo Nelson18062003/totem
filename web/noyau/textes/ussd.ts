@@ -100,6 +100,11 @@ const en = {
   raccrocher: "Hang up the session",
   terminalCompose: "the terminal is dialling…",
   reponseVide: "(empty reply)",
+  // Dit par TOTEM, hors du message de l'opérateur : il n'a rien écrit.
+  ecranVide: "The operator's screen is empty. It may still be waiting for a reply.",
+  trajetArrete: (etape: string) =>
+    `The operator's screen does not offer “${etape}”, the next step of this button: `
+    + "the rest was not sent. Read the screen and reply yourself.",
   echec: "Failed.",
   demandePasPartie: "the request could not be sent",
   terminalMuet: "the terminal did not answer — is it switched on, and up to date?",
@@ -185,6 +190,10 @@ const fr: typeof en = {
   raccrocher: "Raccrocher la session",
   terminalCompose: "le terminal compose…",
   reponseVide: "(réponse vide)",
+  ecranVide: "L’écran de l’opérateur est vide. Il attend peut-être encore une réponse.",
+  trajetArrete: (etape: string) =>
+    `L’écran de l’opérateur ne propose pas « ${etape} », l’étape suivante de ce bouton : `
+    + "la suite n’est pas partie. Lisez l’écran, puis répondez vous-même.",
   echec: "Échec.",
   demandePasPartie: "la demande n’a pas pu partir",
   terminalMuet: "le terminal n’a pas répondu — est-il allumé, et à jour ?",

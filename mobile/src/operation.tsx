@@ -75,9 +75,11 @@ import { toucherDepart, toucherEchec, toucherReussite } from "@/toucher";
 import { copierTexte } from "@/presse-papiers";
 import { remplirVariables } from "@noyau/codes";
 import { issueDeLAnnulation, phraseDAbandon } from "@noyau/abandon";
+import { lireEcran, type EtatDuReseau, type TypeChamp } from "@noyau/ussd";
 import {
-  champPourQuestion, demandeUnCode, lireEcran, type EtatDuReseau, type TypeChamp,
-} from "@noyau/ussd";
+  ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, champAServir, etapePeutPartir, reponseDuBoitier,
+  reponseLibre, reponsePrete, restantsApresReponse, type EcranRecu,
+} from "@noyau/deroule";
 import { formaterNumero } from "@noyau/numero";
 import { nombre } from "@noyau/types";
 import type { ClientRecent } from "@noyau/recents";
@@ -121,14 +123,23 @@ export type Operation = {
 // `reseau` : ce que le RÉSEAU a dit de la session avec ce message (rapporté
 // par le boîtier) — il attend une réponse, ou il a fermé. Absent d'un
 // boîtier d'avant : l'écran lit alors le texte.
-type Msg = { de: "reseau" | "vous"; texte: string; reseau?: EtatDuReseau };
+// `de: "totem"` : une phrase du BOÎTIER (un refus), jamais rangée comme un
+// écran de l'opérateur — elle n'est pas de lui.
+type Msg = { de: "reseau" | "vous" | "totem"; texte: string; reseau?: EtatDuReseau };
 
 // COMBIEN DE TEMPS on attend la réponse du boîtier — À L'HORLOGE. On
 // comptait des TOURS (25 × 1,2 s ≈ 30 s), mais chaque relecture peut prendre
 // jusqu'à trente secondes sur un mauvais réseau : l'écran « On parle à MTN… »
-// durait alors jusqu'à six minutes et quarante-cinq secondes. Trente
-// secondes, c'est trente secondes.
-const ATTENTE_MAX_MS = 30_000;
+// durait alors jusqu'à six minutes et quarante-cinq secondes. Et trente
+// secondes, c'était MOINS que le boîtier, qui attend lui-même le réseau
+// jusqu'à trente secondes après avoir relevé sa file : la réponse de MTN à
+// la 28e seconde arrivait après l'abandon. Le délai vit dans le noyau,
+// relu contre ceux du robot (`@noyau/deroule`).
+const ATTENTE_MAX_MS = ATTENTE_DU_BOITIER_MS;
+
+/** L'écran renonce sur une issue qu'il ne connaît pas : ni réussite, ni
+ *  échec — « regardez vos SMS ». Pas de vibration d'échec. */
+class Incertain extends Error {}
 const PAUSE_MS = 1200;
 /** Sans une seule relecture réussie depuis ce délai, ce n'est plus le
  *  boîtier qui se tait : c'est le TÉLÉPHONE qui n'arrive pas à joindre TOTEM. */
@@ -195,8 +206,22 @@ export function OperationPopup({
     `op-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [fini, setFini] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  // L'erreur dit-elle une issue INCONNUE (le code est peut-être parti) ?
+  const [incertaine, setIncertaine] = useState(false);
+  // Une phrase de TOTEM posée au-dessus de l'écran de l'opérateur — le
+  // bouton appris qui s'est arrêté. Jamais dans la carte de l'opérateur.
+  const [avis, setAvis] = useState<string | null>(null);
   // « Taper une autre réponse » : un champ libre à la place des boutons.
   const [libre, setLibre] = useState(false);
+  // LA DEMANDE EN VOL : déposée, pas encore rendue par le boîtier.
+  // « Raccrocher » l'annule d'abord — sans quoi le boîtier, qui sert la file
+  // de la carte dans l'ordre, composait le code secret PUIS raccrochait.
+  const enVol = useRef<{ id: number; secret: boolean } | null>(null);
+  // L'écran a raccroché pendant un vol : ce qui revient ne s'écrit plus.
+  const arrete = useRef(false);
+  // Le dernier écran de l'opérateur, tel qu'il est à l'instant — lu par
+  // `repondre` au moment de l'appui, sans attendre un rendu.
+  const ecranCourant = useRef<EcranRecu>({ texte: "" });
 
   const avecCarte = (p: Record<string, unknown>) =>
     operation.carte ? { ...p, carte: operation.carte } : p;
@@ -217,24 +242,53 @@ export function OperationPopup({
     // sans un mot, et la session reste ouverte sur la vraie carte, à Douala :
     // l'opération suivante peut échouer parce que la carte est encore sur un
     // menu. On raccroche.
-    if (raccrochageDu.current) {
+    //
+    // Une demande encore EN VOL s'annule d'abord : partie sans écran pour la
+    // suivre, elle serait composée quand même, puis raccrochée.
+    const fin = () => {
       void deposerCommande("ussd_fin", avecCarte({}), operation.terminal).catch(() => {});
-    }
+    };
+    const vol = enVol.current;
+    enVol.current = null;
+    if (vol) void annulerCommande(vol.id).catch(() => null).finally(fin);
+    else if (raccrochageDu.current) fin();
   }, [operation.terminal]);
 
   const set = (cle: string, val: string) => setValeurs((v) => ({ ...v, [cle]: val }));
 
-  /** La réponse du réseau est là : on la montre, et on dit où l'on en est. */
-  const servir = (c: { etat: string; resultat: string | null; reseau?: EtatDuReseau }): string | null => {
+  // Ce qui partirait pour chaque champ : ce que l'écran a annoncé.
+  const propres = () => Object.fromEntries(operation.champs.map(
+    (c) => [c.cle, valeurPropre(c.type, valeurs[c.cle] ?? "")]));
+
+  /** La réponse du boîtier est là : on la montre, et on dit où l'on en est.
+   *  Un ÉCRAN de l'opérateur se range à son nom, tel qu'il l'a écrit — vide
+   *  compris. Un REFUS du boîtier est une phrase de TOTEM : il ne passe pas
+   *  pour un message de MTN, et la session se raccroche en partant (le
+   *  boîtier a pu laisser la carte sur un menu). */
+  const servir = (
+    c: { etat: string; resultat: string | null; reseau?: EtatDuReseau }, secretEnVol: boolean,
+  ): EcranRecu | null => {
     setAttente(false);
-    const texte = c.resultat || (c.etat === "faite" ? t.reponseVide : t.echec);
-    setFil((f) => [...f, { de: "reseau", texte, reseau: c.reseau }]);
+    setAvis(null);
     // Un nouvel écran de l'opérateur : on repart de SES choix. Rester
     // en « autre réponse » aurait caché les boutons du menu suivant.
     setLibre(false);
-    if (c.etat === "echouee") { setEnSession(false); setFini(true); return null; }
+    const lu = reponseDuBoitier(c);
+    if (!lu || lu.genre === "refus") {
+      const texte = lu?.texte || t.echec;
+      setFil((f) => [...f, { de: "totem", texte }]);
+      setErreur(texte);
+      // Le code secret est parti au boîtier, et on ne sait pas ce qu'il en
+      // a fait (pas de réponse du réseau…) : ni réussite, ni échec.
+      setIncertaine(secretEnVol);
+      setEnSession(true);
+      return null;
+    }
+    const ecranRecu: EcranRecu = { texte: lu.texte, reseau: lu.reseau };
+    ecranCourant.current = ecranRecu;
+    setFil((f) => [...f, { de: "reseau", texte: lu.texte, reseau: lu.reseau }]);
     setEnSession(true);
-    return texte;
+    return ecranRecu;
   };
 
   /** Dépose une demande et attend la réponse du réseau. */
@@ -244,10 +298,13 @@ export function OperationPopup({
     bulle?: Msg,
     // Jointe au seul envoi qui peut porter un transfert complet : l'ouverture.
     cle?: string,
-  ): Promise<string | null> => {
+  ): Promise<EcranRecu | null> => {
+    if (arrete.current) return null;
     setAttente(true);
     setErreur(null);
+    setIncertaine(false);
     if (bulle) setFil((f) => [...f, bulle]);
+    const secretEnVol = parametres.secret === true;
     try {
       // La carte voyage avec CHAQUE geste de la session : la plateforme y
       // lit que la réponse vient du titulaire de cette carte, et le robot
@@ -261,41 +318,57 @@ export function OperationPopup({
           // a pu être créée, et le boîtier la composera. Dire « réessayez »,
           // c'était inviter à un second transfert. Seul un refus EXPLICITE
           // de la plateforme (une raison donnée) dit que rien n'est parti.
-          const secretPeutEtreParti = parametres.secret === true
+          const secretPeutEtreParti = secretEnVol
             && !(e instanceof ErreurGuichet && e.nature === "refus")
             && !(e instanceof ErreurGuichet && e.nature === "session")
             && !(e instanceof ErreurGuichet && e.nature === "plateforme" && e.raison);
-          if (secretPeutEtreParti) throw new Error(t.telephoneSansTotem);
+          if (secretPeutEtreParti) throw new Incertain(t.telephoneSansTotem);
           throw e;
         });
+      // L'écran a été quitté (ou raccroché) pendant le dépôt : personne ne
+      // suivra cette demande — elle s'annule, puis la ligne se raccroche.
+      if (!vivant.current || arrete.current) {
+        void annulerCommande(id).catch(() => null).finally(() => {
+          void deposerCommande("ussd_fin", avecCarte({}), operation.terminal).catch(() => {});
+        });
+        return null;
+      }
+      enVol.current = { id, secret: secretEnVol };
       const depart = Date.now();
       let joint = depart;            // la dernière fois que la plateforme a répondu
-      while (Date.now() - depart < ATTENTE_MAX_MS) {
-        await new Promise((r) => setTimeout(r, PAUSE_MS));
-        if (!vivant.current) return null;
-        // Une relecture ne mange jamais plus que le temps qui reste.
-        const reste = Math.max(1500, ATTENTE_MAX_MS - (Date.now() - depart));
-        const ctrl = new AbortController();
-        const minuteur = setTimeout(() => ctrl.abort(), reste);
-        let c: Awaited<ReturnType<typeof lireCommande>> | null = null;
-        try {
-          c = await lireCommande(id, ctrl.signal);
-          joint = Date.now();
-        } catch (e) {
-          // Session expirée : le verrou, pas un message d'opération.
-          if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
-        } finally {
-          clearTimeout(minuteur);
+      /** Relit jusqu'à l'échéance ; rend la demande finie, ou null. */
+      const guetter = async (echeance: number) => {
+        while (Date.now() < echeance) {
+          await new Promise((r) => setTimeout(r, PAUSE_MS));
+          if (!vivant.current || arrete.current) return "parti" as const;
+          // Une relecture ne mange jamais plus que le temps qui reste.
+          const reste = Math.max(1500, echeance - Date.now());
+          const ctrl = new AbortController();
+          const minuteur = setTimeout(() => ctrl.abort(), reste);
+          let c: Awaited<ReturnType<typeof lireCommande>> | null = null;
+          try {
+            c = await lireCommande(id, ctrl.signal);
+            joint = Date.now();
+          } catch (e) {
+            // Session expirée : le verrou, pas un message d'opération.
+            if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return "parti" as const; }
+          } finally {
+            clearTimeout(minuteur);
+          }
+          if (!vivant.current || arrete.current) return "parti" as const;
+          if (c && (c.etat === "faite" || c.etat === "echouee")) return c;
         }
-        if (!vivant.current) return null;
-        if (c && (c.etat === "faite" || c.etat === "echouee")) return servir(c);
-      }
+        return null;
+      };
+      const premiere = await guetter(depart + ATTENTE_MAX_MS);
+      if (premiere === "parti") return null;
+      if (premiere) { enVol.current = null; return servir(premiere, secretEnVol); }
       // L'ÉCRAN RENONCE — ET LE DIT JUSTE.
       //
       // Le téléphone n'a pas joint la plateforme depuis dix secondes : ce
       // n'est pas le boîtier qu'on attend, c'est le réseau du téléphone. On
       // ne peut pas annuler sans réseau : la demande est peut-être partie.
-      if (Date.now() - joint > TELEPHONE_MUET_MS) throw new Error(t.telephoneSansTotem);
+      if (Date.now() - joint > TELEPHONE_MUET_MS) throw new Incertain(t.telephoneSansTotem);
       // Le boîtier n'a pas répondu : on ANNULE. Un boîtier revenu des heures
       // plus tard composait encore la demande — numéro et montant compris —
       // pour un écran qui avait abandonné. « Rien n'est parti » ne se dit que
@@ -303,21 +376,27 @@ export function OperationPopup({
       // abandonnée ferait recommencer un transfert qui part peut-être.
       const annulation = await annulerCommande(id).catch(() => null);
       const issue = annulation ? issueDeLAnnulation(true, annulation) : "incertain";
+      if (!vivant.current || arrete.current) return null;
       // Il l'a FINIE entre notre dernier coup d'œil et l'annulation : sa
       // réponse existe — on la montre, plutôt que d'envoyer guetter ses SMS.
-      if (issue === "finie") {
-        const c = await lireCommande(id).catch(() => null);
-        if (!vivant.current) return null;
-        if (c && (c.etat === "faite" || c.etat === "echouee")) return servir(c);
+      // Il l'a EN MAIN : il attend peut-être encore le réseau — on continue
+      // de relire, au lieu de déclarer un échec sur un transfert qui part.
+      if (issue === "finie" || issue === "en_cours") {
+        const suite = await guetter(Date.now() + (issue === "finie" ? PAUSE_MS + 1500 : PROLONGATION_MS));
+        if (suite === "parti") return null;
+        if (suite) { enVol.current = null; return servir(suite, secretEnVol); }
       }
-      throw new Error(phraseDAbandon(issue, t));
+      enVol.current = null;
+      if (issue === "rien_parti") throw new Error(phraseDAbandon(issue, t));
+      throw new Incertain(phraseDAbandon(issue, t));
     } catch (e) {
       if (e instanceof ErreurGuichet && e.nature === "session") { perdue(); return null; }
       if (e instanceof ErreurGuichet
           && (e.raison === "boitier_muet" || e.raison === "carte_absente")) onRefus?.();
-      if (!vivant.current) return null;
+      if (!vivant.current || arrete.current) return null;
       // Le guichet rend déjà ses messages dans la bonne langue : tels quels.
       setErreur(e instanceof Error && e.message ? e.message : t.accroc);
+      setIncertaine(e instanceof Incertain);
       setAttente(false);
       return null;
     }
@@ -325,14 +404,16 @@ export function OperationPopup({
 
   // Après chaque réponse du réseau : répondre tout seul si on sait, sinon
   // rendre la main (le pavé pour le code, une zone de texte pour le reste).
-  const derouler = async (texte: string | null) => {
-    while (texte) {
-      if (demandeUnCode(texte)) return;                  // le pavé prend la main
-      const champ = champPourQuestion(texte, restants.current);
-      if (!champ) return;                                // question inattendue : à vous
+  // « Si on sait » se décide dans le noyau (`champAServir`) : jamais sur une
+  // confirmation, jamais sur un écran qui porte déjà la valeur, jamais sur
+  // une session que le réseau a fermée.
+  const derouler = async (ecranRecu: EcranRecu | null) => {
+    while (ecranRecu) {
+      const champ = champAServir(ecranRecu, restants.current, propres());
+      if (!champ) return;                                // à vous
       restants.current = restants.current.filter((c) => c !== champ);
       const valeur = valeurPropre(champ.type, valeurs[champ.cle] ?? "");
-      texte = await envoyer("ussd_reponse", { texte: valeur }, { de: "vous", texte: valeur });
+      ecranRecu = await envoyer("ussd_reponse", { texte: valeur }, { de: "vous", texte: valeur });
     }
   };
 
@@ -360,9 +441,7 @@ export function OperationPopup({
     // Ce qui remplit un trou, c'est ce que l'écran a annoncé (« Partira :
     // … ») — jamais le texte collé tel quel, dont « +237 » ferait un autre
     // numéro.
-    const propres = Object.fromEntries(operation.champs.map(
-      (c) => [c.cle, valeurPropre(c.type, valeurs[c.cle] ?? "")]));
-    const { etapes, consommees, manquantes } = remplirVariables(brutes, propres);
+    const { etapes, consommees, manquantes } = remplirVariables(brutes, propres());
     // Un trou sans réponse ne part JAMAIS tel quel : « {numero} » composé au
     // réseau, c'est un code faux — au mieux il échoue, au pire il tombe sur
     // autre chose. On s'arrête, et on dit lequel manque.
@@ -376,16 +455,27 @@ export function OperationPopup({
       restants.current = restants.current.filter((c) => !consommees.includes(c.cle));
     }
 
-    let texte = await envoyer(
+    let ecranRecu = await envoyer(
       "ussd",
       operation.carte ? { code: etapes[0], carte: operation.carte } : { code: etapes[0] },
       { de: "vous", texte: etapes[0] },
       cleOperation.current);
-    for (const e of etapes.slice(1)) {
-      if (texte == null) return;
-      texte = await envoyer("ussd_reponse", { texte: e }, { de: "vous", texte: e });
+    // UN TRAJET APPRIS REGARDE L'ÉCRAN AVANT CHAQUE PAS. Il rejouait ses
+    // étapes à l'aveugle : « 1 » partait sur « Service indisponible », sur
+    // un menu renuméroté, et un numéro partait là où l'opérateur réclamait
+    // déjà le code secret. Si l'écran ne propose pas l'étape suivante, on
+    // s'arrête : son message reste entier, la zone de réponse est là, et
+    // TOTEM dit pourquoi il n'a pas continué.
+    for (let i = 1; i < etapes.length; i++) {
+      if (ecranRecu == null) return;
+      if (!etapePeutPartir(brutes[i], ecranRecu)) {
+        setAvis(t.trajetArrete(etapes[i]));
+        return;
+      }
+      ecranRecu = await envoyer("ussd_reponse", { texte: etapes[i] },
+                                { de: "vous", texte: etapes[i] });
     }
-    await derouler(texte);
+    await derouler(ecranRecu);
   };
 
   // Sans formulaire, la session part toute seule à l'ouverture.
@@ -434,6 +524,11 @@ export function OperationPopup({
     if (repondEnCours.current) return;
     repondEnCours.current = true;
     try {
+      // UNE RÉPONSE TAPÉE CONSOMME LA QUESTION. Sans cela, le montant tapé à
+      // la main restait « à servir », et l'écran suivant — la confirmation
+      // qui le récapitule — le recevait tout seul, à la place de « 1 ».
+      restants.current = restantsApresReponse(
+        ecranCourant.current, restants.current, propres(), valeur);
       await derouler(await envoyer("ussd_reponse", { texte: valeur },
                                    { de: "vous", texte: valeur }));
     } finally {
@@ -447,13 +542,32 @@ export function OperationPopup({
     void deposerCommande("ussd_fin", avecCarte({}), operation.terminal).catch(() => {});
   };
 
-  const raccrocher = () => { posterFin(); onFermer(); };
+  // RACCROCHER RETIENT D'ABORD CE QUI EST EN VOL. Le boîtier sert la file
+  // de la carte dans l'ordre : sans annulation, un code secret validé une
+  // seconde plus tôt était composé, PUIS la ligne raccrochée — pendant que
+  // l'écran s'était fermé comme si tout était arrêté. Si l'annulation n'a
+  // pas pris, on le DIT au lieu de fermer en silence.
+  const raccrocher = async () => {
+    const vol = enVol.current;
+    if (!vol) { posterFin(); onFermer(); return; }
+    arrete.current = true;
+    enVol.current = null;
+    const annulation = await annulerCommande(vol.id).catch(() => null);
+    const issue = annulation ? issueDeLAnnulation(true, annulation) : "incertain";
+    posterFin();
+    if (issue === "rien_parti") { onFermer(); return; }
+    if (!vivant.current) return;
+    setAttente(false);
+    setErreur(t.reponsePeutEtrePartie);
+    setIncertaine(true);
+    setFini(true);
+  };
 
-  // Fermer alors qu'une commande est encore EN VOL : on raccroche
-  // défensivement — une session qui s'ouvre après la fermeture ne doit pas
+  // Fermer alors qu'une commande est encore EN VOL : le démontage l'annule
+  // et raccroche — une session qui s'ouvre après la fermeture ne doit pas
   // rester pendue sur la carte, sans écran pour la conduire.
   const fermerSession = () => {
-    if (attente && !fini) posterFin();
+    if (attente && !fini && !enVol.current) posterFin();
     onFermer();
   };
 
@@ -479,13 +593,15 @@ export function OperationPopup({
   // est… », « Opération réussie ») termine la session : on n'offre plus un
   // champ de réponse vide sous une phrase qui n'attend rien. Un geste discret
   // permet tout de même de répondre — dans le doute, on rend la main.
-  const conclu = enSession && !attente && Boolean(dernier) && ecran.attend === "rien";
+  // Un écran VIDE de l'opérateur est un écran : on le compte (`dernierMsg`),
+  // on ne le confond pas avec « rien reçu encore ».
+  const conclu = enSession && !attente && Boolean(dernierMsg) && ecran.attend === "rien";
   useEffect(() => {
     if (conclu && !fini && !libre) { setFini(true); onTermine?.(); }
   }, [conclu, fini, libre]);
 
   // L'issue de l'écran de fin : ce que l'opérateur a dit, pas ce qu'on espère.
-  const issue: Issue = erreur ? "interrompue"
+  const issue: Issue = erreur ? (incertaine ? "incertaine" : "interrompue")
     : ecran.issue === "refusee" ? "refusee"
       : ecran.issue === "reussie" ? "reussie" : "reponse";
   const termine = fini || Boolean(erreur);
@@ -511,7 +627,7 @@ export function OperationPopup({
     if (etape === "session" && enSession && !termine) {
       Alert.alert(t.raccrocherQuestion, undefined, [
         { text: t.garderSession, style: "cancel" },
-        { text: t.raccrocherCourt, style: "destructive", onPress: raccrocher },
+        { text: t.raccrocherCourt, style: "destructive", onPress: () => void raccrocher() },
       ]);
       return;
     }
@@ -634,9 +750,11 @@ export function OperationPopup({
       <Fin
         issue={issue}
         titre={issue === "reussie" ? t.opReussie : issue === "refusee" ? t.opRefusee
-          : issue === "interrompue" ? t.opInterrompue : t.opReponse}
-        texte={erreur ?? (ecran.texte || dernier)}
-        note={issue === "reussie" ? t.confirmationSms : undefined}
+          : issue === "interrompue" ? t.opInterrompue
+            : issue === "incertaine" ? t.opIncertaine : t.opReponse}
+        texte={erreur ?? (ecran.texte || dernier || t.ecranVide)}
+        note={issue === "reussie" ? t.confirmationSms
+          : issue === "incertaine" ? t.noteIncertaine : undefined}
         fil={fil}
         details={details}
         onDetails={() => setDetails((d) => !d)}
@@ -649,7 +767,7 @@ export function OperationPopup({
         bouton={t.termine}
         // Une session encore ouverte (un accroc en plein échange) se
         // raccroche en partant : elle ne reste pas pendue sur la carte.
-        onTerminer={enSession && !fini ? raccrocher : onFermer}
+        onTerminer={enSession && !fini ? () => void raccrocher() : onFermer}
         t={t}
         proposition={proposer && operation.carte ? (
           <ProposerBeneficiaire carte={operation.carte} numero={numeroDuTransfert}
@@ -666,8 +784,26 @@ export function OperationPopup({
     cleVue = "session";
     // TOUT CE QUE LE RÉSEAU ATTEND SE RÉPOND ICI : un menu, une page, une
     // question, ou — après « Répondre autre chose » — la demande du code.
-    const repondable = !pave && !attente && Boolean(dernier)
+    const repondable = !pave && !attente && Boolean(dernierMsg)
       && (libre || ecran.attend !== "rien");
+    // Ce que TOTEM dit, À CÔTÉ de l'opérateur et jamais dans sa carte : un
+    // bouton appris qui s'est arrêté, un écran que l'opérateur a laissé vide.
+    const entete = (
+      <View style={{ gap: espaces.md }}>
+        {avis ? (
+          <Texte taille={textes.petit} ton="doux" accessibilityLiveRegion="polite"
+                 style={{ paddingHorizontal: espaces.xs }}>{avis}</Texte>
+        ) : null}
+        {dernier ? (
+          <CarteOperateur texte={dernier} copie={dernier} op={op}
+                          couleur={couleurOperateur(op)} t={t} />
+        ) : (
+          <Texte taille={textes.petit} ton="doux" style={{ paddingHorizontal: espaces.xs }}>
+            {t.ecranVide}
+          </Texte>
+        )}
+      </View>
+    );
     // Pendant le code secret, ce qu'on tape librement part protégé.
     const secretement = libre && ecran.attend === "secret";
     const typeQuestion: TypeSaisie = libre ? "texte"
@@ -677,18 +813,17 @@ export function OperationPopup({
     const envoye = [...fil].reverse().find((m) => m.de === "vous")?.texte ?? null;
     vue = (
       <View style={{ flex: 1 }}>
-        {attente || !dernier ? (
+        {attente || !dernierMsg ? (
           <Patience key={`patience-${fil.length}`} couleur={couleurOperateur(op)} reduit={reduit}
-            texte={!dernier ? t.connexionA(op) : t.onParleA(op)}
-            envoye={dernier ? envoye : null} t={t} />
+            texte={!dernierMsg ? t.connexionA(op) : t.onParleA(op)}
+            envoye={dernierMsg ? envoye : null} t={t} />
         ) : repondable ? (
           // LE MESSAGE DE L'OPÉRATEUR, INTACT — « 00. Next » compris : on ne
           // retire rien de ce qu'il a écrit. Dessous, ses choix en boutons
           // (des raccourcis), puis la zone de réponse, toujours là.
           <ZoneReponse key={`question-${fil.length}-${secretement ? "s" : ""}`}
             type={typeQuestion} reduit={reduit}
-            entete={<CarteOperateur texte={dernier} copie={dernier} op={op}
-                                    couleur={couleurOperateur(op)} t={t} />}
+            entete={entete}
             choix={secretement ? [] : ecran.choix}
             onChoix={(n) => void repondre(n)}
             recents={typeQuestion === "numero" ? operation.recents : undefined}
@@ -789,7 +924,9 @@ export function OperationPopup({
   );
 }
 
-type Issue = "reussie" | "refusee" | "interrompue" | "reponse";
+// « incertaine » : l'écran ne sait pas ce qu'est devenue la demande (le code
+// est peut-être parti). Ni coche, ni croix, ni vibration d'échec.
+type Issue = "reussie" | "refusee" | "interrompue" | "incertaine" | "reponse";
 type T = (typeof textesGuichet)["fr"];
 
 /** Un montant en grand : les chiffres, puis « FCFA » plus petit à côté. */
@@ -821,22 +958,30 @@ function Montant({ valeur, langue, grand, vide }: {
  * `ChampTexte` lui ajoute la barre « Terminé » qui manque aux claviers de
  * chiffres, et la feuille se pousse au-dessus de lui.
  */
-function ChampSaisie({ type, valeur, onChange, onValider, langue, focus = true, masque = false }: {
+function ChampSaisie({ type, valeur, onChange, onValider, langue, focus = true, masque = false,
+                      libre = false }: {
   type: TypeSaisie; valeur: string; onChange: (v: string) => void;
   onValider: () => void; langue: "fr" | "en";
   /** Le clavier s'ouvre tout seul — pas sur un menu, où il couvrirait les choix. */
   focus?: boolean;
   /** Ce qu'on tape ne s'affiche pas (une réponse pendant le code secret). */
   masque?: boolean;
+  /** Une réponse à l'opérateur : le type ne choisit que le clavier, rien
+   *  n'est refusé (`reponseLibre`). « 1 », « 00 », « # » partent tels quels. */
+  libre?: boolean;
 }) {
   const t = textesGuichet[langue];
   const { perdue } = useSession();
-  const propre = valeurPropre(type, valeur);
+  const propre = libre ? reponseLibre(type, valeur) : valeurPropre(type, valeur);
   const brut = valeur.trim();
   // Ce qu'on annonce sous le champ — seulement quand ce n'est pas déjà ce
   // qu'on lit dedans : « 677998877 » tapé tel quel n'a pas besoin d'écho.
   let annonce: { texte: string; doute?: boolean } | null = null;
-  if (brut && type === "numero") {
+  if (libre) {
+    // Pas de « numéro introuvable » sous un « 1 » : seul l'écho d'un collage
+    // nettoyé, pour qu'on sache ce qui part.
+    if (brut && propre && !masque && propre !== brut) annonce = { texte: t.partira(propre) };
+  } else if (brut && type === "numero") {
     if (propre.length >= 8) {
       const vu = formaterNumero(propre);
       if (vu !== brut && propre !== brut) annonce = { texte: t.partira(vu) };
@@ -859,7 +1004,10 @@ function ChampSaisie({ type, valeur, onChange, onValider, langue, focus = true, 
           onChangeText={onChange}
           autoFocus={focus}
           secureTextEntry={masque}
-          keyboardType={type === "numero" ? "phone-pad" : type === "montant" ? "number-pad" : "default"}
+          // Pendant la session, le pavé du téléphone porte « * » et « # » :
+          // « # » (retour) doit pouvoir se taper même sur une question de montant.
+          keyboardType={type === "numero" || (libre && type === "montant") ? "phone-pad"
+            : type === "montant" ? "number-pad" : "default"}
           autoCorrect={false}
           autoCapitalize="none"
           autoComplete="off"
@@ -995,10 +1143,13 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix =
 }) {
   const t = textesGuichet[langue];
   const [valeur, setValeur] = useState("");
-  const valide = pret(type, valeur);
+  // LE TYPE NE REFUSE RIEN. Un écran lu « numéro » qui demandait en fait
+  // « 1=Oui 2=Non » laissait Envoyer éteint sur « 1 » : on ne pouvait ni
+  // confirmer, ni revenir, ni annuler. Voir `@noyau/deroule`.
+  const valide = reponsePrete(type, valeur);
   const envoyer = () => {
     if (!valide) return;
-    onEnvoyer(valeurPropre(type, valeur));
+    onEnvoyer(reponseLibre(type, valeur));
     setValeur("");
   };
   // UNE ZONE DE RÉPONSE, TOUJOURS. Sur le téléphone, chaque message de
@@ -1023,7 +1174,7 @@ function ZoneReponse({ type, entete, recents, onEnvoyer, langue, reduit, choix =
           <Texte taille={textes.petit} ton="doux" poids="moyen">{t.votreReponse}</Texte>
           <ChampSaisie type={type} valeur={valeur} onChange={setValeur}
                        onValider={envoyer} langue={langue}
-                       focus={choix.length === 0} masque={secretement} />
+                       focus={choix.length === 0} masque={secretement} libre />
           {secretement ? (
             <Texte taille={textes.legende} ton="pale">{t.reponseProtegee}</Texte>
           ) : null}
@@ -1438,9 +1589,9 @@ function Fin({
   t: T;
 }) {
   const icone: NomIcone = issue === "reussie" ? "Check"
-    : issue === "reponse" ? "Bubble" : "Close";
+    : issue === "reponse" ? "Bubble" : issue === "incertaine" ? "Inbox" : "Close";
   const teinte = issue === "reussie" ? couleurs.positifVif
-    : issue === "reponse" ? couleurs.encre : couleurs.negatif;
+    : issue === "reponse" || issue === "incertaine" ? couleurs.encre : couleurs.negatif;
   // LA COCHE SE POSE : elle grossit d'un rien en apparaissant, 240 ms —
   // le FadeIn de 300 ms dépassait la borne de l'application. Rien ne
   // rebondit. « Réduire les animations » : elle est là, immobile.

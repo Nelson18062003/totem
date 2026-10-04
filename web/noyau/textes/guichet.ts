@@ -65,6 +65,20 @@ const en = {
   lancer: "Start",
   terminalCompose: "the terminal is dialling…",
   reponseVide: "(empty reply)",
+  // Dit par TOTEM, HORS de la carte de l'opérateur : l'opérateur n'a rien
+  // écrit, on ne lui prête pas une phrase.
+  ecranVide: "The operator's screen is empty. It may still be waiting for a reply.",
+  // Un refus du BOÎTIER sur le code secret : on ne sait pas s'il est parti.
+  opIncertaine: "Outcome not confirmed",
+  noteIncertaine: "Check your SMS before trying again.",
+  // Un bouton appris s'arrête quand l'écran ne propose pas son étape.
+  trajetArrete: (etape: string) =>
+    `The operator's screen does not offer “${etape}”, the next step of this button: `
+    + "the rest was not sent. Read the screen and reply yourself.",
+  // « Raccrocher » arrivé trop tard pour retenir la dernière réponse.
+  reponsePeutEtrePartie:
+    "Hung up — but your last reply had already reached the TOTEM box: it may have been "
+    + "sent to the operator. Check your SMS before trying again.",
   echec: "Failed.",
   demandePasPartie: "the request could not be sent",
   terminalMuet: "the terminal did not answer — is it switched on, and up to date?",
@@ -230,6 +244,15 @@ const fr: typeof en = {
   lancer: "Lancer",
   terminalCompose: "le terminal compose…",
   reponseVide: "(réponse vide)",
+  ecranVide: "L’écran de l’opérateur est vide. Il attend peut-être encore une réponse.",
+  opIncertaine: "Résultat non confirmé",
+  noteIncertaine: "Regardez vos SMS avant de recommencer.",
+  trajetArrete: (etape: string) =>
+    `L’écran de l’opérateur ne propose pas « ${etape} », l’étape suivante de ce bouton : `
+    + "la suite n’est pas partie. Lisez l’écran, puis répondez vous-même.",
+  reponsePeutEtrePartie:
+    "Raccroché — mais votre dernière réponse était déjà chez le boîtier TOTEM : elle a "
+    + "peut-être été envoyée à l’opérateur. Regardez vos SMS avant de recommencer.",
   echec: "Échec.",
   demandePasPartie: "la demande n’a pas pu partir",
   terminalMuet: "le terminal n’a pas répondu — est-il allumé, et à jour ?",

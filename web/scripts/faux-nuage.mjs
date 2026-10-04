@@ -472,7 +472,14 @@ function tourDeLaPage(texte) {
   }
   return null;
 }
-const QUESTION_APRES_LE_CODE = "Confirmez-vous le depot de 5 000 FCFA ?\n1. Oui\n2. Non";
+// LA CONFIRMATION DU NUMÉRO — un vrai écran MTN : il nomme le numéro et
+// attend « 1 ». Activée par :
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/confirmation-numero?oui=1"
+let confirmationNumero = false;
+const CONFIRMATION_DU_NUMERO =
+  "Please confirm the recipient phone 677998877 is correct (1=Yes 2=No):";
+const QUESTION_APRES_LE_CODE ="Confirmez-vous le depot de 5 000 FCFA ?\n1. Oui\n2. Non";
 const PAGE_LONGUE = "Confirm: Float Transfer for FCFA 5000 To -ETS NOUVELLE "
   + "QUINCAILLERIE DU LITTORAL ET DES HAUTS PLATEAUX SARL MBALLA JEAN having "
   + "mobile number 237670000123.\n00. Next";
@@ -512,6 +519,13 @@ function reponsePour(commande) {
     if (suite) return suite;
   }
   if (n === 0) return "Entrez le numero du beneficiaire:";
+  // UNE QUESTION QUI NOMME UN NUMÉRO ET ATTEND « 1 ». L'écran la lisait
+  // « numéro » et n'acceptait plus que huit chiffres : « 1 » laissait
+  // Envoyer éteint, on ne pouvait que raccrocher.
+  if (confirmationNumero && n === 1) return CONFIRMATION_DU_NUMERO;
+  if (confirmationNumero && n === 2) {
+    return String(parametres.texte ?? "") === "1" ? "Entrez le montant:" : "Choix invalide.";
+  }
   if (n === 1) return "Entrez le montant:";
   if (pageLongue && etapeDeLaPage === 0) return tourDeLaPage("");
   // Comme un vrai opérateur : ce qu'on va signer, PUIS la demande du code.
@@ -606,6 +620,10 @@ const serveur = createServer(async (req, res) => {
   if (req.method === "POST" && chemin === "/essai/page-longue") {
     pageLongue = url.searchParams.get("oui") === "1";
     return repondre({ pageLongue });
+  }
+  if (req.method === "POST" && chemin === "/essai/confirmation-numero") {
+    confirmationNumero = url.searchParams.get("oui") === "1";
+    return repondre({ confirmationNumero });
   }
   if (req.method === "POST" && chemin === "/essai/taire") {
     const terminal = url.searchParams.get("terminal") || "douala-faux";

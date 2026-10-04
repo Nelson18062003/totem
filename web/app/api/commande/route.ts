@@ -10,6 +10,7 @@ import {
   GESTES_DE_DEMONSTRATION, demandeJouee, estDemonstration,
 } from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
+import { codeAComposer, texteDeReponse } from "@noyau/deroule";
 
 export const dynamic = "force-dynamic";
 
@@ -60,10 +61,19 @@ export async function POST(req: Request) {
         { status: 403 });
     }
     const brut = corps?.parametres ?? {};
+    // La vitrine refuse comme la vraie porte : un code coupé n'est pas joué.
+    const code = typeof brut.code === "string" ? codeAComposer(brut.code) : { code: "" };
+    if ("refus" in code) {
+      return Response.json({ erreur: erreurApi(langue, code.refus) }, { status: 400 });
+    }
+    const texte = typeof brut.texte === "string" ? texteDeReponse(brut.texte) : { texte: "" };
+    if ("refus" in texte) {
+      return Response.json({ erreur: erreurApi(langue, texte.refus) }, { status: 400 });
+    }
     return Response.json({
       id: demandeJouee(genre, {
-        code: typeof brut.code === "string" ? brut.code.slice(0, 32) : "",
-        texte: typeof brut.texte === "string" ? brut.texte.slice(0, 120) : "",
+        code: code.code,
+        texte: texte.texte,
         secret: brut.secret === true,
       }),
     });
@@ -86,18 +96,22 @@ export async function POST(req: Request) {
   const brut = corps?.parametres ?? {};
   // On ne laisse passer que les champs attendus, bornés et nettoyés.
   const parametres: Record<string, unknown> = {};
+  // CE QUI PART AU BOÎTIER SE REFUSE, IL NE SE COUPE PAS. Le code était
+  // coupé à 32 caractères : un raccourci valide de 34 partait avec 250 000 F
+  // devenus 25 000 et sans son « # » final. Voir `@noyau/deroule`.
   if (typeof brut.code === "string") {
-    const code = brut.code.replace(/[^0-9#*]/g, "").slice(0, 32);
-    if (!code) return Response.json({ erreur: erreurApi(langue, "codeVide") }, { status: 400 });
-    parametres.code = code;
+    const lu = codeAComposer(brut.code);
+    if ("refus" in lu) return Response.json({ erreur: erreurApi(langue, lu.refus) }, { status: 400 });
+    parametres.code = lu.code;
   }
   if (typeof brut.texte === "string") {
-    // On retire guillemets, retours à la ligne et caractères de contrôle : en
-    // mode GSM, un « " » ou un « \r » dans une réponse USSD refermerait la
-    // chaîne de la commande AT et injecterait des ordres au modem (ex. effacer
-    // les SMS). Le terminal ré-échappe de son côté ; ici on nettoie à l'entrée.
-    // eslint-disable-next-line no-control-regex
-    parametres.texte = brut.texte.replace(/["\r\n\x00-\x1f]/g, "").slice(0, 120);
+    // Guillemets, retours à la ligne et caractères de contrôle retirés : en
+    // mode GSM, un « " » ou un « \r » refermerait la chaîne de la commande AT
+    // et injecterait des ordres au modem. Le terminal ré-échappe de son côté ;
+    // ici on nettoie à l'entrée — et une réponse trop longue est refusée.
+    const lu = texteDeReponse(brut.texte);
+    if ("refus" in lu) return Response.json({ erreur: erreurApi(langue, lu.refus) }, { status: 400 });
+    parametres.texte = lu.texte;
   }
   if (brut.secret === true) parametres.secret = true;
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);

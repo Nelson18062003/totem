@@ -24,6 +24,11 @@
 //
 // LE TÉMOIN : sur l'application d'avant, l'étape 1 échoue — on y lit
 // « Terminé ». Un harnais qui ne peut pas voir la panne d'hier ne garde rien.
+//
+// PUIS UNE CONFIRMATION DU NUMÉRO (« 1=Yes 2=No ») : « 1 » doit se taper et
+// partir, même si l'écran a été lu « numéro ». Témoin : 9bd8990 y échoue.
+//
+// PLATEFORME, NUAGE et APERCU changent les adresses (3120, 4999, 3210).
 
 import { setTimeout as attendre } from "node:timers/promises";
 import { createRequire } from "node:module";
@@ -32,8 +37,8 @@ const require = createRequire(import.meta.url);
 const { chromium } = require("/opt/node22/lib/node_modules/playwright");
 
 const APERCU = process.env.APERCU || "http://127.0.0.1:3210";
-const PLATEFORME = "http://127.0.0.1:3120";
-const NUAGE = "http://127.0.0.1:4999";
+const PLATEFORME = process.env.PLATEFORME || "http://127.0.0.1:3120";
+const NUAGE = process.env.NUAGE || "http://127.0.0.1:4999";
 const COURRIEL = "essai@totem.test";
 const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
@@ -155,12 +160,50 @@ try {
   if (!verdict(await oui.count() > 0, "« Oui » est un bouton")) throw new Error("arrêt");
   await oui.click();
   verdict(Boolean(await attendreUnDe([/effectue avec succes/])), "l'opération va jusqu'au bout");
+
+  // UNE RÉPONSE TAPÉE PART TOUJOURS. « Please confirm the recipient phone
+  // 677998877 is correct (1=Yes 2=No) » se lit « numéro » : le champ
+  // n'acceptait plus que huit chiffres, et « 1 » laissait Envoyer éteint.
+  // LE TÉMOIN : l'application d'avant (9bd8990) échoue ici.
+  console.log("\nLe réseau fait confirmer le numéro :");
+  await fetch(`${NUAGE}/essai/page-longue?oui=0`, { method: "POST" });
+  const conf = await fetch(`${NUAGE}/essai/confirmation-numero?oui=1`, { method: "POST" })
+    .then((r) => r.json()).catch(() => null);
+  if (!verdict(Boolean(conf?.confirmationNumero), "le faux nuage sait faire confirmer un numéro")) {
+    throw new Error("arrêt");
+  }
+  // Un écran neuf : la fenêtre de l'opération précédente ne doit rien couvrir.
+  await page.goto(APERCU, { waitUntil: "networkidle" });
+  if (!await attendreUnDe([/FCFA/])) throw new Error("l'accueil n'est pas revenu");
+  await attendre(1200);
+  await page.getByRole("tab", { name: /^Opérations$/ }).first().click();
+  await attendre(1200);
+  await visible("button", /^Dépôt$/).click();
+  await attendre(1500);
+  await page.locator("input:visible").last().fill("677998877");
+  await page.getByText(/^Continuer$/).last().click();
+  await attendre(900);
+  await page.locator("input:visible").last().fill("5000");
+  await page.getByText(/^Continuer$/).last().click();
+  await attendre(1200);
+  await page.getByText(/^Confirmer$/).last().click();
+  if (!verdict(Boolean(await attendreUnDe([/Please confirm the recipient phone/])),
+               "l'écran de confirmation arrive, intact")) throw new Error("arrêt");
+  await attendre(600);
+  await page.locator("input:visible").last().fill("1");
+  const envoyerBouton = visible("button", /^Envoyer$/);
+  verdict(await envoyerBouton.getAttribute("aria-disabled") !== "true",
+          "« 1 » se tape, et Envoyer s'allume");
+  await envoyerBouton.click();
+  verdict(Boolean(await attendreUnDe([/Entrez votre code secret/])),
+          "« 1 » est parti : la suite vient (le montant, puis le code)");
 } catch (e) {
   if (e.message !== "arrêt") verdict(false, "le parcours", e.message);
   const ecran = await texte().catch(() => "");
   console.log(`\n  Ce que l'écran montrait :\n${ecran.split("\n").slice(0, 20).map((l) => `    ${l}`).join("\n")}`);
 } finally {
   await fetch(`${NUAGE}/essai/page-longue?oui=0`, { method: "POST" }).catch(() => {});
+  await fetch(`${NUAGE}/essai/confirmation-numero?oui=0`, { method: "POST" }).catch(() => {});
   await nav.close();
 }
 
