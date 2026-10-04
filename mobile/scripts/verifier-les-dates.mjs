@@ -61,11 +61,11 @@ const FUSEAU = "Africa/Douala";
 // --- La vérité, demandée à la plateforme -------------------------------------
 await fetch(`${PLATEFORME}/api/inscription`, {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+  body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
 }).catch(() => null);
 const session = await fetch(`${PLATEFORME}/api/session`, {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+  body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
 }).then((r) => r.json()).catch(() => ({}));
 if (!session.jeton) {
   console.error("\n✗ La plateforme d'essai ne répond pas sur 3120 (ou refuse le compte d'essai).");

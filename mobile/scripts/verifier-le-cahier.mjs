@@ -73,7 +73,7 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
 }
 await fetch("http://127.0.0.1:3120/api/inscription", {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+  body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
 }).catch(() => {});
 
 const nav = await chromium.launch({ args: ["--disable-web-security"] });

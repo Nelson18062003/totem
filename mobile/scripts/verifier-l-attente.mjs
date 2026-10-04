@@ -64,12 +64,12 @@ for (const [quoi, adresse] of [["La plateforme d'essai", "http://127.0.0.1:3120/
 {
   const inscription = await fetch("http://127.0.0.1:3120/api/inscription", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+    body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
   });
   if (inscription.status === 403) {
     const porte = await fetch("http://127.0.0.1:3120/api/connexion", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courriel: COURRIEL, motdepasse: MOTDEPASSE }),
+      body: JSON.stringify({ prenom: "Essai", nom: "Totem", adresse: "Rue 1, Douala", telephone: "670000099", courriel: COURRIEL, motdepasse: MOTDEPASSE }),
     });
     if (!porte.ok) {
       console.error("\n✗ Les inscriptions sont fermées par un AUTRE compte :");
