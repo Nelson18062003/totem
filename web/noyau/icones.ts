@@ -176,6 +176,21 @@ export const ICONES = {
   ],
   // Un billet : le RETRAIT, de l'argent liquide qu'on remet. Le portefeuille
   // est déjà l'onglet Comptes — la même icône pour deux choses se confond.
+  // Le pavé de touches : l'onglet Opérations, où l'on compose les codes.
+  // La double flèche (Transfer) est passée au module Flux — c'est le signe
+  // que le propriétaire a montré chez Revolut pour « ce qui entre et sort ».
+  Pave: [
+    { f: "circle", cx: "6.5", cy: "5", r: "1.6" },
+    { f: "circle", cx: "12", cy: "5", r: "1.6" },
+    { f: "circle", cx: "17.5", cy: "5", r: "1.6" },
+    { f: "circle", cx: "6.5", cy: "10.5", r: "1.6" },
+    { f: "circle", cx: "12", cy: "10.5", r: "1.6" },
+    { f: "circle", cx: "17.5", cy: "10.5", r: "1.6" },
+    { f: "circle", cx: "6.5", cy: "16", r: "1.6" },
+    { f: "circle", cx: "12", cy: "16", r: "1.6" },
+    { f: "circle", cx: "17.5", cy: "16", r: "1.6" },
+    { f: "circle", cx: "12", cy: "21.2", r: "1.6" },
+  ],
   Billet: [
     { f: "rect", x: "3", y: "6.5", w: "18", h: "11", r: "2" },
     { f: "circle", cx: "12", cy: "12", r: "2.5" },

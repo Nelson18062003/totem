@@ -206,8 +206,10 @@ const tables = () => ({
   ].map((c) => heuresDeSolde.has(c.iccid)
     ? { ...c, solde_maj: heuresDeSolde.get(c.iccid) == null ? null
         : il_y_a(heuresDeSolde.get(c.iccid)) }
-    : c).map((c) => signaux.has(c.iccid) ? { ...c, signal: signaux.get(c.iccid) } : c),
-  paiements: [
+    : c).map((c) => signaux.has(c.iccid) ? { ...c, signal: signaux.get(c.iccid) } : c)
+    .map((c) => !caisseAgent ? c : c.iccid === "89237010000000008901" ? { ...c, solde: 791230, maj: il_y_a(5) }
+      : c.iccid === "89237020000000004432" ? { ...c, solde: 2784137.6, maj: il_y_a(5) } : c),
+  paiements: caisseAgent ? caisseAgentLignes() : [
     ...[...smsEnPlus].reverse(),
     // UN NOM VOLONTAIREMENT LONG. La fiche coupait son titre à une ligne :
     // « NKENGAFAC MBOUNGOU… » — et c'est précisément la question qu'on se
@@ -353,6 +355,88 @@ const attributions = [];             // { utilisateur, iccid, attribuee_le }
 // vide. Sans elles, aucun harnais ne verrait un doublon passer.
 const beneficiaires = [];             // { id, carte, numero, nom, cree_par, … }
 let prochainBeneficiaire = 1;
+
+
+// UNE CAISSE D'AGENT, POUR LE MODULE FLUX (scripts/… et maquettes).
+// Deux cartes, hier et aujourd'hui, à heures FIXES de Douala. Les soldes
+// annoncés se suivent au franc près — sauf UN écart voulu de 100 000 F
+// entre 9 h 20 et 10 h 05 —, une ligne Orange au sens inconnu que les soldes
+// expliquent, une opération échouée, un code et une publicité (qui ne sont
+// pas des transactions). Noms et numéros inventés.
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/caisse-agent?oui=1"
+let caisseAgent = false;
+function caisseAgentLignes() {
+  const jourDouala = (decalage) => new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" })
+    .format(new Date(Date.now() + decalage * 86400000));
+  const aujourdhui = jourDouala(0), hier = jourDouala(-1);
+  const MTN = { compte: "MTN ·8901", carte: "89237010000000008901", expediteur: "MobileMoney" };
+  const OM = { compte: "Orange ·4432", carte: "89237020000000004432", expediteur: "OrangeMoney" };
+  let n = 0;
+  const l = (jour, heure, carte, o) => {
+    n++;
+    const iso = new Date(`${jour}T${heure}:00+01:00`).toISOString();
+    return { id: 800000 + n, source_id: 800 + n, terminal: "douala-faux", ...carte,
+             sens: null, montant: null, tiers: null, numero: null, reference: null,
+             solde_apres: null, frais: null, commission: null, nature: null,
+             emis_le: iso, recu_le: iso, lu_le: iso, ...o };
+  };
+  const depot = (j, h, nom, num, m, solde, com, ref) => l(j, h, MTN, {
+    categorie: "depot", sens: "sortie", montant: m, tiers: nom, numero: num, reference: ref,
+    solde_apres: solde, commission: com, frais: 0,
+    texte: `Cash in of ${m} FCFA to ${nom} (237${num}) has been successfully completed. Your new balance: ${solde} FCFA. Added commission: ${com} FCFA. Transaction Id: ${ref}.` });
+  const retrait = (j, h, nom, num, m, solde, com, ref) => l(j, h, MTN, {
+    categorie: "retrait", sens: "entree", montant: m, tiers: nom, numero: num, reference: ref,
+    solde_apres: solde, commission: com, frais: 0,
+    texte: `Cash out initiated by ${nom} (237${num}) of ${m} FCFA has been completed. Your new balance: ${solde} FCFA. Commission: ${com} FCFA. Transaction Id: ${ref}.` });
+  const lignes = [
+    // HIER — MTN
+    l(hier, "07:45", MTN, { categorie: "solde", solde_apres: 600000, texte: "Your MoMo balance is 600000 FCFA." }),
+    retrait(hier, "09:10", "FOTSO Hélène", "677000011", 200000, 800000, 1000, "9999990001"),
+    depot(hier, "10:30", "NANA Pierre", "677000012", 150000, 650000, 750, "9999990002"),
+    l(hier, "12:15", MTN, { categorie: "encaissement", sens: "entree", montant: 80000, tiers: "EPEE Marcel",
+      numero: "677000013", reference: "9999990003", solde_apres: 730000, frais: 0,
+      texte: "You have received 80000 FCFA from EPEE MARCEL (237677000013). Your new balance: 730000 FCFA. Transaction Id: 9999990003." }),
+    depot(hier, "15:40", "MOUKOURI Jeanne", "677000014", 40000, 690000, 200, "9999990004"),
+    retrait(hier, "18:05", "BELLA Thomas", "677000015", 221230, 911230, 1100, "9999990005"),
+    // HIER — Orange
+    l(hier, "08:00", OM, { categorie: "solde", solde_apres: 2550137.6, texte: "Votre solde Orange Money est de 2550137.6 FCFA." }),
+    l(hier, "11:00", OM, { categorie: "depot", sens: "sortie", montant: 50000, tiers: "ATANGANA Luc", numero: "655000021",
+      reference: "CI261011.1100.A0021", solde_apres: 2500137.6, frais: 0, commission: 250,
+      texte: "Depot vers 655000021 ATANGANA LUC reussi. Montant: 50000 FCFA. Nouveau solde: 2500137.6 FCFA. ID: CI261011.1100.A0021" }),
+    l(hier, "16:20", OM, { categorie: "encaissement", sens: "entree", montant: 100000, tiers: "MANGA Rose", numero: "655000022",
+      reference: "TR261011.1620.B0022", solde_apres: 2600137.6, frais: 0,
+      texte: "Vous avez recu 100000 FCFA de MANGA ROSE (655000022). Nouveau solde: 2600137.6 FCFA. ID: TR261011.1620.B0022" }),
+    // AUJOURD'HUI — MTN
+    l(aujourdhui, "08:30", MTN, { categorie: "solde", solde_apres: 911230, texte: "Your MoMo balance is 911230 FCFA." }),
+    retrait(aujourdhui, "08:58", "ABENA Rose", "677000001", 75000, 986230, 375, "9999999998"),
+    depot(aujourdhui, "09:20", "ESSOMBA Paul", "677000002", 50000, 936230, 250, "9999999999"),
+    l(aujourdhui, "09:41", MTN, { categorie: "echec", montant: 1000000, tiers: "DJOMO Albert", numero: "677000003",
+      texte: "Cash in of 1000000 FCFA to DJOMO ALBERT failed: insufficient balance." }),
+    l(aujourdhui, "10:05", MTN, { categorie: "encaissement", sens: "entree", montant: 25000, tiers: "MBARGA Jean",
+      numero: "677000004", reference: "10000000000", solde_apres: 861230, frais: 0,
+      texte: "You have received 25000 FCFA from MBARGA JEAN (237677000004). Your new balance: 861230 FCFA. Transaction Id: 10000000000." }),
+    depot(aujourdhui, "11:20", "NGO NDJOCK Clarisse", "677000005", 120000, 741230, 600, "10000000002"),
+    l(aujourdhui, "13:47", MTN, { categorie: "envoi", sens: "sortie", montant: 200000, tiers: "ETS. BIYONG & FILS SARL",
+      numero: "677000006", reference: "10000000003", solde_apres: 541230, frais: 0,
+      texte: "You have transferred 200000 FCFA to ETS. BIYONG & FILS SARL (237677000006). FEES 0 FCFA. Your new balance: 541230 FCFA. Transaction Id: 10000000003." }),
+    retrait(aujourdhui, "14:05", "TCHOUA Marc", "677000009", 300000, 841230, 1300, "10000000001"),
+    depot(aujourdhui, "14:32", "OWONA Brigitte", "677000007", 50000, 791230, 250, "10000000004"),
+    l(aujourdhui, "09:00", MTN, { categorie: "code", texte: "Votre code de confirmation est 483921. Ne le communiquez a personne.", lu_le: null }),
+    l(aujourdhui, "13:00", MTN, { categorie: "publicite", texte: "MoMo vous offre 5% de bonus sur vos recharges ce week-end. Composez *126#.", lu_le: null }),
+    // AUJOURD'HUI — Orange
+    l(aujourdhui, "07:50", OM, { categorie: "solde", solde_apres: 2600137.6, texte: "Votre solde Orange Money est de 2600137.6 FCFA." }),
+    l(aujourdhui, "12:10", OM, { categorie: "transfert", sens: null, montant: 184000, tiers: "BOUTIQUE MBALLA → KOUAM Serge",
+      numero: "655000023", reference: "TR261012.1210.B0002", solde_apres: 2784137.6, frais: 0,
+      texte: "Transfert de 184000 FCFA de BOUTIQUE MBALLA (655000031) vers KOUAM SERGE (655000023) reussi. Nouveau solde: 2784137.6 FCFA. ID: TR261012.1210.B0002", lu_le: null }),
+    l(aujourdhui, "12:40", OM, { categorie: "retrait", sens: "entree", montant: 500000, tiers: "KAMGA Albert",
+      numero: "655000024", reference: "CO261012.1240.A0001", frais: 0, commission: 0,
+      texte: "CashOut success to KAMGA ALBERT (655000024) from BOUTIQUE MBALLA. Amount: 500000 FCFA. ID: CO261012.1240.A0001" }),
+  ];
+  const maintenant = Date.now();
+  return lignes.filter((x) => Date.parse(x.recu_le) <= maintenant)
+    .sort((a, b) => (a.recu_le < b.recu_le ? 1 : -1));
+}
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
@@ -810,6 +894,11 @@ const serveur = createServer(async (req, res) => {
   // lecture rapporte, et un bilan qui s'arrête sans le dire.
   //
   //     curl -X POST "http://127.0.0.1:4999/essai/semer?jours=120&parJour=20"
+  if (req.method === "POST" && chemin === "/essai/caisse-agent") {
+    caisseAgent = url.searchParams.get("oui") !== "0";
+    return repondre({ caisseAgent });
+  }
+
   if (req.method === "POST" && chemin === "/essai/semer") {
     const jours = Number(url.searchParams.get("jours") || 120);
     const parJour = Number(url.searchParams.get("parJour") || 20);

@@ -53,8 +53,12 @@ import {
 const ONGLETS: { nom: string; cle: keyof ReturnType<typeof libelles>; icone: NomIcone }[] = [
   { nom: "index", cle: "accueil", icone: "Home" },
   { nom: "cartes", cle: "comptes", icone: "Wallet" },
+  // FLUX, un module à part des SMS : ce qui entre et sort de chaque carte.
+  // Il prend la double flèche ⇄ — le signe que le propriétaire a montré
+  // chez Revolut ; Opérations, où l'on compose les codes, prend le pavé.
+  { nom: "flux", cle: "flux", icone: "Transfer" },
   { nom: "encaissements", cle: "smsCourt", icone: "Bubble" },
-  { nom: "actions", cle: "operations", icone: "Transfer" },
+  { nom: "actions", cle: "operations", icone: "Pave" },
 ];
 
 function libelles(langue: "en" | "fr") {
@@ -204,11 +208,13 @@ type ProprietesBarre = {
 function BarreFlottante({ state, descriptors, navigation }: ProprietesBarre) {
   const bas = useSafeAreaInsets().bottom;
   const reduit = useMouvementReduit();
-  // QUATRE NOMS DOIVENT TENIR SUR 320 POINTS. Chaque onglet prend sa part
-  // de la largeur (jamais plus de 84 points) ; « Opérations », le plus long,
-  // tient en 11 points sur 76.
+  // CINQ NOMS DOIVENT TENIR SUR 320 POINTS. Chaque onglet prend sa part de
+  // la largeur (jamais plus de 84 points) : 55 à 320 points. « Opérations »,
+  // le plus long, en demande 52,6 (Inter demi-gras 11 points, mesuré) ;
+  // « Flux » 21, « Payments » 46. « Transactions » (60) et « Mouvements »
+  // (60) n'y tenaient pas : c'est ce qui a nommé le module.
   const { width } = useWindowDimensions();
-  const largeur = Math.min(84, Math.floor((width - 2 * espaces.lg - 12) / 4));
+  const largeur = Math.min(84, Math.floor((width - 2 * espaces.lg - 12) / ONGLETS.length));
 
   // LA PASTILLE QUI GLISSE. Une seule, sous les quatre onglets : elle va
   // de l'onglet quitté à l'onglet choisi, à la vitesse de l'écran — l'œil
