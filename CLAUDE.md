@@ -1131,6 +1131,28 @@ les Réglages (`noyau/ronds.ts` : cinq au plus, un au moins, un choix abîmé
 rend l'accueil d'origine) ; le choix vit sur le téléphone et n'ouvre aucun
 droit.
 
+**Un SMS, une sonnerie.** Le téléphone sonnait deux fois pour chaque SMS :
+l'application, puis Telegram — l'alerte, et dix secondes plus tard le reçu.
+`sms_sur_telegram`, éteint par défaut, coupe les deux ; Telegram garde les
+nouvelles du BOÎTIER (modem, cartes, bilan) et l'alerte d'un SMS d'argent
+illisible, qui est une panne du lecteur. `tests/test_sms_hors_telegram.py`
+porte son témoin. Au passage, le fichier d'exemple écrivait « oui », que
+Python refusait : recopié tel quel, il empêchait le robot de démarrer.
+
+**Un reçu sur chaque transaction, et un seul système.** La fiche d'un
+paiement n'avait pas de PDF ; la logique du reçu vivait dans la fiche d'un
+SMS. Elle vit maintenant dans `recu.tsx` (téléphone et site), et les deux
+fiches s'en servent : partager, voir, télécharger, refaire. La période
+demandée à la plateforme, elle, vit dans `periode-demandee.ts` : SMS et
+Paiements la partagent, avec ses leçons.
+
+**Une largeur se mesure dans la page.** Cinq onglets à 320 points laissent
+55 points à chacun ; « Opérations » était ESTIMÉ à 52,6 — il en mesure 59, et
+la capture le montrait rogné : « Ͻpérations ». Le corps du nom se réduit
+avec la place. La même capture a montré la loupe de la recherche écrasée à
+zéro, sur les SMS comme aux Paiements : un champ du navigateur a sa largeur
+propre, et sans `minWidth: 0` il pousse ses voisins.
+
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
 

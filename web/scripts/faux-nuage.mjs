@@ -366,9 +366,13 @@ let prochainBeneficiaire = 1;
 //
 //     curl -X POST "http://127.0.0.1:4999/essai/caisse-agent?oui=1"
 let caisseAgent = false;
+// `recul=1` : la même journée, un jour plus tôt. Juste après minuit à Douala,
+// les heures d'« aujourd'hui » sont encore à venir, et la plateforme ne
+// montre pas l'avenir : la caisse paraissait n'avoir qu'une journée.
+let reculAgent = 0;
 function caisseAgentLignes() {
   const jourDouala = (decalage) => new Intl.DateTimeFormat("fr-CA", { timeZone: "Africa/Douala" })
-    .format(new Date(Date.now() + decalage * 86400000));
+    .format(new Date(Date.now() + (decalage - reculAgent) * 86400000));
   const aujourdhui = jourDouala(0), hier = jourDouala(-1);
   const MTN = { compte: "MTN ·8901", carte: "89237010000000008901", expediteur: "MobileMoney" };
   const OM = { compte: "Orange ·4432", carte: "89237020000000004432", expediteur: "OrangeMoney" };
@@ -896,6 +900,7 @@ const serveur = createServer(async (req, res) => {
   //     curl -X POST "http://127.0.0.1:4999/essai/semer?jours=120&parJour=20"
   if (req.method === "POST" && chemin === "/essai/caisse-agent") {
     caisseAgent = url.searchParams.get("oui") !== "0";
+    reculAgent = Math.max(0, Math.min(30, Number(url.searchParams.get("recul")) || 0));
     return repondre({ caisseAgent });
   }
 

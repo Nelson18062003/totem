@@ -8,8 +8,12 @@ const en = {
   comptes: "Accounts",
   smsRecus: "Incoming SMS",
   smsCourt: "SMS",
-  // Le module Flux (voir `textes/flux.ts`).
+  // Les Paiements (voir `textes/flux.ts`).
   flux: "Payments",
+  // L'onglet « … » : tout ce qui n'est pas un des quatre gestes de tous les
+  // jours (voir `textes/plus.ts`).
+  plus: "More",
+  retour: "Back",
   analyse: "Analysis",
   operations: "Operations",
   codeUssd: "USSD code",
@@ -51,7 +55,9 @@ const fr: typeof en = {
   comptes: "Comptes",
   smsRecus: "SMS reçus",
   smsCourt: "SMS",
-  flux: "Flux",
+  flux: "Paiements",
+  plus: "Plus",
+  retour: "Retour",
   analyse: "Analyse",
   operations: "Opérations",
   codeUssd: "Code USSD",

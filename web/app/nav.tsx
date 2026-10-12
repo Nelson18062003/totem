@@ -13,7 +13,7 @@ import { Pastille, useActualite } from "./veille";
 
 // Les libellés vivent dans le dictionnaire (lib/textes/charpente.ts) : ici,
 // seulement leur clé. CINQ entrées, pas une de plus : l'accueil, les
-// comptes, les flux, les SMS et les opérations — ce qu'un propriétaire
+// comptes, les paiements, les SMS et les opérations — ce qu'un propriétaire
 // vient faire.
 // `court` : le libellé de l'onglet mobile quand le nom entier serait long.
 type Lien = {
@@ -26,8 +26,9 @@ type Lien = {
 const liens: Lien[] = [
   { href: "/", cle: "accueil", Icone: IconHome },
   { href: "/cartes", cle: "comptes", Icone: IconCard },
-  // FLUX : ce qui entre et sort de chaque carte, avec la double flèche ⇄.
-  { href: "/flux", cle: "flux", Icone: IconTransfer },
+  // LES PAIEMENTS : ce qui entre et sort de chaque carte, avec la double
+  // flèche ⇄.
+  { href: "/paiements", cle: "flux", Icone: IconTransfer },
   { href: "/encaissements", cle: "smsRecus", court: "smsCourt", Icone: IconInbox },
   // Opérations : le pavé de touches — on y compose les codes.
   { href: "/actions", cle: "operations", Icone: IconPave },

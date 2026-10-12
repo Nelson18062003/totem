@@ -296,6 +296,32 @@ export function correspondFlux(f: Flux, requete: string): boolean {
   return sansEspaces.length > 0 && /^\d+$/.test(sansEspaces) && chiffres.includes(sansEspaces);
 }
 
+/** LE TRI. Le téléphone et le site rangent de la même façon.
+ *
+ *  Par date, la liste se groupe par jour et garde les écarts de la suite
+ *  des soldes à leur place ; par montant, elle est À PLAT — un écart n'a
+ *  pas de place entre deux montants, et le jour s'écrit sur chaque ligne.
+ *  Un montant illisible va à la fin : il n'est ni gros ni petit. */
+export const TRIS_FLUX = ["recentes", "anciennes", "montant_haut", "montant_bas"] as const;
+export type TriFlux = (typeof TRIS_FLUX)[number];
+
+export const parDate = (tri: TriFlux) => tri === "recentes" || tri === "anciennes";
+
+export function trierFlux(liste: readonly Flux[], tri: TriFlux): Flux[] {
+  if (tri === "recentes") return [...liste];
+  if (tri === "anciennes") return [...liste].reverse();
+  const rang = new Map(liste.map((f, i) => [f, i]));
+  return [...liste].sort((a, b) => {
+    const ma = a.p.montant, mb = b.p.montant;
+    if (ma == null || mb == null) {
+      if (ma == null && mb == null) return rang.get(a)! - rang.get(b)!;
+      return ma == null ? 1 : -1;
+    }
+    if (ma !== mb) return tri === "montant_haut" ? mb - ma : ma - mb;
+    return rang.get(a)! - rang.get(b)!;          // à montant égal, le plus récent
+  });
+}
+
 /** Les familles du filtre « Type ». */
 export const FAMILLES_FLUX = ["entrees", "sorties", "depots", "retraits", "transferts", "a_verifier", "echouees"] as const;
 export type FamilleFlux = (typeof FAMILLES_FLUX)[number];

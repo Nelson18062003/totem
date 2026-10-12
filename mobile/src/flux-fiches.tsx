@@ -1,10 +1,15 @@
-// Les feuilles du module Flux : la fiche d'une transaction, « Corriger », et
+// Les feuilles des Paiements : la fiche d'une transaction, « Corriger », et
 // « Que s'est-il passé ? » pour un écart de la suite des soldes.
 //
-// LA FICHE VA DU PLUS IMPORTANT AU DÉTAIL : qui et combien, trois gestes
-// (corriger, le SMS, les autres transactions de ce numéro), puis les
-// détails — l'annoncé avec sa coche, le calculé écrit « (calculé) » et
-// JAMAIS coché. Le SMS d'origine se déplie en bas, mot pour mot.
+// LA FICHE VA DU PLUS IMPORTANT AU DÉTAIL : qui et combien, deux gestes
+// (corriger, les autres transactions de ce numéro), le SMS d'origine mot
+// pour mot — c'est la preuve —, puis les détails : l'annoncé avec sa coche,
+// le calculé écrit « (calculé) » et JAMAIS coché.
+//
+// LE REÇU PDF, AU PIED, comme dans la fiche d'un SMS — le même système
+// (`recu.tsx`) : partager, voir, télécharger, refaire. « C'est hyper
+// important sur chaque transaction », a dit le propriétaire : la fiche d'un
+// paiement n'en avait pas.
 //
 // « CORRIGER » N'ENREGISTRE PAS ENCORE. Le journal signé des corrections est
 // une livraison à part ; d'ici là, le bouton est éteint et le dit. Un bouton
@@ -14,7 +19,8 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 
-import { Carte, ChampTexte, Filet, Texte, avecAppui } from "@/ui";
+import { Carte, ChampTexte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
+import { PiedRecu, useRecu } from "@/recu";
 import { Icone, type NomIcone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { LogoOperateur } from "@/logos-operateurs";
@@ -24,7 +30,8 @@ import { copierTexte } from "@/presse-papiers";
 import { textesFlux, NOMS_TYPES, NOMS_CORRECTION } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
 import { initialesDe, montantSigne, type Flux, type Ecart, type TypeFlux } from "@noyau/flux";
-import { nombre, type Sim } from "@noyau/types";
+import { nombre, type Paiement, type Sim } from "@noyau/types";
+import { estArgent, LONG_MESSAGE, texteSurEcran } from "@noyau/sms";
 import { formaterNumero } from "@noyau/numero";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 
@@ -110,16 +117,25 @@ function Geste({ icone, libelle, onPress }: { icone: NomIcone; libelle: string; 
   );
 }
 
-export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }: {
+export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger, onChange, onRetouche }: {
   f: Flux; sims: Sim[]; maintenant: number; fuseau: string;
   onFermer: () => void; onCorriger: () => void;
+  /** Après un reçu établi : relire EN SILENCE (voir `useRecu`). */
+  onChange?: () => void;
+  /** Pour une période que l'écran tient à part (voir `useRecu`). */
+  onRetouche?: (id: string, champs: Partial<Paiement>) => void;
 }) {
   const langue = useLangue();
   const t = textesFlux[langue];
+  const ts = textesSms[langue];
   const p = f.p;
   const op = operateurDe(p.sim);
   const sim = sims.find((s) => s.iccid === p.carte);
-  const [sms, setSms] = useState(false);
+  const [deplie, setDeplie] = useState(false);
+  const r = useRecu(p, { nature: p.nature, onChange, onRetouche });
+  // Le SMS tel qu'il est arrivé — codes compris : il est au propriétaire.
+  const texte = texteSurEcran(p);
+  const long = texte.length > LONG_MESSAGE;
   const entree = f.effet != null && f.effet > 0;
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const tonEtat = f.etat === "comptee" ? "positif" : f.etat === "echouee" ? "pale" : "alerte";
@@ -127,6 +143,8 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
   const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
   return (
     <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
+             pied={estArgent(p) && (r.recu || p.sourceId != null)
+               ? <PiedRecu r={r} p={p} langue={langue} /> : undefined}
              entete={
                <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
                  <RondFlux f={f} carteCourte={p.sim} taille={44} />
@@ -147,19 +165,39 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
 
         <View style={{ flexDirection: "row" }}>
           <Geste icone="Crayon" libelle={t.corriger} onPress={onCorriger} />
-          <Geste icone="Bubble" libelle={t.voirLeSms} onPress={() => {
-            onFermer();
-            router.push({ pathname: "/encaissements",
-                          params: { recherche: p.reference || p.tiers || p.numero, moment: String(Date.now()) } });
-          }} />
           {p.numero ? (
             <Geste icone="List" libelle={t.toutesAvecCeNumero} onPress={() => {
               onFermer();
-              router.push({ pathname: "/flux", params: { recherche: p.numero, moment: String(Date.now()) } });
+              router.push({ pathname: "/paiements", params: { recherche: p.numero, moment: String(Date.now()) } });
             }} />
           ) : null}
         </View>
 
+        {/* LE SMS D'ORIGINE, MOT POUR MOT — à l'écran, pas derrière un pli :
+            c'est la preuve, et ce que le propriétaire veut pouvoir relire —
+            juste sous le montant, avant les détails.
+            Long, il se replie à six lignes, comme dans la fiche d'un SMS. */}
+        <View style={{ gap: espaces.sm }}>
+          <Texte taille={textes.legende} ton="pale"
+                 style={{ textTransform: "uppercase", letterSpacing: 0.8 }}>
+            {t.smsDOrigine}
+          </Texte>
+          <View style={{ backgroundColor: couleurs.surface2, borderRadius: rayons.carte,
+                         padding: espaces.lg }}>
+            <Texte selectable style={{ lineHeight: 23 }}
+                   numberOfLines={long && !deplie ? 6 : undefined}>
+              {texte}
+            </Texte>
+          </View>
+          {long ? (
+            <Pressable accessibilityRole="button" onPress={() => setDeplie((d) => !d)}
+                       hitSlop={8} style={appuiTexte}>
+              <Texte taille={textes.petit} ton="doux" poids="moyen">
+                {deplie ? ts.replierMessage : ts.toutLeMessage}
+              </Texte>
+            </Pressable>
+          ) : null}
+        </View>
         <Carte>
           {p.numero ? (
             <Rangee libelle={langue === "fr" ? "Numéro" : "Number"}>
@@ -202,23 +240,6 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
           ) : null}
         </Carte>
 
-        <Carte>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: sms }}
-                     onPress={() => setSms(!sms)}
-                     style={avecAppui({ flexDirection: "row", alignItems: "center", gap: espaces.sm,
-                                        padding: espaces.md, paddingHorizontal: espaces.lg })}>
-            <Texte taille={textes.petit} poids="moyen" ton="doux" style={{ flex: 1 }}>{t.ceQueDitLeSms}</Texte>
-            <View style={{ transform: [{ rotate: sms ? "-90deg" : "90deg" }] }}>
-              <Icone nom="Chevron" taille={13} couleur={couleurs.encrePale} />
-            </View>
-          </Pressable>
-          {sms ? (
-            <Texte selectable taille={textes.petit} ton="doux"
-                   style={{ paddingHorizontal: espaces.lg, paddingBottom: espaces.md, lineHeight: 20 }}>
-              {p.smsBrut}
-            </Texte>
-          ) : null}
-        </Carte>
       </View>
     </Feuille>
   );

@@ -138,7 +138,7 @@ const ECRANS = [
   ["1-caisses",       "",               "les cartes, d'un coup d'œil"],
   ["2-encaissements", "/encaissements", "la boîte de réception"],
   ["3-actions",       "/actions",       "les boutons appris"],
-  ["4-cartes",        "/cartes",        "le détail d'une carte"],
+  ["4-cartes",        "/comptes",       "le détail d'une carte"],
 ];
 
 let pris = 0;

@@ -176,13 +176,18 @@ export const ICONES = {
   ],
   // Un billet : le RETRAIT, de l'argent liquide qu'on remet. Le portefeuille
   // est déjà l'onglet Comptes — la même icône pour deux choses se confond.
+  Billet: [
+    { f: "rect", x: "3", y: "6.5", w: "18", h: "11", r: "2" },
+    { f: "circle", cx: "12", cy: "12", r: "2.5" },
+    { f: "path", d: "M6.5 9.5v.01M17.5 14.5v.01" },
+  ],
   // Le crayon : « Corriger », dans la fiche d'une transaction.
   Crayon: [
     { f: "path", d: "M4.5 19.5h4l10-10-4-4-10 10z" },
     { f: "path", d: "M13 7l4 4" },
   ],
   // Le pavé de touches : l'onglet Opérations, où l'on compose les codes.
-  // La double flèche (Transfer) est passée au module Flux — c'est le signe
+  // La double flèche (Transfer) est passée aux Paiements — c'est le signe
   // que le propriétaire a montré chez Revolut pour « ce qui entre et sort ».
   Pave: [
     { f: "circle", cx: "6.5", cy: "5", r: "1.6" },
@@ -196,10 +201,18 @@ export const ICONES = {
     { f: "circle", cx: "17.5", cy: "16", r: "1.6" },
     { f: "circle", cx: "12", cy: "21.2", r: "1.6" },
   ],
-  Billet: [
-    { f: "rect", x: "3", y: "6.5", w: "18", h: "11", r: "2" },
-    { f: "circle", cx: "12", cy: "12", r: "2.5" },
-    { f: "path", d: "M6.5 9.5v.01M17.5 14.5v.01" },
+  // Trois points : l'onglet « Plus », où vivent les Comptes, l'Analyse, le
+  // relevé, les bénéficiaires et les réglages. Des ronds si petits que le
+  // trait les remplit : trois points, pas trois zéros.
+  Points: [
+    { f: "circle", cx: "5", cy: "12", r: "1.1" },
+    { f: "circle", cx: "12", cy: "12", r: "1.1" },
+    { f: "circle", cx: "19", cy: "12", r: "1.1" },
+  ],
+  // Deux flèches, l'une monte, l'autre descend : « Trier », aux Paiements.
+  Tri: [
+    { f: "path", d: "M8 19V5M4.5 8.5 8 5l3.5 3.5" },
+    { f: "path", d: "M16 5v14M12.5 15.5 16 19l3.5-3.5" },
   ],
   // Le calendrier : le filtre « choisir les jours » des SMS.
   Calendrier: [

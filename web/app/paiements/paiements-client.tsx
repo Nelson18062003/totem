@@ -1,13 +1,18 @@
 "use client";
 
-// La page Flux du site — le pendant de l'onglet Flux du téléphone. La règle
-// (types, effets, suite des soldes) vit dans le noyau : les deux surfaces
-// rangent et comptent pareil.
+// La page PAIEMENTS du site — le pendant de l'onglet du téléphone. La règle
+// (types, effets, suite des soldes, tri) vit dans le noyau : les deux
+// surfaces rangent, comptent et trient pareil.
 //
-// PEU DE MOTS, UNE STRUCTURE. En tête : ce qui est entré, ce qui est sorti,
-// le solde annoncé de chaque carte. Une seule ligne d'alerte, seulement s'il
-// y a lieu. Le tableau dit QUI, COMBIEN et le SOLDE annoncé ; tout le reste
-// vit dans la fiche, qui s'ouvre à droite.
+// CE QUE LE PROPRIÉTAIRE A DEMANDÉ : « Entrées » et « Sorties » en tête ne
+// servaient à rien — retirés ; une vraie recherche ; les filtres (période,
+// carte, type) et le TRI ; le reçu PDF sur chaque transaction, et le SMS
+// d'origine.
+//
+// Une seule ligne d'alerte, seulement s'il y a lieu. Le tableau dit QUI,
+// COMBIEN et le SOLDE annoncé ; tout le reste vit dans la fiche, qui s'ouvre
+// à droite — avec le reçu (voir, télécharger, partager, refaire : le même
+// bloc que la fiche d'un SMS, `recu.tsx`).
 //
 // Le signe et la couleur disent ce que l'opération fait au solde : « + » en
 // vert, « − » à l'encre. Le ROUGE est réservé aux soldes qui ne se suivent
@@ -18,19 +23,25 @@ import { useLangue } from "@/app/langue";
 import { textesFlux, NOMS_TYPES, NOMS_CORRECTION } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
 import {
-  fluxDe, totauxFlux, etatDesCartes, parJour, correspondFlux, dansFamille, montantSigne, initialesDe,
-  FAMILLES_FLUX, type Flux, type FamilleFlux, type Ecart, type TypeFlux,
+  fluxDe, totauxFlux, parJour, correspondFlux, dansFamille, montantSigne, initialesDe, parDate, trierFlux,
+  FAMILLES_FLUX, TRIS_FLUX, type Flux, type FamilleFlux, type Ecart, type TriFlux, type TypeFlux,
 } from "@noyau/flux";
+import { estArgent, LONG_MESSAGE, texteSurEcran } from "@noyau/sms";
 import { jourLocal, nombre, type Paiement, type Sim } from "@noyau/types";
 import { bornesDe, dansBornes, jourCourt, jourDuReleve, libelleJour, type Periode } from "@noyau/periodes";
 import { formaterNumero } from "@noyau/numero";
-import { IconBubble, IconCheck, IconChevron, IconClose, IconCopy, IconCrayon, IconList, IconLock, IconPhone, IconSearch, IconTransfer } from "../icons";
+import { IconCheck, IconChevron, IconClose, IconCopy, IconCrayon, IconList, IconLock, IconPhone, IconSearch, IconTransfer } from "../icons";
+import { GestesRecu, useRecuDuSms } from "../recu";
 import { couleurOperateur, LogoOperateur } from "../logos-operateurs";
 
-type Initial = { q: string; periode: string; carte: string; type: string; t: string };
+type Initial = { q: string; periode: string; carte: string; type: string; tri: string; t: string };
+
+// Ce que la page reçoit au plus (voir `MAX_SMS`) : au-delà, le début d'une
+// longue période manque — et la page le dit.
+const PLAFOND = 1000;
 type Langue = "fr" | "en";
 
-const PERIODES = ["aujourdhui", "hier", "semaine", "mois", "tout"] as const;
+const PERIODES = ["tout", "aujourdhui", "hier", "semaine", "mois"] as const;
 const operateurDe = (libelle: string) => libelle.split(/[\s·]/)[0] || libelle;
 
 function quandAnnonce(iso: string, heure: string, maintenant: number, fuseau: string, langue: Langue) {
@@ -46,7 +57,7 @@ function quandAnnonce(iso: string, heure: string, maintenant: number, fuseau: st
   return `Le ${jourCourt(j.cle, langue)} à ${heure}`;
 }
 
-export function PageFlux({ paiements, sims, fuseau, initial }: {
+export function PagePaiements({ paiements, sims, fuseau, initial }: {
   paiements: Paiement[]; sims: Sim[]; fuseau: string; initial: Initial;
 }) {
   const langue = useLangue() as Langue;
@@ -54,9 +65,10 @@ export function PageFlux({ paiements, sims, fuseau, initial }: {
   const ts = textesSms[langue];
   const [maintenant] = useState(() => Date.now());
   const [recherche, setRecherche] = useState(initial.q);
-  const [periode, setPeriode] = useState<string>(PERIODES.includes(initial.periode as never) ? initial.periode : "aujourdhui");
+  const [periode, setPeriode] = useState<string>(PERIODES.includes(initial.periode as never) ? initial.periode : "tout");
   const [carte, setCarte] = useState(initial.carte);
   const [famille, setFamille] = useState<string>(FAMILLES_FLUX.includes(initial.type as never) ? initial.type : "");
+  const [tri, setTri] = useState<TriFlux>(TRIS_FLUX.includes(initial.tri as never) ? initial.tri as TriFlux : "recentes");
   const [aRegarder, setARegarder] = useState(false);
   const [ouverte, setOuverte] = useState(initial.t);
   const [corriger, setCorriger] = useState<Flux | null>(null);
@@ -66,13 +78,14 @@ export function PageFlux({ paiements, sims, fuseau, initial }: {
   useEffect(() => {
     const u = new URLSearchParams();
     if (recherche) u.set("q", recherche);
-    if (periode !== "aujourdhui") u.set("periode", periode);
+    if (periode !== "tout") u.set("periode", periode);
     if (carte) u.set("carte", carte);
     if (famille) u.set("type", famille);
+    if (tri !== "recentes") u.set("tri", tri);
     if (ouverte) u.set("t", ouverte);
     const s = u.toString();
-    window.history.replaceState(null, "", s ? `/flux?${s}` : "/flux");
-  }, [recherche, periode, carte, famille, ouverte]);
+    window.history.replaceState(null, "", s ? `/paiements?${s}` : "/paiements");
+  }, [recherche, periode, carte, famille, tri, ouverte]);
 
   const tous = useMemo(() => fluxDe(paiements), [paiements]);
   const bornes = bornesDe({ genre: periode } as Periode, maintenant, fuseau);
@@ -83,11 +96,18 @@ export function PageFlux({ paiements, sims, fuseau, initial }: {
     && correspondFlux(f, recherche)),
   [tous, bornes?.de, bornes?.a, carte, famille, recherche]);
   const totaux = totauxFlux(dansLaVue);
-  const vus = aRegarder ? dansLaVue.filter((f) => f.etat === "a_verifier" || f.ecartAvant || f.ecartApres) : dansLaVue;
-  const jours = parJour(vus);
+  const vus = trierFlux(aRegarder
+    ? dansLaVue.filter((f) => f.etat === "a_verifier" || f.ecartAvant || f.ecartApres) : dansLaVue, tri);
+  const chronologique = parDate(tri);
+  const jours = chronologique ? parJour(vus) : [];
   const aujourdhui = jourLocal(new Date(maintenant), fuseau);
-  const cartes = useMemo(() => etatDesCartes(paiements, tous), [paiements, tous]);
-  const cartesVues = [...cartes.values()].filter((c) => !carte || c.carte === carte);
+  // La page a-t-elle toute la PÉRIODE ? Elle reçoit au plus mille SMS, les
+  // plus récents : si le plus ancien est encore DANS la période choisie, son
+  // début manque. (Sans période, la liste est « les plus récents » : rien à
+  // dire de plus.)
+  const tronquee = bornes != null && paiements.length >= PLAFOND
+    && (paiements[paiements.length - 1]?.jour ?? "") >= bornes.de;
+  const filtre = periode !== "tout" || !!carte || !!famille || recherche.trim() !== "";
   const fiche = ouverte ? tous.find((f) => f.p.id === ouverte) ?? null : null;
   const nomPeriode = (p: string) => p === "aujourdhui" ? ts.periodeAujourdhui : p === "hier" ? ts.periodeHier
     : p === "semaine" ? ts.periodeSemaine : p === "mois" ? ts.periodeMois : ts.periodeTout;
@@ -105,38 +125,26 @@ export function PageFlux({ paiements, sims, fuseau, initial }: {
                          options={[{ cle: "", libelle: t.toutesLesCartes }, ...sims.map((s) => ({ cle: s.iccid, libelle: s.libelle }))]} />
             <FiltreTexte etiquette={t.type} valeur={famille} onChange={setFamille}
                          options={[{ cle: "", libelle: t.tous }, ...FAMILLES_FLUX.map((f) => ({ cle: f, libelle: t.familles[f] }))]} />
+            <FiltreTexte etiquette={t.triAria} valeur={tri} onChange={(v) => setTri(v as TriFlux)}
+                         options={TRIS_FLUX.map((x) => ({ cle: x, libelle: t.tris[x] }))} />
           </div>
         </div>
-        <label className="flex w-full items-center gap-2 rounded-full border border-line bg-surface-raised px-4 sm:w-72">
+        <label className="flex w-full items-center gap-2 rounded-full border border-line bg-surface-raised px-4 sm:w-80">
           <IconSearch size={16} className="text-ink-faint" />
-          <input value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder={t.chercher}
-                 aria-label={t.rechercher}
+          <input value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder={t.rechercher}
+                 aria-label={t.chercher}
                  className="w-full bg-transparent py-2 text-small outline-none placeholder:text-ink-faint" />
+          {recherche && (
+            <button type="button" onClick={() => setRecherche("")} aria-label={ts.effacerRecherche}
+                    className="text-ink-faint hover:text-ink"><IconClose size={14} /></button>
+          )}
         </label>
       </header>
 
-      {/* EN TÊTE : deux chiffres, et le solde annoncé de chaque carte. */}
-      <section className="flex flex-col gap-2">
-        <div className="grid overflow-hidden rounded-card border border-line bg-surface-raised md:grid-cols-[1fr_1fr_1.3fr]">
-          <Chiffre libelle={t.entrees} valeur={`+${nombre(totaux.entrees, langue)}`} classe="text-positive" />
-          <Chiffre libelle={t.sorties} valeur={`−${nombre(totaux.sorties, langue)}`} />
-          <div className="flex flex-col justify-center gap-2 border-t border-line px-5 py-4 md:border-l md:border-t-0">
-            {cartesVues.map((c) => {
-              const op = operateurDe(nomCarte(c.carte));
-              return (
-                <div key={c.carte} className="flex items-center gap-2.5 text-small">
-                  <LogoOperateur operateur={op} size={18} />
-                  <span className="flex-1 text-ink-soft">{nomCarte(c.carte).replace(/^\S+\s*/, "")}</span>
-                  <span className="font-semibold tabnums">{c.solde != null ? `${nombre(c.solde, langue)} F` : "—"}</span>
-                  <span className={`w-4 text-center ${c.ecarts ? "text-negative" : "text-positive"}`}
-                        title={c.heure ? t.annonceCourt(c.heure) : undefined}>
-                    {c.ecarts ? "⚠" : c.suitDepuis ? "✓" : ""}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* UNE SEULE LIGNE D'ALERTE, s'il y a lieu ; et ce que les filtres
+          ont trouvé — un nombre, pas un total : les chiffres de tête ont été
+          retirés à dessein. */}
+      <section className="flex flex-col gap-2 empty:hidden">
         {(totaux.ecarts > 0 || totaux.aVerifier > 0) && (
           <button type="button" aria-pressed={aRegarder} onClick={() => setARegarder(!aRegarder)}
                   className={`flex items-center gap-2.5 self-start rounded-full px-4 py-2 text-small font-medium ${
@@ -146,36 +154,59 @@ export function PageFlux({ paiements, sims, fuseau, initial }: {
             {aRegarder ? <IconClose size={12} /> : <IconChevron size={12} />}
           </button>
         )}
+        {filtre && vus.length > 0 && (
+          <p className="px-1 text-small text-ink-faint">{t.transactions(vus.length)}</p>
+        )}
+        {tronquee && <p className="px-1 text-caption text-alert">{t.periodeTronquee}</p>}
       </section>
 
-      {vus.length === 0 && <p className="py-10 text-center text-ink-soft">{t.aucuneTransaction}</p>}
+      {vus.length === 0 && (
+        <p className="py-10 text-center text-ink-soft">{filtre || aRegarder ? t.aucunResultat : t.aucunPaiement}</p>
+      )}
 
-      {/* LA LISTE, JOUR PAR JOUR. */}
-      {jours.map((j) => {
-        const net = j.totaux.entrees - j.totaux.sorties;
-        return (
-          <section key={j.jour} className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between px-1">
-              <h2 className="text-small font-semibold">{libelleJour(j.jour, aujourdhui, langue)}</h2>
-              <span className="text-small text-ink-faint tabnums">{net >= 0 ? "+" : "−"}{nombre(Math.abs(net), langue)}</span>
-            </div>
-            <div className="overflow-hidden rounded-card border border-line bg-surface-raised">
-              <table className="w-full border-collapse text-small">
-                <tbody>
-                  {j.flux.map((f, i) => (
+      {/* PAR DATE : jour par jour, les écarts à leur place — au-dessus de la
+          ligne la plus récente qu'ils bordent, dans le sens de la lecture. */}
+      {chronologique && jours.map((j) => (
+        <section key={j.jour} className="flex flex-col gap-2">
+          <h2 className="px-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
+            {libelleJour(j.jour, aujourdhui, langue)}
+          </h2>
+          <div className="overflow-hidden rounded-card border border-line bg-surface-raised">
+            <table className="w-full border-collapse text-small">
+              <tbody>
+                {j.flux.map((f, i) => {
+                  const dessus = tri === "recentes" ? f.ecartApres : f.ecartAvant;
+                  const dessous = tri === "recentes" ? f.ecartAvant : f.ecartApres;
+                  return (
                     <Fragment key={f.p.id}>
-                      {f.ecartApres && <RangeeEcart e={f.ecartApres} t={t} langue={langue} onOuvrir={() => setEcart({ f, e: f.ecartApres! })} />}
-                      <Ligne f={f} langue={langue} carteCourte={nomCarte(f.p.carte || f.p.sim)} premiere={i === 0 && !f.ecartApres}
+                      {dessus && <RangeeEcart e={dessus} t={t} langue={langue} onOuvrir={() => setEcart({ f, e: dessus })} />}
+                      <Ligne f={f} langue={langue} carteCourte={nomCarte(f.p.carte || f.p.sim)} premiere={i === 0 && !dessus}
                              choisie={ouverte === f.p.id} onOuvrir={() => setOuverte(f.p.id)} />
-                      {f.ecartAvant && <RangeeEcart e={f.ecartAvant} t={t} langue={langue} onOuvrir={() => setEcart({ f, e: f.ecartAvant! })} />}
+                      {dessous && <RangeeEcart e={dessous} t={t} langue={langue} onOuvrir={() => setEcart({ f, e: dessous })} />}
                     </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        );
-      })}
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+
+      {/* PAR MONTANT : à plat, le jour sur chaque ligne — un écart n'a pas
+          de place entre deux montants. */}
+      {!chronologique && vus.length > 0 && (
+        <div className="overflow-hidden rounded-card border border-line bg-surface-raised">
+          <table className="w-full border-collapse text-small">
+            <tbody>
+              {vus.map((f, i) => (
+                <Ligne key={f.p.id} f={f} langue={langue} carteCourte={nomCarte(f.p.carte || f.p.sim)} premiere={i === 0}
+                       choisie={ouverte === f.p.id} onOuvrir={() => setOuverte(f.p.id)}
+                       jour={jourCourt(f.p.jour, langue)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {fiche && (
         <PanneauFiche f={fiche} sims={sims} maintenant={maintenant} fuseau={fuseau} langue={langue}
@@ -204,15 +235,6 @@ function FiltreTexte({ etiquette, valeur, options, onChange }: {
   );
 }
 
-function Chiffre({ libelle, valeur, classe = "" }: { libelle: string; valeur: string; classe?: string }) {
-  return (
-    <div className="flex flex-col gap-1 border-line px-5 py-4 [&+&]:border-t md:[&+&]:border-l md:[&+&]:border-t-0">
-      <span className="text-small text-ink-soft">{libelle}</span>
-      <span className={`text-title font-bold tabnums ${classe}`}>{valeur}</span>
-    </div>
-  );
-}
-
 /** Le rond : les initiales, et un point à la couleur de l'opérateur. */
 function Rond({ f, carteCourte, taille = 36 }: { f: Flux; carteCourte: string; taille?: number }) {
   const attend = f.etat === "a_verifier";
@@ -232,8 +254,10 @@ function Rond({ f, carteCourte, taille = 36 }: { f: Flux; carteCourte: string; t
   );
 }
 
-function Ligne({ f, langue, carteCourte, premiere, choisie, onOuvrir }: {
+function Ligne({ f, langue, carteCourte, premiere, choisie, onOuvrir, jour }: {
   f: Flux; langue: Langue; carteCourte: string; premiere: boolean; choisie: boolean; onOuvrir: () => void;
+  /** Le jour, quand la liste n'est plus rangée par jour (tri par montant). */
+  jour?: string;
 }) {
   const t = textesFlux[langue];
   const p = f.p;
@@ -249,7 +273,8 @@ function Ligne({ f, langue, carteCourte, premiere, choisie, onOuvrir }: {
         <button type="button" onClick={onOuvrir} className="block w-full text-left">
           <span className={`block truncate font-medium ${echouee ? "text-ink-faint" : ""}`}>{titre}</span>
           <span className={`block truncate text-caption ${attend ? "text-alert" : "text-ink-faint"}`}>
-            {NOMS_TYPES[langue][f.type]} · {attend ? t.aConfirmer : p.heure}
+            {attend ? `${NOMS_TYPES[langue][f.type]} · ${t.aConfirmer}`
+              : `${jour ? `${jour} ${p.heure}` : p.heure} · ${NOMS_TYPES[langue][f.type]}`}
           </span>
         </button>
       </td>
@@ -321,7 +346,12 @@ function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorrige
   const op = operateurDe(p.sim);
   const sim = sims.find((s) => s.iccid === p.carte);
   const entree = f.effet != null && f.effet > 0;
-  const [sms, setSms] = useState(false);
+  const ts = textesSms[langue];
+  const [deplie, setDeplie] = useState(false);
+  // Le SMS tel qu'il est arrivé — codes compris : il est au propriétaire.
+  const texte = texteSurEcran(p);
+  const long = texte.length > LONG_MESSAGE;
+  const { recu, enPreparation, etabli, mot, etablirRecu } = useRecuDuSms(p, p.nature);
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
   return (
@@ -340,11 +370,28 @@ function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorrige
       <p className={`text-center text-display font-bold tabnums ${f.etat === "a_verifier" ? "text-alert" : entree ? "text-positive" : ""}`}>
         {montantSigne(f, langue, nombre)} F
       </p>
+      {/* LE REÇU PDF : le même bloc que la fiche d'un SMS. */}
+      {estArgent(p) && (recu || p.sourceId != null) && (
+        <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation} mot={mot}
+                    onEtablir={() => void etablirRecu()} />
+      )}
       <div className="flex">
         <Geste Icone={IconCrayon} libelle={t.corriger} onClick={onCorriger} />
-        <Geste Icone={IconBubble} libelle={t.voirLeSms}
-               onClick={() => { window.location.href = `/encaissements?recherche=${encodeURIComponent(p.reference || p.tiers || p.numero)}`; }} />
         {p.numero && <Geste Icone={IconList} libelle={t.toutesAvecCeNumero} onClick={() => onNumero(p.numero)} />}
+      </div>
+      {/* LE SMS D'ORIGINE, mot pour mot — à l'écran : c'est la preuve. */}
+      <div>
+        <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.smsDOrigine}</p>
+        <p dir="auto" className={`whitespace-pre-wrap break-words rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft ${
+          long && !deplie ? "line-clamp-6" : ""}`}>
+          {texte}
+        </p>
+        {long && (
+          <button type="button" onClick={() => setDeplie((d) => !d)}
+                  className="mt-1.5 text-caption text-ink-soft underline underline-offset-4 transition hover:text-ink">
+            {deplie ? ts.replierMessage : ts.toutLeMessage}
+          </button>
+        )}
       </div>
       <div className="divide-hair rounded-card border border-line">
         {p.numero && <Rang libelle={langue === "fr" ? "Numéro" : "Number"}><Copiable texte={p.numero} affiche={formaterNumero(p.numero)} /></Rang>}
@@ -362,14 +409,6 @@ function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorrige
         {f.soldeAvantCalcule != null && (
           <Rang libelle={t.soldeAvant}><span className="italic text-ink-faint tabnums">{nombre(f.soldeAvantCalcule, langue)} F ({t.calcule})</span></Rang>
         )}
-      </div>
-      <div className="rounded-card border border-line">
-        <button type="button" aria-expanded={sms} onClick={() => setSms(!sms)}
-                className="flex w-full items-center gap-2 px-4 py-3 text-left text-small font-medium text-ink-soft">
-          <span className="flex-1">{t.ceQueDitLeSms}</span>
-          <IconChevron size={12} className={sms ? "-rotate-90" : "rotate-90"} />
-        </button>
-        {sms && <p className="whitespace-pre-line break-words px-4 pb-3 text-small text-ink-soft">{p.smsBrut}</p>}
       </div>
     </aside>
   );

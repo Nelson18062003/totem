@@ -2,7 +2,7 @@
 // au franc près — sauf un écart voulu de 100 000 F.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fluxDe, totauxFlux, etatDesCartes, parJour, correspondFlux, dansFamille, typeDe } from "../flux";
+import { fluxDe, totauxFlux, etatDesCartes, parJour, correspondFlux, dansFamille, typeDe, trierFlux } from "../flux";
 import type { Paiement } from "../types";
 
 let n = 0;
@@ -129,4 +129,20 @@ test("par jour, la recherche, le filtre Type", () => {
   assert.equal(f.filter((x) => dansFamille(x, null)).length, 9);       // sans l'échouée
   assert.equal(f.filter((x) => dansFamille(x, "echouees")).length, 1);
   assert.equal(f.filter((x) => dansFamille(x, "depots")).length, 3);
+});
+
+test("le tri : par date dans les deux sens, par montant à plat, l'illisible à la fin", () => {
+  const liste = fluxDe(JOURNEE);
+  const recentes = trierFlux(liste, "recentes");
+  const anciennes = trierFlux(liste, "anciennes");
+  assert.deepEqual(anciennes.map((f) => f.p.id), [...recentes].reverse().map((f) => f.p.id));
+  const haut = trierFlux(liste, "montant_haut").map((f) => f.p.montant);
+  const lus = haut.filter((m): m is number => m != null);
+  assert.deepEqual(lus, [...lus].sort((a, b) => b - a));
+  assert.ok(haut.indexOf(null) === -1 || haut.slice(haut.indexOf(null)).every((m) => m == null),
+            "un montant illisible ne se glisse pas entre deux montants");
+  const bas = trierFlux(liste, "montant_bas").map((f) => f.p.montant).filter((m): m is number => m != null);
+  assert.deepEqual(bas, [...bas].sort((a, b) => a - b));
+  // Le tri ne perd ni ne double rien.
+  assert.equal(new Set(trierFlux(liste, "montant_haut").map((f) => f.p.id)).size, liste.length);
 });

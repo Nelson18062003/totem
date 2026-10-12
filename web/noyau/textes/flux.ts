@@ -1,9 +1,11 @@
-// Le module Flux : ce qui est entré et sorti de chaque carte.
+// Les PAIEMENTS : ce qui est entré et sorti de chaque carte.
 //
-// « Flux », pas « Transactions » : sur la barre d'onglets du plus petit
-// téléphone, avec cinq onglets, chacun a 55 points ; « Transactions » en
-// demande 60 et « Mouvements » 60 (Inter demi-gras 11 points, mesuré).
-// « Flux » tient en 21, et dit les deux sens à la fois — comme son icône ⇄.
+// Le module s'est d'abord appelé « Flux » ; le propriétaire a demandé
+// « Paiements », le mot de Revolut. Sur la barre d'onglets du plus petit
+// téléphone, avec cinq onglets, chacun a 55 points : « Paiements » en
+// demande 48,3 (Inter demi-gras 11 points, mesuré), « Payments » 45,8.
+// « Transactions » (60) et « Mouvements » (60) n'y tenaient pas.
+// Dans le code, la règle garde son nom de « flux » (`@noyau/flux`).
 
 import type { TypeFlux } from "../flux";
 
@@ -12,7 +14,9 @@ const en = {
   onglet: "Payments",
   titre: "Payments",
   sousTitre: "What came in and went out of your cards",
-  rechercher: "Name, number, amount, reference",
+  // Le texte d'exemple tient dans le champ du plus petit téléphone : 230
+  // points à 320 (Inter 16 : 193 ici). La référence se cherche aussi.
+  rechercher: "Name, number or amount",
   periode: "Period",
   cartes: "Cards",
   toutesLesCartes: "All cards",
@@ -55,6 +59,22 @@ const en = {
   soldesVerifies: "Balances checked",
   annonceCourt: (h: string) => `announced ${h}`,
   aucuneTransaction: "No transactions for this period.",
+  aucunResultat: "No payment matches.",
+  aucunPaiement: "No payments yet. Every deposit, withdrawal and transfer on your cards will appear here.",
+  // Les filtres, comme ceux des SMS (`filtres.tsx`), et le tri.
+  filtreDateTitre: "Show the payments of…",
+  tri: "Sort",
+  triAria: "Sort the payments",
+  triTitre: "Sort by…",
+  tris: {
+    recentes: "Most recent first", anciennes: "Oldest first",
+    montant_haut: "Largest amounts first", montant_bas: "Smallest amounts first",
+  },
+  trisCourts: {
+    recentes: "Most recent", anciennes: "Oldest", montant_haut: "Largest", montant_bas: "Smallest",
+  },
+  periodeImpossible: "The payments of this period could not be loaded. Check the connection, then try again.",
+  periodeTronquee: "Only the latest 1,000 SMS of this period came back: its first days are missing. Pick fewer days.",
   familles: {
     entrees: "Money in", sorties: "Money out", depots: "Deposits", retraits: "Withdrawals",
     transferts: "Transfers", a_verifier: "To check", echouees: "Failed",
@@ -74,6 +94,7 @@ const en = {
   soldeApresAnnonce: (op: string) => `Balance after, announced by ${op}`,
   soldeAvant: "Balance before",
   ceQueDitLeSms: "What the SMS says",
+  smsDOrigine: "Original SMS",
   recuPdf: "PDF receipt",
   partager: "Share",
   corriger: "Correct",
@@ -99,10 +120,10 @@ const en = {
 };
 
 const fr: typeof en = {
-  onglet: "Flux",
-  titre: "Flux",
+  onglet: "Paiements",
+  titre: "Paiements",
   sousTitre: "Ce qui est entré et sorti de vos cartes",
-  rechercher: "Nom, numéro, montant, référence",
+  rechercher: "Nom, numéro ou montant",
   periode: "Période",
   cartes: "Cartes",
   toutesLesCartes: "Toutes les cartes",
@@ -141,6 +162,21 @@ const fr: typeof en = {
   soldesVerifies: "Soldes vérifiés",
   annonceCourt: (h) => `annoncé à ${h}`,
   aucuneTransaction: "Aucune transaction sur cette période.",
+  aucunResultat: "Aucun paiement ne correspond.",
+  aucunPaiement: "Aucun paiement pour l'instant. Chaque dépôt, retrait et transfert de vos cartes apparaîtra ici.",
+  filtreDateTitre: "Voir les paiements de…",
+  tri: "Trier",
+  triAria: "Trier les paiements",
+  triTitre: "Ranger par…",
+  tris: {
+    recentes: "Les plus récents d'abord", anciennes: "Les plus anciens d'abord",
+    montant_haut: "Les plus gros montants d'abord", montant_bas: "Les plus petits montants d'abord",
+  },
+  trisCourts: {
+    recentes: "Récents", anciennes: "Anciens", montant_haut: "Plus gros", montant_bas: "Plus petits",
+  },
+  periodeImpossible: "Les paiements de cette période n'ont pas pu être chargés. Vérifiez la connexion, puis réessayez.",
+  periodeTronquee: "Seuls les 1 000 derniers SMS de cette période sont revenus : ses premiers jours manquent. Choisissez moins de jours.",
   familles: {
     entrees: "Entrées", sorties: "Sorties", depots: "Dépôts", retraits: "Retraits",
     transferts: "Transferts", a_verifier: "À vérifier", echouees: "Échouées",
@@ -159,6 +195,7 @@ const fr: typeof en = {
   soldeApresAnnonce: (op) => `Solde après, annoncé par ${op}`,
   soldeAvant: "Solde avant",
   ceQueDitLeSms: "Ce que dit le SMS",
+  smsDOrigine: "Le SMS d'origine",
   recuPdf: "Reçu PDF",
   partager: "Partager",
   corriger: "Corriger",
