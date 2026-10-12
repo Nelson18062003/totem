@@ -130,7 +130,7 @@ export default function Flux() {
               <BoutonFiltre libelle={nomPeriode} etiquette={t.periode} actif={periode.genre !== "tout"}
                             icone="Calendrier" onPress={() => setFeuille({ genre: "periode" })} />
               <View style={{ flexShrink: 1 }}>
-                <BoutonFiltre libelle={carte ? nomCarte(carte) : t.toutesLesCartes} etiquette={t.cartes}
+                <BoutonFiltre libelle={carte ? nomCarte(carte) : t.cartes} etiquette={t.cartes}
                               actif={carte != null} icone="PuceSim"
                               onPress={() => setFeuille({ genre: "carte" })} />
               </View>
@@ -238,12 +238,15 @@ export default function Flux() {
           <View key={j.jour} style={{ gap: espaces.sm }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: espaces.sm,
                            paddingHorizontal: espaces.xs }}>
-              <Texte taille={textes.legende} poids="demi" ton="doux"
-                     style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+              <Texte taille={textes.legende} poids="demi" ton="doux" numberOfLines={1}
+                     style={{ textTransform: "uppercase", letterSpacing: 0.5, flexShrink: 1 }}>
                 {libelleJour(j.jour, aujourdhui, langue)} · {t.transactions(j.totaux.nombre)}
               </Texte>
-              <Texte taille={textes.legende} ton="pale" chiffresAlignes style={{ marginLeft: "auto" }}>
-                +{nombre(j.totaux.entrees, langue)} · −{nombre(j.totaux.sorties, langue)}
+              {/* Le net seul : « +900 000 · −420 000 » passait sur deux lignes
+                  sur un iPhone SE, et le résumé du haut les donne déjà. */}
+              <Texte taille={textes.legende} ton="pale" chiffresAlignes numberOfLines={1}
+                     style={{ marginLeft: "auto", flexShrink: 0 }}>
+                net {j.totaux.entrees - j.totaux.sorties >= 0 ? "+" : "−"}{nombre(Math.abs(j.totaux.entrees - j.totaux.sorties), langue)}
               </Texte>
             </View>
             <Carte style={{ padding: 0, overflow: "hidden" }}>
@@ -331,16 +334,11 @@ function LigneFlux({ f, langue, carteCourte, onOuvrir, onCorriger }: {
                  paddingHorizontal: espaces.lg,
                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
                })}>
-      <View style={{ width: 38, height: 38 }}>
-        <View style={{ width: 38, height: 38, borderRadius: rayons.rond, backgroundColor: fond,
-                       alignItems: "center", justifyContent: "center" }}>
-          <Icone nom={icone} taille={17} couleur={teinte} />
-        </View>
-        <View style={{ position: "absolute", right: -3, bottom: -3, borderRadius: rayons.rond,
-                       borderWidth: 2, borderColor: couleurs.surfaceHaute,
-                       backgroundColor: couleurs.surfaceHaute }}>
-          <LogoOperateur operateur={operateurDe(carteCourte)} taille={14} />
-        </View>
+      {/* Le sens, d'un coup d'œil. L'opérateur se lit sur la troisième ligne :
+          un logo posé sur le rond cachait la flèche. */}
+      <View style={{ width: 40, height: 40, borderRadius: rayons.rond, backgroundColor: fond,
+                     alignItems: "center", justifyContent: "center" }}>
+        <Icone nom={icone} taille={18} couleur={teinte} />
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
@@ -360,10 +358,13 @@ function LigneFlux({ f, langue, carteCourte, onOuvrir, onCorriger }: {
           </Texte>
           {attend ? <PastilleAmbre texte={t.aVerifierEtat} /> : null}
         </View>
-        <Texte taille={textes.legende} ton="pale" numberOfLines={1} chiffresAlignes>
-          {p.heure} · {carteCourte} · {solde}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs }}>
+        <LogoOperateur operateur={operateurDe(carteCourte)} taille={13} />
+        <Texte taille={textes.legende} ton="pale" numberOfLines={1} chiffresAlignes style={{ flexShrink: 1 }}>
+          {carteCourte.replace(/^\S+\s*/, "")} · {p.heure} · {solde}
           {f.verdict === "suit" ? <Texte taille={textes.legende} ton="positif" poids="demi"> ✓</Texte> : null}
         </Texte>
+        </View>
         {attend && f.lesSoldesDisent ? (
           <Pressable accessibilityRole="button" onPress={onCorriger} hitSlop={6}
                      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, alignSelf: "flex-start" })}>

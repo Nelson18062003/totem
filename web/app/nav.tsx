@@ -7,17 +7,18 @@ import { changerLangue, useLangue } from "@/app/langue";
 import { autreLangue } from "@noyau/langue";
 import { textesCharpente } from "@noyau/textes/charpente";
 import type { EtatTerminal } from "@noyau/types";
-import { IconCard, IconChart, IconChevron, IconGlobe, IconGrid, IconHash, IconHome, IconInbox, IconSettings } from "./icons";
+import { IconCard, IconChart, IconChevron, IconGlobe, IconHash, IconHome, IconInbox, IconPave, IconSettings, IconTransfer } from "./icons";
 import { Logo, Symbole } from "./marque";
 import { Pastille, useActualite } from "./veille";
 
 // Les libellés vivent dans le dictionnaire (lib/textes/charpente.ts) : ici,
-// seulement leur clé. QUATRE entrées, pas une de plus : l'accueil, les
-// comptes, les SMS et les opérations — ce qu'un propriétaire vient faire.
+// seulement leur clé. CINQ entrées, pas une de plus : l'accueil, les
+// comptes, les flux, les SMS et les opérations — ce qu'un propriétaire
+// vient faire.
 // `court` : le libellé de l'onglet mobile quand le nom entier serait long.
 type Lien = {
   href: string;
-  cle: "accueil" | "comptes" | "smsRecus" | "analyse" | "operations" | "codeUssd";
+  cle: "accueil" | "comptes" | "flux" | "smsRecus" | "analyse" | "operations" | "codeUssd";
   court?: "smsCourt";
   Icone: typeof IconHome;
 };
@@ -25,8 +26,11 @@ type Lien = {
 const liens: Lien[] = [
   { href: "/", cle: "accueil", Icone: IconHome },
   { href: "/cartes", cle: "comptes", Icone: IconCard },
+  // FLUX : ce qui entre et sort de chaque carte, avec la double flèche ⇄.
+  { href: "/flux", cle: "flux", Icone: IconTransfer },
   { href: "/encaissements", cle: "smsRecus", court: "smsCourt", Icone: IconInbox },
-  { href: "/actions", cle: "operations", Icone: IconGrid },
+  // Opérations : le pavé de touches — on y compose les codes.
+  { href: "/actions", cle: "operations", Icone: IconPave },
 ];
 
 // Le second rang, sur grand écran seulement. Sur téléphone, ces pages se

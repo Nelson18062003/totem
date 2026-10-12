@@ -85,7 +85,8 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
   const entree = f.effet != null && f.effet > 0;
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const tonEtat = f.etat === "comptee" ? "positif" : f.etat === "echouee" ? "pale" : "alerte";
-  const date = quandAnnonce(p.recuLe, p.heure, maintenant, fuseau, langue);
+  const quand = quandAnnonce(p.recuLe, p.heure, maintenant, fuseau, langue);
+  const date = quand.charAt(0).toUpperCase() + quand.slice(1);
   return (
     <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
              entete={
@@ -133,7 +134,7 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
             <Rangee libelle={t.frais}><Texte chiffresAlignes>{nombre(p.frais, langue)} F</Texte></Rangee>
           ) : null}
           {p.commission ? (
-            <Rangee libelle={t.commissions}>
+            <Rangee libelle={t.commission}>
               <Texte chiffresAlignes>{nombre(p.commission, langue)} F</Texte>
               <Texte taille={textes.legende} ton="pale">{t.commissionNonComptee}</Texte>
             </Rangee>
@@ -199,15 +200,18 @@ function BoutonPilule({ libelle, plein, onPress, desactive }: {
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: !!desactive }}
                disabled={desactive} onPress={onPress}
+               // ÉTEINT, ÇA SE VOIT : un bouton éteint qui garde l'air d'un bouton
+               // actif laisse croire qu'on a enregistré.
                style={avecAppui({
                  minHeight: 40, paddingHorizontal: espaces.lg, borderRadius: rayons.rond,
                  justifyContent: "center", borderWidth: 1,
-                 borderColor: plein ? couleurs.accent : couleurs.trait,
-                 backgroundColor: plein ? couleurs.accent : couleurs.surfaceHaute,
-                 opacity: desactive ? 0.45 : 1,
+                 borderColor: desactive ? couleurs.surface2 : plein ? couleurs.accent : couleurs.trait,
+                 backgroundColor: desactive ? couleurs.surface2 : plein ? couleurs.accent : couleurs.surfaceHaute,
                })}>
       <Texte taille={textes.petit} poids="demi"
-             style={{ color: plein ? couleurs.surfaceHaute : couleurs.encre }}>{libelle}</Texte>
+             style={{ color: desactive ? couleurs.encrePale : plein ? couleurs.surfaceHaute : couleurs.encre }}>
+        {libelle}
+      </Texte>
     </Pressable>
   );
 }

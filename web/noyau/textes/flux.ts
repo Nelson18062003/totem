@@ -22,6 +22,7 @@ const en = {
   sorties: "Money out",
   frais: "Fees",
   commissions: "Commissions",
+  commission: "Commission",
   commissionsAPart: "not counted in the balance",
   variation: "Net change",
   aVerifier: (n: number) => (n === 1 ? "1 to check" : `${n} to check`),
@@ -100,6 +101,7 @@ const fr: typeof en = {
   sorties: "Sorties",
   frais: "Frais",
   commissions: "Commissions",
+  commission: "Commission",
   commissionsAPart: "non comptées dans le solde",
   variation: "Variation",
   aVerifier: (n) => (n === 1 ? "1 à vérifier" : `${n} à vérifier`),
@@ -168,15 +170,17 @@ export const NOMS_TYPES: Record<"fr" | "en", Record<TypeFlux, string>> = {
     depot_client: "Dépôt client", retrait_client: "Retrait client",
     depot_recu: "Dépôt sur ma carte", retrait_especes: "Retrait d'espèces",
     argent_recu: "Argent reçu", argent_envoye: "Argent envoyé",
-    depot_inconnu: "Dépôt — entrée ou sortie ?", retrait_inconnu: "Retrait — entrée ou sortie ?",
-    transfert_inconnu: "Transfert — entrée ou sortie ?", illisible: "Montant non lu",
+    // Le sens inconnu se dit par l'étiquette « À vérifier » et le « ? » du
+    // montant : le nom reste court, une liste ne coupe pas ce qu'on cherche.
+    depot_inconnu: "Dépôt", retrait_inconnu: "Retrait",
+    transfert_inconnu: "Transfert", illisible: "Montant non lu",
   },
   en: {
     depot_client: "Customer deposit", retrait_client: "Customer withdrawal",
     depot_recu: "Cash deposit received", retrait_especes: "Cash withdrawal",
     argent_recu: "Money received", argent_envoye: "Money sent",
-    depot_inconnu: "Deposit — in or out?", retrait_inconnu: "Withdrawal — in or out?",
-    transfert_inconnu: "Transfer — in or out?", illisible: "Amount not read",
+    depot_inconnu: "Deposit", retrait_inconnu: "Withdrawal",
+    transfert_inconnu: "Transfer", illisible: "Amount not read",
   },
 };
 
