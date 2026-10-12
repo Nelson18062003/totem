@@ -5,11 +5,17 @@
 // La règle vit dans le noyau (`@noyau/flux`) : le téléphone et le site
 // rangent, comptent et vérifient de la même façon.
 //
-// LE SIGNE ET LA COULEUR DISENT CE QUE L'OPÉRATION FAIT AU SOLDE. Ce qui
-// entre s'écrit « + » en vert ; ce qui sort « − » à l'encre — sur une puce
-// d'agent, sortir de l'argent électronique n'est pas un danger, c'est le
-// métier. Le ROUGE ne sert qu'aux soldes qui ne se suivent pas ; l'AMBRE
-// qu'à ce qui attend une décision.
+// PEU DE MOTS, UNE STRUCTURE. Le propriétaire a trouvé la première version
+// « surchargée, mal organisée » : chaque ligne portait le type, le nom, la
+// carte, l'heure, le solde et une coche. Une ligne dit maintenant QUI et
+// COMBIEN ; le type et l'heure dessous, en petit ; tout le reste vit dans la
+// fiche. En tête, deux chiffres — ce qui est entré, ce qui est sorti — et
+// une seule ligne d'alerte, seulement quand il y a quelque chose à voir.
+//
+// LE SIGNE ET LA COULEUR DISENT CE QUE L'OPÉRATION FAIT AU SOLDE : « + » en
+// vert, « − » à l'encre (sortir de l'argent électronique est le métier d'un
+// agent, pas un danger). Le ROUGE n'est que pour les soldes qui ne se
+// suivent pas ; l'AMBRE, que pour ce qui attend une décision.
 
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
@@ -19,15 +25,14 @@ import { useLocalSearchParams } from "expo-router";
 import {
   useMargeSousLaBarre, ChampTexte, Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui,
 } from "@/ui";
-import { Icone, type NomIcone } from "@/icones";
+import { Icone } from "@/icones";
 import { Entree } from "@/animations";
 import { SqueletteListe } from "@/squelettes";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
 import { Feuille } from "@/feuille";
-import { LogoOperateur } from "@/logos-operateurs";
-import { FicheFlux, FeuilleEcart, FeuilleCorriger, quandAnnonce, operateurDe } from "@/flux-fiches";
+import { FicheFlux, FeuilleEcart, FeuilleCorriger, RondFlux } from "@/flux-fiches";
 import { textesFlux, NOMS_TYPES } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
 import {
@@ -44,9 +49,8 @@ const SMS_ECRAN = 200;
 const AUCUN: Paiement[] = [];
 
 // Les teintes de fond, tirées des couleurs sémantiques de la charte.
-const FOND_ENTREE = "rgba(2, 84, 45, 0.09)";
 const FOND_ATTENTE = "rgba(151, 81, 2, 0.10)";
-const FOND_ECART = "rgba(192, 15, 12, 0.07)";
+const FOND_ECART = "rgba(192, 15, 12, 0.06)";
 
 type Feuilles =
   | { genre: "periode" } | { genre: "carte" } | { genre: "type" }
@@ -68,9 +72,10 @@ export default function Flux() {
   const [periode, setPeriode] = useState<Periode>({ genre: "aujourdhui" });
   const [carte, setCarte] = useState<string | null>(null);
   const [famille, setFamille] = useState<FamilleFlux | null>(null);
+  // « À regarder » : les lignes à vérifier et celles qui bordent un écart.
+  const [aRegarder, setARegarder] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [chercher, setChercher] = useState(false);
-  const [deplie, setDeplie] = useState(false);
   const [feuille, setFeuille] = useState<Feuilles>(null);
   // « Toutes avec ce numéro », depuis une fiche : la recherche arrive par
   // l'adresse, sur toutes les dates.
@@ -89,25 +94,26 @@ export default function Flux() {
   // filtre ne doit pas inventer un écart en retirant une ligne du milieu.
   const tous = useMemo(() => fluxDe(paiements), [paiements]);
   const bornes = bornesDe(periode, maintenant, fuseau);
-  const vus = useMemo(() => tous.filter((f) =>
+  const dansLaVue = useMemo(() => tous.filter((f) =>
     dansBornes(f.p, bornes)
     && (carte == null || (f.p.carte || f.p.sim) === carte)
     && dansFamille(f, famille)
     && correspondFlux(f, recherche)),
   [tous, bornes?.de, bornes?.a, carte, famille, recherche]);
-  const totaux = totauxFlux(vus);
+  const totaux = totauxFlux(dansLaVue);
+  const vus = aRegarder
+    ? dansLaVue.filter((f) => f.etat === "a_verifier" || f.ecartAvant || f.ecartApres)
+    : dansLaVue;
   const jours = parJour(vus);
   const cartes = useMemo(() => etatDesCartes(paiements, tous), [paiements, tous]);
-  const cartesVues = [...cartes.values()].filter((c) => carte == null || c.carte === carte);
+  const laCarte = carte ? cartes.get(carte) : undefined;
+  const verifies = [...cartes.values()].some((c) => c.suitDepuis);
 
   const nomPeriode = periode.genre === "aujourdhui" ? ts.periodeAujourdhui
     : periode.genre === "hier" ? ts.periodeHier
     : periode.genre === "semaine" ? ts.periodeSemaine
     : periode.genre === "mois" ? ts.periodeMois : ts.periodeTout;
-  const nomCarte = (cle: string) => {
-    const s = sims.find((x) => x.iccid === cle);
-    return s?.libelle ?? cle;
-  };
+  const nomCarte = (cle: string) => sims.find((x) => x.iccid === cle)?.libelle ?? cle;
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -116,31 +122,24 @@ export default function Flux() {
         keyboardShouldPersistTaps="handled"
         refreshControl={roue}
       >
+        {/* LE TITRE, ET LA LOUPE. */}
         <Entree>
-          <View style={{ gap: 2 }}>
-            <Texte taille={textes.titre} poids="demi" accessibilityRole="header">{t.titre}</Texte>
-            <Texte taille={textes.petit} ton="doux">{t.sousTitre}</Texte>
-          </View>
-        </Entree>
-
-        {/* LES FILTRES, EN UNE RANGÉE. Chaque bouton dit ce qui est choisi. */}
-        <Entree delai={40}>
           <View style={{ gap: espaces.sm }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-              <BoutonFiltre libelle={nomPeriode} etiquette={t.periode} actif={periode.genre !== "tout"}
-                            icone="Calendrier" onPress={() => setFeuille({ genre: "periode" })} />
-              <View style={{ flexShrink: 1 }}>
-                <BoutonFiltre libelle={carte ? nomCarte(carte) : t.cartes} etiquette={t.cartes}
-                              actif={carte != null} icone="PuceSim"
-                              onPress={() => setFeuille({ genre: "carte" })} />
-              </View>
-              <BoutonFiltre libelle={famille ? t.familles[famille] : t.type} etiquette={t.type}
-                            actif={famille != null} icone="List" sansIcone
-                            onPress={() => setFeuille({ genre: "type" })} />
-              <View style={{ marginLeft: "auto" }}>
-                <BoutonIcone nom={chercher ? "Close" : "Search"} taille={18} etiquette={t.rechercher}
-                             onPress={() => { setChercher(!chercher); if (chercher) setRecherche(""); }} />
-              </View>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Texte taille={textes.titre} poids="demi" accessibilityRole="header" style={{ flex: 1 }}>
+                {t.titre}
+              </Texte>
+              <BoutonIcone nom={chercher ? "Close" : "Search"} taille={20} etiquette={t.rechercher}
+                           onPress={() => { setChercher(!chercher); if (chercher) setRecherche(""); }} />
+            </View>
+            {/* Les filtres : du texte qu'on touche, pas des boutons qui crient. */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: espaces.lg, rowGap: espaces.xs }}>
+              <FiltreTexte libelle={nomPeriode} etiquette={t.periode}
+                           onPress={() => setFeuille({ genre: "periode" })} />
+              <FiltreTexte libelle={carte ? nomCarte(carte) : t.toutesLesCartes} etiquette={t.cartes}
+                           onPress={() => setFeuille({ genre: "carte" })} />
+              <FiltreTexte libelle={famille ? t.familles[famille] : t.tous} etiquette={t.type}
+                           onPress={() => setFeuille({ genre: "type" })} />
             </View>
             {chercher ? (
               <View style={{
@@ -160,68 +159,58 @@ export default function Flux() {
 
         {erreur ? <Accroc message={erreur} onReessayer={() => void recharger()} /> : null}
 
-        {/* LE RÉSUMÉ : une ligne, qui se déplie sur le solde de chaque carte. */}
+        {/* EN TÊTE, DEUX CHIFFRES. */}
         {donnees ? (
-          <Entree delai={80}>
-            <Carte style={{ padding: 0 }}>
-              <Pressable accessibilityRole="button" accessibilityState={{ expanded: deplie }}
-                         onPress={() => setDeplie(!deplie)}
-                         style={avecAppui({ padding: espaces.md, paddingHorizontal: espaces.lg,
-                                            flexDirection: "row", alignItems: "center", gap: espaces.sm,
-                                            flexWrap: "wrap" })}>
-                <Texte taille={textes.petit} poids="demi">{nomPeriode}</Texte>
-                <Texte taille={textes.petit} ton="positif" poids="moyen" chiffresAlignes>
-                  {t.entrees} +{nombre(totaux.entrees, langue)}
-                </Texte>
-                <Texte taille={textes.petit} poids="moyen" chiffresAlignes>
-                  {t.sorties} −{nombre(totaux.sorties, langue)}
-                </Texte>
-                {totaux.aVerifier ? <PastilleAmbre texte={t.aVerifier(totaux.aVerifier)} /> : null}
-                <View style={{ marginLeft: "auto", transform: [{ rotate: deplie ? "-90deg" : "90deg" }] }}>
-                  <Icone nom="Chevron" taille={14} couleur={couleurs.encrePale} />
+          <Entree delai={60}>
+            <View style={{ gap: espaces.sm }}>
+              <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
+                <View style={{ flexDirection: "row" }}>
+                  <Chiffre libelle={t.entrees} valeur={`+${nombre(totaux.entrees, langue)}`} ton="positif" />
+                  <View style={{ width: 1, backgroundColor: couleurs.trait, marginHorizontal: espaces.lg }} />
+                  <Chiffre libelle={t.sorties} valeur={`−${nombre(totaux.sorties, langue)}`} ton="normal" />
                 </View>
-              </Pressable>
-              {deplie ? (
-                <View style={{ paddingHorizontal: espaces.lg, paddingBottom: espaces.md }}>
-                  {cartesVues.map((c) => {
-                    const op = operateurDe(nomCarte(c.carte));
-                    const sim = sims.find((s) => s.iccid === c.carte);
-                    return (
-                      <View key={c.carte} style={{ borderTopWidth: 1, borderTopColor: couleurs.trait,
-                                                   paddingVertical: espaces.md, gap: 2 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-                          <LogoOperateur operateur={op} taille={18} />
-                          <Texte taille={textes.petit} poids="demi">
-                            {op}{sim?.numero ? ` · ${formaterNumero(sim.numero)}` : ` · ${nomCarte(c.carte)}`}
-                          </Texte>
-                        </View>
-                        <Texte taille={textes.titre} poids="gras" chiffresAlignes>
-                          {c.solde != null ? `${nombre(c.solde, langue)} F` : "—"}
-                        </Texte>
-                        {c.recuLe ? (
-                          <Texte taille={textes.legende} ton="pale">
-                            {t.annonceA(op, quandAnnonce(c.recuLe, c.heure ?? "", maintenant, fuseau, langue))}
-                          </Texte>
-                        ) : null}
-                        <Texte taille={textes.legende} poids="moyen"
-                               ton={c.ecarts ? "negatif" : c.suitDepuis ? "positif" : "doux"}>
-                          {c.ecarts ? t.ecartsCarte(c.ecarts)
-                            : c.suitDepuis ? `✓ ${t.toutSeSuit(c.suitDepuis)}` : t.pasDeSolde}
-                        </Texte>
-                      </View>
-                    );
-                  })}
-                  <LigneResume libelle={t.frais} valeur={`${nombre(totaux.frais, langue)} F`} />
-                  {totaux.commissions ? (
-                    <LigneResume libelle={t.commissions} note={t.commissionsAPart}
-                                 valeur={`${nombre(totaux.commissions, langue)} F`} />
-                  ) : null}
-                  <LigneResume libelle={t.variation} fort
-                               valeur={`${totaux.entrees - totaux.sorties - totaux.frais >= 0 ? "+" : "−"}${
-                                 nombre(Math.abs(totaux.entrees - totaux.sorties - totaux.frais), langue)} F`} />
-                </View>
+                {laCarte && laCarte.solde != null ? (
+                  <>
+                    <Filet />
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: espaces.sm }}>
+                      <Texte taille={textes.petit} ton="doux" style={{ flex: 1 }}>
+                        {t.solde} · {t.annonceCourt(laCarte.heure ?? "")}
+                      </Texte>
+                      <Texte poids="demi" chiffresAlignes>
+                        {nombre(laCarte.solde, langue)} F
+                        {laCarte.ecarts === 0 && laCarte.suitDepuis
+                          ? <Texte ton="positif" poids="demi"> ✓</Texte> : null}
+                      </Texte>
+                    </View>
+                  </>
+                ) : null}
+              </Carte>
+
+              {/* UNE SEULE LIGNE D'ALERTE, et seulement s'il y a lieu. */}
+              {totaux.ecarts || totaux.aVerifier ? (
+                <Pressable accessibilityRole="button" accessibilityState={{ selected: aRegarder }}
+                           onPress={() => setARegarder(!aRegarder)}
+                           style={avecAppui({
+                             flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                             paddingVertical: espaces.sm + 2, paddingHorizontal: espaces.md,
+                             borderRadius: rayons.carte,
+                             backgroundColor: totaux.ecarts ? FOND_ECART : FOND_ATTENTE,
+                           })}>
+                  <View style={{ width: 8, height: 8, borderRadius: rayons.rond,
+                                 backgroundColor: totaux.ecarts ? couleurs.negatif : couleurs.alerte }} />
+                  <Texte taille={textes.petit} poids="moyen" ton={totaux.ecarts ? "negatif" : "alerte"}
+                         style={{ flex: 1 }}>
+                    {t.attention(totaux.ecarts, totaux.aVerifier)}
+                  </Texte>
+                  <Icone nom={aRegarder ? "Close" : "Chevron"} taille={14}
+                         couleur={totaux.ecarts ? couleurs.negatif : couleurs.alerte} />
+                </Pressable>
+              ) : verifies && dansLaVue.length ? (
+                <Texte taille={textes.petit} ton="positif" style={{ paddingHorizontal: espaces.xs }}>
+                  ✓ {t.soldesVerifies}
+                </Texte>
               ) : null}
-            </Carte>
+            </View>
           </Entree>
         ) : null}
 
@@ -234,40 +223,37 @@ export default function Flux() {
         ) : null}
 
         {/* LA LISTE, JOUR PAR JOUR. */}
-        {jours.map((j) => (
-          <View key={j.jour} style={{ gap: espaces.sm }}>
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: espaces.sm,
-                           paddingHorizontal: espaces.xs }}>
-              <Texte taille={textes.legende} poids="demi" ton="doux" numberOfLines={1}
-                     style={{ textTransform: "uppercase", letterSpacing: 0.5, flexShrink: 1 }}>
-                {libelleJour(j.jour, aujourdhui, langue)} · {t.transactions(j.totaux.nombre)}
-              </Texte>
-              {/* Le net seul : « +900 000 · −420 000 » passait sur deux lignes
-                  sur un iPhone SE, et le résumé du haut les donne déjà. */}
-              <Texte taille={textes.legende} ton="pale" chiffresAlignes numberOfLines={1}
-                     style={{ marginLeft: "auto", flexShrink: 0 }}>
-                net {j.totaux.entrees - j.totaux.sorties >= 0 ? "+" : "−"}{nombre(Math.abs(j.totaux.entrees - j.totaux.sorties), langue)}
-              </Texte>
+        {jours.map((j) => {
+          const net = j.totaux.entrees - j.totaux.sorties;
+          return (
+            <View key={j.jour} style={{ gap: espaces.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "baseline", paddingHorizontal: espaces.xs }}>
+                <Texte taille={textes.petit} poids="demi" style={{ flex: 1 }}>
+                  {libelleJour(j.jour, aujourdhui, langue)}
+                </Texte>
+                <Texte taille={textes.petit} ton="pale" chiffresAlignes>
+                  {net >= 0 ? "+" : "−"}{nombre(Math.abs(net), langue)}
+                </Texte>
+              </View>
+              <Carte style={{ overflow: "hidden" }}>
+                {j.flux.map((f, i) => (
+                  <View key={f.p.id}>
+                    {f.ecartApres ? (
+                      <RangeeEcart e={f.ecartApres} langue={langue}
+                                   onPress={() => setFeuille({ genre: "ecart", f, e: f.ecartApres! })} />
+                    ) : i > 0 ? <Filet style={{ marginLeft: 68 }} /> : null}
+                    <LigneFlux f={f} langue={langue} carteCourte={nomCarte(f.p.carte || f.p.sim)}
+                               onOuvrir={() => setFeuille({ genre: "fiche", f })} />
+                    {f.ecartAvant ? (
+                      <RangeeEcart e={f.ecartAvant} langue={langue}
+                                   onPress={() => setFeuille({ genre: "ecart", f, e: f.ecartAvant! })} />
+                    ) : null}
+                  </View>
+                ))}
+              </Carte>
             </View>
-            <Carte style={{ padding: 0, overflow: "hidden" }}>
-              {j.flux.map((f, i) => (
-                <View key={f.p.id}>
-                  {f.ecartApres ? (
-                    <RangeeEcart e={f.ecartApres} langue={langue}
-                                 onPress={() => setFeuille({ genre: "ecart", f, e: f.ecartApres! })} />
-                  ) : i > 0 ? <Filet /> : null}
-                  <LigneFlux f={f} langue={langue} carteCourte={nomCarte(f.p.carte || f.p.sim)}
-                             onOuvrir={() => setFeuille({ genre: "fiche", f })}
-                             onCorriger={() => setFeuille({ genre: "corriger", f })} />
-                  {f.ecartAvant ? (
-                    <RangeeEcart e={f.ecartAvant} langue={langue}
-                                 onPress={() => setFeuille({ genre: "ecart", f, e: f.ecartAvant! })} />
-                  ) : null}
-                </View>
-              ))}
-            </Carte>
-          </View>
-        ))}
+          );
+        })}
       </Defilement>
 
       {feuille?.genre === "periode" ? (
@@ -311,145 +297,81 @@ export default function Flux() {
   );
 }
 
-/** Une transaction : ce qui s'est passé, avec qui, et ce que ça a fait au solde. */
-function LigneFlux({ f, langue, carteCourte, onOuvrir, onCorriger }: {
-  f: Flux; langue: "fr" | "en"; carteCourte: string; onOuvrir: () => void; onCorriger: () => void;
+/** Un des deux chiffres de tête. */
+function Chiffre({ libelle, valeur, ton }: { libelle: string; valeur: string; ton: "positif" | "normal" }) {
+  return (
+    <View style={{ flex: 1, gap: 2 }}>
+      <Texte taille={textes.petit} ton="doux">{libelle}</Texte>
+      <Texte taille={textes.titre} poids="gras" ton={ton} chiffresAlignes numberOfLines={1}
+             adjustsFontSizeToFit minimumFontScale={0.7}>
+        {valeur}
+      </Texte>
+    </View>
+  );
+}
+
+/** Une transaction : QUI, et COMBIEN. Le type et l'heure dessous, en petit. */
+function LigneFlux({ f, langue, carteCourte, onOuvrir }: {
+  f: Flux; langue: "fr" | "en"; carteCourte: string; onOuvrir: () => void;
 }) {
   const t = textesFlux[langue];
   const p = f.p;
   const entree = f.effet != null && f.effet > 0;
   const attend = f.etat === "a_verifier";
   const echouee = f.etat === "echouee";
-  const icone: NomIcone = echouee ? "Close" : attend ? "Transfer" : entree ? "ArrowDown" : "ArrowUp";
-  const fond = echouee ? couleurs.surface2 : attend ? FOND_ATTENTE : entree ? FOND_ENTREE : couleurs.surface2;
-  const teinte = echouee ? couleurs.encrePale : attend ? couleurs.alerte : entree ? couleurs.positif : couleurs.encre;
-  const solde = p.soldeApres != null
-    ? `${t.solde} ${nombre(p.soldeApres, langue)} F`
-    : t.sansSolde;
+  const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
+  const sous = `${NOMS_TYPES[langue][f.type]} · ${attend ? t.aConfirmer : p.heure}`;
   return (
     <Pressable accessibilityRole="button" onPress={onOuvrir}
-               accessibilityLabel={`${NOMS_TYPES[langue][f.type]}, ${p.tiers || p.numero}, ${montantSigne(f, langue, nombre)} F`}
+               accessibilityLabel={`${titre}, ${NOMS_TYPES[langue][f.type]}, ${montantSigne(f, langue, nombre)} F`}
                style={({ pressed }) => ({
-                 flexDirection: "row", gap: espaces.md, paddingVertical: espaces.md,
-                 paddingHorizontal: espaces.lg,
+                 flexDirection: "row", alignItems: "center", gap: espaces.md,
+                 paddingVertical: espaces.md, paddingHorizontal: espaces.lg,
                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
                })}>
-      {/* Le sens, d'un coup d'œil. L'opérateur se lit sur la troisième ligne :
-          un logo posé sur le rond cachait la flèche. */}
-      <View style={{ width: 40, height: 40, borderRadius: rayons.rond, backgroundColor: fond,
-                     alignItems: "center", justifyContent: "center" }}>
-        <Icone nom={icone} taille={18} couleur={teinte} />
-      </View>
+      <RondFlux f={f} carteCourte={carteCourte} />
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-          <Texte poids="demi" numberOfLines={1} style={{ flex: 1 }}
-                 ton={echouee ? "pale" : "normal"}>
-            {NOMS_TYPES[langue][f.type]}
-          </Texte>
-          <Texte poids="demi" chiffresAlignes
-                 ton={echouee ? "pale" : attend ? "alerte" : entree ? "positif" : "normal"}
-                 style={echouee ? { textDecorationLine: "line-through" } : undefined}>
-            {montantSigne(f, langue, nombre)}
-          </Texte>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-          <Texte taille={textes.petit} ton="doux" numberOfLines={1} style={{ flex: 1 }}>
-            {p.tiers || formaterNumero(p.numero) || "—"}
-          </Texte>
-          {attend ? <PastilleAmbre texte={t.aVerifierEtat} /> : null}
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs }}>
-        <LogoOperateur operateur={operateurDe(carteCourte)} taille={13} />
-        <Texte taille={textes.legende} ton="pale" numberOfLines={1} chiffresAlignes style={{ flexShrink: 1 }}>
-          {carteCourte.replace(/^\S+\s*/, "")} · {p.heure} · {solde}
-          {f.verdict === "suit" ? <Texte taille={textes.legende} ton="positif" poids="demi"> ✓</Texte> : null}
-        </Texte>
-        </View>
-        {attend && f.lesSoldesDisent ? (
-          <Pressable accessibilityRole="button" onPress={onCorriger} hitSlop={6}
-                     style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, alignSelf: "flex-start" })}>
-            <Texte taille={textes.legende} ton="alerte">
-              {t.lesSoldesDisent(f.lesSoldesDisent)} —{" "}
-              <Texte taille={textes.legende} ton="alerte" poids="demi"
-                     style={{ textDecorationLine: "underline" }}>{t.confirmer}</Texte>
-            </Texte>
-          </Pressable>
-        ) : null}
+        <Texte poids="moyen" numberOfLines={1} ton={echouee ? "pale" : "normal"}>{titre}</Texte>
+        <Texte taille={textes.petit} ton={attend ? "alerte" : "pale"} numberOfLines={1}>{sous}</Texte>
       </View>
+      <Texte poids="demi" chiffresAlignes
+             ton={echouee ? "pale" : attend ? "alerte" : entree ? "positif" : "normal"}
+             style={echouee ? { textDecorationLine: "line-through" } : undefined}>
+        {montantSigne(f, langue, nombre)}
+      </Texte>
     </Pressable>
   );
 }
 
-/** L'écart de la suite des soldes, À SA PLACE dans la liste. */
+/** L'écart de la suite des soldes, À SA PLACE dans la liste — une ligne. */
 function RangeeEcart({ e, langue, onPress }: { e: Ecart; langue: "fr" | "en"; onPress: () => void }) {
   const t = textesFlux[langue];
-  const m = nombre(Math.abs(e.montant), langue);
-  const phrase = e.montant < 0 ? t.ecart(m, e.depuis, e.jusqua) : t.ecartPlus(m, e.depuis, e.jusqua);
   return (
     <Pressable accessibilityRole="button" onPress={onPress}
                style={({ pressed }) => ({
                  backgroundColor: FOND_ECART, opacity: pressed ? 0.7 : 1,
-                 borderTopWidth: 1, borderBottomWidth: 1, borderStyle: "dashed",
-                 borderColor: couleurs.negatif,
-                 paddingVertical: espaces.sm + 2, paddingHorizontal: espaces.lg,
-                 flexDirection: "row", gap: espaces.sm,
+                 paddingVertical: espaces.sm, paddingHorizontal: espaces.lg,
+                 flexDirection: "row", alignItems: "center", gap: espaces.sm,
                })}>
-      <Texte taille={textes.petit} ton="negatif">⚠</Texte>
-      <Texte taille={textes.petit} ton="negatif" style={{ flex: 1, lineHeight: 19 }}>
-        {phrase}{" "}
-        <Texte taille={textes.petit} ton="negatif" poids="demi" style={{ textDecorationLine: "underline" }}>
-          {t.queSEstIlPasse}
-        </Texte>
+      <View style={{ width: 6, height: 6, borderRadius: rayons.rond, backgroundColor: couleurs.negatif }} />
+      <Texte taille={textes.petit} ton="negatif" numberOfLines={1} style={{ flex: 1 }}>
+        {t.ecartCourt(nombre(Math.abs(e.montant), langue), e.montant < 0 ? "moins" : "plus", e.depuis, e.jusqua)}
       </Texte>
+      <Icone nom="Chevron" taille={12} couleur={couleurs.negatif} />
     </Pressable>
   );
 }
 
-function PastilleAmbre({ texte }: { texte: string }) {
+/** Un filtre : ce qui est choisi, en texte, et une flèche vers le bas. */
+function FiltreTexte({ libelle, etiquette, onPress }: { libelle: string; etiquette: string; onPress: () => void }) {
   return (
-    <View style={{ backgroundColor: FOND_ATTENTE, borderRadius: rayons.rond,
-                   paddingHorizontal: espaces.sm, paddingVertical: 1 }}>
-      <Texte taille={textes.legende} ton="alerte" poids="demi">{texte}</Texte>
-    </View>
-  );
-}
-
-function LigneResume({ libelle, valeur, note, fort }: {
-  libelle: string; valeur: string; note?: string; fort?: boolean;
-}) {
-  return (
-    <View style={{ flexDirection: "row", alignItems: "baseline", gap: espaces.sm,
-                   borderTopWidth: 1, borderTopColor: couleurs.trait, paddingVertical: espaces.sm }}>
-      <Texte taille={textes.petit} ton="doux" style={{ flex: 1 }}>
-        {libelle}{note ? <Texte taille={textes.legende} ton="pale"> ({note})</Texte> : null}
-      </Texte>
-      <Texte taille={textes.petit} poids={fort ? "gras" : "moyen"} chiffresAlignes>{valeur}</Texte>
-    </View>
-  );
-}
-
-/** Un bouton de filtre : rempli de sombre dès qu'il filtre quelque chose. */
-function BoutonFiltre({ libelle, etiquette, actif, icone, sansIcone, onPress }: {
-  libelle: string; etiquette: string; actif: boolean; icone: NomIcone; sansIcone?: boolean;
-  onPress: () => void;
-}) {
-  const teinte = actif ? couleurs.surfaceHaute : couleurs.encreDouce;
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${etiquette} : ${libelle}`}
-               onPress={onPress}
-               style={avecAppui({
-                 flexDirection: "row", alignItems: "center", gap: espaces.xs,
-                 minHeight: 38, paddingLeft: sansIcone ? espaces.md : espaces.sm + 2,
-                 paddingRight: espaces.sm, borderRadius: rayons.rond, borderWidth: 1,
-                 borderColor: actif ? couleurs.accent : couleurs.trait,
-                 backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
-               })}>
-      {sansIcone ? null : <Icone nom={icone} taille={14} couleur={teinte} />}
-      <Texte taille={textes.petit} poids="moyen" numberOfLines={1} style={{ flexShrink: 1, color: actif ? teinte : couleurs.encre }}>
-        {libelle}
-      </Texte>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${etiquette} : ${libelle}`} onPress={onPress}
+               hitSlop={8}
+               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 4,
+                                           paddingVertical: 4, opacity: pressed ? 0.5 : 1 })}>
+      <Texte taille={textes.petit} poids="moyen" ton="doux">{libelle}</Texte>
       <View style={{ transform: [{ rotate: "90deg" }] }}>
-        <Icone nom="Chevron" taille={12} couleur={teinte} />
+        <Icone nom="Chevron" taille={11} couleur={couleurs.encreDouce} />
       </View>
     </Pressable>
   );
@@ -463,7 +385,7 @@ function FeuilleChoix({ titre, options, choisie, onChoisir, onFermer }: {
   return (
     <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
              entete={<Texte taille={textes.intertitre} poids="demi">{titre}</Texte>}>
-      <Carte style={{ padding: 0 }}>
+      <Carte>
         {options.map((o, i) => {
           const elle = o.cle === choisie;
           return (

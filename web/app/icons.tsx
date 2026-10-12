@@ -62,6 +62,7 @@ export const IconHash = icone("Hash");
 export const IconDoc = icone("Doc");
 export const IconTransfer = icone("Transfer");
 export const IconPave = icone("Pave");
+export const IconCrayon = icone("Crayon");
 export const IconMegaphone = icone("Megaphone");
 export const IconBubble = icone("Bubble");
 export const IconMail = icone("Mail");

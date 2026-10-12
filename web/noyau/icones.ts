@@ -176,6 +176,11 @@ export const ICONES = {
   ],
   // Un billet : le RETRAIT, de l'argent liquide qu'on remet. Le portefeuille
   // est déjà l'onglet Comptes — la même icône pour deux choses se confond.
+  // Le crayon : « Corriger », dans la fiche d'une transaction.
+  Crayon: [
+    { f: "path", d: "M4.5 19.5h4l10-10-4-4-10 10z" },
+    { f: "path", d: "M13 7l4 4" },
+  ],
   // Le pavé de touches : l'onglet Opérations, où l'on compose les codes.
   // La double flèche (Transfer) est passée au module Flux — c'est le signe
   // que le propriétaire a montré chez Revolut pour « ce qui entre et sort ».

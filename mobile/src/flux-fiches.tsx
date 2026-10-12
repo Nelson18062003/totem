@@ -1,10 +1,10 @@
 // Les feuilles du module Flux : la fiche d'une transaction, « Corriger », et
 // « Que s'est-il passé ? » pour un écart de la suite des soldes.
 //
-// LA FICHE SE RANGE COMME LE REÇU PDF : le montant, qui, la référence, la
-// carte, la date, puis les soldes — l'annoncé avec sa coche, le calculé
-// écrit « (calculé) » et JAMAIS coché. Le SMS d'origine est en bas, mot pour
-// mot : c'est lui qui fait foi.
+// LA FICHE VA DU PLUS IMPORTANT AU DÉTAIL : qui et combien, trois gestes
+// (corriger, le SMS, les autres transactions de ce numéro), puis les
+// détails — l'annoncé avec sa coche, le calculé écrit « (calculé) » et
+// JAMAIS coché. Le SMS d'origine se déplie en bas, mot pour mot.
 //
 // « CORRIGER » N'ENREGISTRE PAS ENCORE. Le journal signé des corrections est
 // une livraison à part ; d'ici là, le bouton est éteint et le dit. Un bouton
@@ -15,18 +15,20 @@ import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 
 import { Carte, ChampTexte, Filet, Texte, avecAppui } from "@/ui";
-import { Icone } from "@/icones";
+import { Icone, type NomIcone } from "@/icones";
 import { Feuille } from "@/feuille";
 import { LogoOperateur } from "@/logos-operateurs";
-import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
+import { couleurs, couleurOperateur, espaces, rayons, textes } from "@/theme/jetons";
 import { useLangue } from "@/langue";
 import { copierTexte } from "@/presse-papiers";
 import { textesFlux, NOMS_TYPES, NOMS_CORRECTION } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
-import { montantSigne, type Flux, type Ecart, type TypeFlux } from "@noyau/flux";
+import { initialesDe, montantSigne, type Flux, type Ecart, type TypeFlux } from "@noyau/flux";
 import { nombre, type Sim } from "@noyau/types";
 import { formaterNumero } from "@noyau/numero";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
+
+const FOND_ATTENTE = "rgba(151, 81, 2, 0.10)";
 
 /** « MTN ·8901 » → « MTN ». */
 export const operateurDe = (libelle: string) => libelle.split(/[\s·]/)[0] || libelle;
@@ -46,28 +48,64 @@ export function quandAnnonce(iso: string, heure: string, maintenant: number, fus
   return `le ${jourCourt(j.cle, langue)} à ${heure}`;
 }
 
+/** Le rond d'une transaction : les initiales de la personne, et un point à
+ *  la couleur de l'opérateur — une donnée, jamais un aplat. */
+export function RondFlux({ f, carteCourte, taille = 40 }: { f: Flux; carteCourte: string; taille?: number }) {
+  const attend = f.etat === "a_verifier";
+  const initiales = initialesDe(f.p.tiers);
+  return (
+    <View style={{ width: taille, height: taille }}>
+      <View style={{ width: taille, height: taille, borderRadius: rayons.rond,
+                     backgroundColor: attend ? FOND_ATTENTE : couleurs.surface2,
+                     alignItems: "center", justifyContent: "center" }}>
+        {attend ? <Icone nom="Transfer" taille={Math.round(taille * 0.42)} couleur={couleurs.alerte} />
+          : initiales ? <Texte taille={Math.round(taille * 0.34)} poids="demi" ton="doux">{initiales}</Texte>
+          : <Icone nom="Phone" taille={Math.round(taille * 0.42)} couleur={couleurs.encreDouce} />}
+      </View>
+      <View style={{ position: "absolute", right: -1, bottom: -1,
+                     width: Math.round(taille * 0.32), height: Math.round(taille * 0.32),
+                     borderRadius: rayons.rond, backgroundColor: couleurOperateur(operateurDe(carteCourte)),
+                     borderWidth: 2, borderColor: couleurs.surfaceHaute }} />
+    </View>
+  );
+}
+
 function Rangee({ libelle, children, dernier }: { libelle: string; children: React.ReactNode; dernier?: boolean }) {
   return (
     <>
       <View style={{ flexDirection: "row", gap: espaces.md, paddingVertical: espaces.md,
-                     paddingHorizontal: espaces.lg, alignItems: "flex-start" }}>
-        <Texte taille={textes.petit} ton="pale" style={{ width: 108 }}>{libelle}</Texte>
-        <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end", gap: 2 }}>{children}</View>
+                     paddingHorizontal: espaces.lg, alignItems: "center" }}>
+        <Texte taille={textes.petit} ton="pale" style={{ flex: 1 }}>{libelle}</Texte>
+        <View style={{ flexShrink: 1, alignItems: "flex-end" }}>{children}</View>
       </View>
-      {dernier ? null : <Filet />}
+      {dernier ? null : <Filet style={{ marginLeft: espaces.lg }} />}
     </>
   );
 }
 
-function Copier({ texte, langue }: { texte: string; langue: "fr" | "en" }) {
+/** Une valeur qu'on copie d'un appui long sur elle — sans un mot de plus. */
+function Copiable({ texte, affiche, langue }: { texte: string; affiche: string; langue: "fr" | "en" }) {
   const [fait, setFait] = useState(false);
   return (
-    <Pressable accessibilityRole="button" hitSlop={8}
+    <Pressable accessibilityRole="button" accessibilityHint={textesFlux[langue].copier}
                onPress={() => { if (copierTexte(texte)) { setFait(true); setTimeout(() => setFait(false), 1500); } }}
-               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-      <Texte taille={textes.legende} ton="doux" poids="moyen" style={{ textDecorationLine: "underline" }}>
-        {fait ? "✓" : textesFlux[langue].copier}
-      </Texte>
+               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, opacity: pressed ? 0.5 : 1 })}>
+      <Texte chiffresAlignes style={{ textAlign: "right" }}>{affiche}</Texte>
+      <Icone nom={fait ? "Check" : "Copy"} taille={14} couleur={fait ? couleurs.positif : couleurs.encrePale} />
+    </Pressable>
+  );
+}
+
+/** Un geste de la fiche : un rond, et un mot dessous. */
+function Geste({ icone, libelle, onPress }: { icone: NomIcone; libelle: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={libelle} onPress={onPress}
+               style={({ pressed }) => ({ alignItems: "center", gap: espaces.xs, flex: 1, opacity: pressed ? 0.6 : 1 })}>
+      <View style={{ width: 48, height: 48, borderRadius: rayons.rond, backgroundColor: couleurs.surfaceHaute,
+                     borderWidth: 1, borderColor: couleurs.trait, alignItems: "center", justifyContent: "center" }}>
+        <Icone nom={icone} taille={20} couleur={couleurs.encre} />
+      </View>
+      <Texte taille={textes.legende} ton="doux" numberOfLines={1}>{libelle}</Texte>
     </Pressable>
   );
 }
@@ -86,86 +124,93 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const tonEtat = f.etat === "comptee" ? "positif" : f.etat === "echouee" ? "pale" : "alerte";
   const quand = quandAnnonce(p.recuLe, p.heure, maintenant, fuseau, langue);
-  const date = quand.charAt(0).toUpperCase() + quand.slice(1);
+  const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
   return (
     <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
              entete={
-               <View style={{ gap: 2 }}>
-                 <Texte taille={textes.display} poids="gras" chiffresAlignes
-                        ton={f.etat === "a_verifier" ? "alerte" : entree ? "positif" : "normal"}>
-                   {montantSigne(f, langue, nombre)} F
-                 </Texte>
-                 <Texte ton="doux">
-                   {NOMS_TYPES[langue][f.type]} · <Texte poids="demi" ton={tonEtat}>{etat}</Texte>
-                 </Texte>
+               <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
+                 <RondFlux f={f} carteCourte={p.sim} taille={44} />
+                 <View style={{ flex: 1, minWidth: 0 }}>
+                   {/* Dans une fiche, on ne coupe jamais un nom. */}
+                   <Texte poids="demi">{titre}</Texte>
+                   <Texte taille={textes.petit} ton="pale">
+                     {NOMS_TYPES[langue][f.type]} · <Texte taille={textes.petit} ton={tonEtat} poids="moyen">{etat}</Texte>
+                   </Texte>
+                 </View>
                </View>
              }>
-      <View style={{ gap: espaces.md }}>
-        <Carte style={{ padding: 0 }}>
-          {p.tiers || p.numero ? (
-            <Rangee libelle={entree ? t.de : t.a}>
-              {/* Dans une fiche, on ne coupe jamais un nom. */}
-              <Texte poids="moyen" style={{ textAlign: "right" }}>{p.tiers || "—"}</Texte>
-              {p.numero ? (
-                <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
-                  <Texte taille={textes.petit} ton="doux" chiffresAlignes>{formaterNumero(p.numero)}</Texte>
-                  <Copier texte={p.numero} langue={langue} />
-                </View>
-              ) : null}
+      <View style={{ gap: espaces.xl }}>
+        <Texte taille={textes.display} poids="gras" chiffresAlignes style={{ textAlign: "center" }}
+               ton={f.etat === "a_verifier" ? "alerte" : entree ? "positif" : "normal"}>
+          {montantSigne(f, langue, nombre)} F
+        </Texte>
+
+        <View style={{ flexDirection: "row" }}>
+          <Geste icone="Crayon" libelle={t.corriger} onPress={onCorriger} />
+          <Geste icone="Bubble" libelle={t.voirLeSms} onPress={() => {
+            onFermer();
+            router.push({ pathname: "/encaissements",
+                          params: { recherche: p.reference || p.tiers || p.numero, moment: String(Date.now()) } });
+          }} />
+          {p.numero ? (
+            <Geste icone="List" libelle={t.toutesAvecCeNumero} onPress={() => {
+              onFermer();
+              router.push({ pathname: "/flux", params: { recherche: p.numero, moment: String(Date.now()) } });
+            }} />
+          ) : null}
+        </View>
+
+        <Carte>
+          {p.numero ? (
+            <Rangee libelle={langue === "fr" ? "Numéro" : "Number"}>
+              <Copiable texte={p.numero} affiche={formaterNumero(p.numero)} langue={langue} />
             </Rangee>
           ) : null}
           {p.reference ? (
             <Rangee libelle={t.reference}>
-              <Texte chiffresAlignes style={{ textAlign: "right" }}>{p.reference}</Texte>
-              <Copier texte={p.reference} langue={langue} />
+              <Copiable texte={p.reference} affiche={p.reference} langue={langue} />
             </Rangee>
           ) : null}
           <Rangee libelle={t.carte}>
             <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
               <LogoOperateur operateur={op} taille={16} />
-              <Texte>{op}{sim?.numero ? ` · ${formaterNumero(sim.numero)}` : ` · ${p.sim}`}</Texte>
+              <Texte>{sim?.numero ? formaterNumero(sim.numero) : p.sim}</Texte>
             </View>
           </Rangee>
           <Rangee libelle={t.date}>
-            <Texte style={{ textAlign: "right" }}>{date}</Texte>
-            <Texte taille={textes.legende} ton="pale">{t.heureOperateur(op)}</Texte>
+            <Texte>{quand.charAt(0).toUpperCase() + quand.slice(1)}</Texte>
           </Rangee>
-          {p.frais != null ? (
-            <Rangee libelle={t.frais}><Texte chiffresAlignes>{nombre(p.frais, langue)} F</Texte></Rangee>
-          ) : null}
           {p.commission ? (
             <Rangee libelle={t.commission}>
               <Texte chiffresAlignes>{nombre(p.commission, langue)} F</Texte>
-              <Texte taille={textes.legende} ton="pale">{t.commissionNonComptee}</Texte>
             </Rangee>
           ) : null}
           {p.soldeApres != null ? (
-            <Rangee libelle={t.solde} dernier={f.soldeAvantCalcule == null}>
+            <Rangee libelle={langue === "fr" ? "Solde après" : "Balance after"} dernier={f.soldeAvantCalcule == null}>
               <Texte chiffresAlignes poids="demi">
                 {nombre(p.soldeApres, langue)} F{f.verdict === "suit"
                   ? <Texte ton="positif" poids="demi"> ✓</Texte> : null}
               </Texte>
-              <Texte taille={textes.legende} ton="pale">{t.soldeApresAnnonce(op)}</Texte>
             </Rangee>
           ) : null}
           {f.soldeAvantCalcule != null ? (
             <Rangee libelle={t.soldeAvant} dernier>
-              <Texte chiffresAlignes ton="doux" style={{ fontStyle: "italic" }}>
+              <Texte chiffresAlignes ton="pale" style={{ fontStyle: "italic" }}>
                 {nombre(f.soldeAvantCalcule, langue)} F ({t.calcule})
               </Texte>
             </Rangee>
           ) : null}
         </Carte>
 
-        <Carte style={{ padding: 0 }}>
+        <Carte>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: sms }}
                      onPress={() => setSms(!sms)}
                      style={avecAppui({ flexDirection: "row", alignItems: "center", gap: espaces.sm,
                                         padding: espaces.md, paddingHorizontal: espaces.lg })}>
-            <View style={{ transform: [{ rotate: sms ? "90deg" : "0deg" }] }}>
+            <Texte taille={textes.petit} poids="moyen" ton="doux" style={{ flex: 1 }}>{t.ceQueDitLeSms}</Texte>
+            <View style={{ transform: [{ rotate: sms ? "-90deg" : "90deg" }] }}>
               <Icone nom="Chevron" taille={13} couleur={couleurs.encrePale} />
             </View>
-            <Texte taille={textes.petit} poids="demi" ton="doux">{t.ceQueDitLeSms}</Texte>
           </Pressable>
           {sms ? (
             <Texte selectable taille={textes.petit} ton="doux"
@@ -174,44 +219,22 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger }:
             </Texte>
           ) : null}
         </Carte>
-
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
-          <BoutonPilule libelle={t.corriger} plein onPress={onCorriger} />
-          {p.numero ? (
-            <BoutonPilule libelle={t.toutesAvecCeNumero} onPress={() => {
-              onFermer();
-              router.push({ pathname: "/flux", params: { recherche: p.numero, moment: String(Date.now()) } });
-            }} />
-          ) : null}
-          <BoutonPilule libelle={t.voirLeSms} onPress={() => {
-            onFermer();
-            router.push({ pathname: "/encaissements",
-                          params: { recherche: p.reference || p.tiers || p.numero, moment: String(Date.now()) } });
-          }} />
-        </View>
       </View>
     </Feuille>
   );
 }
 
-function BoutonPilule({ libelle, plein, onPress, desactive }: {
-  libelle: string; plein?: boolean; onPress: () => void; desactive?: boolean;
-}) {
+function BoutonPlein({ libelle, onPress, desactive }: { libelle: string; onPress: () => void; desactive?: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: !!desactive }}
                disabled={desactive} onPress={onPress}
-               // ÉTEINT, ÇA SE VOIT : un bouton éteint qui garde l'air d'un bouton
-               // actif laisse croire qu'on a enregistré.
+               // ÉTEINT, ÇA SE VOIT : un bouton éteint qui garde l'air d'un
+               // bouton actif laisse croire qu'on a enregistré.
                style={avecAppui({
-                 minHeight: 40, paddingHorizontal: espaces.lg, borderRadius: rayons.rond,
-                 justifyContent: "center", borderWidth: 1,
-                 borderColor: desactive ? couleurs.surface2 : plein ? couleurs.accent : couleurs.trait,
-                 backgroundColor: desactive ? couleurs.surface2 : plein ? couleurs.accent : couleurs.surfaceHaute,
+                 minHeight: 48, borderRadius: rayons.bouton, alignItems: "center", justifyContent: "center",
+                 backgroundColor: desactive ? couleurs.surface2 : couleurs.accent,
                })}>
-      <Texte taille={textes.petit} poids="demi"
-             style={{ color: desactive ? couleurs.encrePale : plein ? couleurs.surfaceHaute : couleurs.encre }}>
-        {libelle}
-      </Texte>
+      <Texte poids="demi" style={{ color: desactive ? couleurs.encrePale : couleurs.surfaceHaute }}>{libelle}</Texte>
     </Pressable>
   );
 }
@@ -237,20 +260,16 @@ export function FeuilleCorriger({ f, onFermer }: { f: Flux; onFermer: () => void
   const [note, setNote] = useState("");
   return (
     <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
-             entete={<Texte taille={textes.intertitre} poids="demi">{t.corrigerTitre}</Texte>}
+             entete={<Texte taille={textes.intertitre} poids="demi">{t.corriger}</Texte>}
              pied={
                <View style={{ gap: espaces.xs }}>
-                 <BoutonPilule libelle={`${t.enregistrer} · ${t.signeParVous}`} plein desactive onPress={() => {}} />
+                 <BoutonPlein libelle={t.enregistrer} desactive onPress={() => {}} />
                  <Texte taille={textes.legende} ton="pale" style={{ textAlign: "center" }}>{t.bientot}</Texte>
                </View>
              }>
       <View style={{ gap: espaces.lg }}>
         {lu == null ? (
           <View style={{ gap: espaces.sm }}>
-            <Texte poids="demi">{t.entreeOuSortie}</Texte>
-            {f.lesSoldesDisent ? (
-              <Texte taille={textes.petit} ton="doux">{t.lesSoldesDisent(f.lesSoldesDisent)}.</Texte>
-            ) : null}
             <View style={{ flexDirection: "row", gap: espaces.sm }}>
               {(["in", "out"] as const).map((s) => (
                 <Pressable key={s} accessibilityRole="button" accessibilityState={{ selected: sens === s }}
@@ -267,51 +286,42 @@ export function FeuilleCorriger({ f, onFermer }: { f: Flux; onFermer: () => void
                 </Pressable>
               ))}
             </View>
+            {f.lesSoldesDisent ? (
+              <Texte taille={textes.petit} ton="doux">{t.lesSoldesDisent(f.lesSoldesDisent)}</Texte>
+            ) : null}
           </View>
         ) : null}
 
-        <View style={{ gap: espaces.sm }}>
-          <Texte poids="demi">{t.cEstQuoi}</Texte>
-          <Carte style={{ padding: 0 }}>
-            {typesPossibles(sens, langue).map((o, i) => (
-              <View key={o.cle}>
-                {i > 0 ? <Filet /> : null}
-                <Pressable accessibilityRole="radio" accessibilityState={{ checked: type === o.cle }}
-                           onPress={() => setType(o.cle)}
-                           style={({ pressed }) => ({
-                             flexDirection: "row", alignItems: "center", gap: espaces.md, minHeight: 48,
-                             paddingHorizontal: espaces.lg,
-                             backgroundColor: pressed ? couleurs.surface2 : "transparent",
-                           })}>
-                  <View style={{ width: 18, height: 18, borderRadius: rayons.rond,
-                                 borderWidth: type === o.cle ? 6 : 1.5,
-                                 borderColor: type === o.cle ? couleurs.accent : couleurs.surface3 }} />
-                  <Texte poids={type === o.cle ? "demi" : "normal"}>{o.libelle}</Texte>
-                </Pressable>
-              </View>
-            ))}
-          </Carte>
-        </View>
+        <Carte>
+          {typesPossibles(sens, langue).map((o, i) => (
+            <View key={o.cle}>
+              {i > 0 ? <Filet style={{ marginLeft: espaces.lg }} /> : null}
+              <Pressable accessibilityRole="radio" accessibilityState={{ checked: type === o.cle }}
+                         onPress={() => setType(o.cle)}
+                         style={({ pressed }) => ({
+                           flexDirection: "row", alignItems: "center", gap: espaces.md, minHeight: 48,
+                           paddingHorizontal: espaces.lg,
+                           backgroundColor: pressed ? couleurs.surface2 : "transparent",
+                         })}>
+                <Texte poids={type === o.cle ? "demi" : "normal"} style={{ flex: 1 }}>{o.libelle}</Texte>
+                {type === o.cle ? <Icone nom="Check" taille={18} couleur={couleurs.encre} /> : null}
+              </Pressable>
+            </View>
+          ))}
+        </Carte>
 
-        <View style={{ gap: espaces.xs }}>
-          <Texte poids="demi">{t.ajouterUneNote}</Texte>
-          <ChampTexte value={note} onChangeText={setNote} multiline maxLength={280}
-                      placeholder={t.noteVisible} placeholderTextColor={couleurs.encrePale}
-                      style={{ minHeight: 64, borderWidth: 1, borderColor: couleurs.trait,
-                               borderRadius: rayons.carte, padding: espaces.md, fontSize: textes.corps,
-                               color: couleurs.encre, backgroundColor: couleurs.surfaceHaute,
-                               textAlignVertical: "top" }} />
-        </View>
+        <ChampTexte value={note} onChangeText={setNote} multiline maxLength={280}
+                    placeholder={t.ajouterUneNote} placeholderTextColor={couleurs.encrePale}
+                    style={{ minHeight: 56, borderWidth: 1, borderColor: couleurs.trait,
+                             borderRadius: rayons.carte, padding: espaces.md, fontSize: textes.corps,
+                             color: couleurs.encre, backgroundColor: couleurs.surfaceHaute,
+                             textAlignVertical: "top" }} />
 
-        <View style={{ borderWidth: 1, borderStyle: "dashed", borderColor: couleurs.trait,
-                       borderRadius: rayons.carte, padding: espaces.md, gap: 2 }}>
-          <Texte taille={textes.petit} poids="demi">{t.plus}</Texte>
-          <Texte taille={textes.legende} ton="pale">{t.plusPourVous}</Texte>
-        </View>
-
-        <View style={{ flexDirection: "row", gap: espaces.sm }}>
+        <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
           <Icone nom="Lock" taille={14} couleur={couleurs.encrePale} />
-          <Texte taille={textes.legende} ton="pale" style={{ flex: 1, lineHeight: 17 }}>{t.smsIntact}</Texte>
+          <Texte taille={textes.legende} ton="pale" style={{ flex: 1 }}>
+            {langue === "fr" ? "Le SMS d'origine ne change jamais." : "The original SMS never changes."}
+          </Texte>
         </View>
       </View>
     </Feuille>
@@ -334,53 +344,47 @@ export function FeuilleEcart({ f, e, tous, onFermer }: {
   const m = nombre(Math.abs(e.montant), langue);
   return (
     <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
-             entete={<Texte taille={textes.intertitre} poids="demi">{t.queSEstIlPasse}</Texte>}>
+             entete={<Texte taille={textes.intertitre} poids="demi">{t.queSEstIlPasse}</Texte>}
+             pied={
+               <View style={{ gap: espaces.xs }}>
+                 <BoutonPlein libelle={langue === "fr" ? "Ajouter l'opération qui manque" : "Add the missing operation"}
+                              desactive onPress={() => {}} />
+                 <Texte taille={textes.legende} ton="pale" style={{ textAlign: "center" }}>{t.bientot}</Texte>
+               </View>
+             }>
       <View style={{ gap: espaces.lg }}>
-        <Texte ton="negatif" style={{ lineHeight: 22 }}>
-          {e.montant < 0 ? t.ecart(m, e.depuis, e.jusqua) : t.ecartPlus(m, e.depuis, e.jusqua)}
-        </Texte>
+        <View style={{ alignItems: "center", gap: 2 }}>
+          <Texte taille={textes.display} poids="gras" ton="negatif" chiffresAlignes>
+            {e.montant < 0 ? "−" : "+"}{m} F
+          </Texte>
+          <Texte taille={textes.petit} ton="doux">
+            {langue === "fr" ? `sans SMS, entre ${e.depuis} et ${e.jusqua}` : `without SMS, between ${e.depuis} and ${e.jusqua}`}
+          </Texte>
+        </View>
         {annonce != null && attendu != null ? (
-          <Carte style={{ padding: 0 }}>
-            <Rangee libelle={langue === "fr" ? `${op} aurait dû annoncer` : `${op} should have announced`}>
-              <Texte chiffresAlignes ton="doux" style={{ fontStyle: "italic" }}>
+          <Carte>
+            <Rangee libelle={langue === "fr" ? "Attendu" : "Expected"}>
+              <Texte chiffresAlignes ton="pale" style={{ fontStyle: "italic" }}>
                 {nombre(attendu, langue)} F ({t.calcule})
               </Texte>
             </Rangee>
-            <Rangee libelle={langue === "fr" ? `${op} a annoncé à ${e.jusqua}` : `${op} announced at ${e.jusqua}`}>
+            <Rangee libelle={langue === "fr" ? `Annoncé par ${op} à ${e.jusqua}` : `Announced by ${op} at ${e.jusqua}`} dernier>
               <Texte chiffresAlignes poids="demi">{nombre(annonce, langue)} F</Texte>
-            </Rangee>
-            <Rangee libelle={langue === "fr" ? "Écart" : "Gap"} dernier>
-              <Texte chiffresAlignes poids="gras" ton="negatif">
-                {e.montant < 0 ? "−" : "+"}{m} F
-              </Texte>
             </Rangee>
           </Carte>
         ) : null}
         {echouees.length ? (
-          <View style={{ gap: espaces.xs }}>
-            <Texte taille={textes.petit} poids="demi">
-              {langue === "fr" ? "Dans ce créneau" : "In this window"}
-            </Texte>
-            {echouees.map((x) => (
-              <Texte key={x.p.id} taille={textes.petit} ton="doux">
-                {langue === "fr"
-                  ? `1 SMS rangé « Échouée » à ${x.p.heure} (${nombre(x.p.montant ?? 0, langue)} F)`
-                  : `1 SMS marked “Failed” at ${x.p.heure} (${nombre(x.p.montant ?? 0, langue)} F)`}
-              </Texte>
-            ))}
-          </View>
+          <Texte taille={textes.petit} ton="doux">
+            {echouees.map((x) => langue === "fr"
+              ? `Dans ce créneau : 1 opération échouée à ${x.p.heure} (${nombre(x.p.montant ?? 0, langue)} F).`
+              : `In this window: 1 failed operation at ${x.p.heure} (${nombre(x.p.montant ?? 0, langue)} F).`).join("\n")}
+          </Texte>
         ) : null}
-        <Texte taille={textes.petit} ton="doux" style={{ lineHeight: 20 }}>
+        <Texte taille={textes.petit} ton="pale" style={{ lineHeight: 20 }}>
           {langue === "fr"
-            ? "L'argent a pu partir par l'application MoMo d'un autre téléphone, au guichet, ou par un SMS perdu pendant une coupure. TOTEM ne dit pas combien d'opérations manquent : personne ne peut le savoir."
-            : "The money may have left through the MoMo app on another phone, at a counter, or through an SMS lost during an outage. TOTEM does not say how many operations are missing: nobody can know."}
+            ? "Souvent un SMS perdu pendant une coupure, ou une opération faite depuis un autre téléphone."
+            : "Often an SMS lost during an outage, or an operation made from another phone."}
         </Texte>
-        <View style={{ gap: espaces.sm }}>
-          <BoutonPilule libelle={langue === "fr" ? "Écrire une note" : "Write a note"} plein desactive onPress={() => {}} />
-          <BoutonPilule libelle={langue === "fr" ? "Ajouter l'opération qui manque" : "Add the missing operation"}
-                        desactive onPress={() => {}} />
-          <Texte taille={textes.legende} ton="pale" style={{ textAlign: "center" }}>{t.bientot}</Texte>
-        </View>
       </View>
     </Feuille>
   );

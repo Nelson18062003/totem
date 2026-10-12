@@ -319,3 +319,14 @@ export function montantSigne(f: Flux, langue: Langue, nombreDe: (n: number, l: L
   if (f.p.montant != null) return nombreDe(f.p.montant, langue) + " ?";
   return "—";
 }
+
+/** Les initiales d'un tiers, pour son rond : « TCHOUA Marc » → « TM »,
+ *  « ETS. BIYONG & FILS SARL » → « BF » (les formes de société ne nomment
+ *  personne). Vide quand il n'y a pas de nom. */
+export function initialesDe(nom: string): string {
+  const mots = (nom || "")
+    .replace(/[^\p{L}\s'-]/gu, " ")
+    .split(/\s+/)
+    .filter((m) => m.length > 1 && !/^(ets|ste|sarl|sa|sas|epse|ep|et|de|du|des|la|le)$/i.test(m));
+  return mots.slice(0, 2).map((m) => m[0]!.toUpperCase()).join("");
+}

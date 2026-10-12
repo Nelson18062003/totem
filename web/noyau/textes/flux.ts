@@ -44,6 +44,16 @@ const en = {
   ecartPlus: (montant: string, de: string, a: string) =>
     `Balances don't add up: ${montant} F more than expected between ${de} and ${a}.`,
   queSEstIlPasse: "What happened?",
+  // Les formes courtes de la liste : une ligne, pas une phrase.
+  ecartCourt: (montant: string, sens: "moins" | "plus", de: string, a: string) =>
+    `${montant} F ${sens === "moins" ? "out" : "in"} without SMS · ${de} → ${a}`,
+  aConfirmer: "to confirm",
+  attention: (ecarts: number, aVerifier: number) => [
+    ecarts ? (ecarts === 1 ? "1 balance gap" : `${ecarts} balance gaps`) : "",
+    aVerifier ? (aVerifier === 1 ? "1 to check" : `${aVerifier} to check`) : "",
+  ].filter(Boolean).join(" · "),
+  soldesVerifies: "Balances checked",
+  annonceCourt: (h: string) => `announced ${h}`,
   aucuneTransaction: "No transactions for this period.",
   familles: {
     entrees: "Money in", sorties: "Money out", depots: "Deposits", retraits: "Withdrawals",
@@ -67,7 +77,8 @@ const en = {
   recuPdf: "PDF receipt",
   partager: "Share",
   corriger: "Correct",
-  toutesAvecCeNumero: "All with this number",
+  toutesAvecCeNumero: "This number",
+  chercher: "Search",
   voirLeSms: "View the SMS",
   copier: "Copy",
   retour: "Back",
@@ -121,6 +132,14 @@ const fr: typeof en = {
   ecart: (montant, de, a) => `Les soldes ne se suivent pas : ${montant} F de moins que prévu entre ${de} et ${a}.`,
   ecartPlus: (montant, de, a) => `Les soldes ne se suivent pas : ${montant} F de plus que prévu entre ${de} et ${a}.`,
   queSEstIlPasse: "Que s'est-il passé ?",
+  ecartCourt: (montant, sens, de, a) => `${montant} F ${sens === "moins" ? "sortis" : "entrés"} sans SMS · ${de} → ${a}`,
+  aConfirmer: "à confirmer",
+  attention: (ecarts, aVerifier) => [
+    ecarts ? (ecarts === 1 ? "1 écart de solde" : `${ecarts} écarts de solde`) : "",
+    aVerifier ? (aVerifier === 1 ? "1 à vérifier" : `${aVerifier} à vérifier`) : "",
+  ].filter(Boolean).join(" · "),
+  soldesVerifies: "Soldes vérifiés",
+  annonceCourt: (h) => `annoncé à ${h}`,
   aucuneTransaction: "Aucune transaction sur cette période.",
   familles: {
     entrees: "Entrées", sorties: "Sorties", depots: "Dépôts", retraits: "Retraits",
@@ -143,7 +162,8 @@ const fr: typeof en = {
   recuPdf: "Reçu PDF",
   partager: "Partager",
   corriger: "Corriger",
-  toutesAvecCeNumero: "Toutes avec ce numéro",
+  toutesAvecCeNumero: "Ce numéro",
+  chercher: "Rechercher",
   voirLeSms: "Voir le SMS",
   copier: "Copier",
   retour: "Retour",
