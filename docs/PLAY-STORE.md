@@ -107,9 +107,10 @@ contradiction entre les deux est un motif de refus, et elle se voit.
 usage.** Les hébergeurs (Vercel, Supabase) et les services de notification
 (Expo, Google FCM) travaillent pour le compte de TOTEM : ce n'est pas un
 partage au sens du formulaire. Il en va de même de **Telegram**, par lequel
-chaque boîtier envoie une copie des SMS et des reçus dans la discussion
-privée de qui le fait fonctionner : un prestataire, nommé dans la politique
-de confidentialité. Rien n'est vendu, ni cédé à qui que ce soit.
+chaque boîtier rend compte de lui-même dans la discussion privée de qui le
+fait fonctionner — et, si celui-ci la rallume (elle est éteinte par défaut),
+y envoie une copie des SMS et des reçus : un prestataire, nommé dans la
+politique de confidentialité. Rien n'est vendu, ni cédé à qui que ce soit.
 
 ### Les types de données à déclarer
 

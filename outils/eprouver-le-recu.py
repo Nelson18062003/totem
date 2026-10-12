@@ -30,7 +30,11 @@ CE QU'IL EXIGE :
   3. une demande de l'application (« Établir le reçu ») est servie sans les
      dix secondes : quand le boîtier répond, le document est déjà là ;
   4. redemander le même reçu ne le refait pas : la réponse est immédiate et
-     la date du document ne bouge pas.
+     la date du document ne bouge pas ;
+  5. avec le réglage par défaut — les SMS ne s'annoncent plus sur Telegram,
+     le téléphone sonnait deux fois — le reçu arrive au téléphone pareil, et
+     RIEN ne part sur Telegram, ni l'alerte ni le PDF. Les étapes 1 et 2
+     rallument l'annonce : c'est elle qu'elles éprouvent.
 
 SON TÉMOIN. `RobotDAvant` rejoue l'ancien ordre — Telegram d'abord, la
 plateforme après, la demande seulement inscrite — en quelques lignes. Les
@@ -180,7 +184,7 @@ class RobotDAvant(Robot):
 class Boitier:
     numero = 0
 
-    def __init__(self, classe, telegram, recus=True):
+    def __init__(self, classe, telegram, recus=True, sms_sur_telegram=True):
         Boitier.numero += 1
         self.nom = f"recu-essai-{Boitier.numero}"
         self.journal = Journal(":memory:")
@@ -189,8 +193,13 @@ class Boitier:
         self.nuage = Nuage(f"http://127.0.0.1:{NUAGE}", "peu-importe",
                            self.nom, self.journal)
         self.telegram = telegram
+        # L'annonce des SMS sur Telegram est éteinte par défaut ; ce harnais
+        # la rallume pour éprouver ce qui a été son sujet — qu'un Telegram
+        # lent ou en panne ne retienne pas la plateforme. La conduite par
+        # défaut a sa propre étape, plus bas.
         self.robot = classe([self.compte], telegram, self.journal, nom="T",
-                            pause_sms=TOUR, nuage=self.nuage, recus=recus)
+                            pause_sms=TOUR, nuage=self.nuage, recus=recus,
+                            sms_sur_telegram=sms_sur_telegram)
         self.marche = True
         threading.Thread(target=self._tour, daemon=True).start()
         threading.Thread(target=self._pont, daemon=True).start()
@@ -271,7 +280,7 @@ def recu_pour_le_telephone(biscuit, tiers, depuis, patience=PATIENCE):
 
 
 NOMS = ["", "ABENA Rose", "KAMGA Eric", "FOTSO Jean", "NGONO Marie",
-        "ETOGA Paul", "MBALLA Claire", "TCHOUMI Alain"]
+        "ETOGA Paul", "MBALLA Claire", "TCHOUMI Alain", "NJOYA Sali"]
 
 
 def encaissement(k, montant):
@@ -330,8 +339,9 @@ def main():
         biscuit = "; ".join(c.split(";")[0]
                             for c in (entetes.get_all("set-cookie") or []))
 
-        def un_sms(classe, allure, k, montant):
-            b = Boitier(classe, Telegram(allure))
+        def un_sms(classe, allure, k, montant, sms_sur_telegram=True):
+            b = Boitier(classe, Telegram(allure),
+                        sms_sur_telegram=sms_sur_telegram)
             boitiers.append(b)
             time.sleep(3)                  # le SMS tombe au milieu d'un tour
             tiers, texte = encaissement(k, montant)
@@ -407,6 +417,18 @@ def main():
                          alerte is not None and pdf_tg is not None
                          and pdf_tg - alerte >= DELAI_RECU - 0.5)
             b.arreter()
+
+        # --- LE RÉGLAGE PAR DÉFAUT : LES SMS NE VONT PLUS SUR TELEGRAM ----
+        print("\nSans l'annonce Telegram (le réglage par défaut)")
+        b, t0, duree, numero, p = un_sms(Robot, "rapide", 8, 18000,
+                                         sms_sur_telegram=False)
+        verifier("le reçu est chez le téléphone", duree is not None and duree <= LIMITE,
+                 f"{secondes(duree)} (limite {LIMITE:.0f} s)")
+        time.sleep(DELAI_RECU + 2 * TOUR)      # le temps qu'aurait pris le PDF
+        verifier("rien n'est parti sur Telegram, ni l'alerte ni le PDF",
+                 not b.telegram.journal,
+                 ", ".join(q for _, q in b.telegram.journal) or "rien")
+        b.arreter()
 
         print("\nUne demande de l'application : servie sans attendre")
         b, guichet, reponse, repondu, duree, numero, p = une_demande(Robot, 7, 17000)

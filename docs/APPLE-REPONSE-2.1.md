@@ -153,10 +153,12 @@ Demo account, with two invented SIM cards:
   over USSD and SMS.
 - Expo and Apple Push Notification service, to notify the user when an
   operator SMS arrives. Expo also delivers the app's over-the-air updates.
-- Telegram: each TOTEM box reports to whoever runs it (the TOTEM team, or
-  the user for their own box) in a private Telegram chat, with a copy of the
-  operator SMS it receives and of the PDF receipts. This is disclosed in our
-  privacy policy. Passwords and Mobile Money PINs are never sent there.
+- Telegram: each TOTEM box reports on itself (modem, cards, daily report)
+  to whoever runs it (the TOTEM team, or the user for their own box) in a
+  private Telegram chat. By default it no longer sends the operator SMS
+  there; if whoever runs the box turns that copy back on, it carries each
+  operator SMS and its PDF receipt. This is disclosed in our privacy
+  policy. Passwords and Mobile Money PINs are never sent there.
 No payment processor, no third-party sign-in, no AI service, no advertising,
 analytics or tracking SDK.
 
@@ -189,7 +191,7 @@ paquet. Chaque phrase ci-dessus correspond à du code, et rien d'autre.
 | La vitrine ne se supprime pas, et le dit | 403 avec `vitrineNeSeSupprimePas` (`web/noyau/textes/api.ts`) |
 | Suppression aussi sur le web | `web/app/suppression/` (page et formulaire) |
 | Vitrine : deux cartes inventées, opérations jouées pour de faux | `web/lib/demonstration.ts`, éprouvée par `verifier-la-demonstration` |
-| Telegram : copie des SMS et des reçus vers la discussion privée de qui tient le boîtier | `totem/__main__.py` (`TransportTelegram`, exigé en mode réel), `totem/app.py` (`envoyer_fichier`) ; nommé dans `web/noyau/textes/confidentialite.ts` (`tiers`) |
+| Telegram : nouvelles du boîtier ; copie des SMS et des reçus seulement si elle est rallumée (`sms_sur_telegram`) | `totem/__main__.py` (`TransportTelegram`, exigé en mode réel), `totem/app.py` (`envoyer_fichier`, `sms_sur_telegram`) ; nommé dans `web/noyau/textes/confidentialite.ts` (`tiers`) |
 | La puce s'attribue d'après le code de compte, pas d'après l'adresse | `web/lib/code-de-compte.ts`, refus 409 dans `web/app/api/comptes/route.ts` ; éprouvé par `verifier-les-comptes` |
 | La vitrine n'établit pas de reçu, et le dit | `recuPasEnDemonstration` (`web/noyau/textes/api.ts`), `web/app/api/commande/route.ts` |
 | Vercel, Supabase, Expo, APNs, Telegram ; rien d'autre | `web/package.json` (Next seul), `mobile/package.json` (Expo seul), `web/lib/pousser.ts` (`exp.host`), `app.json` (`updates.url` sur `u.expo.dev`) ; la politique de confidentialité nomme les mêmes |

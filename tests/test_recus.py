@@ -91,14 +91,18 @@ class TransportEspion:
         return "admin"
 
 
-def _robot(transport=None, numeros=None, recus=True):
+def _robot(transport=None, numeros=None, recus=True, sms_sur_telegram=True):
+    """Ces essais suivent le reçu JUSQU'À TELEGRAM, où il se voit : ils
+    rallument donc l'annonce des SMS, éteinte par défaut. Ce que fait le
+    robot quand elle est éteinte se garde dans `test_sms_hors_telegram`."""
     modem = ModemSimule("Orange")
     compte = Compte(modem, "Orange")
     journal = Journal(":memory:")
     if numeros is None:
         numeros = {"orange": "696103864"}
     robot = Robot([compte], transport or TransportEspion(), journal,
-                  numeros=numeros, recus=recus)
+                  numeros=numeros, recus=recus,
+                  sms_sur_telegram=sms_sur_telegram)
     return robot, compte, modem, journal
 
 
@@ -106,7 +110,7 @@ def _distribuer(robot, journal):
     """Force la maturité : le reçu attend dix secondes en service, on ne va
     pas les faire passer pour de vrai dans un test."""
     vraie = journal.recus_a_envoyer
-    journal.recus_a_envoyer = lambda apres=0, limite=5: vraie(-60, limite)
+    journal.recus_a_envoyer = lambda apres=0, limite=5, sms=True: vraie(-60, limite, sms)
     try:
         robot._distribuer_recus()
     finally:
