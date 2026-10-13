@@ -1146,6 +1146,14 @@ fiches s'en servent : partager, voir, télécharger, refaire. La période
 demandée à la plateforme, elle, vit dans `periode-demandee.ts` : SMS et
 Paiements la partagent, avec ses leçons.
 
+**Une fiche se range comme un reçu.** La refonte « plus claire » avait mis
+des ronds d'action en tête et le SMS d'origine déplié au milieu : « ça prend
+trop d'espace pour rien », a dit le propriétaire, qui préférait la fiche
+d'avant. Elle est revenue : le montant, puis QUI ET QUAND (la personne, la
+référence, la carte, la date), CE QUE ÇA A COÛTÉ (frais, commission), le SMS
+replié, les gestes en bas, le reçu au pied. Et pas de solde dans la fiche :
+il se lit sur l'accueil, et dans le SMS d'origine.
+
 **Une largeur se mesure dans la page.** Cinq onglets à 320 points laissent
 55 points à chacun ; « Opérations » était ESTIMÉ à 52,6 — il en mesure 59, et
 la capture le montrait rogné : « Ͻpérations ». Le corps du nom se réduit

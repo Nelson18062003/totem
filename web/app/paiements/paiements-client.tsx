@@ -10,9 +10,10 @@
 // d'origine.
 //
 // Une seule ligne d'alerte, seulement s'il y a lieu. Le tableau dit QUI,
-// COMBIEN et le SOLDE annoncé ; tout le reste vit dans la fiche, qui s'ouvre
-// à droite — avec le reçu (voir, télécharger, partager, refaire : le même
-// bloc que la fiche d'un SMS, `recu.tsx`).
+// QUAND, sur QUELLE carte et COMBIEN — pas le solde, qui se lit sur
+// l'accueil ; tout le reste vit dans la fiche, qui s'ouvre à droite — avec
+// le reçu (voir, télécharger, partager, refaire : le même bloc que la fiche
+// d'un SMS, `recu.tsx`).
 //
 // Le signe et la couleur disent ce que l'opération fait au solde : « + » en
 // vert, « − » à l'encre. Le ROUGE est réservé aux soldes qui ne se suivent
@@ -26,11 +27,11 @@ import {
   fluxDe, totauxFlux, parJour, correspondFlux, dansFamille, montantSigne, initialesDe, parDate, trierFlux,
   FAMILLES_FLUX, TRIS_FLUX, type Flux, type FamilleFlux, type Ecart, type TriFlux, type TypeFlux,
 } from "@noyau/flux";
-import { estArgent, LONG_MESSAGE, texteSurEcran } from "@noyau/sms";
+import { estArgent, texteSurEcran } from "@noyau/sms";
 import { jourLocal, nombre, type Paiement, type Sim } from "@noyau/types";
 import { bornesDe, dansBornes, jourCourt, jourDuReleve, libelleJour, type Periode } from "@noyau/periodes";
 import { formaterNumero } from "@noyau/numero";
-import { IconCheck, IconChevron, IconClose, IconCopy, IconCrayon, IconList, IconLock, IconPhone, IconSearch, IconTransfer } from "../icons";
+import { IconBubble, IconCheck, IconChevron, IconClose, IconCopy, IconCrayon, IconList, IconLock, IconPhone, IconSearch, IconTransfer } from "../icons";
 import { GestesRecu, useRecuDuSms } from "../recu";
 import { couleurOperateur, LogoOperateur } from "../logos-operateurs";
 
@@ -281,11 +282,6 @@ function Ligne({ f, langue, carteCourte, premiere, choisie, onOuvrir, jour }: {
       <td className="hidden w-px whitespace-nowrap py-3 pr-6 text-caption text-ink-faint lg:table-cell">
         {carteCourte}
       </td>
-      <td className="w-px whitespace-nowrap py-3 pr-6 text-right text-caption text-ink-faint tabnums">
-        {p.soldeApres != null && (
-          <>{nombre(p.soldeApres, langue)} F{f.verdict === "suit" && <span className="text-positive"> ✓</span>}</>
-        )}
-      </td>
       <td className={`w-px whitespace-nowrap py-3 pr-4 text-right font-semibold tabnums ${
         echouee ? "text-ink-faint line-through" : attend ? "text-alert" : entree ? "text-positive" : ""}`}>
         {montantSigne(f, langue, nombre)}
@@ -297,7 +293,7 @@ function Ligne({ f, langue, carteCourte, premiere, choisie, onOuvrir, jour }: {
 function RangeeEcart({ e, t, langue, onOuvrir }: { e: Ecart; t: (typeof textesFlux)["fr"]; langue: Langue; onOuvrir: () => void }) {
   return (
     <tr className="border-t border-line bg-[rgba(192,15,12,0.06)]">
-      <td colSpan={5} className="px-4 py-2">
+      <td colSpan={4} className="px-4 py-2">
         <button type="button" onClick={onOuvrir} className="flex w-full items-center gap-2 text-left text-small text-negative">
           <span className="size-1.5 rounded-full bg-negative" />
           <span className="flex-1">{t.ecartCourt(nombre(Math.abs(e.montant), langue), e.montant < 0 ? "moins" : "plus", e.depuis, e.jusqua)}</span>
@@ -308,35 +304,45 @@ function RangeeEcart({ e, t, langue, onOuvrir }: { e: Ecart; t: (typeof textesFl
   );
 }
 
+/** Une rangée de la fiche : le libellé à gauche, la valeur à droite, et ce
+ *  qui la précise dessous. Dans une fiche, on ne coupe jamais. */
 function Rang({ libelle, children }: { libelle: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <span className="flex-1 text-small text-ink-faint">{libelle}</span>
-      <span className="min-w-0 text-right">{children}</span>
+    <div className="flex items-start gap-3 px-4 py-3">
+      <span className="w-24 shrink-0 text-small text-ink-faint">{libelle}</span>
+      <span className="flex min-w-0 flex-1 flex-col items-end gap-0.5 text-right">{children}</span>
     </div>
   );
 }
 
-function Copiable({ texte, affiche }: { texte: string; affiche: string }) {
+/** « Copier », souligné, à côté du numéro et de la référence. */
+function Copier({ texte, langue }: { texte: string; langue: Langue }) {
   const [fait, setFait] = useState(false);
   return (
-    <button type="button" className="inline-flex items-center gap-1.5 tabnums hover:text-ink"
+    <button type="button" aria-label={`${textesFlux[langue].copier} ${texte}`}
+            className={`text-caption font-medium ${fait ? "text-positive" : "text-ink-soft underline underline-offset-4 hover:text-ink"}`}
             onClick={async () => { try { await navigator.clipboard.writeText(texte); setFait(true); setTimeout(() => setFait(false), 1500); } catch { /* sélectionnable à la souris */ } }}>
-      {affiche}
-      {fait ? <IconCheck size={14} className="text-positive" /> : <IconCopy size={14} className="text-ink-faint" />}
+      {fait ? "✓" : textesFlux[langue].copier}
     </button>
   );
 }
 
-function Geste({ Icone, libelle, onClick }: { Icone: typeof IconCopy; libelle: string; onClick: () => void }) {
+/** Un geste de la fiche, en pastille : une icône et son nom. */
+function Pastille({ Icone, libelle, onClick }: { Icone: typeof IconCopy; libelle: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex flex-1 flex-col items-center gap-1.5 text-caption text-ink-soft hover:text-ink">
-      <span className="grid size-11 place-items-center rounded-full border border-line"><Icone size={18} /></span>
-      {libelle}
+    <button type="button" onClick={onClick}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface-raised px-4 text-small font-semibold transition hover:border-ink-faint">
+      <Icone size={15} /> {libelle}
     </button>
   );
 }
 
+/**
+ * LA FICHE D'UNE TRANSACTION — rangée comme un reçu, comme sur le téléphone
+ * (voir `FicheFlux`, mobile/src/flux-fiches.tsx) : le montant en tête, QUI
+ * ET QUAND, CE QUE ÇA A COÛTÉ, le SMS d'origine replié, le reçu, puis les
+ * gestes. Pas de solde : il se lit sur l'accueil, et dans le SMS d'origine.
+ */
 function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorriger, onNumero }: {
   f: Flux; sims: Sim[]; maintenant: number; fuseau: string; langue: Langue;
   onFermer: () => void; onCorriger: () => void; onNumero: (n: string) => void;
@@ -346,69 +352,97 @@ function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorrige
   const op = operateurDe(p.sim);
   const sim = sims.find((s) => s.iccid === p.carte);
   const entree = f.effet != null && f.effet > 0;
-  const ts = textesSms[langue];
+  const sortie = f.effet != null && f.effet < 0;
   const [deplie, setDeplie] = useState(false);
   // Le SMS tel qu'il est arrivé — codes compris : il est au propriétaire.
   const texte = texteSurEcran(p);
-  const long = texte.length > LONG_MESSAGE;
   const { recu, enPreparation, etabli, mot, etablirRecu } = useRecuDuSms(p, p.nature);
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
+  const qui = entree ? t.de : sortie ? t.a : t.avec;
+  const couts = p.frais != null || !!p.commission;
   return (
     <aside aria-label={titre}
-           className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[400px] flex-col gap-6 overflow-y-auto border-l border-line bg-surface-raised p-6">
-      <div className="flex items-center gap-3">
-        <Rond f={f} carteCourte={p.sim} taille={44} />
+           className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[400px] flex-col gap-4 overflow-y-auto border-l border-line bg-surface-raised p-6">
+      <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">{titre}</p>
-          <p className="text-small text-ink-faint">
-            {NOMS_TYPES[langue][f.type]} · <span className={f.etat === "comptee" ? "text-positive" : f.etat === "echouee" ? "" : "text-alert"}>{etat}</span>
+          <p className={`text-display font-bold tabnums ${f.etat === "a_verifier" ? "text-alert" : entree ? "text-positive" : ""} ${
+            f.etat === "echouee" ? "line-through" : ""}`}>
+            {montantSigne(f, langue, nombre)} F
+          </p>
+          <p className="text-ink-soft">
+            {NOMS_TYPES[langue][f.type]} · <span className={`font-semibold ${f.etat === "comptee" ? "text-positive" : f.etat === "echouee" ? "text-ink-faint" : "text-alert"}`}>{etat}</span>
           </p>
         </div>
-        <button type="button" onClick={onFermer} aria-label={t.retour} className="text-ink-faint hover:text-ink"><IconClose size={18} /></button>
+        <button type="button" onClick={onFermer} aria-label={t.retour} className="mt-2 text-ink-faint hover:text-ink"><IconClose size={18} /></button>
       </div>
-      <p className={`text-center text-display font-bold tabnums ${f.etat === "a_verifier" ? "text-alert" : entree ? "text-positive" : ""}`}>
-        {montantSigne(f, langue, nombre)} F
-      </p>
+
+      {/* QUI ET QUAND. */}
+      <div className="divide-hair rounded-card border border-line">
+        {(p.tiers || p.numero) && (
+          <Rang libelle={qui}>
+            <span className="font-medium">{p.tiers || formaterNumero(p.numero)}</span>
+            {p.numero && (
+              <span className="inline-flex items-center gap-2">
+                {p.tiers && <span className="text-small text-ink-soft tabnums">{formaterNumero(p.numero)}</span>}
+                <Copier texte={p.numero} langue={langue} />
+              </span>
+            )}
+          </Rang>
+        )}
+        {p.reference && (
+          <Rang libelle={t.reference}>
+            <span className="tabnums">{p.reference}</span>
+            <Copier texte={p.reference} langue={langue} />
+          </Rang>
+        )}
+        <Rang libelle={t.carte}>
+          <span className="inline-flex items-center gap-2"><LogoOperateur operateur={op} size={16} />{op}{sim?.numero ? ` · ${formaterNumero(sim.numero)}` : ` · ${p.sim}`}</span>
+        </Rang>
+        <Rang libelle={t.date}>
+          <span>{quandAnnonce(p.recuLe, p.heure, maintenant, fuseau, langue)}</span>
+          <span className="text-caption text-ink-faint">{t.heureOperateur(op)}</span>
+        </Rang>
+      </div>
+
+      {/* CE QUE ÇA A COÛTÉ — seulement ce que le SMS a dit. */}
+      {couts && (
+        <div className="divide-hair rounded-card border border-line">
+          {p.frais != null && <Rang libelle={t.frais}><span className="tabnums">{nombre(p.frais, langue)} F</span></Rang>}
+          {p.commission ? (
+            <Rang libelle={t.commission}>
+              <span className="tabnums">{nombre(p.commission, langue)} F</span>
+              <span className="text-caption text-ink-faint">{t.commissionNonComptee}</span>
+            </Rang>
+          ) : null}
+        </div>
+      )}
+
+      {/* LE SMS D'ORIGINE, replié : il s'ouvre d'un geste, entier. */}
+      <div className="rounded-card border border-line">
+        <button type="button" aria-expanded={deplie} onClick={() => setDeplie(!deplie)}
+                className="flex w-full items-center gap-2 px-4 py-3 text-left text-small font-semibold text-ink-soft hover:text-ink">
+          <IconBubble size={16} />
+          <span className="flex-1">{t.smsDOrigine}</span>
+          <IconChevron size={12} className={deplie ? "-rotate-90" : "rotate-90"} />
+        </button>
+        {deplie && (
+          <p dir="auto" className="mx-4 mb-4 whitespace-pre-wrap break-words rounded-card bg-surface-2 p-3.5 text-small leading-relaxed">
+            {texte}
+          </p>
+        )}
+      </div>
+
       {/* LE REÇU PDF : le même bloc que la fiche d'un SMS. */}
       {estArgent(p) && (recu || p.sourceId != null) && (
         <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation} mot={mot}
                     onEtablir={() => void etablirRecu()} />
       )}
-      <div className="flex">
-        <Geste Icone={IconCrayon} libelle={t.corriger} onClick={onCorriger} />
-        {p.numero && <Geste Icone={IconList} libelle={t.toutesAvecCeNumero} onClick={() => onNumero(p.numero)} />}
-      </div>
-      {/* LE SMS D'ORIGINE, mot pour mot — à l'écran : c'est la preuve. */}
-      <div>
-        <p className="mb-1.5 text-caption uppercase tracking-wider text-ink-faint">{t.smsDOrigine}</p>
-        <p dir="auto" className={`whitespace-pre-wrap break-words rounded-card bg-surface-2 p-3.5 text-small leading-relaxed text-ink-soft ${
-          long && !deplie ? "line-clamp-6" : ""}`}>
-          {texte}
-        </p>
-        {long && (
-          <button type="button" onClick={() => setDeplie((d) => !d)}
-                  className="mt-1.5 text-caption text-ink-soft underline underline-offset-4 transition hover:text-ink">
-            {deplie ? ts.replierMessage : ts.toutLeMessage}
-          </button>
-        )}
-      </div>
-      <div className="divide-hair rounded-card border border-line">
-        {p.numero && <Rang libelle={langue === "fr" ? "Numéro" : "Number"}><Copiable texte={p.numero} affiche={formaterNumero(p.numero)} /></Rang>}
-        {p.reference && <Rang libelle={t.reference}><Copiable texte={p.reference} affiche={p.reference} /></Rang>}
-        <Rang libelle={t.carte}>
-          <span className="inline-flex items-center gap-2"><LogoOperateur operateur={op} size={16} />{sim?.numero ? formaterNumero(sim.numero) : p.sim}</span>
-        </Rang>
-        <Rang libelle={t.date}>{quandAnnonce(p.recuLe, p.heure, maintenant, fuseau, langue)}</Rang>
-        {p.commission ? <Rang libelle={t.commission}><span className="tabnums">{nombre(p.commission, langue)} F</span></Rang> : null}
-        {p.soldeApres != null && (
-          <Rang libelle={langue === "fr" ? "Solde après" : "Balance after"}>
-            <span className="font-semibold tabnums">{nombre(p.soldeApres, langue)} F{f.verdict === "suit" && <span className="text-positive"> ✓</span>}</span>
-          </Rang>
-        )}
-        {f.soldeAvantCalcule != null && (
-          <Rang libelle={t.soldeAvant}><span className="italic text-ink-faint tabnums">{nombre(f.soldeAvantCalcule, langue)} F ({t.calcule})</span></Rang>
-        )}
+
+      {/* LES GESTES, APRÈS LA LECTURE. */}
+      <div className="flex flex-wrap gap-2">
+        <Pastille Icone={IconCrayon} libelle={t.corriger} onClick={onCorriger} />
+        {p.numero && <Pastille Icone={IconList} libelle={t.toutesAvecCeNumero} onClick={() => onNumero(p.numero)} />}
       </div>
     </aside>
   );

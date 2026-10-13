@@ -1,15 +1,9 @@
 // Les feuilles des Paiements : la fiche d'une transaction, « Corriger », et
 // « Que s'est-il passé ? » pour un écart de la suite des soldes.
 //
-// LA FICHE VA DU PLUS IMPORTANT AU DÉTAIL : qui et combien, deux gestes
-// (corriger, les autres transactions de ce numéro), le SMS d'origine mot
-// pour mot — c'est la preuve —, puis les détails : l'annoncé avec sa coche,
-// le calculé écrit « (calculé) » et JAMAIS coché.
-//
-// LE REÇU PDF, AU PIED, comme dans la fiche d'un SMS — le même système
-// (`recu.tsx`) : partager, voir, télécharger, refaire. « C'est hyper
-// important sur chaque transaction », a dit le propriétaire : la fiche d'un
-// paiement n'en avait pas.
+// LA FICHE SE RANGE COMME UN REÇU : le montant en tête, puis qui et quand,
+// puis ce que ça a coûté ; le SMS d'origine replié ; le reçu PDF au pied.
+// Voir `FicheFlux`.
 //
 // « CORRIGER » N'ENREGISTRE PAS ENCORE. Le journal signé des corrections est
 // une livraison à part ; d'ici là, le bouton est éteint et le dit. Un bouton
@@ -19,11 +13,11 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 
-import { Carte, ChampTexte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
+import { Carte, ChampTexte, Filet, Texte, avecAppui } from "@/ui";
 import { PiedRecu, useRecu } from "@/recu";
 import { Icone, type NomIcone } from "@/icones";
 import { Feuille } from "@/feuille";
-import { LogoOperateur } from "@/logos-operateurs";
+import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { couleurs, couleurOperateur, espaces, rayons, textes } from "@/theme/jetons";
 import { useLangue } from "@/langue";
 import { copierTexte } from "@/presse-papiers";
@@ -31,7 +25,7 @@ import { textesFlux, NOMS_TYPES, NOMS_CORRECTION } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
 import { initialesDe, montantSigne, type Flux, type Ecart, type TypeFlux } from "@noyau/flux";
 import { nombre, type Paiement, type Sim } from "@noyau/types";
-import { estArgent, LONG_MESSAGE, texteSurEcran } from "@noyau/sms";
+import { estArgent, texteSurEcran } from "@noyau/sms";
 import { formaterNumero } from "@noyau/numero";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 
@@ -77,46 +71,61 @@ export function RondFlux({ f, carteCourte, taille = 40 }: { f: Flux; carteCourte
   );
 }
 
+/** Une rangée de la fiche : le libellé à gauche, la valeur à droite, et ce
+ *  qui la précise dessous, en petit. Dans une fiche, on ne coupe jamais. */
 function Rangee({ libelle, children, dernier }: { libelle: string; children: React.ReactNode; dernier?: boolean }) {
   return (
     <>
       <View style={{ flexDirection: "row", gap: espaces.md, paddingVertical: espaces.md,
-                     paddingHorizontal: espaces.lg, alignItems: "center" }}>
-        <Texte taille={textes.petit} ton="pale" style={{ flex: 1 }}>{libelle}</Texte>
-        <View style={{ flexShrink: 1, alignItems: "flex-end" }}>{children}</View>
+                     paddingHorizontal: espaces.lg, alignItems: "flex-start" }}>
+        <Texte taille={textes.petit} ton="pale" style={{ width: 88 }}>{libelle}</Texte>
+        <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end", gap: 2 }}>{children}</View>
       </View>
-      {dernier ? null : <Filet style={{ marginLeft: espaces.lg }} />}
+      {dernier ? null : <Filet />}
     </>
   );
 }
 
-/** Une valeur qu'on copie d'un appui long sur elle — sans un mot de plus. */
-function Copiable({ texte, affiche, langue }: { texte: string; affiche: string; langue: "fr" | "en" }) {
+/** « Copier », souligné, à côté de ce qu'on recopie le plus : le numéro du
+ *  client, la référence qu'on donne à l'opérateur pour réclamer. */
+function Copier({ texte, langue }: { texte: string; langue: "fr" | "en" }) {
   const [fait, setFait] = useState(false);
   return (
-    <Pressable accessibilityRole="button" accessibilityHint={textesFlux[langue].copier}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${textesFlux[langue].copier} ${texte}`}
+               hitSlop={8}
                onPress={() => { if (copierTexte(texte)) { setFait(true); setTimeout(() => setFait(false), 1500); } }}
-               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 6, opacity: pressed ? 0.5 : 1 })}>
-      <Texte chiffresAlignes style={{ textAlign: "right" }}>{affiche}</Texte>
-      <Icone nom={fait ? "Check" : "Copy"} taille={14} couleur={fait ? couleurs.positif : couleurs.encrePale} />
+               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+      <Texte taille={textes.legende} ton={fait ? "positif" : "doux"} poids="moyen"
+             style={{ textDecorationLine: fait ? "none" : "underline" }}>
+        {fait ? "✓" : textesFlux[langue].copier}
+      </Texte>
     </Pressable>
   );
 }
 
-/** Un geste de la fiche : un rond, et un mot dessous. */
-function Geste({ icone, libelle, onPress }: { icone: NomIcone; libelle: string; onPress: () => void }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={libelle} onPress={onPress}
-               style={({ pressed }) => ({ alignItems: "center", gap: espaces.xs, flex: 1, opacity: pressed ? 0.6 : 1 })}>
-      <View style={{ width: 48, height: 48, borderRadius: rayons.rond, backgroundColor: couleurs.surfaceHaute,
-                     borderWidth: 1, borderColor: couleurs.trait, alignItems: "center", justifyContent: "center" }}>
-        <Icone nom={icone} taille={20} couleur={couleurs.encre} />
-      </View>
-      <Texte taille={textes.legende} ton="doux" numberOfLines={1}>{libelle}</Texte>
-    </Pressable>
-  );
-}
-
+/**
+ * LA FICHE D'UNE TRANSACTION — rangée comme un reçu.
+ *
+ * Le propriétaire préférait celle d'avant, « bien organisée, structurée » :
+ * le montant en tête, puis une carte où chaque ligne dit une chose. Elle
+ * revient, en deux blocs : QUI ET QUAND (la personne et son numéro, la
+ * référence, la carte, la date) et CE QUE ÇA A COÛTÉ (les frais, la
+ * commission) — ce que le SMS de l'opérateur porte, lu une fois pour toutes.
+ *
+ * PAS DE SOLDE ICI. « Il voit son solde sur l'écran d'accueil » : le solde
+ * après et le solde avant (calculé) chargeaient la fiche sans rien dire de
+ * CETTE transaction. Le solde annoncé reste lisible dans le SMS d'origine,
+ * mot pour mot — et la suite des soldes continue de veiller sur la liste
+ * (les écarts).
+ *
+ * LE SMS D'ORIGINE SE REPLIE. Ouvert d'office, il prenait la moitié de
+ * l'écran « pour rien » : il s'ouvre d'un geste, entier, sélectionnable.
+ *
+ * LE REÇU AU PIED, toujours à portée du pouce : partager, voir, télécharger,
+ * refaire (`recu.tsx`, le même que dans la fiche d'un SMS). « Corriger » et
+ * les autres transactions du même numéro ferment la fiche, en bas : on y va
+ * après avoir lu, pas avant.
+ */
 export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger, onChange, onRetouche }: {
   f: Flux; sims: Sim[]; maintenant: number; fuseau: string;
   onFermer: () => void; onCorriger: () => void;
@@ -133,115 +142,137 @@ export function FicheFlux({ f, sims, maintenant, fuseau, onFermer, onCorriger, o
   const sim = sims.find((s) => s.iccid === p.carte);
   const [deplie, setDeplie] = useState(false);
   const r = useRecu(p, { nature: p.nature, onChange, onRetouche });
-  // Le SMS tel qu'il est arrivé — codes compris : il est au propriétaire.
-  const texte = texteSurEcran(p);
-  const long = texte.length > LONG_MESSAGE;
   const entree = f.effet != null && f.effet > 0;
+  const sortie = f.effet != null && f.effet < 0;
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const tonEtat = f.etat === "comptee" ? "positif" : f.etat === "echouee" ? "pale" : "alerte";
   const quand = quandAnnonce(p.recuLe, p.heure, maintenant, fuseau, langue);
-  const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
+  const date = quand.charAt(0).toUpperCase() + quand.slice(1);
+  // L'autre partie : « De » quand l'argent est entré, « À » quand il est
+  // sorti, « Avec » quand le sens attend une décision — jamais un sens deviné.
+  const qui = entree ? t.de : sortie ? t.a : t.avec;
+  // Le SMS tel qu'il est arrivé — codes compris : il est au propriétaire.
+  const texte = texteSurEcran(p);
+  const couts = p.frais != null || !!p.commission;
   return (
-    <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
+    <Feuille visible libelleFermer={ts.fermer} onFermer={onFermer}
              pied={estArgent(p) && (r.recu || p.sourceId != null)
                ? <PiedRecu r={r} p={p} langue={langue} /> : undefined}
              entete={
-               <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
-                 <RondFlux f={f} carteCourte={p.sim} taille={44} />
-                 <View style={{ flex: 1, minWidth: 0 }}>
-                   {/* Dans une fiche, on ne coupe jamais un nom. */}
-                   <Texte poids="demi">{titre}</Texte>
-                   <Texte taille={textes.petit} ton="pale">
-                     {NOMS_TYPES[langue][f.type]} · <Texte taille={textes.petit} ton={tonEtat} poids="moyen">{etat}</Texte>
-                   </Texte>
-                 </View>
+               <View style={{ gap: 2 }}>
+                 <Texte taille={textes.display} poids="gras" chiffresAlignes
+                        ton={f.etat === "a_verifier" ? "alerte" : entree ? "positif" : "normal"}
+                        style={f.etat === "echouee" ? { textDecorationLine: "line-through" } : undefined}>
+                   {montantSigne(f, langue, nombre)} F
+                 </Texte>
+                 <Texte ton="doux">
+                   {NOMS_TYPES[langue][f.type]} · <Texte poids="demi" ton={tonEtat}>{etat}</Texte>
+                 </Texte>
                </View>
              }>
-      <View style={{ gap: espaces.xl }}>
-        <Texte taille={textes.display} poids="gras" chiffresAlignes style={{ textAlign: "center" }}
-               ton={f.etat === "a_verifier" ? "alerte" : entree ? "positif" : "normal"}>
-          {montantSigne(f, langue, nombre)} F
-        </Texte>
+      <View style={{ gap: espaces.md }}>
+        {/* QUI ET QUAND. */}
+        <Carte style={{ padding: 0 }}>
+          {p.tiers || p.numero ? (
+            <Rangee libelle={qui}>
+              <Texte poids="moyen" style={{ textAlign: "right" }}>{p.tiers || formaterNumero(p.numero)}</Texte>
+              {p.numero && p.tiers ? (
+                <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
+                  <Texte taille={textes.petit} ton="doux" chiffresAlignes>{formaterNumero(p.numero)}</Texte>
+                  <Copier texte={p.numero} langue={langue} />
+                </View>
+              ) : p.numero ? <Copier texte={p.numero} langue={langue} /> : null}
+            </Rangee>
+          ) : null}
+          {p.reference ? (
+            <Rangee libelle={t.reference}>
+              <Texte chiffresAlignes selectable style={{ textAlign: "right" }}>{p.reference}</Texte>
+              <Copier texte={p.reference} langue={langue} />
+            </Rangee>
+          ) : null}
+          {/* LE LOGO DIT DÉJÀ L'OPÉRATEUR : à côté, le numéro seul. « MTN ·
+              677 12 34 56 » se cassait à 320 points, le numéro coupé en deux
+              — un numéro coupé se lit faux. */}
+          <Rangee libelle={t.carte}>
+            <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
+              <LogoOperateur operateur={op} taille={16} />
+              <Texte chiffresAlignes numberOfLines={1} style={{ flexShrink: 1 }}>
+                {sim?.numero ? formaterNumero(sim.numero)
+                  : operateurReconnu(op) ? p.sim.replace(/^\S+\s*/, "") : p.sim}
+              </Texte>
+            </View>
+          </Rangee>
+          <Rangee libelle={t.date} dernier>
+            <Texte style={{ textAlign: "right" }}>{date}</Texte>
+            <Texte taille={textes.legende} ton="pale">{t.heureOperateur(op)}</Texte>
+          </Rangee>
+        </Carte>
 
-        <View style={{ flexDirection: "row" }}>
-          <Geste icone="Crayon" libelle={t.corriger} onPress={onCorriger} />
+        {/* CE QUE ÇA A COÛTÉ — seulement ce que le SMS a dit. */}
+        {couts ? (
+          <Carte style={{ padding: 0 }}>
+            {p.frais != null ? (
+              <Rangee libelle={t.frais} dernier={!p.commission}>
+                <Texte chiffresAlignes>{nombre(p.frais, langue)} F</Texte>
+              </Rangee>
+            ) : null}
+            {p.commission ? (
+              <Rangee libelle={t.commission} dernier>
+                <Texte chiffresAlignes>{nombre(p.commission, langue)} F</Texte>
+                <Texte taille={textes.legende} ton="pale">{t.commissionNonComptee}</Texte>
+              </Rangee>
+            ) : null}
+          </Carte>
+        ) : null}
+
+        {/* LE SMS D'ORIGINE, replié : il s'ouvre d'un geste, entier. */}
+        <Carte style={{ padding: 0 }}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: deplie }}
+                     onPress={() => setDeplie(!deplie)}
+                     style={avecAppui({ flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                                        paddingVertical: espaces.md, paddingHorizontal: espaces.lg })}>
+            <Icone nom="Bubble" taille={16} couleur={couleurs.encreDouce} />
+            <Texte taille={textes.petit} poids="demi" ton="doux" style={{ flex: 1 }}>{t.smsDOrigine}</Texte>
+            <View style={{ transform: [{ rotate: deplie ? "-90deg" : "90deg" }] }}>
+              <Icone nom="Chevron" taille={13} couleur={couleurs.encrePale} />
+            </View>
+          </Pressable>
+          {deplie ? (
+            <View style={{ paddingHorizontal: espaces.lg, paddingBottom: espaces.md }}>
+              <View style={{ backgroundColor: couleurs.surface2, borderRadius: rayons.carte, padding: espaces.md }}>
+                <Texte selectable taille={textes.petit} style={{ lineHeight: 21 }}>{texte}</Texte>
+              </View>
+            </View>
+          ) : null}
+        </Carte>
+
+        {/* LES GESTES, APRÈS LA LECTURE. */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: espaces.sm }}>
+          <BoutonPilule libelle={t.corriger} icone="Crayon" onPress={onCorriger} />
           {p.numero ? (
-            <Geste icone="List" libelle={t.toutesAvecCeNumero} onPress={() => {
+            <BoutonPilule libelle={t.toutesAvecCeNumero} icone="List" onPress={() => {
               onFermer();
               router.push({ pathname: "/paiements", params: { recherche: p.numero, moment: String(Date.now()) } });
             }} />
           ) : null}
         </View>
-
-        {/* LE SMS D'ORIGINE, MOT POUR MOT — à l'écran, pas derrière un pli :
-            c'est la preuve, et ce que le propriétaire veut pouvoir relire —
-            juste sous le montant, avant les détails.
-            Long, il se replie à six lignes, comme dans la fiche d'un SMS. */}
-        <View style={{ gap: espaces.sm }}>
-          <Texte taille={textes.legende} ton="pale"
-                 style={{ textTransform: "uppercase", letterSpacing: 0.8 }}>
-            {t.smsDOrigine}
-          </Texte>
-          <View style={{ backgroundColor: couleurs.surface2, borderRadius: rayons.carte,
-                         padding: espaces.lg }}>
-            <Texte selectable style={{ lineHeight: 23 }}
-                   numberOfLines={long && !deplie ? 6 : undefined}>
-              {texte}
-            </Texte>
-          </View>
-          {long ? (
-            <Pressable accessibilityRole="button" onPress={() => setDeplie((d) => !d)}
-                       hitSlop={8} style={appuiTexte}>
-              <Texte taille={textes.petit} ton="doux" poids="moyen">
-                {deplie ? ts.replierMessage : ts.toutLeMessage}
-              </Texte>
-            </Pressable>
-          ) : null}
-        </View>
-        <Carte>
-          {p.numero ? (
-            <Rangee libelle={langue === "fr" ? "Numéro" : "Number"}>
-              <Copiable texte={p.numero} affiche={formaterNumero(p.numero)} langue={langue} />
-            </Rangee>
-          ) : null}
-          {p.reference ? (
-            <Rangee libelle={t.reference}>
-              <Copiable texte={p.reference} affiche={p.reference} langue={langue} />
-            </Rangee>
-          ) : null}
-          <Rangee libelle={t.carte}>
-            <View style={{ flexDirection: "row", gap: espaces.sm, alignItems: "center" }}>
-              <LogoOperateur operateur={op} taille={16} />
-              <Texte>{sim?.numero ? formaterNumero(sim.numero) : p.sim}</Texte>
-            </View>
-          </Rangee>
-          <Rangee libelle={t.date}>
-            <Texte>{quand.charAt(0).toUpperCase() + quand.slice(1)}</Texte>
-          </Rangee>
-          {p.commission ? (
-            <Rangee libelle={t.commission}>
-              <Texte chiffresAlignes>{nombre(p.commission, langue)} F</Texte>
-            </Rangee>
-          ) : null}
-          {p.soldeApres != null ? (
-            <Rangee libelle={langue === "fr" ? "Solde après" : "Balance after"} dernier={f.soldeAvantCalcule == null}>
-              <Texte chiffresAlignes poids="demi">
-                {nombre(p.soldeApres, langue)} F{f.verdict === "suit"
-                  ? <Texte ton="positif" poids="demi"> ✓</Texte> : null}
-              </Texte>
-            </Rangee>
-          ) : null}
-          {f.soldeAvantCalcule != null ? (
-            <Rangee libelle={t.soldeAvant} dernier>
-              <Texte chiffresAlignes ton="pale" style={{ fontStyle: "italic" }}>
-                {nombre(f.soldeAvantCalcule, langue)} F ({t.calcule})
-              </Texte>
-            </Rangee>
-          ) : null}
-        </Carte>
-
       </View>
     </Feuille>
+  );
+}
+
+/** Un geste de la fiche, en pastille : une icône et son nom. */
+function BoutonPilule({ libelle, icone, onPress }: { libelle: string; icone: NomIcone; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}
+               style={avecAppui({
+                 flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                 minHeight: 40, paddingHorizontal: espaces.lg, borderRadius: rayons.rond,
+                 borderWidth: 1, borderColor: couleurs.trait, backgroundColor: couleurs.surfaceHaute,
+               })}>
+      <Icone nom={icone} taille={15} couleur={couleurs.encre} />
+      <Texte taille={textes.petit} poids="demi">{libelle}</Texte>
+    </Pressable>
   );
 }
 
