@@ -61,7 +61,8 @@ from datetime import datetime, timedelta
 from .analyse_sms import _normaliser, solde_annonce
 from .carte import operateur_xafe
 from .compte import (WEB, TELEGRAM, EnvoiIncertain, ErreurModem, MenuReferme,
-                     ReponseNonRecue, ReponseRefusee, SessionTenue)
+                     MessageTropLong, ReponseNonRecue, ReponseRefusee,
+                     SessionTenue)
 from .declencheur import NATURES, RefusRecu
 from .nuage import _horodatage
 from .textes import t
@@ -407,6 +408,15 @@ class Pilotage:
                                                   langue, prise=prise,
                                                   guichet=guichet)
             elif genre == "sms_xafe":
+                # Un SMS ne part que sur l'ordre du guichet XAFe. Une ligne
+                # Bonzini qui porterait ce genre ferait partir un texte
+                # arbitraire depuis la SIM : une surface qu'on n'a pas
+                # décidé d'ouvrir — on la refuse, poliment.
+                if getattr(guichet, "nom", "nuage") != "xafe":
+                    raise RefusPoli(t(
+                        "Sending an SMS is an XAFe request only. Nothing was sent.",
+                        "L'envoi d'un SMS est une demande de XAFe seulement. "
+                        "Rien n'est parti.", langue=langue))
                 self._refuser_si_perimee(prise, genre, langue)
                 resultat = self._envoyer_sms_xafe(parametres, langue)
             elif genre == "ussd_fin":
@@ -936,12 +946,26 @@ class Pilotage:
                 "The number to text is not a nine-digit number. Nothing was sent.",
                 "Le numéro à joindre n'est pas un numéro à neuf chiffres. Rien "
                 "n'est parti.", langue=langue))
+        if not numero.startswith("6"):
+            # Une ligne fixe (2xx) ne reçoit pas de SMS ; parti sans
+            # indicatif en « international », 2xx… serait un autre pays.
+            raise RefusPoli(t(
+                "The number to text is not a Cameroonian mobile number (6…). "
+                "Nothing was sent.",
+                "Le numéro à joindre n'est pas un numéro de mobile camerounais "
+                "(6…). Rien n'est parti.", langue=langue))
         texte = str(parametres.get("texte") or "")
         if not texte.strip():
             raise RefusPoli(t("Empty message. Nothing was sent.",
                               "Message vide. Rien n'est parti.", langue=langue))
         try:
             reference = compte.envoyer_sms(numero, texte)
+        except MessageTropLong as trop:
+            raise RefusPoli(t(
+                f"Message too long: {trop.combien} characters, {trop.borne} at "
+                f"most. Nothing was sent.",
+                f"Message trop long : {trop.combien} caractères, {trop.borne} au "
+                f"plus. Rien n'est parti.", langue=langue))
         except ReponseRefusee as refus:
             raise RefusPoli(_caracteres_refuses(refus, langue))
         except EnvoiIncertain:

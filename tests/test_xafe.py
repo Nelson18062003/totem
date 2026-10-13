@@ -1910,15 +1910,117 @@ class TestLeGuichetDesSms(Banc):
         self.assertEqual(len(compte.sms_envoyes), 1)
 
     def test_la_demande_porte_sa_carte_et_va_dans_sa_file(self):
+        """Le CÂBLAGE, pas le helper : c'est `_distribuer` qui doit nommer la
+        carte avant de choisir la file. La première version de ce test
+        appelait `_nommer_la_carte` elle-même puis lisait `_cle_de_file` :
+        `_distribuer` pouvait oublier l'appel sans qu'un test rougisse — et la
+        demande partait dans la file commune, un second fil sur la même puce.
+        Ici la demande passe par `_distribuer`, et c'est le registre des
+        files qu'on lit."""
         g = self.guichet()
         g.messages = {3: message_xafe()}
         journal = journal_avec_carte()
         compte = compte_mtn()
         porte, pilotage = self.pilote(g, journal, [compte])
         d = porte.commandes_en_attente()[0]
-        pilotage._nommer_la_carte(d)
-        self.assertEqual(d["parametres"]["carte"], ICCID)
-        self.assertEqual(pilotage._cle_de_file(d), ICCID)
+        self.assertNotIn("carte", d["parametres"], "XAFe ne nomme pas la carte")
+        # `_marche` reste faux : le fil de la file s'arrête sans rien
+        # exécuter, et la demande reste là où `_distribuer` l'a posée.
+        pilotage._distribuer(d, porte)
+        self.assertEqual(d["parametres"].get("carte"), ICCID)
+        self.assertEqual(list(pilotage._files), [ICCID])
+        self.assertEqual(pilotage._files[ICCID].get_nowait(), (porte, d))
+
+    def test_temoin_un_distribuer_qui_oublie_la_carte_va_dans_la_file_commune(self):
+        """Le même essai, sur un `Pilotage` dont `_nommer_la_carte` ne fait
+        rien (la mutation faite à la main sur `_distribuer`) : la demande
+        doit aller dans la file commune — sinon l'assertion du test
+        précédent ne mesure rien."""
+        from totem.pilotage import FILE_COMMUNE
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        pilotage._nommer_la_carte = lambda demande: None
+        d = porte.commandes_en_attente()[0]
+        pilotage._distribuer(d, porte)
+        self.assertNotIn("carte", d["parametres"])
+        self.assertEqual(list(pilotage._files), [FILE_COMMUNE],
+                         "LE TÉMOIN PASSE : sans nommer la carte, la demande "
+                         "trouve quand même la file de la carte")
+
+    def exigences_de_la_meme_file(self, oublie_la_carte=False):
+        """Une demande USSD Bonzini puis un SMS XAFe sur la MÊME carte,
+        distribués dans cet ordre comme la boucle le ferait : le SMS attend
+        que le menu USSD ait répondu — même file, un seul fil — et les deux
+        finissent, dans l'ordre. Rend les manques."""
+        import threading
+        from tests.test_pilotage import FauxNuage
+        from totem.pilotage import Pilotage
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        compte.reponses = [("fermee", "Solde : 1 000 FCFA")]
+        commence, lache = threading.Event(), threading.Event()
+        vrai = compte.ussd_demarrer
+
+        def ussd_lent(code, **k):       # le réseau MTN tarde à répondre
+            commence.set()
+            lache.wait(5)
+            return vrai(code, **k)
+        compte.ussd_demarrer = ussd_lent
+
+        porte = self.porte(g, journal)
+        nuage = FauxNuage()
+        pilotage = Pilotage(nuage, [compte], journal, guichets=[porte])
+        if oublie_la_carte:
+            pilotage._nommer_la_carte = lambda demande: None
+        manques = []
+        pilotage._marche = True
+        try:
+            pilotage._distribuer({"id": 7, "type": "ussd", "parametres": {
+                "code": "*126#", "carte": ICCID, "par": "c:1"}}, nuage)
+            if not commence.wait(2):
+                manques.append("la demande Bonzini n'a pas été composée")
+            for d in porte.commandes_en_attente():
+                pilotage._distribuer(d, porte)
+            time.sleep(0.4)
+            if compte.sms_envoyes:
+                manques.append("le SMS XAFe est parti PENDANT le menu USSD "
+                               f"de la même carte : {compte.sms_envoyes}")
+            if len(pilotage._files) != 1:
+                manques.append(f"{len(pilotage._files)} files pour une carte : "
+                               f"{sorted(pilotage._files)}")
+            lache.set()
+            if not _attendre(lambda: not pilotage._en_vol and compte.sms_envoyes):
+                manques.append("les deux demandes n'ont pas fini")
+        finally:
+            lache.set()
+            pilotage._marche = False
+        if compte.recu != ["*126#"]:
+            manques.append(f"le réseau a reçu {compte.recu}")
+        if compte.sms_envoyes != [("699112233", TEXTE_CODE)]:
+            manques.append(f"SMS partis : {compte.sms_envoyes}")
+        if [c.get("etat") for i, c in nuage.maj if i == 7] != ["en_cours", "faite"]:
+            manques.append(f"Bonzini lit {nuage.maj}")
+        if g.messages[3].get("etat") != "envoye":
+            manques.append(f"XAFe lit {g.messages[3].get('etat')!r}")
+        return manques
+
+    def test_une_demande_bonzini_et_un_sms_xafe_sur_la_meme_carte_passent_dans_l_ordre(self):
+        """La promesse de docs/XAFE.md — « le SMS passe par la même file que
+        les demandes Bonzini de la même carte ; il ne s'intercale jamais dans
+        un menu USSD » — jouée : un USSD lent, puis le SMS."""
+        self.assertEqual(self.exigences_de_la_meme_file(), [])
+
+    def test_temoin_sans_nommer_la_carte_le_sms_s_intercale(self):
+        manques = self.exigences_de_la_meme_file(oublie_la_carte=True)
+        self.assertNotEqual(manques, [], "LE TÉMOIN PASSE : un `_distribuer` qui "
+                            "oublie la carte tient encore l'ordre, l'essai ne "
+                            "mesure rien")
+        self.assertTrue(any("PENDANT" in m for m in manques), manques)
 
     def test_deux_cartes_mtn_refusent_sans_envoyer(self):
         g = self.guichet()
@@ -1995,6 +2097,91 @@ class TestLeGuichetDesSms(Banc):
         self.assertIn("Rien n'est parti", final["resultat"])
         self.assertEqual(_patches_sms(g, 4)[-1][1]["etat"], "envoye")
         self.assertEqual(compte.sms_envoyes, [("699112233", TEXTE_CODE)])
+
+    def test_une_ligne_fixe_est_refusee_sans_envoyer(self):
+        """« 222123456 » : neuf chiffres, mais pas un mobile. Parti sans
+        indicatif en « international », ce serait un autre pays."""
+        g = self.guichet()
+        g.messages = {3: message_xafe(numero="222123456")}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        self.jouer(porte, pilotage)
+        self.assertEqual(compte.sms_envoyes, [])
+        final = _patches_sms(g, 3)[-1][1]
+        self.assertEqual(final["etat"], "echoue")
+        self.assertIn("mobile", final["resultat"])
+        self.assertIn("Rien n'est parti", final["resultat"])
+
+    def test_un_message_trop_long_se_dit_trop_long_pas_lettre_par_lettre(self):
+        """Le modem refuse 161 caractères : XAFe lisait « des caractères que
+        le réseau ne reçoit pas (« 1 » « 6 » « 1 » …) ». Le refus était juste,
+        la phrase fausse."""
+        from totem.modem import MessageTropLong
+        from totem.pdu import ChargeTropLongue
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        compte.panne_envoi = MessageTropLong(ChargeTropLongue(161, 160, "caractères"))
+        porte, pilotage = self.pilote(g, journal, [compte])
+        self.jouer(porte, pilotage)
+        final = _patches_sms(g, 3)[-1][1]
+        self.assertEqual(final["etat"], "echoue")
+        self.assertIn("trop long", final["resultat"])
+        self.assertIn("161", final["resultat"])
+        self.assertNotIn("« 1 »", final["resultat"])
+        self.assertIn("Rien n'est parti", final["resultat"])
+
+    def test_une_demande_bonzini_du_genre_sms_xafe_ne_fait_rien_partir(self):
+        """Le genre n'est pas une autorisation : seul le guichet XAFe fait
+        envoyer un SMS. Une ligne `commandes` Bonzini qui le porterait
+        ferait partir un texte arbitraire depuis la SIM — refusée, et le
+        compte rendu va à Bonzini."""
+        from tests.test_pilotage import FauxNuage
+        from totem.pilotage import Pilotage
+        g = self.guichet()
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte = self.porte(g, journal)
+        nuage = FauxNuage()
+        pilotage = Pilotage(nuage, [compte], journal, guichets=[porte])
+        pilotage._traiter({"id": 7, "type": "sms_xafe", "parametres": {
+            "operateur": "mtn", "numero": "699112233", "texte": TEXTE_CODE,
+            "langue": "fr"}}, nuage)
+        self.assertEqual(compte.sms_envoyes, [])
+        self.assertEqual([c.get("etat") for i, c in nuage.maj if i == 7],
+                         ["en_cours", "echouee"])
+        self.assertIn("XAFe", nuage.maj[-1][1]["resultat"])
+        self.assertIn("Rien n'est parti", nuage.maj[-1][1]["resultat"])
+        self.assertEqual(g.patches, [])
+
+    def test_la_releve_leve_l_erreur_quand_la_porte_repond(self):
+        """Une coupure vue par la relève, puis le retour : /statut ne doit
+        pas dire « injoignable » une minute de plus, jusqu'au tour du dépôt.
+        Un 401 sur la relève se nomme comme au dépôt : « refuse la
+        signature », pas « injoignable ». Ce que le dépôt seul sait (une
+        ligne en « erreur » chez XAFe) n'est pas levé par la relève."""
+        g = self.guichet()
+        p = self.porte(g, journal_avec_carte())
+        g.en_panne = True
+        self.assertEqual(p.commandes_en_attente(), [])
+        self.assertTrue(p.derniere_erreur, "la panne n'est pas notée")
+        self.assertTrue("injoignable" in p.resume() or "unreachable" in p.resume())
+        g.en_panne = False
+        self.assertEqual(p.commandes_en_attente(), [])
+        self.assertIsNone(p.derniere_erreur, "la relève passe et l'erreur reste")
+        g.refuser_signatures = 1
+        p.commandes_en_attente()
+        self.assertEqual(p.derniere_erreur, "signature refusée")
+        self.assertTrue("refuse la signature" in p.resume()
+                        or "refuses the signature" in p.resume(), p.resume())
+        p.commandes_en_attente()
+        self.assertIsNone(p.derniere_erreur)
+        p.derniere_erreur = "moteur : moteur en panne"
+        p.commandes_en_attente()
+        self.assertEqual(p.derniere_erreur, "moteur : moteur en panne",
+                         "la relève a effacé ce que seul le dépôt sait")
 
     def test_aucune_carte_de_l_operateur(self):
         g = self.guichet()

@@ -585,9 +585,15 @@ class PorteXafe:
         except PorteMuette as e:
             self.derniere_erreur = str(e)
             return []
+        if statut == 401:
+            # Le même mot que `pousser_paiements` : /statut dit « refuse la
+            # signature », pas « injoignable » — XAFe a répondu.
+            self.derniere_erreur = "signature refusée"
+            return []
         if statut != 200 or not isinstance(lignes, list):
             self.derniere_erreur = f"relève refusée {statut}"
             return []
+        self._la_porte_repond()
         demandes = []
         for m in lignes:
             if not isinstance(m, dict) or m.get("id") is None:
@@ -613,6 +619,17 @@ class PorteXafe:
                 "parametres": parametres,
             })
         return demandes
+
+    def _la_porte_repond(self):
+        """Un 200 sur la relève lève ce que la porte ou le réseau avaient
+        posé (« injoignable », « signature refusée », « relève refusée ») —
+        sinon /statut disait « injoignable » jusqu'au tour du dépôt, une
+        minute après le retour. Pas ce que le dépôt sait et la relève
+        ignore : une ligne en « erreur » chez XAFe (« moteur ») ou un défaut
+        du robot (« robot ») tiennent jusqu'au dépôt suivant."""
+        erreur = self.derniere_erreur or ""
+        if not erreur.startswith(("moteur", "robot")):
+            self.derniere_erreur = None
 
     def reclamer(self, identifiant):
         """Prendre la demande pour soi : XAFe tranche (`update … where etat =

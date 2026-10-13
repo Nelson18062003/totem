@@ -12,7 +12,8 @@ import time
 from .gsm import (ALPHABET_GSM, ECHAPPEMENT, EXTENSION_GSM, ChargeRefusee,
                   charge_pour_le_reseau, decode_auto, encode_ucs2,
                   texte_pour_sms)
-from .pdu import ErreurPDU, decoder, encoder_submit, recoller
+from .pdu import (ChargeTropLongue, ErreurPDU, decoder, encoder_submit,
+                  numero_international, recoller)
 from .textes import t
 
 # +CUSD: <m>[,"<texte>",<dcs>]  — m=0 fin, m=1 réponse attendue, m=2 annulé par le réseau
@@ -99,6 +100,20 @@ class ReponseNonRecue(ErreurModem):
     Ce n'est pas un échec : la réponse — peut-être un code secret — est
     peut-être arrivée chez l'opérateur, et l'opération peut aboutir. Le dire
     « n'a pas pu faire », c'était faire recommencer un transfert parti."""
+
+
+class MessageTropLong(ErreurModem):
+    """Le message ne tient pas dans un SMS (160 caractères, 70 hors de
+    l'alphabet GSM). Rien n'a été écrit au modem — et on le dit comme une
+    LONGUEUR, pas comme des caractères refusés."""
+
+    def __init__(self, refus):
+        self.combien, self.borne = refus.combien, refus.borne
+        super().__init__(t(
+            f"Message too long: {refus.combien} characters, {refus.borne} at "
+            f"most — nothing was sent.",
+            f"Message trop long : {refus.combien} caractères, {refus.borne} au "
+            f"plus — rien n'est parti."))
 
 
 class ReponseRefusee(ErreurModem):
@@ -562,6 +577,12 @@ class ModemSerie:
             else:
                 pause = min(pause * 2, 0.08)
             time.sleep(pause)
+        # L'invite peut encore arriver juste après l'échéance : le modem
+        # serait alors en saisie, et la commande suivante — l'USSD d'une
+        # demande Bonzini — avalée comme texte du message jusqu'à un Ctrl-Z
+        # qui ne vient jamais. Un Échap annule la saisie ; hors saisie, le
+        # modem l'ignore. La faute d'un SMS XAFe ne tombe pas sur Bonzini.
+        self.ser.write(b"\x1b")
         raise ErreurModem(t("The modem did not ask for the message (no prompt). "
                             "Nothing was sent.",
                             "Le modem n'a pas demandé le message (pas d'invite). "
@@ -744,6 +765,8 @@ class ModemSerie:
         try:
             texte = texte_pour_sms(texte)
             longueur, hexa = encoder_submit(numero, texte)
+        except ChargeTropLongue as refus:
+            raise MessageTropLong(refus) from None
         except ChargeRefusee as refus:
             raise ReponseRefusee(refus.caracteres) from None
         with self.verrou:
@@ -762,7 +785,10 @@ class ModemSerie:
                 self.ser.write(hexa.encode() + b"\x1a")
             else:
                 charge = encode_ucs2(texte) if getattr(self, "ucs2", False) else texte
-                self.ser.write(f'AT+CMGS="{numero}"\r'.encode())
+                # Les chiffres que `encoder_submit` a validés, avec le 237,
+                # jamais le numéro reçu tel quel : la même défense que `_cusd`
+                # contre un guillemet ou un retour chariot dans la commande.
+                self.ser.write(f'AT+CMGS="+{numero_international(numero)}"\r'.encode())
                 self._attendre_invite()
                 self.ser.write(charge.encode("utf-8") + b"\x1a")
             fin = time.time() + delai

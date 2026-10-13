@@ -34,9 +34,10 @@ import unittest
 from totem.compte import Compte
 from totem.gsm import (ALPHABET_GSM, EXTENSION_GSM, ChargeRefusee, decode_gsm7,
                        empaqueter_septets, encode_gsm7, texte_pour_sms)
-from totem.modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, ModemSerie,
-                         ReponseRefusee)
-from totem.pdu import _adresse, encoder_submit, septets, texte_gsm7
+from totem.modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MessageTropLong,
+                         ModemSerie, ReponseRefusee)
+from totem.pdu import (ChargeTropLongue, _adresse, encoder_submit, numero_international,
+                       septets, texte_gsm7)
 
 NUMERO = "677123456"
 TEXTE = "XAFe Exchange : votre code est 123456."
@@ -128,9 +129,49 @@ class TestSmsSubmit(unittest.TestCase):
             encoder_submit(NUMERO, "ê" * 71)
         encoder_submit(NUMERO, "ê" * 70)
 
+    def test_trop_long_se_dit_comme_une_longueur(self):
+        """Une `ChargeTropLongue`, pas la générique : la première version
+        levait `ChargeRefusee("161 caractères, 160 au plus")`, et `Pilotage`
+        racontait cette phrase LETTRE PAR LETTRE comme des caractères que le
+        réseau refuse."""
+        with self.assertRaises(ChargeTropLongue) as cm:
+            encoder_submit(NUMERO, "a" * 161)
+        self.assertEqual((cm.exception.combien, cm.exception.borne), (161, 160))
+        with self.assertRaises(ChargeTropLongue) as cm:
+            encoder_submit(NUMERO, "ê" * 71)
+        self.assertEqual((cm.exception.combien, cm.exception.borne), (71, 70))
+
+    def test_en_ucs2_la_longueur_annoncee_est_celle_des_octets(self):
+        """Un emoji fait QUATRE octets en UTF-16 : compter les caractères
+        annonçait un TP-UDL de 8 pour 10 octets de données — un PDU mal
+        formé. La borne aussi se compte en octets : 35 emojis (140) passent,
+        36 (144) sont refusés."""
+        _, hexa = encoder_submit(NUMERO, "ok 😀")
+        octets = bytes.fromhex(hexa)
+        _, fin = _adresse(octets, 3)
+        udl, donnees = octets[fin + 2], octets[fin + 3:]
+        self.assertEqual(udl, len(donnees))
+        self.assertEqual(udl, 10)
+        self.assertEqual(donnees.decode("utf-16-be"), "ok 😀")
+        encoder_submit(NUMERO, "😀" * 35)
+        with self.assertRaises(ChargeTropLongue):
+            encoder_submit(NUMERO, "😀" * 36)
+
     def test_un_numero_illisible_est_refuse(self):
         with self.assertRaises(ValueError):
             encoder_submit("12", "ok")
+
+    def test_une_ligne_fixe_a_neuf_chiffres_est_refusee_pas_devinee(self):
+        """« 222123456 » partait « international » SANS indicatif : le réseau
+        l'aurait lu +222 12 34 56 — la Mauritanie. Un code de vérification
+        chez un inconnu à l'étranger vaut moins qu'un refus."""
+        with self.assertRaises(ValueError):
+            encoder_submit("222123456", "ok")
+        with self.assertRaises(ValueError):
+            numero_international("222123456")
+        self.assertEqual(numero_international("677123456"), "237677123456")
+        self.assertEqual(numero_international("+237 677 12 34 56"), "237677123456")
+        self.assertEqual(numero_international('677"123456\r'), "237677123456")
 
 
 # =============================================================================
@@ -142,7 +183,8 @@ class FauxPortSerie:
     le modem ferait. `muet_apres_ctrl_z` : le modem ne répond plus une fois
     la charge écrite."""
 
-    def __init__(self, reponses=None, en_attente=b"", muet_apres_ctrl_z=False):
+    def __init__(self, reponses=None, en_attente=b"", muet_apres_ctrl_z=False,
+                 invite_tardive=False):
         self.ecrit = []
         self.tampon = en_attente
         self.reponses = reponses or {
@@ -150,6 +192,14 @@ class FauxPortSerie:
             b"\x1a": b"\r\n+CMGS: 17\r\n\r\nOK\r\n",
         }
         self.muet_apres_ctrl_z = muet_apres_ctrl_z
+        # CE QUE LE VRAI MODEM FAIT APRÈS « AT+CMGS » : il passe en SAISIE, et
+        # tout ce qu'on lui écrit ensuite est du texte de message jusqu'à un
+        # Ctrl-Z ou un Échap. `invite_tardive` : il entre en saisie mais ne
+        # montre « > » qu'après l'échéance de l'appelant — en pratique, jamais
+        # à temps. Les commandes avalées se gardent dans `avale`.
+        self.invite_tardive = invite_tardive
+        self.saisie = False
+        self.avale = []
 
     @property
     def in_waiting(self):
@@ -168,6 +218,17 @@ class FauxPortSerie:
 
     def write(self, octets):
         self.ecrit.append(octets)
+        if self.saisie:
+            if octets == b"\x1b":
+                self.saisie = False           # Échap : la saisie est annulée
+            elif octets.endswith(b"\x1a"):
+                self.saisie = False
+            else:
+                self.avale.append(octets)     # du texte de message, pour le modem
+            return
+        if self.invite_tardive and octets.startswith(b"AT+CMGS="):
+            self.saisie = True
+            return
         for debut, reponse in self.reponses.items():
             if octets.startswith(debut) or (debut == b"\x1a" and octets.endswith(b"\x1a")):
                 if debut == b"\x1a" and self.muet_apres_ctrl_z:
@@ -213,6 +274,72 @@ class TestDialogueCmgs(unittest.TestCase):
         with self.assertRaises(ErreurModem) as cm:
             m._attendre_invite(delai=0.2)
         self.assertNotIsInstance(cm.exception, EnvoiIncertain)
+        self.assertNotIn(True, [e.endswith(b"\x1a") for e in port.ecrit],
+                         "la charge a été écrite sans invite")
+
+    def test_pas_d_invite_referme_la_saisie_et_l_ussd_suivant_passe(self):
+        """Le modem n'avait que du retard : il est en saisie quand l'échéance
+        tombe. Sans Échap, la commande suivante — l'USSD d'une demande
+        Bonzini — serait avalée comme texte du message, et le menu de la
+        carte mort jusqu'au redémarrage du modem. La faute d'un SMS XAFe ne
+        tombe pas sur Bonzini."""
+        port = FauxPortSerie({b"AT\r": b"\r\nOK\r\n"}, invite_tardive=True)
+        m = modem_sur(port)
+        port.write(b"AT+CMGS=42\r")           # ce que `envoyer_sms` écrit d'abord
+        self.assertTrue(port.saisie, "le faux port n'est pas entré en saisie")
+        with self.assertRaises(ErreurModem):
+            m._attendre_invite(delai=0.1)
+        self.assertEqual(port.ecrit[-1], b"\x1b", "pas d'Échap à l'échéance")
+        self.assertFalse(port.saisie)
+        self.assertIn("OK", m._envoyer("AT", delai=0.3))
+        self.assertEqual(port.avale, [])
+
+    def test_temoin_sans_echap_la_commande_suivante_est_avalee(self):
+        """Le même port, l'Échap retenu : la commande suivante n'a pas de
+        réponse, elle est dans le message. C'est ce que l'ancien code
+        laissait faire, et ce que le faux port doit savoir imiter — sinon
+        l'essai précédent ne mesure rien."""
+        port = FauxPortSerie({b"AT\r": b"\r\nOK\r\n"}, invite_tardive=True)
+        m = modem_sur(port)
+        port.write(b"AT+CMGS=42\r")
+        ecrire = port.write
+        port.write = lambda octets: None if octets == b"\x1b" else ecrire(octets)
+        with self.assertRaises(ErreurModem):
+            m._attendre_invite(delai=0.1)
+        self.assertTrue(port.saisie)
+        self.assertEqual(m._envoyer("AT", delai=0.2), "",
+                         "LE TÉMOIN PASSE : le faux port répond en saisie")
+        self.assertEqual(port.avale, [b"AT\r"])
+
+    def test_le_repli_texte_ecrit_les_chiffres_valides_jamais_le_numero_brut(self):
+        """`mode_pdu` faux : la commande porte le numéro. Ce sont les chiffres
+        que `encoder_submit` a validés, avec le 237 — jamais le numéro reçu
+        tel quel, où un guillemet ou un retour chariot fermerait la commande
+        (la défense de `_cusd`). Aucun test ne jouait ce repli."""
+        port = FauxPortSerie({b"AT+CMGS=": b"\r\n> ",
+                              b"\x1a": b"\r\n+CMGS: 9\r\n\r\nOK\r\n"})
+        m = modem_sur(port)
+        m.mode_pdu = False
+        self.assertEqual(m.envoyer_sms('677"123456\r', TEXTE), "9")
+        self.assertEqual(port.ecrit[0], b'AT+CMGS="+237677123456"\r')
+        self.assertEqual(port.ecrit[1], TEXTE.encode("utf-8") + b"\x1a")
+        # Et la ligne fixe est refusée AVANT d'écrire quoi que ce soit.
+        port2 = FauxPortSerie()
+        m2 = modem_sur(port2)
+        m2.mode_pdu = False
+        with self.assertRaises(ValueError):
+            m2.envoyer_sms("222123456", TEXTE)
+        self.assertEqual(port2.ecrit, [])
+
+    def test_un_message_trop_long_se_dit_trop_long_rien_n_est_ecrit(self):
+        port = FauxPortSerie()
+        m = modem_sur(port)
+        with self.assertRaises(MessageTropLong) as cm:
+            m.envoyer_sms(NUMERO, "a" * 161)
+        self.assertNotIsInstance(cm.exception, ReponseRefusee)
+        self.assertIn("161", str(cm.exception))
+        self.assertIn("160", str(cm.exception))
+        self.assertEqual(port.ecrit, [])
 
     def test_un_refus_du_reseau_apres_la_charge_dit_rien_n_est_parti(self):
         port = FauxPortSerie({b"AT+CMGS=": b"\r\n> ",

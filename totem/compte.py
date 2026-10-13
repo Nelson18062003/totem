@@ -31,7 +31,7 @@ import threading
 
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
-                    ReponseNonRecue, ReponseRefusee)
+                    MessageTropLong, ReponseNonRecue, ReponseRefusee)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -316,4 +316,4 @@ def libelles_uniques(comptes):
 
 __all__ = ["Compte", "libelles_uniques", "ErreurModem", "SessionTenue",
            "ReponseRefusee", "MenuReferme", "ReponseNonRecue", "EnvoiIncertain",
-           "WEB", "TELEGRAM"]
+           "MessageTropLong", "WEB", "TELEGRAM"]

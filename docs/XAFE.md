@@ -178,8 +178,16 @@ ce menu. Le code et le numéro du client n'entrent **jamais au journal** : il
 porte seulement « SMS de vérification envoyé depuis MTN ·0011 (réf. 17) ».
 
 Le robot a appris à envoyer pour cela (`AT+CMGS`, en mode PDU) : un message
-tient en 160 caractères (70 si un caractère sort de l'alphabet GSM), au-delà
-il est refusé, jamais coupé. `tests/test_envoi_sms.py` le garde.
+tient en 160 caractères (70 si un caractère sort de l'alphabet GSM — comptés
+en octets : un emoji en prend quatre), au-delà il est refusé, jamais coupé, et
+XAFe lit « trop long : 161 caractères, 160 au plus ». Un numéro à neuf
+chiffres qui ne commence pas par 6 (une ligne fixe) est refusé, pas deviné :
+parti sans indicatif, le réseau l'aurait lu comme un autre pays. Et quand le
+modem ne montre pas son invite à temps, le robot lui envoie un Échap avant de
+renoncer : un modem resté en saisie aurait avalé le prochain code USSD d'une
+demande Bonzini. Seul le guichet XAFe fait envoyer un SMS — le genre d'une
+ligne Bonzini ne suffit pas. `tests/test_envoi_sms.py` et
+`tests/test_xafe.py` le gardent.
 
 ## Ce qui ne part PAS chez XAFe
 
