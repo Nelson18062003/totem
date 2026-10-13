@@ -18,6 +18,10 @@
 //   — Une période que le cahier ne couvre pas se demande à la plateforme,
 //     comme aux SMS (`periode-demandee.ts`) : filtrée sur le téléphone,
 //     « le mois dernier » s'afficherait vide sans un mot.
+//   — TOUT L'HISTORIQUE, DÈS LE PREMIER JOUR. TOTEM tourne déjà, avec des
+//     mois de caisse en base ; l'écran s'arrêtait aux deux cents derniers
+//     SMS. En bas de la liste, les plus anciens se chargent page après page
+//     (`historique.ts`), et la fin se dit : « Début de l'historique ».
 //
 // UNE LIGNE DIT QUI ET COMBIEN ; le type et l'heure dessous, en petit ; tout
 // le reste vit dans la fiche — avec le reçu PDF et le SMS d'origine.
@@ -44,18 +48,22 @@ import { useLangue } from "@/langue";
 import { Calendrier } from "@/calendrier";
 import { BoutonFiltre, FeuilleChoix } from "@/filtres";
 import { usePeriodeDemandee } from "@/periode-demandee";
+import { useHistorique } from "@/historique";
 import { FicheFlux, FeuilleEcart, FeuilleCorriger, RondFlux } from "@/flux-fiches";
 import { textesFlux, NOMS_TYPES } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
 import {
-  fluxDe, totauxFlux, correspondFlux, dansFamille, montantSigne, parDate, parJour, trierFlux,
+  fluxDe, totauxFlux, correspondFlux, dansFamille, montantSigne, parDate, parJour, surLaCarte,
+  trierFlux,
   FAMILLES_FLUX, TRIS_FLUX, type Flux, type FamilleFlux, type Ecart, type TriFlux,
 } from "@noyau/flux";
 import { FUSEAU_DEFAUT, jourLocal, nombre, type Paiement } from "@noyau/types";
 import {
-  bornesDe, dansBornes, jourCourt, libelleJour, nomDesJours, type Bornes, type Periode,
+  bornesDe, dansBornes, depuisPourLaBase, jourCourt, libelleJour, nomDesJours, type Bornes,
+  type Periode,
 } from "@noyau/periodes";
 import { formaterNumero } from "@noyau/numero";
+import { jusquAu } from "@noyau/historique";
 
 // Ce que l'écran demande au cahier : les deux cents derniers SMS, comme
 // l'onglet SMS — le même besoin, donc une seule descente pour les deux. Les
@@ -115,23 +123,37 @@ export default function Paiements() {
   const bornes = useMemo<Bornes | null>(
     () => (deCalcule && aCalcule ? { de: deCalcule, a: aCalcule } : null),
     [deCalcule, aCalcule]);
-  const recents = useMemo(() => {
-    const lus = donnees?.paiements;
-    if (!Array.isArray(lus)) return AUCUN;
-    return lus.length > SMS_ECRAN ? lus.slice(0, SMS_ECRAN) : lus;
-  }, [donnees]);
+  const lus = useMemo(() => (Array.isArray(donnees?.paiements) ? donnees.paiements : AUCUN),
+                      [donnees]);
+  const recents = useMemo(
+    () => (lus.length > SMS_ECRAN ? lus.slice(0, SMS_ECRAN) : lus), [lus]);
   const periodeP = usePeriodeDemandee(bornes, recents, SMS_ECRAN, quand);
 
+  // LES PLUS ANCIENS, PAGE APRÈS PAGE. Sans période, la suite est celle du
+  // cahier — valable pour TOUT ce qu'il a rapporté (`lus`), pas seulement
+  // les deux cents qu'on montre ; avec une période, celle de la période,
+  // qui ne remonte pas avant son premier jour.
+  const cleHistorique = bornes == null ? `tout|${langue}`
+    : periodeP.suite !== undefined ? `${bornes.de}…${bornes.a}|${langue}` : null;
+  const histoire = useHistorique(cleHistorique, periodeP.paiements,
+                                 bornes == null ? lus : periodeP.paiements,
+                                 bornes == null ? donnees?.suite : periodeP.suite,
+                                 bornes ? depuisPourLaBase(bornes) : undefined);
+
   const sims = donnees?.sims ?? [];
+  const carteChoisie = carte == null ? null
+    : { iccid: carte, libelle: sims.find((x) => x.iccid === carte)?.libelle ?? carte };
   // TOUTE la suite des soldes se juge sur ce que l'écran porte : un filtre
   // ne doit pas inventer un écart en retirant une ligne du milieu.
-  const tous = useMemo(() => fluxDe(periodeP.paiements), [periodeP.paiements]);
+  const tous = useMemo(() => fluxDe(histoire.paiements), [histoire.paiements]);
   const dansLaVue = useMemo(() => tous.filter((f) =>
     dansBornes(f.p, bornes)
-    && (carte == null || (f.p.carte || f.p.sim) === carte)
+    && surLaCarte(f.p, carteChoisie)
     && dansFamille(f, famille)
     && correspondFlux(f, recherche)),
-  [tous, bornes, carte, famille, recherche]);
+  // `carteChoisie` se résume à `carte` et aux libellés des cartes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [tous, bornes, carte, carteChoisie?.libelle, famille, recherche]);
   const totaux = totauxFlux(dansLaVue);
   const vus = useMemo(() => trierFlux(aRegarder
     ? dansLaVue.filter((f) => f.etat === "a_verifier" || f.ecartAvant || f.ecartApres)
@@ -145,8 +167,16 @@ export default function Paiements() {
   const [budget, setBudget] = useState({ criteres, n: LIGNES_PAR_LOT });
   if (budget.criteres !== criteres) setBudget({ criteres, n: LIGNES_PAR_LOT });
   const montres = vus.length > budget.n ? vus.slice(0, budget.n) : vus;
+  const filtre = periode.genre !== "tout" || carte != null || famille != null;
+  const cherche = recherche.trim() !== "";
+  // LA SUITE SE CHARGE TOUTE SEULE en descendant — seulement sur la liste
+  // nue, des plus récents aux plus anciens. Filtrée ou cherchée, quelques
+  // lignes laissent toujours le bas en vue : la liste tirerait page après
+  // page, tout l'historique, sans qu'on l'ait demandé. Là, c'est un bouton.
+  const suiteAuto = !filtre && !cherche && !aRegarder && tri === "recentes";
   const allonger = () => {
     if (budget.n < vus.length) setBudget({ criteres, n: budget.n + LIGNES_PAR_LOT });
+    else if (suiteAuto && !histoire.refus) histoire.plus();
   };
   const jours = useMemo(() => (chronologique ? parJour(montres) : []), [chronologique, montres]);
 
@@ -157,8 +187,6 @@ export default function Paiements() {
     : periode.genre === "semaine" ? ts.periodeSemaine
     : ts.periodeMois;
   const nomCarte = (cle: string) => sims.find((x) => x.iccid === cle)?.libelle ?? cle;
-  const filtre = nomDePeriode != null || carte != null || famille != null;
-  const cherche = recherche.trim() !== "";
   const ouvrir = (f: Flux) => setFeuille({ genre: "fiche", f });
 
   return (
@@ -276,8 +304,10 @@ export default function Paiements() {
             {t.transactions(vus.length)}
           </Texte>
         ) : null}
-        {periodeP.tronquee ? (
-          <Texte taille={textes.legende} ton="alerte" style={{ lineHeight: 18 }}>{t.periodeTronquee}</Texte>
+        {periodeP.tronquee && histoire.suite !== null ? (
+          <Texte taille={textes.legende} ton="alerte" style={{ lineHeight: 18 }}>
+            {typeof histoire.suite === "string" ? t.periodeACompleter : t.periodeTronquee}
+          </Texte>
         ) : null}
 
         {vus.length === 0 && (attente || periodeP.cherche) && !erreur && !periodeP.refus ? (
@@ -336,6 +366,14 @@ export default function Paiements() {
             ))}
           </Carte>
         ) : null}
+
+        {/* LA SUITE DE L'HISTORIQUE — une fois toute la liste montrée. */}
+        {donnees && montres.length === vus.length && !periodeP.cherche && !periodeP.refus ? (
+          <PiedHistorique langue={langue} suite={histoire.suite} enCours={histoire.enCours}
+                          refus={histoire.refus} toutes={bornes == null}
+                          jusqua={jusquAu(histoire.paiements)}
+                          onPlus={histoire.plus} />
+        ) : null}
       </Defilement>
       </KeyboardAvoidingView>
 
@@ -392,7 +430,10 @@ export default function Paiements() {
                    onFermer={() => setFeuille(null)}
                    onCorriger={() => setFeuille({ genre: "corriger", f: feuille.f })}
                    onChange={() => actualiser()}
-                   onRetouche={periodeP.retoucher} />
+                   onRetouche={(id, champs) => {
+                     periodeP.retoucher(id, champs);
+                     histoire.retoucher(id, champs);
+                   }} />
       ) : null}
       {feuille?.genre === "corriger" ? (
         <FeuilleCorriger f={feuille.f} onFermer={() => setFeuille(null)} />
@@ -402,6 +443,58 @@ export default function Paiements() {
       ) : null}
     </SafeAreaView>
   );
+}
+
+/**
+ * LE PIED DE LA LISTE : ce qu'on sait de l'historique, et rien de plus.
+ * Il y a plus ancien → le bouton (et jusqu'où l'on remonte déjà, pour qu'une
+ * recherche sans résultat ne passe pas pour une recherche sur TOUT) ; la
+ * base n'a rien avant → « Début de l'historique » — seulement sans période :
+ * une période complète ne dit rien de ce qui la précède ; on ne sait pas
+ * (une plateforme pas encore à jour) → rien.
+ */
+function PiedHistorique({ langue, suite, enCours, refus, toutes, jusqua, onPlus }: {
+  langue: "fr" | "en"; suite: string | null | undefined; enCours: boolean; refus: boolean;
+  toutes: boolean; jusqua: string | null; onPlus: () => void;
+}) {
+  const t = textesFlux[langue];
+  if (refus) return <Accroc message={t.anciensImpossible} onReessayer={onPlus} />;
+  if (enCours) {
+    return (
+      <Texte taille={textes.petit} ton="pale" style={{ textAlign: "center", paddingVertical: espaces.md }}
+             accessibilityLiveRegion="polite">
+        {t.chargementAnciens}
+      </Texte>
+    );
+  }
+  if (typeof suite === "string") {
+    return (
+      <View style={{ alignItems: "center", gap: espaces.sm, paddingVertical: espaces.sm }}>
+        {jusqua ? (
+          <Texte taille={textes.legende} ton="pale">{t.jusquAu(jourCourt(jusqua, langue))}</Texte>
+        ) : null}
+        {/* Sans icône : la flèche vers le bas dit « dépôt » partout
+            ailleurs dans l'application. */}
+        <Pressable accessibilityRole="button" onPress={onPlus}
+                   style={avecAppui({
+                     flexDirection: "row", alignItems: "center", gap: espaces.sm,
+                     paddingVertical: espaces.sm + 2, paddingHorizontal: espaces.lg,
+                     borderRadius: rayons.rond, borderWidth: 1, borderColor: couleurs.trait,
+                     backgroundColor: couleurs.surfaceHaute,
+                   })}>
+          <Texte taille={textes.petit} poids="moyen">{t.plusAnciens}</Texte>
+        </Pressable>
+      </View>
+    );
+  }
+  if (suite === null && toutes && jusqua) {
+    return (
+      <Texte taille={textes.legende} ton="pale" style={{ textAlign: "center", paddingVertical: espaces.md }}>
+        {t.debutHistorique}
+      </Texte>
+    );
+  }
+  return null;
 }
 
 /** Une transaction : QUI, et COMBIEN. Le type et l'heure dessous, en petit —

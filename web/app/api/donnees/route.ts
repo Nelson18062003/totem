@@ -25,6 +25,18 @@ function borne(valeur: string | null, defaut: number, plafond: number): number {
   return Math.min(Math.max(0, Math.trunc(n)), plafond);
 }
 
+// LA SUITE DE L'HISTORIQUE, TELLE QUE LA PLATEFORME L'A RENDUE (`suite`) :
+// un instant de relève BRUT. On le vérifie, on ne le réécrit pas — repassé
+// par `toISOString`, il perdrait ses microsecondes, et le SMS relevé à cet
+// instant même tomberait hors de la page suivante.
+function instantBrut(valeur: string | null): string | undefined {
+  if (!valeur || valeur.length > 40) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}(:?\d{2})?)?$/.test(valeur)) {
+    return undefined;
+  }
+  return Number.isFinite(Date.parse(valeur)) ? valeur : undefined;
+}
+
 function instant(valeur: string | null): string | undefined {
   if (!valeur) return undefined;
   const t = Date.parse(valeur);
@@ -71,6 +83,10 @@ export async function GET(req: Request) {
     // depuis cet instant. Un instant illisible est ignoré plutôt que transmis
     // à la base — il ne rapporterait rien, et l'écran croirait la période vide.
     depuis: instant(params.get("depuis")),
+    // LA SUITE : les SMS plus anciens que ceux déjà montrés. Illisible, elle
+    // est ignorée — l'écran recevrait alors les plus récents, qu'il a déjà,
+    // et s'arrêterait sans rien inventer.
+    avant: instantBrut(params.get("avant")),
   };
 
   // LA DÉMONSTRATION : les mêmes écrans, sur un jeu inventé. Elle passe

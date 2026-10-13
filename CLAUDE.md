@@ -60,6 +60,7 @@ cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT
 cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur rien
 cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
 cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne retire rien
+cd web && node scripts/verifier-l-historique.mjs # toute la caisse s'atteint, sans trou
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
@@ -85,6 +86,8 @@ cd mobile && node scripts/verifier-les-dates.mjs /tmp/apercu # le filtre par dat
 #   (même export ; sème la caisse s'il la trouve trop maigre)
 cd mobile && node scripts/verifier-les-transitions.mjs /tmp/apercu # le passage se voit
 #   (même export ; image par image, la barre aussi, puis « Réduire les animations »)
+cd mobile && node scripts/verifier-l-historique.mjs /tmp/apercu # jusqu'au premier SMS
+#   (même export ; sème la caisse s'il la trouve trop maigre)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -1160,6 +1163,29 @@ la capture le montrait rogné : « Ͻpérations ». Le corps du nom se réduit
 avec la place. La même capture a montré la loupe de la recherche écrasée à
 zéro, sur les SMS comme aux Paiements : un champ du navigateur a sa largeur
 propre, et sans `minWidth: 0` il pousse ses voisins.
+
+**TOTEM tourne déjà : un écran neuf s'ouvre sur des mois de caisse.**
+L'onglet Paiements ne montrait que les deux cents derniers SMS (le site, les
+mille derniers) ; « toutes les dates » s'arrêtait là sans un mot, la
+recherche d'un client de mars disait « Aucun résultat », et la fiche d'un
+vieux paiement proposait « Établir le reçu » pour un document établi depuis
+longtemps — la liste ne rapproche que les reçus RÉCENTS. Une donnée d'essai
+de quelques jours ne pouvait rien en montrer. La plateforme rend maintenant
+avec chaque lecture sa SUITE (`Donnees.suite`, `avant=`), l'écran recolle les
+pages plus anciennes (`noyau/historique.ts`) et dit la fin — « Début de
+l'historique » — seulement quand elle est vraie ; la fiche demande elle-même
+le reçu qui existe peut-être déjà (`recuACherche`).
+
+**Une suite vaut pour ce qu'on a RENDU, pas pour ce qu'on a LU.** Mille SMS
+lus, deux cents rapportés (`lignes`, rangés par heure réseau) : reprendre
+sous les mille en sautait huit cents. Et la borne est INCLUSE : le robot
+relève d'un coup, à la même seconde, ce que le modem a gardé pendant une
+coupure — une borne exclue coupait ce lot en deux et en perdait la moitié.
+L'instant voyage BRUT : repassé par `toISOString`, il perd ses microsecondes.
+`verifier-l-historique` parcourt six mois de caisse page après page contre le
+faux nuage, avec les deux témoins. Le faux nuage, lui, comparait les heures
+comme du texte : « …+01:00 » (le robot) et « …Z » (les essais) se rangeaient
+de travers — il compare maintenant des instants, comme la vraie base.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

@@ -18,6 +18,7 @@ export default async function Paiements({
   return (
     <PagePaiements
       paiements={donnees.paiements}
+      suite={donnees.suite}
       sims={donnees.sims}
       fuseau={donnees.fuseau ?? FUSEAU_DEFAUT}
       initial={{

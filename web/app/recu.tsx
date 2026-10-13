@@ -16,7 +16,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
-import { etatDeLaReponseRecu, FENETRE_DU_RECU_MS, recuAttendu } from "@noyau/sms";
+import { etatDeLaReponseRecu, FENETRE_DU_RECU_MS, recuACherche, recuAttendu } from "@noyau/sms";
 import { textesSms } from "@noyau/textes/sms";
 import type { Categorie, Paiement } from "@noyau/types";
 import { IconDoc, IconDownload, IconEye, IconPartage, IconRefresh } from "./icons";
@@ -76,6 +76,29 @@ export function useRecuDuSms(p: Paiement, nature: Paiement["nature"]) {
     return () => { renoncer.abort(); if (minuterie) clearTimeout(minuterie); };
   }, [p.id, p.recu, finGuet, attendu, router]);
   const enPreparation = attendu && !recu && etabli === "repos";
+
+  // LE REÇU QUI EXISTE DÉJÀ — la même règle que sur le téléphone
+  // (`recuACherche`). La liste ne connaît que les reçus récents : la fiche
+  // d'un paiement d'avril proposait « Établir le reçu » pour un document
+  // établi depuis longtemps. Elle le demande une fois, en ouvrant.
+  // Introuvable, ou pas de réseau : « Établir le reçu », comme avant.
+  const [cherche, setCherche] = useState(() => recuACherche(
+    nature !== undefined ? { ...p, nature } : p, Date.now()));
+  useEffect(() => {
+    if (!cherche) return;
+    const renoncer = new AbortController();
+    fetch(`/api/recu-du-sms?id=${encodeURIComponent(p.id)}`,
+          { cache: "no-store", signal: renoncer.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c: { recu?: unknown } | null) => {
+        if (renoncer.signal.aborted) return;
+        if (typeof c?.recu === "string" && c.recu) setRecuAppris(c.recu);
+      })
+      .catch(() => {})
+      .finally(() => { if (!renoncer.signal.aborted) setCherche(false); });
+    return () => renoncer.abort();
+  }, [p.id, cherche]);
+  const enRecherche = cherche && !recu && etabli === "repos";
 
   // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
   // qui fait foi — même numéro, à la demande. La nature choisie voyage avec
@@ -204,7 +227,7 @@ export function useRecuDuSms(p: Paiement, nature: Paiement["nature"]) {
     }
   };
 
-  return { recu, enPreparation, etabli, mot, etablirRecu };
+  return { recu, enPreparation, enRecherche, etabli, mot, etablirRecu };
 }
 
 /**
@@ -213,9 +236,9 @@ export function useRecuDuSms(p: Paiement, nature: Paiement["nature"]) {
  * navigateur montre le PDF —, puis télécharger, partager, refaire, de même
  * poids.
  */
-export function GestesRecu({ p, recu, etabli, enPreparation, mot, onEtablir }: {
+export function GestesRecu({ p, recu, etabli, enPreparation, enRecherche, mot, onEtablir }: {
   p: Paiement; recu: string | null; etabli: "repos" | "envoi" | "fait" | "refus";
-  enPreparation: boolean; mot: string; onEtablir: () => void;
+  enPreparation: boolean; enRecherche?: boolean; mot: string; onEtablir: () => void;
 }) {
   const langue = useLangue();
   const t = textesSms[langue];
@@ -259,9 +282,11 @@ export function GestesRecu({ p, recu, etabli, enPreparation, mot, onEtablir }: {
           <IconEye size={15} /> {t.voirRecu}
         </a>
       ) : p.sourceId != null && etabli !== "fait" ? (
-        <button onClick={onEtablir} disabled={etabli === "envoi" || enPreparation} className={plein}>
+        <button onClick={onEtablir} disabled={etabli === "envoi" || enPreparation || enRecherche}
+                className={plein}>
           <IconDoc size={15} />
-          {enPreparation ? t.recuEnPreparation : etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
+          {enPreparation ? t.recuEnPreparation : enRecherche ? t.rechercheDuRecu
+            : etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
         </button>
       ) : null}
       {recu && (

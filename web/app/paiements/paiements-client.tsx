@@ -9,6 +9,11 @@
 // carte, type) et le TRI ; le reçu PDF sur chaque transaction, et le SMS
 // d'origine.
 //
+// TOUT L'HISTORIQUE, DÈS LE PREMIER JOUR. TOTEM tourne déjà, avec des mois
+// de caisse en base ; la page s'arrêtait aux mille derniers SMS. Sous la
+// liste, « Voir les paiements plus anciens » recolle la page suivante (la
+// règle vit dans le noyau, `historique.ts`), et la fin se dit.
+//
 // Une seule ligne d'alerte, seulement s'il y a lieu. Le tableau dit QUI,
 // QUAND, sur QUELLE carte et COMBIEN — pas le solde, qui se lit sur
 // l'accueil ; tout le reste vit dans la fiche, qui s'ouvre à droite — avec
@@ -23,14 +28,17 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { textesFlux, NOMS_TYPES, NOMS_CORRECTION } from "@noyau/textes/flux";
 import { textesSms } from "@noyau/textes/sms";
+import { textesConnexion } from "@noyau/textes/connexion";
 import {
-  fluxDe, totauxFlux, parJour, correspondFlux, dansFamille, montantSigne, initialesDe, parDate, trierFlux,
+  fluxDe, totauxFlux, parJour, correspondFlux, dansFamille, montantSigne, initialesDe, parDate, surLaCarte,
+  trierFlux,
   FAMILLES_FLUX, TRIS_FLUX, type Flux, type FamilleFlux, type Ecart, type TriFlux, type TypeFlux,
 } from "@noyau/flux";
 import { estArgent, texteSurEcran } from "@noyau/sms";
 import { jourLocal, nombre, type Paiement, type Sim } from "@noyau/types";
 import { bornesDe, dansBornes, jourCourt, jourDuReleve, libelleJour, type Periode } from "@noyau/periodes";
 import { formaterNumero } from "@noyau/numero";
+import { apresUnePage, jusquAu, recoller, type Historique, type Suite } from "@noyau/historique";
 import { IconBubble, IconCheck, IconChevron, IconClose, IconCopy, IconCrayon, IconList, IconLock, IconPhone, IconSearch, IconTransfer } from "../icons";
 import { GestesRecu, useRecuDuSms } from "../recu";
 import { couleurOperateur, LogoOperateur } from "../logos-operateurs";
@@ -40,6 +48,8 @@ type Initial = { q: string; periode: string; carte: string; type: string; tri: s
 // Ce que la page reçoit au plus (voir `MAX_SMS`) : au-delà, le début d'une
 // longue période manque — et la page le dit.
 const PLAFOND = 1000;
+// Une page de la suite de l'historique.
+const PAGE_HISTORIQUE = 500;
 type Langue = "fr" | "en";
 
 const PERIODES = ["tout", "aujourdhui", "hier", "semaine", "mois"] as const;
@@ -58,8 +68,8 @@ function quandAnnonce(iso: string, heure: string, maintenant: number, fuseau: st
   return `Le ${jourCourt(j.cle, langue)} à ${heure}`;
 }
 
-export function PagePaiements({ paiements, sims, fuseau, initial }: {
-  paiements: Paiement[]; sims: Sim[]; fuseau: string; initial: Initial;
+export function PagePaiements({ paiements: recus, suite: suiteRecue, sims, fuseau, initial }: {
+  paiements: Paiement[]; suite?: Suite; sims: Sim[]; fuseau: string; initial: Initial;
 }) {
   const langue = useLangue() as Langue;
   const t = textesFlux[langue];
@@ -88,11 +98,38 @@ export function PagePaiements({ paiements, sims, fuseau, initial }: {
     window.history.replaceState(null, "", s ? `/paiements?${s}` : "/paiements");
   }, [recherche, periode, carte, famille, tri, ouverte]);
 
+  // LES PLUS ANCIENS, recollés sous ce que la page a reçu. La suite de la
+  // page vaut pour TOUTES ses lignes : la première page repart de là, et ce
+  // qu'elle a reçu est gardé avec — un rafraîchissement de la page ne fait
+  // pas tomber un trou entre les deux.
+  const [anciennes, setAnciennes] = useState<Historique | null>(null);
+  const [chargement, setChargement] = useState<"repos" | "envoi" | "refus">("repos");
+  const suite: Suite = anciennes ? anciennes.suite : suiteRecue;
+  const paiements = useMemo(() => (anciennes ? recoller(recus, anciennes.lignes) : recus),
+                            [recus, anciennes]);
+  const plusAnciens = async () => {
+    if (typeof suite !== "string" || chargement === "envoi") return;
+    const curseur = suite;
+    setChargement("envoi");
+    try {
+      const q = new URLSearchParams({ langue, sms: String(PAGE_HISTORIQUE), recus: "0", avant: curseur });
+      const r = await fetch(`/api/donnees?${q}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(String(r.status));
+      const d = (await r.json()) as { paiements?: Paiement[]; suite?: string | null };
+      if (!Array.isArray(d.paiements)) throw new Error("réponse incomplète");
+      setAnciennes((h) => apresUnePage(h ?? { lignes: recus.slice(), suite: curseur },
+                                       { paiements: d.paiements!, suite: d.suite }, curseur));
+      setChargement("repos");
+    } catch {
+      setChargement("refus");
+    }
+  };
+
   const tous = useMemo(() => fluxDe(paiements), [paiements]);
   const bornes = bornesDe({ genre: periode } as Periode, maintenant, fuseau);
   const dansLaVue = useMemo(() => tous.filter((f) =>
     dansBornes(f.p, bornes)
-    && (!carte || (f.p.carte || f.p.sim) === carte)
+    && surLaCarte(f.p, carte ? { iccid: carte, libelle: sims.find((s) => s.iccid === carte)?.libelle ?? carte } : null)
     && dansFamille(f, (famille || null) as FamilleFlux | null)
     && correspondFlux(f, recherche)),
   [tous, bornes?.de, bornes?.a, carte, famille, recherche]);
@@ -106,8 +143,13 @@ export function PagePaiements({ paiements, sims, fuseau, initial }: {
   // plus récents : si le plus ancien est encore DANS la période choisie, son
   // début manque. (Sans période, la liste est « les plus récents » : rien à
   // dire de plus.)
-  const tronquee = bornes != null && paiements.length >= PLAFOND
-    && (paiements[paiements.length - 1]?.jour ?? "") >= bornes.de;
+  // Avec la suite de l'historique, la question devient : reste-t-il plus
+  // ancien, alors que la plus ancienne ligne tenue est encore dans la
+  // période ? (Une plateforme d'avant la suite : l'ancienne règle.)
+  const plusAncienTenu = jusquAu(paiements) ?? "";
+  const tronquee = bornes != null && (suite === undefined
+    ? paiements.length >= PLAFOND && plusAncienTenu >= bornes.de
+    : typeof suite === "string" && plusAncienTenu >= bornes.de);
   const filtre = periode !== "tout" || !!carte || !!famille || recherche.trim() !== "";
   const fiche = ouverte ? tous.find((f) => f.p.id === ouverte) ?? null : null;
   const nomPeriode = (p: string) => p === "aujourdhui" ? ts.periodeAujourdhui : p === "hier" ? ts.periodeHier
@@ -158,7 +200,11 @@ export function PagePaiements({ paiements, sims, fuseau, initial }: {
         {filtre && vus.length > 0 && (
           <p className="px-1 text-small text-ink-faint">{t.transactions(vus.length)}</p>
         )}
-        {tronquee && <p className="px-1 text-caption text-alert">{t.periodeTronquee}</p>}
+        {tronquee && (
+          <p className="px-1 text-caption text-alert">
+            {typeof suite === "string" ? t.periodeACompleter : t.periodeTronquee}
+          </p>
+        )}
       </section>
 
       {vus.length === 0 && (
@@ -208,6 +254,31 @@ export function PagePaiements({ paiements, sims, fuseau, initial }: {
           </table>
         </div>
       )}
+
+      {/* LA SUITE DE L'HISTORIQUE : ce qu'on sait, et rien de plus. Il y a
+          plus ancien → le bouton, et jusqu'où l'on remonte déjà (une
+          recherche sans résultat ne passe pas pour une recherche sur TOUT) ;
+          la base n'a rien avant → « Début de l'historique », sans période
+          seulement ; on ne sait pas → rien. */}
+      {chargement === "refus" ? (
+        <p className="flex items-center justify-center gap-3 text-small text-negative">
+          {t.anciensImpossible}
+          <button type="button" onClick={() => void plusAnciens()}
+                  className="font-medium text-ink underline underline-offset-2">{textesConnexion[langue].reessayer}</button>
+        </p>
+      ) : typeof suite === "string" ? (
+        <div className="flex flex-col items-center gap-2">
+          {plusAncienTenu && (
+            <p className="text-caption text-ink-faint">{t.jusquAu(jourCourt(plusAncienTenu, langue))}</p>
+          )}
+          <button type="button" onClick={() => void plusAnciens()} disabled={chargement === "envoi"}
+                  className="rounded-full border border-line bg-surface-raised px-5 py-2 text-small font-medium transition hover:border-ink-faint disabled:opacity-40">
+            {chargement === "envoi" ? t.chargementAnciens : t.plusAnciens}
+          </button>
+        </div>
+      ) : suite === null && periode === "tout" && paiements.length > 0 ? (
+        <p className="text-center text-caption text-ink-faint">{t.debutHistorique}</p>
+      ) : null}
 
       {fiche && (
         <PanneauFiche f={fiche} sims={sims} maintenant={maintenant} fuseau={fuseau} langue={langue}
@@ -356,7 +427,7 @@ function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorrige
   const [deplie, setDeplie] = useState(false);
   // Le SMS tel qu'il est arrivé — codes compris : il est au propriétaire.
   const texte = texteSurEcran(p);
-  const { recu, enPreparation, etabli, mot, etablirRecu } = useRecuDuSms(p, p.nature);
+  const { recu, enPreparation, enRecherche, etabli, mot, etablirRecu } = useRecuDuSms(p, p.nature);
   const etat = f.etat === "comptee" ? t.reussie : f.etat === "echouee" ? t.echouee : t.aVerifierEtat;
   const titre = p.tiers || formaterNumero(p.numero) || NOMS_TYPES[langue][f.type];
   const qui = entree ? t.de : sortie ? t.a : t.avec;
@@ -435,7 +506,8 @@ function PanneauFiche({ f, sims, maintenant, fuseau, langue, onFermer, onCorrige
 
       {/* LE REÇU PDF : le même bloc que la fiche d'un SMS. */}
       {estArgent(p) && (recu || p.sourceId != null) && (
-        <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation} mot={mot}
+        <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation}
+                    enRecherche={enRecherche} mot={mot}
                     onEtablir={() => void etablirRecu()} />
       )}
 

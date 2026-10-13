@@ -646,7 +646,10 @@ export async function chargerDonnees(
   // date de l'écran des SMS. Le découpage se fait dans la BASE : filtrer
   // les deux cents derniers SMS sur le téléphone aurait rendu « ce mois »
   // vide au-delà de quelques jours, sans le dire.
-  bornes?: { sms?: number; recus?: number; lignes?: number; depuis?: string },
+  //
+  // `avant` : la SUITE de l'historique — les SMS plus anciens que ceux déjà
+  // montrés, à partir de l'instant que la plateforme a rendu (`suite`).
+  bornes?: { sms?: number; recus?: number; lignes?: number; depuis?: string; avant?: string },
   // `renoncer` : le cahier abandonne ce qui est en route quand la session
   // se ferme — la réponse d'avant ne doit rien écrire pour la suivante.
   renoncer?: AbortSignal,
@@ -656,6 +659,7 @@ export async function chargerDonnees(
   if (bornes?.recus != null) q.set("recus", String(bornes.recus));
   if (bornes?.lignes != null) q.set("lignes", String(bornes.lignes));
   if (bornes?.depuis) q.set("depuis", bornes.depuis);
+  if (bornes?.avant) q.set("avant", bornes.avant);
   const d = await demander<unknown>(`/api/donnees?${q}`, {}, { langue, renoncer });
   if (!donneesValables(d)) throw versErreurGuichet(new Panne("incomplete"), langue);
   return d;

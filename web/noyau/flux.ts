@@ -322,6 +322,19 @@ export function trierFlux(liste: readonly Flux[], tri: TriFlux): Flux[] {
   });
 }
 
+/**
+ * CETTE LIGNE EST-ELLE SUR CETTE CARTE ? Le filtre « Carte » choisit par
+ * ICCID ; or les SMS relevés avant que le robot n'écrive la carte de chaque
+ * ligne ne la portent pas — seulement le libellé du compte (« MTN ·8901 »).
+ * Comparée au seul ICCID, toute cette caisse ancienne disparaissait dès
+ * qu'on choisissait une carte. Sans carte, le libellé décide.
+ */
+export function surLaCarte(p: Paiement, carte: { iccid: string; libelle: string } | null): boolean {
+  if (carte == null) return true;
+  if (p.carte) return p.carte === carte.iccid;
+  return p.sim === carte.libelle || p.sim === carte.iccid;
+}
+
 /** Les familles du filtre « Type ». */
 export const FAMILLES_FLUX = ["entrees", "sorties", "depots", "retraits", "transferts", "a_verifier", "echouees"] as const;
 export type FamilleFlux = (typeof FAMILLES_FLUX)[number];

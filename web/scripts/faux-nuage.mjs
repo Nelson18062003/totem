@@ -1310,6 +1310,23 @@ const serveur = createServer(async (req, res) => {
   if (m && T[m[1]]) {
     let lignes = T[m[1]];
 
+    // UNE HEURE SE COMPARE COMME UN INSTANT, pas comme du texte. Le robot
+    // écrit « 2026-10-12T10:41:07+01:00 », les essais « …09:41:07.123Z » :
+    // comparées en texte, la plus tardive des deux passait pour la plus
+    // ancienne. La vraie base compare des instants, à la microseconde.
+    const enInstant = (v) => {
+      const t = typeof v === "string" && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(v)
+        ? Date.parse(v) : Number.NaN;
+      if (!Number.isFinite(t)) return null;
+      return t * 1000 + Number(((/\.(\d+)/.exec(v)?.[1] ?? "") + "000000").slice(3, 6));
+    };
+    const comparer = (x, y) => {
+      const a = enInstant(x), b = enInstant(y);
+      if (a != null && b != null) return a - b;
+      const sx = String(x), sy = String(y);
+      return sx < sy ? -1 : sx > sy ? 1 : 0;
+    };
+
     // Les filtres de colonne : « recu_le=gte.2026-08-01 », « lu_le=is.null »…
     for (const [champ, brut] of url.searchParams) {
       if (["select", "order", "limit", "offset", "or"].includes(champ)) continue;
@@ -1324,10 +1341,10 @@ const serveur = createServer(async (req, res) => {
           case "not": return valeur === "is.null" ? v != null : true;
           case "eq": return String(v) === valeur;
           case "neq": return String(v) !== valeur;
-          case "gte": return v != null && String(v) >= valeur;
-          case "gt": return v != null && String(v) > valeur;
-          case "lte": return v != null && String(v) <= valeur;
-          case "lt": return v != null && String(v) < valeur;
+          case "gte": return v != null && comparer(v, valeur) >= 0;
+          case "gt": return v != null && comparer(v, valeur) > 0;
+          case "lte": return v != null && comparer(v, valeur) <= 0;
+          case "lt": return v != null && comparer(v, valeur) < 0;
           // « like.TM-*-0042 » : l'étoile est le joker de PostgREST.
           case "like": {
             const motif = decodeURIComponent(valeur)
@@ -1357,7 +1374,8 @@ const serveur = createServer(async (req, res) => {
         if (x === y) return 0;
         if (x == null) return 1;
         if (y == null) return -1;
-        return (x < y ? -1 : 1) * (descendant ? -1 : 1);
+        const c = comparer(x, y);
+        return c === 0 ? 0 : (c < 0 ? -1 : 1) * (descendant ? -1 : 1);
       });
     }
 

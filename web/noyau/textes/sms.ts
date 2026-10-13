@@ -81,6 +81,8 @@ const en = {
   // dans les secondes qui suivent. On l'ATTEND — on ne propose pas de
   // l'établir (voir `recuAttendu`).
   recuEnPreparation: "Receipt on its way…",
+  // Un vieux paiement : la fiche demande le reçu qui existe peut-être déjà.
+  rechercheDuRecu: "Looking for the receipt…",
   // « Refaire » sans rien changer : le document en place EST le bon.
   recuDejaAJour: "This receipt is already up to date ✓",
   lienRecuImpossible: "The receipt could not be prepared. Check the connection, then try again.",
@@ -208,6 +210,7 @@ const fr: typeof en = {
   recuEnregistre: "Reçu enregistré ✓",
   preparationRecu: "Préparation du PDF…",
   recuEnPreparation: "Reçu en préparation…",
+  rechercheDuRecu: "Recherche du reçu…",
   recuDejaAJour: "Ce reçu est déjà à jour ✓",
   lienRecuImpossible: "Le reçu n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   toutesLesCartes: "Toutes les cartes",

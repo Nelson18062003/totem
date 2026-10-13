@@ -75,6 +75,13 @@ const en = {
   },
   periodeImpossible: "The payments of this period could not be loaded. Check the connection, then try again.",
   periodeTronquee: "Only the latest 1,000 SMS of this period came back: its first days are missing. Pick fewer days.",
+  // LA SUITE DE L'HISTORIQUE (voir noyau/historique.ts).
+  periodeACompleter: "The first days of this period aren't loaded yet: they're at the bottom of the list.",
+  plusAnciens: "Show older payments",
+  chargementAnciens: "Loading older payments…",
+  anciensImpossible: "Older payments could not be loaded.",
+  debutHistorique: "Start of the history: nothing before this.",
+  jusquAu: (jour: string) => `Loaded back to ${jour}`,
   familles: {
     entrees: "Money in", sorties: "Money out", depots: "Deposits", retraits: "Withdrawals",
     transferts: "Transfers", a_verifier: "To check", echouees: "Failed",
@@ -179,6 +186,12 @@ const fr: typeof en = {
   },
   periodeImpossible: "Les paiements de cette période n'ont pas pu être chargés. Vérifiez la connexion, puis réessayez.",
   periodeTronquee: "Seuls les 1 000 derniers SMS de cette période sont revenus : ses premiers jours manquent. Choisissez moins de jours.",
+  periodeACompleter: "Les premiers jours de cette période ne sont pas encore chargés : ils sont en bas de la liste.",
+  plusAnciens: "Voir les paiements plus anciens",
+  chargementAnciens: "Chargement des plus anciens…",
+  anciensImpossible: "Les paiements plus anciens n'ont pas pu être chargés.",
+  debutHistorique: "Début de l'historique : rien avant.",
+  jusquAu: (jour: string) => `Chargés jusqu'au ${jour}`,
   familles: {
     entrees: "Entrées", sorties: "Sorties", depots: "Dépôts", retraits: "Retraits",
     transferts: "Transferts", a_verifier: "À vérifier", echouees: "Échouées",

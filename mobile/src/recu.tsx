@@ -30,7 +30,7 @@ import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
 import { enregistrerDocument, nomDeFichier, partagerDocument, voirDocument } from "@/partage";
 import { deposerCommande, lienRecu, lireCommande, recuDuSms } from "@/api/guichet";
 import { useRetouche } from "@/donnees";
-import { etatDeLaReponseRecu, FENETRE_DU_RECU_MS, recuAttendu } from "@noyau/sms";
+import { etatDeLaReponseRecu, FENETRE_DU_RECU_MS, recuACherche, recuAttendu } from "@noyau/sms";
 import { textesSms } from "@noyau/textes/sms";
 import type { Categorie, Paiement } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
@@ -112,6 +112,33 @@ export function useRecu(p: Paiement, { nature, onChange, onRetouche }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.id, attendu]);
   const enPreparation = attendu && !recu && etabli === "repos";
+
+  // LE REÇU QUI EXISTE DÉJÀ. La liste ne connaît que les reçus récents :
+  // un paiement d'avril, sur une caisse qui tourne depuis des mois, arrivait
+  // ici sans son numéro, et la fiche proposait « Établir le reçu » pour un
+  // document établi depuis longtemps (voir `recuACherche`). Elle le demande
+  // UNE fois, en ouvrant ; pendant ce temps, le bouton dit qu'elle cherche —
+  // un appui ne déposerait qu'une commande inutile. Introuvable, ou pas de
+  // réseau : « Établir le reçu », comme avant — et le boîtier, qui a le
+  // document, rend celui qui existe sans le refaire.
+  const [cherche, setCherche] = useState(() => recuACherche(
+    nature !== undefined ? { ...p, nature } : p, Date.now()));
+  useEffect(() => {
+    if (!cherche) return;
+    const renoncer = new AbortController();
+    recuDuSms(Number(p.id), renoncer.signal)
+      .then((n) => {
+        if (renoncer.signal.aborted || !n) return;
+        setRecu((avant) => avant ?? n);
+        retoucher({ recu: n });
+      })
+      .catch(() => {})
+      .finally(() => { if (!renoncer.signal.aborted) setCherche(false); });
+    return () => renoncer.abort();
+    // Une fois par SMS ouvert ; `retoucher` change à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.id, cherche]);
+  const enRecherche = cherche && !recu && etabli === "repos";
 
   /** Le document lui-même : le lien signé, puis le geste demandé. */
   const document = async (geste: GesteDocument, titre: string) => {
@@ -210,7 +237,7 @@ export function useRecu(p: Paiement, { nature, onChange, onRetouche }: {
   };
 
   return {
-    vivant, retoucher, recu, enPreparation, etabli, ouverture, dejaAJour,
+    vivant, retoucher, recu, enPreparation, enRecherche, etabli, ouverture, dejaAJour,
     occupe: gesteRecu.occupe, etablir, etablirEnSilence,
     partager: (titre: string) => document("partager", titre),
     voir: (titre: string) => document("voir", titre),
@@ -233,14 +260,14 @@ type GesteDocument = "partager" | "voir" | "telecharger";
  */
 export function PiedRecu({ r, p, langue }: { r: Recu; p: Paiement; langue: Langue }) {
   const t = textesSms[langue];
-  const { recu, etabli, ouverture, enPreparation } = r;
+  const { recu, etabli, ouverture, enPreparation, enRecherche } = r;
   const occupe = ouverture.geste != null;
   return (
     <View style={{ gap: espaces.sm }}>
       <Pressable
         accessibilityRole="button"
         onPress={() => void (recu ? r.partager(t.partagerRecu) : r.etablir())}
-        disabled={occupe || etabli === "envoi" || enPreparation
+        disabled={occupe || etabli === "envoi" || enPreparation || enRecherche
                   || r.occupe || (!recu && etabli === "fait")}
         style={({ pressed }) => ({
           flexDirection: "row", alignItems: "center", justifyContent: "center",
@@ -256,6 +283,7 @@ export function PiedRecu({ r, p, langue }: { r: Recu; p: Paiement; langue: Langu
           {recu
             ? (ouverture.geste === "partager" ? t.preparationRecu : t.partagerRecu)
             : enPreparation ? t.recuEnPreparation
+            : enRecherche ? t.rechercheDuRecu
             : etabli === "envoi" ? t.demandeAuTerminal
             : etabli === "fait" ? t.recuEtabli
             : t.etablirRecu}

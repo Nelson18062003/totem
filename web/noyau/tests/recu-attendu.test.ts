@@ -74,3 +74,27 @@ test("témoin : l'égalité des numéros dit « à jour » sur un document refai
   assert.equal(n === avant, true, "le témoin ne se trompe plus : ce test ne prouverait rien");
   assert.notEqual(etatDeLaReponseRecu(reponse), "inchange");
 });
+
+// ----------------------------------------------------------------------------
+// LE JOUR J : un reçu établi il y a des mois ne se refait pas.
+//
+// La liste ne connaît que les reçus RÉCENTS. Sur la caisse d'une boutique
+// qui tourne depuis longtemps, la fiche d'un vieux paiement proposait
+// « Établir le reçu » — pour un document qui existait. Elle le demande.
+import { recuACherche } from "../sms.ts";
+
+test("un vieux paiement sans reçu connu : la fiche le cherche", () => {
+  const avril = "2026-04-12T09:30:00Z";
+  assert.equal(recuACherche(sms({ recuLe: avril }), MAINTENANT), true);
+});
+
+test("dans la fenêtre du reçu qui arrive : on l'attend, on ne le cherche pas", () => {
+  assert.equal(recuACherche(sms({}), MAINTENANT), false);
+});
+
+test("reçu connu, pas d'argent, ou pas de ligne de journal : rien à chercher", () => {
+  const avril = "2026-04-12T09:30:00Z";
+  assert.equal(recuACherche(sms({ recuLe: avril, recu: "TM-2026-0412-0042" }), MAINTENANT), false);
+  assert.equal(recuACherche(sms({ recuLe: avril, montant: null, categorie: "publicite" }), MAINTENANT), false);
+  assert.equal(recuACherche(sms({ recuLe: avril, sourceId: null }), MAINTENANT), false);
+});

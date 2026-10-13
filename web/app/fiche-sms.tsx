@@ -88,7 +88,7 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   // LE REÇU — établir, attendre celui qui arrive tout seul, refaire — vit
   // dans `recu.tsx`, partagé avec la fiche d'un paiement : le même système
   // sur chaque transaction.
-  const { recu, enPreparation, etabli, mot, etablirRecu } = useRecuDuSms(p, nature);
+  const { recu, enPreparation, enRecherche, etabli, mot, etablirRecu } = useRecuDuSms(p, nature);
 
   // Ouvrir la fiche, c'est lire le message : le point de la ligne s'éteint et
   // la pastille du menu se met à jour dans la foulée. Si la base n'a pas
@@ -179,7 +179,8 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
       {/* LE REÇU d'abord, pour l'argent : voir, télécharger, partager,
           refaire — le même bloc que la fiche d'un paiement (`recu.tsx`). */}
       {argent && (recu || p.sourceId != null) && (
-        <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation} mot={mot}
+        <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation}
+                    enRecherche={enRecherche} mot={mot}
                     onEtablir={() => void etablirRecu()} />
       )}
       <button

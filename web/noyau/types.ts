@@ -207,6 +207,13 @@ export type Donnees = {
   // Seul l'export comptable s'en sert : un bilan amputé doit le dire, sans
   // quoi il se lit comme un bilan complet.
   smsTronques?: boolean;
+  // LA SUITE DE L'HISTORIQUE : de quoi demander les SMS plus anciens que
+  // ceux-ci (`avant=` sur /api/donnees). `null` : la base n'en a pas
+  // d'autres — c'est le début de l'historique, et l'écran peut le DIRE.
+  // Absente (une plateforme pas encore à jour) : on ne sait pas, et l'écran
+  // ne prétend rien. Un instant de relève BRUT, tel que la base l'écrit :
+  // arrondi à la milliseconde, il sauterait les SMS relevés dans la même.
+  suite?: string | null;
 };
 
 export function fcfa(n: number, langue: Langue): string {

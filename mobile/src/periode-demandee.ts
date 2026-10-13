@@ -41,6 +41,7 @@ import { useLangue } from "@/langue";
 import { useSession } from "@/session";
 import { depuisPourLaBase, type Bornes } from "@noyau/periodes";
 import type { Paiement } from "@noyau/types";
+import type { Suite } from "@noyau/historique";
 
 // Ce que la plateforme rapporte au plus pour une période (voir `MAX_SMS`).
 export const SMS_PAR_PERIODE = 1000;
@@ -68,7 +69,7 @@ export function usePeriodeDemandee(bornes: Bornes | null, recents: Paiement[], e
     || (recents.length > 0 && recents[recents.length - 1].jour < bornes.de);
 
   const cleP = couverte || !bornes ? null : `${bornes.de}…${bornes.a}`;
-  const [lueP, setLueP] = useState<{ cle: string; lignes: Paiement[] } | null>(null);
+  const [lueP, setLueP] = useState<{ cle: string; lignes: Paiement[]; suite: Suite } | null>(null);
   const [rateeP, setRateeP] = useState<string | null>(null);
   const [essaiP, setEssaiP] = useState(0);
   const cleCourante = useRef(cleP);
@@ -106,8 +107,9 @@ export function usePeriodeDemandee(bornes: Bornes | null, recents: Paiement[], e
         // Rien n'a bougé : LE MÊME objet, et aucune des mille lignes ne se
         // redessine — la période se relit à chaque passage du cahier, et la
         // plupart du temps rien n'y a changé.
-        setLueP((avant) => (avant && avant.cle === cle && memesLignes(avant.lignes, lignes)
-          ? avant : { cle, lignes }));
+        setLueP((avant) => (avant && avant.cle === cle && avant.suite === d.suite
+                            && memesLignes(avant.lignes, lignes)
+          ? avant : { cle, lignes, suite: d.suite }));
         setRateeP((r) => (r === cle ? null : r));
       })
       .catch((e: unknown) => {
@@ -148,6 +150,15 @@ export function usePeriodeDemandee(bornes: Bornes | null, recents: Paiement[], e
 
   // Ce qu'une fiche vient de changer (lu, nature, reçu), reporté sur la
   // période qu'on tient à part — le cahier, la fiche le corrige elle-même.
+  // LA SUITE DE LA PÉRIODE (voir `historique.ts`) : couverte par le cahier,
+  // elle est entière — rien avant ; rendue par la plateforme, c'est la
+  // sienne ; en route, on ne sait pas encore. Sans période, c'est l'écran
+  // qui la tient (celle du cahier).
+  const suite: Suite = bornes == null ? undefined
+    : cleP == null ? null
+    : lueP?.cle === cleP ? lueP.suite
+    : undefined;
+
   const retoucher = useCallback((id: string, champs: Partial<Paiement>) => {
     setLueP((l) => (l && l.lignes.some((x) => x.id === id)
       ? { ...l, lignes: l.lignes.map((x) => (x.id === id ? { ...x, ...champs } : x)) }
@@ -155,5 +166,5 @@ export function usePeriodeDemandee(bornes: Bornes | null, recents: Paiement[], e
   }, []);
   const reessayer = useCallback(() => setEssaiP((n) => n + 1), []);
 
-  return { paiements, cherche, refus, entiere, tronquee, retoucher, reessayer };
+  return { paiements, cherche, refus, entiere, tronquee, suite, retoucher, reessayer };
 }
