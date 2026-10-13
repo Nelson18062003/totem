@@ -592,19 +592,25 @@ class PorteXafe:
         for m in lignes:
             if not isinstance(m, dict) or m.get("id") is None:
                 continue
+            parametres = {
+                "operateur": m.get("operateur"),
+                "numero": m.get("numero"),
+                "texte": m.get("texte"),
+                "par": "xafe",
+                "langue": "fr",
+            }
+            # `messages_sortants` ne porte que l'opérateur aujourd'hui. Le
+            # jour où XAFe nomme le float (c'est demandé au contrat), la
+            # carte se choisit par lui : on le garde dès qu'il est là.
+            if m.get("float_numero"):
+                parametres["float_numero"] = m["float_numero"]
             demandes.append({
                 "id": f"sms:{m['id']}",
                 "type": "sms_xafe",
                 "etat": "en_attente",
                 "demandee_le": m.get("cree_le"),
                 "cle": m.get("cle"),
-                "parametres": {
-                    "operateur": m.get("operateur"),
-                    "numero": m.get("numero"),
-                    "texte": m.get("texte"),
-                    "par": "xafe",
-                    "langue": "fr",
-                },
+                "parametres": parametres,
             })
         return demandes
 

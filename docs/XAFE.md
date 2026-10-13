@@ -49,7 +49,11 @@ coupure de courant).
   tant que XAFe ne nomme pas le float dans ses `messages_sortants` (la table
   ne porte que l'opérateur). Avec deux cartes MTN, le robot refuse d'en
   choisir une — « Plusieurs cartes de cet opérateur, désignez le float » — et
-  aucun code ne part. C'est écrit au contrat côté XAFe.
+  aucun code ne part. C'est écrit au contrat côté XAFe. Le jour où une ligne
+  porte `float_numero`, c'est **lui** qui choisit la carte (celle de
+  l'opérateur dont le numéro déclaré est celui-là, l'indicatif 237 admis) ;
+  un float que personne ne porte refuse — « Aucune carte de cet opérateur ne
+  porte ce numéro, déclarez-le » — jamais la première carte venue.
 
 ## Configurer le Pi
 
@@ -159,8 +163,9 @@ Ce qui ne part pas, et pourquoi, dans la réponse rendue à XAFe :
 - **un code vieux** (déposé il y a plus de quinze minutes — il vaut dix chez
   XAFe, le client en a déjà redemandé un) : « a attendu 3 h avant d'arriver au
   terminal… rien n'est parti » ;
-- **aucune carte de cet opérateur**, ou **plusieurs** : rien n'est parti,
-  voir ci-dessus ;
+- **aucune carte de cet opérateur**, ou **plusieurs** (ou, si la ligne nomme
+  le float, **aucune carte ne porte ce numéro**) : rien n'est parti, voir
+  ci-dessus ;
 - **le modem refuse** (« +CMS ERROR ») : rien n'est parti ;
 - **l'accusé du modem ne vient pas** : « le SMS a peut-être été remis ». On ne
   dit ni l'un ni l'autre ; pour un SMS, XAFe ne rejoue pas, le client

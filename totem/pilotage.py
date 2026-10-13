@@ -850,15 +850,39 @@ class Pilotage:
                 if c.carte.identifiee
                 and operateur_xafe(c.carte.operateur) == voulu]
 
-    def _compte_pour_xafe(self, parametres):
-        """La carte d'une demande XAFe, ou None si aucune — ou plusieurs.
+    def _numeros_de(self, compte):
+        """Les numéros à neuf chiffres sous lesquels cette carte se reconnaît :
+        celui déclaré au journal (Telegram /reglages, `[numeros]`) et celui
+        que la SIM dit d'elle-même, quand elle le dit."""
+        numeros = set()
+        identite = getattr(self.journal, "identite", None)
+        declare = identite(compte.carte.iccid)[0] if identite else ""
+        for brut in (declare, getattr(compte.carte, "numero", "")):
+            chiffres = re.sub(r"\D", "", str(brut or ""))[-9:]
+            if len(chiffres) == 9:
+                numeros.add(chiffres)
+        return numeros
 
-        `messages_sortants` ne porte que l'opérateur : une seule carte de cet
-        opérateur, et c'est elle ; deux, et on refuse plutôt que de choisir.
-        (La table XAFe n'a pas de `float_numero` : avec deux cartes MTN dans
-        un boîtier, aucun code ne part tant que XAFe ne nomme pas le float —
-        c'est écrit au contrat, et dans docs/XAFE.md.)"""
+    def _candidats_xafe(self, parametres):
+        """Les cartes qui peuvent servir une demande XAFe.
+
+        Quand la demande NOMME le float (`float_numero`), c'est lui qui
+        choisit : la carte de cet opérateur qui porte ce numéro — un float
+        inconnu ne rend personne, jamais « la première ». Sans lui
+        (`messages_sortants` ne porte que l'opérateur aujourd'hui), toutes
+        les cartes de l'opérateur : une seule, et c'est elle ; deux, et on
+        refuse plutôt que de choisir — avec deux cartes MTN dans un boîtier,
+        aucun code ne part tant que XAFe ne nomme pas le float. C'est écrit
+        au contrat, et dans docs/XAFE.md."""
         candidats = self._comptes_de_l_operateur(parametres.get("operateur"))
+        if parametres.get("float_numero"):
+            vise = re.sub(r"\D", "", str(parametres["float_numero"]))[-9:]
+            candidats = [c for c in candidats if vise in self._numeros_de(c)]
+        return candidats
+
+    def _compte_pour_xafe(self, parametres):
+        """La carte d'une demande XAFe, ou None si aucune — ou plusieurs."""
+        candidats = self._candidats_xafe(parametres)
         return candidats[0] if len(candidats) == 1 else None
 
     def _nommer_la_carte(self, demande):
@@ -873,10 +897,17 @@ class Pilotage:
     def _compte_xafe(self, parametres, langue=None):
         """La carte d'une demande XAFe, ou un refus poli qui dit pourquoi
         rien n'est parti."""
-        candidats = self._comptes_de_l_operateur(parametres.get("operateur"))
+        candidats = self._candidats_xafe(parametres)
         if len(candidats) == 1:
             return candidats[0]
         if not candidats:
+            if parametres.get("float_numero"):
+                raise RefusPoli(t(
+                    "No card of this operator carries that number on this "
+                    "terminal — declare it (card identity). Nothing was sent.",
+                    "Aucune carte de cet opérateur ne porte ce numéro sur ce "
+                    "terminal — déclarez-le (identité de la carte). Rien "
+                    "n'est parti.", langue=langue))
             raise RefusPoli(t(
                 "No card of this operator on this terminal. Nothing was sent.",
                 "Aucune carte de cet opérateur sur ce terminal. Rien n'est "

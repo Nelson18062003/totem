@@ -1826,9 +1826,26 @@ class TestLaFileNeSeBloquePas(Banc):
 TEXTE_CODE = "XAFe Exchange : votre code est 123456. Il vaut 10 minutes."
 
 
-def message_xafe(ident=3, operateur="mtn", numero="699112233", texte=TEXTE_CODE):
-    return {"id": ident, "terminal": None, "operateur": operateur, "numero": numero,
-            "texte": texte, "etat": "en_attente", "cle": f"num-{ident}-1"}
+def message_xafe(ident=3, operateur="mtn", numero="699112233", texte=TEXTE_CODE,
+                 float_numero=None):
+    m = {"id": ident, "terminal": None, "operateur": operateur, "numero": numero,
+         "texte": texte, "etat": "en_attente", "cle": f"num-{ident}-1"}
+    if float_numero is not None:
+        # `messages_sortants` ne le porte pas encore ; le jour où XAFe nomme
+        # le float, la ligne le portera à plat, comme l'opérateur.
+        m["float_numero"] = float_numero
+    return m
+
+
+class PilotageDAvant:
+    """TÉMOIN figé : la résolution d'avant, par opérateur SEUL — le
+    `float_numero` d'une ligne n'était pas même relevé. Posé sur un
+    `Pilotage` du jour (`_candidats_xafe` remplacé), il doit refuser un SMS
+    dont le float est pourtant nommé."""
+
+    @staticmethod
+    def candidats(pilotage, parametres):
+        return pilotage._comptes_de_l_operateur(parametres.get("operateur"))
 
 
 def compte_mtn(carte=None):
@@ -1915,6 +1932,69 @@ class TestLeGuichetDesSms(Banc):
         self.assertEqual(final["etat"], "echoue")
         self.assertIn("Rien n'est parti", final["resultat"])
         self.assertIn("Plusieurs cartes", final["resultat"])
+
+    def exigences_du_float_nomme(self, d_avant=False):
+        """Deux cartes MTN, le float de la ·0022 nommé sur la ligne : le code
+        part par ELLE, et par elle seule. Rend les manques."""
+        g = self.guichet()
+        g.messages = {3: message_xafe(float_numero="677000022")}
+        journal = journal_deux_cartes()
+        c1, c2 = compte_mtn(), compte_mtn(FausseCarteMTN2())
+        porte, pilotage = self.pilote(g, journal, [c1, c2])
+        if d_avant:
+            pilotage._candidats_xafe = lambda p: PilotageDAvant.candidats(pilotage, p)
+        demandes = porte.commandes_en_attente()
+        manques = []
+        if demandes[0]["parametres"].get("float_numero") != "677000022":
+            manques.append(f"le float n'est pas relevé : {demandes[0]['parametres']}")
+        pilotage._nommer_la_carte(demandes[0])
+        if demandes[0]["parametres"].get("carte") != ICCID_2:
+            manques.append(f"la file n'est pas celle de la ·0022 : "
+                           f"{demandes[0]['parametres'].get('carte')}")
+        for d in demandes:
+            pilotage._traiter(d, porte)
+        if c2.sms_envoyes != [("699112233", TEXTE_CODE)]:
+            manques.append(f"la ·0022 n'a pas envoyé : {c2.sms_envoyes}")
+        if c1.sms_envoyes:
+            manques.append(f"la ·0011 a envoyé : {c1.sms_envoyes}")
+        final = _patches_sms(g, 3)[-1][1]
+        if final.get("etat") != "envoye":
+            manques.append(f"XAFe lit « {final.get('etat')} » : {final.get('resultat')!r}")
+        return manques
+
+    def test_un_float_nomme_choisit_la_carte_parmi_deux_mtn(self):
+        """Le contrat promet `float_numero` ; la table ne l'a pas encore. Dès
+        qu'une ligne le porte, c'est lui qui choisit — et deux cartes MTN ne
+        sont plus un refus. Provoqué une fois : le filtre retiré de
+        `_candidats_xafe`, ce test échoue (« Plusieurs cartes »)."""
+        self.assertEqual(self.exigences_du_float_nomme(), [])
+
+    def test_temoin_la_resolution_d_avant_refuse_le_float_nomme(self):
+        manques = self.exigences_du_float_nomme(d_avant=True)
+        self.assertNotEqual(manques, [], "LE TÉMOIN PASSE : la résolution par "
+                            "opérateur seul choisit déjà la bonne carte, l'essai "
+                            "ne mesure rien")
+        self.assertTrue(any("Plusieurs cartes" in m for m in manques), manques)
+
+    def test_un_float_nomme_inconnu_ne_part_pas(self):
+        """Un float que personne ne porte ne rend JAMAIS « la première carte
+        de l'opérateur » : le refus dit quoi faire. L'indicatif 237 devant le
+        numéro déclaré est admis. Provoqué une fois : le filtre retiré, le
+        code partait « envoye » par la seule carte MTN — c'est ce que ce test
+        garde."""
+        g = self.guichet()
+        g.messages = {3: message_xafe(float_numero="677999999"),
+                      4: message_xafe(4, float_numero="237677000000")}
+        journal = journal_avec_carte()          # ·0011 déclarée 677000000
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        self.jouer(porte, pilotage)
+        final = _patches_sms(g, 3)[-1][1]
+        self.assertEqual(final["etat"], "echoue")
+        self.assertIn("ne porte ce numéro", final["resultat"])
+        self.assertIn("Rien n'est parti", final["resultat"])
+        self.assertEqual(_patches_sms(g, 4)[-1][1]["etat"], "envoye")
+        self.assertEqual(compte.sms_envoyes, [("699112233", TEXTE_CODE)])
 
     def test_aucune_carte_de_l_operateur(self):
         g = self.guichet()
