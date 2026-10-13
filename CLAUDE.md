@@ -1155,6 +1155,22 @@ porte sur LA ligne neuve ; elle regarde maintenant cette ligne-là
 porte, il a trouvé un défaut du harnais — et c'est exactement ce qu'un
 contrôle rejoué « à côté » ne pouvait pas voir.
 
+**Une ligne qui attend ne doit pas tenir la file.** La porte XAFe laissait en
+file les encaissements d'une carte sans numéro déclaré — voulu : ils partent
+dès que le numéro est inscrit. Mais elle cherchait ce numéro AVANT de lire le
+SMS (des publicités attendaient un numéro dont elles n'avaient aucun besoin),
+et lisait la file par id, cent lignes, sans écarter personne. La relecture
+l'a joué : deux cartes MTN, une seule déclarée — le cas ordinaire à la mise en
+service —, cent SMS de l'autre, puis UN encaissement de la carte déclarée :
+trois tours, zéro requête, « 101 en attente », le client XAFe jamais crédité,
+et rien d'autre au journal que « la carte ·0011 n'a pas de numéro déclaré ».
+Tous les tests passaient : chacun n'avait qu'une carte. L'analyse vient
+maintenant d'abord, la file écarte les cartes qui attendent
+(`sms_a_pousser_xafe(sauf_iccid=…)`) et lit au-delà d'un lot qui n'a rien
+donné ; une carte d'un autre réseau, qui n'aura JAMAIS de float, se clôt au
+lieu d'attendre (`SANS_FLOAT`). `TestLaFileNeSeBloquePas` rejoue la scène,
+avec la porte d'avant pour témoin (`PorteTeteDeFile`).
+
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
 

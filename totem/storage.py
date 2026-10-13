@@ -1178,16 +1178,28 @@ class Journal:
                 "FROM sms WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
                 (limite,)).fetchall()
 
-    def sms_a_pousser_xafe(self, limite=100):
+    def sms_a_pousser_xafe(self, limite=100, sauf_iccid=()):
         """[(id, date, expéditeur, texte, compte, iccid, emis_le)] que XAFe
         n'a pas encore tranchés. Le filtre (argent entrant seulement) se fait
-        chez l'appelant : ici, c'est la file."""
+        chez l'appelant : ici, c'est la file.
+
+        `sauf_iccid` : les cartes dont les lignes ATTENDENT (pas de numéro
+        déclaré) ne sont pas lues — sinon cent lignes d'une carte oubliée
+        restaient en tête de la file, et le lot ne contenait plus qu'elles :
+        plus rien ne partait pour aucune carte."""
+        sauf = sorted({str(i or "") for i in sauf_iccid})
+        requete = ("SELECT id, date, expediteur, texte, COALESCE(compte, ''), "
+                   "COALESCE(iccid, ''), emis_le "
+                   "FROM sms WHERE COALESCE(envoye_xafe, 0) = 0")
+        params = []
+        if sauf:
+            requete += (" AND COALESCE(iccid, '') NOT IN ("
+                        + ",".join("?" * len(sauf)) + ")")
+            params.extend(sauf)
+        requete += " ORDER BY id LIMIT ?"
+        params.append(limite)
         with self.verrou:
-            return self.conn.execute(
-                "SELECT id, date, expediteur, texte, COALESCE(compte, ''), "
-                "COALESCE(iccid, ''), emis_le "
-                "FROM sms WHERE COALESCE(envoye_xafe, 0) = 0 ORDER BY id LIMIT ?",
-                (limite,)).fetchall()
+            return self.conn.execute(requete, params).fetchall()
 
     def marquer_sms_xafe(self, reponses):
         """Clôt des lignes pour XAFe : `reponses` = [(id, preuve)]. L'état et

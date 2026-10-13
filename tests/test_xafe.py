@@ -18,14 +18,22 @@ CE QUE CES TESTS GARDENT :
      rien ; l'horloge du Pi décalée passe après recalage ; Bonzini et XAFe ne
      se retiennent pas ; un SMS appartient au propriétaire — pub, code,
      solde, sortie ne font aucune requête ; une carte sans numéro retient ses
-     lignes ; l'historique ne part pas à la naissance de la colonne ; aucun
-     secret ni donnée personnelle au journal ; le réveil est immédiat ; le
-     démarrage du robot lance la porte ; sans configuration, rien ne change.
+     lignes — LES SIENNES SEULEMENT, la file des autres cartes ne l'attend
+     pas, et une publicité se clôt quelle que soit la carte ; une carte d'un
+     autre réseau ne retient rien ; un encaissement derrière cent publicités
+     part au même tour ; un verdict désaligné ne marque pas une autre ligne ;
+     l'historique ne part pas à la naissance de la colonne ; aucun secret ni
+     donnée personnelle au journal ; le réveil est immédiat ; le démarrage du
+     robot lance la porte ; sans configuration, rien ne change — et une porte
+     active ne change rien à ce qui part chez Bonzini.
 
 CHAQUE EXIGENCE A SON TÉMOIN : `PorteDAvant` (marque avant la requête),
 `PorteToutMarque` (un 200 = tout marqué), `PorteSansRecalage` (ne lit pas
 l'heure de la base), `PorteQuiSigneLeMauvaisCorps` (signe une sérialisation,
-envoie une autre). Ce sont des copies figées, pas des appels au code du jour.
+envoie une autre), `PorteTeteDeFile` (la porte des premiers jours : le float
+avant la lecture, un seul lot, personne d'écarté), `PorteSansControleDePosition`
+(zippe les verdicts à l'aveugle), `PorteQuiMarqueEnvoye` (touche au drapeau de
+Bonzini). Ce sont des copies figées, pas des appels au code du jour.
 
 Lancer :  python3 -m unittest tests.test_xafe -v
 """
@@ -45,9 +53,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import totem.xafe as module_xafe
-from totem.nuage import Nuage
+from totem.analyse_sms import analyser
+from totem.nuage import Nuage, _horodatage
 from totem.storage import Journal
-from totem.xafe import PorteXafe
+from totem.xafe import SANS_FLOAT, PorteXafe
 
 from tests.test_nuage import FauxSupabase
 
@@ -70,6 +79,8 @@ SMS_SOLDE = "Votre solde est de 900000 FCFA."
 SMS_DEUX_PARTIES = "Transfert de 5000 FCFA de 677000000 vers 699112233 reussi. Ref: TX1."
 
 ICCID = "89237010000000000011"
+ICCID_2 = "89237010000000000022"
+ICCID_CAMTEL = "89237070000000000033"
 
 
 class FausseCarteMTN:
@@ -81,6 +92,12 @@ class FausseCarteMTN:
     numero = ""
 
 
+class FausseCarteMTN2(FausseCarteMTN):
+    iccid = ICCID_2
+    imsi = "624010000000022"
+    libelle = "MTN ·0022"
+
+
 class FauxXafe:
     """Le guichet XAFe, imité : il vérifie la signature comme `porte.ts`,
     rend des verdicts par ligne, retient ce qu'il a crédité (la MÊME réponse
@@ -89,6 +106,7 @@ class FauxXafe:
     def __init__(self, port=0):
         self.cles = {"akwa-1": "secret-akwa"}
         self.decalage = 0.0         # horloge du guichet − horloge de la machine
+        self.horloge = time.time    # injectable : la sonde teste la borne EXACTE
         self.en_panne = False
         self.refuser_signatures = 0  # n prochains appels → 401 quoi qu'il arrive
         self.verdicts = {}          # source_id → credite|retenue|ignore|erreur
@@ -161,7 +179,7 @@ class FauxXafe:
             return None
         if not re.fullmatch(r"[0-9]{1,12}", ts) or not re.fullmatch(r"[0-9a-f]{64}", signature):
             return None
-        if abs((time.time() + self.decalage) - int(ts)) > 300:
+        if abs((self.horloge() + self.decalage) - int(ts)) > 300:
             return None
         cle = self.cles.get(terminal)
         if not cle:
@@ -391,6 +409,110 @@ class PorteQuiSigneLeMauvaisCorps(PorteXafe):
         return super()._signer(horodatage, corps_octets)
 
 
+class PorteTeteDeFile(PorteXafe):
+    """LE TÉMOIN : la porte des premiers jours, figée. Elle cherche le float
+    AVANT de lire le SMS, lit UN lot par id sans écarter personne, et laisse
+    en file ce qu'elle ne sait pas rattacher. Cent lignes d'une carte non
+    déclarée — même des publicités — et plus rien ne part pour aucune carte."""
+
+    def _ligne(self, id_local, date, expediteur, texte, compte, iccid, emis_le,
+               numeros):
+        float_ = None
+        if self.fournir_float and iccid:
+            try:
+                float_ = self.fournir_float(iccid)
+            except Exception:
+                float_ = None
+        if not float_:
+            return None
+        try:
+            p = analyser(texte, numeros=numeros)
+        except Exception:
+            p = None
+        if p is None or p.sens != "entree" or not p.montant or p.montant <= 0:
+            return "sans objet"
+        return {"terminal": self.terminal, "source_id": id_local,
+                "operateur": float_[0], "float_numero": float_[1],
+                "sens": "entree", "montant": p.montant, "numero": p.numero,
+                "tiers": p.nom or p.numero, "reference": p.reference,
+                "texte": texte, "emis_le": _horodatage(emis_le) if emis_le else None,
+                "recu_le": _horodatage(date)}
+
+    def pousser_paiements(self):
+        if not self.actif:
+            return 0
+        lignes = self.journal.sms_a_pousser_xafe(100)
+        if not lignes:
+            return 0
+        numeros = tuple(self.fournir_numeros()) if self.fournir_numeros else ()
+        charge, sans_objet = [], []
+        for (i, date, exp, texte, compte, iccid, emis) in lignes:
+            l = self._ligne(i, date, exp, texte, compte, iccid, emis, numeros)
+            if l is None:
+                continue
+            if l == "sans objet":
+                sans_objet.append((i, "sans objet"))
+            else:
+                charge.append(l)
+        if sans_objet:
+            self.journal.marquer_sms_xafe(sans_objet)
+        if not charge:
+            return 0
+        try:
+            statut, reponse, _ = self._appel("POST", "totem-sms", {"lignes": charge})
+        except module_xafe.PorteMuette as e:
+            self.derniere_erreur = str(e)
+            return 0
+        if statut != 200:
+            return 0
+        a_marquer = []
+        for l, v in zip(charge, reponse if isinstance(reponse, list) else [reponse]):
+            if isinstance(v, dict) and v.get("resultat") == "credite":
+                a_marquer.append((l["source_id"], f"credite {v.get('reference', '')}"))
+        self.journal.marquer_sms_xafe(a_marquer)
+        return len(a_marquer)
+
+
+class PorteSansControleDePosition(PorteXafe):
+    """LE TÉMOIN : zippe les verdicts sur les lignes à l'aveugle, sans
+    regarder leur `source_id`. Une réponse de moins, et chaque ligne reçoit
+    la preuve de sa voisine."""
+
+    def pousser_paiements(self):
+        if not self.actif:
+            return 0
+        lignes = self.journal.sms_a_pousser_xafe(100)
+        charge = []
+        for (i, date, exp, texte, compte, iccid, emis) in lignes:
+            l = self._ligne(i, date, exp, texte, compte, iccid, emis, ())
+            if isinstance(l, dict):
+                charge.append(l)
+        if not charge:
+            return 0
+        try:
+            statut, reponse, _ = self._appel("POST", "totem-sms", {"lignes": charge})
+        except module_xafe.PorteMuette:
+            return 0
+        if statut != 200:
+            return 0
+        a_marquer = []
+        for l, v in zip(charge, reponse if isinstance(reponse, list) else [reponse]):
+            if isinstance(v, dict) and v.get("resultat") == "credite":
+                a_marquer.append((l["source_id"], f"credite {v.get('reference', '')}"))
+        self.journal.marquer_sms_xafe(a_marquer)
+        return len(a_marquer)
+
+
+class PorteQuiMarqueEnvoye(PorteXafe):
+    """LE TÉMOIN : une porte qui toucherait au drapeau de BONZINI (`envoye`).
+    Bonzini ne recevrait plus rien — « un drapeau ne se réunit pas »."""
+
+    def pousser_paiements(self):
+        lignes = self.journal.sms_a_pousser_xafe(100)
+        self.journal.marquer_sms_envoyes([l[0] for l in lignes])
+        return super().pousser_paiements()
+
+
 # --- aides -------------------------------------------------------------------
 
 def journal_avec_carte(numero="677000000"):
@@ -398,6 +520,16 @@ def journal_avec_carte(numero="677000000"):
     journal.voir_carte(FausseCarteMTN())
     if numero:
         journal.definir_identite(ICCID, numero=numero)
+    return journal
+
+
+def journal_deux_cartes():
+    """Deux cartes MTN dans le boîtier ; SEULE la ·0022 est déclarée chez
+    XAFe — le cas ordinaire à la mise en service."""
+    journal = Journal(":memory:")
+    journal.voir_carte(FausseCarteMTN())
+    journal.voir_carte(FausseCarteMTN2())
+    journal.definir_identite(ICCID_2, numero="677000022")
     return journal
 
 
@@ -475,9 +607,15 @@ class TestLaSignature(Banc):
         import urllib.request
         g = self.guichet()
         corps = b'{"lignes":[{"source_id":1,"sens":"entree","montant":1}]}'
+        # L'horloge du faux est FIGÉE pour la sonde : à l'horloge vraie, la
+        # borne à 299 s tombait une fois sur deux quand la requête partait à
+        # .998 de la seconde — un rouge sans raison tous les trois cents
+        # lancements. Figée, c'est la borne EXACTE de porte.ts qu'on éprouve.
+        instant = int(time.time())
+        g.horloge = lambda: instant
 
         def envoyer(corps_signe, corps_envoye, age=0, entetes=True):
-            ts = str(int(time.time()) - age)
+            ts = str(instant - age)
             sig = hmac.new(b"secret-akwa", ts.encode() + b"." + corps_signe,
                            hashlib.sha256).hexdigest()
             req = urllib.request.Request(f"{g.url}/functions/v1/totem-sms",
@@ -498,7 +636,9 @@ class TestLaSignature(Banc):
         self.assertEqual(envoyer(corps, retouche), 401, message)
         self.assertEqual(envoyer(corps, corps, entetes=False), 401, message)
         self.assertEqual(envoyer(corps, corps, age=301), 401, message)
-        self.assertEqual(envoyer(corps, corps, age=299), 200, message)
+        self.assertEqual(envoyer(corps, corps, age=300), 200, message)
+        self.assertEqual(envoyer(corps, corps, age=-300), 200, message)
+        self.assertEqual(envoyer(corps, corps, age=-301), 401, message)
 
     def test_temoin_une_reserialisation_est_refusee(self):
         g = self.guichet()
@@ -644,6 +784,19 @@ class TestPousser(Banc):
         refus = [e for e in _evenements(journal)
                  if "refuse la signature" in e or "refuses the terminal signature" in e]
         self.assertEqual(len(refus), 1, "le même avis ne se répète pas")
+        self.assertTrue("refuse la signature" in p.resume()
+                        or "refuses the signature" in p.resume(), p.resume())
+        # Un AUTRE avis, un autre drapeau : après la signature refusée du
+        # matin, le refus d'un lot (400, un défaut de notre côté) l'après-midi
+        # se journalise encore — un seul drapeau pour les deux l'avalait.
+        g._sms = lambda terminal, charge: (400, {"erreur": "lot mal formé"})
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertEqual(_etat(journal, 2)[0], 0, "rien n'est jeté")
+        lots = [e for e in _evenements(journal)
+                if "refuse le lot" in e or "refuses the batch" in e]
+        self.assertEqual(len(lots), 1, "le refus du lot est avalé par le drapeau du 401")
+        self.assertTrue("refuse le lot" in p.resume() or "refuses the batch" in p.resume(),
+                        p.resume())
 
     def test_l_horloge_du_pi_decalee_passe_apres_recalage(self):
         g = self.guichet()
@@ -727,8 +880,9 @@ class TestPousser(Banc):
         self.assertEqual(p.pousser_paiements(), 1)
         self.assertEqual(g.lignes_recues()[0]["float_numero"], "677000000")
 
-    def test_un_sens_inconnu_faute_de_numero_n_est_pas_clos(self):
-        """DÉCISION ÉCRITE : la carte est déclarée, l'analyse a eu sa chance.
+    def test_un_sens_inconnu_faute_de_numero_est_clos_sans_objet(self):
+        """DÉCISION ÉCRITE (à trancher par le propriétaire à la relecture) :
+        la carte est déclarée, l'analyse a eu sa chance.
         Avec nos numéros, le sens est tranché (ici : une SORTIE, sans objet) ;
         sans eux (`fournir_numeros` absent), le sens reste None et la ligne
         est close « sans objet » plutôt que de rester en file pour toujours."""
@@ -819,31 +973,43 @@ class TestPousser(Banc):
         self.assertEqual(p.resume(), "XAFe désactivé" if "XAFe désactivé" in p.resume()
                          else "XAFe disabled")
         self.assertEqual(_evenements(journal), [])
-        # Et Bonzini ne voit aucune différence : le robot avec `xafe=None` et
-        # le robot sans le paramètre produisent les MÊMES requêtes.
+        # Et Bonzini ne voit aucune différence : le robot SANS porte et le
+        # robot avec une porte ACTIVE (qui passe la première) produisent les
+        # MÊMES requêtes chez Bonzini. Une première version comparait deux
+        # robots sans porte — le même état deux fois, une comparaison qui ne
+        # pouvait pas échouer. Le témoin : une porte qui touche au drapeau
+        # `envoye` — Bonzini ne reçoit plus rien.
         from tests.test_recus import _robot
         serveur = HTTPServer(("127.0.0.1", 0), FauxSupabase)
         threading.Thread(target=serveur.serve_forever, daemon=True).start()
+
+        def releve_bonzini(classe_porte):
+            FauxSupabase.recu = []
+            robot, compte, modem, j = _robot()
+            if classe_porte is not None:
+                robot.xafe = self.porte(self.guichet(), j, classe_porte)
+            # Le même texte dans les deux cas : le simulateur tire un
+            # numéro au hasard, et deux relèves ne se compareraient pas.
+            modem.sms_en_attente.append((1, modem.service, SMS_ENTREE))
+            robot._relever_sms(compte)
+            if robot.xafe is not None:
+                robot.xafe.pousser_paiements()      # la porte passe D'ABORD
+            nuage = Nuage(f"http://127.0.0.1:{serveur.server_address[1]}",
+                          "fausse-cle", "douala", j)
+            nuage.fournir_numeros = robot._nos_numeros
+            nuage.pousser_paiements()
+            return [(table, [{k: v for k, v in l.items() if k != "recu_le"}
+                             for l in corps])
+                    for table, corps in FauxSupabase.recu]
+
         try:
-            releves = []
-            for avec_parametre in (False, True):
-                FauxSupabase.recu = []
-                robot, compte, modem, j = _robot()
-                if avec_parametre:
-                    robot.xafe = None
-                # Le même texte dans les deux cas : le simulateur tire un
-                # numéro au hasard, et deux relèves ne se compareraient pas.
-                modem.sms_en_attente.append((1, modem.service, SMS_ENTREE))
-                robot._relever_sms(compte)
-                nuage = Nuage(f"http://127.0.0.1:{serveur.server_address[1]}",
-                              "fausse-cle", "douala", j)
-                nuage.fournir_numeros = robot._nos_numeros
-                nuage.pousser_paiements()
-                releves.append([(table, [{k: v for k, v in l.items() if k != "recu_le"}
-                                         for l in corps])
-                                for table, corps in FauxSupabase.recu])
-            self.assertEqual(releves[0], releves[1])
-            self.assertTrue(releves[0], "aucune requête : la comparaison ne mesure rien")
+            sans_porte = releve_bonzini(None)
+            self.assertTrue(sans_porte, "aucune requête : la comparaison ne mesure rien")
+            self.assertEqual(releve_bonzini(PorteXafe), sans_porte,
+                             "une porte XAFe active change ce qui part chez Bonzini")
+            self.assertNotEqual(releve_bonzini(PorteQuiMarqueEnvoye), sans_porte,
+                                "LE TÉMOIN PASSE : une porte qui marque « envoye » "
+                                "ne change rien chez Bonzini, l'essai ne mesure rien")
         finally:
             serveur.shutdown()
             serveur.server_close()
@@ -873,6 +1039,193 @@ class TestPousser(Banc):
         p.derniere_erreur = "503"
         self.assertTrue("injoignable" in p.resume() or "unreachable" in p.resume())
         self.assertIn("2", p.resume())
+        # XAFe a RÉPONDU : ce n'est pas « injoignable », et /statut le dit.
+        p.derniere_erreur = "signature refusée"
+        self.assertTrue("refuse la signature" in p.resume()
+                        or "refuses the signature" in p.resume(), p.resume())
+        p.derniere_erreur = "moteur : moteur en panne"
+        self.assertTrue("moteur en panne" in p.resume() or "engine down" in p.resume(),
+                        p.resume())
+        self.assertIn("2", p.resume())
+
+
+class TestLaFileNeSeBloquePas(Banc):
+    """UNE LIGNE QUI ATTEND NE TIENT PAS LA FILE. Scénario prouvé par la
+    relecture : deux cartes MTN, seule la ·0022 déclarée ; cent SMS de la
+    ·0011 non déclarée, puis UN encaissement de la ·0022 — trois tours, zéro
+    requête, « 101 en attente », et le client XAFe jamais crédité. La porte
+    cherchait le float AVANT de lire le SMS (des publicités attendaient un
+    numéro), et lisait le lot par id sans écarter personne."""
+
+    def tete_de_file(self, classe):
+        g = self.guichet()
+        journal = journal_deux_cartes()
+        # La carte NON déclarée parle la première, cent fois : une publicité
+        # sur deux, un encaissement sur deux.
+        for i in range(100):
+            journal.sms("MobileMoney", SMS_PUB if i % 2 else SMS_ENTREE,
+                        "MTN ·0011", ICCID)
+        declaree = journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0022", ICCID_2)
+        p = self.porte(g, journal, classe)
+        return g, journal, p, declaree, p.pousser_paiements()
+
+    def test_une_carte_sans_numero_ne_retient_que_ses_lignes(self):
+        g, journal, p, declaree, closes = self.tete_de_file(PorteXafe)
+        self.assertEqual(closes, 1, "l'encaissement de la carte déclarée part au premier tour")
+        self.assertEqual(len(g.requetes), 1)
+        self.assertEqual(_etat(journal, declaree)[:2], (1, "credite XAFe-DP-000001"))
+        self.assertEqual(g.lignes_recues()[0]["float_numero"], "677000022")
+        # Les publicités de la carte non déclarée sont closes SANS attendre
+        # un numéro dont elles n'ont aucun besoin ; ses encaissements, eux,
+        # attendent — et seulement eux.
+        for i in range(1, 101):
+            self.assertEqual(_etat(journal, i)[:2],
+                             (1, "sans objet") if (i - 1) % 2 else (0, None), i)
+        self.assertEqual(journal.xafe_en_attente(), 50)
+        avis = [e for e in _evenements(journal)
+                if "pas de numéro déclaré" in e or "no declared number" in e]
+        self.assertEqual(len(avis), 1)
+        self.assertIn("0011", avis[0])
+        # Au tour suivant, les lignes retenues ne sont même pas relues : la
+        # file les écarte, aucune requête de plus.
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertEqual(len(g.requetes), 1)
+        self.assertEqual(len(avis), 1)
+        # Le numéro arrive (Telegram /reglages) : ses cinquante lignes partent
+        # au tour même, avec SON float.
+        journal.definir_identite(ICCID, numero="677000011")
+        self.assertEqual(p.pousser_paiements(), 50)
+        self.assertEqual(journal.xafe_en_attente(), 0)
+        self.assertEqual({l["float_numero"] for l in g.lignes_recues()[1:]}, {"677000011"})
+        self.assertEqual(len(g.credites), 51)
+        # TÉMOIN : la porte des premiers jours laisse la ligne déclarée à 0.
+        g2, j2, _, declaree2, closes2 = self.tete_de_file(PorteTeteDeFile)
+        self.assertTrue(closes2 == 0 and g2.requetes == []
+                        and _etat(j2, declaree2)[:2] == (0, None),
+                        "LE TÉMOIN PASSE : la porte d'avant dépose la ligne de la "
+                        "carte déclarée, l'essai ne mesure rien")
+
+    def test_une_carte_d_un_autre_reseau_ne_retient_rien(self):
+        """Une carte Camtel ou Nexttel n'a pas de float XAFe — et n'en aura
+        jamais : attendre un numéro serait attendre pour toujours. Même
+        chose pour une ligne SANS ICCID (carte jamais identifiée) : aucun
+        numéro ne viendra se poser dessus. Elles se closent ici, sans réseau,
+        avec une preuve qui le dit."""
+        g = self.guichet()
+        journal = journal_deux_cartes()
+        camtel = journal.sms("MobileMoney", SMS_ENTREE, "Camtel ·0033", ICCID_CAMTEL)
+        sans_carte = journal.sms("MobileMoney", SMS_ENTREE, "", "")
+        pub = journal.sms("MobileMoney", SMS_PUB, "Camtel ·0033", ICCID_CAMTEL)
+        declaree = journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0022", ICCID_2)
+        p = self.porte(g, journal)
+        vrai = p.fournir_float
+        p.fournir_float = (lambda iccid: SANS_FLOAT if iccid == ICCID_CAMTEL
+                           else vrai(iccid))
+        self.assertEqual(p.pousser_paiements(), 1)
+        self.assertEqual(len(g.requetes), 1)
+        self.assertEqual([l["source_id"] for l in g.lignes_recues()], [declaree])
+        self.assertEqual(_etat(journal, camtel)[:2], (1, "sans float XAFe"))
+        self.assertEqual(_etat(journal, sans_carte)[:2], (1, "sans float XAFe"))
+        self.assertEqual(_etat(journal, pub)[:2], (1, "sans objet"))
+        self.assertEqual(journal.xafe_en_attente(), 0)
+        avis = [e for e in _evenements(journal)
+                if "pas de float XAFe" in e or "no XAFe float" in e]
+        self.assertEqual(len(avis), 2, "un avis par carte : la Camtel, et la sans-ICCID")
+        for e in avis:
+            for interdit in ("677123456", "25000", "25 000", "NGONO"):
+                self.assertNotIn(interdit, e)
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertEqual(len(avis), 2, "l'avis ne se répète pas")
+
+    def test_cent_publicites_devant_un_encaissement_partent_au_meme_tour(self):
+        """Carte déclarée, cent publicités puis un encaissement : UN appel le
+        dépose. La porte d'avant rendait 0 (les cent closes « sans objet »,
+        l'encaissement pas même lu) et le déposait au tour suivant — sur des
+        mois rouverts, la file se vidait à cent lignes par minute."""
+        g = self.guichet()
+        journal = journal_avec_carte()
+        for _ in range(100):
+            journal.sms("MobileMoney", SMS_PUB, "MTN ·0011", ICCID)
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        p = self.porte(g, journal)
+        self.assertEqual(p.pousser_paiements(), 1)
+        self.assertEqual(journal.xafe_en_attente(), 0)
+        self.assertEqual(len(g.requetes), 1)
+        # TÉMOIN : la porte d'avant s'arrête au bout du premier lot.
+        g2 = self.guichet()
+        j2 = journal_avec_carte()
+        for _ in range(100):
+            j2.sms("MobileMoney", SMS_PUB, "MTN ·0011", ICCID)
+        j2.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        self.assertTrue(self.porte(g2, j2, PorteTeteDeFile).pousser_paiements() == 0
+                        and j2.xafe_en_attente() == 1,
+                        "LE TÉMOIN PASSE : la porte d'avant lit déjà au-delà du "
+                        "lot, l'essai ne mesure rien")
+
+    def test_un_verdict_desaligne_ne_marque_pas_une_autre_ligne(self):
+        """Le contrôle `source_id` est la seule garde contre une réponse
+        désalignée (une ligne de moins, un ordre différent) : sans lui, la
+        MAUVAISE ligne serait close avec la référence d'une autre. Retiré,
+        les tests d'avant passaient tous."""
+        g = self.guichet()
+        journal = journal_avec_carte()
+        for _ in range(3):
+            journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        vrai_sms = g._sms
+
+        def desaligne(terminal, charge):
+            statut, res = vrai_sms(terminal, charge)
+            return statut, [res[2], res[1]]     # la première perdue, les autres à l'envers
+        g._sms = desaligne
+        p = self.porte(g, journal)
+        self.assertEqual(p.pousser_paiements(), 1)
+        self.assertEqual(_etat(journal, 2)[:2], (1, "credite XAFe-DP-000002"))
+        self.assertEqual(_etat(journal, 1)[:2], (0, None), "la ligne 1 n'a pas de verdict : elle reste")
+        self.assertEqual(_etat(journal, 3)[:2], (0, None))
+        # Au tour suivant, la porte rend la MÊME réponse (« deja ») : chaque
+        # ligne reçoit sa propre référence.
+        g._sms = vrai_sms
+        self.assertEqual(p.pousser_paiements(), 2)
+        self.assertEqual(_etat(journal, 1)[:2], (1, "credite XAFe-DP-000001"))
+        self.assertEqual(_etat(journal, 3)[:2], (1, "credite XAFe-DP-000003"))
+        self.assertEqual(len(g.credites), 3)
+        # TÉMOIN : zipper à l'aveugle donne à la ligne 1 la référence de la 3.
+        g2 = self.guichet()
+        j2 = journal_avec_carte()
+        for _ in range(3):
+            j2.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        vrai2 = g2._sms
+        g2._sms = lambda terminal, charge: (lambda s, r: (s, [r[2], r[1]]))(*vrai2(terminal, charge))
+        self.porte(g2, j2, PorteSansControleDePosition).pousser_paiements()
+        self.assertEqual(_etat(j2, 1)[:2], (1, "credite XAFe-DP-000003"),
+                         "LE TÉMOIN PASSE : zipper à l'aveugle ne trompe pas la "
+                         "ligne 1, l'essai ne mesure rien")
+
+
+class TestLeJournalXafe(unittest.TestCase):
+    """Les deux promesses de `storage.py` que la porte suppose."""
+
+    def test_une_ligne_close_ne_se_reecrit_pas(self):
+        journal = journal_avec_carte()
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        journal.marquer_sms_xafe([(1, "credite A")])
+        journal.marquer_sms_xafe([(1, "refuse B")])
+        self.assertEqual(_etat(journal, 1)[:2], (1, "credite A"))
+        self.assertEqual(journal.remettre_sms_xafe(depuis_id=1), 1)
+        journal.marquer_sms_xafe([(1, "refuse B")])
+        self.assertEqual(_etat(journal, 1)[:2], (1, "refuse B"), "rouverte, elle se réécrit")
+
+    def test_la_file_ecarte_les_cartes_nommees(self):
+        journal = journal_deux_cartes()
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        journal.sms("MobileMoney", SMS_ENTREE, "", "")
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0022", ICCID_2)
+        self.assertEqual([l[0] for l in journal.sms_a_pousser_xafe(100)], [1, 2, 3])
+        self.assertEqual([l[0] for l in journal.sms_a_pousser_xafe(100, sauf_iccid={ICCID})],
+                         [2, 3])
+        self.assertEqual([l[0] for l in journal.sms_a_pousser_xafe(100, sauf_iccid={ICCID, ""})],
+                         [3])
+        self.assertEqual(journal.xafe_en_attente(), 3, "écarter n'est pas clore")
 
 
 class TestLaConfiguration(unittest.TestCase):
@@ -996,6 +1349,11 @@ class TestLeDemarrage(unittest.TestCase):
         self.assertEqual(r2._carte_pour_xafe(compte.carte.iccid), ("om", "696103864"))
         self.assertIsNone(r2._carte_pour_xafe("inconnu"))
         self.assertIsNone(r2._carte_pour_xafe(""), "sans ICCID, jamais la première carte")
+        # Une carte d'un autre réseau n'a pas de float XAFe, et n'en aura
+        # jamais : ce n'est pas « pas encore de numéro » (None, la ligne
+        # attend), c'est SANS_FLOAT (la ligne se clôt, elle ne retient rien).
+        compte.carte = Carte(iccid=ICCID_CAMTEL, imsi="624070000000033")
+        self.assertIs(r2._carte_pour_xafe(ICCID_CAMTEL), SANS_FLOAT)
 
 
 if __name__ == "__main__":

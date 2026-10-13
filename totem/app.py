@@ -37,6 +37,7 @@ from .recu import (heure_en_lettres, numero_de_recu, numero_lisible,
                    recu_solde, recu_transfert)
 from .codes import catalogue, cle as cle_code
 from .carte import operateur_xafe
+from .xafe import SANS_FLOAT
 from .compte import TELEGRAM, ErreurModem, SessionTenue, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
@@ -1840,7 +1841,10 @@ class Robot:
         return compte.carte.numero or ""
 
     def _carte_pour_xafe(self, iccid):
-        """(opérateur XAFe, numéro à 9 chiffres) de la carte, ou None : sans
+        """(opérateur XAFe, numéro à 9 chiffres) de la carte ; None si elle
+        n'a pas encore de numéro déclaré (ses lignes attendent) ; `SANS_FLOAT`
+        si elle n'en aura jamais — ni MTN ni Orange, XAFe n'a pas de float
+        pour elle, rien de ce qu'elle encaisse ne lui est destiné. Sans
         numéro déclaré, XAFe ne saurait pas à quel float rattacher l'argent —
         et JAMAIS la première carte par défaut (`_compte_par_iccid` le fait :
         un encaissement attribué au mauvais float créditerait le mauvais
@@ -1850,8 +1854,10 @@ class Robot:
         if compte is None:
             return None
         op = operateur_xafe(compte.carte.operateur)
+        if not op:
+            return SANS_FLOAT
         numero = re.sub(r"\D", "", self._numero_du_compte(compte) or "")[-9:]
-        if not op or len(numero) != 9:
+        if len(numero) != 9:
             return None
         return op, numero
 

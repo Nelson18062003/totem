@@ -335,9 +335,33 @@ def main():
 
         nuage.pousser_paiements()
         xafe.pousser_paiements()
-        verifier("la coupure de courant ne recrédite pas chez XAFe",
-                 len(faux_xafe.credites) == credits_avant_coupure,
+        # Ce que cette étape mesure : la relecture du modem ne ROUVRE pas la
+        # file XAFe (rien n'est repassé à `envoye_xafe = 0`, donc aucune
+        # requête). Le « deja » de la porte, lui, s'éprouve juste après.
+        verifier("la relecture du modem ne rouvre pas la file XAFe",
+                 journal.xafe_en_attente() == 0
+                 and len(faux_xafe.credites) == credits_avant_coupure,
+                 f"{journal.xafe_en_attente()} en attente, "
                  f"{len(faux_xafe.credites)} crédits")
+        # Rouvrir la période À LA MAIN, comme le ferait quelqu'un qui sait
+        # (`remettre_sms_xafe`) : les trois encaissements repassent par la
+        # vraie porte, qui rend la MÊME réponse (« deja ») — rien n'est
+        # crédité deux fois, et chaque ligne retrouve sa propre référence.
+        preuves_avant = dict(journal.conn.execute(
+            "SELECT id, xafe_reponse FROM sms WHERE xafe_reponse LIKE 'credite %'"))
+        rouvertes = journal.remettre_sms_xafe()
+        requetes_avant = len(faux_xafe.requetes)
+        reclos = xafe.pousser_paiements()
+        preuves_apres = dict(journal.conn.execute(
+            "SELECT id, xafe_reponse FROM sms WHERE xafe_reponse LIKE 'credite %'"))
+        verifier("une période rouverte repasse par la porte sans recréditer",
+                 rouvertes == 4 and reclos == 3
+                 and len(faux_xafe.requetes) == requetes_avant + 1
+                 and len(faux_xafe.credites) == credits_avant_coupure
+                 and preuves_apres == preuves_avant,
+                 f"{rouvertes} rouvertes, {reclos} reclos, "
+                 f"{len(faux_xafe.credites)} crédits, "
+                 f"preuves {'identiques' if preuves_apres == preuves_avant else 'changées'}")
         donnees2 = lire(f"{BASE}/api/donnees?sms=200", biscuit)
         abena = [p for p in donnees2["paiements"] if "ABENA Rose" in p["smsBrut"]]
         verifier("l'encaissement n'apparaît qu'UNE fois à l'écran",
@@ -379,10 +403,18 @@ def main():
         robot4 = Robot([compte4], TransportMuet(), journal, nom="T", pause_sms=1,
                        numeros={compte.libelle.lower(): "696100001"}, xafe=xafe)
         robot4._relever_sms(compte4)
+        # Ce que cette étape garde : le drapeau de l'un ne touche pas celui
+        # de l'autre (`envoye` = 1, `envoye_xafe` = 0), et la montée Bonzini
+        # ne passe par rien de XAFe — on chronomètre le SEUL nuage. Elle ne
+        # mesure PAS qu'un XAFe qui pend ne retarde pas le fil Bonzini : cela
+        # tient par la structure (deux fils, deux files), gardée par B6 dans
+        # tests/test_xafe.py. Un premier jet chronométrait les deux appels
+        # ensemble : la durée mesurée incluait XAFe, et l'étape ne pouvait ni
+        # échouer sur ce qu'elle nommait, ni passer si XAFe avait pendu.
         debut = time.monotonic()
         envoyes = nuage.pousser_paiements()
-        xafe.pousser_paiements()
         duree = time.monotonic() - debut
+        xafe.pousser_paiements()
         # On regarde LA ligne neuve, pas le nombre de lignes parties : le
         # premier passage de ce harnais comptait « 5 ligne(s) » ici — robot2
         # (la coupure de courant) est construit sans `numeros`, robot4 avec,
@@ -392,7 +424,7 @@ def main():
         mballa = journal.conn.execute(
             "SELECT COALESCE(envoye, 0), COALESCE(envoye_xafe, 0) FROM sms "
             "WHERE texte LIKE '%MBALLA%'").fetchone()
-        verifier("la ligne monte chez Bonzini en moins de 3 s, XAFe en panne",
+        verifier("la ligne monte chez Bonzini (seul chronométré) en moins de 3 s, XAFe en panne",
                  envoyes >= 1 and mballa == (1, 0) and duree < 3,
                  f"{envoyes} ligne(s) parties, Bonzini/XAFe = {mballa}, {duree:.2f} s")
         verifier("XAFe garde la ligne en attente",

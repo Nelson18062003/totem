@@ -15,7 +15,14 @@ réseau ni le journal : le robot se comporte à l'octet près comme avant.
 XAFe est un TIERS. Un SMS appartient au propriétaire : seuls les SMS d'argent
 ENTRANT lui sont envoyés — jamais une publicité, un code, un solde, une
 sortie, ni un SMS que le lecteur ne comprend pas. Le tri se fait ICI, avant
-toute requête.
+toute requête — et AVANT de demander à quelle carte appartient la ligne.
+
+UNE LIGNE QUI ATTEND NE TIENT PAS LA FILE. Les encaissements d'une carte dont
+le numéro n'est pas encore déclaré attendent ce numéro, et seulement eux : la
+file se lit en écartant ces cartes, puis au-delà d'un lot qui n'a rien donné.
+Sans cela, cent lignes d'une carte oubliée dans /reglages — ou d'une carte
+d'un autre réseau — restaient en tête de la file, et plus rien ne partait
+pour aucune carte, sans un mot d'autre que « N en attente ».
 """
 
 import hashlib
@@ -26,11 +33,10 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import timedelta
 
 from .analyse_sms import analyser
-from .carte import OPERATEURS_XAFE  # noqa: F401 — la table unique, référencée
-from .nuage import (DEBOUNCE, DELAI, LOT, _age_de_la_demande,  # noqa: F401
-                    _heure_de_l_en_tete, _horodatage)
+from .nuage import DEBOUNCE, DELAI, LOT, _heure_de_l_en_tete, _horodatage
 from .textes import t
 
 PAUSE = 60
@@ -42,6 +48,15 @@ FENETRE_HORLOGE = 300
 XAFE_DEMANDE_PERIMEE_S = 900
 # Les verdicts qui CLOSENT une ligne. « erreur » n'en est pas : on réessaie.
 DEFINITIFS = frozenset({"credite", "retenue", "ignore", "refuse"})
+
+# Ce que `fournir_float(iccid)` rend au robot :
+#   (operateur, numero)  — la carte a son float chez XAFe ;
+#   None                 — la carte n'a pas ENCORE de numéro déclaré : ses
+#                          encaissements attendent (Telegram /reglages) ;
+#   SANS_FLOAT           — elle n'en aura JAMAIS (ni MTN ni Orange) : rien de
+#                          ce qu'elle encaisse n'est destiné à XAFe, la ligne
+#                          se clôt ici, sans réseau.
+SANS_FLOAT = False
 
 
 class PorteMuette(Exception):
@@ -83,7 +98,7 @@ class PorteXafe:
         self.derniere_erreur = None
         # Crochets posés par le robot.
         self.fournir_numeros = None     # () -> tuple des numéros du terminal
-        self.fournir_float = None       # (iccid) -> (operateur_xafe, numero) | None
+        self.fournir_float = None       # (iccid) -> (op, numero) | None | SANS_FLOAT
         self.sur_incident = None        # (source_id, erreur)
         self.secret_de = None           # (iccid) -> str | None — jamais posé ici
         self._marche = True
@@ -93,8 +108,15 @@ class PorteXafe:
         # on l'a lue : c'est elle qui signe, pas l'horloge du Pi.
         self._heure_base = None
         self._verrou_heure = threading.Lock()
+        # Les cartes dont les lignes ATTENDENT un numéro : la file se lit en
+        # les écartant, et chaque tour redemande si elles l'ont reçu.
+        self._attendent_un_numero = set()
+        # Les avis déjà donnés, une fois par carte et par motif.
         self._sans_numero_signales = set()
-        self._bogue_signale = False
+        # Un drapeau par avis : une signature refusée le matin ne doit pas
+        # faire taire le refus d'un lot l'après-midi.
+        self._refus_signale = False
+        self._lot_signale = False
         self._prochain_releve = 0.0
 
     # ---- l'heure de la base --------------------------------------------------
@@ -110,7 +132,6 @@ class PorteXafe:
 
     def heure_de_la_base(self):
         """L'heure de XAFe maintenant, ou None si elle ne l'a jamais dite."""
-        from datetime import timedelta
         with self._verrou_heure:
             if self._heure_base is None:
                 return None
@@ -179,31 +200,52 @@ class PorteXafe:
             raise PorteMuette(str(e))
 
     # ---- pousser les encaissements -------------------------------------------
+    def _float_de(self, iccid):
+        """Ce que le robot sait du float de la carte (voir `SANS_FLOAT`). Un
+        crochet absent ou qui lève vaut « pas encore » : la ligne attend."""
+        if not self.fournir_float:
+            return None
+        try:
+            return self.fournir_float(iccid)
+        except Exception:
+            return None
+
     def _ligne(self, id_local, date, expediteur, texte, compte, iccid, emis_le,
                numeros):
-        """La ligne à envoyer (dict), « sans objet » (à clore ici, sans
-        réseau), ou None (carte sans numéro déclaré : la ligne attend)."""
-        float_ = None
-        if self.fournir_float and iccid:
-            try:
-                float_ = self.fournir_float(iccid)
-            except Exception:
-                float_ = None
-        if float_ is None:
-            if iccid not in self._sans_numero_signales:
-                self._sans_numero_signales.add(iccid)
-                self.journal.evenement(t(
-                    f"XAFe: card {compte} has no declared number — its "
-                    "payments wait (Telegram /reglages).",
-                    f"XAFe : la carte {compte} n'a pas de numéro déclaré — "
-                    "ses encaissements attendent (Telegram /reglages)."))
-            return None
+        """La ligne à envoyer (dict) ; la PREUVE d'une ligne à clore ici, sans
+        réseau (str : « sans objet », « sans float XAFe ») ; ou None — la
+        carte n'a pas encore de numéro déclaré, la ligne attend le sien.
+
+        L'ANALYSE VIENT D'ABORD. Une pub, un code, un solde, une sortie ne
+        regardent pas XAFe, quelle que soit la carte : les premiers jours, la
+        porte cherchait le float avant de lire le SMS, et cent publicités
+        d'une carte non déclarée attendaient un numéro dont elles n'avaient
+        aucun besoin — en tête de file, devant les encaissements des autres."""
         try:
             p = analyser(texte, numeros=numeros)
         except Exception:
             p = None
         if p is None or p.sens != "entree" or not p.montant or p.montant <= 0:
             return "sans objet"
+        # Sans ICCID, la carte n'a jamais été identifiée : aucun numéro ne
+        # viendra se poser sur cette ligne. Elle ne doit pas attendre.
+        float_ = self._float_de(iccid) if iccid else SANS_FLOAT
+        if float_ is SANS_FLOAT:
+            self._signaler_une_fois_par_carte(("float", iccid), t(
+                f"XAFe: card {compte or '?'} has no XAFe float (not MTN nor "
+                "Orange, or never identified) — what it receives stays here.",
+                f"XAFe : la carte {compte or '?'} n'a pas de float XAFe (ni "
+                "MTN ni Orange, ou jamais identifiée) — ce qu'elle encaisse "
+                "reste ici."))
+            return "sans float XAFe"
+        if float_ is None:
+            self._attendent_un_numero.add(iccid)
+            self._signaler_une_fois_par_carte(("numero", iccid), t(
+                f"XAFe: card {compte} has no declared number — its "
+                "payments wait (Telegram /reglages).",
+                f"XAFe : la carte {compte} n'a pas de numéro déclaré — "
+                "ses encaissements attendent (Telegram /reglages)."))
+            return None
         return {
             "terminal": self.terminal,
             "source_id": id_local,
@@ -220,15 +262,26 @@ class PorteXafe:
             "recu_le": _horodatage(date),
         }
 
+    def _cartes_en_attente(self):
+        """Les cartes dont les lignes attendent un numéro — redemandé à
+        chaque tour : celle qui vient de le recevoir sort de la liste, et
+        ses lignes repartent au même tour."""
+        for iccid in list(self._attendent_un_numero):
+            if self._float_de(iccid) is not None:
+                self._attendent_un_numero.discard(iccid)
+        return tuple(self._attendent_un_numero)
+
     def pousser_paiements(self):
-        """Dépose chez XAFe les encaissements qu'il n'a pas tranchés, et dit
-        combien de lignes il a CLOSES (crédité, retenu, ignoré, refusé). Ce
-        qui est clos ici sans réseau ne compte pas ; ce qui attend se lit
-        dans `journal.xafe_en_attente()`."""
+        """Dépose chez XAFe UN lot d'encaissements qu'il n'a pas tranchés, et
+        dit combien de lignes il a CLOSES (crédité, retenu, ignoré, refusé).
+        Ce qui est clos ici sans réseau ne compte pas ; ce qui attend se lit
+        dans `journal.xafe_en_attente()`.
+
+        La file se lit en écartant les cartes qui attendent leur numéro, et
+        au-delà d'un lot entier qui n'a rien donné à envoyer (des lignes
+        closes ici, ou retenues) : un encaissement derrière cent publicités
+        part à ce tour, pas au suivant."""
         if not self.actif:
-            return 0
-        lignes = self.journal.sms_a_pousser_xafe(LOT)
-        if not lignes:
             return 0
         numeros = ()
         if self.fournir_numeros:
@@ -236,20 +289,29 @@ class PorteXafe:
                 numeros = tuple(self.fournir_numeros())
             except Exception:
                 numeros = ()
-        charge, sans_objet = [], []
-        for (id_local, date, expediteur, texte, compte, iccid, emis_le) in lignes:
-            ligne = self._ligne(id_local, date, expediteur, texte, compte,
-                                iccid, emis_le, numeros)
-            if ligne is None:
-                continue
-            if ligne == "sans objet":
-                sans_objet.append((id_local, "sans objet"))
-            else:
-                charge.append(ligne)
-        if sans_objet:
-            self.journal.marquer_sms_xafe(sans_objet)
-        if not charge:
-            return 0
+        ecartees = set(self._cartes_en_attente())
+        while True:
+            lignes = self.journal.sms_a_pousser_xafe(LOT, sauf_iccid=ecartees)
+            if not lignes:
+                return 0
+            charge, closes = [], []
+            for (id_local, date, expediteur, texte, compte, iccid, emis_le) in lignes:
+                ligne = self._ligne(id_local, date, expediteur, texte, compte,
+                                    iccid, emis_le, numeros)
+                if ligne is None:
+                    ecartees.add(iccid)
+                elif isinstance(ligne, str):
+                    closes.append((id_local, ligne))
+                else:
+                    charge.append(ligne)
+            if closes:
+                self.journal.marquer_sms_xafe(closes)
+            if charge:
+                break
+            if len(lignes) < LOT:
+                return 0        # la file est lue jusqu'au bout : rien à envoyer
+            # Un lot entier, rien à envoyer : chaque ligne est close ou sa
+            # carte écartée — la lecture suivante va plus loin.
         try:
             statut, reponse, _ = self._appel("POST", "totem-sms",
                                              {"lignes": charge})
@@ -260,19 +322,23 @@ class PorteXafe:
             # La PORTE est fermée, pas la ligne : « reseau », jamais
             # « refuse » (nuage.py en a tiré la leçon).
             self.derniere_erreur = "signature refusée"
-            self._signaler_une_fois(t(
-                "XAFe refuses the terminal signature: wrong key, or clock off "
-                "by more than five minutes. Nothing is lost.",
-                "XAFe refuse la signature du boîtier : clé fausse, ou horloge "
-                "décalée de plus de cinq minutes. Rien n'est perdu."))
+            if not self._refus_signale:
+                self._refus_signale = True
+                self._journaliser(t(
+                    "XAFe refuses the terminal signature: wrong key, or clock "
+                    "off by more than five minutes. Nothing is lost.",
+                    "XAFe refuse la signature du boîtier : clé fausse, ou "
+                    "horloge décalée de plus de cinq minutes. Rien n'est perdu."))
             return 0
         if statut != 200:
-            self.derniere_erreur = f"{statut} {reponse!r}"[:300]
-            self._signaler_une_fois(t(
-                f"XAFe refuses the batch ({statut}): a defect on our side, "
-                "nothing is lost.",
-                f"XAFe refuse le lot ({statut}) : un défaut de notre côté, "
-                "rien n'est perdu."))
+            self.derniere_erreur = f"lot refusé {statut} {reponse!r}"[:300]
+            if not self._lot_signale:
+                self._lot_signale = True
+                self._journaliser(t(
+                    f"XAFe refuses the batch ({statut}): a defect on our side, "
+                    "nothing is lost.",
+                    f"XAFe refuse le lot ({statut}) : un défaut de notre côté, "
+                    "rien n'est perdu."))
             return 0
         verdicts = reponse if isinstance(reponse, list) else [reponse]
         a_marquer, erreur_vue = [], None
@@ -290,7 +356,10 @@ class PorteXafe:
                 self.journal.evenement(t(f"XAFe: SMS {id_local} credited ({ref})",
                                          f"XAFe : SMS {id_local} crédité ({ref})"))
             elif r == "retenue":
-                a_marquer.append((id_local, f"retenue {v.get('id', '')}".strip()))
+                # L'argent est retenu chez XAFe (client pas encore déclaré, ou
+                # palier dépassé) : la preuve garde le motif quand il y en a un.
+                a_marquer.append((id_local,
+                                  f"retenue {v.get('id', '')} {motif}".strip()))
             elif r == "ignore":
                 a_marquer.append((id_local, "ignore"))
             elif r == "refuse":
@@ -300,21 +369,24 @@ class PorteXafe:
                     f"paiement {id_local} refusé par XAFe, mis de côté : {motif}"))
                 self._alerter(id_local, motif)
             elif r == "erreur":
-                erreur_vue = motif or "erreur"
+                erreur_vue = f"moteur : {motif or 'erreur'}"
                 self._alerter(id_local, erreur_vue)
             # verdict absent ou inconnu : la ligne reste, on réessaiera.
         self.journal.marquer_sms_xafe(a_marquer)
         self.derniere_erreur = erreur_vue
         return len(a_marquer)
 
-    def _signaler_une_fois(self, phrase):
-        if self._bogue_signale:
-            return
-        self._bogue_signale = True
+    def _journaliser(self, phrase):
         try:
             self.journal.evenement(phrase)
         except Exception:
             pass
+
+    def _signaler_une_fois_par_carte(self, cle, phrase):
+        if cle in self._sans_numero_signales:
+            return
+        self._sans_numero_signales.add(cle)
+        self._journaliser(phrase)
 
     def _alerter(self, source_id, erreur):
         if self.sur_incident:
@@ -378,8 +450,10 @@ class PorteXafe:
                 time.sleep(DEBOUNCE)
 
     def _pousser_tout(self):
-        """Lot après lot tant qu'un lot part plein ; une coupure rend 0 et
-        sort."""
+        """Lot après lot tant que XAFe en clôt un PLEIN ; une coupure rend 0
+        et sort. Les lignes closes sans réseau ne comptent pas ici : c'est
+        `pousser_paiements` qui lit la file au-delà d'elles, dans le même
+        appel."""
         total = 0
         while self._marche:
             envoyes = self.pousser_paiements()
@@ -390,11 +464,24 @@ class PorteXafe:
         return total
 
     def resume(self):
-        """Ligne d'état pour /statut."""
+        """Ligne d'état pour /statut : dit CE QUI cloche, pas seulement qu'on
+        attend — « injoignable » quand XAFe n'a pas répondu, « refuse la
+        signature » quand il a répondu 401, « moteur en panne » quand il a
+        répondu « erreur » sur une ligne."""
         if not self.actif:
             return t("XAFe disabled", "XAFe désactivé")
         reste = self.journal.xafe_en_attente()
-        if self.derniere_erreur:
+        erreur = self.derniere_erreur
+        if erreur == "signature refusée":
+            return t(f"XAFe refuses the signature · {reste} waiting",
+                     f"XAFe refuse la signature · {reste} en attente")
+        if erreur and erreur.startswith("moteur"):
+            return t(f"XAFe engine down · {reste} waiting",
+                     f"XAFe moteur en panne · {reste} en attente")
+        if erreur and erreur.startswith("lot refusé"):
+            return t(f"XAFe refuses the batch · {reste} waiting",
+                     f"XAFe refuse le lot · {reste} en attente")
+        if erreur:
             return t(f"XAFe unreachable · {reste} waiting",
                      f"XAFe injoignable · {reste} en attente")
         if not reste:

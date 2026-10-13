@@ -73,6 +73,8 @@ ligne :
 🔁 XAFe à jour
 🔁 XAFe · 3 en attente              ← réseau coupé ou carte sans numéro
 🔁 XAFe injoignable · 3 en attente  ← rien n'est perdu, la file se vide au retour
+🔁 XAFe refuse la signature · 3 en attente  ← clé fausse ou horloge décalée (le journal le dit)
+🔁 XAFe moteur en panne · 3 en attente      ← XAFe a répondu « erreur » : on réessaie
 ```
 
 ## Déclarer le numéro de chaque carte
@@ -83,6 +85,15 @@ ou la section `[numeros]`) voit ses encaissements **attendre** : rien ne part,
 le journal le dit une fois (« la carte … n'a pas de numéro déclaré »), et tout
 part dès que le numéro est inscrit. Le robot ne devine jamais : un
 encaissement rattaché au mauvais float créditerait le mauvais compte.
+
+**Les siens seulement.** Les autres cartes du boîtier ne l'attendent pas :
+la file XAFe écarte les cartes sans numéro et lit au-delà. Et ce qui n'est
+pas un encaissement — publicité, code, solde — se clôt « sans objet » quelle
+que soit la carte, déclarée ou non.
+
+Une carte d'un **autre réseau** (Camtel, Nexttel) n'a pas de float XAFe, et
+n'en aura jamais : ses encaissements sont clos « sans float XAFe », sans
+requête, et le journal le dit une fois. Rien n'attend.
 
 Le numéro déclaré doit être **celui que XAFe a inscrit** pour ce float. À la
 mise en service, carte par carte, avec l'équipe XAFe.
@@ -130,5 +141,6 @@ Videz `url` et `cle`, relancez : plus rien ne part chez XAFe, rien n'est perdu.
 **« Et si un encaissement n'est pas crédité ? »**
 Il est **retenu** chez XAFe jusqu'à ce que le client déclare l'ID de sa
 transaction. Le journal du Pi porte, pour chaque SMS, « credite XAFe-DP-… »,
-« retenue n », « ignore », « refuse <motif> » ou « sans objet » (colonne
-`xafe_reponse`) : c'est là qu'on lit ce qui s'est passé.
+« retenue n <motif> », « ignore », « refuse <motif> », « sans objet » ou
+« sans float XAFe » (colonne `xafe_reponse`) : c'est là qu'on lit ce qui
+s'est passé.
