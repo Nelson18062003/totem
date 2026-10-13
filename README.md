@@ -231,7 +231,7 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   sante.py        santé du Pi : tension, température, disque, sauvegardes
   nuage.py        pont vers Supabase (hors-ligne d'abord, file d'attente)
   xafe.py         la destination XAFe Exchange : les encaissements déposés,
-                  signés avec la clé du boîtier (hors-ligne d'abord)
+                  les SMS de vérification envoyés (signé, hors-ligne d'abord)
   config.py       chargement totem.conf
 brand/            la marque : « La Tresse », verrouillages, icônes, motif,
                   et les scripts qui régénèrent le tout

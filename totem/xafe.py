@@ -27,6 +27,13 @@ est BORNÉE : si l'écartement se perdait, cent encaissements qui attendent
 rempliraient chaque lot, et la file se relirait à l'identique pour toujours ;
 le tour s'arrête après dix lots, le journal le dit, et `arreter()` sort du
 tour comme du fil.
+
+LE GUICHET. XAFe confie aussi au boîtier des SMS À ENVOYER — le code qui
+prouve qu'un numéro est à son propriétaire. La porte les relève, les réclame
+et en rend compte avec les mêmes noms qu'un `Nuage`, pour que `Pilotage` —
+une seule boucle, une file par carte — les serve à côté des demandes Bonzini
+sans rien apprendre de neuf. Les transferts, de l'argent à composer, ne sont
+pas relevés : voir le guichet, plus bas.
 """
 
 import hashlib
@@ -40,15 +47,24 @@ import urllib.request
 from datetime import timedelta
 
 from .analyse_sms import analyser
-from .nuage import DEBOUNCE, DELAI, LOT, _heure_de_l_en_tete, _horodatage
+from .nuage import (DEBOUNCE, DELAI, LOT, Prise, _age_de_la_demande,
+                    _heure_de_l_en_tete, _horodatage)
 from .textes import t
 
 PAUSE = 60
-# Les réglages de la RELÈVE des commandes — la cadence des GET, la fenêtre
-# de l'horloge, la péremption d'une demande, la liste des verdicts
-# définitifs — arriveront AVEC le code qui les lit (voir le guichet, plus
-# bas) : une constante écrite et jamais branchée ne protège de rien, elle
-# rassure.
+# La RELÈVE des commandes XAFe (les SMS à envoyer) est cadencée ICI, pas par
+# la boucle de `Pilotage` (trois secondes, une et demie en session) : chaque
+# GET est signé et ouvre une connexion sur la 3G. Entre deux relèves, la
+# porte rend « rien » sans réseau. Une demande XAFe attend donc jusqu'à dix
+# secondes de plus qu'une demande Bonzini — aucun écran n'abandonne à trente
+# secondes de ce côté-là, et chaque GET vaut signe de vie chez XAFe.
+PAS_RELEVE = 10
+# L'âge au-delà duquel le robot n'exécute plus une demande XAFe : la règle de
+# la plateforme (soixante secondes) est faite pour un écran qui abandonne à
+# trente ; XAFe garde la date du dépôt et rejoue ses commandes. Un code de
+# vérification vaut dix minutes chez XAFe : quinze minutes le couvrent, et
+# au-delà le client en a déjà redemandé un.
+XAFE_DEMANDE_PERIMEE_S = 900
 # Lectures de la file par tour, au plus. Chaque lecture doit clore des lignes
 # ou écarter une carte de plus, donc avancer ; si elle n'avance pas, c'est
 # un défaut — et il ne coûte qu'un tour, jamais un fil qui tourne à vide.
@@ -163,6 +179,8 @@ class PorteXafe:
         # répondre — /statut le dit, au lieu d'envoyer déclarer un numéro qui
         # est déjà là.
         self._crochet_en_panne = {}
+        # La prochaine relève des commandes XAFe (horloge monotone).
+        self._prochain_releve = 0.0
 
     # ---- l'heure de la base --------------------------------------------------
     def _noter_l_heure(self, reponse):
@@ -527,14 +545,119 @@ class PorteXafe:
                 pass
 
     # ---- le guichet (la relève des commandes XAFe) ---------------------------
-    # La porte offre à `Pilotage` les mêmes noms qu'un `Nuage`, pour qu'un
-    # second guichet ne lui demande rien de neuf. Mais la RELÈVE n'est pas
-    # branchée : elle attend la décision du propriétaire sur le code secret
-    # (docs/XAFE.md), et le guichet des SMS à envoyer arrive avec elle. Tant
-    # que c'est ainsi, « rien à faire » est la seule réponse — sans réseau.
+    # La porte offre à `Pilotage` les mêmes noms qu'un `Nuage` : relever,
+    # réclamer, rendre compte. Ce qui est relevé aujourd'hui : les SMS À
+    # ENVOYER (le code qui prouve qu'un numéro est à son propriétaire). Les
+    # TRANSFERTS — de l'argent à composer — ne le sont pas, même avec
+    # `[xafe] transferts = oui` : ils attendent la décision du propriétaire
+    # sur le code secret (docs/XAFE.md). Les relever sans savoir les faire
+    # les ferait échouer trois fois chez XAFe, qui rendrait leurs XAFe au
+    # client.
+    #
+    # Les identifiants XAFe des SMS sont rendus « sms:<n> » (une chaîne) :
+    # `messages_sortants.id` et `commandes.id` sont deux compteurs
+    # indépendants chez XAFe, et `commandes.id` de Bonzini un troisième. Un
+    # entier nu se confondrait.
+
+    @staticmethod
+    def _cible(identifiant):
+        """(« sms » | « transferts », n) depuis un identifiant du robot."""
+        texte = str(identifiant)
+        if texte.startswith("sms:"):
+            return "sms", int(texte[4:])
+        return "transferts", int(texte)
+
     def commandes_en_attente(self):
-        """Aucune commande XAFe n'est relevée aujourd'hui : [] sans requête."""
-        return []
+        """Les SMS que XAFe veut faire partir de ce boîtier, au plus une fois
+        toutes les `PAS_RELEVE` secondes ; [] sans réseau entre deux.
+
+        Le texte d'un SMS à envoyer porte un code : il ne va JAMAIS au
+        journal — ni ici, ni dans `Pilotage` (qui ne journalise que la carte
+        et la référence du modem)."""
+        if not self.actif:
+            return []
+        maintenant = time.monotonic()
+        if maintenant < self._prochain_releve:
+            return []
+        self._prochain_releve = maintenant + PAS_RELEVE
+        try:
+            statut, lignes, _ = self._appel("GET", "totem-commandes?type=sms")
+        except PorteMuette as e:
+            self.derniere_erreur = str(e)
+            return []
+        if statut != 200 or not isinstance(lignes, list):
+            self.derniere_erreur = f"relève refusée {statut}"
+            return []
+        demandes = []
+        for m in lignes:
+            if not isinstance(m, dict) or m.get("id") is None:
+                continue
+            demandes.append({
+                "id": f"sms:{m['id']}",
+                "type": "sms_xafe",
+                "etat": "en_attente",
+                "demandee_le": m.get("cree_le"),
+                "cle": m.get("cle"),
+                "parametres": {
+                    "operateur": m.get("operateur"),
+                    "numero": m.get("numero"),
+                    "texte": m.get("texte"),
+                    "par": "xafe",
+                    "langue": "fr",
+                },
+            })
+        return demandes
+
+    def reclamer(self, identifiant):
+        """Prendre la demande pour soi : XAFe tranche (`update … where etat =
+        'en_attente'`, 409 sinon). Rend une `Prise` datée sur l'horloge de
+        XAFe, avec la limite XAFe ; False dans tous les autres cas — un 409
+        n'est pas une panne, c'est la règle qui tient."""
+        try:
+            type_, n = self._cible(identifiant)
+        except (TypeError, ValueError):
+            return False
+        try:
+            statut, ligne, heure = self._appel(
+                "PATCH", f"totem-commandes/{n}",
+                {"type": type_, "etat": "en_cours"})
+        except PorteMuette as e:
+            self.derniere_erreur = str(e)
+            return False
+        if statut != 200 or not isinstance(ligne, dict):
+            return False
+        depose = ligne.get("demandee_le") or ligne.get("cree_le")
+        return Prise(_age_de_la_demande(depose, heure),
+                     limite=XAFE_DEMANDE_PERIMEE_S)
+
+    def commande_maj(self, identifiant, champs):
+        """Rendre compte à XAFe. Un SMS : « envoye » ou « echoue », avec la
+        phrase du robot. Une écriture sans état (le masquage d'un secret —
+        XAFe n'en porte pas) ne va nulle part et réussit."""
+        etat = (champs or {}).get("etat")
+        if etat is None:
+            return True
+        try:
+            type_, n = self._cible(identifiant)
+        except (TypeError, ValueError):
+            return False
+        if type_ == "sms":
+            etat_xafe = {"faite": "envoye", "echouee": "echoue"}.get(etat)
+            if etat_xafe is None:
+                return False
+            corps = {"type": "sms", "etat": etat_xafe,
+                     "resultat": champs.get("resultat")}
+        else:
+            corps = {"type": "transferts", "etat": etat,
+                     "resultat": champs.get("resultat"),
+                     "reference_operateur": champs.get("reference_operateur")}
+        # `traitee_le` et `parametres` ne partent pas : la porte les ignore.
+        try:
+            statut, _, _ = self._appel("PATCH", f"totem-commandes/{n}", corps)
+        except PorteMuette as e:
+            self.derniere_erreur = str(e)
+            return False
+        return statut == 200
 
     def commandes_abandonnees(self, avant):
         """XAFe n'offre pas de liste des commandes en cours : [] toujours."""

@@ -29,7 +29,8 @@ Ce que contient un PDU reçu (SMS-DELIVER), dans l'ordre
 import re
 from datetime import datetime, timedelta, timezone
 
-from .gsm import ALPHABET_GSM, EXTENSION_GSM, ECHAPPEMENT
+from .gsm import (ALPHABET_GSM, EXTENSION_GSM, ECHAPPEMENT, ChargeRefusee,
+                  empaqueter_septets, encode_gsm7, encode_ucs2)
 
 RE_HEXA_PDU = re.compile(r"\A[0-9A-Fa-f]+\Z")
 
@@ -210,6 +211,67 @@ def decoder(pdu_hexa):
         reference, total, position = decoupe
         return Morceau(expediteur, texte, horodatage, reference, total, position)
     return Morceau(expediteur, texte, horodatage)
+
+
+# ---- écriture : un SMS à ENVOYER (SMS-SUBMIT) -------------------------------
+# Un SMS tient en 160 caractères de l'alphabet GSM, 70 en UCS2. Au-delà, il
+# faudrait le découper avec un en-tête (UDH) : on ne le fait pas — ce que le
+# robot envoie est un code de vérification, une ligne. Trop long, on refuse.
+SEPTETS_MAX = 160
+UCS2_MAX = 70
+
+
+def encoder_submit(numero, texte):
+    """(longueur du TPDU, PDU hexadécimal) d'un SMS à envoyer à `numero`.
+
+    Le format, dans l'ordre (3GPP 23.040 §9.2.2.2) :
+
+        00          pas de centre SMS dans le PDU : celui de la SIM
+        01          SMS-SUBMIT, sans période de validité, sans en-tête
+        00          TP-MR : le modem pose la référence lui-même
+        <n>91<…>    TP-DA : nombre de chiffres, type d'adresse, chiffres
+        00          TP-PID : SMS ordinaire
+        00 | 08     TP-DCS : alphabet GSM 7 bits, ou UCS2
+        <longueur>  TP-UDL : septets (GSM) ou octets (UCS2)
+        <données>
+
+    Pourquoi 0x91 : « international » (bit 4 et 5 : 001) en numérotation
+    ISDN (0001). XAFe donne le numéro à neuf chiffres (« 677123456ʼ ») ; on
+    lui remet l'indicatif du Cameroun pour que le réseau ne cherche pas un
+    numéro national depuis une SIM peut-être en itinérance. Un numéro déjà
+    donné avec 237 part tel quel. Les chiffres s'écrivent par paires
+    inversées, F de bourrage si leur nombre est impair — l'inverse de
+    `_adresse`.
+
+    La longueur rendue est celle que `AT+CMGS=<n>` attend : les octets du
+    TPDU, SANS l'octet du centre SMS."""
+    chiffres = re.sub(r"\D", "", str(numero or ""))
+    if len(chiffres) == 9 and chiffres.startswith("6"):
+        chiffres = "237" + chiffres
+    if not 8 <= len(chiffres) <= 15:
+        raise ValueError(f"numéro invalide : {len(chiffres)} chiffres")
+    if len(chiffres) % 2:
+        bourre = chiffres + "F"
+    else:
+        bourre = chiffres
+    paires = "".join(bourre[i + 1] + bourre[i] for i in range(0, len(bourre), 2))
+    adresse = f"{len(chiffres):02X}91{paires}"
+
+    try:
+        septets_ = encode_gsm7(texte)
+    except ChargeRefusee:
+        # Un caractère hors alphabet GSM : tout le message part en UCS2, où
+        # il ne tient que 70 caractères.
+        if len(texte) > UCS2_MAX:
+            raise ChargeRefusee(f"{len(texte)} caractères, {UCS2_MAX} au plus en UCS2")
+        dcs, udl, donnees = "08", len(texte) * 2, encode_ucs2(texte)
+    else:
+        if len(septets_) > SEPTETS_MAX:
+            raise ChargeRefusee(f"{len(septets_)} caractères, {SEPTETS_MAX} au plus")
+        dcs, udl = "00", len(septets_)
+        donnees = empaqueter_septets(septets_).hex().upper()
+    hexa = f"000100{adresse}00{dcs}{udl:02X}{donnees}"
+    return len(hexa) // 2 - 1, hexa
 
 
 # ---- recollage -------------------------------------------------------------

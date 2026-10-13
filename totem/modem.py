@@ -10,8 +10,9 @@ import threading
 import time
 
 from .gsm import (ALPHABET_GSM, ECHAPPEMENT, EXTENSION_GSM, ChargeRefusee,
-                  charge_pour_le_reseau, decode_auto, encode_ucs2)
-from .pdu import ErreurPDU, decoder, recoller
+                  charge_pour_le_reseau, decode_auto, encode_ucs2,
+                  texte_pour_sms)
+from .pdu import ErreurPDU, decoder, encoder_submit, recoller
 from .textes import t
 
 # +CUSD: <m>[,"<texte>",<dcs>]  — m=0 fin, m=1 réponse attendue, m=2 annulé par le réseau
@@ -33,6 +34,16 @@ RE_ERREUR_AT = re.compile(
 # Le réseau a refermé le menu de lui-même (0 fin, 2 annulé, 3-5 erreurs).
 RE_CUSD_FERME = re.compile(rb"\+CUSD:\s*[02-5]")
 RE_CSQ = re.compile(r"\+CSQ:\s*(\d+),")
+# L'accusé du modem après l'envoi d'un SMS : la référence qu'il lui a donnée.
+RE_CMGS = re.compile(r"\+CMGS:\s*(\d+)")
+# Le refus d'un envoi : « +CMS ERROR » (le service SMS), ou les refus de
+# toute commande. `RE_ERREUR_AT` ne connaît que « +CME » : un « +CMS ERROR:
+# 500 » passait pour du silence, et l'on attendait l'accusé une minute.
+RE_ERREUR_SMS = re.compile(
+    r"(?:^|[\r\n])\s*(ERROR|\+CM[ES] ERROR:[^\r\n]*)\s*(?=[\r\n]|$)")
+# L'invite « > » : le modem attend la charge du SMS. Ce n'est pas une fin au
+# sens de `RE_FIN_AT` (pas de OK, pas de retour à la ligne après).
+RE_INVITE = re.compile(rb">\s*$")
 RE_COPS = re.compile(r'\+COPS:\s*\d+(?:,\d+,"([^"]*)")?')
 # Identité de la SIM : ICCID (numéro gravé sur la carte, 18 à 22 chiffres),
 # IMSI (identité de l'abonné sur le réseau), MSISDN (le numéro de téléphone,
@@ -102,6 +113,11 @@ class ReponseRefusee(ErreurModem):
             f"Cette réponse contient des caractères que le réseau de "
             f"l'opérateur ne reçoit pas ({vus}) — rien n'est parti."))
         self.caracteres = caracteres
+
+
+class EnvoiIncertain(ErreurModem):
+    """Le SMS est ÉCRIT au modem et l'accusé (+CMGS) n'est pas venu à temps.
+    Ce n'est pas un échec : il a peut-être été remis."""
 
 
 class MenuReferme(ErreurModem):
@@ -522,6 +538,35 @@ class ModemSerie:
         raise ReponseNonRecue(t("No USSD reply from the network (timed out).",
                                 "Pas de réponse USSD du réseau (délai dépassé)."))
 
+    def _attendre_invite(self, delai=5):
+        """Attend l'invite « > » qui suit `AT+CMGS=<n>` : le modem demande
+        la charge. Rien n'est encore parti à cet instant — un refus ici
+        (« +CMS ERROR », « ERROR ») ou le silence sont des échecs FRANCS, et
+        l'appelant peut le dire sans détour."""
+        fin = time.time() + delai
+        tampon = b""
+        pause = 0.01
+        while time.time() < fin:
+            morceau = self.ser.read_all()
+            if morceau:
+                tampon += morceau
+                if RE_INVITE.search(tampon):
+                    return
+                erreur = RE_ERREUR_SMS.search(tampon.decode(errors="replace"))
+                if erreur:
+                    cause = erreur.group(1).strip()
+                    raise ErreurModem(t(
+                        f"The modem refused to send ({cause}). Nothing was sent.",
+                        f"Le modem a refusé l'envoi ({cause}). Rien n'est parti."))
+                pause = 0.01
+            else:
+                pause = min(pause * 2, 0.08)
+            time.sleep(pause)
+        raise ErreurModem(t("The modem did not ask for the message (no prompt). "
+                            "Nothing was sent.",
+                            "Le modem n'a pas demandé le message (pas d'invite). "
+                            "Rien n'est parti."))
+
     def _cusd(self, charge, reponse=False):
         # Défense en profondeur contre l'injection AT : un guillemet, une
         # barre oblique inverse ou un retour chariot refermeraient la chaîne
@@ -673,6 +718,89 @@ class ModemSerie:
             indices = [indices]
         with self.verrou:
             return all("OK" in self._envoyer(f"AT+CMGD={i}") for i in indices)
+
+    def envoyer_sms(self, numero, texte, delai=60):
+        """Envoie un SMS ; rend la référence (+CMGS) que le modem lui donne.
+
+        Le dialogue : `AT+CMGS=<longueur>`, le modem répond par l'invite
+        « > » (pas un OK : `_attendre_invite`), on écrit le PDU puis Ctrl-Z,
+        et le modem rend `+CMGS: <réf>` puis OK quand le réseau a accepté le
+        message — deux à dix secondes d'ordinaire, jusqu'à une minute sur un
+        réseau lent. Le verrou est tenu jusqu'à l'accusé, comme `lire_sms`
+        le tient dix secondes : entre l'invite et le Ctrl-Z, le port n'est à
+        personne d'autre, et un autre échange y glisserait ses octets DANS le
+        message.
+
+        Trois issues, qu'on distingue parce qu'elles n'appellent pas la même
+        suite : `ReponseRefusee` / `ErreurModem` — RIEN n'est parti ;
+        `EnvoiIncertain` — la charge est écrite, l'accusé n'est pas venu : le
+        SMS a peut-être été remis ; une référence — il est parti.
+
+        Toujours en PDU quand le modem y est (`mode_pdu`) : le texte n'entre
+        alors jamais dans une commande AT, et le guillemet comme la barre y
+        sont des caractères ordinaires. Le mode texte n'est qu'un repli, et
+        on ne bascule JAMAIS `AT+CMGF` pour un envoi : la relève des SMS en
+        dépend."""
+        try:
+            texte = texte_pour_sms(texte)
+            longueur, hexa = encoder_submit(numero, texte)
+        except ChargeRefusee as refus:
+            raise ReponseRefusee(refus.caracteres) from None
+        with self.verrou:
+            # Ce que le port a dit depuis le dernier échange se lit avant
+            # d'être jeté (même geste que `_cusd`) : un « +CUSD: 2 » croisé ici
+            # ferme le menu pour la réponse USSD suivante — mais ce n'est pas
+            # une réponse USSD, on ne lève pas `MenuReferme`.
+            en_attente = getattr(self.ser, "in_waiting", 0) or 0
+            reste = self.ser.read(en_attente) if en_attente else b""
+            if RE_CUSD_FERME.search(reste or b""):
+                self._ferme_par_le_reseau = True
+            self.ser.reset_input_buffer()
+            if getattr(self, "mode_pdu", False):
+                self.ser.write(f"AT+CMGS={longueur}\r".encode())
+                self._attendre_invite()
+                self.ser.write(hexa.encode() + b"\x1a")
+            else:
+                charge = encode_ucs2(texte) if getattr(self, "ucs2", False) else texte
+                self.ser.write(f'AT+CMGS="{numero}"\r'.encode())
+                self._attendre_invite()
+                self.ser.write(charge.encode("utf-8") + b"\x1a")
+            fin = time.time() + delai
+            tampon = b""
+            pause = 0.02
+            while time.time() < fin:
+                morceau = self.ser.read_all()
+                if morceau:
+                    tampon += morceau
+                    pause = 0.02
+                    texte_lu = tampon.decode(errors="replace")
+                    m = RE_CMGS.search(texte_lu)
+                    if m:
+                        self._garder_les_annonces(tampon)
+                        return m.group(1)
+                    erreur = RE_ERREUR_SMS.search(texte_lu)
+                    if erreur:
+                        self._garder_les_annonces(tampon)
+                        cause = erreur.group(1).strip()
+                        raise ErreurModem(t(
+                            f"The network refused the SMS ({cause}). Nothing was sent.",
+                            f"Le réseau a refusé le SMS ({cause}). Rien n'est parti."))
+                else:
+                    pause = min(pause * 2, 0.15)
+                time.sleep(pause)
+            self._garder_les_annonces(tampon)
+        raise EnvoiIncertain(t(
+            "No delivery report from the modem in time: the SMS may still "
+            "have been sent.",
+            "Accusé non reçu du modem à temps : le SMS a peut-être été remis."))
+
+    def _garder_les_annonces(self, tampon):
+        """Les annonces non sollicitées croisées pendant l'envoi (+CMTI,
+        +CUSD) ne se perdent pas : elles vont là où `sms_annonce` les lit."""
+        if b"+CMTI" in tampon or b"+CMT" in tampon or b"+CUSD" in tampon:
+            self._traine_urc = (getattr(self, "_traine_urc", b"") + tampon)[-64:]
+            if RE_CUSD_FERME.search(tampon):
+                self._ferme_par_le_reseau = True
 
     def memoire_sms(self):
         """(occupés, capacité) du stockage des SMS. Une mémoire pleine fait

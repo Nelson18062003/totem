@@ -91,9 +91,15 @@ Deux choses la tiennent, toutes deux posées au tour 2 :
 boîtier dit, et le tri (argent entrant seulement) se fait sur le Pi avant
 toute requête — un SMS appartient au propriétaire, XAFe est un tiers. Chaque
 verdict (crédité, retenu, ignoré, refusé) est gardé SMS par SMS dans le
-journal (`sms.xafe_reponse`). Le relevé des commandes XAFe (`totem-commandes`,
-transferts et SMS à envoyer) n'est PAS branché : il attend la décision du
-propriétaire sur le code secret (`docs/XAFE.md`). Harnais : `tests/test_xafe.py`.
+journal (`sms.xafe_reponse`). Le robot RELÈVE aussi chez XAFe
+(`totem-commandes`) les SMS à envoyer — le code qui prouve qu'un numéro est à
+son propriétaire — par le MÊME guichet que les demandes Bonzini (`Pilotage`,
+une file par carte, jamais deux fils sur la même puce) ; les deux garanties de
+F3bis y tiennent : la réclamation est un `update … where etat = 'en_attente'`
+tranché par XAFe (409 sinon), et aucun code secret ne voyage (XAFe n'en porte
+pas). Les TRANSFERTS XAFe (de l'argent à composer) ne sont PAS relevés : ils
+attendent la décision du propriétaire sur le code secret (`docs/XAFE.md`).
+Harnais : `tests/test_xafe.py`, `tests/test_envoi_sms.py`.
 
 **F4bis — N'IMPORTE QUI → la SIM, par SMS.** La seule entrée du système qui
 n'exige ni compte, ni jeton, ni autorisation : quiconque connaît le numéro de
@@ -204,7 +210,9 @@ elle enveloppe aussi l'écran de connexion.
 - `commandes` — le canal qui fait composer un code USSD sur une vraie carte.
   **C'est le seul endroit d'où de l'argent peut bouger.**
 - `commandes` XAFe — un second endroit d'où de l'argent POURRAIT bouger, le
-  jour où `[xafe] transferts = oui` ; pas relevé aujourd'hui.
+  jour où `[xafe] transferts = oui` ; pas relevé aujourd'hui. Les
+  `messages_sortants` XAFe (des SMS à envoyer), eux, sont relevés : un SMS
+  ne déplace pas d'argent.
 
 ## 6. Ce qui n'existe pas ici
 

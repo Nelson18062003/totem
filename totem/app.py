@@ -568,14 +568,26 @@ class Robot:
             # Le guichet à distance : l'application web dépose ses demandes
             # dans la base, ce fil les exécute sur les vraies SIM.
             self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
-                                     programmeur=self._recu_apres_coup)
+                                     programmeur=self._recu_apres_coup,
+                                     guichets=self._guichets_xafe())
             self.pilotage.demarrer()
         # XAFe démarre même sans Bonzini : une destination n'attend pas
-        # l'autre.
+        # l'autre. Et le guichet non plus : les SMS que XAFe confie au
+        # boîtier passent par le MÊME `Pilotage` que les demandes Bonzini —
+        # une seule file par carte, jamais deux fils sur la même puce.
         if self.xafe and self.xafe.actif:
             self.xafe.demarrer()
+            if self.pilotage is None:
+                self.pilotage = Pilotage(None, self.comptes, self.journal,
+                                         programmeur=self._recu_apres_coup,
+                                         guichets=self._guichets_xafe())
+                self.pilotage.demarrer()
         if bloquant:
             self._boucle_messages()
+
+    def _guichets_xafe(self):
+        """Le second guichet de `Pilotage`, quand XAFe est configuré."""
+        return [self.xafe] if (self.xafe and self.xafe.actif) else []
 
     def _installer_arret_propre(self):
         """systemd envoie SIGTERM avant d'arrêter ou de redémarrer la machine :

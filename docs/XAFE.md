@@ -2,8 +2,9 @@
 
 > Résultat : chaque encaissement reçu sur une carte déclarée est aussi
 > **déposé chez XAFe Exchange**, qui crédite le client qui l'a déclaré — ou le
-> retient : personne n'est crédité au hasard. Bonzini continue de recevoir
-> tout ce qu'il recevait.
+> retient : personne n'est crédité au hasard. Et le boîtier **envoie les SMS
+> de vérification** que XAFe lui confie (le code qui prouve qu'un numéro est
+> à son propriétaire). Bonzini continue de recevoir tout ce qu'il recevait.
 >
 > **Facultatif.** Sans la section `[xafe]`, TOTEM se comporte exactement
 > comme avant, à l'octet près.
@@ -44,6 +45,11 @@ coupure de courant).
   `verify_jwt`), cette clé — sinon rien.
 - pour chaque carte du boîtier, le **numéro du float** tel qu'il est inscrit
   chez XAFe (`floats.numero`) : c'est par lui que XAFe reconnaît la carte.
+- pour les SMS à envoyer : **une seule carte par opérateur dans le boîtier**,
+  tant que XAFe ne nomme pas le float dans ses `messages_sortants` (la table
+  ne porte que l'opérateur). Avec deux cartes MTN, le robot refuse d'en
+  choisir une — « Plusieurs cartes de cet opérateur, désignez le float » — et
+  aucun code ne part. C'est écrit au contrat côté XAFe.
 
 ## Configurer le Pi
 
@@ -135,6 +141,41 @@ correction. L'indicatif « 237 » devant les neuf chiffres est admis.
 Le numéro déclaré doit être **celui que XAFe a inscrit** pour ce float. À la
 mise en service, carte par carte, avec l'équipe XAFe.
 
+## Les SMS que XAFe fait envoyer par le boîtier
+
+Quand un client ajoute un numéro chez XAFe, XAFe doit prouver que ce numéro
+est à lui : il dépose un SMS à envoyer (« XAFe Exchange : votre code est
+123456… ») et c'est **le boîtier qui l'envoie**, depuis sa carte de
+l'opérateur demandé. Le robot le relève toutes les **dix secondes** (chaque
+relève est signée et ouvre une connexion : on ne frappe pas à la porte toutes
+les trois secondes comme pour Bonzini — un code attend donc jusqu'à dix
+secondes de plus, et personne n'abandonne à trente secondes de ce côté-là),
+le **réclame** (XAFe tranche : un autre boîtier l'a pris, on s'en va en
+silence), l'envoie, et dit à XAFe « envoyé » avec la référence du modem — ou
+« échoué » avec la raison, en français.
+
+Ce qui ne part pas, et pourquoi, dans la réponse rendue à XAFe :
+
+- **un code vieux** (déposé il y a plus de quinze minutes — il vaut dix chez
+  XAFe, le client en a déjà redemandé un) : « a attendu 3 h avant d'arriver au
+  terminal… rien n'est parti » ;
+- **aucune carte de cet opérateur**, ou **plusieurs** : rien n'est parti,
+  voir ci-dessus ;
+- **le modem refuse** (« +CMS ERROR ») : rien n'est parti ;
+- **l'accusé du modem ne vient pas** : « le SMS a peut-être été remis ». On ne
+  dit ni l'un ni l'autre ; pour un SMS, XAFe ne rejoue pas, le client
+  redemande un code.
+
+Le SMS passe par la **même file** que les demandes Bonzini de la même carte
+(un seul guichet dans le robot, une file par carte) : il ne s'intercale jamais
+dans un menu USSD que quelqu'un tient, et une erreur d'envoi ne raccroche pas
+ce menu. Le code et le numéro du client n'entrent **jamais au journal** : il
+porte seulement « SMS de vérification envoyé depuis MTN ·0011 (réf. 17) ».
+
+Le robot a appris à envoyer pour cela (`AT+CMGS`, en mode PDU) : un message
+tient en 160 caractères (70 si un caractère sort de l'alphabet GSM), au-delà
+il est refusé, jamais coupé. `tests/test_envoi_sms.py` le garde.
+
 ## Ce qui ne part PAS chez XAFe
 
 - **L'historique d'avant l'activation.** À la première mise à jour du robot,
@@ -151,7 +192,10 @@ mise en service, carte par carte, avec l'équipe XAFe.
 - Les **transferts** XAFe (de l'argent à composer) : ils ne sont pas même
   relevés tant que `transferts = non` — et cette version du robot ne les
   relève pas davantage avec `oui` : la valeur est lue et rangée, rien ne la
-  consulte encore. Voir la question du code secret.
+  consulte encore. Les relever sans savoir les faire les ferait échouer
+  trois fois chez XAFe, qui rendrait leurs XAFe au client. Voir la question
+  du code secret. Les SMS à envoyer, eux, sont relevés : un SMS ne déplace
+  pas d'argent.
 
 ---
 
@@ -164,7 +208,8 @@ MÊME réponse, marquée `deja`. Une reprise après coupure est sans risque.
 **« Le PIN part-il chez XAFe ? »**
 Non. Il n'est enregistré nulle part. Et les transferts XAFe — qui exigeraient
 que le robot le compose seul — ne sont pas relevés tant que le propriétaire
-n'a pas tranché cette question (`transferts = non`).
+n'a pas tranché cette question (`transferts = non`). Les SMS à envoyer n'en
+ont pas besoin : envoyer un SMS ne demande aucun code.
 
 **« Que se passe-t-il si XAFe tombe ? »**
 Rien de visible. Bonzini continue d'être servi — les deux destinations ont

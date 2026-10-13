@@ -29,7 +29,15 @@ CE QUE CES TESTS GARDENT :
      l'historique ne part pas à la naissance de la colonne ; aucun secret ni
      donnée personnelle au journal ; le réveil est immédiat ; le démarrage du
      robot lance la porte ; sans configuration, rien ne change — et une porte
-     active ne change rien à ce qui part chez Bonzini.
+     active ne change rien à ce qui part chez Bonzini ;
+  C. le guichet des SMS à envoyer : relevé (cadencé, [] sans réseau entre
+     deux), réclamé (un 409 fait partir en silence), parti par la carte de
+     l'opérateur — une seule, sinon refus sans envoyer —, rendu à XAFe
+     « envoye » ou « echoue » avec la raison ; un code vieux ne part pas
+     (limite XAFe, pas celle de Bonzini) et son témoin ; « peut-être remis »
+     quand l'accusé manque ; ni code ni numéro au journal ; les ids XAFe et
+     Bonzini ne se confondent pas dans UN seul `Pilotage` ; les transferts ne
+     sont pas relevés ; le robot confie la porte au même guichet.
 
 CHAQUE EXIGENCE A SON TÉMOIN : `PorteDAvant` (marque avant la requête),
 `PorteToutMarque` (un 200 = tout marqué), `PorteSansRecalage` (ne lit pas
@@ -1311,10 +1319,10 @@ class TestPousser(Banc):
         journal = journal_avec_carte()
         p = self.porte(g, journal)
         self.assertIn(p.resume(), ("XAFe à jour", "XAFe up to date"))
-        # Porte ACTIVE : la relève des commandes rend [] et ne fait aucune
-        # requête — elle n'est pas branchée (docs/XAFE.md, le code secret).
+        # Porte ACTIVE : la relève des SMS à envoyer rend [] quand XAFe n'a
+        # rien — le guichet lui-même est éprouvé dans `TestLeGuichetDesSms`.
         self.assertEqual(p.commandes_en_attente(), [])
-        self.assertEqual(g.requetes, [])
+        self.assertEqual(g.statuts(), [200])
         journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
         journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
         self.assertIn("2", p.resume())
@@ -1809,6 +1817,335 @@ class TestLaFileNeSeBloquePas(Banc):
         self.assertEqual(_etat(j2, 1)[:2], (1, "credite XAFe-DP-000003"),
                          "LE TÉMOIN PASSE : zipper à l'aveugle ne trompe pas la "
                          "ligne 1, l'essai ne mesure rien")
+
+
+# =============================================================================
+# C. LE GUICHET : les SMS que XAFe confie au boîtier
+# =============================================================================
+
+TEXTE_CODE = "XAFe Exchange : votre code est 123456. Il vaut 10 minutes."
+
+
+def message_xafe(ident=3, operateur="mtn", numero="699112233", texte=TEXTE_CODE):
+    return {"id": ident, "terminal": None, "operateur": operateur, "numero": numero,
+            "texte": texte, "etat": "en_attente", "cle": f"num-{ident}-1"}
+
+
+def compte_mtn(carte=None):
+    from tests.test_pilotage import FauxCompte
+    return FauxCompte([], libelle="MTN ·0011", carte=carte or FausseCarteMTN())
+
+
+def _patches_sms(guichet, ident):
+    return [(chemin, corps) for chemin, corps in guichet.patches
+            if chemin.endswith(f"/totem-commandes/{ident}")]
+
+
+class TestLeGuichetDesSms(Banc):
+    """Un SMS à envoyer : relevé chez XAFe, réclamé, parti par la carte de
+    l'opérateur, et XAFe prévenu — sans que le code n'entre au journal."""
+
+    def setUp(self):
+        super().setUp()
+        self._pas = module_xafe.PAS_RELEVE
+        module_xafe.PAS_RELEVE = 0
+
+    def tearDown(self):
+        module_xafe.PAS_RELEVE = self._pas
+        super().tearDown()
+
+    def pilote(self, guichet, journal, comptes):
+        from totem.pilotage import Pilotage
+        p = self.porte(guichet, journal)
+        return p, Pilotage(None, comptes, journal, guichets=[p])
+
+    def jouer(self, porte, pilotage):
+        """Relève puis exécute, comme la boucle le ferait : rend les demandes."""
+        demandes = porte.commandes_en_attente()
+        for d in demandes:
+            pilotage._traiter(d, porte)
+        return demandes
+
+    def test_un_sms_a_envoyer_part_par_la_carte_de_l_operateur(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        demandes = self.jouer(porte, pilotage)
+        self.assertEqual([d["id"] for d in demandes], ["sms:3"])
+        self.assertEqual(demandes[0]["type"], "sms_xafe")
+        self.assertEqual(compte.sms_envoyes, [("699112233", TEXTE_CODE)])
+        self.assertEqual(_patches_sms(g, 3), [
+            ("/functions/v1/totem-commandes/3", {"type": "sms", "etat": "en_cours"}),
+            ("/functions/v1/totem-commandes/3",
+             {"type": "sms", "etat": "envoye", "resultat": "remis au réseau (réf. 1)"}),
+        ])
+        self.assertEqual(g.messages[3]["etat"], "envoye")
+        # Le code et le numéro ne sont nulle part au journal.
+        for e in _evenements(journal):
+            self.assertNotIn("123456", e)
+            self.assertNotIn("699112233", e)
+        self.assertTrue(any("MTN ·0011" in e and ("réf. 1" in e or "ref. 1" in e)
+                            for e in _evenements(journal)), _evenements(journal))
+        # Un second tour ne le renvoie pas : il n'est plus en attente.
+        self.assertEqual(self.jouer(porte, pilotage), [])
+        self.assertEqual(len(compte.sms_envoyes), 1)
+
+    def test_la_demande_porte_sa_carte_et_va_dans_sa_file(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        d = porte.commandes_en_attente()[0]
+        pilotage._nommer_la_carte(d)
+        self.assertEqual(d["parametres"]["carte"], ICCID)
+        self.assertEqual(pilotage._cle_de_file(d), ICCID)
+
+    def test_deux_cartes_mtn_refusent_sans_envoyer(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_deux_cartes()
+        c1, c2 = compte_mtn(), compte_mtn(FausseCarteMTN2())
+        porte, pilotage = self.pilote(g, journal, [c1, c2])
+        self.jouer(porte, pilotage)
+        self.assertEqual(c1.sms_envoyes + c2.sms_envoyes, [])
+        final = _patches_sms(g, 3)[-1][1]
+        self.assertEqual(final["etat"], "echoue")
+        self.assertIn("Rien n'est parti", final["resultat"])
+        self.assertIn("Plusieurs cartes", final["resultat"])
+
+    def test_aucune_carte_de_l_operateur(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe(operateur="om")}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        self.jouer(porte, pilotage)
+        self.assertEqual(compte.sms_envoyes, [])
+        final = _patches_sms(g, 3)[-1][1]
+        self.assertEqual(final["etat"], "echoue")
+        self.assertIn("Aucune carte", final["resultat"])
+
+    def test_une_commande_deja_prise_n_est_pas_envoyee(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        g.deja_prises = {3}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        self.jouer(porte, pilotage)
+        self.assertEqual(compte.sms_envoyes, [])
+        etats = [c.get("etat") for _, c in _patches_sms(g, 3)]
+        self.assertEqual(etats, ["en_cours"], "après un 409, on s'en va en silence")
+
+    def exigences_du_code_vieux(self, sans_garde=False):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        g.depose_il_y_a = 3 * 3600
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        if sans_garde:
+            pilotage._refuser_si_perimee = lambda *a, **k: None
+        self.jouer(porte, pilotage)
+        manques = []
+        if compte.sms_envoyes:
+            manques.append(f"envoyé malgré l'âge : {compte.sms_envoyes}")
+        final = _patches_sms(g, 3)[-1][1]
+        if final.get("etat") != "echoue":
+            manques.append(f"finit « {final.get('etat')} »")
+        elif "3 h" not in (final.get("resultat") or ""):
+            manques.append(f"la raison ne dit pas la durée : {final.get('resultat')!r}")
+        return manques
+
+    def test_un_code_vieux_de_trois_heures_n_est_pas_envoye(self):
+        self.assertEqual(self.exigences_du_code_vieux(), [])
+
+    def test_temoin_sans_la_garde_le_code_vieux_part(self):
+        self.assertNotEqual(self.exigences_du_code_vieux(sans_garde=True), [],
+                            "LE TÉMOIN PASSE : sans la garde, l'essai ne voit pas le code partir")
+
+    def test_cinq_minutes_passent_la_limite_xafe_et_pas_celle_de_bonzini(self):
+        """La règle de la plateforme (60 s) refuserait un code déposé il y a
+        cinq minutes ; la `Prise` XAFe porte sa limite (900 s) et il part."""
+        from totem.pilotage import DEMANDE_PERIMEE_S
+        self.assertLess(DEMANDE_PERIMEE_S, 5 * 60)
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        g.depose_il_y_a = 5 * 60
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        prise = porte.reclamer("sms:3")
+        self.assertTrue(prise)
+        self.assertEqual(prise.limite, module_xafe.XAFE_DEMANDE_PERIMEE_S)
+        self.assertAlmostEqual(prise.age, 300, delta=5)
+        # Le témoin : la même prise, sans sa limite, est refusée.
+        from totem.nuage import Prise
+        from totem.pilotage import RefusPoli
+        with self.assertRaises(RefusPoli):
+            pilotage._refuser_si_perimee(Prise(prise.age), "sms_xafe")
+        pilotage._refuser_si_perimee(prise, "sms_xafe")      # passe
+
+    def test_un_accuse_non_recu_dit_peut_etre_remis(self):
+        from totem.modem import EnvoiIncertain, ErreurModem
+        for panne, attendu in ((EnvoiIncertain("muet"), "peut-être"),
+                               (ErreurModem("+CMS ERROR: 500"), "Rien n'est parti")):
+            g = self.guichet()
+            g.messages = {3: message_xafe()}
+            journal = journal_avec_carte()
+            compte = compte_mtn()
+            compte.panne_envoi = panne
+            porte, pilotage = self.pilote(g, journal, [compte])
+            self.jouer(porte, pilotage)
+            final = _patches_sms(g, 3)[-1][1]
+            self.assertEqual(final["etat"], "echoue")
+            self.assertIn(attendu, final["resultat"], final)
+
+    def test_un_numero_ou_un_texte_illisible_ne_part_pas(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe(numero="12"), 4: message_xafe(4, texte="  ")}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte, pilotage = self.pilote(g, journal, [compte])
+        self.jouer(porte, pilotage)
+        self.assertEqual(compte.sms_envoyes, [])
+        for ident in (3, 4):
+            final = _patches_sms(g, ident)[-1][1]
+            self.assertEqual(final["etat"], "echoue")
+            self.assertIn("Rien n'est parti", final["resultat"])
+
+    def test_la_releve_est_cadencee_et_vaut_rien_sans_reseau(self):
+        module_xafe.PAS_RELEVE = 3600
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        porte = self.porte(g, journal)
+        self.assertEqual(len(porte.commandes_en_attente()), 1)
+        avant = len(g.requetes)
+        for _ in range(5):
+            self.assertEqual(porte.commandes_en_attente(), [])
+        self.assertEqual(len(g.requetes), avant, "entre deux relèves, aucune requête")
+
+    def test_une_coupure_rend_rien_et_se_dit(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        g.en_panne = True
+        journal = journal_avec_carte()
+        porte = self.porte(g, journal)
+        self.assertEqual(porte.commandes_en_attente(), [])
+        self.assertIsNotNone(porte.derniere_erreur)
+        self.assertFalse(porte.reclamer("sms:3"))
+        self.assertFalse(porte.commande_maj("sms:3", {"etat": "faite", "resultat": "x"}))
+        g.en_panne = False
+        self.assertEqual(len(porte.commandes_en_attente()), 1)
+
+    def test_inerte_le_guichet_ne_fait_aucune_requete(self):
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        porte = PorteXafe("", "", "", _journal())
+        self.assertEqual(porte.commandes_en_attente(), [])
+        self.assertEqual(g.requetes, [])
+
+    def test_le_masquage_d_un_secret_ne_va_pas_chez_xafe(self):
+        g = self.guichet()
+        porte = self.porte(g, journal_avec_carte())
+        self.assertTrue(porte.commande_maj("sms:3", {"parametres": {"secret": True}}))
+        self.assertEqual(g.requetes, [])
+
+    def test_les_transferts_ne_sont_pas_releves(self):
+        """Même avec `transferts = oui` : sans la décision du propriétaire sur
+        le code secret, les relever les ferait échouer trois fois chez XAFe."""
+        g = self.guichet()
+        g.commandes = {7: {"id": 7, "terminal": "akwa-1", "type": "transfert",
+                           "parametres": {"operateur": "mtn", "numero": "677123456",
+                                          "montant": 5000}, "etat": "en_attente",
+                           "reprises": 0, "cle": "XAFe-WD-1"}}
+        porte = self.porte(g, journal_avec_carte(), transferts=True)
+        self.assertEqual(porte.commandes_en_attente(), [])
+        self.assertFalse(any("type=transferts" in chemin for _, chemin, _, _, _ in g.requetes))
+
+    def test_les_ids_xafe_et_bonzini_ne_se_confondent_pas(self):
+        """Une demande Bonzini n° 7 et un SMS XAFe n° 7 : deux clés de vol,
+        deux fins. Et une clé « (guichet, id) » : la même boucle, un seul
+        `Pilotage`."""
+        from tests.test_pilotage import FauxNuage
+        from totem.pilotage import Pilotage
+        g = self.guichet()
+        g.messages = {7: message_xafe(7)}
+        journal = journal_avec_carte()
+        compte = compte_mtn()
+        porte = self.porte(g, journal)
+        nuage = FauxNuage()
+        nuage.commandes_en_attente = lambda: [{"id": 7, "type": "solde", "parametres": {}}]
+        pilotage = Pilotage(nuage, [compte], journal, guichets=[porte])
+        self.assertEqual(pilotage.guichets, [nuage, porte])
+        self.assertEqual(pilotage._cle_en_vol(nuage, {"id": 7}), ("nuage", 7))
+        self.assertEqual(pilotage._cle_en_vol(porte, {"id": "sms:7"}), ("xafe", "sms:7"))
+        pilotage._marche = True
+        try:
+            for guichet in pilotage.guichets:
+                for d in guichet.commandes_en_attente():
+                    pilotage._distribuer(d, guichet)
+            self.assertTrue(_attendre(lambda: not pilotage._en_vol and nuage.republies == 1
+                                      and compte.sms_envoyes), "les deux demandes n'ont pas fini")
+        finally:
+            pilotage._marche = False
+        self.assertEqual([c.get("etat") for i, c in nuage.maj if i == 7], ["en_cours", "faite"])
+        self.assertEqual(g.messages[7]["etat"], "envoye")
+
+    def test_le_robot_confie_la_porte_au_meme_guichet(self):
+        """Le câblage dans `app.py` : XAFe actif, le robot donne la porte à
+        `Pilotage` — avec Bonzini, et SANS (un `Pilotage` est alors créé pour
+        elle seule). Retirer `guichets=` laissait la batterie verte."""
+        from tests.test_recus import _robot
+        g = self.guichet()
+        robot, compte, modem, journal = _robot()
+        _JOURNAUX.append(journal)
+        robot.xafe = self.porte(g, journal)
+        self.assertTrue(robot.xafe.actif)
+        robot.demarrer(bloquant=False)
+        try:
+            self.assertIsNotNone(robot.pilotage)
+            self.assertEqual(robot.pilotage.guichets, [robot.xafe])
+            self.assertTrue(robot.pilotage._marche)
+        finally:
+            robot.arreter()
+        # Avec un nuage : les deux guichets, la plateforme d'abord.
+        robot2, _, _, journal2 = _robot()
+        _JOURNAUX.append(journal2)
+        robot2.xafe = self.porte(g, journal2)
+        robot2.nuage = FauxSupabaseDocile()
+        robot2.demarrer(bloquant=False)
+        try:
+            self.assertEqual(robot2.pilotage.guichets, [robot2.nuage, robot2.xafe])
+        finally:
+            robot2.arreter()
+
+
+class FauxSupabaseDocile:
+    """Le strict nécessaire pour que `Robot.demarrer` croie à un nuage."""
+    actif = True
+
+    def demarrer(self, **kw):
+        return None
+
+    def commandes_en_attente(self):
+        return []
+
+    def commandes_abandonnees(self, avant):
+        return []
+
+    def reveiller(self):
+        pass
+
+    def publier_comptes(self, *a, **k):
+        return True
+
+    def enregistrer_terminal(self, *a, **k):
+        return True
 
 
 class TestLeJournalXafe(unittest.TestCase):

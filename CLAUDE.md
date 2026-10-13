@@ -45,7 +45,8 @@ node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait — et chez XAFe, même montant
-python3 -m unittest tests.test_xafe       # la porte XAFe : signée, verdicts ligne par ligne, témoins
+python3 -m unittest tests.test_xafe       # la porte XAFe : signée, verdicts ligne par ligne, le guichet des SMS, témoins
+python3 -m unittest tests.test_envoi_sms  # le robot ENVOIE un SMS : alphabet, PDU, dialogue CMGS, la carte
 python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
@@ -1170,6 +1171,16 @@ maintenant d'abord, la file écarte les cartes qui attendent
 donné ; une carte d'un autre réseau, qui n'aura JAMAIS de float, se clôt au
 lieu d'attendre (`SANS_FLOAT`). `TestLaFileNeSeBloquePas` rejoue la scène,
 avec la porte d'avant pour témoin (`PorteTeteDeFile`).
+
+**Un refus qu'on ne reconnaît pas est un silence.** Le robot a appris à
+envoyer un SMS (`AT+CMGS`, pour le code de vérification que XAFe lui confie).
+Le premier jet guettait les refus avec la règle qui servait déjà à l'USSD,
+`RE_ERREUR_AT` — qui ne connaît que « +CME ERROR ». Le service SMS, lui,
+répond « +CMS ERROR: 500 » : le faux port l'a dit, et le robot a attendu
+l'accusé une minute entière avant de conclure « peut-être remis » sur un
+message que le modem venait de REFUSER — c'est-à-dire de dire « je ne sais
+pas » là où il savait. Le harnais (`test_envoi_sms`) l'a vu au premier
+passage, en soixante secondes de trop. `RE_ERREUR_SMS` connaît les deux.
 
 **Une scène trop sage ne mesurait pas l'écartement.** La première version de
 cette scène semait cinquante encaissements qui attendent — moins qu'un lot :
