@@ -44,13 +44,11 @@ from .nuage import DEBOUNCE, DELAI, LOT, _heure_de_l_en_tete, _horodatage
 from .textes import t
 
 PAUSE = 60
-# Secondes entre deux relèves de commandes (chaque GET vaut signe de vie).
-# La relève n'est pas branchée (voir le guichet, plus bas) ; le banc de tests
-# le met à 0. Les autres réglages de la relève — la fenêtre de l'horloge, la
-# péremption d'une demande, la liste des verdicts définitifs — arriveront
-# AVEC le code qui les lit : une constante écrite et jamais branchée ne
-# protège de rien, elle rassure.
-PAS_RELEVE = 10
+# Les réglages de la RELÈVE des commandes — la cadence des GET, la fenêtre
+# de l'horloge, la péremption d'une demande, la liste des verdicts
+# définitifs — arriveront AVEC le code qui les lit (voir le guichet, plus
+# bas) : une constante écrite et jamais branchée ne protège de rien, elle
+# rassure.
 # Lectures de la file par tour, au plus. Chaque lecture doit clore des lignes
 # ou écarter une carte de plus, donc avancer ; si elle n'avance pas, c'est
 # un défaut — et il ne coûte qu'un tour, jamais un fil qui tourne à vide.
@@ -60,10 +58,39 @@ LECTURES_PAR_TOUR = 10
 #   (operateur, numero)  — la carte a son float chez XAFe ;
 #   None                 — la carte n'a pas ENCORE de numéro déclaré : ses
 #                          encaissements attendent (Telegram /reglages) ;
-#   SANS_FLOAT           — elle n'en aura JAMAIS (ni MTN ni Orange) : rien de
-#                          ce qu'elle encaisse n'est destiné à XAFe, la ligne
-#                          se clôt ici, sans réseau.
+#   Attente(motif)       — ils attendent AUSSI, pour une autre raison, que le
+#                          journal dit à la place de « pas de numéro » : la
+#                          carte n'est pas encore identifiée (le modem n'a pas
+#                          lu son IMSI), le numéro déclaré est mal formé… ;
+#   SANS_FLOAT           — elle n'en aura JAMAIS : son IMSI nomme un autre
+#                          réseau que MTN ou Orange. Rien de ce qu'elle
+#                          encaisse n'est destiné à XAFe, la ligne se clôt
+#                          ici, sans réseau.
+# « Jamais » ne se décide que sur une carte IDENTIFIÉE. Une carte dont le
+# modem a bafouillé l'IMSI au démarrage se nomme « SIM inconnue » jusqu'au
+# redémarrage ; la première porte la prenait pour un autre réseau et clôturait
+# ses encaissements MTN « sans float XAFe », pour toujours. Un état qu'on ne
+# connaît pas n'est pas un état qu'on connaît comme défavorable.
 SANS_FLOAT = False
+
+
+class Attente:
+    """« Pas encore », avec sa raison : la ligne attend, et le journal dit
+    pourquoi — sans quoi le propriétaire irait déclarer un numéro qui est
+    déjà là, ou chercher une panne qu'un redémarrage suffit à lever."""
+
+    __slots__ = ("motif",)
+
+    def __init__(self, motif):
+        self.motif = str(motif or "")
+
+    def __repr__(self):
+        return f"Attente({self.motif!r})"
+
+
+def _attend(float_):
+    """Vrai quand ce que le robot a rendu veut dire « la ligne attend »."""
+    return float_ is None or isinstance(float_, Attente)
 
 
 class PorteMuette(Exception):
@@ -105,7 +132,7 @@ class PorteXafe:
         self.derniere_erreur = None
         # Crochets posés par le robot.
         self.fournir_numeros = None     # () -> tuple des numéros du terminal
-        self.fournir_float = None       # (iccid) -> (op, numero) | None | SANS_FLOAT
+        self.fournir_float = None       # (iccid) -> (op, numero) | None | Attente | SANS_FLOAT
         self.sur_incident = None        # (source_id, erreur)
         self.secret_de = None           # (iccid) -> str | None — jamais posé ici
         self._marche = True
@@ -219,7 +246,10 @@ class PorteXafe:
         Un crochet qui LÈVE n'est pas « pas encore de numéro » : la ligne
         attend tout de même (on ne sait rien), mais l'avis est un autre —
         « le robot n'a pas su dire le float » — et /statut le porte. Sinon
-        le propriétaire irait déclarer un numéro qui est déjà là."""
+        le propriétaire irait déclarer un numéro qui est déjà là. Le nom de
+        l'exception sert de CLÉ (l'avis ne se répète pas tant que la panne
+        est la même) ; il n'entre pas dans la phrase — le propriétaire n'est
+        pas informaticien, et « AttributeError » ne lui dit rien."""
         if not self.fournir_float:
             return None
         try:
@@ -230,9 +260,11 @@ class PorteXafe:
                 self._crochet_en_panne[iccid] = nom
                 self._journaliser(t(
                     f"XAFe: the robot could not tell the float of card "
-                    f"{compte or '?'} ({nom}) — its payments wait.",
+                    f"{compte or '?'} — a defect on our side, not a number to "
+                    "declare; its payments wait.",
                     f"XAFe : le robot n'a pas su dire le float de la carte "
-                    f"{compte or '?'} ({nom}) — ses encaissements attendent."))
+                    f"{compte or '?'} — un défaut de notre côté, pas un numéro "
+                    "à déclarer ; ses encaissements attendent."))
             return None
         self._crochet_en_panne.pop(iccid, None)
         return float_
@@ -241,7 +273,8 @@ class PorteXafe:
                numeros):
         """La ligne à envoyer (dict) ; la PREUVE d'une ligne à clore ici, sans
         réseau (str : « sans objet », « sans float XAFe ») ; ou None — la
-        carte n'a pas encore de numéro déclaré, la ligne attend le sien.
+        ligne ATTEND : la carte n'a pas encore de numéro déclaré, ou n'est
+        pas encore identifiée, ou la ligne n'a pas de carte du tout.
 
         L'ANALYSE VIENT D'ABORD. Une pub, un code, un solde, une sortie ne
         regardent pas XAFe, quelle que soit la carte : les premiers jours, la
@@ -254,17 +287,27 @@ class PorteXafe:
             p = None
         if p is None or p.sens != "entree" or not p.montant or p.montant <= 0:
             return "sans objet"
-        # Sans ICCID, la carte n'a jamais été identifiée : aucun numéro ne
-        # viendra se poser sur cette ligne. Elle ne doit pas attendre.
+        # Sans ICCID, la ligne n'a pas de carte : le modem n'avait pas encore
+        # lu la puce quand ce SMS est entré. Aucun float ne peut s'y
+        # rattacher — et ce n'est PAS « un autre réseau » : la ligne ATTEND,
+        # écartée de la lecture (la file lit au-delà d'elle), avec un avis qui
+        # dit quoi faire. Une première porte la clôturait « sans float XAFe »,
+        # comme une Camtel : un encaissement réel, perdu pour XAFe sans
+        # recours — `remettre_sms_xafe` la rouvrait, le tour suivant la
+        # reclôturait à l'identique.
         if not iccid:
-            self._signaler_une_fois_par_carte(("float", iccid), t(
-                f"XAFe: card {compte or '?'} was never identified (no ICCID): "
-                "no number will ever be declared for it — what it receives "
-                "stays here.",
-                f"XAFe : la carte {compte or '?'} n'a jamais été identifiée "
-                "(pas d'ICCID) : aucun numéro ne viendra s'y poser — ce "
-                "qu'elle encaisse reste ici."))
-            return "sans float XAFe"
+            self._attendent_un_numero.add("")
+            self._signaler_une_fois_par_carte(("identite", ""), t(
+                "XAFe: a payment without an identified card (the modem had not "
+                "read the ICCID) waits: it can be tied to no float. Restart the "
+                "terminal so the next ones carry their card; for this one, "
+                "someone who knows sets the ICCID on the line.",
+                "XAFe : un encaissement sans carte identifiée (le modem n'avait "
+                "pas lu l'ICCID) attend : il ne peut être rattaché à aucun "
+                "float. Redémarrez le boîtier pour que les suivants portent "
+                "leur carte ; pour celui-ci, quelqu'un qui sait pose l'ICCID "
+                "sur la ligne."))
+            return None
         float_ = self._float_de(iccid, compte)
         if float_ is SANS_FLOAT:
             self._signaler_une_fois_par_carte(("float", iccid), t(
@@ -273,6 +316,15 @@ class PorteXafe:
                 f"XAFe : la carte {compte or '?'} est d'un réseau sans float "
                 "XAFe (ni MTN ni Orange) — ce qu'elle encaisse reste ici."))
             return "sans float XAFe"
+        if isinstance(float_, Attente):
+            # Elle attend, et le robot dit pourquoi : la phrase est la sienne,
+            # jamais « pas de numéro déclaré » — le numéro est peut-être là.
+            self._attendent_un_numero.add(iccid)
+            self._signaler_une_fois_par_carte(("attente", iccid, float_.motif), t(
+                f"XAFe: card {compte or '?'}: {float_.motif} — its payments wait.",
+                f"XAFe : la carte {compte or '?'} : {float_.motif} — ses "
+                "encaissements attendent."))
+            return None
         if float_ is None:
             self._attendent_un_numero.add(iccid)
             if iccid not in self._crochet_en_panne:
@@ -303,7 +355,9 @@ class PorteXafe:
         chaque tour : celle qui vient de le recevoir sort de la liste, et
         ses lignes repartent au même tour."""
         for iccid in list(self._attendent_un_numero):
-            if self._float_de(iccid) is not None:
+            # Une ligne sans carte ("") ne reçoit jamais de float : on ne
+            # redemande rien, elle reste écartée.
+            if iccid and not _attend(self._float_de(iccid)):
                 self._attendent_un_numero.discard(iccid)
         return tuple(self._attendent_un_numero)
 
@@ -537,11 +591,10 @@ class PorteXafe:
             return t("XAFe disabled", "XAFe désactivé")
         reste = self.journal.xafe_en_attente()
         if self._crochet_en_panne:
-            nom = sorted(set(self._crochet_en_panne.values()))[0]
-            return t(f"XAFe: the robot cannot tell a card's float ({nom}) · "
-                     f"{reste} waiting",
-                     f"XAFe : le robot ne sait pas dire le float d'une carte "
-                     f"({nom}) · {reste} en attente")
+            return t("XAFe: the robot cannot tell a card's float (a defect on "
+                     f"our side) · {reste} waiting",
+                     "XAFe : le robot ne sait pas dire le float d'une carte "
+                     f"(défaut de notre côté) · {reste} en attente")
         erreur = self.derniere_erreur
         if erreur == "signature refusée":
             return t(f"XAFe refuses the signature · {reste} waiting",

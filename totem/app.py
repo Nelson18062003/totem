@@ -36,8 +36,8 @@ from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
 from .recu import (heure_en_lettres, numero_de_recu, numero_lisible,
                    recu_solde, recu_transfert)
 from .codes import catalogue, cle as cle_code
-from .carte import operateur_xafe
-from .xafe import SANS_FLOAT
+from .carte import operateur_depuis_imsi, operateur_xafe
+from .xafe import SANS_FLOAT, Attente
 from .compte import TELEGRAM, ErreurModem, SessionTenue, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
@@ -1842,24 +1842,56 @@ class Robot:
 
     def _carte_pour_xafe(self, iccid):
         """(opérateur XAFe, numéro à 9 chiffres) de la carte ; None si elle
-        n'a pas encore de numéro déclaré (ses lignes attendent) ; `SANS_FLOAT`
-        si elle n'en aura jamais — ni MTN ni Orange, XAFe n'a pas de float
-        pour elle, rien de ce qu'elle encaisse ne lui est destiné. Sans
-        numéro déclaré, XAFe ne saurait pas à quel float rattacher l'argent —
-        et JAMAIS la première carte par défaut (`_compte_par_iccid` le fait :
-        un encaissement attribué au mauvais float créditerait le mauvais
-        compte)."""
+        n'a pas encore de numéro déclaré (ses lignes attendent) ; `Attente`
+        si elles attendent pour une autre raison, dite ; `SANS_FLOAT` si elle
+        n'en aura jamais — son IMSI nomme un autre réseau que MTN ou Orange,
+        XAFe n'a pas de float pour elle, rien de ce qu'elle encaisse ne lui
+        est destiné. Sans numéro déclaré, XAFe ne saurait pas à quel float
+        rattacher l'argent — et JAMAIS la première carte par défaut
+        (`_compte_par_iccid` le fait : un encaissement attribué au mauvais
+        float créditerait le mauvais compte).
+
+        « JAMAIS » SE DÉCIDE SUR L'IMSI, PAS SUR LE NOM. `Carte.operateur`
+        dit « SIM inconnue » — ou le nom du réseau VISITÉ — dès que le modem
+        n'a pas lu l'IMSI, ce qui arrive couramment au démarrage (AT+CIMI
+        pendant que la SIM s'éveille), et l'identité ne se refait pas tant que
+        l'ICCID ne change pas. La première porte lisait ce nom : une carte
+        MTN bien réelle, bafouillée au démarrage, voyait chaque encaissement
+        clos « sans float XAFe » jusqu'au redémarrage — et pour toujours
+        après. Ici, une carte sans IMSI n'est pas « d'un autre réseau » :
+        elle n'est pas encore identifiée, et ses lignes attendent."""
         compte = next((c for c in self.comptes
                        if iccid and c.carte.iccid == iccid), None)
         if compte is None:
             return None
-        op = operateur_xafe(compte.carte.operateur)
+        imsi = compte.carte.imsi or ""
+        if len(imsi) < 5:
+            return Attente(t(
+                "the robot has not identified it yet (the modem did not read "
+                "its IMSI) — restart the terminal",
+                "le robot ne l'a pas encore identifiée (le modem n'a pas lu "
+                "son IMSI) — redémarrez le boîtier"))
+        # L'IMSI est là : il nomme le réseau d'origine de la puce, positivement.
+        # Ni 624 01 (MTN) ni 624 02 (Orange), c'est un autre réseau — connu
+        # (Camtel, Nexttel, une puce française) ou non : pas de float XAFe.
+        op = operateur_xafe(operateur_depuis_imsi(imsi))
         if not op:
             return SANS_FLOAT
-        numero = re.sub(r"\D", "", self._numero_du_compte(compte) or "")[-9:]
-        if len(numero) != 9:
+        chiffres = re.sub(r"\D", "", self._numero_du_compte(compte) or "")
+        if not chiffres:
             return None
-        return op, numero
+        if len(chiffres) == 12 and chiffres.startswith("237"):
+            chiffres = chiffres[3:]
+        if len(chiffres) != 9:
+            # Un numéro EST déclaré, mais mal formé (une faute de frappe dans
+            # /reglages ou [numeros]) : dire « pas de numéro déclaré » ferait
+            # chercher au mauvais endroit.
+            return Attente(t(
+                f"its declared number is malformed ({len(chiffres)} digits, "
+                "9 expected) — correct it (Telegram /reglages)",
+                f"son numéro déclaré est mal formé ({len(chiffres)} chiffres "
+                "au lieu de 9) — corrigez-le (Telegram /reglages)"))
+        return op, chiffres
 
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):

@@ -71,12 +71,17 @@ ligne :
 
 ```
 🔁 XAFe à jour
-🔁 XAFe · 3 en attente              ← réseau coupé ou carte sans numéro
+🔁 XAFe · 3 en attente              ← réseau coupé, carte sans numéro, ou carte pas encore identifiée (le journal dit laquelle)
 🔁 XAFe injoignable · 3 en attente  ← rien n'est perdu, la file se vide au retour
 🔁 XAFe refuse la signature · 3 en attente  ← clé fausse, identifiant du boîtier inconnu, ou horloge décalée (le journal le dit)
 🔁 XAFe moteur en panne · 3 en attente      ← XAFe a répondu « erreur » : on réessaie
-🔁 XAFe : le robot ne sait pas dire le float d'une carte (…) · 3 en attente  ← un défaut du robot, pas un numéro à déclarer
+🔁 XAFe refuse le lot · 3 en attente        ← un défaut de NOTRE côté (lot mal formé) : à remonter, rien n'est perdu
+🔁 XAFe : file illisible (défaut de notre côté) · 3 en attente  ← la file n'avance plus : à remonter, le tour est perdu, rien d'autre
+🔁 XAFe : le robot ne sait pas dire le float d'une carte (défaut de notre côté) · 3 en attente  ← un défaut du robot, pas un numéro à déclarer
 ```
+
+Les trois dernières lignes désignent un défaut de notre côté, pas une
+manœuvre à faire sur le Pi : les remonter telles quelles.
 
 Le **journal du Pi** — celui que Bonzini relit et montre dans « Ce qui s'est
 passé » — porte une ligne par encaissement déposé (« XAFe : SMS 12 crédité
@@ -99,9 +104,32 @@ la file XAFe écarte les cartes sans numéro et lit au-delà. Et ce qui n'est
 pas un encaissement — publicité, code, solde — se clôt « sans objet » quelle
 que soit la carte, déclarée ou non.
 
-Une carte d'un **autre réseau** (Camtel, Nexttel) n'a pas de float XAFe, et
-n'en aura jamais : ses encaissements sont clos « sans float XAFe », sans
-requête, et le journal le dit une fois. Rien n'attend.
+Une carte d'un **autre réseau** (Camtel, Nexttel, une puce étrangère) n'a pas
+de float XAFe, et n'en aura jamais : ses encaissements sont clos « sans float
+XAFe », sans requête, et le journal le dit une fois. Rien n'attend.
+
+**« Jamais » ne se décide que sur une carte identifiée.** Le réseau d'une
+carte se lit dans son IMSI, et le modem le lit mal au démarrage de temps en
+temps : la carte s'affiche alors « SIM inconnue » (ou du nom du réseau
+visité) jusqu'au redémarrage du boîtier. Une telle carte n'est pas « d'un
+autre réseau » : elle n'est **pas encore identifiée**, et ses encaissements
+**attendent** — le journal le dit une fois (« le robot ne l'a pas encore
+identifiée (le modem n'a pas lu son IMSI) — redémarrez le boîtier »), et ils
+partent au redémarrage, avec le float de leur carte. La première version du
+robot les clôturait « sans float XAFe », pour toujours.
+
+Même règle pour un SMS entré **avant que le modem n'ait lu la puce** (ligne
+sans ICCID) : il ne peut être rattaché à aucun float, il attend, écarté de
+la file (il ne retient pas les autres), avec un avis qui dit quoi faire —
+redémarrer le boîtier pour que les suivants portent leur carte ; pour
+celui-là, quelqu'un qui sait pose l'ICCID sur la ligne, et il part au tour
+même. Tant qu'il attend, `/statut` le compte « en attente » : c'est voulu,
+une ligne qui attend une main se voit.
+
+Un numéro déclaré **mal formé** (8 ou 10 chiffres : une faute de frappe) n'est
+pas « pas de numéro » : le journal dit « son numéro déclaré est mal formé
+(10 chiffres au lieu de 9) — corrigez-le », et la ligne attend la
+correction. L'indicatif « 237 » devant les neuf chiffres est admis.
 
 Le numéro déclaré doit être **celui que XAFe a inscrit** pour ce float. À la
 mise en service, carte par carte, avec l'équipe XAFe.
@@ -116,8 +144,13 @@ mise en service, carte par carte, avec l'équipe XAFe.
   même réponse à la même ligne, rien n'est crédité deux fois.
 - Les codes, les publicités, les soldes, les sorties d'argent, les SMS
   incompris — « sans objet », sans requête.
+- Les encaissements d'une **carte d'un autre réseau** (son IMSI nomme autre
+  chose que MTN ou Orange Cameroun) — « sans float XAFe », sans requête. Pas
+  ceux d'une carte que le robot n'a pas encore identifiée : eux attendent.
 - Les **transferts** XAFe (de l'argent à composer) : ils ne sont pas même
-  relevés tant que `transferts = non`. Voir la question du code secret.
+  relevés tant que `transferts = non` — et cette version du robot ne les
+  relève pas davantage avec `oui` : la valeur est lue et rangée, rien ne la
+  consulte encore. Voir la question du code secret.
 
 ---
 
@@ -164,4 +197,10 @@ Il est **retenu** chez XAFe jusqu'à ce que le client déclare l'ID de sa
 transaction. Le journal du Pi porte, pour chaque SMS, « credite XAFe-DP-… »,
 « retenue n <motif> », « ignore », « refuse <motif> », « sans objet » ou
 « sans float XAFe » (colonne `xafe_reponse`) : c'est là qu'on lit ce qui
-s'est passé.
+s'est passé. Une ligne encore à 0 (`envoye_xafe`) attend — un numéro, une
+identification, une main — et le journal des événements dit laquelle.
+
+**« Rouvrir une période, c'est déverser des mois chez un tiers »** — oui :
+`remettre_sms_xafe()` sans argument rouvre TOUT, l'historique « avant XAFe »
+compris. Toujours borner : `remettre_sms_xafe(depuis_id=…)` pour une
+période, `remettre_sms_xafe(iccid=…)` pour une carte.

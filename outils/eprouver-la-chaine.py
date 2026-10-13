@@ -347,9 +347,12 @@ def main():
         # (`remettre_sms_xafe`) : les trois encaissements repassent par la
         # vraie porte, qui rend la MÊME réponse (« deja ») — rien n'est
         # crédité deux fois, et chaque ligne retrouve sa propre référence.
+        # Toujours BORNÉE (`depuis_id`) : sans argument, le geste rouvrirait
+        # aussi l'historique « avant XAFe » — des mois d'encaissements
+        # déversés chez un tiers d'un coup. Le harnais sert de modèle.
         preuves_avant = dict(journal.conn.execute(
             "SELECT id, xafe_reponse FROM sms WHERE xafe_reponse LIKE 'credite %'"))
-        rouvertes = journal.remettre_sms_xafe()
+        rouvertes = journal.remettre_sms_xafe(depuis_id=1)
         requetes_avant = len(faux_xafe.requetes)
         reclos = xafe.pousser_paiements()
         preuves_apres = dict(journal.conn.execute(
