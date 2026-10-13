@@ -21,7 +21,11 @@ CE QUE CES TESTS GARDENT :
      lignes — LES SIENNES SEULEMENT, la file des autres cartes ne l'attend
      pas, et une publicité se clôt quelle que soit la carte ; une carte d'un
      autre réseau ne retient rien ; un encaissement derrière cent publicités
-     part au même tour ; un verdict désaligné ne marque pas une autre ligne ;
+     part au même tour ; CENT VINGT encaissements qui attendent ne font pas
+     tourner la file sans fin — l'écartement est transmis à la lecture, et
+     la lecture est bornée ; un crochet qui lève n'est pas « pas de numéro » ;
+     lot après lot tant qu'un lot est plein ; une file vide ne se dit plus
+     injoignable ; un verdict désaligné ne marque pas une autre ligne ;
      l'historique ne part pas à la naissance de la colonne ; aucun secret ni
      donnée personnelle au journal ; le réveil est immédiat ; le démarrage du
      robot lance la porte ; sans configuration, rien ne change — et une porte
@@ -31,7 +35,10 @@ CHAQUE EXIGENCE A SON TÉMOIN : `PorteDAvant` (marque avant la requête),
 `PorteToutMarque` (un 200 = tout marqué), `PorteSansRecalage` (ne lit pas
 l'heure de la base), `PorteQuiSigneLeMauvaisCorps` (signe une sérialisation,
 envoie une autre), `PorteTeteDeFile` (la porte des premiers jours : le float
-avant la lecture, un seul lot, personne d'écarté), `PorteSansControleDePosition`
+avant la lecture, un seul lot, personne d'écarté), `PorteSansEcartement` (lit
+au-delà du lot mais ne transmet pas les cartes écartées à la lecture : cent
+encaissements qui attendent remplissent chaque lot, pour toujours),
+`PorteUnSeulLot` (s'arrête après un lot plein), `PorteSansControleDePosition`
 (zippe les verdicts à l'aveugle), `PorteQuiMarqueEnvoye` (touche au drapeau de
 Bonzini). Ce sont des copies figées, pas des appels au code du jour.
 
@@ -473,6 +480,73 @@ class PorteTeteDeFile(PorteXafe):
         return len(a_marquer)
 
 
+class PorteSansEcartement(PorteXafe):
+    """LE TÉMOIN : la porte du jour, à UN appel près — `sms_a_pousser_xafe(LOT)`
+    sans `sauf_iccid`. Elle écarte les cartes dans sa tête, jamais dans la
+    lecture : dès que cent lignes ATTENDENT (pas des publicités, qui se
+    closent), chaque lot est fait d'elles, rien ne part, et la lecture
+    suivante rend les mêmes cent. Figée AVEC la borne et `_marche`, pour
+    qu'un témoin ne tourne pas sans fin dans la batterie : c'est la ligne de
+    la carte déclarée qui doit rester à 0, pas le fil qui doit pendre."""
+
+    def pousser_paiements(self):
+        if not self.actif:
+            return 0
+        numeros = tuple(self.fournir_numeros()) if self.fournir_numeros else ()
+        ecartees = set(self._cartes_en_attente())
+        lectures = 0
+        while self._marche:
+            if lectures >= module_xafe.LECTURES_PAR_TOUR:
+                return 0
+            lectures += 1
+            lignes = self.journal.sms_a_pousser_xafe(module_xafe.LOT)   # sans sauf_iccid
+            if not lignes:
+                return 0
+            charge, closes = [], []
+            for (i, date, exp, texte, compte, iccid, emis) in lignes:
+                l = self._ligne(i, date, exp, texte, compte, iccid, emis, numeros)
+                if l is None:
+                    ecartees.add(iccid)
+                elif isinstance(l, str):
+                    closes.append((i, l))
+                else:
+                    charge.append(l)
+            if closes:
+                self.journal.marquer_sms_xafe(closes)
+            if charge:
+                break
+            if len(lignes) < module_xafe.LOT:
+                return 0
+        else:
+            return 0
+        try:
+            statut, reponse, _ = self._appel("POST", "totem-sms", {"lignes": charge})
+        except module_xafe.PorteMuette as e:
+            self.derniere_erreur = str(e)
+            return 0
+        if statut != 200:
+            return 0
+        a_marquer = []
+        for l, v in zip(charge, reponse if isinstance(reponse, list) else [reponse]):
+            if isinstance(v, dict) and v.get("resultat") == "credite":
+                a_marquer.append((l["source_id"], f"credite {v.get('reference', '')}"))
+        self.journal.marquer_sms_xafe(a_marquer)
+        return len(a_marquer)
+
+
+class PorteUnSeulLot(PorteXafe):
+    """LE TÉMOIN : `_pousser_tout` qui s'arrête après le premier lot, plein
+    ou non. Après des mois rouverts, la file se viderait à cent lignes par
+    pause (une minute) au lieu de partir d'un trait."""
+
+    def _pousser_tout(self):
+        total = 0
+        while self._marche:
+            total += self.pousser_paiements()
+            break
+        return total
+
+
 class PorteSansControleDePosition(PorteXafe):
     """LE TÉMOIN : zippe les verdicts sur les lignes à l'aveugle, sans
     regarder leur `source_id`. Une réponse de moins, et chaque ligne reçoit
@@ -515,8 +589,27 @@ class PorteQuiMarqueEnvoye(PorteXafe):
 
 # --- aides -------------------------------------------------------------------
 
-def journal_avec_carte(numero="677000000"):
+_JOURNAUX = []
+
+
+def _journal():
+    """Un journal en mémoire, fermé en fin de module : sans cela, chacun
+    laissait un « ResourceWarning: unclosed database » au ramassage."""
     journal = Journal(":memory:")
+    _JOURNAUX.append(journal)
+    return journal
+
+
+def tearDownModule():
+    for journal in _JOURNAUX:
+        try:
+            journal.conn.close()
+        except Exception:
+            pass
+
+
+def journal_avec_carte(numero="677000000"):
+    journal = _journal()
     journal.voir_carte(FausseCarteMTN())
     if numero:
         journal.definir_identite(ICCID, numero=numero)
@@ -526,7 +619,7 @@ def journal_avec_carte(numero="677000000"):
 def journal_deux_cartes():
     """Deux cartes MTN dans le boîtier ; SEULE la ·0022 est déclarée chez
     XAFe — le cas ordinaire à la mise en service."""
-    journal = Journal(":memory:")
+    journal = _journal()
     journal.voir_carte(FausseCarteMTN())
     journal.voir_carte(FausseCarteMTN2())
     journal.definir_identite(ICCID_2, numero="677000022")
@@ -548,6 +641,17 @@ def _attendre(condition, delai=10):
             return True
         time.sleep(0.05)
     return condition()
+
+
+def _dans_un_fil(appel, delai=10):
+    """(terminé, résultat) : `appel()` joué dans un fil joint à `delai`. Un
+    fil encore vivant est un ÉCHEC de l'essai (« la file tourne sans fin »),
+    pas un blocage de la batterie."""
+    boite = {}
+    fil = threading.Thread(target=lambda: boite.setdefault("r", appel()), daemon=True)
+    fil.start()
+    fil.join(delai)
+    return (not fil.is_alive()), boite.get("r")
 
 
 def _etat(journal, id_):
@@ -582,6 +686,7 @@ class Banc(unittest.TestCase):
     def porte(self, guichet, journal, classe=PorteXafe, **kw):
         p = porte(guichet, journal, classe, **kw)
         self.portes.append(p)
+        _JOURNAUX.append(journal)
         return p
 
 
@@ -592,7 +697,7 @@ class Banc(unittest.TestCase):
 class TestLaSignature(Banc):
 
     def test_la_signature_python_est_celle_de_la_porte(self):
-        p = PorteXafe("http://127.0.0.1:1", "secret-akwa", "akwa-1", Journal(":memory:"))
+        p = PorteXafe("http://127.0.0.1:1", "secret-akwa", "akwa-1", _journal())
         for cle, ts, corps, attendue in VECTEURS:
             self.assertEqual(p._signer(ts, corps), attendue)
         # TÉMOIN : la même charge, sérialisée avec les séparateurs par défaut,
@@ -938,29 +1043,42 @@ class TestPousser(Banc):
             temoin.conn.close()
 
     def test_aucun_secret_ni_donnee_personnelle_au_journal(self):
-        g = self.guichet()
-        journal = journal_avec_carte(numero=None)
-        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
-        p = self.porte(g, journal)
-        p.pousser_paiements()                      # carte sans numéro
-        journal.definir_identite(ICCID, numero="677000000")
-        g.refuser_signatures = 1
-        p.pousser_paiements()                      # signature refusée
-        g.verdicts = {1: "refuse"}
-        p.pousser_paiements()                      # refus
-        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
-        g.verdicts = {}
-        p.pousser_paiements()                      # crédit
-        evts = [e for e in _evenements(journal) if "XAFe" in e]
-        self.assertTrue(evts)
-        for e in evts:
-            self.assertNotIn("secret-akwa", e)
-            self.assertIsNone(re.search(r"[0-9a-f]{64}", e))
-            for interdit in ("677123456", "25000", "25 000", "NGONO", "677000000"):
-                self.assertNotIn(interdit, e)
+        """Dans les DEUX langues : la batterie tourne en anglais, et une
+        donnée glissée dans la seule phrase française — celle qui part au
+        journal d'un Pi réglé `langue = fr` — passait inaperçue."""
+        from totem import textes
+        self.addCleanup(textes.definir_langue, textes.langue_active())
+        for langue in ("en", "fr"):
+            with self.subTest(langue=langue):
+                textes.definir_langue(langue)
+                g = self.guichet()
+                journal = journal_avec_carte(numero=None)
+                journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+                p = self.porte(g, journal)
+                p.pousser_paiements()                      # carte sans numéro
+                journal.definir_identite(ICCID, numero="677000000")
+                g.refuser_signatures = 1
+                p.pousser_paiements()                      # signature refusée
+                g.verdicts = {1: "refuse"}
+                p.pousser_paiements()                      # refus
+                journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+                g.verdicts = {}
+                p.pousser_paiements()                      # crédit
+                journal.sms("MobileMoney", SMS_ENTREE, "Camtel ·0033", ICCID_CAMTEL)
+                journal.sms("MobileMoney", SMS_ENTREE, "", "")
+                vrai = p.fournir_float
+                p.fournir_float = lambda i: SANS_FLOAT if i == ICCID_CAMTEL else vrai(i)
+                p.pousser_paiements()                      # sans float, sans ICCID
+                evts = [e for e in _evenements(journal) if "XAFe" in e]
+                self.assertGreaterEqual(len(evts), 5, evts)
+                for e in evts:
+                    self.assertNotIn("secret-akwa", e)
+                    self.assertIsNone(re.search(r"[0-9a-f]{64}", e))
+                    for interdit in ("677123456", "25000", "25 000", "NGONO", "677000000"):
+                        self.assertNotIn(interdit, e)
 
     def test_inerte_sans_configuration(self):
-        journal = Journal(":memory:")
+        journal = _journal()
         p = PorteXafe("", "", "", journal)
         self.assertFalse(p.actif)
         journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
@@ -986,14 +1104,28 @@ class TestPousser(Banc):
         def releve_bonzini(classe_porte):
             FauxSupabase.recu = []
             robot, compte, modem, j = _robot()
+            _JOURNAUX.append(j)
+            # Une carte identifiée et DÉCLARÉE, comme une vraie puce : sans
+            # ICCID, la porte clôt la ligne ici (« sans float XAFe ») et ne
+            # fait aucune requête — la « porte active » n'envoyait rien, et
+            # l'essai mesurait moins qu'il ne disait.
+            from totem.carte import Carte
+            compte.carte = Carte(iccid="89237020000000004432", imsi="624020000000001")
+            j.voir_carte(compte.carte)
+            j.definir_identite(compte.carte.iccid, numero="696103864")
+            guichet = None
             if classe_porte is not None:
-                robot.xafe = self.porte(self.guichet(), j, classe_porte)
+                guichet = self.guichet()
+                robot.xafe = self.porte(guichet, j, classe_porte)
             # Le même texte dans les deux cas : le simulateur tire un
             # numéro au hasard, et deux relèves ne se compareraient pas.
             modem.sms_en_attente.append((1, modem.service, SMS_ENTREE))
             robot._relever_sms(compte)
             if robot.xafe is not None:
                 robot.xafe.pousser_paiements()      # la porte passe D'ABORD
+                self.assertEqual(len(guichet.credites), 1,
+                                 "la porte active n'a rien déposé chez XAFe : "
+                                 "la comparaison ne mesure pas une porte qui passe")
             nuage = Nuage(f"http://127.0.0.1:{serveur.server_address[1]}",
                           "fausse-cle", "douala", j)
             nuage.fournir_numeros = robot._nos_numeros
@@ -1015,7 +1147,7 @@ class TestPousser(Banc):
             serveur.server_close()
 
     def test_https_ou_rien(self):
-        journal = Journal(":memory:")
+        journal = _journal()
         p = PorteXafe("http://xafe.exemple.cm", "k", "akwa-1", journal)
         self.assertFalse(p.actif)
         self.assertTrue(any("Adresse XAFe refusée" in e or "XAFe address refused" in e
@@ -1057,20 +1189,42 @@ class TestLaFileNeSeBloquePas(Banc):
     cherchait le float AVANT de lire le SMS (des publicités attendaient un
     numéro), et lisait le lot par id sans écarter personne."""
 
+    # Cent vingt-deux encaissements de la carte NON déclarée : PLUS qu'un lot
+    # de lignes qui attendent. Avec cinquante seulement, la mutation qui perd
+    # l'écartement (`sms_a_pousser_xafe(LOT)` sans `sauf_iccid`) laissait les
+    # trente tests verts : le lot de cent contenait encore l'encaissement
+    # déclaré. Avec plus de cent, le premier lot n'est fait que de lignes qui
+    # attendent, et la lecture suivante rend les mêmes — pour toujours.
+    # Les publicités sont dans le PREMIER lot : une publicité derrière le
+    # premier lot d'une carte écartée attend avec sa carte (c'est le prix de
+    # l'écartement : la carte n'est plus relue ce tour-ci), et se clôt « sans
+    # objet » dès que le numéro arrive — elle ne retient personne.
+    TEXTES_0011 = [SMS_PUB if (i % 13 == 0 and i < 100) else SMS_ENTREE
+                   for i in range(130)]
+    ENCAISSEMENTS_QUI_ATTENDENT = TEXTES_0011.count(SMS_ENTREE)      # 122
+
     def tete_de_file(self, classe):
+        """(guichet, journal, porte, id de la ligne déclarée, résultat du
+        premier tour, terminé). Le tour se joue dans un FIL joint à dix
+        secondes : une file qui tourne sans fin est un échec mesuré, pas une
+        batterie qui pend."""
         g = self.guichet()
         journal = journal_deux_cartes()
-        # La carte NON déclarée parle la première, cent fois : une publicité
-        # sur deux, un encaissement sur deux.
-        for i in range(100):
-            journal.sms("MobileMoney", SMS_PUB if i % 2 else SMS_ENTREE,
-                        "MTN ·0011", ICCID)
+        # La carte NON déclarée parle la première : cent vingt-deux
+        # encaissements, et huit publicités dans le premier lot.
+        for texte in self.TEXTES_0011:
+            journal.sms("MobileMoney", texte, "MTN ·0011", ICCID)
         declaree = journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0022", ICCID_2)
         p = self.porte(g, journal, classe)
-        return g, journal, p, declaree, p.pousser_paiements()
+        termine, closes = _dans_un_fil(p.pousser_paiements)
+        if not termine:
+            p.arreter()         # `while self._marche` : le tour sort avec la porte
+        return g, journal, p, declaree, closes, termine
 
     def test_une_carte_sans_numero_ne_retient_que_ses_lignes(self):
-        g, journal, p, declaree, closes = self.tete_de_file(PorteXafe)
+        g, journal, p, declaree, closes, termine = self.tete_de_file(PorteXafe)
+        self.assertTrue(termine, "la file tourne sans fin : le tour n'est pas "
+                                 "revenu en dix secondes")
         self.assertEqual(closes, 1, "l'encaissement de la carte déclarée part au premier tour")
         self.assertEqual(len(g.requetes), 1)
         self.assertEqual(_etat(journal, declaree)[:2], (1, "credite XAFe-DP-000001"))
@@ -1078,32 +1232,185 @@ class TestLaFileNeSeBloquePas(Banc):
         # Les publicités de la carte non déclarée sont closes SANS attendre
         # un numéro dont elles n'ont aucun besoin ; ses encaissements, eux,
         # attendent — et seulement eux.
-        for i in range(1, 101):
+        for i, texte in enumerate(self.TEXTES_0011, start=1):
             self.assertEqual(_etat(journal, i)[:2],
-                             (1, "sans objet") if (i - 1) % 2 else (0, None), i)
-        self.assertEqual(journal.xafe_en_attente(), 50)
-        avis = [e for e in _evenements(journal)
-                if "pas de numéro déclaré" in e or "no declared number" in e]
-        self.assertEqual(len(avis), 1)
-        self.assertIn("0011", avis[0])
+                             (1, "sans objet") if texte == SMS_PUB else (0, None), i)
+        self.assertEqual(journal.xafe_en_attente(), self.ENCAISSEMENTS_QUI_ATTENDENT)
+        avis_sur = lambda: [e for e in _evenements(journal)
+                            if "pas de numéro déclaré" in e or "no declared number" in e]
+        self.assertEqual(len(avis_sur()), 1)
+        self.assertIn("0011", avis_sur()[0])
+        self.assertIsNone(p.derniere_erreur, "rien ne cloche : des lignes attendent, c'est tout")
         # Au tour suivant, les lignes retenues ne sont même pas relues : la
-        # file les écarte, aucune requête de plus.
-        self.assertEqual(p.pousser_paiements(), 0)
+        # file les écarte, aucune requête de plus, et l'avis ne se répète pas
+        # (la liste est RELUE : affirmée sur l'ancienne, elle ne pouvait pas
+        # échouer).
+        termine, closes = _dans_un_fil(p.pousser_paiements)
+        self.assertTrue(termine and closes == 0, (termine, closes))
         self.assertEqual(len(g.requetes), 1)
-        self.assertEqual(len(avis), 1)
-        # Le numéro arrive (Telegram /reglages) : ses cinquante lignes partent
-        # au tour même, avec SON float.
+        self.assertEqual(len(avis_sur()), 1, "l'avis ne se répète pas")
+        # Le numéro arrive (Telegram /reglages) : ses cent vingt lignes partent
+        # d'un trait — lot après lot — avec SON float.
         journal.definir_identite(ICCID, numero="677000011")
-        self.assertEqual(p.pousser_paiements(), 50)
+        termine, envoyes = _dans_un_fil(p._pousser_tout)
+        self.assertTrue(termine)
+        self.assertEqual(envoyes, self.ENCAISSEMENTS_QUI_ATTENDENT)
         self.assertEqual(journal.xafe_en_attente(), 0)
         self.assertEqual({l["float_numero"] for l in g.lignes_recues()[1:]}, {"677000011"})
-        self.assertEqual(len(g.credites), 51)
-        # TÉMOIN : la porte des premiers jours laisse la ligne déclarée à 0.
-        g2, j2, _, declaree2, closes2 = self.tete_de_file(PorteTeteDeFile)
-        self.assertTrue(closes2 == 0 and g2.requetes == []
+        self.assertEqual(len(g.credites), self.ENCAISSEMENTS_QUI_ATTENDENT + 1)
+        # TÉMOIN 1 : la porte des premiers jours laisse la ligne déclarée à 0.
+        g2, j2, _, declaree2, closes2, termine2 = self.tete_de_file(PorteTeteDeFile)
+        self.assertTrue(termine2 and closes2 == 0 and g2.requetes == []
                         and _etat(j2, declaree2)[:2] == (0, None),
                         "LE TÉMOIN PASSE : la porte d'avant dépose la ligne de la "
                         "carte déclarée, l'essai ne mesure rien")
+        # TÉMOIN 2 : la porte du jour SANS l'écartement transmis à la lecture.
+        # Cent vingt lignes qui attendent remplissent chaque lot ; la ligne
+        # déclarée n'est jamais lue. (Figée avec sa borne : elle rend 0 au
+        # lieu de pendre — c'est la ligne qu'on regarde, pas le fil.)
+        g3, j3, _, declaree3, closes3, termine3 = self.tete_de_file(PorteSansEcartement)
+        self.assertFalse(closes3 == 1 and _etat(j3, declaree3)[:2] == (1, "credite XAFe-DP-000001"),
+                         "LE TÉMOIN PASSE : sans transmettre les cartes écartées à "
+                         "la lecture, la ligne déclarée part quand même — la scène "
+                         "ne porte pas assez de lignes qui attendent")
+        self.assertEqual(g3.requetes, [], "le témoin n'a rien envoyé : sa file ne bouge pas")
+
+    def test_la_lecture_est_bornee_et_s_arrete_avec_la_porte(self):
+        """Si l'écartement se perdait au niveau de la BASE (une lecture qui
+        ignore `sauf_iccid`), la porte du jour ne doit pas tourner sans fin :
+        dix lots, puis le tour est perdu, dit au journal et à /statut — et
+        `arreter()` sort du tour même sans la borne. Sur un Pi, la scène est
+        réelle : une carte oubliée dans /reglages avec plus de cent
+        encaissements, ou une période rouverte par `remettre_sms_xafe`."""
+        g = self.guichet()
+        journal = journal_deux_cartes()
+        for _ in range(self.ENCAISSEMENTS_QUI_ATTENDENT):
+            journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        declaree = journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0022", ICCID_2)
+        p = self.porte(g, journal)
+        vraie = journal.sms_a_pousser_xafe
+        lectures = []
+
+        def sans_ecartement(limite=100, sauf_iccid=()):
+            lectures.append(len(sauf_iccid))
+            return vraie(limite)                    # la base oublie l'écartement
+        journal.sms_a_pousser_xafe = sans_ecartement
+        termine, closes = _dans_un_fil(p.pousser_paiements)
+        self.assertTrue(termine, "la file tourne sans fin malgré la borne")
+        self.assertEqual(closes, 0)
+        self.assertEqual(len(lectures), module_xafe.LECTURES_PAR_TOUR)
+        self.assertTrue(all(n >= 1 for n in lectures[1:]),
+                        "la porte transmettait bien les cartes écartées : c'est la base qui les a perdues")
+        self.assertEqual(g.requetes, [])
+        self.assertEqual(_etat(journal, declaree)[:2], (0, None), "rien n'est perdu : la ligne attend")
+        self.assertEqual(p.derniere_erreur, "file illisible")
+        self.assertTrue("file illisible" in p.resume() or "queue unreadable" in p.resume(), p.resume())
+        avis = [e for e in _evenements(journal) if "dix lots" in e or "ten batches" in e]
+        self.assertEqual(len(avis), 1)
+        # Le tour suivant ne répète pas l'avis.
+        termine, _ = _dans_un_fil(p.pousser_paiements)
+        self.assertTrue(termine)
+        self.assertEqual(len([e for e in _evenements(journal) if "dix lots" in e or "ten batches" in e]), 1)
+        # Sans la borne, c'est `arreter()` qui sort du tour.
+        sauve = module_xafe.LECTURES_PAR_TOUR
+        module_xafe.LECTURES_PAR_TOUR = 10 ** 9
+        try:
+            threading.Timer(0.5, p.arreter).start()
+            termine, closes = _dans_un_fil(p.pousser_paiements, delai=10)
+        finally:
+            module_xafe.LECTURES_PAR_TOUR = sauve
+        self.assertTrue(termine, "`arreter()` ne sort pas du tour : le fil tournerait à vide")
+        self.assertEqual(closes, 0)
+        # La base retrouve l'écartement, la porte repart : la ligne déclarée part.
+        journal.sms_a_pousser_xafe = vraie
+        p._marche = True
+        self.assertEqual(p.pousser_paiements(), 1)
+        self.assertEqual(_etat(journal, declaree)[:2], (1, "credite XAFe-DP-000001"))
+
+    def test_lot_apres_lot_tant_qu_un_lot_est_plein(self):
+        """`_pousser_tout` enchaîne les lots : cent un encaissements d'une
+        carte déclarée partent en DEUX requêtes, d'un trait. Retirer la
+        condition (`break` inconditionnel) laissait trente tests verts : la
+        file se serait vidée à cent lignes par pause."""
+        g = self.guichet()
+        journal = journal_avec_carte()
+        for _ in range(module_xafe.LOT + 1):
+            journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        p = self.porte(g, journal)
+        termine, total = _dans_un_fil(p._pousser_tout)
+        self.assertTrue(termine)
+        self.assertEqual(total, module_xafe.LOT + 1)
+        self.assertEqual(len([r for r in g.requetes if r[0] == "POST"]), 2)
+        self.assertEqual(journal.xafe_en_attente(), 0)
+        self.assertEqual(len(g.credites), module_xafe.LOT + 1)
+        # TÉMOIN : un seul lot, et il en reste un.
+        g2 = self.guichet()
+        j2 = journal_avec_carte()
+        for _ in range(module_xafe.LOT + 1):
+            j2.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        termine2, total2 = _dans_un_fil(self.porte(g2, j2, PorteUnSeulLot)._pousser_tout)
+        self.assertTrue(termine2 and total2 == module_xafe.LOT and j2.xafe_en_attente() == 1,
+                        "LE TÉMOIN PASSE : la porte qui s'arrête après un lot vide "
+                        "quand même la file, l'essai ne mesure rien")
+
+    def test_un_crochet_qui_leve_n_est_pas_un_numero_manquant(self):
+        """`fournir_float` qui LÈVE sur une carte déclarée : la ligne attend
+        (on ne sait rien), mais l'avis « pas de numéro déclaré » n'est PAS
+        écrit — le propriétaire irait déclarer un numéro qui est déjà là —
+        et /statut dit ce qui cloche, pas seulement « en attente »."""
+        g = self.guichet()
+        journal = journal_avec_carte()
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        p = self.porte(g, journal)
+        vrai = p.fournir_float
+
+        def casse(iccid):
+            raise AttributeError("'NoneType' object has no attribute 'carte'")
+        p.fournir_float = casse
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertEqual(g.requetes, [])
+        self.assertEqual(_etat(journal, 1)[:2], (0, None), "la ligne attend : rien n'est perdu")
+        evts = _evenements(journal)
+        self.assertFalse(any("pas de numéro déclaré" in e or "no declared number" in e
+                             for e in evts), evts)
+        panne = [e for e in evts if "n'a pas su dire le float" in e or "could not tell the float" in e]
+        self.assertEqual(len(panne), 1, evts)
+        self.assertIn("AttributeError", panne[0])
+        for interdit in ("677123456", "25000", "25 000", "NGONO", "677000000"):
+            self.assertNotIn(interdit, panne[0])
+        r = p.resume()
+        self.assertIn("AttributeError", r)
+        self.assertNotRegex(r, r"^XAFe (· 1 en attente|· 1 waiting)$", "/statut ne dit pas seulement « en attente »")
+        # L'avis ne se répète pas tant que l'erreur est la même.
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertEqual(len([e for e in _evenements(journal)
+                              if "n'a pas su dire le float" in e or "could not tell the float" in e]), 1)
+        # Le crochet réparé : la ligne part au tour même, et /statut se rassoit.
+        p.fournir_float = vrai
+        self.assertEqual(p.pousser_paiements(), 1)
+        self.assertEqual(_etat(journal, 1)[:2], (1, "credite XAFe-DP-000001"))
+        self.assertIn(p.resume(), ("XAFe à jour", "XAFe up to date"))
+
+    def test_une_file_vide_ne_se_dit_plus_injoignable(self):
+        """Après une panne, un tour qui n'a plus rien à dire à XAFe (file
+        vide, ou tout clos ici) remet /statut d'aplomb : une porte qui n'a
+        plus rien à envoyer n'est pas « injoignable »."""
+        g = self.guichet()
+        journal = journal_avec_carte()
+        p = self.porte(g, journal)
+        p.derniere_erreur = "503"
+        journal.sms("MobileMoney", SMS_PUB, "MTN ·0011", ICCID)      # close ici, sans réseau
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertIsNone(p.derniere_erreur)
+        self.assertIn(p.resume(), ("XAFe à jour", "XAFe up to date"))
+        p.derniere_erreur = "503"
+        self.assertEqual(p.pousser_paiements(), 0)                 # file vide
+        self.assertIn(p.resume(), ("XAFe à jour", "XAFe up to date"))
+        # Mais une ligne qui attend VRAIMENT une réponse garde la panne.
+        g.en_panne = True
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertTrue("injoignable" in p.resume() or "unreachable" in p.resume(), p.resume())
 
     def test_une_carte_d_un_autre_reseau_ne_retient_rien(self):
         """Une carte Camtel ou Nexttel n'a pas de float XAFe — et n'en aura
@@ -1128,14 +1435,21 @@ class TestLaFileNeSeBloquePas(Banc):
         self.assertEqual(_etat(journal, sans_carte)[:2], (1, "sans float XAFe"))
         self.assertEqual(_etat(journal, pub)[:2], (1, "sans objet"))
         self.assertEqual(journal.xafe_en_attente(), 0)
-        avis = [e for e in _evenements(journal)
-                if "pas de float XAFe" in e or "no XAFe float" in e]
-        self.assertEqual(len(avis), 2, "un avis par carte : la Camtel, et la sans-ICCID")
+        avis_sur = lambda: [e for e in _evenements(journal)
+                            if "sans float XAFe" in e or "without an XAFe float" in e
+                            or "jamais été identifiée" in e or "never identified" in e]
+        avis = avis_sur()
+        self.assertEqual(len(avis), 2, ("un avis par carte : la Camtel, et la sans-ICCID", avis))
+        # Deux causes, deux phrases : « la carte Orange … ni MTN ni Orange »
+        # se contredisait pour le propriétaire.
+        self.assertTrue(any("jamais été identifiée" in e or "never identified" in e for e in avis), avis)
+        self.assertTrue(any(("ni MTN ni Orange" in e or "neither MTN nor Orange" in e) and "0033" in e
+                            for e in avis), avis)
         for e in avis:
             for interdit in ("677123456", "25000", "25 000", "NGONO"):
                 self.assertNotIn(interdit, e)
         self.assertEqual(p.pousser_paiements(), 0)
-        self.assertEqual(len(avis), 2, "l'avis ne se répète pas")
+        self.assertEqual(len(avis_sur()), 2, "l'avis ne se répète pas (la liste est RELUE)")
 
     def test_cent_publicites_devant_un_encaissement_partent_au_meme_tour(self):
         """Carte déclarée, cent publicités puis un encaissement : UN appel le
@@ -1320,6 +1634,7 @@ class TestLeDemarrage(unittest.TestCase):
                 return "XAFe à jour"
 
         robot, compte, modem, journal = _robot()
+        _JOURNAUX.append(journal)
         robot.xafe = XafeDocile()
         robot.demarrer(bloquant=False)
         try:
@@ -1330,10 +1645,24 @@ class TestLeDemarrage(unittest.TestCase):
         modem.injecter_paiement("NGONO Marie", 25000)
         robot._relever_sms(compte)
         self.assertGreaterEqual(robot.xafe.reveils, 1)
+        # Un numéro déclaré depuis Telegram (/reglages) réveille aussi la
+        # porte : une carte qui vient de recevoir son numéro libère ses
+        # encaissements tout de suite, pas à la pause suivante. Retirer ce
+        # réveil laissait la batterie verte.
+        from totem.carte import Carte
+        compte.carte = Carte(iccid="89237020000000004432", imsi="624020000000001")
+        journal.voir_carte(compte.carte)
+        robot.attente_identite = ("num", compte.carte.iccid)
+        avant = robot.xafe.reveils
+        robot._enregistrer_identite("696103864")
+        self.assertEqual(journal.identite(compte.carte.iccid)[0], "696103864")
+        self.assertEqual(robot.xafe.reveils, avant + 1,
+                         "déclarer un numéro ne réveille pas la porte XAFe")
 
     def test_le_robot_branche_ses_crochets_sur_la_porte(self):
         from tests.test_recus import _robot
         robot, compte, modem, journal = _robot()
+        _JOURNAUX.append(journal)
         p = PorteXafe("", "", "", journal)
         from totem.app import Robot
         r2 = Robot([compte], robot.transport, journal, numeros={"orange": "696103864"},

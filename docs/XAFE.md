@@ -73,9 +73,17 @@ ligne :
 🔁 XAFe à jour
 🔁 XAFe · 3 en attente              ← réseau coupé ou carte sans numéro
 🔁 XAFe injoignable · 3 en attente  ← rien n'est perdu, la file se vide au retour
-🔁 XAFe refuse la signature · 3 en attente  ← clé fausse ou horloge décalée (le journal le dit)
+🔁 XAFe refuse la signature · 3 en attente  ← clé fausse, identifiant du boîtier inconnu, ou horloge décalée (le journal le dit)
 🔁 XAFe moteur en panne · 3 en attente      ← XAFe a répondu « erreur » : on réessaie
+🔁 XAFe : le robot ne sait pas dire le float d'une carte (…) · 3 en attente  ← un défaut du robot, pas un numéro à déclarer
 ```
+
+Le **journal du Pi** — celui que Bonzini relit et montre dans « Ce qui s'est
+passé » — porte une ligne par encaissement déposé (« XAFe : SMS 12 crédité
+(XAFe-DP-000418) ») et une par refus. Jamais un montant, un nom ni un
+numéro : seulement le numéro de la ligne du journal et la référence XAFe.
+Sur une caisse active, c'est quarante lignes de plus par jour chez Bonzini ;
+sans section `[xafe]`, aucune.
 
 ## Déclarer le numéro de chaque carte
 
@@ -132,8 +140,21 @@ s'allonge, `/statut` le dit, et elle se vide au retour.
 **« L'horloge du Pi est fausse après une coupure »**
 La porte refuse une signature de plus de cinq minutes d'écart. Le robot
 apprend l'heure de XAFe sur la première réponse (même un refus) et rejoue
-aussitôt avec elle. Si « XAFe injoignable » persiste malgré tout, le journal
-dit « XAFe refuse la signature du boîtier : clé fausse, ou horloge décalée ».
+aussitôt avec elle. Si « XAFe refuse la signature » persiste malgré tout, le
+journal dit « XAFe refuse la signature du boîtier : clé fausse, identifiant
+du boîtier inconnu de XAFe, ou horloge décalée ». XAFe répond le MÊME refus
+dans les trois cas : vérifier aussi `[xafe] terminal` — sans lui, le robot
+prend le nom de `[cloud]` (« douala »), qui n'est pas celui que XAFe connaît.
+
+**« Un SMS d'argent dont aucun numéro n'est le nôtre »** — à trancher par le
+propriétaire. Un SMS à deux parties (« Transfert de 5 000 FCFA de A vers B »)
+dont ni A ni B n'est un numéro déclaré du boîtier : le lecteur ne sait pas
+dire si c'est une entrée ou une sortie. Aujourd'hui la ligne est close
+« sans objet », sans requête — si c'était une entrée, XAFe ne la verra qu'après
+un `remettre_sms_xafe(depuis_id=…)` à la main. L'autre choix — la laisser en
+file — remplirait la file sans fin tant que le numéro déclaré est faux. Le
+test `test_un_sens_inconnu_faute_de_numero_est_clos_sans_objet` fige le
+choix du jour ; il n'est pas tranché.
 
 **« Puis-je arrêter ? »**
 Videz `url` et `cle`, relancez : plus rien ne part chez XAFe, rien n'est perdu.

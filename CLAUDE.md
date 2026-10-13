@@ -1171,6 +1171,20 @@ donné ; une carte d'un autre réseau, qui n'aura JAMAIS de float, se clôt au
 lieu d'attendre (`SANS_FLOAT`). `TestLaFileNeSeBloquePas` rejoue la scène,
 avec la porte d'avant pour témoin (`PorteTeteDeFile`).
 
+**Une scène trop sage ne mesurait pas l'écartement.** La première version de
+cette scène semait cinquante encaissements qui attendent — moins qu'un lot :
+l'encaissement de la carte déclarée tenait encore dans les cent premières
+lignes, et la mutation qui PERD l'écartement (`sms_a_pousser_xafe(LOT)` sans
+`sauf_iccid`) laissait les trente tests verts. Rejouée avec cent
+encaissements, elle boucle sans fin : chaque lot n'est fait que de lignes qui
+attendent, la lecture suivante rend les mêmes, et `arreter()` ne sortait pas
+du tour (`while True`). La scène porte maintenant cent vingt-deux
+encaissements qui attendent, le tour se joue dans un fil joint à dix secondes
+— un fil encore vivant est un ÉCHEC mesuré, pas une batterie qui pend —, le
+témoin `PorteSansEcartement` doit laisser la ligne déclarée à 0, et la
+lecture est BORNÉE (`LECTURES_PAR_TOUR`) et s'arrête avec la porte : une
+régression ne coûte plus qu'un tour, dit au journal et à `/statut`.
+
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
 

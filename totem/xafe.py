@@ -22,7 +22,11 @@ le numéro n'est pas encore déclaré attendent ce numéro, et seulement eux : l
 file se lit en écartant ces cartes, puis au-delà d'un lot qui n'a rien donné.
 Sans cela, cent lignes d'une carte oubliée dans /reglages — ou d'une carte
 d'un autre réseau — restaient en tête de la file, et plus rien ne partait
-pour aucune carte, sans un mot d'autre que « N en attente ».
+pour aucune carte, sans un mot d'autre que « N en attente ». Et la lecture
+est BORNÉE : si l'écartement se perdait, cent encaissements qui attendent
+rempliraient chaque lot, et la file se relirait à l'identique pour toujours ;
+le tour s'arrête après dix lots, le journal le dit, et `arreter()` sort du
+tour comme du fil.
 """
 
 import hashlib
@@ -41,13 +45,16 @@ from .textes import t
 
 PAUSE = 60
 # Secondes entre deux relèves de commandes (chaque GET vaut signe de vie).
+# La relève n'est pas branchée (voir le guichet, plus bas) ; le banc de tests
+# le met à 0. Les autres réglages de la relève — la fenêtre de l'horloge, la
+# péremption d'une demande, la liste des verdicts définitifs — arriveront
+# AVEC le code qui les lit : une constante écrite et jamais branchée ne
+# protège de rien, elle rassure.
 PAS_RELEVE = 10
-# La fenêtre de la porte XAFe (porte.ts, FENETRE_SECONDES).
-FENETRE_HORLOGE = 300
-# L'âge au-delà duquel ce guichet ne veut plus qu'on compose une demande.
-XAFE_DEMANDE_PERIMEE_S = 900
-# Les verdicts qui CLOSENT une ligne. « erreur » n'en est pas : on réessaie.
-DEFINITIFS = frozenset({"credite", "retenue", "ignore", "refuse"})
+# Lectures de la file par tour, au plus. Chaque lecture doit clore des lignes
+# ou écarter une carte de plus, donc avancer ; si elle n'avance pas, c'est
+# un défaut — et il ne coûte qu'un tour, jamais un fil qui tourne à vide.
+LECTURES_PAR_TOUR = 10
 
 # Ce que `fournir_float(iccid)` rend au robot :
 #   (operateur, numero)  — la carte a son float chez XAFe ;
@@ -117,7 +124,12 @@ class PorteXafe:
         # faire taire le refus d'un lot l'après-midi.
         self._refus_signale = False
         self._lot_signale = False
-        self._prochain_releve = 0.0
+        self._file_signalee = False
+        # Les cartes dont le crochet `fournir_float` a LEVÉ, par nom d'erreur :
+        # ce n'est pas « pas encore de numéro », c'est le robot qui n'a pas su
+        # répondre — /statut le dit, au lieu d'envoyer déclarer un numéro qui
+        # est déjà là.
+        self._crochet_en_panne = {}
 
     # ---- l'heure de la base --------------------------------------------------
     def _noter_l_heure(self, reponse):
@@ -200,15 +212,30 @@ class PorteXafe:
             raise PorteMuette(str(e))
 
     # ---- pousser les encaissements -------------------------------------------
-    def _float_de(self, iccid):
+    def _float_de(self, iccid, compte=""):
         """Ce que le robot sait du float de la carte (voir `SANS_FLOAT`). Un
-        crochet absent ou qui lève vaut « pas encore » : la ligne attend."""
+        crochet absent vaut « pas encore » : la ligne attend.
+
+        Un crochet qui LÈVE n'est pas « pas encore de numéro » : la ligne
+        attend tout de même (on ne sait rien), mais l'avis est un autre —
+        « le robot n'a pas su dire le float » — et /statut le porte. Sinon
+        le propriétaire irait déclarer un numéro qui est déjà là."""
         if not self.fournir_float:
             return None
         try:
-            return self.fournir_float(iccid)
-        except Exception:
+            float_ = self.fournir_float(iccid)
+        except Exception as e:
+            nom = type(e).__name__
+            if self._crochet_en_panne.get(iccid) != nom:
+                self._crochet_en_panne[iccid] = nom
+                self._journaliser(t(
+                    f"XAFe: the robot could not tell the float of card "
+                    f"{compte or '?'} ({nom}) — its payments wait.",
+                    f"XAFe : le robot n'a pas su dire le float de la carte "
+                    f"{compte or '?'} ({nom}) — ses encaissements attendent."))
             return None
+        self._crochet_en_panne.pop(iccid, None)
+        return float_
 
     def _ligne(self, id_local, date, expediteur, texte, compte, iccid, emis_le,
                numeros):
@@ -229,22 +256,31 @@ class PorteXafe:
             return "sans objet"
         # Sans ICCID, la carte n'a jamais été identifiée : aucun numéro ne
         # viendra se poser sur cette ligne. Elle ne doit pas attendre.
-        float_ = self._float_de(iccid) if iccid else SANS_FLOAT
+        if not iccid:
+            self._signaler_une_fois_par_carte(("float", iccid), t(
+                f"XAFe: card {compte or '?'} was never identified (no ICCID): "
+                "no number will ever be declared for it — what it receives "
+                "stays here.",
+                f"XAFe : la carte {compte or '?'} n'a jamais été identifiée "
+                "(pas d'ICCID) : aucun numéro ne viendra s'y poser — ce "
+                "qu'elle encaisse reste ici."))
+            return "sans float XAFe"
+        float_ = self._float_de(iccid, compte)
         if float_ is SANS_FLOAT:
             self._signaler_une_fois_par_carte(("float", iccid), t(
-                f"XAFe: card {compte or '?'} has no XAFe float (not MTN nor "
-                "Orange, or never identified) — what it receives stays here.",
-                f"XAFe : la carte {compte or '?'} n'a pas de float XAFe (ni "
-                "MTN ni Orange, ou jamais identifiée) — ce qu'elle encaisse "
-                "reste ici."))
+                f"XAFe: card {compte or '?'} is on a network without an XAFe "
+                "float (neither MTN nor Orange) — what it receives stays here.",
+                f"XAFe : la carte {compte or '?'} est d'un réseau sans float "
+                "XAFe (ni MTN ni Orange) — ce qu'elle encaisse reste ici."))
             return "sans float XAFe"
         if float_ is None:
             self._attendent_un_numero.add(iccid)
-            self._signaler_une_fois_par_carte(("numero", iccid), t(
-                f"XAFe: card {compte} has no declared number — its "
-                "payments wait (Telegram /reglages).",
-                f"XAFe : la carte {compte} n'a pas de numéro déclaré — "
-                "ses encaissements attendent (Telegram /reglages)."))
+            if iccid not in self._crochet_en_panne:
+                self._signaler_une_fois_par_carte(("numero", iccid), t(
+                    f"XAFe: card {compte} has no declared number — its "
+                    "payments wait (Telegram /reglages).",
+                    f"XAFe : la carte {compte} n'a pas de numéro déclaré — "
+                    "ses encaissements attendent (Telegram /reglages)."))
             return None
         return {
             "terminal": self.terminal,
@@ -280,7 +316,11 @@ class PorteXafe:
         La file se lit en écartant les cartes qui attendent leur numéro, et
         au-delà d'un lot entier qui n'a rien donné à envoyer (des lignes
         closes ici, ou retenues) : un encaissement derrière cent publicités
-        part à ce tour, pas au suivant."""
+        part à ce tour, pas au suivant. Chaque lecture clôt des lignes ou
+        écarte une carte de plus, donc la suivante va plus loin — et si elle
+        n'y va pas (un défaut), le tour s'arrête après `LECTURES_PAR_TOUR`
+        lots, et avec la porte (`arreter()`) : jamais un fil qui tourne à
+        vide sur une file qui ne bouge pas."""
         if not self.actif:
             return 0
         numeros = ()
@@ -290,9 +330,28 @@ class PorteXafe:
             except Exception:
                 numeros = ()
         ecartees = set(self._cartes_en_attente())
-        while True:
+        lectures = 0
+        while self._marche:
+            if lectures >= LECTURES_PAR_TOUR:
+                # Dix lots sans rien à envoyer ni fin de file : la lecture
+                # n'avance pas. Un défaut — qu'il ne coûte qu'un tour.
+                self.derniere_erreur = "file illisible"
+                if not self._file_signalee:
+                    self._file_signalee = True
+                    self._journaliser(t(
+                        "XAFe: the queue gave nothing to send in ten batches "
+                        "and did not end — a defect on our side; the round is "
+                        "lost, nothing else.",
+                        "XAFe : la file n'a rien donné à envoyer en dix lots "
+                        "sans finir — un défaut de notre côté ; le tour est "
+                        "perdu, rien d'autre."))
+                return 0
+            lectures += 1
             lignes = self.journal.sms_a_pousser_xafe(LOT, sauf_iccid=ecartees)
             if not lignes:
+                # Plus rien à dire à XAFe : une panne d'avant n'est plus
+                # d'actualité, /statut ne la répète pas sur une file vide.
+                self.derniere_erreur = None
                 return 0
             charge, closes = [], []
             for (id_local, date, expediteur, texte, compte, iccid, emis_le) in lignes:
@@ -309,9 +368,12 @@ class PorteXafe:
             if charge:
                 break
             if len(lignes) < LOT:
+                self.derniere_erreur = None
                 return 0        # la file est lue jusqu'au bout : rien à envoyer
             # Un lot entier, rien à envoyer : chaque ligne est close ou sa
             # carte écartée — la lecture suivante va plus loin.
+        else:
+            return 0            # la porte s'arrête : le tour avec elle
         try:
             statut, reponse, _ = self._appel("POST", "totem-sms",
                                              {"lignes": charge})
@@ -325,10 +387,13 @@ class PorteXafe:
             if not self._refus_signale:
                 self._refus_signale = True
                 self._journaliser(t(
-                    "XAFe refuses the terminal signature: wrong key, or clock "
-                    "off by more than five minutes. Nothing is lost.",
-                    "XAFe refuse la signature du boîtier : clé fausse, ou "
-                    "horloge décalée de plus de cinq minutes. Rien n'est perdu."))
+                    "XAFe refuses the terminal signature: wrong key, terminal "
+                    "id unknown to XAFe ([xafe] terminal), or clock off by "
+                    "more than five minutes. Nothing is lost.",
+                    "XAFe refuse la signature du boîtier : clé fausse, "
+                    "identifiant du boîtier inconnu de XAFe ([xafe] terminal), "
+                    "ou horloge décalée de plus de cinq minutes. Rien n'est "
+                    "perdu."))
             return 0
         if statut != 200:
             self.derniere_erreur = f"lot refusé {statut} {reponse!r}"[:300]
@@ -471,6 +536,12 @@ class PorteXafe:
         if not self.actif:
             return t("XAFe disabled", "XAFe désactivé")
         reste = self.journal.xafe_en_attente()
+        if self._crochet_en_panne:
+            nom = sorted(set(self._crochet_en_panne.values()))[0]
+            return t(f"XAFe: the robot cannot tell a card's float ({nom}) · "
+                     f"{reste} waiting",
+                     f"XAFe : le robot ne sait pas dire le float d'une carte "
+                     f"({nom}) · {reste} en attente")
         erreur = self.derniere_erreur
         if erreur == "signature refusée":
             return t(f"XAFe refuses the signature · {reste} waiting",
@@ -481,6 +552,9 @@ class PorteXafe:
         if erreur and erreur.startswith("lot refusé"):
             return t(f"XAFe refuses the batch · {reste} waiting",
                      f"XAFe refuse le lot · {reste} en attente")
+        if erreur == "file illisible":
+            return t(f"XAFe: queue unreadable (our defect) · {reste} waiting",
+                     f"XAFe : file illisible (défaut de notre côté) · {reste} en attente")
         if erreur:
             return t(f"XAFe unreachable · {reste} waiting",
                      f"XAFe injoignable · {reste} en attente")
