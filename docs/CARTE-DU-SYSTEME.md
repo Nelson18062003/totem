@@ -31,8 +31,18 @@ tient la porte**.
         ┌──────────────┴───────────────────┐
         │  LE ROBOT  (Raspberry Pi, Douala)│
         │  modems + SIM · Telegram sortant │
+        └──────────────┬───────────────────┘
+                       │ clé du boîtier (totem.conf), signature sur chaque appel
+                       ▼
+        ┌──────────────────────────────────┐
+        │  XAFe EXCHANGE (Supabase, projet │
+        │  distinct) · totem-sms           │
         └──────────────────────────────────┘
 ```
+
+Une quatrième maison depuis octobre 2026 : XAFe Exchange, un projet Supabase
+distinct, auquel le robot DÉPOSE ses encaissements. Elle ne reçoit rien
+d'autre, et ne voit que ce que ce boîtier signe.
 
 Trois codes séparés, une seule base :
 
@@ -40,7 +50,7 @@ Trois codes séparés, une seule base :
 |---|---|---|---|
 | La plateforme | `web/` | TypeScript, Next.js 16 (App Router) | `SESSION_SECRET`, `SUPABASE_CLE` (service), `TOTEM_MOT_DE_PASSE` |
 | Le téléphone | `mobile/` | TypeScript, Expo/React Native | un jeton de session, dans le coffre du système |
-| Le robot | `totem/` | Python | le PIN (jamais écrit), la clé de service, le jeton Telegram — dans `totem.conf`, en 0600 depuis le tour 3 (sauf sur la partition de démarrage, qui n'a pas de droits : le robot le dit alors au démarrage) |
+| Le robot | `totem/` | Python | le PIN (jamais écrit), la clé de service, le jeton Telegram, la clé du boîtier XAFe — dans `totem.conf`, en 0600 depuis le tour 3 (sauf sur la partition de démarrage, qui n'a pas de droits : le robot le dit alors au démarrage) |
 
 Côté robot, deux niveaux aussi, et sur Telegram cette fois : **administrateur**
 (pilote la SIM) et **observateur** (voit l'activité). Les conversations non
@@ -75,6 +85,15 @@ Deux choses la tiennent, toutes deux posées au tour 2 :
     bien que deux robots ne composent pas la même — voir SEC-12 ;
   · le code confidentiel est **effacé de la base avant d'être composé**, et
     s'il ne peut pas l'être, il n'est pas composé — voir SEC-11.
+
+**F3ter — XAFe ↔ le robot.** Le robot DÉPOSE ses encaissements chez XAFe
+(`totem-sms`), signé avec la clé du boîtier : XAFe ne voit que ce que ce
+boîtier dit, et le tri (argent entrant seulement) se fait sur le Pi avant
+toute requête — un SMS appartient au propriétaire, XAFe est un tiers. Chaque
+verdict (crédité, retenu, ignoré, refusé) est gardé SMS par SMS dans le
+journal (`sms.xafe_reponse`). Le relevé des commandes XAFe (`totem-commandes`,
+transferts et SMS à envoyer) n'est PAS branché : il attend la décision du
+propriétaire sur le code secret (`docs/XAFE.md`). Harnais : `tests/test_xafe.py`.
 
 **F4bis — N'IMPORTE QUI → la SIM, par SMS.** La seule entrée du système qui
 n'exige ni compte, ni jeton, ni autorisation : quiconque connaît le numéro de
@@ -184,6 +203,8 @@ elle enveloppe aussi l'écran de connexion.
 - `appareils` (2) — les jetons de notification Expo.
 - `commandes` — le canal qui fait composer un code USSD sur une vraie carte.
   **C'est le seul endroit d'où de l'argent peut bouger.**
+- `commandes` XAFe — un second endroit d'où de l'argent POURRAIT bouger, le
+  jour où `[xafe] transferts = oui` ; pas relevé aujourd'hui.
 
 ## 6. Ce qui n'existe pas ici
 
@@ -211,6 +232,8 @@ cd web && node scripts/verifier-le-verrou.mjs      # port 3120
 cd web && node scripts/verifier-les-comptes.mjs
 ```
 
-**Rien d'actif ne se lance contre Vercel ni contre le Supabase en service.**
+**Rien d'actif ne se lance contre Vercel ni contre le Supabase en service**,
+ni contre le Supabase de XAFe (`erngzpklfslbfznioxxr`) : les harnais parlent
+à un faux XAFe local qui vérifie la signature (`tests/test_xafe.py`).
 Sur ceux-là : lecture seule (conseiller de sécurité, `pg_policies`, en-têtes,
 TLS, DNS).

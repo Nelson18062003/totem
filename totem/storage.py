@@ -277,6 +277,25 @@ class Journal:
             # L'heure RÉSEAU du SMS (TP-SCTS), à côté de l'heure de relève :
             # après une coupure, les deux divergent, et c'est elle qui fait foi.
             self._ajouter_colonne_si_absente("sms", "emis_le")
+            # LA SECONDE DESTINATION : XAFe Exchange. Un drapeau ne se réunit
+            # pas — « envoye » dit si Bonzini a la ligne, « envoye_xafe » si
+            # XAFe l'a tranchée (0 = à traiter, 1 = clos), et « xafe_reponse »
+            # garde la PREUVE : « credite XAFe-DP-000418 », « retenue 17 »,
+            # « ignore », « refuse <motif> », « sans objet ». Une panne de
+            # l'un ne retient pas l'autre, et chacun se relit à part.
+            #
+            # À la naissance de la colonne, TOUT l'historique est clos « avant
+            # XAFe » : des mois d'encaissements ne partent pas chez un tiers
+            # parce qu'on a mis le robot à jour. Ce qui arrive ensuite part ;
+            # `remettre_sms_xafe(depuis_id)` rouvre une période à la main.
+            neuve = "envoye_xafe" not in {
+                r[1] for r in self.conn.execute("PRAGMA table_info(sms)")}
+            self._ajouter_colonne_si_absente("sms", "envoye_xafe",
+                                             "INTEGER DEFAULT 0")
+            self._ajouter_colonne_si_absente("sms", "xafe_reponse")
+            if neuve:
+                self.conn.execute(
+                    "UPDATE sms SET envoye_xafe = 1, xafe_reponse = 'avant XAFe'")
             self._reprendre_recus()
             # La nature choisie par le propriétaire pour un reçu demandé
             # depuis la plateforme (depot/retrait/transfert/solde) : elle
@@ -1159,6 +1178,48 @@ class Journal:
                 "FROM sms WHERE COALESCE(envoye, 0) = 0 ORDER BY id LIMIT ?",
                 (limite,)).fetchall()
 
+    def sms_a_pousser_xafe(self, limite=100):
+        """[(id, date, expéditeur, texte, compte, iccid, emis_le)] que XAFe
+        n'a pas encore tranchés. Le filtre (argent entrant seulement) se fait
+        chez l'appelant : ici, c'est la file."""
+        with self.verrou:
+            return self.conn.execute(
+                "SELECT id, date, expediteur, texte, COALESCE(compte, ''), "
+                "COALESCE(iccid, ''), emis_le "
+                "FROM sms WHERE COALESCE(envoye_xafe, 0) = 0 ORDER BY id LIMIT ?",
+                (limite,)).fetchall()
+
+    def marquer_sms_xafe(self, reponses):
+        """Clôt des lignes pour XAFe : `reponses` = [(id, preuve)]. L'état et
+        la preuve s'écrivent dans la MÊME écriture ; `envoye` (Bonzini) ne
+        bouge pas. Une ligne déjà close ne se réécrit pas."""
+        if not reponses:
+            return
+        with self.verrou:
+            self.conn.executemany(
+                "UPDATE sms SET envoye_xafe = 1, xafe_reponse = ? "
+                "WHERE id = ? AND COALESCE(envoye_xafe, 0) = 0",
+                [(str(preuve), i) for i, preuve in reponses])
+            self.conn.commit()
+
+    def remettre_sms_xafe(self, depuis_id=None, iccid=None):
+        """Rouvre pour XAFe une période (à partir de `depuis_id`), une carte,
+        ou tout — et dit combien de lignes. Relecture voulue : la porte XAFe
+        rend la même réponse à la même ligne, rien n'est crédité deux fois."""
+        clauses, params = ["1=1"], []
+        if depuis_id is not None:
+            clauses.append("id >= ?")
+            params.append(int(depuis_id))
+        if iccid:
+            clauses.append("iccid = ?")
+            params.append(iccid)
+        with self.verrou:
+            n = self.conn.execute(
+                "UPDATE sms SET envoye_xafe = 0, xafe_reponse = NULL WHERE "
+                + " AND ".join(clauses), params).rowcount
+            self.conn.commit()
+        return n
+
     def evenements_non_envoyes(self, limite=100):
         with self.verrou:
             return self.conn.execute(
@@ -1263,6 +1324,15 @@ class Journal:
         with self.verrou:
             (n,) = self.conn.execute(
                 "SELECT COUNT(*) FROM sms WHERE COALESCE(envoye,0)=0").fetchone()
+        return n
+
+    def xafe_en_attente(self):
+        """Combien de SMS XAFe n'a pas encore tranchés. À part de
+        `sms_en_attente` : c'est celui-là que lit le bandeau Bonzini."""
+        with self.verrou:
+            (n,) = self.conn.execute(
+                "SELECT COUNT(*) FROM sms WHERE COALESCE(envoye_xafe,0)=0"
+            ).fetchone()
         return n
 
     def reste_a_envoyer(self):

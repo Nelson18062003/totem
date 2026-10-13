@@ -198,7 +198,13 @@ même boutique.
 
 ---
 
-## Étage 4 — La confiance : une clé par boîtier 🔶 à bâtir
+## Étage 4 — La confiance : une clé par boîtier 🔶 à bâtir côté Bonzini — ✅ construit côté XAFe
+
+XAFe Exchange a construit cet étage de son côté
+(`supabase/functions/_shared/porte.ts` : une clé par boîtier dans
+`terminaux.cle`, trois en-têtes signés, fenêtre de cinq minutes, un terminal
+ne voit que ses commandes). `totem/xafe.py` est le premier client de cet
+étage ; la plateforme Bonzini n'y est pas encore.
 
 Chaque Raspberry Pi porte **la clé maîtresse** de la base (`totem.conf`,
 `[cloud] cle`), qui contourne toutes les règles (`CARTE-DU-SYSTEME.md`, F3 :
@@ -237,6 +243,7 @@ demande « du neuf ? » toutes les 5 secondes (`web/app/veille.tsx`), chaque
 |---|---|---|---|
 | « Du travail ? » (au repos) | 0,3 req/s | 333 req/s | **3 333 req/s** |
 | Signe de vie, état des cartes, boutons (chaque minute) | 0,05 req/s | 50 req/s | 500 req/s |
+| XAFe : dépôt des encaissements (par réveil, sinon chaque minute) | 0,02 req/s | 17 req/s | 170 req/s |
 
 À 10 000 boîtiers, plus de 3 000 requêtes par seconde arrivent sur la base
 pour entendre « rien ». C'est la base qui tombe, pas le réseau.

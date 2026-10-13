@@ -36,6 +36,7 @@ from .declencheur import (RefusRecu, SOLDE, TRANSFERT, motif_du_menu,
 from .recu import (heure_en_lettres, numero_de_recu, numero_lisible,
                    recu_solde, recu_transfert)
 from .codes import catalogue, cle as cle_code
+from .carte import operateur_xafe
 from .compte import TELEGRAM, ErreurModem, SessionTenue, libelles_uniques
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
@@ -244,12 +245,16 @@ class Robot:
     # fait lui-même, carte après carte, comme avant. Au niveau de la classe :
     # un robot construit sans son __init__ (les essais) le porte aussi.
     postes = False
+    # La porte XAFe : None tant que le démarrage n'en a pas donné une — et
+    # au niveau de la classe, pour qu'un robot construit sans son __init__
+    # (les essais) relève ses SMS sans trébucher dessus.
+    xafe = None
 
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
                  delai_session=180, chemin_base=None, nuage=None,
                  seuil_confirmation=0, sauvegarde_quotidienne=True,
-                 numeros=None, recus=True):
+                 numeros=None, recus=True, xafe=None):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -284,6 +289,14 @@ class Robot:
             # sonnait, on ouvrait l'application, et les paiements annoncés
             # n'y étaient pas encore.
             self.nuage.apres_transmission = self._rejouer_les_sonneries
+        self.xafe = xafe        # None ou non configuré : le robot ignore XAFe
+        if self.xafe is not None:
+            self.xafe.sur_incident = self._incident_xafe
+            self.xafe.fournir_numeros = self._nos_numeros
+            # XAFe reconnaît un float par son NUMÉRO, pas par l'ICCID.
+            self.xafe.fournir_float = self._carte_pour_xafe
+            # PAS `apres_transmission` : les sonneries attendent la base
+            # Bonzini, c'est elle que le téléphone ouvre.
         # Un seul rattrapage de sonneries à la fois.
         self._rattrapage = threading.Lock()
         self.pilotage = None    # le guichet à distance, démarré avec le nuage
@@ -308,6 +321,7 @@ class Robot:
         self.dernier_conflit = -INTERVALLE_CONFLIT
         self._dernier_avert_courrier = 0.0   # anti-répétition de l'alerte facteur
         self._dernier_avert_cloud = 0.0      # anti-répétition de l'alerte cloud
+        self._dernier_avert_xafe = 0.0       # anti-répétition de l'alerte XAFe
         # Échéanciers du tour de surveillance (cartes, santé, mémoire).
         self._prochaine_sante = 0
         self._prochaine_memoire = 0
@@ -555,6 +569,10 @@ class Robot:
             self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
                                      programmeur=self._recu_apres_coup)
             self.pilotage.demarrer()
+        # XAFe démarre même sans Bonzini : une destination n'attend pas
+        # l'autre.
+        if self.xafe and self.xafe.actif:
+            self.xafe.demarrer()
         if bloquant:
             self._boucle_messages()
 
@@ -576,6 +594,8 @@ class Robot:
         self.actif = False
         if self.pilotage:
             self.pilotage.arreter()
+        if self.xafe:
+            self.xafe.arreter()
         self._reveil_depot.set()        # que le fil du dépôt voie l'arrêt
         self.journal.evenement(ARRET_PROPRE)
 
@@ -1579,6 +1599,8 @@ class Robot:
             lignes.append(f"\n🖥 {echap(self.sante.resume())}")
             if self.nuage and self.nuage.actif:
                 lignes.append(f"☁️ {echap(self.nuage.resume())}")
+            if self.xafe and self.xafe.actif:
+                lignes.append(f"🔁 {echap(self.xafe.resume())}")
         except Exception:
             pass
         self.transport.envoyer("\n".join(lignes), canal=canal,
@@ -1816,6 +1838,22 @@ class Robot:
             if cle and cle.lower() in self.numeros:
                 return self.numeros[cle.lower()]
         return compte.carte.numero or ""
+
+    def _carte_pour_xafe(self, iccid):
+        """(opérateur XAFe, numéro à 9 chiffres) de la carte, ou None : sans
+        numéro déclaré, XAFe ne saurait pas à quel float rattacher l'argent —
+        et JAMAIS la première carte par défaut (`_compte_par_iccid` le fait :
+        un encaissement attribué au mauvais float créditerait le mauvais
+        compte)."""
+        compte = next((c for c in self.comptes
+                       if iccid and c.carte.iccid == iccid), None)
+        if compte is None:
+            return None
+        op = operateur_xafe(compte.carte.operateur)
+        numero = re.sub(r"\D", "", self._numero_du_compte(compte) or "")[-9:]
+        if not op or len(numero) != 9:
+            return None
+        return op, numero
 
     # ---- surveillance (SMS de tous les comptes, santé, rapport) ------------
     def _boucle_surveillance(self):
@@ -2148,6 +2186,10 @@ class Robot:
         self.journal.evenement(f"identité de carte modifiée ({champ})")
         if self.nuage:
             self.nuage.reveiller()     # l'application web le verra tout de suite
+        if self.xafe:
+            # Une carte qui vient de recevoir son numéro libère les
+            # encaissements que XAFe attendait d'elle.
+            self.xafe.reveiller()
         self.transport.envoyer(f"✅ {quoi}", canal=canal)
         self._reglages(canal)
 
@@ -2294,6 +2336,8 @@ class Robot:
                     # attendre son battement pour un paiement déjà connu.
                     if self.nuage:
                         self.nuage.reveiller()
+                    if self.xafe:
+                        self.xafe.reveiller()
             except Exception as e:
                 self._noter(f"traitement SMS {indices} ({compte.libelle}) : {e}")
                 continue        # on n'efface pas : à réessayer au prochain tour
@@ -3188,6 +3232,30 @@ class Robot:
                   f"Raison technique : {mono(echap(str(erreur))[:300])}\n\n"
                   + italique("Transmets-moi cette raison : elle dit exactement "
                              "quoi corriger côté base.")))
+        except Exception:
+            pass
+
+    def _incident_xafe(self, source_id, erreur):
+        """XAFe a refusé un encaissement, ou son moteur n'a pas répondu. Le
+        propriétaire l'apprend sur Telegram, avec le motif — jamais la clé
+        ni une signature : `erreur` est le motif que XAFe a rendu — et pas
+        plus d'une fois par quart d'heure."""
+        maintenant = time.time()
+        if maintenant - self._dernier_avert_xafe < 900:
+            return
+        self._dernier_avert_xafe = maintenant
+        try:
+            self.transport.envoyer(
+                t(f"⚠️ {gras('Some payments are not reaching XAFe')}\n"
+                  "XAFe refuses them or did not answer. They stay here and "
+                  "on the terminal — nothing is lost — but XAFe will not "
+                  "credit them until this is fixed.\n\n"
+                  f"Reason: {mono(echap(str(erreur))[:300])}",
+                  f"⚠️ {gras('Des encaissements n’arrivent pas chez XAFe')}\n"
+                  "XAFe les refuse ou n’a pas répondu. Ils restent ici et sur "
+                  "le terminal — rien n’est perdu — mais XAFe ne les créditera "
+                  "pas tant que ce n’est pas corrigé.\n\n"
+                  f"Raison : {mono(echap(str(erreur))[:300])}"))
         except Exception:
             pass
 

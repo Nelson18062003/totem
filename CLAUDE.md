@@ -44,7 +44,8 @@ cd web && npm test                        # les règles partagées (noyau)
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
-python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait
+python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait — et chez XAFe, même montant
+python3 -m unittest tests.test_xafe       # la porte XAFe : signée, verdicts ligne par ligne, témoins
 python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
@@ -1130,6 +1131,16 @@ bouton dans Opérations, et un rond de l'accueil. Les ronds se choisissent dans
 les Réglages (`noyau/ronds.ts` : cinq au plus, un au moins, un choix abîmé
 rend l'accueil d'origine) ; le choix vit sur le téléphone et n'ouvre aucun
 droit.
+
+**Le fichier d'exemple doit se charger, et un test le dit.** En écrivant
+`transferts = non` dans `config.example.conf` pour XAFe, l'essai de chargement
+a refusé : « Not a boolean: oui ». Le fichier portait déjà `recus = oui` et
+`sauvegarde_quotidienne = oui` — en français, comme tout ce qui parle au
+propriétaire —, et `configparser` ne connaît que yes/no : le fichier que
+l'installateur copie tel quel ne se chargeait pas, et personne ne l'avait
+lancé. Le lecteur comprend maintenant « oui » et « non », et
+`TestLaConfiguration.test_le_fichier_d_exemple_se_charge` charge le vrai
+fichier.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

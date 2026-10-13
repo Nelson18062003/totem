@@ -119,13 +119,17 @@ class TestConfigPrevient(unittest.TestCase):
             chemin = os.path.join(dossier, "totem.conf")
             Path(chemin).write_text(
                 "[telegram]\njeton = x\nchat_id = 1\n"
-                "[cloud]\nurl =\ncle = une-cle-de-service\n",
+                "[cloud]\nurl =\ncle = une-cle-de-service\n"
+                "[xafe]\nurl =\ncle = une-cle-de-boitier\n",
                 encoding="utf-8")
             os.chmod(chemin, 0o644)
             avertissements = config.avertissements_droits(chemin)
             self.assertTrue(avertissements,
                             "un fichier de secrets en 0644 passe sans un mot.")
             self.assertIn("644", " ".join(avertissements))
+            # La clé du boîtier XAFe fait partie de ce que le fichier porte :
+            # l'avertissement doit la nommer.
+            self.assertIn("XAFe", " ".join(avertissements))
 
     def test_un_fichier_bien_fermé_ne_dit_rien(self):
         from totem import config

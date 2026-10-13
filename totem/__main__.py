@@ -249,6 +249,17 @@ def principal():
             print(t(f"  cloud: {cfg['cloud_url']} (terminal “{cfg['terminal']}”)",
                     f"  cloud : {cfg['cloud_url']} (terminal « {cfg['terminal']} »)"))
 
+    # XAFe : seconde destination, même règle — inerte si non configurée.
+    xafe = None
+    if "--simulation" not in args:
+        from .xafe import PorteXafe
+        xafe = PorteXafe(cfg["xafe_url"], cfg["xafe_cle"], cfg["xafe_terminal"],
+                         journal, anon=cfg["xafe_anon"],
+                         transferts=cfg["xafe_transferts"])
+        if xafe.actif:
+            print(t(f"  XAFe: {cfg['xafe_url']} (terminal “{cfg['xafe_terminal']}”)",
+                    f"  XAFe : {cfg['xafe_url']} (terminal « {cfg['xafe_terminal']} »)"))
+
     Robot(comptes, transport, journal, nom=nom,
           heure_rapport=cfg["heure_rapport"], raccourcis=cfg["raccourcis"],
           delai_session=cfg["delai_session"],
@@ -256,7 +267,7 @@ def principal():
           sauvegarde_quotidienne=cfg["sauvegarde_quotidienne"],
           chemin_base=cfg["base"] if "--simulation" not in args else None,
           numeros=cfg["numeros"], recus=cfg["recus"],
-          nuage=nuage).demarrer()
+          nuage=nuage, xafe=xafe).demarrer()
 
 
 if __name__ == "__main__":
