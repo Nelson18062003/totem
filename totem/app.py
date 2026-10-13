@@ -245,11 +245,21 @@ class Robot:
     # un robot construit sans son __init__ (les essais) le porte aussi.
     postes = False
 
+    # LES SMS NE S'ANNONCENT PLUS SUR TELEGRAM. Le téléphone du propriétaire
+    # sonnait deux fois pour chaque SMS : la notification de l'application
+    # TOTEM, puis celle de Telegram — « 💰 Encaissement… », et dix secondes
+    # plus tard le reçu PDF. Il l'a demandé : sur Telegram, les autres
+    # nouvelles (modem, cartes, bilan, plateforme), pas les SMS. Le SMS reste
+    # au journal, monte à la plateforme, fait sonner l'application ; son reçu
+    # se dépose et se partage depuis l'application. `sms_sur_telegram = oui`
+    # dans la configuration rend l'ancienne conduite.
+    sms_sur_telegram = False
+
     def __init__(self, comptes, transport, journal, nom="TOTEM",
                  heure_rapport="21:00", pause_sms=10, raccourcis=None,
                  delai_session=180, chemin_base=None, nuage=None,
                  seuil_confirmation=0, sauvegarde_quotidienne=True,
-                 numeros=None, recus=True):
+                 numeros=None, recus=True, sms_sur_telegram=False):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -292,6 +302,7 @@ class Robot:
         # sait pas de quel côté d'un transfert il se trouve.
         self.numeros = dict(numeros or {})
         self.recus = recus      # joindre un reçu PDF aux opérations comprises
+        self.sms_sur_telegram = sms_sur_telegram
         # Le dépôt des reçus sur la plateforme a son propre fil, réveillé dès
         # qu'un reçu est inscrit. Un seul passage à la fois ; Telegram, de
         # son côté, a son verrou — l'un ne fait jamais attendre l'autre.
@@ -2552,7 +2563,16 @@ class Robot:
             self._verrou_envoi.release()
 
     def _envoyer_recus_sans_verrou(self):
-        for ligne in self.journal.recus_a_envoyer(DELAI_RECU):
+        if not self.sms_sur_telegram:
+            # Le reçu d'un SMS n'est plus une annonce Telegram : il se dépose
+            # sur la plateforme (son fil n'en dépend pas) et se partage
+            # depuis l'application. Ceux d'un solde lu au menu partent
+            # encore — c'est la réponse à un geste, pas une annonce.
+            self.journal.recus_sms_hors_telegram()
+            lignes = self.journal.recus_a_envoyer(DELAI_RECU, sms=False)
+        else:
+            lignes = self.journal.recus_a_envoyer(DELAI_RECU)
+        for ligne in lignes:
             identifiant = ligne[0]
             try:
                 nom, pdf, legende = self._fabriquer_recu(ligne)
@@ -2768,6 +2788,7 @@ class Robot:
         coupure Internet doit repartir tout seul au retour du réseau."""
         etiquette = f" [{echap(compte.libelle)}]" if self.multi else ""
         paiement = analyser(texte, numeros=self._nos_numeros())
+        illisible = False
 
         if paiement and paiement.sens == "entree":
             entete = t(f"💰 {gras('Payment received')}{etiquette} — "
@@ -2807,7 +2828,9 @@ class Robot:
             # l'opération n'était comptée nulle part. Quand Orange ou MTN
             # changent une tournure, le propriétaire doit l'apprendre le jour
             # même — pas des semaines plus tard devant un bilan trop maigre.
-            if categoriser(texte, numeros=self._nos_numeros()) == "illisible":
+            illisible = (categoriser(texte, numeros=self._nos_numeros())
+                         == "illisible")
+            if illisible:
                 entete += "\n" + t(
                     "⚠️ This message speaks of money but I could not read it "
                     "fully — it is counted nowhere. You can classify it on "
@@ -2828,9 +2851,19 @@ class Robot:
         # Dans le chat privé du propriétaire, rien ne change : le message est
         # à lui, code compris, et le lui cacher le rendrait inutilisable.
         partage = getattr(self.transport, "partage", False)
-        self.facteur.poster(
-            f"{entete}\n{echap(masquer_le_code(texte) if partage else texte)}",
-            canal="encaissements")
+        if self.sms_sur_telegram:
+            self.facteur.poster(
+                f"{entete}\n{echap(masquer_le_code(texte) if partage else texte)}",
+                canal="encaissements")
+        elif illisible:
+            # Sans l'annonce du SMS, une seule chose part encore sur
+            # Telegram : l'ALERTE d'un SMS d'argent que le lecteur n'a pas su
+            # lire. Ce n'est pas un SMS de plus, c'est une panne du lecteur —
+            # l'opération n'est comptée nulle part, et le propriétaire doit
+            # l'apprendre le jour même.
+            self.facteur.poster(
+                f"{entete}\n{echap(masquer_le_code(texte) if partage else texte)}",
+                canal="alertes")
         # Les téléphones inscrits ne sont pas tous celui du propriétaire : un
         # invité approuvé en a un, et un aperçu s'affiche sur un écran
         # VERROUILLÉ, que n'importe qui peut lire par-dessus une épaule.

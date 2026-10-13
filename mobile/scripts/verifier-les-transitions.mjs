@@ -16,8 +16,9 @@
 // avant. On regarde donc l'écran, toutes les images, pendant le passage.
 //
 // CE QU'IL EXIGE, sur les trajets que le propriétaire a nommés — Accueil →
-// Comptes → SMS → Opérations, puis le retour, et Accueil ↔ Opérations d'un
-// saut :
+// Paiements → SMS → Opérations → Plus, puis le retour, et Accueil ↔
+// Opérations d'un saut (les Comptes, qui avaient leur onglet, vivent
+// maintenant dans « Plus ») :
 //
 //   mouvement     au moins une image INTERMÉDIAIRE — ni l'écran d'avant, ni
 //                 celui d'après : une opacité entre les deux, ou un écran
@@ -84,15 +85,18 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
 // Les écrans, par ce qu'ils montrent.
 const ACCUEIL = /^(Latest transactions|Derniers mouvements)$/.source;
-const COMPTES = /^(Accounts|Comptes)$/.source;
+// Les Paiements ont pris la place des Comptes dans la barre (les Comptes
+// vivent maintenant dans « … ») ; « Plus », au bout, est le cinquième.
+const PAIEMENTS = /^(Payments|Paiements)$/.source;
+const PLUS = /^(More|Plus)$/.source;
 const SMS = /^(Messages received|SMS reçus)$/.source;
 const OPERATIONS = /^(Operations|Opérations)$/.source;
 // Le dernier groupe d'Opérations : celui qu'une cascade d'entrée montrait
 // en dernier.
 const OUTILS = /^(Tools|Outils)$/.source;
 const ONGLET = {
-  accueil: /^(Home|Accueil)$/, comptes: /^(Accounts|Comptes)$/,
-  sms: /^SMS$/, operations: /^(Operations|Opérations)$/,
+  accueil: /^(Home|Accueil)$/, paiements: /^(Payments|Paiements)$/,
+  sms: /^SMS$/, operations: /^(Operations|Opérations)$/, plus: /^(More|Plus)$/,
 };
 const CONTRASTE_MIN = 3;
 
@@ -409,12 +413,14 @@ const onglet = (page, re) => page.getByRole("tab", { name: re }).first();
 // puis au retour, et un saut d'un bout à l'autre. `depuis` : +1 si l'écran
 // doit arriver par la droite.
 const TRAJETS = [
-  ["Accueil → Comptes", ACCUEIL, COMPTES, "accueil", "comptes", +1],
-  ["Comptes → SMS", COMPTES, SMS, "comptes", "sms", +1],
+  ["Accueil → Paiements", ACCUEIL, PAIEMENTS, "accueil", "paiements", +1],
+  ["Paiements → SMS", PAIEMENTS, SMS, "paiements", "sms", +1],
   ["SMS → Opérations", SMS, OPERATIONS, "sms", "operations", +1],
+  ["Opérations → Plus", OPERATIONS, PLUS, "operations", "plus", +1],
+  ["Plus → Opérations", PLUS, OPERATIONS, "plus", "operations", -1],
   ["Opérations → SMS", OPERATIONS, SMS, "operations", "sms", -1],
-  ["SMS → Comptes", SMS, COMPTES, "sms", "comptes", -1],
-  ["Comptes → Accueil", COMPTES, ACCUEIL, "comptes", "accueil", -1],
+  ["SMS → Paiements", SMS, PAIEMENTS, "sms", "paiements", -1],
+  ["Paiements → Accueil", PAIEMENTS, ACCUEIL, "paiements", "accueil", -1],
   ["Accueil → Opérations", ACCUEIL, OPERATIONS, "accueil", "operations", +1],
   ["Opérations → Accueil", OPERATIONS, ACCUEIL, "operations", "accueil", -1],
 ];
@@ -423,7 +429,7 @@ async function parcourir(page, titre, exigences) {
   // Chaque onglet est d'abord OUVERT une fois : un écran jamais ouvert
   // n'existe pas, et son premier montage n'est pas un passage (la première
   // ouverture d'Opérations est mesurée à part, avant).
-  for (const o of ["comptes", "sms", "operations", "accueil"]) {
+  for (const o of ["paiements", "sms", "operations", "plus", "accueil"]) {
     await onglet(page, ONGLET[o]).click();
     await page.waitForTimeout(1200);
   }

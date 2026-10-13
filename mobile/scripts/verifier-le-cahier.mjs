@@ -16,7 +16,7 @@
 //     en poche trente secondes plus tôt.
 //
 // CE QUE LE HARNAIS MESURE, et que lire le code ne dit pas : il ÉCOUTE le
-// réseau. Il compte les appels à `/api/donnees` en visitant les quatre
+// réseau. Il compte les appels à `/api/donnees` en visitant les cinq
 // onglets, et il regarde ce que chaque appel demande.
 //
 // LE PIÈGE QU'IL GARDE. Les Comptes demandent mille SMS pour COMPTER, sans
@@ -36,12 +36,15 @@ const APERCU = "http://127.0.0.1:3210";
 const COURRIEL = "essai@totem.test";
 const MOTDEPASSE = "un-mot-de-passe-assez-long";
 
-// Quatre onglets, visités deux fois. Trois descentes est le PLANCHER, et il
+// Cinq onglets, visités deux fois. Deux descentes est le PLANCHER, et il
 // faut dire pourquoi plutôt que d'espérer mieux : un onglet ne se monte qu'à
 // sa première visite, et chacun qui demande PLUS que ce qui est au cahier
-// oblige à y retourner. L'accueil veut trente SMS ; les Comptes en COMPTENT
-// mille ; la boîte de réception en RAPPORTE deux cents. Les Opérations, elles,
-// ne demandent rien de neuf — et ne coûtent rien.
+// oblige à y retourner. L'accueil veut trente SMS ; les Paiements et la
+// boîte de réception en RAPPORTENT deux cents — le MÊME besoin, donc une
+// seule descente pour les deux. Les Opérations et « Plus » ne lisent que les
+// cartes — et ne coûtent rien. (Les Comptes, qui COMPTENT mille SMS, ne sont
+// plus un onglet : on les ouvre depuis « Plus », et c'est là seulement
+// qu'ils descendent.)
 //
 // Aller chercher tout de suite le besoin FINAL serait pire : ce serait faire
 // attendre l'accueil, le seul écran que le propriétaire regarde vraiment,
@@ -50,7 +53,7 @@ const MOTDEPASSE = "un-mot-de-passe-assez-long";
 // Mesuré à 4 avant le cahier. Le gain de CE comptage-là est donc mince, et il
 // ne faut pas prétendre l'inverse : le vrai gain se mesure plus bas, au
 // retour devant l'application.
-const APPELS_MAX = 3;
+const APPELS_MAX = 2;
 // Le poids : mesuré à 105 Ko avant, 117 Ko après. C'est PLUS, et c'est le prix
 // d'un seul cahier — quand les Comptes s'ajoutent, il faut redescendre
 // chercher mille SMS à compter, et cette descente rapporte aussi les trente
@@ -118,7 +121,7 @@ try {
   // de passe. La version d'avant sortait alors 3 descentes au lieu de 4, et
   // la comparaison avec la version d'après perdait tout son sens.
 
-  const onglets = ["Accounts", "SMS", "Operations", "Home"];
+  const onglets = ["Payments", "SMS", "Operations", "More", "Home"];
   for (const nom of onglets) {
     const l = page.getByRole("tab", { name: new RegExp(`^${nom}$`) }).first();
     if (!(await l.count())) {
@@ -136,7 +139,7 @@ try {
   }
 
   const total = descentes.reduce((n, d) => n + d.octets, 0);
-  console.log(`  quatre onglets, visités deux fois :`);
+  console.log(`  cinq onglets, visités deux fois :`);
   console.log(`    descentes au guichet : ${descentes.length}`);
   for (const d of descentes) {
     console.log(`      sms=${d.sms} recus=${d.recus} lignes=${d.lignes}`
@@ -150,7 +153,7 @@ try {
     echecs++;
   } else {
     console.log(`  ✓ ${descentes.length} descente${descentes.length > 1 ? "s" : ""}`
-                + " pour quatre onglets : le cahier sert tout le monde.");
+                + " pour cinq onglets : le cahier sert tout le monde.");
   }
 
   // ON JUGE AU POIDS, PAS AU PARAMÈTRE. Un premier brouillon lisait
@@ -159,7 +162,7 @@ try {
   // et recevait un kilo-octet. Ce que la demande dit ne prouve rien ; ce qui
   // revient sur le réseau, si.
   if (total / 1024 > KO_MAX) {
-    console.log(`  ✗ ${(total / 1024).toFixed(0)} Ko descendus pour quatre`
+    console.log(`  ✗ ${(total / 1024).toFixed(0)} Ko descendus pour cinq`
                 + ` onglets (${KO_MAX} Ko tolérés).`);
     echecs++;
   } else {

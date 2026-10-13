@@ -919,12 +919,15 @@ class Journal:
                     "essais_archive = 0, empreinte = NULL WHERE id = ?", (genre, identifiant))
             self.conn.commit()
 
-    def recus_a_envoyer(self, apres_secondes=0, limite=5):
+    def recus_a_envoyer(self, apres_secondes=0, limite=5, sms=True):
         """Les reçus mûrs, du plus ancien au plus récent.
 
         `apres_secondes` laisse au message texte le temps de partir en premier :
         l'alerte doit arriver tout de suite, le document quelques secondes
         après. [(id, genre, numero, date, texte, compte, iccid, nature, langue)]
+
+        `sms=False` : seulement ceux d'un solde lu au menu (voir
+        `recus_sms_hors_telegram`).
         """
         avant = (datetime.now() - timedelta(seconds=apres_secondes)).isoformat(
             timespec="seconds")
@@ -937,8 +940,24 @@ class Journal:
                 "FROM recus r "
                 "LEFT JOIN sms  s ON r.source = 'sms'  AND s.id = r.source_id "
                 "LEFT JOIN ussd u ON r.source = 'ussd' AND u.id = r.source_id "
-                "WHERE r.envoye = 0 AND r.date <= ? ORDER BY r.id LIMIT ?",
+                "WHERE r.envoye = 0 AND r.date <= ? "
+                + ("" if sms else "AND r.source != 'sms' ")
+                + "ORDER BY r.id LIMIT ?",
                 (avant, limite)).fetchall()
+
+    def recus_sms_hors_telegram(self):
+        """Telegram n'a rien à faire des reçus nés d'un SMS : il en a fini.
+
+        « envoye = 1 » veut dire cela, et rien de plus — c'est déjà ce que
+        pose `recu_echoue` quand il renonce après soixante accrocs. Le dépôt
+        sur la plateforme ne le lit pas (`archive`, `empreinte`) : la
+        plateforme reçoit chaque reçu comme avant. Et rien ne s'accumule :
+        rallumer `sms_sur_telegram` n'enverra pas d'un coup des semaines de
+        reçus en retard, seulement ceux des SMS qui arrivent ensuite."""
+        with self.verrou:
+            self.conn.execute("UPDATE recus SET envoye = 1 "
+                              "WHERE source = 'sms' AND envoye = 0")
+            self.conn.commit()
 
     def recus_a_archiver(self, limite=5, source=None, source_id=None):
         """Les reçus pas encore déposés sur la plateforme — que Telegram les

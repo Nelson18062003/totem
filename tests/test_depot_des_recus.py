@@ -106,7 +106,7 @@ def distribuer_a_l_ancienne_sans_forcer(robot):
     """Le témoin, au vrai délai : ce que l'ancien tour faisait juste après
     la relève."""
     vraie = robot.journal.recus_a_envoyer
-    robot.journal.recus_a_envoyer = lambda apres=0, limite=5: vraie(DELAI_RECU, limite)
+    robot.journal.recus_a_envoyer = lambda apres=0, limite=5, sms=True: vraie(DELAI_RECU, limite, sms)
     try:
         distribuer_a_l_ancienne(robot)
     finally:

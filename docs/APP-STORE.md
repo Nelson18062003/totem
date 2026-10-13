@@ -142,10 +142,11 @@ Les SMS et les soldes passent par le boîtier, pas par le téléphone. Mais ils
 sont rangés sur la plateforme au nom de la personne, et l'application les
 lui montre : les déclarer est exact, les taire serait faux.
 
-**Telegram n'est pas un oubli.** Chaque boîtier envoie une copie des SMS
-qu'il reçoit (codes à usage unique compris) et des reçus PDF dans la
-discussion Telegram privée de qui le fait fonctionner — l'équipe TOTEM pour
-une puce confiée à TOTEM. Telegram travaille pour le compte de TOTEM (pas
+**Telegram n'est pas un oubli.** Chaque boîtier rend compte de lui-même
+(modem, cartes, bilan) dans la discussion Telegram privée de qui le fait
+fonctionner — l'équipe TOTEM pour une puce confiée à TOTEM. Par défaut, il
+n'y envoie plus les SMS (`sms_sur_telegram = non`) ; rallumée, cette copie
+porte chaque SMS reçu (codes à usage unique compris) et ses reçus PDF. Telegram travaille pour le compte de TOTEM (pas
 pour son propre usage) : ce n'est pas du « suivi », mais il est NOMMÉ dans
 la politique de confidentialité (`tiers`) et dans la note à l'examinateur
 (section 4). Les types déclarés ci-dessus le couvrent déjà (« E-mails ou

@@ -4,12 +4,16 @@
 // Le pendant mobile de `web/app/cartes/page.tsx`. Trois blocs, et le
 // troisième n'apparaît que s'il a lieu d'être : retirer une carte ne perd
 // rien — son journal reste consultable, et son total avec.
+//
+// PLUS UN ONGLET : on y vient par « … » (l'onglet Plus), avec une flèche
+// pour revenir. La barre garde ce qu'on fait tous les jours.
 
 import { AjouterMaCarteCourt } from "@/ajouter-ma-carte";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useMargeSousLaBarre, Defilement, Accroc, Carte, Filet, LigneAction, Texte } from "@/ui";
+import { BoutonIcone, Defilement, Accroc, Carte, Filet, Texte } from "@/ui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Icone } from "@/icones";
 import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
@@ -24,12 +28,13 @@ import { FUSEAU_DEFAUT, fcfa, nombre, type Sim } from "@noyau/types";
 import { jourCourt, jourDuReleve } from "@noyau/periodes";
 import { signalFaible, signalLu } from "@noyau/boitier";
 import { formaterNumero } from "@noyau/numero";
-import { textesAnalyse } from "@noyau/textes/analyse";
+import { textesCharpente } from "@noyau/textes/charpente";
 import type { Langue } from "@noyau/langue";
 
 export default function Comptes() {
-  // Ce que la barre d'onglets flottante recouvre — voir `useMargeSousLaBarre`.
-  const margeBas = useMargeSousLaBarre();
+  // Hors des onglets : rien ne flotte au-dessus du bas de l'écran, sauf la
+  // barre du téléphone.
+  const margeBas = useSafeAreaInsets().bottom + espaces.xl;
   const langue = useLangue();
   const t = textesCartes[langue];
   const ecran = useEcran();
@@ -63,18 +68,16 @@ export default function Comptes() {
         }}
         refreshControl={roue}
       >
+        {/* L'Analyse vivait ici, sur une ligne ; elle est maintenant à côté,
+            dans « … » — la même liste qui mène à cet écran. */}
         <Entree montee={6}>
-          <Texte taille={textes.titre} poids="demi">{t.titre}</Texte>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.md }}>
+            <BoutonIcone nom="Chevron" etiquette={textesCharpente[langue].retour}
+                         onPress={() => router.back()}
+                         style={{ transform: [{ rotate: "180deg" }] }} />
+            <Texte taille={textes.titre} poids="demi" accessibilityRole="header">{t.titre}</Texte>
+          </View>
         </Entree>
-
-        {/* L'ANALYSE, NOMMÉE. Elle n'avait qu'une icône de graphe dans le
-            coin de l'accueil — que personne ne reconnaissait. Elle vit ici,
-            sur une ligne qui dit ce qu'on y trouve : c'est l'onglet où l'on
-            regarde ses comptes. */}
-        <Carte>
-          <LigneAction titre={textesAnalyse[langue].titre} sous={t.analyseSous} icone="Chart"
-                       onPress={() => router.push("/analyse")} />
-        </Carte>
 
         {/* La panne se dit AVANT l'état vide : sans cela, un téléphone hors
             ligne montrait « aucune carte » — une connexion en panne déguisée

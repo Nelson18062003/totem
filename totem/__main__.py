@@ -256,6 +256,7 @@ def principal():
           sauvegarde_quotidienne=cfg["sauvegarde_quotidienne"],
           chemin_base=cfg["base"] if "--simulation" not in args else None,
           numeros=cfg["numeros"], recus=cfg["recus"],
+          sms_sur_telegram=cfg["sms_sur_telegram"],
           nuage=nuage).demarrer()
 
 

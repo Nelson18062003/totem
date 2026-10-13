@@ -1,4 +1,4 @@
-// Les quatre onglets, dans une BARRE FLOTTANTE.
+// Les cinq onglets, dans une BARRE FLOTTANTE.
 //
 // Ce n'est pas la barre standard : une pilule blanche qui flotte au-dessus
 // du contenu, l'onglet actif posé sur un fond sombre. L'écran garde toute sa
@@ -23,9 +23,8 @@
 //
 // « Réduire les animations » : un fondu de 120 ms, et la pastille saute.
 //
-// Quatre entrées, pas une de plus : ce qu'un propriétaire vient faire.
-// L'Analyse et la console USSD se rejoignent depuis les écrans qui les
-// appellent, pas depuis la barre.
+// Quatre gestes de tous les jours, et « … » pour le reste : les Comptes,
+// l'Analyse, le relevé, les bénéficiaires, le cadran USSD, les réglages.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, View, useWindowDimensions, type ViewStyle } from "react-native";
@@ -52,9 +51,16 @@ import {
 
 const ONGLETS: { nom: string; cle: keyof ReturnType<typeof libelles>; icone: NomIcone }[] = [
   { nom: "index", cle: "accueil", icone: "Home" },
-  { nom: "cartes", cle: "comptes", icone: "Wallet" },
+  // LES PAIEMENTS, un module à part des SMS : ce qui entre et sort de chaque
+  // carte. Ils prennent la double flèche ⇄ — le signe que le propriétaire a
+  // montré chez Revolut ; Opérations, où l'on compose les codes, le pavé.
+  { nom: "paiements", cle: "flux", icone: "Transfer" },
   { nom: "encaissements", cle: "smsCourt", icone: "Bubble" },
-  { nom: "actions", cle: "operations", icone: "Transfer" },
+  { nom: "actions", cle: "operations", icone: "Pave" },
+  // « … » : les Comptes (qui avaient leur onglet, pour un écran qu'on ouvre
+  // de temps en temps), l'Analyse, le relevé, les bénéficiaires, le cadran,
+  // les réglages. Toujours en DERNIER, comme sur les téléphones.
+  { nom: "plus", cle: "plus", icone: "Points" },
 ];
 
 function libelles(langue: "en" | "fr") {
@@ -204,13 +210,19 @@ type ProprietesBarre = {
 function BarreFlottante({ state, descriptors, navigation }: ProprietesBarre) {
   const bas = useSafeAreaInsets().bottom;
   const reduit = useMouvementReduit();
-  // QUATRE NOMS DOIVENT TENIR SUR 320 POINTS. Chaque onglet prend sa part
-  // de la largeur (jamais plus de 84 points) ; « Opérations », le plus long,
-  // tient en 11 points sur 76.
+  // CINQ NOMS DOIVENT TENIR SUR 320 POINTS. Chaque onglet prend sa part de
+  // la largeur (jamais plus de 84 points) : 55 à 320 points, 63 à 360.
+  // « Opérations », le plus long, en demande 59 en Inter demi-gras 11 points
+  // — MESURÉ dans la page, pas estimé : une première estimation disait 52,6,
+  // et à 320 points le nom sortait de son onglet, « Ͻpérations » et
+  // « aiements » rognés par la pastille. Le corps se réduit donc avec la
+  // place (5,4 points de largeur par point de corps, pour « Opérations ») :
+  // 11 dès 360 points, 9,5 sur le plus étroit.
   const { width } = useWindowDimensions();
-  const largeur = Math.min(84, Math.floor((width - 2 * espaces.lg - 12) / 4));
+  const largeur = Math.min(84, Math.floor((width - 2 * espaces.lg - 12) / ONGLETS.length));
+  const corps = Math.min(11, Math.floor(((largeur - 3) / 5.4) * 2) / 2);
 
-  // LA PASTILLE QUI GLISSE. Une seule, sous les quatre onglets : elle va
+  // LA PASTILLE QUI GLISSE. Une seule, sous les cinq onglets : elle va
   // de l'onglet quitté à l'onglet choisi, à la vitesse de l'écran — l'œil
   // suit le doigt jusqu'à sa destination. Rien ne glisse au premier rendu.
   const pas = largeur + espaces.xs;
@@ -271,6 +283,7 @@ function BarreFlottante({ state, descriptors, navigation }: ProprietesBarre) {
               largeur={largeur}
               reduit={reduit}
               libelle={String(libelle)}
+              corps={corps}
               icone={onglet.icone}
               onPress={() => {
                 const evenement = navigation.emit({
@@ -328,9 +341,9 @@ function Coque({ style, children }: { style: ViewStyle; children: React.ReactNod
  *  toucher clignotait. Chaque onglet porte maintenant DEUX couches, la
  *  sombre (sur la barre) et la claire (sur la pastille), et c'est la
  *  position de la pastille, image par image, qui décide laquelle se voit. */
-function Pilule({ actif, rang, pas, x, libelle, icone, largeur, reduit, onPress }: {
+function Pilule({ actif, rang, pas, x, libelle, corps, icone, largeur, reduit, onPress }: {
   actif: boolean; rang: number; pas: number; x: SharedValue<number>;
-  libelle: string; icone: NomIcone; largeur: number; reduit: boolean;
+  libelle: string; corps: number; icone: NomIcone; largeur: number; reduit: boolean;
   onPress: () => void;
 }) {
   // SUR LE FIL DE L'INTERFACE, ET NON SUR CELUI DU JAVASCRIPT : on change
@@ -367,7 +380,7 @@ function Pilule({ actif, rang, pas, x, libelle, icone, largeur, reduit, onPress 
       <Animated.View style={pouls}>
         <Icone nom={icone} taille={22} couleur={couleur} />
       </Animated.View>
-      <Texte poids={poids} taille={11} style={{ color: couleur, textAlign: "center" }}>
+      <Texte poids={poids} taille={corps} numberOfLines={1} style={{ color: couleur, textAlign: "center" }}>
         {libelle}
       </Texte>
     </>

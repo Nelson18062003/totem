@@ -4,10 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLangue } from "@/app/langue";
 import { NATURES } from "@noyau/natures";
-import {
-  categorieDe, estArgent, etatDeLaReponseRecu, FENETRE_DU_RECU_MS,
-  LONG_MESSAGE, recuAttendu, texteSurEcran,
-} from "@noyau/sms";
+import { categorieDe, estArgent, LONG_MESSAGE, texteSurEcran } from "@noyau/sms";
 import { textesSms } from "@noyau/textes/sms";
 import { type Categorie, fcfa, type Paiement } from "@noyau/types";
 import { Feuille } from "./feuille";
@@ -17,6 +14,7 @@ import {
   IconTransfer,
 } from "./icons";
 import { reveillerLaVeille } from "./veille";
+import { GestesRecu, useRecuDuSms } from "./recu";
 
 // Chaque catégorie de SMS a son icône au trait, comme une boîte de réception.
 // Son libellé, lui, vit dans le dictionnaire bilingue (lib/textes/sms.ts) —
@@ -78,8 +76,6 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   const router = useRouter();
   const langue = useLangue();
   const t = textesSms[langue];
-  const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
-  const [mot, setMot] = useState("");
   const [nature, setNature] = useState<Paiement["nature"]>(p.nature);
   const [classe, setClasse] = useState(false);
   const [choisirType, setChoisirType] = useState(false);
@@ -89,49 +85,10 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   const texte = texteSurEcran(p);
   const long = texte.length > LONG_MESSAGE;
 
-  // Le numéro du reçu : celui de la ligne, ou celui que la fiche vient
-  // d'apprendre (le reçu arrivé tout seul, voir plus bas).
-  const [recuAppris, setRecuAppris] = useState<string | null>(null);
-  const recu = p.recu ?? recuAppris;
-
-  // LE REÇU QUI ARRIVE TOUT SEUL — la même règle que sur le téléphone
-  // (`recuAttendu`, dans le noyau). Un SMS d'argent tout juste reçu a son
-  // reçu en route : le boîtier le dépose dans les secondes qui suivent. La
-  // fiche l'ATTEND au lieu de proposer de l'établir, et demande à la
-  // plateforme, toutes les trois secondes, s'il est là — le temps de la
-  // fenêtre, et tant qu'elle est ouverte. Jamais un pouls.
-  const [attendu, setAttendu] = useState(() => recuAttendu(p, Date.now()));
-  // La fin du guet : la fenêtre du SMS neuf — ou, après une demande que le
-  // boîtier n'a pas encore pu déposer (« en fabrication »), une fenêtre
-  // ouverte à partir de cette réponse.
-  const [finGuet, setFinGuet] = useState(() => Date.parse(p.recuLe) + FENETRE_DU_RECU_MS);
-  useEffect(() => {
-    if (!attendu || p.recu) return;
-    const fin = finGuet;
-    const renoncer = new AbortController();
-    let minuterie: ReturnType<typeof setTimeout> | undefined;
-    const guetter = async () => {
-      if (renoncer.signal.aborted) return;
-      const n = await fetch(`/api/recu-du-sms?id=${encodeURIComponent(p.id)}`,
-                            { cache: "no-store", signal: renoncer.signal })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((c: { recu?: unknown } | null) =>
-          (typeof c?.recu === "string" && c.recu ? c.recu : null))
-        .catch(() => null);
-      if (renoncer.signal.aborted) return;
-      if (n) {
-        setRecuAppris(n);
-        setAttendu(false);
-        router.refresh();       // la ligne de la liste prend son icône
-        return;
-      }
-      if (Date.now() >= fin) { setAttendu(false); return; }
-      minuterie = setTimeout(guetter, Math.min(3000, Math.max(0, fin - Date.now())));
-    };
-    void guetter();
-    return () => { renoncer.abort(); if (minuterie) clearTimeout(minuterie); };
-  }, [p.id, p.recu, finGuet, attendu, router]);
-  const enPreparation = attendu && !recu && etabli === "repos";
+  // LE REÇU — établir, attendre celui qui arrive tout seul, refaire — vit
+  // dans `recu.tsx`, partagé avec la fiche d'un paiement : le même système
+  // sur chaque transaction.
+  const { recu, enPreparation, enRecherche, etabli, mot, etablirRecu } = useRecuDuSms(p, nature);
 
   // Ouvrir la fiche, c'est lire le message : le point de la ligne s'éteint et
   // la pastille du menu se met à jour dans la foulée. Si la base n'a pas
@@ -189,133 +146,6 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
     setClasse(false);
   };
 
-  // Le reçu d'un message passé : le terminal le refabrique depuis le SMS,
-  // qui fait foi — même numéro, à la demande. La nature choisie voyage avec
-  // la demande : c'est ELLE qui décide du document (un transfert marqué
-  // « transfert » ne peut pas revenir en reçu de solde).
-  // La date d'établissement du reçu, lue dans le cloud : elle avance quand le
-  // terminal a VRAIMENT remplacé le document — c'est elle qu'on guette.
-  const ficheRecu = async (): Promise<string | null> => {
-    if (!recu) return null;
-    try {
-      const r = await fetch(`/api/recu/${recu}/fiche`, { cache: "no-store" });
-      if (!r.ok) return null;
-      const corps = (await r.json()) as { etabliLe: string | null };
-      return corps.etabliLe;
-    } catch {
-      return null;
-    }
-  };
-
-  const etablirRecu = async (natureVoulue?: Categorie) => {
-    if (etabli === "envoi" || p.sourceId == null) return;
-    const natureDemandee = natureVoulue ?? nature;
-    setEtabli("envoi");
-    const etabliAvant = await ficheRecu();
-    try {
-      const r = await fetch("/api/commande", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "recu",
-          // Le terminal qui a REÇU ce SMS : `source_id` ne veut rien dire
-          // dans le journal d'un autre boîtier.
-          ...(p.terminal ? { terminal: p.terminal } : {}),
-          parametres: {
-            source_id: p.sourceId,
-            ...(natureDemandee ? { nature: natureDemandee } : {}),
-          },
-        }),
-      });
-      if (!r.ok) throw new Error();
-      const { id } = (await r.json()) as { id: number };
-      for (let i = 0; i < 20; i++) {
-        await new Promise((res) => setTimeout(res, 1300));
-        const c = await fetch(`/api/commande/${id}`, { cache: "no-store" })
-          .then((x) => (x.ok ? x.json() : null))
-          .catch(() => null);
-        if (c && (c.etat === "faite" || c.etat === "echouee")) {
-          setEtabli(c.etat === "faite" ? "fait" : "refus");
-          if (c.etat !== "faite") {
-            setMot(c.resultat || "");
-            return;
-          }
-          // Ce que le boîtier a FAIT, lu dans sa phrase : c'est lui qui a
-          // comparé le document refait à celui déposé (voir
-          // `etatDeLaReponseRecu`). Ni l'égalité des numéros ni une date
-          // inchangée ne le disent : un document refait garde les deux.
-          const etat = etatDeLaReponseRecu(c.resultat);
-          if (recu) {
-            // RÉGÉNÉRATION d'un document existant. Le terminal dépose le
-            // document AVANT de répondre « faite ».
-            if (etat === "inchange") {
-              setMot(t.recuDejaAJour);
-              setEtabli("repos");
-              return;
-            }
-            if (etat === "pret") {
-              setMot(t.regenerationFaite);
-              setEtabli("repos");
-              router.refresh();
-              return;
-            }
-            // En route — ou un boîtier d'avant cette règle : on guette la
-            // date d'établissement, et on ne dit « c'est le nouveau » que
-            // quand elle a vraiment avancé.
-            setMot(t.regenerationEnCours);
-            if (!etabliAvant) {
-              // Le repère d'avant n'a pas pu être lu : impossible de
-              // CONSTATER le remplacement — alors on ne le certifie pas.
-              // Message d'attente honnête, et la main revient.
-              await new Promise((res) => setTimeout(res, 15000));
-              setMot(t.regenerationEnRoute);
-              setEtabli("repos");
-              router.refresh();
-              return;
-            }
-            for (let attente = 0; attente < 30; attente++) {
-              await new Promise((res) => setTimeout(res, 3000));
-              const etabliApres = await ficheRecu();
-              if (etabliApres && etabliApres !== etabliAvant) {
-                setMot(t.regenerationFaite);
-                setEtabli("repos");
-                router.refresh();
-                return;
-              }
-            }
-            // Toujours rien après une minute et demie : on le dit sans
-            // prétendre que c'est fait.
-            setMot(t.regenerationLente);
-            setEtabli("repos");
-          } else {
-            setMot(c.resultat || "");
-            const n = /\bT[A-Z]-\d{4}-\d{4}-\d+\b/.exec(c.resultat ?? "")?.[0];
-            if (n && etat !== "en_route") {
-              // Le terminal a DÉPOSÉ le document avant de répondre « prêt » :
-              // le lien peut s'ouvrir tout de suite.
-              setRecuAppris(n);
-              setEtabli("repos");
-            } else {
-              // « En fabrication » : le document n'est PAS encore sur la
-              // plateforme. Poser le lien maintenant, c'était un clic vers
-              // une erreur. La fiche guette, comme pour un SMS neuf, et le
-              // lien n'apparaît que quand le reçu est là.
-              setFinGuet(Date.now() + FENETRE_DU_RECU_MS);
-              setAttendu(true);
-              setEtabli("repos");
-            }
-            router.refresh();
-          }
-          return;
-        }
-      }
-      throw new Error();
-    } catch {
-      setMot(t.terminalMuet);
-      setEtabli("refus");
-    }
-  };
-
   const copier = () => navigator.clipboard?.writeText(texteSurEcran(p));
 
   // L'en-tête épinglé : ce qui décide, rien d'autre. Le montant quand il
@@ -346,45 +176,22 @@ export function FicheSms({ p, onFermer }: { p: Paiement; onFermer: () => void })
   // copie pour le reste. Jamais de reçu pour une pub, un code, un message.
   const pied = (
     <>
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={copier}
-          className={`flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn py-2.5 text-small font-medium transition ${
-            argent
-              ? "border border-line hover:border-ink-faint"
-              : "bg-ink text-white hover:opacity-90"
-          }`}>
-          <IconCopy size={15} /> {t.copierSms}
-        </button>
-        {argent && (recu ? (
-          <a href={`/api/recu/${recu}`} target="_blank" rel="noopener"
-            className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90">
-            <IconDoc size={15} /> {t.telechargerPdf}
-          </a>
-        ) : (
-          p.sourceId != null && etabli !== "fait" && (
-            <button onClick={() => etablirRecu()} disabled={etabli === "envoi" || enPreparation}
-              className="flex min-w-[45%] flex-1 items-center justify-center gap-2 rounded-btn bg-ink py-2.5 text-small font-medium text-white transition hover:opacity-90 disabled:opacity-40">
-              <IconDoc size={15} />
-              {enPreparation ? t.recuEnPreparation
-                : etabli === "envoi" ? t.demandeAuTerminal : t.etablirRecu}
-            </button>
-          )
-        ))}
-      </div>
-      {/* Refaire un document existant : un geste discret, pas un troisième
-          bouton — le cas est rare, il ne mérite pas la première ligne. */}
-      {argent && recu && p.sourceId != null && (
-        <button onClick={() => etablirRecu()} disabled={etabli === "envoi" || etabli === "fait"}
-          className="mt-2 text-caption text-ink-faint underline underline-offset-4 transition hover:text-ink disabled:opacity-40">
-          {etabli === "envoi" ? t.demandeAuTerminal : t.regenererPdf}
-        </button>
+      {/* LE REÇU d'abord, pour l'argent : voir, télécharger, partager,
+          refaire — le même bloc que la fiche d'un paiement (`recu.tsx`). */}
+      {argent && (recu || p.sourceId != null) && (
+        <GestesRecu p={p} recu={recu} etabli={etabli} enPreparation={enPreparation}
+                    enRecherche={enRecherche} mot={mot}
+                    onEtablir={() => void etablirRecu()} />
       )}
-      {mot && (
-        <p className={`mt-2 text-caption leading-relaxed ${etabli === "refus" ? "text-negative" : "text-ink-soft"}`}>
-          {mot}
-        </p>
-      )}
+      <button
+        onClick={copier}
+        className={`flex w-full items-center justify-center gap-2 rounded-btn py-2.5 text-small font-medium transition ${
+          argent
+            ? "mt-2 border border-line hover:border-ink-faint"
+            : "bg-ink text-white hover:opacity-90"
+        }`}>
+        <IconCopy size={15} /> {t.copierSms}
+      </button>
     </>
   );
 
