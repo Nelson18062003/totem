@@ -812,6 +812,10 @@ class TestPousser(Banc):
         journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
         self.assertEqual(p.pousser_paiements(), 0)
         self.assertIsNone(p.demarrer())
+        # Le canard que `Pilotage` attend d'un guichet : la relève des
+        # commandes XAFe n'est pas branchée, elle rend [] sans réseau.
+        self.assertEqual(p.commandes_en_attente(), [])
+        self.assertEqual(p.commandes_abandonnees(time.time()), [])
         self.assertEqual(p.resume(), "XAFe désactivé" if "XAFe désactivé" in p.resume()
                          else "XAFe disabled")
         self.assertEqual(_evenements(journal), [])
@@ -858,6 +862,10 @@ class TestPousser(Banc):
         journal = journal_avec_carte()
         p = self.porte(g, journal)
         self.assertIn(p.resume(), ("XAFe à jour", "XAFe up to date"))
+        # Porte ACTIVE : la relève des commandes rend [] et ne fait aucune
+        # requête — elle n'est pas branchée (docs/XAFE.md, le code secret).
+        self.assertEqual(p.commandes_en_attente(), [])
+        self.assertEqual(g.requetes, [])
         journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
         journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
         self.assertIn("2", p.resume())

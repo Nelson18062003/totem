@@ -323,6 +323,32 @@ class PorteXafe:
             except Exception:
                 pass
 
+    # ---- le guichet (la relève des commandes XAFe) ---------------------------
+    # La porte offre à `Pilotage` les mêmes noms qu'un `Nuage`, pour qu'un
+    # second guichet ne lui demande rien de neuf. Mais la RELÈVE n'est pas
+    # branchée : elle attend la décision du propriétaire sur le code secret
+    # (docs/XAFE.md), et le guichet des SMS à envoyer arrive avec elle. Tant
+    # que c'est ainsi, « rien à faire » est la seule réponse — sans réseau.
+    def commandes_en_attente(self):
+        """Aucune commande XAFe n'est relevée aujourd'hui : [] sans requête."""
+        return []
+
+    def commandes_abandonnees(self, avant):
+        """XAFe n'offre pas de liste des commandes en cours : [] toujours."""
+        return []
+
+    def publier_solde(self, *args, **kwargs):
+        return True     # XAFe ne reçoit pas les soldes : c'est la plateforme
+
+    def publier_comptes(self, *args, **kwargs):
+        return True
+
+    def publier_raccourcis(self, *args, **kwargs):
+        return True
+
+    def enregistrer_terminal(self, *args, **kwargs):
+        return True     # chaque appel signé vaut déjà signe de vie chez XAFe
+
     # ---- le fil ---------------------------------------------------------------
     def reveiller(self):
         """Une ligne vient d'entrer au journal : ne pas attendre la pause."""

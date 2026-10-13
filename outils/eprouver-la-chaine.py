@@ -383,8 +383,18 @@ def main():
         envoyes = nuage.pousser_paiements()
         xafe.pousser_paiements()
         duree = time.monotonic() - debut
+        # On regarde LA ligne neuve, pas le nombre de lignes parties : le
+        # premier passage de ce harnais comptait « 5 ligne(s) » ici — robot2
+        # (la coupure de courant) est construit sans `numeros`, robot4 avec,
+        # et l'empreinte du lecteur porte les numéros déclarés : Bonzini
+        # relit alors tout l'historique (`_relire_sms_si_lecteur_change`,
+        # voulu). Ce n'est pas ce que cette étape mesure.
+        mballa = journal.conn.execute(
+            "SELECT COALESCE(envoye, 0), COALESCE(envoye_xafe, 0) FROM sms "
+            "WHERE texte LIKE '%MBALLA%'").fetchone()
         verifier("la ligne monte chez Bonzini en moins de 3 s, XAFe en panne",
-                 envoyes == 1 and duree < 3, f"{envoyes} ligne(s), {duree:.2f} s")
+                 envoyes >= 1 and mballa == (1, 0) and duree < 3,
+                 f"{envoyes} ligne(s) parties, Bonzini/XAFe = {mballa}, {duree:.2f} s")
         verifier("XAFe garde la ligne en attente",
                  journal.xafe_en_attente() == 1, f"{journal.xafe_en_attente()} en attente")
         faux_xafe.en_panne = False

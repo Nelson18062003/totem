@@ -1142,6 +1142,19 @@ lancé. Le lecteur comprend maintenant « oui » et « non », et
 `TestLaConfiguration.test_le_fichier_d_exemple_se_charge` charge le vrai
 fichier.
 
+**Une étape de harnais écrite sans être lancée n'a encore rien mesuré.**
+L'étape XAFe d'`eprouver-la-chaine` a été écrite un jour où la plateforme
+Next ne s'installait pas ici ; rejouée seule, hors harnais, elle tenait. Au
+premier passage ENTIER, elle a échoué : « 5 ligne(s) » montées chez Bonzini
+là où elle en attendait une. Rien n'était cassé — le robot de la coupure de
+courant est construit sans `numeros`, le suivant avec, et l'empreinte du
+lecteur porte les numéros déclarés : Bonzini relisait tout l'historique,
+comme c'est voulu. L'étape comptait les lignes PARTIES quand sa promesse
+porte sur LA ligne neuve ; elle regarde maintenant cette ligne-là
+(`envoye = 1, envoye_xafe = 0`). Le harnais n'a pas trouvé un défaut de la
+porte, il a trouvé un défaut du harnais — et c'est exactement ce qu'un
+contrôle rejoué « à côté » ne pouvait pas voir.
+
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
 
