@@ -134,10 +134,16 @@ class PorteXafe:
         self.fournir_numeros = None     # () -> tuple des numéros du terminal
         self.fournir_float = None       # (iccid) -> (op, numero) | None | Attente | SANS_FLOAT
         self.sur_incident = None        # (source_id, erreur)
-        self.secret_de = None           # (iccid) -> str | None — jamais posé ici
+        # Le crochet du code secret (PR-3) et l'événement d'arrêt n'existent
+        # pas ici : un état posé et jamais lu laisse croire qu'un fil
+        # l'attend. Ils arriveront avec le code qui les attend.
         self._marche = True
         self._reveil = threading.Event()
-        self._arret = threading.Event()
+        # Le dernier lot lu était PLEIN : la file n'est peut-être pas lue au
+        # bout, même si moins de LOT lignes ont été closes (un lot mixte,
+        # publicités closes ici et encaissements envoyés). `_pousser_tout`
+        # le lit pour enchaîner.
+        self._lot_etait_plein = False
         # L'heure de la BASE XAFe (en-tête « Date ») et l'instant monotone où
         # on l'a lue : c'est elle qui signe, pas l'horloge du Pi.
         self._heure_base = None
@@ -377,6 +383,7 @@ class PorteXafe:
         vide sur une file qui ne bouge pas."""
         if not self.actif:
             return 0
+        self._lot_etait_plein = False
         numeros = ()
         if self.fournir_numeros:
             try:
@@ -420,6 +427,7 @@ class PorteXafe:
             if closes:
                 self.journal.marquer_sms_xafe(closes)
             if charge:
+                self._lot_etait_plein = len(lignes) >= LOT
                 break
             if len(lignes) < LOT:
                 self.derniere_erreur = None
@@ -464,8 +472,12 @@ class PorteXafe:
         for ligne, v in zip(charge, verdicts):
             if not isinstance(v, dict):
                 continue
-            if v.get("source_id") not in (None, ligne["source_id"]):
-                continue        # la réponse n'est pas celle de cette ligne
+            if v.get("source_id") != ligne["source_id"]:
+                # La réponse n'est pas celle de cette ligne — ou ne nomme
+                # aucune ligne (la porte ne le fait que pour une ligne vide
+                # ou sans `source_id`, que nous n'envoyons jamais). Un verdict
+                # qui ne se rattache pas ne clôt rien : la ligne reste.
+                continue
             id_local = ligne["source_id"]
             r = v.get("resultat")
             motif = str(v.get("motif") or "")
@@ -556,28 +568,36 @@ class PorteXafe:
     def arreter(self):
         self._marche = False
         self._reveil.set()
-        self._arret.set()
 
     def _boucle(self):
         while self._marche:
             try:
                 self._pousser_tout()
             except Exception as e:
-                self.derniere_erreur = str(e)
+                # Une exception ICI n'est pas XAFe qui se tait : c'est le
+                # robot (le journal, un bogue). /statut doit le nommer, sans
+                # quoi on chercherait une panne réseau chez XAFe. Le nom de
+                # l'exception reste hors de la phrase lue par le propriétaire
+                # (`resume`), il sert à qui enquête.
+                self.derniere_erreur = f"robot : {type(e).__name__}: {e}"[:300]
             if self._reveil.wait(timeout=self.pause):
                 self._reveil.clear()
                 time.sleep(DEBOUNCE)
 
     def _pousser_tout(self):
-        """Lot après lot tant que XAFe en clôt un PLEIN ; une coupure rend 0
-        et sort. Les lignes closes sans réseau ne comptent pas ici : c'est
-        `pousser_paiements` qui lit la file au-delà d'elles, dans le même
-        appel."""
+        """Lot après lot tant que la file n'est pas lue au bout : un lot PLEIN
+        clos en entier, ou un lot plein dont une partie s'est close ici (des
+        publicités) et l'autre est partie — les encaissements au-delà du
+        centième n'attendent pas la pause suivante. Une coupure, ou un lot
+        dont rien n'a été clos, rend 0 et sort : on ne relit pas la même file
+        en boucle sur une panne."""
         total = 0
         while self._marche:
             envoyes = self.pousser_paiements()
             total += envoyes
-            if envoyes < LOT:
+            if envoyes <= 0:
+                break
+            if envoyes < LOT and not self._lot_etait_plein:
                 break
             time.sleep(0.2)
         return total
@@ -608,6 +628,10 @@ class PorteXafe:
         if erreur == "file illisible":
             return t(f"XAFe: queue unreadable (our defect) · {reste} waiting",
                      f"XAFe : file illisible (défaut de notre côté) · {reste} en attente")
+        if erreur and erreur.startswith("robot"):
+            # Le fil a levé : ce n'est pas le réseau, c'est le robot.
+            return t(f"XAFe: the robot failed (a defect on our side) · {reste} waiting",
+                     f"XAFe : le robot a échoué (défaut de notre côté) · {reste} en attente")
         if erreur:
             return t(f"XAFe unreachable · {reste} waiting",
                      f"XAFe injoignable · {reste} en attente")

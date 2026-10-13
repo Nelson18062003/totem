@@ -44,6 +44,7 @@ pour l'occasion.
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -60,7 +61,7 @@ from totem.app import Robot
 from totem.carte import Carte
 from totem.compte import Compte
 from totem.modem import ModemSerie
-from totem.nuage import Nuage
+from totem.nuage import Nuage, _horodatage
 from totem.simulator import ModemSimule
 from totem.storage import Journal
 from totem.xafe import PorteXafe
@@ -272,6 +273,19 @@ def main():
                  and abena_xafe["float_numero"] == "677000011"
                  and abena_xafe["operateur"] == "mtn",
                  f"{abena_xafe['montant']} F, float {abena_xafe['float_numero']}"
+                 if abena_xafe else "absent")
+        # L'heure RÉSEAU du contrat (`emis_le`) : le PDU d'il y a trois heures
+        # garde SON heure chez XAFe comme chez Bonzini, et avec son fuseau.
+        # Aucun test de la porte ne l'écrivait au journal : `"emis_le": None`
+        # survivait à tout.
+        heure_journal = journal.conn.execute(
+            "SELECT emis_le FROM sms WHERE texte LIKE '%ABENA%'").fetchone()[0]
+        verifier("l'encaissement d'il y a trois heures garde SON heure chez XAFe",
+                 abena_xafe is not None and heure_journal
+                 and abena_xafe["emis_le"] == _horodatage(heure_journal)
+                 and re.search(r"[+-]\d\d:\d\d$", abena_xafe["emis_le"] or "") is not None
+                 and abena_xafe["emis_le"].startswith(heure_journal[:13]),
+                 f"journal {heure_journal!r}, XAFe {abena_xafe.get('emis_le')!r}"
                  if abena_xafe else "absent")
         verifier("la sortie avec accents est restée chez le propriétaire",
                  journal.conn.execute(

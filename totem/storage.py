@@ -1214,17 +1214,28 @@ class Journal:
                 [(str(preuve), i) for i, preuve in reponses])
             self.conn.commit()
 
-    def remettre_sms_xafe(self, depuis_id=None, iccid=None):
-        """Rouvre pour XAFe une période (à partir de `depuis_id`), une carte,
-        ou tout — et dit combien de lignes. Relecture voulue : la porte XAFe
-        rend la même réponse à la même ligne, rien n'est crédité deux fois."""
+    def remettre_sms_xafe(self, depuis_id=None, iccid=None, tout=False):
+        """Rouvre pour XAFe une période (à partir de `depuis_id`), une carte
+        (`iccid` — la chaîne vide désigne les lignes SANS carte), ou tout —
+        et dit combien de lignes. Relecture voulue : la porte XAFe rend la
+        même réponse à la même ligne, rien n'est crédité deux fois.
+
+        TOUT ne se rouvre que sur demande EXPLICITE (`tout=True`) : un appel
+        nu repassait des mois d'encaissements — l'historique « avant XAFe »
+        compris — à 0, et le fil les déversait chez un tiers lot après lot,
+        sans recours une fois partis. La règle « des mois ne partent pas chez
+        un tiers sans décision » tient ici, pas seulement dans la doc."""
+        if depuis_id is None and iccid is None and not tout:
+            raise ValueError(
+                "remettre_sms_xafe : borner (depuis_id=…, iccid=…) ou dire "
+                "tout=True — sans borne, des mois partiraient chez un tiers")
         clauses, params = ["1=1"], []
         if depuis_id is not None:
             clauses.append("id >= ?")
             params.append(int(depuis_id))
-        if iccid:
-            clauses.append("iccid = ?")
-            params.append(iccid)
+        if iccid is not None:
+            clauses.append("COALESCE(iccid, '') = ?")
+            params.append(str(iccid))
         with self.verrou:
             n = self.conn.execute(
                 "UPDATE sms SET envoye_xafe = 0, xafe_reponse = NULL WHERE "

@@ -71,16 +71,17 @@ ligne :
 
 ```
 🔁 XAFe à jour
-🔁 XAFe · 3 en attente              ← réseau coupé, carte sans numéro, ou carte pas encore identifiée (le journal dit laquelle)
+🔁 XAFe · 3 en attente              ← carte sans numéro, pas encore identifiée, ou ligne sans carte (le journal dit laquelle)
 🔁 XAFe injoignable · 3 en attente  ← rien n'est perdu, la file se vide au retour
 🔁 XAFe refuse la signature · 3 en attente  ← clé fausse, identifiant du boîtier inconnu, ou horloge décalée (le journal le dit)
-🔁 XAFe moteur en panne · 3 en attente      ← XAFe a répondu « erreur » : on réessaie
+🔁 XAFe moteur en panne · 3 en attente      ← XAFe a répondu « erreur » : on réessaie — et Telegram sonne (voir plus bas)
 🔁 XAFe refuse le lot · 3 en attente        ← un défaut de NOTRE côté (lot mal formé) : à remonter, rien n'est perdu
 🔁 XAFe : file illisible (défaut de notre côté) · 3 en attente  ← la file n'avance plus : à remonter, le tour est perdu, rien d'autre
 🔁 XAFe : le robot ne sait pas dire le float d'une carte (défaut de notre côté) · 3 en attente  ← un défaut du robot, pas un numéro à déclarer
+🔁 XAFe : le robot a échoué (défaut de notre côté) · 3 en attente  ← le fil du robot a levé (journal, bogue) : ce n'est PAS le réseau de XAFe
 ```
 
-Les trois dernières lignes désignent un défaut de notre côté, pas une
+Les quatre dernières lignes désignent un défaut de notre côté, pas une
 manœuvre à faire sur le Pi : les remonter telles quelles.
 
 Le **journal du Pi** — celui que Bonzini relit et montre dans « Ce qui s'est
@@ -123,7 +124,7 @@ sans ICCID) : il ne peut être rattaché à aucun float, il attend, écarté de
 la file (il ne retient pas les autres), avec un avis qui dit quoi faire —
 redémarrer le boîtier pour que les suivants portent leur carte ; pour
 celui-là, quelqu'un qui sait pose l'ICCID sur la ligne, et il part au tour
-même. Tant qu'il attend, `/statut` le compte « en attente » : c'est voulu,
+même (ou rouvre ces lignes-là seules : `remettre_sms_xafe(iccid="")`). Tant qu'il attend, `/statut` le compte « en attente » : c'est voulu,
 une ligne qui attend une main se voit.
 
 Un numéro déclaré **mal formé** (8 ou 10 chiffres : une faute de frappe) n'est
@@ -176,8 +177,10 @@ apprend l'heure de XAFe sur la première réponse (même un refus) et rejoue
 aussitôt avec elle. Si « XAFe refuse la signature » persiste malgré tout, le
 journal dit « XAFe refuse la signature du boîtier : clé fausse, identifiant
 du boîtier inconnu de XAFe, ou horloge décalée ». XAFe répond le MÊME refus
-dans les trois cas : vérifier aussi `[xafe] terminal` — sans lui, le robot
-prend le nom de `[cloud]` (« douala »), qui n'est pas celui que XAFe connaît.
+dans les trois cas : vérifier aussi `[xafe] terminal` — vide (c'est ainsi
+dans `config.example.conf`), le robot prend le nom de `[cloud]`
+(« douala »), qui n'est celui que XAFe connaît que si l'équipe XAFe a inscrit
+le boîtier sous ce nom-là.
 
 **« Un SMS d'argent dont aucun numéro n'est le nôtre »** — à trancher par le
 propriétaire. Un SMS à deux parties (« Transfert de 5 000 FCFA de A vers B »)
@@ -188,6 +191,16 @@ un `remettre_sms_xafe(depuis_id=…)` à la main. L'autre choix — la laisser e
 file — remplirait la file sans fin tant que le numéro déclaré est faux. Le
 test `test_un_sens_inconnu_faute_de_numero_est_clos_sans_objet` fige le
 choix du jour ; il n'est pas tranché.
+
+**« Telegram sonne-t-il quand XAFe est en panne ? »**
+Oui, par défaut : quand XAFe répond « erreur » sur une ligne (son moteur est
+en panne ou en maintenance), ou qu'il REFUSE un encaissement, le robot
+envoie l'alerte « Des encaissements n'arrivent pas chez XAFe » au
+propriétaire — au plus une fois par quart d'heure, tant que ça dure. Une
+coupure réseau, elle, ne sonne pas : `/statut` dit « injoignable », et la
+file se vide au retour. Si le propriétaire préfère ne voir la panne du
+moteur que dans `/statut`, c'est à lui de le dire : la question était
+ouverte, le défaut choisi est de prévenir.
 
 **« Puis-je arrêter ? »**
 Videz `url` et `cle`, relancez : plus rien ne part chez XAFe, rien n'est perdu.
@@ -200,7 +213,11 @@ transaction. Le journal du Pi porte, pour chaque SMS, « credite XAFe-DP-… »,
 s'est passé. Une ligne encore à 0 (`envoye_xafe`) attend — un numéro, une
 identification, une main — et le journal des événements dit laquelle.
 
-**« Rouvrir une période, c'est déverser des mois chez un tiers »** — oui :
-`remettre_sms_xafe()` sans argument rouvre TOUT, l'historique « avant XAFe »
-compris. Toujours borner : `remettre_sms_xafe(depuis_id=…)` pour une
-période, `remettre_sms_xafe(iccid=…)` pour une carte.
+**« Rouvrir une période, c'est déverser des mois chez un tiers »** — oui,
+et c'est pourquoi `remettre_sms_xafe()` sans argument REFUSE : il faut
+borner — `remettre_sms_xafe(depuis_id=…)` pour une période,
+`remettre_sms_xafe(iccid=…)` pour une carte (`iccid=""` : les lignes sans
+carte, et elles seules) — ou dire explicitement `remettre_sms_xafe(tout=True)`,
+qui rouvre l'historique « avant XAFe » compris. La porte est idempotente,
+rien n'est crédité deux fois ; mais des mois de SMS partiraient chez un
+tiers, et cela ne se fait pas sur une faute de frappe.
