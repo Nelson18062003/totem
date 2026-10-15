@@ -297,7 +297,11 @@ def encoder_submit(numero, texte):
         donnees = encode_ucs2(texte)
         octets = len(donnees) // 2
         if octets > OCTETS_UCS2_MAX:
-            raise ChargeTropLongue(len(texte), UCS2_MAX, "caractères (UCS2)")
+            # La longueur se dit dans l'unité de sa borne : les caractères
+            # tels que le réseau les compte (deux octets chacun, un emoji en
+            # vaut deux). `len(texte)` disait « 36 caractères, 70 au plus »
+            # pour 36 emojis — un refus juste, une phrase qui se contredit.
+            raise ChargeTropLongue(len(donnees) // 4, UCS2_MAX, "caractères (UCS2)")
         dcs, udl = "08", octets
     else:
         if len(septets_) > SEPTETS_MAX:

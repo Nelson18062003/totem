@@ -154,8 +154,13 @@ class TestSmsSubmit(unittest.TestCase):
         self.assertEqual(udl, 10)
         self.assertEqual(donnees.decode("utf-16-be"), "ok 😀")
         encoder_submit(NUMERO, "😀" * 35)
-        with self.assertRaises(ChargeTropLongue):
+        with self.assertRaises(ChargeTropLongue) as cm:
             encoder_submit(NUMERO, "😀" * 36)
+        # La longueur annoncée est dans l'unité de la borne : 36 emojis font
+        # 72 caractères UCS2 (deux chacun), pas « 36 caractères, 70 au plus »
+        # — une phrase qui se contredisait, rendue telle quelle à XAFe.
+        self.assertEqual((cm.exception.combien, cm.exception.borne), (72, 70))
+        self.assertGreater(cm.exception.combien, cm.exception.borne)
 
     def test_un_numero_illisible_est_refuse(self):
         with self.assertRaises(ValueError):

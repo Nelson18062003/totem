@@ -633,6 +633,57 @@ class PorteQuiMarqueEnvoye(PorteXafe):
         return super().pousser_paiements()
 
 
+class PorteQuiEffaceParListe(PorteXafe):
+    """TÉMOIN figé (commit 410fc03) : la relève d'avant effaçait sur un 200
+    tout ce que `derniere_erreur` portait, sauf ce qu'une LISTE lui disait
+    d'épargner (« moteur », « robot »). « lot refusé » et « file illisible »
+    n'y étaient pas : le dépôt les posait toutes les soixante secondes, la
+    relève les effaçait dans les dix, et /statut lisait « 3 en attente »
+    sans cause cinquante secondes par minute."""
+
+    def _la_porte_repond(self):
+        erreur = self.derniere_erreur or ""
+        if not erreur.startswith(("moteur", "robot")):
+            self.derniere_erreur = None
+
+
+class HoteMuet:
+    """Un hébergeur en panne, ou une route 3G morte : il ACCEPTE la connexion
+    et ne répond jamais. Ce n'est pas « connexion refusée » (qui échoue en
+    une milliseconde) : c'est le cas qui tient un GET jusqu'à son délai."""
+
+    def __init__(self):
+        import socket
+        self._prise = socket.socket()
+        self._prise.bind(("127.0.0.1", 0))
+        self._prise.listen(64)
+        self._prise.settimeout(0.2)
+        self.url = f"http://127.0.0.1:{self._prise.getsockname()[1]}"
+        self.connexions = []
+        self._ouvert = True
+        threading.Thread(target=self._accueillir, daemon=True).start()
+
+    def _accueillir(self):
+        import socket
+        while self._ouvert:
+            try:
+                c, _ = self._prise.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            self.connexions.append(c)      # gardée ouverte, jamais servie
+
+    def fermer(self):
+        self._ouvert = False
+        for c in self.connexions:
+            try:
+                c.close()
+            except OSError:
+                pass
+        self._prise.close()
+
+
 # --- aides -------------------------------------------------------------------
 
 _JOURNAUX = []
@@ -1924,8 +1975,14 @@ class TestLeGuichetDesSms(Banc):
         porte, pilotage = self.pilote(g, journal, [compte])
         d = porte.commandes_en_attente()[0]
         self.assertNotIn("carte", d["parametres"], "XAFe ne nomme pas la carte")
-        # `_marche` reste faux : le fil de la file s'arrête sans rien
-        # exécuter, et la demande reste là où `_distribuer` l'a posée.
+        # Le fil de la file ne démarre pas : on lit le REGISTRE, et il doit
+        # être figé par construction. Avec le vrai `_servir` et `_marche`
+        # faux, ce fil sautait sa boucle et retirait la file du registre dès
+        # qu'il obtenait le verrou — l'assertion ne tenait que parce que le
+        # fil principal gardait la main jusqu'à elle (vérifié : un
+        # `time.sleep(0)` entre les deux lignes la faisait échouer). Un test
+        # dont la vérité dépend d'une course n'est pas une mesure.
+        pilotage._servir = lambda *a: None
         pilotage._distribuer(d, porte)
         self.assertEqual(d["parametres"].get("carte"), ICCID)
         self.assertEqual(list(pilotage._files), [ICCID])
@@ -1943,6 +2000,7 @@ class TestLeGuichetDesSms(Banc):
         compte = compte_mtn()
         porte, pilotage = self.pilote(g, journal, [compte])
         pilotage._nommer_la_carte = lambda demande: None
+        pilotage._servir = lambda *a: None      # le registre, figé (voir ci-dessus)
         d = porte.commandes_en_attente()[0]
         pilotage._distribuer(d, porte)
         self.assertNotIn("carte", d["parametres"])
@@ -2178,10 +2236,160 @@ class TestLeGuichetDesSms(Banc):
                         or "refuses the signature" in p.resume(), p.resume())
         p.commandes_en_attente()
         self.assertIsNone(p.derniere_erreur)
-        p.derniere_erreur = "moteur : moteur en panne"
+        # Ce que le DÉPÔT seul sait tient après un 200 de la relève — tout,
+        # pas une liste : « moteur », mais aussi « lot refusé » (un 400, un
+        # défaut de notre côté, reposé toutes les soixante secondes),
+        # « file illisible » et « robot ». La première relève n'épargnait
+        # que « moteur » et « robot » : /statut lisait « 3 en attente » sans
+        # cause cinquante secondes par minute.
+        du_depot = ("moteur : moteur en panne",
+                    "lot refusé 400 {'erreur': 'un lot va de 1 à 200 lignes'}",
+                    "file illisible",
+                    "robot : KeyError: 'x'")
+        for erreur in du_depot:
+            p.derniere_erreur = erreur
+            p.commandes_en_attente()
+            self.assertEqual(p.derniere_erreur, erreur,
+                             f"la relève a effacé ce que seul le dépôt sait : {erreur!r}")
+        p.derniere_erreur = du_depot[1]
         p.commandes_en_attente()
-        self.assertEqual(p.derniere_erreur, "moteur : moteur en panne",
-                         "la relève a effacé ce que seul le dépôt sait")
+        self.assertTrue("refuse le lot" in p.resume() or "refuses the batch" in p.resume(),
+                        p.resume())
+        # Et une panne vue par la relève APRÈS une erreur du dépôt ne la fait
+        # pas oublier au retour : la relève n'efface que ce qu'elle a posé,
+        # et le dépôt avait posé autre chose avant elle.
+        p.derniere_erreur = "lot refusé 400 x"
+        g.en_panne = True
+        p.commandes_en_attente()
+        self.assertNotEqual(p.derniere_erreur, "lot refusé 400 x")
+        g.en_panne = False
+        p.commandes_en_attente()
+        self.assertIsNone(p.derniere_erreur, "la relève lève bien ce qu'elle a posé")
+        # LE TÉMOIN : la relève d'avant, qui épargnait par liste, perd « lot
+        # refusé » — sans quoi l'exigence ci-dessus ne mesure rien.
+        temoin = self.porte(g, journal_avec_carte(), classe=PorteQuiEffaceParListe)
+        temoin.derniere_erreur = du_depot[1]
+        temoin.commandes_en_attente()
+        self.assertIsNone(temoin.derniere_erreur,
+                          "LE TÉMOIN PASSE : la relève d'avant garde aussi « lot refusé »")
+        temoin.derniere_erreur = "file illisible"
+        temoin.commandes_en_attente()
+        self.assertIsNone(temoin.derniere_erreur,
+                          "LE TÉMOIN PASSE : la relève d'avant garde aussi « file illisible »")
+
+    def test_la_reclamation_nomme_un_refus_de_la_porte_et_tait_un_409(self):
+        """Un 409 est la règle qui tient (un autre boîtier l'a prise) : muet.
+        Un 401 sur le PATCH `en_cours`, lui, se nomme comme au dépôt et à la
+        relève — sinon la demande restait « en attente » chez XAFe, reprise
+        à chaque tour, et /statut ne disait rien de pourquoi rien ne part."""
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        p = self.porte(g, journal_avec_carte())
+        self.assertEqual(len(p.commandes_en_attente()), 1)
+        self.assertIsNone(p.derniere_erreur)
+        g.refuser_signatures = 1
+        self.assertFalse(p.reclamer("sms:3"))
+        self.assertEqual(p.derniere_erreur, "signature refusée")
+        self.assertTrue("refuse la signature" in p.resume()
+                        or "refuses the signature" in p.resume(), p.resume())
+        # La relève suivante passe : c'est le guichet qui l'avait posée.
+        p.commandes_en_attente()
+        self.assertIsNone(p.derniere_erreur)
+        # Un 409 : silence. La demande est à un autre, ce n'est pas une panne.
+        g.deja_prises = {3}
+        self.assertFalse(p.reclamer("sms:3"))
+        self.assertIsNone(p.derniere_erreur, "un 409 n'est pas une panne")
+        # Une porte qui refuse autrement (un 400) se nomme aussi.
+        g.deja_prises = set()
+        self.assertFalse(p.reclamer("sms:999"))        # inconnue : 409 chez XAFe
+        self.assertIsNone(p.derniere_erreur)
+        g.messages[4] = message_xafe()
+        p._cible = staticmethod(lambda ident: ("inconnu", 4))   # un type que la porte refuse
+        self.assertFalse(p.reclamer("sms:4"))
+        self.assertEqual(p.derniere_erreur, "réclamation refusée 400")
+
+    def exigences_de_la_cadence_sous_un_xafe_muet(self, classe_pilotage):
+        """Un XAFe qui accepte la connexion et ne répond jamais : la relève
+        des demandes BONZINI doit garder sa cadence. Rend l'écart médian
+        entre deux relèves Bonzini, mesuré pendant que le GET XAFe pend."""
+        import statistics
+        from tests.test_pilotage import FauxNuage
+        hote = HoteMuet()
+        self.addCleanup(hote.fermer)
+        journal = journal_avec_carte()
+        porte = PorteXafe(hote.url, "secret-akwa", "akwa-1", journal)
+        self.portes.append(porte)
+        _JOURNAUX.append(journal)
+        self.assertTrue(porte.actif)
+
+        class NuageQuiCompte(FauxNuage):
+            def __init__(self):
+                super().__init__()
+                self.releves = []
+
+            def commandes_en_attente(self):
+                self.releves.append(time.monotonic())
+                return []
+
+        nuage = NuageQuiCompte()
+        delai, module_xafe.DELAI_RELEVE = module_xafe.DELAI_RELEVE, 0.6
+        self.addCleanup(setattr, module_xafe, "DELAI_RELEVE", delai)
+        pilotage = classe_pilotage(nuage, [], journal, pause=0.05, guichets=[porte])
+        pilotage.demarrer()
+        try:
+            time.sleep(2.0)
+        finally:
+            pilotage.arreter()
+        releves = list(nuage.releves)
+        self.assertGreaterEqual(len(releves), 2, "Bonzini n'a pas été relevé")
+        self.assertTrue(porte.derniere_erreur, "le GET XAFe n'a pas même expiré")
+        ecarts = [b - a for a, b in zip(releves, releves[1:])]
+        return statistics.median(ecarts), max(ecarts)
+
+    def test_un_xafe_muet_ne_retarde_pas_la_releve_des_demandes_bonzini(self):
+        """docs/XAFE.md promet : « aucune n'attend l'autre ». Vrai pour le
+        dépôt (son fil) ; faux pour le guichet tant que la relève XAFe
+        tournait EN LIGNE dans la boucle de `Pilotage` — mesuré sur le
+        code d'avant : 18 s entre deux relèves Bonzini au lieu de 3, et de
+        1,5 en session, c'est-à-dire à chaque étape d'un menu USSD tenu
+        depuis l'application, qui abandonne à 30 s. Ici le GET pend 0,6 s
+        et la cadence Bonzini est de 0,05 s : elle doit le rester."""
+        from totem.pilotage import Pilotage
+        mediane, pire = self.exigences_de_la_cadence_sous_un_xafe_muet(Pilotage)
+        self.assertLess(mediane, 0.3, f"la relève Bonzini attend XAFe : {mediane:.2f} s")
+        self.assertLess(pire, 0.6, f"une relève Bonzini a attendu le GET XAFe : {pire:.2f} s")
+
+    def test_temoin_la_boucle_unique_d_avant_fait_attendre_bonzini(self):
+        """La boucle d'avant, recopiée : les deux guichets relevés l'un après
+        l'autre dans le même fil. Sous le même XAFe muet, Bonzini doit
+        attendre le GET (0,6 s) à chaque tour — sinon l'exigence ci-dessus
+        ne mesure rien."""
+        from totem.pilotage import Pilotage, PAS_SESSION
+
+        class PilotageDUneSeuleBoucle(Pilotage):
+            def demarrer(self):
+                self._marche = True
+                fil = threading.Thread(target=self._boucle, daemon=True)
+                fil.start()
+                return fil
+
+            def _boucle(self):
+                while self._marche:
+                    try:
+                        for guichet in self.guichets:
+                            for demande in guichet.commandes_en_attente():
+                                self._distribuer(demande, guichet)
+                        self._expirer_session()
+                        self._abandonner_les_orphelines()
+                    except Exception:
+                        pass
+                    time.sleep(PAS_SESSION if (self._tenues() or self._en_vol)
+                               else self.pause)
+
+        mediane, _ = self.exigences_de_la_cadence_sous_un_xafe_muet(PilotageDUneSeuleBoucle)
+        self.assertGreaterEqual(mediane, 0.55,
+                                "LE TÉMOIN PASSE : la boucle unique d'avant garde aussi "
+                                f"la cadence Bonzini ({mediane:.2f} s), l'essai ne mesure rien")
 
     def test_aucune_carte_de_l_operateur(self):
         g = self.guichet()

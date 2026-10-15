@@ -133,6 +133,20 @@ QUI_COMPOSENT = ("ussd", "ussd_reponse", "sms_xafe")
 # Les identifiants ne se confondent pas : la clé de vol est (guichet, id),
 # et le robot ne convertit JAMAIS un identifiant en nombre — XAFe nomme ses
 # SMS « sms:12 », à côté de ses transferts « 12 » et des commandes Bonzini.
+#
+# UNE DISTRIBUTION, MAIS UN FIL DE RELÈVE PAR GUICHET. La première version
+# relevait les deux guichets l'un après l'autre dans la même boucle. Or
+# relever, c'est attendre un serveur : un hébergeur XAFe en panne — qui
+# accepte la connexion et ne répond jamais, le cas d'une route 3G morte —
+# tient le GET quinze secondes, et pendant ces quinze secondes personne ne
+# relevait Bonzini. Mesuré : les demandes Bonzini relevées toutes les 18 s
+# au lieu de 3, et de 1,5 en session — c'est-à-dire à CHAQUE étape d'un
+# menu USSD tenu depuis l'application, qui abandonne à 30 s. Chaque guichet
+# a donc son fil de relève (`_relever`) ; la boucle (`_boucle`) ne garde
+# plus que la session et les orphelines. La distribution reste unique, sous
+# `_garde` : deux fils de relève ne font jamais deux files sur une puce.
+# `tests/test_xafe.py` mesure la cadence Bonzini sous un XAFe muet, avec la
+# boucle d'avant pour témoin.
 
 
 class Pilotage:
@@ -170,6 +184,13 @@ class Pilotage:
                                    for g in self.guichets):
             return None
         self._marche = True
+        # Un fil de relève par guichet actif : celui qui attend un serveur
+        # muet n'attend que pour lui (voir l'en-tête du module).
+        for guichet in self.guichets:
+            if getattr(guichet, "actif", True):
+                threading.Thread(
+                    target=self._relever, args=(guichet,), daemon=True,
+                    name=f"relève {getattr(guichet, 'nom', 'nuage')}").start()
         fil = threading.Thread(target=self._boucle, daemon=True)
         fil.start()
         return fil
@@ -179,20 +200,37 @@ class Pilotage:
         self._raccrocher_tout()
 
     # ---- la boucle ---------------------------------------------------------
-    def _boucle(self):
+    def _pas(self):
+        """Le temps entre deux tours : court dès qu'un menu est tenu ou qu'une
+        demande est en vol (le réseau attend une réponse), posé au repos."""
+        return PAS_SESSION if (self._tenues() or self._en_vol) else self.pause
+
+    def _relever(self, guichet):
+        """Le fil de relève d'UN guichet : ses demandes, confiées à la file de
+        leur carte. Une panne de ce guichet — un serveur qui ne répond pas,
+        une exception inattendue — ne touche ni l'autre guichet ni la boucle
+        de la session : chacun son fil, chacun son `try`."""
         while self._marche:
             try:
-                for guichet in self.guichets:
-                    for demande in guichet.commandes_en_attente():
-                        self._distribuer(demande, guichet)
+                for demande in guichet.commandes_en_attente():
+                    self._distribuer(demande, guichet)
+            except Exception as e:   # jamais mourir sur une demande
+                self.journal.evenement(t(
+                    f"remote desk: error {e}",
+                    f"guichet à distance : erreur {e}"))
+            time.sleep(self._pas())
+
+    def _boucle(self):
+        """La session et les orphelines — plus la relève, qui a ses fils."""
+        while self._marche:
+            try:
                 self._expirer_session()
                 self._abandonner_les_orphelines()
             except Exception as e:   # jamais mourir sur une demande
                 self.journal.evenement(t(
                     f"remote desk: error {e}",
                     f"guichet à distance : erreur {e}"))
-            time.sleep(PAS_SESSION if (self._tenues() or self._en_vol)
-                       else self.pause)
+            time.sleep(self._pas())
 
     # ---- une file par carte ----------------------------------------------
     #
@@ -222,12 +260,16 @@ class Pilotage:
         la confier deux fois — et si cela arrivait quand même, la
         réclamation, elle, ne réussit qu'une fois (voir `_traiter`)."""
         guichet = guichet or self.nuage
+        cle_vol = self._cle_en_vol(guichet, demande)
+        with self._garde:
+            if cle_vol in self._en_vol:
+                return          # déjà confiée : rien à relire, rien à nommer
         if demande.get("type") == "sms_xafe":
             # XAFe ne nomme pas la carte : le robot la trouve AVANT de choisir
             # la file, pour que la demande attende derrière celles de la même
-            # puce et jamais à côté d'elles.
+            # puce et jamais à côté d'elles. Après le dédoublonnage : une
+            # demande déjà en vol ne relit pas l'identité à chaque relève.
             self._nommer_la_carte(demande)
-        cle_vol = self._cle_en_vol(guichet, demande)
         cle = self._cle_de_file(demande)
         with self._garde:
             if cle_vol in self._en_vol:
@@ -772,6 +814,8 @@ class Pilotage:
         """Le carnet repart tout de suite vers la base : l'écran qui vient
         d'enregistrer un bouton doit le voir au rafraîchissement suivant."""
         try:
+            if self.nuage is None:
+                return      # XAFe seul : pas de plateforme à prévenir
             if hasattr(self.nuage, "publier_raccourcis"):
                 self.nuage.publier_raccourcis()
             self.nuage.reveiller()
@@ -779,9 +823,12 @@ class Pilotage:
             pass    # la boucle de fond repassera
 
     def _republier(self, langue=None):
-        """« Actualiser » : l'état des comptes, repoussé à l'instant."""
-        self.nuage.publier_comptes(self.comptes)
-        self.nuage.enregistrer_terminal()
+        """« Actualiser » : l'état des comptes, repoussé à l'instant. Sans
+        plateforme (un robot qui n'a que XAFe), il n'y a rien à republier —
+        et rien à déréférencer."""
+        if self.nuage is not None:
+            self.nuage.publier_comptes(self.comptes)
+            self.nuage.enregistrer_terminal()
         return t("Terminal state published again.",
                  "État du terminal republié.", langue=langue)
 
@@ -1209,7 +1256,7 @@ class Pilotage:
             if solde_douteux(reponse or ""):
                 return
             solde = solde_annonce(reponse or "")
-            if solde is not None and compte.carte.identifiee:
+            if solde is not None and compte.carte.identifiee and self.nuage:
                 self.nuage.publier_solde(compte.carte.iccid, solde)
         except Exception:
             pass    # un solde non relevé n'est pas une panne de session

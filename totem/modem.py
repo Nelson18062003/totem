@@ -761,7 +761,10 @@ class ModemSerie:
         alors jamais dans une commande AT, et le guillemet comme la barre y
         sont des caractères ordinaires. Le mode texte n'est qu'un repli, et
         on ne bascule JAMAIS `AT+CMGF` pour un envoi : la relève des SMS en
-        dépend."""
+        dépend. Ce repli n'est éprouvé qu'en GSM : sous `AT+CSCS="UCS2"`, le
+        modem attend aussi l'ADRESSE codée en UCS2, et elle part ici en
+        chiffres clairs — rien ne le promet, `mode_pdu` est posé au
+        démarrage et c'est lui la voie normale."""
         try:
             texte = texte_pour_sms(texte)
             longueur, hexa = encoder_submit(numero, texte)

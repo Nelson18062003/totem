@@ -59,6 +59,11 @@ PAUSE = 60
 # secondes de plus qu'une demande Bonzini — aucun écran n'abandonne à trente
 # secondes de ce côté-là, et chaque GET vaut signe de vie chez XAFe.
 PAS_RELEVE = 10
+# Le délai du GET de la relève. Il est le sien : la relève tourne dans son
+# propre fil de `Pilotage`, donc un hébergeur qui accepte la connexion et ne
+# répond jamais ne retient qu'elle — jamais la relève des demandes Bonzini
+# (`tests/test_xafe.py`, la cadence sous un XAFe muet, le mesure).
+DELAI_RELEVE = DELAI
 # L'âge au-delà duquel le robot n'exécute plus une demande XAFe : la règle de
 # la plateforme (soixante secondes) est faite pour un écran qui abandonne à
 # trente ; XAFe garde la date du dépôt et rejoue ses commandes. Un code de
@@ -181,6 +186,10 @@ class PorteXafe:
         self._crochet_en_panne = {}
         # La prochaine relève des commandes XAFe (horloge monotone).
         self._prochain_releve = 0.0
+        # Ce que le GUICHET (relève, réclamation, compte rendu) a posé en
+        # dernier dans `derniere_erreur` : c'est cela, et cela seul, qu'un
+        # 200 de la relève a le droit d'effacer (`_la_porte_repond`).
+        self._posee_par_le_guichet = None
 
     # ---- l'heure de la base --------------------------------------------------
     def _noter_l_heure(self, reponse):
@@ -581,17 +590,18 @@ class PorteXafe:
             return []
         self._prochain_releve = maintenant + PAS_RELEVE
         try:
-            statut, lignes, _ = self._appel("GET", "totem-commandes?type=sms")
+            statut, lignes, _ = self._appel("GET", "totem-commandes?type=sms",
+                                            delai=DELAI_RELEVE)
         except PorteMuette as e:
-            self.derniere_erreur = str(e)
+            self._erreur_du_guichet(str(e))
             return []
         if statut == 401:
             # Le même mot que `pousser_paiements` : /statut dit « refuse la
             # signature », pas « injoignable » — XAFe a répondu.
-            self.derniere_erreur = "signature refusée"
+            self._erreur_du_guichet("signature refusée")
             return []
         if statut != 200 or not isinstance(lignes, list):
-            self.derniere_erreur = f"relève refusée {statut}"
+            self._erreur_du_guichet(f"relève refusée {statut}")
             return []
         self._la_porte_repond()
         demandes = []
@@ -620,22 +630,41 @@ class PorteXafe:
             })
         return demandes
 
+    def _erreur_du_guichet(self, texte):
+        """Le guichet pose une erreur — et se souvient que c'est la sienne."""
+        self.derniere_erreur = texte
+        self._posee_par_le_guichet = texte
+
     def _la_porte_repond(self):
-        """Un 200 sur la relève lève ce que la porte ou le réseau avaient
-        posé (« injoignable », « signature refusée », « relève refusée ») —
-        sinon /statut disait « injoignable » jusqu'au tour du dépôt, une
-        minute après le retour. Pas ce que le dépôt sait et la relève
-        ignore : une ligne en « erreur » chez XAFe (« moteur ») ou un défaut
-        du robot (« robot ») tiennent jusqu'au dépôt suivant."""
-        erreur = self.derniere_erreur or ""
-        if not erreur.startswith(("moteur", "robot")):
+        """Un 200 sur la relève lève ce que le GUICHET avait posé (« injoignable »,
+        « signature refusée », « relève refusée ») — sinon /statut disait
+        « injoignable » jusqu'au tour du dépôt, une minute après le retour.
+
+        Et RIEN d'autre. Ce que le dépôt seul sait — une ligne en « erreur »
+        chez XAFe (« moteur »), un lot refusé (« lot refusé 400 … »), une file
+        qui n'avance plus (« file illisible »), le fil qui a levé
+        (« robot ») — tient jusqu'au dépôt suivant : la relève n'en a rien
+        vu, elle n'a pas à le démentir. La première version énumérait ce
+        qu'elle devait épargner (« moteur », « robot ») et oubliait les deux
+        autres : le dépôt posait « lot refusé » toutes les soixante secondes,
+        la relève l'effaçait dans les dix, et /statut lisait « 3 en attente »
+        sans cause cinquante secondes par minute. On n'efface donc que ce
+        qu'on a soi-même posé, tel quel — une liste d'exceptions se complète
+        toujours un cas trop tard."""
+        posee = self._posee_par_le_guichet
+        if posee is not None and self.derniere_erreur == posee:
             self.derniere_erreur = None
+        self._posee_par_le_guichet = None
 
     def reclamer(self, identifiant):
         """Prendre la demande pour soi : XAFe tranche (`update … where etat =
         'en_attente'`, 409 sinon). Rend une `Prise` datée sur l'horloge de
         XAFe, avec la limite XAFe ; False dans tous les autres cas — un 409
-        n'est pas une panne, c'est la règle qui tient."""
+        n'est pas une panne, c'est la règle qui tient, et il reste muet. Un
+        401 (la signature) ou un 400 (la porte), eux, se NOMMENT dans
+        `derniere_erreur` comme au dépôt et à la relève : la demande reste
+        « en attente » chez XAFe et sera reprise au tour suivant, rien n'est
+        perdu — mais /statut doit dire pourquoi rien ne part."""
         try:
             type_, n = self._cible(identifiant)
         except (TypeError, ValueError):
@@ -645,9 +674,15 @@ class PorteXafe:
                 "PATCH", f"totem-commandes/{n}",
                 {"type": type_, "etat": "en_cours"})
         except PorteMuette as e:
-            self.derniere_erreur = str(e)
+            self._erreur_du_guichet(str(e))
+            return False
+        if statut == 409:
+            return False
+        if statut == 401:
+            self._erreur_du_guichet("signature refusée")
             return False
         if statut != 200 or not isinstance(ligne, dict):
+            self._erreur_du_guichet(f"réclamation refusée {statut}")
             return False
         depose = ligne.get("demandee_le") or ligne.get("cree_le")
         return Prise(_age_de_la_demande(depose, heure),
@@ -678,7 +713,7 @@ class PorteXafe:
         try:
             statut, _, _ = self._appel("PATCH", f"totem-commandes/{n}", corps)
         except PorteMuette as e:
-            self.derniere_erreur = str(e)
+            self._erreur_du_guichet(str(e))
             return False
         return statut == 200
 
