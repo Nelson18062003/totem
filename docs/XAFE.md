@@ -27,6 +27,8 @@ motif). Cette réponse est gardée dans le journal du Pi, SMS par SMS : c'est
 la preuve, et c'est avec elle qu'on enquête.
 
 Chaque appel est **signé** avec la clé de ce boîtier (trois en-têtes, HMAC).
+La signature couvre le corps ET ce qu'il vise — la méthode, le chemin, la
+requête : « prendre la commande 7 », capturé en route, ne prend pas la 8.
 XAFe ne voit que ce que ce boîtier dit ; le boîtier ne voit que ce qui le
 concerne. La signature vaut cinq minutes : le robot signe avec l'heure que
 XAFe lui donne, pas avec celle du Pi (qui a des heures de retard après une

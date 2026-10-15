@@ -12,7 +12,9 @@ CE QUE CES TESTS GARDENT :
   A. la signature de Python est celle de `porte.ts` (vecteurs figés, calculés
      ici ET avec `signer()` sous Node 22) ; la sonde du faux guichet refuse
      bien un octet retouché, sinon l'essai ne mesure rien ; signer une
-     resérialisation n'est pas signer ce qu'on envoie ;
+     resérialisation n'est pas signer ce qu'on envoie ; la signature couvre
+     la méthode et le chemin — un « réclamer » capturé ne vaut que pour SA
+     commande, et la signature d'avant (le corps seul) est refusée ;
   B. une ligne se marque APRÈS le verdict, jamais avant ; un 200 se lit ligne
      par ligne, « erreur » reste en file ; une signature refusée ne jette
      rien ; l'horloge du Pi décalée passe après recalage ; Bonzini et XAFe ne
@@ -77,13 +79,34 @@ from totem.xafe import SANS_FLOAT, Attente, PorteXafe
 from tests.test_nuage import FauxSupabase
 
 # Vecteurs figés : clé « secret-akwa », horodatage 1760000000. Identiques
-# sous `hmac` (Python) et `signer()` (porte.ts, Node 22).
+# sous `hmac` (Python) et `signer()` (porte.ts, Node 22) — les mêmes que
+# `supabase/functions/verifier-la-porte.ts` chez XAFe : si l'un des deux
+# côtés change sa façon de signer, l'un des deux harnais tombe.
 VECTEURS = (
-    ("secret-akwa", 1760000000, b'{"source_id":1}',
-     "6cd538e613e3887d02e9579d3cc8b74b7060e6f9e9d21397da186982a023d690"),
-    ("secret-akwa", 1760000000, b"",
-     "c14bcf618b7f9b1681049182f2b8d047f8dac9ebe37a3b9444c8221772091389"),
+    ("secret-akwa", 1760000000, "POST", "totem-sms", b'{"source_id":1}',
+     "39d1d43fa33a2b411a55c9acd469e95015592ec444780bdf3919d205845863e7"),
+    ("secret-akwa", 1760000000, "GET", "totem-commandes?type=sms", b"",
+     "15cee40c5d8b04bd7d2fb9c2957573fc1859d2b4f4f3dfc77e355363f09080fd"),
+    ("secret-akwa", 1760000000, "PATCH", "totem-commandes/7",
+     b'{"type":"transferts","etat":"en_cours"}',
+     "d2f0862df695658e7e387a5831dcd4a5e04e4382a19f9550e1dc943cd5ca040b"),
 )
+
+
+def cible(chemin):
+    """Ce que la porte signe d'une adresse : le chemin à partir du nom de la
+    porte (« totem-… »), requête comprise — `cibleDe` dans porte.ts."""
+    url = urlparse(chemin)
+    morceaux = [m for m in url.path.split("/") if m]
+    debut = next((i for i, m in enumerate(morceaux) if m.startswith("totem-")), 0)
+    return "/".join(morceaux[debut:]) + (f"?{url.query}" if url.query else "")
+
+
+def signer(cle, ts, methode, chemin, corps):
+    return hmac.new(cle.encode(), str(ts).encode() + b"."
+                    + f"{methode} {cible(chemin)}".encode() + b"." + corps,
+                    hashlib.sha256).hexdigest()
+
 
 SMS_ENTREE = ("Vous avez recu 25 000 FCFA de NGONO Marie (677123456). "
               "Ref: PP0947. Nouveau solde: 900000 FCFA.")
@@ -187,8 +210,8 @@ class FauxXafe:
         self.serveur.shutdown()
         self.serveur.server_close()
 
-    # --- la porte : recopie de porte.ts 52-66 ---------------------------------
-    def _verifier(self, entetes, corps_brut):
+    # --- la porte : recopie de `verifier` dans porte.ts ---------------------------------
+    def _verifier(self, entetes, methode, chemin, corps_brut):
         terminal = entetes.get("x-totem-terminal")
         ts = entetes.get("x-totem-horodatage")
         signature = entetes.get("x-totem-signature")
@@ -201,8 +224,7 @@ class FauxXafe:
         cle = self.cles.get(terminal)
         if not cle:
             return None
-        attendue = hmac.new(cle.encode(), ts.encode() + b"." + corps_brut,
-                            hashlib.sha256).hexdigest()
+        attendue = signer(cle, ts, methode, chemin, corps_brut)
         return terminal if hmac.compare_digest(attendue, signature) else None
 
     def _traiter(self, methode, chemin, entetes, brut):
@@ -212,7 +234,7 @@ class FauxXafe:
             if self.refuser_signatures > 0:
                 self.refuser_signatures -= 1
                 return 401, {"erreur": "signature refusée"}
-        terminal = self._verifier(entetes, brut)
+        terminal = self._verifier(entetes, methode, chemin, brut)
         if terminal is None:
             return 401, {"erreur": "signature refusée"}
         url = urlparse(chemin)
@@ -420,10 +442,20 @@ class PorteQuiSigneLeMauvaisCorps(PorteXafe):
     """LE TÉMOIN : signe `json.dumps(corps)` (séparateurs par défaut) et
     envoie la version compacte. Deux sérialisations du même objet."""
 
-    def _signer(self, horodatage, corps_octets):
+    def _signer(self, horodatage, methode, chemin, corps_octets):
         if corps_octets:
             corps_octets = json.dumps(json.loads(corps_octets)).encode()
-        return super()._signer(horodatage, corps_octets)
+        return super()._signer(horodatage, methode, chemin, corps_octets)
+
+
+class PorteQuiSigneLeCorpsSeul(PorteXafe):
+    """LE TÉMOIN : la signature d'avant, horodatage + corps, sans la méthode
+    ni le chemin. La porte doit la refuser — sinon rien ne prouve qu'elle
+    vérifie ce qu'on croit."""
+
+    def _signer(self, horodatage, methode, chemin, corps_octets):
+        return hmac.new(self.cle.encode(), str(int(horodatage)).encode()
+                        + b"." + corps_octets, hashlib.sha256).hexdigest()
 
 
 class PorteTeteDeFile(PorteXafe):
@@ -794,13 +826,17 @@ class TestLaSignature(Banc):
 
     def test_la_signature_python_est_celle_de_la_porte(self):
         p = PorteXafe("http://127.0.0.1:1", "secret-akwa", "akwa-1", _journal())
-        for cle, ts, corps, attendue in VECTEURS:
-            self.assertEqual(p._signer(ts, corps), attendue)
+        for cle, ts, methode, chemin, corps, attendue in VECTEURS:
+            self.assertEqual(p._signer(ts, methode, chemin, corps), attendue)
+            # la sonde du faux guichet signe comme la porte, elle aussi
+            self.assertEqual(signer(cle, ts, methode,
+                                    f"/functions/v1/{chemin}", corps), attendue)
         # TÉMOIN : la même charge, sérialisée avec les séparateurs par défaut,
         # ne donne PAS la même signature — c'est pourquoi on sérialise une fois.
         autre = json.dumps({"source_id": 1}).encode()
-        self.assertNotEqual(autre, VECTEURS[0][2])
-        self.assertNotEqual(p._signer(1760000000, autre), VECTEURS[0][3])
+        self.assertNotEqual(autre, VECTEURS[0][4])
+        self.assertNotEqual(p._signer(1760000000, "POST", "totem-sms", autre),
+                            VECTEURS[0][5])
 
     def test_la_sonde_du_faux_guichet(self):
         """Si le faux guichet accepte ou refuse tout, l'essai ne mesure rien."""
@@ -817,8 +853,8 @@ class TestLaSignature(Banc):
 
         def envoyer(corps_signe, corps_envoye, age=0, entetes=True):
             ts = str(instant - age)
-            sig = hmac.new(b"secret-akwa", ts.encode() + b"." + corps_signe,
-                           hashlib.sha256).hexdigest()
+            sig = signer("secret-akwa", ts, "POST", "/functions/v1/totem-sms",
+                         corps_signe)
             req = urllib.request.Request(f"{g.url}/functions/v1/totem-sms",
                                          data=corps_envoye, method="POST")
             if entetes:
@@ -849,6 +885,52 @@ class TestLaSignature(Banc):
         self.assertEqual(p.pousser_paiements(), 0)
         self.assertIn(401, g.statuts())
         self.assertEqual(_etat(journal, 1)[0], 0, "la ligne n'est pas close")
+
+    def test_temoin_la_signature_d_avant_est_refusee(self):
+        """La signature d'avant ne couvrait que l'horodatage et le corps. La
+        porte doit la refuser : la dépose comme la relève."""
+        g = self.guichet()
+        g.messages = {3: message_xafe()}
+        journal = journal_avec_carte()
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        p = self.porte(g, journal, PorteQuiSigneLeCorpsSeul)
+        self.assertEqual(p.pousser_paiements(), 0)
+        self.assertEqual(_etat(journal, 1)[0], 0, "la ligne n'est pas close")
+        self.assertEqual(p.commandes_en_attente(), [])
+        self.assertFalse(p.reclamer("sms:3"))
+        self.assertEqual(set(g.statuts()), {401})
+        self.assertEqual(g.messages[3].get("etat", "en_attente"), "en_attente")
+
+    def test_un_patch_capture_ne_vaut_que_pour_sa_commande(self):
+        """#54 : un « réclamer » capturé pour la commande 3, rejoué tel quel
+        sur la 4 ou sur un autre guichet dans les cinq minutes, est refusé.
+        Rejoué sur la 3, il retombe sur la règle (déjà prise, 409)."""
+        import urllib.error
+        import urllib.request
+        g = self.guichet()
+        g.messages = {3: message_xafe(), 4: message_xafe()}
+        p = self.porte(g, journal_avec_carte())
+        self.assertTrue(p.reclamer("sms:3"))
+        methode, chemin, entetes, brut, statut = g.requetes[-1]
+        self.assertEqual((methode, statut), ("PATCH", 200))
+
+        def rejouer(vers, methode="PATCH"):
+            req = urllib.request.Request(f"{g.url}{vers}", data=brut, method=methode)
+            for nom in ("x-totem-terminal", "x-totem-horodatage",
+                        "x-totem-signature", "Content-Type"):
+                req.add_header(nom, {k.lower(): v for k, v in entetes.items()}[nom.lower()])
+            try:
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    return r.status
+            except urllib.error.HTTPError as e:
+                return e.code
+
+        self.assertEqual(rejouer("/functions/v1/totem-commandes/4"), 401)
+        self.assertEqual(rejouer("/functions/v1/totem-commandes/4?type=sms"), 401)
+        self.assertEqual(rejouer(chemin, "POST"), 401)
+        self.assertEqual(g.messages[4].get("etat", "en_attente"), "en_attente",
+                         "la commande 4 n'a été réclamée par personne")
+        self.assertEqual(rejouer(chemin), 409, "la sonde rejoue vraiment la bonne requête")
 
 
 # =============================================================================

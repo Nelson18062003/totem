@@ -222,10 +222,18 @@ class PorteXafe:
         return abs(heure_serveur.timestamp() - time.time())
 
     # ---- la signature ---------------------------------------------------------
-    def _signer(self, horodatage, corps_octets):
-        """hex( HMAC-SHA256( clé, horodatage + "." + corps ) ) — porte.ts."""
-        return hmac.new(self.cle.encode("utf-8"),
-                        str(int(horodatage)).encode() + b"." + corps_octets,
+    def _signer(self, horodatage, methode, chemin, corps_octets):
+        """hex( HMAC-SHA256( clé, horodatage + "." + MÉTHODE + " " + chemin
+        + "." + corps ) ) — porte.ts. Le chemin est celui de la porte,
+        requête comprise (« totem-commandes/7 », « totem-commandes?type=sms »).
+
+        Signer le corps seul ne suffisait pas : « réclamer » signé pour la
+        commande 7 valait cinq minutes pour TOUTES les commandes du boîtier,
+        à qui l'aurait capturé."""
+        message = (str(int(horodatage)).encode() + b"."
+                   + f"{methode.upper()} {chemin}".encode("utf-8")
+                   + b"." + corps_octets)
+        return hmac.new(self.cle.encode("utf-8"), message,
                         hashlib.sha256).hexdigest()
 
     def _appel(self, methode, chemin, corps=None, delai=DELAI, _rejoue=False):
@@ -243,7 +251,8 @@ class PorteXafe:
                                      data=donnees or None, method=methode)
         req.add_header("x-totem-terminal", self.terminal)
         req.add_header("x-totem-horodatage", str(ts))
-        req.add_header("x-totem-signature", self._signer(ts, donnees))
+        req.add_header("x-totem-signature",
+                       self._signer(ts, methode, chemin, donnees))
         req.add_header("Content-Type", "application/json")
         if self.anon:
             req.add_header("apikey", self.anon)
