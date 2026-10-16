@@ -2236,6 +2236,9 @@ class Robot:
                 self._redemarrer_modem(compte, canal="alertes", automatique=True)
                 compte.echecs = 0
             return
+        # La preuve d'abord : chaque PDU, tel que le modem l'a rendu, va au
+        # journal du boîtier AVANT qu'on en fasse quoi que ce soit.
+        releve = self._noter_morceaux(compte)
         for indices, expediteur, texte, emis_le in messages:
             # Un SMS qui fait échouer son propre traitement (disque plein,
             # journal verrouillé, mise en forme d'une notification…) ne doit
@@ -2266,6 +2269,7 @@ class Robot:
                 # identité réseau, que la coupure de courant la plus longue
                 # n'altère pas — là où une fenêtre de quinze minutes laissait
                 # recompter un paiement au redémarrage.
+                sms_id = None
                 if not self.journal.sms_existe(expediteur, texte, compte.libelle,
                                                emis_le=heure_reseau):
                     sms_id = self.journal.sms(
@@ -2308,11 +2312,63 @@ class Robot:
             except Exception as e:
                 self._noter(f"traitement SMS {indices} ({compte.libelle}) : {e}")
                 continue        # on n'efface pas : à réessayer au prochain tour
+            self._noter_livraison(compte, releve, indices, sms_id)
             # Un message long occupe plusieurs emplacements : on les efface
             # tous ensemble, sans quoi un morceau resterait orphelin.
             if not compte.effacer_sms(indices):
                 self._noter(f"SMS {indices} non effacé sur {compte.libelle} "
                             "(il sera ignoré au prochain tour)")
+            else:
+                self._sans_bloquer(lambda: self.journal.morceaux_effaces(
+                    self._cle_des_morceaux(compte), indices))
+
+    # ---- morceaux bruts ----------------------------------------------------
+    # Rien ici ne doit retenir un SMS : un journal qui ne sait pas ranger les
+    # morceaux (base ancienne, disque plein) laisse la relève passer.
+
+    def _sans_bloquer(self, action):
+        try:
+            if callable(action):
+                return action()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _cle_des_morceaux(compte):
+        return compte.carte.iccid or compte.libelle
+
+    def _noter_morceaux(self, compte):
+        releve = self._sans_bloquer(lambda: compte.derniere_releve) or []
+        if releve and hasattr(self.journal, "morceaux_vus"):
+            self._sans_bloquer(lambda: self.journal.morceaux_vus(
+                self._cle_des_morceaux(compte), compte.libelle, releve))
+        return releve
+
+    def _noter_livraison(self, compte, releve, indices, sms_id):
+        """Le message de ces emplacements part au journal. S'il manque des
+        morceaux, le boîtier le DIT au journal des événements — sans un mot du
+        SMS ni un numéro : l'opérateur, combien de morceaux, depuis quand."""
+        siens = [r for r in releve if r.get("emplacement") in indices]
+        totaux = {r.get("total") for r in siens if r.get("reference") is not None}
+        total = max((t for t in totaux if t), default=1)
+        positions = {r.get("position") for r in siens if r.get("reference") is not None}
+        complet = total <= 1 or positions >= set(range(1, total + 1))
+        if hasattr(self.journal, "morceaux_livres"):
+            self._sans_bloquer(lambda: self.journal.morceaux_livres(
+                self._cle_des_morceaux(compte), indices, sms_id, complet))
+        if not complet and siens:
+            heures = [r.get("heure_reseau") for r in siens if r.get("heure_reseau")]
+            age = ""
+            if heures:
+                try:
+                    ecrit = max(datetime.fromisoformat(h) for h in heures)
+                    minutes = (datetime.now(timezone.utc) - ecrit).total_seconds() / 60
+                    age = f", écrit par l'opérateur il y a {minutes:.0f} min"
+                except (TypeError, ValueError):
+                    age = ""
+            self._sans_bloquer(lambda: self.journal.evenement(
+                f"SMS long livré incomplet ({compte.libelle}) : "
+                f"{len(positions)} morceau(x) sur {total}{age}"))
 
     # ---- reçus PDF ---------------------------------------------------------
     # Un reçu ne se fabrique jamais dans le fil du SMS : l'alerte doit partir

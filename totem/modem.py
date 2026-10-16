@@ -78,6 +78,22 @@ USSD_FERMEE = 0
 USSD_ANNULEE = 2
 
 
+def _trace_du_morceau(emplacement, pdu, morceau):
+    """Ce qu'on garde d'un PDU relevé, pour le journal du boîtier : le PDU
+    brut, son en-tête de découpe et l'heure écrite par l'opérateur. Un PDU
+    illisible (`morceau` à None) garde au moins sa place et ses octets."""
+    heure = getattr(morceau, "horodatage", None)
+    return {
+        "emplacement": emplacement,
+        "pdu": pdu.upper(),
+        "expediteur": getattr(morceau, "expediteur", None),
+        "reference": getattr(morceau, "reference", None),
+        "total": getattr(morceau, "total", None),
+        "position": getattr(morceau, "position", None),
+        "heure_reseau": heure.isoformat() if hasattr(heure, "isoformat") else None,
+    }
+
+
 class ErreurModem(Exception):
     pass
 
@@ -632,12 +648,21 @@ class ModemSerie:
                     for m in RE_CMGL.finditer(brut)]
 
         morceaux, illisibles = [], []
+        # CE QUE LE MODEM A RENDU, TEL QUEL : chaque PDU avec son en-tête de
+        # découpe et l'heure écrite par l'opérateur. Le décodage le jetait :
+        # un SMS livré « incomplet », on ne pouvait plus dire si le morceau
+        # manquant n'était jamais venu ou s'il était venu trop tard. L'appelant
+        # le range au journal du boîtier (`Journal.morceaux_vus`).
+        self.derniere_releve = []
         for m in RE_CMGL_PDU.finditer(brut):
             index = int(m.group(1))
             try:
-                morceaux.append((index, decoder(m.group(2))))
+                morceau = decoder(m.group(2))
+                morceaux.append((index, morceau))
             except ErreurPDU:
+                morceau = None
                 illisibles.append(index)   # on connaît sa place : on pourra l'effacer
+            self.derniere_releve.append(_trace_du_morceau(index, m.group(2), morceau))
         # L'heure réseau (TP-SCTS) de chaque emplacement, lue sur le PDU :
         # c'est l'heure vraie de l'opération, celle que le journal retient.
         # ATTENTION : le 4e champ de `recoller` est « complet » (vrai/faux),
