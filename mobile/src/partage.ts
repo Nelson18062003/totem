@@ -95,6 +95,23 @@ export async function partagerDocument(
     return "navigateur";
   }
 
+  const recu = await telechargerEnCache(url, nom, type);
+  if (encore && !encore()) {
+    recu.delete();
+    return "abandon";
+  }
+
+  if (brique) {
+    await brique.shareAsync(recu.uri, { ...TYPES[type], dialogTitle: titre });
+  } else {
+    await Share.share({ url: recu.uri, title: titre });
+  }
+  return "fichier";
+}
+
+/** Le document au bout du lien, dans le cache du téléphone — VÉRIFIÉ : un
+ *  lien expiré rend une page d'erreur, pas un PDF (voir plus haut). */
+async function telechargerEnCache(url: string, nom: string, type: "pdf" | "csv") {
   const fs = await import("expo-file-system");
   const fichier = new fs.File(fs.Paths.cache, nom);
   if (fichier.exists) fichier.delete();
@@ -106,15 +123,55 @@ export async function partagerDocument(
     recu.delete();
     throw new Error("document illisible");
   }
-  if (encore && !encore()) {
+  return recu;
+}
+
+/**
+ * VOIR le document : il s'ouvre dans le navigateur intégré à l'application.
+ * Sur iPhone, c'est la visionneuse de PDF du système, avec son bouton de
+ * partage ; sur Android, Chrome l'affiche — ou, selon sa version, le
+ * télécharge et propose de l'ouvrir. Le lien est signé et vit dix minutes :
+ * on le demande au moment du geste, jamais à l'avance.
+ */
+export async function voirDocument(url: string): Promise<void> {
+  await Navigateur.openBrowserAsync(url);
+}
+
+/**
+ * TÉLÉCHARGER le document : le garder dans le téléphone, sans l'envoyer à
+ * personne.
+ *
+ *   — Android : on choisit un dossier (« Téléchargements », d'habitude), et
+ *     le fichier y est écrit sous son vrai nom. Si la brique installée ne
+ *     sait pas choisir de dossier, la feuille de partage prend le relais.
+ *   — iPhone : il n'y a pas de dossier « Téléchargements » à atteindre
+ *     sans demander ; c'est la feuille de partage, dont la ligne
+ *     « Enregistrer dans Fichiers » est le téléchargement d'un iPhone.
+ *   — ordinateur : le navigateur télécharge.
+ *
+ * Rend `abandon` si l'on referme le choix du dossier : un silence, pas un
+ * échec.
+ */
+export async function enregistrerDocument(
+  url: string, nom: string, type: "pdf" | "csv", titre: string,
+  encore?: () => boolean,
+): Promise<Partage> {
+  if (Platform.OS !== "android") return partagerDocument(url, nom, type, titre, encore);
+  const fs = await import("expo-file-system");
+  if (typeof fs.Directory?.pickDirectoryAsync !== "function") {
+    return partagerDocument(url, nom, type, titre, encore);
+  }
+  const recu = await telechargerEnCache(url, nom, type);
+  if (encore && !encore()) { recu.delete(); return "abandon"; }
+  let dossier;
+  try {
+    dossier = await fs.Directory.pickDirectoryAsync();
+  } catch {
     recu.delete();
     return "abandon";
   }
-
-  if (brique) {
-    await brique.shareAsync(recu.uri, { ...TYPES[type], dialogTitle: titre });
-  } else {
-    await Share.share({ url: recu.uri, title: titre });
-  }
+  const copie = dossier.createFile(nom, TYPES[type].mimeType);
+  copie.write(recu.bytesSync());
+  recu.delete();
   return "fichier";
 }

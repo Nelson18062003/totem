@@ -106,7 +106,7 @@ const en = {
     ["Apple (Apple Push Notification service), Google (Firebase Cloud Messaging) and Expo", "carry notifications to your phone. They therefore see the text of a notification, which can name an amount and the other party to a payment. This is the only way to ring a phone."],
     ["Supabase", "hosts the database: your account, the messages your cards received, the receipts."],
     ["Vercel", "hosts the platform the app talks to."],
-    ["Telegram", "is the messaging service through which each TOTEM box reports to the team that runs it. A box sends a copy of every operator SMS it receives — one-time codes included — and of the PDF receipts to the private Telegram chat of whoever runs the box: the TOTEM team for a card placed with TOTEM, you if the box is your own. Telegram therefore carries those messages. It never receives your password or your Mobile Money PIN."],
+    ["Telegram", "is the messaging service through which each TOTEM box reports to the team that runs it. It sends there the news of the box itself — a modem that stops answering, a card taken out, the daily report. By default, it no longer sends your SMS: the TOTEM app already notifies you of each one. Whoever runs the box can turn that copy back on; the box then sends a copy of every operator SMS it receives — one-time codes included — and of the PDF receipts to the private Telegram chat of whoever runs it: the TOTEM team for a card placed with TOTEM, you if the box is your own. Telegram then carries those messages. It never receives your password or your Mobile Money PIN."],
   ],
   tiersNote:
     "Beyond the services above, nothing is sold, rented, or shared with " +
@@ -226,7 +226,7 @@ const fr: typeof en = {
     ["Apple (service de notifications d’Apple), Google (Firebase Cloud Messaging) et Expo", "acheminent les notifications jusqu’à votre téléphone. Ils voient donc le texte d’une notification, qui peut nommer un montant et l’autre partie d’un paiement. C’est le seul chemin pour faire sonner un téléphone."],
     ["Supabase", "héberge la base de données : votre compte, les messages reçus par vos cartes, les reçus."],
     ["Vercel", "héberge la plateforme à laquelle l’application parle."],
-    ["Telegram", "est la messagerie par laquelle chaque boîtier TOTEM rend compte à qui le fait fonctionner. Un boîtier envoie une copie de chaque SMS d’opérateur qu’il reçoit — codes à usage unique compris — et des reçus PDF dans la discussion Telegram privée de celui qui tient le boîtier : l’équipe TOTEM pour une carte confiée à TOTEM, vous-même si le boîtier est le vôtre. Telegram transporte donc ces messages. Il ne reçoit jamais votre mot de passe ni votre code secret Mobile Money."],
+    ["Telegram", "est la messagerie par laquelle chaque boîtier TOTEM rend compte à qui le fait fonctionner. Il y envoie les nouvelles du boîtier lui-même — un modem qui ne répond plus, une carte retirée, le bilan du jour. Par défaut, il n’y envoie plus vos SMS : l’application TOTEM vous prévient déjà de chacun. Celui qui tient le boîtier peut rallumer cette copie ; le boîtier envoie alors une copie de chaque SMS d’opérateur qu’il reçoit — codes à usage unique compris — et des reçus PDF dans la discussion Telegram privée de celui qui le tient : l’équipe TOTEM pour une carte confiée à TOTEM, vous-même si le boîtier est le vôtre. Telegram transporte alors ces messages. Il ne reçoit jamais votre mot de passe ni votre code secret Mobile Money."],
   ],
   tiersNote:
     "En dehors des services ci-dessus, rien n’est vendu, loué, ni partagé " +

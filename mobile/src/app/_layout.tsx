@@ -76,15 +76,17 @@ function Charpente() {
             aussitôt : la route n'est même pas montée. */}
         <Stack.Protected guard={connecte}>
           <Stack.Screen name="(onglets)" />
-          {/* Les reglages vivent hors des onglets : on y vient
-              depuis l'accueil, la barre garde ses quatre entrees. */}
+          {/* Les réglages vivent hors des onglets : on y vient
+              depuis l'accueil ou « … ». */}
           <Stack.Screen name="reglages" options={{ animation: "slide_from_right" }} />
           {/* Le cadran USSD aussi : on y vient depuis Opérations, pour
               composer un code à la main comme sur un téléphone. */}
           <Stack.Screen name="ussd" options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="beneficiaires" options={{ animation: "slide_from_right" }} />
-          {/* L'analyse : la semaine en chiffres, depuis l'accueil. */}
+          {/* L'analyse : la semaine en chiffres, depuis « … ». */}
           <Stack.Screen name="analyse" options={{ animation: "slide_from_right" }} />
+          {/* Les comptes : le solde de chaque carte, depuis « … ». */}
+          <Stack.Screen name="comptes" options={{ animation: "slide_from_right" }} />
         </Stack.Protected>
         <Stack.Protected guard={!connecte}>
           <Stack.Screen name="connexion" />

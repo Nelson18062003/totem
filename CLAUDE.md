@@ -62,6 +62,7 @@ cd web && node scripts/verifier-la-sonnerie.mjs # le téléphone a-t-il VRAIMENT
 cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur rien
 cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
 cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne retire rien
+cd web && node scripts/verifier-l-historique.mjs # toute la caisse s'atteint, sans trou
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
@@ -87,6 +88,8 @@ cd mobile && node scripts/verifier-les-dates.mjs /tmp/apercu # le filtre par dat
 #   (même export ; sème la caisse s'il la trouve trop maigre)
 cd mobile && node scripts/verifier-les-transitions.mjs /tmp/apercu # le passage se voit
 #   (même export ; image par image, la barre aussi, puis « Réduire les animations »)
+cd mobile && node scripts/verifier-l-historique.mjs /tmp/apercu # jusqu'au premier SMS
+#   (même export ; sème la caisse s'il la trouve trop maigre)
 ```
 
 `verifier-le-verrou` lance un vrai serveur et essaie d'entrer : sans jeton,
@@ -1132,6 +1135,59 @@ bouton dans Opérations, et un rond de l'accueil. Les ronds se choisissent dans
 les Réglages (`noyau/ronds.ts` : cinq au plus, un au moins, un choix abîmé
 rend l'accueil d'origine) ; le choix vit sur le téléphone et n'ouvre aucun
 droit.
+
+**Un SMS, une sonnerie.** Le téléphone sonnait deux fois pour chaque SMS :
+l'application, puis Telegram — l'alerte, et dix secondes plus tard le reçu.
+`sms_sur_telegram`, éteint par défaut, coupe les deux ; Telegram garde les
+nouvelles du BOÎTIER (modem, cartes, bilan) et l'alerte d'un SMS d'argent
+illisible, qui est une panne du lecteur. `tests/test_sms_hors_telegram.py`
+porte son témoin. Au passage, le fichier d'exemple écrivait « oui », que
+Python refusait : recopié tel quel, il empêchait le robot de démarrer.
+
+**Un reçu sur chaque transaction, et un seul système.** La fiche d'un
+paiement n'avait pas de PDF ; la logique du reçu vivait dans la fiche d'un
+SMS. Elle vit maintenant dans `recu.tsx` (téléphone et site), et les deux
+fiches s'en servent : partager, voir, télécharger, refaire. La période
+demandée à la plateforme, elle, vit dans `periode-demandee.ts` : SMS et
+Paiements la partagent, avec ses leçons.
+
+**Une fiche se range comme un reçu.** La refonte « plus claire » avait mis
+des ronds d'action en tête et le SMS d'origine déplié au milieu : « ça prend
+trop d'espace pour rien », a dit le propriétaire, qui préférait la fiche
+d'avant. Elle est revenue : le montant, puis QUI ET QUAND (la personne, la
+référence, la carte, la date), CE QUE ÇA A COÛTÉ (frais, commission), le SMS
+replié, les gestes en bas, le reçu au pied. Et pas de solde dans la fiche :
+il se lit sur l'accueil, et dans le SMS d'origine.
+
+**Une largeur se mesure dans la page.** Cinq onglets à 320 points laissent
+55 points à chacun ; « Opérations » était ESTIMÉ à 52,6 — il en mesure 59, et
+la capture le montrait rogné : « Ͻpérations ». Le corps du nom se réduit
+avec la place. La même capture a montré la loupe de la recherche écrasée à
+zéro, sur les SMS comme aux Paiements : un champ du navigateur a sa largeur
+propre, et sans `minWidth: 0` il pousse ses voisins.
+
+**TOTEM tourne déjà : un écran neuf s'ouvre sur des mois de caisse.**
+L'onglet Paiements ne montrait que les deux cents derniers SMS (le site, les
+mille derniers) ; « toutes les dates » s'arrêtait là sans un mot, la
+recherche d'un client de mars disait « Aucun résultat », et la fiche d'un
+vieux paiement proposait « Établir le reçu » pour un document établi depuis
+longtemps — la liste ne rapproche que les reçus RÉCENTS. Une donnée d'essai
+de quelques jours ne pouvait rien en montrer. La plateforme rend maintenant
+avec chaque lecture sa SUITE (`Donnees.suite`, `avant=`), l'écran recolle les
+pages plus anciennes (`noyau/historique.ts`) et dit la fin — « Début de
+l'historique » — seulement quand elle est vraie ; la fiche demande elle-même
+le reçu qui existe peut-être déjà (`recuACherche`).
+
+**Une suite vaut pour ce qu'on a RENDU, pas pour ce qu'on a LU.** Mille SMS
+lus, deux cents rapportés (`lignes`, rangés par heure réseau) : reprendre
+sous les mille en sautait huit cents. Et la borne est INCLUSE : le robot
+relève d'un coup, à la même seconde, ce que le modem a gardé pendant une
+coupure — une borne exclue coupait ce lot en deux et en perdait la moitié.
+L'instant voyage BRUT : repassé par `toISOString`, il perd ses microsecondes.
+`verifier-l-historique` parcourt six mois de caisse page après page contre le
+faux nuage, avec les deux témoins. Le faux nuage, lui, comparait les heures
+comme du texte : « …+01:00 » (le robot) et « …Z » (les essais) se rangeaient
+de travers — il compare maintenant des instants, comme la vraie base.
 
 **Le fichier d'exemple doit se charger, et un test le dit.** En écrivant
 `transferts = non` dans `config.example.conf` pour XAFe, l'essai de chargement

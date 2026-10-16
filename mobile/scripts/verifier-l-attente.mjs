@@ -200,10 +200,17 @@ console.log("\n  Chaque onglet montre quelque chose pendant qu'il charge");
     // ses gestes sont là tout de suite. Ses neuf formes ne servent qu'À
     // FROID (ouvert directement, cahier vide) : c'est la section suivante
     // qui les exige. On exige ici qu'il ne soit pas blanc.
+    //
+    // Les PAIEMENTS n'en montrent aucune non plus quand on y arrive des SMS :
+    // ils demandent au cahier exactement ce que les SMS viennent de lui
+    // faire porter (les deux cents derniers). Un écart ici voudrait dire
+    // qu'ils ont cessé de partager la même descente. « Plus » ne lit que
+    // les cartes, déjà là.
     const ONGLETS = [
-      ["Cartes", /^(Accounts|Comptes)$/, 2],
       ["Boîte", /^(SMS|Messages)$/, 24],
+      ["Paiements", /^(Payments|Paiements)$/, 0],
       ["Actions", /^(Operations|Opérations)$/, 0],
+      ["Plus", /^(More|Plus)$/, 0],
     ];
     for (const [nom, motif, attendues] of ONGLETS) {
       const bouton = page.getByLabel(motif).first();

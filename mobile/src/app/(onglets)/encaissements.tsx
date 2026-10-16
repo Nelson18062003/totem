@@ -46,7 +46,7 @@ import {
   KeyboardAvoidingView, Pressable, View, type ViewStyle,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import {
@@ -62,19 +62,15 @@ import { couleurs, espaces, polices, rayons, textes } from "@/theme/jetons";
 import { useAgeDesChiffres, useDonnees, useMaintenant, useRoue } from "@/donnees";
 import { boitierSeTait } from "@/terminal-hors-ligne";
 import { useLangue } from "@/langue";
-import { useSession } from "@/session";
 import { Calendrier } from "@/calendrier";
-import { Feuille } from "@/feuille";
-import { chargerDonnees, ErreurGuichet } from "@/api/guichet";
+import { BoutonFiltre, FeuilleChoix } from "@/filtres";
+import { usePeriodeDemandee } from "@/periode-demandee";
 import { textesSms } from "@noyau/textes/sms";
 import { FUSEAU_DEFAUT, fcfa, jourLocal, type Categorie, type Paiement } from "@noyau/types";
 import {
-  bornesDe, dansBornes, depuisPourLaBase, libelleJour, nomDesJours, totauxDe,
+  bornesDe, dansBornes, libelleJour, nomDesJours, totauxDe,
   type Bornes, type Periode,
 } from "@noyau/periodes";
-
-// Ce que la plateforme rapporte au plus pour une période (voir `MAX_SMS`).
-const SMS_PAR_PERIODE = 1000;
 
 // CE QUE LA LISTE DEMANDE AU CAHIER, ET CE QU'ELLE MONTRE : les deux cents
 // derniers SMS — le même nombre aux deux bouts. Elle montrait TOUT ce que le
@@ -139,11 +135,6 @@ function empreinteDe(rangees: Rangee2[]): string {
  *  liste : on retombe sur ce que la plateforme avait écrit. */
 function nomDuJour(cle: string, aujourdhui: string, langue: "en" | "fr", repli: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(cle) ? libelleJour(cle, aujourdhui, langue) : (repli || cle);
-}
-
-function memesLignes(a: Paiement[], b: Paiement[]): boolean {
-  if (a.length !== b.length) return false;
-  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
 }
 
 type JourRendu = { cle: string; libelle: string; rangees: Rangee2[]; empreinte: string };
@@ -215,7 +206,6 @@ export default function Encaissements() {
   const basEcran = useSafeAreaInsets().bottom;
   const langue = useLangue();
   const t = textesSms[langue];
-  const { perdue } = useSession();
   const {
     donnees, attente, erreur, recharger, actualiser, quand, duCahier,
   } = useDonnees({ sms: SMS_ECRAN });
@@ -284,132 +274,15 @@ export default function Encaissements() {
   // La liste de choix ouverte : la date, la carte, ou le type.
   const [feuille, setFeuille] = useState<null | "date" | "carte" | "type">(null);
 
-  // LES DEUX CENTS DERNIERS NE COUVRENT PAS « CE MOIS ». Filtrer sur ce que
-  // l'écran a déjà aurait rendu une période à moitié vide, sans le dire —
-  // sur une caisse à quarante SMS par jour, deux cents s'arrêtent au
-  // cinquième jour. On ne s'en contente que s'ils remontent AVANT le
-  // premier jour demandé (ou s'ils sont toute la caisse) ; sinon, on demande
-  // la période à la plateforme, qui la découpe dans la base.
-  const couverte = bornes == null
-    || recents.length < SMS_ECRAN
-    || (recents.length > 0 && recents[recents.length - 1].jour < bornes.de);
-
-  // ── LA PÉRIODE DEMANDÉE À PART ────────────────────────────────────────
-  //
-  // RIEN NE PEUT PLUS RESTER COINCÉ. « En recherche » et « impossible »
-  // étaient deux drapeaux posés à la main : choisir « Ce mois » puis
-  // « Aujourd'hui » avant la réponse annulait la première demande… et son
-  // `finally`, qui seul baissait « en recherche ». Le total n'apparaissait
-  // plus jamais, ou les formes grises battaient sans fin. Ils sont
-  // maintenant CALCULÉS, à partir de ce qu'on a reçu et de ce qui a échoué,
-  // pour LA période affichée : n'étant rangés nulle part, ils ne peuvent
-  // pas rester vrais tout seuls.
-  //
-  // ET LA PÉRIODE SUIT LE CAHIER. Elle n'était demandée qu'au choix : un
-  // encaissement arrivé ensuite n'y entrait jamais, et tirer pour
-  // rafraîchir faisait tourner la roue sur une liste qui ne bougeait pas.
-  // Chaque relecture réussie du cahier (`quand`) — la notification, le
-  // retour devant l'application, le doigt qui tire — la redemande, EN
-  // SILENCE : la liste d'avant reste à l'écran pendant ce temps.
-  //
-  // MAIS SEULEMENT DEVANT. Les onglets restent montés : « Ce mois » posé
-  // ici, puis l'Accueil, et chaque passage du cahier — chaque notification,
-  // et toutes les vingt secondes tant que le terminal annonce des SMS en
-  // route — redemandait jusqu'à mille SMS (264 Ko, mesurés pour l'écran des
-  // cartes) pour un écran que personne ne regardait, une ou deux fois par
-  // notification. Caché, l'écran ne demande rien ; revenu devant,
-  // il redemande la période si le cahier a bougé entre-temps — et seulement
-  // alors. Le doigt qui tire est toujours devant : il la relance encore.
-  const devant = useIsFocused();
-  const cleP = couverte || !bornes ? null : `${bornes.de}…${bornes.a}`;
-  const [lueP, setLueP] = useState<{ cle: string; lignes: Paiement[] } | null>(null);
-  const [rateeP, setRateeP] = useState<string | null>(null);
-  const [essaiP, setEssaiP] = useState(0);
-  const cleCourante = useRef(cleP);
-  cleCourante.current = cleP;
-  // LES RÉPONSES SONT NUMÉROTÉES : deux demandes de la même période se
-  // croisent (un SMS, puis un retour devant l'application), et la plus
-  // ancienne ne doit pas effacer la plus récente. Seule la DERNIÈRE
-  // demandée a le droit de dire « impossible ».
-  const ordreP = useRef({ dernier: 0, applique: 0 });
-  // Ce qui a été demandé en dernier : la période, la langue, le passage du
-  // cahier, l'essai. Revenir devant sans que rien de cela ait changé ne
-  // redemande rien. (Un AUTRE motif entre deux — une autre période, puis
-  // celle-ci de nouveau — redemande : la réponse d'avant a pu être écartée
-  // par la plus récente.)
-  const demandee = useRef<string | null>(null);
-  const monte = useRef(true);
-  useEffect(() => {
-    monte.current = true;
-    return () => { monte.current = false; };
-  }, []);
-  useEffect(() => {
-    if (!cleP || !bornes || !devant) return;
-    const motif = [cleP, langue, quand ?? "", essaiP].join("|");
-    if (demandee.current === motif) return;
-    demandee.current = motif;
-    const n = ++ordreP.current.dernier;
-    const cle = cleP;
-    chargerDonnees(langue, { sms: SMS_PAR_PERIODE, recus: 0,
-                             depuis: depuisPourLaBase(bornes) })
-      .then((d) => {
-        if (!monte.current || cle !== cleCourante.current || n < ordreP.current.applique) return;
-        ordreP.current.applique = n;
-        // Une réponse sans liste n'est pas une période vide.
-        const lignes = Array.isArray(d?.paiements) ? d.paiements : AUCUN;
-        // Rien n'a bougé : LE MÊME objet, et aucune des mille lignes ne se
-        // redessine — la période se relit maintenant à chaque passage du
-        // cahier, et la plupart du temps rien n'y a changé.
-        setLueP((avant) => (avant && avant.cle === cle && memesLignes(avant.lignes, lignes)
-          ? avant : { cle, lignes }));
-        setRateeP((r) => (r === cle ? null : r));
-      })
-      .catch((e: unknown) => {
-        // Une session expirée n'est pas une période impossible : c'est un
-        // retour au verrou, comme partout ailleurs.
-        if (e instanceof ErreurGuichet && e.statut === 401) { perdue(); return; }
-        if (!monte.current || cle !== cleCourante.current || n !== ordreP.current.dernier) return;
-        setRateeP(cle);
-      });
-    // La période se résume à sa clé ; `quand` est la relecture du cahier,
-    // `essaiP` le bouton « Réessayer », `devant` le retour sur l'onglet.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cleP, langue, quand, essaiP, devant]);
-
-  const lignesP = cleP != null && lueP?.cle === cleP ? lueP.lignes : null;
-  // Rien encore pour CETTE période, et pas d'échec connu : on cherche.
-  const chercheP = cleP != null && lignesP == null && rateeP !== cleP;
-  // Rien pour cette période, et le dernier essai a échoué : on le dit. Une
-  // période déjà affichée dont la relecture échoue reste à l'écran, muette
-  // — comme le cahier, qui ne dit la panne qu'à l'écran qui n'a rien.
-  const refusP = cleP != null && lignesP == null && rateeP === cleP;
-  // EN ATTENDANT LA PÉRIODE, CE QUE LE CAHIER EN A DÉJÀ. Une période tenue
-  // par le cahier cesse de l'être au premier SMS qui arrive (les deux cents
-  // derniers ne remontent plus avant son premier jour) : la liste tombait
-  // alors de quarante lignes à zéro, une forme grise à la place, le total
-  // effacé — et ramenée en haut si on lisait plus bas. Si la demande
-  // échouait, « impossible » remplaçait une liste qui était juste. Les
-  // lignes que le cahier porte DANS la période restent donc à l'écran ; la
-  // réponse ajoute les plus anciennes en dessous. Les formes grises ne
-  // viennent que si le cahier n'a RIEN de la période (des jours anciens).
-  const paiements = cleP == null ? recents : (lignesP ?? recents);
-  // LE TOTAL NE SE DIT QUE SUR UNE PÉRIODE ENTIÈRE : celle que le cahier
-  // couvre, ou celle que la plateforme a rendue. Sur les seules lignes du
-  // cahier, il serait faux sans le dire — un total partiel, sur de l'argent.
-  const totalSur = bornes != null && (cleP == null || lignesP != null);
-  // La plateforme a-t-elle coupé ? Elle rend au plus mille lignes, les plus
-  // récentes : si la plus ancienne est encore DANS la période, le début de
-  // la période manque — et on le dit plutôt que de laisser croire au total.
-  const tronquee = lignesP != null && bornes != null && lignesP.length >= SMS_PAR_PERIODE
-    && lignesP[lignesP.length - 1].jour >= bornes.de;
-
-  // Ce que la fiche vient de changer (lu, nature, reçu), reporté sur la
-  // période qu'on tient à part — le cahier, la fiche le corrige elle-même.
-  const retoucherPeriode = useCallback((id: string, champs: Partial<Paiement>) => {
-    setLueP((l) => (l && l.lignes.some((x) => x.id === id)
-      ? { ...l, lignes: l.lignes.map((x) => (x.id === id ? { ...x, ...champs } : x)) }
-      : l));
-  }, []);
+  // LA PÉRIODE QUE LE CAHIER NE COUVRE PAS se demande à la plateforme —
+  // une logique que les Paiements partagent, avec ses leçons
+  // (`periode-demandee.ts`).
+  const periodeP = usePeriodeDemandee(bornes, recents, SMS_ECRAN, quand);
+  const { paiements, tronquee } = periodeP;
+  const chercheP = periodeP.cherche;
+  const refusP = periodeP.refus;
+  const totalSur = periodeP.entiere;
+  const retoucherPeriode = periodeP.retoucher;
 
   const filtres = useMemo(() => {
     const q = recherche.trim().toLowerCase();
@@ -721,7 +594,10 @@ export default function Encaissements() {
                 placeholder={t.recherchePlaceholder}
                 placeholderTextColor={couleurs.encrePale}
                 style={{
-                  flex: 1, paddingVertical: espaces.xs,
+                // `minWidth: 0` : un champ du navigateur a une largeur propre
+                  // (vingt caractères) ; sans cela, à 320 points, il débordait
+                  // et écrasait la loupe à zéro — mesuré, sur les deux écrans.
+                  flex: 1, minWidth: 0, paddingVertical: espaces.xs,
                   fontFamily: polices.corps, fontSize: textes.corps, color: couleurs.encre,
                 }}
               />
@@ -774,7 +650,7 @@ export default function Encaissements() {
               message reste jusqu'au succès — le cahier réessaie seul. */}
           {erreur ? <Accroc message={erreur} onReessayer={() => void recharger()} /> : null}
           {refusP ? (
-            <Accroc message={t.periodeImpossible} onReessayer={() => setEssaiP((n) => n + 1)} />
+            <Accroc message={t.periodeImpossible} onReessayer={periodeP.reessayer} />
           ) : null}
 
           {/* LE TOTAL DE LA PÉRIODE — ce qu'on cherchait en filtrant. Il ne
@@ -1031,79 +907,6 @@ function ChiffreAttendu() {
                    backgroundColor: couleurs.surface2 }}>
       <Texte poids="demi" chiffresAlignes>{" "}</Texte>
     </View>
-  );
-}
-
-/** Un bouton de filtre : ce qu'il filtre (« Date »), ou ce qui est choisi
- *  (« Hier ») — rempli de sombre dès qu'il filtre quelque chose, pour qu'on
- *  voie d'un coup d'œil que la liste n'est pas entière. */
-function BoutonFiltre({ libelle, etiquette, actif, icone, onPress }: {
-  libelle: string; etiquette: string; actif: boolean; icone: NomIcone; onPress: () => void;
-}) {
-  const teinte = actif ? couleurs.surfaceHaute : couleurs.encreDouce;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${etiquette} : ${libelle}`}
-      onPress={onPress}
-      style={avecAppui({
-        flexDirection: "row", alignItems: "center", gap: espaces.xs,
-        minHeight: 40, paddingLeft: espaces.md, paddingRight: espaces.sm,
-        borderRadius: rayons.rond,
-        borderWidth: 1, borderColor: actif ? couleurs.accent : couleurs.trait,
-        backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
-      })}
-    >
-      <Icone nom={icone} taille={15} couleur={teinte} />
-      <Texte taille={textes.petit} poids="moyen" style={{ color: actif ? teinte : couleurs.encre }}>
-        {libelle}
-      </Texte>
-      {/* Le chevron tourné vers le bas : « ça s'ouvre ». */}
-      <View style={{ transform: [{ rotate: "90deg" }] }}>
-        <Icone nom="Chevron" taille={13} couleur={teinte} />
-      </View>
-    </Pressable>
-  );
-}
-
-/** La liste d'un filtre : une option par ligne, une coche sur la choisie. */
-function FeuilleChoix({ titre, options, choisie, onChoisir, onFermer }: {
-  titre: string;
-  options: { cle: string; libelle: string; icone?: NomIcone }[];
-  choisie: string;
-  onChoisir: (cle: string) => void;
-  onFermer: () => void;
-}) {
-  const langue = useLangue();
-  return (
-    <Feuille visible libelleFermer={textesSms[langue].fermer} onFermer={onFermer}
-             entete={<Texte taille={textes.intertitre} poids="demi">{titre}</Texte>}>
-      <Carte>
-        {options.map((o, i) => {
-          const elle = o.cle === choisie;
-          return (
-            <View key={o.cle || "tout"}>
-              {i > 0 ? <Filet /> : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: elle }}
-                accessibilityLabel={o.libelle}
-                onPress={() => onChoisir(o.cle)}
-                style={({ pressed }) => ({
-                  flexDirection: "row", alignItems: "center", gap: espaces.md,
-                  minHeight: 52, paddingHorizontal: espaces.lg,
-                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
-                })}
-              >
-                {o.icone ? <Icone nom={o.icone} taille={18} couleur={couleurs.encreDouce} /> : null}
-                <Texte poids={elle ? "demi" : "normal"} style={{ flex: 1 }}>{o.libelle}</Texte>
-                {elle ? <Icone nom="Check" taille={18} couleur={couleurs.encre} /> : null}
-              </Pressable>
-            </View>
-          );
-        })}
-      </Carte>
-    </Feuille>
   );
 }
 

@@ -411,8 +411,12 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
   for (const [ecran, chemin, preuve] of [
     ["accueil", "/", /FCFA/],
     ["sms", "/encaissements", /NKENGAFAC/],
+    ["paiements", "/paiements", /NKENGAFAC/],
     ["operations", "/actions", /MTN|Orange/],
-    ["cartes", "/cartes", /MTN|Orange/],
+    // « … » : les Comptes, l'Analyse, le relevé… — et les Comptes eux-mêmes,
+    // qui avaient leur onglet.
+    ["plus", "/plus", /(Accounts|Comptes)/],
+    ["comptes", "/comptes", /MTN|Orange/],
     ["reglages", "/reglages", /.+/],
     ["bilan", "/analyse", /.+/],
     ["beneficiaires", "/beneficiaires", /.+/],
@@ -612,7 +616,7 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     } });
   });
   for (const [ecran, chemin] of [
-    ["sans-carte", "/"], ["sans-carte-ops", "/actions"], ["sans-carte-cpt", "/cartes"],
+    ["sans-carte", "/"], ["sans-carte-ops", "/actions"], ["sans-carte-cpt", "/comptes"],
   ]) {
     await page.goto(`${APERCU}${chemin}`, { waitUntil: "networkidle" });
     try {
@@ -648,11 +652,27 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     catch { /* mesuré tel quel */ }
     await mesurer("fiche-recu-etabli");
   }
-  const refaire = page.getByText(/^(Rebuild the receipt|Refaire le reçu)$/);
+  const refaire = page.getByText(/^(Rebuild the receipt|Refaire le reçu|Rebuild|Refaire)$/);
   if (await refaire.count()) {
     await refaire.first().click();
     try { await attendreTexte(page, /rebuilt|refait/, 30000); } catch { /* mesuré tel quel */ }
     await mesurer("fiche-recu-refait");
+  }
+
+  // 3 a. LA FICHE D'UN PAIEMENT — le même pied que celle d'un SMS (le reçu :
+  // partager, voir, télécharger, refaire), et le SMS d'origine en entier.
+  // Trois gestes côte à côte au pied : à 320 points, « Télécharger » doit
+  // tenir dans le sien.
+  await page.goto(`${APERCU}/paiements`, { waitUntil: "networkidle" });
+  try {
+    await attendreTexte(page, /NKENGAFAC/);
+    await page.getByText(/NKENGAFAC MBOUNGOU/).first().click();
+    await attendreTexte(page, /(Original SMS|Le SMS d'origine)/);
+    await page.waitForTimeout(600);
+    await mesurer("fiche-paiement");
+  } catch {
+    defauts++;
+    resume.push(`  ✗ ${format.padEnd(18)} ${"fiche-paiement".padEnd(16)} la fiche d'un paiement ne s'ouvre pas`);
   }
 
   // 3 bis. La fiche des coordonnées d'une carte — le bouton rond « carte

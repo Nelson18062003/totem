@@ -11,7 +11,9 @@ const en = {
     n === 1
       ? "The terminal has 1 message still on its way — this list may not be complete yet. Pull down to see how far it has got."
       : `The terminal has ${n} messages still on their way — this list may not be complete yet. Pull down to see how far it has got.`,
-  recherchePlaceholder: "Name, number, amount, message text",
+  // Il tient dans le champ du plus petit téléphone (230 points à 320, Inter
+  // 16 : 214 ici) ; « texte du SMS » l'en faisait sortir.
+  recherchePlaceholder: "Name, number, amount, text",
   effacerRecherche: "Clear the search",
   tousLesOperateurs: "All",
   toutesLesCategories: "All",
@@ -66,11 +68,21 @@ const en = {
   refaireRecu: "Rebuild the receipt",
   ouvertureRecu: "Opening…",
   partagerRecu: "Share the receipt",
+  // Les trois gestes courts sous « Partager », dans chaque fiche qui a un
+  // reçu — celle d'un SMS et celle d'un paiement (voir `recu.tsx`).
+  voirRecuCourt: "View",
+  voirRecu: "View the receipt",
+  partagerCourt: "Share",
+  telechargerRecuCourt: "Download",
+  refaireRecuCourt: "Rebuild",
+  recuEnregistre: "Receipt saved ✓",
   preparationRecu: "Preparing the PDF…",
   // Le reçu d'un SMS tout juste arrivé : le boîtier le dépose tout seul,
   // dans les secondes qui suivent. On l'ATTEND — on ne propose pas de
   // l'établir (voir `recuAttendu`).
   recuEnPreparation: "Receipt on its way…",
+  // Un vieux paiement : la fiche demande le reçu qui existe peut-être déjà.
+  rechercheDuRecu: "Looking for the receipt…",
   // « Refaire » sans rien changer : le document en place EST le bon.
   recuDejaAJour: "This receipt is already up to date ✓",
   lienRecuImpossible: "The receipt could not be prepared. Check the connection, then try again.",
@@ -96,8 +108,6 @@ const en = {
   messageRecu: "Original message",
   copierSms: "Copy the message",
   recuPdf: "PDF receipt",
-  telechargerPdf: "Download the PDF",
-  regenererPdf: "Rebuild the PDF",
   regenerationEnCours:
     "The terminal is rebuilding the document with today's reading — about "
     + "twenty seconds, then open the PDF again.",
@@ -146,7 +156,7 @@ const fr: typeof en = {
     n === 1
       ? "Le terminal a 1 message en cours de transmission — cette liste n’est peut-être pas encore complète. Tirez vers le bas pour voir où elle en est."
       : `Le terminal a ${n} messages en cours de transmission — cette liste n’est peut-être pas encore complète. Tirez vers le bas pour voir où elle en est.`,
-  recherchePlaceholder: "Nom, numéro, montant, texte du SMS",
+  recherchePlaceholder: "Nom, numéro, montant, texte",
   effacerRecherche: "Effacer la recherche",
   tousLesOperateurs: "Tous",
   toutesLesCategories: "Toutes",
@@ -192,8 +202,15 @@ const fr: typeof en = {
   refaireRecu: "Refaire le reçu",
   ouvertureRecu: "Ouverture…",
   partagerRecu: "Partager le reçu",
+  voirRecuCourt: "Voir",
+  voirRecu: "Voir le reçu",
+  partagerCourt: "Partager",
+  telechargerRecuCourt: "Télécharger",
+  refaireRecuCourt: "Refaire",
+  recuEnregistre: "Reçu enregistré ✓",
   preparationRecu: "Préparation du PDF…",
   recuEnPreparation: "Reçu en préparation…",
+  rechercheDuRecu: "Recherche du reçu…",
   recuDejaAJour: "Ce reçu est déjà à jour ✓",
   lienRecuImpossible: "Le reçu n’a pas pu être préparé. Vérifiez la connexion, puis réessayez.",
   toutesLesCartes: "Toutes les cartes",
@@ -217,8 +234,6 @@ const fr: typeof en = {
   messageRecu: "Message reçu",
   copierSms: "Copier le SMS",
   recuPdf: "Reçu PDF",
-  telechargerPdf: "Télécharger le PDF",
-  regenererPdf: "Régénérer le PDF",
   regenerationEnCours:
     "Le terminal refait le document avec la lecture du jour — une vingtaine "
     + "de secondes, puis rouvrez le PDF.",

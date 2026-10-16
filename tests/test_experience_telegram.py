@@ -75,6 +75,9 @@ class TransportEspion(_TransportTexte):
 
 
 def robot(operateur="MTN", admins=(1,), **kw):
+    # L'expérience Telegram d'un propriétaire qui y suit ses SMS : l'annonce,
+    # éteinte par défaut, est rallumée ici (voir `test_sms_hors_telegram`).
+    kw.setdefault("sms_sur_telegram", True)
     modem = ModemSimule(operateur=operateur)
     transport = TransportEspion(admins)
     r = Robot([Compte(modem, operateur)], transport, Journal(":memory:"),

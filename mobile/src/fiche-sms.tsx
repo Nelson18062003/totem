@@ -8,32 +8,26 @@
 // le masquage des codes à usage unique — viennent de `@noyau/sms`, partagées
 // avec la plateforme et tenues par des tests. Ici, seulement le dessin.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { Feuille } from "@/feuille";
 import { Carte, Filet, Texte, appuiTexte, avecAppui } from "@/ui";
-import { nouvelleCle, useGesteUnique } from "@/geste";
 import { Icone, type NomIcone } from "@/icones";
 import { couleurs, espaces, rayons, textes } from "@/theme/jetons";
-import { nomDeFichier, partagerDocument } from "@/partage";
-import {
-  definirNature, deposerCommande, lienRecu, lireCommande, marquerLu, recuDuSms,
-} from "@/api/guichet";
-import { useMaintenant, useRetouche } from "@/donnees";
+import { definirNature, marquerLu } from "@/api/guichet";
+import { useMaintenant } from "@/donnees";
+import { PiedRecu, useRecu } from "@/recu";
 import { useLangue } from "@/langue";
 import { NATURES } from "@noyau/natures";
 import { libelleJour } from "@noyau/periodes";
 import {
-  categorieDe, estArgent, etatDeLaReponseRecu, FENETRE_DU_RECU_MS,
-  ICONE_CATEGORIE, LONG_MESSAGE, recuAttendu, texteSurEcran,
+  categorieDe, estArgent, ICONE_CATEGORIE, LONG_MESSAGE, texteSurEcran,
 } from "@noyau/sms";
 import { textesSms } from "@noyau/textes/sms";
 import {
   FUSEAU_DEFAUT, fcfa, jourLocal, type Categorie, type Paiement,
 } from "@noyau/types";
-
-const attendre = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Les schémas de couleur des étiquettes : vert pour l'argent qui entre,
  *  ambre pour ce qui mérite un coup d'œil. Le reste demeure neutre — une
@@ -77,36 +71,13 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
 
   const [nature, setNature] = useState(p.nature);
   const [choisirType, setChoisirType] = useState(false);
-  const [etabli, setEtabli] = useState<"repos" | "envoi" | "fait" | "refus">("repos");
   const [deplie, setDeplie] = useState(false);
 
-  // LA FICHE FERMÉE NE PARLE PLUS. Elle attendait le terminal (« Demande au
-  // terminal… », trente secondes), un lien de reçu, une réponse : on la
-  // refermait, et quelques secondes plus tard le téléphone VIBRAIT, la
-  // liste derrière se rechargeait, ou la feuille de partage s'ouvrait
-  // par-dessus un autre écran — pour un geste qu'on croyait abandonné.
-  // Chaque attente est donc suivie de la même question : la fiche est-elle
-  // encore là ? Sinon, le silence — ni vibration, ni relecture, ni partage.
-  const vivant = useRef(true);
-  useEffect(() => {
-    vivant.current = true;
-    return () => { vivant.current = false; };
-  }, []);
-
-  // CE QUE LA FICHE SAIT, LA LISTE LE MONTRE TOUT DE SUITE. Un SMS lu, une
-  // nature posée, un reçu établi : le cahier est corrigé SUR PLACE, sans
-  // attendre la plateforme — c'est la relecture discrète qui suit
-  // (`onChange`) qui confirme. Avant, c'était un rechargement complet, avec
-  // la roue, pour éteindre un point bleu.
-  const retoucheCahier = useRetouche();
-  const retoucher = (champs: Partial<Paiement>) => {
-    retoucheCahier((d) => {
-      const lignes = Array.isArray(d.paiements) ? d.paiements : [];
-      if (!lignes.some((x) => x.id === p.id)) return d;
-      return { ...d, paiements: lignes.map((x) => (x.id === p.id ? { ...x, ...champs } : x)) };
-    });
-    onRetouche?.(p.id, champs);
-  };
+  // LE REÇU, ses gestes et ses attentes : le même système que la fiche
+  // d'un paiement (`recu.tsx`). La fiche y prend aussi sa façon de savoir
+  // qu'elle est encore ouverte, et de corriger la liste sur place.
+  const r = useRecu(p, { nature, onChange, onRetouche });
+  const { vivant, retoucher } = r;
 
   // Ouvrir la fiche, c'est lire le message : la pastille du menu s'éteint —
   // tout de suite. Un échec ici ne se montre pas : c'est du confort, pas de
@@ -152,7 +123,7 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
       return;
     }
     const recuASuivre = n != null && p.sourceId != null
-      && (!recu || n !== (avant ?? p.categorie));
+      && (!r.recu || n !== (avant ?? p.categorie));
     if (!vivant.current) {
       // LA FICHE A ÉTÉ FERMÉE pendant que la base enregistrait la nature.
       // Rien ne se montre plus, rien ne vibre — mais le reçu SUIT quand
@@ -160,150 +131,12 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
       // encore « Reçu de dépôt » sous un SMS rangé en « Retrait » serait une
       // pièce fausse. La demande part, sa propre clé d'intention avec elle ;
       // le cahier apprendra le numéro à sa prochaine relecture.
-      if (recuASuivre && p.sourceId != null) {
-        void deposerCommande("recu", { source_id: p.sourceId, nature: n },
-                             p.terminal, nouvelleCle())
-          .catch(() => {});
-      }
+      if (recuASuivre) r.etablirEnSilence(n);
       return;
     }
     onChange?.();
-    if (recuASuivre) await etablirRecu(n);
+    if (recuASuivre) await r.etablir(n);
   };
-
-  /** Demander le reçu au terminal QUI A REÇU ce SMS — jamais au dernier qui
-   *  a donné signe de vie : `sourceId` ne veut rien dire dans un autre
-   *  journal, et le reçu porterait sur une autre opération. */
-  // PARTAGER le reçu — le geste pour lequel un reçu existe. Le PDF est
-  // téléchargé dans le téléphone puis part par la feuille de partage, comme
-  // un vrai fichier : WhatsApp reçoit le document, pas un lien vers une
-  // page (voir src/partage.ts).
-  const [ouverture, setOuverture] = useState<"repos" | "envoi" | "refus">("repos");
-  // Le numéro du reçu : celui de la ligne, ou celui que le robot vient de
-  // rendre (voir `etablirRecu`).
-  const [recu, setRecu] = useState<string | null>(p.recu);
-
-  // LE REÇU QUI ARRIVE TOUT SEUL. Un SMS d'argent tout juste reçu a son
-  // reçu en route : le boîtier le dépose sur la plateforme dans les
-  // secondes qui suivent. La fiche disait pourtant « Établir le reçu » —
-  // le téléphone apprend l'arrivée du SMS, jamais celle du reçu — et l'on
-  // refaisait à la main un document déjà en chemin, parfois déjà dans
-  // Telegram. Pendant la fenêtre où il doit arriver, la fiche l'ATTEND
-  // (« Reçu en préparation… ») et demande à la plateforme, toutes les
-  // trois secondes, s'il est là. Bornée : la fenêtre, et la fiche ouverte.
-  // Jamais un pouls — fermée ou la fenêtre passée, elle se tait.
-  const [attendu, setAttendu] = useState(() => recuAttendu(p, Date.now()));
-  useEffect(() => {
-    if (!attendu || recu) return;
-    const fin = Date.parse(p.recuLe) + FENETRE_DU_RECU_MS;
-    const renoncer = new AbortController();
-    let minuterie: ReturnType<typeof setTimeout> | undefined;
-    const guetter = async () => {
-      if (renoncer.signal.aborted) return;
-      const n = await recuDuSms(Number(p.id), renoncer.signal).catch(() => null);
-      if (renoncer.signal.aborted) return;
-      if (n) {
-        setRecu(n);
-        retoucher({ recu: n });
-        setAttendu(false);
-        return;
-      }
-      if (Date.now() >= fin) { setAttendu(false); return; }
-      minuterie = setTimeout(guetter, Math.min(3000, Math.max(0, fin - Date.now())));
-    };
-    void guetter();
-    return () => { renoncer.abort(); if (minuterie) clearTimeout(minuterie); };
-    // Une fois par SMS ouvert ; `retoucher` change à chaque rendu.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.id, attendu]);
-  const enPreparation = attendu && !recu && etabli === "repos";
-
-  const ouvrirRecu = async () => {
-    if (!recu || ouverture === "envoi") return;
-    setOuverture("envoi");
-    try {
-      // Un reçu tout juste établi met quelques secondes à être archivé : le
-      // premier essai peut tomber avant lui. On réessaie un peu, sans bruit.
-      for (let essai = 0; ; essai++) {
-        try {
-          const { url } = await lienRecu(recu);
-          // Fermée entre-temps : la feuille de partage ne s'ouvre pas
-          // par-dessus un écran qui n'a rien demandé. Et la question se
-          // repose APRÈS le téléchargement du PDF, qui prend plusieurs
-          // secondes sur un réseau lent — c'est là qu'on referme la fiche.
-          if (!vivant.current) return;
-          await partagerDocument(url, nomDeFichier(`Recu-${recu}`, "pdf"), "pdf",
-                                 t.partagerRecu, () => vivant.current);
-          break;
-        } catch (e) {
-          if (!vivant.current) return;
-          if (essai >= 5) throw e;
-          await attendre(2000);
-          if (!vivant.current) return;
-        }
-      }
-      if (vivant.current) setOuverture("repos");
-    } catch {
-      if (vivant.current) setOuverture("refus");
-    }
-  };
-
-  // La nature VOULUE voyage explicitement quand elle vient d'être choisie :
-  // l'état React de ce rendu porte encore l'ancienne valeur.
-  // UN SEUL REÇU PAR APPUI. Le bouton se grisait sur un état React, qui ne
-  // change qu'au rendu SUIVANT : deux appuis rapprochés lisaient tous les
-  // deux « repos » et déposaient tous les deux leur commande. Deux reçus pour
-  // un seul encaissement, deux numéros de référence — et les numéros de reçu
-  // se cognent. Le verrou de `useGesteUnique` se ferme à l'instant de
-  // l'appui ; la clé d'intention pare l'autre cas, celui où la réponse s'est
-  // perdue et où la personne recommence de bonne foi.
-  const gesteRecu = useGesteUnique();
-
-  // « Refaire » SANS rien changer : le boîtier rend le document en place,
-  // tout de suite, sans le refabriquer — et c'est LUI qui le dit (« déjà à
-  // jour »), après avoir comparé l'empreinte du document. La fiche le
-  // déduisait de l'égalité des numéros ; or un document refait (identité
-  // des Réglages, autre langue) garde son numéro.
-  const [dejaAJour, setDejaAJour] = useState(false);
-  const etablirRecu = (natureVoulue?: Categorie) => gesteRecu.lancer(async (cle) => {
-    if (p.sourceId == null) return;
-    const natureDemandee = natureVoulue ?? nature;
-    setDejaAJour(false);
-    setEtabli("envoi");
-    // Chaque `return;` sans verdict ci-dessous est la fiche FERMÉE : un
-    // silence, que `useGesteUnique` ne traduit en aucune vibration. La
-    // demande, elle, est déjà partie — le terminal fabrique le reçu, et la
-    // prochaine relecture du cahier en rapporte le numéro.
-    try {
-      const { id } = await deposerCommande(
-        "recu", { source_id: p.sourceId, nature: natureDemandee ?? undefined },
-        p.terminal, cle);
-      if (!vivant.current) return;
-      for (let i = 0; i < 25; i++) {
-        await attendre(1200);
-        if (!vivant.current) return;
-        const c = await lireCommande(id).catch(() => null);
-        if (!vivant.current) return;
-        if (c?.etat === "faite") {
-          // Le robot répond « Reçu TM-2026-1003-1193 en fabrication… » : le
-          // numéro y est. La fiche peut donc proposer le partage TOUT DE
-          // SUITE — elle demandait avant de la refermer et de la rouvrir.
-          const n = /\bT[A-Z]-\d{4}-\d{4}-\d+\b/.exec(c.resultat ?? "")?.[0];
-          if (n) { setRecu(n); retoucher({ recu: n }); }
-          setDejaAJour(etatDeLaReponseRecu(c.resultat) === "inchange");
-          setEtabli("fait"); onChange?.(); return true;
-        }
-        if (c?.etat === "echouee") { setEtabli("refus"); return false; }
-      }
-      // Vingt-cinq essais, trente secondes : le terminal n'a pas répondu.
-      setEtabli("refus");
-      return false;
-    } catch {
-      if (!vivant.current) return;
-      setEtabli("refus");
-      return false;
-    }
-  });
 
   return (
     <Feuille
@@ -345,82 +178,9 @@ export function FicheSms({ paiement: p, onFermer, onChange, onRetouche, fuseau }
         </>
       }
       pied={
-        argent && (p.recu || p.sourceId != null) ? (
-          <View style={{ gap: espaces.sm }}>
-            {/* LE GESTE PRINCIPAL suit ce qui existe. Un reçu déjà établi
-                s'OUVRE — c'est pour être montré et partagé qu'il existe, et
-                c'est ce que ce bouton ne savait pas faire : il redemandait
-                la fabrication au terminal, et le PDF restait inaccessible.
-                Sans reçu, on l'ÉTABLIT, comme avant. */}
-            {/* LE SUCCÈS SE DISAIT PAR RIEN DU TOUT. `p` est un cliché :
-                après « faite », le rafraîchissement met à jour la LISTE,
-                mais la fiche ouverte garde l'ancien paiement, donc `p.recu`
-                reste nul. Le bouton reprenait donc son libellé « Établir le
-                reçu » après trente secondes d'attente — indiscernable d'un
-                échec, sauf qu'un échec, lui, affiche une ligne rouge. Et
-                comme il restait actif, le geste naturel — réappuyer —
-                déposait une SECONDE commande pour le même SMS. */}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void (recu ? ouvrirRecu() : etablirRecu())}
-              disabled={ouverture === "envoi" || etabli === "envoi" || enPreparation
-                        || gesteRecu.occupe || (!recu && etabli === "fait")}
-              style={({ pressed }) => ({
-                flexDirection: "row", alignItems: "center", justifyContent: "center",
-                gap: espaces.sm, paddingVertical: espaces.md,
-                borderRadius: rayons.bouton,
-                backgroundColor: pressed ? couleurs.accentAppui : couleurs.accent,
-              })}
-            >
-              <Icone nom={recu ? "Partage" : "Doc"} taille={17} couleur={couleurs.surfaceHaute} />
-              {/* `flexShrink` : un libellé long se replie DANS le bouton.
-                  Sans lui, il poussait l'icône hors du bouton, à gauche. */}
-              <Texte poids="demi" taille={textes.petit} numberOfLines={2}
-                     style={{ color: couleurs.surfaceHaute, flexShrink: 1, textAlign: "center" }}>
-                {recu
-                  ? (ouverture === "envoi" ? t.preparationRecu : t.partagerRecu)
-                  : enPreparation ? t.recuEnPreparation
-                  : etabli === "envoi" ? t.demandeAuTerminal
-                  : etabli === "fait" ? t.recuEtabli
-                  : t.etablirRecu}
-              </Texte>
-            </Pressable>
-
-            {/* REFAIRE le reçu : le second geste, discret. Il sert quand la
-                nature vient d'être rechoisie — même numéro, document neuf. */}
-            {recu && p.sourceId != null ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void etablirRecu()}
-                disabled={etabli === "envoi" || gesteRecu.occupe}
-                style={({ pressed }) => ({
-                  flexDirection: "row", alignItems: "center", justifyContent: "center",
-                  gap: espaces.sm, paddingVertical: espaces.md,
-                  borderRadius: rayons.bouton, borderWidth: 1,
-                  borderColor: couleurs.trait,
-                  backgroundColor: pressed ? couleurs.surface2 : "transparent",
-                })}
-              >
-                <Texte poids="moyen" taille={textes.petit} ton="doux"
-                       style={{ flexShrink: 1, textAlign: "center" }}>
-                  {etabli === "envoi" ? t.demandeAuTerminal
-                    // Établi pour la première fois, ou refait : deux mots.
-                    : etabli === "fait"
-                      ? (dejaAJour ? t.recuDejaAJour
-                        : p.recu ? t.regenerationFaite : t.recuEtabli)
-                    : t.refaireRecu}
-                </Texte>
-              </Pressable>
-            ) : null}
-
-            {etabli === "refus" ? (
-              <Texte taille={textes.legende} ton="negatif">{t.terminalMuet}</Texte>
-            ) : null}
-            {ouverture === "refus" ? (
-              <Texte taille={textes.legende} ton="negatif">{t.lienRecuImpossible}</Texte>
-            ) : null}
-          </View>
-        ) : null
+        // Le reçu ne se propose que pour un mouvement d'argent : un reçu
+        // atteste d'argent, pas d'une publicité.
+        argent && (r.recu || p.sourceId != null) ? <PiedRecu r={r} p={p} langue={langue} /> : null
       }
     >
       {/* Le montant, s'il y en a un. C'est ce qu'on vient vérifier. */}

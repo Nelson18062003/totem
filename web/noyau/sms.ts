@@ -107,6 +107,26 @@ export function recuAttendu(
 }
 
 /**
+ * LE REÇU EXISTE PEUT-ÊTRE DÉJÀ : LA FICHE LE DEMANDE.
+ *
+ * Une ligne ne porte son reçu que s'il est parmi les plus RÉCENTS — la
+ * plateforme rapproche chaque SMS des mille derniers reçus établis — et une
+ * période demandée à part n'en porte aucun. Sur une caisse qui tourne depuis
+ * des mois, la fiche d'un paiement d'avril proposait donc « Établir le
+ * reçu » pour un document établi depuis longtemps, envoyé au client, peut-
+ * être déjà dans la comptabilité. Un SMS d'argent sans reçu connu, hors de
+ * la fenêtre où l'on ATTEND le sien : la fiche le demande, une fois, en
+ * ouvrant (`/api/recu-du-sms`, une recherche exacte).
+ */
+export function recuACherche(
+  p: Paiement,
+  maintenant: number,
+): boolean {
+  if (p.recu || p.sourceId == null || !estArgent(p)) return false;
+  return !recuAttendu(p, maintenant);
+}
+
+/**
  * CE QUE LE BOÎTIER A FAIT D'UNE DEMANDE DE REÇU — lu dans sa phrase.
  *
  * « Déjà à jour » se décide CHEZ LE BOÎTIER : il refait le document en

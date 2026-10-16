@@ -388,8 +388,16 @@ export async function chargerDonnees(
   // limite mord sur « recu_le.desc » — c'est-à-dire celles qui sont hors de
   // la période : un relevé de janvier à mars, demandé en octobre, sortait
   // amputé ou vide. Elle se prend large, comme `depuis`.
+  //
+  // `avant` : LA SUITE DE L'HISTORIQUE — les SMS relevés au plus tard à cet
+  // instant (BRUT, tel que `suite` l'a rendu ; voir plus bas). Une boutique
+  // qui tourne depuis des mois a des milliers de SMS en base ; l'écran ne
+  // montrait que les deux cents derniers, et « toutes les dates » s'arrêtait
+  // là, sans un mot. La borne est INCLUSE : deux SMS relevés au même
+  // instant, coupés par la limite, reviennent tous les deux — l'écran
+  // écarte celui qu'il a déjà.
   bornes?: { sms?: number; recus?: number; depuis?: string; jusqua?: string;
-             compter?: boolean; lignes?: number },
+             avant?: string; compter?: boolean; lignes?: number },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
@@ -400,7 +408,8 @@ export async function chargerDonnees(
   // tri fin se fait ensuite sur l'heure qui fait foi.
   const filtreDate = (bornes?.depuis
     ? `&recu_le=gte.${encodeURIComponent(bornes.depuis)}` : "")
-    + (bornes?.jusqua ? `&recu_le=lt.${encodeURIComponent(bornes.jusqua)}` : "");
+    + (bornes?.jusqua ? `&recu_le=lt.${encodeURIComponent(bornes.jusqua)}` : "")
+    + (bornes?.avant ? `&recu_le=lte.${encodeURIComponent(bornes.avant)}` : "");
   // « select=* » à dessein : exiger une colonne par son nom rend l'écran
   // VIDE quand la base a une migration de retard (la requête entière est
   // refusée). Avec l'étoile, une colonne absente donne un affichage un peu
@@ -676,16 +685,69 @@ export async function chargerDonnees(
     });
   }
 
+  // Ce que cette réponse rapporte vraiment : `lignes` peut couper sous ce
+  // qui a été lu (l'écran des cartes compte sur mille et n'en veut aucune).
+  const rapportes = bornes?.lignes != null ? paiements.slice(0, bornes.lignes) : paiements;
+  const suite = nSms > 0 && !rien
+    ? suiteDeLHistorique(releve.lignes, lignes, new Set(rapportes.map((p) => p.id)), nSms)
+    : null;
+
   return {
-    relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques,
+    relie, terminal, sims, raccourcis, fuseau: FUSEAU, smsTronques, suite,
     serveurA: new Date(maintenant).toISOString(),
     // Revérifiés ici, comme les SMS : la portée ne dépend pas d'un filtre
     // distant.
     beneficiaires: carnet.filter((b) => visible(b.carte)),
     // Les compteurs des cartes sont déjà calculés : les lignes qui ont servi
     // à les calculer n'ont plus rien à faire sur le réseau.
-    paiements: bornes?.lignes != null ? paiements.slice(0, bornes.lignes) : paiements,
+    paiements: rapportes,
   };
+}
+
+/**
+ * UN INSTANT DE RELÈVE, COMPARABLE À LA MICROSECONDE. La base écrit
+ * « 2026-10-12T09:41:07.123456+00:00 » ; `Date.parse` s'arrête à la
+ * milliseconde — deux SMS relevés dans la même seraient égaux, et le plus
+ * tardif des deux pourrait tomber hors de la suite.
+ */
+function microsecondes(iso: string): number {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return Number.NaN;
+  const fraction = /\.(\d+)/.exec(iso)?.[1] ?? "";
+  return ms * 1000 + Number((fraction + "000000").slice(3, 6));
+}
+
+/**
+ * LA SUITE DE L'HISTORIQUE — l'instant de relève sous lequel se trouve tout
+ * ce que cette réponse ne rapporte PAS. Demander `avant=` cet instant rend
+ * donc la suite, sans trou : l'écran recolle, et écarte les doublons.
+ *
+ * Deux façons de laisser des SMS derrière soi :
+ *   — la LIMITE a mordu (la base en avait plus) : tout ce qu'elle n'a pas
+ *     rendu est relevé au plus tard à l'instant de la plus ancienne ligne lue ;
+ *   — `lignes` a COUPÉ ce qui était lu (rangé par heure réseau, qui n'est pas
+ *     l'ordre de la base) : la suite doit reprendre au plus récent des SMS lus
+ *     mais pas rapportés.
+ * Ni l'un ni l'autre : la base n'a rien de plus — `null`, le début de
+ * l'historique, que l'écran peut dire.
+ */
+function suiteDeLHistorique(
+  lus: LignePaiement[], visibles: LignePaiement[], rapportes: Set<string>, limite: number,
+): string | null {
+  let suite: string | null = null;
+  const garder = (iso: string | null | undefined, plusRecent: boolean) => {
+    if (!iso || !Number.isFinite(microsecondes(iso))) return;
+    if (suite == null) { suite = iso; return; }
+    const ecart = microsecondes(iso) - microsecondes(suite);
+    if (plusRecent ? ecart > 0 : ecart < 0) suite = iso;
+  };
+  for (const l of visibles) {
+    if (!rapportes.has(String(l.id))) garder(l.recu_le, true);
+  }
+  if (suite == null && lus.length >= limite) {
+    for (const l of lus) garder(l.recu_le, false);
+  }
+  return suite;
 }
 
 /** La fiche d'un reçu archivé : sa date d'établissement, qui avance à chaque

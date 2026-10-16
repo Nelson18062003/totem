@@ -142,10 +142,13 @@ def charger():
     for chemin in CHEMINS:
         if chemin and os.path.isfile(chemin):
             cfg = configparser.ConfigParser()
-            # Le fichier parle au propriétaire, en français : « oui » et
-            # « non » valent autant que yes/no. Sans cela, « transferts =
-            # non » — la valeur de config.example.conf — refusait de démarrer.
-            cfg.BOOLEAN_STATES = {**cfg.BOOLEAN_STATES, "oui": True, "non": False}
+            # « oui » et « non », comme l'écrit le fichier d'exemple. Python
+            # ne connaît que yes/no, true/false, on/off, 1/0 : un fichier
+            # recopié tel quel s'arrêtait sur « Not a boolean: oui », et le
+            # robot ne démarrait pas.
+            cfg.BOOLEAN_STATES = {**configparser.ConfigParser.BOOLEAN_STATES,
+                                  "oui": True, "non": False,
+                                  "vrai": True, "faux": False}
             cfg.read(chemin, encoding="utf-8")
             try:
                 chat_id = cfg["telegram"]["chat_id"].strip()
@@ -177,6 +180,11 @@ def charger():
                     # Un reçu PDF joint aux opérations comprises. Se coupe
                     # d'un seul mot si l'on n'en veut pas.
                     "recus": cfg.getboolean("totem", "recus", fallback=True),
+                    # Chaque SMS annoncé sur Telegram, avec son reçu. Éteint
+                    # par défaut : l'application TOTEM sonne déjà, et le
+                    # téléphone sonnait deux fois pour le même SMS.
+                    "sms_sur_telegram": cfg.getboolean(
+                        "totem", "sms_sur_telegram", fallback=False),
                     # Cloud : facultatif. Sans ces valeurs, TOTEM fonctionne
                     # exactement comme avant, entièrement hors ligne.
                     "cloud_url": cfg.get("cloud", "url", fallback="").strip(),
