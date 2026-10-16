@@ -280,3 +280,76 @@ class LectureParLeModem(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class UnMessageLongLivreEnRetard(unittest.TestCase):
+    """Le cas de la vraie base (5 septembre 2026) : un message MTN en quatre
+    morceaux, livré trois heures après avoir été écrit, est arrivé ENTIER au
+    modem — et le robot en a fait quatre SMS « incomplets ».
+
+    Le modem sonne pour le premier morceau, le robot relève aussitôt, la
+    suite arrive quelques secondes plus tard. L'attente se comptait sur
+    l'heure ÉCRITE par l'opérateur : déjà vieille de trois heures, le groupe
+    passait pour « trop vieux » dès sa première relève. Elle se compte
+    maintenant depuis l'arrivée au boîtier."""
+
+    DEBUT = "CashOut success to 690000001 NGONOKA from 690000002 BOUTIK ESSAI. "
+    FIN = "transaction amount: 198500 FCFA, TXN id :CO261015.0253.A12345"
+
+    def _deux_releves(self, retard, trop_vieux=None):
+        """Relève 1 : le morceau 1 seul. Relève 2, trois secondes après : les
+        deux. Rend tout ce qui a été livré, dans l'ordre."""
+        import totem.pdu as pdu
+        ecrit = datetime.now(timezone.utc) - retard
+        m1 = decoder(fabriquer_pdu(self.DEBUT, reference=77, total=2, position=1, quand=ecrit))
+        m2 = decoder(fabriquer_pdu(self.FIN, reference=77, total=2, position=2, quand=ecrit))
+        vus, livres, maintenant = {}, [], datetime.now(timezone.utc)
+        avant = pdu._trop_vieux
+        if trop_vieux:
+            pdu._trop_vieux = trop_vieux
+        try:
+            premiers = recoller([(1, m1)], maintenant, vus)
+            livres += premiers
+            reste = [] if premiers else [(1, m1)]
+            livres += recoller(reste + [(2, m2)], maintenant + timedelta(seconds=3), vus)
+        finally:
+            pdu._trop_vieux = avant
+        return livres
+
+    def test_livre_trois_heures_apres_il_arrive_entier(self):
+        for retard in (timedelta(0), timedelta(minutes=16), timedelta(hours=3)):
+            with self.subTest(retard=str(retard)):
+                livres = self._deux_releves(retard)
+                self.assertEqual(len(livres), 1)
+                indices, _, texte, complet = livres[0]
+                self.assertTrue(complet)
+                self.assertEqual(texte, self.DEBUT + self.FIN)
+
+    def test_temoin_l_ancienne_attente_le_coupait(self):
+        """L'ancienne règle, recopiée telle quelle : un témoin qui suivrait le
+        code du jour ne témoignerait de rien."""
+        from totem.pdu import PATIENCE_MORCEAUX
+
+        def ancienne(parties, maintenant, premiere_vue=None):
+            dates = [m.horodatage for _, m in parties if m.horodatage]
+            if dates:
+                return maintenant - max(dates) > PATIENCE_MORCEAUX
+            if premiere_vue is not None:
+                return maintenant - premiere_vue > PATIENCE_MORCEAUX
+            return False
+
+        livres = self._deux_releves(timedelta(hours=3), trop_vieux=ancienne)
+        self.assertEqual(len(livres), 2, "le témoin devrait couper le message")
+        self.assertTrue(all(not complet for *_, complet in livres))
+
+    def test_un_morceau_qui_ne_vient_jamais_est_livre_apres_l_attente(self):
+        """Ne plus couper ne veut pas dire attendre pour toujours : passé la
+        patience DEPUIS L'ARRIVÉE, le morceau seul part, signalé incomplet."""
+        ecrit = datetime.now(timezone.utc) - timedelta(hours=3)
+        m1 = decoder(fabriquer_pdu(self.DEBUT, reference=78, total=2, position=1, quand=ecrit))
+        vus, t0 = {}, datetime.now(timezone.utc)
+        self.assertEqual(recoller([(1, m1)], t0, vus), [])
+        self.assertEqual(recoller([(1, m1)], t0 + timedelta(minutes=10), vus), [])
+        (_, _, texte, complet), = recoller([(1, m1)], t0 + timedelta(minutes=16), vus)
+        self.assertFalse(complet)
+        self.assertIn("morceau(x) 2 sur 2", texte)

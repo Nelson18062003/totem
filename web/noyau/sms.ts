@@ -21,6 +21,8 @@ export const ICONE_CATEGORIE: Record<Categorie, string> = {
   code: "Lock",
   publicite: "Megaphone",
   illisible: "Mail",
+  doublon: "Copy",
+  commission: "Wallet",
   message: "Bubble",
   inconnu: "Mail",
 };

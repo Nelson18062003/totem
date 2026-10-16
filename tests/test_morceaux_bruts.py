@@ -171,6 +171,9 @@ class LaReleveEcritLaPreuve(unittest.TestCase):
         journal = Journal(":memory:")
         ecrit = datetime.now(timezone.utc) - timedelta(minutes=40)
         modem = _modem((4, fabriquer_pdu(DEBUT, "OrangeMoney", 77, 2, 1, quand=ecrit)))
+        # Le boîtier attend la suite depuis vingt minutes : passé la patience.
+        modem._morceaux_vus[("OrangeMoney", 77, 2)] = (
+            datetime.now(timezone.utc) - timedelta(minutes=20))
         compte = Compte(modem, "Orange")
 
         _robot(journal)._relever_sms(compte)

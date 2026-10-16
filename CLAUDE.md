@@ -1187,6 +1187,61 @@ faux nuage, avec les deux témoins. Le faux nuage, lui, comparait les heures
 comme du texte : « …+01:00 » (le robot) et « …Z » (les essais) se rangeaient
 de travers — il compare maintenant des instants, comme la vraie base.
 
+**La preuve d'un lecteur, c'est la VRAIE BASE, pas ses tests.** « Des SMS
+arrivent souvent incomplets, les français ne s'affichent pas » : l'export de
+la base (2 007 SMS, 31 juillet – 16 octobre 2026), relu gabarit par gabarit,
+a dit autre chose que ce qu'on croyait. Les SMS coupés étaient RARES — trois
+SMS d'argent sur 899 longs. Le vrai défaut était la lecture : MTN en anglais,
+99 % lus ; MTN en FRANÇAIS, 21 %. **Un lecteur appris en anglais ne lit pas
+le français** : la partie y est nommée avant son numéro, entre parenthèses,
+après « au », « par » ou « a » (`_guichet_mtn_francais`).
+
+**MTN annonce une opération par DEUX SMS**, au même numéro de transaction :
+le message du portefeuille, et un second avis (« … FCFA from - … », « … de
+float recu de … », « Successful transfer of … », « Transfert de flotte de
+… », « AMOUNT…MSISDN_SENDER… »). Vérifié sur la base : 87 avis sur 87, et
+63 fragments techniques sur 63, avaient leur message principal. Les avis
+anglais étaient COMPTÉS en plus — 21 versements, 60 117 932 F d'entrées en
+double —, et les deux SMS d'un virement français passaient en publicité —
+23 744 594 F sortis sans une ligne. Un avis en double se range « doublon » :
+visible, jamais compté (`RE_AVIS_EN_DOUBLE`).
+
+**Une réclame n'a pas de numéro de transaction.** MTN accroche sa réclame au
+bout de ses SMS d'opération (« … Nouveau solde est: … C'est la Rentrée… tente
+de gagner… ») : treize millions sortaient en « publicité ». Un SMS qui porte
+un numéro de transaction, un mot de réussite et une somme, que le lecteur ne
+comprend pas, se dit « illisible » — l'alerte part —, jamais réclame.
+
+**La commission d'Orange est sur un compte à part.** Comptée dans le solde
+principal, elle faisait 45 des 46 ruptures de la suite des soldes de la
+carte Orange, au franc près. Elle se range « commission », hors de la caisse.
+
+**L'attente d'un morceau se compte depuis son ARRIVÉE.** L'heure écrite par
+l'opérateur dit quand il a écrit, pas quand il livre : un message MTN en
+quatre morceaux, livré trois heures après, est arrivé entier au modem — et
+le robot en a fait quatre SMS « incomplets », parce que le groupe passait
+pour « trop vieux » dès sa première relève. Compter sur la seule horloge du
+boîtier, du début à la fin, tient aussi quand cette horloge est fausse (le
+3 août, un SMS y est « relevé » seize heures avant d'être écrit). Chaque PDU
+est maintenant gardé au journal du boîtier (`morceaux`) : le prochain cas
+se prouvera, il ne se devinera pas.
+
+Le juge est la suite des soldes — les soldes que l'opérateur annonce lui-même,
+jugés par le noyau : 78 ruptures avec le lecteur d'avant, 15 avec le lecteur
+corrigé, la base relue par le vrai code du robot. Et chaque opération, prise
+par son numéro de transaction, compte exactement UNE fois. Les tests gardent
+les formes (`test_formats_mtn_francais.py`, noms longs compris) ;
+`eprouver-la-chaine` rejoue les deux causes du modem à l'écran. **Quand un
+format change, on relit la base, pas seulement les tests** : le robot relit
+de lui-même tout l'historique dès que le lecteur change.
+
+**L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
+messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai
+nom de client précédé de « ESSAI » reste le nom d'un client : quatre
+s'étaient glissés ainsi dans les exemples, avec un vrai numéro de compte. La
+relecture les a retrouvés en comparant chaque mot du changement à l'export,
+pas à l'œil.
+
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
 

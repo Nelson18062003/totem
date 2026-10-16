@@ -285,16 +285,27 @@ def recoller(morceaux, maintenant=None, premiere_vue=None):
 def _trop_vieux(parties, maintenant, premiere_vue=None):
     """A-t-on assez attendu les morceaux manquants ?
 
-    Deux horloges, et l'on retient la plus ANCIENNE échéance atteinte :
-      — l'heure RÉSEAU des morceaux reçus (TP-SCTS), quand elle existe ;
-      — à défaut, l'instant où l'on a vu le groupe pour la première fois
-        (`premiere_vue`), fourni par l'appelant qui le conserve d'un tour à
-        l'autre. C'est ce second recours qui évite qu'un morceau au SCTS
-        corrompu bloque son emplacement pour toujours.
+    L'attente se compte depuis l'ARRIVÉE du groupe au boîtier (`premiere_vue`,
+    que l'appelant conserve d'un tour de relève à l'autre) — jamais depuis
+    l'heure écrite par l'opérateur.
+
+    C'est l'heure de l'opérateur qui décidait, avant. Or elle dit quand il a
+    ÉCRIT le message, pas quand il le livre : après une coupure, un modem
+    redémarré, un réseau encombré, un SMS long arrive avec une heure vieille
+    de quarante minutes. Le modem sonne pour le premier morceau, le robot
+    relève aussitôt, le second morceau n'est pas encore là — et le groupe
+    passait déjà pour « trop vieux » : livré coupé, sa place effacée. Le
+    second morceau, arrivé trois secondes plus tard, devenait un SMS à part
+    (« morceau 1 sur 2 jamais reçu »), rangé « message », hors de Paiements,
+    avec la référence de la transaction. Les deux moitiés étaient pourtant
+    bien arrivées.
+
+    Sans carte des premières vues (appel direct, tests d'avant), l'heure de
+    l'opérateur reste le seul repère : c'est l'ancien comportement.
     """
+    if premiere_vue is not None:
+        return maintenant - premiere_vue > PATIENCE_MORCEAUX
     dates = [m.horodatage for _, m in parties if m.horodatage]
     if dates:
         return maintenant - max(dates) > PATIENCE_MORCEAUX
-    if premiere_vue is not None:
-        return maintenant - premiere_vue > PATIENCE_MORCEAUX
     return False          # sans aucune horloge, on attend (comportement d'avant)

@@ -895,11 +895,16 @@ class TestCarnetAgentMtn(unittest.TestCase):
         self.assertIsNone(analyser(self.PUB_QR))
         self.assertEqual(categoriser(self.PUB_QR), "publicite")
 
-    def test_les_debris_techniques_restent_des_messages(self):
+    def test_les_debris_techniques_ne_sont_jamais_des_paiements(self):
         """Les fragments de gabarit de MTN (« AMOUNT10,000 MSISDN_… ») ne
-        deviennent jamais des paiements : pas de devise, pas de lecture."""
+        deviennent jamais des paiements : pas de devise, pas de lecture.
+
+        Ce sont des AVIS EN DOUBLE : dans la vraie base (31 juillet – 16
+        octobre 2026), les 63 fragments accompagnaient chacun un versement du
+        même montant, du même expéditeur, à moins d'une minute. Ils se
+        rangent donc avec les autres seconds avis de MTN — jamais comptés."""
         self.assertIsNone(analyser(self.DEBRIS))
-        self.assertEqual(categoriser(self.DEBRIS), "message")
+        self.assertEqual(categoriser(self.DEBRIS), "doublon")
 
     def test_un_echec_avec_solde_courant_reste_un_echec(self):
         self.assertIsNone(solde_annonce(

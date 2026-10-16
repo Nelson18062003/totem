@@ -520,6 +520,121 @@ RE_CASH_IN_SORTANT = re.compile(
     r"\bcash\s*in\s+of\b[^\d]{0,10}" + MONTANT, re.S)
 RE_CASH_OUT_ENTRANT = re.compile(r"\bcash\s*out\s+initiated\s+by\b")
 
+# --- Les mêmes guichets MTN, EN FRANÇAIS ----------------------------------
+# Une carte réglée en français reçoit d'autres phrases pour les mêmes gestes.
+# Mesuré sur la vraie base (31 juillet – 16 octobre 2026) : 21 % des SMS MTN
+# en français étaient lus, contre 99 % en anglais. Le lecteur avait appris
+# l'anglais d'abord, et le français n'en est pas une traduction : la partie
+# est nommée AVANT son numéro, entre parenthèses, après « au », « par » ou
+# « a » — des mots que la lecture générale ne prend pas pour des parties.
+#
+#   « Dépot de 37500 XAF effectué le … au NOM (2376…), a été effectué avec
+#     succès. Transaction ID:… Votre nouveau solde est de … XAF. Commission
+#     ajoutée : 66 XAF. »  — le pendant de « Cash in of … »   : SORTIE ;
+#   « Le retrait effectué par NOM (2376…) le … a été effectué avec succès.
+#     Vous pouvez remettre au client la somme de 500000 XAF en espèces. … »
+#                         — le pendant de « Cash out initiated by … » : ENTRÉE ;
+#   « Transfert de 500000 FCFA effectue avec succes a NOM (2376…) le ….
+#     FRAIS 0 FCFA. transaction Id: … Nouveau solde est: … FCFA. <réclame> »
+#                         — le pendant de « You have transferred … »  : SORTIE.
+#
+# Ce dernier finit par une réclame (« tente de gagner chaque jour… ») : lu
+# trop tard, il était rangé en PUBLICITÉ, et treize millions sortaient de la
+# caisse sans une ligne dans Paiements. Ces règles passent donc AVANT le
+# rejet de la réclame.
+# Chaque motif exige la FORME ENTIÈRE du guichet d'agent — la date, puis la
+# partie et son numéro entre parenthèses : « Depot de 5000 FCFA effectue. »,
+# côté client, est un argent qui ARRIVE, et ne doit pas se lire en sortie.
+RE_DEPOT_SORTANT_FR = re.compile(
+    r"\bdepot\s+de\s+" + MONTANT + r"\s+effectue\s+le\s+[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    r"[^()]{0,40}?\bau\s+[^()]{2,%d}?\(\s*\+?[0-9]" % NOM_MAX, re.S)
+RE_RETRAIT_ENTRANT_FR = re.compile(
+    r"\ble\s+retrait\s+effectue\s+par\b.*?\bremettre\s+au\s+client\s+la\s+somme"
+    r"\s+de\s+" + MONTANT, re.S)
+RE_TRANSFERT_SORTANT_FR = re.compile(
+    r"\btransfert\s+de\s+" + MONTANT + r"\s+effectue\s+avec\s+succes\s+a\s"
+    r"[^()]{2,%d}?\(\s*\+?[0-9]" % NOM_MAX, re.S)
+
+
+def _partie_entre_parentheses(mot, norme, propre):
+    """« au NOM (2376…) », « par NOM (…) », « a NOM (…) » : le nom avant son
+    numéro entre parenthèses. Chiffres et ponctuation permis dans le nom :
+    « ESSAI GROSSISTE SARL 1 », « N A ESSAI NDEFO TAKAM BELLA »."""
+    m = re.search(
+        r"\b%s\s+(?P<nom>[^()\n]{2,%d}?)\s*\(\s*(?P<num>\+?[0-9][0-9\s]{6,20})\s*\)"
+        % (mot, NOM_MAX), norme)
+    if not m:
+        return None, None
+    return (_nettoyer_nom(_tel_quel(m, "nom", norme, propre)),
+            re.sub(r"\s+", "", m.group("num")))
+
+
+def _guichet_mtn_francais(norme, propre, texte):
+    """Les trois gestes MTN en français, lus comme leurs pendants anglais."""
+    for motif, sens, mot in ((RE_DEPOT_SORTANT_FR, "sortie", "au"),
+                             (RE_RETRAIT_ENTRANT_FR, "entree", "par"),
+                             (RE_TRANSFERT_SORTANT_FR, "sortie", "succes a")):
+        m = motif.search(norme)
+        if not m:
+            continue
+        montant = _nombre(m.group(1))
+        if not montant:
+            return None
+        nom, numero = _partie_entre_parentheses(mot.replace(" ", r"\s+"), norme, propre)
+        return Paiement(
+            sens=sens, montant=montant, texte=texte, nom=nom, numero=numero,
+            reference=_reference(norme, propre),
+            solde_apres=_solde_du_message(norme),
+            frais=_montant_nomme(RE_FRAIS, norme),
+            commission=_montant_nomme(RE_COMMISSION, norme),
+            quand=_horodatage(norme))
+    return None
+
+
+# --- L'AVIS EN DOUBLE de MTN -----------------------------------------------
+# MTN annonce souvent UNE opération par DEUX SMS, à la même seconde, sous le
+# même numéro de transaction : le message du portefeuille (« You have
+# received 5000000 XAF from … Your new balance: … »), et un second avis, de
+# la plateforme « float » (« You have received 5,000,000 FCFA from - … New
+# account balance: - FCFA »). Vérifié sur la vraie base : 87 avis sur 87
+# avaient leur message principal — et les avis anglais étaient COMPTÉS en
+# plus : 21 versements, 60 117 932 F d'entrées comptées deux fois. Les avis
+# de virements sortants, eux, passaient pour des réclames (la phrase finit
+# sur « Back-to-School is Here… »). Un avis en double n'est jamais un
+# mouvement : son opération est déjà comptée, une fois, par l'autre SMS.
+RE_AVIS_EN_DOUBLE = re.compile(
+    r"^(?:you\s+have\s+received\s+[0-9][0-9.,]*\s*fcfa\s+from\s+-\s"
+    r"|[0-9][0-9.,]*\s*fcfa\s+de\s+float\s+recu\s+de\b"
+    r"|successful\s+transfer\s+of\s+[0-9][0-9.,]*\s*fcfa\s+to\b"
+    r"|transfert\s+de\s+flotte\s+de\s+[0-9][0-9.,]*\s*fcfa\s+a\b"
+    r"|amount\s*[0-9][0-9.,]*\s+msisdn_sender)")
+
+
+def avis_en_double(texte):
+    """Ce SMS est-il le second avis MTN d'une opération déjà annoncée ?"""
+    return bool(texte) and bool(RE_AVIS_EN_DOUBLE.search(_normaliser(texte)))
+
+
+# --- LA COMMISSION d'Orange -----------------------------------------------
+# « You received the commission of 1350 FCFA for transaction Cash Out … »,
+# « Vous avez reÇu commission de 18F pour la transaction Cash in … » : Orange
+# verse la commission de l'agent sur un compte À PART (« The balance of your
+# commission account is … »). Lue comme un dépôt ou un retrait, elle entrait
+# dans le solde principal : 45 des 46 ruptures de la suite des soldes de la
+# carte Orange tombaient, au franc près, sur ces commissions. Elle se range
+# donc à part — gagnée, mais hors du solde de la caisse.
+RE_COMMISSION_VERSEE = re.compile(
+    r"^(?:you\s+received\s+the\s+commission\s+of"
+    r"|vous\s+avez\s+recu\s+(?:la\s+|une\s+)?commission\s+de)\s+" + MONTANT, re.S)
+
+
+def commission_versee(texte):
+    """Le montant d'une commission versée à part, ou None."""
+    if not texte:
+        return None
+    m = RE_COMMISSION_VERSEE.search(_normaliser(texte))
+    return _nombre(m.group(1)) if m else None
+
 RE_PHRASE_OPERANTE = re.compile(
     RE_GESTE.pattern + "|" + MONTANT +
     r"|\b(?:recu|receive[sd]?|credite[d]?|envoye|transfere|debite|paye"
@@ -915,6 +1030,12 @@ def analyser(texte, numeros=()):
     propre = _propre(texte)
     norme = _normaliser(texte)
 
+    # L'avis en double de MTN et la commission d'Orange ne déplacent pas
+    # l'argent de la caisse : le premier répète une opération déjà comptée,
+    # la seconde va sur un compte à part.
+    if RE_AVIS_EN_DOUBLE.search(norme) or RE_COMMISSION_VERSEE.search(norme):
+        return None
+
     # Une opération échouée ou annulée n'est pas un mouvement — pour la boîte
     # de réception et le bilan autant que pour les reçus. Le verdict est ici,
     # à la source, pour que tous en héritent.
@@ -927,6 +1048,12 @@ def analyser(texte, numeros=()):
         return paiement
     if definitif:
         return None
+
+    # Les guichets MTN en français : avant le rejet de la réclame, que leur
+    # dernière phrase imite (voir RE_TRANSFERT_SORTANT_FR).
+    paiement = _guichet_mtn_francais(norme, propre, texte)
+    if paiement is not None:
+        return paiement
 
     # La lecture simple : un verbe, un montant tout près. C'est elle — et
     # elle seule — que la réclame peut imiter (« gagnez 1000 FCFA ») : le
@@ -1081,6 +1208,10 @@ def categoriser(texte, numeros=()):
       code      — un code à usage unique (masqué)
       publicite — une réclame de l'opérateur
       illisible — le message parle d'argent, le lecteur n'a pas tout compris
+      doublon   — le second avis MTN d'une opération déjà annoncée : jamais
+                  compté (voir RE_AVIS_EN_DOUBLE)
+      commission — la commission d'Orange, versée sur un compte à part :
+                  gagnée, mais hors du solde de la caisse
       message   — un SMS quelconque (de n'importe qui)
 
     Trois principes d'ordre :
@@ -1099,6 +1230,10 @@ def categoriser(texte, numeros=()):
     if code_a_usage_unique(texte):
         return "code"
     norme = _normaliser(texte)
+    if RE_AVIS_EN_DOUBLE.search(norme):
+        return "doublon"
+    if RE_COMMISSION_VERSEE.search(norme):
+        return "commission"
     paiement = analyser(texte, numeros=numeros)
     if paiement is not None:
         # Le PREMIER geste du message dit l'opération : dans un SMS
@@ -1132,6 +1267,16 @@ def categoriser(texte, numeros=()):
     # fausses alarmes qui auraient appris au propriétaire à ignorer la vraie.
     # Un VRAI mouvement ne passe jamais par ici : compris, il est déjà rendu
     # plus haut, réclame ou pas (« BONUS SARL » paie comme tout le monde).
+    #
+    # SAUF ce qui porte un NUMÉRO DE TRANSACTION, un mot de réussite et une
+    # somme : une réclame n'a pas de numéro de transaction. MTN accroche
+    # désormais sa réclame au bout de ses SMS d'opération (« … Nouveau solde
+    # est: 500000 FCFA. C'est la Rentrée… tente de gagner… ») ; un tel SMS
+    # que le lecteur ne sait pas lire est un format inconnu — il se dit
+    # « illisible », ce qui sonne l'alerte, au lieu de disparaître en réclame.
+    if (RE_REFERENCE.search(norme) and RE_REUSSITE.search(norme)
+            and RE_MONTANT_SEUL.search(norme)):
+        return "illisible"
     if RE_BRUIT.search(norme) or RE_PUB.search(norme):
         return "publicite"
     if _marqueurs_dargent(norme):
@@ -1197,4 +1342,4 @@ def masquer_le_code(texte):
 
 __all__ = ["Paiement", "Partie", "analyser", "solde_annonce", "categoriser",
            "code_a_usage_unique", "masquer_le_code", "est_echec",
-           "formater_montant"]
+           "formater_montant", "avis_en_double", "commission_versee"]

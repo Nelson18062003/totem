@@ -13,7 +13,8 @@ import { Vide } from "../vide";
 // L'ordre des filtres de catégorie : les mouvements d'argent d'abord.
 const ORDRE_CAT: Categorie[] = [
   "encaissement", "envoi", "transfert", "depot", "retrait",
-  "solde", "echec", "illisible", "code", "publicite", "message", "inconnu",
+  "solde", "echec", "illisible", "commission", "doublon", "code", "publicite",
+  "message", "inconnu",
 ];
 
 // Les valeurs-sentinelles des filtres. Ce sont des états internes, jamais
