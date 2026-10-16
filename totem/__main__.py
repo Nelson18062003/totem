@@ -255,7 +255,8 @@ def principal():
         from .xafe import PorteXafe
         xafe = PorteXafe(cfg["xafe_url"], cfg["xafe_cle"], cfg["xafe_terminal"],
                          journal, anon=cfg["xafe_anon"],
-                         transferts=cfg["xafe_transferts"])
+                         transferts=cfg["xafe_transferts"],
+                         sorties=cfg["xafe_sorties"])
         if xafe.actif:
             print(t(f"  XAFe: {cfg['xafe_url']} (terminal “{cfg['xafe_terminal']}”)",
                     f"  XAFe : {cfg['xafe_url']} (terminal « {cfg['xafe_terminal']} »)"))

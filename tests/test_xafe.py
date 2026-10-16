@@ -271,9 +271,14 @@ class FauxXafe:
             except (KeyError, TypeError, ValueError):
                 resultats.append({"resultat": "refuse", "motif": "source_id manquant"})
                 continue
+            if l.get("sens") == "sortie":
+                # comme la vraie porte (0014) : une sortie du float est notée,
+                # jamais créditée — la preuve d'un remboursement payé à la main
+                resultats.append({"source_id": source_id, "resultat": "constatee"})
+                continue
             if "sens" in l and l["sens"] != "entree":
                 resultats.append({"source_id": source_id, "resultat": "ignore",
-                                  "motif": "seules les entrées d'argent comptent"})
+                                  "motif": "seules les entrées et les sorties d'argent comptent"})
                 continue
             with self.verrou:
                 cle = (terminal, source_id)
@@ -404,6 +409,23 @@ class PorteDAvant(PorteXafe):
         except module_xafe.PorteMuette as e:
             self.derniere_erreur = str(e)
         return len(charge)
+
+
+class PorteSansSorties(PorteXafe):
+    """TÉMOIN (figé avant 0014) : la porte ne laissait partir que les
+    entrées ; un paiement fait depuis la puce était clos « sans objet », et
+    rien ne prouvait chez XAFe qu'un remboursement manuel était parti."""
+
+    def _ligne(self, id_local, date, expediteur, texte, compte, iccid, emis_le,
+               numeros):
+        try:
+            p = analyser(texte, numeros=numeros)
+        except Exception:
+            p = None
+        if p is not None and p.sens == "sortie":
+            return "sans objet"
+        return super()._ligne(id_local, date, expediteur, texte, compte, iccid,
+                              emis_le, numeros)
 
 
 class PorteToutMarque(PorteXafe):
@@ -1246,11 +1268,36 @@ class TestPousser(Banc):
         for i in (1, 2, 3):
             self.assertEqual(_etat(journal, i)[:2], (1, "sans objet"))
 
-    def test_une_sortie_ne_part_pas(self):
+    def _exiger_la_sortie_constatee(self, porte_cls):
         g = self.guichet()
         journal = journal_avec_carte()
         journal.sms("MobileMoney", SMS_SORTIE, "MTN ·0011", ICCID)
-        self.assertEqual(self.porte(g, journal).pousser_paiements(), 0)
+        p = self.porte(g, journal, porte_cls)
+        self.assertEqual(p.pousser_paiements(), 1, "la sortie part chez XAFe")
+        ligne = g.lignes_recues()[0]
+        self.assertEqual((ligne["sens"], ligne["montant"], ligne["numero"], ligne["reference"]),
+                         ("sortie", 10000, "699112233", "PP0948"),
+                         "le bénéficiaire et l'ID : de quoi la rapprocher d'un remboursement")
+        self.assertEqual(_etat(journal, 1)[:2], (1, "constatee"))
+
+    def test_une_sortie_part_pour_prouver_un_remboursement(self):
+        """Un remboursement payé à la main depuis la puce : le SMS de
+        l'opérateur part chez XAFe, qui le rapproche par son transaction ID.
+        Il n'y crédite rien (la porte le note « constatee »)."""
+        self._exiger_la_sortie_constatee(PorteXafe)
+
+    def test_le_temoin_garde_la_sortie(self):
+        with self.assertRaises(AssertionError, msg="LE TÉMOIN PASSE : la porte "
+                               "d'avant tient la même exigence, l'essai ne mesure rien"):
+            self._exiger_la_sortie_constatee(PorteSansSorties)
+
+    def test_sorties_non_les_garde_ici(self):
+        g = self.guichet()
+        journal = journal_avec_carte()
+        journal.sms("MobileMoney", SMS_SORTIE, "MTN ·0011", ICCID)
+        p = self.porte(g, journal)
+        p.sorties = False
+        self.assertEqual(p.pousser_paiements(), 0)
         self.assertEqual(g.requetes, [])
         self.assertEqual(_etat(journal, 1)[:2], (1, "sans objet"))
 
@@ -1282,13 +1329,16 @@ class TestPousser(Banc):
         journal = journal_avec_carte()
         journal.sms("MobileMoney", SMS_DEUX_PARTIES, "MTN ·0011", ICCID)
         p = self.porte(g, journal)
-        self.assertEqual(p.pousser_paiements(), 0)
-        self.assertEqual(_etat(journal, 1)[:2], (1, "sans objet"))
+        # avec nos numéros, c'est une SORTIE : elle part, comme preuve (0014)
+        self.assertEqual(p.pousser_paiements(), 1)
+        self.assertEqual(_etat(journal, 1)[:2], (1, "constatee"))
+        self.assertEqual(g.lignes_recues()[0]["sens"], "sortie")
+        avant = len(g.requetes)
         journal.sms("MobileMoney", SMS_DEUX_PARTIES, "MTN ·0011", ICCID)
         p.fournir_numeros = None
         self.assertEqual(p.pousser_paiements(), 0)
         self.assertEqual(_etat(journal, 2)[:2], (1, "sans objet"))
-        self.assertEqual(g.requetes, [])
+        self.assertEqual(len(g.requetes), avant, "un sens inconnu ne part pas")
 
     def test_l_historique_ne_part_pas_a_la_creation_de_la_colonne(self):
         with tempfile.TemporaryDirectory() as dossier:
@@ -2788,6 +2838,7 @@ class TestLaConfiguration(unittest.TestCase):
             c = self._charger(f.read())
         self.assertIs(c["recus"], True)
         self.assertIs(c["xafe_transferts"], False)
+        self.assertIs(c["xafe_sorties"], True)
 
     def test_sans_section_rien_ne_change(self):
         c = self._charger("[telegram]\njeton = x\nchat_id = 1\n")
@@ -2806,6 +2857,10 @@ class TestLaConfiguration(unittest.TestCase):
                           "[xafe]\nterminal = akwa-1\ntransferts = oui\n")
         self.assertEqual(c["xafe_terminal"], "akwa-1")
         self.assertIs(c["xafe_transferts"], True)
+        self.assertIs(c["xafe_sorties"], True, "oui par défaut")
+        c = self._charger("[telegram]\njeton = x\nchat_id = 1\n"
+                          "[xafe]\nterminal = akwa-1\nsorties = non\n")
+        self.assertIs(c["xafe_sorties"], False)
 
 
 class TestReveilImmediat(Banc):

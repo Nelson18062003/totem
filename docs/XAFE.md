@@ -75,6 +75,7 @@ cle = la-cle-de-ce-boitier
 terminal = akwa-1
 anon =
 transferts = non
+sorties = oui
 ```
 
 Puis `sudo systemctl restart totem`. Au démarrage, TOTEM affiche
@@ -191,6 +192,25 @@ demande Bonzini. Seul le guichet XAFe fait envoyer un SMS — le genre d'une
 ligne Bonzini ne suffit pas. `tests/test_envoi_sms.py` et
 `tests/test_xafe.py` le gardent.
 
+## Les paiements faits depuis la puce (sorties)
+
+Pour commencer, l'équipe XAFe rembourse ses clients **à la main** : elle
+envoie l'argent depuis la puce du float, puis tape dans l'administration le
+transaction ID du SMS de l'opérateur. Ce SMS — « Vous avez envoyé 49 750 FCFA
+à … Ref : … » — part aussi chez XAFe (ligne de sens `sortie`), qui le
+rapproche du remboursement : même ID, même montant, même numéro. Une capture
+d'écran se fabrique ; un SMS d'opérateur reçu par la puce, beaucoup moins.
+
+Chez XAFe, une sortie **ne crédite jamais rien** : la porte répond
+`constatee`, et la ligne est close ici avec ce mot. Une sortie qu'aucun
+remboursement n'explique est montrée à l'équipe XAFe (« sorti du float, sans
+sortie en face »).
+
+**Sur une puce partagée avec Bonzini**, XAFe voit donc aussi les paiements de
+Bonzini (montant, bénéficiaire, ID), comme il voit déjà ses encaissements.
+`sorties = non` les garde ici — les remboursements XAFe se confirment alors
+sans la preuve du SMS.
+
 ## Ce qui ne part PAS chez XAFe
 
 - **L'historique d'avant l'activation.** À la première mise à jour du robot,
@@ -199,8 +219,9 @@ ligne Bonzini ne suffit pas. `tests/test_envoi_sms.py` et
   jour. Ce qui arrive ensuite part. Pour rouvrir une période, quelqu'un qui
   sait lance `journal.remettre_sms_xafe(depuis_id=…)` : la porte XAFe rend la
   même réponse à la même ligne, rien n'est crédité deux fois.
-- Les codes, les publicités, les soldes, les sorties d'argent, les SMS
-  incompris — « sans objet », sans requête.
+- Les codes, les publicités, les soldes, les SMS incompris, un transfert dont
+  le sens n'a pas pu être tranché (faute de numéro déclaré), et les sorties
+  d'argent quand `sorties = non` — « sans objet », sans requête.
 - Les encaissements d'une **carte d'un autre réseau** (son IMSI nomme autre
   chose que MTN ou Orange Cameroun) — « sans float XAFe », sans requête. Pas
   ceux d'une carte que le robot n'a pas encore identifiée : eux attendent.

@@ -201,6 +201,11 @@ def charger():
                     # propriétaire sur le code secret.
                     "xafe_transferts": cfg.getboolean("xafe", "transferts",
                                                       fallback=False),
+                    # Envoyer aussi les SORTIES du float (les paiements faits
+                    # depuis la puce) : la preuve des remboursements payés à
+                    # la main. Oui par défaut ; « non » les garde ici.
+                    "xafe_sorties": cfg.getboolean("xafe", "sorties",
+                                                   fallback=True),
                     # D'OÙ VIENNENT CES VALEURS. Le robot en a besoin pour
                     # dire, au démarrage, si le fichier qui porte ses secrets
                     # est lisible par d'autres comptes de la machine.

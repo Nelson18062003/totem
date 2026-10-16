@@ -123,7 +123,7 @@ class PorteXafe:
     """Dépose les encaissements chez XAFe Exchange. Inerte si non configurée."""
 
     def __init__(self, url, cle, terminal, journal, pause=PAUSE, anon="",
-                 transferts=False):
+                 transferts=False, sorties=True):
         self.url = (url or "").rstrip("/")
         self.cle = cle or ""
         self.terminal = terminal or ""
@@ -131,6 +131,11 @@ class PorteXafe:
         self.pause = pause
         self.anon = anon or ""
         self.transferts = bool(transferts)
+        # Les SORTIES du float (un paiement fait depuis la puce) partent
+        # aussi : chez XAFe, elles prouvent un remboursement que l'équipe a
+        # payé à la main, par son transaction ID. Elles ne créditent jamais
+        # rien. `sorties = non` les garde ici.
+        self.sorties = bool(sorties)
         # HTTPS, OU RIEN — la même garde que `Nuage` : cette adresse se tape
         # à la main sur une partition FAT, et un « http:// » enverrait la
         # clé du boîtier en clair sur le réseau mobile. Qui la lit peut
@@ -327,7 +332,13 @@ class PorteXafe:
             p = analyser(texte, numeros=numeros)
         except Exception:
             p = None
-        if p is None or p.sens != "entree" or not p.montant or p.montant <= 0:
+        if p is None or not p.montant or p.montant <= 0:
+            return "sans objet"
+        # Une ENTRÉE se crédite chez XAFe ; une SORTIE y prouve un
+        # remboursement payé à la main (même ID, même montant, même numéro).
+        # Un sens inconnu — un transfert qui nomme ses deux parties, sans nos
+        # numéros pour trancher — ne part pas : deviner retournerait l'argent.
+        if p.sens not in ("entree", "sortie") or (p.sens == "sortie" and not self.sorties):
             return "sans objet"
         # Sans ICCID, la ligne n'a pas de carte : le modem n'avait pas encore
         # lu la puce quand ce SMS est entré. Aucun float ne peut s'y
@@ -381,8 +392,9 @@ class PorteXafe:
             "source_id": id_local,
             "operateur": float_[0],
             "float_numero": float_[1],
-            "sens": "entree",
+            "sens": p.sens,
             "montant": p.montant,
+            # le payeur d'une entrée, le bénéficiaire d'une sortie
             "numero": p.numero,
             # Jamais `p.tiers` : c'est une chaîne traduite (« Inconnu »).
             "tiers": p.nom or p.numero,
@@ -529,6 +541,11 @@ class PorteXafe:
                                   f"retenue {v.get('id', '')} {motif}".strip()))
             elif r == "ignore":
                 a_marquer.append((id_local, "ignore"))
+            elif r == "constatee":
+                # Une sortie du float, notée chez XAFe : rapprochée d'un
+                # remboursement si son ID y est tapé — sinon montrée à
+                # l'équipe comme « sortie sans explication ».
+                a_marquer.append((id_local, f"constatee {v.get('sortie') or ''}".strip()))
             elif r == "refuse":
                 a_marquer.append((id_local, f"refuse {motif}".strip()))
                 self.journal.evenement(t(
