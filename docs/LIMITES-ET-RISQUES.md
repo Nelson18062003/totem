@@ -57,10 +57,15 @@ l'ordre — même quand les morceaux arrivent à l'envers, ce qui est fréquent.
 Tous les emplacements d'un message long sont effacés **ensemble**, sans quoi
 un morceau resterait orphelin dans le modem et reviendrait indéfiniment.
 
-Un message dont il manque une partie est **retenu**, pas livré tronqué. S'il
-attend depuis plus de quinze minutes, il est finalement livré avec une
-mention explicite des morceaux manquants — mieux vaut un message signalé
-incomplet qu'un message retenu à jamais.
+Un message dont il manque une partie est retenu **deux minutes** — la suite
+suit presque toujours de quelques secondes. Passé ce délai, la partie reçue
+se montre, avec la mention « pas encore arrivé(s) » ; un encaissement caché
+serait pire qu'une moitié dite incomplète. Et quand la suite arrive — jusqu'à
+**sept jours** plus tard, ce qu'un téléphone Android accorde lui aussi —, elle
+**complète** le même message, au journal comme à l'écran, au lieu d'en créer
+un second. Deux morceaux ne se recollent que s'ils ont été écrits ensemble
+par l'opérateur : le numéro de découpe revient, et coller deux opérations
+différentes en fabriquerait une fausse.
 
 Si le firmware refuse le mode PDU, le robot retombe automatiquement en mode
 texte : les SMS courts continuent d'arriver.

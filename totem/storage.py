@@ -479,6 +479,83 @@ class Journal:
                 (*valeurs, carte, *places))
             self.conn.commit()
 
+    # Sept jours : ce qu'un téléphone Android accorde à un morceau manquant
+    # (`DEFAULT_PARTIAL_SEGMENT_EXPIRE_AGE`, `SmsBroadcastUndelivered`).
+    FENETRE_DU_RECOLLAGE = timedelta(days=7)
+    # Mais un numéro de découpe REVIENT : il n'a que 256 valeurs par
+    # expéditeur, et une caisse active reçoit des dizaines de longs messages
+    # Orange par jour. Recoller la suite d'un message au début d'un AUTRE,
+    # c'est fabriquer une opération qui n'a jamais eu lieu — le nom de l'un,
+    # le montant de l'autre. Deux morceaux d'un même message portent la même
+    # heure d'ÉCRITURE (l'opérateur les écrit ensemble, et cette heure ne
+    # change pas quand il relivre plus tard) : sur sept jours, on exige donc
+    # qu'elles se suivent de près. Sans cette heure, d'un côté ou de l'autre,
+    # rien ne départage deux messages : on ne recolle que dans l'heure.
+    ECART_D_ECRITURE = timedelta(minutes=10)
+    SANS_HEURE = timedelta(hours=1)
+
+    def message_coupe(self, carte, expediteur, reference, total,
+                      heure_reseau=None):
+        """Le message déjà livré INCOMPLET dont ces morceaux sont la suite :
+        (sms_id, [(position, pdu)]), ou None.
+
+        `heure_reseau` : l'heure écrite par l'opérateur sur le morceau qui
+        arrive. Elle doit suivre de près celle des morceaux déjà livrés
+        (voir ECART_D_ECRITURE)."""
+        maintenant = datetime.now(timezone.utc)
+        depuis = (maintenant - self.FENETRE_DU_RECOLLAGE).isoformat(
+            timespec="seconds")
+        with self.verrou:
+            candidats = self.conn.execute(
+                "SELECT DISTINCT sms_id FROM morceaux WHERE carte = ? AND "
+                "expediteur = ? AND reference = ? AND total = ? AND "
+                "sms_id IS NOT NULL AND complet = 0 AND vu_le >= ? "
+                "ORDER BY sms_id DESC",
+                (carte, expediteur, reference, total, depuis)).fetchall()
+            for (sms_id,) in candidats:
+                parties = self.conn.execute(
+                    "SELECT position, pdu, heure_reseau, vu_le FROM morceaux "
+                    "WHERE carte = ? AND sms_id = ? ORDER BY position",
+                    (carte, sms_id)).fetchall()
+                if not self._du_meme_message(
+                        heure_reseau, [(h, v) for _, _, h, v in parties],
+                        maintenant):
+                    continue
+                return sms_id, [(position, pdu) for position, pdu, _, _ in parties]
+        return None
+
+    def _du_meme_message(self, heure, anciens, maintenant):
+        """Les morceaux déjà livrés (`anciens` : [(heure écrite, vu le)]) et
+        celui qui arrive (`heure`) ont-ils été écrits ensemble ?"""
+        try:
+            ecrites = [datetime.fromisoformat(h) for h, _ in anciens if h]
+            if heure and ecrites:
+                a = datetime.fromisoformat(heure)
+                return all(abs(a - e) <= self.ECART_D_ECRITURE for e in ecrites)
+            vus = [datetime.fromisoformat(v) for _, v in anciens if v]
+            return bool(vus) and all(maintenant - v <= self.SANS_HEURE
+                                     for v in vus)
+        except (TypeError, ValueError):
+            return False        # une heure illisible ne prouve rien : on ne recolle pas
+
+    def completer_sms(self, sms_id, texte):
+        """Le message coupé reçoit sa suite. Le texte ne se RETOUCHE pas : il
+        se complète de ce que l'opérateur a envoyé, et repart à la
+        plateforme, qui remplace la moitié qu'elle montrait."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE sms SET texte = ?, envoye = 0 WHERE id = ?",
+                (texte, sms_id))
+            self.conn.commit()
+
+    def morceaux_complets(self, carte, sms_id):
+        """Tous les morceaux de ce message sont là : aucun n'attend plus."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE morceaux SET complet = 1 WHERE carte = ? AND sms_id = ?",
+                (carte, sms_id))
+            self.conn.commit()
+
     def morceaux(self, carte=None):
         """Les PDU gardés, du plus ancien au plus récent (pour l'enquête)."""
         sql = ("SELECT carte, compte, emplacement, pdu, expediteur, reference,"

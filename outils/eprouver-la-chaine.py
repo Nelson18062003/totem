@@ -117,6 +117,12 @@ class CompteEssai(Compte):
     def effacer_sms(self, indices):
         self._pdu.effacer_sms(indices)
 
+    @property
+    def derniere_releve(self):
+        # Les octets vus par la relève : c'est sur eux que le robot retrouve
+        # la moitié d'un message déjà livré.
+        return list(getattr(self._pdu, "derniere_releve", None) or [])
+
 
 def main():
     global echecs
@@ -391,10 +397,63 @@ def main():
                  f"{sum(p['montant'] or 0 for p in piu)} FCFA")
         depot = next((p for p in donnees5["paiements"]
                       if "ESSAI DEPOT FRANCAIS" in p["smsBrut"]), None)
-        verifier("le dépôt MTN en français est lu : une SORTIE de 37 500",
+        verifier("le dépôt MTN en français est lu : une SORTIE de 42 500",
                  depot is not None and depot["montant"] == 42500
                  and depot["sens"] == "out" and depot["categorie"] == "depot",
                  f"{depot['categorie']} {depot['sens']} {depot['montant']}" if depot else "absent")
+
+        # --- LA SUITE ARRIVE APRÈS COUP ----------------------------------
+        #
+        # Le 17 octobre, 08 h 10 : un transfert Orange s'affichait avec sa
+        # seule fin, « morceau 1 sur 2 jamais reçu ». Un téléphone attend la
+        # suite sept jours ; le robot abandonnait au bout d'un quart d'heure,
+        # et un morceau arrivé ensuite devenait un second message coupé. La
+        # moitié se montre maintenant tout de suite, dite incomplète, et la
+        # suite la COMPLÈTE — au journal, puis à l'écran, sur la même ligne.
+        print("\nLa suite d'un message, arrivée trois heures après, le complète")
+        transfert = ("Successful transfer from 690000031 ETS ESSAI SUITE TARDIVE "
+                     "DU LITTORAL to 696100001 BOUTIQUE ESSAI. Details: "
+                     "Transaction ID: PP261017.0810.A00043, Transaction amount: "
+                     "150000 FCFA, Charges: 0 FCFA, Commission: 0 FCFA, Net amount "
+                     ":150000 FCFA, New balance: 3154870.6 FCFA.")
+        ecrit6 = maintenant - timedelta(hours=3, minutes=5)
+        attente = maintenant - timedelta(minutes=3)       # la patience est passée
+        memoire6 = [(41, fabriquer_pdu(transfert[153:], expediteur="OrangeMoney",
+                                       reference=94, total=2, position=2,
+                                       quand=ecrit6))]
+        modem6 = ModemSerie.__new__(ModemSerie)
+        modem6.verrou = threading.Lock()
+        modem6.mode_pdu = True
+        modem6._morceaux_vus = {("OrangeMoney", 94, 2): attente}
+        modem6._envoyer = lambda commande, delai=10: "".join(
+            f"+CMGL: {i},1,,{len(p) // 2}\r\n{p}\r\n" for i, p in memoire6) + "\r\nOK\r\n"
+        modem6.effacer_sms = lambda indices: [memoire6.remove(x) for x in list(memoire6)
+                                              if x[0] in indices] or True
+        compte6 = CompteEssai(modem6, libelle="Orange ·0042")
+        robot6 = Robot([compte6], TransportMuet(), journal, nom="T", pause_sms=1)
+        robot6._relever_sms(compte6)                 # la fin, seule
+        nuage.pousser_paiements()
+        avant = [p for p in lire(f"{BASE}/api/donnees?sms=200", biscuit)["paiements"]
+                 if "A00043" in p["smsBrut"] or "3154870.6" in p["smsBrut"]]
+        verifier("la moitié reçue se montre tout de suite, dite incomplète",
+                 len(avant) == 1 and "pas encore arrivé" in avant[0]["smsBrut"],
+                 f"{len(avant)} ligne(s)")
+        memoire6.append((42, fabriquer_pdu(transfert[:153], expediteur="OrangeMoney",
+                                           reference=94, total=2, position=1,
+                                           quand=ecrit6)))
+        modem6._morceaux_vus[("OrangeMoney", 94, 2)] = attente
+        robot6._relever_sms(compte6)                 # le début, trois heures après
+        nuage.pousser_paiements()
+        apres = [p for p in lire(f"{BASE}/api/donnees?sms=200", biscuit)["paiements"]
+                 if "A00043" in p["smsBrut"] or "3154870.6" in p["smsBrut"]]
+        verifier("une seule ligne à l'écran, pas deux moitiés", len(apres) == 1,
+                 f"{len(apres)} ligne(s)")
+        verifier("elle est entière : le nom de qui a payé est revenu",
+                 len(apres) == 1 and apres[0]["smsBrut"] == transfert,
+                 apres[0]["smsBrut"][-60:].replace("\n", " ") if apres else "rien")
+        verifier("et l'argent se lit : 150 000",
+                 len(apres) == 1 and apres[0]["montant"] == 150000,
+                 str(apres[0]["montant"]) if apres else "rien")
 
         # --- UN SMS ILLISIBLE NE BLOQUE PAS LES AUTRES --------------------
         print("\nUn message abîmé ne fait pas tomber la relève")

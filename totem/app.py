@@ -42,6 +42,7 @@ from .mise_en_forme import bloc, echap, gras, italique, mono
 from .notification import (PEUT_ETRE_PARTIE, composer, composer_rattrapage,
                            envoyer, lire_les_accuses)
 from .nuage import lire_instant
+from .pdu import decoder, texte_du_groupe
 from .storage import demarrage_courant
 
 # Combien de secondes laisser à Apple et Google avant de lire leurs accusés.
@@ -2270,49 +2271,25 @@ class Robot:
                 # n'altère pas — là où une fenêtre de quinze minutes laissait
                 # recompter un paiement au redémarrage.
                 sms_id = None
-                if not self.journal.sms_existe(expediteur, texte, compte.libelle,
-                                               emis_le=heure_reseau):
+                # La suite d'un message déjà livré coupé le COMPLÈTE : elle
+                # ne devient pas un second message coupé.
+                complete = self._recoller_apres_coup(compte, releve, indices)
+                if complete is not None:
+                    sms_id, texte_entier = complete
+                    self._annoncer_sms(compte, expediteur, texte_entier,
+                                       sms_id, heure_reseau)
+                elif not self.journal.sms_existe(expediteur, texte, compte.libelle,
+                                                 emis_le=heure_reseau):
                     sms_id = self.journal.sms(
                         expediteur, texte, compte.libelle, compte.carte.iccid,
                         emis_le=heure_reseau)
-                    self._notifier_sms(compte, expediteur, texte, sms_id)
-                    # Le reçu ne part pas maintenant : l'alerte doit arriver la
-                    # première, et un PDF ne doit jamais retarder l'annonce
-                    # d'un encaissement. Il est seulement inscrit ; la boucle
-                    # de surveillance le fabriquera dans la foulée.
-                    self._programmer_recu(sms_id, texte)
-                    # Un SMS qui ANNONCE un solde met la carte à jour : c'est
-                    # l'opérateur qui parle, comme sur une réponse USSD — et
-                    # en itinérance, MTN répond justement par SMS quand
-                    # l'USSD ne passe pas. Le « nouveau solde » d'un
-                    # MOUVEMENT adressé à notre carte vaut pareil : c'est le
-                    # solde de la caisse après l'opération, annoncé par
-                    # l'opérateur. La carte reste ainsi à jour toute seule,
-                    # encaissement après encaissement. Jamais un calcul à
-                    # nous.
-                    try:
-                        solde = solde_annonce(texte)
-                        if solde is None:
-                            p = analyser(texte, numeros=self._nos_numeros())
-                            if p is not None:
-                                solde = p.solde_apres
-                        if (solde is not None and self.nuage
-                                and compte.carte.identifiee):
-                            # L'heure réseau du SMS accompagne le solde : un
-                            # relevé ancien rejoué dans le désordre ne doit
-                            # pas écraser un solde déjà plus récent.
-                            self.nuage.publier_solde(
-                                compte.carte.iccid, solde, moment=heure_reseau)
-                    except Exception:
-                        pass    # un solde non relevé n'empêche rien
-                    # Le cloud est prévenu tout de suite : inutile de lui faire
-                    # attendre son battement pour un paiement déjà connu.
-                    if self.nuage:
-                        self.nuage.reveiller()
+                    self._annoncer_sms(compte, expediteur, texte, sms_id,
+                                       heure_reseau)
             except Exception as e:
                 self._noter(f"traitement SMS {indices} ({compte.libelle}) : {e}")
                 continue        # on n'efface pas : à réessayer au prochain tour
-            self._noter_livraison(compte, releve, indices, sms_id)
+            if complete is None:
+                self._noter_livraison(compte, releve, indices, sms_id)
             # Un message long occupe plusieurs emplacements : on les efface
             # tous ensemble, sans quoi un morceau resterait orphelin.
             if not compte.effacer_sms(indices):
@@ -2321,6 +2298,94 @@ class Robot:
             else:
                 self._sans_bloquer(lambda: self.journal.morceaux_effaces(
                     self._cle_des_morceaux(compte), indices))
+
+    def _annoncer_sms(self, compte, expediteur, texte, sms_id, heure_reseau):
+        """Ce qui suit l'écriture d'un SMS au journal : l'annonce, le reçu, le
+        solde, la plateforme. Un message complété après coup passe par ici
+        lui aussi — c'est sa première annonce ENTIÈRE, avec le nom."""
+        self._notifier_sms(compte, expediteur, texte, sms_id)
+        # Le reçu ne part pas maintenant : l'alerte doit arriver la
+        # première, et un PDF ne doit jamais retarder l'annonce
+        # d'un encaissement. Il est seulement inscrit ; la boucle
+        # de surveillance le fabriquera dans la foulée.
+        self._programmer_recu(sms_id, texte)
+        # Un SMS qui ANNONCE un solde met la carte à jour : c'est
+        # l'opérateur qui parle, comme sur une réponse USSD — et
+        # en itinérance, MTN répond justement par SMS quand
+        # l'USSD ne passe pas. Le « nouveau solde » d'un
+        # MOUVEMENT adressé à notre carte vaut pareil : c'est le
+        # solde de la caisse après l'opération, annoncé par
+        # l'opérateur. La carte reste ainsi à jour toute seule,
+        # encaissement après encaissement. Jamais un calcul à
+        # nous.
+        try:
+            solde = solde_annonce(texte)
+            if solde is None:
+                p = analyser(texte, numeros=self._nos_numeros())
+                if p is not None:
+                    solde = p.solde_apres
+            if (solde is not None and self.nuage
+                    and compte.carte.identifiee):
+                # L'heure réseau du SMS accompagne le solde : un
+                # relevé ancien rejoué dans le désordre ne doit
+                # pas écraser un solde déjà plus récent.
+                self.nuage.publier_solde(
+                    compte.carte.iccid, solde, moment=heure_reseau)
+        except Exception:
+            pass    # un solde non relevé n'empêche rien
+        # Le cloud est prévenu tout de suite : inutile de lui faire
+        # attendre son battement pour un paiement déjà connu.
+        if self.nuage:
+            self.nuage.reveiller()
+
+    def _recoller_apres_coup(self, compte, releve, indices):
+        """Ces emplacements portent-ils la SUITE d'un message déjà livré coupé ?
+
+        Si oui, le message du journal est complété — son texte, puis sa ligne
+        sur la plateforme, qui remplace la moitié qu'elle montrait — et l'on
+        rend (sms_id, texte entier). Sinon None, et la relève suit son cours.
+
+        Ne lève JAMAIS : au moindre doute (journal ancien, PDU illisible,
+        numéro de découpe repris par un autre message), le morceau part comme
+        avant, seul et signalé incomplet. Une moitié de plus vaut mieux qu'un
+        morceau perdu."""
+        try:
+            siens = [r for r in releve if r.get("emplacement") in indices
+                     and r.get("reference") is not None and r.get("pdu")]
+            if not siens or not hasattr(self.journal, "message_coupe"):
+                return None
+            premier = siens[0]
+            total = premier.get("total") or 1
+            if total <= 1:
+                return None
+            cle = self._cle_des_morceaux(compte)
+            trouve = self.journal.message_coupe(
+                cle, premier.get("expediteur"), premier.get("reference"), total,
+                heure_reseau=premier.get("heure_reseau"))
+            if trouve is None:
+                return None
+            sms_id, anciens = trouve
+            textes = {}
+            for position, pdu in anciens:
+                textes[position] = decoder(pdu).texte
+            arrives = {r.get("position"): decoder(r["pdu"]).texte for r in siens}
+            if not set(arrives) - set(textes):
+                return None     # rien de neuf : ce n'est pas une suite
+            if any(textes[p] != x for p, x in arrives.items() if p in textes):
+                return None     # même place, autre texte : un AUTRE message
+            textes.update(arrives)
+            texte = texte_du_groupe(textes, total)
+            complet = len(textes) >= total
+            self.journal.completer_sms(sms_id, texte)
+            self.journal.morceaux_livres(cle, indices, sms_id, complet)
+            if complet:
+                self.journal.morceaux_complets(cle, sms_id)
+            self._noter(f"SMS long complété après coup ({compte.libelle}) : "
+                        f"{len(textes)} morceau(x) sur {total}")
+            return sms_id, texte
+        except Exception as e:
+            self._noter(f"recollage après coup impossible ({compte.libelle}) : {e}")
+            return None
 
     # ---- morceaux bruts ----------------------------------------------------
     # Rien ici ne doit retenir un SMS : un journal qui ne sait pas ranger les

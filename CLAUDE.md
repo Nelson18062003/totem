@@ -1226,6 +1226,30 @@ boîtier, du début à la fin, tient aussi quand cette horloge est fausse (le
 est maintenant gardé au journal du boîtier (`morceaux`) : le prochain cas
 se prouvera, il ne se devinera pas.
 
+**Un message coupé se COMPLÈTE ; on n'abandonne plus.** Le 17 octobre,
+08 h 10, un transfert Orange s'affichait encore avec sa seule fin, et le
+propriétaire a contesté jusqu'à la règle : « un message arrive en entier ».
+Il fallait les SOURCES, pas l'affirmation. La norme (3GPP TS 23.040) dit
+bien que l'opérateur découpe un long message en SMS séparés qui voyagent
+chacun de leur côté ; mais le code d'Android dit aussi qu'un téléphone
+attend la suite SEPT JOURS (`DEFAULT_PARTIAL_SEGMENT_EXPIRE_AGE`,
+`SmsBroadcastUndelivered`) — c'est pourquoi on n'y voit jamais « 1 sur 2 ».
+Le robot abandonnait au bout d'un quart d'heure. **Quand on compare au
+comportement de référence, on le lit dans ses sources.** La moitié se
+montre maintenant au bout de deux minutes, dite « pas encore arrivée », et
+la suite la complète jusqu'à sept jours après (`_recoller_apres_coup`) :
+même ligne au journal, même ligne à l'écran. Le numéro de découpe n'ayant
+que 256 valeurs, deux morceaux ne se recollent que s'ils ont été ÉCRITS
+ensemble par l'opérateur — coller la fin d'une opération au début d'une
+autre fabriquerait une opération qui n'a pas eu lieu.
+`tests/test_recollage_apres_coup.py` et `eprouver-la-chaine` portent leur
+témoin : sans le recollage, deux moitiés et aucun montant.
+
+**`git pull` ne prend que ce qui est publié.** Le propriétaire avait mis le
+boîtier à jour, et le défaut est revenu : la correction attendait sur une
+branche, pas sur `main`. « Corrigé » ne veut rien dire pour lui tant que ce
+n'est pas sur le boîtier — le dire en ces termes, à chaque fois.
+
 Le juge est la suite des soldes — les soldes que l'opérateur annonce lui-même,
 jugés par le noyau : 78 ruptures avec le lecteur d'avant, 15 avec le lecteur
 corrigé, la base relue par le vrai code du robot. Et chaque opération, prise

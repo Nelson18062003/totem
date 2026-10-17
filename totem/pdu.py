@@ -37,9 +37,33 @@ RE_HEXA_PDU = re.compile(r"\A[0-9A-Fa-f]+\Z")
 CONCAT_8BITS = 0x00      # numéro de message sur 1 octet
 CONCAT_16BITS = 0x08     # numéro de message sur 2 octets
 
-# Au-delà, on renonce à attendre les morceaux manquants et on livre ce qu'on a
-# plutôt que de retenir indéfiniment un message incomplet.
-PATIENCE_MORCEAUX = timedelta(minutes=15)
+# Le temps qu'on laisse à un morceau manquant avant de MONTRER ce qu'on a.
+# Ce n'est plus un abandon : le message livré incomplet se COMPLÈTE quand la
+# suite arrive (`Robot._recoller_apres_coup`), jusqu'à sept jours plus tard.
+#
+# C'est ce que fait un téléphone Android : il garde les morceaux et attend la
+# suite SEPT JOURS (`DEFAULT_PARTIAL_SEGMENT_EXPIRE_AGE`, dans
+# `SmsBroadcastUndelivered` des sources d'Android) avant de la jeter — c'est
+# pourquoi on n'y voit jamais « 1 sur 2 ». Le robot abandonnait au bout d'un
+# quart d'heure, compté depuis l'heure ÉCRITE par l'opérateur : en
+# itinérance, un morceau un peu en retard suffisait à couper le message.
+#
+# Le téléphone, lui, ne montre RIEN tant que la suite manque. Le robot ne fait
+# pas comme lui sur ce point : un encaissement caché sept jours est pire
+# qu'une moitié montrée tout de suite, et dite incomplète.
+PATIENCE_MORCEAUX = timedelta(minutes=2)
+
+
+def texte_du_groupe(textes, total):
+    """Le texte d'un message long à partir de ses morceaux {position: texte}.
+    S'il en manque, il le DIT, à la fin — jamais un trou silencieux."""
+    texte = "".join(textes[p] for p in sorted(textes))
+    manquants = sorted(set(range(1, total + 1)) - set(textes))
+    if manquants:
+        texte += (f"\n\n[⏳ message incomplet : morceau(x) "
+                  f"{', '.join(map(str, manquants))} sur {total} pas encore "
+                  f"arrivé(s) — le message se complétera s'il arrive]")
+    return texte
 
 
 class Morceau:
@@ -264,12 +288,7 @@ def recoller(morceaux, maintenant=None, premiere_vue=None):
             continue                             # on attend encore la suite
 
         livres.add(cle)
-        texte = "".join(m.texte for _, m in parties)
-        if not complet:
-            manquants = sorted(set(range(1, total + 1)) - recus)
-            texte += (f"\n\n[⚠️ message incomplet : morceau(x) "
-                      f"{', '.join(map(str, manquants))} sur {total} "
-                      f"jamais reçu(s)]")
+        texte = texte_du_groupe({m.position: m.texte for _, m in parties}, total)
         seuls.append((indices, expediteur, texte, complet))
 
     # Ménage : un groupe livré (ou complété) ne doit pas garder sa trace, sinon

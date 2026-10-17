@@ -171,10 +171,10 @@ class MessageLongCoupeEnMorceaux(unittest.TestCase):
         # Tour 1 et 2 : on attend encore la suite (elle peut arriver).
         self.assertEqual(recoller([(0, morceau)], t0, vus), [])
         self.assertEqual(
-            recoller([(0, morceau)], t0 + timedelta(minutes=5), vus), [])
+            recoller([(0, morceau)], t0 + timedelta(minutes=1), vus), [])
 
         # Passé la patience depuis la PREMIÈRE vue : livré incomplet et effacé.
-        livre = recoller([(0, morceau)], t0 + timedelta(minutes=20), vus)
+        livre = recoller([(0, morceau)], t0 + timedelta(minutes=3), vus)
         self.assertEqual(len(livre), 1)
         indices, _, texte, complet = livre[0]
         self.assertEqual(indices, [0])              # l'emplacement se libère
@@ -349,7 +349,7 @@ class UnMessageLongLivreEnRetard(unittest.TestCase):
         m1 = decoder(fabriquer_pdu(self.DEBUT, reference=78, total=2, position=1, quand=ecrit))
         vus, t0 = {}, datetime.now(timezone.utc)
         self.assertEqual(recoller([(1, m1)], t0, vus), [])
-        self.assertEqual(recoller([(1, m1)], t0 + timedelta(minutes=10), vus), [])
-        (_, _, texte, complet), = recoller([(1, m1)], t0 + timedelta(minutes=16), vus)
+        self.assertEqual(recoller([(1, m1)], t0 + timedelta(minutes=1), vus), [])
+        (_, _, texte, complet), = recoller([(1, m1)], t0 + timedelta(minutes=3), vus)
         self.assertFalse(complet)
         self.assertIn("morceau(x) 2 sur 2", texte)
