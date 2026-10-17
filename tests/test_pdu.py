@@ -294,7 +294,7 @@ class UnMessageLongLivreEnRetard(unittest.TestCase):
     maintenant depuis l'arrivée au boîtier."""
 
     DEBUT = "CashOut success to 690000001 NGONOKA from 690000002 BOUTIK ESSAI. "
-    FIN = "transaction amount: 198500 FCFA, TXN id :CO261015.0253.A12345"
+    FIN = "transaction amount: 187500 FCFA, TXN id :CO261015.0253.A12345"
 
     def _deux_releves(self, retard, trop_vieux=None):
         """Relève 1 : le morceau 1 seul. Relève 2, trois secondes après : les

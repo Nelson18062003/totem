@@ -52,7 +52,7 @@ def _comptes_reels(patience=120):
     comptes = []
     for info in trouves:
         try:
-            comptes.append(Compte(ModemSerie(port=info.port),
+            comptes.append(Compte(ModemSerie(port=info.port, imei=info.imei),
                                   carte=info.carte, imei=info.imei))
             print(t(f"  {info.description} on {info.port} (IMEI {info.imei})",
                     f"  {info.description} sur {info.port} (IMEI {info.imei})"))

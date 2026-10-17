@@ -528,7 +528,7 @@ RE_CASH_OUT_ENTRANT = re.compile(r"\bcash\s*out\s+initiated\s+by\b")
 # est nommée AVANT son numéro, entre parenthèses, après « au », « par » ou
 # « a » — des mots que la lecture générale ne prend pas pour des parties.
 #
-#   « Dépot de 37500 XAF effectué le … au NOM (2376…), a été effectué avec
+#   « Dépot de 42500 XAF effectué le … au NOM (2376…), a été effectué avec
 #     succès. Transaction ID:… Votre nouveau solde est de … XAF. Commission
 #     ajoutée : 66 XAF. »  — le pendant de « Cash in of … »   : SORTIE ;
 #   « Le retrait effectué par NOM (2376…) le … a été effectué avec succès.

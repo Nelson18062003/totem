@@ -318,7 +318,7 @@ def main():
         ecrit = maintenant - timedelta(hours=3)
         debut = ("CashOut success to 690000010 ESSAI RETARD from 696100001 "
                  "BOUTIQUE ESSAI. The details are as follows: transaction "
-                 "amount: 198500 FCFA, charges: 0 FCFA, commissio")
+                 "amount: 187500 FCFA, charges: 0 FCFA, commissio")
         fin = "n: 0 FCFA, TXN id :CO261016.0253.A12345"
         en_memoire = [(21, fabriquer_pdu(debut, expediteur="OrangeMoney",
                                          reference=91, total=2, position=1,
@@ -359,12 +359,12 @@ def main():
                      "12:10:54. Message from sender: . Your new balance:10200500 "
                      "XAF. Financial Transaction Id: 19100000000.")
         avis = ("You have received 5,000,000 FCFA from - ESSAI NANA PAUL "
-                "(237690000007) on 2026-10-03 12:10:54. Transaction Id: "
+                "(237690000007) on 2026-10-02 08:27:33. Transaction Id: "
                 "19100000000. New account balance: - FCFA.")
-        depot_fr = ("Dépot de 37500 XAF effectué le 2026-10-14 18:49:08 au ESSAI "
+        depot_fr = ("Dépot de 42500 XAF effectué le 2026-10-12 11:16:29 au ESSAI "
                     "DEPOT FRANCAIS (237690000003), a été effectué avec succès. "
                     "Transaction ID:19234400000. Message:. Votre nouveau solde est "
-                    "de 347203 XAF. Commission ajoutée : 66 XAF.")
+                    "de 352418 XAF. Commission ajoutée : 66 XAF.")
         modem5 = modem_pdu(
             (31, fabriquer_pdu(principal[:153], expediteur="MobileMoney",
                                reference=92, total=2, position=1, quand=maintenant)),
@@ -392,7 +392,7 @@ def main():
         depot = next((p for p in donnees5["paiements"]
                       if "ESSAI DEPOT FRANCAIS" in p["smsBrut"]), None)
         verifier("le dépôt MTN en français est lu : une SORTIE de 37 500",
-                 depot is not None and depot["montant"] == 37500
+                 depot is not None and depot["montant"] == 42500
                  and depot["sens"] == "out" and depot["categorie"] == "depot",
                  f"{depot['categorie']} {depot['sens']} {depot['montant']}" if depot else "absent")
 

@@ -53,6 +53,35 @@ class InfoModem:
         return f"<Modem {self.description} sur {self.port}>"
 
 
+def ouvrir_la_prise(chemin, baud=115200, timeout=1):
+    """Ouvre un port série pour soi SEUL.
+
+    Sous Linux, deux ouvertures du même port réussissent toutes les deux, sans
+    un mot : chacune lit une partie des réponses de l'autre, et vider son
+    tampon vide celui du voisin. Dans la nuit du 16 au 17 octobre, les quatre
+    modems se sont dits muets à la même minute, et la relance d'UN seul suffit
+    à l'expliquer : pour retrouver le sien, le robot interrogeait toutes les
+    prises, y compris celles où ses collègues attendaient une réponse. Ils la
+    perdaient, se croyaient muets, se relançaient à leur tour. Une prise tenue
+    par un autre se refuse maintenant — et c'est tout ce qu'on lui demande."""
+    import serial
+
+    try:
+        return serial.Serial(chemin, baud, timeout=timeout, exclusive=True)
+    except TypeError:          # pyserial trop ancien pour l'exclusivité
+        return serial.Serial(chemin, baud, timeout=timeout)
+
+
+def imei_de(ser):
+    """L'IMEI du modem derrière ce port ouvert, ou "" s'il ne répond pas.
+    Un port qui ne dit pas « OK » (diagnostic, GPS, audio) ne mérite pas
+    qu'on attende sa réponse à une seconde question."""
+    if "OK" not in _dialogue(ser, "AT", delai=1.0):
+        return ""
+    m = RE_IMEI.search(_dialogue(ser, "AT+CGSN"))
+    return m.group(1) if m else ""
+
+
 def _dialogue(ser, commande, delai=1.2):
     """Envoie une commande AT et renvoie la réponse brute (chaîne vide si muet)."""
     try:
@@ -88,10 +117,8 @@ def _lire_iccid(ser):
 def _sonder(port, baud=115200):
     """Interroge un port série. Renvoie un InfoModem, ou None si ce port n'est
     pas un port AT exploitable."""
-    import serial
-
     try:
-        ser = serial.Serial(port, baud, timeout=0.5)
+        ser = ouvrir_la_prise(port, baud, timeout=0.5)
     except Exception:
         return None  # port occupé (robot déjà lancé) ou inutilisable
     try:

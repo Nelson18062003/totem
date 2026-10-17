@@ -5,6 +5,7 @@ Le HAT Waveshare SIM7600G-H (B) expose plusieurs ports série via USB ;
 le port AT est généralement /dev/ttyUSB2 sur Raspberry Pi OS.
 """
 
+import glob
 import re
 import threading
 import time
@@ -239,12 +240,12 @@ class ModemSerie:
     """Interface du modem réel. Toutes les méthodes sont sérialisées (un seul
     échange AT à la fois) car le port série ne supporte pas la concurrence."""
 
-    def __init__(self, port="/dev/ttyUSB2", baud=115200):
-        import serial  # pyserial — importé ici pour que le mode simulation s'en passe
+    def __init__(self, port="/dev/ttyUSB2", baud=115200, imei=""):
+        from .detect import ouvrir_la_prise
 
         self.port = port
         self.baud = baud
-        self.ser = serial.Serial(port, baud, timeout=1)
+        self.ser = ouvrir_la_prise(port, baud)
         self.verrou = threading.Lock()
         self.ucs2 = False
         self.stockage_sms = "SM"
@@ -258,6 +259,9 @@ class ModemSerie:
         # SCTS corrompu ne bloque pas son emplacement modem pour toujours.
         self._morceaux_vus = {}
         self._initialiser()
+        # L'identité du MODEM, pas de la carte : c'est elle qu'on reconnaît
+        # quand il revient sur le bus sous un autre nom (voir `_rouvrir`).
+        self.imei = imei or self._lire_imei()
 
     # ---- bas niveau -------------------------------------------------------
     def _envoyer(self, commande, delai=5):
@@ -440,32 +444,63 @@ class ModemSerie:
         self._rouvrir()
         self._initialiser()
 
+    def _lire_imei(self):
+        from .detect import RE_IMEI
+
+        with self.verrou:
+            m = RE_IMEI.search(self._envoyer("AT+CGSN", delai=2))
+        return m.group(1) if m else ""
+
     def _rouvrir(self, patience=45):
-        """Referme le port et le rouvre, en acceptant qu'il ait changé de nom.
+        """Referme le port et rouvre CE modem, sous son nouveau nom s'il le faut.
 
         Au retour sur le bus USB, le noyau ne rend pas forcément le même
         numéro : le modem parti de `/dev/ttyUSB2` peut revenir sur `ttyUSB6`.
         S'entêter sur l'ancien chemin, c'est attendre un port qui n'existera
         plus jamais — on redemande donc lequel est le bon.
+
+        Et « le bon » se PROUVE. L'ancien nom peut très bien exister encore,
+        porté par un AUTRE modem revenu plus vite : un port qui s'ouvre ne dit
+        rien de qui est derrière. Dans la nuit du 16 au 17 octobre, quatre
+        modems relancés ensemble sont revenus dans le désordre, et trois des
+        quatre comptes ont rouvert un port du MÊME modem — celui de la
+        MTN ·3501. Le robot a cru à trois changements de carte, et les trois
+        autres modems sont restés sans personne pour relever leurs SMS. On ne
+        garde donc un port que si le modem y donne l'IMEI qu'il avait.
         """
-        import serial
+        from .detect import imei_de, ouvrir_la_prise
 
         try:
             self.ser.close()
         except Exception:
             pass
 
+        # Sans IMEI connu (un modem qui ne l'a jamais dit), on ne peut rien
+        # prouver : on reprend le premier port qui s'ouvre, comme avant.
+        imei = getattr(self, "imei", "")
         fin = time.time() + patience
         derniere = None
         while time.time() < fin:
             time.sleep(2)
             for chemin in self._chemins_possibles():
                 try:
-                    self.ser = serial.Serial(chemin, self.baud, timeout=1)
-                    self.port = chemin
-                    return
+                    ser = ouvrir_la_prise(chemin, self.baud)
                 except Exception as e:
                     derniere = e
+                    continue
+                trouve = imei_de(ser) if imei else ""
+                if imei and trouve != imei:
+                    try:
+                        ser.close()
+                    except Exception:
+                        pass
+                    if trouve:
+                        derniere = t(f"{chemin} belongs to another modem",
+                                     f"{chemin} est à un autre modem")
+                    continue
+                self.ser = ser
+                self.port = chemin
+                return
         raise ErreurModem(t(
             f"the modem did not come back on the serial port after "
             f"{patience} s ({derniere}). Check the USB cable and the power "
@@ -476,14 +511,17 @@ class ModemSerie:
             f"réclame 3 A, un chargeur trop juste le fait décrocher du bus."))
 
     def _chemins_possibles(self):
-        """Le port précédent d'abord — c'est le cas courant — puis ceux que la
-        détection propose. On ne devine aucun numéro : on regarde."""
-        chemins = [self.port]
-        try:
-            from .detect import detecter_modems
-            chemins += [info.port for info in detecter_modems()]
-        except Exception:
-            pass
+        """Le port précédent d'abord — c'est le cas courant —, puis tous les
+        autres, dans l'ordre des numéros : le premier qui donne NOTRE IMEI est
+        le port AT principal, comme à la détection.
+
+        On ne lance plus la détection complète ici : elle interrogeait chaque
+        port (carte, numéro, réseau…) à chaque tour d'attente, toutes les deux
+        secondes, et c'est elle qui dérangeait les modems voisins."""
+        from .detect import _numero_port
+
+        chemins = [self.port] + sorted(glob.glob("/dev/ttyUSB*"),
+                                       key=_numero_port)
         vus = set()
         return [c for c in chemins if c and not (c in vus or vus.add(c))]
 

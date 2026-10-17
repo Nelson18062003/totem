@@ -33,14 +33,14 @@ AGENT = "690000002"
 
 # --- MTN, en français ------------------------------------------------------
 DEPOT_FR = (
-    "Dépot de 37500 XAF effectué le 2026-10-14 18:49:08 au STE. NOUVELLE "
+    "Dépot de 42500 XAF effectué le 2026-10-12 11:16:29 au STE. NOUVELLE "
     "BRASSERIE DU LITTORAL ET DES HAUTS PLATEAUX DE L'OUEST SARL "
     "(237690000003), a été effectué avec succès. Transaction ID:19234400000. "
-    "Message:. Votre nouveau solde est de 347203 XAF. Commission ajoutée : "
+    "Message:. Votre nouveau solde est de 352418 XAF. Commission ajoutée : "
     "66 XAF.")
 RETRAIT_FR = (
     "Le retrait effectué par N A ESSAI NDEFO TAKAM BELLA (237690000004) le "
-    "2026-09-19 10:22:50 a été effectué avec succès. Vous pouvez remettre au "
+    "2026-09-09 10:31:07 a été effectué avec succès. Vous pouvez remettre au "
     "client la somme de 500000 XAF en espèces. Transaction ID:18850000000. "
     "Message:. Votre nouveau solde est de 11820690 XAF. Commission ajoutée : "
     "1350 XAF.")
@@ -51,40 +51,40 @@ REClAME_FR = (
     "link.mtn.cm/NewMoMoAppRef. Infos : 8787 | WhatsApp : 677 55 00 00")
 VIREMENT_FR = (
     "Transfert de 13000000 FCFA effectue avec succes a ESSAI GROSSISTE AND CO "
-    "7 (237690000005) le 2026-09-19 11:38:39. FRAIS 0 FCFA. transaction Id: "
-    "18851100000. Reference: . Nouveau solde est: 5564049 FCFA." + REClAME_FR)
+    "7 (237690000005) le 2026-09-09 14:05:52. FRAIS 0 FCFA. transaction Id: "
+    "18851100000. Reference: . Nouveau solde est: 5471386 FCFA." + REClAME_FR)
 FLOTTE_FR = (
     "Transfert de flotte de 13,000,000 FCFA a ESSAI GROSSISTE AND CO 7 "
-    "(237690000005) le 2026-09-19 11:38:39 effectue avec success. Ref "
-    "transaction: 18851100000. Nouveau solde: 5,564,049FCFA." + REClAME_FR)
+    "(237690000005) le 2026-09-09 14:05:52 effectue avec success. Ref "
+    "transaction: 18851100000. Nouveau solde: 5,471,386FCFA." + REClAME_FR)
 RECU_FR = (
     "Vous avez recu 500000 XAF de ESSAI GROSSISTE SARL 2 (237690000006) sur "
-    "votre compte mobile money à 2026-09-18 18:00:25. Message de "
+    "votre compte mobile money à 2026-09-08 09:12:41. Message de "
     "l'expéditeur: . Votre nouveau solde: 500000 XAF. FRAIS: FCFA 0. "
     "Financial Transaction Id: 18841100000.")
 FLOAT_RECU_FR = (
     "500,000 FCFA de float recu de - 2 (237690000006) sur votre compte le "
-    "2026-09-18 18:00:25. Ref transaction: 18841100000. Nouveau solde: - "
+    "2026-09-08 09:12:41. Ref transaction: 18841100000. Nouveau solde: - "
     "FCFA.")
 
 # --- MTN, en anglais : les paires -------------------------------------------
 RECU_EN = (
     "You have received 5000000 XAF from ESSAI NANA PAUL (237690000007) on your "
-    "mobile money account at 2026-10-03 12:10:54. Message from sender: . "
+    "mobile money account at 2026-10-02 08:27:33. Message from sender: . "
     "Your new balance:10200500 XAF. Financial Transaction Id: 19100000000.")
 FLOAT_RECU_EN = (
     "You have received 5,000,000 FCFA from - ESSAI NANA PAUL (237690000007) on "
-    "2026-10-03 12:10:54. Transaction Id: 19100000000. New account balance: "
+    "2026-10-02 08:27:33. Transaction Id: 19100000000. New account balance: "
     "- FCFA.")
 VIREMENT_EN = (
     "You have transferred 1500000 XAF to ESSAI MBARGA ETOA (237690000008) "
-    "from your mobile money account 90000017 at 2026-09-19 20:58:50 FEES 0 "
-    "FCFA. Your new balance: 4016232 XAF. Message from sender: . Message to "
+    "from your mobile money account 90000017 at 2026-09-10 16:44:18 FEES 0 "
+    "FCFA. Your new balance: 4127905 XAF. Message from sender: . Message to "
     "receiver: . Financial Transaction Id: 18860000000.")
 SUCCES_EN = (
     "Successful transfer of 1,500,000 FCFA to ESSAI MBARGA ETOA "
-    "(237690000008) at 2026-09-19 20:58:51. Transaction Id: 18860000000. Your "
-    "new balance: 4,016,232 FCFA. Back-to-School is Here... MoMo Got You! For "
+    "(237690000008) at 2026-09-10 16:44:19. Transaction Id: 18860000000. Your "
+    "new balance: 4,127,905 FCFA. Back-to-School is Here... MoMo Got You! For "
     "any transactions from XAF 5,237,  stand a chance to win everyday : A "
     "Laptop + XAF 50,000 + a Home Box every day. Dial *126*6# or download the "
     "New MoMo App : link.mtn.cm/NewMoMoAppRef.")
@@ -102,12 +102,12 @@ class LesGuichetsMtnEnFrancais(unittest.TestCase):
     def test_le_depot_chez_le_client_fait_sortir_l_argent(self):
         p = analyser(DEPOT_FR)
         self.assertIsNotNone(p)
-        self.assertEqual((p.sens, p.montant), ("sortie", 37500))
+        self.assertEqual((p.sens, p.montant), ("sortie", 42500))
         self.assertEqual(p.nom, "STE. NOUVELLE BRASSERIE DU LITTORAL ET DES "
                                 "HAUTS PLATEAUX DE L'OUEST SARL")
         self.assertEqual(p.numero, "237690000003")
         self.assertEqual((p.reference, p.solde_apres, p.commission),
-                         ("19234400000", 347203, 66))
+                         ("19234400000", 352418, 66))
         self.assertEqual(categoriser(DEPOT_FR), "depot")
 
     def test_le_retrait_du_client_fait_entrer_l_argent(self):
@@ -124,7 +124,7 @@ class LesGuichetsMtnEnFrancais(unittest.TestCase):
         self.assertIsNotNone(p, "13 000 000 F sortis, rangés en publicité")
         self.assertEqual((p.sens, p.montant, p.frais), ("sortie", 13000000, 0))
         self.assertEqual(p.nom, "ESSAI GROSSISTE AND CO 7")
-        self.assertEqual((p.reference, p.solde_apres), ("18851100000", 5564049))
+        self.assertEqual((p.reference, p.solde_apres), ("18851100000", 5471386))
         self.assertNotEqual(categoriser(VIREMENT_FR), "publicite")
 
     def test_la_reclame_seule_reste_une_reclame(self):
@@ -161,9 +161,9 @@ class UneOperationSeCompteUneFois(unittest.TestCase):
         """« Successful transfer FROM » (Orange) n'est pas « Successful
         transfer OF » (l'avis MTN) : un vrai virement, à compter."""
         orange = ("Successful transfer from 690000011 ETS ESSAI to 690000002 "
-                  "BOUTIQUE ESSAI. Details: Transaction ID: PP261014.1113.A00001, "
+                  "BOUTIQUE ESSAI. Details: Transaction ID: PP261011.0947.A00001, "
                   "Transaction amount: 10000 FCFA, Charges: 0 FCFA, Commission: "
-                  "0 FCFA, Net amount :10000 FCFA, New balance: 2814000.6 FCFA.")
+                  "0 FCFA, Net amount :10000 FCFA, New balance: 2790450.6 FCFA.")
         self.assertFalse(avis_en_double(orange))
         self.assertEqual(analyser(orange).montant, 10000)
 
@@ -180,7 +180,7 @@ class LaCommissionDOrangeEstAPart(unittest.TestCase):
         cashout = ("CashOut success to 690000010 ESSAI from 690000002 BOUTIQUE "
                    "ESSAI. The details are as follows: transaction amount: "
                    "500000 FCFA, charges: 0 FCFA, commission: 0 FCFA, TXN id "
-                   ":CO260807.1433.A00001")
+                   ":CO260809.1012.A00001")
         self.assertEqual(categoriser(cashout), "retrait")
         self.assertEqual(analyser(cashout).montant, 500000)
         self.assertIsNone(commission_versee(cashout))

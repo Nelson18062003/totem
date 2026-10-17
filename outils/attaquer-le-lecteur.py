@@ -65,22 +65,22 @@ GRAINES = [
     "Successful transfer from 696103864 A to 690000001 GARANTIE EXCHANGE SARL 3",
     # Les formats MTN en français, les avis en double et la commission
     # d'Orange, relevés dans la vraie base (octobre 2026) — noms inventés.
-    "Dépot de 37500 XAF effectué le 2026-10-14 18:49:08 au ESSAI CLIENT "
+    "Dépot de 42500 XAF effectué le 2026-10-12 11:16:29 au ESSAI CLIENT "
     "(237690000003), a été effectué avec succès. Transaction ID:19234400000. "
-    "Message:. Votre nouveau solde est de 347203 XAF. Commission ajoutée : 66 XAF.",
+    "Message:. Votre nouveau solde est de 352418 XAF. Commission ajoutée : 66 XAF.",
     "Le retrait effectué par N A ESSAI BELLA (237690000004) le 2026-09-19 "
     "10:22:50 a été effectué avec succès. Vous pouvez remettre au client la "
     "somme de 500000 XAF en espèces. Transaction ID:18850000000. Message:. "
     "Votre nouveau solde est de 11820690 XAF. Commission ajoutée : 1350 XAF.",
     "Transfert de 500000 FCFA effectue avec succes a ESSAI SARL 1 "
-    "(237690000005) le 2026-09-18 18:00:25. FRAIS 0 FCFA. transaction Id: "
+    "(237690000005) le 2026-09-08 09:12:41. FRAIS 0 FCFA. transaction Id: "
     "18841100000. Reference: . Nouveau solde est: 500000 FCFA. C'est la "
     "Rentrée... tente de gagner chaque jour: Un Laptop + 50 000 F.",
     "Successful transfer of 1,500,000 FCFA to ESSAI CLIENT (237690000008) at "
-    "2026-09-19 20:58:51. Transaction Id: 18860000000. Your new balance: "
-    "4,016,232 FCFA. Back-to-School is Here... stand a chance to win.",
+    "2026-09-10 16:44:19. Transaction Id: 18860000000. Your new balance: "
+    "4,127,905 FCFA. Back-to-School is Here... stand a chance to win.",
     "500,000 FCFA de float recu de - 2 (237690000006) sur votre compte le "
-    "2026-09-18 18:00:25. Ref transaction: 18841100000. Nouveau solde: - FCFA.",
+    "2026-09-08 09:12:41. Ref transaction: 18841100000. Nouveau solde: - FCFA.",
     "You received the commission of 1350 FCFA for transaction Cash Out which "
     "is executed from ESSAI, 690000010 to BOUTIQUE ESSAI,690000002.",
 ]

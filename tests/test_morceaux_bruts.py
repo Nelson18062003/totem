@@ -32,7 +32,7 @@ except ImportError:                                  # python3 -m unittest tests
 # Même forme et même longueur que le CashOut Orange vu coupé en production
 # (153 caractères, puis le reste) ; noms et numéros inventés.
 CASHOUT = ("CashOut success to 690000001 NGONOKA from 690000002 BOUTIK ESSAI. "
-           "The details are as follows: transaction amount: 198500 FCFA, "
+           "The details are as follows: transaction amount: 187500 FCFA, "
            "charges: 0 FCFA, commission: 0 FCFA, TXN id :CO261015.0253.A12345")
 DEBUT, FIN = CASHOUT[:153], CASHOUT[153:]
 
@@ -187,7 +187,7 @@ class LaReleveEcritLaPreuve(unittest.TestCase):
         self.assertIn("1 morceau(x) sur 2", incomplet[0])
         self.assertIn("il y a 40 min", incomplet[0])
         # Rien du SMS : ni numéro, ni nom, ni montant.
-        for interdit in ("690000001", "NGONOKA", "198500", "BOUTIK"):
+        for interdit in ("690000001", "NGONOKA", "187500", "BOUTIK"):
             self.assertNotIn(interdit, incomplet[0])
 
     def test_un_journal_qui_refuse_ne_retient_aucun_sms(self):

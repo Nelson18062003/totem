@@ -1235,12 +1235,32 @@ les formes (`test_formats_mtn_francais.py`, noms longs compris) ;
 format change, on relit la base, pas seulement les tests** : le robot relit
 de lui-même tout l'historique dès que le lecteur change.
 
+**Un port qui s'ouvre ne dit rien de QUI est derrière.** Dans la nuit du 16
+au 17 octobre, les quatre modems se sont dits muets à la même minute ; au
+retour, trois comptes ont annoncé « carte retirée — insérée : MTN ·3501 ».
+Personne n'avait touché aux puces. Relancé, un modem quitte le bus et y
+revient sous le numéro que le noyau lui donne, dans l'ordre d'arrivée : le
+robot reprenait l'ancien numéro, ou le premier port qui s'ouvrait, et trois
+comptes se sont branchés sur le même modem — les trois autres sont restés
+sans personne pour relever leurs SMS. Et pour chercher, il interrogeait
+TOUTES les prises : sous Linux, deux ouvertures d'un même port réussissent
+sans un mot, et vider son tampon vide celui du voisin, qui perd sa réponse,
+se croit muet et se relance à son tour. Un compte ne reprend maintenant que
+le port où le modem donne SON IMEI (`_rouvrir`), et une prise tenue se refuse
+à tout autre (`ouvrir_la_prise`). `tests/test_retour_des_modems.py` refait la
+nuit sur un faux bus de vingt prises, avec l'ancienne reprise pour témoin :
+elle remet les quatre comptes sur le même modem, et vole la réponse du
+voisin.
+
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai
 nom de client précédé de « ESSAI » reste le nom d'un client : quatre
 s'étaient glissés ainsi dans les exemples, avec un vrai numéro de compte. La
 relecture les a retrouvés en comparant chaque mot du changement à l'export,
-pas à l'œil.
+pas à l'œil. Une seconde passe, sur les CHIFFRES, en a trouvé d'autres :
+un solde au franc près et une heure à la seconde désignent une opération
+aussi sûrement qu'un nom — le solde d'un exemple était celui qu'affichait
+la carte ce jour-là.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.
