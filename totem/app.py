@@ -2385,13 +2385,18 @@ class Robot:
                             p = analyser(texte, numeros=self._nos_numeros())
                             if p is not None:
                                 solde = p.solde_apres
-                        if (solde is not None and self.nuage
-                                and compte.carte.identifiee):
+                        if solde is not None and compte.carte.identifiee:
                             # L'heure réseau du SMS accompagne le solde : un
                             # relevé ancien rejoué dans le désordre ne doit
                             # pas écraser un solde déjà plus récent.
-                            self.nuage.publier_solde(
-                                compte.carte.iccid, solde, moment=heure_reseau)
+                            if self.nuage:
+                                self.nuage.publier_solde(
+                                    compte.carte.iccid, solde, moment=heure_reseau)
+                            # XAFe aussi, pour sa parité : mis en file, sans
+                            # réseau ici — la porte l'envoie à son tour.
+                            if self.xafe and self.xafe.actif:
+                                self.xafe.publier_solde(
+                                    compte.carte.iccid, solde, moment=heure_reseau)
                     except Exception:
                         pass    # un solde non relevé n'empêche rien
                     # Le cloud est prévenu tout de suite : inutile de lui faire
