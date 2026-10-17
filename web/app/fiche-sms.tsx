@@ -11,7 +11,7 @@ import { Feuille } from "./feuille";
 import {
   IconArrowDown, IconArrowUp, IconBank, IconBubble, IconChart, IconClose,
   IconCopy, IconDoc, IconLock, IconMail, IconMegaphone, IconPlus,
-  IconTransfer,
+  IconTransfer, IconWallet,
 } from "./icons";
 import { reveillerLaVeille } from "./veille";
 import { GestesRecu, useRecuDuSms } from "./recu";
@@ -31,6 +31,8 @@ export const CAT: Record<Categorie, typeof IconArrowDown> = {
   code: IconLock,
   publicite: IconMegaphone,
   illisible: IconMail,
+  doublon: IconCopy,
+  commission: IconWallet,
   message: IconBubble,
   inconnu: IconMail,
 };

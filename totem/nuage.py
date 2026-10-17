@@ -30,7 +30,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
-from .analyse_sms import analyser, categoriser
+from .analyse_sms import analyser, categoriser, commission_versee
 from .textes import t
 from .version import version
 
@@ -629,6 +629,14 @@ class Nuage:
             cat = categoriser(texte, numeros=numeros)
         except Exception:
             p, cat = None, "message"
+        # La commission d'Orange n'est pas un mouvement de la caisse (pas de
+        # montant), mais elle est gagnée : son montant va dans « commission ».
+        commission = p.commission if p else None
+        if cat == "commission":
+            try:
+                commission = commission_versee(texte)
+            except Exception:
+                commission = None
         return {
             "terminal": self.terminal,
             "source_id": id_local,
@@ -647,7 +655,7 @@ class Nuage:
             "reference": (p.reference if p else None),
             "solde_apres": (p.solde_apres if p else None),
             "frais": (p.frais if p else None),
-            "commission": (p.commission if p else None),
+            "commission": commission,
             "montant_brut": (p.montant_brut if p else None),
             "texte": texte,
             # L'heure réseau (TP-SCTS) quand on l'a, sinon rien : le web

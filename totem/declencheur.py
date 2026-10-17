@@ -48,7 +48,7 @@ class RefusRecu(Exception):
     propriétaire ce que le robot a LU, pas seulement ce qui manque.
 
     `raison` est un mot-clé (« echec », « code », « publicite », « illisible »,
-    « solde_pas_mouvement », « mouvement_sans_solde », « incompris ») que le
+    « doublon », « commission », « solde_pas_mouvement », « mouvement_sans_solde », « incompris ») que le
     guichet traduit en une phrase dans la langue du demandeur.
     """
 
@@ -202,7 +202,8 @@ def raison_du_refus(texte, nature=None, numeros=()):
         if motif.genre == SOLDE:
             return "solde_pas_mouvement"
     categorie = categoriser(texte, numeros=numeros)
-    if categorie in ("code", "echec", "publicite", "illisible"):
+    if categorie in ("code", "echec", "publicite", "illisible",
+                     "doublon", "commission"):
         return categorie
     if categorie == "solde":
         return "solde_pas_mouvement"

@@ -920,6 +920,8 @@ function iconeDe(c: Categorie): NomIcone {
   if (c === "transfert") return "Transfer";
   if (c === "publicite") return "Megaphone";
   if (c === "solde") return "Refresh";
+  if (c === "doublon") return "Copy";
+  if (c === "commission") return "Wallet";
   return "Bubble";
 }
 

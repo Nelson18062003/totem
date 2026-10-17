@@ -633,6 +633,20 @@ class Pilotage:
                 "This message carries a one-time code — never a receipt.",
                 "Ce message porte un code à usage unique — jamais de reçu.",
                 langue=langue),
+            "doublon": t(
+                "MTN announced this operation twice: this is the second "
+                "notice. The receipt belongs to the main message, with the "
+                "same transaction number.",
+                "MTN a annoncé cette opération deux fois : ceci est le "
+                "second avis. Le reçu se fait sur le message principal, au "
+                "même numéro de transaction.", langue=langue),
+            "commission": t(
+                "This is the commission Orange pays into its separate "
+                "account — earned, but not a movement of the till. No "
+                "receipt.",
+                "C'est la commission qu'Orange verse sur son compte à part "
+                "— gagnée, mais pas un mouvement de la caisse. Pas de reçu.",
+                langue=langue),
             "publicite": t(
                 "The robot read this message as an advert from the operator "
                 "— no receipt without a real movement.",

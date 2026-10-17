@@ -379,10 +379,25 @@ try {
       console.log(`      à l'écran : ${vu.replace(/\s+/g, " ").slice(0, 400)}`);
       throw new Error("l'avertissement manque — la suite de l'essai n'aurait pas de sens");
     }
-    await pagePatron.getByRole("button", { name: /Voir les paiements plus anciens/ }).click();
-    const recolle = await attendreTexte(pagePatron,
-      new RegExp(`(^|\\n)${nomDuPremier}(\\n|$)`, "i"));
-    verifier("au bouton, le premier du mois arrive", recolle, nomDuPremier);
+    // Un clic rend UNE page (cinq cents SMS) : selon le jour où l'essai
+    // tourne, le premier du mois est à un clic ou à plusieurs. Écrit un 13,
+    // l'essai n'en faisait qu'un — et le 16, il échouait sur une page qui
+    // marchait. On clique donc tant que le premier n'est pas là, borné.
+    const premierVu = new RegExp(`(^|\\n)${nomDuPremier}(\\n|$)`, "i");
+    let recolle = false, clicsMois = 0;
+    while (!recolle && clicsMois < 10) {
+      const bouton = pagePatron.getByRole("button", { name: /Voir les paiements plus anciens/ });
+      if (!(await bouton.count())) break;
+      await bouton.click();
+      clicsMois++;
+      recolle = await attendreTexte(pagePatron, premierVu, 15000);
+    }
+    verifier("au bouton, le premier du mois arrive", recolle,
+      `${nomDuPremier}, ${clicsMois} clic(s)`);
+    if (!recolle) {
+      const vuApres = (await corps(pagePatron)).replace(/\s+/g, " ");
+      console.log(`      à l'écran : …${vuApres.slice(-500)}`);
+    }
     verifier("et l'avertissement s'en va", !AVERTI.test(await corps(pagePatron)));
   } else {
     verifier("« Ce mois » tient dans la page : aucun avertissement",
