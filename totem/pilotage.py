@@ -59,8 +59,10 @@ import time
 from datetime import datetime, timedelta
 
 from .analyse_sms import _normaliser, solde_annonce
-from .compte import (WEB, TELEGRAM, MenuReferme, ReponseNonRecue,
-                     ReponseRefusee, SessionTenue)
+from .carte import operateur_xafe
+from .compte import (WEB, TELEGRAM, EnvoiIncertain, ErreurModem, MenuReferme,
+                     MessageTropLong, ReponseNonRecue, ReponseRefusee,
+                     SessionTenue)
 from .declencheur import NATURES, RefusRecu
 from .nuage import _horodatage
 from .textes import t
@@ -111,16 +113,52 @@ FILE_COMMUNE = "terminal"
 DEMANDE_PERIMEE_S = 60
 # Les demandes qui écrivent sur le réseau de l'opérateur. Les autres
 # (actualiser, reçu, identité, bouton, raccrocher) ne déplacent rien :
-# raccrocher en retard ne fait courir aucun risque.
-QUI_COMPOSENT = ("ussd", "ussd_reponse")
+# raccrocher en retard ne fait courir aucun risque. Un SMS à envoyer pour
+# XAFe en est : un code de vérification parti des heures après la demande
+# arrive chez quelqu'un qui ne l'attend plus.
+QUI_COMPOSENT = ("ussd", "ussd_reponse", "sms_xafe")
+
+# PLUSIEURS GUICHETS, UNE SEULE DISTRIBUTION.
+#
+# La plateforme Bonzini n'est plus le seul endroit d'où arrivent des
+# demandes : XAFe Exchange confie au boîtier des SMS à envoyer (le code qui
+# prouve qu'un numéro est à son propriétaire). Deux `Pilotage`, un par
+# guichet, auraient fait composer deux fils sur la même puce avec
+# `SessionTenue` pour seul filet. Il n'y a qu'une boucle de relève et qu'une
+# file par carte : chaque demande voyage avec le guichet qui l'a donnée, et
+# c'est à lui qu'on la réclame et qu'on rend compte. Le premier guichet est
+# la plateforme (soldes et cartes publiés) ; les autres ne reçoivent que
+# relever / réclamer / rendre compte.
+#
+# Les identifiants ne se confondent pas : la clé de vol est (guichet, id),
+# et le robot ne convertit JAMAIS un identifiant en nombre — XAFe nomme ses
+# SMS « sms:12 », à côté de ses transferts « 12 » et des commandes Bonzini.
+#
+# UNE DISTRIBUTION, MAIS UN FIL DE RELÈVE PAR GUICHET. La première version
+# relevait les deux guichets l'un après l'autre dans la même boucle. Or
+# relever, c'est attendre un serveur : un hébergeur XAFe en panne — qui
+# accepte la connexion et ne répond jamais, le cas d'une route 3G morte —
+# tient le GET quinze secondes, et pendant ces quinze secondes personne ne
+# relevait Bonzini. Mesuré : les demandes Bonzini relevées toutes les 18 s
+# au lieu de 3, et de 1,5 en session — c'est-à-dire à CHAQUE étape d'un
+# menu USSD tenu depuis l'application, qui abandonne à 30 s. Chaque guichet
+# a donc son fil de relève (`_relever`) ; la boucle (`_boucle`) ne garde
+# plus que la session et les orphelines. La distribution reste unique, sous
+# `_garde` : deux fils de relève ne font jamais deux files sur une puce.
+# `tests/test_xafe.py` mesure la cadence Bonzini sous un XAFe muet, avec la
+# boucle d'avant pour témoin.
 
 
 class Pilotage:
     """Relève les demandes de l'application web et les exécute."""
 
     def __init__(self, nuage, comptes, journal, pause=PAS_REPOS,
-                 programmeur=None):
+                 programmeur=None, guichets=()):
         self.nuage = nuage
+        # Le premier est la plateforme ; les autres (XAFe) ne reçoivent que
+        # relever / réclamer / rendre compte. Un guichet absent (None) ne
+        # compte pas : le robot peut n'avoir que XAFe.
+        self.guichets = [g for g in [nuage, *guichets] if g is not None]
         self.comptes = comptes
         self.journal = journal
         self.pause = pause
@@ -142,9 +180,17 @@ class Pilotage:
 
     # ---- cycle de vie ------------------------------------------------------
     def demarrer(self):
-        if self._marche or not (self.nuage and self.nuage.actif):
+        if self._marche or not any(getattr(g, "actif", False)
+                                   for g in self.guichets):
             return None
         self._marche = True
+        # Un fil de relève par guichet actif : celui qui attend un serveur
+        # muet n'attend que pour lui (voir l'en-tête du module).
+        for guichet in self.guichets:
+            if getattr(guichet, "actif", True):
+                threading.Thread(
+                    target=self._relever, args=(guichet,), daemon=True,
+                    name=f"relève {getattr(guichet, 'nom', 'nuage')}").start()
         fil = threading.Thread(target=self._boucle, daemon=True)
         fil.start()
         return fil
@@ -154,19 +200,37 @@ class Pilotage:
         self._raccrocher_tout()
 
     # ---- la boucle ---------------------------------------------------------
-    def _boucle(self):
+    def _pas(self):
+        """Le temps entre deux tours : court dès qu'un menu est tenu ou qu'une
+        demande est en vol (le réseau attend une réponse), posé au repos."""
+        return PAS_SESSION if (self._tenues() or self._en_vol) else self.pause
+
+    def _relever(self, guichet):
+        """Le fil de relève d'UN guichet : ses demandes, confiées à la file de
+        leur carte. Une panne de ce guichet — un serveur qui ne répond pas,
+        une exception inattendue — ne touche ni l'autre guichet ni la boucle
+        de la session : chacun son fil, chacun son `try`."""
         while self._marche:
             try:
-                for demande in self.nuage.commandes_en_attente():
-                    self._distribuer(demande)
+                for demande in guichet.commandes_en_attente():
+                    self._distribuer(demande, guichet)
+            except Exception as e:   # jamais mourir sur une demande
+                self.journal.evenement(t(
+                    f"remote desk: error {e}",
+                    f"guichet à distance : erreur {e}"))
+            time.sleep(self._pas())
+
+    def _boucle(self):
+        """La session et les orphelines — plus la relève, qui a ses fils."""
+        while self._marche:
+            try:
                 self._expirer_session()
                 self._abandonner_les_orphelines()
             except Exception as e:   # jamais mourir sur une demande
                 self.journal.evenement(t(
                     f"remote desk: error {e}",
                     f"guichet à distance : erreur {e}"))
-            time.sleep(PAS_SESSION if (self._tenues() or self._en_vol)
-                       else self.pause)
+            time.sleep(self._pas())
 
     # ---- une file par carte ----------------------------------------------
     #
@@ -182,31 +246,47 @@ class Pilotage:
         iccid = self._iccid_demande(demande.get("parametres") or {})
         return iccid or FILE_COMMUNE
 
-    def _distribuer(self, demande):
+    @staticmethod
+    def _cle_en_vol(guichet, demande):
+        """Ce qui distingue une demande en vol : SON guichet et son id. Deux
+        guichets numérotent chacun de leur côté."""
+        return (getattr(guichet, "nom", "nuage"), demande.get("id"))
+
+    def _distribuer(self, demande, guichet=None):
         """Confie la demande à la file de sa carte, une fois seulement.
 
         La demande reste « en attente » dans la base jusqu'à ce que sa file
         la réclame : la relève suivante la revoit donc. `_en_vol` empêche de
         la confier deux fois — et si cela arrivait quand même, la
         réclamation, elle, ne réussit qu'une fois (voir `_traiter`)."""
-        identifiant = demande.get("id")
+        guichet = guichet or self.nuage
+        cle_vol = self._cle_en_vol(guichet, demande)
+        with self._garde:
+            if cle_vol in self._en_vol:
+                return          # déjà confiée : rien à relire, rien à nommer
+        if demande.get("type") == "sms_xafe":
+            # XAFe ne nomme pas la carte : le robot la trouve AVANT de choisir
+            # la file, pour que la demande attende derrière celles de la même
+            # puce et jamais à côté d'elles. Après le dédoublonnage : une
+            # demande déjà en vol ne relit pas l'identité à chaque relève.
+            self._nommer_la_carte(demande)
         cle = self._cle_de_file(demande)
         with self._garde:
-            if identifiant in self._en_vol:
+            if cle_vol in self._en_vol:
                 return
-            self._en_vol.add(identifiant)
+            self._en_vol.add(cle_vol)
             file = self._files.get(cle)
             if file is None:
                 file = self._files[cle] = queue.Queue()
                 threading.Thread(target=self._servir, args=(cle, file),
                                  daemon=True).start()
-            file.put(demande)
+            file.put((guichet, demande))
 
     def _servir(self, cle, file):
         """Le fil d'une carte : ses demandes, dans l'ordre, et rien d'autre."""
         while self._marche:
             try:
-                demande = file.get(timeout=FILE_AU_REPOS)
+                guichet, demande = file.get(timeout=FILE_AU_REPOS)
             except queue.Empty:
                 with self._garde:
                     # Rien n'est arrivé pendant qu'on prenait le verrou ?
@@ -216,14 +296,14 @@ class Pilotage:
                         return
                 continue
             try:
-                self._traiter(demande)
+                self._traiter(demande, guichet)
             except Exception as e:   # un fil de carte ne meurt pas non plus
                 self.journal.evenement(t(
                     f"remote desk: error {e}",
                     f"guichet à distance : erreur {e}"))
             finally:
                 with self._garde:
-                    self._en_vol.discard(demande.get("id"))
+                    self._en_vol.discard(self._cle_en_vol(guichet, demande))
         with self._garde:
             if self._files.get(cle) is file:
                 self._files.pop(cle, None)
@@ -245,21 +325,22 @@ class Pilotage:
         # lui donne déjà écrite, dans le fuseau du Pi.
         limite = _horodatage(
             (datetime.now() - timedelta(seconds=ORPHELINE_S)).isoformat())
-        for demande in self.nuage.commandes_abandonnees(limite):
-            self.nuage.commande_maj(demande.get("id"), {
-                "etat": "echouee",
-                "resultat": t(
-                    "The terminal was interrupted while handling this request. "
-                    "It may or may not have gone through: check the balance "
-                    "before trying again.",
-                    "Le terminal a été interrompu pendant cette demande. Elle "
-                    "est peut-être passée, peut-être pas : vérifiez le solde "
-                    "avant de recommencer."),
-                "traitee_le": _horodatage(),
-            })
-            self.journal.evenement(t(
-                "remote desk: request abandoned after an interruption",
-                "guichet à distance : demande abandonnée après une coupure"))
+        for guichet in self.guichets:
+            for demande in guichet.commandes_abandonnees(limite):
+                guichet.commande_maj(demande.get("id"), {
+                    "etat": "echouee",
+                    "resultat": t(
+                        "The terminal was interrupted while handling this "
+                        "request. It may or may not have gone through: check "
+                        "the balance before trying again.",
+                        "Le terminal a été interrompu pendant cette demande. "
+                        "Elle est peut-être passée, peut-être pas : vérifiez "
+                        "le solde avant de recommencer."),
+                    "traitee_le": _horodatage(),
+                })
+                self.journal.evenement(t(
+                    "remote desk: request abandoned after an interruption",
+                    "guichet à distance : demande abandonnée après une coupure"))
 
     def _expirer_session(self):
         maintenant = time.time()
@@ -334,7 +415,8 @@ class Pilotage:
                 self._vie.pop(compte, None)
 
     # ---- exécution ---------------------------------------------------------
-    def _traiter(self, demande):
+    def _traiter(self, demande, guichet=None):
+        guichet = guichet or self.nuage
         identifiant = demande.get("id")
         genre = (demande.get("type") or "").strip()
         parametres = demande.get("parametres") or {}
@@ -352,7 +434,7 @@ class Pilotage:
         # et la mènera à bien ; ou le nuage est muet, et le tour suivant
         # réessaiera. Ne rien faire se rattrape toujours ; composer deux fois,
         # jamais.
-        prise = self.nuage.reclamer(identifiant)
+        prise = guichet.reclamer(identifiant)
         if not prise:
             return
 
@@ -365,7 +447,20 @@ class Pilotage:
                 resultat, reseau = self._ouvrir(parametres, langue)
             elif genre == "ussd_reponse":
                 resultat, reseau = self._repondre(identifiant, parametres,
-                                                  langue, prise=prise)
+                                                  langue, prise=prise,
+                                                  guichet=guichet)
+            elif genre == "sms_xafe":
+                # Un SMS ne part que sur l'ordre du guichet XAFe. Une ligne
+                # Bonzini qui porterait ce genre ferait partir un texte
+                # arbitraire depuis la SIM : une surface qu'on n'a pas
+                # décidé d'ouvrir — on la refuse, poliment.
+                if getattr(guichet, "nom", "nuage") != "xafe":
+                    raise RefusPoli(t(
+                        "Sending an SMS is an XAFe request only. Nothing was sent.",
+                        "L'envoi d'un SMS est une demande de XAFe seulement. "
+                        "Rien n'est parti.", langue=langue))
+                self._refuser_si_perimee(prise, genre, langue)
+                resultat = self._envoyer_sms_xafe(parametres, langue)
             elif genre == "ussd_fin":
                 self._raccrocher(self._iccid_demande(parametres),
                                  self._qui(parametres), langue)
@@ -418,7 +513,7 @@ class Pilotage:
         if reseau and etat == "faite":
             base = final.get("parametres", parametres)
             final["parametres"] = {**base, "reseau": reseau}
-        self.nuage.commande_maj(identifiant, final)
+        guichet.commande_maj(identifiant, final)
 
     def _refuser_si_perimee(self, prise, genre, langue=None):
         """Refuse une demande qui compose quand elle a trop attendu, ou quand
@@ -427,7 +522,10 @@ class Pilotage:
         Dans le doute on ne compose pas : une demande refusée se refait d'un
         geste, un transfert parti des heures trop tard ne se reprend pas."""
         age = getattr(prise, "age", None)
-        if age is not None and age <= DEMANDE_PERIMEE_S:
+        # Le guichet peut porter sa propre limite (XAFe) ; sinon celle de
+        # la plateforme.
+        limite = getattr(prise, "limite", None) or DEMANDE_PERIMEE_S
+        if age is not None and age <= limite:
             return
         if age is None:
             self.journal.evenement(t(
@@ -604,7 +702,8 @@ class Pilotage:
         self.journal.evenement(t(
             "remote desk: card identity changed",
             "guichet à distance : identité de carte modifiée"))
-        self.nuage.reveiller()      # l'application web le verra tout de suite
+        if self.nuage:
+            self.nuage.reveiller()  # l'application web le verra tout de suite
         dit = []
         if "numero" in champs:
             dit.append(t(f"number {champs['numero']}",
@@ -715,6 +814,8 @@ class Pilotage:
         """Le carnet repart tout de suite vers la base : l'écran qui vient
         d'enregistrer un bouton doit le voir au rafraîchissement suivant."""
         try:
+            if self.nuage is None:
+                return      # XAFe seul : pas de plateforme à prévenir
             if hasattr(self.nuage, "publier_raccourcis"):
                 self.nuage.publier_raccourcis()
             self.nuage.reveiller()
@@ -722,9 +823,12 @@ class Pilotage:
             pass    # la boucle de fond repassera
 
     def _republier(self, langue=None):
-        """« Actualiser » : l'état des comptes, repoussé à l'instant."""
-        self.nuage.publier_comptes(self.comptes)
-        self.nuage.enregistrer_terminal()
+        """« Actualiser » : l'état des comptes, repoussé à l'instant. Sans
+        plateforme (un robot qui n'a que XAFe), il n'y a rien à republier —
+        et rien à déréférencer."""
+        if self.nuage is not None:
+            self.nuage.publier_comptes(self.comptes)
+            self.nuage.enregistrer_terminal()
         return t("Terminal state published again.",
                  "État du terminal republié.", langue=langue)
 
@@ -788,6 +892,145 @@ class Pilotage:
             raise RefusPoli(t("No card in the terminal.",
                               "Aucune carte dans le terminal.", langue=langue))
         return self.comptes[0]
+
+    # ---- les demandes de XAFe : la carte se trouve, elle ne se devine pas ---
+    #
+    # JAMAIS `_compte_vise` pour XAFe : il rend `comptes[0]` quand rien ne
+    # cible — la première carte par défaut. Un code de vérification parti de
+    # la mauvaise carte arrive quand même ; un transfert parti de la mauvaise
+    # carte, non. La règle est la même pour les deux, et elle se pose ici.
+
+    def _comptes_de_l_operateur(self, operateur):
+        """Les cartes identifiées de cet opérateur XAFe (« mtn », « om »)."""
+        voulu = (operateur or "").strip().lower()
+        return [c for c in self.comptes
+                if c.carte.identifiee
+                and operateur_xafe(c.carte.operateur) == voulu]
+
+    def _numeros_de(self, compte):
+        """Les numéros à neuf chiffres sous lesquels cette carte se reconnaît :
+        celui déclaré au journal (Telegram /reglages, `[numeros]`) et celui
+        que la SIM dit d'elle-même, quand elle le dit."""
+        numeros = set()
+        identite = getattr(self.journal, "identite", None)
+        declare = identite(compte.carte.iccid)[0] if identite else ""
+        for brut in (declare, getattr(compte.carte, "numero", "")):
+            chiffres = re.sub(r"\D", "", str(brut or ""))[-9:]
+            if len(chiffres) == 9:
+                numeros.add(chiffres)
+        return numeros
+
+    def _candidats_xafe(self, parametres):
+        """Les cartes qui peuvent servir une demande XAFe.
+
+        Quand la demande NOMME le float (`float_numero`), c'est lui qui
+        choisit : la carte de cet opérateur qui porte ce numéro — un float
+        inconnu ne rend personne, jamais « la première ». Sans lui
+        (`messages_sortants` ne porte que l'opérateur aujourd'hui), toutes
+        les cartes de l'opérateur : une seule, et c'est elle ; deux, et on
+        refuse plutôt que de choisir — avec deux cartes MTN dans un boîtier,
+        aucun code ne part tant que XAFe ne nomme pas le float. C'est écrit
+        au contrat, et dans docs/XAFE.md."""
+        candidats = self._comptes_de_l_operateur(parametres.get("operateur"))
+        if parametres.get("float_numero"):
+            vise = re.sub(r"\D", "", str(parametres["float_numero"]))[-9:]
+            candidats = [c for c in candidats if vise in self._numeros_de(c)]
+        return candidats
+
+    def _compte_pour_xafe(self, parametres):
+        """La carte d'une demande XAFe, ou None si aucune — ou plusieurs."""
+        candidats = self._candidats_xafe(parametres)
+        return candidats[0] if len(candidats) == 1 else None
+
+    def _nommer_la_carte(self, demande):
+        """Pose `parametres.carte` (l'ICCID) sur une demande XAFe quand la
+        carte est sûre : la file et le masquage suivent. Sinon la demande va
+        dans la file commune, et le refus poli vient dans `_traiter`."""
+        p = demande.setdefault("parametres", {})
+        compte = self._compte_pour_xafe(p)
+        if compte is not None:
+            p["carte"] = compte.carte.iccid
+
+    def _compte_xafe(self, parametres, langue=None):
+        """La carte d'une demande XAFe, ou un refus poli qui dit pourquoi
+        rien n'est parti."""
+        candidats = self._candidats_xafe(parametres)
+        if len(candidats) == 1:
+            return candidats[0]
+        if not candidats:
+            if parametres.get("float_numero"):
+                raise RefusPoli(t(
+                    "No card of this operator carries that number on this "
+                    "terminal — declare it (card identity). Nothing was sent.",
+                    "Aucune carte de cet opérateur ne porte ce numéro sur ce "
+                    "terminal — déclarez-le (identité de la carte). Rien "
+                    "n'est parti.", langue=langue))
+            raise RefusPoli(t(
+                "No card of this operator on this terminal. Nothing was sent.",
+                "Aucune carte de cet opérateur sur ce terminal. Rien n'est "
+                "parti.", langue=langue))
+        raise RefusPoli(t(
+            "Several cards of this operator on this terminal — name the "
+            "float. Nothing was sent.",
+            "Plusieurs cartes de cet opérateur sur ce terminal — désignez le "
+            "float. Rien n'est parti.", langue=langue))
+
+    def _envoyer_sms_xafe(self, parametres, langue=None):
+        """Envoie le SMS que XAFe confie au boîtier (un code de vérification),
+        depuis la carte de l'opérateur demandé.
+
+        Pour un SMS, « échoué » est FINAL chez XAFe (pas de rejeu, le client
+        redemande un code) : quand l'accusé du modem n'est pas venu, on le
+        dit tel quel — « peut-être remis » —, on n'affirme ni l'un ni
+        l'autre. Ni le numéro ni le texte ne vont au journal : le texte porte
+        un code, et un journal se lit à plusieurs."""
+        compte = self._compte_xafe(parametres, langue)
+        numero = re.sub(r"\D", "", str(parametres.get("numero") or ""))
+        if len(numero) == 12 and numero.startswith("237"):
+            numero = numero[3:]
+        if len(numero) != 9:
+            raise RefusPoli(t(
+                "The number to text is not a nine-digit number. Nothing was sent.",
+                "Le numéro à joindre n'est pas un numéro à neuf chiffres. Rien "
+                "n'est parti.", langue=langue))
+        if not numero.startswith("6"):
+            # Une ligne fixe (2xx) ne reçoit pas de SMS ; parti sans
+            # indicatif en « international », 2xx… serait un autre pays.
+            raise RefusPoli(t(
+                "The number to text is not a Cameroonian mobile number (6…). "
+                "Nothing was sent.",
+                "Le numéro à joindre n'est pas un numéro de mobile camerounais "
+                "(6…). Rien n'est parti.", langue=langue))
+        texte = str(parametres.get("texte") or "")
+        if not texte.strip():
+            raise RefusPoli(t("Empty message. Nothing was sent.",
+                              "Message vide. Rien n'est parti.", langue=langue))
+        try:
+            reference = compte.envoyer_sms(numero, texte)
+        except MessageTropLong as trop:
+            raise RefusPoli(t(
+                f"Message too long: {trop.combien} characters, {trop.borne} at "
+                f"most. Nothing was sent.",
+                f"Message trop long : {trop.combien} caractères, {trop.borne} au "
+                f"plus. Rien n'est parti.", langue=langue))
+        except ReponseRefusee as refus:
+            raise RefusPoli(_caracteres_refuses(refus, langue))
+        except EnvoiIncertain:
+            raise RefusPoli(t(
+                "No delivery report from the modem: the SMS may still have "
+                "been sent.",
+                "Accusé non reçu du modem : le SMS a peut-être été remis.",
+                langue=langue))
+        except ErreurModem as e:
+            raise RefusPoli(t(
+                f"The modem refused ({e}). Nothing was sent.",
+                f"Le modem a refusé ({e}). Rien n'est parti.", langue=langue))
+        self.journal.evenement(t(
+            f"XAFe: verification SMS sent from {compte.libelle} (ref. {reference})",
+            f"XAFe : SMS de vérification envoyé depuis {compte.libelle} "
+            f"(réf. {reference})"))
+        return t(f"handed to the network (ref. {reference})",
+                 f"remis au réseau (réf. {reference})", langue=langue)
 
     def _ouvrir(self, parametres, langue=None):
         code = (parametres.get("code") or "").strip()
@@ -863,7 +1106,9 @@ class Pilotage:
             "ne tient qu'un menu USSD à la fois). Réessayez dans un instant.",
             langue=langue)
 
-    def _repondre(self, identifiant, parametres, langue=None, prise=None):
+    def _repondre(self, identifiant, parametres, langue=None, prise=None,
+                  guichet=None):
+        guichet = guichet or self.nuage
         texte = str(parametres.get("texte") or "")
         # L'EFFACEMENT D'ABORD, LE REFUS ENSUITE.
         #
@@ -889,7 +1134,7 @@ class Pilotage:
             # traîne dans la base.
             efface = False
             for _ in range(3):
-                if self.nuage.commande_maj(
+                if guichet.commande_maj(
                         identifiant,
                         {"parametres": self._parametres_masques(parametres)}):
                     efface = True
@@ -1011,7 +1256,7 @@ class Pilotage:
             if solde_douteux(reponse or ""):
                 return
             solde = solde_annonce(reponse or "")
-            if solde is not None and compte.carte.identifiee:
+            if solde is not None and compte.carte.identifiee and self.nuage:
                 self.nuage.publier_solde(compte.carte.iccid, solde)
         except Exception:
             pass    # un solde non relevé n'est pas une panne de session

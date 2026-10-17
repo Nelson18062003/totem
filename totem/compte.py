@@ -30,8 +30,8 @@ au moment même où l'on écrit : la carte sait qui tient sa session
 import threading
 
 from .carte import Carte
-from .modem import (USSD_OUVERTE, ErreurModem, MenuReferme, ReponseNonRecue,
-                    ReponseRefusee)
+from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
+                    MessageTropLong, ReponseNonRecue, ReponseRefusee)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -281,6 +281,19 @@ class Compte:
             except Exception:
                 return False
 
+    def envoyer_sms(self, numero, texte):
+        """Envoie un SMS depuis cette carte ; rend la référence du modem.
+
+        Sous le verrou de la carte (pour ne pas s'intercaler entre un
+        `ussd_demarrer` et sa suite), mais SANS `_echanger` : sur une erreur,
+        `_echanger` raccroche le menu USSD — celui qu'une personne tient
+        peut-être à cet instant sur la même carte. Un SMS ne tient aucun
+        menu : `session_ouverte`, `titulaire`, `dernier_menu` ne bougent pas.
+        Les exceptions du modem (`ReponseRefusee`, `ErreurModem`,
+        `EnvoiIncertain`) remontent telles quelles."""
+        with self.verrou:
+            return self.modem.envoyer_sms(numero, texte)
+
     def redemarrer(self):
         with self.verrou:
             self.modem.redemarrer()
@@ -302,5 +315,5 @@ def libelles_uniques(comptes):
 
 
 __all__ = ["Compte", "libelles_uniques", "ErreurModem", "SessionTenue",
-           "ReponseRefusee", "MenuReferme", "ReponseNonRecue",
-           "WEB", "TELEGRAM"]
+           "ReponseRefusee", "MenuReferme", "ReponseNonRecue", "EnvoiIncertain",
+           "MessageTropLong", "WEB", "TELEGRAM"]

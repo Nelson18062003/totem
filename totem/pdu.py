@@ -29,7 +29,8 @@ Ce que contient un PDU reçu (SMS-DELIVER), dans l'ordre
 import re
 from datetime import datetime, timedelta, timezone
 
-from .gsm import ALPHABET_GSM, EXTENSION_GSM, ECHAPPEMENT
+from .gsm import (ALPHABET_GSM, EXTENSION_GSM, ECHAPPEMENT, ChargeRefusee,
+                  empaqueter_septets, encode_gsm7, encode_ucs2)
 
 RE_HEXA_PDU = re.compile(r"\A[0-9A-Fa-f]+\Z")
 
@@ -210,6 +211,105 @@ def decoder(pdu_hexa):
         reference, total, position = decoupe
         return Morceau(expediteur, texte, horodatage, reference, total, position)
     return Morceau(expediteur, texte, horodatage)
+
+
+# ---- écriture : un SMS à ENVOYER (SMS-SUBMIT) -------------------------------
+# Un SMS tient en 160 caractères de l'alphabet GSM, 70 en UCS2. Au-delà, il
+# faudrait le découper avec un en-tête (UDH) : on ne le fait pas — ce que le
+# robot envoie est un code de vérification, une ligne. Trop long, on refuse.
+SEPTETS_MAX = 160
+UCS2_MAX = 70
+OCTETS_UCS2_MAX = 140       # 70 caractères du plan de base ; un emoji en prend 4
+
+
+class ChargeTropLongue(ChargeRefusee):
+    """Le message dépasse ce qu'un seul SMS porte. Rien n'est parti.
+
+    Une `ChargeRefusee` à part : la première version levait la générique,
+    et `Pilotage` racontait sa phrase lettre par lettre — « des caractères
+    que le réseau ne reçoit pas (« 7 » « 5 » «   » « c » « a » …) ». Le refus
+    était juste, la phrase était fausse."""
+
+    def __init__(self, combien, borne, unite):
+        super().__init__(f"{combien} {unite}, {borne} au plus")
+        self.combien, self.borne, self.unite = combien, borne, unite
+
+
+def numero_international(numero):
+    """Les chiffres du destinataire, indicatif du Cameroun compris.
+
+    XAFe donne le numéro à neuf chiffres (« 677123456 ») ; on lui remet 237
+    pour que le réseau ne cherche pas un numéro national depuis une SIM
+    peut-être en itinérance. Un numéro déjà donné avec 237 part tel quel.
+    Un numéro national qui ne commence pas par 6 (une ligne fixe, 2xx) est
+    REFUSÉ, pas deviné : parti « international » sans indicatif, le réseau
+    l'aurait lu comme +2xx…, un autre pays — et un code de vérification
+    arrivant chez un inconnu à l'étranger vaut moins qu'un refus."""
+    chiffres = re.sub(r"\D", "", str(numero or ""))
+    if len(chiffres) == 9:
+        if not chiffres.startswith("6"):
+            raise ValueError(f"numéro national hors mobile : {chiffres[:1]}xx")
+        chiffres = "237" + chiffres
+    if not 8 <= len(chiffres) <= 15:
+        raise ValueError(f"numéro invalide : {len(chiffres)} chiffres")
+    return chiffres
+
+
+def encoder_submit(numero, texte):
+    """(longueur du TPDU, PDU hexadécimal) d'un SMS à envoyer à `numero`.
+
+    Le format, dans l'ordre (3GPP 23.040 §9.2.2.2) :
+
+        00          pas de centre SMS dans le PDU : celui de la SIM
+        01          SMS-SUBMIT, sans période de validité, sans en-tête
+        00          TP-MR : le modem pose la référence lui-même
+        <n>91<…>    TP-DA : nombre de chiffres, type d'adresse, chiffres
+        00          TP-PID : SMS ordinaire
+        00 | 08     TP-DCS : alphabet GSM 7 bits, ou UCS2
+        <longueur>  TP-UDL : septets (GSM) ou octets (UCS2)
+        <données>
+
+    Pourquoi 0x91 : « international » (bit 4 et 5 : 001) en numérotation
+    ISDN (0001). XAFe donne le numéro à neuf chiffres (« 677123456ʼ ») ; on
+    lui remet l'indicatif du Cameroun pour que le réseau ne cherche pas un
+    numéro national depuis une SIM peut-être en itinérance. Un numéro déjà
+    donné avec 237 part tel quel. Les chiffres s'écrivent par paires
+    inversées, F de bourrage si leur nombre est impair — l'inverse de
+    `_adresse`.
+
+    La longueur rendue est celle que `AT+CMGS=<n>` attend : les octets du
+    TPDU, SANS l'octet du centre SMS."""
+    chiffres = numero_international(numero)
+    if len(chiffres) % 2:
+        bourre = chiffres + "F"
+    else:
+        bourre = chiffres
+    paires = "".join(bourre[i + 1] + bourre[i] for i in range(0, len(bourre), 2))
+    adresse = f"{len(chiffres):02X}91{paires}"
+
+    try:
+        septets_ = encode_gsm7(texte)
+    except ChargeRefusee:
+        # Un caractère hors alphabet GSM : tout le message part en UCS2, où
+        # il ne tient que 70 caractères — 140 OCTETS, à compter sur ce qui
+        # part : un caractère hors du plan de base (un emoji) en prend quatre,
+        # et compter les caractères annonçait un TP-UDL faux.
+        donnees = encode_ucs2(texte)
+        octets = len(donnees) // 2
+        if octets > OCTETS_UCS2_MAX:
+            # La longueur se dit dans l'unité de sa borne : les caractères
+            # tels que le réseau les compte (deux octets chacun, un emoji en
+            # vaut deux). `len(texte)` disait « 36 caractères, 70 au plus »
+            # pour 36 emojis — un refus juste, une phrase qui se contredit.
+            raise ChargeTropLongue(len(donnees) // 4, UCS2_MAX, "caractères (UCS2)")
+        dcs, udl = "08", octets
+    else:
+        if len(septets_) > SEPTETS_MAX:
+            raise ChargeTropLongue(len(septets_), SEPTETS_MAX, "caractères")
+        dcs, udl = "00", len(septets_)
+        donnees = empaqueter_septets(septets_).hex().upper()
+    hexa = f"000100{adresse}00{dcs}{udl:02X}{donnees}"
+    return len(hexa) // 2 - 1, hexa
 
 
 # ---- recollage -------------------------------------------------------------
