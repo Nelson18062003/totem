@@ -191,6 +191,10 @@ class PorteXafe:
         self._crochet_en_panne = {}
         # La prochaine relève des commandes XAFe (horloge monotone).
         self._prochain_releve = 0.0
+        # Le dernier solde annoncé de chaque carte, en attente du tour de la
+        # porte : iccid → (solde, heure de l'annonce).
+        self._soldes_a_publier = {}
+        self._verrou_soldes = threading.Lock()
         # Ce que le GUICHET (relève, réclamation, compte rendu) a posé en
         # dernier dans `derniere_erreur` : c'est cela, et cela seul, qu'un
         # 200 de la relève a le droit d'effacer (`_la_porte_repond`).
@@ -410,6 +414,11 @@ class PorteXafe:
             "texte": texte,
             "emis_le": _horodatage(emis_le) if emis_le else None,
             "recu_le": _horodatage(date),
+            # Le « nouveau solde » que l'OPÉRATEUR annonce dans ce SMS : la
+            # colonne « floats » de la parité chez XAFe (l'argent posé couvre
+            # ce qui est dû). Jamais un calcul à nous ; absent, il n'est pas
+            # inventé.
+            **({"solde_apres": p.solde_apres} if getattr(p, "solde_apres", None) is not None else {}),
         }
 
     def _cartes_en_attente(self):
@@ -755,8 +764,63 @@ class PorteXafe:
         """XAFe n'offre pas de liste des commandes en cours : [] toujours."""
         return []
 
-    def publier_solde(self, *args, **kwargs):
-        return True     # XAFe ne reçoit pas les soldes : c'est la plateforme
+    def publier_solde(self, iccid, solde, moment=None):
+        """Un solde que l'opérateur vient d'annoncer (consultation USSD, SMS
+        de relevé, « nouveau solde » d'un mouvement) : XAFe le reçoit pour la
+        PARITÉ — ce que les floats tiennent vraiment, face à ce que XAFe
+        doit. Le SOLDE d'un float de XAFe, pas un SMS : rien d'autre ne part.
+
+        Jamais de réseau ici : on l'appelle depuis la lecture d'un SMS ou
+        d'une session USSD, qui n'attend pas la 3G. Le dernier solde de
+        chaque carte attend le prochain tour de la porte ; un plus récent
+        remplace un plus ancien, jamais l'inverse."""
+        if not (self.actif and iccid) or solde is None:
+            return False
+        try:
+            solde = float(solde)
+        except (TypeError, ValueError):
+            return False
+        if solde < 0:
+            return False
+        quand = _horodatage(moment) if moment else _horodatage()
+        with self._verrou_soldes:
+            ancien = self._soldes_a_publier.get(iccid)
+            if ancien is None or ancien[1] <= quand:
+                self._soldes_a_publier[iccid] = (solde, quand)
+        self.reveiller()
+        return True
+
+    def _pousser_soldes(self):
+        """Les soldes en attente, en un appel signé. Une carte dont le float
+        n'est pas (encore) connu garde son solde pour le tour suivant ; un
+        solde parti n'est retiré que s'il n'a pas été remplacé entre-temps."""
+        with self._verrou_soldes:
+            attente = dict(self._soldes_a_publier)
+        if not attente:
+            return 0
+        lot, partis = [], {}
+        for iccid, (solde, quand) in attente.items():
+            float_ = self._float_de(iccid)
+            if float_ is SANS_FLOAT:
+                partis[iccid] = (solde, quand)      # un autre réseau : XAFe n'en a que faire
+                continue
+            if not isinstance(float_, tuple):
+                continue
+            lot.append({"operateur": float_[0], "float_numero": float_[1],
+                        "solde": solde, "annonce_le": quand})
+            partis[iccid] = (solde, quand)
+        if lot:
+            try:
+                statut, _corps, _h = self._appel("POST", "totem-sms", {"soldes": lot})
+            except PorteMuette:
+                return 0
+            if statut != 200:
+                return 0
+        with self._verrou_soldes:
+            for iccid, valeur in partis.items():
+                if self._soldes_a_publier.get(iccid) == valeur:
+                    del self._soldes_a_publier[iccid]
+        return len(lot)
 
     def publier_comptes(self, *args, **kwargs):
         return True
@@ -807,6 +871,11 @@ class PorteXafe:
         dont rien n'a été clos, rend 0 et sort : on ne relit pas la même file
         en boucle sur une panne."""
         total = 0
+        try:
+            self._pousser_soldes()
+        except Exception as e:
+            # un solde qui ne part pas ne retient jamais l'argent
+            self.derniere_erreur = f"robot : {type(e).__name__}: {e}"[:300]
         while self._marche:
             envoyes = self.pousser_paiements()
             total += envoyes

@@ -156,6 +156,7 @@ class FauxXafe:
         self.messages = {}          # id → ligne sms
         self.deja_prises = set()
         self.patches = []           # (chemin, corps dict)
+        self.soldes = []            # les soldes reçus seuls (consultations USSD, relevés)
         self.depose_il_y_a = 0.0
         self.verrou = threading.Lock()
         self.compteur = 0
@@ -249,6 +250,11 @@ class FauxXafe:
         return 404, {"erreur": "inconnu"}
 
     def _sms(self, terminal, charge):
+        # des soldes seuls (0016) : comme la vraie porte, un par un
+        if isinstance(charge, dict) and isinstance(charge.get("soldes"), list) and "lignes" not in charge:
+            with self.verrou:
+                self.soldes.extend(charge["soldes"])
+            return 200, {"soldes": [{"solde": "note"} for _ in charge["soldes"]]}
         if isinstance(charge, list):
             lignes, liste = charge, True
         elif isinstance(charge, dict) and isinstance(charge.get("lignes"), list):
@@ -999,7 +1005,9 @@ class TestPousser(Banc):
             "terminal": "akwa-1", "source_id": 1, "operateur": "mtn",
             "float_numero": "677000000", "sens": "entree", "montant": 25000,
             "numero": "677123456", "tiers": "NGONO Marie", "reference": "PP0947",
-            "texte": SMS_ENTREE, "emis_le": None})
+            "texte": SMS_ENTREE, "emis_le": None,
+            # le « nouveau solde » que l'opérateur annonce : la parité chez XAFe
+            "solde_apres": 900000})
         self.assertNotIn("carte", ligne)
         self.assertEqual(_etat(journal, 1), (1, "credite XAFe-DP-000001", 0))
 
@@ -2088,6 +2096,78 @@ def compte_mtn(carte=None):
 def _patches_sms(guichet, ident):
     return [(chemin, corps) for chemin, corps in guichet.patches
             if chemin.endswith(f"/totem-commandes/{ident}")]
+
+
+class PorteSansSoldes(PorteXafe):
+    """Le témoin : la porte d'avant, qui jetait les soldes (« XAFe ne reçoit
+    pas les soldes »). Les mêmes exigences doivent échouer sur elle."""
+
+    def publier_solde(self, *args, **kwargs):
+        return True
+
+
+class TestLesSoldesDesFloats(Banc):
+    """La colonne « floats » de la parité chez XAFe : le solde que
+    l'opérateur annonce, sans réseau dans l'appel, le plus récent gagnant."""
+
+    def _exiger_le_solde_publie(self, classe):
+        g = self.guichet()
+        journal = journal_avec_carte()
+        p = self.porte(g, journal, classe)
+        debut = time.monotonic()
+        p.publier_solde(ICCID, 1250000, moment="2026-10-17T09:00:00+01:00")
+        self.assertLess(time.monotonic() - debut, 0.05, "aucun réseau dans l'appel")
+        self.assertEqual(g.requetes, [], "rien ne part avant le tour de la porte")
+        p._pousser_tout()
+        self.assertEqual(g.soldes, [{"operateur": "mtn", "float_numero": "677000000",
+                                     "solde": 1250000.0, "annonce_le": "2026-10-17T09:00:00+01:00"}])
+        p._pousser_tout()
+        self.assertEqual(len(g.soldes), 1, "un solde parti ne repart pas")
+
+    def test_un_solde_annonce_part_au_tour_suivant(self):
+        self._exiger_le_solde_publie(PorteXafe)
+
+    def test_le_temoin_jette_le_solde(self):
+        with self.assertRaises(AssertionError, msg="LE TÉMOIN PASSE : l'essai ne mesure rien"):
+            self._exiger_le_solde_publie(PorteSansSoldes)
+
+    def test_un_solde_plus_ancien_ne_remplace_pas_un_plus_recent(self):
+        g = self.guichet()
+        p = self.porte(g, journal_avec_carte())
+        p.publier_solde(ICCID, 500, moment="2026-10-17T10:00:00+01:00")
+        p.publier_solde(ICCID, 400, moment="2026-10-17T08:00:00+01:00")   # un relevé rejoué en retard
+        p._pousser_tout()
+        self.assertEqual([x["solde"] for x in g.soldes], [500.0])
+
+    def test_une_carte_sans_numero_garde_son_solde_pour_plus_tard(self):
+        g = self.guichet()
+        journal = journal_avec_carte(numero=None)
+        p = self.porte(g, journal)
+        p.publier_solde(ICCID, 700)
+        p._pousser_tout()
+        self.assertEqual(g.soldes, [], "pas de float connu : rien ne part")
+        journal.definir_identite(ICCID, numero="677000000")
+        p._pousser_tout()
+        self.assertEqual([x["solde"] for x in g.soldes], [700.0], "le numéro déclaré, le solde part")
+
+    def test_un_solde_negatif_ou_illisible_ne_part_jamais(self):
+        g = self.guichet()
+        p = self.porte(g, journal_avec_carte())
+        self.assertFalse(p.publier_solde(ICCID, -1))
+        self.assertFalse(p.publier_solde(ICCID, "beaucoup"))
+        self.assertFalse(p.publier_solde("", 100))
+        p._pousser_tout()
+        self.assertEqual(g.soldes, [])
+
+    def test_xafe_muet_ne_perd_pas_le_solde(self):
+        g = self.guichet()
+        p = self.porte(g, journal_avec_carte())
+        p.publier_solde(ICCID, 900)
+        g.en_panne = True
+        p._pousser_tout()
+        g.en_panne = False
+        p._pousser_tout()
+        self.assertEqual([x["solde"] for x in g.soldes], [900.0], "repris au tour suivant")
 
 
 class TestLeGuichetDesSms(Banc):
