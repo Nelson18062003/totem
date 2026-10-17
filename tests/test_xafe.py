@@ -428,6 +428,27 @@ class PorteSansSorties(PorteXafe):
                               emis_le, numeros)
 
 
+class PorteQuiEnvoieLesCommissions(PorteXafe):
+    """TÉMOIN (figé avant la correction) : la porte ne voyait pas qu'un SMS
+    ne parlait que d'une commission, et l'envoyait chez XAFe comme un
+    encaissement — où elle restait retenue pour toujours."""
+
+    def _ligne(self, *args, **kwargs):
+        import totem.xafe as porte_xafe
+        vrai = porte_xafe.analyser
+
+        def aveugle(texte, numeros=()):
+            p = vrai(texte, numeros=numeros)
+            if p is not None:
+                p.commission = None
+            return p
+        porte_xafe.analyser = aveugle
+        try:
+            return super()._ligne(*args, **kwargs)
+        finally:
+            porte_xafe.analyser = vrai
+
+
 class PorteToutMarque(PorteXafe):
     """LE TÉMOIN : un 200, et toutes les lignes du lot sont closes, quel que
     soit le verdict de chacune."""
@@ -1290,6 +1311,34 @@ class TestPousser(Banc):
         with self.assertRaises(AssertionError, msg="LE TÉMOIN PASSE : la porte "
                                "d'avant tient la même exigence, l'essai ne mesure rien"):
             self._exiger_la_sortie_constatee(PorteSansSorties)
+
+    # Deux vrais SMS de la puce Orange du 17/10/2026, numéros changés : la
+    # commission de l'agent, puis le retrait du client qui la fait naître.
+    SMS_COMMISSION = ("You received the commission of 1350 FCFA for transaction Cash Out "
+                      "which is executed from WOULEGE, 699000000 to WONDER PHONE,696103864.")
+    SMS_CASH_OUT = ("CashOut success to 699000000 WOULEGE from 696103864 WONDER PHONE. The details "
+                    "are as follows: transaction amount: 500000 FCFA, charges: 0 FCFA, commission: "
+                    "0 FCFA, TXN id :CO261017.0545.C42162")
+
+    def _exiger_la_commission_gardee_ici(self, porte_cls):
+        g = self.guichet()
+        journal = journal_avec_carte(numero="696103864")
+        journal.sms("OrangeMoney", self.SMS_COMMISSION, "OM ·0011", ICCID)
+        journal.sms("OrangeMoney", self.SMS_CASH_OUT, "OM ·0011", ICCID)
+        p = self.porte(g, journal, porte_cls)
+        self.assertEqual(p.pousser_paiements(), 1, "seul le retrait du client part")
+        lignes = g.lignes_recues()
+        self.assertEqual([(l["montant"], l["reference"]) for l in lignes], [(500000, "CO261017.0545.C42162")])
+        self.assertEqual(_etat(journal, 1)[:2], (1, "sans objet"), "la commission est close ici, sans requête")
+
+    def test_la_commission_d_un_agent_ne_part_pas(self):
+        """Une commission entre sur la puce, mais ne paie aucun client : chez
+        XAFe, elle restait retenue pour toujours (vu le 17/10/2026)."""
+        self._exiger_la_commission_gardee_ici(PorteXafe)
+
+    def test_le_temoin_envoie_la_commission(self):
+        with self.assertRaises(AssertionError, msg="LE TÉMOIN PASSE : l'essai ne mesure rien"):
+            self._exiger_la_commission_gardee_ici(PorteQuiEnvoieLesCommissions)
 
     def test_sorties_non_les_garde_ici(self):
         g = self.guichet()

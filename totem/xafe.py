@@ -340,6 +340,14 @@ class PorteXafe:
         # numéros pour trancher — ne part pas : deviner retournerait l'argent.
         if p.sens not in ("entree", "sortie") or (p.sens == "sortie" and not self.sorties):
             return "sans objet"
+        # La COMMISSION d'un agent (« You received the commission of 1350 FCFA
+        # for transaction Cash Out… ») est bien de l'argent qui entre sur la
+        # puce — TOTEM la compte —, mais ce n'est le paiement d'aucun client :
+        # chez XAFe, elle restait « retenue » pour toujours, sans ID ni payeur.
+        # Le message entier ne parle que d'elle : son montant EST la commission.
+        commission = getattr(p, "commission", None)
+        if p.sens == "entree" and commission and commission == p.montant and not p.reference:
+            return "sans objet"
         # Sans ICCID, la ligne n'a pas de carte : le modem n'avait pas encore
         # lu la puce quand ce SMS est entré. Aucun float ne peut s'y
         # rattacher — et ce n'est PAS « un autre réseau » : la ligne ATTEND,
