@@ -1235,18 +1235,27 @@ class Prise:
     Vraie, comme l'était le « True » d'avant : `if not nuage.reclamer(…)` se
     lit toujours de la même façon. `age` : les secondes écoulées entre le
     dépôt de la demande et sa prise, sur l'horloge de la base ; None quand
-    on ne peut pas le savoir (heure de dépôt absente ou illisible)."""
+    on ne peut pas le savoir (heure de dépôt absente ou illisible).
 
-    __slots__ = ("age",)
+    `limite` : l'âge au-delà duquel CE guichet ne veut plus qu'on compose ;
+    None = la règle de la plateforme (`pilotage.DEMANDE_PERIMEE_S`). XAFe
+    garde la date du dépôt sur ses reprises, et ses demandes ne viennent pas
+    d'un écran qui abandonne à trente secondes : la règle des soixante
+    secondes les refuserait toutes."""
 
-    def __init__(self, age=None):
+    __slots__ = ("age", "limite")
+
+    def __init__(self, age=None, limite=None):
         self.age = age
+        self.limite = limite
 
     def __bool__(self):
         return True
 
     def __repr__(self):
-        return f"Prise(age={self.age!r})"
+        if self.limite is None:
+            return f"Prise(age={self.age!r})"
+        return f"Prise(age={self.age!r}, limite={self.limite!r})"
 
 
 def _signal_publiable(valeur):

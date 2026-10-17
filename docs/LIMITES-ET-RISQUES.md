@@ -100,6 +100,10 @@ du Pi — rien n'est perdu — mais la plateforme ne l'aura jamais.
 *Reste à faire* : une file de quarantaine avec re-tentative après réparation
 du schéma, et un compteur visible dans la santé du terminal.
 
+Vaut pour XAFe : une ligne `refuse` est close avec son motif
+(`sms.xafe_reponse`) ; une ligne `erreur` (moteur XAFe en panne) RÉESSAIE,
+elle, au tour suivant.
+
 ### 🔴 Un journal reconstruit réutilise les mêmes identifiants
 La clé du cloud est (terminal, n° de ligne du journal). Après une carte SD
 morte ou une restauration, le journal repart de la ligne 1 : chaque nouveau
@@ -109,6 +113,10 @@ Rien ne le détecte aujourd'hui.
 *Reste à faire* : une empreinte d'instance du journal (créée à la première
 ouverture, jointe à chaque envoi) dans la clé d'unicité du cloud — à poser
 en même temps côté base et côté robot, jamais l'un sans l'autre.
+
+🔴 Vaut aussi pour XAFe, et là c'est un CRÉDIT CLIENT qui manque : un
+nouveau SMS n°48213 est « déjà vu » (`deja: true`), XAFe rend l'ancienne
+réponse et ne crédite pas. Même reste à faire, des deux côtés.
 
 ### 🟡 Deux paiements identiques à un quart d'heure d'écart
 Le garde-fou anti-doublon (même expéditeur, même texte, même compte, 15 min)

@@ -230,6 +230,8 @@ totem/            le programme (Python 3, seule dépendance réelle : pyserial)
   polices/        DM Sans, embarquée dans chaque reçu (le Pi est parfois seul)
   sante.py        santé du Pi : tension, température, disque, sauvegardes
   nuage.py        pont vers Supabase (hors-ligne d'abord, file d'attente)
+  xafe.py         la destination XAFe Exchange : les encaissements déposés,
+                  les SMS de vérification envoyés (signé, hors-ligne d'abord)
   config.py       chargement totem.conf
 brand/            la marque : « La Tresse », verrouillages, icônes, motif,
                   et les scripts qui régénèrent le tout
@@ -251,6 +253,7 @@ docs/
   MISE-EN-LIGNE.md        déployer l’application web sur Vercel
   MOBILE.md               l'application du téléphone : choix, partage, publication
   CLOUD.md                brancher le terminal sur Supabase (facultatif)
+  XAFE.md                 brancher le terminal sur XAFe Exchange (facultatif)
   TESTS-FRANCE.md         check-list avant envoi au Cameroun
   FICHE-DOUALA.md         fiche imprimable : les 4 gestes de la personne sur place
   USSD-OU-STK.md          pourquoi l'USSD, et ce que changerait une API opérateur
@@ -266,4 +269,6 @@ web/              l'application web (Next.js) — maquette sur données de démo
    déjà la source de données.
 2. **Rapprochement automatique** : un encaissement reconnu peut être rapproché
    d'une facture ou d'une réservation par le système qui les gère.
-   TOTEM expose ses paiements ; c'est à l'autre bout de venir les lire.
+   TOTEM expose ses paiements à la plateforme, et les POUSSE chez XAFe
+   Exchange (`docs/XAFE.md`) : le rapprochement s'y fait par la référence
+   de l'opérateur.

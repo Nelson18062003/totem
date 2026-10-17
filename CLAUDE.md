@@ -44,7 +44,9 @@ cd web && npm test                        # les règles partagées (noyau)
 node recus/maquette.mjs                   # les reçus PDF
 python3 brand/generer.py                  # les fichiers de la marque
 python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
-python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait
+python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait — et chez XAFe, même montant
+python3 -m unittest tests.test_xafe       # la porte XAFe : signée, verdicts ligne par ligne, le guichet des SMS, témoins
+python3 -m unittest tests.test_envoi_sms  # le robot ENVOIE un SMS : alphabet, PDU, dialogue CMGS, la carte
 python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
@@ -1285,6 +1287,69 @@ pas à l'œil. Une seconde passe, sur les CHIFFRES, en a trouvé d'autres :
 un solde au franc près et une heure à la seconde désignent une opération
 aussi sûrement qu'un nom — le solde d'un exemple était celui qu'affichait
 la carte ce jour-là.
+
+**Le fichier d'exemple doit se charger, et un test le dit.** En écrivant
+`transferts = non` dans `config.example.conf` pour XAFe, l'essai de chargement
+a refusé : « Not a boolean: oui ». Le fichier portait déjà `recus = oui` et
+`sauvegarde_quotidienne = oui` — en français, comme tout ce qui parle au
+propriétaire —, et `configparser` ne connaît que yes/no : le fichier que
+l'installateur copie tel quel ne se chargeait pas, et personne ne l'avait
+lancé. Le lecteur comprend maintenant « oui » et « non », et
+`TestLaConfiguration.test_le_fichier_d_exemple_se_charge` charge le vrai
+fichier.
+
+**Une étape de harnais écrite sans être lancée n'a encore rien mesuré.**
+L'étape XAFe d'`eprouver-la-chaine` a été écrite un jour où la plateforme
+Next ne s'installait pas ici ; rejouée seule, hors harnais, elle tenait. Au
+premier passage ENTIER, elle a échoué : « 5 ligne(s) » montées chez Bonzini
+là où elle en attendait une. Rien n'était cassé — le robot de la coupure de
+courant est construit sans `numeros`, le suivant avec, et l'empreinte du
+lecteur porte les numéros déclarés : Bonzini relisait tout l'historique,
+comme c'est voulu. L'étape comptait les lignes PARTIES quand sa promesse
+porte sur LA ligne neuve ; elle regarde maintenant cette ligne-là
+(`envoye = 1, envoye_xafe = 0`). Le harnais n'a pas trouvé un défaut de la
+porte, il a trouvé un défaut du harnais — et c'est exactement ce qu'un
+contrôle rejoué « à côté » ne pouvait pas voir.
+
+**Une ligne qui attend ne doit pas tenir la file.** La porte XAFe laissait en
+file les encaissements d'une carte sans numéro déclaré — voulu : ils partent
+dès que le numéro est inscrit. Mais elle cherchait ce numéro AVANT de lire le
+SMS (des publicités attendaient un numéro dont elles n'avaient aucun besoin),
+et lisait la file par id, cent lignes, sans écarter personne. La relecture
+l'a joué : deux cartes MTN, une seule déclarée — le cas ordinaire à la mise en
+service —, cent SMS de l'autre, puis UN encaissement de la carte déclarée :
+trois tours, zéro requête, « 101 en attente », le client XAFe jamais crédité,
+et rien d'autre au journal que « la carte ·0011 n'a pas de numéro déclaré ».
+Tous les tests passaient : chacun n'avait qu'une carte. L'analyse vient
+maintenant d'abord, la file écarte les cartes qui attendent
+(`sms_a_pousser_xafe(sauf_iccid=…)`) et lit au-delà d'un lot qui n'a rien
+donné ; une carte d'un autre réseau, qui n'aura JAMAIS de float, se clôt au
+lieu d'attendre (`SANS_FLOAT`). `TestLaFileNeSeBloquePas` rejoue la scène,
+avec la porte d'avant pour témoin (`PorteTeteDeFile`).
+
+**Un refus qu'on ne reconnaît pas est un silence.** Le robot a appris à
+envoyer un SMS (`AT+CMGS`, pour le code de vérification que XAFe lui confie).
+Le premier jet guettait les refus avec la règle qui servait déjà à l'USSD,
+`RE_ERREUR_AT` — qui ne connaît que « +CME ERROR ». Le service SMS, lui,
+répond « +CMS ERROR: 500 » : le faux port l'a dit, et le robot a attendu
+l'accusé une minute entière avant de conclure « peut-être remis » sur un
+message que le modem venait de REFUSER — c'est-à-dire de dire « je ne sais
+pas » là où il savait. Le harnais (`test_envoi_sms`) l'a vu au premier
+passage, en soixante secondes de trop. `RE_ERREUR_SMS` connaît les deux.
+
+**Une scène trop sage ne mesurait pas l'écartement.** La première version de
+cette scène semait cinquante encaissements qui attendent — moins qu'un lot :
+l'encaissement de la carte déclarée tenait encore dans les cent premières
+lignes, et la mutation qui PERD l'écartement (`sms_a_pousser_xafe(LOT)` sans
+`sauf_iccid`) laissait les trente tests verts. Rejouée avec cent
+encaissements, elle boucle sans fin : chaque lot n'est fait que de lignes qui
+attendent, la lecture suivante rend les mêmes, et `arreter()` ne sortait pas
+du tour (`while True`). La scène porte maintenant cent vingt-deux
+encaissements qui attendent, le tour se joue dans un fil joint à dix secondes
+— un fil encore vivant est un ÉCHEC mesuré, pas une batterie qui pend —, le
+témoin `PorteSansEcartement` doit laisser la ligne déclarée à 0, et la
+lecture est BORNÉE (`LECTURES_PAR_TOUR`) et s'arrête avec la porte : une
+régression ne coûte plus qu'un tour, dit au journal et à `/statut`.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

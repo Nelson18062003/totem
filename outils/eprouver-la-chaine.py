@@ -31,14 +31,20 @@ CE QUE CE HARNAIS GARDE :
      vérification la plus importante : le robot écrit au journal AVANT
      d'effacer dans le modem, donc un SMS déjà journalisé PEUT être relu au
      redémarrage. Il doit alors être reconnu, pas recompté ;
-  6. un SMS illisible ne bloque pas ceux qui suivent.
+  6. un SMS illisible ne bloque pas ceux qui suivent ;
+  7. le MÊME SMS, lu une fois, arrive chez les DEUX destinations — Bonzini et
+     XAFe Exchange — avec le même montant ; la coupure de courant ne le fait
+     pas créditer deux fois chez XAFe ; et une panne de l'une ne retarde pas
+     l'autre.
 
 Rien ici ne touche à une vraie base ni à un vrai terminal : un faux modem, un
-faux nuage, une plateforme lancée pour l'occasion.
+faux nuage, un faux XAFe (qui vérifie la signature), une plateforme lancée
+pour l'occasion.
 """
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -52,15 +58,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests"))
 
 from totem.app import Robot
+from totem.carte import Carte
 from totem.compte import Compte
 from totem.modem import ModemSerie
-from totem.nuage import Nuage
+from totem.nuage import Nuage, _horodatage
 from totem.simulator import ModemSimule
 from totem.storage import Journal
+from totem.xafe import PorteXafe
 from tests.test_pdu import fabriquer_pdu
+from tests.test_xafe import FauxXafe
 
 PORT = 3166
 NUAGE = 4992
+XAFE = 4993
 BASE = f"http://127.0.0.1:{PORT}"
 MDP = "un-mot-de-passe-assez-long"
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -126,7 +136,7 @@ class CompteEssai(Compte):
 
 def main():
     global echecs
-    for port in (PORT, NUAGE):
+    for port in (PORT, NUAGE, XAFE):
         if not port_libre(port):
             print(f"\n✗ Le port {port} est déjà occupé — arrêtez l'essai précédent.")
             return 1
@@ -154,6 +164,7 @@ def main():
         # chaîne ne tournait qu'une fois, puis refusait de repartir (ou,
         # pire, un autre harnais aurait mesuré CE serveur, et son vieux code).
         start_new_session=True)
+    faux_xafe = FauxXafe(port=XAFE)
 
     try:
         for _ in range(90):
@@ -200,6 +211,7 @@ def main():
         journal = Journal(":memory:")
         nuage = Nuage(f"http://127.0.0.1:{NUAGE}", "peu-importe",
                       "douala-faux", journal)
+        xafe = PorteXafe(faux_xafe.url, "secret-akwa", "akwa-1", journal)
         compte = CompteEssai(modem)
 
         class TransportMuet:
@@ -216,10 +228,15 @@ def main():
         # Le numéro de NOTRE puce : c'est lui qui dit de quel côté du
         # CashOut on se trouve.
         robot = Robot([compte], TransportMuet(), journal, nom="T", pause_sms=1,
-                      numeros={compte.libelle.lower(): "696100001"})
+                      numeros={compte.libelle.lower(): "696100001"}, xafe=xafe)
         # Le branchement que fait le vrai démarrage (`app.py`, « nuage= ») :
         # c'est par lui que la montée au nuage sait de quel côté on est.
         nuage.fournir_numeros = robot._nos_numeros
+        # Pour XAFe, la carte doit être au registre avec son numéro : c'est
+        # par lui que XAFe reconnaît le float.
+        compte.carte = Carte(iccid="89237010000000000011", imsi="624010000000011")
+        journal.voir_carte(compte.carte)
+        journal.definir_identite(compte.carte.iccid, numero="677000011")
         robot._relever_sms(compte)
 
         lignes = journal.derniers_sms(20, ())
@@ -246,6 +263,43 @@ def main():
         envoyes = nuage.pousser_paiements()
         verifier("le nuage les accepte tous les quatre", envoyes == 4,
                  f"{envoyes} envoyés")
+
+        # --- XAFe : le même SMS, la même lecture, un tiers de plus ---------
+        print("\nDu modem à XAFe (le même montant, signé)")
+        clos = xafe.pousser_paiements()
+        entrees = [l for l in faux_xafe.lignes_recues()]
+        # Trois entrées d'argent (ABENA, KAMGA, le CashOut) : le retrait avec
+        # accents est une SORTIE, il reste chez le propriétaire.
+        verifier("seules les entrées d'argent partent chez XAFe",
+                 clos == 3 and len(entrees) == 3,
+                 f"{clos} closes, {len(entrees)} lignes reçues")
+        abena_xafe = next((l for l in entrees if "ABENA" in l["texte"]), None)
+        verifier("le MÊME montant est arrivé chez Bonzini ET chez XAFe",
+                 abena_xafe is not None and abena_xafe["montant"] == 27500
+                 and abena_xafe["float_numero"] == "677000011"
+                 and abena_xafe["operateur"] == "mtn",
+                 f"{abena_xafe['montant']} F, float {abena_xafe['float_numero']}"
+                 if abena_xafe else "absent")
+        # L'heure RÉSEAU du contrat (`emis_le`) : le PDU d'il y a trois heures
+        # garde SON heure chez XAFe comme chez Bonzini, et avec son fuseau.
+        # Aucun test de la porte ne l'écrivait au journal : `"emis_le": None`
+        # survivait à tout.
+        heure_journal = journal.conn.execute(
+            "SELECT emis_le FROM sms WHERE texte LIKE '%ABENA%'").fetchone()[0]
+        verifier("l'encaissement d'il y a trois heures garde SON heure chez XAFe",
+                 abena_xafe is not None and heure_journal
+                 and abena_xafe["emis_le"] == _horodatage(heure_journal)
+                 and re.search(r"[+-]\d\d:\d\d$", abena_xafe["emis_le"] or "") is not None
+                 and abena_xafe["emis_le"].startswith(heure_journal[:13]),
+                 f"journal {heure_journal!r}, XAFe {abena_xafe.get('emis_le')!r}"
+                 if abena_xafe else "absent")
+        verifier("la sortie avec accents est restée chez le propriétaire",
+                 journal.conn.execute(
+                     "SELECT xafe_reponse FROM sms WHERE texte LIKE 'Retrait%'"
+                 ).fetchone()[0] == "sans objet")
+        verifier("XAFe a crédité trois lignes, une fois chacune",
+                 len(faux_xafe.credites) == 3, f"{len(faux_xafe.credites)} crédits")
+        credits_avant_coupure = len(faux_xafe.credites)
 
         # --- LA PLATEFORME : le même argent, relu par un autre code --------
         print("\nDu nuage à l'écran (deux lectures du même SMS)")
@@ -300,6 +354,37 @@ def main():
                  f"{avant} → {apres}")
 
         nuage.pousser_paiements()
+        xafe.pousser_paiements()
+        # Ce que cette étape mesure : la relecture du modem ne ROUVRE pas la
+        # file XAFe (rien n'est repassé à `envoye_xafe = 0`, donc aucune
+        # requête). Le « deja » de la porte, lui, s'éprouve juste après.
+        verifier("la relecture du modem ne rouvre pas la file XAFe",
+                 journal.xafe_en_attente() == 0
+                 and len(faux_xafe.credites) == credits_avant_coupure,
+                 f"{journal.xafe_en_attente()} en attente, "
+                 f"{len(faux_xafe.credites)} crédits")
+        # Rouvrir la période À LA MAIN, comme le ferait quelqu'un qui sait
+        # (`remettre_sms_xafe`) : les trois encaissements repassent par la
+        # vraie porte, qui rend la MÊME réponse (« deja ») — rien n'est
+        # crédité deux fois, et chaque ligne retrouve sa propre référence.
+        # Toujours BORNÉE (`depuis_id`) : sans argument, le geste rouvrirait
+        # aussi l'historique « avant XAFe » — des mois d'encaissements
+        # déversés chez un tiers d'un coup. Le harnais sert de modèle.
+        preuves_avant = dict(journal.conn.execute(
+            "SELECT id, xafe_reponse FROM sms WHERE xafe_reponse LIKE 'credite %'"))
+        rouvertes = journal.remettre_sms_xafe(depuis_id=1)
+        requetes_avant = len(faux_xafe.requetes)
+        reclos = xafe.pousser_paiements()
+        preuves_apres = dict(journal.conn.execute(
+            "SELECT id, xafe_reponse FROM sms WHERE xafe_reponse LIKE 'credite %'"))
+        verifier("une période rouverte repasse par la porte sans recréditer",
+                 rouvertes == 4 and reclos == 3
+                 and len(faux_xafe.requetes) == requetes_avant + 1
+                 and len(faux_xafe.credites) == credits_avant_coupure
+                 and preuves_apres == preuves_avant,
+                 f"{rouvertes} rouvertes, {reclos} reclos, "
+                 f"{len(faux_xafe.credites)} crédits, "
+                 f"preuves {'identiques' if preuves_apres == preuves_avant else 'changées'}")
         donnees2 = lire(f"{BASE}/api/donnees?sms=200", biscuit)
         abena = [p for p in donnees2["paiements"] if "ABENA Rose" in p["smsBrut"]]
         verifier("l'encaissement n'apparaît qu'UNE fois à l'écran",
@@ -471,7 +556,58 @@ def main():
                  f"{len(gardes)} lignes")
         verifier("l'emplacement abîmé est libéré, pas gardé pour toujours",
                  any(9 in lot for lot in modem3.efface), str(modem3.efface))
+
+        # --- XAFe EN PANNE NE RETIENT PAS BONZINI --------------------------
+        print("\nUne panne de XAFe ne retarde pas Bonzini")
+        faux_xafe.en_panne = True
+        modem4 = modem_pdu((11, fabriquer_pdu(
+            "Vous avez recu 8000 FCFA de MBALLA Paul (677112233). Ref: PP9.",
+            expediteur="MTNMobileMoney", quand=maintenant)))
+        compte4 = CompteEssai(modem4)
+        compte4.carte = compte.carte
+        robot4 = Robot([compte4], TransportMuet(), journal, nom="T", pause_sms=1,
+                       numeros={compte.libelle.lower(): "696100001"}, xafe=xafe)
+        robot4._relever_sms(compte4)
+        # Ce que cette étape garde : le drapeau de l'un ne touche pas celui
+        # de l'autre (`envoye` = 1, `envoye_xafe` = 0), et la montée Bonzini
+        # ne passe par rien de XAFe — on chronomètre le SEUL nuage. Elle ne
+        # mesure PAS qu'un XAFe qui pend ne retarde pas le fil Bonzini : cela
+        # tient par la structure (deux fils, deux files), gardée par B6 dans
+        # tests/test_xafe.py. Un premier jet chronométrait les deux appels
+        # ensemble : la durée mesurée incluait XAFe, et l'étape ne pouvait ni
+        # échouer sur ce qu'elle nommait, ni passer si XAFe avait pendu.
+        debut = time.monotonic()
+        envoyes = nuage.pousser_paiements()
+        duree = time.monotonic() - debut
+        xafe.pousser_paiements()
+        # On regarde LA ligne neuve, pas le nombre de lignes parties : le
+        # premier passage de ce harnais comptait « 5 ligne(s) » ici — robot2
+        # (la coupure de courant) est construit sans `numeros`, robot4 avec,
+        # et l'empreinte du lecteur porte les numéros déclarés : Bonzini
+        # relit alors tout l'historique (`_relire_sms_si_lecteur_change`,
+        # voulu). Ce n'est pas ce que cette étape mesure.
+        mballa = journal.conn.execute(
+            "SELECT COALESCE(envoye, 0), COALESCE(envoye_xafe, 0) FROM sms "
+            "WHERE texte LIKE '%MBALLA%'").fetchone()
+        verifier("la ligne monte chez Bonzini (seul chronométré) en moins de 3 s, XAFe en panne",
+                 envoyes >= 1 and mballa == (1, 0) and duree < 3,
+                 f"{envoyes} ligne(s) parties, Bonzini/XAFe = {mballa}, {duree:.2f} s")
+        # LA ligne, ici aussi, pas la longueur de la file : les étapes
+        # d'avant y laissent des encaissements de cartes d'essai sans numéro
+        # déclaré, qui attendent leur numéro — à bon droit, et sans rapport
+        # avec la panne que cette étape mesure.
+        def mballa_chez_xafe():
+            return journal.conn.execute(
+                "SELECT COALESCE(envoye_xafe, 0) FROM sms "
+                "WHERE texte LIKE '%MBALLA%'").fetchone()[0]
+        verifier("XAFe garde la ligne en attente", mballa_chez_xafe() == 0,
+                 f"envoye_xafe = {mballa_chez_xafe()}")
+        faux_xafe.en_panne = False
+        xafe.pousser_paiements()
+        verifier("XAFe revenu, la ligne part", mballa_chez_xafe() == 1,
+                 f"envoye_xafe = {mballa_chez_xafe()}")
     finally:
+        faux_xafe.fermer()
         try:
             os.killpg(plateforme.pid, signal.SIGTERM)    # le groupe entier
         except ProcessLookupError:

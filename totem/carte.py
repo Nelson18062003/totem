@@ -43,6 +43,16 @@ RESEAUX = {
     "20820": "Bouygues",
 }
 
+# Ce que XAFe Exchange appelle un opérateur (sa table `operateurs`) : « mtn »
+# et « om » — PAS « orange ». Une carte d'un autre réseau n'a pas de float
+# XAFe : rien de ce qu'elle encaisse ne lui est destiné.
+OPERATEURS_XAFE = {"MTN": "mtn", "Orange": "om"}
+
+
+def operateur_xafe(nom):
+    """« mtn » / « om » pour « MTN » / « Orange » (`Carte.operateur`), sinon None."""
+    return OPERATEURS_XAFE.get((nom or "").strip())
+
 
 def operateur_depuis_imsi(imsi):
     """« 624011234567890 » → « MTN ». None si l'IMSI est absent ou inconnu."""

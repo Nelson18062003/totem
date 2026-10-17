@@ -103,6 +103,13 @@ class ModemScripte:
     def ussd_annuler(self):
         self.compte.raccroches += 1
 
+    def envoyer_sms(self, numero, texte):
+        """Un SMS « envoyé » : noté, avec une référence comme le modem."""
+        if self.compte.panne_envoi is not None:
+            raise self.compte.panne_envoi
+        self.compte.sms_envoyes.append((numero, texte))
+        return str(len(self.compte.sms_envoyes))
+
 
 class FauxCompte(Compte):
     """Un VRAI compte, sur un modem scripté.
@@ -111,12 +118,14 @@ class FauxCompte(Compte):
     donc rien su de la règle que la carte tient désormais elle-même (qui a
     la main sur son menu). Le guichet est éprouvé contre la vraie carte."""
 
-    def __init__(self, reponses, libelle="Orange ·4432"):
+    def __init__(self, reponses, libelle="Orange ·4432", carte=None):
         self.reponses = list(reponses)
         self.recu = []              # ce que le « réseau » a réellement reçu
         self.raccroches = 0
+        self.sms_envoyes = []       # (numéro, texte) partis par `envoyer_sms`
+        self.panne_envoi = None     # une exception à lever à l'envoi
         super().__init__(ModemScripte(self), libelle=libelle,
-                         carte=FausseCarte())
+                         carte=carte or FausseCarte())
 
 
 class FauxJournal:

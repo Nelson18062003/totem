@@ -65,6 +65,7 @@ class ModemSimule:
         self.etape = None          # position dans le menu simulé
         self.memoire = {}          # numéro/montant saisis pendant un transfert
         self.sms_en_attente = []
+        self.sms_envoyes = []      # (numéro, texte) : ce que le robot a envoyé
         self.sms_auto = sms_auto
         self._index_sms = 0
         self._prochain_sms_auto = time.time() + random.randint(20, 45)
@@ -200,6 +201,11 @@ class ModemSimule:
         self.sms_en_attente = [s for s in self.sms_en_attente
                                if s[0] not in set(indices)]
         return len(self.sms_en_attente) < avant
+
+    def envoyer_sms(self, numero, texte):
+        """Le simulateur « envoie » : il note, et rend une référence."""
+        self.sms_envoyes.append((numero, texte))
+        return str(len(self.sms_envoyes))
 
     @staticmethod
     def _fmt(n):

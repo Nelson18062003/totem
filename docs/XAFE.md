@@ -1,0 +1,304 @@
+# Brancher TOTEM sur XAFe Exchange
+
+> Résultat : chaque encaissement reçu sur une carte déclarée est aussi
+> **déposé chez XAFe Exchange**, qui crédite le client qui l'a déclaré — ou le
+> retient : personne n'est crédité au hasard. Et le boîtier **envoie les SMS
+> de vérification** que XAFe lui confie (le code qui prouve qu'un numéro est
+> à son propriétaire). Bonzini continue de recevoir tout ce qu'il recevait.
+>
+> **Facultatif.** Sans la section `[xafe]`, TOTEM se comporte exactement
+> comme avant, à l'octet près.
+
+---
+
+## Ce que XAFe est, et ce qu'il n'est pas
+
+Le **Raspberry Pi reste la source de vérité**. XAFe reçoit une copie de ce
+qu'il a vu — et seulement une partie : XAFe est un **tiers**. Un SMS
+appartient au propriétaire ; seuls les **SMS d'argent entrant** lui sont
+envoyés. Jamais un code de confirmation, une publicité, un solde, une
+sortie, ni un SMS que le lecteur ne comprend pas. Le tri se fait sur le Pi,
+avant toute requête ; ces lignes-là sont closes « sans objet » dans le journal.
+
+XAFe **ne décide pas** : il dit, ligne par ligne, ce qu'il a fait de chaque
+encaissement — crédité (avec sa référence `XAFe-DP-…`), retenu (en attendant
+que le client déclare l'ID de la transaction), ignoré, ou refusé (avec le
+motif). Cette réponse est gardée dans le journal du Pi, SMS par SMS : c'est
+la preuve, et c'est avec elle qu'on enquête.
+
+Chaque appel est **signé** avec la clé de ce boîtier (trois en-têtes, HMAC).
+La signature couvre le corps ET ce qu'il vise — la méthode, le chemin, la
+requête : « prendre la commande 7 », capturé en route, ne prend pas la 8.
+XAFe ne voit que ce que ce boîtier dit ; le boîtier ne voit que ce qui le
+concerne. La signature vaut cinq minutes : le robot signe avec l'heure que
+XAFe lui donne, pas avec celle du Pi (qui a des heures de retard après une
+coupure de courant).
+
+---
+
+## Ce qu'il faut de l'équipe XAFe
+
+- l'**identifiant du boîtier** chez XAFe (`terminaux.id`, par exemple
+  `akwa-1`) — à recopier à l'identique ;
+- la **clé** de ce boîtier (`terminaux.cle`). Secrète : qui la lit peut faire
+  créditer des comptes ;
+- l'**URL** du projet Supabase de XAFe (sans chemin) ;
+- si leur passerelle exige la clé publique `anon` avant la porte (réglage
+  `verify_jwt`), cette clé — sinon rien.
+- pour chaque carte du boîtier, le **numéro du float** tel qu'il est inscrit
+  chez XAFe (`floats.numero`) : c'est par lui que XAFe reconnaît la carte.
+- pour les SMS à envoyer : **une seule carte par opérateur dans le boîtier**,
+  tant que XAFe ne nomme pas le float dans ses `messages_sortants` (la table
+  ne porte que l'opérateur). Avec deux cartes MTN, le robot refuse d'en
+  choisir une — « Plusieurs cartes de cet opérateur, désignez le float » — et
+  aucun code ne part. C'est écrit au contrat côté XAFe. Le jour où une ligne
+  porte `float_numero`, c'est **lui** qui choisit la carte (celle de
+  l'opérateur dont le numéro déclaré est celui-là, l'indicatif 237 admis) ;
+  un float que personne ne porte refuse — « Aucune carte de cet opérateur ne
+  porte ce numéro, déclarez-le » — jamais la première carte venue.
+
+## Configurer le Pi
+
+Mettre le robot à jour d'abord (`sudo bash maj.sh`, pas `git pull`), puis :
+
+```
+sudo nano /boot/firmware/totem.conf
+```
+
+Ajouter la section (le modèle exact est dans `config.example.conf` ; `maj.sh`
+ne touche pas à la configuration, la section s'ajoute à la main) :
+
+```ini
+[xafe]
+url = https://xxxxxxxxxxxx.supabase.co
+cle = la-cle-de-ce-boitier
+terminal = akwa-1
+anon =
+transferts = non
+sorties = oui
+```
+
+Puis `sudo systemctl restart totem`. Au démarrage, TOTEM affiche
+`XAFe : https://… (terminal « akwa-1 »)`. Dans Telegram, `/statut` ajoute une
+ligne :
+
+```
+🔁 XAFe à jour
+🔁 XAFe · 3 en attente              ← carte sans numéro, pas encore identifiée, ou ligne sans carte (le journal dit laquelle)
+🔁 XAFe injoignable · 3 en attente  ← rien n'est perdu, la file se vide au retour
+🔁 XAFe refuse la signature · 3 en attente  ← clé fausse, identifiant du boîtier inconnu, ou horloge décalée (le journal le dit)
+🔁 XAFe moteur en panne · 3 en attente      ← XAFe a répondu « erreur » : on réessaie — et Telegram sonne (voir plus bas)
+🔁 XAFe refuse le lot · 3 en attente        ← un défaut de NOTRE côté (lot mal formé) : à remonter, rien n'est perdu
+🔁 XAFe : file illisible (défaut de notre côté) · 3 en attente  ← la file n'avance plus : à remonter, le tour est perdu, rien d'autre
+🔁 XAFe : le robot ne sait pas dire le float d'une carte (défaut de notre côté) · 3 en attente  ← un défaut du robot, pas un numéro à déclarer
+🔁 XAFe : le robot a échoué (défaut de notre côté) · 3 en attente  ← le fil du robot a levé (journal, bogue) : ce n'est PAS le réseau de XAFe
+```
+
+Les quatre dernières lignes désignent un défaut de notre côté, pas une
+manœuvre à faire sur le Pi : les remonter telles quelles.
+
+Le **journal du Pi** — celui que Bonzini relit et montre dans « Ce qui s'est
+passé » — porte une ligne par encaissement déposé (« XAFe : SMS 12 crédité
+(XAFe-DP-000418) ») et une par refus. Jamais un montant, un nom ni un
+numéro : seulement le numéro de la ligne du journal et la référence XAFe.
+Sur une caisse active, c'est quarante lignes de plus par jour chez Bonzini ;
+sans section `[xafe]`, aucune.
+
+## Déclarer le numéro de chaque carte
+
+XAFe reconnaît un float par son **numéro**, pas par l'ICCID. Une carte dont
+le numéro n'est pas déclaré (Telegram → `/reglages` → identité de la carte,
+ou la section `[numeros]`) voit ses encaissements **attendre** : rien ne part,
+le journal le dit une fois (« la carte … n'a pas de numéro déclaré »), et tout
+part dès que le numéro est inscrit. Le robot ne devine jamais : un
+encaissement rattaché au mauvais float créditerait le mauvais compte.
+
+**Les siens seulement.** Les autres cartes du boîtier ne l'attendent pas :
+la file XAFe écarte les cartes sans numéro et lit au-delà. Et ce qui n'est
+pas un encaissement — publicité, code, solde — se clôt « sans objet » quelle
+que soit la carte, déclarée ou non.
+
+Une carte d'un **autre réseau** (Camtel, Nexttel, une puce étrangère) n'a pas
+de float XAFe, et n'en aura jamais : ses encaissements sont clos « sans float
+XAFe », sans requête, et le journal le dit une fois. Rien n'attend.
+
+**« Jamais » ne se décide que sur une carte identifiée.** Le réseau d'une
+carte se lit dans son IMSI, et le modem le lit mal au démarrage de temps en
+temps : la carte s'affiche alors « SIM inconnue » (ou du nom du réseau
+visité) jusqu'au redémarrage du boîtier. Une telle carte n'est pas « d'un
+autre réseau » : elle n'est **pas encore identifiée**, et ses encaissements
+**attendent** — le journal le dit une fois (« le robot ne l'a pas encore
+identifiée (le modem n'a pas lu son IMSI) — redémarrez le boîtier »), et ils
+partent au redémarrage, avec le float de leur carte. La première version du
+robot les clôturait « sans float XAFe », pour toujours.
+
+Même règle pour un SMS entré **avant que le modem n'ait lu la puce** (ligne
+sans ICCID) : il ne peut être rattaché à aucun float, il attend, écarté de
+la file (il ne retient pas les autres), avec un avis qui dit quoi faire —
+redémarrer le boîtier pour que les suivants portent leur carte ; pour
+celui-là, quelqu'un qui sait pose l'ICCID sur la ligne, et il part au tour
+même (ou rouvre ces lignes-là seules : `remettre_sms_xafe(iccid="")`). Tant qu'il attend, `/statut` le compte « en attente » : c'est voulu,
+une ligne qui attend une main se voit.
+
+Un numéro déclaré **mal formé** (8 ou 10 chiffres : une faute de frappe) n'est
+pas « pas de numéro » : le journal dit « son numéro déclaré est mal formé
+(10 chiffres au lieu de 9) — corrigez-le », et la ligne attend la
+correction. L'indicatif « 237 » devant les neuf chiffres est admis.
+
+Le numéro déclaré doit être **celui que XAFe a inscrit** pour ce float. À la
+mise en service, carte par carte, avec l'équipe XAFe.
+
+## Les SMS que XAFe fait envoyer par le boîtier
+
+Quand un client ajoute un numéro chez XAFe, XAFe doit prouver que ce numéro
+est à lui : il dépose un SMS à envoyer (« XAFe Exchange : votre code est
+123456… ») et c'est **le boîtier qui l'envoie**, depuis sa carte de
+l'opérateur demandé. Le robot le relève toutes les **dix secondes** (chaque
+relève est signée et ouvre une connexion : on ne frappe pas à la porte toutes
+les trois secondes comme pour Bonzini — un code attend donc jusqu'à dix
+secondes de plus, et personne n'abandonne à trente secondes de ce côté-là),
+le **réclame** (XAFe tranche : un autre boîtier l'a pris, on s'en va en
+silence), l'envoie, et dit à XAFe « envoyé » avec la référence du modem — ou
+« échoué » avec la raison, en français.
+
+Ce qui ne part pas, et pourquoi, dans la réponse rendue à XAFe :
+
+- **un code vieux** (déposé il y a plus de quinze minutes — il vaut dix chez
+  XAFe, le client en a déjà redemandé un) : « a attendu 3 h avant d'arriver au
+  terminal… rien n'est parti » ;
+- **aucune carte de cet opérateur**, ou **plusieurs** (ou, si la ligne nomme
+  le float, **aucune carte ne porte ce numéro**) : rien n'est parti, voir
+  ci-dessus ;
+- **le modem refuse** (« +CMS ERROR ») : rien n'est parti ;
+- **l'accusé du modem ne vient pas** : « le SMS a peut-être été remis ». On ne
+  dit ni l'un ni l'autre ; pour un SMS, XAFe ne rejoue pas, le client
+  redemande un code.
+
+Le SMS passe par la **même file** que les demandes Bonzini de la même carte
+(un seul guichet dans le robot, une file par carte) : il ne s'intercale jamais
+dans un menu USSD que quelqu'un tient, et une erreur d'envoi ne raccroche pas
+ce menu. Le code et le numéro du client n'entrent **jamais au journal** : il
+porte seulement « SMS de vérification envoyé depuis MTN ·0011 (réf. 17) ».
+
+Le robot a appris à envoyer pour cela (`AT+CMGS`, en mode PDU) : un message
+tient en 160 caractères (70 si un caractère sort de l'alphabet GSM — comptés
+en octets : un emoji en prend quatre), au-delà il est refusé, jamais coupé, et
+XAFe lit « trop long : 161 caractères, 160 au plus ». Un numéro à neuf
+chiffres qui ne commence pas par 6 (une ligne fixe) est refusé, pas deviné :
+parti sans indicatif, le réseau l'aurait lu comme un autre pays. Et quand le
+modem ne montre pas son invite à temps, le robot lui envoie un Échap avant de
+renoncer : un modem resté en saisie aurait avalé le prochain code USSD d'une
+demande Bonzini. Seul le guichet XAFe fait envoyer un SMS — le genre d'une
+ligne Bonzini ne suffit pas. `tests/test_envoi_sms.py` et
+`tests/test_xafe.py` le gardent.
+
+## Les paiements faits depuis la puce (sorties)
+
+Pour commencer, l'équipe XAFe rembourse ses clients **à la main** : elle
+envoie l'argent depuis la puce du float, puis tape dans l'administration le
+transaction ID du SMS de l'opérateur. Ce SMS — « Vous avez envoyé 49 750 FCFA
+à … Ref : … » — part aussi chez XAFe (ligne de sens `sortie`), qui le
+rapproche du remboursement : même ID, même montant, même numéro. Une capture
+d'écran se fabrique ; un SMS d'opérateur reçu par la puce, beaucoup moins.
+
+Chez XAFe, une sortie **ne crédite jamais rien** : la porte répond
+`constatee`, et la ligne est close ici avec ce mot. Une sortie qu'aucun
+remboursement n'explique est montrée à l'équipe XAFe (« sorti du float, sans
+sortie en face »).
+
+**Sur une puce partagée avec Bonzini**, XAFe voit donc aussi les paiements de
+Bonzini (montant, bénéficiaire, ID), comme il voit déjà ses encaissements.
+`sorties = non` les garde ici — les remboursements XAFe se confirment alors
+sans la preuve du SMS.
+
+## Ce qui ne part PAS chez XAFe
+
+- **L'historique d'avant l'activation.** À la première mise à jour du robot,
+  tous les SMS déjà présents sont clos « avant XAFe » : des mois
+  d'encaissements ne partent pas chez un tiers parce qu'on a mis le robot à
+  jour. Ce qui arrive ensuite part. Pour rouvrir une période, quelqu'un qui
+  sait lance `journal.remettre_sms_xafe(depuis_id=…)` : la porte XAFe rend la
+  même réponse à la même ligne, rien n'est crédité deux fois.
+- Les codes, les publicités, les soldes, les SMS incompris, un transfert dont
+  le sens n'a pas pu être tranché (faute de numéro déclaré), et les sorties
+  d'argent quand `sorties = non` — « sans objet », sans requête.
+- Les encaissements d'une **carte d'un autre réseau** (son IMSI nomme autre
+  chose que MTN ou Orange Cameroun) — « sans float XAFe », sans requête. Pas
+  ceux d'une carte que le robot n'a pas encore identifiée : eux attendent.
+- Les **transferts** XAFe (de l'argent à composer) : ils ne sont pas même
+  relevés tant que `transferts = non` — et cette version du robot ne les
+  relève pas davantage avec `oui` : la valeur est lue et rangée, rien ne la
+  consulte encore. Les relever sans savoir les faire les ferait échouer
+  trois fois chez XAFe, qui rendrait leurs XAFe au client. Voir la question
+  du code secret. Les SMS à envoyer, eux, sont relevés : un SMS ne déplace
+  pas d'argent.
+
+---
+
+## Questions raisonnables
+
+**« Et si la même ligne est envoyée deux fois ? »**
+La porte reconnaît le couple (boîtier, n° de ligne du journal) et rend la
+MÊME réponse, marquée `deja`. Une reprise après coupure est sans risque.
+
+**« Le PIN part-il chez XAFe ? »**
+Non. Il n'est enregistré nulle part. Et les transferts XAFe — qui exigeraient
+que le robot le compose seul — ne sont pas relevés tant que le propriétaire
+n'a pas tranché cette question (`transferts = non`). Les SMS à envoyer n'en
+ont pas besoin : envoyer un SMS ne demande aucun code.
+
+**« Que se passe-t-il si XAFe tombe ? »**
+Rien de visible. Bonzini continue d'être servi — les deux destinations ont
+chacune leur file et leur fil, aucune n'attend l'autre. La file XAFe
+s'allonge, `/statut` le dit, et elle se vide au retour.
+
+**« L'horloge du Pi est fausse après une coupure »**
+La porte refuse une signature de plus de cinq minutes d'écart. Le robot
+apprend l'heure de XAFe sur la première réponse (même un refus) et rejoue
+aussitôt avec elle. Si « XAFe refuse la signature » persiste malgré tout, le
+journal dit « XAFe refuse la signature du boîtier : clé fausse, identifiant
+du boîtier inconnu de XAFe, ou horloge décalée ». XAFe répond le MÊME refus
+dans les trois cas : vérifier aussi `[xafe] terminal` — vide (c'est ainsi
+dans `config.example.conf`), le robot prend le nom de `[cloud]`
+(« douala »), qui n'est celui que XAFe connaît que si l'équipe XAFe a inscrit
+le boîtier sous ce nom-là.
+
+**« Un SMS d'argent dont aucun numéro n'est le nôtre »** — à trancher par le
+propriétaire. Un SMS à deux parties (« Transfert de 5 000 FCFA de A vers B »)
+dont ni A ni B n'est un numéro déclaré du boîtier : le lecteur ne sait pas
+dire si c'est une entrée ou une sortie. Aujourd'hui la ligne est close
+« sans objet », sans requête — si c'était une entrée, XAFe ne la verra qu'après
+un `remettre_sms_xafe(depuis_id=…)` à la main. L'autre choix — la laisser en
+file — remplirait la file sans fin tant que le numéro déclaré est faux. Le
+test `test_un_sens_inconnu_faute_de_numero_est_clos_sans_objet` fige le
+choix du jour ; il n'est pas tranché.
+
+**« Telegram sonne-t-il quand XAFe est en panne ? »**
+Oui, par défaut : quand XAFe répond « erreur » sur une ligne (son moteur est
+en panne ou en maintenance), ou qu'il REFUSE un encaissement, le robot
+envoie l'alerte « Des encaissements n'arrivent pas chez XAFe » au
+propriétaire — au plus une fois par quart d'heure, tant que ça dure. Une
+coupure réseau, elle, ne sonne pas : `/statut` dit « injoignable », et la
+file se vide au retour. Si le propriétaire préfère ne voir la panne du
+moteur que dans `/statut`, c'est à lui de le dire : la question était
+ouverte, le défaut choisi est de prévenir.
+
+**« Puis-je arrêter ? »**
+Videz `url` et `cle`, relancez : plus rien ne part chez XAFe, rien n'est perdu.
+
+**« Et si un encaissement n'est pas crédité ? »**
+Il est **retenu** chez XAFe jusqu'à ce que le client déclare l'ID de sa
+transaction. Le journal du Pi porte, pour chaque SMS, « credite XAFe-DP-… »,
+« retenue n <motif> », « ignore », « refuse <motif> », « sans objet » ou
+« sans float XAFe » (colonne `xafe_reponse`) : c'est là qu'on lit ce qui
+s'est passé. Une ligne encore à 0 (`envoye_xafe`) attend — un numéro, une
+identification, une main — et le journal des événements dit laquelle.
+
+**« Rouvrir une période, c'est déverser des mois chez un tiers »** — oui,
+et c'est pourquoi `remettre_sms_xafe()` sans argument REFUSE : il faut
+borner — `remettre_sms_xafe(depuis_id=…)` pour une période,
+`remettre_sms_xafe(iccid=…)` pour une carte (`iccid=""` : les lignes sans
+carte, et elles seules) — ou dire explicitement `remettre_sms_xafe(tout=True)`,
+qui rouvre l'historique « avant XAFe » compris. La porte est idempotente,
+rien n'est crédité deux fois ; mais des mois de SMS partiraient chez un
+tiers, et cela ne se fait pas sur une faute de frappe.

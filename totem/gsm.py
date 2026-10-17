@@ -112,6 +112,54 @@ def decode_gsm7(texte_hexa):
     return "".join(sortie)
 
 
+# ---- GSM 7 bits : le sens de l'ALLER (ce que le robot ENVOIE) ---------------
+_INVERSE_GSM = {c: i for i, c in enumerate(ALPHABET_GSM)}
+_INVERSE_EXTENSION = {c: i for i, c in EXTENSION_GSM.items()}
+
+
+def encode_gsm7(texte):
+    """Texte → liste de septets (alphabet GSM 03.38, extension comprise).
+
+    Un caractère hors alphabet lève `ChargeRefusee` avec les caractères
+    fautifs : l'appelant bascule alors en UCS2 — il ne devine pas un « e »
+    pour un « ê »."""
+    septets, refuses = [], []
+    for c in texte or "":
+        if c in _INVERSE_GSM and c != "\x1b":
+            # Le caractère 0x1B de l'alphabet est la séquence d'échappement
+            # elle-même : il ne s'écrit pas, il annonce le suivant.
+            septets.append(_INVERSE_GSM[c])
+        elif c in _INVERSE_EXTENSION:
+            septets.extend((ECHAPPEMENT, _INVERSE_EXTENSION[c]))
+        else:
+            refuses.append(c)
+    if refuses:
+        raise ChargeRefusee("".join(dict.fromkeys(refuses)))
+    return septets
+
+
+def empaqueter_septets(septets):
+    """Tasse des septets dans des octets : 8 caractères pour 7 octets — l'exact
+    inverse de `depaqueter_septets` (3GPP 23.038 §6.1.2.1.1). Les bits se
+    rangent du moins fort au plus fort, septet après septet ; quand il reste
+    exactement sept bits libres en fin de dernier octet, la norme y met un
+    retour chariot (c'est lui que `decode_gsm7` retire). Le test fait
+    l'aller-retour sur l'alphabet entier."""
+    octets, accumule, bits = [], 0, 0
+    for s in septets:
+        accumule |= (s & 0x7F) << bits
+        bits += 7
+        while bits >= 8:
+            octets.append(accumule & 0xFF)
+            accumule >>= 8
+            bits -= 8
+    if bits == 1:
+        accumule |= 0x0D << 1        # sept bits de bourrage : <CR>
+    if bits:
+        octets.append(accumule & 0xFF)
+    return bytes(octets)
+
+
 # ---- arbitrage -------------------------------------------------------------
 def alphabet_du_dcs(dcs):
     """Alphabet annoncé par le champ DCS de +CUSD (3GPP 23.038), ou None.
@@ -241,4 +289,38 @@ def charge_pour_le_reseau(texte):
             refuses.append(c)
     if refuses:
         raise ChargeRefusee("".join(dict.fromkeys(refuses)))
+    return "".join(sortie)
+
+
+def texte_pour_sms(texte):
+    """Le texte d'un SMS tel qu'il peut partir en mode PDU — ce n'est PAS
+    `charge_pour_le_reseau`.
+
+    Celle-là garde une RÉPONSE USSD, écrite entre guillemets dans la commande
+    AT : elle refuse le guillemet et la barre oblique inverse, qui
+    refermeraient la commande. Un SMS en mode PDU n'est pas dans la commande
+    AT : il part en hexadécimal, après l'invite « > ». Le guillemet et la
+    barre y sont des caractères comme les autres, et on les garde.
+
+    Ce qui se refuse ici est ce qui PILOTE la saisie du modem : Ctrl-Z
+    (0x1A) la termine, Échap (0x1B) l'annule. Les autres caractères de
+    contrôle sont retirés ; le saut de ligne reste (un SMS en a). Les chiffres
+    d'une autre écriture deviennent des chiffres ordinaires, comme pour
+    l'USSD : c'est le même nombre."""
+    import unicodedata
+
+    texte = (texte or "").replace("\r\n", "\n").replace("\r", "\n")
+    refuses = [c for c in texte if c in "\x1a\x1b"]
+    if refuses:
+        raise ChargeRefusee("".join(dict.fromkeys(refuses)))
+    texte = re.sub(r"[\x00-\x09\x0b-\x1f\x7f]", "", texte)
+    sortie = []
+    for c in texte:
+        if c.isdigit() and not c.isascii():
+            try:
+                sortie.append(str(unicodedata.digit(c)))
+                continue
+            except (TypeError, ValueError):
+                pass
+        sortie.append(c)
     return "".join(sortie)

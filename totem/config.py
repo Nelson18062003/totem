@@ -65,7 +65,8 @@ def avertissements_droits(chemin):
     phrases = [
         f"Le fichier de configuration {chemin} est en {oct(mode)[-3:]} : "
         "d'autres comptes de cette machine peuvent le lire. Il porte le jeton "
-        "du robot et la clé de service de la base."
+        "du robot, la clé de service de la base et, s'il y en a une, la clé "
+        "du boîtier XAFe."
     ]
     if _sur_partition_sans_droits(chemin):
         phrases.append(
@@ -189,6 +190,30 @@ def charger():
                     "cloud_url": cfg.get("cloud", "url", fallback="").strip(),
                     "cloud_cle": cfg.get("cloud", "cle", fallback="").strip(),
                     "terminal": cfg.get("cloud", "terminal", fallback="totem").strip(),
+                    # XAFe : facultatif. Sans ces valeurs, rien ne change.
+                    "xafe_url": cfg.get("xafe", "url", fallback="").strip(),
+                    "xafe_cle": cfg.get("xafe", "cle", fallback="").strip(),
+                    # L'identifiant du boîtier CHEZ XAFe (terminaux.id,
+                    # « akwa-1 ») : la porte refuse une ligne dont le
+                    # terminal n'est pas celui des en-têtes. À défaut, le
+                    # nom de [cloud].
+                    "xafe_terminal": (
+                        cfg.get("xafe", "terminal", fallback="").strip()
+                        or cfg.get("cloud", "terminal", fallback="totem").strip()),
+                    # La clé publique « anon » du projet XAFe, si sa
+                    # passerelle l'exige avant la porte (verify_jwt).
+                    # Publique, sans pouvoir ; vide si la porte est ouverte.
+                    "xafe_anon": cfg.get("xafe", "anon", fallback="").strip(),
+                    # Relever les TRANSFERTS XAFe (composer de l'argent).
+                    # Non par défaut : voir docs/XAFE.md, la décision du
+                    # propriétaire sur le code secret.
+                    "xafe_transferts": cfg.getboolean("xafe", "transferts",
+                                                      fallback=False),
+                    # Envoyer aussi les SORTIES du float (les paiements faits
+                    # depuis la puce) : la preuve des remboursements payés à
+                    # la main. Oui par défaut ; « non » les garde ici.
+                    "xafe_sorties": cfg.getboolean("xafe", "sorties",
+                                                   fallback=True),
                     # D'OÙ VIENNENT CES VALEURS. Le robot en a besoin pour
                     # dire, au démarrage, si le fichier qui porte ses secrets
                     # est lisible par d'autres comptes de la machine.

@@ -208,6 +208,34 @@ class SansHeureEcriteOnNeRecolleQueDansLHeure(unittest.TestCase):
             self.maintenant))
 
 
+class XafeRelitCeQuIlNAJamaisVu(unittest.TestCase):
+    """La moitié illisible a été close ICI pour XAFe (« sans objet »), sans
+    partir : entière, elle peut être un encaissement, et XAFe doit la lire.
+    Ce que XAFe a tranché lui-même ne se rouvre pas : on ne crédite pas deux
+    fois sur un texte qui s'allonge."""
+
+    def _ligne(self, reponse):
+        journal = Journal(":memory:")
+        sms_id = journal.sms("OrangeMoney", FIN, "Orange ·4177", "8923")
+        journal.conn.execute(
+            "UPDATE sms SET envoye_xafe = 1, xafe_reponse = ? WHERE id = ?",
+            (reponse, sms_id))
+        journal.completer_sms(sms_id, TRANSFERT)
+        return journal.conn.execute(
+            "SELECT envoye_xafe, xafe_reponse FROM sms WHERE id = ?",
+            (sms_id,)).fetchone()
+
+    def test_une_moitie_ecartee_ici_est_relue(self):
+        self.assertEqual(self._ligne("sans objet"), (0, None))
+
+    def test_ce_que_xafe_a_credite_ne_se_rouvre_pas(self):
+        self.assertEqual(self._ligne("credite XF-1234"), (1, "credite XF-1234"))
+
+    def test_ce_que_xafe_a_retenu_ne_se_rouvre_pas(self):
+        self.assertEqual(self._ligne("retenue 77 client inconnu"),
+                         (1, "retenue 77 client inconnu"))
+
+
 class UnJournalAncienNeRetientRien(unittest.TestCase):
     def test_un_journal_en_panne_laisse_partir_le_morceau(self):
         """Le recollage ne doit jamais coûter un SMS : s'il échoue, le
