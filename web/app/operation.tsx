@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { remplirVariables } from "@noyau/codes";
 import { lireEcran, type EtatDuReseau } from "@noyau/ussd";
 import {
-  ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, champAServir, etapePeutPartir, reponseDuBoitier,
+  ATTENTE_DU_BOITIER_MS, PROLONGATION_MS, champAServir, cheminAConfier, etapePeutPartir,
+  repriseApres, reponseDuBoitier,
   reponseLibre, reponsePrete, restantsApresReponse, type EcranRecu,
 } from "@noyau/deroule";
 import { formaterNumero } from "@noyau/numero";
@@ -205,7 +206,9 @@ export function OperationPopup({
       setEnSession(true);
       return null;
     }
-    const recu: EcranRecu = { texte: lu.texte, reseau: lu.reseau };
+    const recu: EcranRecu = lu.enchaine
+      ? { texte: lu.texte, reseau: lu.reseau, enchaine: lu.enchaine }
+      : { texte: lu.texte, reseau: lu.reseau };
     ecranCourant.current = recu;
     setFil((f) => [...f, { de: "reseau", texte: lu.texte, reseau: lu.reseau }]);
     setEnSession(true);
@@ -345,15 +348,28 @@ export function OperationPopup({
     if (consommees.length) {
       restants.current = restants.current.filter((c) => !consommees.includes(c.cle));
     }
+    // LE CHEMIN SE CONFIE AU BOÎTIER (`cheminAConfier`) : les étapes apprises
+    // et les champs à servir partent avec le code, et le boîtier les
+    // parcourt sans repasser par Internet — un transfert par le menu faisait
+    // cinq allers-retours. Il rend le premier écran qu'il ne doit pas servir,
+    // et dit ce qu'il a parcouru : on reprend juste après, avec les mêmes
+    // règles. Un boîtier d'avant ignore le chemin, et l'on fait tout ici.
+    const chemin = cheminAConfier(brutes, etapes, restants.current, propres());
     let recu = await envoyer(
       "ussd",
-      operation.carte ? { code: etapes[0], carte: operation.carte } : { code: etapes[0] },
+      {
+        code: etapes[0],
+        ...(operation.carte ? { carte: operation.carte } : {}),
+        ...(chemin ? { suite: chemin } : {}),
+      },
       { de: "vous", texte: etapes[0] },
       cleOperation.current);
+    const reprise = repriseApres(recu?.enchaine, restants.current);
+    restants.current = reprise.restants;
     // UN TRAJET APPRIS REGARDE L'ÉCRAN AVANT CHAQUE PAS (`etapePeutPartir`) :
     // si l'écran ne propose pas l'étape suivante, on s'arrête, le message
     // reste entier, et TOTEM dit pourquoi il n'a pas continué.
-    for (let i = 1; i < etapes.length; i++) {
+    for (let i = reprise.depart; i < etapes.length; i++) {
       if (recu == null) return;
       if (!etapePeutPartir(brutes[i], recu)) { setAvis(t.trajetArrete(etapes[i])); return; }
       recu = await envoyer("ussd_reponse", { texte: etapes[i] }, { de: "vous", texte: etapes[i] });

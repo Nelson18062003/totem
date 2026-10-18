@@ -58,19 +58,24 @@ export type Sim = {
 
 // La catégorie d'un SMS reçu, comme une boîte de réception les range.
 // « echec » : une opération échouée ou annulée — rien ne s'est passé.
+// « doublon » : le second avis MTN d'une opération déjà annoncée par un autre
+// SMS (même numéro de transaction) — jamais compté, sinon l'argent compte
+// deux fois. « commission » : la commission qu'Orange verse sur un compte à
+// part — gagnée, mais hors du solde de la caisse.
 // « illisible » : le message parle d'argent, le robot n'a pas tout compris —
 // il le dit, plutôt que de se déguiser en solde ou en message quelconque.
 export type Categorie =
   | "encaissement" | "envoi" | "transfert" | "depot" | "retrait"
   | "solde" | "echec" | "code" | "publicite" | "illisible"
-  | "message" | "inconnu";
+  | "doublon" | "commission" | "message" | "inconnu";
 
 // La même liste, comme VALEURS : c'est elle qui filtre ce qui vient de la
 // base. Un terminal plus récent que l'écran peut envoyer une catégorie
 // inconnue — elle s'affiche alors « message », jamais un écran cassé.
 export const CATEGORIES: readonly Categorie[] = [
   "encaissement", "envoi", "transfert", "depot", "retrait",
-  "solde", "echec", "code", "publicite", "illisible", "message", "inconnu",
+  "solde", "echec", "code", "publicite", "illisible", "doublon", "commission",
+  "message", "inconnu",
 ];
 
 export const estCategorie = (v: unknown): v is Categorie =>

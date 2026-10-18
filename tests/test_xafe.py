@@ -445,6 +445,14 @@ class PorteQuiEnvoieLesCommissions(PorteXafe):
 
         def aveugle(texte, numeros=()):
             p = vrai(texte, numeros=numeros)
+            if p is None:
+                # La lecture d'AVANT, figée ici : le lecteur d'aujourd'hui range
+                # la commission d'Orange à part et ne rend plus rien pour elle —
+                # sans cette ligne, le témoin passerait et ne prouverait plus rien.
+                m = re.search(r"commission of (\d+) FCFA", texte)
+                if m:
+                    from totem.analyse_sms import Paiement
+                    p = Paiement("entree", int(m.group(1)), texte)
             if p is not None:
                 p.commission = None
             return p

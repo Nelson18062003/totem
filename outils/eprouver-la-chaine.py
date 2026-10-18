@@ -127,6 +127,12 @@ class CompteEssai(Compte):
     def effacer_sms(self, indices):
         self._pdu.effacer_sms(indices)
 
+    @property
+    def derniere_releve(self):
+        # Les octets vus par la relève : c'est sur eux que le robot retrouve
+        # la moitié d'un message déjà livré.
+        return list(getattr(self._pdu, "derniere_releve", None) or [])
+
 
 def main():
     global echecs
@@ -392,6 +398,148 @@ def main():
         verifier("le total encaissé n'a pas doublé", total == 27500 + 130000,
                  f"{total} FCFA sur {len(miens)} lignes")
 
+        # --- UN SMS LONG LIVRÉ EN RETARD ----------------------------------
+        #
+        # Le cas de la vraie base : l'opérateur livre un SMS long trois heures
+        # après l'avoir écrit. Le modem sonne pour le premier morceau, le
+        # robot relève aussitôt ; la suite arrive au tour d'après. L'attente
+        # se comptait sur l'heure de l'opérateur — déjà « trop vieille » : le
+        # message partait coupé, en deux SMS « incomplets ».
+        print("\nUn SMS long livré en retard arrive entier")
+        ecrit = maintenant - timedelta(hours=3)
+        debut = ("CashOut success to 690000010 ESSAI RETARD from 696100001 "
+                 "BOUTIQUE ESSAI. The details are as follows: transaction "
+                 "amount: 187500 FCFA, charges: 0 FCFA, commissio")
+        fin = "n: 0 FCFA, TXN id :CO261016.0253.A12345"
+        en_memoire = [(21, fabriquer_pdu(debut, expediteur="OrangeMoney",
+                                         reference=91, total=2, position=1,
+                                         quand=ecrit))]
+        modem4 = ModemSerie.__new__(ModemSerie)
+        modem4.verrou = threading.Lock()
+        modem4.mode_pdu = True
+        modem4._morceaux_vus = {}
+        modem4._envoyer = lambda commande, delai=10: "".join(
+            f"+CMGL: {i},1,,{len(p) // 2}\r\n{p}\r\n" for i, p in en_memoire) + "\r\nOK\r\n"
+        modem4.effacer_sms = lambda indices: [en_memoire.remove(x) for x in list(en_memoire)
+                                              if x[0] in indices] or True
+        compte4 = CompteEssai(modem4)
+        journal4 = Journal(":memory:")
+        robot4 = Robot([compte4], TransportMuet(), journal4, nom="T", pause_sms=1)
+        robot4._relever_sms(compte4)                  # le morceau 1, seul
+        en_memoire.append((22, fabriquer_pdu(fin, expediteur="OrangeMoney",
+                                             reference=91, total=2, position=2,
+                                             quand=ecrit)))
+        robot4._relever_sms(compte4)                  # la suite, au tour d'après
+        textes4 = [t for _, _, t, _ in journal4.derniers_sms(10, ())]
+        verifier("un seul SMS au journal, pas deux moitiés", len(textes4) == 1,
+                 f"{len(textes4)} SMS")
+        verifier("il est entier, référence comprise",
+                 len(textes4) == 1 and "A12345" in textes4[0]
+                 and "incomplet" not in textes4[0],
+                 textes4[0][-40:].replace("\n", " ") if textes4 else "rien")
+
+        # --- UNE OPÉRATION ANNONCÉE DEUX FOIS -----------------------------
+        #
+        # MTN annonce souvent une opération par deux SMS, au même numéro de
+        # transaction. Dans la vraie base, les seconds avis anglais étaient
+        # comptés en plus : 60 117 932 F d'entrées comptées deux fois. Et le
+        # dépôt MTN en français n'était pas lu du tout.
+        print("\nUne opération annoncée deux fois ne compte qu'une fois")
+        principal = ("You have received 5000000 XAF from ESSAI NANA PAUL "
+                     "(237690000007) on your mobile money account at 2026-10-03 "
+                     "12:10:54. Message from sender: . Your new balance:10200500 "
+                     "XAF. Financial Transaction Id: 19100000000.")
+        avis = ("You have received 5,000,000 FCFA from - ESSAI NANA PAUL "
+                "(237690000007) on 2026-10-02 08:27:33. Transaction Id: "
+                "19100000000. New account balance: - FCFA.")
+        depot_fr = ("Dépot de 42500 XAF effectué le 2026-10-12 11:16:29 au ESSAI "
+                    "DEPOT FRANCAIS (237690000003), a été effectué avec succès. "
+                    "Transaction ID:19234400000. Message:. Votre nouveau solde est "
+                    "de 352418 XAF. Commission ajoutée : 66 XAF.")
+        modem5 = modem_pdu(
+            (31, fabriquer_pdu(principal[:153], expediteur="MobileMoney",
+                               reference=92, total=2, position=1, quand=maintenant)),
+            (32, fabriquer_pdu(principal[153:], expediteur="MobileMoney",
+                               reference=92, total=2, position=2, quand=maintenant)),
+            (33, fabriquer_pdu(avis, expediteur="MobileMoney", quand=maintenant)),
+            (34, fabriquer_pdu(depot_fr[:153], expediteur="MobileMoney",
+                               reference=93, total=2, position=1, quand=maintenant)),
+            (35, fabriquer_pdu(depot_fr[153:], expediteur="MobileMoney",
+                               reference=93, total=2, position=2, quand=maintenant)))
+        compte5 = CompteEssai(modem5)
+        robot5 = Robot([compte5], TransportMuet(), journal, nom="T", pause_sms=1)
+        robot5._relever_sms(compte5)
+        nuage.pousser_paiements()
+        donnees5 = lire(f"{BASE}/api/donnees?sms=200", biscuit)
+        piu = [p for p in donnees5["paiements"] if "ESSAI NANA PAUL" in p["smsBrut"]]
+        verifier("les deux SMS de l'opération sont à l'écran", len(piu) == 2,
+                 f"{len(piu)} SMS")
+        verifier("le second est un avis en double, sans montant",
+                 any(p["categorie"] == "doublon" and p["montant"] is None for p in piu),
+                 str([(p["categorie"], p["montant"]) for p in piu]))
+        verifier("l'opération compte 5 000 000, pas 10 000 000",
+                 sum(p["montant"] or 0 for p in piu) == 5000000,
+                 f"{sum(p['montant'] or 0 for p in piu)} FCFA")
+        depot = next((p for p in donnees5["paiements"]
+                      if "ESSAI DEPOT FRANCAIS" in p["smsBrut"]), None)
+        verifier("le dépôt MTN en français est lu : une SORTIE de 42 500",
+                 depot is not None and depot["montant"] == 42500
+                 and depot["sens"] == "out" and depot["categorie"] == "depot",
+                 f"{depot['categorie']} {depot['sens']} {depot['montant']}" if depot else "absent")
+
+        # --- LA SUITE ARRIVE APRÈS COUP ----------------------------------
+        #
+        # Le 17 octobre, 08 h 10 : un transfert Orange s'affichait avec sa
+        # seule fin, « morceau 1 sur 2 jamais reçu ». Un téléphone attend la
+        # suite sept jours ; le robot abandonnait au bout d'un quart d'heure,
+        # et un morceau arrivé ensuite devenait un second message coupé. La
+        # moitié se montre maintenant tout de suite, dite incomplète, et la
+        # suite la COMPLÈTE — au journal, puis à l'écran, sur la même ligne.
+        print("\nLa suite d'un message, arrivée trois heures après, le complète")
+        transfert = ("Successful transfer from 690000031 ETS ESSAI SUITE TARDIVE "
+                     "DU LITTORAL to 696100001 BOUTIQUE ESSAI. Details: "
+                     "Transaction ID: PP261017.0810.A00043, Transaction amount: "
+                     "150000 FCFA, Charges: 0 FCFA, Commission: 0 FCFA, Net amount "
+                     ":150000 FCFA, New balance: 3154870.6 FCFA.")
+        ecrit6 = maintenant - timedelta(hours=3, minutes=5)
+        attente = maintenant - timedelta(minutes=3)       # la patience est passée
+        memoire6 = [(41, fabriquer_pdu(transfert[153:], expediteur="OrangeMoney",
+                                       reference=94, total=2, position=2,
+                                       quand=ecrit6))]
+        modem6 = ModemSerie.__new__(ModemSerie)
+        modem6.verrou = threading.Lock()
+        modem6.mode_pdu = True
+        modem6._morceaux_vus = {("OrangeMoney", 94, 2): attente}
+        modem6._envoyer = lambda commande, delai=10: "".join(
+            f"+CMGL: {i},1,,{len(p) // 2}\r\n{p}\r\n" for i, p in memoire6) + "\r\nOK\r\n"
+        modem6.effacer_sms = lambda indices: [memoire6.remove(x) for x in list(memoire6)
+                                              if x[0] in indices] or True
+        compte6 = CompteEssai(modem6, libelle="Orange ·0042")
+        robot6 = Robot([compte6], TransportMuet(), journal, nom="T", pause_sms=1)
+        robot6._relever_sms(compte6)                 # la fin, seule
+        nuage.pousser_paiements()
+        avant = [p for p in lire(f"{BASE}/api/donnees?sms=200", biscuit)["paiements"]
+                 if "A00043" in p["smsBrut"] or "3154870.6" in p["smsBrut"]]
+        verifier("la moitié reçue se montre tout de suite, dite incomplète",
+                 len(avant) == 1 and "pas encore arrivé" in avant[0]["smsBrut"],
+                 f"{len(avant)} ligne(s)")
+        memoire6.append((42, fabriquer_pdu(transfert[:153], expediteur="OrangeMoney",
+                                           reference=94, total=2, position=1,
+                                           quand=ecrit6)))
+        modem6._morceaux_vus[("OrangeMoney", 94, 2)] = attente
+        robot6._relever_sms(compte6)                 # le début, trois heures après
+        nuage.pousser_paiements()
+        apres = [p for p in lire(f"{BASE}/api/donnees?sms=200", biscuit)["paiements"]
+                 if "A00043" in p["smsBrut"] or "3154870.6" in p["smsBrut"]]
+        verifier("une seule ligne à l'écran, pas deux moitiés", len(apres) == 1,
+                 f"{len(apres)} ligne(s)")
+        verifier("elle est entière : le nom de qui a payé est revenu",
+                 len(apres) == 1 and apres[0]["smsBrut"] == transfert,
+                 apres[0]["smsBrut"][-60:].replace("\n", " ") if apres else "rien")
+        verifier("et l'argent se lit : 150 000",
+                 len(apres) == 1 and apres[0]["montant"] == 150000,
+                 str(apres[0]["montant"]) if apres else "rien")
+
         # --- UN SMS ILLISIBLE NE BLOQUE PAS LES AUTRES --------------------
         print("\nUn message abîmé ne fait pas tomber la relève")
         modem3 = modem_pdu(
@@ -444,12 +592,20 @@ def main():
         verifier("la ligne monte chez Bonzini (seul chronométré) en moins de 3 s, XAFe en panne",
                  envoyes >= 1 and mballa == (1, 0) and duree < 3,
                  f"{envoyes} ligne(s) parties, Bonzini/XAFe = {mballa}, {duree:.2f} s")
-        verifier("XAFe garde la ligne en attente",
-                 journal.xafe_en_attente() == 1, f"{journal.xafe_en_attente()} en attente")
+        # LA ligne, ici aussi, pas la longueur de la file : les étapes
+        # d'avant y laissent des encaissements de cartes d'essai sans numéro
+        # déclaré, qui attendent leur numéro — à bon droit, et sans rapport
+        # avec la panne que cette étape mesure.
+        def mballa_chez_xafe():
+            return journal.conn.execute(
+                "SELECT COALESCE(envoye_xafe, 0) FROM sms "
+                "WHERE texte LIKE '%MBALLA%'").fetchone()[0]
+        verifier("XAFe garde la ligne en attente", mballa_chez_xafe() == 0,
+                 f"envoye_xafe = {mballa_chez_xafe()}")
         faux_xafe.en_panne = False
         xafe.pousser_paiements()
-        verifier("XAFe revenu, la file se vide", journal.xafe_en_attente() == 0,
-                 f"{journal.xafe_en_attente()} en attente")
+        verifier("XAFe revenu, la ligne part", mballa_chez_xafe() == 1,
+                 f"envoye_xafe = {mballa_chez_xafe()}")
     finally:
         faux_xafe.fermer()
         try:

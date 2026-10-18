@@ -10,7 +10,7 @@ import {
   GESTES_DE_DEMONSTRATION, demandeJouee, estDemonstration,
 } from "@/lib/demonstration";
 import { erreurApi } from "@noyau/textes/api";
-import { codeAComposer, texteDeReponse } from "@noyau/deroule";
+import { cheminRecu, codeAComposer, texteDeReponse } from "@noyau/deroule";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +114,15 @@ export async function POST(req: Request) {
     parametres.texte = lu.texte;
   }
   if (brut.secret === true) parametres.secret = true;
+  // LE CHEMIN CONFIÉ AU BOÎTIER (`@noyau/deroule`, § 8) : les étapes
+  // apprises et les champs que l'écran aurait servis tout seuls. Seulement
+  // à l'ouverture, et seulement bien formé — des chiffres, rien d'autre ; un
+  // chemin douteux ne refuse pas la demande, il ne voyage pas, et l'écran
+  // fait tout lui-même, comme avant.
+  if (genre === "ussd") {
+    const chemin = cheminRecu(brut.suite);
+    if (chemin) parametres.suite = chemin;
+  }
   if (typeof brut.compte === "string") parametres.compte = brut.compte.slice(0, 40);
   // La carte visée par une session USSD : l'ICCID, seul nom sans ambiguïté
   // d'une puce. Sans lui, le robot compose sur sa première carte — et avec

@@ -33,7 +33,7 @@ import threading
 import time
 import uuid
 from collections import namedtuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .analyse_sms import analyser
 from .textes import t
@@ -257,6 +257,29 @@ class Journal:
                     UNIQUE(source, source_id));
                 CREATE UNIQUE INDEX IF NOT EXISTS recus_reference
                     ON recus(reference) WHERE reference IS NOT NULL;
+                -- CHAQUE PDU RELEVÉ, TEL QUE LE MODEM L'A RENDU. Un SMS long
+                -- arrivait « incomplet » sans qu'on puisse dire si le morceau
+                -- manquant n'était jamais venu ou s'il était venu trop tard :
+                -- le décodage jetait l'en-tête et l'heure de chaque morceau.
+                -- On les garde ici, sur le boîtier seulement (le texte y est
+                -- déjà ; rien de tout cela ne monte au nuage), soixante jours.
+                --   carte       ICCID, ou le libellé si la puce n'est pas lue ;
+                --   emplacement la place du PDU dans la mémoire du modem ;
+                --   reference / total / position : l'en-tête de découpe
+                --               (vides pour un SMS d'un seul tenant) ;
+                --   heure_reseau  l'heure écrite par l'opérateur (TP-SCTS) ;
+                --   vu_le       la première relève qui l'a vu (heure du Pi) ;
+                --   livre_le    quand son message est parti au journal, et
+                --   complet     si ce message avait tous ses morceaux ;
+                --   efface_le   quand sa place a été libérée dans le modem.
+                CREATE TABLE IF NOT EXISTS morceaux(
+                    id INTEGER PRIMARY KEY,
+                    carte TEXT NOT NULL, compte TEXT, emplacement INTEGER,
+                    pdu TEXT NOT NULL, expediteur TEXT, reference INTEGER,
+                    total INTEGER, position INTEGER, heure_reseau TEXT,
+                    vu_le TEXT NOT NULL, livre_le TEXT, sms_id INTEGER,
+                    complet INTEGER, efface_le TEXT,
+                    UNIQUE(carte, emplacement, pdu));
                 """
             )
             # Migration douce des bases créées avant le multi-comptes.
@@ -414,6 +437,171 @@ class Journal:
             self.conn.execute("INSERT INTO evenements(date, texte) VALUES(?,?)",
                               (self._maintenant(), texte))
             self.conn.commit()
+
+    # ---- morceaux bruts : la preuve d'un SMS long coupé -------------------
+    # Heures en UTC, décalage écrit : elles se comparent à l'heure réseau
+    # (TP-SCTS), qui porte le sien. `_maintenant` reste l'heure locale, sans
+    # décalage, pour les tables d'avant.
+    GARDE_MORCEAUX = timedelta(days=60)
+
+    @staticmethod
+    def _maintenant_utc():
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def morceaux_vus(self, carte, compte, releve):
+        """Range les PDU d'une relève (`Compte.derniere_releve`). Un PDU déjà
+        vu à la même place n'est pas réécrit : `vu_le` reste la PREMIÈRE
+        relève qui l'a vu — c'est elle qui dit combien de temps il a attendu
+        ses frères."""
+        if not releve:
+            return
+        maintenant = self._maintenant_utc()
+        with self.verrou:
+            self.conn.executemany(
+                "INSERT OR IGNORE INTO morceaux(carte, compte, emplacement, pdu,"
+                " expediteur, reference, total, position, heure_reseau, vu_le)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                [(carte, compte, r.get("emplacement"), r.get("pdu") or "",
+                  r.get("expediteur"), r.get("reference"), r.get("total"),
+                  r.get("position"), r.get("heure_reseau"), maintenant)
+                 for r in releve if r.get("pdu")])
+            limite = (datetime.now(timezone.utc) - self.GARDE_MORCEAUX).isoformat(
+                timespec="seconds")
+            self.conn.execute("DELETE FROM morceaux WHERE vu_le < ?", (limite,))
+            self.conn.commit()
+
+    def morceaux_livres(self, carte, emplacements, sms_id, complet):
+        """Le message de ces emplacements est parti au journal (`sms_id`, ou
+        None si c'était un doublon déjà connu)."""
+        self._marquer_morceaux(
+            carte, emplacements,
+            "livre_le = ?, sms_id = ?, complet = ?",
+            (self._maintenant_utc(), sms_id, 1 if complet else 0),
+            "livre_le IS NULL")
+
+    def morceaux_effaces(self, carte, emplacements):
+        """Leur place est libérée dans le modem."""
+        self._marquer_morceaux(carte, emplacements, "efface_le = ?",
+                               (self._maintenant_utc(),), "1 = 1")
+
+    def _marquer_morceaux(self, carte, emplacements, affectation, valeurs, garde):
+        # L'emplacement se réutilise une fois libéré : seul compte le PDU qui
+        # l'occupe ENCORE (pas encore effacé).
+        places = [int(e) for e in emplacements]
+        if not places:
+            return
+        trous = ",".join("?" * len(places))
+        with self.verrou:
+            self.conn.execute(
+                f"UPDATE morceaux SET {affectation} WHERE carte = ? AND "
+                f"emplacement IN ({trous}) AND efface_le IS NULL AND {garde}",
+                (*valeurs, carte, *places))
+            self.conn.commit()
+
+    # Sept jours : ce qu'un téléphone Android accorde à un morceau manquant
+    # (`DEFAULT_PARTIAL_SEGMENT_EXPIRE_AGE`, `SmsBroadcastUndelivered`).
+    FENETRE_DU_RECOLLAGE = timedelta(days=7)
+    # Mais un numéro de découpe REVIENT : il n'a que 256 valeurs par
+    # expéditeur, et une caisse active reçoit des dizaines de longs messages
+    # Orange par jour. Recoller la suite d'un message au début d'un AUTRE,
+    # c'est fabriquer une opération qui n'a jamais eu lieu — le nom de l'un,
+    # le montant de l'autre. Deux morceaux d'un même message portent la même
+    # heure d'ÉCRITURE (l'opérateur les écrit ensemble, et cette heure ne
+    # change pas quand il relivre plus tard) : sur sept jours, on exige donc
+    # qu'elles se suivent de près. Sans cette heure, d'un côté ou de l'autre,
+    # rien ne départage deux messages : on ne recolle que dans l'heure.
+    ECART_D_ECRITURE = timedelta(minutes=10)
+    SANS_HEURE = timedelta(hours=1)
+
+    def message_coupe(self, carte, expediteur, reference, total,
+                      heure_reseau=None):
+        """Le message déjà livré INCOMPLET dont ces morceaux sont la suite :
+        (sms_id, [(position, pdu)]), ou None.
+
+        `heure_reseau` : l'heure écrite par l'opérateur sur le morceau qui
+        arrive. Elle doit suivre de près celle des morceaux déjà livrés
+        (voir ECART_D_ECRITURE)."""
+        maintenant = datetime.now(timezone.utc)
+        depuis = (maintenant - self.FENETRE_DU_RECOLLAGE).isoformat(
+            timespec="seconds")
+        with self.verrou:
+            candidats = self.conn.execute(
+                "SELECT DISTINCT sms_id FROM morceaux WHERE carte = ? AND "
+                "expediteur = ? AND reference = ? AND total = ? AND "
+                "sms_id IS NOT NULL AND complet = 0 AND vu_le >= ? "
+                "ORDER BY sms_id DESC",
+                (carte, expediteur, reference, total, depuis)).fetchall()
+            for (sms_id,) in candidats:
+                parties = self.conn.execute(
+                    "SELECT position, pdu, heure_reseau, vu_le FROM morceaux "
+                    "WHERE carte = ? AND sms_id = ? ORDER BY position",
+                    (carte, sms_id)).fetchall()
+                if not self._du_meme_message(
+                        heure_reseau, [(h, v) for _, _, h, v in parties],
+                        maintenant):
+                    continue
+                return sms_id, [(position, pdu) for position, pdu, _, _ in parties]
+        return None
+
+    def _du_meme_message(self, heure, anciens, maintenant):
+        """Les morceaux déjà livrés (`anciens` : [(heure écrite, vu le)]) et
+        celui qui arrive (`heure`) ont-ils été écrits ensemble ?"""
+        try:
+            ecrites = [datetime.fromisoformat(h) for h, _ in anciens if h]
+            if heure and ecrites:
+                a = datetime.fromisoformat(heure)
+                return all(abs(a - e) <= self.ECART_D_ECRITURE for e in ecrites)
+            vus = [datetime.fromisoformat(v) for _, v in anciens if v]
+            return bool(vus) and all(maintenant - v <= self.SANS_HEURE
+                                     for v in vus)
+        except (TypeError, ValueError):
+            return False        # une heure illisible ne prouve rien : on ne recolle pas
+
+    def completer_sms(self, sms_id, texte):
+        """Le message coupé reçoit sa suite. Le texte ne se RETOUCHE pas : il
+        se complète de ce que l'opérateur a envoyé, et repart à la
+        plateforme, qui remplace la moitié qu'elle montrait.
+
+        XAFe aussi doit relire — mais seulement ce qu'il n'a jamais vu. La
+        moitié illisible y a été close ICI, « sans objet », sans partir :
+        entière, elle peut être un encaissement. Ce que XAFe a tranché
+        lui-même (crédité, retenu) n'est pas rouvert : on ne paie pas deux
+        fois sur un texte qui s'allonge."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE sms SET texte = ?, envoye = 0 WHERE id = ?",
+                (texte, sms_id))
+            try:
+                self.conn.execute(
+                    "UPDATE sms SET envoye_xafe = 0, xafe_reponse = NULL "
+                    "WHERE id = ? AND xafe_reponse = 'sans objet'", (sms_id,))
+            except sqlite3.OperationalError:
+                pass            # une base sans colonnes XAFe : rien à rouvrir
+            self.conn.commit()
+
+    def morceaux_complets(self, carte, sms_id):
+        """Tous les morceaux de ce message sont là : aucun n'attend plus."""
+        with self.verrou:
+            self.conn.execute(
+                "UPDATE morceaux SET complet = 1 WHERE carte = ? AND sms_id = ?",
+                (carte, sms_id))
+            self.conn.commit()
+
+    def morceaux(self, carte=None):
+        """Les PDU gardés, du plus ancien au plus récent (pour l'enquête)."""
+        sql = ("SELECT carte, compte, emplacement, pdu, expediteur, reference,"
+               " total, position, heure_reseau, vu_le, livre_le, sms_id,"
+               " complet, efface_le FROM morceaux")
+        args = ()
+        if carte is not None:
+            sql += " WHERE carte = ?"
+            args = (carte,)
+        with self.verrou:
+            lignes = self.conn.execute(sql + " ORDER BY id", args).fetchall()
+        noms = ("carte", "compte", "emplacement", "pdu", "expediteur", "reference",
+                "total", "position", "heure_reseau", "vu_le", "livre_le",
+                "sms_id", "complet", "efface_le")
+        return [dict(zip(noms, l)) for l in lignes]
 
     def sms_existe(self, expediteur, texte, compte="", secondes=900,
                    emis_le=None):

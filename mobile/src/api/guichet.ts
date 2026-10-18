@@ -9,6 +9,7 @@ import * as Coffre from "./coffre";
 import type { Donnees } from "@noyau/types";
 import { LANGUE_DEFAUT, langueDe, type Langue } from "@noyau/langue";
 import type { ReponseEssai } from "@noyau/essai";
+import { enchainementLu, type Enchainement } from "@noyau/deroule";
 import { textesConnexion } from "@noyau/textes/connexion";
 
 // L'adresse de la plateforme. Elle vient de la configuration d'Expo pour
@@ -685,13 +686,24 @@ export function deposerCommande(
 /** L'état d'une demande déposée : le terminal a-t-il répondu ? */
 export async function lireCommande(
   id: number, renoncer?: AbortSignal,
-): Promise<{ etat: string; resultat: string | null; reseau?: "attend" | "fini" }> {
-  const c = await demander<{ etat: string; resultat: string | null; reseau?: unknown }>(
-    `/api/commande/${id}`, {}, { renoncer });
+): Promise<{
+  etat: string; resultat: string | null; reseau?: "attend" | "fini"; enchaine?: Enchainement;
+}> {
+  const c = await demander<{
+    etat: string; resultat: string | null; reseau?: unknown; enchaine?: unknown;
+  }>(`/api/commande/${id}`, {}, { renoncer });
   // Ce que le réseau a dit de la session : seulement une des deux valeurs
   // connues — toute autre chose vaut « on ne sait pas », et l'écran lit le texte.
   const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
-  return { etat: c.etat, resultat: c.resultat, ...(reseau ? { reseau } : {}) };
+  // Ce que le boîtier a parcouru seul (`@noyau/deroule`, § 8). Sans lui,
+  // l'écran referait les étapes déjà faites — sur un menu qui en est déjà
+  // ailleurs : il ne passe que s'il est lisible.
+  const enchaine = enchainementLu(c.enchaine);
+  return {
+    etat: c.etat, resultat: c.resultat,
+    ...(reseau ? { reseau } : {}),
+    ...(enchaine ? { enchaine } : {}),
+  };
 }
 
 /** RETIRE une demande que l'écran abandonne — si le boîtier ne l'a pas

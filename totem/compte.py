@@ -273,6 +273,12 @@ class Compte:
         with self.verrou:
             return self.modem.lire_sms()
 
+    @property
+    def derniere_releve(self):
+        """Les PDU bruts de la dernière relève (voir `modem._trace_du_morceau`).
+        Vide pour un modem qui ne les donne pas (simulateur, mode texte)."""
+        return list(getattr(self.modem, "derniere_releve", None) or [])
+
     def effacer_sms(self, indices):
         """`indices` : un emplacement, ou la liste des morceaux d'un long SMS."""
         with self.verrou:

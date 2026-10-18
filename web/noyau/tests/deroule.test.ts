@@ -11,8 +11,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  ATTENTE_DU_BOITIER_MS, LONGUEUR_USSD_MAX, PROLONGATION_MS,
-  champAServir, codeAComposer, estUneConfirmation, etapePeutPartir,
+  ATTENTE_DU_BOITIER_MS, ENCHAINEMENT_ETAPES, LONGUEUR_USSD_MAX, PROLONGATION_MS,
+  champAServir, cheminAConfier, cheminRecu, codeAComposer, estUneConfirmation, etapePeutPartir,
+  repriseApres,
   reponseDuBoitier, reponseLibre, reponsePrete, restantsApresReponse, texteDeReponse,
 } from "../deroule";
 import { lireEcran } from "../ussd";
@@ -228,6 +229,13 @@ test("l'écran n'abandonne pas avant que le boîtier ait pu entendre le réseau"
   // puisse plus aboutir (trop vieille pour être composée, puis le modem).
   const perimee = constante(pilotage, "DEMANDE_PERIMEE_S");
   assert.ok(ATTENTE_DU_BOITIER_MS + PROLONGATION_MS >= (perimee + delaiModem) * 1000);
+  // UNE DEMANDE QUI ENCHAÎNE DURE PLUS : le boîtier parcourt seul les écrans
+  // prévus, et n'en commence plus après ENCHAINEMENT_S — mais l'écran
+  // commencé peut encore attendre le réseau. L'écran relit jusque-là.
+  const chaine = constante(pilotage, "ENCHAINEMENT_S");
+  const pire = (releve + delaiModem + chaine + delaiModem + 5) * 1000;
+  assert.ok(ATTENTE_DU_BOITIER_MS + PROLONGATION_MS >= pire,
+            `l'écran relit ${ATTENTE_DU_BOITIER_MS + PROLONGATION_MS} ms, une chaîne peut en prendre ${pire}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -260,4 +268,64 @@ test("trop long, mal formé, vide : refusé avec sa raison, jamais coupé", () =
   assert.deepEqual(texteDeReponse('1"\r\nAT+CMGD=1,4'), { texte: "1AT+CMGD=1,4" });
   assert.deepEqual(texteDeReponse("x".repeat(LONGUEUR_USSD_MAX + 1)), { refus: "reponseTropLongue" });
   assert.deepEqual(texteDeReponse("x".repeat(150)), { texte: "x".repeat(150) });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Le chemin confié au boîtier.
+// ---------------------------------------------------------------------------
+
+const NUM = { cle: "numero", type: "numero" as const };
+const MNT = { cle: "montant", type: "montant" as const };
+
+test("un transfert par le menu se confie en entier : les étapes, puis les champs", () => {
+  assert.deepEqual(
+    cheminAConfier(["*126#", "5", "1"], ["*126#", "5", "1"], [NUM, MNT],
+                   { numero: "677998877", montant: "250000" }),
+    { trajet: [["5", "5"], ["1", "1"]],
+      champs: [{ cle: "numero", type: "numero", valeur: "677998877" },
+               { cle: "montant", type: "montant", valeur: "250000" }] });
+});
+
+test("un code complet n'a rien à confier : le réseau ne demandera que le code secret", () => {
+  const brutes = ["*126*5*1*{numero}*{montant}#"];
+  const { etapes, consommees } = remplirVariables(brutes, { numero: "677998877", montant: "5000" });
+  const restants = [NUM, MNT].filter((c) => !consommees.includes(c.cle));
+  assert.equal(cheminAConfier(brutes, etapes, restants, { numero: "677998877", montant: "5000" }), null);
+});
+
+test("un champ sans valeur sûre reste à l'écran, le reste se confie", () => {
+  assert.deepEqual(
+    cheminAConfier(["*126#", "5"], ["*126#", "5"], [NUM, MNT], { numero: "", montant: "5000" }),
+    { trajet: [["5", "5"]], champs: [{ cle: "montant", type: "montant", valeur: "5000" }] });
+  // Une réponse libre (« texte ») ne se sert jamais toute seule.
+  assert.equal(
+    cheminAConfier(["*126#"], ["*126#"], [{ cle: "numero", type: "texte" }], { numero: "677998877" }),
+    null);
+});
+
+test("la plateforme et le boîtier refusent exactement les mêmes chemins", () => {
+  const cas = JSON.parse(readFileSync(join(ICI, "chemins-partages.json"), "utf8")) as
+    { ok: boolean; suite: unknown; pourquoi?: string }[];
+  assert.ok(cas.filter((c) => c.ok).length >= 5 && cas.filter((c) => !c.ok).length >= 10);
+  for (const c of cas) assert.equal(cheminRecu(c.suite) !== null, c.ok, c.pourquoi ?? JSON.stringify(c.suite));
+  // La borne est la même des deux côtés.
+  assert.equal(ENCHAINEMENT_ETAPES, constante(lirePython("pilotage.py"), "ENCHAINEMENT_ETAPES"));
+});
+
+test("l'écran reprend juste après ce que le boîtier a parcouru", () => {
+  assert.deepEqual(repriseApres(undefined, [NUM, MNT]), { depart: 1, restants: [NUM, MNT] });
+  assert.deepEqual(repriseApres({ trajet: 2, servis: ["numero"] }, [NUM, MNT]),
+                   { depart: 3, restants: [MNT] });
+});
+
+test("le rapport du boîtier voyage jusqu'à l'écran, et seulement s'il est lisible", () => {
+  assert.deepEqual(
+    reponseDuBoitier({ etat: "faite", resultat: "x", reseau: "attend", enchaine: { trajet: 2, servis: ["numero"] } }),
+    { genre: "ecran", texte: "x", reseau: "attend", enchaine: { trajet: 2, servis: ["numero"] } });
+  for (const douteux of [{ trajet: -1, servis: [] }, { trajet: 1.5, servis: [] },
+                         { trajet: 1, servis: [3] }, "2", null]) {
+    assert.deepEqual(
+      reponseDuBoitier({ etat: "faite", resultat: "x", reseau: "attend", enchaine: douteux }),
+      { genre: "ecran", texte: "x", reseau: "attend" });
+  }
 });
