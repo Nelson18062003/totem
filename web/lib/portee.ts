@@ -20,7 +20,10 @@
 // existe pour le jour où la base ne répond plus.
 
 import { cookies } from "next/headers";
-import { COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, sujetDeSession } from "@/lib/session";
+import {
+  COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, estSujetDeDemo, sujetDeSession,
+} from "@/lib/session";
+import { compteDuSujetIci } from "@/lib/monde";
 import { cartesDe, utilisateurParId } from "@/lib/serveur";
 import { idDuLienDeReleve, verifierLien } from "@/lib/lien-signe";
 import { demonstrationOuverte } from "@/lib/demonstration";
@@ -72,6 +75,10 @@ export async function porteeDe(req?: Request): Promise<Portee | null> {
   // Cette ligne passe AVANT la suivante, qui donne TOUT à ce qui ne désigne
   // personne : l'ordre est la règle.
   if (sujet === SUJET_DEMONSTRATION) return RIEN;
+  // Un compte de L'AUTRE monde (un appel au monde imposé) ne voit rien ici —
+  // et surtout pas « tout », que la ligne suivante donne à ce qui ne désigne
+  // personne. Même règle d'ordre que la vitrine.
+  if (compteDuSujet(sujet) !== null && (await compteDuSujetIci(sujet)) === null) return RIEN;
   const id = compteDuSujet(sujet);
   // La clé de secours, et les jetons d'avant les comptes, ne désignent
   // personne : ils sont ceux du propriétaire, et voient ce qu'il voit.
@@ -100,6 +107,9 @@ export async function quiPourLien(req?: Request): Promise<string | null> {
   // Aucun lien de bilan pour la démonstration : il n'y a rien à exporter,
   // et « tout » serait la caisse entière.
   if (sujet === SUJET_DEMONSTRATION) return null;
+  // Ni pour la démo vivante : un lien s'ouvre SANS session, donc dans la
+  // maison — « c12 » y désignerait le vrai compte numéro 12.
+  if (estSujetDeDemo(sujet)) return null;
   const id = compteDuSujet(sujet);
   return id === null ? "tout" : `c${id}`;
 }

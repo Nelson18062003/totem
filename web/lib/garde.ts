@@ -22,7 +22,8 @@
 
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
+import { COOKIE_SESSION, estSujetDeDemo, sujetDeSession } from "@/lib/session";
+import { compteDuSujetIci } from "@/lib/monde";
 import { utilisateurParId } from "@/lib/serveur";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
@@ -55,7 +56,10 @@ export async function quiAdministre(req?: Request): Promise<QuiAdministre | null
     (schema?.toLowerCase() === "bearer" && valeur ? valeur : undefined);
   const sujet = await sujetDeSession(secret, jeton);
   if (sujet === "secours") return { personne: null, nom: "" };
-  const id = compteDuSujet(sujet);
+  // L'administrateur de la DÉMO n'administre pas TOTEM : il est le
+  // propriétaire d'un monde à part, pas de la plateforme.
+  if (estSujetDeDemo(sujet)) return null;
+  const id = await compteDuSujetIci(sujet);
   if (id === null) return null;
   const compte = await utilisateurParId(id);
   if (!compte || !compte.approuve || compte.role !== "proprietaire") return null;

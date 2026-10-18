@@ -43,6 +43,7 @@ export const relie = Boolean(url && cle);
 import { FUSEAU } from "./fuseau";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { lireDansLaDemonstration, tablesDeDemonstration } from "./demonstration";
+import { cheminDansLeMonde, mondeEnCours } from "./monde";
 
 // LA SOURCE DE LA DÉMONSTRATION. Quand une lecture se fait « dans » la
 // démonstration, `lire` répond depuis ce jeu inventé et ne touche JAMAIS la
@@ -79,6 +80,22 @@ function sansValeurs(chemin: string): string {
 }
 
 /**
+ * LE SEUL CHEMIN VERS LA BASE. Chaque question et chaque écriture passent
+ * ici, et c'est ici que le monde choisit la table : dans la démo vivante,
+ * « paiements » se lit dans « demo_paiements » (voir lib/monde.ts). Une table
+ * sans double est refusée, pas lue dans la maison — la réponse est un 403 que
+ * chaque appelant traite déjà comme une panne : on ne montre rien.
+ */
+export async function appeler(chemin: string, init: RequestInit): Promise<Response> {
+  const vise = await cheminDansLeMonde(chemin);
+  if (vise === null) {
+    console.error(`Hors de ce monde : ${sansValeurs(chemin)}`);
+    return new Response("[]", { status: 403 });
+  }
+  return fetch(`${url}/rest/v1/${vise}`, init);
+}
+
+/**
  * Une lecture qui dit AUSSI combien de lignes la base avait à donner.
  *
  * PostgREST répond « content-range: 0-999/1834 » quand on le lui demande :
@@ -97,7 +114,7 @@ async function lireEtCompter<T>(chemin: string): Promise<{ lignes: T[]; total: n
   }
   if (!relie) return { lignes: [], total: null };
   try {
-    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+    const r = await appeler(`${chemin}`, {
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
         prefer: "count=exact",
@@ -125,7 +142,7 @@ async function lire<T>(chemin: string): Promise<T[]> {
   if (demo) return lireDansLaDemonstration(demo, chemin) as T[];
   if (!relie) return [];
   try {
-    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+    const r = await appeler(`${chemin}`, {
       headers: { apikey: cle!, authorization: `Bearer ${cle}` },
       cache: "no-store",
     });
@@ -1009,7 +1026,7 @@ export async function creerCommande(
   const ligne: Record<string, unknown> = { terminal, type: genre, parametres };
   if (cleIntention) ligne.cle = cleIntention;
   try {
-    const r = await fetch(`${url}/rest/v1/commandes`, {
+    const r = await appeler(`commandes`, {
       method: "POST",
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1020,7 +1037,14 @@ export async function creerCommande(
     });
     if (r.ok) {
       const lignes = (await r.json()) as { id: number }[];
-      return lignes[0]?.id ?? null;
+      const id = lignes[0]?.id ?? null;
+      // DANS LA DÉMO, PERSONNE NE RELÈVE LA DEMANDE : il n'y a pas de
+      // boîtier. La base la joue tout de suite, comme le réseau aurait
+      // répondu, et l'écran la suit comme une vraie. Si le jeu échoue, la
+      // demande reste en attente, et l'écran l'abandonne à son échéance —
+      // comme avec un boîtier qui ne répond pas.
+      if (id != null && await mondeEnCours() === "demo") await jouerDansLaDemo(id);
+      return id;
     }
     // 409 = l'index d'unicité a parlé : ce geste a DÉJÀ sa demande. On rend
     // la première plutôt qu'un échec — l'écran suit alors la commande qui
@@ -1043,6 +1067,23 @@ export async function creerCommande(
   }
 }
 
+/** Le faux réseau répond à une demande de démo (`demo_jouer`). */
+async function jouerDansLaDemo(id: number): Promise<boolean> {
+  try {
+    const r = await appeler("rpc/demo_jouer", {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`, "content-type": "application/json",
+      },
+      body: JSON.stringify({ p_id: id }),
+      cache: "no-store",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 // La NATURE choisie par le propriétaire pour un SMS (depot/retrait/transfert/
 // solde). C'est une métadonnée d'affichage, pas le contenu du SMS : le robot
 // ne réécrit jamais une ligne déjà transmise, donc c'est ici qu'on la pose,
@@ -1053,7 +1094,7 @@ export async function definirNature(
 ): Promise<boolean> {
   if (!relie) return false;
   try {
-    const r = await fetch(`${url}/rest/v1/paiements?id=eq.${id}`, {
+    const r = await appeler(`paiements?id=eq.${id}`, {
       method: "PATCH",
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1086,7 +1127,7 @@ export async function chargerActualite(
   let dernier = 0;
   let nonLus = 0;
   try {
-    const r = await fetch(`${url}/rest/v1/paiements?select=id${dans}&order=id.desc&limit=1`, {
+    const r = await appeler(`paiements?select=id${dans}&order=id.desc&limit=1`, {
       headers: entetes, cache: "no-store",
     });
     if (r.ok) {
@@ -1095,7 +1136,7 @@ export async function chargerActualite(
     }
     // Le compte est lu dans l'en-tête « content-range » (« 0-0/42 » → 42).
     // Base pas encore migrée (colonne absente) → réponse 400 → zéro, sans bruit.
-    const c = await fetch(`${url}/rest/v1/paiements?select=id${dans}&lu_le=is.null&limit=1`, {
+    const c = await appeler(`paiements?select=id${dans}&lu_le=is.null&limit=1`, {
       headers: { ...entetes, prefer: "count=exact" }, cache: "no-store",
     });
     if (c.ok) {
@@ -1112,7 +1153,7 @@ export async function chargerActualite(
 export async function marquerLu(id: number): Promise<boolean> {
   if (!relie) return false;
   try {
-    const r = await fetch(`${url}/rest/v1/paiements?id=eq.${id}`, {
+    const r = await appeler(`paiements?id=eq.${id}`, {
       method: "PATCH",
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1148,7 +1189,7 @@ export async function enregistrerAppareil(
   pourLeProprietaire: boolean,
 ): Promise<boolean> {
   if (!relie) return false;
-  const poser = (corps: Record<string, unknown>) => fetch(`${url}/rest/v1/appareils`, {
+  const poser = (corps: Record<string, unknown>) => appeler(`appareils`, {
     method: "POST",
     headers: {
       apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1192,7 +1233,7 @@ export async function compterUnEssai(
 ): Promise<number | null> {
   if (!relie) return null;
   try {
-    const r = await fetch(`${url}/rest/v1/rpc/compter_un_essai`, {
+    const r = await appeler(`rpc/compter_un_essai`, {
       method: "POST",
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1243,7 +1284,7 @@ export async function compterUnEssai(
  */
 export function noterIncident(texte: string): void {
   if (!relie || !texte) return;
-  void fetch(`${url}/rest/v1/evenements`, {
+  void appeler(`evenements`, {
     method: "POST",
     headers: {
       apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1543,7 +1584,7 @@ async function ecrire(
 ): Promise<Response | null> {
   if (!relie) return null;
   try {
-    return await fetch(`${url}/rest/v1/${chemin}`, {
+    return await appeler(`${chemin}`, {
       method: methode,
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1569,7 +1610,7 @@ async function ecrire(
 export async function compterUtilisateurs(): Promise<number | null> {
   if (!relie) return null;
   try {
-    const r = await fetch(`${url}/rest/v1/utilisateurs?select=id&limit=1`, {
+    const r = await appeler(`utilisateurs?select=id&limit=1`, {
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
         prefer: "count=exact", range: "0-0",
@@ -1711,7 +1752,7 @@ export async function definirApprobation(
 export async function supprimerUtilisateur(id: number): Promise<boolean> {
   if (!relie || !Number.isInteger(id)) return false;
   try {
-    const r = await fetch(`${url}/rest/v1/utilisateurs?id=eq.${id}`, {
+    const r = await appeler(`utilisateurs?id=eq.${id}`, {
       method: "DELETE",
       headers: { apikey: cle!, authorization: `Bearer ${cle}` },
       cache: "no-store",
@@ -1763,8 +1804,8 @@ export async function attribuerCarte(id: number, iccid: string): Promise<boolean
 export async function retirerCarte(id: number, iccid: string): Promise<boolean> {
   if (!relie || !Number.isInteger(id) || !/^[A-Za-z0-9]{1,32}$/.test(iccid)) return false;
   try {
-    const r = await fetch(
-      `${url}/rest/v1/attributions?utilisateur=eq.${id}&iccid=eq.${iccid}`,
+    const r = await appeler(
+      `attributions?utilisateur=eq.${id}&iccid=eq.${iccid}`,
       { method: "DELETE", headers: { apikey: cle!, authorization: `Bearer ${cle}` },
         cache: "no-store" });
     return r.ok;
@@ -1790,8 +1831,8 @@ export async function listerAppareils(
   type Appareil = { jeton: string; nom: string | null; plateforme: string | null };
   if (!relie) return [];
   try {
-    const r = await fetch(
-      `${url}/rest/v1/appareils?select=jeton,nom,plateforme&${qui}&order=vu_le.desc&limit=20`,
+    const r = await appeler(
+      `appareils?select=jeton,nom,plateforme&${qui}&order=vu_le.desc&limit=20`,
       { headers: { apikey: cle!, authorization: `Bearer ${cle}` }, cache: "no-store" });
     if (r.ok) return (await r.json()) as Appareil[];
     // Base pas encore migrée : la colonne manque. Tous les téléphones sont
@@ -1814,8 +1855,8 @@ export async function listerAppareils(
 export async function oublierAppareil(jeton: string): Promise<boolean> {
   if (!relie || !jeton) return false;
   try {
-    const r = await fetch(
-      `${url}/rest/v1/appareils?jeton=eq.${encodeURIComponent(jeton)}`,
+    const r = await appeler(
+      `appareils?jeton=eq.${encodeURIComponent(jeton)}`,
       { method: "DELETE", headers: { apikey: cle!, authorization: `Bearer ${cle}` },
         cache: "no-store" });
     return r.ok;
@@ -1838,7 +1879,7 @@ async function ecrireBeneficiaires(
 ): Promise<boolean> {
   if (!relie) return false;
   try {
-    const r = await fetch(`${url}/rest/v1/${chemin}`, {
+    const r = await appeler(`${chemin}`, {
       method: methode,
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,

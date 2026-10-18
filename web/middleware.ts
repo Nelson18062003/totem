@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, sujetDeSession,
+  COOKIE_SESSION, SUJET_DEMONSTRATION, compteDuSujet, estSujetDeDemo, sujetDeSession,
 } from "@/lib/session";
 import { etatDuCompte } from "@/lib/session-vivante";
 import { idDuLienDeReleve, verifierLien } from "@/lib/lien-signe";
@@ -167,7 +167,11 @@ export async function middleware(req: NextRequest) {
   // jeton d'examen déjà émis passerait encore le verrou pendant un mois —
   // pour ne rien voir, certes, mais une porte fermée ne s'entrouvre pas.
   const fermee = (process.env.DEMONSTRATION || "").trim().toLowerCase() === "non";
-  const sujet = lu === SUJET_DEMONSTRATION && fermee ? null : lu;
+  // La démo vivante se ferme de la même façon (« DEMO_VIVANTE=non ») : ses
+  // jetons tombent tous à l'instant, sans toucher aux comptes de la maison.
+  const vivanteFermee = (process.env.DEMO_VIVANTE || "").trim().toLowerCase() === "non";
+  const sujet = (lu === SUJET_DEMONSTRATION && fermee) || (estSujetDeDemo(lu) && vivanteFermee)
+    ? null : lu;
   if (sujet !== null) {
     // LE JETON NE SUFFIT PAS : le compte doit exister encore.
     //
@@ -201,6 +205,16 @@ export async function middleware(req: NextRequest) {
     // plateforme. Ce journal-là est celui de TOTEM, pas celui d'un compte.
     const versConsole = pathname === "/console" || pathname.startsWith("/console/")
       || pathname === "/journal" || pathname.startsWith("/journal/");
+    // LA DÉMO VIVANTE N'ADMINISTRE PAS LA PLATEFORME. Son administrateur
+    // est « propriétaire » de la démo, pas de TOTEM : la console et le
+    // journal parlent des vrais boîtiers.
+    const deDemo = estSujetDeDemo(sujet);
+    if (versConsole && deDemo) {
+      const accueil = req.nextUrl.clone();
+      accueil.pathname = "/";
+      accueil.search = "";
+      return avecCsp(NextResponse.redirect(accueil));
+    }
     if (versConsole && sujet !== "secours") {
       const refuserConsole = () => {
         const accueil = req.nextUrl.clone();
@@ -219,7 +233,7 @@ export async function middleware(req: NextRequest) {
         if (etat.proprietaire === false) return refuserConsole();
         return passer();
       }
-    } else if (id === null || (await etatDuCompte(id)).ouvert) {
+    } else if (id === null || (await etatDuCompte(id, deDemo)).ouvert) {
       return passer();
     }
   }

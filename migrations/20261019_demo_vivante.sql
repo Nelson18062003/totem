@@ -158,15 +158,22 @@ create sequence if not exists demo_reference_no start with 18300000001;
 -- 3. LES CARTES NAISSENT AVEC LE COMPTE
 -- ---------------------------------------------------------------------------
 -- Deux cartes par compte de démo, une MTN et une Orange, au nom de la
--- personne. Les numéros sont dans des tranches réservées à la démo
--- (679 9x xx xx pour MTN, 699 9x xx xx pour Orange) et ne quittent jamais la
--- démo : un virement vers un numéro qui n'est pas une carte de démo est refusé.
+-- personne. Ni l'ICCID ni le numéro ne peuvent être ceux d'une vraie puce :
+--   — l'ICCID porte l'émetteur « 99 » (89 237 99…), qu'aucun opérateur
+--     camerounais n'a : un lien signé qui sortirait de la démo, ouvert sans
+--     session donc dans la maison, ne trouverait aucune carte ;
+--   — le numéro commence par 600, une tranche qu'aucun opérateur n'attribue
+--     (600 0x xx xx pour MTN, 600 9x xx xx pour Orange) : un testeur qui
+--     recopierait un numéro de démo dans un vrai téléphone n'atteindrait
+--     personne.
+-- Et ils ne quittent jamais la démo : un virement vers un numéro qui n'est
+-- pas une carte de démo est refusé.
 create or replace function demo_nouvelle_carte(p_utilisateur bigint, p_operateur text, p_nom text)
 returns text language plpgsql as $$
 declare
   v_no      bigint := nextval('demo_carte_no');
-  v_iccid   text := case p_operateur when 'MTN' then '8923701' else '8923702' end || lpad(v_no::text, 13, '0');
-  v_numero  text := case p_operateur when 'MTN' then '6799' else '6999' end || lpad(v_no::text, 5, '0');
+  v_iccid   text := case p_operateur when 'MTN' then '89237991' else '89237992' end || lpad(v_no::text, 12, '0');
+  v_numero  text := case p_operateur when 'MTN' then '6000' else '6009' end || lpad(v_no::text, 5, '0');
   v_libelle text := case p_operateur when 'MTN' then 'MTN' else 'Orange' end || ' ·' || right(v_iccid, 4);
 begin
   insert into demo_cartes_base (terminal, iccid, imsi_prefixe, operateur, libelle, nom, numero, premiere_vue, derniere_vue)
@@ -227,8 +234,12 @@ begin
           case p_compte.operateur when 'MTN' then 'MobileMoney' else 'OrangeMoney' end,
           p_categorie, p_texte, now(), now())
   returning id into v_id;
-  -- Un float de test chez Glisil : le SMS part aussi chez Glisil (par la plateforme)
-  if p_sens is not null and exists (select 1 from demo_floats_xafe where iccid = p_compte.iccid) then
+  -- Un float de test chez Glisil : le SMS part aussi chez Glisil (par la
+  -- plateforme). Pas les francs FABRIQUÉS : ils ne viennent d'aucun client,
+  -- et Glisil les garderait « retenus » pour toujours, faute de payeur. Le
+  -- solde annoncé du float les compte dès le mouvement suivant.
+  if p_sens is not null and p_tiers is distinct from 'BANQUE DEMO'
+     and exists (select 1 from demo_floats_xafe where iccid = p_compte.iccid) then
     insert into demo_file_xafe (paiement_id) values (v_id) on conflict do nothing;
   end if;
   return v_id;

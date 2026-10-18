@@ -730,7 +730,7 @@ exiger "ses cartes portent son nom et un numéro de la tranche de démo" "
     join demo_attributions a on a.iccid = c.iccid
     join demo_utilisateurs u on u.id = a.utilisateur
    where u.courriel = 'ali@demo.cm' and c.nom = 'ALI TESTEUR'
-     and c.numero ~ '^6[79]99[0-9]{5}$';" "2"
+     and c.numero ~ '^600[09][0-9]{5}$' and c.iccid ~ '^8923799[12][0-9]{12}$';" "2"
 exiger "une carte de démo n'est jamais « retirée » : sa dernière vue est maintenant" "
   select bool_and(derniere_vue > now() - interval '1 minute') from demo_cartes;" "t"
 exiger "le boîtier de démo est toujours entendu" "

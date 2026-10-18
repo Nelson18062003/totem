@@ -32,7 +32,10 @@ import {
   aRafraichir, courrielAcceptable, empreinter, motDePasseAcceptable,
   normaliserCourriel, verifier,
 } from "@/lib/motdepasse";
-import { SUJET_DEMONSTRATION, egaliteConstante, signerSession, sujetDuCompte } from "@/lib/session";
+import {
+  SUJET_DEMONSTRATION, egaliteConstante, signerSession, sujetDeDemo, sujetDuCompte,
+} from "@/lib/session";
+import { dansLaDemoVivante, dansLaMaison, demoVivanteOuverte, mondeEnCours } from "@/lib/monde";
 import {
   COURRIEL_DEMONSTRATION, MOTDEPASSE_DEMONSTRATION, demonstrationOuverte,
   estDemonstration,
@@ -117,7 +120,19 @@ export async function ouvrirLaPorte(
 
   // --- Chemin 1 : un compte ------------------------------------------------
   if (courriel) {
-    const trouve = await utilisateurAVerifier(courriel);
+    // DEUX MONDES, UNE PORTE. Le courriel se cherche dans la maison ET dans
+    // la démo vivante (docs/DEMO-VIVANTE.md), les deux ENSEMBLE : chercher
+    // la démo seulement après un échec dans la maison ferait durer plus
+    // longtemps un courriel inconnu de la maison — et la durée dirait qui y
+    // a un compte. Le même courriel dans les deux : la maison passe d'abord.
+    const [dansLaMaisonTrouve, dansLaDemoTrouve] = await Promise.all([
+      dansLaMaison(() => utilisateurAVerifier(courriel)),
+      demoVivanteOuverte()
+        ? dansLaDemoVivante(() => utilisateurAVerifier(courriel))
+        : Promise.resolve(null),
+    ]);
+    const deDemo = !dansLaMaisonTrouve && Boolean(dansLaDemoTrouve);
+    const trouve = dansLaMaisonTrouve ?? dansLaDemoTrouve;
     // Même quand le compte n'existe pas, on fait tourner PBKDF2 : voir LEURRE.
     const bon = await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
 
@@ -136,9 +151,11 @@ export async function ouvrirLaPorte(
     // d'entrer : c'est un entretien, pas une condition.
     const rafraichie = aRafraichir(trouve.empreinte)
       ? await empreinter(motdepasse) : undefined;
-    await noterConnexion(trouve.compte.id, rafraichie);
+    const compteId = trouve.compte.id;
+    await (deDemo ? dansLaDemoVivante : dansLaMaison)(
+      () => noterConnexion(compteId, rafraichie));
 
-    const sujet = sujetDuCompte(trouve.compte.id);
+    const sujet = deDemo ? sujetDeDemo(compteId) : sujetDuCompte(compteId);
     return { ok: true, jeton: await signerSession(secret, sujet), sujet };
   }
 
@@ -431,6 +448,13 @@ export async function creerParLeProprietaire(
   // qui lit est le propriétaire, chez lui. Le secret sur qui a un compte
   // protège des inconnus, pas de la personne qui tient la maison.
   if (await utilisateurAVerifier(courriel)) {
+    return refus(langue, "courrielDejaPris", 409);
+  }
+  // DANS LA DÉMO, l'adresse ne doit pas non plus être celle d'un compte de
+  // la maison : la porte cherche d'abord dans la maison, et le testeur
+  // entrerait chez lui, jamais dans la démo.
+  if ((await mondeEnCours()) === "demo"
+      && await dansLaMaison(() => utilisateurAVerifier(courriel))) {
     return refus(langue, "courrielDejaPris", 409);
   }
 

@@ -9,7 +9,8 @@
 // le compte en base.
 
 import { cookies } from "next/headers";
-import { COOKIE_SESSION, compteDuSujet, sujetDeSession } from "@/lib/session";
+import { COOKIE_SESSION, sujetDeSession } from "@/lib/session";
+import { compteDuSujetIci } from "@/lib/monde";
 import { utilisateurParId, type Utilisateur } from "@/lib/serveur";
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
@@ -36,7 +37,7 @@ export async function compteConnecte(req?: Request): Promise<Utilisateur | null>
   if (!secret) return null;
   const boite = await cookies();
   const jeton = boite.get(COOKIE_SESSION)?.value ?? jetonPorte(req);
-  const id = compteDuSujet(await sujetDeSession(secret, jeton));
+  const id = await compteDuSujetIci(await sujetDeSession(secret, jeton));
   return id === null ? null : utilisateurParId(id);
 }
 
@@ -64,7 +65,7 @@ export async function estProprietaire(req: Request): Promise<boolean> {
   const jeton = boite.get(COOKIE_SESSION)?.value ?? jetonPorte(req);
   const sujet = await sujetDeSession(secret, jeton);
   if (sujet === "secours") return true;
-  const id = compteDuSujet(sujet);
+  const id = await compteDuSujetIci(sujet);
   if (id === null) return false;
   return (await utilisateurParId(id))?.role === "proprietaire";
 }
