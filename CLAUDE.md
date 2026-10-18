@@ -47,6 +47,7 @@ python3 outils/attaquer-le-lecteur.py     # le lecteur de SMS, attaqué
 python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait — et chez XAFe, même montant
 python3 -m unittest tests.test_xafe       # la porte XAFe : signée, verdicts ligne par ligne, le guichet des SMS, témoins
 python3 -m unittest tests.test_envoi_sms  # le robot ENVOIE un SMS : alphabet, PDU, dialogue CMGS, la carte
+python3 -m unittest tests.test_ecran tests.test_enchainement # le boîtier lit l'écran comme le téléphone, et enchaîne
 python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
@@ -63,6 +64,7 @@ cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur r
 cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
 cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne retire rien
 cd web && node scripts/verifier-l-historique.mjs # toute la caisse s'atteint, sans trou
+cd web && node scripts/verifier-l-enchainement.mjs # le chemin confié au boîtier, chronométré
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
@@ -1086,6 +1088,46 @@ raccourcis EN PLUS ; la zone de réponse est toujours là ; et sous le pavé du
 code, « Répondre autre chose » — ce qu'on y tape part protégé comme un code.
 Le même écran se déclarait « terminé » dès la réponse au code, quoi que dise
 l'opérateur ensuite : c'est l'opérateur, et le réseau, qui finissent.
+
+**Un raccourci se refuse à une CARTE, pas à un opérateur.** Le bouton
+Transfert de la ·6414 recevait « You are not eligible to access this
+shortcode » ; le même code direct (`*126*5*1*numéro*montant#`) passait sur
+les deux autres cartes MTN. Ce sont les SMS et le journal du boîtier, croisés
+carte par carte, qui l'ont montré — et que `*126*1*…` est le DÉPÔT, pas le
+transfert. Le chemin par le menu (« *126#, 5, 1 ») marche sur les trois.
+
+**Le temps se perdait sur le trajet, pas chez l'opérateur.** « Ça marche,
+mais c'est trop lent. » Mesuré sur trente-cinq transferts d'octobre : 51 s,
+dont 13 chez MTN ; le reste, c'était l'aller-retour écran → plateforme →
+boîtier → plateforme → écran, refait pour chacun des cinq écrans. L'écran
+confie maintenant le chemin entier à l'ouverture (`cheminAConfier`, noyau) ;
+le boîtier le parcourt seul (`_enchainer`) et ne rend que l'écran qu'il ne
+doit pas servir — la confirmation, le code secret, l'imprévu — avec ce qu'il
+a parcouru, d'où l'écran reprend. Un boîtier d'avant ignore le chemin, et
+l'écran fait tout, comme avant.
+
+**Décider à la place de l'écran oblige à décider EXACTEMENT comme lui.**
+Chaque pas automatique touche à l'argent. `totem/ecran.py` traduit la lecture
+du noyau règle pour règle, et `web/noyau/tests/ecrans-partages.json` — trois
+mille cinq cents écrans : ceux que les tests lisent vraiment, ceux du faux
+nuage, des écrans aux formes de MTN et d'Orange, et leurs mutations — est
+jugé des deux côtés (`tests/test_ecran.py`, `ecrans-partages.test.ts`). Le
+premier passage tombait d'accord partout — et le témoin aussi, la frontière
+de mot de Python, qui voit « é » comme une lettre : aucun écran du corpus ne
+la mettait à l'épreuve. **Un corpus qui ne fait pas échouer son témoin ne
+prouve pas l'accord, il prouve son silence** ; quelques phrases françaises
+accentuées l'ont fait parler. Là où les deux langages peuvent encore lire
+différemment (séparateurs exotiques, lettres que Python plie et pas
+JavaScript), le boîtier ne lit pas : il rend la main. Les chemins acceptés,
+eux, sont jugés des deux côtés par `chemins-partages.json`.
+
+**Le rapport du boîtier se lit, sinon l'écran rejoue ce qui est fait.**
+`verifier-l-enchainement` n'a d'abord rien vu d'un écran qui ignorait ce
+rapport : sur un transfert qui va jusqu'au code secret, l'étape rejouée
+n'est pas proposée, et rien ne part. Il fallait un boîtier qui s'arrête EN
+ROUTE — sa borne de vingt secondes — pour que la faute se montre : l'écran
+reprenait au début, sur un menu déjà ailleurs. Le faux nuage sait s'arrêter
+après N pas (`/essai/enchainement?pas=N`), et ce témoin-là échoue trois fois.
 
 **Un audit adverse trouve ce qu'on n'a pas imaginé — à condition de le
 contredire.** Quatre enquêteurs sur le parcours USSD (lecture, caractères,

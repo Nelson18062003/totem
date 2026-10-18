@@ -24,7 +24,13 @@ export type TypeReponse = TypeChamp | "texte";
 
 /** Un écran reçu du boîtier : le texte de l'opérateur, et ce que le réseau
  *  a dit de la session (« attend » / « fini » ; absent d'un vieux boîtier). */
-export type EcranRecu = { texte: string; reseau?: EtatDuReseau | null };
+export type EcranRecu = {
+  texte: string;
+  reseau?: EtatDuReseau | null;
+  /** Ce que le boîtier a déjà parcouru seul avant de rendre cet écran
+   *  (voir § 8) ; absent d'un boîtier d'avant. */
+  enchaine?: Enchainement;
+};
 
 // ---------------------------------------------------------------------------
 // 1. UNE RÉPONSE TAPÉE PART TOUJOURS.
@@ -219,17 +225,21 @@ export function etapePeutPartir(gabarit: string, ecran: EcranRecu): boolean {
 // ---------------------------------------------------------------------------
 
 export type ReponseDuBoitier =
-  | { genre: "ecran"; texte: string; reseau?: EtatDuReseau }
+  | { genre: "ecran"; texte: string; reseau?: EtatDuReseau; enchaine?: Enchainement }
   | { genre: "refus"; texte: string };
 
 /** Lit une demande finie. `null` tant qu'elle n'est pas finie. */
 export function reponseDuBoitier(
-  c: { etat?: string; resultat?: string | null; reseau?: unknown } | null | undefined,
+  c: { etat?: string; resultat?: string | null; reseau?: unknown; enchaine?: unknown }
+    | null | undefined,
 ): ReponseDuBoitier | null {
   if (!c) return null;
   if (c.etat === "faite") {
     const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
-    return { genre: "ecran", texte: c.resultat ?? "", reseau };
+    const enchaine = enchainementLu(c.enchaine);
+    return enchaine
+      ? { genre: "ecran", texte: c.resultat ?? "", reseau, enchaine }
+      : { genre: "ecran", texte: c.resultat ?? "", reseau };
   }
   if (c.etat === "echouee") return { genre: "refus", texte: c.resultat ?? "" };
   return null;
@@ -293,4 +303,123 @@ export function texteDeReponse(brut: string): { texte: string } | { refus: Refus
   const texte = (brut ?? "").replace(/["\r\n\x00-\x1f]/g, "");
   if (texte.length > LONGUEUR_USSD_MAX) return { refus: "reponseTropLongue" };
   return { texte };
+}
+
+// ---------------------------------------------------------------------------
+// 8. LE CHEMIN CONFIÉ AU BOÎTIER.
+//
+// Un transfert MTN par le menu, c'est cinq écrans : le menu, « 5 », « 1 », le
+// numéro, le montant. Chacun faisait l'aller-retour entier — l'écran dépose
+// sa réponse sur la plateforme, le boîtier la relève, compose, rend l'écran
+// suivant, que l'écran relit. Mesuré sur trente-cinq transferts d'octobre :
+// cinquante et une secondes, dont treize chez MTN. Le reste, c'était le
+// trajet, refait cinq fois.
+//
+// L'écran confie donc au boîtier, avec le code, ce qu'il aurait fait ensuite
+// tout seul : les étapes apprises (« 5 », « 1 ») et les champs qu'il sert
+// quand l'opérateur les demande (le numéro, le montant). Le boîtier les
+// parcourt sans repasser par Internet, en décidant chaque pas EXACTEMENT
+// comme ici (totem/ecran.py, éprouvé sur `tests/ecrans-partages.json`), et
+// rend le premier écran qu'il ne doit pas servir — la confirmation, le code
+// secret, ou l'imprévu. Il dit ce qu'il a parcouru (`Enchainement`) ;
+// l'écran reprend juste après, avec les mêmes règles, et conclut pareil.
+//
+// Rien de ce qui part n'est autre chose que des chiffres, et le code secret
+// n'en fait jamais partie : il reste au pavé, tapé par le propriétaire. Un
+// boîtier d'avant ignore le chemin, ne rend pas d'`Enchainement`, et l'écran
+// fait tout lui-même, comme avant.
+// ---------------------------------------------------------------------------
+
+/** Ce que le boîtier a parcouru seul : combien d'étapes apprises, quels
+ *  champs servis. */
+export type Enchainement = { trajet: number; servis: string[] };
+
+/** Le chemin confié : les étapes apprises après le code (le gabarit, et ce
+ *  qui part), puis les champs que l'écran aurait servis tout seuls. */
+export type CheminConfie = {
+  trajet: [string, string][];
+  champs: { cle: string; type: TypeChamp; valeur: string }[];
+};
+
+/** Ce que le boîtier accepte de parcourir en une demande (totem/pilotage.py,
+ *  ENCHAINEMENT_ETAPES — relu par les tests). */
+export const ENCHAINEMENT_ETAPES = 8;
+const RE_ETAPE_MENU = /^[0-9]{1,2}$/;
+const RE_ETAPE_TROU = /^\{(numero|montant|point)\}$/;
+const RE_VALEUR = /^[0-9]{1,15}$/;
+const CHAMPS_SERVIS = ["numero", "montant", "point"];
+
+/** Le chemin, s'il est bien formé — les MÊMES règles que le boîtier
+ *  (`Pilotage._suite_demandee`). La plateforme ne laisse passer que lui. */
+export function cheminRecu(brut: unknown): CheminConfie | null {
+  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return null;
+  const { trajet = [], champs = [] } = brut as { trajet?: unknown; champs?: unknown };
+  if (!Array.isArray(trajet) || !Array.isArray(champs)) return null;
+  if (!trajet.length && !champs.length) return null;
+  if (trajet.length + champs.length > ENCHAINEMENT_ETAPES) return null;
+  const propreTrajet: [string, string][] = [];
+  for (const pas of trajet) {
+    if (!Array.isArray(pas) || pas.length !== 2 || !pas.every((x) => typeof x === "string")) return null;
+    const [gabarit, valeur] = pas as [string, string];
+    if (RE_ETAPE_MENU.test(gabarit)) {
+      if (valeur !== gabarit) return null;
+    } else if (!(RE_ETAPE_TROU.test(gabarit) && RE_VALEUR.test(valeur))) {
+      return null;
+    }
+    propreTrajet.push([gabarit, valeur]);
+  }
+  const propresChamps: CheminConfie["champs"] = [];
+  const cles = new Set<string>();
+  for (const c of champs) {
+    if (!c || typeof c !== "object") return null;
+    const { cle, type, valeur } = c as { cle?: unknown; type?: unknown; valeur?: unknown };
+    if (typeof cle !== "string" || !CHAMPS_SERVIS.includes(cle) || cles.has(cle)) return null;
+    if (type !== "numero" && type !== "montant") return null;
+    if (typeof valeur !== "string" || !RE_VALEUR.test(valeur)) return null;
+    cles.add(cle);
+    propresChamps.push({ cle, type, valeur });
+  }
+  return { trajet: propreTrajet, champs: propresChamps };
+}
+
+/**
+ * Le chemin à confier au boîtier pour un geste : les étapes apprises après
+ * le code (`brutes` telles qu'apprises, `etapes` une fois les trous
+ * remplis) et les champs encore à servir, avec ce qui partirait pour
+ * chacun. `null` s'il n'y a rien à enchaîner, ou rien de sûr : l'écran fait
+ * alors tout lui-même.
+ */
+export function cheminAConfier<T extends { cle: string; type: string }>(
+  brutes: string[], etapes: string[], restants: readonly T[], propres: Record<string, string>,
+): CheminConfie | null {
+  const trajet = brutes.slice(1).map((g, i) => [g.trim(), etapes[i + 1] ?? ""]);
+  // Un champ sans valeur sûre n'est pas confié : l'écran le garde, et le
+  // boîtier, sans lui, s'arrête là où l'écran s'arrêterait.
+  const champs = restants
+    .filter((c) => (c.type === "numero" || c.type === "montant")
+      && CHAMPS_SERVIS.includes(c.cle) && RE_VALEUR.test(propres[c.cle] ?? ""))
+    .map((c) => ({ cle: c.cle, type: c.type, valeur: propres[c.cle] }));
+  return cheminRecu({ trajet, champs });
+}
+
+/** Ce que le boîtier dit avoir parcouru — ou `null` (boîtier d'avant, ou
+ *  rapport illisible : l'écran reprend alors tout, comme avant). */
+export function enchainementLu(brut: unknown): Enchainement | null {
+  if (!brut || typeof brut !== "object") return null;
+  const { trajet, servis } = brut as { trajet?: unknown; servis?: unknown };
+  if (!Number.isInteger(trajet) || (trajet as number) < 0) return null;
+  if (!Array.isArray(servis) || !servis.every((s) => typeof s === "string")) return null;
+  return { trajet: trajet as number, servis: servis as string[] };
+}
+
+/** Où l'écran reprend : la prochaine étape apprise, et les champs qui
+ *  restent à servir. Sans enchaînement, tout reste à faire. */
+export function repriseApres<T extends { cle: string }>(
+  enchaine: Enchainement | undefined, restants: readonly T[],
+): { depart: number; restants: T[] } {
+  if (!enchaine) return { depart: 1, restants: [...restants] };
+  return {
+    depart: 1 + enchaine.trajet,
+    restants: restants.filter((c) => !enchaine.servis.includes(c.cle)),
+  };
 }

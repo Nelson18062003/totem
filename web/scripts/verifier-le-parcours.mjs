@@ -60,6 +60,14 @@ const SECRET = "secret-d-essai-du-parcours";
 const MDP = "un-mot-de-passe-assez-long";
 const CODE_SECRET = "4321";
 
+/** Ce qu'une demande fait partir vers le réseau : sa réponse, son code, et
+ *  le chemin confié au boîtier. */
+const partis = (d) => [
+  d.parametres?.texte, d.parametres?.code,
+  ...(d.parametres?.suite?.trajet ?? []).map((p) => p[1]),
+  ...(d.parametres?.suite?.champs ?? []).map((c) => c.valeur),
+].filter((x) => x != null).map(String);
+
 let echecs = 0;
 const verifier = (quoi, obtenu, attendu) => {
   const ok = JSON.stringify(obtenu) === JSON.stringify(attendu);
@@ -250,7 +258,9 @@ try {
              || avecPave.includes("Entrez le montant"), false);
 
   const depot = demandes.slice(demandes.findLastIndex((d) => d.type === "ussd"));
-  const textes = depot.map((d) => String(d.parametres?.texte ?? d.parametres?.code ?? ""));
+  // Ce qui part au boîtier : les réponses, le code — et le CHEMIN confié à
+  // l'ouverture, que le boîtier parcourt seul (`@noyau/deroule`, § 8).
+  const textes = depot.flatMap(partis);
   verifier("le numéro est parti en chiffres, sans indicatif",
            textes.includes("677998877") && !textes.some((x) => x.includes("237677")), true);
   verifier("le montant est parti en chiffres", textes.includes("5000"), true);
@@ -275,6 +285,9 @@ try {
   await fenetre.getByRole("button", { name: /^(Terminé|Done)$/ }).click().catch(() => {});
   await page.waitForTimeout(500);
   await fetch(`${NUAGE}/essai/confirmation-numero?oui=1`, { method: "POST" });
+  // Ce que le boîtier a déjà enchaîné AVANT ce dépôt ne compte pas pour lui.
+  const premiereDemandeDuNuage = (await (await fetch(`${NUAGE}/essai/enchainement`)).json())
+    .enchaines.reduce((m, e) => Math.max(m, e.id + 1), 0);
   await page.goto(`${B}/actions`, { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
   await page.getByRole("button", { name: /MTN/ }).first().click();
@@ -295,9 +308,18 @@ try {
   }
   verifier("l'écran de confirmation est montré, intact", vuConfirmation, true);
   const debut2 = demandes.findLastIndex((d) => d.type === "ussd");
-  const numerosPartis = () => demandes.slice(debut2)
-    .filter((d) => String(d.parametres?.texte ?? "") === "677998877").length;
-  verifier("le numéro n'est pas renvoyé tout seul à la confirmation", numerosPartis(), 1);
+  // Le numéro envoyé AU RÉSEAU : par l'écran (une réponse), ou par le
+  // boîtier qui enchaîne (son rapport dit ce qu'il a servi). Un boîtier qui
+  // le resservirait à la confirmation le compterait deux fois.
+  const servisParLeBoitier = async () => {
+    const { enchaines } = await (await fetch(`${NUAGE}/essai/enchainement`)).json();
+    return enchaines.filter((e) => e.id >= premiereDemandeDuNuage)
+      .reduce((n, e) => n + e.servis.filter((c) => c === "numero").length, 0);
+  };
+  const numerosPartis = async () => demandes.slice(debut2)
+    .filter((d) => String(d.parametres?.texte ?? "") === "677998877").length
+    + await servisParLeBoitier();
+  verifier("le numéro n'est pas renvoyé tout seul à la confirmation", await numerosPartis(), 1);
   const reponse = f2.locator("input").last();
   await reponse.fill("1");
   const envoyerBouton = f2.getByRole("button", { name: /^(Envoyer|Send)$/ });
@@ -308,7 +330,7 @@ try {
     await page.waitForTimeout(500);
     paveConf = await f2.getByRole("button", { name: /^[0-9]$/ }).count();
   }
-  const apresConf = demandes.slice(debut2).map((d) => String(d.parametres?.texte ?? ""));
+  const apresConf = demandes.slice(debut2).flatMap(partis);
   // Après le numéro : un « 1 » de menu, plus tôt dans le trajet, ne compte pas.
   verifier("« 1 » est parti tel quel, après le numéro",
            apresConf.slice(apresConf.indexOf("677998877") + 1).includes("1"), true);
