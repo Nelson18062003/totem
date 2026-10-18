@@ -22,6 +22,7 @@ import { estNature } from "@noyau/natures";
 import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 import { libelleJour } from "@noyau/periodes";
+import { enchainementLu, type Enchainement } from "@noyau/deroule";
 import {
   ageDuSigneDeVie, boitierSansNouvelles, enPlaceSelon, presenceDeLaCarte, signalLu,
   type Presence,
@@ -1357,19 +1358,29 @@ export async function carteDeLaCommande(id: number): Promise<string | null> {
 
 export async function lireCommande(
   id: number,
-): Promise<{ etat: string; resultat: string | null; reseau?: "attend" | "fini" } | null> {
-  // `parametres->reseau` seulement, jamais les paramètres entiers : ils
-  // portent le code composé, et parfois, fugitivement, un code secret.
+): Promise<{
+  etat: string; resultat: string | null; reseau?: "attend" | "fini"; enchaine?: Enchainement;
+} | null> {
+  // `parametres->reseau` et `parametres->enchaine` seulement, jamais les
+  // paramètres entiers : ils portent le code composé, et parfois,
+  // fugitivement, un code secret.
   const lignes = await lire<{
-    id: number; etat: string; resultat: string | null; reseau?: unknown;
-  }>(`commandes?select=id,etat,resultat,reseau:parametres->>reseau&id=eq.${id}&limit=1`);
+    id: number; etat: string; resultat: string | null; reseau?: unknown; enchaine?: unknown;
+  }>(`commandes?select=id,etat,resultat,reseau:parametres->>reseau,enchaine:parametres->enchaine&id=eq.${id}&limit=1`);
   const c = lignes.find((x) => x.id === id);
   if (!c) return null;
   // Ce que le RÉSEAU a dit de la session USSD, rapporté par le boîtier :
   // « attend » une réponse, ou « fini ». Absent d'un boîtier d'avant —
   // l'écran lit alors le texte, comme avant.
   const reseau = c.reseau === "attend" || c.reseau === "fini" ? c.reseau : undefined;
-  return reseau ? { etat: c.etat, resultat: c.resultat, reseau } : { etat: c.etat, resultat: c.resultat };
+  // Ce que le boîtier a parcouru seul avant de rendre cet écran
+  // (`@noyau/deroule`, § 8). Absent d'un boîtier d'avant.
+  const enchaine = enchainementLu(c.enchaine);
+  return {
+    etat: c.etat, resultat: c.resultat,
+    ...(reseau ? { reseau } : {}),
+    ...(enchaine ? { enchaine } : {}),
+  };
 }
 
 /** Qui a déposé cette demande (`par`, nommé par la plateforme), sur quelle

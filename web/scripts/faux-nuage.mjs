@@ -19,6 +19,29 @@
 
 import { createServer } from "node:http";
 
+// LE BOÎTIER ENCHAÎNE LES ÉCRANS PRÉVUS (totem/pilotage.py, `_enchainer`) :
+// l'écran confie le chemin entier à l'ouverture, et le boîtier le parcourt
+// sans repasser par la plateforme. Le faux boîtier d'ici en fait autant,
+// avec les règles du NOYAU — celles que le vrai a traduites et qu'un
+// corpus de trois mille écrans tient en accord (tests/test_ecran.py). Il
+// imite aussi un boîtier d'avant, qui ignore le chemin :
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/enchainement?oui=0"
+let enchainement = true;
+// Le vrai boîtier ne commence plus d'étape passé vingt secondes : il rend
+// alors l'écran en route, et l'écran reprend juste après. « pas=N » imite
+// cette borne — le faux s'arrête après N réponses.
+//
+//     curl -X POST "http://127.0.0.1:4999/essai/enchainement?oui=1&pas=1"
+let pasMax = Infinity;
+let noyau = null;
+try {
+  await import("../noyau/tests/resolveur.mjs");
+  noyau = await import("../noyau/deroule.ts");
+} catch {
+  noyau = null;     // sans le noyau, un boîtier d'avant : tout reste à l'écran
+}
+
 // Les horodatages se calculent À CHAQUE DEMANDE, pas au démarrage.
 // Figés au lancement, ils vieillissent : au bout de dix minutes le terminal
 // passe pour muet et les cartes pour retirées — l'inverse de ce qu'on veut
@@ -529,7 +552,52 @@ function servir(enregistree) {
       reseau: /reussie|terminee/i.test(enregistree.resultat) ? "fini" : "attend",
     };
   }
+  if (enregistree.type === "ussd" && enchainement && noyau && enregistree.parametres?.suite) {
+    enchainer(enregistree);
+  }
 }
+
+/** Le faux boîtier parcourt le chemin confié, comme le vrai : chaque pas
+ *  décidé par la règle de l'écran, l'arrêt au premier écran qui ne passe
+ *  pas, et le rapport de ce qui a été parcouru. */
+function enchainer(ouverture) {
+  const chemin = noyau.cheminRecu(ouverture.parametres.suite);
+  if (!chemin) return;
+  let ecran = { texte: ouverture.resultat, reseau: ouverture.parametres.reseau };
+  let tour = 0;
+  const repondre = (texte) => {
+    const resultat = reponsePour({ type: "ussd_reponse", parametres: { texte }, tour: tour++ });
+    return { texte: resultat, reseau: /reussie|terminee/i.test(resultat) ? "fini" : "attend" };
+  };
+  let faits = 0;
+  const servis = [];
+  for (const [gabarit, valeur] of chemin.trajet) {
+    if (tour >= pasMax || !noyau.etapePeutPartir(gabarit, ecran)) break;
+    ecran = repondre(valeur);
+    faits++;
+  }
+  if (faits === chemin.trajet.length) {
+    let restants = chemin.champs.map(({ cle, type }) => ({ cle, type }));
+    const propres = Object.fromEntries(chemin.champs.map((c) => [c.cle, c.valeur]));
+    while (tour < pasMax) {
+      const champ = noyau.champAServir(ecran, restants, propres);
+      if (!champ) break;
+      restants = restants.filter((c) => c !== champ);
+      ecran = repondre(propres[champ.cle]);
+      servis.push(champ.cle);
+    }
+  }
+  ouverture.resultat = ecran.texte;
+  // Les réponses données ici comptent dans le tour de la session : la
+  // demande suivante reprend le scénario juste après.
+  ouverture.enchainees = tour;
+  ouverture.parametres = {
+    ...ouverture.parametres, reseau: ecran.reseau, enchaine: { trajet: faits, servis },
+  };
+  enchaines.push({ id: ouverture.id, trajet: faits, servis, reponses: tour });
+}
+/** Ce que le faux boîtier a enchaîné, pour les harnais. */
+const enchaines = [];
 
 // UN MESSAGE LONG QUI SE TOURNE COMME UNE PAGE — le vrai écran d'un « Float
 // Transfer » MTN vers une raison sociale longue (nom inventé, même
@@ -666,7 +734,8 @@ const serveur = createServer(async (req, res) => {
     const ouverture = Math.max(0, ...[...commandes.values()]
       .filter((x) => x.type === "ussd").map((x) => x.id));
     const tour = [...commandes.values()].filter(
-      (x) => x.type === "ussd_reponse" && !x.parametres?.secret && x.id > ouverture).length;
+      (x) => x.type === "ussd_reponse" && !x.parametres?.secret && x.id > ouverture).length
+      + (commandes.get(ouverture)?.enchainees ?? 0);
     const enregistree = { ...c, id, tour, etat: "en_attente", resultat: null, depose: Date.now() };
     commandes.set(id, enregistree);
     // Le « robot » répond après un instant, comme le vrai le ferait.
@@ -708,6 +777,14 @@ const serveur = createServer(async (req, res) => {
   if (req.method === "POST" && chemin === "/essai/page-longue") {
     pageLongue = url.searchParams.get("oui") === "1";
     return repondre({ pageLongue });
+  }
+  if (req.method === "POST" && chemin === "/essai/enchainement") {
+    enchainement = url.searchParams.get("oui") !== "0";
+    pasMax = url.searchParams.has("pas") ? Number(url.searchParams.get("pas")) : Infinity;
+    return repondre({ enchainement, noyau: Boolean(noyau) });
+  }
+  if (req.method === "GET" && chemin === "/essai/enchainement") {
+    return repondre({ enchainement, noyau: Boolean(noyau), enchaines });
   }
   if (req.method === "POST" && chemin === "/essai/confirmation-numero") {
     confirmationNumero = url.searchParams.get("oui") === "1";
@@ -866,9 +943,12 @@ const serveur = createServer(async (req, res) => {
     // `reseau:parametres->>reseau` : PostgREST rend la clé sous ce nom.
     const reseau = /reseau/.test(url.searchParams.get("select") || "")
       ? { reseau: c?.parametres?.reseau ?? null } : {};
+    // `enchaine:parametres->enchaine` : l'objet, tel quel (« -> », pas « ->> »).
+    const enchaine = /enchaine/.test(url.searchParams.get("select") || "")
+      ? { enchaine: c?.parametres?.enchaine ?? null } : {};
     return repondre(c ? [{ id: c.id, type: c.type, parametres: c.parametres ?? {},
                            terminal: c.terminal ?? null, etat: c.etat,
-                           resultat: c.resultat, ...reseau }] : []);
+                           resultat: c.resultat, ...reseau, ...enchaine }] : []);
   }
 
   // Un SMS qui tombe PENDANT qu'on regarde. Sans cela, impossible d'éprouver

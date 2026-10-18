@@ -10,7 +10,9 @@ navigateur.
 Quatre demandes existent :
 
     solde          le terminal republie son état, tel qu'il le connaît
-    ussd           ouvrir une session en composant un code (« #148*5# »)
+    ussd           ouvrir une session en composant un code (« #148*5# »), et
+                   parcourir seul les écrans que l'écran a confiés (`suite`,
+                   voir `_enchainer`)
     ussd_reponse   répondre au menu ouvert (un chiffre, un numéro, un montant…)
     ussd_fin       raccrocher
     recu           établir le reçu d'un SMS passé (il se refabrique à
@@ -64,6 +66,7 @@ from .compte import (WEB, TELEGRAM, EnvoiIncertain, ErreurModem, MenuReferme,
                      MessageTropLong, ReponseNonRecue, ReponseRefusee,
                      SessionTenue)
 from .declencheur import NATURES, RefusRecu
+from . import ecran
 from .nuage import _horodatage
 from .textes import t
 
@@ -82,6 +85,28 @@ RE_VARIABLE = re.compile(r"\{([A-Za-z_]+)\}")
 # plus posé au repos — la base n'a pas besoin d'être frappée à la porte.
 PAS_REPOS = 3
 PAS_SESSION = 1.5
+
+# LE BOÎTIER ENCHAÎNE LES ÉCRANS PRÉVUS — voir `_enchainer`.
+#
+# Un transfert MTN par le menu, c'est cinq écrans : le menu, « 5 », « 1 »,
+# le numéro, le montant. Chacun faisait l'aller-retour entier entre l'écran
+# du téléphone, la plateforme et le boîtier. Mesuré sur trente-cinq
+# transferts d'octobre : MTN répond en moins de deux secondes par écran,
+# l'aller-retour en coûtait cinq de plus, et un transfert prenait cinquante
+# et une secondes. L'écran dépose maintenant tout le chemin en une demande ;
+# le boîtier le parcourt seul et ne rend la main qu'à l'écran qu'il ne doit
+# pas servir — la confirmation, le code secret, ou tout écran imprévu.
+#
+# Bornes : on ne commence plus une étape après ENCHAINEMENT_S secondes (la
+# session reste ouverte, l'écran du téléphone continue), et le chemin ne
+# dépasse pas ENCHAINEMENT_ETAPES pas. Une valeur n'est faite que de
+# chiffres : elle part au modem.
+ENCHAINEMENT_S = 20
+ENCHAINEMENT_ETAPES = 8
+RE_ETAPE_MENU = re.compile(r"[0-9]{1,2}")
+RE_ETAPE_TROU = re.compile(r"\{(numero|montant|point)\}")
+RE_VALEUR = re.compile(r"[0-9]{1,15}")
+CHAMPS_SERVIS = ("numero", "montant", "point")
 
 # Une demande prise en charge et sans nouvelles depuis ce délai a été
 # interrompue — coupure de courant, redémarrage, plantage. Cinq minutes
@@ -439,12 +464,13 @@ class Pilotage:
             return
 
         reseau = None       # ce que le réseau a dit de la session USSD
+        enchaine = None     # ce que le boîtier a parcouru seul (`_enchainer`)
         try:
             if genre == "solde":
                 resultat = self._republier(langue)
             elif genre == "ussd":
                 self._refuser_si_perimee(prise, genre, langue)
-                resultat, reseau = self._ouvrir(parametres, langue)
+                resultat, reseau, enchaine = self._ouvrir(parametres, langue)
             elif genre == "ussd_reponse":
                 resultat, reseau = self._repondre(identifiant, parametres,
                                                   langue, prise=prise,
@@ -513,6 +539,9 @@ class Pilotage:
         if reseau and etat == "faite":
             base = final.get("parametres", parametres)
             final["parametres"] = {**base, "reseau": reseau}
+            # Ce que le boîtier a parcouru seul : l'écran reprend juste après.
+            if enchaine is not None:
+                final["parametres"]["enchaine"] = enchaine
         guichet.commande_maj(identifiant, final)
 
     def _refuser_si_perimee(self, prise, genre, langue=None):
@@ -1070,6 +1099,7 @@ class Pilotage:
         # ici et la composition, quelqu'un aurait pu prendre la ligne.
         if compte.tenue_par(qui):
             compte.ussd_annuler(qui=qui)
+        suite = self._suite_demandee(parametres)
         try:
             reponse = compte.ussd_demarrer(code, qui=qui, si_libre=True)
         except SessionTenue as tenue:
@@ -1078,11 +1108,154 @@ class Pilotage:
             raise RefusPoli(_caracteres_refuses(refus, langue))
         except ReponseNonRecue:
             self._journaliser_composition(code, compte)
-            return self._peut_avoir_abouti(compte, langue)
+            return (*self._peut_avoir_abouti(compte, langue), None)
         self._journaliser_composition(code, compte)
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
-        return reponse, self._etat_du_reseau(compte, qui)
+        if suite is None:
+            return reponse, self._etat_du_reseau(compte, qui), None
+        return self._enchainer(compte, qui, reponse, *suite, langue=langue)
+
+    @staticmethod
+    def _suite_demandee(parametres):
+        """Le chemin que l'écran confie au boîtier, s'il est bien formé —
+        sinon None, et l'on compose comme avant, une demande par écran.
+
+        `suite` : {"trajet": [[gabarit, valeur], …], "champs": [{"cle",
+        "type", "valeur"}, …]} — les étapes apprises après le code (« 5 »,
+        « 1 », « {montant} » et ce qui le remplit), puis ce que l'écran
+        sert tout seul quand l'opérateur le demande (le numéro, le montant).
+        Tout ce qui part au modem n'est fait que de chiffres."""
+        suite = parametres.get("suite")
+        if not isinstance(suite, dict):
+            return None
+        # Absent, c'est vide ; présent, ce doit être une liste — `null` ou
+        # « "" » ne valent pas vide (la plateforme les refuse aussi).
+        trajet, champs = suite.get("trajet", []), suite.get("champs", [])
+        if not isinstance(trajet, list) or not isinstance(champs, list):
+            return None
+        if not trajet and not champs:
+            return None
+        if len(trajet) + len(champs) > ENCHAINEMENT_ETAPES:
+            return None
+        propre_trajet = []
+        for pas in trajet:
+            if not (isinstance(pas, list) and len(pas) == 2
+                    and all(isinstance(x, str) for x in pas)):
+                return None
+            gabarit, valeur = pas
+            if RE_ETAPE_MENU.fullmatch(gabarit):
+                if valeur != gabarit:
+                    return None
+            elif not (RE_ETAPE_TROU.fullmatch(gabarit)
+                      and RE_VALEUR.fullmatch(valeur)):
+                return None
+            propre_trajet.append((gabarit, valeur))
+        propres_champs, cles = [], set()
+        for champ in champs:
+            if not isinstance(champ, dict):
+                return None
+            cle, genre, valeur = (champ.get("cle"), champ.get("type"),
+                                  champ.get("valeur"))
+            if (cle not in CHAMPS_SERVIS or genre not in ("numero", "montant")
+                    or not isinstance(valeur, str)
+                    or not RE_VALEUR.fullmatch(valeur) or cle in cles):
+                return None
+            cles.add(cle)
+            propres_champs.append({"cle": cle, "type": genre, "valeur": valeur})
+        return propre_trajet, propres_champs
+
+    def _enchainer(self, compte, qui, reponse, trajet, champs, langue=None):
+        """Parcourt seul les écrans prévus, et rend le dernier.
+
+        Chaque pas se décide EXACTEMENT comme l'écran du téléphone l'aurait
+        décidé (`ecran`, jumelle du noyau) : une étape apprise ne part que
+        si l'écran la propose, un numéro ou un montant que si l'opérateur
+        le demande — jamais sur une confirmation, jamais quand il réclame
+        le code secret. Au premier écran qui ne passe pas, on s'arrête, et
+        l'écran du téléphone reprend avec la même règle : il voit la même
+        chose et conclut pareil.
+
+        Rend (texte du dernier écran, état du réseau, {"trajet": nombre
+        d'étapes apprises parcourues, "servis": champs envoyés})."""
+        debut = time.monotonic()
+        faits, servis = 0, []
+        texte = reponse
+
+        def peut_continuer():
+            return (time.monotonic() - debut < ENCHAINEMENT_S
+                    and ecran.lisible(texte))
+
+        for gabarit, valeur in trajet:
+            reseau = self._etat_du_reseau(compte, qui)
+            if not (peut_continuer()
+                    and ecran.etape_peut_partir(gabarit, texte, reseau)):
+                break
+            texte = self._repondre_dans_la_chaine(compte, qui, valeur, langue)
+            if texte is None:
+                return self._chaine_sans_reponse(compte, langue)
+            faits += 1
+        if faits == len(trajet):
+            restants = [{"cle": c["cle"], "type": c["type"]} for c in champs]
+            propres = {c["cle"]: c["valeur"] for c in champs}
+            while restants and peut_continuer():
+                champ = ecran.champ_a_servir(
+                    texte, self._etat_du_reseau(compte, qui), restants, propres)
+                if not champ:
+                    break
+                restants = [c for c in restants if c is not champ]
+                texte = self._repondre_dans_la_chaine(
+                    compte, qui, propres[champ["cle"]], langue)
+                if texte is None:
+                    return self._chaine_sans_reponse(compte, langue)
+                servis.append(champ["cle"])
+        if faits or servis:
+            # Le journal se lit à plusieurs : combien d'écrans, jamais quoi.
+            self.journal.evenement(t(
+                f"remote desk: {faits + len(servis)} screen(s) chained "
+                f"({compte.libelle})",
+                f"guichet à distance : {faits + len(servis)} écran(s) "
+                f"enchaîné(s) ({compte.libelle})"))
+        return (texte, self._etat_du_reseau(compte, qui),
+                {"trajet": faits, "servis": servis})
+
+    def _repondre_dans_la_chaine(self, compte, qui, valeur, langue=None):
+        """Une étape de la chaîne : le texte du nouvel écran, ou None si la
+        réponse est partie sans que le réseau réponde à temps. Les refus
+        disent la même chose que `_repondre`, au même moment."""
+        try:
+            reponse = compte.ussd_repondre(valeur, qui=qui)
+        except SessionTenue:
+            raise RefusPoli(t(
+                "This menu is no longer yours (it closed, or was taken back) "
+                "— nothing was sent. Dial the code again.",
+                "Ce menu n'est plus le vôtre (il s'est refermé, ou a été "
+                "repris) — rien n'a été envoyé. Recomposez le code.",
+                langue=langue))
+        except MenuReferme:
+            with self._garde:
+                self._vie.pop(compte, None)
+            raise RefusPoli(t(
+                "The operator closed this menu before your reply — nothing "
+                "was sent. Dial the code again.",
+                "L'opérateur a refermé ce menu avant votre réponse — rien "
+                "n'est parti. Recomposez le code.", langue=langue))
+        except ReponseRefusee as refus:
+            compte.ussd_annuler(qui=qui)
+            with self._garde:
+                self._vie.pop(compte, None)
+            raise RefusPoli(_caracteres_refuses(refus, langue))
+        except ReponseNonRecue:
+            return None
+        self._noter_session(compte, qui)
+        self._relever_solde(compte, reponse)
+        return reponse
+
+    def _chaine_sans_reponse(self, compte, langue=None):
+        """Une étape est partie, le réseau n'a pas répondu à temps : on dit
+        ce qu'on sait, comme pour une réponse tapée — et rien ne se rejoue."""
+        texte, reseau = self._peut_avoir_abouti(compte, langue)
+        return texte, reseau, None
 
     def _journaliser_composition(self, code, compte):
         """Le journal « Ce qui s'est passé » se garde longtemps et se lit à
