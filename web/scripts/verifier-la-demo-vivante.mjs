@@ -475,10 +475,14 @@ try {
   await jouer(BEA, "ussd_reponse", { texte: "5000", carte: BEA_MTN?.iccid });
   const depot = await jouer(BEA, "ussd_reponse", { texte: "1234", carte: BEA_MTN?.iccid, secret: true });
   exiger("Béa paie 5 000 F au float", /Operation reussie/.test(depot.resultat ?? ""), JSON.stringify(depot.resultat ?? depot));
-  for (let i = 0; i < 20 && recuParGlisil.length === 0; i++) {
-    await lire("/api/demo?langue=fr", ADMIN);
-    await attendre(300);
-  }
+  // PERSONNE n'ouvre l'écran de l'administrateur : un vrai boîtier pousse le
+  // SMS dès qu'il le lit, et le testeur attend son crédit chez Glisil sans
+  // que l'administrateur passe par là. Une version de ce harnais visitait
+  // /api/demo en boucle pour « laisser partir » la file — elle amenait
+  // elle-même ce qu'elle vérifiait, et le dépôt d'un testeur restait en
+  // attente pour de vrai.
+  verifier("Glisil a reçu le SMS dès le paiement, sans que l'administrateur ouvre son écran",
+    recuParGlisil.length, 1);
   const ligne = recuParGlisil[0];
   verifier("Glisil a reçu UNE ligne, signée juste", [recuParGlisil.length, refusParGlisil], [1, 0]);
   verifier("…l'encaissement du float, de Béa, 5 000 F",
