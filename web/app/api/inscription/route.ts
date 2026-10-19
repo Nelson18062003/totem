@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { COOKIE_SESSION } from "@/lib/session";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { inscrire } from "@/lib/porte";
+import { dansLaMaison } from "@/lib/monde";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,10 @@ export async function POST(req: Request) {
   const langue = await langueDemandee(req);
   const corps = (await req.json().catch(() => null)) as Record<string, unknown> | null;
 
-  const entree = await inscrire(req, corps ?? {}, langue);
+  // L'inscription publique crée un compte de la MAISON, toujours — même
+  // depuis un navigateur où une session de démo est ouverte. Les comptes de
+  // la démo, c'est son administrateur qui les crée.
+  const entree = await dansLaMaison(() => inscrire(req, corps ?? {}, langue));
   if (!entree.ok) {
     return Response.json({ erreur: entree.erreur }, { status: entree.statut });
   }

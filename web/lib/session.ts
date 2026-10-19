@@ -92,10 +92,26 @@ export async function sujetDeSession(
  *  `null` pour la clé de secours et pour les jetons d'avant les comptes : ils
  *  ouvrent la plateforme, mais ne désignent personne en particulier. */
 export function compteDuSujet(sujet: string | null): number | null {
-  if (!sujet || !sujet.startsWith("c:")) return null;
+  // « d:12 » est le compte numéro 12 de la DÉMO VIVANTE (docs/DEMO-VIVANTE.md).
+  // Le numéro se relit dans la table du monde de la requête — et ce monde se
+  // déduit du MÊME jeton (lib/monde.ts) : « d:12 » se relit dans
+  // demo_utilisateurs, jamais dans utilisateurs. Ce qui lit un sujet HORS de
+  // sa requête (un lien signé, le middleware) doit d'abord demander
+  // `estSujetDeDemo`.
+  if (!sujet || !(sujet.startsWith("c:") || estSujetDeDemo(sujet))) return null;
   const n = Number(sujet.slice(2));
   return Number.isInteger(n) && n > 0 ? n : null;
 }
+
+/** Le préfixe d'un sujet de la démo vivante : « d:12 ». */
+export const PREFIXE_DEMO = "d:";
+
+/** Ce sujet est-il celui d'un compte de la démo vivante ? */
+export const estSujetDeDemo = (sujet: string | null | undefined): boolean =>
+  typeof sujet === "string" && sujet.startsWith(PREFIXE_DEMO);
+
+/** Le sujet d'un compte de la démo vivante. */
+export const sujetDeDemo = (id: number): string => `${PREFIXE_DEMO}${id}`;
 
 /** Le sujet d'un jeton du COMPTE DE DÉMONSTRATION — celui des examinateurs
  *  d'Apple et de Google (voir `lib/demonstration.ts`).

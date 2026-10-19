@@ -1443,8 +1443,17 @@ class Pilotage:
             if solde_douteux(reponse or ""):
                 return
             solde = solde_annonce(reponse or "")
-            if solde is not None and compte.carte.identifiee and self.nuage:
-                self.nuage.publier_solde(compte.carte.iccid, solde)
+            if solde is not None and compte.carte.identifiee:
+                # chaque guichet qui veut le solde le reçoit : la plateforme,
+                # et XAFe pour sa parité (qui le met en file, sans réseau ici)
+                for guichet in self.guichets:
+                    publier = getattr(guichet, "publier_solde", None)
+                    if publier is None:
+                        continue
+                    try:
+                        publier(compte.carte.iccid, solde)
+                    except Exception:
+                        pass    # l'un qui casse ne prive pas l'autre
         except Exception:
             pass    # un solde non relevé n'est pas une panne de session
 

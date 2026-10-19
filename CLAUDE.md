@@ -64,6 +64,7 @@ cd web && node scripts/verifier-la-demonstration.mjs # la vitrine ne donne sur r
 cd web && node scripts/verifier-l-adressage.mjs # la demande va au boîtier de SA carte
 cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne retire rien
 cd web && node scripts/verifier-l-historique.mjs # toute la caisse s'atteint, sans trou
+cd web && node scripts/verifier-la-demo-vivante.mjs # la démo, contre une VRAIE base
 cd web && node scripts/verifier-l-enchainement.mjs # le chemin confié au boîtier, chronométré
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
@@ -1392,6 +1393,20 @@ encaissements qui attendent, le tour se joue dans un fil joint à dix secondes
 témoin `PorteSansEcartement` doit laisser la ligne déclarée à 0, et la
 lecture est BORNÉE (`LECTURES_PAR_TOUR`) et s'arrête avec la porte : une
 régression ne coûte plus qu'un tour, dit au journal et à `/statut`.
+
+**La démo vivante est un autre monde, pas un drapeau.** Des testeurs entrent
+dans le vrai TOTEM avec des comptes `d:`, sur de fausses cartes, avec de faux
+francs (`docs/DEMO-VIVANTE.md`). Un drapeau « démo » sur les vraies lignes
+aurait demandé à chaque écran, chaque bilan, chaque notification de l'écarter
+— et le jour où l'un l'oublie, le bilan de la maison porte de faux millions.
+Les tables ont donc leur DOUBLE, et un seul endroit choisit le jeu
+(`lib/monde.ts`, d'après le jeton vérifié) : une table sans double est
+refusée dans la démo, pas lue dans la maison. `verifier-la-demo-vivante`
+monte une vraie base et un vrai PostgREST — le faux nuage ne peut pas
+exécuter le faux réseau, écrit en PL/pgSQL — et, la redirection retirée,
+l'administrateur de la démo s'écrivait dans la vraie table des comptes.
+**Toute nouvelle table où vit l'argent reçoit son double dans la même
+migration**, sinon la démo la refuse — c'est voulu, et c'est le signal.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

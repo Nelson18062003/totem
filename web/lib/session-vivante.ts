@@ -47,7 +47,12 @@ export type EtatDuCompte = {
  * approuvé), jamais sur un silence. `proprietaire`, lui, répond alors
  * `null` : la console, elle, préfère refuser ce qu'elle ne sait pas.
  */
-export async function etatDuCompte(id: number): Promise<EtatDuCompte> {
+export async function etatDuCompte(
+  id: number,
+  // Un compte de la DÉMO VIVANTE (« d:12 ») se relit dans SA table : le
+  // numéro 12 de la démo n'est pas le numéro 12 de la maison.
+  deDemo = false,
+): Promise<EtatDuCompte> {
   const base = process.env.SUPABASE_URL;
   const cle = process.env.SUPABASE_CLE;
   if (!base || !cle || !Number.isInteger(id)) {
@@ -56,7 +61,8 @@ export async function etatDuCompte(id: number): Promise<EtatDuCompte> {
 
   try {
     const r = await fetch(
-      `${base}/rest/v1/utilisateurs?select=approuve,role&id=eq.${id}&limit=1`,
+      `${base}/rest/v1/${deDemo ? "demo_utilisateurs" : "utilisateurs"}`
+        + `?select=approuve,role&id=eq.${id}&limit=1`,
       {
         headers: { apikey: cle, Authorization: `Bearer ${cle}` },
         cache: "no-store",
@@ -79,6 +85,6 @@ export async function etatDuCompte(id: number): Promise<EtatDuCompte> {
 }
 
 /** Ce compte peut-il encore entrer ? Voir `etatDuCompte`. */
-export async function compteEncoreOuvert(id: number): Promise<boolean> {
-  return (await etatDuCompte(id)).ouvert;
+export async function compteEncoreOuvert(id: number, deDemo = false): Promise<boolean> {
+  return (await etatDuCompte(id, deDemo)).ouvert;
 }

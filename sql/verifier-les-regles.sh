@@ -665,6 +665,277 @@ accepter "effacer un compte efface ses cartes" \
    end \$\$;"
 
 # ---------------------------------------------------------------------------
+# LA DÉMO VIVANTE : un monde à part, et de l'argent qui ne naît de rien.
+#
+# Les testeurs y font de vrais gestes sur de fausses cartes. Ce qui doit
+# tenir, ce sont les mêmes promesses que dans la vraie caisse : un solde ne
+# passe jamais sous zéro, même en rafale ; l'argent ne sort pas de la démo ;
+# un code faux ne paie rien ; une demande ne paie qu'une fois. Et une
+# promesse propre à la démo : la somme des soldes égale TOUJOURS la somme
+# fabriquée par l'administrateur.
+# ---------------------------------------------------------------------------
+echo ""
+echo "La démo vivante"
+
+# exiger « ce que ça dit » « le SQL » « la valeur attendue »
+exiger() {
+  obtenu=$($P -d totem -tAc "$2" 2>&1 || true)
+  if [ "$obtenu" = "$3" ]; then
+    echo "  ✓ $1"
+  else
+    echo "  ✗ $1 — obtenu « $obtenu », attendu « $3 »"
+    echecs=$((echecs + 1))
+  fi
+}
+
+# Chaque double a EXACTEMENT les colonnes de sa table. Une colonne ajoutée
+# demain à « paiements » et oubliée dans « demo_paiements » ferait échouer
+# l'écriture d'un écran de démo — ou pire, se lirait vide sans un mot.
+exiger "chaque double a les colonnes de sa table, ni plus ni moins" "
+  with paires(vraie, double) as (values
+    ('utilisateurs','demo_utilisateurs'), ('attributions','demo_attributions'),
+    ('appareils','demo_appareils'), ('comptes','demo_comptes'),
+    ('paiements','demo_paiements'), ('recus','demo_recus'),
+    ('commandes','demo_commandes'), ('raccourcis','demo_raccourcis'),
+    ('beneficiaires','demo_beneficiaires'), ('cartes','demo_cartes'),
+    ('terminaux','demo_terminaux')),
+  ecarts as (
+    select p.vraie, c.column_name from paires p
+      join information_schema.columns c on c.table_name = p.vraie and c.table_schema = 'public'
+    except
+    select p.vraie, c.column_name from paires p
+      join information_schema.columns c on c.table_name = p.double and c.table_schema = 'public'
+    union all
+    select p.vraie, c.column_name from paires p
+      join information_schema.columns c on c.table_name = p.double and c.table_schema = 'public'
+    except
+    select p.vraie, c.column_name from paires p
+      join information_schema.columns c on c.table_name = p.vraie and c.table_schema = 'public')
+  select count(*) from ecarts;" "0"
+
+$P -d totem -c "
+  insert into demo_utilisateurs(courriel, empreinte, role, approuve, prenom, nom)
+    values ('admin@demo.cm', 'x', 'proprietaire', true, 'Admin', 'Demo'),
+           ('ali@demo.cm',   'x', 'invite', true, 'Ali', 'Testeur'),
+           ('bea@demo.cm',   'x', 'invite', true, 'Bea', 'Testeuse');" >/dev/null
+
+exiger "un compte de démo naît avec deux cartes, une MTN et une Orange" "
+  select string_agg(k.operateur, ',' order by k.operateur)
+    from demo_attributions a
+    join demo_utilisateurs u on u.id = a.utilisateur
+    join demo_comptes k on k.iccid = a.iccid
+   where u.courriel = 'ali@demo.cm';" "MTN,Orange"
+exiger "ses cartes portent son nom et un numéro de la tranche de démo" "
+  select count(*) from demo_cartes c
+    join demo_attributions a on a.iccid = c.iccid
+    join demo_utilisateurs u on u.id = a.utilisateur
+   where u.courriel = 'ali@demo.cm' and c.nom = 'ALI TESTEUR'
+     and c.numero ~ '^600[09][0-9]{5}$' and c.iccid ~ '^8923799[12][0-9]{12}$';" "2"
+exiger "une carte de démo n'est jamais « retirée » : sa dernière vue est maintenant" "
+  select bool_and(derniere_vue > now() - interval '1 minute') from demo_cartes;" "t"
+exiger "le boîtier de démo est toujours entendu" "
+  select count(*) from demo_terminaux where id = 'demo' and entendu_le > now() - interval '1 minute';" "1"
+exiger "aucune carte de démo n'entre dans les vraies tables" "
+  select (select count(*) from cartes where terminal = 'demo')
+       + (select count(*) from comptes where terminal = 'demo')
+       + (select count(*) from attributions a join demo_attributions d using (iccid));" "0"
+refuser "la suppression de l'administrateur de la démo" \
+  "delete from demo_utilisateurs where courriel = 'admin@demo.cm';"
+refuser "un second administrateur de la démo" \
+  "insert into demo_utilisateurs(courriel, empreinte, role, approuve)
+     values ('autre@demo.cm', 'x', 'proprietaire', true);"
+
+# Les cartes, par leur propriétaire et leur opérateur.
+carte() { $P -d totem -tAc "select k.iccid from demo_comptes k
+            join demo_attributions a on a.iccid = k.iccid
+            join demo_utilisateurs u on u.id = a.utilisateur
+           where u.courriel = '$1@demo.cm' and k.operateur = '$2';"; }
+numero() { $P -d totem -tAc "select numero from demo_comptes where iccid = '$1';"; }
+solde() { $P -d totem -tAc "select solde from demo_comptes where iccid = '$1';"; }
+ALI_MTN=$(carte ali MTN); ALI_OR=$(carte ali Orange)
+BEA_MTN=$(carte bea MTN); BEA_OR=$(carte bea Orange)
+ADM_MTN=$(carte admin MTN)
+
+exiger "fabriquer des francs crédite la carte" \
+  "select demo_fabriquer('$ALI_MTN', 100000, 'admin') ->> 'ok';" "true"
+exiger "…et le SMS de la BANQUE DÉMO arrive dans sa boîte" "
+  select count(*) from demo_paiements where carte = '$ALI_MTN' and sens = 'entree'
+     and montant = 100000 and tiers = 'BANQUE DEMO' and texte like '%Nouveau solde : 100 000 FCFA%';" "1"
+refuser "fabriquer un montant négatif" \
+  "do \$\$ begin if (demo_fabriquer('$ALI_MTN', -5, 'admin') ->> 'ok')::boolean then null;
+                else raise exception 'refusé'; end if; end \$\$;"
+$P -d totem -c "select demo_fabriquer('$BEA_MTN', 50000, 'admin'),
+                       demo_fabriquer('$ALI_OR', 20000, 'admin');" >/dev/null
+
+exiger "un transfert entre deux cartes de démo passe" \
+  "select demo_virer('$ALI_MTN', '$(numero "$BEA_MTN")', 30000, 'transfert', 'ali') ->> 'ok';" "true"
+exiger "…l'envoyeur baisse, le destinataire monte, du même montant" \
+  "select (select solde from demo_comptes where iccid = '$ALI_MTN') || '/' ||
+          (select solde from demo_comptes where iccid = '$BEA_MTN');" "70000/80000"
+exiger "…et chacun reçoit son SMS, avec la même référence" "
+  select count(distinct reference) || '/' || count(*) from demo_paiements
+   where carte in ('$ALI_MTN', '$BEA_MTN') and montant = 30000;" "1/2"
+exiger "le numéro écrit avec l'indicatif est le même numéro" \
+  "select demo_virer('$BEA_MTN', '+237$(numero "$ALI_MTN")', 1000, 'transfert', 'bea') ->> 'ok';" "true"
+exiger "un numéro hors de la démo est refusé : l'argent ne sort pas" \
+  "select demo_virer('$ALI_MTN', '677123456', 1000, 'transfert', 'ali') ->> 'ok';" "false"
+exiger "un transfert MTN vers un numéro Orange est refusé" \
+  "select demo_virer('$ALI_MTN', '$(numero "$BEA_OR")', 1000, 'transfert', 'ali') ->> 'ok';" "false"
+exiger "un transfert au-delà du solde est refusé" \
+  "select demo_virer('$ALI_OR', '$(numero "$BEA_OR")', 20001, 'transfert', 'ali') ->> 'ok';" "false"
+exiger "un montant négatif est refusé (il inverserait le transfert)" \
+  "select demo_virer('$ALI_MTN', '$(numero "$BEA_MTN")', -500, 'transfert', 'ali') ->> 'ok';" "false"
+exiger "se payer soi-même est refusé" \
+  "select demo_virer('$ALI_MTN', '$(numero "$ALI_MTN")', 500, 'transfert', 'ali') ->> 'ok';" "false"
+
+# LA RAFALE. Quarante transferts de 5 000 d'Ali vers Béa et vingt de 1 000 de
+# Béa vers Ali, tous ENSEMBLE, depuis soixante connexions. Un solde lu avant
+# le verrou les laisserait tous passer ; un verrou pris dans le désordre
+# ferait s'attendre deux transferts croisés pour toujours (l'un des deux
+# meurt alors en « deadlock »). On exige : aucune erreur, aucun solde
+# négatif, et des soldes qui se recomptent à partir des seuls succès.
+RAFALE=$(mktemp -d)
+i=0
+while [ $i -lt 40 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select 'AB:' || (demo_virer('$ALI_MTN', '$(numero "$BEA_MTN")', 5000, 'transfert', 'ali') ->> 'ok');" \
+    >"$RAFALE/ab$i" 2>&1 &
+  i=$((i + 1))
+done
+i=0
+while [ $i -lt 20 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select 'BA:' || (demo_virer('$BEA_MTN', '$(numero "$ALI_MTN")', 1000, 'transfert', 'bea') ->> 'ok');" \
+    >"$RAFALE/ba$i" 2>&1 &
+  i=$((i + 1))
+done
+wait
+erreurs=$(cat "$RAFALE"/* | grep -cv '^\(AB\|BA\):\(true\|false\)$' || true)
+okAB=$(cat "$RAFALE"/ab* | grep -c '^AB:true$' || true)
+okBA=$(cat "$RAFALE"/ba* | grep -c '^BA:true$' || true)
+rm -rf "$RAFALE"
+if [ "$erreurs" = "0" ]; then
+  echo "  ✓ soixante transferts croisés lancés ensemble : aucun ne meurt en route"
+else
+  echo "  ✗ $erreurs transfert(s) de la rafale ont échoué en erreur (verrou ?)"
+  echecs=$((echecs + 1))
+fi
+# Ali avait 70 000 + 1 000 = 71 000, Béa 80 000 - 1 000 = 79 000.
+exiger "…les soldes se recomptent à partir des seuls succès ($okAB × 5 000, $okBA × 1 000)" \
+  "select (select solde from demo_comptes where iccid = '$ALI_MTN') = 71000 - 5000 * $okAB + 1000 * $okBA
+      and (select solde from demo_comptes where iccid = '$BEA_MTN') = 79000 + 5000 * $okAB - 1000 * $okBA;" "t"
+exiger "…aucun solde de démo n'est passé sous zéro" \
+  "select count(*) from demo_comptes where solde < 0;" "0"
+exiger "…et chaque succès a laissé ses deux SMS, pas un de plus" "
+  select count(*) from demo_paiements where carte in ('$ALI_MTN', '$BEA_MTN')
+     and ((montant = 5000) or (montant = 1000 and sens is not null and texte not like '%BANQUE%'));" \
+  "$(( (okAB + okBA + 1) * 2 ))"
+
+# LA PARITÉ : l'argent de la démo ne naît que de la fabrication.
+exiger "la somme des soldes de démo égale la somme fabriquée" "
+  select (select coalesce(sum(solde), 0) from demo_comptes)
+       = (select coalesce(sum(montant), 0) from demo_emissions);" "t"
+
+# LE MENU, joué comme l'écran le joue : composer, choisir, numéro, montant,
+# code. La plateforme dépose la demande, la base répond comme le réseau.
+jouer() {   # jouer <iccid> <type> <champ> <valeur> [secret] → l'écran
+  $P -d totem -tAc "
+    with d as (insert into demo_commandes(terminal, type, parametres)
+               values ('demo', '$2', jsonb_build_object('carte', '$1', '$3', '$4', 'par', 'c:test')
+                                     || case when '${5:-}' = 'secret' then '{\"secret\": \"true\"}'::jsonb else '{}' end)
+               returning id)
+    select (demo_jouer(d.id)).resultat from d;"
+}
+avant=$(solde "$ALI_OR")
+jouer "$ALI_OR" ussd code '#150#' >/dev/null
+jouer "$ALI_OR" ussd_reponse texte 1 >/dev/null
+jouer "$ALI_OR" ussd_reponse texte "$(numero "$BEA_OR")" >/dev/null
+jouer "$ALI_OR" ussd_reponse texte abc >/dev/null
+ecran=$(jouer "$ALI_OR" ussd_reponse texte 2500)
+case "$ecran" in
+  *"2 500 FCFA"*"BEA TESTEUSE"*"code secret"*)
+    echo "  ✓ l'écran de confirmation montre le montant et le nom AVANT le code" ;;
+  *) echo "  ✗ l'écran de confirmation dit : $ecran"; echecs=$((echecs + 1)) ;;
+esac
+jouer "$ALI_OR" ussd_reponse texte 0000 secret >/dev/null
+exiger "un code secret faux ne paie rien" "select solde from demo_comptes where iccid = '$ALI_OR';" "$avant"
+jouer "$ALI_OR" ussd code '#150#' >/dev/null
+jouer "$ALI_OR" ussd_reponse texte 1 >/dev/null
+jouer "$ALI_OR" ussd_reponse texte "$(numero "$BEA_OR")" >/dev/null
+jouer "$ALI_OR" ussd_reponse texte 2500 >/dev/null
+fin=$(jouer "$ALI_OR" ussd_reponse texte 1234 secret)
+case "$fin" in
+  "Operation reussie."*) echo "  ✓ le bon code paie : $(echo "$fin" | cut -c1-60)…" ;;
+  *) echo "  ✗ le bon code n'a pas payé : $fin"; echecs=$((echecs + 1)) ;;
+esac
+exiger "…le montant est parti, une fois" "select solde from demo_comptes where iccid = '$ALI_OR';" "$((avant - 2500))"
+exiger "…le code ne reste pas dans la demande close" "
+  select count(*) from demo_commandes where parametres ? 'texte' and parametres ->> 'secret' = 'true';" "0"
+exiger "…et le réseau dit la session finie" "
+  select parametres ->> 'reseau' from demo_commandes order by id desc limit 1;" "fini"
+exiger "rejouer une demande close ne paie pas une seconde fois" "
+  select (demo_jouer(max(id))).etat || ':' ||
+         (select solde from demo_comptes where iccid = '$ALI_OR') from demo_commandes;" "faite:$((avant - 2500))"
+case "$(jouer "$ALI_MTN" ussd code '*126*1*677123456*500#')" in
+  *"NUMERO INCONNU"*) echo "  ✓ un code direct vers un numéro hors démo s'annonce inconnu" ;;
+  *) echo "  ✗ un code direct hors démo ne s'annonce pas inconnu"; echecs=$((echecs + 1)) ;;
+esac
+case "$(jouer "$ALI_MTN" ussd_reponse texte 1234 secret)" in
+  "Echec"*) echo "  ✓ …et même avec le bon code, il ne paie personne" ;;
+  *) echo "  ✗ un code direct hors démo a payé"; echecs=$((echecs + 1)) ;;
+esac
+avant=$(solde "$BEA_OR")
+ecran=$(jouer "$BEA_OR" solde par c:test)
+exiger "le solde se lit, sans rien bouger" \
+  "select '$ecran' = 'Votre solde est de ' || demo_francs($avant) || ' FCFA.'
+      and (select solde from demo_comptes where iccid = '$BEA_OR') = $avant;" "t"
+
+# Le float de Glisil : son argent part chez Glisil, et celui des autres non.
+$P -d totem -c "insert into demo_floats_xafe(iccid) values ('$ADM_MTN');" >/dev/null
+$P -d totem -c "select demo_virer('$BEA_MTN', '$(numero "$ADM_MTN")', 2000, 'transfert', 'bea');" >/dev/null
+exiger "un transfert vers le float de Glisil entre dans la file de Glisil, lui seul" "
+  select string_agg(p.carte || ':' || p.montant, ',') from demo_file_xafe f
+    join demo_paiements p on p.id = f.paiement_id;" "$ADM_MTN:2000"
+
+exiger "la parité tient encore, après tout cela" "
+  select (select sum(solde) from demo_comptes) = (select sum(montant) from demo_emissions);" "t"
+
+# LE TÉMOIN. Un virement qui lit le solde SANS verrou, attend un instant
+# (le temps d'un aller-retour), puis écrit. S'il passait la rafale, la
+# rafale ne prouverait rien. On exige qu'il la rate.
+$P -d totem -c "
+  create function temoin_virer(p_de text, p_vers text, p_montant numeric) returns boolean
+  language plpgsql as \$\$
+  declare v numeric;
+  begin
+    select solde into v from demo_comptes where iccid = p_de;
+    if v < p_montant then return false; end if;
+    perform pg_sleep(0.05);
+    update demo_comptes set solde = v - p_montant where iccid = p_de;
+    update demo_comptes set solde = solde + p_montant where iccid = p_vers;
+    return true;
+  end \$\$;" >/dev/null
+CAROLE=$($P -d totem -tAc "insert into demo_utilisateurs(courriel, empreinte, role, approuve)
+                            values ('carole@demo.cm', 'x', 'invite', true) returning id;" | head -1)
+C_MTN=$(carte carole MTN)
+$P -d totem -c "select demo_fabriquer('$C_MTN', 10000, 'admin');" >/dev/null
+i=0
+while [ $i -lt 20 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select temoin_virer('$C_MTN', '$BEA_MTN', 5000);" >/dev/null 2>&1 &
+  i=$((i + 1))
+done
+wait
+temoin=$($P -d totem -tAc "select (select sum(solde) from demo_comptes) = (select sum(montant) from demo_emissions);")
+if [ "$temoin" = "f" ]; then
+  echo "  ✓ témoin : un virement sans verrou casse la parité, et la mesure le voit"
+else
+  echo "  ✗ témoin : le virement sans verrou passe la rafale — elle ne prouve rien"
+  echecs=$((echecs + 1))
+fi
+$P -d totem -c "drop function temoin_virer(text, text, numeric);" >/dev/null
+
+# ---------------------------------------------------------------------------
 # PERSONNE NE LIT LA BASE EN DIRECT.
 # ---------------------------------------------------------------------------
 echo ""

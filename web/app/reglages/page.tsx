@@ -4,6 +4,7 @@ import { langueServeur } from "@/lib/langue-serveur";
 import { RIEN } from "@/lib/portee";
 import { compteConnecte } from "@/lib/qui";
 import { quiAdministre } from "@/lib/garde";
+import { mondeEnCours } from "@/lib/monde";
 import { textesReglages } from "@noyau/textes/reglages";
 import { journalPour } from "@noyau/textes/journal";
 import { IconWallet } from "../icons";
@@ -37,6 +38,13 @@ export default async function Reglages() {
   // les manie, mais le carnet des boutons d'un opérateur, qui sert à toutes
   // ses cartes, reste au propriétaire.
   const proprietaire = !process.env.SESSION_SECRET || admin != null;
+  // LA DÉMO VIVANTE : son administrateur est « propriétaire » de la démo, pas
+  // de TOTEM — `admin` est donc nul pour lui. Il gère ses testeurs (« Qui
+  // peut se connecter ») et a son écran à lui ; les codes USSD, eux, ne
+  // s'apprennent que sur un vrai boîtier.
+  const dansLaDemo = (await mondeEnCours()) === "demo";
+  const adminDeLaDemo = dansLaDemo && moi?.role === "proprietaire";
+  const md = MOTS_DEMO[langue];
   // Une section de codes PAR OPÉRATEUR présent — les cartes en place
   // d'abord. Le repli « Orange » d'autrefois mentait dès qu'une MTN était
   // dans le berceau.
@@ -63,10 +71,31 @@ export default async function Reglages() {
             <p className="truncate text-body font-medium">{moi.courriel}</p>
           )}
           <p className="truncate text-small text-ink-faint">
-            {proprietaire ? t.proprietaire : t.titulaire}
+            {dansLaDemo ? (adminDeLaDemo ? md.admin : md.testeur)
+              : proprietaire ? t.proprietaire : t.titulaire}
           </p>
         </div>
       </section>
+
+      {/* LA DÉMO VIVANTE — son administrateur y fabrique les francs ; le vrai
+          propriétaire y crée cet administrateur. Personne d'autre ne voit la
+          carte. */}
+      {(adminDeLaDemo || (admin && !dansLaDemo)) && (
+        <section>
+          <Link
+            href="/demo"
+            className="flex items-center gap-3.5 rounded-card border border-line bg-surface-raised p-4 transition hover:border-ink-faint"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-body font-medium">{md.titre}</p>
+              <p className="mt-0.5 text-small text-ink-faint">
+                {adminDeLaDemo ? md.sousAdmin : md.sousMaison}
+              </p>
+            </div>
+            <span aria-hidden className="text-ink-faint">›</span>
+          </Link>
+        </section>
+      )}
 
       {/* LA CONSOLE — pour celui qui administre, et lui seul. Les autres ne
           voient même pas la carte : un lien qui mène à un refus enseigne
@@ -212,7 +241,7 @@ export default async function Reglages() {
 
       {/* Codes USSD — une section par opérateur vu par le terminal, avec les
           boutons appris par le robot (💾 sur Telegram) en regard */}
-      {proprietaire && operateurs.map((op) => (
+      {proprietaire && !dansLaDemo && operateurs.map((op) => (
         <SectionCodes
           key={op}
           operateur={op}
@@ -285,6 +314,23 @@ export default async function Reglages() {
     </div>
   );
 }
+
+const MOTS_DEMO = {
+  fr: {
+    admin: "Administrateur de la démo",
+    testeur: "Compte de démonstration",
+    titre: "La démo vivante",
+    sousAdmin: "Les cartes des testeurs, fabriquer des francs, les floats de Glisil",
+    sousMaison: "Créer l'administrateur de la démo",
+  },
+  en: {
+    admin: "Demo administrator",
+    testeur: "Demo account",
+    titre: "The live demo",
+    sousAdmin: "Testers' cards, make francs, Glisil floats",
+    sousMaison: "Create the demo administrator",
+  },
+} as const;
 
 function Ligne({ t, v }: { t: string; v: string }) {
   return (

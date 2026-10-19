@@ -12,10 +12,19 @@
 // Rien n'est inventé : sans les variables, tout renvoie vide, et les écrans
 // le disent au lieu d'afficher des chiffres qui n'existent pas.
 
+import { mondeEnCours } from "@/lib/monde";
+
 const url = process.env.SUPABASE_URL;
 const cle = process.env.SUPABASE_CLE;
 
 export const relie = Boolean(url && cle);
+
+// La console et le journal ne parlent QUE de la maison : dans la démo
+// vivante, ils ne lisent rien et n'écrivent rien (lib/monde.ts). La garde
+// les refuse déjà à la porte ; ceci est le second mur.
+async function horsDeLaMaison(): Promise<boolean> {
+  return (await mondeEnCours()) !== "maison";
+}
 
 /**
  * Le chemin d'une requête, SANS ce qu'elle cherchait — pour le journal du
@@ -34,7 +43,7 @@ function entetes(extra: Record<string, string> = {}): Record<string, string> {
 
 /** Une question. Renvoie une liste, vide si quoi que ce soit a échoué. */
 export async function lire<T>(chemin: string): Promise<T[]> {
-  if (!relie) return [];
+  if (!relie || await horsDeLaMaison()) return [];
   try {
     const r = await fetch(`${url}/rest/v1/${chemin}`, {
       headers: entetes(), cache: "no-store",
@@ -63,7 +72,7 @@ export async function lire<T>(chemin: string): Promise<T[]> {
  * répondrait « fait » en n'ayant rien fait.
  */
 export async function modifier(chemin: string, valeurs: unknown): Promise<boolean> {
-  if (!relie) return false;
+  if (!relie || await horsDeLaMaison()) return false;
   try {
     const r = await fetch(`${url}/rest/v1/${chemin}`, {
       method: "PATCH",
