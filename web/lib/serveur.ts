@@ -1118,6 +1118,16 @@ async function jouerDansLaDemo(id: number): Promise<boolean> {
       body: JSON.stringify({ p_id: id }),
       cache: "no-store",
     });
+    // Le geste a peut-être fait entrer de l'argent sur un float de Glisil :
+    // il part TOUT DE SUITE, comme le vrai boîtier pousse un SMS dès qu'il
+    // l'a lu. Sans cela, le testeur attendait son crédit jusqu'à ce que
+    // l'administrateur ouvre son écran. Attendu, pas lancé en l'air : une
+    // fonction sans serveur s'arrête avec sa réponse. Une file vide ne coûte
+    // qu'une lecture ; Glisil injoignable laisse la ligne en file.
+    if (r.ok) {
+      const { deposerChezGlisil } = await import("@/lib/demo-vivante");
+      await deposerChezGlisil().catch(() => 0);
+    }
     return r.ok;
   } catch {
     return false;

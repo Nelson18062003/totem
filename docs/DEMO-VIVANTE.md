@@ -111,6 +111,15 @@ déclarées « float XAFe ». Quand un testeur veut des XAFe :
 La trésorerie de test de Glisil, c'est donc le solde des cartes de float de
 l'administrateur.
 
+**Le SMS part au moment du geste.** Chaque étape jouée par le faux réseau
+vide aussitôt la file vers Glisil (`jouerDansLaDemo`), comme le vrai boîtier
+pousse un SMS dès qu'il l'a lu. La première version ne la vidait que lorsque
+l'administrateur ouvrait son écran ou fabriquait des francs : le premier
+dépôt d'un vrai testeur est resté « SMS pas encore lu » chez Glisil. Le
+harnais ne l'avait pas vu, parce qu'il visitait lui-même l'écran de
+l'administrateur en attendant le SMS — il amenait ce qu'il vérifiait. Il
+attend maintenant sans personne, et l'ancien code y échoue.
+
 ## 7. Ce qui est vérifié
 
 - `sql/verifier-les-regles.sh` : chaque double a exactement les colonnes de
