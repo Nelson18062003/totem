@@ -48,6 +48,7 @@ python3 outils/eprouver-la-chaine.py      # du modem à l'écran, d'un trait —
 python3 -m unittest tests.test_xafe       # la porte XAFe : signée, verdicts ligne par ligne, le guichet des SMS, témoins
 python3 -m unittest tests.test_envoi_sms  # le robot ENVOIE un SMS : alphabet, PDU, dialogue CMGS, la carte
 python3 -m unittest tests.test_ecran tests.test_enchainement # le boîtier lit l'écran comme le téléphone, et enchaîne
+python3 -m unittest tests.test_recu_de_la_plateforme # le reçu de la plateforme EST celui du boîtier, au pixel près
 python3 outils/eprouver-le-recu.py        # le reçu chez le téléphone, chronométré
 cd web && node scripts/verifier-le-verrou.mjs   # le verrou, vraiment attaqué
 cd web && node scripts/verifier-les-comptes.mjs # les comptes, vraiment essayés
@@ -1407,6 +1408,27 @@ exécuter le faux réseau, écrit en PL/pgSQL — et, la redirection retirée,
 l'administrateur de la démo s'écrivait dans la vraie table des comptes.
 **Toute nouvelle table où vit l'argent reçoit son double dans la même
 migration**, sinon la démo la refuse — c'est voulu, et c'est le signal.
+
+**Un reçu se dessine en douze millisecondes, où qu'on le dessine.** Le
+boîtier fabriquait seul les reçus PDF ; la démo vivante n'a pas de boîtier, et
+le propriétaire voulait de vrais documents sur de faux francs. La plateforme a
+déjà, dans chaque ligne de `paiements`, ce que le reçu affiche : elle le
+dessine maintenant elle-même (`web/lib/recu-pdf.ts`), à l'ouverture. **Deux
+transcriptions d'un même dessin divergent toujours** — un arrondi ici, une
+marge là — et un reçu se tend à un client : `test_recu_de_la_plateforme`
+fabrique les mêmes reçus des deux côtés, les rend en images, et exige zéro
+pixel d'écart ; son témoin exige qu'un franc de différence se voie. Le symbole,
+les marques et les polices passent par `outils/generer-donnees-du-recu.py`,
+jamais recopiés à la main.
+
+**Une référence n'est pas une identité.** Un transfert entre deux cartes de la
+même base laisse DEUX SMS sous le même numéro de transaction — l'envoi d'un
+côté, la réception de l'autre. Le reçu se cherchait par la référence d'abord :
+le destinataire recevait le reçu de l'ENVOI, et l'envoyeur ouvrait celui du
+destinataire. Personne ne l'avait vu : une maison a rarement les deux bouts
+d'un transfert. La démo, elle, les a toujours — `verifier-la-demo-vivante` l'a
+trouvé au premier passage. Un reçu « TM- » se rattache maintenant à la LIGNE
+de son SMS (`recuDuSms`, `recuVisible`), et la référence ne fait que confirmer.
 
 Ne jamais annoncer qu'une chose fonctionne sans l'avoir lancée. Si un test
 échoue, le dire avec sa sortie.

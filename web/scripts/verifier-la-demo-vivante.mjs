@@ -431,6 +431,31 @@ try {
   verifier("aucun code secret ne reste dans une demande close",
     psql("select count(*) from demo_commandes where parametres ? 'texte' and parametres->>'secret' = 'true'"), "0");
 
+  console.log("\nLES REÇUS — fabriqués par la plateforme, le même dessin que le boîtier");
+  const smsDeBea = (dBea.paiements ?? []).find((p) => p.montant === 30000 && /Vous avez recu/.test(p.smsBrut ?? ""));
+  const { recu: numeroDuRecu } = await json(await lire(`/api/recu-du-sms?id=${smsDeBea?.id}`, BEA));
+  exiger("le SMS reçu par Béa a son reçu, tout de suite", /^TM-\d{4}-\d{4}-\d{4,}$/.test(numeroDuRecu ?? ""), String(numeroDuRecu));
+  // Même référence des deux côtés d'un transfert : le reçu de Béa doit être
+  // celui de SA ligne (la réception), pas celui de l'envoi d'Ali.
+  verifier("…le sien, pas celui de l'envoi d'Ali (même référence)",
+    Number(/-(\d+)$/.exec(numeroDuRecu ?? "")?.[1]), smsDeBea?.sourceId);
+  const pdf = await lire(`/api/recu/${numeroDuRecu}?langue=fr`, BEA);
+  const octets = Buffer.from(await pdf.arrayBuffer());
+  verifier("Béa l'ouvre : un vrai PDF", [pdf.status, pdf.headers.get("content-type"), octets.subarray(0, 5).toString()],
+    [200, "application/pdf", "%PDF-"]);
+  exiger("…avec sa police embarquée (le dessin du boîtier)", octets.length > 40000 && octets.includes(Buffer.from("/FontFile2")),
+    `${octets.length} octets`);
+  verifier("Ali, qui l'a envoyé, n'ouvre pas le reçu de la carte de Béa", (await lire(`/api/recu/${numeroDuRecu}`, ALI)).status, 404);
+  verifier("le propriétaire de la maison non plus", (await lire(`/api/recu/${numeroDuRecu}`, PROPRIO)).status, 404);
+  const { url: lienDuRecu } = await json(await lire(`/api/recu/${numeroDuRecu}/lien?langue=fr`, BEA));
+  const parLien = await fetch((lienDuRecu ?? "").replace(/^https?:\/\/[^/]+/, B), { redirect: "manual" });
+  verifier("le lien de partage s'ouvre sans session (le téléphone)", [parLien.status, parLien.headers.get("content-type")],
+    [200, "application/pdf"]);
+  const sansMonde = await fetch((lienDuRecu ?? "").replace(/^https?:\/\/[^/]+/, B).replace("m=demo&", ""), { redirect: "manual" });
+  exiger("…réécrit sans son monde, il ne s'ouvre plus", sansMonde.status !== 200, `(${sansMonde.status})`);
+  const etabli = await jouer(BEA, "recu", { source_id: smsDeBea?.sourceId, carte: BEA_MTN?.iccid });
+  exiger("« Établir le reçu » répond prêt", /prêt/.test(etabli.resultat ?? ""), JSON.stringify(etabli.resultat ?? etabli));
+
   console.log("\nLE VRAI BOÎTIER N'A RIEN REÇU");
   verifier("la vraie table des commandes est vide", psql("select count(*) from commandes"), "0");
   exiger("…pendant que la démo en a joué", Number(psql("select count(*) from demo_commandes")) >= 10);

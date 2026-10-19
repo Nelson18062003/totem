@@ -44,6 +44,7 @@ import { FUSEAU } from "./fuseau";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { lireDansLaDemonstration, tablesDeDemonstration } from "./demonstration";
 import { cheminDansLeMonde, mondeEnCours } from "./monde";
+import { fabriquerLeRecu, type LigneDuRecu } from "./recu-de-la-plateforme";
 
 // LA SOURCE DE LA DÉMONSTRATION. Quand une lecture se fait « dans » la
 // démonstration, `lire` répond depuis ce jeu inventé et ne touche JAMAIS la
@@ -811,10 +812,19 @@ export async function recuDuSms(id: number, portee: Portee): Promise<string | nu
   if (!portee.tout && (sms.carte == null || !portee.cartes.includes(sms.carte))) return null;
   const memeBoitier = (r: { terminal?: string | null }) =>
     r.terminal == null || sms.terminal == null || r.terminal === sms.terminal;
+  // DEUX SMS PEUVENT PORTER LA MÊME RÉFÉRENCE : un transfert entre deux
+  // cartes de la même base (deux cartes du propriétaire, deux testeurs de la
+  // démo) laisse l'envoi d'un côté, la réception de l'autre, sous le même
+  // numéro de transaction. Par la référence seule, le premier reçu venu
+  // passait pour le bon — le destinataire recevait le reçu de l'ENVOI. Un
+  // reçu « TM- » finit par la ligne de son SMS : quand on la connaît, elle
+  // départage.
+  const deCeSms = (numero: string) => sms.source_id == null || !/^TM-/.test(numero)
+    || Number(/-(\d+)$/.exec(numero)?.[1]) === sms.source_id;
   if (sms.reference) {
     const parReference = (await lire<{ numero: string; reference: string | null; terminal?: string | null }>(
       `recus?select=numero,reference,terminal&reference=eq.${encodeURIComponent(sms.reference)}&limit=5`))
-      .find((r) => r.reference === sms.reference && memeBoitier(r));
+      .find((r) => r.reference === sms.reference && memeBoitier(r) && deCeSms(r.numero));
     if (parReference) return parReference.numero;
   }
   if (sms.source_id == null) return null;
@@ -850,6 +860,17 @@ export async function recuVisible(numero: string, portee: Portee): Promise<boole
   const dans = `&carte=in.${listeDeCartes(portee.cartes)}`;
   const aSaCarte = (l: { carte: string | null }) =>
     l.carte != null && portee.cartes.includes(l.carte);
+  const ligne = propre.startsWith("TM-") ? /-(\d+)$/.exec(propre) : null;
+  // Un reçu « TM- » est celui d'UNE ligne : c'est elle qui doit être sur une
+  // de SES cartes. Par la référence seule, l'envoyeur d'un transfert entre
+  // deux cartes de la base ouvrait le reçu du destinataire (même référence).
+  if (ligne) {
+    const parLigne = await lire<{ carte: string | null; terminal?: string | null; reference?: string | null }>(
+      `paiements?select=carte,terminal,reference&source_id=eq.${ligne[1]}${dans}&limit=5`);
+    return parLigne.some((l) => aSaCarte(l)
+      && (fiche.terminal == null || l.terminal == null || l.terminal === fiche.terminal)
+      && (!fiche.reference || !l.reference || l.reference === fiche.reference));
+  }
   if (fiche.reference) {
     const parReference = await lire<{ carte: string | null; terminal?: string | null }>(
       `paiements?select=carte,terminal&reference=eq.${encodeURIComponent(fiche.reference)}`
@@ -859,19 +880,16 @@ export async function recuVisible(numero: string, portee: Portee): Promise<boole
       return true;
     }
   }
-  const ligne = propre.startsWith("TM-") ? /-(\d+)$/.exec(propre) : null;
-  if (ligne) {
-    const parLigne = await lire<{ carte: string | null; terminal?: string | null }>(
-      `paiements?select=carte,terminal&source_id=eq.${ligne[1]}${dans}&limit=5`);
-    return parLigne.some((l) => aSaCarte(l)
-      && (fiche.terminal == null || l.terminal == null || l.terminal === fiche.terminal));
-  }
   return false;
 }
 
-export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
+export async function chargerRecu(numero: string, langue: Langue = "fr"): Promise<ArrayBuffer | null> {
   if (!relie) return null;
   const propre = numero.replace(/[^A-Za-z0-9._-]/g, "");
+  // DANS LA DÉMO VIVANTE, PAS DE BOÎTIER, DONC PAS DE FICHIER DÉPOSÉ : la
+  // plateforme fabrique le reçu elle-même, à l'ouverture, depuis la ligne du
+  // paiement — le même dessin que le boîtier (lib/recu-pdf.ts).
+  if ((await mondeEnCours()) === "demo") return recuFabriqueIci(propre, langue);
   const fiches = await lire<{ numero: string; chemin: string }>(
     `recus?select=numero,chemin&numero=eq.${propre}&limit=1`,
   );
@@ -889,6 +907,28 @@ export async function chargerRecu(numero: string): Promise<ArrayBuffer | null> {
   } catch {
     return null;
   }
+}
+
+/** Le reçu fabriqué par la plateforme (la démo vivante) : la fiche dit le
+ *  genre, le numéro dit la ligne du journal, la ligne dit tout le reste. */
+async function recuFabriqueIci(numero: string, langue: Langue): Promise<ArrayBuffer | null> {
+  const fiche = (await lire<{ numero: string; genre: string }>(
+    `recus?select=numero,genre&numero=eq.${numero}&limit=1`)).find((f) => f.numero === numero);
+  const sourceId = Number(/-(\d+)$/.exec(numero)?.[1]);
+  if (!fiche || !Number.isSafeInteger(sourceId)) return null;
+  const ligne = (await lire<LigneDuRecu & { carte: string | null }>(
+    `paiements?select=source_id,carte,sens,montant,tiers,numero,reference,frais,commission,montant_brut,`
+    + `solde_apres,nature,categorie,emis_le,recu_le&source_id=eq.${sourceId}&limit=1`))
+    .find((l) => l.source_id === sourceId);
+  // La fiche existe sous CE numéro (la base l'a posée, voir
+  // migrations/20261020_demo_recus.sql) : la ligne qu'il désigne est la sienne.
+  if (!ligne) return null;
+  const carte = ligne.carte && /^[A-Za-z0-9]{1,32}$/.test(ligne.carte)
+    ? (await lire<{ iccid: string; nom: string | null; numero: string | null; operateur: string | null; libelle: string | null }>(
+      `cartes?select=iccid,nom,numero,operateur,libelle&iccid=eq.${ligne.carte}&limit=1`)).find((c) => c.iccid === ligne.carte) ?? null
+    : null;
+  const pdf = fabriquerLeRecu(fiche.genre === "solde" ? "solde" : "transfert", numero, ligne, carte, langue, FUSEAU);
+  return pdf ? (pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer) : null;
 }
 
 // --- Le canal de commandes ---------------------------------------------------
