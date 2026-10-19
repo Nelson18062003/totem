@@ -36,7 +36,9 @@ import { nonceNeuf, politiqueCsp } from "@/lib/csp";
 const OUVERT = ["/connexion", "/inscription", "/confidentialite",
                 "/suppression",
                 "/api/connexion", "/api/deconnexion", "/api/inscription",
-                "/api/session", "/api/plateforme"];
+                "/api/session", "/api/plateforme",
+                // le réveil de Glisil : sans session, mais signé avec la clé du terminal de démo
+                "/api/demo/reveil"];
 
 /** Le jeton porté par l'en-tête « Authorization: Bearer … », s'il y en a un. */
 function jetonPorte(req: NextRequest): string | undefined {

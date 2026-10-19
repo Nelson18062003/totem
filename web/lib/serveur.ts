@@ -1125,8 +1125,10 @@ async function jouerDansLaDemo(id: number): Promise<boolean> {
     // fonction sans serveur s'arrête avec sa réponse. Une file vide ne coûte
     // qu'une lecture ; Glisil injoignable laisse la ligne en file.
     if (r.ok) {
-      const { deposerChezGlisil } = await import("@/lib/demo-vivante");
+      const { deposerChezGlisil, payerLesSortiesDeDemo } = await import("@/lib/demo-vivante");
       await deposerChezGlisil().catch(() => 0);
+      // et un retrait de démo qui attendait (un réveil de Glisil perdu) se paie au passage
+      await payerLesSortiesDeDemo({ pasAvantMs: 30_000 }).catch(() => 0);
     }
     return r.ok;
   } catch {

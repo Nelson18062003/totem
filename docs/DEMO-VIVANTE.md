@@ -104,9 +104,15 @@ déclarées « float XAFe ». Quand un testeur veut des XAFe :
 3. la carte du float reçoit le SMS, et la plateforme le dépose chez Glisil
    par la même porte que le vrai boîtier (signée, ligne par ligne) — Glisil
    crédite des XAFe, frappés sur la blockchain de test ;
-4. pour sortir, Glisil demande le remboursement ; l'administrateur paie
-   depuis la carte du float (un transfert de démo) et tape le transaction
-   ID dans l'administration de Glisil, comme pour de vrai.
+4. pour sortir, le testeur demande son retrait vers son numéro de démo ;
+   **la plateforme paie toute seule** : Glisil la réveille
+   (`/api/demo/reveil`, signé avec la clé du terminal de démo), elle relève
+   la sortie par la porte signée, la prend (une seule fois), paie depuis la
+   carte float la mieux garnie — un vrai transfert de démo, SMS et ID
+   compris — et rend l'ID à Glisil, qui clôt la sortie comme « J'ai payé ».
+   Un float à court rend l'échec : rien n'est parti, Glisil rend les XAFe.
+   Un réveil perdu n'oublie rien : le prochain geste de démo (au plus une
+   fois par demi-minute) ou l'écran de l'administrateur relève aussi.
 
 La trésorerie de test de Glisil, c'est donc le solde des cartes de float de
 l'administrateur.

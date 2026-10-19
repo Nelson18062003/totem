@@ -216,10 +216,37 @@ enfants.push(rest);
 // noter ce qu'il reçoit. Une ligne mal signée est refusée en 401.
 const recuParGlisil = [];
 let refusParGlisil = 0;
+// les sorties de démo que Glisil attend de voir payées (0032), et ce qu'on lui en a rendu
+const sortiesDemo = [];
 const mandataire = http.createServer(async (req, res) => {
   const morceaux = [];
   for await (const m of req) morceaux.push(m);
   const corps = Buffer.concat(morceaux);
+  if (req.url.startsWith("/functions/v1/totem-commandes")) {
+    const cible = req.url.slice("/functions/v1/".length);
+    const ts = req.headers["x-totem-horodatage"];
+    const attendue = createHmac("sha256", CLE_GLISIL)
+      .update(`${ts}.${req.method} ${cible}.${corps.toString("utf8")}`).digest("hex");
+    const repondre = (statut, json) => { res.writeHead(statut, { "content-type": "application/json" }); res.end(JSON.stringify(json)); };
+    if (req.headers["x-totem-terminal"] !== "totem-demo" || req.headers["x-totem-signature"] !== attendue
+        || Math.abs(Date.now() / 1000 - Number(ts)) > 300) { refusParGlisil++; return repondre(401, { erreur: "signature refusée" }); }
+    if (req.method === "GET") {
+      return repondre(200, sortiesDemo.filter((x) => x.etat === "en_attente")
+        .map(({ reference, operateur, numero, montant }) => ({ reference, operateur, numero, montant })));
+    }
+    const b = JSON.parse(corps.toString("utf8") || "{}");
+    const x = sortiesDemo.find((y) => y.reference === b.reference);
+    if (!x || b.type !== "sorties_demo") return repondre(400, { erreur: "sortie inconnue" });
+    if (b.etat === "en_cours") {
+      if (x.etat !== "en_attente") return repondre(409, { erreur: "sortie déjà prise" });
+      x.etat = "en_cours"; x.prises = (x.prises ?? 0) + 1;
+      return repondre(200, { reference: x.reference, pris: true });
+    }
+    if (x.etat !== "en_cours") return repondre(400, { erreur: "cette sortie n'a pas été prise" });
+    if (b.etat === "envoyee") { x.etat = "envoyee"; x.transaction_id = b.transaction_id; return repondre(200, { reference: x.reference, etat: "envoyee" }); }
+    if (b.etat === "echouee") { x.etat = "annulee"; x.motif = b.motif; return repondre(200, { reference: x.reference, etat: "annulee" }); }
+    return repondre(400, { erreur: "etat inconnu" });
+  }
   if (req.url.startsWith("/functions/v1/totem-sms")) {
     const ts = req.headers["x-totem-horodatage"];
     const attendue = createHmac("sha256", CLE_GLISIL)
@@ -492,6 +519,36 @@ try {
     psql("select reponse from demo_file_xafe where envoye_le is not null"), `credite GL-${ligne?.source_id}`);
   verifier("le paiement de Béa, lui, n'est pas parti (ce n'est pas un float)",
     recuParGlisil.filter((l) => l.sens === "sortie").length, 0);
+
+  console.log("\nUN RETRAIT DE DÉMO SE PAIE TOUT SEUL");
+  const soldeDe = (iccid) => Number(psql(`select solde from demo_comptes where iccid = '${iccid}'`));
+  const beaAvant = soldeDe(BEA_MTN?.iccid), floatAvant = soldeDe(FLOAT?.iccid);
+  sortiesDemo.push({ reference: "XAFe-WD-T00001", operateur: "mtn", numero: BEA_MTN?.numero, montant: 3000, etat: "en_attente" });
+  const reveiller = (signe = true) => {
+    const ts = String(Math.floor(Date.now() / 1000));
+    const sig = createHmac("sha256", signe ? CLE_GLISIL : "pas-la-cle").update(`${ts}.POST demo-reveil.`).digest("hex");
+    return fetch(`${B}/api/demo/reveil`, { method: "POST", headers: { "x-glisil-horodatage": ts, "x-glisil-signature": sig } });
+  };
+  verifier("un réveil mal signé est refusé, sans rien payer", [(await reveiller(false)).status, sortiesDemo[0].etat], [401, "en_attente"]);
+  verifier("un réveil sans signature aussi", (await fetch(`${B}/api/demo/reveil`, { method: "POST" })).status, 401);
+  const reveil = await reveiller();
+  verifier("Glisil réveille la plateforme : la sortie est payée, sans un clic", [reveil.status, (await json(reveil)).payees], [200, 1]);
+  const payee = sortiesDemo[0];
+  exiger("…prise une fois, rendue « envoyée » avec l'ID du transfert de démo",
+    payee.etat === "envoyee" && payee.prises === 1 && /^\d{6,}$/.test(payee.transaction_id ?? ""), JSON.stringify(payee));
+  verifier("…l'argent a vraiment bougé : 3 000 F du float vers la carte de Béa",
+    [soldeDe(FLOAT?.iccid), soldeDe(BEA_MTN?.iccid)], [floatAvant - 3000, beaAvant + 3000]);
+  const preuve = recuParGlisil.find((l) => l.sens === "sortie");
+  verifier("…et le SMS « envoyé » du float est parti chez Glisil, avec le même ID (la preuve)",
+    preuve && [preuve.reference, preuve.numero, preuve.montant, preuve.float_numero],
+    [payee.transaction_id, BEA_MTN?.numero, 3000, FLOAT?.numero]);
+  const encore = await reveiller();
+  verifier("un second réveil ne paie pas deux fois", [(await json(encore)).payees, soldeDe(BEA_MTN?.iccid)], [0, beaAvant + 3000]);
+  sortiesDemo.push({ reference: "XAFe-WD-T00002", operateur: "mtn", numero: BEA_MTN?.numero, montant: 900000000, etat: "en_attente" });
+  await reveiller();
+  exiger("un float à court rend l'échec : rien n'est parti, Glisil rend les XAFe",
+    sortiesDemo[1].etat === "annulee" && /Solde insuffisant/.test(sortiesDemo[1].motif ?? "") && soldeDe(BEA_MTN?.iccid) === beaAvant + 3000,
+    JSON.stringify(sortiesDemo[1]));
 
   console.log("\nLA PARITÉ DE LA DÉMO");
   const etat = await json(await lire("/api/demo?langue=fr", ADMIN));
