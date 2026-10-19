@@ -141,19 +141,30 @@ jamais une table `demo_…`. Le seul passage d'un monde à l'autre est
 le courriel dans les deux, ENSEMBLE, pour que la durée ne dise rien) et la
 création de l'administrateur.
 
-Ce qui ne marche PAS dans la démo, et le dit : les reçus PDF (`recu` : c'est
-le boîtier qui les fabrique), le nom appris d'une carte, les boutons appris
-(`raccourci`), les liens signés (un lien s'ouvre sans session, donc dans la
-maison, où la carte de démo n'existe pas — le harnais vérifie qu'il n'y montre
-rien).
+**Les reçus PDF existent dans la démo**, comme dans la vraie vie. Sans boîtier
+pour les fabriquer, c'est la PLATEFORME qui les dessine, à l'ouverture, depuis
+la ligne du paiement : `web/lib/recu-pdf.ts` transcrit `totem/recu.py` règle
+pour règle, et `tests/test_recu_de_la_plateforme.py` compare les deux au pixel
+près (six reçus, MTN et Orange, deux langues, un témoin qui doit voir un franc
+de différence). La base n'en garde que la fiche (`demo_recus`) : chaque SMS
+d'argent naît avec la sienne, et « Établir le reçu » répond « prêt » tout de
+suite (`migrations/20261020_demo_recus.sql`). Le lien de partage du téléphone
+porte son monde : sa signature est d'un autre genre (`recu-demo`), un lien de
+la maison ne s'y réécrit pas, et l'inverse non plus.
+
+Ce qui ne marche PAS dans la démo, et le dit : le nom appris d'une carte, les
+boutons appris (`raccourci`), les liens signés des coordonnées et du bilan (un
+lien s'ouvre sans session, donc dans la maison, où la carte de démo n'existe
+pas — le harnais vérifie qu'il n'y montre rien).
 
 `DEMO_VIVANTE=non` ferme tout : plus personne n'entre, et les jetons déjà
 émis tombent dans le middleware.
 
 ## 8. Mettre en service
 
-1. Jouer `migrations/20261019_demo_vivante.sql` dans l'éditeur SQL de
-   Supabase (comme les autres migrations).
+1. Jouer `migrations/20261019_demo_vivante.sql`, puis
+   `migrations/20261020_demo_recus.sql`, dans l'éditeur SQL de Supabase
+   (comme les autres migrations).
 2. Réglages → **La démo vivante** → **Créer l'administrateur de la démo**
    (prénom, nom, courriel, mot de passe — un compte à part, jamais le vôtre).
    Puis se connecter avec ce compte.

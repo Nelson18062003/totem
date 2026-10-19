@@ -1,4 +1,5 @@
-import { signerLienRecu } from "@/lib/lien-signe";
+import { signerLien, signerLienRecu } from "@/lib/lien-signe";
+import { mondeEnCours } from "@/lib/monde";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 import { recuVisible } from "@/lib/serveur";
@@ -42,6 +43,14 @@ export async function GET(
     // Sans secret, rien ne peut être signé — et le verrou n'existe pas non
     // plus : le reçu s'ouvre alors directement, le lien nu suffit.
     return Response.json({ url: `${u.origin}/api/recu/${numero}` });
+  }
+  // Dans la démo vivante, le lien porte son monde : il s'ouvrira sans
+  // session, donc hors de la démo — sa signature est d'un autre genre.
+  if ((await mondeEnCours()) === "demo") {
+    const { expiration, signature } = await signerLien(secret, "recu-demo", numero);
+    return Response.json({
+      url: `${u.origin}/api/recu/${numero}?m=demo&e=${expiration}&s=${signature}`,
+    });
   }
   const { expiration, signature } = await signerLienRecu(secret, numero);
   return Response.json({

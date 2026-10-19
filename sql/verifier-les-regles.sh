@@ -890,6 +890,23 @@ exiger "le solde se lit, sans rien bouger" \
   "select '$ecran' = 'Votre solde est de ' || demo_francs($avant) || ' FCFA.'
       and (select solde from demo_comptes where iccid = '$BEA_OR') = $avant;" "t"
 
+# LES REÇUS (migrations/20261020_demo_recus.sql) : chaque SMS d'argent naît
+# avec la fiche de son reçu, numérotée comme le boîtier la numérote, et
+# « Établir le reçu » répond « prêt » — la plateforme dessine le document.
+exiger "chaque SMS d'argent de démo a la fiche de son reçu" "
+  select count(*) from demo_paiements p where p.sens is not null and p.montant > 0
+     and not exists (select 1 from demo_recus r where r.numero = 'TM-'
+       || to_char(p.recu_le at time zone 'Africa/Douala', 'YYYY-MMDD') || '-' || lpad(p.source_id::text, 4, '0'));" "0"
+dernier=$($P -d totem -tAc "select source_id from demo_paiements where carte = '$BEA_OR' and sens = 'entree' order by id desc limit 1;")
+case "$(jouer "$BEA_OR" recu source_id "$dernier")" in
+  "Reçu TM-"*" prêt : il se partage dès maintenant.") echo "  ✓ « Établir le reçu » répond prêt, avec le numéro" ;;
+  *) echo "  ✗ « Établir le reçu » ne répond pas prêt : $(jouer "$BEA_OR" recu source_id "$dernier")"; echecs=$((echecs + 1)) ;;
+esac
+case "$(jouer "$BEA_OR" recu source_id 999999999)" in
+  "Ce message ne porte pas"*) echo "  ✓ un reçu sans message derrière est refusé, et dit pourquoi" ;;
+  *) echo "  ✗ un reçu sans message derrière n'est pas refusé"; echecs=$((echecs + 1)) ;;
+esac
+
 # Le float de Glisil : son argent part chez Glisil, et celui des autres non.
 $P -d totem -c "insert into demo_floats_xafe(iccid) values ('$ADM_MTN');" >/dev/null
 $P -d totem -c "select demo_virer('$BEA_MTN', '$(numero "$ADM_MTN")', 2000, 'transfert', 'bea');" >/dev/null

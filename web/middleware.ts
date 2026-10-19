@@ -126,6 +126,13 @@ export async function middleware(req: NextRequest) {
         req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
     return passer();
   }
+  // Le reçu de la DÉMO VIVANTE a sa propre signature : un lien de la maison
+  // ne s'y réécrit pas (voir app/api/recu/[numero]).
+  if (recu && req.nextUrl.searchParams.get("m") === "demo" && await verifierLien(
+        secret, "recu-demo", recu[1],
+        req.nextUrl.searchParams.get("e"), req.nextUrl.searchParams.get("s"))) {
+    return passer();
+  }
   const coordonnees = pathname.match(/^\/api\/coordonnees\/(\w{1,32})$/);
   if (coordonnees && await verifierLien(
         secret, "coordonnees", coordonnees[1],

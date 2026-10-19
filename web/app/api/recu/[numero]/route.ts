@@ -1,4 +1,6 @@
 import { chargerRecu, recuVisible } from "@/lib/serveur";
+import { verifierLien } from "@/lib/lien-signe";
+import { dansLaDemoVivante } from "@/lib/monde";
 import { porteeDe } from "@/lib/portee";
 import { langueServeur } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
@@ -24,6 +26,19 @@ export async function GET(
   if (!/^[\w.-]{1,64}$/.test(numero)) {
     return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   }
+  // UN LIEN DE LA DÉMO VIVANTE (« m=demo ») : le téléphone l'ouvre SANS
+  // session, donc hors de la démo. Sa signature est d'un autre genre
+  // (« recu-demo ») : un lien de la maison ne s'y réécrit pas, et un lien de
+  // démo n'ouvre jamais un reçu de la maison. Elle se revérifie ici, même si
+  // le verrou l'a déjà fait.
+  const adresse = new URL(req.url).searchParams;
+  if (adresse.get("m") === "demo") {
+    const secret = process.env.SESSION_SECRET || "";
+    if (!secret || !(await verifierLien(secret, "recu-demo", numero, adresse.get("e"), adresse.get("s")))) {
+      return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
+    }
+    return servir(numero, await dansLaDemoVivante(() => chargerRecu(numero, langue)), langue);
+  }
   // Avec une session, le reçu doit appartenir à une de SES cartes : un
   // numéro de reçu se devine. Sans session, la main tient un lien signé, qui
   // ne se signe que pour un reçu visible (voir …/lien).
@@ -31,7 +46,10 @@ export async function GET(
   if (portee && !(await recuVisible(numero, portee))) {
     return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   }
-  const pdf = await chargerRecu(numero);
+  return servir(numero, await chargerRecu(numero, langue), langue);
+}
+
+function servir(numero: string, pdf: ArrayBuffer | null, langue: Awaited<ReturnType<typeof langueServeur>>) {
   if (!pdf) return new Response(erreurApi(langue, "recuIntrouvable"), { status: 404 });
   return new Response(pdf, {
     headers: {
