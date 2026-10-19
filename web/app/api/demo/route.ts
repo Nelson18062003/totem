@@ -4,7 +4,7 @@ import { garder, estRefus } from "@/lib/garde";
 import { sujetDe } from "@/lib/portee";
 import { dansLaDemoVivante, dansLaMaison, demoVivanteOuverte, mondeEnCours } from "@/lib/monde";
 import {
-  declarerFloat, deposerChezGlisil, etatDeLaDemo, fabriquerDesFrancs,
+  declarerFloat, deposerChezGlisil, etatDeLaDemo, fabriquerDesFrancs, payerLesSortiesDeDemo,
 } from "@/lib/demo-vivante";
 import { creerUtilisateur, listerUtilisateurs, relie, utilisateurAVerifier } from "@/lib/serveur";
 import { courrielAcceptable, empreinter, motDePasseAcceptable, normaliserCourriel } from "@/lib/motdepasse";
@@ -71,6 +71,7 @@ export async function GET(req: Request) {
     // Chaque visite de l'écran relance aussi la file : ce qui n'est pas
     // parti chez Glisil repart, sans attendre un geste.
     await deposerChezGlisil();
+    await payerLesSortiesDeDemo();
     return Response.json({ face: "demo", ...(await etatDeLaDemo()) });
   }
   const g = await garder("administrer", req);

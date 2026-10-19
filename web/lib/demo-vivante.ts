@@ -259,3 +259,119 @@ async function vidanger(): Promise<number> {
   }
   return tranchees;
 }
+
+// ---------------------------------------------------------------------------
+// LES RETRAITS DE DÉMO, PAYÉS PAR LA PLATEFORME
+//
+// Un testeur retire ses XAFe vers son numéro de démo (600 …). Glisil met la
+// sortie de côté et réveille la plateforme (/api/demo/reveil) ; la plateforme
+// relève, par la même porte signée, les sorties de démo à payer (Glisil 0032),
+// en PREND une — une seule fois, Glisil refuse la seconde prise —, la paie
+// depuis la carte float de l'administrateur avec un vrai transfert de démo
+// (SMS et ID compris), puis rend l'ID : la sortie se clôt chez Glisil comme
+// « J'ai payé ». Le transfert refusé (float à court, numéro inconnu) rend
+// l'échec : rien n'est parti, les XAFe reviennent au testeur. Personne n'a
+// rien à valider.
+//
+// Une sortie prise dont le paiement n'a pas répondu (la base injoignable au
+// milieu) reste « en cours » chez Glisil : on ne sait pas si l'argent est
+// parti, et la repayer serait payer deux fois. L'équipe la voit.
+// ---------------------------------------------------------------------------
+
+type SortieDeDemo = { reference: string; operateur: string; numero: string; montant: number; nom?: string | null };
+
+/** Un appel signé à la porte de Glisil, sous l'identité du terminal de démo. */
+async function porteGlisil(methode: "GET" | "PATCH", cible: string, corps: string): Promise<{ statut: number; json: unknown }> {
+  const base = (process.env.XAFE_DEMO_URL || "").replace(/\/+$/, "");
+  const cleTerminal = process.env.XAFE_DEMO_CLE || "";
+  const anon = process.env.XAFE_DEMO_ANON || "";
+  const ts = Math.floor(Date.now() / 1000);
+  try {
+    const r = await fetch(`${base}/functions/v1/${cible}`, {
+      method: methode, cache: "no-store", ...(methode === "GET" ? {} : { body: corps }),
+      headers: {
+        "content-type": "application/json",
+        "x-totem-terminal": TERMINAL_DEMO,
+        "x-totem-horodatage": String(ts),
+        "x-totem-signature": await signerPourGlisil(cleTerminal, ts, methode, cible, corps),
+        ...(anon ? { apikey: anon, authorization: `Bearer ${anon}` } : {}),
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    return { statut: r.status, json: await r.json().catch(() => null) };
+  } catch {
+    return { statut: 0, json: null };
+  }
+}
+
+let paiementEnCours: Promise<number> | null = null;
+let dernierReleve = 0;
+
+/** Paie les retraits de démo que Glisil attend. Rend le nombre de sorties payées.
+ *  `pasAvantMs` : « au passage » (un geste de démo), on ne relève pas Glisil
+ *  plus d'une fois par intervalle — le réveil, lui, relève tout de suite. */
+export function payerLesSortiesDeDemo(o: { pasAvantMs?: number } = {}): Promise<number> {
+  if (paiementEnCours) return paiementEnCours;
+  if (o.pasAvantMs && Date.now() - dernierReleve < o.pasAvantMs) return Promise.resolve(0);
+  dernierReleve = Date.now();
+  paiementEnCours = dansLaDemoVivante(payer).finally(() => { paiementEnCours = null; });
+  return paiementEnCours;
+}
+
+async function payer(): Promise<number> {
+  if (!relie || !process.env.XAFE_DEMO_URL || !process.env.XAFE_DEMO_CLE) return 0;
+  const liste = await porteGlisil("GET", "totem-commandes?type=sorties_demo", "");
+  const sorties = liste.statut === 200 && Array.isArray(liste.json) ? liste.json as SortieDeDemo[] : [];
+  if (sorties.length === 0) return 0;
+  const [floats, comptes] = await Promise.all([
+    lireDemo<{ iccid: string }>("demo_floats_xafe?select=iccid"),
+    lireDemo<{ iccid: string; operateur: string; solde: number | null }>("comptes?select=iccid,operateur,solde&limit=1000"),
+  ]);
+  const sontFloats = new Set(floats.map((f) => f.iccid));
+  const rendre = (reference: string, champs: Record<string, unknown>) =>
+    porteGlisil("PATCH", "totem-commandes", JSON.stringify({ type: "sorties_demo", reference, ...champs }));
+
+  let payees = 0;
+  for (const s of sorties) {
+    if (typeof s?.reference !== "string" || !(Number(s.montant) > 0)) continue;
+    // la prise d'abord : un autre réveil qui l'a déjà prise la paie, pas nous
+    if ((await rendre(s.reference, { etat: "en_cours" })).statut !== 200) continue;
+    const operateur = s.operateur === "mtn" ? "MTN" : "Orange";
+    // la carte float de cet opérateur la mieux garnie
+    const float = comptes
+      .filter((c) => sontFloats.has(c.iccid) && c.operateur === operateur)
+      .sort((a, b) => Number(b.solde ?? 0) - Number(a.solde ?? 0))[0];
+    if (!float) {
+      await rendre(s.reference, { etat: "echouee", motif: `aucune carte float ${operateur} dans la démo` });
+      continue;
+    }
+    let r: { ok?: boolean; raison?: string; reference?: string };
+    try {
+      r = (await rpcDemo("demo_virer", {
+        p_de: float.iccid, p_vers_numero: s.numero, p_montant: Number(s.montant), p_operation: "transfert", p_par: "glisil",
+      })) as typeof r;
+    } catch {
+      continue; // la base n'a pas répondu : on ne sait pas si c'est parti — la sortie reste « en cours », l'équipe la voit
+    }
+    if (r?.ok && r.reference) {
+      if ((await rendre(s.reference, { etat: "envoyee", transaction_id: r.reference })).statut === 200) payees++;
+    } else {
+      await rendre(s.reference, { etat: "echouee", motif: r?.raison || "le transfert de démo a été refusé" });
+    }
+  }
+  // le SMS « vous avez envoyé … » de la carte float part chez Glisil : la preuve, rapprochée par son ID
+  if (payees > 0) await deposerChezGlisil().catch(() => 0);
+  return payees;
+}
+
+/** Le réveil de Glisil : signé avec la clé du terminal de démo, comme la porte
+ *  — hex(HMAC-SHA256(clé, horodatage + ".POST demo-reveil.")), cinq minutes. */
+export async function reveilSigne(horodatage: string | null, signature: string | null): Promise<boolean> {
+  const cleTerminal = process.env.XAFE_DEMO_CLE || "";
+  if (!cleTerminal || !horodatage || !signature || !/^[0-9]{1,12}$/.test(horodatage) || !/^[0-9a-f]{64}$/.test(signature)) return false;
+  if (Math.abs(Date.now() / 1000 - Number(horodatage)) > 300) return false;
+  const attendue = await signerPourGlisil(cleTerminal, Number(horodatage), "POST", "demo-reveil", "");
+  let d = 0;
+  for (let i = 0; i < 64; i++) d |= attendue.charCodeAt(i) ^ signature.charCodeAt(i);
+  return d === 0;
+}
