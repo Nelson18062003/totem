@@ -57,6 +57,10 @@ const il_y_a = (min) => new Date(Date.now() - min * 60000).toISOString();
 // situation où « le dernier terminal vivant » se trompe.
 // Voir scripts/verifier-l-adressage.mjs.
 const FLOTTE = process.env.FAUX_FLOTTE === "1";
+// Le plafond d'une réponse de la vraie base (« Max rows » de Supabase) : voir
+// la lecture des tables ordinaires, plus bas.
+const PLAFOND_LIGNES = process.env.PLAFOND_LIGNES === undefined ? 1000
+  : Math.max(0, Number(process.env.PLAFOND_LIGNES) || 0);
 
 // UN BOÎTIER QU'ON FAIT TAIRE (« /essai/taire »). Ici, chaque boîtier était
 // toujours vivant : son signe de vie se recalculait à « maintenant » à chaque
@@ -1461,10 +1465,19 @@ const serveur = createServer(async (req, res) => {
 
     // Le total se compte AVANT la limite : c'est lui qui révèle la coupe.
     const total = lignes.length;
-    const limite = Number(url.searchParams.get("limit") || 0);
+    // LA PAGE, comme la vraie base : un décalage (`offset`), et jamais plus
+    // de `PLAFOND_LIGNES` lignes par réponse — mille par défaut, le réglage
+    // d'origine de Supabase, QUOI QU'ON DEMANDE. Le faux nuage rendait tout
+    // ce qu'on lui demandait : un bilan « jusqu'à vingt mille lignes »
+    // passait ici et s'arrêtait à mille sur la vraie base. `PLAFOND_LIGNES=0`
+    // retire le plafond.
+    const decalage = Math.max(0, Number(url.searchParams.get("offset") || 0) || 0);
+    if (decalage) lignes = lignes.slice(decalage);
+    let limite = Number(url.searchParams.get("limit") || 0);
+    if (PLAFOND_LIGNES && (!limite || limite > PLAFOND_LIGNES)) limite = PLAFOND_LIGNES;
     if (limite) lignes = lignes.slice(0, limite);
     return repondre(lignes, 200,
-      { "content-range": `0-${Math.max(0, lignes.length - 1)}/${total}` });
+      { "content-range": `${decalage}-${decalage + Math.max(0, lignes.length - 1)}/${total}` });
   }
 
   return repondre({ message: "table inconnue (faux nuage)" }, 404);

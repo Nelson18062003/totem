@@ -151,7 +151,7 @@ export type TotauxReleve = {
   nombre: number;
   entrees: number;
   sorties: number;
-  /** Les frais des lignes dont le sens est connu. */
+  /** Les frais payés par la carte : ceux de ses sorties. */
   frais: number;
   /** Les lignes dont le sens n'a pas été compris : montrées, non comptées. */
   inconnus: number;
@@ -162,10 +162,15 @@ export function totauxDuReleve(
 ): TotauxReleve {
   let entrees = 0, sorties = 0, frais = 0, inconnus = 0;
   for (const p of lignes) {
+    // LES FRAIS D'UNE SORTIE, ET D'ELLE SEULE. Sur une entrée, ce que
+    // l'opérateur appelle « charges » (le retrait d'espèces chez un agent
+    // Orange) est payé par le CLIENT : le solde de la carte monte du montant
+    // entier. Les retrancher faisait apparaître, dans le contrôle des
+    // soldes, un écart de la taille de ces charges — c'est la règle de la
+    // suite des soldes (`flux.ts`, `effetDe`), éprouvée sur la vraie base.
     if (p.sens === "in") entrees += cts(p.montant);
-    else if (p.sens === "out") sorties += cts(p.montant);
-    else { inconnus++; continue; }
-    frais += cts(p.frais);
+    else if (p.sens === "out") { sorties += cts(p.montant); frais += cts(p.frais); }
+    else inconnus++;
   }
   return { nombre: lignes.length, entrees: entrees / 100, sorties: sorties / 100,
            frais: frais / 100, inconnus };

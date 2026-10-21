@@ -75,11 +75,16 @@ export async function GET(req: Request) {
   const adresse = new URL(req.url).searchParams;
   const portee = (await porteeDe(req)) ?? await porteeDuLienDeBilan(
     adresse.get("jours"), adresse.get("q"), adresse.get("e"), adresse.get("s"));
-  const { paiements, smsTronques } = await chargerDonnees(langue, portee, {
-    sms: LIGNES_MAX,
+  // TOUTES les pages : la base n'en rend qu'une par demande — mille lignes
+  // sur Supabase, quoi qu'on lui demande. « Jusqu'à vingt mille » s'arrêtait
+  // donc à mille, et le fichier se disait incomplet dès qu'une caisse passait
+  // mille SMS sur la période. Le plafond ne borne plus que le fichier.
+  const lus = await chargerDonnees(langue, portee, {
+    toutes: true,
     depuis: new Date(depuis - MARGE_RELEVE_MS).toISOString(),
-    compter: true,
   });
+  const paiements = lus.paiements.slice(0, LIGNES_MAX);
+  const smsTronques = lus.smsTronques || lus.paiements.length > LIGNES_MAX;
   const lignes = paiements
     .filter((p) => {
       const t = new Date(p.recuLe).getTime();

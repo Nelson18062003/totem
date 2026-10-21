@@ -16,8 +16,8 @@
 //   — ENTRÉES : ce qui fait monter le solde. SORTIES : ce qui le fait
 //     baisser, SANS les frais. Sur une puce d'agent, le dépôt d'un client
 //     fait baisser le solde (sortie), son retrait le fait monter (entrée).
-//   — FRAIS : à part. NET = entrées − sorties − frais : exactement ce dont
-//     les soldes ont bougé.
+//   — FRAIS : ceux que la carte a payés, sur ses sorties, à part. NET =
+//     entrées − sorties − frais : exactement ce dont les soldes ont bougé.
 //   — COMMISSIONS GAGNÉES : à part, jamais dans les entrées — elles vont sur
 //     le compte des commissions de l'opérateur, pas sur le solde de la carte.
 //     Quand elles y sont VERSÉES (un SMS « reçu de » la carte elle-même),
@@ -424,8 +424,10 @@ function mouvementsDe(lignes: Paiement[], cartes: CarteVolumes[]): {
 function totauxDe(mouvements: Mouvement[], avecInternes: boolean): TotauxVolumes {
   let e = 0, s = 0, f = 0, nE = 0, nS = 0;
   for (const m of mouvements) {
-    // Les frais d'un transfert entre vos cartes sont une vraie dépense.
-    f += cts(m.p.frais);
+    // Les frais que la carte a PAYÉS : ceux d'une sortie (voir
+    // `totauxDuReleve`). Ceux d'un transfert entre vos cartes sont une vraie
+    // dépense : ils restent, même quand le transfert sort des totaux.
+    if (!m.entree) f += cts(m.p.frais);
     if (m.interne && !avecInternes) continue;
     if (m.entree) { e += m.cents; nE++; } else { s += m.cents; nS++; }
   }
@@ -594,6 +596,22 @@ export function calculerVolumes(entree: EntreeVolumes): Volumes {
     ...(fiche === undefined ? {} : { fiche }),
   };
 }
+
+/** Ce que la plateforme rend au site et au téléphone. */
+export type ReponseVolumes = {
+  volumes: Volumes;
+  /** Toutes les cartes que la personne peut voir — pour le choix. */
+  cartes: CarteVolumes[];
+  /** « tout », ou l'ICCID de la carte choisie. */
+  carte: string;
+  /** La base en avait plus que la plateforme n'en lit d'un coup : les
+   *  chiffres sont incomplets, et l'écran le DIT. */
+  tronque: boolean;
+  /** Les cartes dont le boîtier se tait maintenant (période en cours). */
+  silencieuses: { iccid: string; depuis: string | null }[];
+  aujourdhui: string;
+  fuseau: string;
+};
 
 // --- Ce que l'écran en dit ---------------------------------------------------
 

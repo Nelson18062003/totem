@@ -31,7 +31,7 @@ const en = {
   recevoirSous: "Name and number to give to whoever pays you",
   consultation: "Enquiries",
   smsRecus: "Incoming SMS",
-  analyse: "Analysis",
+  analyse: "Volumes",
   codeUssd: "USSD code",
   aucunCodeReleve: (op: string) =>
     `No ${op} codes have been collected in the field yet — a digit that moves ` +
@@ -217,7 +217,7 @@ const fr: typeof en = {
   recevoirSous: "Le nom et le numéro à donner à qui vous paie",
   consultation: "Consultation",
   smsRecus: "SMS reçus",
-  analyse: "Analyse",
+  analyse: "Volumes",
   codeUssd: "Code USSD",
   aucunCodeReleve: (op) =>
     `Aucun code ${op} n’a encore été relevé sur le terrain — on ne devine ` +

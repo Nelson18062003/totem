@@ -14,7 +14,7 @@ const en = {
   // jours (voir `textes/plus.ts`).
   plus: "More",
   retour: "Back",
-  analyse: "Analysis",
+  analyse: "Volumes",
   operations: "Operations",
   codeUssd: "USSD code",
   reglages: "Settings",
@@ -58,7 +58,7 @@ const fr: typeof en = {
   flux: "Paiements",
   plus: "Plus",
   retour: "Retour",
-  analyse: "Analyse",
+  analyse: "Volumes",
   operations: "Opérations",
   codeUssd: "Code USSD",
   reglages: "Réglages",

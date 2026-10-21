@@ -38,7 +38,7 @@ const liens: Lien[] = [
 // rejoignent sans la barre : l'Analyse depuis la carte « Encaissé
 // aujourd'hui » de l'accueil, le code USSD depuis les Opérations.
 const liensSecondaires: Lien[] = [
-  { href: "/analyse", cle: "analyse", Icone: IconChart },
+  { href: "/volumes", cle: "analyse", Icone: IconChart },
   { href: "/ussd", cle: "codeUssd", Icone: IconHash },
 ];
 

@@ -164,6 +164,10 @@ export function lireDansLaDemonstration(
       return sens === "desc" ? y.localeCompare(x) : x.localeCompare(y);
     });
   }
+  // Le décalage d'une lecture page après page (`lireToutesLesPages`) : sans
+  // lui, chaque page rendrait la première.
+  const decalage = Number(params.get("offset"));
+  if (Number.isInteger(decalage) && decalage > 0) lignes = lignes.slice(decalage);
   const limite = Number(params.get("limit"));
   if (Number.isInteger(limite) && limite > 0) lignes = lignes.slice(0, limite);
   return lignes;

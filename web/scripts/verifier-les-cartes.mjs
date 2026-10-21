@@ -173,7 +173,7 @@ try {
     verifier("aucun SMS MTN ne passe dans le texte",
       JSON.stringify(d).includes("NKENGAFAC"), false);
 
-    for (const chemin of ["/", "/encaissements", "/cartes", "/analyse"]) {
+    for (const chemin of ["/", "/encaissements", "/cartes", "/volumes"]) {
       const html = await (await page(chemin, vendeur)).text();
       verifier(`la page ${chemin} ne montre rien de la carte MTN`,
         html.includes("NKENGAFAC") || html.includes("8901"), false);
@@ -197,6 +197,15 @@ try {
     verifier("le relevé de la carte MTN lui est refusé",
       (await lire(`/api/releve?carte=${MTN}&de=${semaine}&a=${jour}&format=pdf`,
         vendeur)).status, 404);
+    // Les volumes : la même portée. « Toutes mes cartes » n'en compte qu'une,
+    // et la carte des autres répond comme une carte qui n'existe pas.
+    const volumes = await (await lire("/api/volumes?periode=6mois", vendeur)).json();
+    verifier("les volumes ne connaissent que la carte Orange",
+      volumes.cartes.map((c) => c.iccid), [ORANGE]);
+    verifier("aucun SMS MTN ne passe dans les volumes",
+      JSON.stringify(volumes).includes("NKENGAFAC") || JSON.stringify(volumes).includes(MTN), false);
+    verifier("les volumes de la carte MTN lui sont refusés",
+      (await lire(`/api/volumes?periode=mois&carte=${MTN}`, vendeur)).status, 404);
   }
 
   console.log("\nLE VENDEUR CHERCHE CE QUI N'EST PAS À LUI");

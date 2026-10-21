@@ -346,6 +346,23 @@ test("les SMS du compte des commissions d'avant la mise à jour du boîtier sont
   assert.equal(sansNumero.parCarte[0].soldes.cloture, 120);
 });
 
+test("les « charges » d'un retrait sont payées par le client : seuls les frais d'une sortie comptent", () => {
+  const p = periode("jour", "2026-03-02", "2026-10-21");
+  const lignes = [
+    sms({ quand: "2026-03-01T09:00:00Z", categorie: "solde", sens: "?", montant: null, soldeApres: 100_000 }),
+    // Un retrait chez l'agent Orange : le solde monte du montant ENTIER.
+    sms({ quand: "2026-03-02T09:00:00Z", categorie: "retrait", sens: "in", montant: 50_000, frais: 750,
+          soldeApres: 150_000 }),
+    sms({ quand: "2026-03-02T10:00:00Z", categorie: "envoi", sens: "out", montant: 10_000, frais: 100,
+          soldeApres: 139_900 }),
+  ];
+  const v = volumes(p, lignes, [CARTES[0]]);
+  assert.equal(v.totaux.frais, 100);
+  assert.deepEqual(v.parCarte[0].soldes, { ouverture: 100_000, cloture: 139_900, attendu: 139_900, ecart: 0 });
+  // Le relevé suit la même règle.
+  assert.equal(totauxDuReleve(lignesDuReleve(lignes, { de: p.de, a: p.a })).frais, 100);
+});
+
 // --- La cohérence ------------------------------------------------------------
 
 test("la somme des colonnes redonne le total, pour chaque pas", () => {
