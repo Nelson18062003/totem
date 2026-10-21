@@ -83,8 +83,10 @@ function Charpente() {
               composer un code à la main comme sur un téléphone. */}
           <Stack.Screen name="ussd" options={{ animation: "slide_from_right" }} />
           <Stack.Screen name="beneficiaires" options={{ animation: "slide_from_right" }} />
-          {/* L'analyse : la semaine en chiffres, depuis « … ». */}
-          <Stack.Screen name="analyse" options={{ animation: "slide_from_right" }} />
+          {/* Les volumes : ce qui est entré et sorti, depuis « … ». L'ancienne
+              adresse de l'analyse y renvoie. */}
+          <Stack.Screen name="volumes" options={{ animation: "slide_from_right" }} />
+          <Stack.Screen name="analyse" options={{ animation: "none" }} />
           {/* Les comptes : le solde de chaque carte, depuis « … ». */}
           <Stack.Screen name="comptes" options={{ animation: "slide_from_right" }} />
         </Stack.Protected>

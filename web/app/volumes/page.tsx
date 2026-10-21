@@ -137,7 +137,10 @@ function EnTete({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
         </a>
       </div>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <nav className="grid grid-cols-5 gap-1.5 lg:w-[30rem]" aria-label={t.titre}>
+        {/* Chaque pastille part de la largeur de son nom : à parts égales, à
+            320 points, « Semaine » passait sous « Mois » et « 6 mois » sur
+            deux lignes. */}
+        <nav className="flex gap-1 min-[360px]:gap-1.5 lg:w-[30rem]" aria-label={t.titre}>
           {GENRES_PERIODE.map((g) => {
             const choisi = g === p.genre;
             const href = g === "dates"
@@ -145,7 +148,7 @@ function EnTete({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
               : lien(r, { periode: g, jour: r.aujourdhui, de: null, a: null, qui: null });
             return (
               <Link key={g} href={href} aria-current={choisi ? "page" : undefined}
-                    className={`rounded-full border px-2 py-2 text-center text-small font-medium transition ${
+                    className={`flex-auto whitespace-nowrap rounded-full border px-2 py-2 text-center text-caption font-medium transition min-[360px]:text-small ${
                       choisi ? "border-accent bg-accent text-white" : "border-line bg-surface-raised text-ink-soft hover:border-ink-faint"}`}>
                 {t.periodes[g]}
               </Link>
@@ -311,9 +314,22 @@ function Colonnes({ serie, pas, langue, titre }: { serie: PointDeSerie[]; pas: R
             <div className="flex w-full flex-1 items-start justify-center">
               <div className="w-full max-w-[14px] rounded-b-[4px]" style={{ height: `${(c.sorties / max) * 100}%`, background: "var(--color-sortie)" }} />
             </div>
-            <span className="mt-1 h-4 text-caption text-ink-faint tabnums">{etiquettes.has(i) ? etiquetteDuPas(c.cle, pas, langue) : ""}</span>
           </div>
         ))}
+      </div>
+      {/* Les repères vivent sous la rangée, pas dans les colonnes : une
+          colonne d'un mois n'a pas la largeur de « 14 sept. ». Le premier et
+          le dernier s'appuient sur les bords, sans en sortir. */}
+      <div className="relative mt-1 h-4 text-caption text-ink-faint tabnums">
+        {[...etiquettes].map((i) => {
+          const premier = i === 0, dernier = i === serie.length - 1;
+          return (
+            <span key={i} className={`absolute whitespace-nowrap ${premier ? "left-0" : dernier ? "right-0" : "-translate-x-1/2"}`}
+                  style={premier || dernier ? undefined : { left: `${((i + 0.5) / serie.length) * 100}%` }}>
+              {etiquetteDuPas(serie[i].cle, pas, langue)}
+            </span>
+          );
+        })}
       </div>
     </section>
   );
@@ -407,10 +423,13 @@ function Anneaux({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
     const f = famillesDe(r.volumes, sens);
     const somme = f.reduce((s, x) => s + x.montant, 0) || 1;
     return (
-      <div className="flex items-center gap-4 rounded-card border border-line bg-surface-raised p-4">
+      // L'anneau passe au-dessus de sa légende quand elle n'a plus la place à
+      // côté (320 points) : un total ne se coupe pas, et c'est lui qui
+      // élargissait toute la colonne.
+      <div className="flex flex-wrap items-center justify-center gap-4 rounded-card border border-line bg-surface-raised p-4">
         {f.length > 0 ? <Anneau parts={f.map((x) => ({ valeur: x.montant, couleur: COULEUR_FAMILLE[x.famille] }))} />
           : <div className="h-[110px] w-[110px] shrink-0 rounded-full border-[14px] border-surface-2" />}
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex min-w-[10rem] flex-1 flex-col gap-2">
           <p className="text-small font-semibold">{titre}
             <span className={`block whitespace-nowrap tabnums ${ton}`}>{francs(total, langue)}</span></p>
           <ul className="flex flex-col gap-1.5 text-small">

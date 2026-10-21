@@ -451,13 +451,39 @@ try {
                           { name: "totem_langue", value: "fr", domain: "127.0.0.1", path: "/" }]);
     const page = await ctx.newPage();
     await page.goto(`${B}/volumes?periode=mois&jour=${aujourdhui}`, { waitUntil: "networkidle" });
+    // On mesure avec la police de la page, pas avec celle de secours.
+    await page.evaluate(() => document.fonts.ready);
     const texte = await page.locator("body").innerText();
     verifier(`${nom} : les entrées du mois, au franc`, texte.includes(ecrit(vMois.e / 100)), ecrit(vMois.e / 100));
     verifier(`${nom} : les sorties du mois, au franc`, texte.includes(ecrit(vMois.s / 100)), ecrit(vMois.s / 100));
     const reste = (vMois.e - vMois.s - vMois.f) / 100;
     verifier(`${nom} : le reste`, texte.includes(`${reste >= 0 ? "+" : "−"}${ecrit(reste)}`));
-    const deborde = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-    verifier(`${nom} : rien ne déborde sur le côté`, deborde <= 0, `${deborde} px`);
+    // Un débordement se NOMME : « 15 px » ne dit pas où chercher. Et le
+    // coupable n'est pas ce qui dépasse (un titre poussé par sa colonne),
+    // c'est ce qui ne sait pas se faire plus étroit : partant du conteneur
+    // dont les enfants dépassent, on descend vers l'enfant le plus large à sa
+    // largeur MINIMALE, et on nomme les trois premiers étages.
+    const { deborde, fautifs } = await page.evaluate(() => {
+      const minimale = (e) => { const w = e.style.width; e.style.width = "min-content"; const l = e.offsetWidth; e.style.width = w; return l; };
+      const nom = (e) => `<${e.tagName.toLowerCase()}> « ${(e.textContent || "").trim().replace(/\s+/g, " ").slice(0, 32)} » ${minimale(e)} px`;
+      const trop = [...document.querySelectorAll("main *")].find((e) => e.parentElement && e.offsetWidth > e.parentElement.clientWidth + 0.5);
+      const fautifs = [];
+      for (let e = trop?.parentElement, n = 0; e && n < 8; n++) {
+        const enfants = [...e.children].filter((c) => getComputedStyle(c).position !== "absolute");
+        if (!enfants.length) break;
+        e = enfants.reduce((a, b) => (minimale(b) > minimale(a) ? b : a));
+        fautifs.push(nom(e));
+      }
+      return { deborde: document.documentElement.scrollWidth - innerWidth, fautifs: fautifs.slice(0, 3) };
+    });
+    verifier(`${nom} : rien ne déborde sur le côté`, deborde <= 0, `${deborde} px${deborde > 0 ? ` — ${fautifs.join(", ")}` : ""}`);
+    // « Rien ne déborde » ne voit pas un nom qui sort de SA pastille : à
+    // 320 points, « Semaine » passait sous « Mois », « 6 mois » sur deux
+    // lignes, et la page ne débordait pas d'un point.
+    const pastilles = await page.evaluate(() => [...document.querySelectorAll('nav a[href*="periode="]')]
+      .filter((a) => a.scrollWidth > a.clientWidth + 0.5 || a.getClientRects().length !== 1 || a.offsetHeight > 48)
+      .map((a) => a.textContent.trim()));
+    verifier(`${nom} : chaque période tient dans sa pastille, sur une ligne`, pastilles.length === 0, pastilles.join(", "));
     if (CAPTURES) await page.screenshot({ path: `${CAPTURES}/volumes-${nom}.png`, fullPage: true });
     if (nom === "telephone" && CAPTURES) {
       await page.goto(`${B}/volumes?periode=mois&jour=${perdue.jour}&carte=${perdue.carte}`, { waitUntil: "networkidle" });

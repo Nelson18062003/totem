@@ -3,7 +3,7 @@
 // La barre ne garde que les quatre gestes de tous les jours : l'accueil, les
 // paiements, les SMS, les opérations. Le reste vit ici, une ligne par écran,
 // et chaque ligne dit ce qu'on y trouve : les comptes (qui avaient leur
-// onglet, pour un écran qu'on ouvre de temps en temps), l'analyse, le
+// onglet, pour un écran qu'on ouvre de temps en temps), les volumes, le
 // relevé, les bénéficiaires, le cadran, les réglages.
 //
 // Rien ici ne demande de données à part : le relevé lit les cartes dans le
@@ -24,7 +24,7 @@ import { useDonnees } from "@/donnees";
 import { useLangue } from "@/langue";
 import { textesPlus } from "@noyau/textes/plus";
 import { textesCartes } from "@noyau/textes/cartes";
-import { textesAnalyse } from "@noyau/textes/analyse";
+import { textesVolumes } from "@noyau/textes/volumes";
 import { textesReleve } from "@noyau/textes/releve";
 import { textesBeneficiaires } from "@noyau/textes/beneficiaires";
 import { textesUssd } from "@noyau/textes/ussd";
@@ -61,8 +61,8 @@ export default function Plus() {
               <LigneAction titre={textesCartes[langue].titre} sous={t.comptesSous} icone="Wallet"
                            onPress={() => router.push("/comptes")} />
               <Filet />
-              <LigneAction titre={textesAnalyse[langue].titre} sous={t.analyseSous} icone="Chart"
-                           onPress={() => router.push("/analyse")} />
+              <LigneAction titre={textesVolumes[langue].titre} sous={t.analyseSous} icone="Chart"
+                           onPress={() => router.push("/volumes")} />
               {cartes.length ? (
                 <>
                   <Filet />
