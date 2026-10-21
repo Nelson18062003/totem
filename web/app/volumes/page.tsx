@@ -512,11 +512,13 @@ function LeSolde({ r, carte, langue }: { r: ReponseVolumes; carte: CarteVolumes;
   const marches = ouverture == null ? [] : [
     { nom: t.debut, de: 0, a: ouverture, couleur: "#a8a8a8", lib: francs(ouverture, langue) },
     { nom: t.entrees, de: ouverture, a: ouverture + e, couleur: "var(--color-entree)", lib: francs(e, langue, true) },
-    { nom: t.sorties, de: ouverture + e, a: ouverture + e - s, couleur: "var(--color-sortie)", lib: francs(-s, langue, true) },
+    // Les frais descendent le solde avec les sorties : la marche le DIT, sans
+    // quoi « Sorties » y valait plus que les « Sorties » du haut de la page.
+    { nom: c.totaux.frais ? t.sortiesEtFrais : t.sorties, de: ouverture + e, a: ouverture + e - s, couleur: "var(--color-sortie)", lib: francs(-s, langue, true) },
     ...(cloture != null ? [{ nom: t.fin, de: 0, a: cloture, couleur: "var(--color-ink)", lib: francs(cloture, langue) }] : []),
   ];
   const haut = Math.max(1, ...marches.flatMap((m) => [m.de, m.a]));
-  const H = 170;
+  const H = 170, PIED = 38;
   const derniere = c.ruptures.at(-1);
   return (
     <section className="rounded-card border border-line bg-surface-raised p-5">
@@ -525,19 +527,19 @@ function LeSolde({ r, carte, langue }: { r: ReponseVolumes; carte: CarteVolumes;
         <Badge ecart={ecart} langue={langue} />
       </div>
       {marches.length > 0 && (
-        <div className="relative flex gap-3" style={{ height: H + 44 }}>
+        <div className="relative flex gap-3" style={{ height: H + PIED + 22 }}>
           {marches.map((m) => {
             const bas = Math.min(m.de, m.a) / haut * H, h = Math.max(2, Math.abs(m.a - m.de) / haut * H);
             return (
               <div key={m.nom} className="relative flex-1">
-                <span className="absolute inset-x-0 text-center text-caption font-bold tabnums" style={{ bottom: 22 + bas + h + 4 }}>{m.lib}</span>
-                <div className="absolute inset-x-[18%] rounded-md" style={{ bottom: 22 + bas, height: h, background: m.couleur }} />
-                <span className="absolute inset-x-0 bottom-0 text-center text-caption text-ink-soft">{m.nom}</span>
+                <span className="absolute inset-x-0 text-center text-caption font-bold tabnums" style={{ bottom: PIED + bas + h + 4 }}>{m.lib}</span>
+                <div className="absolute inset-x-[18%] rounded-md" style={{ bottom: PIED + bas, height: h, background: m.couleur }} />
+                <span className="absolute inset-x-0 text-center text-caption leading-tight text-ink-soft" style={{ top: H + 22 + 6 }}>{m.nom}</span>
               </div>
             );
           })}
           {attendu != null && ecart != null && Math.abs(ecart) >= 1 && (
-            <div className="absolute right-0 w-1/4 border-t-2 border-dashed" style={{ bottom: 22 + attendu / haut * H, borderColor: "var(--color-alert)" }}
+            <div className="absolute right-0 w-1/4 border-t-2 border-dashed" style={{ bottom: PIED + attendu / haut * H, borderColor: "var(--color-alert)" }}
                  title={t.attendu(francs(attendu, langue))} />
           )}
         </div>

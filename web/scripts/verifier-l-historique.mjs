@@ -204,7 +204,15 @@ try {
   await poser(lot);
 
   // --- LA VÉRITÉ, DEMANDÉE AU FAUX NUAGE LUI-MÊME --------------------------------
-  const tout = await (await fetch(`${N}/rest/v1/paiements?select=id,carte,recu_le,reference`)).json();
+  // Page par page : le faux nuage ne rend que mille lignes à la fois, comme la
+  // vraie base, et une vérité lue d'un coup ne serait que les mille premières.
+  const tout = [];
+  for (;;) {
+    const page = await (await fetch(`${N}/rest/v1/paiements?select=id,carte,recu_le,reference`
+      + `&order=id.asc&offset=${tout.length}`)).json();
+    if (!page.length) break;
+    tout.push(...page);
+  }
   const verite = new Set(tout.map((l) => String(l.id)));
   const manquants = (vus, attendu) => [...attendu].filter((id) => !vus.has(id)).length;
 

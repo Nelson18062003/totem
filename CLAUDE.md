@@ -283,6 +283,17 @@ d'une période se font page par page (`lireToutesLesPages`, `toutes`).
 **Une imitation plus généreuse que l'original cache le défaut** : c'est la
 caisse trop sage, rejouée sur le serveur.
 
+**La vérité d'un harnais se lit page par page, elle aussi.** Le jour où le
+faux nuage a plafonné, `verifier-le-releve` a échoué onze fois : « 1 243
+mouvements, la vérité en attend 3 ». Le relevé avait raison ; c'était la
+vérité du harnais, lue d'un coup, qui n'avait plus que mille lignes.
+`verifier-l-historique` lisait la sienne de la même façon. Et
+`verifier-les-dates` choisit « du 5 au 9 du mois dernier » mais ne semait
+que quarante jours : à partir du 16 du mois, ces jours étaient vides, et il
+échouait sur `main` comme ailleurs. Il sème maintenant jusqu'aux jours qu'il
+choisit. **Un témoin qui dépend du jour où on le lance ne témoigne qu'à
+moitié.**
+
 `verifier-les-volumes` garde l'écran VOLUMES (il remplace l'Analyse, qui ne
 comptait que l'argent REÇU, sur sept jours, parmi les mille derniers SMS :
 sur la vraie base, 22 % des entrées et toutes les sorties lui échappaient).

@@ -415,9 +415,10 @@ function Courbe({ serie, pas, langue, titre }: { serie: PointDeSerie[]; pas: Pas
       <View style={{ flexDirection: "row", height: 170, gap: 2 }}>
         {serie.map((x, i) => (
           <Pressable key={x.cle} onPress={() => setChoisie(i === choisie ? null : i)}
+                     accessibilityRole="button" accessibilityState={{ selected: i === choisie }}
                      accessibilityLabel={`${etiquetteDuPas(x.cle, pas, langue)} ${francs(x.entrees, langue)} ${francs(x.sorties, langue)}`}
-                     style={{ flex: 1, alignItems: "center", borderRadius: 4,
-                              backgroundColor: i === choisie ? couleurs.surface2 : "transparent" }}>
+                     style={avecAppui({ flex: 1, alignItems: "center", borderRadius: 4,
+                              backgroundColor: i === choisie ? couleurs.surface2 : "transparent" })}>
             <View style={{ flex: 1, width: "100%", justifyContent: "flex-end", alignItems: "center" }}>
               <View style={{ width: "70%", maxWidth: 12, height: `${(x.entrees / max) * 100}%`,
                              backgroundColor: couleurs.entree, borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
@@ -639,29 +640,31 @@ function LeSolde({ r, carte, langue }: { r: ReponseVolumes; carte: CarteVolumes;
   const marches = ouverture == null ? [] : [
     { nom: t.debut, de: 0, a: ouverture, couleur: "#a8a8a8", lib: francs(ouverture, langue) },
     { nom: t.entrees, de: ouverture, a: ouverture + e, couleur: couleurs.entree, lib: francs(e, langue, true) },
-    { nom: t.sorties, de: ouverture + e, a: ouverture + e - s, couleur: couleurs.sortie, lib: francs(-s, langue, true) },
+    // Les frais descendent le solde avec les sorties : la marche le DIT, sans
+    // quoi « Sorties » y valait plus que les « Sorties » du haut de l'écran.
+    { nom: c.totaux.frais ? t.sortiesEtFrais : t.sorties, de: ouverture + e, a: ouverture + e - s, couleur: couleurs.sortie, lib: francs(-s, langue, true) },
     ...(cloture != null ? [{ nom: t.fin, de: 0, a: cloture, couleur: couleurs.encre, lib: francs(cloture, langue) }] : []),
   ];
   const haut = Math.max(1, ...marches.flatMap((m) => [m.de, m.a]));
-  const H = 150;
+  const H = 150, PIED = 34;
   const derniere = c.ruptures.at(-1);
   return (
     <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
       <Titre droite={<Badge ecart={ecart} langue={langue} />}>{t.leSolde}</Titre>
       {marches.length ? (
-        <View style={{ flexDirection: "row", height: H + 52 }}>
+        <View style={{ flexDirection: "row", height: H + PIED + 32 }}>
           {marches.map((m) => {
             const bas = (Math.min(m.de, m.a) / haut) * H, h = Math.max(2, (Math.abs(m.a - m.de) / haut) * H);
             return (
               <View key={m.nom} style={{ flex: 1 }}>
                 <Texte taille={10} poids="gras" chiffresAlignes numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}
-                       style={{ position: "absolute", left: 0, right: 0, textAlign: "center", bottom: 20 + bas + h + 3 }}>
+                       style={{ position: "absolute", left: 0, right: 0, textAlign: "center", bottom: PIED + bas + h + 3 }}>
                   {m.lib}
                 </Texte>
-                <View style={{ position: "absolute", left: "18%", right: "18%", bottom: 20 + bas, height: h,
+                <View style={{ position: "absolute", left: "18%", right: "18%", bottom: PIED + bas, height: h,
                                borderRadius: 5, backgroundColor: m.couleur }} />
-                <Texte taille={textes.legende} ton="doux" numberOfLines={1}
-                       style={{ position: "absolute", left: 0, right: 0, bottom: 0, textAlign: "center" }}>{m.nom}</Texte>
+                <Texte taille={textes.legende} ton="doux" numberOfLines={2}
+                       style={{ position: "absolute", left: 0, right: 0, top: H + 32 + 4, textAlign: "center" }}>{m.nom}</Texte>
               </View>
             );
           })}

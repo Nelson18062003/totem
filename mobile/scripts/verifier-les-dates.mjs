@@ -73,21 +73,33 @@ if (!session.jeton) {
 }
 const lire = () => fetch(`${PLATEFORME}/api/donnees?sms=1000&recus=0`,
   { headers: { authorization: `Bearer ${session.jeton}` } }).then((r) => r.json());
-let verite = await lire();
-// Une caisse plus maigre que deux cents SMS ne met pas le second piège à
-// l'épreuve : tout tiendrait dans ce que l'écran garde déjà.
-if ((verite.paiements ?? []).length < 400) {
-  await fetch("http://127.0.0.1:4999/essai/semer?jours=40&parJour=20", { method: "POST" });
-  verite = await lire();
-}
-const lignes = verite.paiements ?? [];
-
 const jourDe = (t) => new Intl.DateTimeFormat("fr-CA", { timeZone: FUSEAU }).format(new Date(t));
 const decaler = (cle, n) => {
   const [a, m, j] = cle.split("-").map(Number);
   return new Date(Date.UTC(a, m - 1, j) + n * 86400000).toISOString().slice(0, 10);
 };
 const aujourdhui = jourDe(Date.now());
+// Le mois dernier, du 5 au 9 : loin derrière les deux cents plus récents.
+const [an, mo] = aujourdhui.split("-").map(Number);
+const moisDernier = mo === 1 ? `${an - 1}-12` : `${an}-${String(mo - 1).padStart(2, "0")}`;
+const choisis = { de: `${moisDernier}-05`, a: `${moisDernier}-09` };
+
+let verite = await lire();
+// Une caisse plus maigre que deux cents SMS ne met pas le second piège à
+// l'épreuve : tout tiendrait dans ce que l'écran garde déjà. Et elle doit
+// REMONTER jusqu'aux jours choisis : quarante jours semés un 21 octobre
+// s'arrêtaient au 11 septembre, et le harnais échouait sur « le 5 au 9 »,
+// vides, un jour sur deux du mois. On sème jusqu'au 5 du mois dernier, en
+// restant sous les mille SMS que la vérité sait lire.
+const premierLu = (verite.paiements ?? []).at(-1)?.jour;
+if ((verite.paiements ?? []).length < 400 || !premierLu || premierLu > choisis.de) {
+  const jours = Math.round((Date.parse(aujourdhui) - Date.parse(choisis.de)) / 86400000) + 3;
+  const parJour = Math.min(20, Math.floor(900 / jours));
+  await fetch(`http://127.0.0.1:4999/essai/semer?jours=${jours}&parJour=${parJour}`, { method: "POST" });
+  verite = await lire();
+}
+const lignes = verite.paiements ?? [];
+
 const attendu = (de, a) => {
   const dans = lignes.filter((p) => p.jour >= de && p.jour <= a);
   return {
@@ -95,10 +107,6 @@ const attendu = (de, a) => {
     recu: dans.reduce((s, p) => s + (p.sens === "in" && p.montant != null ? p.montant : 0), 0),
   };
 };
-// Le mois dernier, du 5 au 9 : loin derrière les deux cents plus récents.
-const [an, mo] = aujourdhui.split("-").map(Number);
-const moisDernier = mo === 1 ? `${an - 1}-12` : `${an}-${String(mo - 1).padStart(2, "0")}`;
-const choisis = { de: `${moisDernier}-05`, a: `${moisDernier}-09` };
 const plusAncienDesDeuxCents = lignes[Math.min(199, lignes.length - 1)]?.jour ?? aujourdhui;
 
 // MA VÉRITÉ DOIT COUVRIR LES JOURS CHOISIS. Elle ne lit que les mille SMS les

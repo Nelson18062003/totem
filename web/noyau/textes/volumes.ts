@@ -69,6 +69,7 @@ const en = {
   // La fiche d'une carte.
   leSolde: "The balance",
   debut: "Start",
+  sortiesEtFrais: "Out and fees",
   fin: "End",
   ilManque: (x: string, quand: string) => `${x} missing · ${quand}`,
   enTrop: (x: string, quand: string) => `${x} too much · ${quand}`,
@@ -155,6 +156,7 @@ const fr: typeof en = {
   joursLongs: ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"],
   leSolde: "Le solde",
   debut: "Début",
+  sortiesEtFrais: "Sorties et frais",
   fin: "Fin",
   ilManque: (x, quand) => `Il manque ${x} · ${quand}`,
   enTrop: (x, quand) => `${x} en trop · ${quand}`,
