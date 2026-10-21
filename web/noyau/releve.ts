@@ -69,10 +69,78 @@ export function chronologique<T extends Pick<Paiement, "recuLe" | "id">>(a: T, b
   return instant(a) - instant(b) || (Number(a.id) || 0) - (Number(b.id) || 0);
 }
 
-/** Les lignes du relevé : les mouvements d'argent de la période, dans l'ordre. */
+/** Les lignes du relevé : les mouvements d'argent de la période, dans l'ordre,
+ *  chaque opération une seule fois (`sansDoublons`). */
 export function lignesDuReleve<T extends Paiement>(paiements: T[], bornes: Bornes): T[] {
-  return paiements.filter((p) => dansBornes(p, bornes) && estMouvement(p))
-    .sort(chronologique);
+  return sansDoublons(paiements.filter((p) => dansBornes(p, bornes) && estMouvement(p))
+    .sort(chronologique));
+}
+
+/**
+ * UNE OPÉRATION SE COMPTE UNE FOIS. L'opérateur annonce parfois la même
+ * opération par deux SMS qui portent le même numéro de transaction : sur une
+ * carte MTN, le virement des commissions vers le compte principal en envoie
+ * trois, et deux se lisaient comme des sorties de la carte (vrai export,
+ * octobre 2026). Le lecteur range ceux qu'il reconnaît en « doublon » ; ce
+ * filtre tient le reste : même carte, même numéro, même sens, même montant —
+ * le premier arrivé reste, les autres sont écartés.
+ *
+ * Un même numéro sur DEUX cartes n'est pas un doublon : c'est un transfert
+ * entre elles, une sortie d'un côté, une entrée de l'autre.
+ */
+export function sansDoublons<T extends Pick<Paiement, "carte" | "sim" | "reference" | "sens" | "montant">>(
+  lignes: T[],
+): T[] {
+  const vues = new Set<string>();
+  return lignes.filter((p) => {
+    const ref = (p.reference ?? "").trim();
+    if (ref.length < 4) return true;
+    const cle = `${p.carte || p.sim}|${ref}|${p.sens}|${cts(p.montant)}`;
+    if (vues.has(cle)) return false;
+    vues.add(cle);
+    return true;
+  });
+}
+
+/** Les chiffres d'un numéro qui comptent : les neuf derniers (« +237 6 77… »,
+ *  « 237677… » et « 677… » sont la même ligne). */
+export function numeroNormal(n: string | null | undefined): string | null {
+  const chiffres = (n ?? "").replace(/\D/g, "");
+  return chiffres.length >= 8 ? chiffres.slice(-9) : null;
+}
+
+const VIREMENT_DES_COMMISSIONS =
+  /successfully\s+transferred\s+[0-9][0-9.,]*\s*f?\s*cfa\s+commis+ions?\s+to\s+your\s+main\s+account/i;
+
+/**
+ * LE COMPTE DES COMMISSIONS QUI PARLE. Quand un agent MTN vide ses
+ * commissions vers son compte principal, deux des trois SMS viennent du
+ * compte des commissions — « …commisions to your main account… » et « You
+ * have transferred … to <la carte elle-même> » — et se lisaient comme des
+ * sorties de la carte, avec le solde des commissions pour solde. Le boîtier
+ * les range désormais en « doublon » (`RE_VIREMENT_DES_COMMISSIONS`) ; ce
+ * filtre écarte ceux que la base porte encore d'avant la mise à jour.
+ * Seule l'entrée sur le compte principal reste.
+ */
+export function duCompteDesCommissions(
+  p: Pick<Paiement, "sens" | "numero" | "smsBrut">, numeroDeLaCarte: string | null | undefined,
+): boolean {
+  if (VIREMENT_DES_COMMISSIONS.test(p.smsBrut ?? "")) return true;
+  const sien = numeroNormal(numeroDeLaCarte);
+  return p.sens === "out" && sien != null && numeroNormal(p.numero) === sien;
+}
+
+/**
+ * CE SOLDE EST-IL CELUI DE LA CARTE ? Un SMS d'argent, un échec ou une
+ * consultation de solde annoncent le solde du compte principal. Un avis en
+ * double, une réclame, un SMS du compte des COMMISSIONS non : sur MTN, le
+ * virement des commissions annonce « balance: 248 » — le solde des
+ * commissions —, et pris pour celui de la carte il ouvrait le relevé sur
+ * 248 F au lieu de deux millions.
+ */
+export function repereDeSolde(p: Pick<Paiement, "soldeApres" | "categorie" | "nature">): boolean {
+  if (p.soldeApres == null || !Number.isFinite(p.soldeApres)) return false;
+  return genreDuMouvement(p) !== null || p.categorie === "solde" || p.categorie === "echec";
 }
 
 const cts = (n: number | null | undefined) =>
@@ -106,11 +174,12 @@ export function totauxDuReleve(
 /** Le dernier solde ANNONCÉ avant le premier jour de la période — n'importe
  *  quel SMS de la carte qui en porte un, consultation comprise. */
 export function dernierSoldeAvant(
-  paiements: Pick<Paiement, "jour" | "recuLe" | "id" | "soldeApres">[], de: string,
+  paiements: Pick<Paiement, "jour" | "recuLe" | "id" | "soldeApres" | "categorie" | "nature">[],
+  de: string,
 ): number | null {
   let meilleur: (typeof paiements)[number] | null = null;
   for (const p of paiements) {
-    if (p.soldeApres == null || !(p.jour < de)) continue;
+    if (!repereDeSolde(p) || !(p.jour < de)) continue;
     if (!meilleur || chronologique(p, meilleur) > 0) meilleur = p;
   }
   return meilleur?.soldeApres ?? null;
@@ -127,12 +196,12 @@ export type SoldesReleve = {
 /** Les soldes de la période : ouverture (lue avant), clôture (le dernier
  *  annoncé DANS la période, toutes catégories confondues). */
 export function soldesDuReleve(
-  smsDeLaPeriode: Pick<Paiement, "jour" | "recuLe" | "id" | "soldeApres">[],
+  smsDeLaPeriode: Pick<Paiement, "jour" | "recuLe" | "id" | "soldeApres" | "categorie" | "nature">[],
   ouverture: number | null, totaux: TotauxReleve,
 ): SoldesReleve {
   let derniere: (typeof smsDeLaPeriode)[number] | null = null;
   for (const p of smsDeLaPeriode) {
-    if (p.soldeApres == null) continue;
+    if (!repereDeSolde(p)) continue;
     if (!derniere || chronologique(p, derniere) > 0) derniere = p;
   }
   const cloture = derniere?.soldeApres ?? null;
@@ -182,11 +251,11 @@ export function sectionDuReleve(
   carte: CarteDuReleve, sms: Paiement[], bornes: Bornes,
   ouvertureAilleurs: number | null, tronque: boolean,
 ): SectionReleve {
-  const dansLaPeriode = sms.filter((p) => p.carte === carte.iccid && dansBornes(p, bornes));
+  const siens = sms.filter((p) => p.carte === carte.iccid && !duCompteDesCommissions(p, carte.numero));
+  const dansLaPeriode = siens.filter((p) => dansBornes(p, bornes));
   const lignes = lignesDuReleve(dansLaPeriode, bornes);
   const totaux = totauxDuReleve(lignes);
-  const avant = sms.filter((p) => p.carte === carte.iccid);
-  const ouverture = dernierSoldeAvant(avant, bornes.de) ?? ouvertureAilleurs;
+  const ouverture = dernierSoldeAvant(siens, bornes.de) ?? ouvertureAilleurs;
   return { carte, lignes, totaux, soldes: soldesDuReleve(dansLaPeriode, ouverture, totaux),
            tronque };
 }
