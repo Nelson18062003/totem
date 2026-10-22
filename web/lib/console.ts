@@ -30,6 +30,7 @@
 import { lire, relie } from "./base";
 import { FUSEAU } from "./fuseau";
 import type { Langue } from "@noyau/langue";
+import { textesConsole } from "@noyau/textes/console";
 import { SANS_NOUVELLES_S, presenceDeLaCarte, signalLu } from "@noyau/boitier";
 import {
   boitierVu, cartesLesPlusRecentes, entenduLe, type LigneBoitier,
@@ -435,8 +436,11 @@ export type TelephonePrevenu = {
 };
 
 export type EssaiFreine = {
-  /** L'adresse qui a essayé. C'est la clé du seau, telle que le frein la tient. */
+  /** La clé du seau, telle que le frein la tient : une adresse, ou « @… »
+   *  pour un compte (une empreinte du courriel, jamais le courriel). */
   cle: string;
+  /** Ce que la console en affiche : l'adresse, ou « un compte ». */
+  nom: string;
   n: number;
   vu: string;
   depuis: string;
@@ -823,7 +827,11 @@ export async function chargerGens(langue: Langue): Promise<Gens> {
       depuis: ecartLisible(a.vu_le, langue),
     })),
     freines: freins.map((f) => ({
+      // Le seau d'un compte porte une empreinte du courriel (« @… ») : on dit
+      // ce que c'est, sans prétendre la lire.
       cle: f.cle,
+      nom: f.cle === "@secours" ? textesConsole[langue].gens.cleDeSecours
+        : f.cle.startsWith("@") ? textesConsole[langue].gens.compteVise : f.cle,
       n: f.n,
       vu: f.vu,
       depuis: ecartLisible(f.vu, langue),

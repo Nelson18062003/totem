@@ -214,6 +214,21 @@ jour, sortait vert. La carte d'une réponse est celle de sa session : elle se
 retrouve dans la dernière ouverture du terminal, et le robot, en effaçant le
 code, n'efface plus la carte avec.
 
+**L'application d'hier, ce n'est pas seulement hier : c'est ce que la piste
+d'essai distribue.** Le 22 octobre, les essayeurs Android ouvraient l'écran
+de connexion du 30 août — la case « Plateforme », une connexion sans délai
+plantée sur « Vérification… » —, et la plateforme répondait à son
+inscription (courriel et mot de passe, rien d'autre) « il faut le prénom et
+le nom » : un champ que cet écran n'a pas. Aucune mise à jour à distance ne
+pouvait l'atteindre : elle ne rejoint que les paquets de SA version, et ce
+paquet-là était en 1.0.0. Une mise à jour se télécharge d'ailleurs à une
+ouverture et ne s'affiche qu'à la suivante — le « il faut relancer deux ou
+trois fois » du propriétaire. **Un écran qu'on ne voit pas changer se
+cherche d'abord dans le PAQUET installé, pas dans le code** ; le remède est
+une compilation. La plateforme, elle, dit maintenant à une demande qui ne
+nomme aucun champ d'identité de mettre l'application à jour
+(`applicationTropAncienne`, `verifier-les-comptes`, témoin compris).
+
 `verifier-le-parcours` déroule ce que le propriétaire FAIT : il se connecte,
 compose un code complet, le réseau réclame le code secret, il le tape. Le
 harnais écoute alors CE QUI PART SUR LE RÉSEAU — pas seulement l'écran — et
@@ -442,6 +457,29 @@ serveurs et mure une adresse sur le premier — le second doit la refuser sans
 l'avoir vue attaquer. Si la base se tait, le seau mémoire reprend la main et
 la clé de secours ouvre toujours : un frein ne devient jamais un verrou sur
 sa propre maison.
+
+**Corriger un défaut peut en réveiller un autre — mesurer avant de
+publier.** Le seau commun du frein avait une clé que PostgreSQL refuse (un
+caractère nul) : il n'avait jamais compté dans la base, et le harnais des
+deux serveurs sortait vert parce que le faux nuage l'acceptait — **une
+imitation plus généreuse que l'original cache le défaut**, encore. Corrigé,
+il s'est mis à compter, et la mesure a montré ce que le premier défaut
+cachait : il comptait les connexions RÉUSSIES de toute la plateforme, et ne
+se vidait qu'après un quart d'heure SANS UN ESSAI. Soixante-dix personnes
+entrées avec le bon mot de passe, et la suivante attendait huit secondes
+(66 ms au repos) ; une seule adresse, sous son propre mur, imposait les mêmes
+huit secondes à tout le monde. La production le faisait déjà, dans la
+mémoire de chaque instance chargée — l'écran restait sur « Vérification… »,
+on recommençait, et chaque essai prolongeait l'attente de tous. Un seau pensé
+pour UNE maison ne survit pas à l'ouverture au public : il est devenu le seau
+du COMPTE visé (une empreinte du courriel, jamais le courriel), une réussite
+REND son essai sans vider l'ardoise — l'effacer offrait de contourner le mur
+en se connectant à son propre compte entre deux salves —, et la fenêtre est
+fixe (`frein_compter`, `frein_rendre`). `verifier-le-frein` rejoue la foule,
+l'attaquant, la salve contournée et la base pas encore migrée ; le frein
+d'avant y échoue huit fois. `verifier-les-regles.sh` éprouve la fenêtre sur
+un vrai PostgreSQL — et son premier jet attendait DANS la transaction, où
+`now()` ne bouge pas : la règle neuve et son témoin y échouaient ensemble.
 
 `verifier-la-politique` ouvre un vrai Chromium et GLISSE un script dans le
 HTML de la page, comme le ferait un nom d'expéditeur piégé. Une politique de

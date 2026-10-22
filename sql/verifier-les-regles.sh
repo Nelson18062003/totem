@@ -608,6 +608,116 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# LE FREIN NEUF (migrations/20261022_frein_fenetre_fixe.sql) : une fenêtre
+# FIXE, et une réussite qui rend son essai.
+#
+# L'ancienne règle ne repartait de un qu'après un quart d'heure SANS UN ESSAI.
+# Sur une adresse que partagent cent téléphones, ce quart d'heure n'arrive
+# jamais : le compteur ne redescendait pas, et la plateforme comptait aussi
+# les connexions réussies. On rejoue la même suite sur les deux règles, avec
+# une fenêtre d'une seconde : la neuve repart de un, l'ancienne — le témoin —
+# compte encore.
+#
+# L'attente se fait ENTRE deux appels, jamais dans le même : « now() » est
+# l'heure du début de la transaction, et un « pg_sleep » glissé dans la même
+# commande ne la fait pas avancer. Le premier jet l'y mettait — la règle
+# neuve comptait « 1 2 3 4 », et le témoin passait pour la même raison.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Le frein neuf : une fenêtre fixe, une réussite rendue"
+$P -d totem -c "delete from freins where cle in ('fixe', 'glisse', 'rendu', 'rafale-neuve');" >/dev/null 2>&1
+suite=$($P -d totem -tAc "select frein_compter('fixe', 1);")
+suite="$suite $($P -d totem -tAc "select frein_compter('fixe', 1);")"
+sleep 0.6
+suite="$suite $($P -d totem -tAc "select frein_compter('fixe', 1);")"
+sleep 0.6
+suite="$suite $($P -d totem -tAc "select frein_compter('fixe', 1);")"
+if [ "$suite" = "1 2 3 1" ]; then
+  echo "  ✓ la fenêtre ouverte par le premier essai se ferme à l'heure : $suite"
+else
+  echo "  ✗ la fenêtre fixe compte « $suite » au lieu de « 1 2 3 1 »"
+  echecs=$((echecs + 1))
+fi
+temoin=$($P -d totem -tAc "select compter_un_essai('glisse', 1);")
+temoin="$temoin $($P -d totem -tAc "select compter_un_essai('glisse', 1);")"
+sleep 0.6
+temoin="$temoin $($P -d totem -tAc "select compter_un_essai('glisse', 1);")"
+sleep 0.6
+temoin="$temoin $($P -d totem -tAc "select compter_un_essai('glisse', 1);")"
+if [ "$temoin" = "1 2 3 4" ]; then
+  echo "  ✓ TÉMOIN : l'ancienne règle, même suite, ne repart jamais : $temoin"
+else
+  echo "  ✗ TÉMOIN : l'ancienne règle compte « $temoin » — le banc ne distingue plus les deux"
+  echecs=$((echecs + 1))
+fi
+
+i=0
+while [ $i -lt 40 ]; do
+  psql -h /tmp -p "$PORT" -U totem -d totem -q -tAc \
+    "select frein_compter('rafale-neuve', 900);" >/dev/null 2>&1 &
+  i=$((i + 1))
+done
+wait
+compte=$($P -d totem -tAc "select n from freins where cle = 'rafale-neuve';")
+if [ "$compte" = "40" ]; then
+  echo "  ✓ quarante essais lancés ensemble comptent quarante"
+else
+  echo "  ✗ quarante essais lancés ensemble ont compté $compte"
+  echecs=$((echecs + 1))
+fi
+
+rendu=$($P -d totem -tAc "select frein_compter('rendu', 900); select frein_compter('rendu', 900);
+                          select frein_compter('rendu', 900); select frein_rendre('rendu');
+                          select n from freins where cle = 'rendu';" | tail -1)
+plancher=$($P -d totem -tAc "select frein_rendre('rendu'); select frein_rendre('rendu');
+                             select frein_rendre('rendu'); select frein_rendre('rendu');
+                             select n from freins where cle = 'rendu';" | tail -1)
+fantome=$($P -d totem -tAc "select frein_rendre('jamais-vue'); select count(*) from freins where cle = 'jamais-vue';" | tail -1)
+if [ "$rendu" = "2" ] && [ "$plancher" = "0" ] && [ "$fantome" = "0" ]; then
+  echo "  ✓ une réussite rend son essai (3 → 2), jamais sous zéro, et ne crée rien"
+else
+  echo "  ✗ rendre un essai : $rendu (attendu 2), plancher $plancher (attendu 0), clé inconnue $fantome ligne(s)"
+  echecs=$((echecs + 1))
+fi
+
+# PERSONNE D'AUTRE QUE LA PLATEFORME. Rendre un essai, pour un inconnu, ce
+# serait effacer ses propres échecs.
+if $P -d totem -tAc "set role anon; select frein_rendre('rendu');" >/dev/null 2>&1; then
+  echo "  ✗ un visiteur anonyme rend des essais : il effacerait ses échecs"
+  echecs=$((echecs + 1))
+else
+  echo "  ✓ un visiteur anonyme ne peut ni compter ni rendre"
+fi
+
+# LES CLÉS TELLES QUE LE FREIN LES ENVOIE. La plateforme passe par PostgREST,
+# qui reçoit du JSON : on rejoue CE chemin (« ->> » d'un jsonb). Le seau d'un
+# compte est « @ » et 32 chiffres hexadécimaux, celui de la clé de secours
+# « @secours ». Le seau commun commençait par « \u0000 », que PostgreSQL
+# refuse dans un texte : le comptage échouait à chaque connexion, sans un mot,
+# et le frein retombait sur la mémoire de l'instance. Le témoin rejoue cette
+# clé-là et doit échouer.
+for cle in '@0123456789abcdef0123456789abcdef' '@secours' '203.0.113.7' 'inscription|203.0.113.7'; do
+  if $P -d totem -tAc "select frein_compter(('{\"la_cle\":\"$cle\"}'::jsonb)->>'la_cle', 900);" >/dev/null 2>&1; then
+    echo "  ✓ la clé « $cle » se compte dans la base"
+  else
+    echo "  ✗ la clé « $cle » ne se compte pas : la base la refuse"
+    echecs=$((echecs + 1))
+  fi
+done
+if grep -q 'return "@" + \[' web/lib/frein.ts && grep -q 'return "@secours"' web/lib/frein.ts; then
+  echo "  ✓ le frein fabrique bien ces clés-là (web/lib/frein.ts)"
+else
+  echo "  ✗ web/lib/frein.ts ne fabrique plus les clés que ce banc éprouve"
+  echecs=$((echecs + 1))
+fi
+if $P -d totem -tAc "select frein_compter(('{\"la_cle\":\"\\u0000tous\"}'::jsonb)->>'la_cle', 900);" >/dev/null 2>&1; then
+  echo "  ✗ TÉMOIN : la clé d'avant (« \\u0000tous ») passe — le banc ne voit pas ce qu'il cherche"
+  echecs=$((echecs + 1))
+else
+  echo "  ✓ TÉMOIN : la clé d'avant (« \\u0000tous ») est refusée par la base"
+fi
+
+# ---------------------------------------------------------------------------
 # LES CARTES DE CHACUN.
 #
 # Un invité ne voit que les cartes qu'on lui a confiées : c'est la base qui

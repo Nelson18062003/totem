@@ -373,11 +373,18 @@ try {
     await code("/", { headers: { cookie: biscuit }, redirect: "manual" }), 200);
 
   console.log("\nLe frein, partagé entre les deux portes");
+  // CHAQUE ESSAI VISE SON PROPRE COMPTE. Le frein a deux seaux : l'adresse,
+  // et le compte visé. Frappés sans courriel, tous ces essais visaient la clé
+  // de secours — un seul seau, « @secours » : l'adresse innocente était
+  // ralentie par les échecs des autres (voulu : la clé de secours ouvre
+  // tout), et la rotation d'adresses passait pour freinée par ce seau-là,
+  // sans rien prouver de l'adresse. Ici, seule l'adresse peut freiner.
+  let compte = 0;
   const frapper = (chemin, ip) =>
     fetch(B + chemin, {
       method: "POST",
       headers: { "content-type": "application/json", "x-forwarded-for": ip },
-      body: JSON.stringify({ motdepasse: "faux" }),
+      body: JSON.stringify({ courriel: `sonde-${++compte}@verrou.cm`, motdepasse: "faux" }),
     });
   const chrono = async (f) => { const t = Date.now(); await f(); return Date.now() - t; };
 

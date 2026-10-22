@@ -23,7 +23,24 @@
 //      s'écroule sous les tentatives ;
 //   4. le mur est par ADRESSE. Attaquer ne doit pas enfermer le propriétaire
 //      dehors — sans quoi le frein devient l'arme qu'il devait parer ;
-//   5. changer l'adresse annoncée ne desserre rien.
+//   5. changer l'adresse annoncée ne desserre rien ;
+//   6. deux instances partagent le même seau ;
+//   7. LA FOULE NE RALENTIT PERSONNE. TOTEM est grand public : soixante-dix
+//      personnes qui se connectent avec le BON mot de passe ne doivent rien
+//      coûter à la soixante et onzième. L'ancien seau commun comptait les
+//      réussites : mesuré, 66 ms au repos, 8 065 ms après la foule ;
+//   8. une adresse qui attaque UN compte ne ralentit pas les AUTRES — sous
+//      son propre mur, elle imposait huit secondes à toute la plateforme ;
+//   9. une attaque répartie sur UN compte le freine, sans le fermer ;
+//  10. une réussite REND son essai, elle ne vide pas l'ardoise : se
+//      connecter à son propre compte entre deux salves ne contourne pas le
+//      mur ;
+//  11. une base qui n'a pas reçu la migration du frein : la porte reste
+//      ouverte, et le frein compte en mémoire.
+//
+// CHAQUE SECTION VISE SON PROPRE COMPTE. Le seau du compte s'ajoute à celui
+// de l'adresse : une section qui frapperait le compte d'une autre serait
+// ralentie par lui, et passerait pour la bonne raison sans rien prouver.
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
@@ -105,7 +122,7 @@ try {
   // --- 1. EN FILE : le délai grandit -------------------------------------
   console.log("\nEn file : le frein serre");
   const file = [];
-  for (let i = 0; i < 12; i++) file.push(await essai("198.51.100.1", `faux-${i}`));
+  for (let i = 0; i < 12; i++) file.push(await essai("198.51.100.1", `faux-${i}`, "file@exemple.cm"));
   const premiers = file.slice(0, 3).reduce((s, e) => s + e.ms, 0) / 3;
   const derniers = file.slice(-3).reduce((s, e) => s + e.ms, 0) / 3;
   verifier("les derniers essais coûtent plus cher que les premiers",
@@ -118,7 +135,7 @@ try {
   console.log("\nEn rafale : le compteur n'est pas contourné");
   const t0 = Date.now();
   const rafale = await Promise.all(
-    Array.from({ length: 80 }, (_, i) => essai("198.51.100.42", `rafale-${i}`)));
+    Array.from({ length: 80 }, (_, i) => essai("198.51.100.42", `rafale-${i}`, "rafale@exemple.cm")));
   const duree = Date.now() - t0;
   const juges = rafale.filter((e) => e.statut === 401).length;
   const murs = rafale.filter((e) => e.statut === 429).length;
@@ -135,7 +152,7 @@ try {
   // cher qu'une vérification, le mur ne protégerait que le mot de passe, pas
   // la plateforme : mille essais resteraient mille calculs.
   console.log("\nAu-delà du mur, le serveur ne calcule plus");
-  const apres = await essai("198.51.100.42", "encore-un");
+  const apres = await essai("198.51.100.42", "encore-un", "rafale@exemple.cm");
   verifier("l'adresse murée reçoit 429", apres.statut === 429, `${apres.statut}`);
   const empreinteMs = premiers;   // le coût d'une vraie vérification, mesuré
   verifier("et ce refus est bien plus rapide qu'une vérification",
@@ -149,6 +166,8 @@ try {
   const lui = await essai("203.0.113.200", MDP);
   verifier("depuis une autre adresse, avec le bon mot de passe : il entre",
     lui.statut === 200, `${lui.statut}`);
+  verifier("…sans attendre : l'attaque visait d'autres comptes",
+    lui.ms < 2000, `${lui.ms} ms`);
 
   // --- 5. L'ADRESSE ANNONCÉE NE DESSERRE RIEN ----------------------------
   //
@@ -166,7 +185,7 @@ try {
         "x-real-ip": "198.51.100.77",
         "x-forwarded-for": `10.0.0.${i}, 198.51.100.77`,
       },
-      body: JSON.stringify({ courriel: CIBLE, motdepasse: `menteur-${i}` }),
+      body: JSON.stringify({ courriel: "menteur@exemple.cm", motdepasse: `menteur-${i}` }),
     });
     menteur.push({ statut: r.status, ms: Date.now() - t });
   }
@@ -189,9 +208,9 @@ try {
   // En rafale : les enchaîner coûterait huit secondes chacun, et le harnais
   // mettrait un quart d'heure à dire une chose qui se voit en dix secondes.
   await Promise.all(
-    Array.from({ length: 65 }, (_, i) => essai(attaquant, `deux-${i}`, CIBLE, B)));
-  const surUn = await essai(attaquant, "encore", CIBLE, B);
-  const surDeux = await essai(attaquant, "encore", CIBLE, B2);
+    Array.from({ length: 65 }, (_, i) => essai(attaquant, `deux-${i}`, "deux@exemple.cm", B)));
+  const surUn = await essai(attaquant, "encore", "deux@exemple.cm", B);
+  const surDeux = await essai(attaquant, "encore", "deux@exemple.cm", B2);
   verifier("la première instance mure l'adresse", surUn.statut === 429,
     `${surUn.statut}`);
   verifier("la SECONDE la mure aussi, sans l'avoir vue attaquer",
@@ -199,7 +218,96 @@ try {
   verifier("et elle n'a pas vérifié le mot de passe pour le dire",
     surDeux.ms < empreinteMs, `${surDeux.ms} ms`);
 
-  // --- 7. SI LA BASE SE TAIT, LA PORTE NE SE FERME PAS -------------------
+  // --- 7. LA FOULE NE RALENTIT PERSONNE ---------------------------------
+  //
+  // TOTEM EST GRAND PUBLIC. Le seau commun avait été pensé pour UNE maison :
+  // il comptait TOUS les essais de la plateforme, réussites comprises, et ne
+  // se vidait qu'après un quart d'heure sans un seul essai. Soixante-dix
+  // personnes qui entrent avec le bon mot de passe — une matinée ordinaire —
+  // et la soixante et onzième attendait huit secondes ; l'écran restait sur
+  // « Vérification… », on recommençait, et chaque nouvel essai prolongeait
+  // l'attente de tout le monde. Mesuré : 66 ms au repos, 8 065 ms après.
+  console.log("\nLa foule qui entre ne ralentit personne");
+  let ip = 0;
+  const neuve = () => `192.0.2.${++ip}`;
+  for (let lot = 0; lot < 7; lot++) {
+    await Promise.all(Array.from({ length: 10 }, () => essai(neuve(), MDP)));
+  }
+  const apresLaFoule = await essai(neuve(), MDP);
+  verifier("après soixante-dix connexions réussies, la suivante entre vite",
+    apresLaFoule.statut === 200 && apresLaFoule.ms < 2000,
+    `${apresLaFoule.statut}, ${apresLaFoule.ms} ms`);
+
+  // --- 8. UNE ADRESSE QUI ATTAQUE UN COMPTE NE RALENTIT PAS LES AUTRES ----
+  //
+  // Cinquante-cinq mauvais essais, d'UNE adresse, sous son propre mur : le
+  // seau commun montait à cinquante-cinq, et TOUTE la plateforme attendait
+  // huit secondes. Le frein était l'arme qu'il devait parer.
+  console.log("\nUne adresse qui attaque un compte ne ralentit pas les autres");
+  await Promise.all(Array.from({ length: 55 }, (_, i) =>
+    essai("198.51.100.55", `attaque-${i}`, "quelquun@exemple.cm")));
+  const pendant = await essai(neuve(), MDP);
+  verifier("le propriétaire, chez lui, entre sans attendre",
+    pendant.statut === 200 && pendant.ms < 2000, `${pendant.statut}, ${pendant.ms} ms`);
+
+  // --- 9. UNE ATTAQUE RÉPARTIE SUR UN COMPTE LE FREINE -------------------
+  //
+  // Ce que le seau commun devait arrêter, et que le seau du compte arrête :
+  // mille adresses louées, un essai chacune, contre UN compte. Le mur de
+  // l'adresse ne les voit jamais ; le seau du compte, si.
+  console.log("\nUne attaque répartie sur un compte le freine");
+  const reparti = [];
+  for (let i = 0; i < 14; i++) reparti.push(await essai(neuve(), `reparti-${i}`, "vise@exemple.cm"));
+  const debutReparti = reparti.slice(0, 3).reduce((s, e) => s + e.ms, 0) / 3;
+  const finReparti = reparti.slice(-3).reduce((s, e) => s + e.ms, 0) / 3;
+  verifier("une adresse neuve par essai : les derniers coûtent plus cher",
+    finReparti > debutReparti * 2 && finReparti > 800,
+    `${debutReparti.toFixed(0)} ms → ${finReparti.toFixed(0)} ms`);
+  verifier("…et le compte n'est jamais fermé", reparti.every((e) => e.statut === 401),
+    reparti.map((e) => e.statut).join(","));
+
+  // --- 10. UNE RÉUSSITE REND SON ESSAI, ELLE NE VIDE PAS L'ARDOISE --------
+  //
+  // L'ancien seau de secours EFFAÇAIT l'adresse à chaque réussite. Une
+  // attaque n'avait qu'à se connecter à son propre compte entre deux salves
+  // contre celui d'un autre pour repartir de zéro, et ne jamais toucher le
+  // mur. Cinquante échecs, une réussite, quinze échecs : soixante-cinq sur
+  // la même adresse — le mur doit tomber.
+  console.log("\nSe connecter à son compte entre deux salves ne contourne pas le mur");
+  const malin = "198.51.100.66";
+  await Promise.all(Array.from({ length: 50 }, (_, i) =>
+    essai(malin, `salve-${i}`, "voisin@exemple.cm")));
+  const entracte = await essai(malin, MDP);
+  const salve = await Promise.all(Array.from({ length: 15 }, (_, i) =>
+    essai(malin, `salve-bis-${i}`, "voisin@exemple.cm")));
+  verifier("la réussite entre", entracte.statut === 200, `${entracte.statut}`);
+  verifier("le mur tombe quand même au soixantième échec",
+    salve.filter((e) => e.statut === 429).length >= 4,
+    `${salve.filter((e) => e.statut === 429).length} refus sur 15`);
+
+  // --- 11. UNE BASE PAS ENCORE MIGRÉE ------------------------------------
+  //
+  // La plateforme part sur le serveur avant que le propriétaire n'ait collé
+  // la migration du frein dans Supabase : `frein_compter` y est inconnue. La
+  // porte ne doit ni se fermer, ni ralentir la foule ; le frein compte dans
+  // la mémoire de l'instance.
+  console.log("\nUne base qui n'a pas reçu la migration du frein");
+  await fetch(`http://127.0.0.1:${NUAGE}/essai/base-d-hier`, { method: "POST" });
+  for (let lot = 0; lot < 7; lot++) {
+    await Promise.all(Array.from({ length: 10 }, () => essai(neuve(), MDP)));
+  }
+  const sansMigration = await essai(neuve(), MDP);
+  verifier("le propriétaire entre, et vite, après la foule",
+    sansMigration.statut === 200 && sansMigration.ms < 2000,
+    `${sansMigration.statut}, ${sansMigration.ms} ms`);
+  const rafaleEnMemoire = await Promise.all(Array.from({ length: 70 }, (_, i) =>
+    essai("198.51.100.70", `memoire-${i}`, "memoire@exemple.cm")));
+  verifier("le mur tient encore, en mémoire",
+    rafaleEnMemoire.some((e) => e.statut === 429),
+    `${rafaleEnMemoire.filter((e) => e.statut === 429).length} refus sur 70`);
+  await fetch(`http://127.0.0.1:${NUAGE}/essai/base-d-hier?oui=non`, { method: "POST" });
+
+  // --- 12. SI LA BASE SE TAIT, LA PORTE NE SE FERME PAS ------------------
   //
   // Un frein qui dépend de la base ne doit jamais devenir un verrou sur la
   // maison le jour où la base ne répond plus. C'est déjà la raison d'être de

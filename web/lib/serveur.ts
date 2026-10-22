@@ -1392,7 +1392,12 @@ export async function compterUnEssai(
 ): Promise<number | null> {
   if (!relie) return null;
   try {
-    const r = await appeler(`rpc/compter_un_essai`, {
+    // `frein_compter` (migrations/20261022_frein_fenetre_fixe.sql), et non
+    // plus `compter_un_essai` : celle-ci ne repartait de un qu'après un quart
+    // d'heure SANS UN ESSAI — jamais, sur une adresse que partagent cent
+    // téléphones. Une base pas encore migrée répond 404 : `null`, et le frein
+    // compte dans sa mémoire, comme avant.
+    const r = await appeler(`rpc/frein_compter`, {
       method: "POST",
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1408,6 +1413,30 @@ export async function compterUnEssai(
     return typeof n === "number" && Number.isFinite(n) ? n : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Rendre un essai : la connexion a réussi, elle ne compte pas. Rend `false`
+ * quand la base n'a pas pu le faire — l'essai reste alors compté, ce qui ne
+ * coûte qu'un cran de frein, jamais une porte ouverte.
+ */
+export async function rendreUnEssai(seau: string): Promise<boolean> {
+  if (!relie) return false;
+  try {
+    const r = await appeler(`rpc/frein_rendre`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ la_cle: seau }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(2000),
+    });
+    return r.ok;
+  } catch {
+    return false;
   }
 }
 

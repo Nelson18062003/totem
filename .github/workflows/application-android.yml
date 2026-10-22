@@ -40,12 +40,15 @@ on:
       profil:
         description: "Quel paquet fabriquer"
         required: true
-        default: apercu
+        # « essai » d'abord : c'est le paquet des essayeurs et du téléphone du
+        # propriétaire. Un paquet « apercu » n'a jamais été distribué ; le
+        # choisir par défaut fabriquait un APK que personne n'installait.
+        default: essai
         type: choice
         options:
-          - apercu       # APK à installer directement — ni magasin, ni compte
           - essai        # AAB pour la piste d'essai interne du Play Store
           - production   # AAB public
+          - apercu       # APK à installer directement — ni magasin, ni compte
       adresse:
         description: "Adresse de la plateforme (vide = celle des réglages du dépôt)"
         required: false

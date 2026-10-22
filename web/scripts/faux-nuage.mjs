@@ -488,6 +488,9 @@ const recusDeposes = [];             // fiches « recus », clé (terminal, nume
 const fichiersDeposes = new Map();   // chemin dans le seau → octets
 // Les essais de mot de passe comptés, comme la table « freins ».
 const freins = new Map();
+// Une base qui n'a pas encore reçu la migration du frein (`frein_compter`,
+// `frein_rendre`) : la plateforme doit compter en mémoire, jamais échouer.
+let baseDHier = false;
 
 // LE ROBOT JOUÉ, ET CE QUI PEUT LE RETENIR. Il RÉCLAME une demande avant de
 // la composer, comme le vrai (`reclamer`, totem/nuage.py) : « en cours »
@@ -840,6 +843,11 @@ const serveur = createServer(async (req, res) => {
   }
   //     curl -X POST ".../essai/base?oreille=non"   (une base pas encore migrée)
   //     curl -X POST ".../essai/base?effacement=non" (sans « commandes_code_efface »)
+  //     curl -X POST ".../essai/base-d-hier"          (&oui=non pour la remettre à jour)
+  if (req.method === "POST" && chemin === "/essai/base-d-hier") {
+    baseDHier = url.searchParams.get("oui") !== "non";
+    return repondre({ ok: true, baseDHier });
+  }
   if (req.method === "POST" && chemin === "/essai/base") {
     if (url.searchParams.has("oreille")) oreille = url.searchParams.get("oreille") !== "non";
     if (url.searchParams.has("effacement")) {
@@ -1143,14 +1151,51 @@ const serveur = createServer(async (req, res) => {
   //
   // Le comptage est fait D'UN SEUL GESTE, comme le « insert … on conflict »
   // de la vraie base : lire puis écrire laisserait passer une rafale.
+  // Comme la vraie base : un texte PostgreSQL ne porte pas de caractère nul
+  // (« unsupported Unicode escape sequence », 22P05). L'imitation
+  // l'acceptait, et un seau dont la clé en portait un passait pour compté.
+  const cleRefusee = (cle) => typeof cle === "string" && cle.includes("\u0000");
+  // L'ancienne règle : la fenêtre glisse, et ne se vide qu'après un quart
+  // d'heure sans un essai. Gardée : une plateforme d'hier l'appelle encore.
   if (req.method === "POST" && chemin === "/rest/v1/rpc/compter_un_essai") {
     let brut = "";
     for await (const mm of req) brut += mm;
     const { la_cle: cle, fenetre_s: fenetre } = JSON.parse(brut || "{}");
+    if (cleRefusee(cle)) {
+      return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+    }
     const present = Date.now();
     const e = freins.get(cle);
     const n = e && present - e.vu <= fenetre * 1000 ? e.n + 1 : 1;
-    freins.set(cle, { n, vu: present });
+    freins.set(cle, { n, vu: present, debut: e && n > 1 ? e.debut : present });
+    return repondre(n);
+  }
+  // LA RÈGLE NEUVE (migrations/20261022_frein_fenetre_fixe.sql) : une
+  // fenêtre FIXE, ouverte par le premier essai, et une réussite qui rend le
+  // sien. Une base pas encore migrée ne les connaît pas : `/essai/base-d-hier`
+  // les fait répondre 404, comme PostgREST devant une fonction absente.
+  if (req.method === "POST"
+      && (chemin === "/rest/v1/rpc/frein_compter" || chemin === "/rest/v1/rpc/frein_rendre")) {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    if (baseDHier) {
+      return repondre({ code: "PGRST202", message: `Could not find the function ${chemin.slice(13)}` }, 404);
+    }
+    const { la_cle: cle, fenetre_s: fenetre } = JSON.parse(brut || "{}");
+    if (cleRefusee(cle)) {
+      return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+    }
+    const present = Date.now();
+    const e = freins.get(cle);
+    if (chemin.endsWith("frein_rendre")) {
+      if (e) e.n = Math.max(0, e.n - 1);
+      res.writeHead(204);
+      return res.end();
+    }
+    const debut = e ? (e.debut ?? e.vu) : null;
+    const suite = debut !== null && present - debut < fenetre * 1000;
+    const n = suite ? e.n + 1 : 1;
+    freins.set(cle, { n, vu: present, debut: suite ? debut : present });
     return repondre(n);
   }
 

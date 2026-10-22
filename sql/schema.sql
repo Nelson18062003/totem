@@ -488,8 +488,9 @@ create trigger un_proprietaire_reste
 -- Voir migrations/20260831_consolidation.sql.
 -- ---------------------------------------------------------------------------
 create table if not exists freins (
-  -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
-  -- une table d'adresses ne doit pas devenir une liste de qui a un compte.
+  -- L'adresse vue par le serveur, ou le seau d'un compte (« @ » et une
+  -- empreinte scellée du courriel). Jamais un courriel : une table d'adresses
+  -- ne doit pas devenir une liste de qui a un compte.
   cle    text,
   n      integer not null default 0,
   vu     timestamptz not null default now()
@@ -513,6 +514,10 @@ create unique index if not exists freins_cle_unique on freins (cle);
 
 create index if not exists freins_vu on freins (vu);
 
+-- REMPLACÉE par `frein_compter` (migrations/20261022_frein_fenetre_fixe.sql) :
+-- celle-ci ne repart de un qu'après un quart d'heure SANS UN ESSAI — jamais,
+-- sur une adresse que partagent cent téléphones. Gardée : une plateforme
+-- d'hier l'appelle encore.
 create or replace function compter_un_essai(la_cle text, fenetre_s integer)
 returns integer
 language sql
