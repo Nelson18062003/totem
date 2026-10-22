@@ -305,6 +305,46 @@ def texte_de_l_operateur(texte):
     return texte.replace("\x00", "\ufffd").strip()
 
 
+def etat_de_la_puce(reponse):
+    """Ce que « AT+CPIN? » dit de la puce, en un mot. « SIM absente » valait
+    pour tout ce qui n'était pas READY — or le modem distingue une puce qui
+    n'est pas là (« SIM not inserted ») d'une puce OCCUPÉE (« SIM busy » :
+    elle travaille, souvent pour l'itinérance), d'une puce en panne (« SIM
+    failure »), d'un code PIN demandé. Ce ne sont pas les mêmes pannes, ni
+    les mêmes gestes."""
+    r = (reponse or "").upper()
+    if "READY" in r:
+        return "prete"
+    if "SIM PIN" in r or "SIM PUK" in r:
+        return "code_pin"
+    if "BUSY" in r:
+        return "occupee"
+    if "NOT INSERTED" in r:
+        return "absente"
+    if "FAILURE" in r or "WRONG" in r:
+        return "en_panne"
+    if "ERROR" in r:
+        return "refusee"
+    return "muette"
+
+
+def phrase_de_la_puce(etat):
+    """L'état de la puce, en mots, avec les mots du modem entre parenthèses
+    pour qui doit chercher."""
+    noms = {
+        "prete": ("SIM present", "SIM présente"),
+        "code_pin": ("SIM locked by a PIN code", "SIM verrouillée par un code PIN"),
+        "occupee": ("SIM busy (SIM busy)", "SIM occupée (SIM busy)"),
+        "absente": ("SIM not seen (SIM not inserted)",
+                    "SIM non vue (SIM not inserted)"),
+        "en_panne": ("SIM faulty (SIM failure)", "SIM en panne (SIM failure)"),
+        "refusee": ("SIM refused by the modem", "SIM refusée par le modem"),
+        "muette": ("SIM not answering", "SIM sans réponse"),
+    }
+    en, fr = noms.get(etat, ("SIM missing", "SIM absente"))
+    return t(en, fr)
+
+
 def phrase_du_silence(etat):
     """La ligne du journal quand le réseau n'a pas répondu : ce que le modem
     en dit, en mots. Jamais un code, jamais un numéro — un port, un signal,
@@ -642,7 +682,8 @@ class ModemSerie:
 
     def _lire_sim_presente(self):
         with self.verrou:
-            return "READY" in self._envoyer("AT+CPIN?", delai=2)
+            self.puce = etat_de_la_puce(self._envoyer("AT+CPIN?", delai=2))
+        return self.puce == "prete"
 
     def iccid(self):
         """Numéro de série gravé sur la carte SIM : identité **stable et
@@ -707,7 +748,8 @@ class ModemSerie:
         # Une SIM absente ou verrouillée répond « +CREG: 0,0 » comme une
         # carte sans réseau : on regarde la SIM d'abord, sous le MÊME verrou.
         with self.verrou:
-            if "READY" not in self._envoyer("AT+CPIN?", delai=2):
+            self.puce = etat_de_la_puce(self._envoyer("AT+CPIN?", delai=2))
+            if self.puce != "prete":
                 return (False, None, None)
             m = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
             creg = int(m.group(1)) if m else None

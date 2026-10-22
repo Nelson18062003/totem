@@ -788,5 +788,41 @@ class TestLaPuceDisparue(EnFrancais):
         self.assertEqual(modem.redemarrages, 0)
 
 
+# =============================================================================
+class TestLaPuceSeDitAvecLesMotsDuModem(EnFrancais):
+    """« SIM absente » valait pour tout ce qui n'était pas READY. Le modem
+    distingue une puce qui n'est pas là d'une puce OCCUPÉE (« SIM busy »,
+    souvent en itinérance), d'une puce en panne, d'un code PIN."""
+
+    def test_la_classification(self):
+        from totem.modem import etat_de_la_puce
+        self.assertEqual(etat_de_la_puce("\r\n+CPIN: READY\r\n\r\nOK\r\n"), "prete")
+        self.assertEqual(etat_de_la_puce("+CME ERROR: SIM busy"), "occupee")
+        self.assertEqual(etat_de_la_puce("+CME ERROR: SIM not inserted"), "absente")
+        self.assertEqual(etat_de_la_puce("+CME ERROR: SIM failure"), "en_panne")
+        self.assertEqual(etat_de_la_puce("+CPIN: SIM PIN\r\nOK"), "code_pin")
+        self.assertEqual(etat_de_la_puce("+CME ERROR: unknown"), "refusee")
+        self.assertEqual(etat_de_la_puce(""), "muette")
+
+    def test_le_statut_dit_occupee_et_non_absente(self):
+        port = ModemQuiRevient(refus=0)
+        port._reponse_cpin = "\r\n+CME ERROR: SIM busy\r\n"
+        original = port._reponse
+
+        def reponse(commande):
+            if commande == "AT+CPIN?":
+                return port._reponse_cpin
+            return original(commande)
+        port._reponse = reponse
+        m = modem_sur(port)
+        c = Compte(m, libelle="Orange ·4177", carte=FausseCarte())
+        ligne = c.resume()
+        self.assertIn("SIM occupée (SIM busy)", ligne)
+        self.assertNotIn("SIM absente", ligne)
+        port._reponse_cpin = "\r\n+CME ERROR: SIM not inserted\r\n"
+        m._oublier()
+        self.assertIn("SIM non vue (SIM not inserted)", c.resume())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,8 @@ from contextlib import contextmanager
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
                     MessageTropLong, PasDeReseau, RefusDuModem,
-                    ReponseNonRecue, ReponseRefusee, phrase_du_silence)
+                    ReponseNonRecue, ReponseRefusee, phrase_de_la_puce,
+                    phrase_du_silence)
 from .service import (INCONNU, ITINERANCE, SANS_SERVICE, EtatDuService,
                       etat_du_service)
 from .textes import t
@@ -151,7 +152,7 @@ class Compte:
         Sans service, pas de « signal 22/31 » : c'est exactement la ligne
         qui faisait croire que la carte avait son réseau."""
         sim = (t("SIM present", "SIM présente") if self.sim_prete()
-               else t("SIM missing", "SIM absente"))
+               else phrase_de_la_puce(self.etat_de_la_puce()))
         service = getattr(self, "service", None)
         if service is not None and service.sans_service():
             force = t("no service", "aucun service")
@@ -327,6 +328,11 @@ class Compte:
             return False
         self.codes_sans_reseau = 0
         return True
+
+    def etat_de_la_puce(self):
+        """Ce que le modem a dit de sa puce à la dernière lecture (voir
+        `modem.etat_de_la_puce`), ou None s'il ne sait pas le dire."""
+        return getattr(self.modem, "puce", None)
 
     def reglages_refuses(self):
         """Les réglages que le modem a refusés à sa dernière mise en route

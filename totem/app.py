@@ -39,6 +39,7 @@ from .codes import catalogue, cle as cle_code
 from .carte import operateur_depuis_imsi, operateur_xafe
 from .xafe import SANS_FLOAT, Attente
 from .compte import (TELEGRAM, ErreurModem, RefusDuModem, ReponseNonRecue,
+                     phrase_de_la_puce,
                      SessionTenue, libelles_uniques)
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
@@ -2281,12 +2282,16 @@ class Robot:
         if not agir or maintenant < compte.puce_prochaine_relance:
             return
         depuis = _duree(maintenant - compte.puce_absente_depuis, "fr")
+        etat = compte.etat_de_la_puce() if hasattr(compte, "etat_de_la_puce") else None
+        mots = phrase_de_la_puce(etat) if etat else ""
         if compte.puce_relances == 0:
             annonce = t(
-                f"SIM not seen by its modem for {depuis} ({libelle}): "
-                "restarting the modem to read it again",
-                f"puce non vue par son modem depuis {depuis} ({libelle}) : "
-                "le modem est relancé pour la relire")
+                f"SIM not seen by its modem for {depuis} ({libelle}"
+                f"{', ' + mots if mots else ''}): restarting the modem to "
+                "read it again",
+                f"puce non vue par son modem depuis {depuis} ({libelle}"
+                f"{', ' + mots if mots else ''}) : le modem est relancé pour "
+                "la relire")
         else:
             annonce = t(
                 f"SIM still not seen after {compte.puce_relances} restart(s) "
@@ -2298,10 +2303,12 @@ class Robot:
         if compte.puce_relances == 0:
             self.facteur.poster(
                 t(f"⚠️ {etiquette}The modem has not seen its SIM card for "
-                  f"{PUCE_ABSENTE_AVANT_RELANCE // 60} min (« SIM missing »). "
+                  f"{PUCE_ABSENTE_AVANT_RELANCE // 60} min"
+                  f"{' (' + echap(mots) + ')' if mots else ''}. "
                   "Restarting it to read the card again.",
                   f"⚠️ {etiquette}Le modem ne voit plus sa puce depuis "
-                  f"{PUCE_ABSENTE_AVANT_RELANCE // 60} min (« SIM absente »). "
+                  f"{PUCE_ABSENTE_AVANT_RELANCE // 60} min"
+                  f"{' (' + echap(mots) + ')' if mots else ''}. "
                   "Je le relance pour la relire."), canal="alertes")
             compte.puce_absence_dite = True
         elif compte.puce_relances == 1:
