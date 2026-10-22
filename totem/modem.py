@@ -728,19 +728,37 @@ class ModemSerie:
             f"réclame 3 A, un chargeur trop juste le fait décrocher du bus."))
 
     def _chemins_possibles(self):
-        """Le port précédent d'abord — c'est le cas courant —, puis tous les
-        autres, dans l'ordre des numéros : le premier qui donne NOTRE IMEI est
-        le port AT principal, comme à la détection.
+        """Tous les ports, dans l'ordre des numéros : le premier qui donne
+        NOTRE IMEI est le port AT principal, comme à la détection.
+
+        L'ANCIEN NUMÉRO N'A PLUS DE PRIVILÈGE. Le noyau ne redonne pas à un
+        modem revenu un bloc de cinq numéros qui se suivent : il lui donne
+        les plus petits numéros libres. Le 22 octobre, le même modem est
+        revenu sur ttyUSB 2, 7, 12, 13, 14, puis 2, 7, 13, 14, 15, puis 2, 7,
+        12, 14, 15 — son port AT valait 12, puis 13, puis 12, et son port de
+        données (le quatrième, qui répond aussi aux commandes AT et donne le
+        même IMEI) valait 13, puis 14, puis 14. Reprendre « l'ancien port
+        d'abord » (13) au troisième retour, c'était se brancher sur le port
+        de DONNÉES du bon modem : les commandes passent, les SMS se lisent,
+        et les réponses USSD n'y arrivent pas forcément. Les numéros sont
+        donnés dans l'ordre des interfaces : le plus petit qui porte l'IMEI
+        est le port AT, toujours.
 
         On ne lance plus la détection complète ici : elle interrogeait chaque
         port (carte, numéro, réseau…) à chaque tour d'attente, toutes les deux
         secondes, et c'est elle qui dérangeait les modems voisins."""
-        from .detect import _numero_port
+        from .detect import INTERFACE_AT, _numero_port, interface_usb
 
-        chemins = [self.port] + sorted(glob.glob("/dev/ttyUSB*"),
-                                       key=_numero_port)
-        vus = set()
-        return [c for c in chemins if c and not (c in vus or vus.add(c))]
+        chemins = sorted(set(glob.glob("/dev/ttyUSB*")) | {self.port},
+                         key=_numero_port)
+        # Le cas courant — le modem revient sous le même nom — ne doit rien
+        # coûter : l'ancien port passe en premier SI ce nom désigne encore un
+        # port AT principal (interface 2), ou si /sys ne sait pas le dire.
+        # Devenu le port de données du même modem, il perd son tour.
+        interface = interface_usb(self.port)
+        if self.port and interface in (None, INTERFACE_AT):
+            chemins = [self.port] + [c for c in chemins if c != self.port]
+        return chemins
 
     # ---- USSD -------------------------------------------------------------
     def _attendre_cusd(self, delai=30):

@@ -33,7 +33,9 @@ qui refuse une fois ; sinon le banc ne prouve rien.
 Lancer :  python3 -m unittest tests.test_reglages_du_modem -v
 """
 
+import sys
 import threading
+import types
 import unittest
 from unittest import mock
 
@@ -596,6 +598,98 @@ class TestLaCarteHorsReseau(EnFrancais):
         robot._veiller_le_reseau(compte, maintenant=1000.0 + 2 * delai)
         self.assertEqual(modem.recherches, 0)
         self.assertIsNone(compte.hors_reseau_depuis)
+
+
+# =============================================================================
+class TestLeRetourSurLePortAT(unittest.TestCase):
+    """Le noyau redonne à un modem revenu les plus petits numéros libres, pas
+    un bloc qui se suit : le 22 octobre, le port AT du même modem valait 12,
+    puis 13, puis 12, et son port de données 13, puis 14, puis 14. Reprendre
+    « l'ancien port d'abord » se branchait sur le port de DONNÉES."""
+
+    def _bus(self, plan):
+        """`plan` : chemin → IMEI des ports qui répondent aux commandes AT."""
+        import totem.modem
+
+        class Port:
+            def __init__(self, chemin, baud=115200, timeout=1, exclusive=None):
+                if chemin not in plan:
+                    raise OSError(2, "No such file or directory")
+                self.chemin = chemin
+                self.tampon = b""
+
+            def reset_input_buffer(self):
+                self.tampon = b""
+
+            def write(self, octets):
+                commande = octets.decode().strip()
+                imei = plan[self.chemin]
+                self.tampon += (f"\r\n{imei}\r\n\r\nOK\r\n" if commande == "AT+CGSN"
+                                else "\r\nOK\r\n").encode()
+
+            def read_all(self):
+                d, self.tampon = self.tampon, b""
+                return d
+
+            def close(self):
+                pass
+
+        module = types.ModuleType("serial")
+        module.Serial = Port
+        return (mock.patch.dict(sys.modules, {"serial": module}),
+                mock.patch.object(totem.modem.glob, "glob",
+                                  lambda motif: sorted(plan)))
+
+    def _rouvrir(self, modem, plan, interfaces=None):
+        import totem.detect
+        p1, p2 = self._bus(plan)
+        p3 = mock.patch.object(totem.detect, "interface_usb",
+                               lambda port: (interfaces or {}).get(port))
+        with p1, p2, p3:
+            modem._rouvrir(patience=5)
+
+    def test_l_ancien_numero_devenu_port_de_donnees_n_est_pas_repris(self):
+        IMEI = "861234050000011"
+        modem = ModemSerie.__new__(ModemSerie)
+        modem.port, modem.baud, modem.imei = "/dev/ttyUSB13", 115200, IMEI
+        modem.ser = type("X", (), {"close": lambda self: None})()
+        # Au retour : 12 = port AT, 13 = port de données, du MÊME modem —
+        # et 13 est justement l'ancien nom du port AT.
+        self._rouvrir(modem, {"/dev/ttyUSB12": IMEI, "/dev/ttyUSB13": IMEI},
+                      interfaces={"/dev/ttyUSB12": 2, "/dev/ttyUSB13": 3})
+        self.assertEqual(modem.port, "/dev/ttyUSB12")
+
+    def test_l_ancien_nom_encore_port_at_est_repris_sans_detour(self):
+        IMEI = "861234050000011"
+        modem = ModemSerie.__new__(ModemSerie)
+        modem.port, modem.baud, modem.imei = "/dev/ttyUSB13", 115200, IMEI
+        modem.ser = type("X", (), {"close": lambda self: None})()
+        self._rouvrir(modem, {"/dev/ttyUSB12": "861234050000029",
+                              "/dev/ttyUSB13": IMEI},
+                      interfaces={"/dev/ttyUSB12": 2, "/dev/ttyUSB13": 2})
+        self.assertEqual(modem.port, "/dev/ttyUSB13")
+
+    def test_le_temoin_reprenait_l_ancien_numero(self):
+        """La règle d'avant — l'ancien port d'abord — se branche sur le port
+        de données. Sans ce témoin, le banc ne prouve rien."""
+        IMEI = "861234050000011"
+        modem = ModemSerie.__new__(ModemSerie)
+        modem.port, modem.baud, modem.imei = "/dev/ttyUSB13", 115200, IMEI
+        modem.ser = type("X", (), {"close": lambda self: None})()
+        ancienne = lambda: ["/dev/ttyUSB13", "/dev/ttyUSB12", "/dev/ttyUSB14"]
+        modem._chemins_possibles = ancienne
+        self._rouvrir(modem, {"/dev/ttyUSB12": IMEI, "/dev/ttyUSB13": IMEI,
+                              "/dev/ttyUSB14": IMEI})
+        self.assertEqual(modem.port, "/dev/ttyUSB13")
+
+    def test_le_port_d_un_autre_modem_est_ecarte(self):
+        IMEI, AUTRE = "861234050000011", "861234050000029"
+        modem = ModemSerie.__new__(ModemSerie)
+        modem.port, modem.baud, modem.imei = "/dev/ttyUSB12", 115200, IMEI
+        modem.ser = type("X", (), {"close": lambda self: None})()
+        self._rouvrir(modem, {"/dev/ttyUSB2": AUTRE, "/dev/ttyUSB12": AUTRE,
+                              "/dev/ttyUSB17": IMEI})
+        self.assertEqual(modem.port, "/dev/ttyUSB17")
 
 
 if __name__ == "__main__":

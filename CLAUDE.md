@@ -1446,6 +1446,19 @@ dit, relance le modem si cela ne suffit pas, et annonce le retour
 deux fois à cinq secondes (`_envoyer_avec_reprises`) : rien n'est parti,
 et le changement de réseau ne dure que quelques secondes.
 
+**Un nom de port n'est pas une interface.** Le noyau ne redonne pas à un
+modem revenu un bloc de cinq numéros qui se suivent : il lui donne les plus
+petits numéros libres. Le 22 octobre, le même modem est revenu sur ttyUSB
+2, 7, 12, 13, 14, puis 2, 7, 13, 14, 15, puis 2, 7, 12, 14, 15 : son port
+AT valait 12, puis 13, puis 12 — et au troisième retour, « l'ancien port
+d'abord » (13) désignait le port de DONNÉES du bon modem, qui répond aux
+commandes AT et donne le même IMEI. Les commandes passent, les SMS se
+lisent, et les réponses USSD n'y arrivent pas forcément. L'ancien nom ne
+passe plus en premier que si /sys dit qu'il est encore une interface AT
+(`interface_usb`, `INTERFACE_AT`) ; sinon, le plus petit numéro qui porte
+l'IMEI — le port AT, toujours, puisque les numéros suivent les interfaces.
+Le témoin reprend l'ancien nom.
+
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai
 nom de client précédé de « ESSAI » reste le nom d'un client : quatre
