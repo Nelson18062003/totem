@@ -228,7 +228,7 @@ const en = {
     colonneEssais: "Attempts",
     essais: (n: number) => `${n} ${n === 1 ? "attempt" : "attempts"}`,
     freinExplique:
-      "The counter lives in the database, shared by every server. Only failures count: a successful sign-in gives its attempt back. Five failures are free per address, ten per account; beyond that each one waits longer — eight seconds at most — and sixty shut the address out for the fifteen-minute window. The wall closes an address, never an account: nobody can lock the owner out by attacking.",
+      "The counter lives in the database, shared by every server. Only failures count: a successful sign-in gives its attempt back. Five failures are free for one address on one account, ten for an account from everywhere; beyond that each one waits longer — eight seconds at most. Sixty failures close that account to that address for the fifteen-minute window; three hundred close the address. Carriers put hundreds of phones behind one address: a neighbour who attacks an account never closes the door to the others, and nobody can lock the owner out by attacking.",
   },
 };
 
@@ -433,7 +433,7 @@ const fr: typeof en = {
     colonneEssais: "Essais",
     essais: (n) => `${n} essai${n > 1 ? "s" : ""}`,
     freinExplique:
-      "Le compteur vit dans la base, partagé par tous les serveurs. Seuls les échecs comptent : une connexion réussie rend son essai. Cinq échecs sont gratuits par adresse, dix par compte ; au-delà chacun attend plus longtemps — huit secondes au plus — et soixante ferment l'adresse pour le quart d'heure. Le mur ferme une adresse, jamais un compte : personne ne peut enfermer le propriétaire dehors en attaquant.",
+      "Le compteur vit dans la base, partagé par tous les serveurs. Seuls les échecs comptent : une connexion réussie rend son essai. Cinq échecs sont gratuits pour une adresse sur un compte, dix pour un compte de partout ; au-delà chacun attend plus longtemps — huit secondes au plus. Soixante échecs ferment ce compte à cette adresse pour le quart d'heure ; trois cents ferment l'adresse. Un opérateur met des centaines de téléphones derrière une même adresse : un voisin qui attaque un compte ne ferme jamais la porte aux autres, et personne ne peut enfermer le propriétaire dehors en attaquant.",
   },
 };
 

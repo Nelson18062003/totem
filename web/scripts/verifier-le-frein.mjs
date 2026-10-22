@@ -21,8 +21,8 @@
 //      vérification coûte 210 000 tours de PBKDF2 : sans ce refus précoce,
 //      une rafale d'essais devient une rafale de calculs, et la plateforme
 //      s'écroule sous les tentatives ;
-//   4. le mur est par ADRESSE. Attaquer ne doit pas enfermer le propriétaire
-//      dehors — sans quoi le frein devient l'arme qu'il devait parer ;
+//   4. attaquer ne doit pas enfermer le propriétaire dehors — sans quoi le
+//      frein devient l'arme qu'il devait parer ;
 //   5. changer l'adresse annoncée ne desserre rien ;
 //   6. deux instances partagent le même seau ;
 //   7. LA FOULE NE RALENTIT PERSONNE. TOTEM est grand public : soixante-dix
@@ -32,15 +32,27 @@
 //   8. une adresse qui attaque UN compte ne ralentit pas les AUTRES — sous
 //      son propre mur, elle imposait huit secondes à toute la plateforme ;
 //   9. une attaque répartie sur UN compte le freine, sans le fermer ;
-//  10. une réussite REND son essai, elle ne vide pas l'ardoise : se
-//      connecter à son propre compte entre deux salves ne contourne pas le
-//      mur ;
-//  11. une base qui n'a pas reçu la migration du frein : la porte reste
-//      ouverte, et le frein compte en mémoire.
+//  10. le mur d'un compte tombe au soixantième échec, même avec une
+//      réussite au milieu ;
+//  11. UN VOISIN D'ADRESSE NE FERME PAS LA PORTE AUX AUTRES. Un opérateur met
+//      des centaines de téléphones derrière une adresse : le mur porte sur le
+//      couple adresse + compte, pas sur l'adresse seule ;
+//  12. une adresse qui essaie trois cents comptes finit murée, avant tout
+//      calcul — et une réussite au milieu n'efface pas son ardoise ; murée,
+//      elle n'écrit plus rien dans la base ;
+//  13. la vitrine, dont le mot de passe est public, ne se laisse pas ralentir
+//      par n'importe qui ;
+//  14. une ligne écrite par la règle d'hier (réussites comprises) ne mure
+//      personne le jour de la migration ;
+//  15. une base qui n'a pas reçu la migration du frein : la porte reste
+//      ouverte, la connexion compte en mémoire, l'inscription garde la règle
+//      de la base, et le journal le dit ;
+//  16. une base muette ne ferme pas la porte.
 //
-// CHAQUE SECTION VISE SON PROPRE COMPTE. Le seau du compte s'ajoute à celui
-// de l'adresse : une section qui frapperait le compte d'une autre serait
-// ralentie par lui, et passerait pour la bonne raison sans rien prouver.
+// CHAQUE SECTION VISE SON PROPRE COMPTE. Les seaux du couple et du compte
+// s'ajoutent à celui de l'adresse : une section qui frapperait le compte
+// d'une autre serait ralentie par lui, et passerait pour la bonne raison sans
+// rien prouver.
 
 import { spawn } from "node:child_process";
 import { setTimeout as attendre } from "node:timers/promises";
@@ -180,9 +192,11 @@ try {
     const t = Date.now();
     const r = await fetch(`${B}/api/connexion`, {
       method: "POST",
+      // SANS « x-real-ip » : il passe avant « x-forwarded-for », et la
+      // section ne lisait jamais l'en-tête qu'elle prétend garder — revenir
+      // au PREMIER élément y restait vert.
       headers: {
         "content-type": "application/json",
-        "x-real-ip": "198.51.100.77",
         "x-forwarded-for": `10.0.0.${i}, 198.51.100.77`,
       },
       body: JSON.stringify({ courriel: "menteur@exemple.cm", motdepasse: `menteur-${i}` }),
@@ -229,7 +243,7 @@ try {
   // l'attente de tout le monde. Mesuré : 66 ms au repos, 8 065 ms après.
   console.log("\nLa foule qui entre ne ralentit personne");
   let ip = 0;
-  const neuve = () => `192.0.2.${++ip}`;
+  const neuve = () => { ip++; return `192.0.${2 + (ip >> 8)}.${ip & 255}`; };
   for (let lot = 0; lot < 7; lot++) {
     await Promise.all(Array.from({ length: 10 }, () => essai(neuve(), MDP)));
   }
@@ -263,16 +277,23 @@ try {
   verifier("une adresse neuve par essai : les derniers coûtent plus cher",
     finReparti > debutReparti * 2 && finReparti > 800,
     `${debutReparti.toFixed(0)} ms → ${finReparti.toFixed(0)} ms`);
-  verifier("…et le compte n'est jamais fermé", reparti.every((e) => e.statut === 401),
-    reparti.map((e) => e.statut).join(","));
+  // Bien au-delà du mur d'un couple : un compte attaqué de partout ralentit,
+  // il ne se FERME jamais — sans quoi il suffirait d'attaquer pour enfermer
+  // son titulaire dehors.
+  const encore = await Promise.all(Array.from({ length: 80 }, (_, i) =>
+    essai(neuve(), `reparti-bis-${i}`, "vise@exemple.cm")));
+  const tous = [...reparti, ...encore];
+  verifier("…et le compte n'est jamais fermé, même à quatre-vingt-quatorze essais",
+    tous.every((e) => e.statut === 401),
+    `${tous.filter((e) => e.statut === 429).length} refus sur ${tous.length}`);
 
-  // --- 10. UNE RÉUSSITE REND SON ESSAI, ELLE NE VIDE PAS L'ARDOISE --------
+  // --- 10. LE MUR D'UN COMPTE, MÊME AVEC UNE RÉUSSITE AU MILIEU ----------
   //
   // L'ancien seau de secours EFFAÇAIT l'adresse à chaque réussite. Une
   // attaque n'avait qu'à se connecter à son propre compte entre deux salves
   // contre celui d'un autre pour repartir de zéro, et ne jamais toucher le
   // mur. Cinquante échecs, une réussite, quinze échecs : soixante-cinq sur
-  // la même adresse — le mur doit tomber.
+  // le même compte, depuis la même adresse — le mur doit tomber.
   console.log("\nSe connecter à son compte entre deux salves ne contourne pas le mur");
   const malin = "198.51.100.66";
   await Promise.all(Array.from({ length: 50 }, (_, i) =>
@@ -285,12 +306,92 @@ try {
     salve.filter((e) => e.statut === 429).length >= 4,
     `${salve.filter((e) => e.statut === 429).length} refus sur 15`);
 
-  // --- 11. UNE BASE PAS ENCORE MIGRÉE ------------------------------------
+  const lignesDeCompte = async () => (await (await fetch(
+    `http://127.0.0.1:${NUAGE}/rest/v1/freins?select=cle`)).json())
+    .filter((f) => f.cle.includes("@")).length;
+
+  // --- 11. UN VOISIN D'ADRESSE NE FERME PAS LA PORTE AUX AUTRES -----------
+  //
+  // MTN et Orange mettent des centaines de téléphones derrière une même
+  // adresse publique. Le mur était par adresse : un voisin qui se trompait
+  // soixante fois — ou qui attaquait — fermait la porte à tous les autres,
+  // propriétaire compris, pour un quart d'heure, et recommençait. Le mur
+  // porte maintenant sur le couple adresse + compte visé.
+  console.log("\nUn voisin d'adresse ne ferme pas la porte aux autres");
+  const operateur = "198.51.100.11";
+  const voisin = await Promise.all(Array.from({ length: 70 }, (_, i) =>
+    essai(operateur, `voisin-${i}`, "voisin-operateur@exemple.cm")));
+  verifier("le voisin, lui, se ferme son compte visé",
+    voisin.filter((e) => e.statut === 429).length >= 5,
+    `${voisin.filter((e) => e.statut === 429).length} refus sur 70`);
+  const derriere = await essai(operateur, MDP);
+  verifier("le propriétaire, derrière la MÊME adresse, entre sans attendre",
+    derriere.statut === 200 && derriere.ms < 2000, `${derriere.statut}, ${derriere.ms} ms`);
+
+  // --- 12. UNE ADRESSE QUI ESSAIE TROIS CENTS COMPTES --------------------
+  //
+  // Le mur du couple laisse une adresse essayer beaucoup de comptes ; celui
+  // de l'adresse, plus haut, protège le serveur : chaque essai lui coûte
+  // 210 000 tours. Au-delà, le refus arrive avant tout calcul — et une
+  // réussite au milieu ne fait que RENDRE son essai : l'effacer offrirait de
+  // repartir de zéro entre deux salves. Murée, l'adresse n'écrit plus rien :
+  // elle créait une ligne par courriel inventé, et une seule adresse
+  // remplissait la base.
+  console.log("\nUne adresse qui essaie trois cents comptes");
+  const pilleur = "198.51.100.12";
+  await Promise.all(Array.from({ length: 290 }, (_, i) =>
+    essai(pilleur, `pillage-${i}`, `pillage-${i}@exemple.cm`)));
+  const auMilieu = await essai(pilleur, MDP);
+  const apresLeMilieu = await Promise.all(Array.from({ length: 20 }, (_, i) =>
+    essai(pilleur, `pillage-bis-${i}`, `pillage-bis-${i}@exemple.cm`)));
+  verifier("la réussite au milieu entre", auMilieu.statut === 200, `${auMilieu.statut}`);
+  verifier("le mur de l'adresse tombe quand même au trois-centième échec",
+    apresLeMilieu.filter((e) => e.statut === 429).length >= 5,
+    `${apresLeMilieu.filter((e) => e.statut === 429).length} refus sur 20`);
+  const avantLaRafale = await lignesDeCompte();
+  const inventes = await Promise.all(Array.from({ length: 30 }, (_, i) =>
+    essai(pilleur, "x", `invente-${i}-${Date.now()}@exemple.cm`)));
+  verifier("murée, l'adresse est refusée avant tout calcul",
+    // Non murée, une telle adresse attendrait huit secondes, puis calculerait.
+    inventes.every((e) => e.statut === 429 && e.ms < 1500),
+    `${inventes.filter((e) => e.statut === 429).length} refus sur 30`);
+  verifier("…et n'écrit plus une ligne dans la base",
+    (await lignesDeCompte()) === avantLaRafale, `${avantLaRafale} → ${await lignesDeCompte()}`);
+
+  // --- 13. LA VITRINE NE SE LAISSE PAS RALENTIR --------------------------
+  //
+  // Le mot de passe de la vitrine est public (fiches des magasins). Un seau
+  // de compte ne la protège de rien — et permettait à n'importe qui de faire
+  // attendre l'examinateur huit secondes, à chaque fenêtre.
+  console.log("\nLa vitrine ne se laisse pas ralentir");
+  await Promise.all(Array.from({ length: 30 }, (_, i) =>
+    essai("198.51.100.13", `vitrine-${i}`, "examen@totemlabs.app")));
+  const examinateur = await essai(neuve(), "TOTEM-Examen-2026", "examen@totemlabs.app");
+  verifier("l'examinateur entre sans attendre",
+    examinateur.statut === 200 && examinateur.ms < 2000,
+    `${examinateur.statut}, ${examinateur.ms} ms`);
+
+  // --- 14. UNE LIGNE D'HIER NE MURE PERSONNE -----------------------------
+  //
+  // La règle d'hier comptait les réussites et ne posait pas de début : le
+  // jour de la migration, une adresse d'opérateur active peut porter trois
+  // cent cinquante « essais ». Lue telle quelle, elle murait tout le monde
+  // derrière, bon mot de passe compris.
+  console.log("\nUne ligne écrite par la règle d'hier ne mure personne");
+  await fetch(`http://127.0.0.1:${NUAGE}/essai/frein-d-hier?cle=203.0.113.250&n=350`,
+    { method: "POST" });
+  const lendemain = await essai("203.0.113.250", MDP);
+  verifier("derrière une adresse à 350 « essais » d'hier, on entre",
+    lendemain.statut === 200 && lendemain.ms < 2000, `${lendemain.statut}, ${lendemain.ms} ms`);
+
+  // --- 15. UNE BASE PAS ENCORE MIGRÉE ------------------------------------
   //
   // La plateforme part sur le serveur avant que le propriétaire n'ait collé
-  // la migration du frein dans Supabase : `frein_compter` y est inconnue. La
-  // porte ne doit ni se fermer, ni ralentir la foule ; le frein compte dans
-  // la mémoire de l'instance.
+  // la migration du frein dans Supabase : `frein_essai` y est inconnue. La
+  // porte ne doit ni se fermer, ni ralentir la foule ; la connexion compte
+  // dans la mémoire de l'instance. L'INSCRIPTION, elle, comptait déjà dans
+  // la base avec la règle d'hier : elle la garde — sans quoi chaque serveur
+  // lui donnerait ses vingt essais. Et le journal le dit.
   console.log("\nUne base qui n'a pas reçu la migration du frein");
   await fetch(`http://127.0.0.1:${NUAGE}/essai/base-d-hier`, { method: "POST" });
   for (let lot = 0; lot < 7; lot++) {
@@ -305,9 +406,28 @@ try {
   verifier("le mur tient encore, en mémoire",
     rafaleEnMemoire.some((e) => e.statut === 429),
     `${rafaleEnMemoire.filter((e) => e.statut === 429).length} refus sur 70`);
+  // Ensemble, et réparties sur les deux serveurs : en mémoire, chacun en
+  // laisserait passer vingt.
+  const inscriptions = await Promise.all(Array.from({ length: 26 }, (_, i) =>
+    fetch(`${i % 2 ? B2 : B}/api/inscription`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-real-ip": "198.51.100.15" },
+      body: JSON.stringify({
+        prenom: "Awa", nom: "Essai", adresse: "Rue Joss, Bonapriso, Douala, Cameroun",
+        telephone: "+237 6 77 00 00 15", courriel: `inscrit-${i}@frein.cm`, motdepasse: MDP,
+      }),
+    }).then((r) => r.status)));
+  const ouvertes = inscriptions.filter((x) => x === 200).length;
+  verifier("l'inscription, sur deux serveurs, reste à vingt en tout",
+    ouvertes <= 20 && ouvertes >= 15, `${ouvertes} comptes ouverts sur 26`);
+  const journal = await (await fetch(
+    `http://127.0.0.1:${NUAGE}/rest/v1/evenements?select=texte`)).json();
+  verifier("et le journal dit que le frein compte en mémoire",
+    journal.some((e) => /frein des mots de passe compte dans la mémoire/.test(e.texte ?? "")),
+    `${journal.length} ligne(s) au journal`);
   await fetch(`http://127.0.0.1:${NUAGE}/essai/base-d-hier?oui=non`, { method: "POST" });
 
-  // --- 12. SI LA BASE SE TAIT, LA PORTE NE SE FERME PAS ------------------
+  // --- 16. SI LA BASE SE TAIT, LA PORTE NE SE FERME PAS ------------------
   //
   // Un frein qui dépend de la base ne doit jamais devenir un verrou sur la
   // maison le jour où la base ne répond plus. C'est déjà la raison d'être de

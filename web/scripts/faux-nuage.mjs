@@ -357,6 +357,7 @@ const tables = () => ({
       texte: "Un bilan de 90 jours a été coupé : la caisse porte plus de "
            + "20 000 messages sur cette période.",
       survenu_le: il_y_a(1500), cree_le: il_y_a(1500) },
+    ...evenementsEnPlus,
   ],
 });
 
@@ -479,6 +480,10 @@ function caisseAgentLignes() {
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
+// Ce que la PLATEFORME écrit à son journal (`noterIncident`). Toute écriture
+// de table partait autrefois dans `smsEnPlus` : le journal d'un incident
+// devenait un SMS, et aucun banc ne pouvait lire ce que la plateforme y note.
+const evenementsEnPlus = [];
 // LES REÇUS DU ROBOT. Le faux nuage ne savait pas les recevoir : la fiche
 // « recus » d'un dépôt tombait dans la table des SMS (l'écriture générique
 // plus bas range tout ce qu'elle reçoit parmi les paiements), et le fichier
@@ -844,6 +849,14 @@ const serveur = createServer(async (req, res) => {
   //     curl -X POST ".../essai/base?oreille=non"   (une base pas encore migrée)
   //     curl -X POST ".../essai/base?effacement=non" (sans « commandes_code_efface »)
   //     curl -X POST ".../essai/base-d-hier"          (&oui=non pour la remettre à jour)
+  // UNE LIGNE D'HIER : écrite par `compter_un_essai`, qui gardait les
+  // réussites et ne pose pas de début — telle que la migration la trouvera.
+  //     curl -X POST ".../essai/frein-d-hier?cle=203.0.113.250&n=350"
+  if (req.method === "POST" && chemin === "/essai/frein-d-hier") {
+    const cle = url.searchParams.get("cle") ?? "";
+    freins.set(cle, { n: Number(url.searchParams.get("n") ?? "1"), vu: Date.now(), debut: undefined });
+    return repondre({ ok: true, cle });
+  }
   if (req.method === "POST" && chemin === "/essai/base-d-hier") {
     baseDHier = url.searchParams.get("oui") !== "non";
     return repondre({ ok: true, baseDHier });
@@ -1157,6 +1170,8 @@ const serveur = createServer(async (req, res) => {
   const cleRefusee = (cle) => typeof cle === "string" && cle.includes("\u0000");
   // L'ancienne règle : la fenêtre glisse, et ne se vide qu'après un quart
   // d'heure sans un essai. Gardée : une plateforme d'hier l'appelle encore.
+  // Comme la vraie fonction, elle ne pose JAMAIS de début : une ligne qu'elle
+  // crée en est dépourvue, et c'est ce qui la fait reconnaître ensuite.
   if (req.method === "POST" && chemin === "/rest/v1/rpc/compter_un_essai") {
     let brut = "";
     for await (const mm of req) brut += mm;
@@ -1167,36 +1182,55 @@ const serveur = createServer(async (req, res) => {
     const present = Date.now();
     const e = freins.get(cle);
     const n = e && present - e.vu <= fenetre * 1000 ? e.n + 1 : 1;
-    freins.set(cle, { n, vu: present, debut: e && n > 1 ? e.debut : present });
+    freins.set(cle, { n, vu: present, debut: e?.debut });
     return repondre(n);
   }
-  // LA RÈGLE NEUVE (migrations/20261022_frein_fenetre_fixe.sql) : une
-  // fenêtre FIXE, ouverte par le premier essai, et une réussite qui rend le
-  // sien. Une base pas encore migrée ne les connaît pas : `/essai/base-d-hier`
-  // les fait répondre 404, comme PostgREST devant une fonction absente.
+  // LA RÈGLE NEUVE (migrations/20261022_frein_fenetre_fixe.sql), recopiée pas
+  // à pas : une fenêtre FIXE ouverte par le premier essai (une ligne sans
+  // début repart de un), trois seaux arrêtés au premier mur, le ménage des
+  // lignes dont le dernier essai a plus d'une heure, et une réussite qui rend
+  // son essai. Une base pas encore migrée ne les connaît pas :
+  // `/essai/base-d-hier` les fait répondre 404, comme PostgREST devant une
+  // fonction absente.
+  const freinCompter = (cle, fenetre, present) => {
+    const e = freins.get(cle);
+    const suite = e?.debut !== undefined && e.debut > present - fenetre * 1000;
+    const n = suite ? e.n + 1 : 1;
+    freins.set(cle, { n, vu: present, debut: suite ? e.debut : present });
+    return n;
+  };
   if (req.method === "POST"
-      && (chemin === "/rest/v1/rpc/frein_compter" || chemin === "/rest/v1/rpc/frein_rendre")) {
+      && (chemin === "/rest/v1/rpc/frein_essai" || chemin === "/rest/v1/rpc/frein_rendre")) {
     let brut = "";
     for await (const mm of req) brut += mm;
     if (baseDHier) {
       return repondre({ code: "PGRST202", message: `Could not find the function ${chemin.slice(13)}` }, 404);
     }
-    const { la_cle: cle, fenetre_s: fenetre } = JSON.parse(brut || "{}");
-    if (cleRefusee(cle)) {
-      return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
-    }
-    const present = Date.now();
-    const e = freins.get(cle);
+    const corps = JSON.parse(brut || "{}");
     if (chemin.endsWith("frein_rendre")) {
-      if (e) e.n = Math.max(0, e.n - 1);
+      const cles = Array.isArray(corps.les_cles) ? corps.les_cles : [];
+      if (cles.some(cleRefusee)) {
+        return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+      }
+      for (const cle of cles) {
+        const e = freins.get(cle);
+        if (e) e.n = Math.max(0, e.n - 1);
+      }
       res.writeHead(204);
       return res.end();
     }
-    const debut = e ? (e.debut ?? e.vu) : null;
-    const suite = debut !== null && present - debut < fenetre * 1000;
-    const n = suite ? e.n + 1 : 1;
-    freins.set(cle, { n, vu: present, debut: suite ? debut : present });
-    return repondre(n);
+    const { p_adresse, p_couple, p_compte, fenetre_s, mur_adresse, mur_couple } = corps;
+    if ([p_adresse, p_couple, p_compte].some(cleRefusee)) {
+      return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+    }
+    const present = Date.now();
+    const vieux = present - Math.max(fenetre_s, 3600) * 1000;
+    for (const [cle, e] of freins) if (e.vu < vieux) freins.delete(cle);
+    const a = freinCompter(p_adresse, fenetre_s, present);
+    if (a > mur_adresse || p_couple == null) return repondre([a, 0, 0]);
+    const c = freinCompter(p_couple, fenetre_s, present);
+    if (c > mur_couple || p_compte == null) return repondre([a, c, 0]);
+    return repondre([a, c, freinCompter(p_compte, fenetre_s, present)]);
   }
 
   // --- LES CARTES DE CHACUN -------------------------------------------------
@@ -1439,6 +1473,14 @@ const serveur = createServer(async (req, res) => {
   }
 
   const ecriture = /^\/rest\/v1\/(\w+)$/.exec(chemin);
+  if (req.method === "POST" && chemin === "/rest/v1/evenements") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    for (const ligne of [].concat(JSON.parse(brut || "[]"))) {
+      evenementsEnPlus.push({ id: 800000 + evenementsEnPlus.length, cree_le: new Date().toISOString(), ...ligne });
+    }
+    return repondre([], 201);
+  }
   if (req.method === "POST" && ecriture && tables()[ecriture[1]]) {
     const nom = ecriture[1];
     let brut = "";

@@ -4,11 +4,19 @@
 // d'entrée : l'écran de connexion du navigateur (`/api/connexion`) et celle
 // de l'application du téléphone (`/api/session`). Deux compteurs séparés ne
 // freineraient personne : il suffirait d'alterner les deux portes pour
-// doubler la cadence des essais. Un seul seau, partagé, ferme cette porte.
+// doubler la cadence des essais. Un seul compteur, partagé, ferme cette porte.
 //
-// DEUX SEAUX PAR ESSAI : celui de l'ADRESSE d'où il vient, et celui du
-// COMPTE qu'il vise. Le délai retenu est le plus grand des deux ; le mur
-// n'est que sur l'adresse.
+// TROIS SEAUX PAR ESSAI DE MOT DE PASSE, comptés dans cet ordre, et l'on
+// s'arrête au premier mur :
+//
+//   · l'ADRESSE — un plafond haut (trois cents), qui ne protège que le
+//     serveur : chaque essai lui coûte 210 000 tours de PBKDF2 ;
+//   · le COUPLE adresse + compte visé — le vrai mur (soixante) : une adresse
+//     qui attaque un compte se ferme CE compte, jamais celui des voisins ;
+//   · le COMPTE, de partout — une attaque répartie sur mille adresses. Il
+//     ralentit, il ne ferme jamais.
+//
+// Le délai retenu est le plus grand des trois.
 //
 // CE QUI COMPTE, CE SONT LES ÉCHECS. Un essai est compté AVANT d'être jugé —
 // sans quoi soixante essais lancés ensemble liraient tous zéro — puis une
@@ -16,28 +24,27 @@
 // trompe une fois ou deux, ne le sent pas ; cent personnes qui se connectent
 // avec le bon mot de passe non plus.
 
-import { compterUnEssai, rendreUnEssai } from "@/lib/serveur";
+import { compterLesEssais, compterUnEssaiALAncienne, rendreLesEssais } from "@/lib/serveur";
 
 // LE SEAU DE SECOURS, en mémoire. Le vrai compteur est dans la BASE, partagé
-// par toutes les instances (voir `frein_compter`,
+// par toutes les instances (`frein_essai`,
 // migrations/20261022_frein_fenetre_fixe.sql) ; celui-ci prend le relais
 // quand elle ne répond pas — ou qu'elle n'a pas encore reçu cette migration.
 //
 // Il ne compte alors que pour CETTE instance — c'est moins bien, et c'est
 // tout de même mieux que rien : une base injoignable ne doit pas ouvrir la
 // porte en grand, ni la fermer au propriétaire. Il suit les MÊMES règles que
-// la base : fenêtre fixe, échecs seulement.
+// la base : fenêtre fixe, trois seaux dans le même ordre, échecs seulement.
 const essais = new Map<string, { n: number; debut: number }>();
 
 const FENETRE_MS = 15 * 60 * 1000;
 const FENETRE_S = FENETRE_MS / 1000;
-const LIBRES = 5;               // échecs sans délai, par adresse
-const PALIER_MS = 500;          // délai ajouté par échec au-delà
+const PALIER_MS = 500;          // délai ajouté par échec au-delà des gratuits
 const PLAFOND_MS = 8000;
 
-// LE MUR, au-delà du délai. Passé ce nombre d'essais depuis une MÊME adresse
-// dans la fenêtre, on refuse tout de suite, sans même regarder le mot de
-// passe. Deux raisons, et la seconde compte autant que la première :
+// LE MUR, au-delà du délai. Passé ce nombre d'essais dans la fenêtre, on
+// refuse tout de suite, sans même regarder le mot de passe. Deux raisons, et
+// la seconde compte autant que la première :
 //
 //   1. un délai plafonné à huit secondes ne borne rien quand les essais
 //      arrivent ensemble — ils attendent tous les huit secondes EN MÊME
@@ -47,56 +54,83 @@ const PLAFOND_MS = 8000;
 //      aussi : mille essais lancés ensemble, c'est mille calculs lancés
 //      ensemble. Le refus arrive AVANT le calcul.
 //
-// Le mur est par ADRESSE, jamais par compte ni global : sans quoi il
-// suffirait d'attaquer pour enfermer le propriétaire dehors.
-const MUR = 60;
+// LE MUR PORTE SUR LE COUPLE, PAS SUR L'ADRESSE SEULE. MTN et Orange mettent
+// des centaines de téléphones derrière une même adresse publique : un mur
+// par adresse laissait un voisin qui se trompe soixante fois fermer la porte
+// à tous les autres — propriétaire compris — pour un quart d'heure, et
+// recommencer. Ni par compte, ni global non plus : il suffirait d'attaquer
+// pour enfermer le propriétaire dehors.
+const MUR = 60;                 // par couple adresse + compte visé
+const LIBRES = 5;
+const MUR_ADRESSE = 300;        // par adresse : la protection du serveur
+const LIBRES_ADRESSE = 100;
+const LIBRES_COMPTE = 10;       // par compte, de partout : jamais de mur
 
-// LE SEAU DU COMPTE, en plus du seau par adresse.
-//
-// Une attaque sérieuse ne vient pas d'une seule adresse : elle en loue mille.
-// Un frein par adresse ne la voit alors jamais. Ce second seau compte les
-// essais sur UN COMPTE — le courriel visé —, quelle que soit leur provenance.
-// Il ne verrouille rien : au pire, huit secondes d'attente pour CE compte.
-//
-// IL ÉTAIT COMMUN À TOUTE LA PLATEFORME, et c'était juste pour une maison —
-// le propriétaire et ses vendeurs. Pour une application grand public, mesuré
-// contre un vrai serveur : après soixante-dix connexions RÉUSSIES, chacune de
-// chez soi, CHAQUE connexion de la plateforme attendait huit secondes (66 ms
-// au repos) ; et une seule adresse, avec cinquante-cinq mauvais essais — sous
-// son propre mur —, imposait les mêmes huit secondes à tout le monde. Le
-// frein était devenu l'arme qu'il devait parer. Il ne se voyait pas : sa clé
-// commençait par un caractère nul, que PostgreSQL refuse, et il ne comptait
-// que dans la mémoire de chaque instance — assez pour ralentir une instance
-// chargée, jamais assez pour qu'un banc le remarque.
+// LE SEAU DU COMPTE. Il était COMMUN À TOUTE LA PLATEFORME, et c'était juste
+// pour une maison — le propriétaire et ses vendeurs. Pour une application
+// grand public, mesuré contre un vrai serveur : après soixante-dix
+// connexions RÉUSSIES, chacune de chez soi, CHAQUE connexion de la
+// plateforme attendait huit secondes (66 ms au repos) ; et une seule adresse,
+// avec cinquante-cinq mauvais essais — sous son propre mur —, imposait les
+// mêmes huit secondes à tout le monde. Le frein était devenu l'arme qu'il
+// devait parer. Il ne se voyait pas : sa clé commençait par un caractère nul,
+// que PostgreSQL refuse, et il ne comptait que dans la mémoire de chaque
+// instance — assez pour ralentir une instance chargée, jamais assez pour
+// qu'un banc le remarque.
 //
 // LA CLÉ N'EST PAS LE COURRIEL. Une table d'adresses ne doit pas devenir une
 // liste de qui essaie d'entrer où : la clé est une empreinte du courriel,
 // scellée par le secret de session (« @ » puis 32 chiffres hexadécimaux). Un
 // courriel qui n'a pas de compte a la sienne, comme les autres : le frein ne
 // dit pas qui est inscrit ici. Sans courriel — la clé de secours —, le seau
-// est « @secours ».
-const LIBRES_COMPTE = 10;
+// est « @secours ». Le couple s'écrit « adresse|@… ».
 
 /** Où l'essai a été compté — pour qu'une réussite le rende au même endroit. */
 export type Ticket = { cles: string[]; base: boolean };
+
+/** Les seaux d'un essai, et leurs murs. `null` : seau absent. */
+type Seaux = { adresse: string; couple: string | null; compte: string | null };
 
 /** Le délai à observer, d'après un nombre d'échecs déjà comptés. */
 function delaiPour(n: number, libres: number): number {
   return Math.min(Math.max(0, n - libres) * PALIER_MS, PLAFOND_MS);
 }
 
-/** Compte un essai en mémoire, dans une fenêtre FIXE, et rend le total. */
+// Le ménage de la mémoire : jamais plus d'une fois par minute — il parcourt
+// toute la table —, et un plafond dur. Sous une rafale de courriels inventés,
+// la table se remplissait plus vite que la fenêtre ne la vidait, et chaque
+// essai la reparcourait en entier.
+const PLAFOND_MEMOIRE = 50_000;
+let dernierMenage = 0;
+
+/** Compte un seau en mémoire, dans une fenêtre FIXE, et rend le total. */
 function compterEnMemoire(cle: string): number {
   const maintenant = Date.now();
+  if (essais.size > 5000 && maintenant - dernierMenage > 60_000) {
+    dernierMenage = maintenant;
+    for (const [k, v] of essais) if (maintenant - v.debut > FENETRE_MS) essais.delete(k);
+  }
+  // Au-delà du plafond, les plus anciennes entrées partent d'abord (une Map
+  // garde l'ordre d'arrivée) : un cran de moins pour elles, jamais une
+  // instance à genoux.
+  for (const k of essais.keys()) {
+    if (essais.size < PLAFOND_MEMOIRE) break;
+    essais.delete(k);
+  }
   const e = essais.get(cle);
   const suite = e !== undefined && maintenant - e.debut <= FENETRE_MS;
   const n = suite ? e.n + 1 : 1;
   essais.set(cle, { n, debut: suite ? e.debut : maintenant });
-  // Ménage opportuniste : on ne garde pas les vieilles entrées en mémoire.
-  if (essais.size > 5000) {
-    for (const [k, v] of essais) if (maintenant - v.debut > FENETRE_MS) essais.delete(k);
-  }
   return n;
+}
+
+/** Les trois seaux, en mémoire, dans le même ordre que `frein_essai`. */
+function compterLesEssaisEnMemoire(s: Seaux, murAdresse: number): [number, number, number] {
+  const a = compterEnMemoire(s.adresse);
+  if (a > murAdresse || s.couple === null) return [a, 0, 0];
+  const c = compterEnMemoire(s.couple);
+  if (c > MUR || s.compte === null) return [a, c, 0];
+  return [a, c, compterEnMemoire(s.compte)];
 }
 
 let sceau: { secret: string; cle: Promise<CryptoKey> } | null = null;
@@ -132,43 +166,66 @@ async function seauDuCompte(courriel: string): Promise<string> {
  * avant une écriture ne garantit rien, parce que quelqu'un écrit entre les
  * deux. Ici, la réservation et le comptage sont le MÊME geste.
  *
- * Rend `false` quand l'adresse a dépassé le mur : l'appelant doit alors
- * refuser TOUT DE SUITE, sans vérifier le mot de passe — c'est ce refus
- * précoce qui empêche une rafale de faire calculer le serveur. Sinon, un
- * TICKET : à rendre par `rendreLEssai` si le mot de passe était bon.
+ * Rend `false` quand un mur est passé : l'appelant doit alors refuser TOUT DE
+ * SUITE, sans vérifier le mot de passe — c'est ce refus précoce qui empêche
+ * une rafale de faire calculer le serveur. Sinon, un TICKET : à rendre par
+ * `rendreLEssai` si le mot de passe était bon.
  */
 export async function attendreLeFrein(
   cle: string,
   {
-    // Le courriel VISÉ : son seau s'ajoute à celui de l'adresse. Absent pour
-    // l'inscription, qui ne vise aucun compte existant.
+    // Le courriel VISÉ (vide : la clé de secours). Absent pour l'inscription,
+    // qui ne vise aucun compte : un seul seau, l'adresse, avec `mur`.
     compte,
     // L'INSCRIPTION A SON MUR À ELLE, plus bas, et une clé préfixée : un
     // passant qui crée son compte ne ralentit pas le propriétaire qui se
     // connecte, et personne ne crée vingt comptes en un quart d'heure.
     mur = MUR,
-  }: { compte?: string; mur?: number } = {},
+    // UN COMPTE DONT LE MOT DE PASSE EST PUBLIC — la vitrine des magasins —
+    // n'a pas de seau de compte : il ne protégerait rien, et n'importe qui
+    // pourrait faire attendre l'examinateur huit secondes. Le couple reste.
+    motDePassePublic = false,
+  }: { compte?: string; mur?: number; motDePassePublic?: boolean } = {},
 ): Promise<false | Ticket> {
-  const cles = compte === undefined ? [cle] : [cle, await seauDuCompte(compte)];
+  const connexion = compte !== undefined;
+  const k = connexion ? await seauDuCompte(compte) : null;
+  const seaux: Seaux = {
+    adresse: cle,
+    couple: k ? `${cle}|${k}` : null,
+    compte: k && !motDePassePublic ? k : null,
+  };
+  const murAdresse = connexion ? MUR_ADRESSE : mur;
 
-  // LE COMPTEUR EST DANS LA BASE — une instruction, sous le verrou de la
-  // ligne. En mémoire, il ne comptait que pour l'instance qui l'hébergeait :
-  // un hébergement qui en met plusieurs en parallèle donnait à une attaque
-  // répartie l'allocation autant de fois qu'il y avait d'instances, et
-  // personne ne pouvait le voir depuis l'extérieur. Les deux seaux sont
-  // demandés ensemble, pour ne pas payer deux allers-retours.
-  const enBase = await Promise.all(cles.map((k) => compterUnEssai(k, FENETRE_S)));
-  const base = enBase.every((n) => n !== null);
+  // LE COMPTEUR EST DANS LA BASE — une fonction, trois seaux, sous le verrou
+  // de chaque ligne. En mémoire, il ne comptait que pour l'instance qui
+  // l'hébergeait : un hébergement qui en met plusieurs en parallèle donnait à
+  // une attaque répartie l'allocation autant de fois qu'il y avait
+  // d'instances, et personne ne pouvait le voir depuis l'extérieur.
+  let n = await compterLesEssais(seaux, FENETRE_S, murAdresse, MUR);
+  let base = n !== null;
+  // Une base pas encore migrée : l'inscription garde la règle d'hier, qui
+  // comptait déjà dans la base (elle compte les réussites — c'est voulu pour
+  // l'inscription) ; la connexion, elle, ne retournera pas à huit secondes.
+  if (n === null && !connexion) {
+    const hier = await compterUnEssaiALAncienne(cle, FENETRE_S);
+    if (hier !== null) n = [hier, 0, 0];
+  }
   // La base n'a pas répondu : on retombe sur la mémoire de cette instance.
-  // Un frein muet vaut mieux qu'une porte fermée au propriétaire. (Un seau
-  // compté en base pendant que l'autre échouait y reste : un cran de trop,
-  // jamais un cran de moins.)
-  const [nAdresse, nCompte] = base ? (enBase as number[]) : cles.map(compterEnMemoire);
+  // Un frein muet vaut mieux qu'une porte fermée au propriétaire.
+  if (n === null) {
+    n = compterLesEssaisEnMemoire(seaux, murAdresse);
+    base = false;
+  }
+  const [nAdresse, nCouple, nCompte] = n;
 
-  if (nAdresse > mur) return false;
-  const attente = Math.max(delaiPour(nAdresse, LIBRES),
-                           nCompte === undefined ? 0 : delaiPour(nCompte, LIBRES_COMPTE));
+  if (nAdresse > murAdresse || nCouple > MUR) return false;
+  const attente = Math.max(
+    delaiPour(nAdresse, connexion ? LIBRES_ADRESSE : LIBRES),
+    seaux.couple ? delaiPour(nCouple, LIBRES) : 0,
+    seaux.compte ? delaiPour(nCompte, LIBRES_COMPTE) : 0,
+  );
   if (attente) await new Promise((r) => setTimeout(r, attente));
+  const cles = [seaux.adresse, seaux.couple, seaux.compte].filter((x): x is string => x !== null);
   return { cles, base };
 }
 
@@ -193,7 +250,7 @@ export function noterEchec(_ticket: Ticket): void {
  */
 export async function rendreLEssai(ticket: Ticket): Promise<void> {
   if (ticket.base) {
-    await Promise.all(ticket.cles.map(rendreUnEssai));
+    await rendreLesEssais(ticket.cles);
     return;
   }
   for (const k of ticket.cles) {
@@ -239,14 +296,15 @@ export function cleDeFrein(req: Request): string {
 // Il compte dans la BASE : toutes les instances partagent les mêmes seaux, et
 // une attaque répartie sur plusieurs instances ne gagne plus rien. Elle
 // gagnait autrefois l'allocation entière par instance, sans que rien ne le
-// signale.
+// signale. Une adresse murée n'y écrit plus rien de neuf, et la base fait son
+// propre ménage.
 //
-// Il ne remplace pas une protection de bordure : il ajoute du temps et un
-// mur, il n'empêche pas les requêtes d'arriver. Et si la base se tait, il
+// Il ne remplace pas une protection de bordure : il ajoute du temps et des
+// murs, il n'empêche pas les requêtes d'arriver. Et si la base se tait, il
 // retombe sur la mémoire d'une seule instance — moins bon, jamais fermé.
 //
-// Il ne freine pas une attaque qui essaie UN mot de passe sur MILLE comptes,
-// depuis mille adresses : aucun de ses seaux ne la voit. Ce qui tient alors,
-// frein ou pas : le mot de passe fait douze caractères au minimum, et son
-// empreinte coûte 210 000 tours. Le frein n'est pas la seule chose entre un
-// inconnu et la caisse.
+// Il ne freine guère une attaque qui essaie UN mot de passe sur MILLE comptes
+// depuis mille adresses : chaque couple, chaque compte n'en voit qu'un. Ce
+// qui tient alors, frein ou pas : le mot de passe fait douze caractères au
+// minimum, et son empreinte coûte 210 000 tours. Le frein n'est pas la seule
+// chose entre un inconnu et la caisse.

@@ -373,25 +373,25 @@ try {
     await code("/", { headers: { cookie: biscuit }, redirect: "manual" }), 200);
 
   console.log("\nLe frein, partagé entre les deux portes");
-  // CHAQUE ESSAI VISE SON PROPRE COMPTE. Le frein a deux seaux : l'adresse,
-  // et le compte visé. Frappés sans courriel, tous ces essais visaient la clé
-  // de secours — un seul seau, « @secours » : l'adresse innocente était
-  // ralentie par les échecs des autres (voulu : la clé de secours ouvre
-  // tout), et la rotation d'adresses passait pour freinée par ce seau-là,
-  // sans rien prouver de l'adresse. Ici, seule l'adresse peut freiner.
-  let compte = 0;
-  const frapper = (chemin, ip) =>
+  // LE MUR PORTE SUR LE COUPLE adresse + compte visé : c'est lui qui doit
+  // être partagé entre les deux portes. Frappés sans courriel, tous ces
+  // essais visaient la clé de secours — un seul seau de compte, « @secours » :
+  // l'adresse innocente était ralentie par les échecs des autres (voulu : la
+  // clé de secours ouvre tout), et la rotation d'adresses passait pour
+  // freinée par ce seau-là, sans rien prouver de l'adresse. Chaque scène vise
+  // donc SON compte, et seul le couple peut la freiner.
+  const frapper = (chemin, ip, courriel) =>
     fetch(B + chemin, {
       method: "POST",
       headers: { "content-type": "application/json", "x-forwarded-for": ip },
-      body: JSON.stringify({ courriel: `sonde-${++compte}@verrou.cm`, motdepasse: "faux" }),
+      body: JSON.stringify({ courriel, motdepasse: "faux" }),
     });
   const chrono = async (f) => { const t = Date.now(); await f(); return Date.now() - t; };
 
-  const neuve = await chrono(() => frapper("/api/session", "10.9.0.1"));
-  for (let i = 0; i < 9; i++) await frapper("/api/connexion", "10.9.0.2");  // porte navigateur
-  const punie = await chrono(() => frapper("/api/session", "10.9.0.2"));    // porte application
-  const innocente = await chrono(() => frapper("/api/session", "10.9.0.3"));
+  const neuve = await chrono(() => frapper("/api/session", "10.9.0.1", "reference@verrou.cm"));
+  for (let i = 0; i < 9; i++) await frapper("/api/connexion", "10.9.0.2", "cible@verrou.cm"); // porte navigateur
+  const punie = await chrono(() => frapper("/api/session", "10.9.0.2", "cible@verrou.cm"));   // porte application
+  const innocente = await chrono(() => frapper("/api/session", "10.9.0.3", "innocente@verrou.cm"));
 
   console.log(`     (référence ${neuve}ms · punie ${punie}ms · innocente ${innocente}ms)`);
   verifier("les échecs du navigateur freinent l'application", punie - neuve > 1000, true);
@@ -407,9 +407,10 @@ try {
   // Ici, le vrai bout est constant (« 10.9.0.9 ») et le faux change à chaque
   // coup. Le frein doit tout de même se resserrer.
   for (let i = 0; i < 9; i++) {
-    await frapper("/api/connexion", `203.0.113.${i}, 10.9.0.9`);
+    await frapper("/api/connexion", `203.0.113.${i}, 10.9.0.9`, "rotation@verrou.cm");
   }
-  const rotation = await chrono(() => frapper("/api/session", "198.51.100.7, 10.9.0.9"));
+  const rotation = await chrono(() =>
+    frapper("/api/session", "198.51.100.7, 10.9.0.9", "rotation@verrou.cm"));
   console.log(`     (adresse inventée à chaque essai : ${rotation}ms)`);
   verifier("changer d'adresse annoncée ne desserre pas le frein",
            rotation - neuve > 1000, true);

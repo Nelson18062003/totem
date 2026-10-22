@@ -94,9 +94,13 @@ export async function ouvrirLaPorte(
   // cher pour nous aussi. Passé le mur, on répond sans rien calculer : sinon
   // une rafale d'essais devient une rafale de calculs, et la plateforme
   // s'écroule d'elle-même sous les tentatives.
-  // Deux seaux : l'adresse d'où l'on frappe, et le compte qu'on vise (vide :
-  // la clé de secours a le sien).
-  const ticket = await attendreLeFrein(cleDeFrein(req), { compte: courriel });
+  // Trois seaux : l'adresse d'où l'on frappe, le couple adresse + compte
+  // visé, et le compte de partout (vide : la clé de secours a le sien). La
+  // vitrine n'a pas de seau de compte : son mot de passe est public.
+  const ticket = await attendreLeFrein(cleDeFrein(req), {
+    compte: courriel,
+    motDePassePublic: courriel === COURRIEL_DEMONSTRATION && demonstrationOuverte(),
+  });
   if (!ticket) {
     return refus(langue, "tropDEssais", 429);
   }

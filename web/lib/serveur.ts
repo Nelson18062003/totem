@@ -1376,28 +1376,73 @@ export async function enregistrerAppareil(
 }
 
 /**
- * Compte un essai de mot de passe, dans la BASE, et rend le total.
+ * Compte un essai de mot de passe dans ses trois seaux, dans la BASE, et rend
+ * {adresse, couple, compte} — 0 pour un seau qu'elle n'a pas touché, parce
+ * qu'un mur l'a arrêtée avant (voir `frein_essai`,
+ * migrations/20261022_frein_fenetre_fixe.sql).
  *
  * `null` quand la base ne répond pas — et ce `null` compte : le frein doit
  * alors retomber sur son seau en mémoire, jamais fermer la porte. Une base
  * injoignable ne doit pas être un verrou sur sa propre maison ; c'est déjà la
  * raison d'être de la clé de secours.
  *
- * Le comptage est fait par la base en UNE instruction (voir
- * `compter_un_essai` dans sql/schema.sql) : lire ici puis écrire là
+ * Le comptage est fait par la base en UNE fonction : lire ici puis écrire là
  * reproduirait exactement la course qu'on veut fermer.
  */
-export async function compterUnEssai(
+export async function compterLesEssais(
+  seaux: { adresse: string; couple: string | null; compte: string | null },
+  fenetreS: number, murAdresse: number, murCouple: number,
+): Promise<[number, number, number] | null> {
+  if (!relie) return null;
+  try {
+    const r = await appeler(`rpc/frein_essai`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        p_adresse: seaux.adresse, p_couple: seaux.couple, p_compte: seaux.compte,
+        fenetre_s: fenetreS, mur_adresse: murAdresse, mur_couple: murCouple,
+      }),
+      cache: "no-store",
+      // Un frein ne doit jamais faire attendre plus que ce qu'il freine.
+      signal: AbortSignal.timeout(2000),
+    });
+    // UNE BASE PAS ENCORE MIGRÉE ne connaît pas `frein_essai` : le frein
+    // compte alors en mémoire, et c'est moins bien — chaque instance a le sien.
+    // On le dit une fois au journal plutôt que de le laisser passer en silence.
+    if (r.status === 404) {
+      if (!freinSansMigration) {
+        freinSansMigration = true;
+        noterIncident("Le frein des mots de passe compte dans la mémoire de chaque serveur : "
+          + "la base n'a pas encore reçu migrations/20261022_frein_fenetre_fixe.sql.");
+      }
+      return null;
+    }
+    if (!r.ok) return null;
+    const n = await r.json();
+    return Array.isArray(n) && n.length === 3 && n.every((x) => Number.isFinite(x))
+      ? [n[0], n[1], n[2]] : null;
+  } catch {
+    return null;
+  }
+}
+let freinSansMigration = false;
+
+/**
+ * La règle d'HIER (`compter_un_essai`) : une fenêtre qui glisse et qui garde
+ * les réussites. Elle ne sert plus qu'à l'inscription, et seulement sur une
+ * base qui n'a pas encore la règle neuve — l'inscription y comptait déjà, et
+ * elle compte ses réussites à dessein : personne ne crée vingt comptes en un
+ * quart d'heure.
+ */
+export async function compterUnEssaiALAncienne(
   seau: string, fenetreS: number,
 ): Promise<number | null> {
   if (!relie) return null;
   try {
-    // `frein_compter` (migrations/20261022_frein_fenetre_fixe.sql), et non
-    // plus `compter_un_essai` : celle-ci ne repartait de un qu'après un quart
-    // d'heure SANS UN ESSAI — jamais, sur une adresse que partagent cent
-    // téléphones. Une base pas encore migrée répond 404 : `null`, et le frein
-    // compte dans sa mémoire, comme avant.
-    const r = await appeler(`rpc/frein_compter`, {
+    const r = await appeler(`rpc/compter_un_essai`, {
       method: "POST",
       headers: {
         apikey: cle!, authorization: `Bearer ${cle}`,
@@ -1405,7 +1450,6 @@ export async function compterUnEssai(
       },
       body: JSON.stringify({ la_cle: seau, fenetre_s: fenetreS }),
       cache: "no-store",
-      // Un frein ne doit jamais faire attendre plus que ce qu'il freine.
       signal: AbortSignal.timeout(2000),
     });
     if (!r.ok) return null;
@@ -1417,12 +1461,12 @@ export async function compterUnEssai(
 }
 
 /**
- * Rendre un essai : la connexion a réussi, elle ne compte pas. Rend `false`
- * quand la base n'a pas pu le faire — l'essai reste alors compté, ce qui ne
- * coûte qu'un cran de frein, jamais une porte ouverte.
+ * Rendre un essai, dans chacun de ses seaux : la connexion a réussi, elle ne
+ * compte pas. Rend `false` quand la base n'a pas pu le faire — l'essai reste
+ * alors compté, ce qui ne coûte qu'un cran de frein, jamais une porte ouverte.
  */
-export async function rendreUnEssai(seau: string): Promise<boolean> {
-  if (!relie) return false;
+export async function rendreLesEssais(seaux: string[]): Promise<boolean> {
+  if (!relie || seaux.length === 0) return false;
   try {
     const r = await appeler(`rpc/frein_rendre`, {
       method: "POST",
@@ -1430,7 +1474,7 @@ export async function rendreUnEssai(seau: string): Promise<boolean> {
         apikey: cle!, authorization: `Bearer ${cle}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ la_cle: seau }),
+      body: JSON.stringify({ les_cles: seaux }),
       cache: "no-store",
       signal: AbortSignal.timeout(2000),
     });

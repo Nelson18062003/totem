@@ -448,8 +448,9 @@ de ne pas faire la queue**, et personne n'attaque un mot de passe en faisant
 la queue. C'est la même faute que celle du propriétaire unique : lire avant
 d'écrire ne garantit rien. Le harnais exige aussi que le mur refuse AVANT le
 calcul de l'empreinte (7 ms contre 120 ms) — sans quoi une rafale d'essais
-devient une rafale de calculs — et que le propriétaire, sur une autre adresse,
-entre encore pendant l'attaque.
+devient une rafale de calculs — et que le propriétaire entre encore pendant
+l'attaque, d'une autre adresse comme de la MÊME : un opérateur met des
+centaines de téléphones derrière une adresse.
 
 Le compteur vit dans la BASE, pas dans la mémoire du serveur : deux instances
 derrière le même hébergement partagent un seul seau. Le harnais lance DEUX
@@ -470,16 +471,37 @@ entrées avec le bon mot de passe, et la suivante attendait huit secondes
 (66 ms au repos) ; une seule adresse, sous son propre mur, imposait les mêmes
 huit secondes à tout le monde. La production le faisait déjà, dans la
 mémoire de chaque instance chargée — l'écran restait sur « Vérification… »,
-on recommençait, et chaque essai prolongeait l'attente de tous. Un seau pensé
-pour UNE maison ne survit pas à l'ouverture au public : il est devenu le seau
-du COMPTE visé (une empreinte du courriel, jamais le courriel), une réussite
-REND son essai sans vider l'ardoise — l'effacer offrait de contourner le mur
-en se connectant à son propre compte entre deux salves —, et la fenêtre est
-fixe (`frein_compter`, `frein_rendre`). `verifier-le-frein` rejoue la foule,
-l'attaquant, la salve contournée et la base pas encore migrée ; le frein
-d'avant y échoue huit fois. `verifier-les-regles.sh` éprouve la fenêtre sur
-un vrai PostgreSQL — et son premier jet attendait DANS la transaction, où
-`now()` ne bouge pas : la règle neuve et son témoin y échouaient ensemble.
+on recommençait, et chaque essai prolongeait l'attente de tous.
+
+**Un frein pensé pour une maison ne survit pas à l'ouverture au public.** La
+relecture adverse (quatre lentilles, un contradicteur par constat) a trouvé
+le reste. Le mur était par ADRESSE, et MTN comme Orange mettent des
+centaines de téléphones derrière une seule : un voisin qui se trompe
+soixante fois fermait la porte à tous les autres, propriétaire compris — le
+frein de production, rejoué, lui répond 429. Et une adresse déjà murée
+écrivait encore une ligne par courriel inventé : une seule suffisait à
+remplir la base. Le frein compte maintenant trois seaux dans une seule
+fonction de la base (`frein_essai`), arrêtée au premier mur : l'ADRESSE (un
+plafond haut, qui ne protège que le serveur), le COUPLE adresse + compte
+visé (le vrai mur), le COMPTE de partout (il ralentit, il ne ferme jamais).
+La clé d'un compte est une empreinte scellée du courriel, jamais le
+courriel ; une réussite REND son essai sans vider l'ardoise — l'effacer
+offrait de contourner le mur entre deux salves ; la fenêtre est fixe ; une
+ligne écrite par la règle d'hier repart de un ; la base fait son ménage ; la
+vitrine, dont le mot de passe est public, n'a pas de seau de compte ; et une
+base pas encore migrée garde l'inscription dans la base et le DIT au
+journal. `verifier-le-frein` rejoue chacune de ces scènes ; le frein de
+production y échoue treize fois.
+
+**Un banc doit lire ce qu'il prétend garder.** La même relecture a pris mes
+propres bancs : la section « changer d'adresse annoncée » envoyait aussi
+« x-real-ip », qui passe devant — elle ne lisait jamais « x-forwarded-for »,
+et revenir au premier élément y restait vert ; « personne d'autre que la
+plateforme » essayait l'appel en visiteur anonyme, et c'est la TABLE qui
+refusait — sans la révocation, vert encore. On lit maintenant le DROIT sur
+la fonction, avec une fonction témoin laissée ouverte. Et la fenêtre, éprouvée
+sur un vrai PostgreSQL, attendait d'abord DANS la transaction, où `now()` ne
+bouge pas : la règle neuve et son témoin y échouaient ensemble.
 
 `verifier-la-politique` ouvre un vrai Chromium et GLISSE un script dans le
 HTML de la page, comme le ferait un nom d'expéditeur piégé. Une politique de
