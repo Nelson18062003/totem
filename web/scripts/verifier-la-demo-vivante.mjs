@@ -565,6 +565,25 @@ try {
   } else {
     exiger("pas de lien signé pour la démo", true);
   }
+
+  // LE FREIN, À TRAVERS LE VRAI POSTGREST. Si l'appel à `frein_essai` ou à
+  // `frein_rendre` échouait ici — forme de la réponse, arguments nuls, droit
+  // manquant —, la plateforme retomberait EN SILENCE sur la mémoire de
+  // l'instance : toutes les connexions de ce banc passeraient, et tous les
+  // autres bancs aussi (ils parlent au faux nuage). C'est dans la BASE qu'on
+  // regarde : les couples écrits avec leur début de fenêtre, chaque réussite
+  // rendue, et le seul échec du banc encore compté.
+  console.log("\nLE FREIN, À TRAVERS LE VRAI POSTGREST");
+  const rate = await poste("/api/session?langue=fr", { courriel: "frein@demo.cm", motdepasse: "pas-le-bon-mot-de-passe" });
+  verifier("un mauvais mot de passe est refusé", rate.status, 401);
+  verifier("la base porte les couples, avec leur début de fenêtre",
+    Number(psql("select count(*) from freins where cle like '%|@%' and debut is not null")) > 3, true);
+  verifier("…et les comptes, sous leur empreinte",
+    Number(psql("select count(*) from freins where cle ~ '^@[0-9a-f]{32}$'")) > 3, true);
+  verifier("chaque connexion réussie a rendu son essai : seul l'échec reste compté",
+    psql("select count(*) from freins where cle like '%|@%' and n > 0"), "1");
+  verifier("et la plateforme n'a pas dû compter en mémoire",
+    psql("select count(*) from evenements where texte like 'Le frein des mots de passe%'"), "0");
 } catch (e) {
   echecs++;
   console.error("✗ Le harnais s'est arrêté :", e);

@@ -488,8 +488,9 @@ create trigger un_proprietaire_reste
 -- Voir migrations/20260831_consolidation.sql.
 -- ---------------------------------------------------------------------------
 create table if not exists freins (
-  -- L'adresse vue par le serveur, ou le seau commun. Jamais un courriel :
-  -- une table d'adresses ne doit pas devenir une liste de qui a un compte.
+  -- L'adresse vue par le serveur, ou le seau d'un compte (« @ » et une
+  -- empreinte scellée du courriel). Jamais un courriel : une table d'adresses
+  -- ne doit pas devenir une liste de qui a un compte.
   cle    text,
   n      integer not null default 0,
   vu     timestamptz not null default now()
@@ -513,6 +514,10 @@ create unique index if not exists freins_cle_unique on freins (cle);
 
 create index if not exists freins_vu on freins (vu);
 
+-- REMPLACÉE par `frein_essai` (migrations/20261022_frein_fenetre_fixe.sql) :
+-- celle-ci ne repart de un qu'après un quart d'heure SANS UN ESSAI — jamais,
+-- sur une adresse que partagent cent téléphones. Gardée : une plateforme
+-- d'hier l'appelle encore.
 create or replace function compter_un_essai(la_cle text, fenetre_s integer)
 returns integer
 language sql
@@ -529,6 +534,107 @@ as $$
         vu = now()
   returning n;
 $$;
+
+-- LA RÈGLE NEUVE DU FREIN (migrations/20261022_frein_fenetre_fixe.sql,
+-- recopiée telle quelle pour une base neuve) : une fenêtre fixe, trois seaux
+-- — l'adresse, le couple adresse + compte visé, le compte —, une adresse
+-- murée qui n'écrit plus rien, le ménage, et une réussite qui rend son essai.
+-- 1. Le début de la fenêtre.
+alter table freins add column if not exists debut timestamptz;
+
+-- 2. Compter un seau, dans une fenêtre fixe. Une seule instruction, sous le
+--    verrou de la ligne : lire puis écrire laisserait passer une rafale.
+--    Toutes les expressions du « set » lisent la ligne D'AVANT ; un début
+--    absent rend la comparaison nulle, donc fausse : la fenêtre repart.
+create or replace function frein_compter(la_cle text, fenetre_s integer)
+returns integer
+language sql
+set search_path = public
+as $$
+  insert into public.freins (cle, n, vu, debut)
+  values (la_cle, 1, now(), now())
+  on conflict (cle) do update
+    set n = case
+              when freins.debut > now() - make_interval(secs => fenetre_s)
+              then freins.n + 1
+              else 1
+            end,
+        debut = case
+              when freins.debut > now() - make_interval(secs => fenetre_s)
+              then freins.debut
+              else now()
+            end,
+        vu = now()
+  returning n;
+$$;
+
+-- 3. Un essai de mot de passe, ses trois seaux. Rend {adresse, couple,
+--    compte} ; 0 pour un seau qu'on n'a pas touché. Le couple et le compte
+--    sont facultatifs (null) : l'inscription ne vise aucun compte, et la
+--    vitrine — dont le mot de passe est public — n'a pas de seau de compte.
+create or replace function frein_essai(
+  p_adresse text, p_couple text, p_compte text,
+  fenetre_s integer, mur_adresse integer, mur_couple integer)
+returns integer[]
+language plpgsql
+set search_path = public
+as $$
+declare
+  a integer;
+  c integer := 0;
+  k integer := 0;
+begin
+  delete from public.freins
+   where vu < now() - make_interval(secs => greatest(fenetre_s, 3600));
+  a := public.frein_compter(p_adresse, fenetre_s);
+  if a > mur_adresse or p_couple is null then
+    return array[a, 0, 0];
+  end if;
+  c := public.frein_compter(p_couple, fenetre_s);
+  if c > mur_couple then
+    -- Refusé avant tout calcul : cet essai ne coûte rien au serveur, il ne
+    -- compte pas pour l'adresse. Sans quoi un voisin d'opérateur qui
+    -- s'acharne sur UN compte — soixante vrais essais, puis des refus à la
+    -- chaîne — finissait par fermer l'adresse à tous les autres.
+    update public.freins set n = greatest(n - 1, 0) where cle = p_adresse;
+    return array[a - 1, c, 0];
+  end if;
+  if p_compte is null then
+    return array[a, c, 0];
+  end if;
+  k := public.frein_compter(p_compte, fenetre_s);
+  return array[a, c, k];
+end;
+$$;
+
+-- 4. Rendre un essai : la connexion a réussi, elle ne compte pas. Jamais
+--    sous zéro ; une clé inconnue ne crée rien. (Une première version de
+--    cette migration le faisait clé par clé : elle s'efface.)
+drop function if exists frein_rendre(text);
+create or replace function frein_rendre(les_cles text[])
+returns void
+language sql
+set search_path = public
+as $$
+  update public.freins set n = greatest(n - 1, 0) where cle = any(les_cles);
+$$;
+
+-- Personne d'autre que la plateforme : ni le navigateur, ni le téléphone ne
+-- parlent à la base. Rendre un essai, pour un inconnu, ce serait effacer ses
+-- propres échecs.
+revoke all on function frein_compter(text, integer) from public, anon, authenticated;
+revoke all on function frein_essai(text, text, text, integer, integer, integer)
+  from public, anon, authenticated;
+revoke all on function frein_rendre(text[]) from public, anon, authenticated;
+-- …et la plateforme, elle, les appelle : son rôle les reçoit en propre, sans
+-- dépendre des droits par défaut de l'hébergeur.
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function frein_compter(text, integer),
+      frein_essai(text, text, text, integer, integer, integer),
+      frein_rendre(text[]) to service_role;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Sécurité : personne ne lit la base en direct. Personne.

@@ -31,8 +31,14 @@
 #
 # COMMENT S'EN SERVIR : onglet Actions → « Mise à jour » → Run workflow →
 # choisir le canal. Le canal doit être celui du paquet installé sur le
-# téléphone : « apercu » pour l'APK qu'on s'envoie à soi-même, « essai »
-# pour la piste interne du Play Store, « production » pour le public.
+# téléphone : « essai » pour les pistes d'essai (Play Store, TestFlight) —
+# c'est là que sont le téléphone du propriétaire et les essayeurs —,
+# « production » pour le public, « apercu » pour un APK qu'on s'enverrait à
+# soi-même (aucun n'a jamais été distribué : publier là n'atteint personne).
+#
+# Une mise à jour se TÉLÉCHARGE à une ouverture et s'AFFICHE à l'ouverture
+# complète suivante. Et elle n'atteint que les paquets de la même version :
+# un paquet plus ancien garde ses écrans jusqu'à une compilation neuve.
 
 name: Mise à jour
 
@@ -42,12 +48,12 @@ on:
       canal:
         description: "Quels téléphones mettre à jour"
         required: true
-        default: apercu
+        default: essai
         type: choice
         options:
-          - apercu       # l'APK qu'on s'installe soi-même
-          - essai        # la piste d'essai interne du Play Store
+          - essai        # les pistes d'essai : le propriétaire, les essayeurs
           - production   # les téléphones du public
+          - apercu       # l'APK qu'on s'installe soi-même
       message:
         description: "Ce que cette mise à jour change (visible dans Expo)"
         required: false
@@ -186,8 +192,9 @@ jobs:
         run: |
           echo "### Mise à jour publiée sur \`$CANAL\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Les téléphones la prendront **au prochain démarrage** de" >> $GITHUB_STEP_SUMMARY
-          echo "l'application. Rien à réinstaller." >> $GITHUB_STEP_SUMMARY
+          echo "Les téléphones la **téléchargent** à une ouverture de l'application," >> $GITHUB_STEP_SUMMARY
+          echo "et l'**affichent** à l'ouverture complète suivante (fermer pour de bon," >> $GITHUB_STEP_SUMMARY
+          echo "puis rouvrir). Rien à réinstaller." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           V=$(node -e "console.log(require('./app.json').expo.version)")
           echo "Elle ne rejoint que les applications en version **$V**." >> $GITHUB_STEP_SUMMARY

@@ -83,7 +83,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "//updates": "LES MISES A JOUR A DISTANCE. Une application installee n'a pas besoin d'etre reinstallee a chaque correction : Expo depose la nouvelle version du code sur cette adresse, et l'application la prend au demarrage suivant. Quelques secondes, sans passer par le magasin, sans que personne ne telecharge quoi que ce soit a la main. Cela ne vaut QUE pour le code JavaScript ; changer une brique native (une permission, une bibliotheque) demande toujours une vraie compilation.",
+    "//updates": "LES MISES A JOUR A DISTANCE. Une application installee n'a pas besoin d'etre reinstallee a chaque correction : Expo depose la nouvelle version du code sur cette adresse, et l'application la telecharge a une ouverture, puis l'affiche a l'ouverture complete suivante. Quelques secondes, sans passer par le magasin, sans que personne ne telecharge quoi que ce soit a la main. Cela ne vaut QUE pour le code JavaScript ; changer une brique native (une permission, une bibliotheque) demande toujours une vraie compilation.",
     "updates": {
       "url": "https://u.expo.dev/66fbf865-c824-40f0-97f7-b4ecb83ab50f"
     },

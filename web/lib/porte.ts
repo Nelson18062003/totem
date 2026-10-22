@@ -40,7 +40,7 @@ import {
   COURRIEL_DEMONSTRATION, MOTDEPASSE_DEMONSTRATION, demonstrationOuverte,
   estDemonstration,
 } from "@/lib/demonstration";
-import { attendreLeFrein, cleDeFrein, noterEchec, oublierEchecs } from "@/lib/frein";
+import { attendreLeFrein, cleDeFrein, noterEchec, rendreLEssai } from "@/lib/frein";
 import { erreurApi } from "@noyau/textes/api";
 import type { Langue } from "@noyau/langue";
 
@@ -94,12 +94,21 @@ export async function ouvrirLaPorte(
   // cher pour nous aussi. Passé le mur, on répond sans rien calculer : sinon
   // une rafale d'essais devient une rafale de calculs, et la plateforme
   // s'écroule d'elle-même sous les tentatives.
-  const cle = cleDeFrein(req);
-  if (!(await attendreLeFrein(cle))) {
+  // Trois seaux : l'adresse d'où l'on frappe, le couple adresse + compte
+  // visé, et le compte de partout (vide : la clé de secours a le sien). La
+  // vitrine n'a pas de seau de compte : son mot de passe est public.
+  // UN MOT DE PASSE VIDE se refuse AVANT le frein : il ne coûte aucun calcul,
+  // et compté, il remplissait gratuitement le seau d'une adresse d'opérateur
+  // — mille demandes vides fermaient la porte à tous ceux qui la partagent.
+  if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
+
+  const ticket = await attendreLeFrein(cleDeFrein(req), {
+    compte: courriel,
+    motDePassePublic: courriel === COURRIEL_DEMONSTRATION && demonstrationOuverte(),
+  });
+  if (!ticket) {
     return refus(langue, "tropDEssais", 429);
   }
-
-  if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
 
   // --- Chemin 0 : la démonstration ---------------------------------------
   // Son courriel n'est celui d'aucun compte : il n'existe pas en base, et
@@ -108,10 +117,10 @@ export async function ouvrirLaPorte(
   // laisser essayer à l'infini.
   if (courriel === COURRIEL_DEMONSTRATION && demonstrationOuverte()) {
     if (!(await egaliteConstante(motdepasse, MOTDEPASSE_DEMONSTRATION))) {
-      noterEchec(cle);
+      noterEchec(ticket);
       return refus(langue, "identifiantsIncorrects", 401);
     }
-    oublierEchecs(cle);
+    await rendreLEssai(ticket);
     return {
       ok: true, jeton: await signerSession(secret, SUJET_DEMONSTRATION),
       sujet: SUJET_DEMONSTRATION,
@@ -137,15 +146,15 @@ export async function ouvrirLaPorte(
     const bon = await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
 
     if (!trouve || !bon) {
-      noterEchec(cle);
+      noterEchec(ticket);
       return refus(langue, "identifiantsIncorrects", 401);
     }
+    // Le mot de passe était bon : ce n'est pas une tentative d'intrusion,
+    // l'essai est rendu — même quand la porte ne s'ouvre pas pour autant.
+    await rendreLEssai(ticket);
     if (!trouve.compte.approuve) {
-      // Le mot de passe était bon : ce n'est pas une tentative d'intrusion,
-      // on ne freine pas. Mais la porte ne s'ouvre pas pour autant.
       return refus(langue, "compteEnAttente", 403);
     }
-    oublierEchecs(cle);
     // On profite d'avoir le mot de passe en main pour refaire l'empreinte si
     // le nombre de tours a été augmenté depuis. Un échec ici n'empêche pas
     // d'entrer : c'est un entretien, pas une condition.
@@ -162,10 +171,10 @@ export async function ouvrirLaPorte(
   // --- Chemin 2 : la clé de secours ---------------------------------------
   if (!secours) return refus(langue, "identifiantsIncorrects", 401);
   if (!(await egaliteConstante(motdepasse, secours))) {
-    noterEchec(cle);
+    noterEchec(ticket);
     return refus(langue, "identifiantsIncorrects", 401);
   }
-  oublierEchecs(cle);
+  await rendreLEssai(ticket);
   return { ok: true, jeton: await signerSession(secret, "secours"), sujet: "secours" };
 }
 
@@ -276,9 +285,19 @@ export async function inscrire(
   const telephone = telephonePropre(demande.telephone);
   if (present(demande.telephone) && !telephone) return refus(langue, "telephoneInvalide", 400);
   if (present(demande.adresse) && !adresse) return refus(langue, "adresseManquante", 400);
+  // L'APPLICATION D'HIER ne nomme AUCUN des quatre champs d'identité : son
+  // écran n'envoie que le courriel et le mot de passe (les compilations
+  // d'août et du 2 octobre ; le 22 octobre, les essayeurs Android ouvraient
+  // encore celle d'août). Lui répondre « il faut le prénom et le nom », c'est
+  // réclamer un champ qu'elle n'a pas — l'essayeur relit son écran, ne
+  // trouve rien, et reste là. On lui dit de mettre à jour. Une demande qui
+  // nomme UN champ vient d'une application qui sait les demander : elle
+  // reçoit le refus précis.
+  const ancienne = (["prenom", "nom", "adresse", "telephone"] as const)
+    .every((k) => demande[k] === undefined);
   /** Le premier champ qui manque, ou `null` quand l'identité est complète. */
   const manque = (): Parameters<typeof erreurApi>[1] | null =>
-    !prenom || !nom ? "nomManquant"
+    !prenom || !nom ? (ancienne ? "applicationTropAncienne" : "nomManquant")
       : !adresse ? "adresseManquante"
         : !telephone ? "telephoneInvalide" : null;
 
@@ -306,10 +325,10 @@ export async function inscrire(
   //    (justes s'ils sont donnés). Tous les autres comptes les donnent.
   if (combien > 0 && manque()) return refus(langue, manque()!, 400);
 
-  // 4. LE FREIN — un seau à part, par adresse, et un mur plus bas que celui
-  //    de la connexion : personne ne crée vingt comptes en un quart d'heure.
+  // 4. LE FREIN — un seau à part, par adresse, et son propre mur : personne
+  //    ne crée cent comptes en un quart d'heure.
   const cle = `inscription|${cleDeFrein(req)}`;
-  if (!(await attendreLeFrein(cle, { commun: false, mur: MUR_INSCRIPTION }))) {
+  if (!(await attendreLeFrein(cle, { mur: MUR_INSCRIPTION }))) {
     return refus(langue, "tropDEssais", 429);
   }
 
@@ -348,8 +367,15 @@ export async function inscrire(
 }
 
 /** Le mur des inscriptions : combien d'essais depuis UNE adresse dans la
- *  fenêtre du frein (un quart d'heure) avant de refuser sans calculer. */
-const MUR_INSCRIPTION = 20;
+ *  fenêtre du frein (un quart d'heure) avant de refuser sans calculer.
+ *
+ *  Il était à VINGT, pensé pour une adresse qui serait celle d'une personne.
+ *  Un opérateur mobile met des centaines de téléphones derrière la même :
+ *  vingt inscriptions par quart d'heure pour tout un quartier, c'était un
+ *  lancement de la bêta refusé « trop d'essais », et un voisin qui les
+ *  épuisait en vingt et une demandes. Cent bornent encore la fabrication de
+ *  comptes en série (la console montre l'adresse qui s'y essaie). */
+const MUR_INSCRIPTION = 100;
 
 /**
  * Supprimer SON compte — le sien, et aucun autre.
@@ -387,17 +413,20 @@ export async function supprimerSonCompte(
   }
   if (moi.role === "proprietaire") return refus(langue, "proprietaireNeSeSupprimePas", 403);
 
-  const cle = cleDeFrein(req);
-  if (!(await attendreLeFrein(cle))) return refus(langue, "tropDEssais", 429);
-
-  const trouve = await utilisateurAVerifier(moi.courriel);
-  const bon = typeof motdepasse === "string" && motdepasse.length > 0
-    && await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
-  if (!trouve || !bon) {
-    noterEchec(cle);
+  // Vide : refusé avant le frein, comme à la connexion — rien à calculer.
+  if (typeof motdepasse !== "string" || motdepasse.length === 0) {
     return refus(langue, "motDePasseIncorrect", 401);
   }
-  oublierEchecs(cle);
+  const ticket = await attendreLeFrein(cleDeFrein(req), { compte: moi.courriel });
+  if (!ticket) return refus(langue, "tropDEssais", 429);
+
+  const trouve = await utilisateurAVerifier(moi.courriel);
+  const bon = await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
+  if (!trouve || !bon) {
+    noterEchec(ticket);
+    return refus(langue, "motDePasseIncorrect", 401);
+  }
+  await rendreLEssai(ticket);
 
   if (!(await supprimerUtilisateur(moi.id))) {
     return refus(langue, "suppressionImpossible", 502);

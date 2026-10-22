@@ -68,6 +68,8 @@ cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne
 cd web && node scripts/verifier-l-historique.mjs # toute la caisse s'atteint, sans trou
 cd web && node scripts/verifier-la-demo-vivante.mjs # la démo, contre une VRAIE base
 cd web && node scripts/verifier-l-enchainement.mjs # le chemin confié au boîtier, chronométré
+cd web && node scripts/verifier-le-service-des-cartes.mjs # une carte sans réseau se dit, de la base à l'écran
+python3 -m unittest tests.test_service_des_cartes # le boîtier lit le réseau de chaque carte, relance, prévient
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
@@ -212,6 +214,21 @@ jour, sortait vert. La carte d'une réponse est celle de sa session : elle se
 retrouve dans la dernière ouverture du terminal, et le robot, en effaçant le
 code, n'efface plus la carte avec.
 
+**L'application d'hier, ce n'est pas seulement hier : c'est ce que la piste
+d'essai distribue.** Le 22 octobre, les essayeurs Android ouvraient l'écran
+de connexion du 30 août — la case « Plateforme », une connexion sans délai
+plantée sur « Vérification… » —, et la plateforme répondait à son
+inscription (courriel et mot de passe, rien d'autre) « il faut le prénom et
+le nom » : un champ que cet écran n'a pas. Aucune mise à jour à distance ne
+pouvait l'atteindre : elle ne rejoint que les paquets de SA version, et ce
+paquet-là était en 1.0.0. Une mise à jour se télécharge d'ailleurs à une
+ouverture et ne s'affiche qu'à la suivante — le « il faut relancer deux ou
+trois fois » du propriétaire. **Un écran qu'on ne voit pas changer se
+cherche d'abord dans le PAQUET installé, pas dans le code** ; le remède est
+une compilation. La plateforme, elle, dit maintenant à une demande qui ne
+nomme aucun champ d'identité de mettre l'application à jour
+(`applicationTropAncienne`, `verifier-les-comptes`, témoin compris).
+
 `verifier-le-parcours` déroule ce que le propriétaire FAIT : il se connecte,
 compose un code complet, le réseau réclame le code secret, il le tape. Le
 harnais écoute alors CE QUI PART SUR LE RÉSEAU — pas seulement l'écran — et
@@ -344,6 +361,86 @@ débordement s'annonçait aussi « 15 px » sans dire où : il NOMME maintenant
 ce qui ne sait pas se faire plus étroit (c'était le total d'un anneau, un
 nombre qui ne se coupe pas), au lieu de ce qui dépasse.
 
+**Une période se redemande par son repère, pas par son premier jour.**
+« 6 mois ne marche pas » : `periodeVolumes("6mois", repère)` fait du mois
+du repère le DERNIER des six ; l'écran redemandait la période par son
+premier jour, et elle reculait de cinq mois — des zéros sous le bon titre,
+et ‹ sautait onze mois. `repereDeLaPeriode` (noyau) ; `verifier-les-volumes`
+rejoue l'ancienne demande pour témoin.
+
+**Une comparaison sans base n'est pas une hausse.** « ▲ 24 145 % » comparait
+octobre à un mois d'avant le premier SMS. La comparaison se tait quand la
+caisse ne remonte pas jusqu'à la période d'avant (`comparable`), et un
+rapport de deux ou plus s'écrit « × 7,7 ».
+
+**Rapide, c'est ne pas redemander.** Changer de période rechargeait la page :
+1 083 ms. L'écran garde ce qu'il a lu et charge en silence les périodes
+voisines ; le banc compte ce qui part vers la plateforme AU MOMENT de
+l'appui — zéro, en 60 à 150 ms —, et son témoin (une carte jamais
+regardée) doit bien demander.
+
+**Un montant ne se coupe jamais — et la caisse d'essai doit porter des
+milliards.** Le résumé du graphe, en trois colonnes, disait
+« −1 616 949… » ; la vraie caisse passe le milliard en six mois, celle du
+banc plafonnait à 300 000 F l'opération et ne pouvait rien en montrer. Un
+grossiste y passe maintenant des dizaines de millions, et le banc cherche
+tout montant rogné, à quatre tailles, sonde éprouvée sur un montant coupé
+exprès. Même règle, même chute : **une donnée d'essai trop sage cache le
+défaut au lieu de le montrer.**
+
+**« Les vieux composants » sont ceux du navigateur.** La liste déroulante
+et les champs de date natifs ne ressemblaient à rien du reste de
+l'application ; le menu des cartes (logo, « MTN ·8901 », le numéro
+dessous) et le calendrier à raccourcis les remplacent, et le banc exige
+qu'il n'en reste aucun. Les couleurs des entrées et des sorties se
+confondaient pour un œil daltonien (écart 4,6) : la paire validée en a 13,9.
+
+**Des barres ne disent pas qu'on a du réseau.** « Check balance » répondait
+« no network service » — les mots du modem, en anglais — pendant que
+l'accueil montrait quatre barres. La force du signal (AT+CSQ) mesure
+l'antenne, pas l'inscription : une carte peut capter fort et n'être reçue
+par personne. Le chien de garde ne voyait rien non plus : lire les SMS
+rangés dans le modem marche très bien sans réseau. Le fil de chaque carte
+lit maintenant son inscription (AT+CREG?, et AT+CEREG? quand elle n'est pas
+inscrite), la publie dans le signe de vie (`sante.cartes`, sans migration),
+relance sa radio en mode avion puis retour, puis le modem si la radio n'a
+pas suffi (jamais quand tout le boîtier ou tout un opérateur est coupé :
+c'est l'antenne ou le quartier), et prévient
+sur le temps CUMULÉ sans service — une carte coupée dix minutes, revenue
+deux, coupée dix… ne l'était jamais quinze minutes d'affilée.
+`totem/service.py`, `noyau/service.ts`, `tests/test_service_des_cartes.py`.
+
+**Un port se lit avant d'être vidé.** L'enquête sur le réseau a trouvé un
+défaut d'argent sans rapport avec lui : le fil d'une carte relève ses SMS
+toutes les dix secondes, menu ouvert ou non, et chaque commande vidait le
+port sans le lire. Un « +CUSD: 2 » (l'opérateur referme le menu) arrivé
+pendant que la personne tapait son code était jeté : le menu passait pour
+ouvert, et le CODE SECRET partait comme un nouveau code USSD. `_envoyer`
+garde maintenant les annonces avant de vider ; le témoin rejoue l'ancien
+`_envoyer` et laisse partir le code.
+
+**Une sonde hors de l'écran ne touche rien.** `verifier-la-reponse` disait
+« rien ne bouge sous le doigt » d'une colonne du graphe : elle était sous le
+pli, la capture et le doigt tombaient dans le vide. La sonde amène
+maintenant le bouton à l'écran avant d'appuyer.
+
+**Une page d'erreur bien rangée ne déborde de rien.** Un dossier d'aperçu
+déplacé de travers a rendu à `verifier-l-affichage` l'export du 13 octobre,
+où les Volumes n'existaient pas : il a mesuré « Unmatched Route » à la
+place, et déclaré l'écran juste à douze tailles sur quatorze — la page
+d'erreur ne débordait qu'à 320 points. Le banc reconnaissait l'écran à son
+contenu, puis mesurait « tel quel » quand il ne le reconnaissait pas. Un
+écran qu'on ne reconnaît pas ÉCHOUE maintenant, en disant ce qu'il y avait à
+sa place ; l'export d'avant, rejoué, en est le témoin.
+
+**Un point de trop, et le défilement n'avait pas lieu.** En deux colonnes
+(paysage, pliable ouvert), la puce de la carte retenue dépassait sa rangée
+d'un point — son cadre coupé —, et `main` échouait déjà là. La rangée n'a
+pas de marge en deux colonnes : la puce était amenée au bord EXACT, un
+arrondi la laissait dehors, et la tolérance d'un point jugeait « déjà en
+vue » au lieu de défiler. Elle est visée avec deux points d'air, et jugée
+sans tolérance. Le banc dit maintenant DE COMBIEN elle sort.
+
 `verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
 lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante
 essais lancés ensemble lisaient donc tous un compteur à zéro. Mesuré — 999 ms
@@ -352,8 +449,9 @@ de ne pas faire la queue**, et personne n'attaque un mot de passe en faisant
 la queue. C'est la même faute que celle du propriétaire unique : lire avant
 d'écrire ne garantit rien. Le harnais exige aussi que le mur refuse AVANT le
 calcul de l'empreinte (7 ms contre 120 ms) — sans quoi une rafale d'essais
-devient une rafale de calculs — et que le propriétaire, sur une autre adresse,
-entre encore pendant l'attaque.
+devient une rafale de calculs — et que le propriétaire entre encore pendant
+l'attaque, d'une autre adresse comme de la MÊME : un opérateur met des
+centaines de téléphones derrière une adresse.
 
 Le compteur vit dans la BASE, pas dans la mémoire du serveur : deux instances
 derrière le même hébergement partagent un seul seau. Le harnais lance DEUX
@@ -361,6 +459,69 @@ serveurs et mure une adresse sur le premier — le second doit la refuser sans
 l'avoir vue attaquer. Si la base se tait, le seau mémoire reprend la main et
 la clé de secours ouvre toujours : un frein ne devient jamais un verrou sur
 sa propre maison.
+
+**Corriger un défaut peut en réveiller un autre — mesurer avant de
+publier.** Le seau commun du frein avait une clé que PostgreSQL refuse (un
+caractère nul) : il n'avait jamais compté dans la base, et le harnais des
+deux serveurs sortait vert parce que le faux nuage l'acceptait — **une
+imitation plus généreuse que l'original cache le défaut**, encore. Corrigé,
+il s'est mis à compter, et la mesure a montré ce que le premier défaut
+cachait : il comptait les connexions RÉUSSIES de toute la plateforme, et ne
+se vidait qu'après un quart d'heure SANS UN ESSAI. Soixante-dix personnes
+entrées avec le bon mot de passe, et la suivante attendait huit secondes
+(66 ms au repos) ; une seule adresse, sous son propre mur, imposait les mêmes
+huit secondes à tout le monde. La production le faisait déjà, dans la
+mémoire de chaque instance chargée — l'écran restait sur « Vérification… »,
+on recommençait, et chaque essai prolongeait l'attente de tous.
+
+**Un frein pensé pour une maison ne survit pas à l'ouverture au public.** La
+relecture adverse (quatre lentilles, un contradicteur par constat) a trouvé
+le reste. Le mur était par ADRESSE, et MTN comme Orange mettent des
+centaines de téléphones derrière une seule : un voisin qui se trompe
+soixante fois fermait la porte à tous les autres, propriétaire compris — le
+frein de production, rejoué, lui répond 429. Et une adresse déjà murée
+écrivait encore une ligne par courriel inventé : une seule suffisait à
+remplir la base. Le frein compte maintenant trois seaux dans une seule
+fonction de la base (`frein_essai`), arrêtée au premier mur : l'ADRESSE (un
+plafond haut, qui ne protège que le serveur), le COUPLE adresse + compte
+visé (le vrai mur), le COMPTE de partout (il ralentit, il ne ferme jamais).
+La clé d'un compte est une empreinte scellée du courriel, jamais le
+courriel ; une réussite REND son essai sans vider l'ardoise — l'effacer
+offrait de contourner le mur entre deux salves ; la fenêtre est fixe ; une
+ligne écrite par la règle d'hier repart de un ; la base fait son ménage ; la
+vitrine, dont le mot de passe est public, n'a pas de seau de compte ; et une
+base pas encore migrée garde l'inscription dans la base et le DIT au
+journal. `verifier-le-frein` rejoue chacune de ces scènes ; le frein de
+production y échoue treize fois.
+
+Une seconde relecture, sur la refonte elle-même, a encore trouvé : un essai
+refusé par le couple comptait pour l'adresse (quatre cents essais d'un voisin
+sur UN compte la poussaient au-delà de ses gratuits) ; un délai par adresse
+faisait attendre tous les voisins pour gêner un attaquant naïf (il est
+retiré : l'adresse n'a plus qu'un mur, mille essais VRAIMENT jugés) ; un mot
+de passe vide, refusé sans calcul, comptait quand même — mille demandes
+vides fermaient l'adresse à tous (il se refuse maintenant avant le frein) ;
+une adresse IPv6 se comptait seule, quand une ligne choisit la sienne dans
+un bloc de 64 bits ; et vingt inscriptions par quart d'heure pour tout un
+quartier, c'était un lancement de bêta refusé (cent). La limite qui reste
+est écrite dans `frein.ts` : derrière une MÊME adresse d'opérateur, un voisin
+qui vise le compte du propriétaire le ferme, à cette adresse, un quart
+d'heure — jamais une session ouverte.
+
+**Un banc doit lire ce qu'il prétend garder.** La même relecture a pris mes
+propres bancs : la section « changer d'adresse annoncée » envoyait aussi
+« x-real-ip », qui passe devant — elle ne lisait jamais « x-forwarded-for »,
+et revenir au premier élément y restait vert ; « personne d'autre que la
+plateforme » essayait l'appel en visiteur anonyme, et c'est la TABLE qui
+refusait — sans la révocation, vert encore. On lit maintenant le DROIT sur
+la fonction, avec une fonction témoin laissée ouverte. « N'écrit plus une
+ligne » lisait la table d'un coup, sous le plafond de mille lignes du faux
+nuage : « 823 → 823 » quoi qu'il arrive — la leçon « la vérité d'un harnais
+se lit page par page », écrite plus haut, refaite par un harnais neuf. Et
+« la base muette prend le relais » acceptait un 401, la réponse exacte d'une
+plateforme sans frein du tout. Et la fenêtre, éprouvée
+sur un vrai PostgreSQL, attendait d'abord DANS la transaction, où `now()` ne
+bouge pas : la règle neuve et son témoin y échouaient ensemble.
 
 `verifier-la-politique` ouvre un vrai Chromium et GLISSE un script dans le
 HTML de la page, comme le ferait un nom d'expéditeur piégé. Une politique de
@@ -1394,6 +1555,91 @@ le port où le modem donne SON IMEI (`_rouvrir`), et une prise tenue se refuse
 nuit sur un faux bus de vingt prises, avec l'ancienne reprise pour témoin :
 elle remet les quatre comptes sur le même modem, et vole la réponse du
 voisin.
+
+**Un modem qui revient repart avec SES réglages, et « sans réponse du
+réseau » n'accuse pas forcément le réseau.** Le 22 octobre, les quatre modems
+ont décroché du bus USB à la même minute (« Input/output error » sur chaque
+port), le robot les a relancés sans une ligne au journal — seul l'échec
+s'écrivait —, et la carte Orange relevait ses SMS comme si de rien n'était
+tout en répondant « parti, sans réponse du réseau à temps » à CHAQUE code,
+pendant trois heures, à travers deux relances du robot. Le propriétaire
+relançait tout le service trois fois par matinée. Les réglages (`AT+CUSD=1`,
+sans lequel le modem garde pour lui la réponse du réseau ; l'alphabet ; la
+mémoire des SMS) étaient reposés UNE fois, sans regarder la réponse — et un
+modem qui vient de revenir les refuse volontiers quelques secondes. Ils se
+reposent maintenant tant qu'un réglage essentiel est refusé
+(`_regler`, `reglages_refuses`), chaque silence du réseau se SONDE (signal,
+carte sur le réseau, annonces USSD — `etat_apres_silence`) et répare le
+réglage tombé, et le journal reçoit la CAUSE de chaque échec, sur les deux
+chemins, ainsi que chaque relance réussie et le port où le modem est revenu.
+Et trois codes de suite qui n'atteignent pas le réseau sur une carte — sans
+réponse, ou refusés par le modem —, la sonde n'ayant rien trouvé, font ce
+que le propriétaire faisait à la main : relancer le modem (`relanceur`,
+`codes_sans_reseau`) — sur le même boîtier, les trois MTN répondaient
+pendant qu'Orange se taisait, ce n'était pas le réseau.
+
+**La preuve était dans la table des commandes, pas au journal.** Le journal
+disait « échec (ussd) » treize fois ; la plateforme, elle, avait gardé ce que
+le modem avait répondu : « +CME ERROR: no network service », « unknown
+network message », « unknown », « retry operation » — et le noyau du Pi :
+« usb2-port1: over-current change #13 », le hub USB qui décroche et revient
+à chaque pointe de courant d'un modem. Le robot montrait ces mots-là au
+propriétaire, tels quels. Un refus du modem se lit maintenant en mots
+(`RefusDuModem.phrase` : « la carte n'a pas de réseau en ce moment ») — à
+l'écran, les mots seulement ; au journal, la cause brute et la sonde — et
+compte comme un silence, SAUF « pas de réseau » : trois codes tapés pendant
+une coupure de l'opérateur ne doivent pas relancer un modem en bon état ;
+c'est la veille du service qui s'en occupe (`sans_reseau`).
+`tests/test_reglages_du_modem.py` porte le témoin : la mise en route d'avant
+laisse les annonces éteintes. Un modem muet au premier « AT » n'est pas
+« en UCS2 » : l'ancien code le concluait.
+
+**« Signal inconnu » des heures durant, ce n'était pas le robot qui
+ramenait la carte, c'était le temps.** Les captures du propriétaire :
+Orange ·4177 à « signal inconnu » depuis 09 h 34, relance de tout le robot,
+la carte de retour — et les quatre cartes « en itinérance sur Orange F »,
+« sur SFR » : le boîtier est en France, les cartes camerounaises empruntent
+des antennes françaises, et un réseau visité qui lâche une carte peut la
+laisser sur « pas de service » longtemps. Rien dans le robot ne touchait à
+la radio ; la relance n'y faisait rien, le temps passait. Et un code refusé
+« no network service » se retente deux fois à cinq secondes
+(`_envoyer_avec_reprises`) : rien n'est parti, et le changement de réseau ne
+dure que quelques secondes.
+
+**Deux veilles pour une même carte, c'est deux mains sur la même radio.**
+Deux sessions ont corrigé « pas de réseau » le même jour, chacune avec sa
+veille : l'une passait la carte en mode avion au bout de trois minutes, puis
+relançait le modem ; l'autre lisait l'inscription (+CREG, +CEREG), relançait
+la radio au bout de quatre, et prévenait sur le temps cumulé. Fusionnées
+telles quelles, elles auraient relancé la même radio deux fois, chacune
+ignorant l'autre — dont un modem relancé pendant une coupure de tout le
+quartier. Il n'en reste qu'une (`_veiller_service`) : la radio à quatre
+minutes, puis, si la coupure TIENT cinq minutes après elle, le modem entier
+(`a_relancer_le_modem`, une fois par épisode, au journal) — jamais au
+démarrage, jamais pendant un menu, jamais quand tout le boîtier ou tout un
+opérateur est coupé. `PasDeReseau` est un `RefusDuModem` : un seul refus,
+lu par les deux chemins. Le témoin de `test_service_des_cartes` retire le
+modem : la carte reste coupée jusqu'à la seconde radio, trente minutes
+plus tard. La relecture adverse de la fusion a trouvé ce que deux règles
+qui s'ignorent laissent passer : une relance du modem faite pour trois
+codes sans réponse, inconnue de la veille, qui le relançait encore cinq
+minutes après ; un drapeau « en réglage » que la première de deux relances
+effaçait sous la seconde (c'est un COMPTE maintenant) ; un journal qui
+accusait le modem d'un refus pendant une relance, où rien n'était parti.
+**Une relance, d'où qu'elle vienne, se sait partout** (`Compte.redemarrer`).
+
+**Un nom de port n'est pas une interface.** Le noyau ne redonne pas à un
+modem revenu un bloc de cinq numéros qui se suivent : il lui donne les plus
+petits numéros libres. Le 22 octobre, le même modem est revenu sur ttyUSB
+2, 7, 12, 13, 14, puis 2, 7, 13, 14, 15, puis 2, 7, 12, 14, 15 : son port
+AT valait 12, puis 13, puis 12 — et au troisième retour, « l'ancien port
+d'abord » (13) désignait le port de DONNÉES du bon modem, qui répond aux
+commandes AT et donne le même IMEI. Les commandes passent, les SMS se
+lisent, et les réponses USSD n'y arrivent pas forcément. L'ancien nom ne
+passe plus en premier que si /sys dit qu'il est encore une interface AT
+(`interface_usb`, `INTERFACE_AT`) ; sinon, le plus petit numéro qui porte
+l'IMEI — le port AT, toujours, puisque les numéros suivent les interfaces.
+Le témoin reprend l'ancien nom.
 
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai

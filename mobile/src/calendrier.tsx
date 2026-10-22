@@ -40,7 +40,7 @@ export function toucherLeJour(choix: ChoixDeJours, jour: string): ChoixDeJours {
 export const bornesDuChoixDeJours = (choix: ChoixDeJours): Bornes | null =>
   choix ? { de: choix.de, a: choix.a ?? choix.de } : null;
 
-export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: {
+export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer, mots, raccourcis }: {
   langue: Langue;
   /** « 2026-10-03 » — le jour de la caisse. */
   aujourdhui: string;
@@ -48,8 +48,16 @@ export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: 
   depart: Bornes | null;
   onChoisir: (b: Bornes) => void;
   onFermer: () => void;
+  /** Les mots de l'écran qui l'ouvre. Les Volumes empruntaient ceux des SMS :
+   *  « Voir les SMS du… », « Voir ces SMS » — au-dessus de chiffres. */
+  mots?: { titre: string; aide: string; voir: string };
+  /** Les périodes qu'on choisit d'un appui (« 7 derniers jours »…). */
+  raccourcis?: { libelle: string; bornes: Bornes }[];
 }) {
   const t = textesSms[langue];
+  const titre = mots?.titre ?? t.calendrierTitre;
+  const aide = mots?.aide ?? t.calendrierAide;
+  const voir = mots?.voir ?? t.calendrierVoir;
   const [choix, setChoix] = useState<ChoixDeJours>(
     depart ? { de: depart.de, a: depart.a } : null);
   const bornes = bornesDuChoixDeJours(choix);
@@ -61,9 +69,9 @@ export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: 
       onFermer={onFermer}
       entete={
         <>
-          <Texte taille={textes.intertitre} poids="demi">{t.calendrierTitre}</Texte>
+          <Texte taille={textes.intertitre} poids="demi">{titre}</Texte>
           <Texte taille={textes.petit} ton="pale" style={{ marginTop: espaces.xs }}>
-            {t.calendrierAide}
+            {aide}
           </Texte>
         </>
       }
@@ -81,11 +89,30 @@ export function Calendrier({ langue, aujourdhui, depart, onChoisir, onFermer }: 
         >
           <Texte poids="demi" taille={textes.petit} style={{ color: couleurs.surfaceHaute,
                                                             textAlign: "center" }}>
-            {bornes ? `${t.calendrierVoir} · ${nomDesJours(bornes, langue)}` : t.calendrierVoir}
+            {bornes ? `${voir} · ${nomDesJours(bornes, langue)}` : voir}
           </Texte>
         </Pressable>
       }
     >
+      {raccourcis?.length ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: espaces.md }}>
+          {raccourcis.map((r) => {
+            const pris = bornes != null && bornes.de === r.bornes.de && bornes.a === r.bornes.a;
+            return (
+              <Pressable key={r.libelle} accessibilityRole="button" accessibilityState={{ selected: pris }}
+                         onPress={() => setChoix({ de: r.bornes.de, a: r.bornes.a })}
+                         style={({ pressed }) => ({
+                           paddingHorizontal: espaces.md, paddingVertical: 7, borderRadius: rayons.rond,
+                           borderWidth: 1, borderColor: pris ? couleurs.accent : couleurs.trait,
+                           backgroundColor: pris ? couleurs.accent : pressed ? couleurs.surface2 : couleurs.surfaceHaute,
+                         })}>
+                <Texte taille={textes.legende} poids="moyen"
+                       style={{ color: pris ? couleurs.surfaceHaute : couleurs.encreDouce }}>{r.libelle}</Texte>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       <GrilleCalendrier langue={langue} aujourdhui={aujourdhui} bornes={bornes}
                         onToucher={(jour) => setChoix((c) => toucherLeJour(c, jour))} />
     </Feuille>

@@ -80,6 +80,11 @@ const heuresDeSolde = new Map();      // iccid → minutes, ou null
 // aucun essai ne pouvait voir la pastille de l'onglet Comptes rester VERTE
 // sur une carte qui n'avait qu'une barre sur l'accueil.
 const signaux = new Map();           // iccid → force (0 à 31, ou 99)
+// LE SERVICE d'une carte, imposé par un essai (« /essai/service ») : ce que
+// le boîtier publie dans son signe de vie (`sante.cartes`). Sans lui, aucune
+// carte du faux nuage ne pouvait être « sans réseau » — et l'écran qui doit
+// le dire n'aurait jamais été vu le dire.
+const services = new Map();          // iccid → { terminal, publie }
 
 // L'HORLOGE DE CHAQUE PI (« /essai/horloge »). Le vrai boîtier date ce qu'il
 // écrit — son signe de vie, la dernière vue de ses cartes — sur SON heure,
@@ -145,6 +150,9 @@ function boitier(id, nom, minutes) {
     id, nom, vu_le: signeDeVie(id, minutes),
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
   };
+  const cartes = Object.fromEntries([...services].filter(([, x]) => x.terminal === id)
+    .map(([iccid, x]) => [iccid, x.publie]));
+  if (Object.keys(cartes).length) ligne.sante.cartes = cartes;
   if (oreille) {
     ligne.entendu_le = il_y_a(silence(id, minutes));
     ligne.revenu_le = revenus.has(id) ? new Date(revenus.get(id)).toISOString()
@@ -349,6 +357,7 @@ const tables = () => ({
       texte: "Un bilan de 90 jours a été coupé : la caisse porte plus de "
            + "20 000 messages sur cette période.",
       survenu_le: il_y_a(1500), cree_le: il_y_a(1500) },
+    ...evenementsEnPlus,
   ],
 });
 
@@ -471,6 +480,10 @@ function caisseAgentLignes() {
 
 // Les SMS ajoutés à chaud pendant un essai (voir « /essai/nouveau-sms »).
 const smsEnPlus = [];
+// Ce que la PLATEFORME écrit à son journal (`noterIncident`). Toute écriture
+// de table partait autrefois dans `smsEnPlus` : le journal d'un incident
+// devenait un SMS, et aucun banc ne pouvait lire ce que la plateforme y note.
+const evenementsEnPlus = [];
 // LES REÇUS DU ROBOT. Le faux nuage ne savait pas les recevoir : la fiche
 // « recus » d'un dépôt tombait dans la table des SMS (l'écriture générique
 // plus bas range tout ce qu'elle reçoit parmi les paiements), et le fichier
@@ -480,6 +493,9 @@ const recusDeposes = [];             // fiches « recus », clé (terminal, nume
 const fichiersDeposes = new Map();   // chemin dans le seau → octets
 // Les essais de mot de passe comptés, comme la table « freins ».
 const freins = new Map();
+// Une base qui n'a pas encore reçu la migration du frein (`frein_compter`,
+// `frein_rendre`) : la plateforme doit compter en mémoire, jamais échouer.
+let baseDHier = false;
 
 // LE ROBOT JOUÉ, ET CE QUI PEUT LE RETENIR. Il RÉCLAME une demande avant de
 // la composer, comme le vrai (`reclamer`, totem/nuage.py) : « en cours »
@@ -832,6 +848,19 @@ const serveur = createServer(async (req, res) => {
   }
   //     curl -X POST ".../essai/base?oreille=non"   (une base pas encore migrée)
   //     curl -X POST ".../essai/base?effacement=non" (sans « commandes_code_efface »)
+  //     curl -X POST ".../essai/base-d-hier"          (&oui=non pour la remettre à jour)
+  // UNE LIGNE D'HIER : écrite par `compter_un_essai`, qui gardait les
+  // réussites et ne pose pas de début — telle que la migration la trouvera.
+  //     curl -X POST ".../essai/frein-d-hier?cle=203.0.113.250&n=350"
+  if (req.method === "POST" && chemin === "/essai/frein-d-hier") {
+    const cle = url.searchParams.get("cle") ?? "";
+    freins.set(cle, { n: Number(url.searchParams.get("n") ?? "1"), vu: Date.now(), debut: undefined });
+    return repondre({ ok: true, cle });
+  }
+  if (req.method === "POST" && chemin === "/essai/base-d-hier") {
+    baseDHier = url.searchParams.get("oui") !== "non";
+    return repondre({ ok: true, baseDHier });
+  }
   if (req.method === "POST" && chemin === "/essai/base") {
     if (url.searchParams.has("oreille")) oreille = url.searchParams.get("oreille") !== "non";
     if (url.searchParams.has("effacement")) {
@@ -873,6 +902,26 @@ const serveur = createServer(async (req, res) => {
     if (url.searchParams.get("annuler")) cartesPerdues.delete(iccid);
     else cartesPerdues.set(iccid, Number(url.searchParams.get("minutes") || 20));
     return repondre({ cartesPerdues: [...cartesPerdues.keys()] });
+  }
+  //     curl -X POST ".../essai/service?iccid=…&etat=aucun&minutes=12&coupures=1"
+  //       (&terminal=akwa-faux, &brut=<json> pour une publication abîmée, &annuler=1)
+  if (req.method === "POST" && chemin === "/essai/service") {
+    const iccid = url.searchParams.get("iccid") || "";
+    if (url.searchParams.get("annuler")) services.delete(iccid);
+    else {
+      const minutes = Number(url.searchParams.get("minutes") || 0);
+      const brut = url.searchParams.get("brut");
+      services.set(iccid, {
+        terminal: url.searchParams.get("terminal") || "douala-faux",
+        publie: brut != null ? JSON.parse(brut) : {
+          etat: url.searchParams.get("etat") || "aucun",
+          depuis_s: minutes * 60,
+          coupures_24h: Number(url.searchParams.get("coupures") || 1),
+          sans_service_24h_s: Number(url.searchParams.get("cumul") || minutes * 60),
+        },
+      });
+    }
+    return repondre({ services: Object.fromEntries(services) });
   }
   //     curl -X POST ".../essai/signal?iccid=…&valeur=9"   (&annuler=1)
   if (req.method === "POST" && chemin === "/essai/signal") {
@@ -1115,15 +1164,79 @@ const serveur = createServer(async (req, res) => {
   //
   // Le comptage est fait D'UN SEUL GESTE, comme le « insert … on conflict »
   // de la vraie base : lire puis écrire laisserait passer une rafale.
+  // Comme la vraie base : un texte PostgreSQL ne porte pas de caractère nul
+  // (« unsupported Unicode escape sequence », 22P05). L'imitation
+  // l'acceptait, et un seau dont la clé en portait un passait pour compté.
+  const cleRefusee = (cle) => typeof cle === "string" && cle.includes("\u0000");
+  // L'ancienne règle : la fenêtre glisse, et ne se vide qu'après un quart
+  // d'heure sans un essai. Gardée : une plateforme d'hier l'appelle encore.
+  // Comme la vraie fonction, elle ne pose JAMAIS de début : une ligne qu'elle
+  // crée en est dépourvue, et c'est ce qui la fait reconnaître ensuite.
   if (req.method === "POST" && chemin === "/rest/v1/rpc/compter_un_essai") {
     let brut = "";
     for await (const mm of req) brut += mm;
     const { la_cle: cle, fenetre_s: fenetre } = JSON.parse(brut || "{}");
+    if (cleRefusee(cle)) {
+      return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+    }
     const present = Date.now();
     const e = freins.get(cle);
     const n = e && present - e.vu <= fenetre * 1000 ? e.n + 1 : 1;
-    freins.set(cle, { n, vu: present });
+    freins.set(cle, { n, vu: present, debut: e?.debut });
     return repondre(n);
+  }
+  // LA RÈGLE NEUVE (migrations/20261022_frein_fenetre_fixe.sql), recopiée pas
+  // à pas : une fenêtre FIXE ouverte par le premier essai (une ligne sans
+  // début repart de un), trois seaux arrêtés au premier mur, le ménage des
+  // lignes dont le dernier essai a plus d'une heure, et une réussite qui rend
+  // son essai. Une base pas encore migrée ne les connaît pas :
+  // `/essai/base-d-hier` les fait répondre 404, comme PostgREST devant une
+  // fonction absente.
+  const freinCompter = (cle, fenetre, present) => {
+    const e = freins.get(cle);
+    const suite = e?.debut !== undefined && e.debut > present - fenetre * 1000;
+    const n = suite ? e.n + 1 : 1;
+    freins.set(cle, { n, vu: present, debut: suite ? e.debut : present });
+    return n;
+  };
+  if (req.method === "POST"
+      && (chemin === "/rest/v1/rpc/frein_essai" || chemin === "/rest/v1/rpc/frein_rendre")) {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    if (baseDHier) {
+      return repondre({ code: "PGRST202", message: `Could not find the function ${chemin.slice(13)}` }, 404);
+    }
+    const corps = JSON.parse(brut || "{}");
+    if (chemin.endsWith("frein_rendre")) {
+      const cles = Array.isArray(corps.les_cles) ? corps.les_cles : [];
+      if (cles.some(cleRefusee)) {
+        return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+      }
+      for (const cle of cles) {
+        const e = freins.get(cle);
+        if (e) e.n = Math.max(0, e.n - 1);
+      }
+      res.writeHead(204);
+      return res.end();
+    }
+    const { p_adresse, p_couple, p_compte, fenetre_s, mur_adresse, mur_couple } = corps;
+    if ([p_adresse, p_couple, p_compte].some(cleRefusee)) {
+      return repondre({ code: "22P05", message: "unsupported Unicode escape sequence" }, 400);
+    }
+    const present = Date.now();
+    const vieux = present - Math.max(fenetre_s, 3600) * 1000;
+    for (const [cle, e] of freins) if (e.vu < vieux) freins.delete(cle);
+    const a = freinCompter(p_adresse, fenetre_s, present);
+    if (a > mur_adresse || p_couple == null) return repondre([a, 0, 0]);
+    const c = freinCompter(p_couple, fenetre_s, present);
+    if (c > mur_couple) {
+      // Refusé avant tout calcul : il ne compte pas pour l'adresse.
+      const e = freins.get(p_adresse);
+      e.n = Math.max(0, e.n - 1);
+      return repondre([a - 1, c, 0]);
+    }
+    if (p_compte == null) return repondre([a, c, 0]);
+    return repondre([a, c, freinCompter(p_compte, fenetre_s, present)]);
   }
 
   // --- LES CARTES DE CHACUN -------------------------------------------------
@@ -1366,6 +1479,14 @@ const serveur = createServer(async (req, res) => {
   }
 
   const ecriture = /^\/rest\/v1\/(\w+)$/.exec(chemin);
+  if (req.method === "POST" && chemin === "/rest/v1/evenements") {
+    let brut = "";
+    for await (const mm of req) brut += mm;
+    for (const ligne of [].concat(JSON.parse(brut || "[]"))) {
+      evenementsEnPlus.push({ id: 800000 + evenementsEnPlus.length, cree_le: new Date().toISOString(), ...ligne });
+    }
+    return repondre([], 201);
+  }
   if (req.method === "POST" && ecriture && tables()[ecriture[1]]) {
     const nom = ecriture[1];
     let brut = "";

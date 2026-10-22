@@ -30,6 +30,7 @@
 import { lire, relie } from "./base";
 import { FUSEAU } from "./fuseau";
 import type { Langue } from "@noyau/langue";
+import { textesConsole } from "@noyau/textes/console";
 import { SANS_NOUVELLES_S, presenceDeLaCarte, signalLu } from "@noyau/boitier";
 import {
   boitierVu, cartesLesPlusRecentes, entenduLe, type LigneBoitier,
@@ -435,12 +436,29 @@ export type TelephonePrevenu = {
 };
 
 export type EssaiFreine = {
-  /** L'adresse qui a essayé. C'est la clé du seau, telle que le frein la tient. */
+  /** La clé du seau, telle que le frein la tient : une adresse, « @… » pour
+   *  un compte (une empreinte du courriel, jamais le courriel), ou
+   *  « adresse|@… » pour un couple. */
   cle: string;
+  /** Ce que la console en affiche : l'adresse, ou « un compte ». */
+  nom: string;
   n: number;
   vu: string;
   depuis: string;
 };
+
+/**
+ * Ce que la console dit d'un seau du frein. Le seau d'un compte porte une
+ * empreinte du courriel (« @… »), jamais le courriel : on dit ce que c'est,
+ * sans prétendre la lire. Un couple s'écrit « adresse|@… ».
+ */
+function nomDuSeau(cle: string, langue: Langue): string {
+  const t = textesConsole[langue].gens;
+  const compte = (k: string) => (k === "@secours" ? t.cleDeSecours : t.compteVise);
+  if (cle.startsWith("@")) return compte(cle);
+  const i = cle.lastIndexOf("|@");
+  return i === -1 ? cle : `${cle.slice(0, i)} → ${compte(cle.slice(i + 1))}`;
+}
 
 export type Gens = {
   relie: boolean;
@@ -823,7 +841,10 @@ export async function chargerGens(langue: Langue): Promise<Gens> {
       depuis: ecartLisible(a.vu_le, langue),
     })),
     freines: freins.map((f) => ({
+      // Le seau d'un compte porte une empreinte du courriel (« @… ») : on dit
+      // ce que c'est, sans prétendre la lire.
       cle: f.cle,
+      nom: nomDuSeau(f.cle, langue),
       n: f.n,
       vu: f.vu,
       depuis: ecartLisible(f.vu, langue),

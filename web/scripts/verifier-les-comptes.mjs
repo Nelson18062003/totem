@@ -335,6 +335,37 @@ try {
       (p) => ligneDuNuage(`${p}@exemple.cm`)))).filter(Boolean).length, 0);
 
   // -------------------------------------------------------------------------
+  console.log("\nL'APPLICATION D'HIER");
+  // Les essayeurs Android ouvraient une compilation d'août : son écran
+  // « Créer un compte » n'a QUE le courriel et le mot de passe, et c'est
+  // tout ce qu'il envoie. La plateforme lui répondait « il faut le prénom et
+  // le nom » — un champ que cet écran n'a pas. On relisait l'écran, on ne
+  // trouvait rien, on restait là. La réponse doit dire la seule chose qui
+  // débloque : mettre l'application à jour.
+  const commeHier = (courriel) => ({ courriel, motdepasse: MDP });
+  const rHierFr = await inscrire(commeHier("hier@exemple.cm"));
+  const rHierEn = await poste("/api/inscription?langue=en", commeHier("hier-en@exemple.cm"));
+  const [mHierFr, mHierEn] = [(await json(rHierFr)).erreur ?? "", (await json(rHierEn)).erreur ?? ""];
+  const ditDeMettreAJour = (fr, en) => /à jour/.test(fr) && /\bupdate\b/i.test(en)
+    && !/prénom|nom\b/.test(fr) && !/first name|last name/i.test(en);
+  verifier("refusée (400), sans session", [rHierFr.status, rHierEn.status], [400, 400]);
+  verifier("elle dit de mettre l'application à jour — pas « il faut le prénom »",
+    ditDeMettreAJour(mHierFr, mHierEn), true);
+  // LE TÉMOIN : la réponse d'avant, passée à la même sonde, doit échouer —
+  // sinon la sonde accepterait n'importe quoi.
+  verifier("TÉMOIN : la réponse d'avant ne passe pas la sonde",
+    ditDeMettreAJour("il faut le prénom et le nom",
+      "the first name and the last name are both needed"), false);
+  verifier("aucun compte n'en sort",
+    [await ligneDuNuage("hier@exemple.cm"), await ligneDuNuage("hier-en@exemple.cm")]
+      .filter(Boolean).length, 0);
+  // Une demande qui nomme UN champ vient d'une application qui sait les
+  // demander : elle garde le refus précis, et ne passe pas pour « vieille ».
+  const rPartiel = await inscrire({ prenom: "Awa", courriel: "partiel@exemple.cm", motdepasse: MDP });
+  verifier("un prénom sans nom garde le refus précis",
+    [rPartiel.status, (await json(rPartiel)).erreur], [400, "il faut le prénom et le nom"]);
+
+  // -------------------------------------------------------------------------
   console.log("\nUN COURRIEL DÉJÀ PRIS NE SE TRAHIT PAS");
   const rPris = await inscrire(personne("awa@exemple.cm", { prenom: "Autre" }));
   const mPris = (await json(rPris)).erreur ?? "";
@@ -375,15 +406,16 @@ try {
   console.log("\nUNE RAFALE D'INSCRIPTIONS EST FREINÉE");
   // TOUTES DE LA MÊME ADRESSE, ensemble. Sans frein, chacune coûte au
   // serveur 210 000 tours de PBKDF2 et crée un compte : de quoi remplir la
-  // base et sonder les courriels. Le mur des inscriptions est à vingt par
-  // quart d'heure et par adresse.
+  // base et sonder les courriels. Le mur des inscriptions est à cent par
+  // quart d'heure et par adresse — vingt, c'était trop peu pour une adresse
+  // d'opérateur, que partagent des centaines de téléphones.
   const ATTAQUANT = "10.66.0.66";
-  const rafale = await Promise.all(Array.from({ length: 30 }, (_, i) =>
+  const rafale = await Promise.all(Array.from({ length: 130 }, (_, i) =>
     inscrire(personne(`rafale${i}@exemple.cm`), { "x-forwarded-for": ATTAQUANT })));
   const statuts = rafale.map((r) => r.status);
   const creees = statuts.filter((s) => s === 200).length;
-  verifier("le mur refuse le surplus (429)", statuts.filter((s) => s === 429).length >= 10, true);
-  verifier("vingt comptes au plus sortent de la rafale", creees <= 20, true);
+  verifier("le mur refuse le surplus (429)", statuts.filter((s) => s === 429).length >= 30, true);
+  verifier("cent comptes au plus sortent de la rafale", creees <= 100, true);
   const tConnexion = performance.now();
   const rPendant = await poste("/api/session", { courriel: "awa@exemple.cm", motdepasse: MDP },
     { "x-forwarded-for": ATTAQUANT });

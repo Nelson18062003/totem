@@ -28,10 +28,15 @@ au moment même où l'on écrit : la carte sait qui tient sa session
 """
 
 import threading
+import time
+from contextlib import contextmanager
 
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
-                    MessageTropLong, ReponseNonRecue, ReponseRefusee)
+                    MessageTropLong, PasDeReseau, RefusDuModem,
+                    ReponseNonRecue, ReponseRefusee, phrase_du_silence)
+from .service import (INCONNU, ITINERANCE, SANS_SERVICE, EtatDuService,
+                      etat_du_service)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -40,6 +45,13 @@ from .textes import t
 # « le web » : ce sont deux titulaires.
 WEB = "web"
 TELEGRAM = "telegram"
+
+# Un code refusé par le modem AVANT d'être envoyé (« no network service »)
+# se retente : rien n'est parti, et en itinérance la carte change de réseau
+# plusieurs fois par jour — quelques secondes sans service suffisent à faire
+# refuser un code tapé à cet instant. Deux reprises, cinq secondes d'écart.
+REPRISES_SUR_REFUS = 2
+PAUSE_SUR_REFUS = 5.0
 
 
 class SessionTenue(Exception):
@@ -67,6 +79,15 @@ class Compte:
         self.titulaire = None
         self.dernier_menu = ""
         self.echecs = 0                 # compteur du chien de garde
+        # Codes qui n'ont PAS atteint le réseau, de suite : partis sans
+        # réponse, ou refusés par le modem pour une autre raison que « pas de
+        # réseau » (celle-là, la veille du service s'en charge : relancer le
+        # modem n'inscrit pas une carte que personne ne reçoit). Remis à zéro
+        # par toute réponse reçue. Trois de suite, sans réglage à réparer :
+        # le modem se relance (voir `Pilotage.relanceur`) — ce que le
+        # propriétaire faisait à la main en relançant tout le robot.
+        self.codes_sans_reseau = 0
+        self.dernier_silence = None     # ce que la sonde a lu la dernière fois
         # Une panne de modem s'annonce une fois, pas à chaque tour de
         # surveillance. `panne_signalee` retient qu'on l'a déjà dite ;
         # `prochaine_tentative` espace les essais au lieu de marteler un
@@ -75,8 +96,33 @@ class Compte:
         self.prochaine_tentative = 0.0
         self.attente_modem = 0          # l'écart courant entre deux essais
         self.verrou = threading.Lock()  # une seule opération USSD à la fois
+        # Le service de la carte : a-t-elle son réseau ? (voir service.py)
+        self.service = EtatDuService()
+        # Les relances en cours (radio, modem) : tant qu'il y en a une, la
+        # carte refuse toute demande, tout de suite et en le disant, au lieu
+        # de la faire attendre derrière son verrou et de la composer en
+        # retard. Un COMPTE et non un drapeau : deux relances qui se
+        # chevauchent (la veille et le chien de garde), la première finie ne
+        # doit pas lever la garde de la seconde.
+        self._reglages = 0
+        self._garde_des_reglages = threading.Lock()
 
     # ---- état -------------------------------------------------------------
+    @property
+    def en_reglage(self):
+        """Une relance de la radio ou du modem est-elle en cours ?"""
+        return self._reglages > 0
+
+    @contextmanager
+    def _reglage(self):
+        with self._garde_des_reglages:
+            self._reglages += 1
+        try:
+            yield
+        finally:
+            with self._garde_des_reglages:
+                self._reglages -= 1
+
     def signal(self):
         try:
             return self.modem.signal()
@@ -90,12 +136,19 @@ class Compte:
             return False
 
     def resume(self):
-        """Ligne d'état lisible : « MTN · SIM présente · signal 26/31 »."""
+        """Ligne d'état lisible : « MTN · SIM présente · signal 26/31 ».
+
+        Sans service, pas de « signal 22/31 » : c'est exactement la ligne
+        qui faisait croire que la carte avait son réseau."""
         sim = (t("SIM present", "SIM présente") if self.sim_prete()
                else t("SIM missing", "SIM absente"))
-        s = self.signal()
-        force = (t("signal unknown", "signal inconnu") if s == 99
-                 else f"signal {s}/31")
+        service = getattr(self, "service", None)
+        if service is not None and service.sans_service():
+            force = t("no service", "aucun service")
+        else:
+            s = self.signal()
+            force = (t("signal unknown", "signal inconnu") if s == 99
+                     else f"signal {s}/31")
         etat = (t(" · session open", " · session ouverte")
                 if self.session_ouverte else "")
         return f"{self.libelle} · {sim} · {force}{etat}"
@@ -111,7 +164,9 @@ class Compte:
         AUTRE titulaire tient un menu ouvert sur cette carte, au lieu de le
         remplacer. C'est le geste de la plateforme ; Telegram, lui, reprend
         la main (un administrateur est au bout du fil)."""
+        self._refuser_si_en_reglage()
         with self.verrou:
+            self._refuser_si_en_reglage()
             if (si_libre and self.session_ouverte
                     and self.titulaire != qui):
                 raise SessionTenue(self.titulaire)
@@ -150,6 +205,10 @@ class Compte:
             self.dernier_menu = ""
         return True
 
+    def _refuser_si_en_reglage(self):
+        if getattr(self, "en_reglage", False):
+            raise PasDeReseau(reconnexion=True)
+
     def tenue_par(self, qui):
         """Cette carte a-t-elle un menu ouvert, tenu par `qui` ?"""
         with self.verrou:
@@ -172,8 +231,28 @@ class Compte:
         rien au menu, qui reste à son titulaire ; un menu que le réseau
         avait déjà refermé (`MenuReferme`) n'a rien à raccrocher."""
         try:
-            return envoi(charge)
+            resultat = self._envoyer_avec_reprises(envoi, charge)
         except ReponseRefusee:
+            raise
+        except (ReponseNonRecue, RefusDuModem) as e:
+            if getattr(e, "sans_reseau", False):
+                # « Pas de réseau » : la carte n'est inscrite nulle part, et
+                # relancer le modem n'y change rien — c'est le travail de la
+                # veille du service (relire l'inscription au prochain
+                # passage, relancer la radio). Ce refus ne compte donc pas
+                # pour la relance du modem.
+                service = getattr(self, "service", None)
+                if service is not None:
+                    service.signaler_refus()
+            else:
+                self.codes_sans_reseau += 1
+            try:
+                self.modem.ussd_annuler()
+            except Exception:
+                pass
+            self.session_ouverte = False
+            self.titulaire = None
+            self.dernier_menu = ""
             raise
         except MenuReferme:
             self.session_ouverte = False
@@ -189,11 +268,60 @@ class Compte:
             self.titulaire = None
             self.dernier_menu = ""
             raise
+        self.codes_sans_reseau = 0  # le réseau a répondu : on repart de zéro
+        return resultat
+
+    @staticmethod
+    def _envoyer_avec_reprises(envoi, charge):
+        """Un refus du modem avant l'envoi se retente (`REPRISES_SUR_REFUS`),
+        le verrou du modem rendu entre deux essais : la relève des SMS
+        continue. Le dernier refus remonte tel quel."""
+        for essai in range(REPRISES_SUR_REFUS + 1):
+            try:
+                return envoi(charge)
+            except RefusDuModem:
+                if essai >= REPRISES_SUR_REFUS:
+                    raise
+                time.sleep(PAUSE_SUR_REFUS)
 
     def _suite(self, etat, reponse, qui=None):
         self.session_ouverte = etat == USSD_OUVERTE
         self.titulaire = qui if self.session_ouverte else None
         self.dernier_menu = reponse if self.session_ouverte else ""
+
+    def expliquer_le_silence(self):
+        """Le réseau n'a pas répondu à temps : ce que le modem en dit, en une
+        ligne pour le journal (voir `ModemSerie.etat_apres_silence`). Si le
+        réglage des annonces USSD est tombé, il est reposé au passage. Ne
+        lève jamais, et rend "" pour un modem qui ne sait pas se sonder
+        (simulateur, tests)."""
+        sonde = getattr(self.modem, "etat_apres_silence", None)
+        self.dernier_silence = None
+        if sonde is None:
+            return ""
+        try:
+            etat = sonde()
+        except Exception as e:
+            return t(f"modem not answering ({e})", f"modem muet ({e})")
+        self.dernier_silence = etat
+        if etat.get("repare"):
+            self.codes_sans_reseau = 0      # la cause est trouvée et réparée
+        return phrase_du_silence(etat)
+
+    def a_relancer_apres_echecs(self, seuil):
+        """Trois codes de suite qui n'ont pas atteint le réseau, et la sonde
+        n'a rien trouvé à réparer : le modem cache un état qu'on ne sait pas
+        lire, et une relance complète est ce qui le dissipe. Rend True une
+        fois, et repart de zéro."""
+        if self.codes_sans_reseau < seuil:
+            return False
+        self.codes_sans_reseau = 0
+        return True
+
+    def reglages_refuses(self):
+        """Les réglages que le modem a refusés à sa dernière mise en route
+        (voir `ModemSerie._initialiser`) — vide si tout est pris."""
+        return list(getattr(self.modem, "reglages_refuses", None) or [])
 
     def iccid(self):
         """Numéro de série de la carte présente dans CE modem. Deux SIM du
@@ -242,8 +370,12 @@ class Compte:
         )
         self.libelle = self.carte.libelle
         # Une nouvelle carte, c'est une nouvelle session réseau : le compteur
-        # d'échecs du chien de garde repart de zéro.
+        # d'échecs du chien de garde repart de zéro, et ce qu'on savait du
+        # service de l'ancienne carte ne vaut rien pour celle-ci.
         self.echecs = 0
+        service = getattr(self, "service", None)
+        if service is not None:
+            service.reinitialiser()
         return ancienne if ancienne.identifiee else None
 
     def memoire_sms(self):
@@ -251,6 +383,57 @@ class Compte:
             return self.modem.memoire_sms()
         except Exception:
             return (0, 0)
+
+    # ---- le service (le réseau de la carte) ------------------------------
+    def lire_service(self):
+        """L'état du service de la carte, ou None si on ne lit pas cette fois.
+
+        On ne lit JAMAIS pendant un menu, ni pendant une relève ou un envoi
+        de SMS : la carte doit être libre À L'INSTANT (sans attendre), et le
+        menu fermé — revérifié sous le verrou. Une carte occupée se relit au
+        passage suivant. Ne lève jamais : un modem qui bafouille donne
+        « inconnu », qui ne compte ni pour ni contre."""
+        lire = getattr(self.modem, "inscription", None)
+        if lire is None or self.session_ouverte:
+            return None
+        if not self.verrou.acquire(blocking=False):
+            return None
+        try:
+            if self.session_ouverte:
+                return None
+            sim_prete, creg, cereg = lire()
+            etat = etat_du_service(creg, cereg, sim_prete)
+        except Exception:
+            return INCONNU
+        finally:
+            self.verrou.release()
+        # Le nom du réseau et l'itinérance ne se figent plus au démarrage :
+        # ils suivent la carte — mais seulement quand elle est inscrite, et
+        # jamais ils ne changent l'OPÉRATEUR de la carte (qui vient de l'IMSI).
+        if etat not in SANS_SERVICE and etat != INCONNU:
+            self.carte.itinerance = etat == ITINERANCE
+        return etat
+
+    def relancer_radio(self):
+        """Mode avion, puis retour (voir `ModemSerie.relancer_radio`).
+
+        `en_reglage` est posé AVANT de prendre le verrou : une demande qui
+        arrive pendant la relance est refusée tout de suite (« se reconnecte
+        à son réseau »), au lieu d'attendre et de partir en retard. Rend True
+        (revenue), False (pas revenue), ou None (pas faite : carte occupée,
+        menu ouvert, modem qui ne sait pas)."""
+        relancer = getattr(self.modem, "relancer_radio", None)
+        if relancer is None or self.session_ouverte:
+            return None
+        with self._reglage():
+            if not self.verrou.acquire(timeout=5):
+                return None
+            try:
+                if self.session_ouverte:
+                    return None
+                return bool(relancer())
+            finally:
+                self.verrou.release()
 
     # ---- SMS --------------------------------------------------------------
     def sms_annonce(self):
@@ -297,14 +480,28 @@ class Compte:
         menu : `session_ouverte`, `titulaire`, `dernier_menu` ne bougent pas.
         Les exceptions du modem (`ReponseRefusee`, `ErreurModem`,
         `EnvoiIncertain`) remontent telles quelles."""
+        self._refuser_si_en_reglage()
         with self.verrou:
+            self._refuser_si_en_reglage()
             return self.modem.envoyer_sms(numero, texte)
 
     def redemarrer(self):
-        with self.verrou:
-            self.modem.redemarrer()
-            self.session_ouverte = False
-            self.titulaire = None
+        # Pendant le redémarrage (près d'une minute), une demande est refusée
+        # tout de suite plutôt que composée en retard derrière le verrou.
+        try:
+            with self._reglage(), self.verrou:
+                self.modem.redemarrer()
+                self.session_ouverte = False
+                self.titulaire = None
+        finally:
+            # Une relance, d'où qu'elle vienne (le chien de garde, trois
+            # codes sans réponse, Telegram, la veille du service), se sait
+            # partout : les codes repartent de zéro, et la veille ne relance
+            # pas une seconde fois le modem dans le même épisode.
+            self.codes_sans_reseau = 0
+            service = getattr(self, "service", None)
+            if service is not None:
+                service.modem_relance(time.monotonic())
         self.echecs = 0
 
 
@@ -322,4 +519,4 @@ def libelles_uniques(comptes):
 
 __all__ = ["Compte", "libelles_uniques", "ErreurModem", "SessionTenue",
            "ReponseRefusee", "MenuReferme", "ReponseNonRecue", "EnvoiIncertain",
-           "MessageTropLong", "WEB", "TELEGRAM"]
+           "MessageTropLong", "RefusDuModem", "WEB", "TELEGRAM"]

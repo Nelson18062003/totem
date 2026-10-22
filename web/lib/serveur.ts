@@ -24,6 +24,7 @@ import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 import { libelleJour } from "@noyau/periodes";
 import { enchainementLu, type Enchainement } from "@noyau/deroule";
+import { serviceDeLaCarte } from "@noyau/service";
 import {
   ageDuSigneDeVie, boitierSansNouvelles, enPlaceSelon, presenceDeLaCarte, signalLu,
   type Presence,
@@ -215,7 +216,10 @@ async function lire<T>(chemin: string): Promise<T[]> {
 // sortie de flotte : voir lib/boitiers.ts.
 type LigneTerminal = LigneBoitier & {
   nom: string | null; version: string | null;
-  sante?: { resume?: string; en_attente?: number } | null;
+  // `cartes` : le service de chaque carte, publié par le boîtier (voir
+  // noyau/service.ts). JAMAIS renvoyé tel quel : il porte les ICCID de
+  // toutes les cartes du boîtier, et chacun ne voit que les siennes.
+  sante?: { resume?: string; en_attente?: number; cartes?: Record<string, unknown> } | null;
 };
 type LigneCarte = {
   // Le boîtier qui a vu cette carte (la base tient une ligne par boîtier et
@@ -399,6 +403,21 @@ export function dansLaDemonstration<T>(faire: () => Promise<T>): Promise<T> {
  * distant qui ignorerait un filtre (la vitrine n'en applique aucun) ne doit
  * pas faire passer le solde d'une autre carte, ou d'après, pour une ouverture.
  */
+/**
+ * LE PREMIER JOUR DE LA CAISSE, pour ces cartes : celui du plus ancien SMS
+ * relevé. Sans lui, « six mois » se comparait à six mois d'AVANT l'ouverture
+ * de la caisse — à presque rien — et montait de 24 145 %. `null` : aucun SMS.
+ */
+export async function premierJourDesCartes(iccids: string[], fuseau: string): Promise<string | null> {
+  if (iccids.length === 0) return null;
+  const [l] = await lire<{ recu_le: string; emis_le: string | null }>(
+    `paiements?select=recu_le,emis_le&carte=in.${listeDeCartes(iccids)}&order=recu_le.asc&limit=1`);
+  if (!l) return null;
+  const t = Math.min(...[l.recu_le, l.emis_le].map((v) => (v ? Date.parse(v) : Number.NaN))
+    .filter(Number.isFinite));
+  return Number.isFinite(t) ? jourLocal(new Date(t), fuseau) : null;
+}
+
 export async function soldeAnnonceAvant(
   iccid: string, avant: string, numeroDeLaCarte?: string | null,
 ): Promise<number | null> {
@@ -747,6 +766,13 @@ export async function chargerDonnees(
     const sonBoitier = c.terminal
       ? { boitierMuet: boitierSansNouvelles(vu.vuIlYa), boitierVuLe: entenduLe(hote) }
       : {};
+    // LE SERVICE DE LA CARTE, daté sur l'horloge de la base. « Figé » quand
+    // son boîtier se tait — et seulement alors : « inconnue » dit aussi
+    // « il vient de revenir », et un boîtier qui parle porte un état frais.
+    const service = hote?.sante && typeof hote.sante === "object"
+      ? serviceDeLaCarte(hote.sante.cartes?.[c.iccid], entenduLe(hote),
+                         c.terminal ? boitierSansNouvelles(vu.vuIlYa) : presence === "inconnue")
+      : undefined;
     return {
       iccid: c.iccid,
       libelle: compte?.libelle || c.libelle || `Carte ·${c.iccid.slice(-4)}`,
@@ -763,6 +789,7 @@ export async function chargerDonnees(
       enPlace: enPlaceSelon(presence),
       presence,
       ...sonBoitier,
+      ...(service ? { service } : {}),
       premiereVue: dateCourte(c.premiere_vue, langue),
       derniereVue: dateCourte(c.derniere_vue, langue),
       nbPaiements: entrees.length,
@@ -1349,18 +1376,68 @@ export async function enregistrerAppareil(
 }
 
 /**
- * Compte un essai de mot de passe, dans la BASE, et rend le total.
+ * Compte un essai de mot de passe dans ses trois seaux, dans la BASE, et rend
+ * {adresse, couple, compte} — 0 pour un seau qu'elle n'a pas touché, parce
+ * qu'un mur l'a arrêtée avant (voir `frein_essai`,
+ * migrations/20261022_frein_fenetre_fixe.sql).
  *
  * `null` quand la base ne répond pas — et ce `null` compte : le frein doit
  * alors retomber sur son seau en mémoire, jamais fermer la porte. Une base
  * injoignable ne doit pas être un verrou sur sa propre maison ; c'est déjà la
  * raison d'être de la clé de secours.
  *
- * Le comptage est fait par la base en UNE instruction (voir
- * `compter_un_essai` dans sql/schema.sql) : lire ici puis écrire là
+ * Le comptage est fait par la base en UNE fonction : lire ici puis écrire là
  * reproduirait exactement la course qu'on veut fermer.
  */
-export async function compterUnEssai(
+export async function compterLesEssais(
+  seaux: { adresse: string; couple: string | null; compte: string | null },
+  fenetreS: number, murAdresse: number, murCouple: number,
+): Promise<[number, number, number] | null> {
+  if (!relie) return null;
+  try {
+    const r = await appeler(`rpc/frein_essai`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        p_adresse: seaux.adresse, p_couple: seaux.couple, p_compte: seaux.compte,
+        fenetre_s: fenetreS, mur_adresse: murAdresse, mur_couple: murCouple,
+      }),
+      cache: "no-store",
+      // Un frein ne doit jamais faire attendre plus que ce qu'il freine.
+      signal: AbortSignal.timeout(2000),
+    });
+    // UNE BASE PAS ENCORE MIGRÉE ne connaît pas `frein_essai` : le frein
+    // compte alors en mémoire, et c'est moins bien — chaque instance a le sien.
+    // On le dit une fois au journal plutôt que de le laisser passer en silence.
+    if (r.status === 404) {
+      if (!freinSansMigration) {
+        freinSansMigration = true;
+        noterIncident("Le frein des mots de passe compte dans la mémoire de chaque serveur : "
+          + "la base n'a pas encore reçu migrations/20261022_frein_fenetre_fixe.sql.");
+      }
+      return null;
+    }
+    if (!r.ok) return null;
+    const n = await r.json();
+    return Array.isArray(n) && n.length === 3 && n.every((x) => Number.isFinite(x))
+      ? [n[0], n[1], n[2]] : null;
+  } catch {
+    return null;
+  }
+}
+let freinSansMigration = false;
+
+/**
+ * La règle d'HIER (`compter_un_essai`) : une fenêtre qui glisse et qui garde
+ * les réussites. Elle ne sert plus qu'à l'inscription, et seulement sur une
+ * base qui n'a pas encore la règle neuve — l'inscription y comptait déjà, et
+ * elle compte ses réussites à dessein : personne ne crée vingt comptes en un
+ * quart d'heure.
+ */
+export async function compterUnEssaiALAncienne(
   seau: string, fenetreS: number,
 ): Promise<number | null> {
   if (!relie) return null;
@@ -1373,7 +1450,6 @@ export async function compterUnEssai(
       },
       body: JSON.stringify({ la_cle: seau, fenetre_s: fenetreS }),
       cache: "no-store",
-      // Un frein ne doit jamais faire attendre plus que ce qu'il freine.
       signal: AbortSignal.timeout(2000),
     });
     if (!r.ok) return null;
@@ -1381,6 +1457,30 @@ export async function compterUnEssai(
     return typeof n === "number" && Number.isFinite(n) ? n : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Rendre un essai, dans chacun de ses seaux : la connexion a réussi, elle ne
+ * compte pas. Rend `false` quand la base n'a pas pu le faire — l'essai reste
+ * alors compté, ce qui ne coûte qu'un cran de frein, jamais une porte ouverte.
+ */
+export async function rendreLesEssais(seaux: string[]): Promise<boolean> {
+  if (!relie || seaux.length === 0) return false;
+  try {
+    const r = await appeler(`rpc/frein_rendre`, {
+      method: "POST",
+      headers: {
+        apikey: cle!, authorization: `Bearer ${cle}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ les_cles: seaux }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(2000),
+    });
+    return r.ok;
+  } catch {
+    return false;
   }
 }
 

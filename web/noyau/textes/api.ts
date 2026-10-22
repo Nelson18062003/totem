@@ -81,6 +81,13 @@ const en = {
   // rend toujours une décision, et celle-ci se lit « c'est fait ».
   compteCree: "account created",
   nomManquant: "the first name and the last name are both needed",
+  // L'APPLICATION D'HIER n'envoie que le courriel et le mot de passe : son
+  // écran n'a ni prénom, ni nom, ni adresse, ni téléphone. Lui répondre « il
+  // faut le prénom et le nom », c'est réclamer ce qu'elle ne sait pas
+  // demander. On lui dit la seule chose qui débloque : mettre à jour.
+  applicationTropAncienne:
+    "This version of TOTEM is too old to create an account. Update the app from "
+    + "the Play Store or the App Store, then try again.",
   proprietaireVoitTout: "the owner already sees every card",
   carteInconnue: "this card is not known to the platform",
   // Une puce s'attribue d'après le CODE DE COMPTE que la personne a joint à
@@ -168,6 +175,9 @@ const fr: typeof en = {
     + "resterait sans propriétaire.",
   compteCree: "compte créé",
   nomManquant: "il faut le prénom et le nom",
+  applicationTropAncienne:
+    "Cette version de TOTEM est trop ancienne pour créer un compte. Mettez "
+    + "l’application à jour depuis le Play Store ou l’App Store, puis réessayez.",
   proprietaireVoitTout: "le propriétaire voit déjà toutes les cartes",
   carteInconnue: "cette carte n’est pas connue de la plateforme",
   codeDeCompteFaux:

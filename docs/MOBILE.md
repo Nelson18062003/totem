@@ -534,25 +534,48 @@ Deux chemins, et ils ne servent pas à la même chose.
 
 ### Le chemin court : la mise à jour à distance (une minute)
 
-Actions → **« Mise à jour »** → Run workflow → canal `apercu`.
+Actions → **« Mise à jour »** → Run workflow → canal `essai`.
 
-Le nouveau code part chez Expo. Les téléphones déjà installés le prennent
-**au prochain démarrage de l'application**. Rien à réinstaller, rien à
-télécharger à la main, personne à prévenir.
+Le nouveau code part chez Expo. Les téléphones déjà installés le
+**téléchargent** à une ouverture de l'application, et l'**affichent** à
+l'ouverture complète d'après — l'application fermée pour de bon (balayée des
+applications récentes), puis rouverte. Deux ouvertures, pas une : c'est ce
+qu'on voit quand « il faut relancer deux ou trois fois ». Rien à réinstaller,
+rien à télécharger à la main, personne à prévenir.
+
+**Le canal est celui du paquet installé.** Le téléphone du propriétaire et
+les essayeurs ont des paquets du profil `essai` : c'est donc `essai`. Aucun
+paquet `apercu` n'a jamais été distribué ; publier sur `apercu` n'atteint
+personne, sans un mot d'erreur.
+
+**Elle n'atteint que les paquets de la MÊME version** (`version` dans
+`app.json`). Le 22 octobre, les essayeurs Android voyaient encore l'écran
+de connexion du 30 août — la case « Plateforme », « ceux qui suivent
+attendent que le propriétaire ouvre la porte », une connexion sans délai
+qui reste sur « Vérification… » : celui d'un paquet 1.0.0, qu'aucune mise à
+jour 1.1.0 ne peut atteindre, et la dernière compilation Android datait du
+2 octobre. Un écran qu'on ne voit pas changer après une mise à jour se
+cherche donc d'abord ici : **quel paquet** l'essayeur a-t-il ? La réponse
+est dans la Play Console (piste, code de version), pas dans le code. Le
+remède est une compilation neuve, ci-dessous, posée sur la piste qu'il
+suit.
 
 C'est le chemin de tous les jours : les écrans, les textes, les couleurs,
 les calculs, les corrections de bugs. L'écrasante majorité du travail.
 
 ### Le chemin long : une nouvelle compilation (vingt minutes)
 
-Actions → **« Application Android »** → Run workflow → profil `apercu`.
+Actions → **« Application Android »** → Run workflow → profil `essai`.
 
 Obligatoire dès qu'une brique **native** bouge :
 
 - une permission Android ajoutée ou retirée ;
 - une bibliothèque nouvelle (`expo-notifications`, `expo-updates`…) ;
 - le fichier `google-services.json` de Firebase ;
-- la version d'Android visée.
+- la version d'Android visée ;
+- **un écran que les essayeurs n'ont jamais reçu** parce que leur paquet
+  est d'une autre version : la piste d'essai distribue un paquet, pas le
+  code du jour.
 
 ### Ce qui serait arrivé si on avait poussé le passage iPhone à distance
 

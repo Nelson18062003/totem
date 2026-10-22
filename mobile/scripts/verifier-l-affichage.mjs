@@ -423,7 +423,17 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     ["cadran", "/ussd", /.+/],
   ]) {
     await page.goto(`${APERCU}${chemin}`, { waitUntil: "networkidle" });
-    try { await attendreTexte(page, preuve); } catch { /* mesuré tel quel */ }
+    // UN ÉCRAN QU'ON NE RECONNAÎT PAS NE SE MESURE PAS : il ÉCHOUE. Le
+    // banc mesurait « tel quel » ce qu'il trouvait — et un export d'avant,
+    // remis là par erreur, lui a servi la page « Unmatched Route » à la
+    // place des Volumes : douze tailles sur quatorze « ✓ ». Une page
+    // d'erreur bien rangée ne déborde de rien.
+    try { await attendreTexte(page, preuve); } catch {
+      defauts++;
+      const vu = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ").slice(0, 80);
+      resume.push(`  ✗ ${format.padEnd(18)} ${ecran.padEnd(16)} écran introuvable — à sa place : « ${vu} »`);
+      continue;
+    }
     await mesurer(ecran);
   }
 
@@ -580,7 +590,12 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     if (!choisie) fautes.push("aucune puce ne se dit choisie");
     else if (!/4177/.test(choisie.nom)) fautes.push(`la carte retenue est oubliée (choisie : ${choisie.nom})`);
     else if (!derniere) fautes.push("la carte retenue n'est plus la dernière de la rangée : l'étape ne prouve plus rien");
-    else if (!visible) fautes.push("la puce choisie est hors de l'écran");
+    else if (!visible) {
+      // Un hors-champ se CHIFFRE : « hors de l'écran » ne disait ni de
+      // combien, ni de quel côté.
+      fautes.push(`la puce choisie est hors de l'écran (${Math.round(choisie.gauche)}–${Math.round(choisie.droite)}`
+        + ` pour une rangée ${Math.round(choisie.bordG)}–${Math.round(choisie.bordD)})`);
+    }
     if (!muet) fautes.push("le terminal muet n'est pas signalé");
     if (fautes.length) defauts += fautes.length;
     resume.push(`  ${fautes.length ? "✗" : "✓"} ${format.padEnd(18)} ${ecranMesure.padEnd(16)} ${fautes.join(" ; ")}`);

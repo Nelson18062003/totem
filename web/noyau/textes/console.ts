@@ -194,7 +194,7 @@ const en = {
     mesureEnAttente: "Awaiting approval",
     mesureEnAttenteCalme: "nobody is waiting at the door",
     mesureTelephones: "Phones notified",
-    mesureFreins: "Addresses being slowed",
+    mesureFreins: "Doors being slowed",
     mesureFreinsCalme: "nobody is hammering the door",
     comptesTitre: "Who can open this platform",
     comptesNote: "create an account, entrust it cards, block or delete it",
@@ -217,15 +217,18 @@ const en = {
     colonnePlateforme: "System",
     colonneVu: "Last heard from",
     freinsTitre: "The brake on the door",
-    freinsNote: "addresses that tried a password more than the free allowance",
+    freinsNote: "addresses and accounts with more failed passwords than the free allowance",
     freinsVideTitre: "Nothing worth slowing down",
     freinsVideDetail:
-      "No address has gone past the free attempts in the current window. The brake forgets on its own — an empty list here is the normal state.",
-    colonneAdresse: "Address",
+      "No address or account has gone past the free attempts in the current window. The brake forgets on its own — an empty list here is the normal state.",
+    colonneAdresse: "Address or account",
+    // Le seau d'un compte est une empreinte du courriel, jamais le courriel.
+    compteVise: "an account (email hidden)",
+    cleDeSecours: "the emergency key",
     colonneEssais: "Attempts",
     essais: (n: number) => `${n} ${n === 1 ? "attempt" : "attempts"}`,
     freinExplique:
-      "The counter lives in the database, shared by every server. Five attempts are free; beyond that each one waits longer, and sixty shut the address out of the window entirely. The owner's own door never locks: the emergency key ignores the brake's wall.",
+      "The counter lives in the database, shared by every server. Only failures count: a successful sign-in gives its attempt back. Five failures are free for one address on one account, ten for an account from everywhere; beyond that each one waits longer — eight seconds at most; the address itself makes no one wait. Sixty failures close that account to that address for the fifteen-minute window; a thousand checked failures close the address. Carriers put hundreds of phones behind one address: a neighbour who attacks an account does not close the door to the others, and a session already open never closes.",
   },
 };
 
@@ -395,7 +398,7 @@ const fr: typeof en = {
     mesureEnAttente: "En attente d'approbation",
     mesureEnAttenteCalme: "personne n'attend à la porte",
     mesureTelephones: "Téléphones prévenus",
-    mesureFreins: "Adresses ralenties",
+    mesureFreins: "Portes ralenties",
     mesureFreinsCalme: "personne ne martèle la porte",
     comptesTitre: "Qui peut ouvrir cette plateforme",
     comptesNote: "créer un compte, lui confier des cartes, le bloquer ou le supprimer",
@@ -420,15 +423,17 @@ const fr: typeof en = {
     colonneVu: "Dernière nouvelle",
     freinsTitre: "Le frein de la porte",
     freinsNote:
-      "les adresses qui ont essayé un mot de passe au-delà des essais gratuits",
+      "les adresses et les comptes qui ont échoué au-delà des essais gratuits",
     freinsVideTitre: "Rien qui mérite d'être ralenti",
     freinsVideDetail:
-      "Aucune adresse n'a dépassé les essais gratuits dans la fenêtre en cours. Le frein oublie tout seul — une liste vide est ici l'état normal.",
-    colonneAdresse: "Adresse",
+      "Aucune adresse ni aucun compte n'a dépassé les essais gratuits dans la fenêtre en cours. Le frein oublie tout seul — une liste vide est ici l'état normal.",
+    colonneAdresse: "Adresse ou compte",
+    compteVise: "un compte (courriel caché)",
+    cleDeSecours: "la clé de secours",
     colonneEssais: "Essais",
     essais: (n) => `${n} essai${n > 1 ? "s" : ""}`,
     freinExplique:
-      "Le compteur vit dans la base, partagé par tous les serveurs. Cinq essais sont gratuits ; au-delà chacun attend plus longtemps, et soixante ferment l'adresse pour la fenêtre entière. La porte du propriétaire, elle, ne se verrouille jamais : la clé de secours ignore le mur du frein.",
+      "Le compteur vit dans la base, partagé par tous les serveurs. Seuls les échecs comptent : une connexion réussie rend son essai. Cinq échecs sont gratuits pour une adresse sur un compte, dix pour un compte de partout ; au-delà chacun attend plus longtemps — huit secondes au plus ; l'adresse, elle, ne fait attendre personne. Soixante échecs ferment ce compte à cette adresse pour le quart d'heure ; mille échecs vraiment vérifiés ferment l'adresse. Un opérateur met des centaines de téléphones derrière une même adresse : un voisin qui attaque un compte ne ferme pas la porte aux autres, et une session ouverte ne se ferme jamais.",
   },
 };
 

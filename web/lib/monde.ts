@@ -124,7 +124,9 @@ const DOUBLES: Record<string, string> = {
 // Ce que les deux mondes partagent : le frein des mots de passe. Un seau
 // commun ne montre rien de personne, et une rafale ne gagne rien à changer
 // de monde.
-const COMMUNES = new Set(["freins", "rpc/compter_un_essai"]);
+const COMMUNES = new Set([
+  "freins", "rpc/compter_un_essai", "rpc/frein_essai", "rpc/frein_rendre",
+]);
 
 // Ce que seule la démo touche : le faux réseau, la trace des francs
 // fabriqués, les floats de test de Glisil et leur file.

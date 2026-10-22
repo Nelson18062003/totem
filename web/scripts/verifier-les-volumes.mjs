@@ -30,8 +30,19 @@
 //   5. LE TÉMOIN : l'ancienne Analyse (l'argent reçu, rien d'autre, sur les
 //      mille derniers SMS) doit se tromper sur la même caisse.
 //   6. L'ÉCRAN : la page dit les mêmes chiffres, sur un téléphone, une
-//      tablette et un ordinateur, sans déborder — et les captures restent
-//      pour qu'on les regarde.
+//      tablette et un ordinateur, sans déborder ni couper un montant — et
+//      les captures restent pour qu'on les regarde.
+//   7. CE QUE LE PROPRIÉTAIRE A SIGNALÉ, rejoué comme il le fait : « 6 mois
+//      ne marche pas » (la période affichée est celle qu'on compte, et ‹
+//      recule de six mois, pas de onze) ; « c'est trop lent » (une période
+//      voisine s'affiche sans rien redemander) ; « aucune transition » ; les
+//      cartes nommées comme à l'accueil (« MTN ·8901 ») ; aucun « vieux
+//      composant » du navigateur ; la comparaison se tait quand la caisse ne
+//      remonte pas assez loin. Chaque exigence a son témoin.
+//
+// LA CAISSE PORTE DES MILLIARDS : un grossiste y passe des dizaines de
+// millions, comme sur la vraie base (1,1 milliard en six mois). Une caisse
+// à 300 000 F l'opération n'aurait jamais fait déborder un montant.
 
 import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -158,11 +169,32 @@ function caisse(aujourdhui) {
     });
   };
   const debut = decaler(aujourdhui, -183);
+  let jourNumero = 0;
   for (let jour = debut; jour <= aujourdhui; jour = decaler(jour, 1)) {
     const dimanche = new Date(`${jour}T12:00:00Z`).getUTCDay() === 0;
+    // Le grossiste, un jour sur trois : des dizaines de millions qui entrent
+    // le matin et repartent le soir, comme les plus grosses lignes de la
+    // vraie base (98 000 000 F). Rangé À SON HEURE parmi les autres : la
+    // suite des soldes se lit dans l'ordre du temps.
+    const gros = [];
+    if (jourNumero++ % 3 === 0) {
+      const g = Math.round((20000000 + r() * 78000000) / 500) * 500;
+      gros.push({ min: 9 * 60 + 12, sens: "entree", montant: g },
+                { min: 17 * 60 + 40, sens: "sortie", montant: Math.round(g * (0.6 + r() * 0.35) / 500) * 500 });
+    }
+    const pousserGros = (x) => {
+      const quand = new Date(Date.parse(aDouala(jour, "00:00")) + x.min * 60000).toISOString();
+      if (Date.parse(quand) > Date.now() - 60000) return;
+      ref++;
+      solde[B9.iccid] += x.sens === "entree" ? x.montant : -x.montant;
+      pousser(B9, quand, { categorie: x.sens === "entree" ? "encaissement" : "envoi", sens: x.sens, montant: x.montant,
+                           frais: x.sens === "sortie" ? 0 : null, tiers: "GROSSISTE ESSAI SARL", numero: "655000111",
+                           reference: `G${ref}`, solde_apres: solde[B9.iccid] });
+    };
     const n = dimanche ? 8 : 30;
     const minutes = Array.from({ length: n }, () => 5 * 60 + Math.floor(r() * 18.5 * 60)).sort((x, y) => x - y);
     for (let k = 0; k < n; k++) {
+      while (gros.length && gros[0].min <= minutes[k]) pousserGros(gros.shift());
       const quand = new Date(Date.parse(aDouala(jour, "00:00")) + minutes[k] * 60000).toISOString();
       if (Date.parse(quand) > Date.now() - 60000) continue;
       const carte = CARTES[Math.floor(r() * 3)];
@@ -243,8 +275,133 @@ function caisse(aujourdhui) {
         perdue = { carte: B9.iccid, jour, montant: 7000 };
       }
     }
+    while (gros.length) pousserGros(gros.shift());
   }
   return { lignes, perdue };
+}
+
+// --- Ce que le propriétaire a signalé --------------------------------------------
+
+async function signale({ base, aujourdhui, jeton, lire, montantsCoupes }) {
+  const fr = (n) => ecrit(n / 100);
+  const ctx = await nav.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await ctx.addCookies([{ name: "totem_session", value: jeton, domain: "127.0.0.1", path: "/" },
+                        { name: "totem_langue", value: "fr", domain: "127.0.0.1", path: "/" }]);
+  const page = await ctx.newPage();
+  // Ce qui part vers la plateforme, et ce qui n'est pas encore revenu.
+  const demandes = [];
+  const enCours = new Set();
+  page.on("request", (q) => { if (q.url().includes("/api/volumes")) { demandes.push(q.url()); enCours.add(q); } });
+  page.on("requestfinished", (q) => enCours.delete(q));
+  page.on("requestfailed", (q) => enCours.delete(q));
+  // Les voisines se chargent en silence : on attend qu'il n'y ait plus rien
+  // en route depuis une demi-seconde.
+  const auRepos = async () => {
+    let calme = 0;
+    for (let i = 0; i < 100 && calme < 5; i++) { await attendre(100); calme = enCours.size ? 0 : calme + 1; }
+  };
+  const vue = () => page.evaluate(() => document.querySelector("[data-vue]")?.getAttribute("data-vue"));
+  const montree = () => page.evaluate(() => document.querySelector("[data-vue]")?.innerText ?? "");
+  const duel = () => page.evaluate(() => document.querySelector("[data-vue] section")?.innerText ?? "");
+  // Une vue est POSÉE quand la clé a changé et que plus rien n'attend.
+  const changer = async (faire) => {
+    const avant = await vue(), n = demandes.length, t0 = Date.now();
+    await faire();
+    await page.waitForFunction((a) => document.querySelector("[data-vue]")?.getAttribute("data-vue") !== a
+      && !document.querySelector('[aria-busy="true"]'), avant, { timeout: 15000 });
+    const animations = await page.evaluate(() => (document.querySelector("[data-vue]")?.getAnimations?.() ?? [])
+      .map((a) => a.animationName).filter(Boolean));
+    return { ms: Date.now() - t0, demandees: demandes.length - n, animations };
+  };
+  const onglet = (nom) => page.getByRole("tab", { name: nom, exact: true });
+  const precedente = () => page.getByRole("button", { name: "Période précédente" }).click();
+
+  await page.goto(`${B}/volumes?periode=mois&jour=${aujourdhui}`, { waitUntil: "networkidle" });
+  await auRepos();
+
+  // a. Les vieux composants du navigateur.
+  const vieux = () => page.evaluate(() => document.querySelectorAll("main select, main input[type=date]").length);
+  verifier("aucune liste ni champ de date du navigateur", (await vieux()) === 0, `${await vieux()}`);
+  await page.evaluate(() => document.querySelector("main").append(Object.assign(document.createElement("select"), { id: "temoin" })));
+  verifier("TÉMOIN : la sonde voit une liste du navigateur", (await vieux()) === 1);
+  await page.evaluate(() => document.getElementById("temoin").remove());
+  // La sonde des montants coupés, sur un montant qu'on coupe exprès.
+  await page.evaluate(() => document.querySelector("main").insertAdjacentHTML("beforeend",
+    '<span id="temoin" style="display:block;width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">−1 616 949,76 F</span>'));
+  verifier("TÉMOIN : la sonde voit un montant coupé", (await montantsCoupes(page)).length === 1);
+  await page.evaluate(() => document.getElementById("temoin").remove());
+
+  // b. La comparaison : dite quand la caisse couvre le mois d'avant…
+  const ECART = /[▲▼]\s?\d|×\s?\d|=\s?0\s?%/;
+  verifier("le mois en cours se compare au mois d'avant", ECART.test(await duel()), (await duel()).split("\n").slice(0, 3).join(" "));
+
+  // c. Six mois : la période COMPTÉE est celle qu'on montre.
+  const de6 = moisAvant(aujourdhui, 5);
+  const v6 = verite(base, de6, aujourdhui, CARTES);
+  verifier("la caisse d'essai passe le milliard en six mois", v6.e > 100000000000, fr(v6.e));
+  let r = await changer(() => onglet("6 mois").click());
+  let texte = await montree();
+  verifier("6 mois : les entrées des six derniers mois, au franc", texte.includes(fr(v6.e)), `${fr(v6.e)} · ${r.ms} ms`);
+  verifier("6 mois : affiché sans rien redemander", r.demandees === 0, `${r.demandees} demande(s)`);
+  verifier("6 mois : l'arrivée se voit (fondu)", r.animations.includes("fondu"), r.animations.join(", ") || "aucune");
+  // …et se tait quand la caisse ne remonte pas assez loin.
+  verifier("6 mois : aucune comparaison avec un semestre que la caisse n'a pas", !ECART.test(await duel()),
+    (await duel()).split("\n").slice(0, 3).join(" "));
+  // ‹ recule de SIX mois. Redemandée par son premier jour, la période
+  // reculait de cinq mois de plus : ‹ sautait onze mois, et « 6 mois »
+  // montrait des zéros sous le bon titre.
+  await auRepos();
+  const dePrec = moisAvant(aujourdhui, 11), aPrec = finDuMois(moisAvant(aujourdhui, 6));
+  const vPrec = verite(base, dePrec, aPrec, CARTES);
+  r = await changer(precedente);
+  texte = await montree();
+  verifier("‹ depuis 6 mois : les six mois d'avant, au franc", texte.includes(fr(vPrec.e)) && vPrec.e > 0,
+    `${fr(vPrec.e)} (${dePrec} → ${aPrec})`);
+  verifier("‹ : l'arrivée glisse depuis la gauche", r.animations.includes("glisse-droite"), r.animations.join(", ") || "aucune");
+  const temoin6 = (await lire(`/api/volumes?langue=fr&periode=6mois&jour=${de6}`)).json?.volumes.periode;
+  verifier("TÉMOIN : redemandée par son premier jour, la période recule de cinq mois",
+    temoin6 && temoin6.de === moisAvant(aujourdhui, 10), temoin6 ? `${temoin6.de} → ${temoin6.a}` : "rien");
+
+  // d. Rapide : une durée voisine est déjà là quand on la touche.
+  await auRepos();
+  for (const nom of ["Semaine", "Mois"]) {
+    r = await changer(() => onglet(nom).click());
+    verifier(`${nom} : affiché sans rien redemander`, r.demandees === 0, `${r.demandees} demande(s) · ${r.ms} ms`);
+    await auRepos();
+  }
+  const vMoisDernier = verite(base, moisAvant(aujourdhui, 1), finDuMois(moisAvant(aujourdhui, 1)), CARTES);
+  r = await changer(precedente);
+  verifier("‹ le mois dernier : affiché sans rien redemander, au franc",
+    r.demandees === 0 && (await montree()).includes(fr(vMoisDernier.e)), `${r.demandees} demande(s) · ${r.ms} ms`);
+  await auRepos();
+
+  // e. Les cartes, nommées comme à l'accueil : le logo, « MTN ·8901 ».
+  await page.getByRole("button", { name: /Choisir une carte/ }).first().click();
+  const options = await page.locator('[role="option"]').allInnerTexts();
+  const premieres = options.map((o) => o.split("\n")[0].trim());
+  verifier("le menu nomme chaque carte comme l'accueil",
+    CARTES.every((c) => premieres.includes(c.compte)) && !premieres.some((x) => /^\d[\d\s]{7,}$/.test(x)),
+    premieres.join(" | "));
+  r = await changer(() => page.locator('[role="option"]', { hasText: A.compte }).first().click());
+  const nomDuBouton = await page.getByRole("button", { name: /Choisir une carte/ }).first().getAttribute("aria-label");
+  verifier("la carte choisie se lit « MTN ·8901 »", (nomDuBouton || "").includes(A.compte), nomDuBouton || "");
+  const vA = verite(base, moisAvant(aujourdhui, 1), finDuMois(moisAvant(aujourdhui, 1)), [A]);
+  verifier("la carte choisie : ses entrées du mois dernier, au franc", (await montree()).includes(fr(vA.e)), fr(vA.e));
+  verifier("TÉMOIN : une vue jamais chargée se demande bien à la plateforme", r.demandees >= 1, `${r.demandees} demande(s)`);
+
+  // f. « Réduire les animations » : rien ne glisse.
+  const calme = await nav.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  await calme.addCookies([{ name: "totem_session", value: jeton, domain: "127.0.0.1", path: "/" },
+                          { name: "totem_langue", value: "fr", domain: "127.0.0.1", path: "/" }]);
+  const p2 = await calme.newPage();
+  await p2.goto(`${B}/volumes?periode=mois&jour=${aujourdhui}`, { waitUntil: "networkidle" });
+  const avant2 = await p2.evaluate(() => document.querySelector("[data-vue]")?.getAttribute("data-vue"));
+  await p2.getByRole("button", { name: "Période précédente" }).click();
+  await p2.waitForFunction((a) => document.querySelector("[data-vue]")?.getAttribute("data-vue") !== a, avant2, { timeout: 15000 });
+  const anim2 = await p2.evaluate(() => (document.querySelector("[data-vue]")?.getAnimations?.() ?? []).map((a) => a.animationName));
+  verifier("« Réduire les animations » : rien ne glisse", anim2.length === 0, anim2.join(", ") || "aucune");
+  await calme.close();
+  await ctx.close();
 }
 
 // --- La vérité, recomptée sans TOTEM --------------------------------------------
@@ -440,6 +597,14 @@ try {
   verifier("TÉMOIN : sur six mois, mille SMS ne suffisent pas", ancienneSix < sixMois.e,
     `${ancienneSix / 100} au lieu de ${sixMois.e / 100}`);
 
+  // Un montant coupé : un élément qui porte une somme et n'a pas la place de
+  // l'écrire (points de suspension, ou texte rogné par son cadre).
+  const montantsCoupes = (page) => page.evaluate(() => [...document.querySelectorAll("main *")]
+    .filter((e) => /\d[\d\s\u202f\u00a0]*(,\d+)?\s?F\b/.test(e.textContent || "")
+      && e.children.length === 0 && e.scrollWidth > e.clientWidth + 1
+      && getComputedStyle(e).overflow !== "visible")
+    .map((e) => (e.textContent || "").trim()));
+
   // 6. L'écran, sur un téléphone, une tablette, un ordinateur.
   console.log("\n— l'écran");
   if (CAPTURES) mkdirSync(CAPTURES, { recursive: true });
@@ -480,10 +645,18 @@ try {
     // « Rien ne déborde » ne voit pas un nom qui sort de SA pastille : à
     // 320 points, « Semaine » passait sous « Mois », « 6 mois » sur deux
     // lignes, et la page ne débordait pas d'un point.
-    const pastilles = await page.evaluate(() => [...document.querySelectorAll('nav a[href*="periode="]')]
-      .filter((a) => a.scrollWidth > a.clientWidth + 0.5 || a.getClientRects().length !== 1 || a.offsetHeight > 48)
-      .map((a) => a.textContent.trim()));
-    verifier(`${nom} : chaque période tient dans sa pastille, sur une ligne`, pastilles.length === 0, pastilles.join(", "));
+    const pastilles = await page.evaluate(() => {
+      const toutes = [...document.querySelectorAll('main [role="tablist"] [role="tab"]')];
+      return { n: toutes.length, hors: toutes
+        .filter((a) => a.scrollWidth > a.clientWidth + 0.5 || a.getClientRects().length !== 1 || a.offsetHeight > 48)
+        .map((a) => a.textContent.trim()) };
+    });
+    verifier(`${nom} : chaque période tient dans sa pastille, sur une ligne`, pastilles.n === 5 && pastilles.hors.length === 0,
+      pastilles.n === 5 ? pastilles.hors.join(", ") : `${pastilles.n} pastille(s) trouvée(s) sur 5`);
+    // Un montant ne se coupe JAMAIS : « −1 616 949… » ne dit pas combien.
+    // Les noms d'une liste, eux, peuvent l'être — on ne regarde que l'argent.
+    const coupes = await montantsCoupes(page);
+    verifier(`${nom} : aucun montant coupé`, coupes.length === 0, coupes.slice(0, 3).join(" | "));
     if (CAPTURES) await page.screenshot({ path: `${CAPTURES}/volumes-${nom}.png`, fullPage: true });
     if (nom === "telephone" && CAPTURES) {
       await page.goto(`${B}/volumes?periode=mois&jour=${perdue.jour}&carte=${perdue.carte}`, { waitUntil: "networkidle" });
@@ -494,6 +667,10 @@ try {
     }
     await ctx.close();
   }
+
+  // 7. Ce que le propriétaire a signalé, rejoué comme il le fait.
+  console.log("\n— ce que le propriétaire a signalé");
+  await signale({ base, aujourdhui, jeton, lire, montantsCoupes });
 } catch (e) {
   echecs++;
   console.error(`\n✗ ${e.stack || e}`);

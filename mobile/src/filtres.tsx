@@ -6,6 +6,7 @@
 // fait dans une liste, une seule chose à la fois. Les SMS et les Paiements
 // filtrent de la même façon : le même geste partout.
 
+import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
 import { Carte, Filet, Texte, avecAppui } from "@/ui";
@@ -18,8 +19,11 @@ import { textesSms } from "@noyau/textes/sms";
 /** Un bouton de filtre : ce qu'il filtre (« Date »), ou ce qui est choisi
  *  (« Hier ») — rempli de sombre dès qu'il filtre quelque chose, pour qu'on
  *  voie d'un coup d'œil que la liste n'est pas entière. */
-export function BoutonFiltre({ libelle, etiquette, actif, icone, onPress }: {
-  libelle: string; etiquette: string; actif: boolean; icone: NomIcone; onPress: () => void;
+export function BoutonFiltre({ libelle, etiquette, actif, icone, avant, onPress }: {
+  libelle: string; etiquette: string; actif: boolean; icone: NomIcone;
+  /** À la place de l'icône : le logo d'un opérateur, par exemple. */
+  avant?: ReactNode;
+  onPress: () => void;
 }) {
   const teinte = actif ? couleurs.surfaceHaute : couleurs.encreDouce;
   return (
@@ -35,7 +39,7 @@ export function BoutonFiltre({ libelle, etiquette, actif, icone, onPress }: {
         backgroundColor: actif ? couleurs.accent : couleurs.surfaceHaute,
       })}
     >
-      <Icone nom={icone} taille={15} couleur={teinte} />
+      {avant ?? <Icone nom={icone} taille={15} couleur={teinte} />}
       <Texte taille={textes.petit} poids="moyen" style={{ color: actif ? teinte : couleurs.encre }}>
         {libelle}
       </Texte>
@@ -50,7 +54,11 @@ export function BoutonFiltre({ libelle, etiquette, actif, icone, onPress }: {
 /** La liste d'un filtre : une option par ligne, une coche sur la choisie. */
 export function FeuilleChoix({ titre, options, choisie, onChoisir, onFermer }: {
   titre: string;
-  options: { cle: string; libelle: string; icone?: NomIcone }[];
+  options: { cle: string; libelle: string; icone?: NomIcone;
+             /** Devant le libellé, à la place de l'icône (un logo). */
+             avant?: ReactNode;
+             /** Une seconde ligne, plus discrète (un numéro). */
+             sous?: string }[];
   choisie: string;
   onChoisir: (cle: string) => void;
   onFermer: () => void;
@@ -76,8 +84,11 @@ export function FeuilleChoix({ titre, options, choisie, onChoisir, onFermer }: {
                   backgroundColor: pressed ? couleurs.surface2 : "transparent",
                 })}
               >
-                {o.icone ? <Icone nom={o.icone} taille={18} couleur={couleurs.encreDouce} /> : null}
-                <Texte poids={elle ? "demi" : "normal"} style={{ flex: 1 }}>{o.libelle}</Texte>
+                {o.avant ?? (o.icone ? <Icone nom={o.icone} taille={18} couleur={couleurs.encreDouce} /> : null)}
+                <View style={{ flex: 1 }}>
+                  <Texte poids={elle ? "demi" : "normal"}>{o.libelle}</Texte>
+                  {o.sous ? <Texte taille={textes.legende} ton="pale" chiffresAlignes>{o.sous}</Texte> : null}
+                </View>
                 {elle ? <Icone nom="Check" taille={18} couleur={couleurs.encre} /> : null}
               </Pressable>
             </View>

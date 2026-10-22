@@ -20,7 +20,7 @@ import { definirEmpreinte, utilisateurAVerifier } from "@/lib/serveur";
 import {
   empreinter, motDePasseAcceptable, verifier,
 } from "@/lib/motdepasse";
-import { attendreLeFrein, cleDeFrein, noterEchec, oublierEchecs } from "@/lib/frein";
+import { attendreLeFrein, cleDeFrein, noterEchec, rendreLEssai } from "@/lib/frein";
 import { langueDemandee } from "@/lib/langue-serveur";
 import { erreurApi } from "@noyau/textes/api";
 
@@ -42,17 +42,19 @@ export async function POST(req: Request) {
   const nouveau = typeof corps?.nouveau === "string" ? corps.nouveau : "";
 
   if (!motDePasseAcceptable(nouveau)) return refus("motDePasseTropCourt", 400);
+  // L'ancien, vide : refusé avant le frein — rien à calculer, rien à compter.
+  if (!actuel) return refus("identifiantsIncorrects", 401);
 
   // Le frein, AVANT le calcul de l'empreinte — même mur que la connexion.
-  const cle = cleDeFrein(req);
-  if (!(await attendreLeFrein(cle))) return refus("tropDEssais", 429);
+  const ticket = await attendreLeFrein(cleDeFrein(req), { compte: moi.courriel });
+  if (!ticket) return refus("tropDEssais", 429);
 
   const trouve = await utilisateurAVerifier(moi.courriel);
   if (!trouve || !(await verifier(actuel, trouve.empreinte))) {
-    noterEchec(cle);
+    noterEchec(ticket);
     return refus("identifiantsIncorrects", 401);
   }
-  oublierEchecs(cle);
+  await rendreLEssai(ticket);
 
   const fait = await definirEmpreinte(moi.id, await empreinter(nouveau));
   if (!fait) return refus("inscriptionImpossible", 502);

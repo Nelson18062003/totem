@@ -1,24 +1,31 @@
 // LES VOLUMES — ce qui est entré et sorti des cartes, sur la période qu'on
 // choisit : un jour, une semaine, un mois, six mois, ou des dates.
 //
-// Le pendant de `web/app/volumes/page.tsx`. Rien n'est calculé ici : la
+// Le pendant de `web/app/volumes/ecran.tsx`. Rien n'est calculé ici : la
 // plateforme lit TOUTE la période (et non les mille derniers SMS) et compte
 // avec le noyau (`noyau/volumes.ts`) ; le téléphone reçoit les mêmes
 // chiffres que le site, au centime.
 //
 // Le propriétaire a refusé deux versions : la première « trop complexe, mal
-// structurée », la seconde « pas assez visuelle ». Celle-ci montre d'abord
-// DEUX BARRES (entrées, sorties), puis des dessins ; les mots sont des
-// titres.
+// structurée », la seconde « pas assez visuelle ». Puis, à l'essai : « trop
+// lent, ça bugue, aucune transition ; le graphe, je ne sais pas comment le
+// lire ; la carte s'affiche par son numéro entier ». D'où :
+//   — ce qui a été lu se GARDE, et les périodes voisines se chargent en
+//     silence : le prochain appui trouve ses chiffres déjà là ;
+//   — l'appui répond tout de suite (la pastille glisse, le nom de la période
+//     change), et les chiffres arrivent du côté où l'on va ;
+//   — une carte se nomme comme à l'accueil : son logo et « MTN ·6299 » ;
+//   — le graphe dit en MOTS la colonne choisie, avec un axe en montants.
 //
 // LES TAILLES : une colonne sur un téléphone (petit, moyen, grand), deux sur
 // une tablette couchée — les deux barres toujours en tête.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Pressable, View, type ScrollView } from "react-native";
+import { Pressable, View, type LayoutChangeEvent, type ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
+import { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { Defilement, Accroc, BoutonIcone, Carte, Filet, Texte, avecAppui } from "@/ui";
 import { Icone } from "@/icones";
@@ -26,18 +33,24 @@ import { useEcran } from "@/ecran";
 import { couleurs, espaces, rayons, textes, TEINTES_POINTE } from "@/theme/jetons";
 import { useMaintenant, useRoue } from "@/donnees";
 import { useLangue } from "@/langue";
+import { Animated, COURBE, useMouvementReduit } from "@/animations";
+import { LogoOperateur, operateurReconnu } from "@/logos-operateurs";
 import { lienBilan, lienReleve, lireVolumes, versErreurGuichet } from "@/api/guichet";
 import { nomDeFichier, partagerDocument } from "@/partage";
 import { BoutonFiltre, FeuilleChoix } from "@/filtres";
 import { Calendrier } from "@/calendrier";
 import { FeuilleReleve } from "@/releve";
-import { francs, jourCourtVolumes, nomDeFamille, textesVolumes } from "@noyau/textes/volumes";
+import {
+  francs, francsCourts, jourCourtVolumes, nomDeFamille, textesVolumes,
+} from "@noyau/textes/volumes";
 import { textesReleve } from "@noyau/textes/releve";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { textesUssd } from "@noyau/textes/ussd";
 import {
-  creneauLePlusCharge, etiquetteDuPas, famillesDe, GENRES_PERIODE, nomDeLaPeriode, periodeVoisine,
-  variation, type CarteVolumes, type FamilleVolume, type GenrePeriode, type Pas, type PeriodeVolumes,
+  cleDeLaDemande, colonneParDefaut, creneauLePlusCharge, demandeDeLaPeriode, ecartLisible,
+  etiquetteDuPas, famillesDe, GENRES_PERIODE, graduations, nomDeLaColonne, nomDeLaPeriode,
+  periodeDeLaDemande, periodeVoisine, raccourcisDeDates, serieVisible, voisinesAPrecharger,
+  type CarteVolumes, type DemandeDeVolumes, type FamilleVolume, type GenrePeriode, type Pas,
   type PointDeSerie, type ReponseVolumes,
 } from "@noyau/volumes";
 import { formaterNumero } from "@noyau/numero";
@@ -45,17 +58,26 @@ import { initialesDe } from "@noyau/flux";
 import { jourLocal, FUSEAU_DEFAUT } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 
-type Demande = { periode: GenrePeriode; jour?: string; de?: string; a?: string; carte: string; qui: string | null };
-
 const COULEUR_FAMILLE: Record<FamilleVolume, string> = {
   argent: couleurs.familleArgent, especes: couleurs.familleEspeces,
   transferts: couleurs.familleTransferts, commissions: couleurs.familleCommissions,
 };
-const couleurOperateur = (op: string) =>
-  op.toUpperCase().startsWith("MTN") ? couleurs.opMtn
-    : op.toUpperCase().startsWith("ORANGE") ? couleurs.opOrange : couleurs.encrePale;
-const nomDeCarte = (c: CarteVolumes) =>
-  `${c.operateur} ${formaterNumero(c.numero) || c.libelle.replace(/^\S+\s*/, "")}`;
+
+/** Une carte comme l'accueil la nomme : son logo, et « MTN ·6299 ». Le
+ *  logo vit dans une boîte de largeur fixe : celui de MTN est plus large que
+ *  celui d'Orange, et les noms ne s'alignaient plus d'une ligne à l'autre. */
+function NomDeCarte({ carte, taille = textes.petit }: { carte: CarteVolumes; taille?: number }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs, flexShrink: 1 }}>
+      {operateurReconnu(carte.operateur) ? (
+        <View style={{ width: 34, alignItems: "center" }}><LogoOperateur operateur={carte.operateur} taille={16} /></View>
+      ) : null}
+      <Texte taille={taille} poids="demi" numberOfLines={1} style={{ flexShrink: 1 }}>{carte.libelle}</Texte>
+    </View>
+  );
+}
+
+type Vue = { r: ReponseVolumes; cle: string; sens: -1 | 0 | 1 };
 
 export default function Volumes() {
   const langue = useLangue();
@@ -65,50 +87,108 @@ export default function Volumes() {
   const maintenant = useMaintenant();
   const aujourdhui = jourLocal(new Date(maintenant), FUSEAU_DEFAUT);
 
-  const [demande, setDemande] = useState<Demande>({ periode: "mois", jour: aujourdhui, carte: "tout", qui: null });
-  const [reponse, setReponse] = useState<ReponseVolumes | null>(null);
+  const [demande, setDemande] = useState<DemandeDeVolumes>({ periode: "mois", jour: aujourdhui, carte: "tout", qui: null });
+  const [vue, setVue] = useState<Vue | null>(null);
   const [attente, setAttente] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [choixCarte, setChoixCarte] = useState(false);
   const [calendrier, setCalendrier] = useState(false);
   const [releve, setReleve] = useState(false);
-  const enCours = useRef<AbortController | null>(null);
+  // Ce qui a été lu, gardé pour la vie de l'écran (et pas au-delà : un
+  // téléphone perdu ne garde rien une fois l'écran quitté). Une demande en
+  // route n'est jamais lancée deux fois.
+  const memoire = useRef(new Map<string, ReponseVolumes>());
+  const enVol = useRef(new Map<string, Promise<ReponseVolumes>>());
+  const numero = useRef(0);
   // Ouvrir la fiche d'un correspondant ou d'une carte remonte en haut : la
   // fiche commence là, et le retour aussi.
   const defilement = useRef<ScrollView>(null);
   useEffect(() => { defilement.current?.scrollTo({ y: 0, animated: false }); }, [demande.qui, demande.carte]);
 
-  // UNE demande à la fois : la précédente est abandonnée, et sa réponse,
-  // si elle arrive quand même, n'écrit rien par-dessus la nouvelle.
-  const relire = useCallback(async () => {
-    enCours.current?.abort();
-    const c = new AbortController();
-    enCours.current = c;
+  const lire = useCallback((d: DemandeDeVolumes): Promise<ReponseVolumes> => {
+    const k = cleDeLaDemande(d, aujourdhui);
+    const deja = memoire.current.get(k);
+    if (deja) return Promise.resolve(deja);
+    const vol = enVol.current.get(k);
+    if (vol) return vol;
+    const p = lireVolumes(d).then((r) => { memoire.current.set(k, r); return r; })
+      .finally(() => enVol.current.delete(k));
+    enVol.current.set(k, p);
+    return p;
+  }, [aujourdhui]);
+
+  /** Aller à une vue : tout de suite si elle est en mémoire ; sinon l'écran
+   *  dit déjà la période demandée, et garde l'ancienne vue, pâlie, le temps
+   *  que les chiffres arrivent. Une réponse en retard n'écrase jamais une
+   *  demande plus récente. */
+  const aller = useCallback((d: DemandeDeVolumes, sens: -1 | 0 | 1 = 0, oublier = false) => {
+    setDemande(d);
+    setErreur(null);
+    const k = cleDeLaDemande(d, aujourdhui);
+    const n = ++numero.current;
+    if (oublier) memoire.current.delete(k);
+    const deja = memoire.current.get(k);
+    if (deja) { setVue({ r: deja, cle: k, sens }); setAttente(false); return Promise.resolve(); }
     setAttente(true);
-    try {
-      const r = await lireVolumes(demande, c.signal);
-      if (c.signal.aborted) return;
-      setReponse(r);
-      setErreur(null);
-    } catch (e) {
-      if (c.signal.aborted) return;
+    return lire(d).then((r) => {
+      if (n !== numero.current) return;
+      setVue({ r, cle: k, sens });
+      setAttente(false);
+    }).catch((e) => {
+      if (n !== numero.current) return;
+      setAttente(false);
       setErreur(versErreurGuichet(e, langue).message);
-    } finally {
-      if (!c.signal.aborted) setAttente(false);
-    }
-  }, [demande, langue]);
-  useEffect(() => { void relire(); return () => enCours.current?.abort(); }, [relire]);
+    });
+  }, [aujourdhui, lire, langue]);
+
+  const changer = (x: Partial<DemandeDeVolumes>, sens: -1 | 0 | 1 = 0) => { void aller({ ...demande, ...x }, sens); };
+  // La première vue, au montage.
+  useEffect(() => { void aller(demande); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Tirer pour rafraîchir : on oublie ce qu'on avait gardé.
+  const relire = useCallback(() => { memoire.current.clear(); return aller(demande, 0, true); }, [aller, demande]);
   const roue = useRoue(relire);
 
-  const changer = (x: Partial<Demande>) => setDemande((d) => ({ ...d, ...x }));
-  const p = reponse?.volumes.periode;
-  const allerA = (x: PeriodeVolumes | null) => {
-    if (!x) return;
-    changer(x.genre === "dates" ? { periode: "dates", de: x.de, a: x.a, jour: undefined, qui: null }
-      : { periode: x.genre, jour: x.de, de: undefined, a: undefined, qui: null });
+  // LES VOISINES, EN SILENCE — une à la fois, après l'affichage.
+  useEffect(() => {
+    if (!vue || vue.r.volumes.fiche !== undefined) return;
+    const voisines = voisinesAPrecharger(vue.r.volumes.periode, vue.r.carte, aujourdhui);
+    let fini = false;
+    const minuteur = setTimeout(async () => {
+      for (const d of voisines) {
+        if (fini) return;
+        try { await lire(d); } catch { /* une voisine qui échoue n'empêche rien */ }
+      }
+    }, 300);
+    return () => { fini = true; clearTimeout(minuteur); };
+  }, [vue, aujourdhui, lire]);
+
+  // LES CHIFFRES ARRIVENT DU CÔTÉ OÙ L'ON VA (‹ : de la gauche), en fondu
+  // pour une autre durée — rien qui glisse avec « réduire les animations ».
+  const reduit = useMouvementReduit();
+  const avance = useSharedValue(1);
+  const cote = useSharedValue(0);
+  useEffect(() => {
+    if (!vue) return;
+    cote.value = vue.sens;
+    if (reduit) { avance.value = 1; return; }
+    avance.value = 0;
+    avance.value = withTiming(1, { duration: 240, easing: COURBE });
+  }, [vue?.cle]); // eslint-disable-line react-hooks/exhaustive-deps
+  const arrivee = useAnimatedStyle(() => ({
+    opacity: avance.value,
+    transform: [{ translateX: (1 - avance.value) * 26 * cote.value }, { translateY: cote.value === 0 ? (1 - avance.value) * 6 : 0 }],
+  }));
+
+  const reponse = vue?.r ?? null;
+  // La période DEMANDÉE — celle dont l'écran parle dès l'appui.
+  const visee = periodeDeLaDemande(demande, aujourdhui) ?? reponse?.volumes.periode ?? null;
+  const allerVoisine = (sens: -1 | 1) => {
+    const x = visee ? periodeVoisine(visee, sens, aujourdhui) : null;
+    if (x) void aller(demandeDeLaPeriode(x, demande.carte), sens);
   };
 
   const telecharger = async () => {
+    const p = reponse?.volumes.periode;
     if (!p || !reponse) return;
     try {
       const { url } = await lienReleve(reponse.carte, p.de, p.jusqua, "pdf");
@@ -118,8 +198,8 @@ export default function Volumes() {
 
   const deux = ecran.classe === "etendue" || ecran.classe === "large";
   const v = reponse?.volumes;
-  const carteChoisie = reponse && reponse.carte !== "tout"
-    ? reponse.cartes.find((c) => c.iccid === reponse.carte) ?? null : null;
+  const carteChoisie = reponse && demande.carte !== "tout"
+    ? reponse.cartes.find((c) => c.iccid === demande.carte) ?? null : null;
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -140,102 +220,90 @@ export default function Volumes() {
           <BoutonIcone nom="Download" etiquette={t.telechargerReleve} onPress={() => void telecharger()} />
         </View>
 
-        {/* La période : cinq pastilles, une ligne. Chacune part de la largeur
-            de son nom : à parts égales, à 320 points, « Semaine » n'avait que
-            53 points et se lisait « Sema… ». */}
-        <View style={{ flexDirection: "row", gap: etroit ? 4 : 6 }}>
-          {GENRES_PERIODE.map((g) => {
-            const choisi = g === demande.periode;
-            return (
-              <Pressable key={g} accessibilityRole="button" accessibilityState={{ selected: choisi }}
-                onPress={() => (g === "dates" ? setCalendrier(true)
-                  : changer({ periode: g, jour: aujourdhui, de: undefined, a: undefined, qui: null }))}
-                style={avecAppui({
-                  flexGrow: 1, flexShrink: 1, flexBasis: "auto", paddingHorizontal: 6,
-                  minHeight: 40, alignItems: "center", justifyContent: "center",
-                  borderRadius: rayons.rond, borderWidth: 1,
-                  borderColor: choisi ? couleurs.accent : couleurs.trait,
-                  backgroundColor: choisi ? couleurs.accent : couleurs.surfaceHaute,
-                })}>
-                <Texte taille={etroit ? textes.legende : textes.petit} poids={choisi ? "demi" : "moyen"} numberOfLines={1}
-                       adjustsFontSizeToFit minimumFontScale={0.75}
-                       style={{ color: choisi ? couleurs.surfaceHaute : couleurs.encreDouce }}>
-                  {t.periodes[g]}
-                </Texte>
-              </Pressable>
-            );
-          })}
-        </View>
+        <Pastilles langue={langue} etroit={etroit} choisie={calendrier ? "dates" : demande.periode}
+                   onChoisir={(g) => (g === "dates" ? setCalendrier(true)
+                     : changer({ periode: g, jour: aujourdhui, de: undefined, a: undefined, qui: null }))} />
 
-        {/* ‹ Octobre 2026 › — et la carte. */}
+        {/* ‹ Octobre 2026 › — le nom change à l'appui, avant les chiffres. */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-          <BoutonIcone nom="Chevron" etiquette={t.precedente}
-                       onPress={() => p && reponse && allerA(periodeVoisine(p, -1, reponse.aujourdhui))}
+          <BoutonIcone nom="Chevron" etiquette={t.precedente} onPress={() => allerVoisine(-1)}
                        style={{ transform: [{ rotate: "180deg" }] }} />
-          <Texte taille={textes.intertitre} poids="demi" style={{ flex: 1, textAlign: "center" }}>
-            {p ? nomDeLaPeriode(p, langue) : " "}
+          <Texte taille={textes.intertitre} poids="demi" accessibilityLiveRegion="polite"
+                 style={{ flex: 1, textAlign: "center" }}>
+            {visee ? nomDeLaPeriode(visee, langue) : " "}
           </Texte>
-          <View style={{ opacity: p && reponse && periodeVoisine(p, 1, reponse.aujourdhui) ? 1 : 0.25 }}>
-            <BoutonIcone nom="Chevron" etiquette={t.suivante}
-                         onPress={() => p && reponse && allerA(periodeVoisine(p, 1, reponse.aujourdhui))} />
+          <View style={{ opacity: visee && periodeVoisine(visee, 1, aujourdhui) ? 1 : 0.25 }}>
+            <BoutonIcone nom="Chevron" etiquette={t.suivante} onPress={() => allerVoisine(1)} />
           </View>
         </View>
         {reponse && reponse.cartes.length > 1 ? (
           <View style={{ flexDirection: "row" }}>
-            <BoutonFiltre libelle={carteChoisie ? nomDeCarte(carteChoisie) : t.toutesLesCartes}
+            <BoutonFiltre libelle={carteChoisie ? carteChoisie.libelle : t.toutesLesCartes}
                           etiquette={t.carte} actif={!!carteChoisie} icone="PuceSim"
+                          avant={carteChoisie && operateurReconnu(carteChoisie.operateur)
+                            ? <LogoOperateur operateur={carteChoisie.operateur} taille={15} /> : undefined}
                           onPress={() => setChoixCarte(true)} />
           </View>
         ) : null}
 
         {!reponse ? (
-          erreur ? <Accroc message={erreur} onReessayer={() => void relire()} /> : <Attente />
+          erreur ? <Accroc message={erreur} onReessayer={() => void aller(demande, 0, true)} /> : <Attente />
         ) : reponse.cartes.length === 0 ? (
           <Vide titre={t.pasDeCarte} detail={t.pasDeCarteDetail} />
         ) : (
-          // Pendant qu'une autre période se lit, l'écran garde la précédente,
-          // pâlie : pas de formes grises qui sautent à chaque appui.
-          <View style={{ gap: espaces.lg, opacity: attente ? 0.55 : 1 }}>
-            {erreur ? <Accroc message={erreur} onReessayer={() => void relire()} /> : null}
-            {v!.fiche !== undefined ? (
-              <FicheCorrespondant r={reponse} langue={langue} deux={deux} />
-            ) : (
-              <Colonnes2 deux={deux}
-                gauche={<>
-                  <Duel r={reponse} langue={langue} />
-                  {carteChoisie ? <LeSolde r={reponse} carte={carteChoisie} langue={langue} /> : null}
-                  <Avertissements r={reponse} langue={langue} />
-                  <Courbe serie={v!.serie} pas={v!.periode.pas} langue={langue} titre={t.serie[v!.periode.pas]} />
-                  {v!.totaux.n > 0 ? <AvecQui r={reponse} langue={langue} onQui={(qui) => changer({ qui })} /> : null}
-                </>}
-                droite={<>
-                  <ChiffresCles r={reponse} langue={langue} />
-                  {v!.totaux.n === 0 ? <Vide titre={t.rien} detail={t.rienDetail} /> : <>
-                    <Anneaux r={reponse} langue={langue} />
-                    {reponse.carte === "tout"
-                      ? <ParCarte r={reponse} langue={langue} onCarte={(carte) => changer({ carte, qui: null })} /> : null}
-                    <HeuresDePointe heures={v!.heures} langue={langue} />
+          // Pendant qu'une vue qu'on n'avait pas se lit, l'écran garde la
+          // précédente, pâlie : pas de formes grises qui sautent à chaque appui.
+          <View style={{ gap: espaces.lg, opacity: attente ? 0.5 : 1 }}>
+            {erreur ? <Accroc message={erreur} onReessayer={() => void aller(demande, 0, true)} /> : null}
+            <Animated.View style={[{ gap: espaces.lg }, arrivee]}>
+              {v!.fiche !== undefined ? (
+                <FicheCorrespondant r={reponse} langue={langue} deux={deux} />
+              ) : (
+                <Colonnes2 deux={deux}
+                  gauche={<>
+                    <Duel r={reponse} langue={langue} />
+                    {carteChoisie ? <LeSolde r={reponse} carte={carteChoisie} langue={langue} /> : null}
+                    <Avertissements r={reponse} langue={langue} />
+                    <Graphe serie={v!.serie} pas={v!.periode.pas} langue={langue} titre={t.serie[v!.periode.pas]}
+                            debut={v!.debutDeLHistorique} />
+                    {v!.totaux.n > 0 ? <AvecQui r={reponse} langue={langue} onQui={(qui) => changer({ qui })} /> : null}
                   </>}
-                  <Documents langue={langue} onReleve={() => setReleve(true)} />
-                </>}
-              />
-            )}
+                  droite={<>
+                    <ChiffresCles r={reponse} langue={langue} />
+                    {v!.totaux.n === 0 ? <Vide titre={t.rien} detail={t.rienDetail} /> : <>
+                      <Anneaux r={reponse} langue={langue} />
+                      {reponse.carte === "tout"
+                        ? <ParCarte r={reponse} langue={langue} onCarte={(carte) => changer({ carte, qui: null })} /> : null}
+                      <HeuresDePointe heures={v!.heures} langue={langue} />
+                    </>}
+                    <Documents langue={langue} onReleve={() => setReleve(true)} />
+                  </>}
+                />
+              )}
+            </Animated.View>
           </View>
         )}
       </Defilement>
 
       {choixCarte && reponse ? (
         <FeuilleChoix
-          titre={t.carte}
-          options={[{ cle: "tout", libelle: t.toutesLesCartes },
-                    ...reponse.cartes.map((c) => ({ cle: c.iccid, libelle: nomDeCarte(c) }))]}
-          choisie={reponse.carte}
+          titre={t.choisirLaCarte}
+          options={[{ cle: "tout", libelle: t.toutesLesCartes, icone: "PuceSim" },
+                    ...reponse.cartes.map((c) => ({
+                      cle: c.iccid, libelle: c.libelle, sous: formaterNumero(c.numero) || undefined,
+                      avant: operateurReconnu(c.operateur)
+                        ? <View style={{ width: 34, alignItems: "center" }}><LogoOperateur operateur={c.operateur} taille={18} /></View>
+                        : undefined,
+                    }))]}
+          choisie={demande.carte}
           onChoisir={(carte) => { setChoixCarte(false); changer({ carte, qui: null }); }}
           onFermer={() => setChoixCarte(false)} />
       ) : null}
       {calendrier ? (
         <Calendrier langue={langue} aujourdhui={aujourdhui}
-                    depart={p?.genre === "dates" ? { de: p.de, a: p.a } : null}
+                    mots={{ titre: t.choisirLesDates, aide: t.aideDates, voir: t.voirCesDates }}
+                    raccourcis={raccourcisDeDates(aujourdhui).map((x) => ({ libelle: t.raccourcis[x.cle], bornes: x.bornes }))}
+                    depart={demande.periode === "dates" && visee ? { de: visee.de, a: visee.a } : null}
                     onChoisir={(b) => { setCalendrier(false); changer({ periode: "dates", de: b.de, a: b.a, jour: undefined, qui: null }); }}
                     onFermer={() => setCalendrier(false)} />
       ) : null}
@@ -245,6 +313,61 @@ export default function Volumes() {
                                                             libelle: c.libelle, operateur: c.operateur }))} />
       ) : null}
     </SafeAreaView>
+  );
+}
+
+/**
+ * LES CINQ DURÉES, sur un rail — et la pastille sombre GLISSE de l'une à
+ * l'autre : on voit d'où l'on vient. Chacune part de la largeur de son nom :
+ * à parts égales, à 320 points, « Semaine » se lisait « Sema… ».
+ */
+function Pastilles({ langue, etroit, choisie, onChoisir }: {
+  langue: Langue; etroit: boolean; choisie: GenrePeriode; onChoisir: (g: GenrePeriode) => void;
+}) {
+  const t = textesVolumes[langue];
+  const reduit = useMouvementReduit();
+  const places = useRef(new Map<GenrePeriode, { x: number; w: number }>());
+  const x = useSharedValue(0);
+  const w = useSharedValue(0);
+  const [pret, setPret] = useState(false);
+  const placer = useCallback((anime: boolean) => {
+    const p = places.current.get(choisie);
+    if (!p) return;
+    if (!anime || reduit) { x.value = p.x; w.value = p.w; return; }
+    x.value = withTiming(p.x, { duration: 260, easing: COURBE });
+    w.value = withTiming(p.w, { duration: 260, easing: COURBE });
+  }, [choisie, reduit, x, w]);
+  useEffect(() => { placer(true); }, [placer]);
+  const pastille = useAnimatedStyle(() => ({ width: w.value, transform: [{ translateX: x.value }] }));
+  const mesurer = (g: GenrePeriode) => (e: LayoutChangeEvent) => {
+    places.current.set(g, { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width });
+    if (g === choisie) { placer(false); setPret(true); }
+  };
+  return (
+    <View accessibilityRole="tablist"
+          style={{ flexDirection: "row", gap: etroit ? 2 : 4, padding: 4, borderRadius: rayons.rond,
+                   backgroundColor: couleurs.surface2 }}>
+      <Animated.View pointerEvents="none"
+                     style={[{ position: "absolute", top: 4, bottom: 4, left: 0, borderRadius: rayons.rond,
+                               backgroundColor: couleurs.accent, opacity: pret ? 1 : 0 }, pastille]} />
+      {GENRES_PERIODE.map((g) => {
+        const actif = g === choisie;
+        return (
+          <Pressable key={g} accessibilityRole="tab" accessibilityState={{ selected: actif }}
+                     onLayout={mesurer(g)} onPress={() => onChoisir(g)}
+                     style={avecAppui({
+                       flexGrow: 1, flexShrink: 1, flexBasis: "auto", paddingHorizontal: 6,
+                       minHeight: 36, alignItems: "center", justifyContent: "center", borderRadius: rayons.rond,
+                     })}>
+            <Texte taille={etroit ? textes.legende : textes.petit} poids={actif ? "demi" : "moyen"} numberOfLines={1}
+                   adjustsFontSizeToFit minimumFontScale={0.75}
+                   style={{ color: actif ? couleurs.surfaceHaute : couleurs.encreDouce }}>
+              {t.periodes[g]}
+            </Texte>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -261,7 +384,7 @@ function Colonnes2({ deux, gauche, droite }: { deux: boolean; gauche: ReactNode;
 
 function Titre({ children, droite }: { children: string; droite?: ReactNode }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: espaces.sm }}>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: espaces.sm, flexWrap: "wrap" }}>
       <Texte taille={textes.intertitre} poids="demi" style={{ flexShrink: 1 }}>{children}</Texte>
       {droite}
     </View>
@@ -274,14 +397,15 @@ function Point({ couleur, taille = 10 }: { couleur: string; taille?: number }) {
 
 // --- Les deux barres ---------------------------------------------------------
 
-function Variation({ maintenant, avant }: { maintenant: number; avant: number }) {
-  const x = variation(maintenant, avant);
-  if (x == null) return null;
+/** L'écart avec la période d'avant : « × 7,7 » au-delà du double, « ▲ 12 % »
+ *  en deçà, et rien du tout quand l'historique ne couvre pas la période
+ *  d'avant (six mois d'une caisse ouverte en juillet montaient de 24 145 %). */
+function Ecart({ maintenant, avant, comparable, langue }: { maintenant: number; avant: number; comparable: boolean; langue: Langue }) {
+  const e = ecartLisible(maintenant, avant, langue, comparable);
+  if (!e) return null;
   return (
     <View style={{ backgroundColor: couleurs.surface2, borderRadius: rayons.rond, paddingHorizontal: 7, paddingVertical: 2 }}>
-      <Texte taille={textes.legende} poids="demi" ton="doux" chiffresAlignes>
-        {x >= 0 ? "▲" : "▼"} {Math.abs(x)} %
-      </Texte>
+      <Texte taille={textes.legende} poids="demi" ton="doux" chiffresAlignes>{e.texte}</Texte>
     </View>
   );
 }
@@ -289,21 +413,27 @@ function Variation({ maintenant, avant }: { maintenant: number; avant: number })
 function Duel({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
   const t = textesVolumes[langue];
   const { totaux, avant } = r.volumes;
+  const comparable = r.volumes.comparable !== false;
   const max = Math.max(totaux.entrees, totaux.sorties, 1);
   const ligne = (nom: string, valeur: number, n: number, avantV: number, couleur: string, ton: "positif" | "negatif") => (
-    <View style={{ gap: espaces.sm }}>
-      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: espaces.sm }}>
+    // Le montant a SA ligne : à côté du nom, il passait à la ligne dès qu'un
+    // écart s'affichait, et l'écran changeait de forme d'une période à l'autre.
+    <View style={{ gap: espaces.xs }}>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: espaces.sm, rowGap: espaces.xs }}>
         <Point couleur={couleur} />
         <Texte poids="demi">{nom}</Texte>
-        <Variation maintenant={valeur} avant={avantV} />
-        <Texte taille={24} poids="gras" ton={ton} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}
-               style={{ marginLeft: "auto", letterSpacing: -0.5 }}>
-          {francs(valeur, langue)}
+        <Ecart maintenant={valeur} avant={avantV} comparable={comparable} langue={langue} />
+        <Texte taille={textes.legende} ton="pale" style={{ marginLeft: "auto" }}>
+          {t.operations(n)}
         </Texte>
       </View>
+      <Texte taille={26} poids="gras" ton={ton} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}
+             style={{ letterSpacing: -0.5 }}>
+        {francs(valeur, langue)}
+      </Texte>
       <View accessibilityRole="image" accessibilityLabel={`${nom} ${francs(valeur, langue)}`}
-            style={{ height: 20, borderRadius: 6, backgroundColor: couleur, width: `${Math.max(1, (valeur / max) * 100)}%` }} />
-      <Texte taille={textes.legende} ton="pale">{t.operations(n)}</Texte>
+            style={{ height: 14, borderRadius: 5, backgroundColor: couleur, width: `${Math.max(1, (valeur / max) * 100)}%`,
+                     marginTop: espaces.xs }} />
     </View>
   );
   return (
@@ -311,10 +441,10 @@ function Duel({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
       {ligne(t.entrees, totaux.entrees, totaux.nEntrees, avant.entrees, couleurs.entree, "positif")}
       {ligne(t.sorties, totaux.sorties, totaux.nSorties, avant.sorties, couleurs.sortie, "negatif")}
       <Filet />
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: espaces.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: espaces.sm, flexWrap: "wrap" }}>
         <Texte poids="demi">{t.reste}</Texte>
-        <Texte taille={28} poids="gras" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}
-               style={{ flexShrink: 1, letterSpacing: -0.6 }}>
+        <Texte taille={28} poids="gras" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}
+               style={{ flexShrink: 1, marginLeft: "auto", letterSpacing: -0.6 }}>
           {francs(totaux.net, langue, true)}
         </Texte>
       </View>
@@ -341,7 +471,7 @@ function Avertissements({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
   if (r.tronque) lignes.push(t.tronque);
   for (const s of r.silencieuses) {
     const c = r.cartes.find((x) => x.iccid === s.iccid);
-    if (c) lignes.push(t.silence(nomDeCarte(c)));
+    if (c) lignes.push(t.silence(c.libelle));
   }
   if (a.illisibles) lignes.push(t.illisibles(a.illisibles));
   if (a.aVerifier) lignes.push(t.aVerifier(a.aVerifier));
@@ -369,7 +499,7 @@ function ChiffresCles({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
   const { totaux, cles, nbCorrespondants } = r.volumes;
   const g = cles.plusGrosse;
   const cases: [string, string, string][] = [
-    [t.kOperations, totaux.n.toLocaleString(langue === "en" ? "en-US" : "fr-FR").replace(/[  ]/g, " "), t.kParJour(cles.parJour)],
+    [t.kOperations, totaux.n.toLocaleString(langue === "en" ? "en-US" : "fr-FR").replace(/[  ]/g, " "), t.kParJour(cles.parJour)],
     [t.kMoyenne, francs(cles.moyenne, langue), t.kParOperation],
     [t.kPlusGrosse, g ? francs(g.montant, langue) : "—",
      g ? (g.sens === "in" ? t.kRecueLe : t.kEnvoyeeLe)(jourCourtVolumes(g.jour, langue)) : ""],
@@ -384,7 +514,7 @@ function ChiffresCles({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
         {cases.map(([nom, valeur, sous]) => (
           <Carte key={nom} style={{ flexGrow: 1, flexBasis: "45%", padding: espaces.md, gap: 3 }}>
             <Texte taille={textes.petit} ton="doux" numberOfLines={1}>{nom}</Texte>
-            <Texte taille={textes.intertitre} poids="gras" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            <Texte taille={textes.intertitre} poids="gras" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {valeur}
             </Texte>
             <Texte taille={textes.legende} ton="pale">{sous}</Texte>
@@ -395,58 +525,112 @@ function ChiffresCles({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
   );
 }
 
-// --- Chaque jour -------------------------------------------------------------
+// --- Le graphe : chaque jour (heure, semaine, mois) --------------------------
 
-function Courbe({ serie, pas, langue, titre }: { serie: PointDeSerie[]; pas: Pas; langue: Langue; titre: string }) {
+/**
+ * LE GRAPHE, refait pour se LIRE (le pendant de celui du site).
+ *
+ * L'ancien mettait les entrées en haut, les sorties en bas, sans aucun
+ * chiffre : « je ne sais pas comment l'interpréter ». Ici, en tête, la
+ * colonne choisie EN MOTS (la plus récente qui a bougé, par défaut) ; deux
+ * barres côte à côte sur la même ligne de base, entrée à gauche ; un axe en
+ * montants ronds ; et la courbe commence au premier SMS de la caisse.
+ */
+function Graphe({ serie: brute, pas, langue, titre, debut }: {
+  serie: PointDeSerie[]; pas: Pas; langue: Langue; titre: string; debut?: string | null;
+}) {
   const t = textesVolumes[langue];
-  const [choisie, setChoisie] = useState<number | null>(null);
-  useEffect(() => setChoisie(null), [serie]);
-  const max = Math.max(1, ...serie.map((c) => Math.max(c.entrees, c.sorties)));
+  const { serie, coupee } = serieVisible(brute, pas, debut);
+  const [choisie, setChoisie] = useState(() => colonneParDefaut(serie));
+  useEffect(() => setChoisie(colonneParDefaut(serie)), [brute]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!serie.length) return null;
+  const c = serie[Math.min(choisie, serie.length - 1)];
+  const haut = Math.max(1, ...serie.map((x) => Math.max(x.entrees, x.sorties)));
+  const marques = graduations(haut);
+  const sommet = marques[marques.length - 1];
   const etiquettes = new Set([0, Math.floor((serie.length - 1) / 3), Math.floor(((serie.length - 1) * 2) / 3), serie.length - 1]);
-  const c = choisie != null ? serie[choisie] : null;
+  const H = 160;
+  // Une ligne par chiffre, le montant à droite : en trois colonnes, un
+  // « Reste » de sept chiffres se lisait « −1 616 949… ». Un montant ne se
+  // coupe jamais.
+  const resume = (nom: string, valeur: string, ton?: "positif" | "negatif") => (
+    <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: espaces.sm }}>
+      <Texte taille={textes.legende} ton="doux">{nom}</Texte>
+      <Texte taille={textes.petit} poids="demi" ton={ton} chiffresAlignes style={{ flexShrink: 1, textAlign: "right" }}>
+        {valeur}
+      </Texte>
+    </View>
+  );
   return (
     <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
       <Titre droite={<Cles langue={langue} />}>{titre}</Titre>
-      {/* Toucher une colonne dit ses chiffres, en entier. */}
-      <Texte taille={textes.legende} ton={c ? "normal" : "pale"} chiffresAlignes style={{ minHeight: 16 }}>
-        {c ? `${etiquetteDuPas(c.cle, pas, langue)} · ▲ ${francs(c.entrees, langue)} · ▼ ${francs(c.sorties, langue)}`
-          : langue === "en" ? "Touch a column to see its figures" : "Touchez une colonne pour voir ses chiffres"}
-      </Texte>
-      <View style={{ flexDirection: "row", height: 170, gap: 2 }}>
-        {serie.map((x, i) => (
-          <Pressable key={x.cle} onPress={() => setChoisie(i === choisie ? null : i)}
-                     accessibilityRole="button" accessibilityState={{ selected: i === choisie }}
-                     accessibilityLabel={`${etiquetteDuPas(x.cle, pas, langue)} ${francs(x.entrees, langue)} ${francs(x.sorties, langue)}`}
-                     style={avecAppui({ flex: 1, alignItems: "center", borderRadius: 4,
-                              backgroundColor: i === choisie ? couleurs.surface2 : "transparent" })}>
-            <View style={{ flex: 1, width: "100%", justifyContent: "flex-end", alignItems: "center" }}>
-              <View style={{ width: "70%", maxWidth: 12, height: `${(x.entrees / max) * 100}%`,
-                             backgroundColor: couleurs.entree, borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
-            </View>
-            <View style={{ height: 1, width: "100%", backgroundColor: couleurs.surface3 }} />
-            <View style={{ flex: 1, width: "100%", alignItems: "center" }}>
-              <View style={{ width: "70%", maxWidth: 12, height: `${(x.sorties / max) * 100}%`,
-                             backgroundColor: couleurs.sortie, borderBottomLeftRadius: 3, borderBottomRightRadius: 3 }} />
-            </View>
-          </Pressable>
-        ))}
+      <View accessibilityLiveRegion="polite"
+            style={{ backgroundColor: couleurs.surface, borderRadius: rayons.bouton, padding: espaces.md, gap: 4 }}>
+        <Texte taille={textes.petit} poids="demi" style={{ marginBottom: 2 }}>{nomDeLaColonne(c.cle, pas, langue)}</Texte>
+        {resume(t.entrees, francs(c.entrees, langue), "positif")}
+        {resume(t.sorties, francs(c.sorties, langue), "negatif")}
+        {resume(t.reste, francs(c.entrees - c.sorties, langue, true))}
       </View>
-      {/* Les repères vivent sous la rangée, pas dans les colonnes : une
-          colonne d'un mois n'a pas la largeur de « 10 », et « 1.. » ne se
-          lit pas. Le premier et le dernier s'appuient sur les bords. */}
-      <View style={{ height: 14, marginTop: -espaces.sm }}>
-        {[...etiquettes].map((i) => {
-          const premier = i === 0, dernier = i === serie.length - 1;
-          const place = premier ? { left: 0 } : dernier ? { right: 0 }
-            : { left: `${((i + 0.5) / serie.length) * 100}%` as const, marginLeft: -32 };
-          return (
-            <Texte key={i} taille={10} ton="pale" numberOfLines={1}
-                   style={{ position: "absolute", width: 64, textAlign: premier ? "left" : dernier ? "right" : "center", ...place }}>
-              {etiquetteDuPas(serie[i].cle, pas, langue)}
+      <View style={{ flexDirection: "row", gap: espaces.sm }}>
+        {/* L'axe : des montants ronds, discrets. */}
+        <View style={{ width: 38, height: H }}>
+          {marques.map((m) => (
+            <Texte key={m} taille={9} ton="pale" chiffresAlignes numberOfLines={1}
+                   style={{ position: "absolute", right: 0, bottom: (m / sommet) * H - 6 }}>
+              {francsCourts(m, langue)}
             </Texte>
-          );
-        })}
+          ))}
+          <Texte taille={9} ton="pale" style={{ position: "absolute", right: 0, bottom: -6 }}>0</Texte>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ height: H }}>
+            {marques.map((m) => (
+              <View key={m} pointerEvents="none"
+                    style={{ position: "absolute", left: 0, right: 0, bottom: (m / sommet) * H, height: 1,
+                             backgroundColor: couleurs.trait, opacity: 0.6 }} />
+            ))}
+            <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, backgroundColor: couleurs.surface3 }} />
+            <View style={{ flexDirection: "row", height: H }}>
+              {serie.map((x, i) => {
+                const actif = i === choisie;
+                return (
+                  <Pressable key={x.cle} onPress={() => setChoisie(i)}
+                             accessibilityRole="button" accessibilityState={{ selected: actif }}
+                             accessibilityLabel={`${nomDeLaColonne(x.cle, pas, langue)} : ${t.entrees} ${francs(x.entrees, langue)}, ${t.sorties} ${francs(x.sorties, langue)}`}
+                             // Le fond répond sous le doigt, même sur une colonne
+                             // vide : une opacité sur du vide ne se voit pas.
+                             style={({ pressed }) => ({ flex: 1, flexDirection: "row", alignItems: "flex-end",
+                                                        justifyContent: "center", gap: 2, paddingHorizontal: 1, borderRadius: 3,
+                                                        backgroundColor: pressed ? couleurs.surface3 : actif ? couleurs.surface2 : "transparent" })}>
+                    <View style={{ flex: 1, maxWidth: 9, height: `${(x.entrees / sommet) * 100}%`, minHeight: x.entrees > 0 ? 2 : 0,
+                                   backgroundColor: couleurs.entree, borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
+                    <View style={{ flex: 1, maxWidth: 9, height: `${(x.sorties / sommet) * 100}%`, minHeight: x.sorties > 0 ? 2 : 0,
+                                   backgroundColor: couleurs.sortie, borderTopLeftRadius: 3, borderTopRightRadius: 3 }} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          {/* Les repères vivent sous la rangée, pas dans les colonnes : une
+              colonne d'un mois n'a pas la largeur de « 10 ». */}
+          <View style={{ height: 14, marginTop: 4 }}>
+            {[...etiquettes].map((i) => {
+              const premier = i === 0, dernier = i === serie.length - 1;
+              const place = premier ? { left: 0 } : dernier ? { right: 0 }
+                : { left: `${((i + 0.5) / serie.length) * 100}%` as const, marginLeft: -32 };
+              return (
+                <Texte key={i} taille={10} ton="pale" numberOfLines={1}
+                       style={{ position: "absolute", width: 64, textAlign: premier ? "left" : dernier ? "right" : "center", ...place }}>
+                  {etiquetteDuPas(serie[i].cle, pas, langue)}
+                </Texte>
+              );
+            })}
+          </View>
+        </View>
       </View>
+      <Texte taille={textes.legende} ton="pale">
+        {coupee && debut ? `${t.debutDeLaCaisse(jourCourtVolumes(debut, langue))} · ` : ""}{t.toucherUneBarre}
+      </Texte>
     </Carte>
   );
 }
@@ -457,7 +641,7 @@ function Cles({ langue }: { langue: Langue }) {
     <View style={{ flexDirection: "row", gap: espaces.md }}>
       {[[t.entrees, couleurs.entree], [t.sorties, couleurs.sortie]].map(([n, c]) => (
         <View key={n} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          <Point couleur={c} taille={9} />
+          <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: c }} />
           <Texte taille={textes.legende} ton="doux">{n}</Texte>
         </View>
       ))}
@@ -559,7 +743,8 @@ function Anneaux({ r, langue }: { r: ReponseVolumes; langue: Langue }) {
         <View style={{ flex: 1, gap: espaces.sm }}>
           <View>
             <Texte taille={textes.petit} poids="demi">{titre}</Texte>
-            <Texte taille={textes.petit} poids="gras" ton={ton} chiffresAlignes>{francs(total, langue)}</Texte>
+            <Texte taille={textes.petit} poids="gras" ton={ton} chiffresAlignes numberOfLines={1}
+                   adjustsFontSizeToFit minimumFontScale={0.7}>{francs(total, langue)}</Texte>
           </View>
           {f.map((x) => (
             <View key={x.famille} style={{ flexDirection: "row", alignItems: "flex-start", gap: espaces.sm }}>
@@ -609,8 +794,7 @@ function ParCarte({ r, langue, onCarte }: { r: ReponseVolumes; langue: Langue; o
           <Pressable accessibilityRole="button" onPress={() => onCarte(c.iccid)}
                      style={({ pressed }) => ({ paddingVertical: espaces.md, gap: 6, opacity: pressed ? 0.6 : 1 })}>
             <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: espaces.sm }}>
-              <Point couleur={couleurOperateur(c.operateur)} />
-              <Texte taille={textes.petit} poids="demi">{nomDeCarte(c)}</Texte>
+              <NomDeCarte carte={c} />
               <View style={{ marginLeft: "auto" }}><Badge ecart={c.soldes.ecart} langue={langue} /></View>
             </View>
             {c.totaux.n === 0 ? <Texte taille={textes.legende} ton="pale">{t.rien}</Texte> : <>
@@ -637,38 +821,55 @@ function LeSolde({ r, carte, langue }: { r: ReponseVolumes; carte: CarteVolumes;
   if (!c) return null;
   const { ouverture, cloture, attendu, ecart } = c.soldes;
   const e = c.totaux.entrees, s = c.totaux.sorties + c.totaux.frais;
+  // Les frais descendent le solde avec les sorties : la marche le DIT, sans
+  // quoi « Sorties » y valait plus que les « Sorties » du haut de l'écran.
+  const nomSorties = c.totaux.frais ? t.sortiesEtFrais : t.sorties;
   const marches = ouverture == null ? [] : [
-    { nom: t.debut, de: 0, a: ouverture, couleur: "#a8a8a8", lib: francs(ouverture, langue) },
-    { nom: t.entrees, de: ouverture, a: ouverture + e, couleur: couleurs.entree, lib: francs(e, langue, true) },
-    // Les frais descendent le solde avec les sorties : la marche le DIT, sans
-    // quoi « Sorties » y valait plus que les « Sorties » du haut de l'écran.
-    { nom: c.totaux.frais ? t.sortiesEtFrais : t.sorties, de: ouverture + e, a: ouverture + e - s, couleur: couleurs.sortie, lib: francs(-s, langue, true) },
-    ...(cloture != null ? [{ nom: t.fin, de: 0, a: cloture, couleur: couleurs.encre, lib: francs(cloture, langue) }] : []),
+    { nom: t.debut, de: 0, a: ouverture, couleur: "#a8a8a8", valeur: ouverture, signe: false },
+    { nom: t.entrees, de: ouverture, a: ouverture + e, couleur: couleurs.entree, valeur: e, signe: true },
+    { nom: nomSorties, de: ouverture + e, a: ouverture + e - s, couleur: couleurs.sortie, valeur: -s, signe: true },
+    ...(cloture != null ? [{ nom: t.fin, de: 0, a: cloture, couleur: couleurs.encre, valeur: cloture, signe: false }] : []),
   ];
   const haut = Math.max(1, ...marches.flatMap((m) => [m.de, m.a]));
-  const H = 150, PIED = 34;
+  const H = 140;
   const derniere = c.ruptures.at(-1);
   return (
     <Carte style={{ padding: espaces.lg, gap: espaces.md }}>
       <Titre droite={<Badge ecart={ecart} langue={langue} />}>{t.leSolde}</Titre>
       {marches.length ? (
-        <View style={{ flexDirection: "row", height: H + PIED + 32 }}>
-          {marches.map((m) => {
-            const bas = (Math.min(m.de, m.a) / haut) * H, h = Math.max(2, (Math.abs(m.a - m.de) / haut) * H);
-            return (
-              <View key={m.nom} style={{ flex: 1 }}>
-                <Texte taille={10} poids="gras" chiffresAlignes numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}
-                       style={{ position: "absolute", left: 0, right: 0, textAlign: "center", bottom: PIED + bas + h + 3 }}>
-                  {m.lib}
-                </Texte>
-                <View style={{ position: "absolute", left: "18%", right: "18%", bottom: PIED + bas, height: h,
-                               borderRadius: 5, backgroundColor: m.couleur }} />
-                <Texte taille={textes.legende} ton="doux" numberOfLines={2}
-                       style={{ position: "absolute", left: 0, right: 0, top: H + 32 + 4, textAlign: "center" }}>{m.nom}</Texte>
+        <>
+          {/* Les marches portent un montant COURT (« 33 M ») : en entier,
+              quatre montants d'un milliard ne tiennent pas côte à côte. Les
+              montants entiers sont juste dessous. */}
+          <View style={{ flexDirection: "row", height: H + 20 }}>
+            {marches.map((m) => {
+              const bas = (Math.min(m.de, m.a) / haut) * H, h = Math.max(2, (Math.abs(m.a - m.de) / haut) * H);
+              return (
+                <View key={m.nom} style={{ flex: 1 }}>
+                  <Texte taille={10} poids="gras" chiffresAlignes numberOfLines={1}
+                         style={{ position: "absolute", left: 0, right: 0, textAlign: "center", bottom: bas + h + 3 }}>
+                    {(m.signe && m.valeur > 0 ? "+" : "") + francsCourts(m.valeur, langue)}
+                  </Texte>
+                  <View style={{ position: "absolute", left: "18%", right: "18%", bottom: bas, height: h,
+                                 borderRadius: 5, backgroundColor: m.couleur }} />
+                </View>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: espaces.sm, borderTopWidth: 1,
+                         borderTopColor: couleurs.trait, paddingTop: espaces.md }}>
+            {marches.map((m) => (
+              <View key={m.nom} style={{ width: "50%", paddingRight: espaces.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: m.couleur }} />
+                  <Texte taille={textes.legende} ton="doux" numberOfLines={1}>{m.nom}</Texte>
+                </View>
+                <Texte taille={textes.petit} poids="demi" chiffresAlignes numberOfLines={1}
+                       adjustsFontSizeToFit minimumFontScale={0.7}>{francs(m.valeur, langue, m.signe)}</Texte>
               </View>
-            );
-          })}
-        </View>
+            ))}
+          </View>
+        </>
       ) : null}
       {ecart != null && Math.abs(ecart) >= 1 ? (
         <View style={{ flexDirection: "row", gap: espaces.sm, padding: espaces.md, borderRadius: rayons.carte,
@@ -734,7 +935,7 @@ function FicheCorrespondant({ r, langue, deux }: { r: ReponseVolumes; langue: La
         <Point couleur={couleur} />
         <Texte taille={textes.petit} ton="doux">{nom}</Texte>
       </View>
-      <Texte taille={textes.intertitre} poids="gras" ton={ton} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+      <Texte taille={textes.intertitre} poids="gras" ton={ton} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {francs(valeur, langue)}
       </Texte>
       <Texte taille={textes.legende} ton="pale">{t.operations(n)}</Texte>
@@ -763,8 +964,8 @@ function FicheCorrespondant({ r, langue, deux }: { r: ReponseVolumes; langue: La
             return (
               <View key={pc.iccid} style={{ gap: 6, paddingVertical: espaces.md, borderTopWidth: i ? 1 : 0, borderTopColor: couleurs.trait }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.sm }}>
-                  <Point couleur={couleurOperateur(c?.operateur ?? "")} />
-                  <Texte taille={textes.petit} poids="demi" style={{ flex: 1 }}>{c ? nomDeCarte(c) : pc.iccid}</Texte>
+                  {c ? <View style={{ flex: 1 }}><NomDeCarte carte={c} /></View>
+                    : <Texte taille={textes.petit} poids="demi" style={{ flex: 1 }}>{pc.iccid}</Texte>}
                   <Texte taille={textes.legende} ton="pale">{t.op(pc.n)}</Texte>
                 </View>
                 {pc.recu > 0 ? <MiniBarre valeur={pc.recu} max={max} couleur={couleurs.entree} ton="positif" langue={langue} /> : null}
@@ -774,7 +975,8 @@ function FicheCorrespondant({ r, langue, deux }: { r: ReponseVolumes; langue: La
           })}
         </Carte>
       </>}
-      droite={<Courbe serie={f.serie} pas={r.volumes.periode.pas} langue={langue} titre={t.serie[r.volumes.periode.pas]} />}
+      droite={<Graphe serie={f.serie} pas={r.volumes.periode.pas} langue={langue} titre={t.serie[r.volumes.periode.pas]}
+                      debut={r.volumes.debutDeLHistorique} />}
     />
   );
 }

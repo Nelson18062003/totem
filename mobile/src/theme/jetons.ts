@@ -46,11 +46,13 @@ export const couleurs = {
   opOrange: "#ff7900",
 
   // Les dessins des Volumes — les pendants de `globals.css`. Les barres :
-  // le vert des entrées, un rouge adouci pour les sorties. Les familles des
+  // un vert FONCÉ pour les entrées, un corail CLAIR pour les sorties — de
+  // même clarté, le vert et le rouge se confondaient pour un daltonien
+  // (écart 4,6 ; 13,9 maintenant, mesuré par le validateur). Les familles des
   // anneaux : quatre teintes validées ensemble pour les daltoniens. Les
   // heures de pointe : un seul bleu, du clair au foncé.
-  entree: "#14ae5c",
-  sortie: "#e0473f",
+  entree: "#0a6e38",
+  sortie: "#f0786a",
   familleArgent: "#2a78d6",
   familleEspeces: "#6250d6",
   familleTransferts: "#1baf7a",

@@ -160,6 +160,77 @@ export function periodeVolumes(
   return { ...b, genre, pas: pasPour(genre, joursDe(b)), enCours: b.a >= aujourdhui, jusqua };
 }
 
+/**
+ * LE JOUR QUI DÉSIGNE UNE PÉRIODE, pour la redemander. Pour un jour, une
+ * semaine, un mois : n'importe quel jour dedans, le premier par exemple. Pour
+ * SIX MOIS, c'est le DERNIER mois qui compte (« les six mois qui finissent
+ * en octobre ») : redemandée par son premier jour, « mai – oct. » devenait
+ * « déc. – mai » — six mois vides sous le titre « Mai – oct. », et la flèche
+ * ‹ sautait onze mois au lieu de six.
+ */
+export const repereDeLaPeriode = (p: Pick<PeriodeVolumes, "genre" | "de" | "a">): string =>
+  p.genre === "6mois" ? p.a : p.de;
+
+/** Ce qu'un écran demande à la plateforme : une période, une carte, et
+ *  peut-être la fiche d'un correspondant. */
+export type DemandeDeVolumes = {
+  periode: GenrePeriode; jour?: string; de?: string; a?: string; carte: string; qui: string | null;
+};
+
+/** La période qu'une demande désigne — calculée sur l'écran, pour répondre
+ *  à l'appui avant même que les chiffres n'arrivent. */
+export const periodeDeLaDemande = (d: DemandeDeVolumes, aujourdhui: string): PeriodeVolumes | null =>
+  periodeVolumes(d.periode, d.jour, aujourdhui, d.de, d.a);
+
+/**
+ * LA CLÉ D'UNE VUE — et l'adresse qu'on demande. Deux demandes de la même
+ * période (« le mois du 22 » et « le mois du 1er ») ont la même : sinon ce
+ * que l'écran garde en mémoire ne servirait jamais.
+ */
+export function cleDeLaDemande(d: DemandeDeVolumes, aujourdhui: string): string {
+  const p = periodeDeLaDemande(d, aujourdhui);
+  const q = new URLSearchParams({ periode: d.periode });
+  if (p && d.periode === "dates") { q.set("de", p.de); q.set("a", p.a); }
+  else if (p) q.set("jour", repereDeLaPeriode(p));
+  q.set("carte", d.carte);
+  if (d.qui) q.set("qui", d.qui);
+  return q.toString();
+}
+
+/** La demande d'une période (les flèches ‹ ›, les voisines). */
+export const demandeDeLaPeriode = (p: PeriodeVolumes, carte: string): DemandeDeVolumes =>
+  p.genre === "dates" ? { periode: "dates", de: p.de, a: p.a, carte, qui: null }
+    : { periode: p.genre, jour: repereDeLaPeriode(p), carte, qui: null };
+
+/**
+ * CE QU'ON CHARGE EN SILENCE, une fois une période affichée : celle d'avant,
+ * celle d'après, et les autres durées pour aujourd'hui. Le prochain appui
+ * trouve ses chiffres déjà là — c'est ce qui rend l'écran immédiat.
+ */
+export function voisinesAPrecharger(p: PeriodeVolumes, carte: string, aujourdhui: string): DemandeDeVolumes[] {
+  const voisines: DemandeDeVolumes[] = [];
+  for (const x of [periodeVoisine(p, -1, aujourdhui), periodeVoisine(p, 1, aujourdhui)]) {
+    if (x) voisines.push(demandeDeLaPeriode(x, carte));
+  }
+  for (const g of GENRES_PERIODE) {
+    if (g !== "dates" && g !== p.genre) voisines.push({ periode: g, jour: aujourdhui, carte, qui: null });
+  }
+  return voisines;
+}
+
+/** LES RACCOURCIS DE DATES — ce qu'on choisit le plus souvent, d'un appui,
+ *  le même sur le téléphone et sur le site. */
+export function raccourcisDeDates(aujourdhui: string): { cle: "sept" | "trente" | "ceMois" | "moisDernier"; bornes: Bornes }[] {
+  const debutDuMois = `${aujourdhui.slice(0, 8)}01`;
+  const finDuMoisDernier = decalerJour(debutDuMois, -1);
+  return [
+    { cle: "sept", bornes: { de: decalerJour(aujourdhui, -6), a: aujourdhui } },
+    { cle: "trente", bornes: { de: decalerJour(aujourdhui, -29), a: aujourdhui } },
+    { cle: "ceMois", bornes: { de: debutDuMois, a: aujourdhui } },
+    { cle: "moisDernier", bornes: { de: `${finDuMoisDernier.slice(0, 8)}01`, a: finDuMoisDernier } },
+  ];
+}
+
 /** La période d'avant ou d'après, du même genre (les flèches ‹ ›). `null` :
  *  elle serait dans le futur. */
 export function periodeVoisine(
@@ -284,6 +355,13 @@ export type Volumes = {
   /** La fiche d'un correspondant, quand on l'a demandée. */
   fiche?: Correspondant & { parCarte: { iccid: string; recu: number; envoye: number; n: number }[];
                             serie: PointDeSerie[] } | null;
+  /** Le jour du plus ancien SMS de la sélection (`null` : aucun) — absent
+   *  d'une plateforme d'avant. */
+  debutDeLHistorique?: string | null;
+  /** La période d'avant est-elle entièrement couverte par l'historique ?
+   *  Sinon, la comparaison ne veut rien dire et l'écran la tait. Absent
+   *  d'une plateforme d'avant : on compare, comme avant. */
+  comparable?: boolean;
 };
 
 export type EntreeVolumes = {
@@ -300,6 +378,9 @@ export type EntreeVolumes = {
   correspondant?: string | null;
   /** Combien de correspondants rapporter, au plus. */
   combien?: number;
+  /** Le jour du plus ancien SMS de la sélection, lu dans la base. `null` :
+   *  aucun SMS ; absent : on ne sait pas (on compare quand même). */
+  debutDeLHistorique?: string | null;
 };
 
 const cts = (n: number | null | undefined) =>
@@ -584,6 +665,13 @@ export function calculerVolumes(entree: EntreeVolumes): Volumes {
     }
   }
 
+  // LA COMPARAISON NE SE FAIT QU'À ARMES ÉGALES. Une caisse ouverte le
+  // 31 juillet n'a pas de « six mois d'avant » : comparés à presque rien, ses
+  // six mois montaient de 24 145 %. La période d'avant doit être entièrement
+  // dans l'historique, sinon l'écran ne compare pas.
+  const debut = entree.debutDeLHistorique;
+  const comparable = debut === undefined ? true : debut !== null && debut <= precedente.de;
+
   return {
     periode, precedente, totaux, avant: totauxDe(avant, false), parType, parCarte, interne, serie,
     correspondants: tous.slice(0, entree.combien ?? 100), nbCorrespondants: tous.length,
@@ -594,6 +682,8 @@ export function calculerVolumes(entree: EntreeVolumes): Volumes {
     },
     heures, avertissements,
     ...(fiche === undefined ? {} : { fiche }),
+    ...(debut === undefined ? {} : { debutDeLHistorique: debut }),
+    comparable,
   };
 }
 
@@ -620,6 +710,72 @@ export type ReponseVolumes = {
 export function variation(maintenant: number, avant: number): number | null {
   if (!avant) return null;
   return Math.round(((maintenant - avant) / Math.abs(avant)) * 100);
+}
+
+/**
+ * L'ÉCART AVEC LA PÉRIODE D'AVANT, tel qu'on le lit.
+ *
+ * « ▲ 668 % » ne se lit pas : au-delà du double, l'écran dit « × 7,7 ».
+ * Rien avant, ou une période d'avant que l'historique ne couvre pas
+ * (`comparable`) : rien du tout — un chiffre faux est pire qu'aucun.
+ */
+export function ecartLisible(
+  maintenant: number, avant: number, langue: Langue, comparable = true,
+): { texte: string; sens: 1 | -1 | 0 } | null {
+  if (!comparable || !(avant > 0) || !Number.isFinite(maintenant)) return null;
+  const rapport = maintenant / avant;
+  if (rapport >= 2) {
+    const fois = Math.round(rapport * 10) / 10;
+    const ecrit = fois >= 10 ? String(Math.round(fois))
+      : fois.toLocaleString(langue === "en" ? "en-GB" : "fr-FR", { maximumFractionDigits: 1 });
+    return { texte: `× ${ecrit}`, sens: 1 };
+  }
+  const pct = Math.round((rapport - 1) * 100);
+  if (pct === 0) return { texte: "= 0 %", sens: 0 };
+  return { texte: `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)} %`, sens: pct > 0 ? 1 : -1 };
+}
+
+/** Le dernier jour couvert par une colonne. */
+export function finDeLaColonne(cle: string, pas: Pas): string | null {
+  switch (pas) {
+    case "heure": return null;
+    case "jour": return cle;
+    case "semaine": return decalerJour(lundiDe(cle), 6);
+    case "mois": return finDuMois(`${cle}-01`);
+  }
+}
+
+/**
+ * LES COLONNES À DESSINER : à partir du premier SMS. Six mois d'une caisse
+ * ouverte en août montraient douze semaines vides avant la première barre —
+ * l'œil lisait « rien ne marche » au lieu de « la caisse commence ici ».
+ */
+export function serieVisible(
+  serie: PointDeSerie[], pas: Pas, debutDeLHistorique: string | null | undefined,
+): { serie: PointDeSerie[]; coupee: boolean } {
+  if (!debutDeLHistorique || pas === "heure") return { serie, coupee: false };
+  const i = serie.findIndex((c) => (finDeLaColonne(c.cle, pas) ?? "") >= debutDeLHistorique);
+  if (i <= 0) return { serie, coupee: false };
+  return { serie: serie.slice(i), coupee: true };
+}
+
+/**
+ * LES GRADUATIONS DE L'AXE — des nombres ronds (1, 2, 2,5, 5 × 10ⁿ), trois
+ * ou quatre au plus, la dernière au-dessus du plus haut point.
+ */
+export function graduations(max: number): number[] {
+  if (!(max > 0)) return [1];
+  const brut = max / 3;
+  const puissance = 10 ** Math.floor(Math.log10(brut));
+  const pas = [1, 2, 2.5, 5, 10].map((k) => k * puissance).find((p) => p >= brut) ?? 10 * puissance;
+  const n = Math.max(1, Math.ceil(max / pas - 1e-9));
+  return Array.from({ length: n }, (_, i) => Math.round((i + 1) * pas * 100) / 100);
+}
+
+/** La colonne retenue par défaut : la plus récente qui porte quelque chose. */
+export function colonneParDefaut(serie: PointDeSerie[]): number {
+  for (let i = serie.length - 1; i >= 0; i--) if (serie[i].n > 0) return i;
+  return Math.max(0, serie.length - 1);
 }
 
 /** Le créneau le plus chargé, par tranches de deux heures. */
@@ -652,6 +808,20 @@ export function nomDeLaPeriode(p: Pick<PeriodeVolumes, "genre" | "de" | "a">, la
     default:
       return p.de === p.a ? date(p.de, { day: "numeric", month: "short" }, langue)
         : `${date(p.de, { day: "numeric", month: "short" }, langue)} – ${date(p.a, { day: "numeric", month: "short" }, langue)}`;
+  }
+}
+
+/** Le nom d'une colonne, en entier, pour le résumé au-dessus du graphe :
+ *  « Jeudi 22 octobre », « Semaine du 12 oct. », « Octobre 2026 », « 14 h – 15 h ». */
+export function nomDeLaColonne(cle: string, pas: Pas, langue: Langue): string {
+  switch (pas) {
+    case "heure": {
+      const h = Number(cle);
+      return langue === "en" ? `${h}:00 – ${h + 1}:00` : `${h} h – ${h + 1} h`;
+    }
+    case "jour": return majuscule(date(cle, { weekday: "long", day: "numeric", month: "long" }, langue));
+    case "semaine": return `${langue === "en" ? "Week of" : "Semaine du"} ${date(cle, { day: "numeric", month: "short" }, langue)}`;
+    case "mois": return majuscule(date(`${cle}-01`, { month: "long", year: "numeric" }, langue));
   }
 }
 

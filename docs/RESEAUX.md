@@ -162,3 +162,54 @@ dessus (montant, sens, catégorie) — refaite à chaque amélioration. Si MTN
 motif de plus dans `analyse_sms.py`, pas une nouvelle architecture. Le pire
 cas d'un SMS d'une forme inconnue : il s'affiche tel quel, marqué
 « illisible », en attendant que le lecteur apprenne sa forme.
+
+## Quand une carte perd son réseau
+
+Les barres de signal (AT+CSQ) mesurent l'antenne, pas l'inscription : une
+carte peut capter fort et n'être reçue par aucun réseau. C'est ce qui se
+cachait derrière « Check balance → no network service ».
+
+**Ce que le boîtier lit.** Le fil de chaque carte lit son inscription toutes
+les 30 secondes (15 quand une lecture est mauvaise), quand la carte est
+libre — jamais pendant un menu, une relève ou un envoi de SMS :
+
+| Réponse du modem | État | Ce que l'écran dit |
+|---|---|---|
+| `+CREG: 0,1` (ou 9) | inscrite | les barres |
+| `+CREG: 0,5` (ou 10) | itinérance | les barres, « itinérance » |
+| `+CREG: 0,6` / `0,7` | SMS seulement | « SMS seulement » — les encaissements arrivent |
+| CREG non inscrite, `+CEREG: 0,1` | réseau limité (4G seule) | « Réseau limité » |
+| `+CREG: 0,2` | recherche | « Recherche du réseau » |
+| `+CREG: 0,3` | refusée | « Réseau refusé » |
+| `+CREG: 0,0` / `0,4` | aucun | « Aucun service » |
+| SIM absente, réponse illisible | inconnu | rien : les barres restent |
+
+Un état ne se dit qu'après deux lectures mauvaises de suite.
+
+**Ce qu'il en fait** (`totem/service.py`, constantes en tête du fichier) :
+
+- il le publie dans son signe de vie (`terminaux.sante.cartes`), qui part
+  aussitôt quand une carte perd ou retrouve son réseau ;
+- après 4 minutes sans service continu, il relance la radio de la carte
+  (mode avion, puis retour — la SIM et les SMS rangés ne bougent pas), une
+  seconde fois 30 minutes plus tard, jamais plus par épisode ; jamais quand
+  toutes les cartes du boîtier, ou toutes celles d'un opérateur, sont
+  coupées ensemble : c'est l'antenne ou le quartier ;
+- il prévient sur Telegram après 15 minutes sans service CUMULÉES dans
+  l'épisode, ou 4 coupures en une heure — une fois par épisode, trois fois
+  par jour au plus — et redit quand la carte est revenue (dix minutes de bon
+  continu) ;
+- il écrit au journal (« Ce qui s'est passé ») le début et la fin de chaque
+  épisode, et chaque relance avec son effet : ces lignes servent à revoir
+  les durées sur pièces, aucune n'ayant été mesurée sur le boîtier.
+
+**Ce qui ne change pas.** Les opérations ne sont pas bloquées d'après un état
+qui peut avoir une minute : le modem refuse de lui-même, tout de suite, et
+ce refus se dit maintenant en français (« La carte n'a pas de réseau en ce
+moment — rien n'est parti. »). Pendant une relance de la radio, une demande
+est refusée aussitôt (« La carte se reconnecte à son réseau ») au lieu
+d'attendre et de partir en retard.
+
+**Corrigé veut dire : sur le boîtier.** Rien de ceci n'existe pour le
+propriétaire tant que ce n'est pas sur `main` et que le boîtier n'a pas fait
+`git pull` puis `sudo bash install.sh`.

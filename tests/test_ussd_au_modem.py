@@ -499,7 +499,12 @@ class TestUneErreurDuModemSeDitToutDeSuite(unittest.TestCase):
         with self.assertRaises(ErreurModem) as e:
             attendre(b'\r\n+CME ERROR: unknown\r\n', delai=3)
         self.assertLess(time.time() - depart, 1)
-        self.assertIn("unknown", str(e.exception))
+        # La cause en mots pour le propriétaire, la cause brute pour le
+        # journal (`RefusDuModem.cause`).
+        self.assertIn("unknown", e.exception.cause)
+        self.assertTrue(any(mot in str(e.exception).lower()
+                            for mot in ("ne comprend pas", "does not understand")),
+                        str(e.exception))
         self.assertNotIsInstance(e.exception, ReponseNonRecue)
 
     def test_temoin(self):

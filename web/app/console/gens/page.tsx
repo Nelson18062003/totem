@@ -154,7 +154,7 @@ export default async function GensEtAppareils() {
                   {gens.freines.map((f) => (
                     <tr key={f.cle}>
                       <Cellule>
-                        <span className="tabnums break-all">{f.cle}</span>
+                        <span className="tabnums break-all">{f.nom}</span>
                       </Cellule>
                       <Cellule nombre>
                         <span className={f.n >= 60 ? "font-medium text-negative" : ""}>
