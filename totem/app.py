@@ -38,8 +38,8 @@ from .recu import (heure_en_lettres, numero_de_recu, numero_lisible,
 from .codes import catalogue, cle as cle_code
 from .carte import operateur_depuis_imsi, operateur_xafe
 from .xafe import SANS_FLOAT, Attente
-from .compte import (TELEGRAM, ErreurModem, ReponseNonRecue, SessionTenue,
-                     libelles_uniques)
+from .compte import (TELEGRAM, ErreurModem, RefusDuModem, ReponseNonRecue,
+                     SessionTenue, libelles_uniques)
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
 from .notification import (PEUT_ETRE_PARTIE, composer, composer_rattrapage,
@@ -57,7 +57,7 @@ ATTENTE_DES_ACCUSES = 20
 # d'ouvrir l'application. Son âge se mesure sans l'heure murale du Pi (voir
 # `age_de_la_sonnerie`).
 SONNERIE_PERIMEE_S = 30 * 60
-from .pilotage import SILENCES_AVANT_RELANCE, Pilotage, RE_VARIABLE
+from .pilotage import ECHECS_AVANT_RELANCE, Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import langue_active, t
 from .version import version
@@ -593,7 +593,7 @@ class Robot:
             self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
                                      programmeur=self._recu_apres_coup,
                                      guichets=self._guichets_xafe(),
-                                     relanceur=self._relancer_apres_silences)
+                                     relanceur=self._relancer_apres_echecs)
             self.pilotage.demarrer()
         # XAFe démarre même sans Bonzini : une destination n'attend pas
         # l'autre. Et le guichet non plus : les SMS que XAFe confie au
@@ -605,7 +605,7 @@ class Robot:
                 self.pilotage = Pilotage(None, self.comptes, self.journal,
                                          programmeur=self._recu_apres_coup,
                                          guichets=self._guichets_xafe(),
-                                         relanceur=self._relancer_apres_silences)
+                                         relanceur=self._relancer_apres_echecs)
                 self.pilotage.demarrer()
         if bloquant:
             self._boucle_messages()
@@ -1063,18 +1063,18 @@ class Robot:
         except ErreurModem as e:
             # La cause au journal, elle aussi : jusqu'ici une panne du modem
             # vue depuis Telegram ne laissait de trace que dans le chat.
-            detail = (compte.expliquer_le_silence()
-                      if isinstance(e, ReponseNonRecue) else "")
+            sans_reseau = isinstance(e, (ReponseNonRecue, RefusDuModem))
+            detail = compte.expliquer_le_silence() if sans_reseau else ""
             self.journal.evenement(
                 f"erreur USSD {compte.libelle} : {e}"
                 + (f" — {detail}" if detail else ""))
             self._cloturer_session(f"⚠️ [{echap(compte.libelle)}] {echap(e)}")
-            if (isinstance(e, ReponseNonRecue)
-                    and compte.a_relancer_apres_silences(SILENCES_AVANT_RELANCE)):
+            if (sans_reseau
+                    and compte.a_relancer_apres_echecs(ECHECS_AVANT_RELANCE)):
                 self.journal.evenement(
-                    f"{SILENCES_AVANT_RELANCE} codes de suite sans réponse "
-                    f"({compte.libelle}) : le modem est relancé")
-                self._relancer_apres_silences(compte)
+                    f"{ECHECS_AVANT_RELANCE} codes de suite n'ont pas atteint "
+                    f"le réseau ({compte.libelle}) : le modem est relancé")
+                self._relancer_apres_echecs(compte)
             return
         except Exception as e:
             self.journal.evenement(f"erreur USSD {compte.libelle} : {e}")
@@ -3595,18 +3595,19 @@ class Robot:
         return t(f"modem restarted ({compte.libelle}): {ou}; {reglages}",
                  f"modem relancé ({compte.libelle}) : {ou} ; {reglages}")
 
-    def _relancer_apres_silences(self, compte):
-        """Ce que le propriétaire faisait à la main. Trois codes sans réponse
-        de suite, et la sonde n'a rien trouvé à réparer : le modem est relancé
-        pour de bon (AT+CFUN, port rouvert, réglages vérifiés), et on dit
-        pourquoi."""
+    def _relancer_apres_echecs(self, compte):
+        """Ce que le propriétaire faisait à la main. Trois codes de suite qui
+        n'ont pas atteint le réseau (sans réponse, ou refusés par le modem),
+        et la sonde n'a rien trouvé à réparer : le modem est relancé pour de
+        bon (AT+CFUN, port rouvert, réglages vérifiés), et on dit pourquoi."""
         self.transport.envoyer(
-            t(f"⚠️ [{echap(compte.libelle)}] {SILENCES_AVANT_RELANCE} codes "
-              "in a row went out without a reply from the network, and the "
-              "modem reports nothing wrong. Restarting it.",
-              f"⚠️ [{echap(compte.libelle)}] {SILENCES_AVANT_RELANCE} codes "
-              "de suite sont partis sans réponse du réseau, et le modem ne "
-              "signale rien. Je le relance."), canal="alertes")
+            t(f"⚠️ [{echap(compte.libelle)}] {ECHECS_AVANT_RELANCE} codes "
+              "in a row did not reach the network (no reply, or refused by "
+              "the modem), and the modem reports nothing wrong. Restarting it.",
+              f"⚠️ [{echap(compte.libelle)}] {ECHECS_AVANT_RELANCE} codes "
+              "de suite n'ont pas atteint le réseau (sans réponse, ou refusés "
+              "par le modem), et le modem ne signale rien. Je le relance."),
+            canal="alertes")
         # Pas « automatique » : ce mode espace ses essais et se tait quand
         # il renonce — après avoir annoncé « je relance », ce serait faux.
         # Trois silences de plus (une minute et demie au moins) sont déjà

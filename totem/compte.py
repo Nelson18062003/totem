@@ -31,8 +31,8 @@ import threading
 
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
-                    MessageTropLong, ReponseNonRecue, ReponseRefusee,
-                    phrase_du_silence)
+                    MessageTropLong, RefusDuModem, ReponseNonRecue,
+                    ReponseRefusee, phrase_du_silence)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -68,11 +68,12 @@ class Compte:
         self.titulaire = None
         self.dernier_menu = ""
         self.echecs = 0                 # compteur du chien de garde
-        # Codes partis SANS réponse du réseau, de suite. Remis à zéro par
-        # toute réponse reçue. Trois de suite, sans réglage à réparer : le
-        # modem se relance (voir `Pilotage.relanceur`) — ce que le
-        # propriétaire faisait à la main en relançant tout le robot.
-        self.silences = 0
+        # Codes qui n'ont PAS atteint le réseau, de suite : partis sans
+        # réponse, ou refusés par le modem (« no network service »…). Remis
+        # à zéro par toute réponse reçue. Trois de suite, sans réglage à
+        # réparer : le modem se relance (voir `Pilotage.relanceur`) — ce que
+        # le propriétaire faisait à la main en relançant tout le robot.
+        self.codes_sans_reseau = 0
         self.dernier_silence = None     # ce que la sonde a lu la dernière fois
         # Une panne de modem s'annonce une fois, pas à chaque tour de
         # surveillance. `panne_signalee` retient qu'on l'a déjà dite ;
@@ -182,8 +183,8 @@ class Compte:
             resultat = envoi(charge)
         except ReponseRefusee:
             raise
-        except ReponseNonRecue:
-            self.silences += 1
+        except (ReponseNonRecue, RefusDuModem):
+            self.codes_sans_reseau += 1
             try:
                 self.modem.ussd_annuler()
             except Exception:
@@ -206,7 +207,7 @@ class Compte:
             self.titulaire = None
             self.dernier_menu = ""
             raise
-        self.silences = 0           # le réseau a répondu : on repart de zéro
+        self.codes_sans_reseau = 0  # le réseau a répondu : on repart de zéro
         return resultat
 
     def _suite(self, etat, reponse, qui=None):
@@ -230,17 +231,17 @@ class Compte:
             return t(f"modem not answering ({e})", f"modem muet ({e})")
         self.dernier_silence = etat
         if etat.get("repare"):
-            self.silences = 0       # la cause est trouvée et réparée
+            self.codes_sans_reseau = 0      # la cause est trouvée et réparée
         return phrase_du_silence(etat)
 
-    def a_relancer_apres_silences(self, seuil):
-        """Trois codes sans réponse de suite, et la sonde n'a rien trouvé à
-        réparer : le modem cache un état qu'on ne sait pas lire, et une
-        relance complète est ce qui le dissipe. Rend True une fois, et
-        repart de zéro."""
-        if self.silences < seuil:
+    def a_relancer_apres_echecs(self, seuil):
+        """Trois codes de suite qui n'ont pas atteint le réseau, et la sonde
+        n'a rien trouvé à réparer : le modem cache un état qu'on ne sait pas
+        lire, et une relance complète est ce qui le dissipe. Rend True une
+        fois, et repart de zéro."""
+        if self.codes_sans_reseau < seuil:
             return False
-        self.silences = 0
+        self.codes_sans_reseau = 0
         return True
 
     def reglages_refuses(self):
@@ -375,4 +376,4 @@ def libelles_uniques(comptes):
 
 __all__ = ["Compte", "libelles_uniques", "ErreurModem", "SessionTenue",
            "ReponseRefusee", "MenuReferme", "ReponseNonRecue", "EnvoiIncertain",
-           "MessageTropLong", "WEB", "TELEGRAM"]
+           "MessageTropLong", "RefusDuModem", "WEB", "TELEGRAM"]

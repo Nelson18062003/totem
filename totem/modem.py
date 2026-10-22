@@ -128,6 +128,40 @@ class ReponseNonRecue(ErreurModem):
     « n'a pas pu faire », c'était faire recommencer un transfert parti."""
 
 
+class RefusDuModem(ErreurModem):
+    """Le modem a refusé le code AVANT de l'envoyer (« +CME ERROR: … ») :
+    rien n'est parti. La cause brute se garde pour le journal ; le
+    propriétaire, lui, lit ce qu'elle veut dire. Vu sur la plateforme le
+    22 octobre : « no network service » (la carte n'a plus de réseau à cet
+    instant), « unknown network message » et « unknown » (le réseau a
+    répondu quelque chose que le modem ne comprend pas), « retry
+    operation » (le modem était occupé)."""
+
+    def __init__(self, cause):
+        self.cause = (cause or "").strip()
+        super().__init__(self.phrase())
+
+    def phrase(self, langue=None):
+        brute = self.cause.lower()
+        if "no network service" in brute or "no network" in brute:
+            sens = t("the card has no network signal right now",
+                     "la carte n'a pas de réseau en ce moment", langue=langue)
+        elif "retry" in brute or "busy" in brute:
+            sens = t("the modem was busy, try again in a moment",
+                     "le modem était occupé, réessayez dans un instant",
+                     langue=langue)
+        elif "network message" in brute or brute.endswith("unknown"):
+            sens = t("the network rejected the code in a way the modem "
+                     "does not understand",
+                     "le réseau a rejeté le code d'une façon que le modem "
+                     "ne comprend pas", langue=langue)
+        else:
+            sens = t("the modem refused the code",
+                     "le modem a refusé le code", langue=langue)
+        return t(f"Nothing was sent: {sens} ({self.cause}).",
+                 f"Rien n'est parti : {sens} ({self.cause}).", langue=langue)
+
+
 class MessageTropLong(ErreurModem):
     """Le message ne tient pas dans un SMS (160 caractères, 70 hors de
     l'alphabet GSM). Rien n'a été écrit au modem — et on le dit comme une
@@ -713,12 +747,7 @@ class ModemSerie:
                 # « délai dépassé » qui cache la vraie cause.
                 erreur = RE_ERREUR_AT.search(tampon)
                 if erreur:
-                    cause = erreur.group(1).strip()
-                    raise ErreurModem(t(
-                        f"The modem refused the request ({cause}). "
-                        "Nothing was sent.",
-                        f"Le modem a refusé la demande ({cause}). "
-                        "Rien n'est parti."))
+                    raise RefusDuModem(erreur.group(1))
             sursis = (premier_signe is not None
                       and time.time() - premier_signe > GRACE_CUSD)
             lu = lire_cusd(tampon, sursis_ecoule=sursis,

@@ -63,8 +63,8 @@ from datetime import datetime, timedelta
 from .analyse_sms import _normaliser, solde_annonce
 from .carte import operateur_xafe
 from .compte import (WEB, TELEGRAM, EnvoiIncertain, ErreurModem, MenuReferme,
-                     MessageTropLong, ReponseNonRecue, ReponseRefusee,
-                     SessionTenue)
+                     MessageTropLong, RefusDuModem, ReponseNonRecue,
+                     ReponseRefusee, SessionTenue)
 from .declencheur import NATURES, RefusRecu
 from . import ecran
 from .nuage import _horodatage
@@ -142,8 +142,9 @@ DEMANDE_PERIMEE_S = 60
 # XAFe en est : un code de vérification parti des heures après la demande
 # arrive chez quelqu'un qui ne l'attend plus.
 QUI_COMPOSENT = ("ussd", "ussd_reponse", "sms_xafe")
-# Codes partis sans réponse, de suite, avant de relancer le modem.
-SILENCES_AVANT_RELANCE = 3
+# Codes de suite qui n'ont pas atteint le réseau (partis sans réponse, ou
+# refusés par le modem) avant de relancer le modem.
+ECHECS_AVANT_RELANCE = 3
 
 # PLUSIEURS GUICHETS, UNE SEULE DISTRIBUTION.
 #
@@ -1124,6 +1125,8 @@ class Pilotage:
         except ReponseNonRecue:
             self._journaliser_composition(code, compte)
             return (*self._peut_avoir_abouti(compte, langue), None)
+        except RefusDuModem as refus:
+            raise self._refus_du_modem(compte, refus, langue)
         self._journaliser_composition(code, compte)
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
@@ -1262,6 +1265,8 @@ class Pilotage:
             raise RefusPoli(_caracteres_refuses(refus, langue))
         except ReponseNonRecue:
             return None
+        except RefusDuModem as refus:
+            raise self._refus_du_modem(compte, refus, langue)
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
         return reponse
@@ -1417,6 +1422,8 @@ class Pilotage:
             raise RefusPoli(_caracteres_refuses(refus, langue))
         except ReponseNonRecue:
             return self._peut_avoir_abouti(compte, langue)
+        except RefusDuModem as refus:
+            raise self._refus_du_modem(compte, refus, langue)
         self._noter_session(compte, qui)
         self._relever_solde(compte, reponse)
         return reponse, self._etat_du_reseau(compte, qui)
@@ -1444,7 +1451,7 @@ class Pilotage:
             f"({compte.libelle}){suite}",
             f"guichet à distance : parti, sans réponse du réseau à temps "
             f"({compte.libelle}){suite}"))
-        self._relancer_si_silences(compte)
+        self._relancer_si_echecs(compte)
         return t(
             "Your request went out, but the network did not answer in time: "
             "it may have gone through. Check your SMS before trying again.",
@@ -1452,20 +1459,44 @@ class Pilotage:
             "temps : elle a pu aboutir. Regardez vos SMS avant de "
             "recommencer.", langue=langue), "fini"
 
-    def _relancer_si_silences(self, compte):
-        """Trois silences de suite sur une carte, rien à réparer : on fait
-        ce que le propriétaire faisait à la main — relancer le modem — et
-        on le dit. Le 22 octobre, la carte Orange a répondu « sans réponse
-        du réseau » à huit codes sur trois heures, pendant que les trois
-        MTN du même boîtier répondaient : ce n'était pas le réseau."""
-        juge = getattr(compte, "a_relancer_apres_silences", None)
-        if juge is None or not juge(SILENCES_AVANT_RELANCE):
+    def _refus_du_modem(self, compte, refus, langue=None):
+        """Le modem a refusé le code avant de l'envoyer (« no network
+        service », « unknown network message »…). Rien n'est parti, et la
+        carte a déjà raccroché (`Compte._echanger`). On le dit au journal
+        avec ce que la sonde en lit, on compte comme un silence, et l'on
+        rend le refus poli à lever — dans la langue de la demande.
+
+        La plateforme montrait « The modem refused the request (+CME ERROR:
+        no network service) », tel quel, au propriétaire ; et le journal ne
+        portait que « échec (ussd) »."""
+        with self._garde:
+            self._vie.pop(compte, None)
+        expliquer = getattr(compte, "expliquer_le_silence", None)
+        detail = expliquer() if expliquer else ""
+        suite = f" — {detail}" if detail else ""
+        self.journal.evenement(t(
+            f"remote desk: the modem refused the code ({refus.cause}) "
+            f"({compte.libelle}){suite}",
+            f"guichet à distance : le modem a refusé le code ({refus.cause}) "
+            f"({compte.libelle}){suite}"))
+        self._relancer_si_echecs(compte)
+        return RefusPoli(refus.phrase(langue))
+
+    def _relancer_si_echecs(self, compte):
+        """Trois codes de suite qui n'ont pas atteint le réseau sur une
+        carte, rien à réparer : on fait ce que le propriétaire faisait à la
+        main — relancer le modem — et on le dit. Le 22 octobre, la carte
+        Orange a répondu « sans réponse du réseau » à huit codes sur trois
+        heures, et le modem refusait d'autres codes « no network service »,
+        pendant que des cartes du même boîtier répondaient."""
+        juge = getattr(compte, "a_relancer_apres_echecs", None)
+        if juge is None or not juge(ECHECS_AVANT_RELANCE):
             return
         self.journal.evenement(t(
-            f"{SILENCES_AVANT_RELANCE} codes in a row without a reply "
-            f"({compte.libelle}): the modem is being restarted",
-            f"{SILENCES_AVANT_RELANCE} codes de suite sans réponse "
-            f"({compte.libelle}) : le modem est relancé"))
+            f"{ECHECS_AVANT_RELANCE} codes in a row did not reach the "
+            f"network ({compte.libelle}): the modem is being restarted",
+            f"{ECHECS_AVANT_RELANCE} codes de suite n'ont pas atteint le "
+            f"réseau ({compte.libelle}) : le modem est relancé"))
         if self.relanceur is None:
             return
         try:

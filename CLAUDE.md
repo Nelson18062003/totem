@@ -1411,10 +1411,21 @@ reposent maintenant tant qu'un réglage essentiel est refusé
 carte sur le réseau, annonces USSD — `etat_apres_silence`) et répare le
 réglage tombé, et le journal reçoit la CAUSE de chaque échec, sur les deux
 chemins, ainsi que chaque relance réussie et le port où le modem est revenu.
-Et trois codes de suite sans réponse sur une carte, la sonde n'ayant rien
-trouvé, font ce que le propriétaire faisait à la main : relancer le modem
-(`relanceur`, `silences`) — sur le même boîtier, les trois MTN répondaient
+Et trois codes de suite qui n'atteignent pas le réseau sur une carte — sans
+réponse, ou refusés par le modem —, la sonde n'ayant rien trouvé, font ce
+que le propriétaire faisait à la main : relancer le modem (`relanceur`,
+`codes_sans_reseau`) — sur le même boîtier, les trois MTN répondaient
 pendant qu'Orange se taisait, ce n'était pas le réseau.
+
+**La preuve était dans la table des commandes, pas au journal.** Le journal
+disait « échec (ussd) » treize fois ; la plateforme, elle, avait gardé ce que
+le modem avait répondu : « +CME ERROR: no network service », « unknown
+network message », « unknown », « retry operation » — et le noyau du Pi :
+« usb2-port1: over-current change #13 », le hub USB qui décroche et revient
+à chaque pointe de courant d'un modem. Le robot montrait ces mots-là au
+propriétaire, tels quels. Un refus du modem se lit maintenant en mots
+(`RefusDuModem.phrase` : « la carte n'a pas de réseau en ce moment »), va au
+journal avec sa cause brute et la sonde, et compte comme un silence.
 `tests/test_reglages_du_modem.py` porte le témoin : la mise en route d'avant
 laisse les annonces éteintes. Un modem muet au premier « AT » n'est pas
 « en UCS2 » : l'ancien code le concluait.

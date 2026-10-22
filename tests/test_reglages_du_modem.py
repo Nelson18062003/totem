@@ -39,8 +39,8 @@ from unittest import mock
 
 import totem.modem
 from totem.compte import Compte
-from totem.modem import (ESSAIS_REGLAGES, ModemSerie, ReponseNonRecue,
-                         phrase_du_silence)
+from totem.modem import (ESSAIS_REGLAGES, ModemSerie, RefusDuModem,
+                         ReponseNonRecue, phrase_du_silence)
 from totem.pilotage import Pilotage
 from totem.textes import definir_langue, langue_active
 from tests.test_pilotage import FausseCarte, FauxCompte, FauxJournal, FauxNuage
@@ -377,11 +377,11 @@ class TestTroisSilencesRelancentLeModem(EnFrancais):
         for _ in range(2):
             self._composer(p)
         self.assertEqual(relances, [])
-        self.assertEqual(compte.silences, 2)
+        self.assertEqual(compte.codes_sans_reseau, 2)
         self._composer(p)
         self.assertEqual(relances, [compte])
-        self.assertEqual(compte.silences, 0)       # on repart de zéro
-        self.assertTrue(any("3 codes de suite sans réponse" in e
+        self.assertEqual(compte.codes_sans_reseau, 0)       # on repart de zéro
+        self.assertTrue(any("3 codes de suite n'ont pas atteint le réseau" in e
                             for e in journal.evenements), journal.evenements)
 
     def test_un_reglage_repare_ne_compte_pas_comme_silence(self):
@@ -391,7 +391,7 @@ class TestTroisSilencesRelancentLeModem(EnFrancais):
         for _ in range(5):
             self._composer(p)
         self.assertEqual(relances, [])
-        self.assertEqual(compte.silences, 0)
+        self.assertEqual(compte.codes_sans_reseau, 0)
 
     def test_une_reponse_recue_remet_le_compte_a_zero(self):
         p, compte, journal, relances = self._pilotage(ModemMuetSain)
@@ -402,7 +402,7 @@ class TestTroisSilencesRelancentLeModem(EnFrancais):
         compte.reponses = [("fermee", "Votre solde est de 1000 FCFA")]
         compte.modem = ModemScripte(compte)
         self._composer(p)
-        self.assertEqual(compte.silences, 0)
+        self.assertEqual(compte.codes_sans_reseau, 0)
         compte.modem = ModemMuetSain(compte)
         self._composer(p)
         self._composer(p)
@@ -416,6 +416,58 @@ class TestTroisSilencesRelancentLeModem(EnFrancais):
         for _ in range(3):
             self._composer(p)
         self.assertTrue(any("le modem est relancé" in e for e in journal.evenements))
+
+
+# =============================================================================
+class ModemQuiRefuse(ModemMuetSain):
+    """Le modem refuse le code avant de l'envoyer : « +CME ERROR: no network
+    service », vu sur la plateforme le 22 octobre."""
+
+    def ussd_demarrer(self, code):
+        self.compte.recu.append(code)
+        raise RefusDuModem("+CME ERROR: no network service")
+
+    ussd_repondre = ussd_demarrer
+
+
+class TestLeRefusDuModemSeDitEtSeCompte(EnFrancais):
+
+    def test_le_proprietaire_lit_des_mots_et_le_journal_la_cause(self):
+        compte = FauxCompte([])
+        compte.modem = ModemQuiRefuse(compte)
+        journal = FauxJournal()
+        nuage = FauxNuage()
+        p = Pilotage(nuage, [compte], journal)
+        p._traiter({"id": 1, "type": "ussd",
+                    "parametres": {"code": "#148*5#", "carte": FausseCarte.iccid,
+                                   "langue": "fr"}})
+        champs = dict(nuage.maj[-1][1])
+        self.assertEqual(champs["etat"], "echouee")
+        self.assertIn("la carte n'a pas de réseau en ce moment", champs["resultat"])
+        self.assertIn("no network service", champs["resultat"])
+        self.assertNotIn("The modem refused", champs["resultat"])
+        refus = [e for e in journal.evenements if "le modem a refusé le code" in e]
+        self.assertEqual(len(refus), 1, journal.evenements)
+        self.assertIn("no network service", refus[0])
+        self.assertIn("18/31", refus[0])              # la sonde est passée
+        self.assertEqual(compte.codes_sans_reseau, 1)
+
+    def test_trois_refus_relancent_le_modem(self):
+        compte = FauxCompte([])
+        compte.modem = ModemQuiRefuse(compte)
+        relances = []
+        p = Pilotage(FauxNuage(), [compte], FauxJournal(), relanceur=relances.append)
+        for _ in range(3):
+            p._traiter({"id": 1, "type": "ussd",
+                        "parametres": {"code": "#148*5#", "carte": FausseCarte.iccid}})
+        self.assertEqual(relances, [compte])
+
+    def test_la_phrase_dans_la_langue_de_la_demande(self):
+        refus = RefusDuModem("+CME ERROR: unknown network message")
+        self.assertIn("ne comprend pas", refus.phrase("fr"))
+        self.assertIn("does not understand", refus.phrase("en"))
+        self.assertIn("occupé", RefusDuModem("+CME ERROR: retry operation").phrase("fr"))
+        self.assertIn("a refusé le code", RefusDuModem("ERROR").phrase("fr"))
 
 
 if __name__ == "__main__":
