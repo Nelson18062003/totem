@@ -284,6 +284,46 @@ class TestLaRelanceSeDecide(unittest.TestCase):
         self.assertEqual(relances, 2)
 
 
+class TestLeModemApresLaRadio(unittest.TestCase):
+    """La radio relancée n'a rien changé : cinq minutes plus tard, le modem
+    entier. C'est ce que le propriétaire faisait en relançant tout le robot
+    (« ce n'était pas le robot qui ramenait la carte, c'était le temps » —
+    sauf quand la radio seule ne suffisait pas)."""
+
+    def _apres_la_radio(self):
+        e = EtatDuService()
+        jouer(e, [S.AUCUN] * 17)                  # 4 min sans service
+        t = 4 * 60.0
+        self.assertTrue(e.a_relancer(t, depuis_demarrage=9999))
+        e.radio_relancee(t)
+        return e, t
+
+    def test_pas_sans_radio_d_abord(self):
+        e = EtatDuService()
+        jouer(e, [S.AUCUN] * 60)                  # 15 min, aucune radio
+        self.assertFalse(e.a_relancer_le_modem(15 * 60.0, depuis_demarrage=9999))
+
+    def test_cinq_minutes_apres_la_radio_une_fois(self):
+        e, t = self._apres_la_radio()
+        jouer(e, [S.AUCUN] * 19, depart=t + 15)
+        self.assertFalse(e.a_relancer_le_modem(t + 299, depuis_demarrage=9999))
+        self.assertTrue(e.a_relancer_le_modem(t + 300, depuis_demarrage=9999))
+        e.modem_relance(t + 300)
+        self.assertFalse(e.a_relancer_le_modem(t + 3600, depuis_demarrage=9999))
+
+    def test_revenue_puis_repartie_ce_n_est_plus_la_meme_coupure(self):
+        e, t = self._apres_la_radio()
+        jouer(e, [S.INSCRITE, S.INSCRITE, S.AUCUN, S.AUCUN], depart=t + 15)
+        self.assertFalse(e.a_relancer_le_modem(t + 600, depuis_demarrage=9999))
+
+    def test_pas_au_demarrage_ni_en_groupe(self):
+        e, t = self._apres_la_radio()
+        jouer(e, [S.AUCUN] * 21, depart=t + 15)
+        self.assertFalse(e.a_relancer_le_modem(t + 320, depuis_demarrage=60))
+        self.assertFalse(e.a_relancer_le_modem(t + 320, depuis_demarrage=9999,
+                                               groupe=True))
+
+
 # =============================================================================
 # 3. La lecture ne dérange rien ; un menu refermé ne se perd plus.
 # =============================================================================
@@ -295,6 +335,8 @@ class ModemInscription:
         self.attente = attente
         self.lectures = 0
         self.relances = 0
+        self.redemarrages = 0
+        self.port = "/dev/ttyUSB2"
 
     def inscription(self):
         self.lectures += 1
@@ -305,6 +347,9 @@ class ModemInscription:
     def relancer_radio(self):
         self.relances += 1
         return True
+
+    def redemarrer(self):
+        self.redemarrages += 1
 
 
 class TestLaLectureNeDerangeRien(unittest.TestCase):
@@ -403,7 +448,7 @@ class TestLeRefusSeDit(unittest.TestCase):
             m = modem_sur(PortHorloge([(0, erreur)]))
             with self.assertRaises(PasDeReseau) as x:
                 m._attendre_cusd(2)
-            message = str(x.exception)
+            message = str(x.exception).lower()
             self.assertTrue("rien n'est parti" in message or "nothing was sent" in message, message)
             self.assertNotIn("no network service", message)
 
@@ -417,7 +462,7 @@ class TestLeRefusSeDit(unittest.TestCase):
     def test_la_carte_se_relit_tout_de_suite_apres_un_refus(self):
         class Refuse:
             def ussd_demarrer(self, code):
-                raise PasDeReseau("La carte n'a pas de réseau en ce moment — rien n'est parti.")
+                raise PasDeReseau("+CME ERROR: no network service")
             def ussd_annuler(self):
                 pass
         c = Compte(Refuse(), libelle="MTN ·6414", carte=FausseCarte())
@@ -433,6 +478,42 @@ class TestLeRefusSeDit(unittest.TestCase):
 
 
 INTERDITES = re.compile(rb"AT\+(?:COPS=[124?]|CFUN=[567]|CPOF|CNMP|CNBP|CREG=[12]|CEREG=[12])")
+
+
+class TestDeuxRelancesQuiSeChevauchent(unittest.TestCase):
+    """La veille relance la radio pendant que le chien de garde relance le
+    modem : la première relance finie ne lève pas la garde de la seconde."""
+
+    def test_la_garde_tient_jusqu_a_la_derniere(self):
+        c = Compte(ModemInscription(), libelle="MTN ·6414", carte=FausseCarte())
+        with c._reglage():
+            with c._reglage():
+                self.assertTrue(c.en_reglage)
+            self.assertTrue(c.en_reglage)         # la seconde court encore
+            with self.assertRaises(PasDeReseau):
+                c.ussd_demarrer("*126#")
+        self.assertFalse(c.en_reglage)
+
+    def test_temoin_un_drapeau_s_efface_au_premier_retour(self):
+        drapeau = True                            # la première relance pose
+        drapeau = True                            # la seconde pose
+        drapeau = False                           # la première finit…
+        self.assertFalse(drapeau)                 # …et la seconde n'est plus gardée
+
+    def test_un_refus_pendant_une_relance_n_accuse_pas_le_modem(self):
+        from totem.pilotage import Pilotage
+        from tests.test_pilotage import FauxCompte, FauxJournal, FauxNuage
+        compte = FauxCompte([])
+        journal = FauxJournal()
+        p = Pilotage(FauxNuage(), [compte], journal)
+        with compte._reglage():
+            p._traiter({"id": 1, "type": "ussd",
+                        "parametres": {"code": "*126#", "carte": FausseCarte.iccid}})
+        self.assertFalse(any("a refusé le code" in e or "refused the code" in e
+                             for e in journal.evenements), journal.evenements)
+        self.assertTrue(any("se reconnecte" in e or "reconnecting" in e
+                            for e in journal.evenements), journal.evenements)
+        self.assertEqual(PasDeReseau(reconnexion=True).cause, "")
 
 
 class TestLaRelanceDeLaRadio(unittest.TestCase):
@@ -591,12 +672,81 @@ class TestLeRobotVeille(unittest.TestCase):
         # Le journal ne porte ni ICCID ni rien de personnel.
         self.assertFalse(any(re.search(r"\d{6,}", n) for n in r.journal.notes))
 
+    def test_toujours_coupee_apres_la_radio_le_modem_se_relance(self):
+        r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)),
+                       ("Orange", "89237020000000004177", (True, 1, None)))
+        veiller(r, 30)
+        coupee = r.comptes[0]
+        self.assertEqual(coupee.modem.relances, 1)          # la radio, à 4 min
+        self.assertEqual(coupee.modem.redemarrages, 1)      # le modem, à 9 min
+        self.assertEqual(r.comptes[1].modem.redemarrages, 0)
+        self.assertTrue(any("après la relance de la radio — le modem est relancé" in n
+                            for n in r.journal.notes), r.journal.notes)
+        self.assertTrue(any(n.startswith("modem relancé (MTN ·6414)")
+                            for n in r.journal.notes), r.journal.notes)
+        # Ce modem répond très bien : rien ne dit le contraire.
+        self.assertFalse(any("ne répond plus" in x for _, x in r.facteur.lettres))
+
+    def test_revenue_apres_la_radio_le_modem_reste(self):
+        r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)))
+        t = veiller(r, 5)                                   # la radio, à 4 min
+        r.comptes[0].modem.reponse = (True, 5, None)        # revenue, en itinérance
+        while t <= 30 * 60:
+            r._veiller_service(r.comptes[0], maintenant=t)
+            t += 15
+        self.assertEqual(r.comptes[0].modem.relances, 1)
+        self.assertEqual(r.comptes[0].modem.redemarrages, 0)
+
+    def test_pas_pendant_un_menu(self):
+        r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)))
+        t = veiller(r, 5)
+        r.comptes[0].session_ouverte = True                 # quelqu'un compose
+        while t <= 12 * 60:
+            r._veiller_service(r.comptes[0], maintenant=t)
+            t += 15
+        self.assertEqual(r.comptes[0].modem.redemarrages, 0)
+
+    def test_temoin_la_radio_seule_laisse_la_carte_coupee(self):
+        """La veille d'avant la fusion ne relançait que la radio : la carte
+        restait sans service jusqu'à la seconde radio, trente minutes plus
+        tard, sans que le modem soit jamais relancé."""
+        r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)))
+        r.comptes[0].service.a_relancer_le_modem = lambda *a, **k: False
+        veiller(r, 30)
+        self.assertEqual(r.comptes[0].modem.redemarrages, 0)
+
+    def test_une_relance_pour_les_codes_suffit_pour_l_episode(self):
+        """Le modem relancé pour trois codes sans réponse : la veille ne le
+        relance pas une seconde fois cinq minutes plus tard, et les codes
+        repartent de zéro (une relance par la veille aussi)."""
+        r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)))
+        c = r.comptes[0]
+        t = veiller(r, 5)                         # la radio, à 4 min
+        c.codes_sans_reseau = 2
+        c.redemarrer()                            # trois codes, le chien de garde…
+        self.assertEqual(c.codes_sans_reseau, 0)
+        while t <= 20 * 60:
+            r._veiller_service(c, maintenant=t)
+            t += 15
+        self.assertEqual(c.modem.redemarrages, 1)  # pas deux
+
+    def test_temoin_une_relance_ignoree_de_la_veille(self):
+        r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)))
+        c = r.comptes[0]
+        t = veiller(r, 5)
+        c.modem.redemarrer()                      # la relance d'avant : le modem seul
+        while t <= 20 * 60:
+            r._veiller_service(c, maintenant=t)
+            t += 15
+        self.assertEqual(c.modem.redemarrages, 2)
+
     def test_tout_le_boitier_coupe_une_alerte_et_aucune_relance(self):
         r = robot_avec(("MTN", "89237010000000006414", (True, 0, 0)),
                        ("MTN", "89237010000000006299", (True, 0, 0)),
                        ("Orange", "89237020000000004177", (True, 0, 0)))
         veiller(r, 30)
         self.assertEqual(sum(c.modem.relances for c in r.comptes), 0)
+        self.assertEqual(sum(c.modem.redemarrages for c in r.comptes), 0)
         alertes = [x for _, x in r.facteur.lettres if "sans réseau" in x]
         self.assertEqual(len(alertes), 1)
         self.assertIn("Aucune carte du boîtier", alertes[0])

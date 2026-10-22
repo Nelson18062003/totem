@@ -38,7 +38,8 @@ from .recu import (heure_en_lettres, numero_de_recu, numero_lisible,
 from .codes import catalogue, cle as cle_code
 from .carte import operateur_depuis_imsi, operateur_xafe
 from .xafe import SANS_FLOAT, Attente
-from .compte import TELEGRAM, ErreurModem, SessionTenue, libelles_uniques
+from .compte import (TELEGRAM, ErreurModem, RefusDuModem, ReponseNonRecue,
+                     SessionTenue, libelles_uniques)
 from .courrier import Facteur
 from .mise_en_forme import bloc, echap, gras, italique, mono
 from .notification import (PEUT_ETRE_PARTIE, composer, composer_rattrapage,
@@ -56,7 +57,7 @@ ATTENTE_DES_ACCUSES = 20
 # d'ouvrir l'application. Son âge se mesure sans l'heure murale du Pi (voir
 # `age_de_la_sonnerie`).
 SONNERIE_PERIMEE_S = 30 * 60
-from .pilotage import Pilotage, RE_VARIABLE
+from .pilotage import ECHECS_AVANT_RELANCE, Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import langue_active, t
 from .version import version
@@ -608,6 +609,15 @@ class Robot:
               f"{detail}\nVersion : {mono(version())}{avertissement}"),
             boutons=self._boutons_accueil(ADMIN))
         self.journal.evenement(f"démarrage ({len(self.comptes)} compte(s))")
+        for compte in self.comptes:
+            refuses = (compte.reglages_refuses()
+                       if hasattr(compte, "reglages_refuses") else [])
+            if refuses:
+                self.journal.evenement(t(
+                    f"settings refused by the modem ({compte.libelle}): "
+                    + ", ".join(refuses),
+                    f"réglages refusés par le modem ({compte.libelle}) : "
+                    + ", ".join(refuses)))
         self._lancer_postes()
         threading.Thread(target=self._boucle_surveillance, daemon=True).start()
         if self.nuage:
@@ -619,7 +629,8 @@ class Robot:
             # dans la base, ce fil les exécute sur les vraies SIM.
             self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
                                      programmeur=self._recu_apres_coup,
-                                     guichets=self._guichets_xafe())
+                                     guichets=self._guichets_xafe(),
+                                     relanceur=self._relancer_apres_echecs)
             self.pilotage.demarrer()
         # XAFe démarre même sans Bonzini : une destination n'attend pas
         # l'autre. Et le guichet non plus : les SMS que XAFe confie au
@@ -630,7 +641,8 @@ class Robot:
             if self.pilotage is None:
                 self.pilotage = Pilotage(None, self.comptes, self.journal,
                                          programmeur=self._recu_apres_coup,
-                                         guichets=self._guichets_xafe())
+                                         guichets=self._guichets_xafe(),
+                                         relanceur=self._relancer_apres_echecs)
                 self.pilotage.demarrer()
         if bloquant:
             self._boucle_messages()
@@ -1086,7 +1098,27 @@ class Robot:
                   "ici — rien n'a été envoyé. Recomposez le code."))
             return
         except ErreurModem as e:
+            # La cause au journal, elle aussi : jusqu'ici une panne du modem
+            # vue depuis Telegram ne laissait de trace que dans le chat.
+            # Pendant une relance de la radio ou du modem, on ne sonde pas :
+            # la sonde attendrait la fin de la relance pour rien.
+            sans_reseau = (isinstance(e, (ReponseNonRecue, RefusDuModem))
+                           and not getattr(e, "reconnexion", False))
+            detail = compte.expliquer_le_silence() if sans_reseau else ""
+            # La phrase est pour le propriétaire ; les mots du modem
+            # (« +CME ERROR: … »), pour le journal.
+            cause = getattr(e, "cause", "")
+            self.journal.evenement(
+                f"erreur USSD {compte.libelle} : {e}"
+                + (f" ({cause})" if cause else "")
+                + (f" — {detail}" if detail else ""))
             self._cloturer_session(f"⚠️ [{echap(compte.libelle)}] {echap(e)}")
+            if (sans_reseau
+                    and compte.a_relancer_apres_echecs(ECHECS_AVANT_RELANCE)):
+                self.journal.evenement(
+                    f"{ECHECS_AVANT_RELANCE} codes de suite n'ont pas atteint "
+                    f"le réseau ({compte.libelle}) : le modem est relancé")
+                self._relancer_apres_echecs(compte)
             return
         except Exception as e:
             self.journal.evenement(f"erreur USSD {compte.libelle} : {e}")
@@ -2089,6 +2121,10 @@ class Robot:
                 maintenant, depuis_demarrage=depuis_demarrage,
                 groupe=groupe is not None):
             self._relancer_la_radio(compte, maintenant)
+        elif agir and service.a_relancer_le_modem(
+                maintenant, depuis_demarrage=depuis_demarrage,
+                groupe=groupe is not None):
+            self._relancer_le_modem_du_service(compte, maintenant)
         genre = service.a_prevenir(maintenant)
         if genre:
             self._prevenir_du_service(compte, genre, groupe, maintenant)
@@ -2114,8 +2150,9 @@ class Robot:
         sur la même alimentation."""
         if not self._une_relance.acquire(blocking=False):
             return
+        debut = time.monotonic()
         try:
-            if time.monotonic() - self._derniere_relance < ESPACEMENT_RADIO:
+            if maintenant - self._derniere_relance < ESPACEMENT_RADIO:
                 return
             service = compte.service
             continu = maintenant - (service.mauvais_depuis or maintenant)
@@ -2127,7 +2164,9 @@ class Robot:
                 f"({_nom_du_service(service.etat, 'fr')} depuis "
                 f"{_duree(continu, 'fr')})"))
             revenue = compte.relancer_radio()
-            self._derniere_relance = time.monotonic()
+            # L'horloge de la veille (`maintenant`), avancée de la durée de
+            # la relance : toutes les cartes la partagent.
+            self._derniere_relance = maintenant + (time.monotonic() - debut)
             if revenue is None:
                 return          # pas faite (carte occupée) : au passage suivant
             service.radio_relancee(maintenant)
@@ -2137,6 +2176,48 @@ class Robot:
                     "was back on",
                     f"réseau {compte.libelle} : la radio n'a pas confirmé son "
                     "retour"))
+        finally:
+            self._une_relance.release()
+
+    def _relancer_le_modem_du_service(self, compte, maintenant):
+        """Toujours sans service cinq minutes après la relance de la radio :
+        le modem entier se relance (AT+CFUN, port rouvert, réglages
+        vérifiés). Sous le même verrou et le même espacement que la radio.
+        Pas par `_redemarrer_modem` : son annonce dit « le modem ne répond
+        plus », et ce modem répond très bien — c'est la carte qui n'a pas de
+        réseau. Au journal seulement : l'alerte au propriétaire, c'est celle
+        du temps cumulé sans service."""
+        if compte.session_ouverte:
+            return              # une personne est dans un menu : au passage suivant
+        if not self._une_relance.acquire(blocking=False):
+            return
+        debut = time.monotonic()
+        try:
+            if maintenant - self._derniere_relance < ESPACEMENT_RADIO:
+                return
+            service = compte.service
+            radio = (service.episode or {}).get("derniere_radio") or maintenant
+            self.journal.evenement(t(
+                f"network {compte.libelle}: still "
+                f"{_nom_du_service(service.etat, 'en')} "
+                f"{_duree(maintenant - radio, 'en')} after the radio restart "
+                "— restarting the modem",
+                f"réseau {compte.libelle} : toujours "
+                f"{_nom_du_service(service.etat, 'fr')} "
+                f"{_duree(maintenant - radio, 'fr')} après la relance de la "
+                "radio — le modem est relancé"))
+            port_avant = getattr(compte.modem, "port", "") or ""
+            service.modem_relance(maintenant)
+            try:
+                compte.redemarrer()
+            except Exception as e:
+                self.journal.evenement(t(
+                    f"restart ({compte.libelle}): {e}",
+                    f"relance ({compte.libelle}) : {e}"))
+            else:
+                self.journal.evenement(
+                    self._compte_rendu_de_relance(compte, port_avant))
+            self._derniere_relance = maintenant + (time.monotonic() - debut)
         finally:
             self._une_relance.release()
 
@@ -3769,6 +3850,7 @@ class Robot:
                 else t(f"{etiquette}Restarting the modem (≈30 s)…",
                        f"{etiquette}Redémarrage du modem (≈30 s)…"), canal=canal)
 
+        port_avant = getattr(compte.modem, "port", "") or ""
         try:
             compte.redemarrer()
         except Exception as e:
@@ -3795,12 +3877,55 @@ class Robot:
                           "quand le bloc est trop juste.")), canal=canal)
             return
 
+        # UNE RELANCE RÉUSSIE SE LIT AUSSI. Le 22 octobre, les quatre modems
+        # ont décroché à la même minute et le robot les a tous relancés —
+        # sans une ligne au journal, puisque seul l'échec s'écrivait. On
+        # dit sur quel port chacun est revenu, et ce qu'il a refusé.
+        self.journal.evenement(self._compte_rendu_de_relance(compte, port_avant))
         if not self._annoncer_retour(compte, canal):
             self.transport.envoyer(
                 t(f"✅ {etiquette}Modem back online. "
                   f"Signal: {compte.signal()}/31",
                   f"✅ {etiquette}Modem revenu en ligne. "
                   f"Signal : {compte.signal()}/31"), canal=canal)
+
+    @staticmethod
+    def _compte_rendu_de_relance(compte, port_avant=""):
+        """« modem relancé (MTN ·6414) : revenu sur ttyUSB7 (était ttyUSB2) ;
+        réglages refusés : AT+CUSD=1 » — ou « tous les réglages pris »."""
+        def nom(port):
+            return (port or "").rsplit("/", 1)[-1] or "?"
+        apres = getattr(compte.modem, "port", "") or ""
+        ou = (t(f"back on {nom(apres)}", f"revenu sur {nom(apres)}")
+              if not port_avant or apres == port_avant
+              else t(f"back on {nom(apres)} (was {nom(port_avant)})",
+                     f"revenu sur {nom(apres)} (était {nom(port_avant)})"))
+        refuses = (compte.reglages_refuses()
+                   if hasattr(compte, "reglages_refuses") else [])
+        reglages = (t("settings refused: " + ", ".join(refuses),
+                      "réglages refusés : " + ", ".join(refuses)) if refuses
+                    else t("all settings accepted", "tous les réglages pris"))
+        return t(f"modem restarted ({compte.libelle}): {ou}; {reglages}",
+                 f"modem relancé ({compte.libelle}) : {ou} ; {reglages}")
+
+    def _relancer_apres_echecs(self, compte):
+        """Ce que le propriétaire faisait à la main. Trois codes de suite qui
+        n'ont pas atteint le réseau (sans réponse, ou refusés par le modem),
+        et la sonde n'a rien trouvé à réparer : le modem est relancé pour de
+        bon (AT+CFUN, port rouvert, réglages vérifiés), et on dit pourquoi."""
+        self.transport.envoyer(
+            t(f"⚠️ [{echap(compte.libelle)}] {ECHECS_AVANT_RELANCE} codes "
+              "in a row did not reach the network (no reply, or refused by "
+              "the modem), and the modem reports nothing wrong. Restarting it.",
+              f"⚠️ [{echap(compte.libelle)}] {ECHECS_AVANT_RELANCE} codes "
+              "de suite n'ont pas atteint le réseau (sans réponse, ou refusés "
+              "par le modem), et le modem ne signale rien. Je le relance."),
+            canal="alertes")
+        # Pas « automatique » : ce mode espace ses essais et se tait quand
+        # il renonce — après avoir annoncé « je relance », ce serait faux.
+        # Trois silences de plus (une minute et demie au moins) sont déjà
+        # l'espacement de la relance suivante.
+        self._redemarrer_modem(compte, canal="alertes")
 
     def _annoncer_retour(self, compte, canal="alertes"):
         """Dit que le modem répond de nouveau, si on avait annoncé le contraire.

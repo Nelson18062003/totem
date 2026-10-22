@@ -52,10 +52,15 @@ def _comptes_reels(patience=120):
     comptes = []
     for info in trouves:
         try:
-            comptes.append(Compte(ModemSerie(port=info.port, imei=info.imei),
-                                  carte=info.carte, imei=info.imei))
+            modem = ModemSerie(port=info.port, imei=info.imei)
+            comptes.append(Compte(modem, carte=info.carte, imei=info.imei))
             print(t(f"  {info.description} on {info.port} (IMEI {info.imei})",
                     f"  {info.description} sur {info.port} (IMEI {info.imei})"))
+            refuses = getattr(modem, "reglages_refuses", None) or []
+            if refuses:
+                print(t(f"    settings refused by the modem: {', '.join(refuses)}",
+                        f"    réglages refusés par le modem : {', '.join(refuses)}"),
+                      file=sys.stderr)
         except Exception as e:
             print(t(f"  Modem on {info.port} unusable: {e}",
                     f"  Modem sur {info.port} inutilisable : {e}"),

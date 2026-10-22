@@ -91,6 +91,7 @@ STABLE = 600              # dix minutes de bon continu closent un épisode
 RADIO_APRES = 240         # sans service continu depuis 4 min : relancer la radio
 RADIO_ENCORE = 1800       # … une seconde fois 30 min plus tard, pas plus
 RADIOS_PAR_EPISODE = 2
+MODEM_APRES_RADIO = 300   # toujours sans service 5 min après la radio : le modem
 ALERTE_CUMUL = 900        # 15 min sans service, cumulées dans l'épisode
 ALERTE_COUPURES = 4       # … ou 4 coupures en une heure
 ALERTES_PAR_JOUR = 3
@@ -188,7 +189,8 @@ class EtatDuService:
 
     def _ouvrir_episode(self, debut):
         self.episode = {"debut": debut, "coupures": [], "cumul": 0.0,
-                        "alerte": None, "radios": 0, "derniere_radio": None}
+                        "alerte": None, "radios": 0, "derniere_radio": None,
+                        "modem": False}
 
     def _clore_coupure(self, maintenant):
         debut = self.mauvais_depuis if self.mauvais_depuis is not None else maintenant
@@ -285,6 +287,32 @@ class EtatDuService:
             self.episode["radios"] += 1
             self.episode["derniere_radio"] = maintenant
         # Relire tout de suite : c'est la lecture qui dit si ça a pris.
+        self.prochaine_lecture = 0.0
+
+    def a_relancer_le_modem(self, maintenant, *, depuis_demarrage, groupe=False):
+        """La radio relancée n'a rien changé : faut-il relancer le modem
+        entier ? Seulement si la coupure en cours a TENU depuis la dernière
+        relance de la radio, cinq minutes durant — et une fois par épisode,
+        jamais au démarrage, jamais quand tout le boîtier ou tout un
+        opérateur est coupé (ce n'est pas ce modem-là).
+
+        C'est ce que le propriétaire faisait à la main : relancer tout le
+        robot faisait revenir une carte que la radio seule ne ramenait pas."""
+        if groupe or depuis_demarrage < GRACE_DEMARRAGE:
+            return False
+        if self.etat not in SANS_SERVICE or self.mauvais_depuis is None:
+            return False
+        episode = self.episode
+        if episode is None or episode["radios"] < 1 or episode.get("modem"):
+            return False
+        radio = episode["derniere_radio"]
+        if radio is None or self.mauvais_depuis > radio:
+            return False        # revenue depuis la radio, puis repartie
+        return maintenant - radio >= MODEM_APRES_RADIO
+
+    def modem_relance(self, maintenant):
+        if self.episode is not None:
+            self.episode["modem"] = True
         self.prochaine_lecture = 0.0
 
     def a_prevenir(self, maintenant):

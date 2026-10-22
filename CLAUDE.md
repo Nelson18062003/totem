@@ -403,8 +403,9 @@ par personne. Le chien de garde ne voyait rien non plus : lire les SMS
 rangés dans le modem marche très bien sans réseau. Le fil de chaque carte
 lit maintenant son inscription (AT+CREG?, et AT+CEREG? quand elle n'est pas
 inscrite), la publie dans le signe de vie (`sante.cartes`, sans migration),
-relance sa radio en mode avion puis retour (jamais quand tout le boîtier ou
-tout un opérateur est coupé : c'est l'antenne ou le quartier), et prévient
+relance sa radio en mode avion puis retour, puis le modem si la radio n'a
+pas suffi (jamais quand tout le boîtier ou tout un opérateur est coupé :
+c'est l'antenne ou le quartier), et prévient
 sur le temps CUMULÉ sans service — une carte coupée dix minutes, revenue
 deux, coupée dix… ne l'était jamais quinze minutes d'affilée.
 `totem/service.py`, `noyau/service.ts`, `tests/test_service_des_cartes.py`.
@@ -1554,6 +1555,91 @@ le port où le modem donne SON IMEI (`_rouvrir`), et une prise tenue se refuse
 nuit sur un faux bus de vingt prises, avec l'ancienne reprise pour témoin :
 elle remet les quatre comptes sur le même modem, et vole la réponse du
 voisin.
+
+**Un modem qui revient repart avec SES réglages, et « sans réponse du
+réseau » n'accuse pas forcément le réseau.** Le 22 octobre, les quatre modems
+ont décroché du bus USB à la même minute (« Input/output error » sur chaque
+port), le robot les a relancés sans une ligne au journal — seul l'échec
+s'écrivait —, et la carte Orange relevait ses SMS comme si de rien n'était
+tout en répondant « parti, sans réponse du réseau à temps » à CHAQUE code,
+pendant trois heures, à travers deux relances du robot. Le propriétaire
+relançait tout le service trois fois par matinée. Les réglages (`AT+CUSD=1`,
+sans lequel le modem garde pour lui la réponse du réseau ; l'alphabet ; la
+mémoire des SMS) étaient reposés UNE fois, sans regarder la réponse — et un
+modem qui vient de revenir les refuse volontiers quelques secondes. Ils se
+reposent maintenant tant qu'un réglage essentiel est refusé
+(`_regler`, `reglages_refuses`), chaque silence du réseau se SONDE (signal,
+carte sur le réseau, annonces USSD — `etat_apres_silence`) et répare le
+réglage tombé, et le journal reçoit la CAUSE de chaque échec, sur les deux
+chemins, ainsi que chaque relance réussie et le port où le modem est revenu.
+Et trois codes de suite qui n'atteignent pas le réseau sur une carte — sans
+réponse, ou refusés par le modem —, la sonde n'ayant rien trouvé, font ce
+que le propriétaire faisait à la main : relancer le modem (`relanceur`,
+`codes_sans_reseau`) — sur le même boîtier, les trois MTN répondaient
+pendant qu'Orange se taisait, ce n'était pas le réseau.
+
+**La preuve était dans la table des commandes, pas au journal.** Le journal
+disait « échec (ussd) » treize fois ; la plateforme, elle, avait gardé ce que
+le modem avait répondu : « +CME ERROR: no network service », « unknown
+network message », « unknown », « retry operation » — et le noyau du Pi :
+« usb2-port1: over-current change #13 », le hub USB qui décroche et revient
+à chaque pointe de courant d'un modem. Le robot montrait ces mots-là au
+propriétaire, tels quels. Un refus du modem se lit maintenant en mots
+(`RefusDuModem.phrase` : « la carte n'a pas de réseau en ce moment ») — à
+l'écran, les mots seulement ; au journal, la cause brute et la sonde — et
+compte comme un silence, SAUF « pas de réseau » : trois codes tapés pendant
+une coupure de l'opérateur ne doivent pas relancer un modem en bon état ;
+c'est la veille du service qui s'en occupe (`sans_reseau`).
+`tests/test_reglages_du_modem.py` porte le témoin : la mise en route d'avant
+laisse les annonces éteintes. Un modem muet au premier « AT » n'est pas
+« en UCS2 » : l'ancien code le concluait.
+
+**« Signal inconnu » des heures durant, ce n'était pas le robot qui
+ramenait la carte, c'était le temps.** Les captures du propriétaire :
+Orange ·4177 à « signal inconnu » depuis 09 h 34, relance de tout le robot,
+la carte de retour — et les quatre cartes « en itinérance sur Orange F »,
+« sur SFR » : le boîtier est en France, les cartes camerounaises empruntent
+des antennes françaises, et un réseau visité qui lâche une carte peut la
+laisser sur « pas de service » longtemps. Rien dans le robot ne touchait à
+la radio ; la relance n'y faisait rien, le temps passait. Et un code refusé
+« no network service » se retente deux fois à cinq secondes
+(`_envoyer_avec_reprises`) : rien n'est parti, et le changement de réseau ne
+dure que quelques secondes.
+
+**Deux veilles pour une même carte, c'est deux mains sur la même radio.**
+Deux sessions ont corrigé « pas de réseau » le même jour, chacune avec sa
+veille : l'une passait la carte en mode avion au bout de trois minutes, puis
+relançait le modem ; l'autre lisait l'inscription (+CREG, +CEREG), relançait
+la radio au bout de quatre, et prévenait sur le temps cumulé. Fusionnées
+telles quelles, elles auraient relancé la même radio deux fois, chacune
+ignorant l'autre — dont un modem relancé pendant une coupure de tout le
+quartier. Il n'en reste qu'une (`_veiller_service`) : la radio à quatre
+minutes, puis, si la coupure TIENT cinq minutes après elle, le modem entier
+(`a_relancer_le_modem`, une fois par épisode, au journal) — jamais au
+démarrage, jamais pendant un menu, jamais quand tout le boîtier ou tout un
+opérateur est coupé. `PasDeReseau` est un `RefusDuModem` : un seul refus,
+lu par les deux chemins. Le témoin de `test_service_des_cartes` retire le
+modem : la carte reste coupée jusqu'à la seconde radio, trente minutes
+plus tard. La relecture adverse de la fusion a trouvé ce que deux règles
+qui s'ignorent laissent passer : une relance du modem faite pour trois
+codes sans réponse, inconnue de la veille, qui le relançait encore cinq
+minutes après ; un drapeau « en réglage » que la première de deux relances
+effaçait sous la seconde (c'est un COMPTE maintenant) ; un journal qui
+accusait le modem d'un refus pendant une relance, où rien n'était parti.
+**Une relance, d'où qu'elle vienne, se sait partout** (`Compte.redemarrer`).
+
+**Un nom de port n'est pas une interface.** Le noyau ne redonne pas à un
+modem revenu un bloc de cinq numéros qui se suivent : il lui donne les plus
+petits numéros libres. Le 22 octobre, le même modem est revenu sur ttyUSB
+2, 7, 12, 13, 14, puis 2, 7, 13, 14, 15, puis 2, 7, 12, 14, 15 : son port
+AT valait 12, puis 13, puis 12 — et au troisième retour, « l'ancien port
+d'abord » (13) désignait le port de DONNÉES du bon modem, qui répond aux
+commandes AT et donne le même IMEI. Les commandes passent, les SMS se
+lisent, et les réponses USSD n'y arrivent pas forcément. L'ancien nom ne
+passe plus en premier que si /sys dit qu'il est encore une interface AT
+(`interface_usb`, `INTERFACE_AT`) ; sinon, le plus petit numéro qui porte
+l'IMEI — le port AT, toujours, puisque les numéros suivent les interfaces.
+Le témoin reprend l'ancien nom.
 
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai

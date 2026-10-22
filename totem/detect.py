@@ -15,6 +15,7 @@ Voir `carte.py` pour le détail de ces trois numéros.
 """
 
 import glob
+import os
 import re
 import time
 
@@ -154,6 +155,28 @@ def _sonder(port, baud=115200):
             ser.close()
         except Exception:
             pass
+
+
+# Sur un SIM7600, le port AT principal est la troisième interface USB
+# (« :1.2 ») ; la quatrième (« :1.3 », le port de données) répond aussi aux
+# commandes AT et donne le même IMEI.
+INTERFACE_AT = 2
+
+
+def interface_usb(port):
+    """Le numéro d'interface USB d'un port série (le « N » de « …:1.N »),
+    lu dans /sys — ou None quand on ne peut pas le lire (pas un Pi, un port
+    disparu). Un nom de port change à chaque retour sur le bus ; le numéro
+    d'interface, lui, est gravé dans le modem."""
+    nom = os.path.basename(port or "")
+    if not nom:
+        return None
+    try:
+        reel = os.path.realpath(f"/sys/class/tty/{nom}/device")
+    except OSError:
+        return None
+    m = re.search(r":\d+\.(\d+)(?:/|$)", reel)
+    return int(m.group(1)) if m else None
 
 
 def _numero_port(port):
