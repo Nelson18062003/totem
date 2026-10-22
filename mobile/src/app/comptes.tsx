@@ -8,6 +8,8 @@
 // PLUS UN ONGLET : on y vient par « … » (l'onglet Plus), avec une flèche
 // pour revenir. La barre garde ce qu'on fait tous les jours.
 
+import { carteSansService } from "@noyau/service";
+import { textesService } from "@noyau/textes/service";
 import { AjouterMaCarteCourt } from "@/ajouter-ma-carte";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -251,7 +253,11 @@ function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
         {(() => {
           const connu = signalLu(s.signal) !== null;
           const fige = s.boitierMuet === true || s.presence === "inconnue";
-          const point = !connu || fige ? couleurs.encrePale
+          // Sans service, ni « 22/31 » ni point vert : c'est cette ligne-là
+          // qui faisait croire que la carte avait son réseau.
+          const sansService = carteSansService(s) && s.service;
+          const point = sansService ? couleurs.alerte
+            : !connu || fige ? couleurs.encrePale
             : signalFaible(s.signal) ? couleurs.alerte : couleurs.positifVif;
           return (
             <View style={{ flexDirection: "row", alignItems: "center", gap: espaces.xs,
@@ -261,7 +267,8 @@ function CarteCompte({ sim: s, tete, langue, t, fuseau }: {
               <View style={{ width: 6, height: 6, borderRadius: rayons.rond,
                              backgroundColor: point }} />
               <Texte taille={textes.legende} chiffresAlignes style={{ color: doux }}>
-                {connu ? `${s.signal}/31` : t.signalInconnu}
+                {sansService ? textesService[langue].etiquette[sansService.etat]
+                  : connu ? `${s.signal}/31` : t.signalInconnu}
               </Texte>
             </View>
           );

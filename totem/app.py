@@ -157,6 +157,34 @@ INTERVALLE_CONFLIT = 3600
 # Un échange de SIM demande d'ouvrir le boîtier : inutile de guetter à la
 # seconde. Une minute suffit pour que l'annonce paraisse immédiate.
 VERIF_CARTES_SECONDES = 60
+# Deux relances de radio (deux modems) jamais à moins de vingt secondes.
+ESPACEMENT_RADIO = 20
+
+
+def _nom_du_service(etat, langue):
+    """Ce qu'on dit d'une carte sans service, au journal."""
+    noms = {
+        "aucun": ("no service", "aucun service"),
+        "recherche": ("searching for its network", "recherche du réseau"),
+        "refusee": ("network refused", "réseau refusé"),
+        "limitee": ("limited network (4G only)", "réseau limité (4G seulement)"),
+        "sms_seulement": ("SMS only", "SMS seulement"),
+        "itinerance": ("roaming", "itinérance"),
+        "inscrite": ("registered", "inscrite"),
+    }
+    en, fr = noms.get(etat, (etat, etat))
+    return fr if langue == "fr" else en
+
+
+def _duree(secondes, langue):
+    """« 47 s », « 15 min », « 1 h 05 »."""
+    s = int(max(0, round(secondes)))
+    if s < 60:
+        return f"{s} s"
+    m = s // 60
+    if m < 60:
+        return f"{m} min"
+    return f"{m // 60} h {m % 60:02d}"
 SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 # Le délai entre l'annonce du SMS et le reçu qui la suit. Assez pour que les
 # deux messages ne se bousculent pas dans la conversation ni dans les limites
@@ -341,6 +369,15 @@ class Robot:
         self._prochaine_memoire = 0
         self._prochaines_cartes = 0
         self.demarre_a = time.time()
+        # La même chose sur l'horloge monotone : le Pi n'a pas d'horloge à
+        # pile, et l'heure saute au premier réglage par le réseau.
+        self._demarre_mono = time.monotonic()
+        # Le service des cartes : une relance de radio à la fois pour tout le
+        # boîtier, espacées, et une alerte de groupe dite une fois.
+        self._une_relance = threading.Lock()
+        self._derniere_relance = 0.0
+        self._verrou_service = threading.Lock()
+        self._groupes_dits = set()
         self.dernier_brut = ""   # dernière réponse USSD, pour /brut
         # Le parcours de la dernière session, gardé le temps d'en faire un
         # bouton — il doit donc survivre à la réinitialisation de session.
@@ -1777,6 +1814,17 @@ class Robot:
                   f"Carte : {mono(self._sim_lisible(compte.iccid()))}\n"
                   f"Mémoire SMS : {occupes}/{capacite if capacite else '?'}\n"
                   f"Signal : {compte.signal()}/31"))
+            # Le service, d'après ce que le fil de la carte a noté — le
+            # signal seul faisait croire que la carte avait son réseau.
+            service = getattr(compte, "service", None)
+            if service is not None and service.etat:
+                maintenant = time.monotonic()
+                n, sans = service.sans_service_24h(maintenant)
+                lignes.append(echap(t(
+                    f"Network: {_nom_du_service(service.etat, 'en')}"
+                    + (f" · {n} outage(s) in 24 h ({_duree(sans, 'en')})" if n else ""),
+                    f"Réseau : {_nom_du_service(service.etat, 'fr')}"
+                    + (f" · {n} coupure(s) en 24 h ({_duree(sans, 'fr')})" if n else ""))))
         en_attente = self.facteur.en_attente()
         lignes.append(t(f"\nMessages waiting to go out: {en_attente}",
                         f"\nCourrier en attente : {en_attente}")
@@ -1987,10 +2035,215 @@ class Robot:
                     # messages qui suivent appartiennent à la nouvelle carte.
                     self._etape(f"recensement {compte.libelle}",
                                 lambda: self._recenser_carte(compte))
+                # Avant la relève : une annonce de SMS avalée par la lecture
+                # de l'inscription est rattrapée par la relève qui suit.
+                self._etape(f"réseau {compte.libelle}",
+                            lambda: self._veiller_service(compte))
                 self._relever_sms(compte)
             except Exception as e:
                 self._noter(f"relève SMS {compte.libelle} : {e}")
             self._attendre_sms(self.pause_sms, comptes=[compte])
+
+    # ---- le service des cartes ---------------------------------------------
+    #
+    # « no network service » : la carte n'était inscrite sur aucun réseau, et
+    # rien ne l'avait dit — l'écran montrait des barres, le chien de garde ne
+    # voyait rien (lire les SMS rangés dans le modem marche sans réseau). Le
+    # fil de chaque carte lit maintenant son inscription (voir service.py),
+    # la publie, relance la radio d'une carte coupée, et prévient.
+
+    def _veiller_service(self, compte, maintenant=None, agir=True):
+        service = getattr(compte, "service", None)
+        if service is None:
+            return
+        maintenant = time.monotonic() if maintenant is None else maintenant
+        if not service.a_lire(maintenant):
+            return
+        etat = compte.lire_service()
+        if etat is None:
+            return              # carte occupée : au passage suivant
+        evenements = service.noter(etat, maintenant)
+        libelle = compte.libelle
+        if ("coupure" in evenements or "retour" in evenements) and self.nuage:
+            reveil = getattr(self.nuage, "signe_de_vie_tot", None)
+            if reveil:
+                reveil()
+        if "episode" in evenements:
+            self.journal.evenement(t(
+                f"network {libelle}: {_nom_du_service(etat, 'en')}",
+                f"réseau {libelle} : {_nom_du_service(etat, 'fr')}"))
+        if "retour" in evenements and service.episode:
+            radio = service.episode.get("derniere_radio")
+            if radio is not None and maintenant - radio < 600:
+                self.journal.evenement(t(
+                    f"network {libelle}: back {_duree(maintenant - radio, 'en')} "
+                    "after the radio restart",
+                    f"réseau {libelle} : revenu {_duree(maintenant - radio, 'fr')} "
+                    "après la relance de la radio"))
+        if "fin_episode" in evenements:
+            self._clore_episode(compte, maintenant)
+        groupe = self._groupe_sans_service(compte)
+        demarre = getattr(self, "_demarre_mono", None)
+        depuis_demarrage = (maintenant - demarre) if demarre is not None else float("inf")
+        if agir and service.a_relancer(
+                maintenant, depuis_demarrage=depuis_demarrage,
+                groupe=groupe is not None):
+            self._relancer_la_radio(compte, maintenant)
+        genre = service.a_prevenir(maintenant)
+        if genre:
+            self._prevenir_du_service(compte, genre, groupe, maintenant)
+
+    def _groupe_sans_service(self, compte):
+        """« boitier » si toutes les cartes (deux au moins) sont sans
+        service, « operateur » si toutes celles de son opérateur (deux au
+        moins) le sont pendant qu'une autre va bien, None sinon. Ne lit que
+        ce que les fils ont noté, jamais un modem."""
+        cartes = [c for c in self.comptes if getattr(c, "service", None) is not None]
+        if len(cartes) >= 2 and all(c.service.sans_service() for c in cartes):
+            return "boitier"
+        operateur = getattr(compte.carte, "operateur", "")
+        meme = [c for c in cartes if getattr(c.carte, "operateur", "") == operateur]
+        if (operateur and len(meme) >= 2
+                and all(c.service.sans_service() for c in meme)):
+            return "operateur"
+        return None
+
+    def _relancer_la_radio(self, compte, maintenant):
+        """Une relance à la fois pour tout le boîtier, et vingt secondes au
+        moins entre deux : quatre modems qui se réinscrivent ensemble tirent
+        sur la même alimentation."""
+        if not self._une_relance.acquire(blocking=False):
+            return
+        try:
+            if time.monotonic() - self._derniere_relance < ESPACEMENT_RADIO:
+                return
+            service = compte.service
+            continu = maintenant - (service.mauvais_depuis or maintenant)
+            self.journal.evenement(t(
+                f"network {compte.libelle}: radio restart "
+                f"({_nom_du_service(service.etat, 'en')} for "
+                f"{_duree(continu, 'en')})",
+                f"réseau {compte.libelle} : relance de la radio "
+                f"({_nom_du_service(service.etat, 'fr')} depuis "
+                f"{_duree(continu, 'fr')})"))
+            revenue = compte.relancer_radio()
+            self._derniere_relance = time.monotonic()
+            if revenue is None:
+                return          # pas faite (carte occupée) : au passage suivant
+            service.radio_relancee(maintenant)
+            if not revenue:
+                self.journal.evenement(t(
+                    f"network {compte.libelle}: the radio did not confirm it "
+                    "was back on",
+                    f"réseau {compte.libelle} : la radio n'a pas confirmé son "
+                    "retour"))
+        finally:
+            self._une_relance.release()
+
+    def _prevenir_du_service(self, compte, genre, groupe, maintenant):
+        service = compte.service
+        libelle = compte.libelle
+        operateur = getattr(compte.carte, "operateur", "") or ""
+        if groupe:
+            cle = "boitier" if groupe == "boitier" else f"operateur:{operateur}"
+            with self._verrou_service:
+                deja = cle in self._groupes_dits
+                self._groupes_dits.add(cle)
+            service.prevenu(maintenant, "groupe")
+            if deja:
+                return
+            self.journal.evenement(t(
+                f"network: no card of the {'box' if groupe == 'boitier' else operateur} has service",
+                f"réseau : aucune carte {'du boîtier' if groupe == 'boitier' else operateur} "
+                "n'a de service"))
+            if groupe == "boitier":
+                corps = t("No card in the box has a network: the antenna, or "
+                          "an operator outage in the area.",
+                          "Aucune carte du boîtier n'a de réseau : l'antenne, "
+                          "ou une coupure de l'opérateur dans le quartier.")
+            else:
+                corps = t(f"No {operateur} card in the box has a network, while "
+                          "the others do: most likely an outage of "
+                          f"{operateur} in the area.",
+                          f"Aucune carte {operateur} du boîtier n'a de réseau, "
+                          "les autres oui : sans doute une coupure de "
+                          f"{operateur} dans le quartier.")
+            self.facteur.poster(f"⚠️ {gras(t('Cards without network', 'Cartes sans réseau'))}\n"
+                                + echap(corps), canal="alertes")
+            return
+        service.prevenu(maintenant, genre)
+        cumul = _duree(service.cumul_episode(maintenant), "fr")
+        cumul_en = _duree(service.cumul_episode(maintenant), "en")
+        n = len(service.episode["coupures"]) if service.episode else 1
+        if service.etat == "refusee":
+            corps = t(f"The network refuses the card {libelle}. This is not a "
+                      "fault of the box: the card may be suspended by the "
+                      "operator, or, abroad, the visited network does not "
+                      "accept it.",
+                      f"Le réseau refuse la carte {libelle}. Ce n'est pas une "
+                      "panne du boîtier : la carte est peut-être suspendue chez "
+                      "l'opérateur, ou, à l'étranger, le réseau visité ne "
+                      "l'accepte pas.")
+        elif genre == "frequente":
+            corps = t(f"The card {libelle} keeps losing its network: "
+                      f"{n} outages in an hour ({cumul_en} without service).",
+                      f"La carte {libelle} perd son réseau souvent : {n} "
+                      f"coupures en une heure ({cumul} sans service).")
+        else:
+            corps = t(f"The card {libelle} has had no network for {cumul_en}"
+                      + (f", in {n} outages." if n > 1 else "."),
+                      f"La carte {libelle} n'a plus de réseau : {cumul} sans "
+                      "service" + (f", en {n} coupures." if n > 1 else "."))
+        suite = t("Nothing can be sent from this card, and its payment SMS do "
+                  "not reach the box — the money itself does arrive on the "
+                  f"{operateur or 'operator'} account: TOTEM will see it when "
+                  "the network is back. TOTEM is trying to reconnect it. On "
+                  "site: check the antenna of this card's module.",
+                  "Rien ne peut partir de cette carte, et ses SMS "
+                  "d'encaissement n'arrivent pas au boîtier — l'argent, lui, "
+                  f"arrive bien sur le compte chez {operateur or 'l’opérateur'} : "
+                  "TOTEM le verra au retour du réseau. TOTEM essaie de la "
+                  "reconnecter. Sur place : vérifiez l'antenne du module de "
+                  "cette carte.")
+        self.journal.evenement(t(f"network {libelle}: alert sent ({genre})",
+                                 f"réseau {libelle} : alerte envoyée ({genre})"))
+        self.facteur.poster(f"⚠️ {gras(t('Card without network', 'Carte sans réseau'))}\n"
+                            + echap(corps) + "\n" + italique(suite),
+                            canal="alertes")
+
+    def _clore_episode(self, compte, maintenant):
+        episode = compte.service.episode_clos() or {}
+        n = len(episode.get("coupures", []))
+        cumul = episode.get("cumul", 0.0)
+        libelle = compte.libelle
+        self.journal.evenement(t(
+            f"network {libelle}: back — {n} outage(s), "
+            f"{_duree(cumul, 'en')} without service in all",
+            f"réseau {libelle} : revenu — {n} coupure(s), "
+            f"{_duree(cumul, 'fr')} sans service en tout"))
+        alerte = episode.get("alerte")
+        if alerte == "groupe":
+            operateur = getattr(compte.carte, "operateur", "") or ""
+            with self._verrou_service:
+                dits = {k for k in self._groupes_dits
+                        if k == "boitier" or k == f"operateur:{operateur}"}
+                self._groupes_dits -= dits
+            if dits:
+                self.facteur.poster("✅ " + echap(t(
+                    "The cards have their network back. SMS sent during the "
+                    "outage usually arrive in the following minutes.",
+                    "Les cartes ont retrouvé leur réseau. Les SMS envoyés "
+                    "pendant la coupure arrivent en général dans les minutes "
+                    "qui suivent.")), canal="alertes")
+        elif alerte:
+            self.facteur.poster("✅ " + echap(t(
+                f"The card {libelle} has its network back ({n} outage(s), "
+                f"{_duree(cumul, 'en')} without service). SMS sent during the "
+                "outage usually arrive in the following minutes.",
+                f"La carte {libelle} a retrouvé son réseau ({n} coupure(s), "
+                f"{_duree(cumul, 'fr')} sans service). Les SMS envoyés pendant "
+                "la coupure arrivent en général dans les minutes qui suivent.")),
+                canal="alertes")
 
     def _tour_de_surveillance(self):
         """Un tour complet de surveillance, par étapes isolées : celle qui
@@ -2007,6 +2260,10 @@ class Robot:
             for compte in self.comptes:
                 # Rien de ce qui touche une carte ne doit pouvoir arrêter la
                 # relève des autres.
+                # Sans postes, on LIT le service sans jamais agir : une
+                # relance de radio bloquerait la relève de toutes les cartes.
+                self._etape(f"réseau {compte.libelle}",
+                            lambda: self._veiller_service(compte, agir=False))
                 try:
                     self._relever_sms(compte)
                 except Exception as e:

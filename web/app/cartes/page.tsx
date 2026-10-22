@@ -1,4 +1,6 @@
 import { donneesMontrees } from "@/lib/ce-qu-on-montre";
+import { carteSansService } from "@noyau/service";
+import { textesService } from "@noyau/textes/service";
 import { langueServeur } from "@/lib/langue-serveur";
 import { textesCartes } from "@noyau/textes/cartes";
 import { FUSEAU_DEFAUT, fcfa, nombre } from "@noyau/types";
@@ -84,10 +86,14 @@ export default async function Comptes() {
                 <span className={`flex shrink-0 items-center gap-1.5 rounded-sm px-2 py-1 text-caption tabnums ${
                   i === 0 ? "bg-white/10 text-white/70" : "bg-surface-2 text-ink-soft"
                 }`}>
+                  {/* Sans service, ni « 22/31 » ni point vert : c'est cette
+                      ligne-là qui faisait croire que la carte avait son réseau. */}
                   <span className={`size-1.5 rounded-full ${
-                    s.signal == null || s.presence === "inconnue" ? "bg-ink-faint"
+                    carteSansService(s) ? "bg-alert"
+                      : s.signal == null || s.presence === "inconnue" ? "bg-ink-faint"
                       : signalFaible(s.signal) ? "bg-alert" : "bg-positive-vif"}`} />
-                  {s.signal == null ? t.signalInconnu : `${s.signal}/31`}
+                  {carteSansService(s) && s.service ? textesService[langue].etiquette[s.service.etat]
+                    : s.signal == null ? t.signalInconnu : `${s.signal}/31`}
                 </span>
               </div>
             </div>

@@ -28,6 +28,8 @@ import { formaterNumero } from "@noyau/numero";
 import { barresDuSignal, signalLu } from "@noyau/boitier";
 import { nombre, type Sim } from "@noyau/types";
 import { textesAccueil } from "@noyau/textes/accueil";
+import { textesService } from "@noyau/textes/service";
+import { carteSansService } from "@noyau/service";
 import type { Langue } from "@noyau/langue";
 
 /** Le rond de l'œil, sur la carte. */
@@ -66,8 +68,26 @@ function BarresSignal({ niveau, fige }: { niveau: number; fige: boolean }) {
 export type CarteCaisse = Pick<
   Sim,
   "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "signal"
-  | "iccid" | "enPlace" | "derniereVue"
+  | "iccid" | "enPlace" | "derniereVue" | "service"
 >;
+
+/** À la place des barres, quand la carte n'a pas de service : des barres
+ *  pleines sur une carte que personne ne joint, c'est exactement ce qui
+ *  cachait « no network service ». */
+function SansService({ carte, langue }: { carte: CarteCaisse; langue: Langue }) {
+  const nom = carte.service ? textesService[langue].etiquette[carte.service.etat] : "";
+  return (
+    <View accessibilityLabel={nom}
+          style={{ flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 1,
+                   paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+                   backgroundColor: "rgba(0,0,0,0.35)" }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#ff9b8f" }} />
+      <Texte taille={textes.legende} poids="demi" numberOfLines={1} style={{ color: "#ffffff" }}>
+        {nom}
+      </Texte>
+    </View>
+  );
+}
 
 export function Caisse({ carte, langue, soldeCache, onBasculerSolde, signalFige = false }: {
   carte: CarteCaisse;
@@ -195,7 +215,9 @@ export function Caisse({ carte, langue, soldeCache, onBasculerSolde, signalFige 
           </View>
           {/* Inconnu, le signal se dessine VIDE — disparaître ne disait pas
               pourquoi les opérations échouent. */}
-          <BarresSignal niveau={carte.signal ?? -1} fige={signalFige} />
+          {!signalFige && carteSansService(carte)
+            ? <SansService carte={carte} langue={langue} />
+            : <BarresSignal niveau={carte.signal ?? -1} fige={signalFige} />}
         </View>
 
         {/* Au milieu : le solde. C'est ce qu'on vient voir.

@@ -2,6 +2,7 @@
 // Aucune donnée ici : les valeurs viennent de Supabase, ou de nulle part.
 
 import type { Langue } from "./langue";
+import type { ServiceDeLaCarte } from "./service";
 
 // Une carte SIM est identifiée par son ICCID — le numéro de série gravé sur
 // la puce, unique au monde. L'opérateur ne suffit pas : deux SIM du même
@@ -50,6 +51,11 @@ export type Sim = {
   // encore à jour ne les envoie pas, et le téléphone lit alors `terminal`.
   boitierMuet?: boolean;
   boitierVuLe?: string | null;
+  // LE SERVICE de la carte — a-t-elle son réseau ? Des barres ne le disent
+  // pas : la force du signal mesure l'antenne, pas l'inscription. Absent
+  // quand il n'y a rien à dire, ou d'un boîtier pas encore à jour : l'écran
+  // garde alors ses barres. Voir noyau/service.ts.
+  service?: ServiceDeLaCarte;
   premiereVue: string;
   derniereVue: string;
   nbPaiements: number;

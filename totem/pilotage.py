@@ -68,6 +68,7 @@ from .compte import (WEB, TELEGRAM, EnvoiIncertain, ErreurModem, MenuReferme,
 from .declencheur import NATURES, RefusRecu
 from . import ecran
 from .nuage import _horodatage
+from .modem import PasDeReseau
 from .textes import t
 
 # Une session web sans nouvelles pendant ce délai est raccrochée : un menu
@@ -509,8 +510,11 @@ class Pilotage:
             etat, resultat = "echouee", t(
                 f"The terminal could not do it: {e}",
                 f"Le terminal n'a pas pu faire : {e}", langue=langue)
-            self.journal.evenement(t(f"remote desk: failure ({genre})",
-                                     f"guichet à distance : échec ({genre})"))
+            # La CAUSE au journal quand on la connaît : « échec (ussd) » seul
+            # ne disait pas que la carte n'avait pas de réseau.
+            cause = t(" — no service", " — aucun service") if isinstance(e, PasDeReseau) else ""
+            self.journal.evenement(t(f"remote desk: failure ({genre}){cause}",
+                                     f"guichet à distance : échec ({genre}){cause}"))
 
         # Un 0x00 fait refuser TOUTE l'écriture par la base (text comme
         # jsonb) : la demande restait « en cours » pour toujours.

@@ -80,6 +80,11 @@ const heuresDeSolde = new Map();      // iccid → minutes, ou null
 // aucun essai ne pouvait voir la pastille de l'onglet Comptes rester VERTE
 // sur une carte qui n'avait qu'une barre sur l'accueil.
 const signaux = new Map();           // iccid → force (0 à 31, ou 99)
+// LE SERVICE d'une carte, imposé par un essai (« /essai/service ») : ce que
+// le boîtier publie dans son signe de vie (`sante.cartes`). Sans lui, aucune
+// carte du faux nuage ne pouvait être « sans réseau » — et l'écran qui doit
+// le dire n'aurait jamais été vu le dire.
+const services = new Map();          // iccid → { terminal, publie }
 
 // L'HORLOGE DE CHAQUE PI (« /essai/horloge »). Le vrai boîtier date ce qu'il
 // écrit — son signe de vie, la dernière vue de ses cartes — sur SON heure,
@@ -145,6 +150,9 @@ function boitier(id, nom, minutes) {
     id, nom, vu_le: signeDeVie(id, minutes),
     version: "0.0.0-essai", sante: { resume: "essai local", en_attente: 0 },
   };
+  const cartes = Object.fromEntries([...services].filter(([, x]) => x.terminal === id)
+    .map(([iccid, x]) => [iccid, x.publie]));
+  if (Object.keys(cartes).length) ligne.sante.cartes = cartes;
   if (oreille) {
     ligne.entendu_le = il_y_a(silence(id, minutes));
     ligne.revenu_le = revenus.has(id) ? new Date(revenus.get(id)).toISOString()
@@ -873,6 +881,26 @@ const serveur = createServer(async (req, res) => {
     if (url.searchParams.get("annuler")) cartesPerdues.delete(iccid);
     else cartesPerdues.set(iccid, Number(url.searchParams.get("minutes") || 20));
     return repondre({ cartesPerdues: [...cartesPerdues.keys()] });
+  }
+  //     curl -X POST ".../essai/service?iccid=…&etat=aucun&minutes=12&coupures=1"
+  //       (&terminal=akwa-faux, &brut=<json> pour une publication abîmée, &annuler=1)
+  if (req.method === "POST" && chemin === "/essai/service") {
+    const iccid = url.searchParams.get("iccid") || "";
+    if (url.searchParams.get("annuler")) services.delete(iccid);
+    else {
+      const minutes = Number(url.searchParams.get("minutes") || 0);
+      const brut = url.searchParams.get("brut");
+      services.set(iccid, {
+        terminal: url.searchParams.get("terminal") || "douala-faux",
+        publie: brut != null ? JSON.parse(brut) : {
+          etat: url.searchParams.get("etat") || "aucun",
+          depuis_s: minutes * 60,
+          coupures_24h: Number(url.searchParams.get("coupures") || 1),
+          sans_service_24h_s: Number(url.searchParams.get("cumul") || minutes * 60),
+        },
+      });
+    }
+    return repondre({ services: Object.fromEntries(services) });
   }
   //     curl -X POST ".../essai/signal?iccid=…&valeur=9"   (&annuler=1)
   if (req.method === "POST" && chemin === "/essai/signal") {

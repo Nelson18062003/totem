@@ -51,6 +51,8 @@ import {
   carteEnPause, FicheTerminalHorsLigne, PastilleHorsLigne, silenceDepuis,
 } from "@/terminal-hors-ligne";
 import { PucesCartes } from "@/puces-cartes";
+import { FicheSansService, PastilleSansService } from "@/carte-sans-service";
+import { carteInstable, carteSansService } from "@noyau/service";
 import {
   ECART_ROND, HAUTEUR_ETAT, LIGNE_ROND, LIGNES_MOUVEMENTS,
   LIGNES_MOUVEMENTS_LARGE, NOM_ROND, ROND,
@@ -108,6 +110,7 @@ export default function Accueil() {
   const [coordonnees, setCoordonnees] = useState(false);
   const [releve, setReleve] = useState(false);
   const [ficheTerminal, setFicheTerminal] = useState(false);
+  const [ficheService, setFicheService] = useState(false);
 
   // Masqué par défaut tant que le choix n'est pas lu : le solde ne doit
   // jamais APPARAÎTRE puis se cacher — dans ce sens-là, c'est trop tard.
@@ -232,7 +235,7 @@ export default function Accueil() {
                 onBasculerSolde={basculerSolde} signalFige={seTait} />
         <LigneEtat carte={active} seTait={seTait} maintenant={maintenant} fuseau={fuseau}
                    langue={langue} t={t} onActualiser={actualiser}
-                   onTerminal={() => expliquer()} />
+                   onTerminal={() => expliquer()} onService={() => setFicheService(true)} />
       </View>
     </Entree>
   ) : enAttente ? (
@@ -423,6 +426,12 @@ export default function Accueil() {
                   onChange={() => relireEnSilence()} />
       ) : null}
 
+      {ficheService && active ? (
+        <FicheSansService carte={active} maintenant={maintenant} fuseau={fuseau} langue={langue}
+                          onFermer={() => setFicheService(false)}
+                          chezTotem={donnees?.proprietaire === false} />
+      ) : null}
+
       {ficheTerminal ? (
         <FicheTerminalHorsLigne vuLe={depuisSilence} maintenant={maintenant}
                                 fuseau={fuseau} langue={langue} onReverifier={recharger}
@@ -452,9 +461,9 @@ export default function Accueil() {
  * lignes de texte y tiennent) : l'alerte du terminal vient s'y loger au
  * lieu de pousser l'écran.
  */
-function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser, onTerminal }: {
+function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser, onTerminal, onService }: {
   carte: Sim; seTait: boolean; maintenant: number; fuseau: string; langue: "en" | "fr"; t: T;
-  onActualiser: (() => void) | null; onTerminal: () => void;
+  onActualiser: (() => void) | null; onTerminal: () => void; onService: () => void;
 }) {
   let texte: string;
   if (!carte.enPlace) texte = t.carteMuette(carte.derniereVue);
@@ -485,6 +494,11 @@ function LigneEtat({ carte, seTait, maintenant, fuseau, langue, t, onActualiser,
         // l'argent qui arrive quand même, quoi faire à la boutique) au lieu
         // de mener aux Réglages, qui répétaient « muet » sans rien dire.
         <PastilleHorsLigne langue={langue} onPress={onTerminal} />
+      ) : carte.enPlace && (carteSansService(carte) || carteInstable(carte)) ? (
+        // LA CARTE N'A PAS DE RÉSEAU, à la place d'« Actualiser » — qui
+        // composerait une demande qui ne peut pas passer. Ou elle l'a, mais
+        // le perd souvent : c'est le motif qu'on veut voir. L'appui explique.
+        <PastilleSansService carte={carte} langue={langue} onPress={onService} />
       ) : carte.enPlace && onActualiser ? (
         // « Actualiser » remplace le cercle « Solde » : il pose la question
         // au réseau, juste à côté de la réponse qu'il va remplacer.

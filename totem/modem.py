@@ -55,6 +55,16 @@ RE_IMSI = re.compile(r"^\s*(\d{14,15})\s*$", re.M)
 RE_CNUM = re.compile(r'\+CNUM:\s*"[^"]*"\s*,\s*"([^"]+)"')
 # +CREG: <n>,<stat> — stat 5 = enregistré sur un réseau visité (itinérance).
 RE_CREG = re.compile(r"\+CREG:\s*\d+,(\d+)")
+# La même chose côté 4G (EPS). Lue seulement quand la carte n'est pas
+# inscrite pour les appels et les SMS : « inscrite en 4G seulement », c'est
+# un réseau limité, pas une carte sans rien.
+RE_CEREG = re.compile(r"\+CEREG:\s*\d+,(\d+)")
+RE_CFUN = re.compile(r"\+CFUN:\s*(\d+)")
+# Le modem refuse parce que la carte n'a pas de réseau : « +CME ERROR: 30 »
+# (no network service) ou 32 (network not allowed — emergency calls only).
+# PAS 31 (network timeout) : là, quelque chose est peut-être parti.
+RE_SANS_RESEAU = re.compile(
+    r"\+CME ERROR:\s*(?:30|32|no network service|network not allowed)\b", re.I)
 # +CPMS: "ME",12,255,"ME",12,255,"ME",12,255  → occupation de la mémoire SMS
 RE_CPMS = re.compile(r'\+CPMS:\s*"[^"]*",\s*(\d+),\s*(\d+)')
 
@@ -76,6 +86,7 @@ TTL_OPERATEUR = 45
 TTL_ICCID = 45
 TTL_IMSI = 300
 TTL_SIM_PRESENTE = 8
+TTL_INSCRIPTION = 5
 # Au-delà, on se contente de ce que le réseau a envoyé jusque-là.
 GRACE_CUSD = 1.2
 # Mode texte — repli quand le firmware refuse le mode PDU.
@@ -109,6 +120,12 @@ def _trace_du_morceau(emplacement, pdu, morceau):
 
 class ErreurModem(Exception):
     pass
+
+
+class PasDeReseau(ErreurModem):
+    """Le modem a refusé la demande : la carte n'est inscrite sur aucun
+    réseau. Rien n'est parti — on le sait, c'est le modem qui le dit
+    avant d'écrire quoi que ce soit au réseau."""
 
 
 class ReponseNonRecue(ErreurModem):
@@ -304,7 +321,17 @@ class ModemSerie:
 
         La fin est repérée sur une ligne `OK` / `ERROR` entière et non sur la
         présence des lettres « OK » quelque part — un SMS contenant le mot
-        interrompait la lecture au milieu."""
+        interrompait la lecture au milieu.
+
+        CE QUI ATTEND SUR LE PORT SE LIT AVANT D'ÊTRE JETÉ. Le fil d'une
+        carte relève ses SMS toutes les dix secondes, menu ouvert ou non.
+        Si l'opérateur refermait le menu (« +CUSD: 2 ») pendant que la
+        personne tapait son code, cette relève vidait le port sans le lire :
+        le menu passait pour ouvert, et le code secret partait comme un
+        NOUVEAU code USSD. L'annonce est gardée là où `_cusd` la cherche."""
+        en_attente = getattr(self.ser, "in_waiting", 0) or 0
+        if en_attente:
+            self._garder_les_annonces(self.ser.read(en_attente) or b"")
         self.ser.reset_input_buffer()
         self.ser.write((commande + "\r").encode())
         fin = time.time() + delai
@@ -355,6 +382,12 @@ class ModemSerie:
                         # plutôt que de les déverser sur le port série.
                         "AT+CNMI=2,1,0,0,0"):
                 self._envoyer(cmd)
+            # Une radio restée coupée — le robot arrêté entre les deux gestes
+            # de `relancer_radio` — se rallume. On ne touche à rien si elle
+            # est allumée, ou si le modem ne sait pas le dire.
+            m = RE_CFUN.search(self._envoyer("AT+CFUN?", delai=3))
+            if m and m.group(1) in ("0", "4"):
+                self._envoyer("AT+CFUN=1", delai=15)
             # Mode PDU : c'est le SEUL qui livre l'en-tête de découpe des
             # messages longs. En mode texte, un SMS de plus de 160 caractères
             # arrive en morceaux séparés, sans rien pour les rattacher — donc
@@ -449,7 +482,58 @@ class ModemSerie:
         pas en déduire l'opérateur de la carte (voir carte.py)."""
         with self.verrou:
             m = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
-        return bool(m and m.group(1) == "5")
+        # 10 : « itinérance, urgences seulement en CSFB » — itinérance aussi.
+        return bool(m and m.group(1) in ("5", "10"))
+
+    def inscription(self):
+        """(sim_prete, creg, cereg) — ce que le modem sait de l'inscription
+        de la carte (voir `service.etat_du_service`). None là où la réponse
+        ne se lisait pas : une lecture ratée ne dit jamais « pas de réseau »."""
+        if getattr(self, "_memo", None) is None:
+            return self._lire_inscription()
+        return self._cache("inscription", TTL_INSCRIPTION, self._lire_inscription)
+
+    def _lire_inscription(self):
+        # Une SIM absente ou verrouillée répond « +CREG: 0,0 » comme une
+        # carte sans réseau : on regarde la SIM d'abord, sous le MÊME verrou.
+        with self.verrou:
+            if "READY" not in self._envoyer("AT+CPIN?", delai=2):
+                return (False, None, None)
+            m = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
+            creg = int(m.group(1)) if m else None
+            cereg = None
+            if creg is not None and creg not in (1, 5, 6, 7, 9, 10):
+                m = RE_CEREG.search(self._envoyer("AT+CEREG?", delai=2))
+                cereg = int(m.group(1)) if m else None
+        return (True, creg, cereg)
+
+    def relancer_radio(self):
+        """Coupe la radio de la carte (mode avion, AT+CFUN=4) puis la rallume
+        (AT+CFUN=1) : la carte se réinscrit comme un téléphone qu'on sort du
+        mode avion. La SIM reste alimentée, les réglages et les SMS rangés ne
+        bougent pas — rien n'est à réinitialiser.
+
+        La radio ne doit JAMAIS rester coupée : le rallumage est dans un
+        `finally`, et il est VÉRIFIÉ (AT+CFUN? doit dire 1), jusqu'à trois
+        fois. Rend True si la radio est revenue."""
+        allumee = False
+        with self.verrou:
+            try:
+                self._envoyer("AT+CFUN=4", delai=15)
+                time.sleep(3)
+            finally:
+                for _ in range(3):
+                    self._envoyer("AT+CFUN=1", delai=15)
+                    m = RE_CFUN.search(self._envoyer("AT+CFUN?", delai=3))
+                    if m and m.group(1) == "1":
+                        allumee = True
+                        break
+                    time.sleep(3)
+            memo = getattr(self, "_memo", None)
+            if memo is not None:
+                for cle in ("inscription", "signal", "operateur"):
+                    memo.pop(cle, None)
+        return allumee
 
     def redemarrer(self):
         """Relance le modem, puis **rouvre le port**.
@@ -583,6 +667,13 @@ class ModemSerie:
                 # lieu de garder la carte trente secondes pour annoncer un
                 # « délai dépassé » qui cache la vraie cause.
                 erreur = RE_ERREUR_AT.search(tampon)
+                if erreur and RE_SANS_RESEAU.search(erreur.group(1)):
+                    # « no network service », tel quel, était la seule chose
+                    # que le propriétaire lisait — en anglais.
+                    raise PasDeReseau(t(
+                        "The card has no network right now — nothing was sent.",
+                        "La carte n'a pas de réseau en ce moment — rien n'est "
+                        "parti."))
                 if erreur:
                     cause = erreur.group(1).strip()
                     raise ErreurModem(t(
@@ -717,6 +808,11 @@ class ModemSerie:
         except Exception:
             return False
         if not brut:
+            # Une annonce gardée par une commande (`_garder_les_annonces`)
+            # attend dans la traîne : c'est ici qu'elle se lit.
+            if b"+CMTI" in self._traine_urc or b"+CMT" in self._traine_urc:
+                self._traine_urc = b""
+                return True
             return False
         self._traine_urc = (self._traine_urc + brut)[-64:]
         if RE_CUSD_FERME.search(self._traine_urc):

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { etapesGeste } from "@noyau/codes";
 import { FUSEAU_DEFAUT, nombre, type RaccourciAppris, type Sim } from "@noyau/types";
+import { textesService } from "@noyau/textes/service";
+import { carteSansService } from "@noyau/service";
 import { textesAccueil } from "@noyau/textes/accueil";
 import { textesCartes } from "@noyau/textes/cartes";
 import { useLangue } from "@/app/langue";
@@ -54,7 +56,7 @@ const CLE_SOLDE_CACHE = "totem_solde_cache";
 export type CarteGuichet = Pick<
   Sim,
   "libelle" | "operateur" | "numero" | "nom" | "solde" | "soldeMaj" | "soldeLe" | "signal"
-  | "iccid" | "enPlace" | "derniereVue" | "presence"
+  | "iccid" | "enPlace" | "derniereVue" | "presence" | "service"
 > & {
   /** Le fuseau du TERMINAL : c'est lui qui dit si le relevé était hier. */
   fuseau?: string;
@@ -133,8 +135,18 @@ function CarteSim({
           l'actualisation — hors du chemin du chiffre. */}
       <div className="flex items-center justify-start gap-3">
         <span className="flex shrink-0 items-center gap-3">
-          <BarresSignal niveau={carte.signal} fige={carte.presence === "inconnue"}
-            inconnu={textesCartes[langue].signalInconnu} />
+          {/* Sans service, pas de barres : des barres pleines sur une carte
+              que personne ne joint cachaient « no network service ». */}
+          {carteSansService(carte) && carte.service ? (
+            <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-black/35 px-2.5 py-1 text-caption font-semibold text-white"
+                  role="img" aria-label={textesService[langue].etiquette[carte.service.etat]}>
+              <i className="inline-block size-1.5 rounded-full bg-[#ff9b8f]" />
+              {textesService[langue].etiquette[carte.service.etat]}
+            </span>
+          ) : (
+            <BarresSignal niveau={carte.signal} fige={carte.presence === "inconnue"}
+              inconnu={textesCartes[langue].signalInconnu} />
+          )}
           {carte.solde != null && (
             <button
               onClick={(e) => { e.stopPropagation(); basculerSolde(); }}
@@ -180,6 +192,11 @@ function CarteSim({
           // paraîtrait frais.
           : carte.presence === "inconnue"
             ? textesCartes[langue].boitierSansNouvelles
+          // Sans service : ce que ça change pour l'argent, ici — un écran
+          // d'ordinateur n'a pas de fiche à ouvrir, et une bulle au survol
+          // n'existe pas sous le doigt.
+          : carteSansService(carte) && carte.service
+            ? `${textesService[langue].explication[carte.service.etat]} ${textesService[langue].argent(carte.operateur)}`
           : carte.solde == null
             ? t.aucunSoldeConnu
             : carte.soldeMaj

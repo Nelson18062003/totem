@@ -24,6 +24,7 @@ import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
 import { libelleJour } from "@noyau/periodes";
 import { enchainementLu, type Enchainement } from "@noyau/deroule";
+import { serviceDeLaCarte } from "@noyau/service";
 import {
   ageDuSigneDeVie, boitierSansNouvelles, enPlaceSelon, presenceDeLaCarte, signalLu,
   type Presence,
@@ -215,7 +216,10 @@ async function lire<T>(chemin: string): Promise<T[]> {
 // sortie de flotte : voir lib/boitiers.ts.
 type LigneTerminal = LigneBoitier & {
   nom: string | null; version: string | null;
-  sante?: { resume?: string; en_attente?: number } | null;
+  // `cartes` : le service de chaque carte, publié par le boîtier (voir
+  // noyau/service.ts). JAMAIS renvoyé tel quel : il porte les ICCID de
+  // toutes les cartes du boîtier, et chacun ne voit que les siennes.
+  sante?: { resume?: string; en_attente?: number; cartes?: Record<string, unknown> } | null;
 };
 type LigneCarte = {
   // Le boîtier qui a vu cette carte (la base tient une ligne par boîtier et
@@ -762,6 +766,13 @@ export async function chargerDonnees(
     const sonBoitier = c.terminal
       ? { boitierMuet: boitierSansNouvelles(vu.vuIlYa), boitierVuLe: entenduLe(hote) }
       : {};
+    // LE SERVICE DE LA CARTE, daté sur l'horloge de la base. « Figé » quand
+    // son boîtier se tait — et seulement alors : « inconnue » dit aussi
+    // « il vient de revenir », et un boîtier qui parle porte un état frais.
+    const service = hote?.sante && typeof hote.sante === "object"
+      ? serviceDeLaCarte(hote.sante.cartes?.[c.iccid], entenduLe(hote),
+                         c.terminal ? boitierSansNouvelles(vu.vuIlYa) : presence === "inconnue")
+      : undefined;
     return {
       iccid: c.iccid,
       libelle: compte?.libelle || c.libelle || `Carte ·${c.iccid.slice(-4)}`,
@@ -778,6 +789,7 @@ export async function chargerDonnees(
       enPlace: enPlaceSelon(presence),
       presence,
       ...sonBoitier,
+      ...(service ? { service } : {}),
       premiereVue: dateCourte(c.premiere_vue, langue),
       derniereVue: dateCourte(c.derniere_vue, langue),
       nbPaiements: entrees.length,

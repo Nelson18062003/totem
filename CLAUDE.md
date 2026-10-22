@@ -68,6 +68,8 @@ cd web && node scripts/verifier-le-boitier-muet.mjs # un boîtier qui se tait ne
 cd web && node scripts/verifier-l-historique.mjs # toute la caisse s'atteint, sans trou
 cd web && node scripts/verifier-la-demo-vivante.mjs # la démo, contre une VRAIE base
 cd web && node scripts/verifier-l-enchainement.mjs # le chemin confié au boîtier, chronométré
+cd web && node scripts/verifier-le-service-des-cartes.mjs # une carte sans réseau se dit, de la base à l'écran
+python3 -m unittest tests.test_service_des_cartes # le boîtier lit le réseau de chaque carte, relance, prévient
 sh sql/verifier-les-regles.sh                   # les règles de la BASE, exécutées
 cd mobile && npx tsc --noEmit                   # l'application du téléphone
 cd mobile && node scripts/verifier-la-roue.mjs   # la roue ne tourne que sous le doigt
@@ -377,6 +379,29 @@ l'application ; le menu des cartes (logo, « MTN ·8901 », le numéro
 dessous) et le calendrier à raccourcis les remplacent, et le banc exige
 qu'il n'en reste aucun. Les couleurs des entrées et des sorties se
 confondaient pour un œil daltonien (écart 4,6) : la paire validée en a 13,9.
+
+**Des barres ne disent pas qu'on a du réseau.** « Check balance » répondait
+« no network service » — les mots du modem, en anglais — pendant que
+l'accueil montrait quatre barres. La force du signal (AT+CSQ) mesure
+l'antenne, pas l'inscription : une carte peut capter fort et n'être reçue
+par personne. Le chien de garde ne voyait rien non plus : lire les SMS
+rangés dans le modem marche très bien sans réseau. Le fil de chaque carte
+lit maintenant son inscription (AT+CREG?, et AT+CEREG? quand elle n'est pas
+inscrite), la publie dans le signe de vie (`sante.cartes`, sans migration),
+relance sa radio en mode avion puis retour (jamais quand tout le boîtier ou
+tout un opérateur est coupé : c'est l'antenne ou le quartier), et prévient
+sur le temps CUMULÉ sans service — une carte coupée dix minutes, revenue
+deux, coupée dix… ne l'était jamais quinze minutes d'affilée.
+`totem/service.py`, `noyau/service.ts`, `tests/test_service_des_cartes.py`.
+
+**Un port se lit avant d'être vidé.** L'enquête sur le réseau a trouvé un
+défaut d'argent sans rapport avec lui : le fil d'une carte relève ses SMS
+toutes les dix secondes, menu ouvert ou non, et chaque commande vidait le
+port sans le lire. Un « +CUSD: 2 » (l'opérateur referme le menu) arrivé
+pendant que la personne tapait son code était jeté : le menu passait pour
+ouvert, et le CODE SECRET partait comme un nouveau code USSD. `_envoyer`
+garde maintenant les annonces avant de vider ; le témoin rejoue l'ancien
+`_envoyer` et laisse partir le code.
 
 **Une sonde hors de l'écran ne touche rien.** `verifier-la-reponse` disait
 « rien ne bouge sous le doigt » d'une colonne du graphe : elle était sous le

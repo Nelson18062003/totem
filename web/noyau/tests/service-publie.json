@@ -1,0 +1,7 @@
+{
+  "//": "Ce que le boîtier publie pour une carte (totem/service.py, EtatDuService.a_publier), et ce que la plateforme en lit (noyau/service.ts, serviceLu). Les DEUX côtés lisent ce fichier : si l'un change une clé, l'autre échoue.",
+  "publie": { "etat": "aucun", "coupures_24h": 3, "sans_service_24h_s": 1500, "depuis_s": 720 },
+  "cles": ["etat", "coupures_24h", "sans_service_24h_s", "depuis_s"],
+  "etats": ["inscrite", "itinerance", "sms_seulement", "limitee", "recherche", "refusee", "aucun"],
+  "sans_service": ["limitee", "recherche", "refusee", "aucun"]
+}

@@ -31,7 +31,10 @@ import threading
 
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
-                    MessageTropLong, ReponseNonRecue, ReponseRefusee)
+                    MessageTropLong, PasDeReseau, ReponseNonRecue,
+                    ReponseRefusee)
+from .service import (INCONNU, ITINERANCE, SANS_SERVICE, EtatDuService,
+                      etat_du_service)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -75,6 +78,12 @@ class Compte:
         self.prochaine_tentative = 0.0
         self.attente_modem = 0          # l'écart courant entre deux essais
         self.verrou = threading.Lock()  # une seule opération USSD à la fois
+        # Le service de la carte : a-t-elle son réseau ? (voir service.py)
+        self.service = EtatDuService()
+        # Vrai pendant que la radio se relance : la carte refuse alors toute
+        # demande, tout de suite et en le disant, au lieu de la faire attendre
+        # derrière son verrou et de la composer en retard.
+        self.en_reglage = False
 
     # ---- état -------------------------------------------------------------
     def signal(self):
@@ -90,12 +99,19 @@ class Compte:
             return False
 
     def resume(self):
-        """Ligne d'état lisible : « MTN · SIM présente · signal 26/31 »."""
+        """Ligne d'état lisible : « MTN · SIM présente · signal 26/31 ».
+
+        Sans service, pas de « signal 22/31 » : c'est exactement la ligne
+        qui faisait croire que la carte avait son réseau."""
         sim = (t("SIM present", "SIM présente") if self.sim_prete()
                else t("SIM missing", "SIM absente"))
-        s = self.signal()
-        force = (t("signal unknown", "signal inconnu") if s == 99
-                 else f"signal {s}/31")
+        service = getattr(self, "service", None)
+        if service is not None and service.sans_service():
+            force = t("no service", "aucun service")
+        else:
+            s = self.signal()
+            force = (t("signal unknown", "signal inconnu") if s == 99
+                     else f"signal {s}/31")
         etat = (t(" · session open", " · session ouverte")
                 if self.session_ouverte else "")
         return f"{self.libelle} · {sim} · {force}{etat}"
@@ -111,7 +127,9 @@ class Compte:
         AUTRE titulaire tient un menu ouvert sur cette carte, au lieu de le
         remplacer. C'est le geste de la plateforme ; Telegram, lui, reprend
         la main (un administrateur est au bout du fil)."""
+        self._refuser_si_en_reglage()
         with self.verrou:
+            self._refuser_si_en_reglage()
             if (si_libre and self.session_ouverte
                     and self.titulaire != qui):
                 raise SessionTenue(self.titulaire)
@@ -150,6 +168,14 @@ class Compte:
             self.dernier_menu = ""
         return True
 
+    def _refuser_si_en_reglage(self):
+        if getattr(self, "en_reglage", False):
+            raise PasDeReseau(t(
+                "The card is reconnecting to its network — nothing was sent. "
+                "Try again in a minute.",
+                "La carte se reconnecte à son réseau — rien n'est parti. "
+                "Réessayez dans une minute."))
+
     def tenue_par(self, qui):
         """Cette carte a-t-elle un menu ouvert, tenu par `qui` ?"""
         with self.verrou:
@@ -174,6 +200,16 @@ class Compte:
         try:
             return envoi(charge)
         except ReponseRefusee:
+            raise
+        except PasDeReseau:
+            # Le modem l'a dit avant d'écrire : on relit l'inscription au
+            # prochain passage, sans attendre la cadence.
+            service = getattr(self, "service", None)
+            if service is not None:
+                service.signaler_refus()
+            self.session_ouverte = False
+            self.titulaire = None
+            self.dernier_menu = ""
             raise
         except MenuReferme:
             self.session_ouverte = False
@@ -242,8 +278,12 @@ class Compte:
         )
         self.libelle = self.carte.libelle
         # Une nouvelle carte, c'est une nouvelle session réseau : le compteur
-        # d'échecs du chien de garde repart de zéro.
+        # d'échecs du chien de garde repart de zéro, et ce qu'on savait du
+        # service de l'ancienne carte ne vaut rien pour celle-ci.
         self.echecs = 0
+        service = getattr(self, "service", None)
+        if service is not None:
+            service.reinitialiser()
         return ancienne if ancienne.identifiee else None
 
     def memoire_sms(self):
@@ -251,6 +291,60 @@ class Compte:
             return self.modem.memoire_sms()
         except Exception:
             return (0, 0)
+
+    # ---- le service (le réseau de la carte) ------------------------------
+    def lire_service(self):
+        """L'état du service de la carte, ou None si on ne lit pas cette fois.
+
+        On ne lit JAMAIS pendant un menu, ni pendant une relève ou un envoi
+        de SMS : la carte doit être libre À L'INSTANT (sans attendre), et le
+        menu fermé — revérifié sous le verrou. Une carte occupée se relit au
+        passage suivant. Ne lève jamais : un modem qui bafouille donne
+        « inconnu », qui ne compte ni pour ni contre."""
+        lire = getattr(self.modem, "inscription", None)
+        if lire is None or self.session_ouverte:
+            return None
+        if not self.verrou.acquire(blocking=False):
+            return None
+        try:
+            if self.session_ouverte:
+                return None
+            sim_prete, creg, cereg = lire()
+            etat = etat_du_service(creg, cereg, sim_prete)
+        except Exception:
+            return INCONNU
+        finally:
+            self.verrou.release()
+        # Le nom du réseau et l'itinérance ne se figent plus au démarrage :
+        # ils suivent la carte — mais seulement quand elle est inscrite, et
+        # jamais ils ne changent l'OPÉRATEUR de la carte (qui vient de l'IMSI).
+        if etat not in SANS_SERVICE and etat != INCONNU:
+            self.carte.itinerance = etat == ITINERANCE
+        return etat
+
+    def relancer_radio(self):
+        """Mode avion, puis retour (voir `ModemSerie.relancer_radio`).
+
+        `en_reglage` est posé AVANT de prendre le verrou : une demande qui
+        arrive pendant la relance est refusée tout de suite (« se reconnecte
+        à son réseau »), au lieu d'attendre et de partir en retard. Rend True
+        (revenue), False (pas revenue), ou None (pas faite : carte occupée,
+        menu ouvert, modem qui ne sait pas)."""
+        relancer = getattr(self.modem, "relancer_radio", None)
+        if relancer is None or self.session_ouverte:
+            return None
+        self.en_reglage = True
+        try:
+            if not self.verrou.acquire(timeout=5):
+                return None
+            try:
+                if self.session_ouverte:
+                    return None
+                return bool(relancer())
+            finally:
+                self.verrou.release()
+        finally:
+            self.en_reglage = False
 
     # ---- SMS --------------------------------------------------------------
     def sms_annonce(self):
@@ -297,14 +391,22 @@ class Compte:
         menu : `session_ouverte`, `titulaire`, `dernier_menu` ne bougent pas.
         Les exceptions du modem (`ReponseRefusee`, `ErreurModem`,
         `EnvoiIncertain`) remontent telles quelles."""
+        self._refuser_si_en_reglage()
         with self.verrou:
+            self._refuser_si_en_reglage()
             return self.modem.envoyer_sms(numero, texte)
 
     def redemarrer(self):
-        with self.verrou:
-            self.modem.redemarrer()
-            self.session_ouverte = False
-            self.titulaire = None
+        # Pendant le redémarrage (près d'une minute), une demande est refusée
+        # tout de suite plutôt que composée en retard derrière le verrou.
+        self.en_reglage = True
+        try:
+            with self.verrou:
+                self.modem.redemarrer()
+                self.session_ouverte = False
+                self.titulaire = None
+        finally:
+            self.en_reglage = False
         self.echecs = 0
 
 

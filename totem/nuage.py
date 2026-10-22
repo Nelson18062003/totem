@@ -142,8 +142,14 @@ class Nuage:
         self._reveil = threading.Event()
         # Levé à l'arrêt : le fil du signe de vie ne dort pas jusqu'au bout.
         self._arret = threading.Event()
+        # Levé quand une carte perd ou retrouve son réseau : le signe de vie
+        # part tout de suite. Sinon l'écran montrait encore des barres une
+        # minute après que l'opération eut répondu « pas de réseau ».
+        self._signe_tot = threading.Event()
         # L'état du Pi (température, disque…), fourni au démarrage.
         self._sante = None
+        # Les cartes, pour dire leur service dans le signe de vie.
+        self._comptes = ()
         # Un signe de vie à la fois, et le retard qu'il a annoncé : c'est ce
         # qui permet de republier ce retard quand une poussée l'a changé,
         # sans qu'un signe de vie parti AVANT la poussée n'arrive après elle
@@ -444,7 +450,26 @@ class Nuage:
                 resume = None
             if resume:
                 info["resume"] = resume
+        # LE SERVICE DE CHAQUE CARTE — lu dans ce que le fil de la carte a
+        # déjà noté, JAMAIS au modem : le signe de vie a cinq secondes, et
+        # le modem peut être pris par un menu. Une carte jamais lue n'y est
+        # pas, et l'écran garde ses barres.
+        cartes = {}
+        for c in getattr(self, "_comptes", ()):
+            try:
+                service = getattr(c, "service", None)
+                publie = service.a_publier(time.monotonic()) if service else None
+                if publie and c.carte.identifiee:
+                    cartes[c.carte.iccid] = publie
+            except Exception:
+                continue
+        if cartes:
+            info["cartes"] = cartes
         return info
+
+    def signe_de_vie_tot(self):
+        """Une carte a perdu ou retrouvé son réseau : le dire maintenant."""
+        self._signe_tot.set()
 
     def _inserer_ou_mettre_a_jour(self, table, lignes, cle_unicite, delai=DELAI):
         if not lignes:
@@ -1030,6 +1055,7 @@ class Nuage:
         if not self.actif:
             return None
         self._sante = sante
+        self._comptes = list(comptes or [])
         self._fil_signe = threading.Thread(target=self._battre, daemon=True)
         self._fil_signe.start()
         fil = threading.Thread(
@@ -1041,6 +1067,7 @@ class Nuage:
         self._marche = False
         self._reveil.set()      # ne pas attendre la fin du sommeil pour sortir
         self._arret.set()
+        self._signe_tot.set()
 
     def _battre(self):
         """Le fil du signe de vie : à heure fixe — et les cartes avec lui.
@@ -1078,9 +1105,12 @@ class Nuage:
         reprises_cartes = 0
         while self._marche:
             reste = prochain - time.monotonic()
-            if reste > 0 and self._arret.wait(reste):
-                break
-            if not self._marche:
+            if reste > 0:
+                # Réveillé avant l'heure par l'arrêt, ou par une carte qui
+                # perd ou retrouve son réseau (`signe_de_vie_tot`).
+                self._signe_tot.wait(reste)
+                self._signe_tot.clear()
+            if not self._marche or self._arret.is_set():
                 break
             depart = time.monotonic()
             try:
