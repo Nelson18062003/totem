@@ -1395,6 +1395,26 @@ nuit sur un faux bus de vingt prises, avec l'ancienne reprise pour témoin :
 elle remet les quatre comptes sur le même modem, et vole la réponse du
 voisin.
 
+**Un modem qui revient repart avec SES réglages, et « sans réponse du
+réseau » n'accuse pas forcément le réseau.** Le 22 octobre, les quatre modems
+ont décroché du bus USB à la même minute (« Input/output error » sur chaque
+port), le robot les a relancés sans une ligne au journal — seul l'échec
+s'écrivait —, et la carte Orange relevait ses SMS comme si de rien n'était
+tout en répondant « parti, sans réponse du réseau à temps » à CHAQUE code,
+pendant trois heures, à travers deux relances du robot. Le propriétaire
+relançait tout le service trois fois par matinée. Les réglages (`AT+CUSD=1`,
+sans lequel le modem garde pour lui la réponse du réseau ; l'alphabet ; la
+mémoire des SMS) étaient reposés UNE fois, sans regarder la réponse — et un
+modem qui vient de revenir les refuse volontiers quelques secondes. Ils se
+reposent maintenant tant qu'un réglage essentiel est refusé
+(`_regler`, `reglages_refuses`), chaque silence du réseau se SONDE (signal,
+carte sur le réseau, annonces USSD — `etat_apres_silence`) et répare le
+réglage tombé, et le journal reçoit la CAUSE de chaque échec, sur les deux
+chemins, ainsi que chaque relance réussie et le port où le modem est revenu.
+`tests/test_reglages_du_modem.py` porte le témoin : la mise en route d'avant
+laisse les annonces éteintes. Un modem muet au premier « AT » n'est pas
+« en UCS2 » : l'ancien code le concluait.
+
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai
 nom de client précédé de « ESSAI » reste le nom d'un client : quatre

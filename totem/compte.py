@@ -31,7 +31,8 @@ import threading
 
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
-                    MessageTropLong, ReponseNonRecue, ReponseRefusee)
+                    MessageTropLong, ReponseNonRecue, ReponseRefusee,
+                    phrase_du_silence)
 from .textes import t
 
 # Les deux canaux qui composent. Un titulaire est un couple (canal, personne) :
@@ -194,6 +195,25 @@ class Compte:
         self.session_ouverte = etat == USSD_OUVERTE
         self.titulaire = qui if self.session_ouverte else None
         self.dernier_menu = reponse if self.session_ouverte else ""
+
+    def expliquer_le_silence(self):
+        """Le réseau n'a pas répondu à temps : ce que le modem en dit, en une
+        ligne pour le journal (voir `ModemSerie.etat_apres_silence`). Si le
+        réglage des annonces USSD est tombé, il est reposé au passage. Ne
+        lève jamais, et rend "" pour un modem qui ne sait pas se sonder
+        (simulateur, tests)."""
+        sonde = getattr(self.modem, "etat_apres_silence", None)
+        if sonde is None:
+            return ""
+        try:
+            return phrase_du_silence(sonde())
+        except Exception as e:
+            return t(f"modem not answering ({e})", f"modem muet ({e})")
+
+    def reglages_refuses(self):
+        """Les réglages que le modem a refusés à sa dernière mise en route
+        (voir `ModemSerie._initialiser`) — vide si tout est pris."""
+        return list(getattr(self.modem, "reglages_refuses", None) or [])
 
     def iccid(self):
         """Numéro de série de la carte présente dans CE modem. Deux SIM du

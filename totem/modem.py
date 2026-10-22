@@ -86,6 +86,15 @@ RE_CMGL = re.compile(r'\+CMGL:\s*(\d+),"[^"]*","([^"]*)"[^\n]*\n(.*?)(?=\r?\n\+C
 RE_CMGL_PDU = re.compile(
     r"\+CMGL:\s*(\d+)\s*,[^\n]*\n\s*([0-9A-Fa-f]{20,})", re.I)
 
+# Réponse à « AT+CUSD? » : le réglage des annonces (0 : le modem garde les
+# réponses USSD pour lui, 1 : il les annonce sur le port).
+RE_REGLAGE_CUSD = re.compile(r"\+CUSD:\s*(\d)\s*(?=[\r\n]|$)")
+RE_CSCS = re.compile(r'\+CSCS:\s*"([^"]*)"')
+# Les réglages se reposent tant que le modem en refuse un : un modem qui
+# vient de revenir sur le bus les refuse volontiers quelques secondes.
+ESSAIS_REGLAGES = 3
+PAUSE_REGLAGES = 2.0
+
 USSD_OUVERTE = 1
 USSD_FERMEE = 0
 USSD_ANNULEE = 2
@@ -201,6 +210,41 @@ def texte_de_l_operateur(texte):
     ne peut pas entrer dans la base : il devient « \ufffd », visible."""
     texte = (texte or "").replace("\r\n", "\n").replace("\r", "\n")
     return texte.replace("\x00", "\ufffd").strip()
+
+
+def phrase_du_silence(etat):
+    """La ligne du journal quand le réseau n'a pas répondu : ce que le modem
+    en dit, en mots. Jamais un code, jamais un numéro — un port, un signal,
+    un état du réseau."""
+    port = (etat.get("port") or "").rsplit("/", 1)[-1] or t("unknown port",
+                                                              "port inconnu")
+    signal = etat.get("signal", 99)
+    parties = [t(f"signal {signal}/31", f"signal {signal}/31") if signal != 99
+               else t("signal unknown", "signal inconnu")]
+    enregistre = etat.get("enregistre")
+    parties.append(
+        t("on the network", "réseau enregistré") if enregistre
+        else t("CARD OFF THE NETWORK", "CARTE HORS RÉSEAU") if enregistre is False
+        else t("registration unreadable", "enregistrement illisible"))
+    annonces = etat.get("annonces")
+    if annonces is False:
+        if etat.get("repare"):
+            parties.append(t("USSD replies were NOT announced — settings "
+                             "re-applied", "annonces USSD INACTIVES — "
+                             "réglages refaits"))
+        else:
+            parties.append(t("USSD replies NOT announced — settings refused: "
+                             + ", ".join(etat.get("refuses") or []),
+                             "annonces USSD INACTIVES — réglages refusés : "
+                             + ", ".join(etat.get("refuses") or [])))
+    elif annonces:
+        parties.append(t("USSD replies announced", "annonces USSD actives"))
+    else:
+        parties.append(t("USSD setting unreadable", "réglage USSD illisible"))
+    if etat.get("alphabet"):
+        parties.append(etat["alphabet"])
+    parties.append(port)
+    return " · ".join(parties)
 
 
 def lire_cusd(tampon, sursis_ecoule=False, a_l_echeance=False):
@@ -349,32 +393,117 @@ class ModemSerie:
         self._oublier()
 
     def _initialiser(self):
+        """Pose les réglages du robot — et VÉRIFIE que le modem les prend.
+
+        Le modem repart avec SES réglages par défaut chaque fois qu'il
+        redémarre : une coupure sur le bus USB, un « AT+CFUN », une baisse
+        de courant. Par défaut, il n'annonce pas les réponses USSD
+        (+CUSD) : il envoie le code au réseau, reçoit la réponse, et la
+        garde pour lui. Les SMS, eux, se relèvent toujours (AT+CMGL est une
+        question, pas une annonce). C'est exactement la panne du 22 octobre
+        à Douala : les quatre modems décrochés à la même minute, rouverts
+        par le robot, et la carte Orange qui lisait ses SMS mais répondait
+        « sans réponse du réseau » à chaque code, jusqu'à ce qu'on relance
+        tout le robot.
+
+        Les réglages étaient envoyés UNE fois, sans regarder la réponse —
+        et un modem qui vient de revenir sur le bus les refuse volontiers
+        pendant quelques secondes (« SIM busy », ou rien du tout). On
+        recommence donc tant qu'un réglage essentiel est refusé, puis on
+        retient ceux qui le restent (`reglages_refuses`) : le journal et le
+        diagnostic les disent, au lieu de laisser deviner."""
         with self.verrou:
-            for cmd in ("AT", "ATE0", "AT+CMEE=2", "AT+CUSD=1",
-                        # Stocker les SMS entrants et signaler leur arrivée
-                        # plutôt que de les déverser sur le port série.
-                        "AT+CNMI=2,1,0,0,0"):
-                self._envoyer(cmd)
-            # Mode PDU : c'est le SEUL qui livre l'en-tête de découpe des
-            # messages longs. En mode texte, un SMS de plus de 160 caractères
-            # arrive en morceaux séparés, sans rien pour les rattacher — donc
-            # tronqué à l'écran. On retombe en mode texte si le firmware
-            # refuse, plutôt que de ne plus lire aucun SMS.
-            self.mode_pdu = "OK" in self._envoyer("AT+CMGF=0")
-            if not self.mode_pdu:
-                self._envoyer("AT+CMGF=1")
-            # Préférer la mémoire du modem : la SIM déborde en une journée
-            # chargée, et un stockage plein fait perdre les SMS suivants.
-            self.stockage_sms = "SM"
-            for emplacement in MEMOIRES_SMS:
-                if "OK" in self._envoyer(f'AT+CPMS="{emplacement}","{emplacement}",'
-                                         f'"{emplacement}"'):
-                    self.stockage_sms = emplacement
+            refuses = []
+            for essai in range(ESSAIS_REGLAGES):
+                refuses = self._regler()
+                if not refuses:
                     break
-            # Jeu de caractères : GSM si possible, sinon UCS2 (réponses en hexa)
-            if "OK" not in self._envoyer('AT+CSCS="GSM"'):
-                self._envoyer('AT+CSCS="UCS2"')
+                time.sleep(PAUSE_REGLAGES)
+            self.reglages_refuses = refuses
+
+    def _regler(self):
+        """Un passage de réglages. Rend les commandes ESSENTIELLES que le
+        modem a refusées (ou laissées sans réponse) — vide si tout est pris.
+        À appeler sous le verrou."""
+        refuses = []
+        if "OK" not in self._envoyer("AT"):
+            # Un modem qui ne dit même pas « OK » n'est pas là : inutile de
+            # lui poser huit autres questions à cinq secondes chacune. On
+            # repart sur les réglages les plus prudents, et on le dit.
+            self.mode_pdu = False
+            self.stockage_sms = "SM"
+            self.ucs2 = False
+            return ["AT"]
+        for cmd in ("ATE0", "AT+CMEE=2",
+                    # Sans elle, la réponse du réseau à un code USSD n'est
+                    # jamais annoncée sur le port : « sans réponse », toujours.
+                    "AT+CUSD=1",
+                    # Stocker les SMS entrants et signaler leur arrivée
+                    # plutôt que de les déverser sur le port série.
+                    "AT+CNMI=2,1,0,0,0"):
+            if "OK" not in self._envoyer(cmd):
+                refuses.append(cmd)
+        # Mode PDU : c'est le SEUL qui livre l'en-tête de découpe des
+        # messages longs. En mode texte, un SMS de plus de 160 caractères
+        # arrive en morceaux séparés, sans rien pour les rattacher — donc
+        # tronqué à l'écran. On retombe en mode texte si le firmware
+        # refuse, plutôt que de ne plus lire aucun SMS.
+        self.mode_pdu = "OK" in self._envoyer("AT+CMGF=0")
+        if not self.mode_pdu and "OK" not in self._envoyer("AT+CMGF=1"):
+            refuses.append("AT+CMGF")
+        # Préférer la mémoire du modem : la SIM déborde en une journée
+        # chargée, et un stockage plein fait perdre les SMS suivants.
+        self.stockage_sms = "SM"
+        for emplacement in MEMOIRES_SMS:
+            if "OK" in self._envoyer(f'AT+CPMS="{emplacement}","{emplacement}",'
+                                     f'"{emplacement}"'):
+                self.stockage_sms = emplacement
+                break
+        else:
+            refuses.append("AT+CPMS")
+        # Jeu de caractères : GSM si possible, sinon UCS2 (réponses en hexa)
+        self.ucs2 = False
+        if "OK" not in self._envoyer('AT+CSCS="GSM"'):
+            if "OK" in self._envoyer('AT+CSCS="UCS2"'):
                 self.ucs2 = True
+            else:
+                refuses.append("AT+CSCS")
+        return refuses
+
+    def etat_apres_silence(self):
+        """Ce que le modem sait, quand le réseau n'a pas répondu à un code.
+
+        « Sans réponse du réseau » couvre trois pannes qui ne se réparent
+        pas pareil : l'opérateur qui tarde (rien à faire ici), une carte qui
+        n'est plus enregistrée sur le réseau (+CREG), et un modem qui a
+        perdu le réglage des annonces USSD (+CUSD: 0) — celle-là, on la
+        répare sur-le-champ en reposant les réglages, et on le dit.
+
+        Rend un dictionnaire : `port`, `annonces` (le modem annonce-t-il
+        les réponses USSD ?), `enregistre` (la carte est-elle sur le
+        réseau ?), `signal` (0..31, 99 inconnu), `alphabet`, `repare`,
+        `refuses`. Les lectures illisibles valent None."""
+        with self.verrou:
+            urc = RE_REGLAGE_CUSD.search(self._envoyer("AT+CUSD?", delai=2))
+            creg = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
+            csq = RE_CSQ.search(self._envoyer("AT+CSQ", delai=2))
+            cscs = RE_CSCS.search(self._envoyer("AT+CSCS?", delai=2))
+            etat = {
+                "port": self.port,
+                "annonces": (urc.group(1) == "1") if urc else None,
+                "enregistre": (creg.group(1) in ("1", "5")) if creg else None,
+                "signal": int(csq.group(1)) if csq else 99,
+                "alphabet": cscs.group(1) if cscs else "",
+                "repare": False,
+                "refuses": [],
+            }
+            attendu = "UCS2" if getattr(self, "ucs2", False) else "GSM"
+            derive = etat["alphabet"] and etat["alphabet"] != attendu
+            if etat["annonces"] is False or derive:
+                etat["refuses"] = self._regler()
+                etat["repare"] = "AT+CUSD=1" not in etat["refuses"]
+                self.reglages_refuses = etat["refuses"]
+        return etat
 
     # ---- état -------------------------------------------------------------
     def signal(self):

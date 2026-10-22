@@ -509,8 +509,17 @@ class Pilotage:
             etat, resultat = "echouee", t(
                 f"The terminal could not do it: {e}",
                 f"Le terminal n'a pas pu faire : {e}", langue=langue)
-            self.journal.evenement(t(f"remote desk: failure ({genre})",
-                                     f"guichet à distance : échec ({genre})"))
+            # LA CAUSE VA AU JOURNAL. « échec (ussd) » seul, répété treize
+            # fois le 22 octobre, ne disait pas si c'était le modem décroché
+            # du bus (« Input/output error »), un refus du modem ou autre
+            # chose — la cause ne vivait que dans la ligne de la commande,
+            # que personne ne relit. Une panne du MODEM se dit avec ses
+            # mots ; le reste par son nom, sans ce qu'il porte.
+            cause = (str(e) if isinstance(e, (ErreurModem, OSError))
+                     else type(e).__name__)
+            self.journal.evenement(t(
+                f"remote desk: failure ({genre}): {cause}",
+                f"guichet à distance : échec ({genre}) : {cause}"))
 
         # Un 0x00 fait refuser TOUTE l'écriture par la base (text comme
         # jsonb) : la demande restait « en cours » pour toujours.
@@ -1417,11 +1426,18 @@ class Pilotage:
         `Compte._echanger`), le réseau dit donc « fini »."""
         with self._garde:
             self._vie.pop(compte, None)
+        # Ce que le modem en dit — signal, carte sur le réseau ou non,
+        # annonces USSD actives ou non — à côté du silence, sinon « sans
+        # réponse du réseau » accuse l'opérateur d'un réglage perdu par le
+        # modem (voir `ModemSerie.etat_apres_silence`).
+        expliquer = getattr(compte, "expliquer_le_silence", None)
+        detail = expliquer() if expliquer else ""
+        suite = f" — {detail}" if detail else ""
         self.journal.evenement(t(
             f"remote desk: sent, no reply from the network in time "
-            f"({compte.libelle})",
+            f"({compte.libelle}){suite}",
             f"guichet à distance : parti, sans réponse du réseau à temps "
-            f"({compte.libelle})"))
+            f"({compte.libelle}){suite}"))
         return t(
             "Your request went out, but the network did not answer in time: "
             "it may have gone through. Check your SMS before trying again.",
