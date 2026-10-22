@@ -97,6 +97,11 @@ export async function ouvrirLaPorte(
   // Trois seaux : l'adresse d'où l'on frappe, le couple adresse + compte
   // visé, et le compte de partout (vide : la clé de secours a le sien). La
   // vitrine n'a pas de seau de compte : son mot de passe est public.
+  // UN MOT DE PASSE VIDE se refuse AVANT le frein : il ne coûte aucun calcul,
+  // et compté, il remplissait gratuitement le seau d'une adresse d'opérateur
+  // — mille demandes vides fermaient la porte à tous ceux qui la partagent.
+  if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
+
   const ticket = await attendreLeFrein(cleDeFrein(req), {
     compte: courriel,
     motDePassePublic: courriel === COURRIEL_DEMONSTRATION && demonstrationOuverte(),
@@ -104,8 +109,6 @@ export async function ouvrirLaPorte(
   if (!ticket) {
     return refus(langue, "tropDEssais", 429);
   }
-
-  if (!motdepasse) return refus(langue, "identifiantsIncorrects", 401);
 
   // --- Chemin 0 : la démonstration ---------------------------------------
   // Son courriel n'est celui d'aucun compte : il n'existe pas en base, et
@@ -410,12 +413,15 @@ export async function supprimerSonCompte(
   }
   if (moi.role === "proprietaire") return refus(langue, "proprietaireNeSeSupprimePas", 403);
 
+  // Vide : refusé avant le frein, comme à la connexion — rien à calculer.
+  if (typeof motdepasse !== "string" || motdepasse.length === 0) {
+    return refus(langue, "motDePasseIncorrect", 401);
+  }
   const ticket = await attendreLeFrein(cleDeFrein(req), { compte: moi.courriel });
   if (!ticket) return refus(langue, "tropDEssais", 429);
 
   const trouve = await utilisateurAVerifier(moi.courriel);
-  const bon = typeof motdepasse === "string" && motdepasse.length > 0
-    && await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
+  const bon = await verifier(motdepasse, trouve?.empreinte ?? LEURRE);
   if (!trouve || !bon) {
     noterEchec(ticket);
     return refus(langue, "motDePasseIncorrect", 401);

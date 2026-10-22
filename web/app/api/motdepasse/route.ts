@@ -42,6 +42,8 @@ export async function POST(req: Request) {
   const nouveau = typeof corps?.nouveau === "string" ? corps.nouveau : "";
 
   if (!motDePasseAcceptable(nouveau)) return refus("motDePasseTropCourt", 400);
+  // L'ancien, vide : refusé avant le frein — rien à calculer, rien à compter.
+  if (!actuel) return refus("identifiantsIncorrects", 401);
 
   // Le frein, AVANT le calcul de l'empreinte — même mur que la connexion.
   const ticket = await attendreLeFrein(cleDeFrein(req), { compte: moi.courriel });

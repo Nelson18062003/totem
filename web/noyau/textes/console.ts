@@ -228,7 +228,7 @@ const en = {
     colonneEssais: "Attempts",
     essais: (n: number) => `${n} ${n === 1 ? "attempt" : "attempts"}`,
     freinExplique:
-      "The counter lives in the database, shared by every server. Only failures count: a successful sign-in gives its attempt back. Five failures are free for one address on one account, ten for an account from everywhere; beyond that each one waits longer — eight seconds at most. Sixty failures close that account to that address for the fifteen-minute window; a thousand checked failures close the address. Carriers put hundreds of phones behind one address: a neighbour who attacks an account never closes the door to the others, and nobody can lock the owner out by attacking.",
+      "The counter lives in the database, shared by every server. Only failures count: a successful sign-in gives its attempt back. Five failures are free for one address on one account, ten for an account from everywhere; beyond that each one waits longer — eight seconds at most; the address itself makes no one wait. Sixty failures close that account to that address for the fifteen-minute window; a thousand checked failures close the address. Carriers put hundreds of phones behind one address: a neighbour who attacks an account does not close the door to the others, and a session already open never closes.",
   },
 };
 
@@ -433,7 +433,7 @@ const fr: typeof en = {
     colonneEssais: "Essais",
     essais: (n) => `${n} essai${n > 1 ? "s" : ""}`,
     freinExplique:
-      "Le compteur vit dans la base, partagé par tous les serveurs. Seuls les échecs comptent : une connexion réussie rend son essai. Cinq échecs sont gratuits pour une adresse sur un compte, dix pour un compte de partout ; au-delà chacun attend plus longtemps — huit secondes au plus. Soixante échecs ferment ce compte à cette adresse pour le quart d'heure ; mille échecs vraiment vérifiés ferment l'adresse. Un opérateur met des centaines de téléphones derrière une même adresse : un voisin qui attaque un compte ne ferme jamais la porte aux autres, et personne ne peut enfermer le propriétaire dehors en attaquant.",
+      "Le compteur vit dans la base, partagé par tous les serveurs. Seuls les échecs comptent : une connexion réussie rend son essai. Cinq échecs sont gratuits pour une adresse sur un compte, dix pour un compte de partout ; au-delà chacun attend plus longtemps — huit secondes au plus ; l'adresse, elle, ne fait attendre personne. Soixante échecs ferment ce compte à cette adresse pour le quart d'heure ; mille échecs vraiment vérifiés ferment l'adresse. Un opérateur met des centaines de téléphones derrière une même adresse : un voisin qui attaque un compte ne ferme pas la porte aux autres, et une session ouverte ne se ferme jamais.",
   },
 };
 

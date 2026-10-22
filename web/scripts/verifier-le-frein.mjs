@@ -37,8 +37,10 @@
 //      réussite au milieu ;
 //  11. UN VOISIN D'ADRESSE NE FERME PAS LA PORTE AUX AUTRES. Un opérateur met
 //      des centaines de téléphones derrière une adresse : le mur porte sur le
-//      couple adresse + compte, pas sur l'adresse seule — et un essai que le
-//      couple refuse ne compte pas pour l'adresse ;
+//      couple adresse + compte, pas sur l'adresse seule — un essai que le
+//      couple refuse ne compte pas pour l'adresse, et l'adresse ne fait
+//      attendre personne. Et les réussites se rendent : mille connexions
+//      du même téléphone ne le murent pas ;
 //  12. une adresse qui essaie mille comptes finit murée, avant tout calcul —
 //      et une réussite au milieu n'efface pas son ardoise ; murée, elle
 //      n'écrit plus rien dans la base ;
@@ -325,9 +327,20 @@ try {
     salve.filter((e) => e.statut === 429).length >= 4,
     `${salve.filter((e) => e.statut === 429).length} refus sur 15`);
 
-  const lignesDeCompte = async () => (await (await fetch(
-    `http://127.0.0.1:${NUAGE}/rest/v1/freins?select=cle`)).json())
-    .filter((f) => f.cle.includes("@")).length;
+  // LA VÉRITÉ SE LIT PAGE PAR PAGE. Le faux nuage, comme la vraie base, ne
+  // rend jamais plus de mille lignes : lue d'un coup, une table de deux
+  // mille lignes disait « 823 → 823 » quoi qu'il arrive, et la vérification
+  // « n'écrit plus une ligne » ne pouvait pas échouer. CLAUDE.md l'écrivait
+  // déjà ; un harnais neuf l'a refaite.
+  const lignesDeCompte = async () => {
+    let n = 0;
+    for (let decalage = 0; ; decalage += 1000) {
+      const page = await (await fetch(
+        `http://127.0.0.1:${NUAGE}/rest/v1/freins?select=cle&order=cle.asc&offset=${decalage}`)).json();
+      n += page.filter((f) => f.cle.includes("@")).length;
+      if (page.length < 1000) return n;
+    }
+  };
 
   // --- 11. UN VOISIN D'ADRESSE NE FERME PAS LA PORTE AUX AUTRES -----------
   //
@@ -350,6 +363,48 @@ try {
   const derriere = await essai(operateur, MDP);
   verifier("le propriétaire, derrière la MÊME adresse, entre sans attendre",
     derriere.statut === 200 && derriere.ms < 2000, `${derriere.statut}, ${derriere.ms} ms`);
+  // UN AUTRE VOISIN, qui essaie quatre cents comptes inventés : chacun est
+  // vraiment jugé, et compte pour l'adresse. Un délai par adresse faisait
+  // attendre tout le monde derrière, au-delà de trois cents.
+  const operateur2 = "198.51.100.21";
+  for (let lot = 0; lot < 2; lot++) {
+    await Promise.all(Array.from({ length: 200 }, (_, i) =>
+      essai(operateur2, "x", `invente-${lot}-${i}@voisinage.cm`)));
+  }
+  const derriere2 = await essai(operateur2, MDP);
+  verifier("…et derrière celui qui essaie quatre cents comptes inventés aussi",
+    derriere2.statut === 200 && derriere2.ms < 2000, `${derriere2.statut}, ${derriere2.ms} ms`);
+
+  // MILLE DEMANDES AU MOT DE PASSE VIDE, d'une adresse partagée : refusées
+  // sans calcul, elles ne coûtent rien au serveur — et ne doivent rien
+  // coûter aux voisins. Comptées, elles fermaient l'adresse à tous.
+  const vides = "198.51.100.23";
+  for (let lot = 0; lot < 5; lot++) {
+    await Promise.all(Array.from({ length: 205 }, (_, i) =>
+      essai(vides, "", `vide-${lot}-${i}@voisinage.cm`)));
+  }
+  const apresLesVides = await essai(vides, MDP);
+  verifier("…ni derrière mille demandes au mot de passe vide",
+    apresLesVides.statut === 200 && apresLesVides.ms < 2000,
+    `${apresLesVides.statut}, ${apresLesVides.ms} ms`);
+
+  // LES RÉUSSITES SE RENDENT. Sans le rendu, le propriétaire qui se connecte
+  // soixante et une fois du même téléphone se murait lui-même, et mille
+  // connexions réussies derrière une même adresse d'opérateur la fermaient.
+  // Par huit : plus, ce serait autant de connexions SIMULTANÉES du même
+  // compte, que son seau compte le temps de les juger.
+  const habitue = "198.51.100.22";
+  let refusees = 0;
+  for (let lot = 0; lot < 126; lot++) {
+    const r = await Promise.all(Array.from({ length: 8 }, () => essai(habitue, MDP)));
+    refusees += r.filter((e) => e.statut !== 200).length;
+  }
+  const milleEtUnieme = await essai(habitue, MDP);
+  verifier("mille connexions réussies du même téléphone : pas une refusée",
+    refusees === 0, `${refusees} refusée(s) sur 1 008`);
+  verifier("…et la suivante entre, sans attendre",
+    milleEtUnieme.statut === 200 && milleEtUnieme.ms < 2000,
+    `${milleEtUnieme.statut}, ${milleEtUnieme.ms} ms`);
 
   // --- 12. UNE ADRESSE QUI ESSAIE MILLE COMPTES -------------------------
   //
@@ -372,8 +427,11 @@ try {
   const apresLeMilieu = await Promise.all(Array.from({ length: 20 }, (_, i) =>
     essai(pilleur, `pillage-bis-${i}`, `pillage-bis-${i}@exemple.cm`)));
   verifier("la réussite au milieu entre", auMilieu.statut === 200, `${auMilieu.statut}`);
+  // EXACTEMENT dix : 990 échecs, la réussite RENDUE, puis vingt — du 991e au
+  // 1 010e. Une réussite qui ne rendrait pas sa place à l'adresse en ferait
+  // onze.
   verifier("le mur de l'adresse tombe quand même au millième échec",
-    apresLeMilieu.filter((e) => e.statut === 429).length >= 5,
+    apresLeMilieu.filter((e) => e.statut === 429).length === 10,
     `${apresLeMilieu.filter((e) => e.statut === 429).length} refus sur 20`);
   const avantLaRafale = await lignesDeCompte();
   const inventes = await Promise.all(Array.from({ length: 30 }, (_, i) =>
@@ -480,13 +538,17 @@ try {
   });
   verifier("la clé de secours ouvre encore, base injoignable",
     secours.status === 200, `${secours.status}`);
-  const muree = await fetch(`${B}/api/connexion`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-real-ip": attaquant },
-    body: JSON.stringify({ motdepasse: "pas-la-cle" }),
-  });
-  verifier("et le seau de secours en mémoire prend le relais",
-    [401, 429].includes(muree.status), `${muree.status}`);
+  // UN 401 NE PROUVE RIEN : c'est la réponse d'une plateforme sans frein du
+  // tout. Une rafale, si : le seau de secours doit en refuser une partie.
+  const sansBase = await Promise.all(Array.from({ length: 70 }, (_, i) =>
+    fetch(`${B}/api/connexion`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-real-ip": attaquant },
+      body: JSON.stringify({ motdepasse: `pas-la-cle-${i}` }),
+    }).then((r) => r.status)));
+  verifier("et le seau de secours en mémoire prend le relais : la rafale bute",
+    sansBase.filter((x) => x === 429).length >= 5 && sansBase.every((x) => x === 401 || x === 429),
+    `${sansBase.filter((x) => x === 429).length} refus sur 70`);
 } finally {
   try { process.kill(-serveur.pid, "SIGKILL"); } catch { /* déjà parti */ }
   try { process.kill(-serveur2.pid, "SIGKILL"); } catch { /* déjà parti */ }

@@ -493,13 +493,32 @@ base pas encore migrée garde l'inscription dans la base et le DIT au
 journal. `verifier-le-frein` rejoue chacune de ces scènes ; le frein de
 production y échoue treize fois.
 
+Une seconde relecture, sur la refonte elle-même, a encore trouvé : un essai
+refusé par le couple comptait pour l'adresse (quatre cents essais d'un voisin
+sur UN compte la poussaient au-delà de ses gratuits) ; un délai par adresse
+faisait attendre tous les voisins pour gêner un attaquant naïf (il est
+retiré : l'adresse n'a plus qu'un mur, mille essais VRAIMENT jugés) ; un mot
+de passe vide, refusé sans calcul, comptait quand même — mille demandes
+vides fermaient l'adresse à tous (il se refuse maintenant avant le frein) ;
+une adresse IPv6 se comptait seule, quand une ligne choisit la sienne dans
+un bloc de 64 bits ; et vingt inscriptions par quart d'heure pour tout un
+quartier, c'était un lancement de bêta refusé (cent). La limite qui reste
+est écrite dans `frein.ts` : derrière une MÊME adresse d'opérateur, un voisin
+qui vise le compte du propriétaire le ferme, à cette adresse, un quart
+d'heure — jamais une session ouverte.
+
 **Un banc doit lire ce qu'il prétend garder.** La même relecture a pris mes
 propres bancs : la section « changer d'adresse annoncée » envoyait aussi
 « x-real-ip », qui passe devant — elle ne lisait jamais « x-forwarded-for »,
 et revenir au premier élément y restait vert ; « personne d'autre que la
 plateforme » essayait l'appel en visiteur anonyme, et c'est la TABLE qui
 refusait — sans la révocation, vert encore. On lit maintenant le DROIT sur
-la fonction, avec une fonction témoin laissée ouverte. Et la fenêtre, éprouvée
+la fonction, avec une fonction témoin laissée ouverte. « N'écrit plus une
+ligne » lisait la table d'un coup, sous le plafond de mille lignes du faux
+nuage : « 823 → 823 » quoi qu'il arrive — la leçon « la vérité d'un harnais
+se lit page par page », écrite plus haut, refaite par un harnais neuf. Et
+« la base muette prend le relais » acceptait un 401, la réponse exacte d'une
+plateforme sans frein du tout. Et la fenêtre, éprouvée
 sur un vrai PostgreSQL, attendait d'abord DANS la transaction, où `now()` ne
 bouge pas : la règle neuve et son témoin y échouaient ensemble.
 

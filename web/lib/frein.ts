@@ -9,9 +9,9 @@
 // TROIS SEAUX PAR ESSAI DE MOT DE PASSE, comptés dans cet ordre, et l'on
 // s'arrête au premier mur :
 //
-//   · l'ADRESSE — un plafond haut (mille), qui ne protège que le serveur :
-//     chaque essai lui coûte 210 000 tours de PBKDF2. Un essai que le couple
-//     refuse ne lui coûte rien : il n'y compte pas ;
+//   · l'ADRESSE — un plafond haut (mille), sans délai, qui ne protège que le
+//     serveur : chaque essai lui coûte 210 000 tours de PBKDF2. Un essai que
+//     le couple refuse ne lui coûte rien : il n'y compte pas ;
 //   · le COUPLE adresse + compte visé — le vrai mur (soixante) : une adresse
 //     qui attaque un compte se ferme CE compte, jamais celui des voisins ;
 //   · le COMPTE, de partout — une attaque répartie sur mille adresses. Il
@@ -63,13 +63,15 @@ const PLAFOND_MS = 8000;
 // pour enfermer le propriétaire dehors.
 const MUR = 60;                 // par couple adresse + compte visé
 const LIBRES = 5;
-// Haut, et compté sur les seuls essais VRAIMENT jugés : derrière une adresse
-// d'opérateur, les échecs de centaines de téléphones s'additionnent, et un
-// voisin qui s'acharne ne doit pas pouvoir fermer la porte aux autres à peu
-// de frais. À trois cents, avec les refus du couple comptés en plus, il y
-// suffisait d'un voisin et de quelques minutes.
+// Haut, SANS DÉLAI, et compté sur les seuls essais VRAIMENT jugés : derrière
+// une adresse d'opérateur, les échecs de centaines de téléphones
+// s'additionnent, et un voisin qui s'acharne ne doit pas pouvoir faire
+// attendre les autres. À trois cents, avec les refus du couple comptés en
+// plus, il y suffisait d'un voisin et de quelques minutes ; et un délai par
+// adresse ne gênait qu'un attaquant assez naïf pour essayer en file — les
+// voisins, eux, attendaient tous. Les délais vivent dans le couple et dans
+// le compte.
 const MUR_ADRESSE = 1000;       // par adresse : la protection du serveur
-const LIBRES_ADRESSE = 300;
 const LIBRES_COMPTE = 10;       // par compte, de partout : jamais de mur
 
 // LE SEAU DU COMPTE. Il était COMMUN À TOUTE LA PLATEFORME, et c'était juste
@@ -232,7 +234,7 @@ export async function attendreLeFrein(
 
   if (nAdresse > murAdresse || nCouple > MUR) return false;
   const attente = Math.max(
-    delaiPour(nAdresse, connexion ? LIBRES_ADRESSE : LIBRES),
+    connexion ? 0 : delaiPour(nAdresse, LIBRES),
     seaux.couple ? delaiPour(nCouple, LIBRES) : 0,
     seaux.compte ? delaiPour(nCompte, LIBRES_COMPTE) : 0,
   );
@@ -353,4 +355,7 @@ export function blocDeLAdresse(brute: string): string {
 // adresse-là ferme ce compte, à cette adresse, pour le quart d'heure — pas
 // ailleurs (le Wi-Fi, une autre carte), et jamais une session déjà ouverte.
 // Les distinguer demanderait de reconnaître l'appareil d'une connexion
-// réussie à l'autre ; c'est une autre construction, pas un réglage.
+// réussie à l'autre ; c'est une autre construction, pas un réglage. De même,
+// mille essais vraiment jugés depuis une adresse la ferment pour le quart
+// d'heure, voisins compris : c'est le prix de la protection du serveur, et
+// il coûte mille calculs à qui veut le faire payer.
