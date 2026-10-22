@@ -56,6 +56,7 @@ cd web && node scripts/verifier-les-cartes.mjs  # chacun ne voit que ses cartes
 cd web && node scripts/verifier-le-parcours.mjs # une opération, jouée en entier
 cd web && node scripts/verifier-le-bilan.mjs    # le bilan comptable, sur des mois
 cd web && node scripts/verifier-le-releve.mjs   # le relevé de compte, période passée comprise
+cd web && node scripts/verifier-les-volumes.mjs # les volumes, recomptés sans TOTEM, au centime
 cd web && node scripts/verifier-la-politique.mjs # rien d'étranger ne s'exécute
 cd web && node scripts/verifier-le-frein.mjs    # le frein, attaqué en rafale
 cd web && node scripts/verifier-le-journal.mjs  # ce qui s'est passé se lit
@@ -270,6 +271,78 @@ un groupe. Les soldes d'ouverture et de clôture se LISENT dans les annonces
 de l'opérateur ; faute d'annonce, « non connu », jamais 0. **Un solde
 calculé présenté comme annoncé est un faux** ; l'écart du rapprochement se
 montre, il ne se corrige pas.
+
+**La base ne rend qu'une page.** Supabase ne rend jamais plus de mille
+lignes par réponse, QUOI QU'ON LUI DEMANDE. Le bilan et le relevé
+demandaient « jusqu'à vingt mille » : sur la vraie base, ils s'arrêtaient à
+mille et se disaient incomplets dès qu'une caisse passait mille SMS sur la
+période. Aucun harnais ne pouvait le voir — le faux nuage, lui, rendait tout
+ce qu'on lui demandait. Il plafonne maintenant comme la vraie base
+(`PLAFOND_LIGNES`, mille par défaut), comprend le décalage, et les lectures
+d'une période se font page par page (`lireToutesLesPages`, `toutes`).
+**Une imitation plus généreuse que l'original cache le défaut** : c'est la
+caisse trop sage, rejouée sur le serveur.
+
+**La vérité d'un harnais se lit page par page, elle aussi.** Le jour où le
+faux nuage a plafonné, `verifier-le-releve` a échoué onze fois : « 1 243
+mouvements, la vérité en attend 3 ». Le relevé avait raison ; c'était la
+vérité du harnais, lue d'un coup, qui n'avait plus que mille lignes.
+`verifier-l-historique` lisait la sienne de la même façon. Et
+`verifier-les-dates` choisit « du 5 au 9 du mois dernier » mais ne semait
+que quarante jours : à partir du 16 du mois, ces jours étaient vides, et il
+échouait sur `main` comme ailleurs. Il sème maintenant jusqu'aux jours qu'il
+choisit. **Un témoin qui dépend du jour où on le lance ne témoigne qu'à
+moitié.**
+
+`verifier-les-volumes` garde l'écran VOLUMES (il remplace l'Analyse, qui ne
+comptait que l'argent REÇU, sur sept jours, parmi les mille derniers SMS :
+sur la vraie base, 22 % des entrées et toutes les sorties lui échappaient).
+Le dictionnaire des chiffres a été validé par le propriétaire avant une
+ligne de code ; il est écrit en tête de `noyau/volumes.ts`, et le relevé suit
+les mêmes règles (`sansDoublons`, `repereDeSolde`). Le harnais sème six mois
+(5 501 SMS, les pièges de la vraie base compris : l'avis en double, le
+virement des commissions, un transfert entre deux cartes, un SMS relevé
+trois jours après son émission, une opération perdue), RECOMPTE tout avec
+ses propres règles — sans importer une ligne du noyau — et exige le centime
+sur sept périodes, le relevé, le bilan, l'écran à quatre largeurs. Ses
+témoins (la lecture d'un coup, l'ancienne Analyse) échouent. Sur la vraie
+base, un recomptage indépendant de l'export et le calcul tombent d'accord au
+centime, mois par mois.
+
+**Les frais que la carte paie sont ceux de ses sorties.** Le relevé
+retranchait aussi les « charges » d'un retrait Orange — payées par le
+CLIENT : le contrôle des soldes montrait un écart de leur taille. La suite
+des soldes (`flux.ts`) le savait déjà ; deux règles pour un même chiffre,
+c'est un écart qui attend.
+
+**Le virement des commissions MTN : trois SMS, une entrée.** Deux d'entre
+eux viennent du compte des commissions et se lisaient comme des sorties de
+la carte, avec 248 F pour solde. Le boîtier les range en « doublon »
+(`RE_VIREMENT_DES_COMMISSIONS`, `du_compte_des_commissions`) ; la plateforme
+écarte ceux que la base porte encore (`duCompteDesCommissions`).
+
+**Une maquette se montre à la taille où on la regarde.** La première
+maquette des Volumes était une image de 6 000 pixels de haut : sur le
+téléphone du propriétaire, illisible — « je n'arrive à rien voir ». Puis
+« trop de texte », puis « pas assez visuel ». Ce qu'il a validé : une image
+par écran de téléphone, des barres et des anneaux, des mots qui ne sont que
+des titres.
+
+**Un nom fabriqué à l'exécution n'existe pas pour Tailwind.** Les heures de
+pointe sont sorties blanches : `var(--color-pointe-${n})` n'est jamais écrit
+en entier dans le source, et la variable n'était pas émise. Tous les
+chiffres étaient justes, le banc vert — c'est la capture qui l'a montré.
+
+**« Rien ne déborde » ne voit pas un nom qui sort de SA pastille.** À 320
+points, « Semaine » passait sous « Mois » et « 6 mois » tenait sur deux
+lignes ; sur le téléphone, « Sema… », et sous le graphe du mois « 1.. » au
+lieu de « 10 ». La page ne débordait pas d'un point : harnais vert, capture
+fausse. Les pastilles partent maintenant de la largeur de leur nom, les
+repères du graphe vivent sous la rangée, et le harnais mesure chaque nom
+dans sa pastille — l'ancienne rangée y échoue, même à 390 points. Un
+débordement s'annonçait aussi « 15 px » sans dire où : il NOMME maintenant
+ce qui ne sait pas se faire plus étroit (c'était le total d'un anneau, un
+nombre qui ne se coupe pas), au lieu de ce qui dépasse.
 
 `verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
 lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante

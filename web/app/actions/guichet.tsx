@@ -168,7 +168,7 @@ export function Guichet({
         <section className="grid grid-cols-2 gap-2 lg:grid-cols-1">
           {[
             { href: "/encaissements", l: t.smsRecus, Icone: IconInbox },
-            { href: "/analyse", l: t.analyse, Icone: IconChart },
+            { href: "/volumes", l: t.analyse, Icone: IconChart },
             { href: "/ussd", l: t.codeUssd, Icone: IconHash },
             { href: "/beneficiaires", l: textesBeneficiaires[langue].titre, Icone: IconPersonnes },
           ].map(({ href, l, Icone }) => (

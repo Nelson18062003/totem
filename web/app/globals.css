@@ -43,6 +43,25 @@
   --color-negative: #c00f0c;         /* débit — 5,9:1 */
   --color-alert: #975102;            /* attente — 4,6:1 */
 
+  /* Les dessins des Volumes. Les barres : le vert des entrées, un rouge
+     adouci pour les sorties (le rouge du texte, en aplat, crie). Les
+     familles des anneaux : quatre teintes validées ensemble pour les
+     daltoniens (bleu, aqua, violet, rose) — la couleur suit la famille,
+     jamais le rang. Le bleu des heures de pointe : une seule teinte, du
+     clair au foncé. Jamais en texte : à côté du texte, un point. */
+  --color-entree: #14ae5c;
+  --color-sortie: #e0473f;
+  --color-famille-argent: #2a78d6;
+  --color-famille-especes: #6250d6;
+  --color-famille-transferts: #1baf7a;
+  --color-famille-commissions: #e87ba4;
+  --color-pointe-0: #eef4fc;
+  --color-pointe-1: #cfe0f6;
+  --color-pointe-2: #9ec1ee;
+  --color-pointe-3: #5f98e2;
+  --color-pointe-4: #2a78d6;
+  --color-pointe-5: #1a5aa8;
+
   /* Couleurs opérateur — ce sont des données, pas la marque. Autorisées en
      liseré, pastille ou point (≤ 4 px), jamais en aplat de fond ni en texte. */
   --color-op-mtn: #ffcc00;

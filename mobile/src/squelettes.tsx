@@ -122,7 +122,6 @@ export function SqueletteCartes({ combien = 2 }: { combien?: number }) {
   );
 }
 
-/** L'analyse : les deux totaux, le graphe, les clients. */
 export function SqueletteAnalyse() {
   return (
     <View style={{ gap: espaces.xl }}>

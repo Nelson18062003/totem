@@ -248,7 +248,18 @@ try {
   });
 
   // --- LA VÉRITÉ, DEMANDÉE AU FAUX NUAGE LUI-MÊME --------------------------------
-  const tout = await (await fetch(`${N}/rest/v1/paiements?select=*&carte=eq.${MTN_A}`)).json();
+  // Page par page : le faux nuage ne rend que mille lignes à la fois, comme la
+  // vraie base. Une vérité lue d'un coup ne voyait plus que 3 mouvements sur
+  // 1 243 — et accusait le relevé, qui avait raison.
+  const toutLire = async (q) => {
+    const lignes = [];
+    for (;;) {
+      const page = await (await fetch(`${q}&offset=${lignes.length}`)).json();
+      if (!page.length) return lignes;
+      lignes.push(...page);
+    }
+  };
+  const tout = await toutLire(`${N}/rest/v1/paiements?select=*&carte=eq.${MTN_A}&order=id.asc`);
   const jourDe = (l) => jourLocal(l.emis_le || l.recu_le);
   const instant = (l) => Date.parse(l.emis_le || l.recu_le);
   const dansLaPeriode = tout.filter((l) => jourDe(l) >= de && jourDe(l) <= a);
@@ -288,11 +299,13 @@ try {
     .toISOString();
   const jusquaBase = new Date(Date.parse(`${decaler(a, 2)}T00:00:00Z`) + 7 * 86400000)
     .toISOString();
+  // Bornée, elle se lit page par page, comme la lecture d'aujourd'hui : d'un
+  // coup, la base n'en rendrait que mille, et ce serait l'autre défaut.
   const lectureAncienne = async (borneDeFin) => {
     const q = `${N}/rest/v1/paiements?select=*&recu_le=gte.${encodeURIComponent(depuisBase)}`
       + (borneDeFin ? `&recu_le=lt.${encodeURIComponent(jusquaBase)}` : "")
       + `&carte=in.${encodeURIComponent(`("${MTN_A}")`)}&order=recu_le.desc&limit=${PLAFOND}`;
-    const ls = await (await fetch(q)).json();
+    const ls = borneDeFin ? await toutLire(q) : await (await fetch(q)).json();
     return ls.filter((l) => jourDe(l) >= de && jourDe(l) <= a && l.montant != null
       && ARGENT.includes(l.categorie)).length;
   };
@@ -379,7 +392,7 @@ try {
     numeros.includes("677 12 34 56") && numeros.includes("677 00 09 99")
       && numeros.includes("numéro non renseigné"), numeros.join(" | "));
   const deB = lignesDe(toutes).filter((r) => r[4] === MTN_B).length;
-  const veriteB = (await (await fetch(`${N}/rest/v1/paiements?select=*&carte=eq.${MTN_B}`)).json())
+  const veriteB = (await toutLire(`${N}/rest/v1/paiements?select=*&carte=eq.${MTN_B}&order=id.asc`))
     .filter((l) => jourDe(l) >= de && jourDe(l) <= a && l.montant != null).length;
   verifier("la seconde carte MTN garde ses propres lignes", deB === veriteB, `${deB} / ${veriteB}`);
   const recap = await pdfDe(`carte=tout&de=${de}&a=${a}`, patron);

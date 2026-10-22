@@ -17,7 +17,8 @@
 // qu'il a poussé. Aucune donnée n'est inventée : sans variables, les écrans
 // sont vides et le disent.
 
-import type { Beneficiaire, Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
+import type { Beneficiaire, Categorie, Donnees, EtatTerminal, Paiement, RaccourciAppris, Sim } from "@noyau/types";
+import { duCompteDesCommissions, repereDeSolde } from "@noyau/releve";
 import { estNature } from "@noyau/natures";
 import { estCategorie, jourLocal } from "@noyau/types";
 import type { Langue } from "@noyau/langue";
@@ -138,6 +139,52 @@ async function lireEtCompter<T>(chemin: string): Promise<{ lignes: T[]; total: n
   }
 }
 
+/**
+ * TOUTES LES LIGNES d'une lecture, page après page.
+ *
+ * La base ne rend jamais plus d'une page par demande (mille lignes sur
+ * Supabase, quoi qu'on demande) : six mois de caisse en portent des
+ * milliers. Les pages se lisent dans l'ordre des identifiants — un SMS
+ * arrivé pendant la lecture prend un identifiant plus grand, il ne décale
+ * rien —, et la taille d'une page est celle que la base a VRAIMENT rendue
+ * la première fois : une base réglée plus bas ne fait sauter aucune ligne.
+ *
+ * `tronque` : la base en avait plus que `pagesMax` pages — la lecture le DIT.
+ */
+async function lireToutesLesPages<T extends { id: number }>(
+  chemin: string, pagesMax: number,
+): Promise<{ lignes: T[]; total: number | null; tronque: boolean }> {
+  const PAGE = 1000;
+  const premiere = await lireEtCompter<T>(`${chemin}&limit=${PAGE}&offset=0`);
+  let lignes = premiere.lignes;
+  const total = premiere.total;
+  const taille = lignes.length > 0 && total != null && lignes.length < total
+    ? lignes.length : PAGE;
+  let tronque = false;
+  if (total != null && total > lignes.length) {
+    const pages = Math.ceil(total / taille);
+    const lues = Math.min(pages, pagesMax);
+    tronque = pages > pagesMax;
+    const autres = await Promise.all(Array.from({ length: lues - 1 }, (_, i) =>
+      lire<T>(`${chemin}&limit=${taille}&offset=${(i + 1) * taille}`)));
+    lignes = lignes.concat(...autres);
+  } else if (total == null) {
+    // Sans total, page après page, jusqu'à une page incomplète.
+    let page = lignes;
+    let n = 1;
+    while (page.length === taille && n < pagesMax) {
+      page = await lire<T>(`${chemin}&limit=${taille}&offset=${n * taille}`);
+      lignes = lignes.concat(page);
+      n++;
+    }
+    tronque = page.length === taille && n >= pagesMax;
+  }
+  // Une ligne lue deux fois (une base qui ignore l'offset) ne compte qu'une fois.
+  const vus = new Set<number>();
+  lignes = lignes.filter((l) => (vus.has(l.id) ? false : (vus.add(l.id), true)));
+  return { lignes, total, tronque };
+}
+
 async function lire<T>(chemin: string): Promise<T[]> {
   const demo = sourceDeDemonstration.getStore();
   if (demo) return lireDansLaDemonstration(demo, chemin) as T[];
@@ -217,10 +264,14 @@ type LignePaiement = {
 // jamais : l'argent vit à Douala.
 const LOCALE: Record<Langue, string> = { en: "en-GB", fr: "fr-FR" };
 
+// Un formateur gardé : en construire un par ligne coûtait cher dès qu'une
+// lecture porte des milliers de SMS (les volumes de six mois).
+let formateurHeure: Intl.DateTimeFormat | null = null;
 function heure(ts: string): string {
-  return new Intl.DateTimeFormat("fr-FR", {
+  formateurHeure ??= new Intl.DateTimeFormat("fr-FR", {
     hour: "2-digit", minute: "2-digit", timeZone: FUSEAU,
-  }).format(new Date(ts));
+  });
+  return formateurHeure.format(new Date(ts));
 }
 
 function dateCourte(ts: string | null, langue: Langue): string {
@@ -348,13 +399,29 @@ export function dansLaDemonstration<T>(faire: () => Promise<T>): Promise<T> {
  * distant qui ignorerait un filtre (la vitrine n'en applique aucun) ne doit
  * pas faire passer le solde d'une autre carte, ou d'après, pour une ouverture.
  */
-export async function soldeAnnonceAvant(iccid: string, avant: string): Promise<number | null> {
+export async function soldeAnnonceAvant(
+  iccid: string, avant: string, numeroDeLaCarte?: string | null,
+): Promise<number | null> {
   if (!/^[A-Za-z0-9]{1,32}$/.test(iccid)) return null;
+  // Vingt, pas un : le plus récent peut être un avis en double ou un SMS du
+  // compte des commissions, dont le solde n'est pas celui de la carte.
   const lignes = await lire<LignePaiement>(
     `paiements?select=*&carte=eq.${iccid}&solde_apres=not.is.null`
-    + `&recu_le=lt.${encodeURIComponent(avant)}&order=recu_le.desc&limit=1`);
-  const l = lignes.find((x) => x.carte === iccid && x.solde_apres != null
-    && Date.parse(x.emis_le || x.recu_le) < Date.parse(avant));
+    + `&recu_le=lt.${encodeURIComponent(avant)}&order=recu_le.desc&limit=20`);
+  const l = lignes
+    .filter((x) => x.carte === iccid && x.solde_apres != null
+      && Date.parse(x.emis_le || x.recu_le) < Date.parse(avant))
+    .sort((a, b) => Date.parse(b.emis_le || b.recu_le) - Date.parse(a.emis_le || a.recu_le))
+    .find((x) => {
+      const p = {
+        soldeApres: Number(x.solde_apres),
+        categorie: (x.categorie && estCategorie(x.categorie) ? x.categorie : "message") as Categorie,
+        nature: estNature(x.nature) ? x.nature : null,
+        sens: (x.sens === "entree" ? "in" : x.sens === "sortie" ? "out" : "?") as Paiement["sens"],
+        numero: x.numero ?? "", smsBrut: x.texte,
+      };
+      return repereDeSolde(p) && !duCompteDesCommissions(p, numeroDeLaCarte);
+    });
   return l ? Number(l.solde_apres) : null;
 }
 
@@ -363,6 +430,10 @@ export function chargerTerminalDeDemonstration(langue: Langue): Promise<EtatTerm
   return sourceDeDemonstration.run(
     tablesDeDemonstration(), () => chargerTerminal(langue, { tout: true }));
 }
+
+/** Le plus de pages qu'une lecture « toutes » se permet : soixante mille
+ *  SMS. Au-delà, elle s'arrête et le dit. */
+const PAGES_MAX = 60;
 
 export async function chargerDonnees(
   langue: Langue,
@@ -415,8 +486,13 @@ export async function chargerDonnees(
   // là, sans un mot. La borne est INCLUSE : deux SMS relevés au même
   // instant, coupés par la limite, reviennent tous les deux — l'écran
   // écarte celui qu'il a déjà.
+  //
+  // `toutes` : TOUTES les lignes de la période, page après page, au lieu des
+  // `sms` plus récentes. Les volumes comptent une période entière : s'arrêter
+  // à mille lignes, c'était compter juste une semaine calme et faux un mois
+  // chargé. `smsTronques` dit si la base en avait plus que `PAGES_MAX` pages.
   bornes?: { sms?: number; recus?: number; depuis?: string; jusqua?: string;
-             avant?: string; compter?: boolean; lignes?: number },
+             avant?: string; compter?: boolean; lignes?: number; toutes?: boolean },
 ): Promise<Donnees> {
   const nSms = bornes?.sms ?? 1000;
   const nRecus = bornes?.recus ?? 1000;
@@ -454,7 +530,11 @@ export async function chargerDonnees(
     rien ? vide<LigneCarte>()
       : lire<LigneCarte>(`cartes?select=*${filtreCarte}&order=derniere_vue.desc.nullslast`),
     rien ? vide<LigneCompte>() : lire<LigneCompte>(`comptes?select=*${filtreCarte}`),
-    nSms > 0 && !rien
+    bornes?.toutes && !rien
+      ? lireToutesLesPages<LignePaiement>(
+          `paiements?select=*${filtreDate}${filtrePaiement}&order=id.asc`, PAGES_MAX)
+          .then((r) => ({ lignes: r.lignes, total: r.tronque ? r.lignes.length + 1 : r.lignes.length }))
+      : nSms > 0 && !rien
       ? (bornes?.compter
           ? lireEtCompter<LignePaiement>(
               `paiements?select=*${filtreDate}${filtrePaiement}&order=recu_le.desc&limit=${nSms}`)
@@ -707,7 +787,7 @@ export async function chargerDonnees(
   // Ce que cette réponse rapporte vraiment : `lignes` peut couper sous ce
   // qui a été lu (l'écran des cartes compte sur mille et n'en veut aucune).
   const rapportes = bornes?.lignes != null ? paiements.slice(0, bornes.lignes) : paiements;
-  const suite = nSms > 0 && !rien
+  const suite = nSms > 0 && !rien && !bornes?.toutes
     ? suiteDeLHistorique(releve.lignes, lignes, new Set(rapportes.map((p) => p.id)), nSms)
     : null;
 

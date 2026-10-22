@@ -651,8 +651,13 @@ export function useRetouche(): (f: (d: Donnees) => Donnees) => void {
  * C'est le seul endroit de l'application qui dessine un `RefreshControl` —
  * `verifier-la-roue` refuse tout autre.
  */
-export function useRoue(): ReactElement<RefreshControlProps> {
-  const { recharger } = usePartage();
+export function useRoue(
+  // Ce que le doigt relance : le cahier partagé, ou la lecture propre d'un
+  // écran qui n'y puise pas (les Volumes demandent une période entière).
+  relire?: () => Promise<unknown>,
+): ReactElement<RefreshControlProps> {
+  const partage = usePartage();
+  const recharger = relire ?? partage.recharger;
   const devant = useIsFocused();
   const [tire, setTire] = useState(false);
   const vivant = useRef(true);

@@ -68,17 +68,23 @@ async function sections(
   // UNE CARTE À LA FOIS, chacune sous son propre plafond : la limite ne mord
   // que sur SES lignes, et deux cartes chargées ne se volent pas la place.
   for (const sim of visees) {
+    // TOUTES les pages : la base n'en rend qu'une par demande (mille lignes
+    // sur Supabase), et un relevé demandé « jusqu'à vingt mille » s'arrêtait
+    // à mille. Le plafond, lui, ne borne plus que la taille du document.
     const { paiements, smsTronques: coupe } = await chargerDonnees(
       langue, { tout: false, cartes: [sim.iccid] },
-      { sms: max, recus: 0, depuis, jusqua, compter: true });
-    const siens = paiements.filter((p) => p.carte === sim.iccid);
-    const smsTronques = coupe === true;
+      { recus: 0, depuis, jusqua, toutes: true });
+    const tous = paiements.filter((p) => p.carte === sim.iccid);
+    // Rangés du plus récent au plus ancien : ce qui dépasse le plafond, ce
+    // sont les plus anciens — comme avant.
+    const siens = tous.slice(0, max);
+    const smsTronques = coupe === true || tous.length > max;
     // L'ouverture se lit d'abord dans la marge qui précède la période ; sans
     // annonce là, on demande à la base la dernière d'avant. Une lecture
     // coupée ne cherche pas plus loin : ses lignes les plus anciennes
     // manquent, et la « dernière d'avant » pourrait ne pas l'être.
     const ailleurs = dernierSoldeAvant(siens, bornes.de) == null && !smsTronques
-      ? await soldeAnnonceAvant(sim.iccid, depuis) : null;
+      ? await soldeAnnonceAvant(sim.iccid, depuis, sim.numero) : null;
     faites.push(sectionDuReleve(carteDuReleve(sim), siens, bornes, ailleurs, smsTronques));
     tronque ||= smsTronques;
   }

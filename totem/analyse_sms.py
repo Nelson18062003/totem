@@ -615,6 +615,38 @@ def avis_en_double(texte):
     return bool(texte) and bool(RE_AVIS_EN_DOUBLE.search(_normaliser(texte)))
 
 
+# --- LE VIREMENT DES COMMISSIONS de MTN -----------------------------------
+# Un agent MTN vide son compte des commissions vers son compte principal :
+# MTN envoie TROIS SMS, sous un même numéro de transaction.
+#   1. « You have successfully transferred 9000FCFA commisions to your main
+#      account 2376…. New Account balance: 248FCFA » — le compte des
+#      commissions parle ;
+#   2. « You have transferred 9000 XAF to <l'agent> (<son propre numéro>)
+#      from your mobile money account <le compte des commissions> … Your new
+#      balance: 248 XAF » — le compte des commissions encore ;
+#   3. « You have received 9000 XAF from <l'agent> (<son propre numéro>) …
+#      Your new balance: 21634 XAF » — le compte principal, enfin.
+# Sur la vraie base (août–octobre 2026), les deux premiers se lisaient comme
+# des SORTIES de la carte : 9 000 F qui entraient comptaient −9 000 F, et
+# leur « balance: 248 » passait pour le solde de la carte. Seul le troisième
+# déplace l'argent de la caisse ; les deux autres se rangent « doublon » —
+# visibles, jamais comptés, et leur solde n'est pas celui de la carte.
+RE_VIREMENT_DES_COMMISSIONS = re.compile(
+    r"successfully\s+transferred\s+[0-9][0-9.,]*\s*f?\s*cfa\s+commis+ions?\s+"
+    r"to\s+your\s+main\s+account")
+
+
+def du_compte_des_commissions(paiement, numero_de_la_carte):
+    """Ce paiement est-il le compte des commissions qui paie la carte
+    elle-même ? Une SORTIE vers le propre numéro de la carte qui a reçu le
+    SMS : le compte principal ne s'envoie pas d'argent à lui-même. Sans le
+    numéro de la carte, on ne tranche pas."""
+    if paiement is None or paiement.sens != "sortie":
+        return False
+    sien = _neuf_derniers(numero_de_la_carte)
+    return len(sien) == 9 and _neuf_derniers(paiement.numero) == sien
+
+
 # --- LA COMMISSION d'Orange -----------------------------------------------
 # « You received the commission of 1350 FCFA for transaction Cash Out … »,
 # « Vous avez reÇu commission de 18F pour la transaction Cash in … » : Orange
@@ -1033,7 +1065,8 @@ def analyser(texte, numeros=()):
     # L'avis en double de MTN et la commission d'Orange ne déplacent pas
     # l'argent de la caisse : le premier répète une opération déjà comptée,
     # la seconde va sur un compte à part.
-    if RE_AVIS_EN_DOUBLE.search(norme) or RE_COMMISSION_VERSEE.search(norme):
+    if (RE_AVIS_EN_DOUBLE.search(norme) or RE_COMMISSION_VERSEE.search(norme)
+            or RE_VIREMENT_DES_COMMISSIONS.search(norme)):
         return None
 
     # Une opération échouée ou annulée n'est pas un mouvement — pour la boîte
@@ -1208,8 +1241,9 @@ def categoriser(texte, numeros=()):
       code      — un code à usage unique (masqué)
       publicite — une réclame de l'opérateur
       illisible — le message parle d'argent, le lecteur n'a pas tout compris
-      doublon   — le second avis MTN d'une opération déjà annoncée : jamais
-                  compté (voir RE_AVIS_EN_DOUBLE)
+      doublon   — le second avis MTN d'une opération déjà annoncée, ou le
+                  compte des commissions qui parle : jamais compté (voir
+                  RE_AVIS_EN_DOUBLE, RE_VIREMENT_DES_COMMISSIONS)
       commission — la commission d'Orange, versée sur un compte à part :
                   gagnée, mais hors du solde de la caisse
       message   — un SMS quelconque (de n'importe qui)
@@ -1230,7 +1264,7 @@ def categoriser(texte, numeros=()):
     if code_a_usage_unique(texte):
         return "code"
     norme = _normaliser(texte)
-    if RE_AVIS_EN_DOUBLE.search(norme):
+    if RE_AVIS_EN_DOUBLE.search(norme) or RE_VIREMENT_DES_COMMISSIONS.search(norme):
         return "doublon"
     if RE_COMMISSION_VERSEE.search(norme):
         return "commission"

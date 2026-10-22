@@ -23,7 +23,7 @@ const routes = [
   ["/", "accueil"],
   ["/cartes", "cartes"],
   ["/encaissements", "encaissements"],
-  ["/analyse", "analyse"],
+  ["/volumes", "volumes"],
   ["/actions", "actions"],
   ["/sms", "sms"],
   ["/ussd", "ussd"],

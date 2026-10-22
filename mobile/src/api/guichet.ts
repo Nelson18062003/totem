@@ -9,6 +9,7 @@ import * as Coffre from "./coffre";
 import type { Donnees } from "@noyau/types";
 import { LANGUE_DEFAUT, langueDe, type Langue } from "@noyau/langue";
 import type { ReponseEssai } from "@noyau/essai";
+import type { ReponseVolumes } from "@noyau/volumes";
 import { enchainementLu, type Enchainement } from "@noyau/deroule";
 import { textesConnexion } from "@noyau/textes/connexion";
 
@@ -833,6 +834,26 @@ export function lienCoordonnees(iccid: string): Promise<{ url: string }> {
  *  l'afficher. La signature couvre le nombre de jours. */
 export function lienBilan(jours: number): Promise<{ url: string }> {
   return demander(`/api/bilan/lien?jours=${jours}`);
+}
+
+/** LES VOLUMES d'une période — le même calcul que la page du site
+ *  (`noyau/volumes.ts`), fait par la plateforme sur TOUTE la période. */
+export async function lireVolumes(
+  demande: { periode: string; jour?: string; de?: string; a?: string; carte?: string; qui?: string | null },
+  renoncer?: AbortSignal,
+): Promise<ReponseVolumes> {
+  const langue = await langueDeLEcran();
+  const q = new URLSearchParams({ periode: demande.periode });
+  for (const k of ["jour", "de", "a", "carte", "qui"] as const) {
+    const v = demande[k];
+    if (v) q.set(k, v);
+  }
+  const r = await demander<unknown>(`/api/volumes?${q}`, {}, { langue, renoncer });
+  const x = r as Partial<ReponseVolumes> | null;
+  if (!x || typeof x !== "object" || !x.volumes || !Array.isArray(x.cartes)) {
+    throw versErreurGuichet(new Panne("incomplete"), langue);
+  }
+  return x as ReponseVolumes;
 }
 
 /** Un lien signé vers un RELEVÉ DE COMPTE : une carte (ou « tout »), deux

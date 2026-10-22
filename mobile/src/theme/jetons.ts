@@ -44,7 +44,24 @@ export const couleurs = {
   // Couleurs opérateur — des données, jamais la marque
   opMtn: "#ffcc00",
   opOrange: "#ff7900",
+
+  // Les dessins des Volumes — les pendants de `globals.css`. Les barres :
+  // le vert des entrées, un rouge adouci pour les sorties. Les familles des
+  // anneaux : quatre teintes validées ensemble pour les daltoniens. Les
+  // heures de pointe : un seul bleu, du clair au foncé.
+  entree: "#14ae5c",
+  sortie: "#e0473f",
+  familleArgent: "#2a78d6",
+  familleEspeces: "#6250d6",
+  familleTransferts: "#1baf7a",
+  familleCommissions: "#e87ba4",
+  alerteFond: "#fbf3e6",
+  alerteTrait: "#e5cfae",
+  positifFond: "#e2f4e9",
 } as const;
+
+/** Les six teintes des heures de pointe, du calme au chargé. */
+export const TEINTES_POINTE = ["#eef4fc", "#cfe0f6", "#9ec1ee", "#5f98e2", "#2a78d6", "#1a5aa8"] as const;
 
 // L'échelle typographique de la charte, ramenée à l'application.
 export const textes = {

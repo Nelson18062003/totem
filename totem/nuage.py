@@ -30,7 +30,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
-from .analyse_sms import analyser, categoriser, commission_versee
+from .analyse_sms import (analyser, categoriser, commission_versee,
+                          du_compte_des_commissions)
 from .textes import t
 from .version import version
 
@@ -629,6 +630,17 @@ class Nuage:
             cat = categoriser(texte, numeros=numeros)
         except Exception:
             p, cat = None, "message"
+        # Le compte des commissions qui paie la carte : vu de la carte, ce
+        # n'est pas une sortie, et son solde n'est pas le sien (voir
+        # RE_VIREMENT_DES_COMMISSIONS).
+        commissions = False
+        try:
+            commissions = du_compte_des_commissions(
+                p, self.journal.numero_de_la_carte(iccid) if iccid else None)
+        except Exception:
+            commissions = False
+        if commissions:
+            cat = "doublon"
         # La commission d'Orange n'est pas un mouvement de la caisse (pas de
         # montant), mais elle est gagnée : son montant va dans « commission ».
         commission = p.commission if p else None
@@ -653,7 +665,7 @@ class Nuage:
             "tiers": p.tiers if p else None,
             "numero": (p.numero if p else None),
             "reference": (p.reference if p else None),
-            "solde_apres": (p.solde_apres if p else None),
+            "solde_apres": (p.solde_apres if p and not commissions else None),
             "frais": (p.frais if p else None),
             "commission": commission,
             "montant_brut": (p.montant_brut if p else None),

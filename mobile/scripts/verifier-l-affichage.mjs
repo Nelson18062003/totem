@@ -418,7 +418,7 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     ["plus", "/plus", /(Accounts|Comptes)/],
     ["comptes", "/comptes", /MTN|Orange/],
     ["reglages", "/reglages", /.+/],
-    ["bilan", "/analyse", /.+/],
+    ["volumes", "/volumes", /(Money in|Entrées)/],
     ["beneficiaires", "/beneficiaires", /.+/],
     ["cadran", "/ussd", /.+/],
   ]) {

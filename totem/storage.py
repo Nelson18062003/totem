@@ -750,6 +750,17 @@ class Journal:
                 "FROM cartes WHERE iccid = ?", (iccid,)).fetchone()
         return tuple(ligne) if ligne else ("", "")
 
+    def numero_de_la_carte(self, iccid):
+        """Le numéro inscrit d'UNE carte, ou None. C'est lui qui reconnaît le
+        compte des commissions payant la carte elle-même."""
+        if not iccid:
+            return None
+        with self.verrou:
+            ligne = self.conn.execute(
+                "SELECT numero FROM cartes WHERE iccid = ? AND numero IS NOT NULL"
+                " AND numero <> '' LIMIT 1", (iccid,)).fetchone()
+        return ligne[0] if ligne else None
+
     def numeros_declares(self):
         """Tous les numéros inscrits, quelle que soit la carte. C'est avec eux
         qu'on décide de quel côté d'un transfert se trouve le terminal."""

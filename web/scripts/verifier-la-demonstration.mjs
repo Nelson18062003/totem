@@ -186,7 +186,7 @@ try {
     // « Ce qui s'est passé » (/journal) est le journal de TOTEM : réservé à
     // qui administre. La vitrine y est renvoyée à l'accueil (307), comme
     // n'importe quel inscrit — vérifié plus bas.
-    for (const page of ["/", "/cartes", "/encaissements", "/actions", "/analyse"]) {
+    for (const page of ["/", "/cartes", "/encaissements", "/actions", "/volumes"]) {
       const p = await appel(B, page, { cookie });
       const corps = await p.text();
       verifier(`la page ${page} ne montre aucune vraie carte`,
