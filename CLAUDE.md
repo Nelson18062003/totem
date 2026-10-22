@@ -1411,6 +1411,10 @@ reposent maintenant tant qu'un réglage essentiel est refusé
 carte sur le réseau, annonces USSD — `etat_apres_silence`) et répare le
 réglage tombé, et le journal reçoit la CAUSE de chaque échec, sur les deux
 chemins, ainsi que chaque relance réussie et le port où le modem est revenu.
+Et trois codes de suite sans réponse sur une carte, la sonde n'ayant rien
+trouvé, font ce que le propriétaire faisait à la main : relancer le modem
+(`relanceur`, `silences`) — sur le même boîtier, les trois MTN répondaient
+pendant qu'Orange se taisait, ce n'était pas le réseau.
 `tests/test_reglages_du_modem.py` porte le témoin : la mise en route d'avant
 laisse les annonces éteintes. Un modem muet au premier « AT » n'est pas
 « en UCS2 » : l'ancien code le concluait.

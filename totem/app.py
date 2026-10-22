@@ -57,7 +57,7 @@ ATTENTE_DES_ACCUSES = 20
 # d'ouvrir l'application. Son âge se mesure sans l'heure murale du Pi (voir
 # `age_de_la_sonnerie`).
 SONNERIE_PERIMEE_S = 30 * 60
-from .pilotage import Pilotage, RE_VARIABLE
+from .pilotage import SILENCES_AVANT_RELANCE, Pilotage, RE_VARIABLE
 from .sante import Sante, sauvegarder_journal
 from .textes import langue_active, t
 from .version import version
@@ -592,7 +592,8 @@ class Robot:
             # dans la base, ce fil les exécute sur les vraies SIM.
             self.pilotage = Pilotage(self.nuage, self.comptes, self.journal,
                                      programmeur=self._recu_apres_coup,
-                                     guichets=self._guichets_xafe())
+                                     guichets=self._guichets_xafe(),
+                                     relanceur=self._relancer_apres_silences)
             self.pilotage.demarrer()
         # XAFe démarre même sans Bonzini : une destination n'attend pas
         # l'autre. Et le guichet non plus : les SMS que XAFe confie au
@@ -603,7 +604,8 @@ class Robot:
             if self.pilotage is None:
                 self.pilotage = Pilotage(None, self.comptes, self.journal,
                                          programmeur=self._recu_apres_coup,
-                                         guichets=self._guichets_xafe())
+                                         guichets=self._guichets_xafe(),
+                                         relanceur=self._relancer_apres_silences)
                 self.pilotage.demarrer()
         if bloquant:
             self._boucle_messages()
@@ -1067,6 +1069,12 @@ class Robot:
                 f"erreur USSD {compte.libelle} : {e}"
                 + (f" — {detail}" if detail else ""))
             self._cloturer_session(f"⚠️ [{echap(compte.libelle)}] {echap(e)}")
+            if (isinstance(e, ReponseNonRecue)
+                    and compte.a_relancer_apres_silences(SILENCES_AVANT_RELANCE)):
+                self.journal.evenement(
+                    f"{SILENCES_AVANT_RELANCE} codes de suite sans réponse "
+                    f"({compte.libelle}) : le modem est relancé")
+                self._relancer_apres_silences(compte)
             return
         except Exception as e:
             self.journal.evenement(f"erreur USSD {compte.libelle} : {e}")
@@ -3586,6 +3594,24 @@ class Robot:
                     else t("all settings accepted", "tous les réglages pris"))
         return t(f"modem restarted ({compte.libelle}): {ou}; {reglages}",
                  f"modem relancé ({compte.libelle}) : {ou} ; {reglages}")
+
+    def _relancer_apres_silences(self, compte):
+        """Ce que le propriétaire faisait à la main. Trois codes sans réponse
+        de suite, et la sonde n'a rien trouvé à réparer : le modem est relancé
+        pour de bon (AT+CFUN, port rouvert, réglages vérifiés), et on dit
+        pourquoi."""
+        self.transport.envoyer(
+            t(f"⚠️ [{echap(compte.libelle)}] {SILENCES_AVANT_RELANCE} codes "
+              "in a row went out without a reply from the network, and the "
+              "modem reports nothing wrong. Restarting it.",
+              f"⚠️ [{echap(compte.libelle)}] {SILENCES_AVANT_RELANCE} codes "
+              "de suite sont partis sans réponse du réseau, et le modem ne "
+              "signale rien. Je le relance."), canal="alertes")
+        # Pas « automatique » : ce mode espace ses essais et se tait quand
+        # il renonce — après avoir annoncé « je relance », ce serait faux.
+        # Trois silences de plus (une minute et demie au moins) sont déjà
+        # l'espacement de la relance suivante.
+        self._redemarrer_modem(compte, canal="alertes")
 
     def _annoncer_retour(self, compte, canal="alertes"):
         """Dit que le modem répond de nouveau, si on avait annoncé le contraire.

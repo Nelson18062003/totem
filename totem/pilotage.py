@@ -142,6 +142,8 @@ DEMANDE_PERIMEE_S = 60
 # XAFe en est : un code de vérification parti des heures après la demande
 # arrive chez quelqu'un qui ne l'attend plus.
 QUI_COMPOSENT = ("ussd", "ussd_reponse", "sms_xafe")
+# Codes partis sans réponse, de suite, avant de relancer le modem.
+SILENCES_AVANT_RELANCE = 3
 
 # PLUSIEURS GUICHETS, UNE SEULE DISTRIBUTION.
 #
@@ -178,7 +180,7 @@ class Pilotage:
     """Relève les demandes de l'application web et les exécute."""
 
     def __init__(self, nuage, comptes, journal, pause=PAS_REPOS,
-                 programmeur=None, guichets=()):
+                 programmeur=None, guichets=(), relanceur=None):
         self.nuage = nuage
         # Le premier est la plateforme ; les autres (XAFe) ne reçoivent que
         # relever / réclamer / rendre compte. Un guichet absent (None) ne
@@ -190,6 +192,10 @@ class Pilotage:
         # Inscrit un reçu à fabriquer pour une ligne du journal (le robot le
         # fournit). None : ce terminal ne fabrique pas de reçus.
         self.programmeur = programmeur
+        # Relance le modem d'un compte (le robot le fournit) quand trois
+        # codes de suite sont partis sans réponse et que la sonde n'a rien
+        # trouvé à réparer. None : on se contente de le dire au journal.
+        self.relanceur = relanceur
         self._marche = False
         # Le dernier signe de vie de chaque session web, par carte — pour
         # raccrocher celle qu'on a abandonnée. Ce n'est PAS le registre de qui
@@ -1438,12 +1444,35 @@ class Pilotage:
             f"({compte.libelle}){suite}",
             f"guichet à distance : parti, sans réponse du réseau à temps "
             f"({compte.libelle}){suite}"))
+        self._relancer_si_silences(compte)
         return t(
             "Your request went out, but the network did not answer in time: "
             "it may have gone through. Check your SMS before trying again.",
             "Votre demande est partie, mais le réseau n'a pas répondu à "
             "temps : elle a pu aboutir. Regardez vos SMS avant de "
             "recommencer.", langue=langue), "fini"
+
+    def _relancer_si_silences(self, compte):
+        """Trois silences de suite sur une carte, rien à réparer : on fait
+        ce que le propriétaire faisait à la main — relancer le modem — et
+        on le dit. Le 22 octobre, la carte Orange a répondu « sans réponse
+        du réseau » à huit codes sur trois heures, pendant que les trois
+        MTN du même boîtier répondaient : ce n'était pas le réseau."""
+        juge = getattr(compte, "a_relancer_apres_silences", None)
+        if juge is None or not juge(SILENCES_AVANT_RELANCE):
+            return
+        self.journal.evenement(t(
+            f"{SILENCES_AVANT_RELANCE} codes in a row without a reply "
+            f"({compte.libelle}): the modem is being restarted",
+            f"{SILENCES_AVANT_RELANCE} codes de suite sans réponse "
+            f"({compte.libelle}) : le modem est relancé"))
+        if self.relanceur is None:
+            return
+        try:
+            self.relanceur(compte)
+        except Exception as e:
+            self.journal.evenement(t(f"restart ({compte.libelle}): {e}",
+                                     f"relance ({compte.libelle}) : {e}"))
 
     def _noter_session(self, compte, qui):
         with self._garde:

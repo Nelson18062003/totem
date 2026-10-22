@@ -68,6 +68,12 @@ class Compte:
         self.titulaire = None
         self.dernier_menu = ""
         self.echecs = 0                 # compteur du chien de garde
+        # Codes partis SANS réponse du réseau, de suite. Remis à zéro par
+        # toute réponse reçue. Trois de suite, sans réglage à réparer : le
+        # modem se relance (voir `Pilotage.relanceur`) — ce que le
+        # propriétaire faisait à la main en relançant tout le robot.
+        self.silences = 0
+        self.dernier_silence = None     # ce que la sonde a lu la dernière fois
         # Une panne de modem s'annonce une fois, pas à chaque tour de
         # surveillance. `panne_signalee` retient qu'on l'a déjà dite ;
         # `prochaine_tentative` espace les essais au lieu de marteler un
@@ -173,8 +179,18 @@ class Compte:
         rien au menu, qui reste à son titulaire ; un menu que le réseau
         avait déjà refermé (`MenuReferme`) n'a rien à raccrocher."""
         try:
-            return envoi(charge)
+            resultat = envoi(charge)
         except ReponseRefusee:
+            raise
+        except ReponseNonRecue:
+            self.silences += 1
+            try:
+                self.modem.ussd_annuler()
+            except Exception:
+                pass
+            self.session_ouverte = False
+            self.titulaire = None
+            self.dernier_menu = ""
             raise
         except MenuReferme:
             self.session_ouverte = False
@@ -190,6 +206,8 @@ class Compte:
             self.titulaire = None
             self.dernier_menu = ""
             raise
+        self.silences = 0           # le réseau a répondu : on repart de zéro
+        return resultat
 
     def _suite(self, etat, reponse, qui=None):
         self.session_ouverte = etat == USSD_OUVERTE
@@ -203,12 +221,27 @@ class Compte:
         lève jamais, et rend "" pour un modem qui ne sait pas se sonder
         (simulateur, tests)."""
         sonde = getattr(self.modem, "etat_apres_silence", None)
+        self.dernier_silence = None
         if sonde is None:
             return ""
         try:
-            return phrase_du_silence(sonde())
+            etat = sonde()
         except Exception as e:
             return t(f"modem not answering ({e})", f"modem muet ({e})")
+        self.dernier_silence = etat
+        if etat.get("repare"):
+            self.silences = 0       # la cause est trouvée et réparée
+        return phrase_du_silence(etat)
+
+    def a_relancer_apres_silences(self, seuil):
+        """Trois codes sans réponse de suite, et la sonde n'a rien trouvé à
+        réparer : le modem cache un état qu'on ne sait pas lire, et une
+        relance complète est ce qui le dissipe. Rend True une fois, et
+        repart de zéro."""
+        if self.silences < seuil:
+            return False
+        self.silences = 0
+        return True
 
     def reglages_refuses(self):
         """Les réglages que le modem a refusés à sa dernière mise en route

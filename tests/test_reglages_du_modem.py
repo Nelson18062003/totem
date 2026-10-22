@@ -346,5 +346,77 @@ class TestLaCauseVaAuJournal(EnFrancais):
         self.assertNotIn("677123456", echecs[0])
 
 
+# =============================================================================
+class ModemMuetSain(ModemMuet):
+    """Le réseau ne répond jamais, et la sonde ne trouve RIEN à réparer :
+    annonces actives, carte sur le réseau, bon alphabet."""
+
+    def etat_apres_silence(self):
+        return {"port": "/dev/ttyUSB12", "annonces": True, "enregistre": True,
+                "signal": 18, "alphabet": "GSM", "repare": False, "refuses": []}
+
+
+class TestTroisSilencesRelancentLeModem(EnFrancais):
+    """Ce que le propriétaire faisait à la main — relancer — le robot le fait
+    au troisième code parti sans réponse, si la sonde n'a rien trouvé."""
+
+    def _pilotage(self, modem):
+        compte = FauxCompte([])
+        compte.modem = modem(compte)
+        journal = FauxJournal()
+        relances = []
+        p = Pilotage(FauxNuage(), [compte], journal, relanceur=relances.append)
+        return p, compte, journal, relances
+
+    def _composer(self, p):
+        p._traiter({"id": 1, "type": "ussd",
+                    "parametres": {"code": "#148*5#", "carte": FausseCarte.iccid}})
+
+    def test_au_troisieme_silence_sans_reparation(self):
+        p, compte, journal, relances = self._pilotage(ModemMuetSain)
+        for _ in range(2):
+            self._composer(p)
+        self.assertEqual(relances, [])
+        self.assertEqual(compte.silences, 2)
+        self._composer(p)
+        self.assertEqual(relances, [compte])
+        self.assertEqual(compte.silences, 0)       # on repart de zéro
+        self.assertTrue(any("3 codes de suite sans réponse" in e
+                            for e in journal.evenements), journal.evenements)
+
+    def test_un_reglage_repare_ne_compte_pas_comme_silence(self):
+        """La sonde a trouvé et reposé le réglage : la cause est connue, le
+        modem n'a pas à être relancé pour cela."""
+        p, compte, journal, relances = self._pilotage(ModemMuet)   # repare=True
+        for _ in range(5):
+            self._composer(p)
+        self.assertEqual(relances, [])
+        self.assertEqual(compte.silences, 0)
+
+    def test_une_reponse_recue_remet_le_compte_a_zero(self):
+        p, compte, journal, relances = self._pilotage(ModemMuetSain)
+        self._composer(p)
+        self._composer(p)
+        # Le réseau répond une fois : le modem scripté d'origine.
+        from tests.test_pilotage import ModemScripte
+        compte.reponses = [("fermee", "Votre solde est de 1000 FCFA")]
+        compte.modem = ModemScripte(compte)
+        self._composer(p)
+        self.assertEqual(compte.silences, 0)
+        compte.modem = ModemMuetSain(compte)
+        self._composer(p)
+        self._composer(p)
+        self.assertEqual(relances, [])            # deux, pas trois
+
+    def test_sans_relanceur_on_le_dit_seulement(self):
+        compte = FauxCompte([])
+        compte.modem = ModemMuetSain(compte)
+        journal = FauxJournal()
+        p = Pilotage(FauxNuage(), [compte], journal)
+        for _ in range(3):
+            self._composer(p)
+        self.assertTrue(any("le modem est relancé" in e for e in journal.evenements))
+
+
 if __name__ == "__main__":
     unittest.main()
