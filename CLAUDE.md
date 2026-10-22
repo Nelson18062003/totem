@@ -417,6 +417,14 @@ contenu, puis mesurait « tel quel » quand il ne le reconnaissait pas. Un
 écran qu'on ne reconnaît pas ÉCHOUE maintenant, en disant ce qu'il y avait à
 sa place ; l'export d'avant, rejoué, en est le témoin.
 
+**Un point de trop, et le défilement n'avait pas lieu.** En deux colonnes
+(paysage, pliable ouvert), la puce de la carte retenue dépassait sa rangée
+d'un point — son cadre coupé —, et `main` échouait déjà là. La rangée n'a
+pas de marge en deux colonnes : la puce était amenée au bord EXACT, un
+arrondi la laissait dehors, et la tolérance d'un point jugeait « déjà en
+vue » au lieu de défiler. Elle est visée avec deux points d'air, et jugée
+sans tolérance. Le banc dit maintenant DE COMBIEN elle sort.
+
 `verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
 lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante
 essais lancés ensemble lisaient donc tous un compteur à zéro. Mesuré — 999 ms

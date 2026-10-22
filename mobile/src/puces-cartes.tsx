@@ -61,9 +61,14 @@ export function PucesCartes({ cartes, active, marge, langue, pleine = false,
     const l = largeur.current;
     if (!p || !l) return;
     const gauche = p.x - decalage.current;
+    // Deux points d'AIR : en deux colonnes, la rangée n'a pas de marge, et
+    // une puce amenée au bord EXACT en dépassait d'un point après arrondi —
+    // son cadre coupé, et la tolérance d'un point laissait faire au lieu de
+    // défiler. Visée avec de l'air, jugée sans tolérance.
+    const air = 2;
     // Déjà en vue : on ne bouge rien sous le doigt.
-    if (gauche >= bord - 1 && gauche + p.w <= l - bord + 1) return;
-    const x = gauche + p.w > l - bord ? p.x + p.w - l + bord : p.x - bord;
+    if (gauche >= bord && gauche + p.w <= l - bord) return;
+    const x = gauche + p.w > l - bord ? p.x + p.w - l + bord + air : p.x - bord - air;
     rangee.current?.scrollTo({ x: Math.max(0, x), animated: true });
   };
   useEffect(() => amener.current(), [active, bord]);
