@@ -614,6 +614,29 @@ class ModemSerie:
             m = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
         return bool(m and m.group(1) == "5")
 
+    def enregistre(self):
+        """La carte est-elle sur un réseau ? +CREG: <n>,<stat> — 1 (chez
+        soi) ou 5 (en itinérance) : oui. 0, 2 (en recherche), 3 (refusée),
+        4 : non. Illisible : None. Pas de mémorisation : c'est le signe qu'on
+        surveille, pas une étiquette."""
+        with self.verrou:
+            m = RE_CREG.search(self._envoyer("AT+CREG?", delai=2))
+        if not m:
+            return None
+        return m.group(1) in ("1", "5")
+
+    def rechercher_le_reseau(self):
+        """Fait chercher le réseau à nouveau, comme on bascule un téléphone en
+        mode avion et retour : la radio s'éteint (AT+CFUN=4) et se rallume
+        (AT+CFUN=1). Le modem reste sur le bus USB — rien à rouvrir, rien à
+        régler à nouveau —, et une carte en itinérance qui s'était arrêtée
+        sur « pas de service » repart en quête d'un réseau qui l'accepte."""
+        with self.verrou:
+            self._envoyer("AT+CFUN=4", delai=10)
+            time.sleep(2)
+            self._envoyer("AT+CFUN=1", delai=10)
+        self._oublier()
+
     def redemarrer(self):
         """Relance le modem, puis **rouvre le port**.
 

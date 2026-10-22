@@ -1430,6 +1430,22 @@ journal avec sa cause brute et la sonde, et compte comme un silence.
 laisse les annonces éteintes. Un modem muet au premier « AT » n'est pas
 « en UCS2 » : l'ancien code le concluait.
 
+**« Signal inconnu » des heures durant, ce n'était pas le robot qui
+ramenait la carte, c'était le temps.** Les captures du propriétaire :
+Orange ·4177 à « signal inconnu » depuis 09 h 34, relance de tout le robot,
+la carte de retour — et les quatre cartes « en itinérance sur Orange F »,
+« sur SFR » : le boîtier est en France, les cartes camerounaises empruntent
+des antennes françaises, et un réseau visité qui lâche une carte peut la
+laisser sur « pas de service » longtemps. Rien dans le robot ne touchait à
+la radio ; la relance n'y faisait rien, le temps passait. Le robot regarde
+maintenant chaque minute si la carte est sur un réseau (`enregistre`,
++CREG) ; hors réseau trois minutes, il la passe en mode avion et retour
+(`rechercher_le_reseau`, AT+CFUN=4 puis 1 — sans quitter le bus USB), le
+dit, relance le modem si cela ne suffit pas, et annonce le retour
+(`_veiller_le_reseau`). Et un code refusé « no network service » se retente
+deux fois à cinq secondes (`_envoyer_avec_reprises`) : rien n'est parti,
+et le changement de réseau ne dure que quelques secondes.
+
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai
 nom de client précédé de « ESSAI » reste le nom d'un client : quatre

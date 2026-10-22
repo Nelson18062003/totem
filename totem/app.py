@@ -158,6 +158,10 @@ INTERVALLE_CONFLIT = 3600
 # Un échange de SIM demande d'ouvrir le boîtier : inutile de guetter à la
 # seconde. Une minute suffit pour que l'annonce paraisse immédiate.
 VERIF_CARTES_SECONDES = 60
+# Une carte hors réseau depuis ce temps fait relancer la recherche de réseau
+# (mode avion et retour) ; toujours hors réseau au tour d'après, le modem est
+# relancé pour de bon.
+HORS_RESEAU_AVANT_RECHERCHE = 180
 SEUIL_MEMOIRE = 0.8        # on alerte bien avant la saturation
 # Le délai entre l'annonce du SMS et le reçu qui la suit. Assez pour que les
 # deux messages ne se bousculent pas dans la conversation ni dans les limites
@@ -2012,6 +2016,8 @@ class Robot:
                     # messages qui suivent appartiennent à la nouvelle carte.
                     self._etape(f"recensement {compte.libelle}",
                                 lambda: self._recenser_carte(compte))
+                    self._etape(f"réseau {compte.libelle}",
+                                lambda: self._veiller_le_reseau(compte))
                 self._relever_sms(compte)
             except Exception as e:
                 self._noter(f"relève SMS {compte.libelle} : {e}")
@@ -2029,6 +2035,9 @@ class Robot:
             if time.time() >= self._prochaines_cartes:
                 self._prochaines_cartes = time.time() + VERIF_CARTES_SECONDES
                 self._etape("recensement des cartes", self._recenser_cartes)
+                for compte in self.comptes:
+                    self._etape(f"réseau {compte.libelle}",
+                                lambda c=compte: self._veiller_le_reseau(c))
             for compte in self.comptes:
                 # Rien de ce qui touche une carte ne doit pouvoir arrêter la
                 # relève des autres.
@@ -2311,6 +2320,68 @@ class Robot:
                         "journal : la remettre le fait ressortir intact."))
         self.transport.envoyer("\n".join(lignes), canal=canal,
                                boutons=[[("🏠 Menu", "c:menu")]])
+
+    def _veiller_le_reseau(self, compte, maintenant=None):
+        """La carte est-elle encore sur un réseau ? Une fois par minute.
+
+        « Signal inconnu » pendant des heures sur l'écran, et le propriétaire
+        qui relance tout le robot pour voir la carte revenir : ce n'était pas
+        le robot qui la ramenait, c'était le temps. En itinérance (les cartes
+        camerounaises en France empruntent Orange F ou SFR), une carte que
+        le réseau visité lâche peut rester sur « pas de service » longtemps ;
+        un téléphone, on le passe en mode avion et retour. Le robot le fait
+        au bout de trois minutes hors réseau, le dit, et si cela ne suffit
+        pas, relance le modem — et annonce le retour."""
+        maintenant = time.time() if maintenant is None else maintenant
+        etat = compte.enregistre()
+        if etat is None:
+            return                      # on ne sait pas : on ne conclut rien
+        etiquette = f"[{echap(compte.libelle)}] " if self.multi else ""
+        if etat:
+            if compte.hors_reseau_depuis is not None and compte.hors_reseau_signale:
+                reseau = compte._lire("operateur", t("unknown", "inconnu"))
+                self.journal.evenement(
+                    f"carte de retour sur le réseau ({compte.libelle})")
+                self.transport.envoyer(
+                    t(f"✅ {etiquette}The card is back on the network "
+                      f"({echap(reseau)}). Signal: {compte.signal()}/31",
+                      f"✅ {etiquette}La carte est de retour sur le réseau "
+                      f"({echap(reseau)}). Signal : {compte.signal()}/31"),
+                    canal="alertes")
+            compte.hors_reseau_depuis = None
+            compte.recherches = 0
+            compte.hors_reseau_signale = False
+            return
+        if compte.hors_reseau_depuis is None:
+            compte.hors_reseau_depuis = maintenant
+            return
+        if maintenant - compte.hors_reseau_depuis < HORS_RESEAU_AVANT_RECHERCHE:
+            return
+        compte.hors_reseau_depuis = maintenant     # on recompte à partir d'ici
+        if compte.recherches == 0:
+            compte.recherches = 1
+            compte.hors_reseau_signale = True
+            self.journal.evenement(
+                f"carte hors réseau depuis {HORS_RESEAU_AVANT_RECHERCHE // 60} min "
+                f"({compte.libelle}) : recherche de réseau relancée")
+            self.transport.envoyer(
+                t(f"⚠️ {etiquette}The card has been off the network for "
+                  f"{HORS_RESEAU_AVANT_RECHERCHE // 60} min (signal unknown). "
+                  "I am making it search for a network again.",
+                  f"⚠️ {etiquette}La carte n'est plus sur le réseau depuis "
+                  f"{HORS_RESEAU_AVANT_RECHERCHE // 60} min (signal inconnu). "
+                  "Je relance sa recherche de réseau."), canal="alertes")
+            if not compte.rechercher_le_reseau():
+                self.journal.evenement(
+                    f"recherche de réseau impossible ({compte.libelle}) : "
+                    "le modem est relancé")
+                self._redemarrer_modem(compte, canal="alertes", automatique=True)
+            return
+        compte.recherches += 1
+        self.journal.evenement(
+            f"carte toujours hors réseau après la recherche ({compte.libelle}) : "
+            "le modem est relancé")
+        self._redemarrer_modem(compte, canal="alertes", automatique=True)
 
     def _veiller_sante(self):
         """Alerte sur la tension, la chaleur, le disque — une fois par

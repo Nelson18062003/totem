@@ -470,5 +470,133 @@ class TestLeRefusDuModemSeDitEtSeCompte(EnFrancais):
         self.assertIn("a refusé le code", RefusDuModem("ERROR").phrase("fr"))
 
 
+# =============================================================================
+class TestUnRefusSeRetente(unittest.TestCase):
+    """En itinérance, la carte change de réseau plusieurs fois par jour : un
+    code tapé pendant ces secondes-là est refusé « no network service ». Il
+    se retente, sans que rien ne soit parti."""
+
+    def _carte(self, refus_avant_succes):
+        compte = FauxCompte([("fermee", "Votre solde est de 1000 FCFA")])
+        base = compte.modem
+
+        class ModemHesitant:
+            def __init__(self):
+                self.refus_restants = refus_avant_succes
+                self.essais = 0
+
+            def ussd_demarrer(self, code):
+                self.essais += 1
+                if self.refus_restants > 0:
+                    self.refus_restants -= 1
+                    raise RefusDuModem("+CME ERROR: no network service")
+                return base.ussd_demarrer(code)
+
+            def ussd_annuler(self):
+                base.ussd_annuler()
+
+        compte.modem = ModemHesitant()
+        return compte
+
+    def test_deux_refus_puis_la_reponse(self):
+        compte = self._carte(refus_avant_succes=2)
+        with mock.patch.object(totem.compte.time, "sleep") as pause:
+            reponse = compte.ussd_demarrer("#148*5#")
+        self.assertIn("1000 FCFA", reponse)
+        self.assertEqual(compte.modem.essais, 3)
+        self.assertEqual(pause.call_count, 2)
+        self.assertEqual(compte.codes_sans_reseau, 0)
+
+    def test_trois_refus_et_le_dernier_remonte_une_fois(self):
+        compte = self._carte(refus_avant_succes=99)
+        with mock.patch.object(totem.compte.time, "sleep"):
+            with self.assertRaises(RefusDuModem):
+                compte.ussd_demarrer("#148*5#")
+        self.assertEqual(compte.modem.essais, 3)
+        self.assertEqual(compte.codes_sans_reseau, 1)   # un code, pas trois
+        self.assertEqual(compte.raccroches, 1)
+
+
+# =============================================================================
+class TestLaCarteHorsReseau(EnFrancais):
+    """« Signal inconnu » des heures durant, et le propriétaire qui relance
+    tout : le robot passe la carte en mode avion et retour au bout de trois
+    minutes, puis relance le modem, et annonce le retour."""
+
+    def _robot(self):
+        from totem.app import HORS_RESEAU_AVANT_RECHERCHE, Robot
+        from totem.simulator import ModemSimule
+        from totem.storage import Journal
+        from tests.test_panne_modem import TransportEspion
+
+        class ModemEnItinerance(ModemSimule):
+            def __init__(self):
+                super().__init__("Orange")
+                self.sur_le_reseau = True
+                self.recherches = 0
+                self.relances = 0
+
+            def enregistre(self):
+                return self.sur_le_reseau
+
+            def rechercher_le_reseau(self):
+                self.recherches += 1
+
+            def redemarrer(self):
+                self.relances += 1
+
+        modem = ModemEnItinerance()
+        compte = Compte(modem, "Orange ·4177")
+        robot = Robot([compte], TransportEspion(), Journal(":memory:"))
+        return robot, compte, modem, HORS_RESEAU_AVANT_RECHERCHE
+
+    def test_sur_le_reseau_rien_ne_se_passe(self):
+        robot, compte, modem, _ = self._robot()
+        robot._veiller_le_reseau(compte, maintenant=1000.0)
+        self.assertEqual(modem.recherches, 0)
+        self.assertEqual(robot.transport.messages, [])
+
+    def test_trois_minutes_hors_reseau_mode_avion_puis_relance_puis_retour(self):
+        robot, compte, modem, delai = self._robot()
+        modem.sur_le_reseau = False
+        t0 = 1000.0
+        robot._veiller_le_reseau(compte, maintenant=t0)          # noté
+        robot._veiller_le_reseau(compte, maintenant=t0 + 60)     # trop tôt
+        self.assertEqual(modem.recherches, 0)
+        robot._veiller_le_reseau(compte, maintenant=t0 + delai)  # recherche
+        self.assertEqual(modem.recherches, 1)
+        self.assertEqual(modem.relances, 0)
+        self.assertTrue(any("recherche de réseau" in m
+                            for m in robot.transport.messages))
+        robot._veiller_le_reseau(compte, maintenant=t0 + delai + 60)  # trop tôt
+        self.assertEqual(modem.relances, 0)
+        robot._veiller_le_reseau(compte, maintenant=t0 + 2 * delai)   # relance
+        self.assertEqual(modem.relances, 1)
+        modem.sur_le_reseau = True
+        avant = len(robot.transport.messages)
+        robot._veiller_le_reseau(compte, maintenant=t0 + 2 * delai + 60)
+        self.assertTrue(any("de retour sur le réseau" in m
+                            for m in robot.transport.messages[avant:]))
+        self.assertIsNone(compte.hors_reseau_depuis)
+        self.assertEqual(compte.recherches, 0)
+
+    def test_une_absence_courte_ne_dit_rien(self):
+        robot, compte, modem, delai = self._robot()
+        modem.sur_le_reseau = False
+        robot._veiller_le_reseau(compte, maintenant=1000.0)
+        modem.sur_le_reseau = True
+        robot._veiller_le_reseau(compte, maintenant=1060.0)
+        self.assertEqual(robot.transport.messages, [])
+        self.assertEqual(modem.recherches, 0)
+
+    def test_un_modem_qui_ne_sait_pas_dire_ne_compte_pas(self):
+        robot, compte, modem, delai = self._robot()
+        modem.enregistre = lambda: None
+        robot._veiller_le_reseau(compte, maintenant=1000.0)
+        robot._veiller_le_reseau(compte, maintenant=1000.0 + 2 * delai)
+        self.assertEqual(modem.recherches, 0)
+        self.assertIsNone(compte.hors_reseau_depuis)
+
+
 if __name__ == "__main__":
     unittest.main()

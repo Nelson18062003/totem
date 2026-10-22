@@ -28,6 +28,7 @@ au moment même où l'on écrit : la carte sait qui tient sa session
 """
 
 import threading
+import time
 
 from .carte import Carte
 from .modem import (USSD_OUVERTE, EnvoiIncertain, ErreurModem, MenuReferme,
@@ -41,6 +42,13 @@ from .textes import t
 # « le web » : ce sont deux titulaires.
 WEB = "web"
 TELEGRAM = "telegram"
+
+# Un code refusé par le modem AVANT d'être envoyé (« no network service »)
+# se retente : rien n'est parti, et en itinérance la carte change de réseau
+# plusieurs fois par jour — quelques secondes sans service suffisent à faire
+# refuser un code tapé à cet instant. Deux reprises, cinq secondes d'écart.
+REPRISES_SUR_REFUS = 2
+PAUSE_SUR_REFUS = 5.0
 
 
 class SessionTenue(Exception):
@@ -75,6 +83,12 @@ class Compte:
         # le propriétaire faisait à la main en relançant tout le robot.
         self.codes_sans_reseau = 0
         self.dernier_silence = None     # ce que la sonde a lu la dernière fois
+        # La carte hors réseau : depuis quand (horloge du robot), combien de
+        # fois on a relancé la recherche pendant cette absence, et si on l'a
+        # dit. Voir `Robot._veiller_le_reseau`.
+        self.hors_reseau_depuis = None
+        self.recherches = 0
+        self.hors_reseau_signale = False
         # Une panne de modem s'annonce une fois, pas à chaque tour de
         # surveillance. `panne_signalee` retient qu'on l'a déjà dite ;
         # `prochaine_tentative` espace les essais au lieu de marteler un
@@ -180,7 +194,7 @@ class Compte:
         rien au menu, qui reste à son titulaire ; un menu que le réseau
         avait déjà refermé (`MenuReferme`) n'a rien à raccrocher."""
         try:
-            resultat = envoi(charge)
+            resultat = self._envoyer_avec_reprises(envoi, charge)
         except ReponseRefusee:
             raise
         except (ReponseNonRecue, RefusDuModem):
@@ -209,6 +223,19 @@ class Compte:
             raise
         self.codes_sans_reseau = 0  # le réseau a répondu : on repart de zéro
         return resultat
+
+    @staticmethod
+    def _envoyer_avec_reprises(envoi, charge):
+        """Un refus du modem avant l'envoi se retente (`REPRISES_SUR_REFUS`),
+        le verrou du modem rendu entre deux essais : la relève des SMS
+        continue. Le dernier refus remonte tel quel."""
+        for essai in range(REPRISES_SUR_REFUS + 1):
+            try:
+                return envoi(charge)
+            except RefusDuModem:
+                if essai >= REPRISES_SUR_REFUS:
+                    raise
+                time.sleep(PAUSE_SUR_REFUS)
 
     def _suite(self, etat, reponse, qui=None):
         self.session_ouverte = etat == USSD_OUVERTE
@@ -242,6 +269,33 @@ class Compte:
         if self.codes_sans_reseau < seuil:
             return False
         self.codes_sans_reseau = 0
+        return True
+
+    def enregistre(self):
+        """La carte est-elle sur un réseau ? True, False, ou None si le modem
+        ne sait pas le dire (simulateur, port muet) — et None n'est jamais
+        « non »."""
+        lire = getattr(self.modem, "enregistre", None)
+        if lire is None:
+            return None
+        try:
+            return lire()
+        except Exception:
+            return None
+
+    def rechercher_le_reseau(self):
+        """Mode avion et retour (voir `ModemSerie.rechercher_le_reseau`).
+        Rend False si le modem ne sait pas le faire ou a refusé."""
+        chercher = getattr(self.modem, "rechercher_le_reseau", None)
+        if chercher is None:
+            return False
+        with self.verrou:
+            try:
+                chercher()
+            except Exception:
+                return False
+            self.session_ouverte = False
+            self.titulaire = None
         return True
 
     def reglages_refuses(self):
