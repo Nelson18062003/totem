@@ -687,7 +687,7 @@ fi
 # LES TROIS SEAUX, ARRÊTÉS AU PREMIER MUR. Une adresse murée qui inventait un
 # courriel par essai créait une ligne par essai — une seule adresse
 # remplissait la base. Au-delà d'un mur, plus rien de neuf ne s'écrit.
-essai() { $P -d totem -tAc "select frein_essai($1, 900, 300, 60);"; }
+essai() { $P -d totem -tAc "select frein_essai($1, 900, 300, 60);"; }  # murs du banc
 ok=1
 r=$(essai "'a1', 'a1|@k1', '@k1'")
 [ "$r" = "{1,1,1}" ] || { echo "  ✗ un essai ordinaire compte $r au lieu de {1,1,1}"; ok=0; }
@@ -696,17 +696,22 @@ r=$(essai "'a2', 'a2|@k2', '@k2'")
 neuves=$($P -d totem -tAc "select count(*) from freins where cle in ('a2|@k2', '@k2');")
 [ "$r" = "{301,0,0}" ] && [ "$neuves" = "0" ] \
   || { echo "  ✗ adresse murée : $r, et $neuves ligne(s) neuve(s) — elle écrit encore"; ok=0; }
-$P -d totem -c "insert into freins (cle, n, vu, debut) values ('a3|@k3', 60, now(), now());" >/dev/null
+# Un essai refusé par le couple ne coûte rien au serveur : il rend sa place
+# à l'adresse. Sinon un voisin d'opérateur qui s'acharne sur UN compte
+# fermait, à force de refus, l'adresse à tous les autres.
+$P -d totem -c "insert into freins (cle, n, vu, debut) values ('a3|@k3', 60, now(), now()),
+                                                         ('a3', 40, now(), now());" >/dev/null
 r=$(essai "'a3', 'a3|@k3', '@k3'")
 neuves=$($P -d totem -tAc "select count(*) from freins where cle = '@k3';")
-[ "$r" = "{1,61,0}" ] && [ "$neuves" = "0" ] \
-  || { echo "  ✗ couple muré : $r, et $neuves ligne(s) de compte neuve(s)"; ok=0; }
+adresse=$($P -d totem -tAc "select n from freins where cle = 'a3';")
+[ "$r" = "{40,61,0}" ] && [ "$neuves" = "0" ] && [ "$adresse" = "40" ] \
+  || { echo "  ✗ couple muré : $r, $neuves ligne(s) de compte neuve(s), adresse à $adresse (attendu 40)"; ok=0; }
 r=$(essai "'a4', 'a4|@k4', null")
 [ "$r" = "{1,1,0}" ] || { echo "  ✗ sans seau de compte (la vitrine) : $r au lieu de {1,1,0}"; ok=0; }
 r=$($P -d totem -tAc "select frein_essai('inscription|a5', null, null, 900, 20, 60);")
 [ "$r" = "{1,0,0}" ] || { echo "  ✗ l'inscription (l'adresse seule) compte $r au lieu de {1,0,0}"; ok=0; }
 if [ $ok = 1 ]; then
-  echo "  ✓ adresse, couple, compte — dans l'ordre, et rien d'écrit au-delà d'un mur"
+  echo "  ✓ adresse, couple, compte — dans l'ordre, rien d'écrit au-delà d'un mur, et un refus du couple ne coûte rien à l'adresse"
 else
   echecs=$((echecs + 1))
 fi

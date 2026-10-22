@@ -322,8 +322,8 @@ export async function inscrire(
   //    (justes s'ils sont donnés). Tous les autres comptes les donnent.
   if (combien > 0 && manque()) return refus(langue, manque()!, 400);
 
-  // 4. LE FREIN — un seau à part, par adresse, et un mur plus bas que celui
-  //    de la connexion : personne ne crée vingt comptes en un quart d'heure.
+  // 4. LE FREIN — un seau à part, par adresse, et son propre mur : personne
+  //    ne crée cent comptes en un quart d'heure.
   const cle = `inscription|${cleDeFrein(req)}`;
   if (!(await attendreLeFrein(cle, { mur: MUR_INSCRIPTION }))) {
     return refus(langue, "tropDEssais", 429);
@@ -364,8 +364,15 @@ export async function inscrire(
 }
 
 /** Le mur des inscriptions : combien d'essais depuis UNE adresse dans la
- *  fenêtre du frein (un quart d'heure) avant de refuser sans calculer. */
-const MUR_INSCRIPTION = 20;
+ *  fenêtre du frein (un quart d'heure) avant de refuser sans calculer.
+ *
+ *  Il était à VINGT, pensé pour une adresse qui serait celle d'une personne.
+ *  Un opérateur mobile met des centaines de téléphones derrière la même :
+ *  vingt inscriptions par quart d'heure pour tout un quartier, c'était un
+ *  lancement de la bêta refusé « trop d'essais », et un voisin qui les
+ *  épuisait en vingt et une demandes. Cent bornent encore la fabrication de
+ *  comptes en série (la console montre l'adresse qui s'y essaie). */
+const MUR_INSCRIPTION = 100;
 
 /**
  * Supprimer SON compte — le sien, et aucun autre.

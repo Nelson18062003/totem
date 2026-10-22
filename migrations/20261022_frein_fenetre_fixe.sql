@@ -20,7 +20,8 @@
 --   3. frein_essai   : compte un essai de mot de passe dans ses trois seaux,
 --                      dans cet ordre, et s'arrête au premier mur :
 --                        · l'ADRESSE — un plafond haut, qui ne protège que le
---                          serveur (chaque essai coûte 210 000 tours) ;
+--                          serveur (chaque essai coûte 210 000 tours) ; un
+--                          essai refusé par le couple n'y compte pas ;
 --                        · le COUPLE adresse + compte visé — le vrai mur :
 --                          une adresse qui attaque un compte se ferme CE
 --                          compte, jamais celui des voisins ;
@@ -92,7 +93,15 @@ begin
     return array[a, 0, 0];
   end if;
   c := public.frein_compter(p_couple, fenetre_s);
-  if c > mur_couple or p_compte is null then
+  if c > mur_couple then
+    -- Refusé avant tout calcul : cet essai ne coûte rien au serveur, il ne
+    -- compte pas pour l'adresse. Sans quoi un voisin d'opérateur qui
+    -- s'acharne sur UN compte — soixante vrais essais, puis des refus à la
+    -- chaîne — finissait par fermer l'adresse à tous les autres.
+    update public.freins set n = greatest(n - 1, 0) where cle = p_adresse;
+    return array[a - 1, c, 0];
+  end if;
+  if p_compte is null then
     return array[a, c, 0];
   end if;
   k := public.frein_compter(p_compte, fenetre_s);

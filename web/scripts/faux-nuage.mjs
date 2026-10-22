@@ -1229,7 +1229,13 @@ const serveur = createServer(async (req, res) => {
     const a = freinCompter(p_adresse, fenetre_s, present);
     if (a > mur_adresse || p_couple == null) return repondre([a, 0, 0]);
     const c = freinCompter(p_couple, fenetre_s, present);
-    if (c > mur_couple || p_compte == null) return repondre([a, c, 0]);
+    if (c > mur_couple) {
+      // Refusé avant tout calcul : il ne compte pas pour l'adresse.
+      const e = freins.get(p_adresse);
+      e.n = Math.max(0, e.n - 1);
+      return repondre([a - 1, c, 0]);
+    }
+    if (p_compte == null) return repondre([a, c, 0]);
     return repondre([a, c, freinCompter(p_compte, fenetre_s, present)]);
   }
 

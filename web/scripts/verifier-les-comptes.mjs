@@ -406,15 +406,16 @@ try {
   console.log("\nUNE RAFALE D'INSCRIPTIONS EST FREINÉE");
   // TOUTES DE LA MÊME ADRESSE, ensemble. Sans frein, chacune coûte au
   // serveur 210 000 tours de PBKDF2 et crée un compte : de quoi remplir la
-  // base et sonder les courriels. Le mur des inscriptions est à vingt par
-  // quart d'heure et par adresse.
+  // base et sonder les courriels. Le mur des inscriptions est à cent par
+  // quart d'heure et par adresse — vingt, c'était trop peu pour une adresse
+  // d'opérateur, que partagent des centaines de téléphones.
   const ATTAQUANT = "10.66.0.66";
-  const rafale = await Promise.all(Array.from({ length: 30 }, (_, i) =>
+  const rafale = await Promise.all(Array.from({ length: 130 }, (_, i) =>
     inscrire(personne(`rafale${i}@exemple.cm`), { "x-forwarded-for": ATTAQUANT })));
   const statuts = rafale.map((r) => r.status);
   const creees = statuts.filter((s) => s === 200).length;
-  verifier("le mur refuse le surplus (429)", statuts.filter((s) => s === 429).length >= 10, true);
-  verifier("vingt comptes au plus sortent de la rafale", creees <= 20, true);
+  verifier("le mur refuse le surplus (429)", statuts.filter((s) => s === 429).length >= 30, true);
+  verifier("cent comptes au plus sortent de la rafale", creees <= 100, true);
   const tConnexion = performance.now();
   const rPendant = await poste("/api/session", { courriel: "awa@exemple.cm", motdepasse: MDP },
     { "x-forwarded-for": ATTAQUANT });

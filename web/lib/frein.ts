@@ -9,8 +9,9 @@
 // TROIS SEAUX PAR ESSAI DE MOT DE PASSE, comptés dans cet ordre, et l'on
 // s'arrête au premier mur :
 //
-//   · l'ADRESSE — un plafond haut (trois cents), qui ne protège que le
-//     serveur : chaque essai lui coûte 210 000 tours de PBKDF2 ;
+//   · l'ADRESSE — un plafond haut (mille), qui ne protège que le serveur :
+//     chaque essai lui coûte 210 000 tours de PBKDF2. Un essai que le couple
+//     refuse ne lui coûte rien : il n'y compte pas ;
 //   · le COUPLE adresse + compte visé — le vrai mur (soixante) : une adresse
 //     qui attaque un compte se ferme CE compte, jamais celui des voisins ;
 //   · le COMPTE, de partout — une attaque répartie sur mille adresses. Il
@@ -62,8 +63,13 @@ const PLAFOND_MS = 8000;
 // pour enfermer le propriétaire dehors.
 const MUR = 60;                 // par couple adresse + compte visé
 const LIBRES = 5;
-const MUR_ADRESSE = 300;        // par adresse : la protection du serveur
-const LIBRES_ADRESSE = 100;
+// Haut, et compté sur les seuls essais VRAIMENT jugés : derrière une adresse
+// d'opérateur, les échecs de centaines de téléphones s'additionnent, et un
+// voisin qui s'acharne ne doit pas pouvoir fermer la porte aux autres à peu
+// de frais. À trois cents, avec les refus du couple comptés en plus, il y
+// suffisait d'un voisin et de quelques minutes.
+const MUR_ADRESSE = 1000;       // par adresse : la protection du serveur
+const LIBRES_ADRESSE = 300;
 const LIBRES_COMPTE = 10;       // par compte, de partout : jamais de mur
 
 // LE SEAU DU COMPTE. Il était COMMUN À TOUTE LA PLATEFORME, et c'était juste
@@ -129,7 +135,13 @@ function compterLesEssaisEnMemoire(s: Seaux, murAdresse: number): [number, numbe
   const a = compterEnMemoire(s.adresse);
   if (a > murAdresse || s.couple === null) return [a, 0, 0];
   const c = compterEnMemoire(s.couple);
-  if (c > MUR || s.compte === null) return [a, c, 0];
+  if (c > MUR) {
+    // Refusé avant tout calcul : il ne compte pas pour l'adresse.
+    const e = essais.get(s.adresse);
+    if (e) e.n = Math.max(0, e.n - 1);
+    return [a - 1, c, 0];
+  }
+  if (s.compte === null) return [a, c, 0];
   return [a, c, compterEnMemoire(s.compte)];
 }
 
@@ -177,9 +189,8 @@ export async function attendreLeFrein(
     // Le courriel VISÉ (vide : la clé de secours). Absent pour l'inscription,
     // qui ne vise aucun compte : un seul seau, l'adresse, avec `mur`.
     compte,
-    // L'INSCRIPTION A SON MUR À ELLE, plus bas, et une clé préfixée : un
-    // passant qui crée son compte ne ralentit pas le propriétaire qui se
-    // connecte, et personne ne crée vingt comptes en un quart d'heure.
+    // L'INSCRIPTION A SON MUR À ELLE, et une clé préfixée : un passant qui
+    // crée son compte ne ralentit pas le propriétaire qui se connecte.
     mur = MUR,
     // UN COMPTE DONT LE MOT DE PASSE EST PUBLIC — la vitrine des magasins —
     // n'a pas de seau de compte : il ne protégerait rien, et n'importe qui
@@ -205,7 +216,8 @@ export async function attendreLeFrein(
   let base = n !== null;
   // Une base pas encore migrée : l'inscription garde la règle d'hier, qui
   // comptait déjà dans la base (elle compte les réussites — c'est voulu pour
-  // l'inscription) ; la connexion, elle, ne retournera pas à huit secondes.
+  // l'inscription ; sa fenêtre glisse, défaut d'hier qui part avec la
+  // migration) ; la connexion, elle, ne retournera pas à huit secondes.
   if (n === null && !connexion) {
     const hier = await compterUnEssaiALAncienne(cle, FENETRE_S);
     if (hier !== null) n = [hier, 0, 0];
@@ -285,10 +297,37 @@ export function cleDeFrein(req: Request): string {
     const morceaux = (v ?? "").split(",").map((m) => m.trim()).filter(Boolean);
     return morceaux.length ? morceaux[morceaux.length - 1] : "";
   };
-  return dernier(req.headers.get("x-vercel-forwarded-for"))
+  const adresse = dernier(req.headers.get("x-vercel-forwarded-for"))
     || (req.headers.get("x-real-ip") ?? "").trim()
-    || dernier(req.headers.get("x-forwarded-for"))
-    || "global";
+    || dernier(req.headers.get("x-forwarded-for"));
+  return adresse ? blocDeLAdresse(adresse) : "global";
+}
+
+/**
+ * UNE ADRESSE IPv6 SE COMPTE PAR SON BLOC DE 64 BITS. Une ligne, un téléphone,
+ * une machine reçoivent un bloc entier, et y choisissent leur adresse à
+ * volonté : comptée telle quelle, chaque essai pouvait venir d'une adresse
+ * neuve, et le mur du couple ne voyait jamais deux fois la même. Une adresse
+ * IPv4 écrite à la mode IPv6 (« ::ffff:1.2.3.4 ») est une adresse IPv4. Ce
+ * qu'on ne sait pas lire reste tel quel : un seau de plus, jamais un de moins.
+ */
+export function blocDeLAdresse(brute: string): string {
+  const a = brute.trim().replace(/^\[|\]$/g, "").split("%")[0].toLowerCase();
+  if (!a.includes(":")) return a;
+  const v4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(a);
+  if (v4) return v4[1];
+  // Une adresse IPv4 en queue compte pour deux groupes.
+  const groupes = (texte: string) => (texte ? texte.split(":") : [])
+    .flatMap((g) => (g.includes(".") ? ["0", "0"] : [g]));
+  const moities = a.split("::");
+  if (moities.length > 2) return a;
+  const gauche = groupes(moities[0]);
+  const droite = moities.length === 2 ? groupes(moities[1]) : [];
+  const manque = 8 - gauche.length - droite.length;
+  if (moities.length === 2 ? manque < 1 : manque !== 0) return a;
+  const tout = [...gauche, ...Array<string>(moities.length === 2 ? manque : 0).fill("0"), ...droite];
+  if (!tout.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return a;
+  return `${tout.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(":")}::/64`;
 }
 
 // CE QUE CE FREIN FAIT, ET CE QU'IL NE FAIT PAS.
@@ -308,3 +347,10 @@ export function cleDeFrein(req: Request): string {
 // qui tient alors, frein ou pas : le mot de passe fait douze caractères au
 // minimum, et son empreinte coûte 210 000 tours. Le frein n'est pas la seule
 // chose entre un inconnu et la caisse.
+//
+// Et derrière une MÊME adresse d'opérateur, il ne distingue pas deux
+// téléphones : un voisin qui vise le compte du propriétaire depuis cette
+// adresse-là ferme ce compte, à cette adresse, pour le quart d'heure — pas
+// ailleurs (le Wi-Fi, une autre carte), et jamais une session déjà ouverte.
+// Les distinguer demanderait de reconnaître l'appareil d'une connexion
+// réussie à l'autre ; c'est une autre construction, pas un réglage.
