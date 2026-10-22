@@ -160,6 +160,10 @@ INTERVALLE_CONFLIT = 3600
 VERIF_CARTES_SECONDES = 60
 # Deux relances de radio (deux modems) jamais à moins de vingt secondes.
 ESPACEMENT_RADIO = 20
+# Une puce que son modem ne voit plus depuis ce temps fait relancer le modem,
+# qui la relit en redémarrant ; puis de plus en plus espacé.
+PUCE_ABSENTE_AVANT_RELANCE = 180
+PUCE_RELANCES_ESPACEES = (600, 1800)
 
 
 def _nom_du_service(etat, langue):
@@ -2094,6 +2098,7 @@ class Robot:
         etat = compte.lire_service()
         if etat is None:
             return              # carte occupée : au passage suivant
+        self._veiller_la_puce(compte, maintenant, agir)
         evenements = service.noter(etat, maintenant)
         libelle = compte.libelle
         if ("coupure" in evenements or "retour" in evenements) and self.nuage:
@@ -2187,27 +2192,38 @@ class Robot:
         plus », et ce modem répond très bien — c'est la carte qui n'a pas de
         réseau. Au journal seulement : l'alerte au propriétaire, c'est celle
         du temps cumulé sans service."""
+        service = compte.service
+        radio = (service.episode or {}).get("derniere_radio") or maintenant
+        self._relancer_le_modem_sous_verrou(
+            compte, maintenant,
+            t(f"network {compte.libelle}: still "
+              f"{_nom_du_service(service.etat, 'en')} "
+              f"{_duree(maintenant - radio, 'en')} after the radio restart "
+              "— restarting the modem",
+              f"réseau {compte.libelle} : toujours "
+              f"{_nom_du_service(service.etat, 'fr')} "
+              f"{_duree(maintenant - radio, 'fr')} après la relance de la "
+              "radio — le modem est relancé"),
+            avant=lambda: service.modem_relance(maintenant))
+
+    def _relancer_le_modem_sous_verrou(self, compte, maintenant, annonce,
+                                       avant=None):
+        """Une relance de modem à la fois pour tout le boîtier, espacée comme
+        la radio, jamais pendant un menu. `annonce` va au journal ; `avant`
+        est appelé juste avant la relance (le service la note). Rend True si
+        la relance a eu lieu — sinon, au passage suivant."""
         if compte.session_ouverte:
-            return              # une personne est dans un menu : au passage suivant
+            return False        # une personne est dans un menu : au passage suivant
         if not self._une_relance.acquire(blocking=False):
-            return
+            return False
         debut = time.monotonic()
         try:
             if maintenant - self._derniere_relance < ESPACEMENT_RADIO:
-                return
-            service = compte.service
-            radio = (service.episode or {}).get("derniere_radio") or maintenant
-            self.journal.evenement(t(
-                f"network {compte.libelle}: still "
-                f"{_nom_du_service(service.etat, 'en')} "
-                f"{_duree(maintenant - radio, 'en')} after the radio restart "
-                "— restarting the modem",
-                f"réseau {compte.libelle} : toujours "
-                f"{_nom_du_service(service.etat, 'fr')} "
-                f"{_duree(maintenant - radio, 'fr')} après la relance de la "
-                "radio — le modem est relancé"))
+                return False
+            self.journal.evenement(annonce)
             port_avant = getattr(compte.modem, "port", "") or ""
-            service.modem_relance(maintenant)
+            if avant is not None:
+                avant()
             try:
                 compte.redemarrer()
             except Exception as e:
@@ -2218,8 +2234,93 @@ class Robot:
                 self.journal.evenement(
                     self._compte_rendu_de_relance(compte, port_avant))
             self._derniere_relance = maintenant + (time.monotonic() - debut)
+            return True
         finally:
             self._une_relance.release()
+
+    # ---- la puce est-elle vue ? ----------------------------------------------
+    #
+    # « Orange ·4177 · SIM missing · signal unknown » au /statut, le 22
+    # octobre au soir, des heures durant. Le modem répondait (le chien de
+    # garde ne voyait rien), les SMS rangés se lisaient, mais le modem ne
+    # VOYAIT PLUS SA PUCE : sans puce, pas de réseau, pas de signal, pas de
+    # code. Le service rangeait cela « inconnu » — à raison, il ne parle que
+    # du réseau — et rien ne relançait, rien ne le disait. Le propriétaire
+    # relançait tout le robot, qui ne relit pas une puce non plus : c'est
+    # le modem qui la relit, en redémarrant (AT+CFUN=1,1). Un modem qui perd
+    # sa puce en marche, c'est le plus souvent un contact — une nano-SIM
+    # dans un adaptateur, un logement mal enfoncé, une puce oxydée — ou une
+    # alimentation qui flanche pendant une émission ; on relance, on le dit,
+    # et l'on dit quoi vérifier sur place.
+
+    def _veiller_la_puce(self, compte, maintenant, agir=True):
+        vue = getattr(compte, "sim_vue", None)
+        if vue is None:
+            return
+        libelle = compte.libelle
+        etiquette = f"[{echap(libelle)}] " if getattr(self, "multi", True) else ""
+        if vue:
+            if compte.puce_absente_depuis is not None and compte.puce_absence_dite:
+                self.journal.evenement(t(
+                    f"SIM seen again by its modem ({libelle})",
+                    f"puce de nouveau vue par son modem ({libelle})"))
+                self.facteur.poster(
+                    t(f"✅ {etiquette}The modem sees its SIM card again. "
+                      f"Signal: {compte.signal()}/31",
+                      f"✅ {etiquette}Le modem voit de nouveau sa puce. "
+                      f"Signal : {compte.signal()}/31"), canal="alertes")
+            compte.puce_absente_depuis = None
+            compte.puce_prochaine_relance = 0.0
+            compte.puce_relances = 0
+            compte.puce_absence_dite = False
+            return
+        if compte.puce_absente_depuis is None:
+            compte.puce_absente_depuis = maintenant
+            compte.puce_prochaine_relance = maintenant + PUCE_ABSENTE_AVANT_RELANCE
+            return
+        if not agir or maintenant < compte.puce_prochaine_relance:
+            return
+        depuis = _duree(maintenant - compte.puce_absente_depuis, "fr")
+        if compte.puce_relances == 0:
+            annonce = t(
+                f"SIM not seen by its modem for {depuis} ({libelle}): "
+                "restarting the modem to read it again",
+                f"puce non vue par son modem depuis {depuis} ({libelle}) : "
+                "le modem est relancé pour la relire")
+        else:
+            annonce = t(
+                f"SIM still not seen after {compte.puce_relances} restart(s) "
+                f"({libelle}): restarting the modem again",
+                f"puce toujours non vue après {compte.puce_relances} "
+                f"relance(s) ({libelle}) : nouvelle relance du modem")
+        if not self._relancer_le_modem_sous_verrou(compte, maintenant, annonce):
+            return              # occupé : au passage suivant
+        if compte.puce_relances == 0:
+            self.facteur.poster(
+                t(f"⚠️ {etiquette}The modem has not seen its SIM card for "
+                  f"{PUCE_ABSENTE_AVANT_RELANCE // 60} min (« SIM missing »). "
+                  "Restarting it to read the card again.",
+                  f"⚠️ {etiquette}Le modem ne voit plus sa puce depuis "
+                  f"{PUCE_ABSENTE_AVANT_RELANCE // 60} min (« SIM absente »). "
+                  "Je le relance pour la relire."), canal="alertes")
+            compte.puce_absence_dite = True
+        elif compte.puce_relances == 1:
+            self.facteur.poster(
+                t(f"❌ {etiquette}{gras('The modem still does not see its SIM card')} "
+                  "after a restart. On site: take the card out of its slot, "
+                  "wipe it, and push it back in fully. A nano-SIM in an "
+                  "adapter is the usual culprit. I will keep trying, every "
+                  "30 min, and I will say when it is back.",
+                  f"❌ {etiquette}{gras('Le modem ne voit toujours pas sa puce')} "
+                  "après une relance. Sur place : sortir la puce de son "
+                  "logement, l'essuyer, la remettre bien enfoncée. Une "
+                  "nano-SIM dans un adaptateur est la cause la plus courante. "
+                  "Je réessaie toutes les 30 min, et je préviens dès qu'elle "
+                  "est revenue."), canal="alertes")
+        compte.puce_relances += 1
+        espacement = PUCE_RELANCES_ESPACEES[
+            min(compte.puce_relances - 1, len(PUCE_RELANCES_ESPACEES) - 1)]
+        compte.puce_prochaine_relance = maintenant + espacement
 
     def _prevenir_du_service(self, compte, genre, groupe, maintenant):
         service = compte.service

@@ -1641,6 +1641,21 @@ passe plus en premier que si /sys dit qu'il est encore une interface AT
 l'IMEI — le port AT, toujours, puisque les numéros suivent les interfaces.
 Le témoin reprend l'ancien nom.
 
+**« SIM missing · signal unknown » : le modem ne voit plus sa puce, et
+rien ne la relisait.** Le `/statut` du 22 octobre au soir l'a dit en une
+ligne, après une journée à chercher le réseau : Orange ·4177 répondait aux
+commandes, lisait ses SMS rangés, mais sa puce avait disparu pour lui — donc
+pas de réseau, pas de signal, pas de code. Le service la rangeait
+« inconnu », à raison (il ne parle que du réseau), et personne ne faisait la
+seule chose qui relit une puce : relancer le modem (AT+CFUN=1,1 — c'est ce
+qu'a fait le chien de garde à 17 h 23, et la carte est revenue à 22/31). Le
+robot le fait maintenant au bout de trois minutes sans puce
+(`_veiller_la_puce`, `sim_vue`), le dit, et si une relance ne suffit pas,
+dit quoi vérifier sur place (la puce dans son logement, l'adaptateur d'une
+nano-SIM) puis réessaie toutes les trente minutes ; le retour est annoncé.
+**Un état qu'on range « inconnu » pour ne pas se tromper doit quand même
+être regardé par quelqu'un** : « inconnu » n'est pas « rien à faire ».
+
 **L'export de la base ne vient pas dans le dépôt, même en morceaux.** Les
 messages des tests ont la FORME de vrais SMS, jamais leur contenu. Un vrai
 nom de client précédé de « ESSAI » reste le nom d'un client : quatre

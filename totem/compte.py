@@ -98,6 +98,16 @@ class Compte:
         self.verrou = threading.Lock()  # une seule opération USSD à la fois
         # Le service de la carte : a-t-elle son réseau ? (voir service.py)
         self.service = EtatDuService()
+        # LA PUCE EST-ELLE VUE PAR SON MODEM ? « SIM missing · signal
+        # unknown » au /statut d'Orange ·4177, le 22 octobre au soir : le
+        # modem répondait, la puce avait disparu pour lui, et le service la
+        # rangeait « inconnu » — rien ne la relançait, rien ne le disait.
+        # Voir `Robot._veiller_la_puce`.
+        self.sim_vue = None             # dernière lecture : True, False, None
+        self.puce_absente_depuis = None
+        self.puce_prochaine_relance = 0.0
+        self.puce_relances = 0
+        self.puce_absence_dite = False
         # Les relances en cours (radio, modem) : tant qu'il y en a une, la
         # carte refuse toute demande, tout de suite et en le disant, au lieu
         # de la faire attendre derrière son verrou et de la composer en
@@ -402,6 +412,7 @@ class Compte:
             if self.session_ouverte:
                 return None
             sim_prete, creg, cereg = lire()
+            self.sim_vue = bool(sim_prete)
             etat = etat_du_service(creg, cereg, sim_prete)
         except Exception:
             return INCONNU

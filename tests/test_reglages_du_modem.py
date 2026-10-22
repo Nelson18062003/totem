@@ -704,5 +704,89 @@ class TestLeRetourSurLePortAT(unittest.TestCase):
         self.assertEqual(modem.port, "/dev/ttyUSB17")
 
 
+# =============================================================================
+class TestLaPuceDisparue(EnFrancais):
+    """« Orange ·4177 · SIM missing · signal unknown » au /statut, des heures
+    durant : le modem répond, la puce a disparu pour lui, et rien ne la
+    relisait. Au bout de trois minutes, le modem est relancé (il relit la
+    puce en redémarrant), le propriétaire est prévenu ; toujours rien dix
+    minutes après : on lui dit quoi vérifier sur place ; et le retour est
+    annoncé."""
+
+    def _robot(self):
+        from tests.test_service_des_cartes import ModemInscription, robot_avec
+        r = robot_avec(("Orange", "89237080684177", (False, None, None)))
+        c = r.comptes[0]
+        return r, c, c.modem
+
+    def _veiller(self, r, c, t):
+        r._veiller_service(c, maintenant=t)
+
+    def test_trois_minutes_sans_puce_relancent_le_modem_et_le_disent(self):
+        r, c, modem = self._robot()
+        self._veiller(r, c, 0.0)
+        self._veiller(r, c, 60.0)
+        self.assertEqual(modem.redemarrages, 0)
+        self.assertEqual(r.facteur.lettres, [])
+        self._veiller(r, c, 180.0)
+        self.assertEqual(modem.redemarrages, 1)
+        alertes = [texte for canal, texte in r.facteur.lettres]
+        self.assertEqual(len(alertes), 1, alertes)
+        self.assertIn("ne voit plus sa puce", alertes[0])
+        self.assertTrue(any("puce non vue" in n for n in r.journal.notes), r.journal.notes)
+
+    def test_toujours_rien_dix_minutes_apres_on_dit_quoi_verifier(self):
+        r, c, modem = self._robot()
+        for t in (0.0, 180.0):
+            self._veiller(r, c, t)
+        self._veiller(r, c, 180.0 + 300)          # trop tôt
+        self.assertEqual(modem.redemarrages, 1)
+        self._veiller(r, c, 180.0 + 600)          # dix minutes : on réessaie
+        self.assertEqual(modem.redemarrages, 2)
+        alertes = [texte for canal, texte in r.facteur.lettres]
+        self.assertEqual(len(alertes), 2, alertes)
+        self.assertIn("adaptateur", alertes[1])
+        self.assertIn("enfoncée", alertes[1])
+        # Puis toutes les trente minutes, sans nouveau message.
+        self._veiller(r, c, 180.0 + 600 + 1800)
+        self.assertEqual(modem.redemarrages, 3)
+        self.assertEqual(len(r.facteur.lettres), 2)
+
+    def test_le_retour_de_la_puce_est_annonce_et_remet_a_zero(self):
+        r, c, modem = self._robot()
+        for t in (0.0, 180.0):
+            self._veiller(r, c, t)
+        modem.reponse = (True, 5, None)            # la puce est revue
+        self._veiller(r, c, 240.0)
+        alertes = [texte for canal, texte in r.facteur.lettres]
+        self.assertEqual(len(alertes), 2, alertes)
+        self.assertIn("voit de nouveau sa puce", alertes[1])
+        self.assertIsNone(c.puce_absente_depuis)
+        self.assertEqual(c.puce_relances, 0)
+
+    def test_une_puce_vue_ne_fait_rien(self):
+        r, c, modem = self._robot()
+        modem.reponse = (True, 5, None)
+        for t in (0.0, 180.0, 900.0):
+            self._veiller(r, c, t)
+        self.assertEqual(modem.redemarrages, 0)
+        self.assertEqual(r.facteur.lettres, [])
+
+    def test_une_absence_courte_ne_dit_rien(self):
+        r, c, modem = self._robot()
+        self._veiller(r, c, 0.0)
+        modem.reponse = (True, 5, None)
+        self._veiller(r, c, 60.0)
+        self.assertEqual(modem.redemarrages, 0)
+        self.assertEqual(r.facteur.lettres, [])
+
+    def test_pendant_un_menu_on_attend(self):
+        r, c, modem = self._robot()
+        self._veiller(r, c, 0.0)
+        c.session_ouverte = True
+        self._veiller(r, c, 180.0)
+        self.assertEqual(modem.redemarrages, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
