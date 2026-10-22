@@ -39,6 +39,7 @@ pas relevés : voir le guichet, plus bas.
 import hashlib
 import hmac
 import json
+import re
 import socket
 import threading
 import time
@@ -320,6 +321,15 @@ class PorteXafe:
         self._crochet_en_panne.pop(iccid, None)
         return float_
 
+    @staticmethod
+    def _expediteur_douteux(expediteur):
+        """Vrai si l'expéditeur est le numéro d'un particulier (huit chiffres
+        ou plus, « + », espaces et tirets permis) : l'opérateur n'écrit jamais
+        ainsi. Un nom (« MobileMoney ») ou un numéro court passe."""
+        brut = re.sub(r"[\s+\-.()]", "", str(expediteur or ""))
+        # [0-9] et non isdigit() : Python voit aussi un chiffre dans « ٥ »
+        return re.fullmatch(r"[0-9]{8,}", brut) is not None
+
     def _ligne(self, id_local, date, expediteur, texte, compte, iccid, emis_le,
                numeros):
         """La ligne à envoyer (dict) ; la PREUVE d'une ligne à clore ici, sans
@@ -344,6 +354,23 @@ class PorteXafe:
         # numéros pour trancher — ne part pas : deviner retournerait l'argent.
         if p.sens not in ("entree", "sortie") or (p.sens == "sortie" and not self.sorties):
             return "sans objet"
+        # L'OPÉRATEUR écrit sous son nom (« MobileMoney », « OrangeMoney ») ou
+        # un numéro court — jamais depuis le numéro d'un particulier. Or
+        # n'importe qui peut écrire à la puce : « You have received 7 500 000
+        # XAF … Transaction Id … », tapé sur un téléphone et suivi de la même
+        # déclaration chez XAFe, y était crédité comme un vrai paiement (revue
+        # d'attaque du 22/10/2026). Ce SMS reste ici, clos, et se dit au journal.
+        if self._expediteur_douteux(expediteur):
+            self._journaliser(t(
+                f"XAFe: a payment SMS ({p.montant} FCFA, card {compte or '?'}) "
+                "came from a personal number, not from the operator: kept here, "
+                "never credited. A forgery, most likely.",
+                f"XAFe : un SMS d'argent ({p.montant} FCFA, carte {compte or '?'}) "
+                "vient d'un numéro de particulier, pas de l'opérateur : gardé "
+                "ici, jamais crédité. Un faux, très probablement."))
+            # (le numéro ne va pas au journal : il se garde longtemps et se lit
+            # à plusieurs ; il reste sur la ligne du SMS, chez le propriétaire)
+            return "expediteur non operateur"
         # La COMMISSION d'un agent (« You received the commission of 1350 FCFA
         # for transaction Cash Out… ») est bien de l'argent qui entre sur la
         # puce — TOTEM la compte —, mais ce n'est le paiement d'aucun client :

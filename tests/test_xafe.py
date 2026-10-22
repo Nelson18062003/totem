@@ -463,6 +463,16 @@ class PorteQuiEnvoieLesCommissions(PorteXafe):
             porte_xafe.analyser = vrai
 
 
+class PorteQuiCroitToutExpediteur(PorteXafe):
+    """TÉMOIN (figé avant la correction) : la porte ne regardait pas QUI
+    écrivait. Un SMS d'argent tapé sur le téléphone d'un particulier partait
+    chez XAFe comme un encaissement (revue d'attaque du 22/10/2026)."""
+
+    @staticmethod
+    def _expediteur_douteux(expediteur):
+        return False
+
+
 class PorteToutMarque(PorteXafe):
     """LE TÉMOIN : un 200, et toutes les lignes du lot sont closes, quel que
     soit le verdict de chacune."""
@@ -1293,6 +1303,27 @@ class TestPousser(Banc):
             FauxSupabase.en_panne = False
             serveur.shutdown()
             serveur.server_close()
+
+    def _exiger_le_faux_garde_ici(self, porte_cls):
+        """N'importe qui peut écrire à la puce. Le faux « vous avez reçu »,
+        envoyé d'un téléphone, ne part pas ; le vrai, de l'opérateur, part."""
+        g = self.guichet()
+        journal = journal_avec_carte()
+        journal.sms("+237699000111", SMS_ENTREE, "MTN ·0011", ICCID)
+        journal.sms("237 699 00 01 11", SMS_ENTREE, "MTN ·0011", ICCID)
+        journal.sms("MobileMoney", SMS_ENTREE, "MTN ·0011", ICCID)
+        p = self.porte(g, journal, porte_cls)
+        self.assertEqual(p.pousser_paiements(), 1, "seul le SMS de l'opérateur part")
+        self.assertEqual(len(g.lignes_recues()), 1)
+        for i in (1, 2):
+            self.assertEqual(_etat(journal, i)[:2], (1, "expediteur non operateur"))
+
+    def test_un_sms_d_argent_d_un_particulier_ne_part_pas(self):
+        self._exiger_le_faux_garde_ici(PorteXafe)
+
+    def test_le_temoin_envoie_le_faux(self):
+        with self.assertRaises(AssertionError, msg="LE TÉMOIN PASSE : l'essai ne mesure rien"):
+            self._exiger_le_faux_garde_ici(PorteQuiCroitToutExpediteur)
 
     def test_une_pub_ou_un_code_ne_genere_aucune_requete(self):
         g = self.guichet()
