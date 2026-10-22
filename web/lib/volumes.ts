@@ -6,7 +6,7 @@
 // SMS), la période précédente pour la comparaison, et les cartes de la
 // personne — jamais celles des autres.
 
-import { chargerDonnees, dansLaDemonstration, soldeAnnonceAvant } from "@/lib/serveur";
+import { chargerDonnees, dansLaDemonstration, premierJourDesCartes, soldeAnnonceAvant } from "@/lib/serveur";
 import { porteeDe, RIEN, type Portee } from "@/lib/portee";
 import { estDemonstration } from "@/lib/demonstration";
 import { FUSEAU } from "@/lib/fuseau";
@@ -51,6 +51,8 @@ export async function volumesPour(
   const lu = await chargerDonnees(langue, portee, { recus: 0, depuis, jusqua, toutes: true });
   const visees = carte === "tout" ? lu.sims : lu.sims.filter((s) => s.iccid === carte);
   if (carte !== "tout" && visees.length === 0) return null;
+  // Le premier jour de la caisse décide si la période d'avant se compare.
+  const debutDeLHistorique = await premierJourDesCartes(visees.map((s) => s.iccid), FUSEAU);
   const cartes: CarteVolumes[] = visees.map((s) => ({
     iccid: s.iccid, numero: s.numero, operateur: s.operateur, libelle: s.libelle,
   }));
@@ -70,6 +72,7 @@ export async function volumesPour(
 
   const volumes = calculerVolumes({
     periode, lignes: lu.paiements, cartes, fuseau: FUSEAU, ouverturesAilleurs, correspondant,
+    debutDeLHistorique,
   });
   return {
     volumes,

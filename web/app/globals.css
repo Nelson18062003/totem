@@ -43,14 +43,17 @@
   --color-negative: #c00f0c;         /* débit — 5,9:1 */
   --color-alert: #975102;            /* attente — 4,6:1 */
 
-  /* Les dessins des Volumes. Les barres : le vert des entrées, un rouge
-     adouci pour les sorties (le rouge du texte, en aplat, crie). Les
+  /* Les dessins des Volumes. Les barres : un vert FONCÉ pour les entrées,
+     un corail CLAIR pour les sorties. Le vert et le rouge de même clarté
+     se confondaient pour un daltonien (écart 4,6, mesuré par le
+     validateur de la charte des graphes) : la clarté les sépare (13,9).
+     Le rouge du texte, en aplat, crierait. Les
      familles des anneaux : quatre teintes validées ensemble pour les
      daltoniens (bleu, aqua, violet, rose) — la couleur suit la famille,
      jamais le rang. Le bleu des heures de pointe : une seule teinte, du
      clair au foncé. Jamais en texte : à côté du texte, un point. */
-  --color-entree: #14ae5c;
-  --color-sortie: #e0473f;
+  --color-entree: #0a6e38;
+  --color-sortie: #f0786a;
   --color-famille-argent: #2a78d6;
   --color-famille-especes: #6250d6;
   --color-famille-transferts: #1baf7a;
@@ -205,6 +208,27 @@ html[data-rail="replie"] { --rail: 4.5rem; }
 }
 .surgit { animation: surgit 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
 
+/* LES VOLUMES CHANGENT DE PÉRIODE : les chiffres arrivent du côté où l'on
+   va (‹ : de la gauche ; › : de la droite), ou en fondu pour une autre
+   durée. « backwards » ici aussi : rien ne reste appliqué après. */
+@keyframes glisse-gauche {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes glisse-droite {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fondu {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.glisse-gauche { animation: glisse-gauche 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) backwards; }
+.glisse-droite { animation: glisse-droite 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) backwards; }
+.fondu { animation: fondu 0.22s ease-out backwards; }
+@keyframes tourne { to { transform: rotate(360deg); } }
+.tourne { animation: tourne 0.8s linear infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  .entree, .voile, .surgit, .ecran { animation: none; }
+  .entree, .voile, .surgit, .ecran, .glisse-gauche, .glisse-droite, .fondu { animation: none; }
 }

@@ -1,23 +1,28 @@
+"use client";
+
+import { useState } from "react";
 import { textesAnalyse } from "@noyau/textes/analyse";
 import { textesReleve } from "@noyau/textes/releve";
-import { formaterNumero } from "@noyau/numero";
+import { textesVolumes } from "@noyau/textes/volumes";
 import { bornesDuChoix } from "@noyau/releve";
-import { jourLocal, type Sim } from "@noyau/types";
-
-type CarteDuReleve = Pick<Sim, "iccid" | "numero" | "libelle" | "operateur">;
+import { nomDesJours, type Bornes } from "@noyau/periodes";
 import type { Langue } from "@noyau/langue";
-import { FUSEAU } from "@/lib/fuseau";
-import { IconDoc } from "../icons";
+import { IconCalendrier, IconChevron, IconDoc, IconDownload } from "../icons";
+import { GrilleDeJours, MenuDeCarte, raccourcisDeDates, type CarteAChoisir } from "./selecteurs";
 
 // LES DOCUMENTS QUI SORTENT DE TOTEM — le relevé de compte (une carte ou
 // toutes, deux dates, PDF ou CSV) et le bilan pour le comptable. Ils
 // vivaient sur la page Analyse ; ils suivent les Volumes, qui la remplacent.
+//
+// Le relevé se choisit avec les MÊMES pièces que l'écran au-dessus — le menu
+// des cartes, le calendrier —, et non avec la liste et les champs de date du
+// navigateur, « les vieux composants ».
 
-export function Documents({ langue, sims }: { langue: Langue; sims: CarteDuReleve[] }) {
+export function Documents({ langue, sims, aujourdhui }: { langue: Langue; sims: CarteAChoisir[]; aujourdhui: string }) {
   const t = textesAnalyse[langue];
   return (
     <div className="grid gap-8 md:grid-cols-2">
-      <ReleveDeCompte langue={langue} sims={sims} />
+      <ReleveDeCompte langue={langue} sims={sims} aujourdhui={aujourdhui} />
       <section>
         {/* Le bilan en CSV, prêt pour Excel ou la comptabilité — les mêmes
             colonnes que l'export Telegram du robot. La semaine pour le
@@ -49,63 +54,73 @@ export function Documents({ langue, sims }: { langue: Langue; sims: CarteDuRelev
 
 /**
  * LE RELEVÉ DE COMPTE — une carte (ou toutes), deux dates choisies librement,
- * PDF ou CSV. Un simple formulaire qui va chercher `/api/releve` : le
- * navigateur porte le cookie, et sait télécharger un fichier. Chaque carte
- * se désigne par son NUMÉRO, quel que soit le réseau ; le libellé seulement
- * quand le numéro n'est pas inscrit.
+ * PDF ou CSV. Le lien va chercher `/api/releve` : le navigateur porte le
+ * cookie, et sait télécharger un fichier.
  */
-function ReleveDeCompte({ langue, sims }: { langue: Langue; sims: CarteDuReleve[] }) {
+function ReleveDeCompte({ langue, sims, aujourdhui }: { langue: Langue; sims: CarteAChoisir[]; aujourdhui: string }) {
   const r = textesReleve[langue];
+  const tv = textesVolumes[langue];
+  const [carte, setCarte] = useState(sims.length === 1 ? sims[0].iccid : "tout");
+  const [periode, setPeriode] = useState<Bornes>(() => bornesDuChoix("mois", aujourdhui));
+  const [premier, setPremier] = useState<string | null>(null);
+  const [calendrier, setCalendrier] = useState(false);
+  const [format, setFormat] = useState<"pdf" | "csv">("pdf");
   if (sims.length === 0) return null;
-  const aujourdhui = jourLocal(new Date(), FUSEAU);
-  const depart = bornesDuChoix("mois", aujourdhui);
-  const champ = "w-full rounded-btn border border-line bg-surface-raised px-3 py-2.5 text-small";
+  const toucher = (jour: string) => {
+    if (!premier) { setPremier(jour); setPeriode({ de: jour, a: jour }); return; }
+    setPeriode(jour < premier ? { de: jour, a: premier } : { de: premier, a: jour });
+    setPremier(null);
+  };
+  const lien = `/api/releve?carte=${encodeURIComponent(carte)}&de=${periode.de}&a=${periode.a}&format=${format}`;
   return (
     <section aria-labelledby="releve-titre">
       <h2 id="releve-titre" className="mb-1 flex items-center gap-2 text-heading font-semibold">
         <IconDoc size={16} /> {r.titre}
       </h2>
       <p className="mb-3 text-small text-ink-soft">{r.explication}</p>
-      <form action="/api/releve" method="get" className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-small text-ink-soft">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1 text-small text-ink-soft">
           {r.carte}
-          <select name="carte" defaultValue={sims.length === 1 ? sims[0].iccid : "tout"}
-                  className={champ}>
-            {sims.length > 1 && <option value="tout">{r.toutesLesCartes}</option>}
-            {sims.map((s) => (
-              <option key={s.iccid} value={s.iccid}>
-                {formaterNumero(s.numero) || `${s.libelle} (${r.numeroNonRenseigne})`}
-                {" · "}{s.operateur}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1 text-small text-ink-soft">
-            {r.du}
-            <input type="date" name="de" required defaultValue={depart.de} max={aujourdhui}
-                   className={champ} />
-          </label>
-          <label className="flex flex-col gap-1 text-small text-ink-soft">
-            {r.au}
-            <input type="date" name="a" required defaultValue={depart.a} max={aujourdhui}
-                   className={champ} />
-          </label>
+          <MenuDeCarte langue={langue} cartes={sims} choisie={carte} onChoisir={setCarte} />
         </div>
-        <fieldset className="flex gap-4 text-small">
-          <legend className="mb-1 text-ink-soft">{r.format}</legend>
-          <label className="flex items-center gap-2">
-            <input type="radio" name="format" value="pdf" defaultChecked /> {r.pdf}
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="radio" name="format" value="csv" /> {r.csv}
-          </label>
-        </fieldset>
-        <button type="submit"
-                className="flex items-center justify-center gap-2 rounded-btn bg-ink py-3 text-small font-medium text-white transition hover:opacity-90">
-          {r.telecharger}
-        </button>
-      </form>
+        <div className="flex flex-col gap-1 text-small text-ink-soft">
+          {tv.periodes.dates}
+          <button type="button" aria-expanded={calendrier} onClick={() => setCalendrier((o) => !o)}
+                  className="flex w-full items-center justify-between gap-3 rounded-btn border border-line bg-surface-raised px-3 py-2.5 text-small text-ink transition hover:border-ink-faint">
+            <span className="flex items-center gap-2 font-semibold">
+              <IconCalendrier size={16} className="text-ink-soft" /> {nomDesJours(periode, langue)}
+            </span>
+            <IconChevron size={14} className={`text-ink-faint transition-transform duration-200 ${calendrier ? "-rotate-90" : "rotate-90"}`} />
+          </button>
+          {calendrier && (
+            <div className="surgit mt-1 rounded-card border border-line bg-surface-raised p-3">
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {raccourcisDeDates(aujourdhui).map((x) => (
+                  <button key={x.cle} type="button" onClick={() => { setPeriode(x.bornes); setPremier(null); }}
+                          className={`rounded-full border px-3 py-1.5 text-caption font-medium transition ${
+                            periode.de === x.bornes.de && periode.a === x.bornes.a
+                              ? "border-accent bg-accent text-white" : "border-line text-ink-soft hover:border-ink-faint"}`}>
+                    {tv.raccourcis[x.cle]}
+                  </button>
+                ))}
+              </div>
+              <GrilleDeJours langue={langue} aujourdhui={aujourdhui} choix={periode} onToucher={toucher} />
+            </div>
+          )}
+        </div>
+        <div role="radiogroup" aria-label={r.format} className="flex gap-1 self-start rounded-full bg-surface-2 p-1 text-small">
+          {(["pdf", "csv"] as const).map((f) => (
+            <button key={f} type="button" role="radio" aria-checked={format === f} onClick={() => setFormat(f)}
+                    className={`rounded-full px-4 py-1.5 font-medium transition ${format === f ? "bg-accent text-white" : "text-ink-soft"}`}>
+              {f === "pdf" ? r.pdf : r.csv}
+            </button>
+          ))}
+        </div>
+        <a href={lien} download
+           className="flex items-center justify-center gap-2 rounded-btn bg-ink py-3 text-small font-medium text-white transition hover:opacity-90">
+          <IconDownload size={16} /> {r.telecharger}
+        </a>
+      </div>
     </section>
   );
 }

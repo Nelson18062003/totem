@@ -85,6 +85,20 @@ const en = {
   pasDeCarteDetail: "Volumes appear once a card is linked to your account.",
   erreur: "The figures could not be loaded. Check the connection and try again.",
   reessayer: "Try again",
+  chargement: "Loading…",
+  // Le graphe.
+  toucherUneBarre: "Touch another bar to see it",
+  debutDeLaCaisse: (j: string) => `First SMS on ${j}: nothing before`,
+  // Les dates.
+  choisirLesDates: "Choose the dates",
+  aideDates: "Touch a first day, then a last one.",
+  voirCesDates: "Show these dates",
+  fermer: "Close",
+  moisPrecedent: "Previous month",
+  moisSuivant: "Next month",
+  raccourcis: { sept: "Last 7 days", trente: "Last 30 days", ceMois: "This month", moisDernier: "Last month" },
+  // Le choix de la carte.
+  choisirLaCarte: "Choose a card",
   types: {
     argent_recu: "Money received", transfert_recu: "Transfers in", retrait_client: "Customer withdrawals",
     depot_recu: "Deposits received", commissions_versees: "Commissions paid to the card",
@@ -170,6 +184,17 @@ const fr: typeof en = {
   pasDeCarteDetail: "Les volumes apparaissent dès qu’une carte est rattachée à votre compte.",
   erreur: "Les chiffres n’ont pas pu se charger. Vérifiez la connexion, puis réessayez.",
   reessayer: "Réessayer",
+  chargement: "Chargement…",
+  toucherUneBarre: "Touchez une autre barre pour la voir",
+  debutDeLaCaisse: (j) => `Premier SMS le ${j} : rien avant`,
+  choisirLesDates: "Choisir les dates",
+  aideDates: "Touchez un premier jour, puis un dernier.",
+  voirCesDates: "Voir ces dates",
+  fermer: "Fermer",
+  moisPrecedent: "Mois précédent",
+  moisSuivant: "Mois suivant",
+  raccourcis: { sept: "7 derniers jours", trente: "30 derniers jours", ceMois: "Ce mois-ci", moisDernier: "Le mois dernier" },
+  choisirLaCarte: "Choisir une carte",
   types: {
     argent_recu: "Argent reçu", transfert_recu: "Transferts reçus", retrait_client: "Retraits de clients",
     depot_recu: "Dépôts reçus", commissions_versees: "Commissions versées sur la carte",
@@ -191,6 +216,25 @@ export function francs(n: number, langue: "en" | "fr", signe = false): string {
     .replace(/[  ]/g, " ");
   const s = signe ? (n > 0 ? "+" : n < 0 ? "−" : "") : n < 0 ? "−" : "";
   return `${s}${v} F`;
+}
+
+/**
+ * UN MONTANT POUR L'AXE DU GRAPHE, et pour lui seul : « 50 M », « 1,2 Md ».
+ * Un repère d'échelle n'est pas un montant — les montants, eux, s'écrivent
+ * toujours en entier (`francs`).
+ */
+export function francsCourts(n: number, langue: "en" | "fr"): string {
+  const a = Math.abs(n);
+  const loc = langue === "en" ? "en-GB" : "fr-FR";
+  const ecrire = (v: number, unite: string) => {
+    const x = v.toLocaleString(loc, { maximumFractionDigits: v < 10 ? 1 : 0 });
+    return langue === "en" ? `${x}${unite}` : `${x} ${unite}`;
+  };
+  const r = a >= 1e9 ? ecrire(a / 1e9, langue === "en" ? "B" : "Md")
+    : a >= 1e6 ? ecrire(a / 1e6, "M")
+    : a >= 1e3 ? ecrire(a / 1e3, "k")
+    : String(Math.round(a));
+  return (n < 0 ? "−" : "") + r.replace(/[  ]/g, " ");
 }
 
 /** Le nom d'une famille dans un anneau : celui du type quand il est seul

@@ -399,6 +399,21 @@ export function dansLaDemonstration<T>(faire: () => Promise<T>): Promise<T> {
  * distant qui ignorerait un filtre (la vitrine n'en applique aucun) ne doit
  * pas faire passer le solde d'une autre carte, ou d'après, pour une ouverture.
  */
+/**
+ * LE PREMIER JOUR DE LA CAISSE, pour ces cartes : celui du plus ancien SMS
+ * relevé. Sans lui, « six mois » se comparait à six mois d'AVANT l'ouverture
+ * de la caisse — à presque rien — et montait de 24 145 %. `null` : aucun SMS.
+ */
+export async function premierJourDesCartes(iccids: string[], fuseau: string): Promise<string | null> {
+  if (iccids.length === 0) return null;
+  const [l] = await lire<{ recu_le: string; emis_le: string | null }>(
+    `paiements?select=recu_le,emis_le&carte=in.${listeDeCartes(iccids)}&order=recu_le.asc&limit=1`);
+  if (!l) return null;
+  const t = Math.min(...[l.recu_le, l.emis_le].map((v) => (v ? Date.parse(v) : Number.NaN))
+    .filter(Number.isFinite));
+  return Number.isFinite(t) ? jourLocal(new Date(t), fuseau) : null;
+}
+
 export async function soldeAnnonceAvant(
   iccid: string, avant: string, numeroDeLaCarte?: string | null,
 ): Promise<number | null> {

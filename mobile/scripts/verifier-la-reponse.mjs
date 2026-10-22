@@ -188,6 +188,11 @@ async function ecart(avant, pendant) {
  *  relâcher dessus déclencherait l'action, et le harnais naviguerait
  *  au lieu de mesurer. */
 async function sonder(nom, loc) {
+  // Un bouton sous le pli se mesure à l'écran : hors de la fenêtre, la
+  // capture et le doigt tombent dans le vide, et la sonde dirait « rien ne
+  // bouge » d'un bouton qu'elle n'a pas touché.
+  await loc.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
+  await attendre(250);
   const b = await loc.boundingBox({ timeout: 4000 }).catch(() => null);
   if (!b || b.width < 2 || b.height < 2) {
     console.log(`  ✗ ${nom} — introuvable à l'écran`);
@@ -315,6 +320,7 @@ try {
   console.log("\nCe qu'une aide technique entend, sur l'accueil :");
   await page.getByRole("tab", { name: /^(Home|Accueil)$/ }).first().click();
   await attendre(2500);
+  async function entendre(ecran) {
   const { annonces, pressables, muets } = await page.evaluate(() => {
     // CE QUI SE PRESSE, ce n'est PAS `cursor: pointer` : ce curseur descend
     // en héritage, et sur cet écran 2 129 éléments sur 2 500 le portent —
@@ -335,14 +341,34 @@ try {
     };
   });
   if (annonces < pressables) {
-    console.log(`  ✗ ${pressables} choses se pressent, ${annonces} s'annoncent`
+    console.log(`  ✗ ${ecran} : ${pressables} choses se pressent, ${annonces} s'annoncent`
                 + " comme des boutons. Muettes :");
     for (const m of muets) console.log(`      « ${m} »`);
     echecs += pressables - annonces;
   } else {
-    console.log(`  ✓ les ${pressables} choses qui se pressent s'annoncent toutes`
+    console.log(`  ✓ ${ecran} : les ${pressables} choses qui se pressent s'annoncent toutes`
                 + " comme des boutons.");
   }
+  }
+  await entendre("l'accueil");
+
+  // ── LES VOLUMES ──────────────────────────────────────────────────────
+  //
+  // Des boutons neufs : les pastilles des durées, le choix de la carte, et
+  // les colonnes du graphe, qu'on touche pour lire un jour. « Je clique sur
+  // une data, ça prend du temps », disait le propriétaire : un appui qui ne
+  // répond pas se répète.
+  console.log("\nLes volumes :");
+  await page.goto(`${APERCU}/volumes`, { waitUntil: "networkidle" });
+  await page.waitForFunction(() => /Money in|Entrées/.test(document.body.innerText), null, { timeout: 30000 });
+  await attendre(1500);
+  await sonder("la pastille « 6 mois »", page.getByRole("tab", { name: /^(6 months|6 mois)$/ }).first());
+  await sonder("le choix de la carte", page.getByRole("button", { name: /^(Card|Carte) : / }).first());
+  // Une colonne qu'on n'a pas encore choisie — la première, souvent vide :
+  // une opacité posée sur du vide ne se voit pas.
+  await sonder("une colonne du graphe", page.getByRole("button", { name: / : (Money in|Entrées) / }).first());
+  await entendre("les volumes");
+
 
 } catch (e) {
   console.error(`\n✗ Le harnais s'est arrêté : ${e.message}`);

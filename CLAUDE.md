@@ -344,6 +344,54 @@ débordement s'annonçait aussi « 15 px » sans dire où : il NOMME maintenant
 ce qui ne sait pas se faire plus étroit (c'était le total d'un anneau, un
 nombre qui ne se coupe pas), au lieu de ce qui dépasse.
 
+**Une période se redemande par son repère, pas par son premier jour.**
+« 6 mois ne marche pas » : `periodeVolumes("6mois", repère)` fait du mois
+du repère le DERNIER des six ; l'écran redemandait la période par son
+premier jour, et elle reculait de cinq mois — des zéros sous le bon titre,
+et ‹ sautait onze mois. `repereDeLaPeriode` (noyau) ; `verifier-les-volumes`
+rejoue l'ancienne demande pour témoin.
+
+**Une comparaison sans base n'est pas une hausse.** « ▲ 24 145 % » comparait
+octobre à un mois d'avant le premier SMS. La comparaison se tait quand la
+caisse ne remonte pas jusqu'à la période d'avant (`comparable`), et un
+rapport de deux ou plus s'écrit « × 7,7 ».
+
+**Rapide, c'est ne pas redemander.** Changer de période rechargeait la page :
+1 083 ms. L'écran garde ce qu'il a lu et charge en silence les périodes
+voisines ; le banc compte ce qui part vers la plateforme AU MOMENT de
+l'appui — zéro, en 60 à 150 ms —, et son témoin (une carte jamais
+regardée) doit bien demander.
+
+**Un montant ne se coupe jamais — et la caisse d'essai doit porter des
+milliards.** Le résumé du graphe, en trois colonnes, disait
+« −1 616 949… » ; la vraie caisse passe le milliard en six mois, celle du
+banc plafonnait à 300 000 F l'opération et ne pouvait rien en montrer. Un
+grossiste y passe maintenant des dizaines de millions, et le banc cherche
+tout montant rogné, à quatre tailles, sonde éprouvée sur un montant coupé
+exprès. Même règle, même chute : **une donnée d'essai trop sage cache le
+défaut au lieu de le montrer.**
+
+**« Les vieux composants » sont ceux du navigateur.** La liste déroulante
+et les champs de date natifs ne ressemblaient à rien du reste de
+l'application ; le menu des cartes (logo, « MTN ·8901 », le numéro
+dessous) et le calendrier à raccourcis les remplacent, et le banc exige
+qu'il n'en reste aucun. Les couleurs des entrées et des sorties se
+confondaient pour un œil daltonien (écart 4,6) : la paire validée en a 13,9.
+
+**Une sonde hors de l'écran ne touche rien.** `verifier-la-reponse` disait
+« rien ne bouge sous le doigt » d'une colonne du graphe : elle était sous le
+pli, la capture et le doigt tombaient dans le vide. La sonde amène
+maintenant le bouton à l'écran avant d'appuyer.
+
+**Une page d'erreur bien rangée ne déborde de rien.** Un dossier d'aperçu
+déplacé de travers a rendu à `verifier-l-affichage` l'export du 13 octobre,
+où les Volumes n'existaient pas : il a mesuré « Unmatched Route » à la
+place, et déclaré l'écran juste à douze tailles sur quatorze — la page
+d'erreur ne débordait qu'à 320 points. Le banc reconnaissait l'écran à son
+contenu, puis mesurait « tel quel » quand il ne le reconnaissait pas. Un
+écran qu'on ne reconnaît pas ÉCHOUE maintenant, en disant ce qu'il y avait à
+sa place ; l'export d'avant, rejoué, en est le témoin.
+
 `verifier-le-frein` attaque le mot de passe EN RAFALE, pas en file. Le frein
 lisait le compteur, attendait, vérifiait, PUIS notait l'échec : soixante
 essais lancés ensemble lisaient donc tous un compteur à zéro. Mesuré — 999 ms

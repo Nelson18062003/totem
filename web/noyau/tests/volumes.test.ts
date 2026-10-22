@@ -21,8 +21,11 @@ import assert from "node:assert/strict";
 import {
   calculerVolumes, colonnesDe, creneauLePlusCharge, decalerMois, famillesDe, lundiDe,
   nomDeLaPeriode, numeroNormal, periodePrecedente, periodeVoisine, periodeVolumes, variation,
+  ecartLisible, serieVisible, graduations, colonneParDefaut, nomDeLaColonne, repereDeLaPeriode,
+  cleDeLaDemande, voisinesAPrecharger, periodeDeLaDemande, raccourcisDeDates,
   type CarteVolumes, type PeriodeVolumes,
 } from "../volumes";
+import { francsCourts } from "../textes/volumes";
 import { sectionDuReleve, totauxDuReleve, lignesDuReleve, dernierSoldeAvant } from "../releve";
 import { resumeSemaine } from "../analyse";
 import { decalerJour } from "../periodes";
@@ -536,4 +539,134 @@ test("TÉMOIN : sans l'écart des doublons, le relevé compterait deux fois", ()
     sms({ quand: "2026-03-01T09:00:01Z", categorie: "doublon", sens: "out", montant: 5_000, soldeApres: 248 }),
   ];
   assert.equal(dernierSoldeAvant(avant, "2026-03-02"), 2_000_000);
+});
+
+// --- Ce que l'écran en dit (v2) ---------------------------------------------
+
+test("la comparaison se tait quand la période d'avant précède la caisse", () => {
+  // La vraie caisse s'ouvre le 31 juillet : six mois d'octobre n'ont pas de
+  // « six mois d'avant ». Comparés à presque rien, ils montaient de 24 145 %.
+  const p = periode("6mois", "2026-10-21");
+  const ouverte = volumes(p, LA_CAISSE.lignes);
+  const tardive = calculerVolumes({ periode: p, lignes: LA_CAISSE.lignes, cartes: CARTES, fuseau: DOUALA,
+                                    debutDeLHistorique: "2026-07-31" });
+  const ancienne = calculerVolumes({ periode: p, lignes: LA_CAISSE.lignes, cartes: CARTES, fuseau: DOUALA,
+                                     debutDeLHistorique: "2025-01-01" });
+  const vide = calculerVolumes({ periode: p, lignes: [], cartes: CARTES, fuseau: DOUALA, debutDeLHistorique: null });
+  assert.equal(ouverte.comparable, true, "sans le premier jour, on compare comme avant");
+  assert.equal(tardive.comparable, false);
+  assert.equal(ancienne.comparable, true);
+  assert.equal(vide.comparable, false);
+  assert.equal(ecartLisible(100, 1, "fr", tardive.comparable), null);
+  // Le mois : le 1er–21 septembre est dans l'historique d'une caisse ouverte en juillet.
+  const m = calculerVolumes({ periode: periode("mois", "2026-10-21"), lignes: LA_CAISSE.lignes, cartes: CARTES,
+                              fuseau: DOUALA, debutDeLHistorique: "2026-07-31" });
+  assert.equal(m.comparable, true);
+});
+
+test("l'écart se lit : × au-delà du double, % en deçà, rien sans base", () => {
+  assert.deepEqual(ecartLisible(832, 108, "fr"), { texte: "× 7,7", sens: 1 });
+  assert.deepEqual(ecartLisible(832, 108, "en"), { texte: "× 7.7", sens: 1 });
+  assert.deepEqual(ecartLisible(2450, 100, "fr"), { texte: "× 25", sens: 1 });
+  assert.deepEqual(ecartLisible(112, 100, "fr"), { texte: "▲ 12 %", sens: 1 });
+  assert.deepEqual(ecartLisible(70, 100, "fr"), { texte: "▼ 30 %", sens: -1 });
+  assert.deepEqual(ecartLisible(100.2, 100, "fr"), { texte: "= 0 %", sens: 0 });
+  assert.equal(ecartLisible(100, 0, "fr"), null);
+  // TÉMOIN : l'ancienne lecture disait « 668 % », que personne ne lit.
+  assert.equal(variation(832, 108), 670);
+});
+
+test("le graphe commence au premier SMS de la caisse", () => {
+  const p = periode("6mois", "2026-10-21");
+  const serie = colonnesDe(p).map((cle) => ({ cle, entrees: 0, sorties: 0, n: 0 }));
+  const { serie: vue, coupee } = serieVisible(serie, p.pas, "2026-08-02");
+  assert.equal(coupee, true);
+  // La semaine qui CONTIENT le 2 août reste : elle porte le premier SMS.
+  assert.ok(vue[0].cle <= "2026-08-02" && decalerJour(lundiDe(vue[0].cle), 6) >= "2026-08-02", vue[0].cle);
+  assert.equal(vue.at(-1)!.cle, serie.at(-1)!.cle);
+  // Une caisse plus ancienne que la période : rien n'est coupé.
+  assert.equal(serieVisible(serie, p.pas, "2025-01-01").coupee, false);
+  // Heure par heure : jamais coupé.
+  const j = periode("jour", "2026-10-21");
+  const h = colonnesDe(j).map((cle) => ({ cle, entrees: 0, sorties: 0, n: 0 }));
+  assert.equal(serieVisible(h, j.pas, "2026-10-21").serie.length, 24);
+});
+
+test("les graduations sont rondes, et la dernière couvre le plus haut point", () => {
+  for (const max of [1, 7, 98, 950, 12_345, 98_000_000, 1_156_121_864.58, 0.5]) {
+    const g = graduations(max);
+    assert.ok(g.length >= 1 && g.length <= 4, `${max} → ${g}`);
+    assert.ok(g.at(-1)! >= max, `${max} → ${g}`);
+    const pas = g[0];
+    assert.ok(g.every((x, i) => Math.abs(x - pas * (i + 1)) < 1e-6), `${max} → ${g}`);
+    const mantisse = pas / 10 ** Math.floor(Math.log10(pas));
+    assert.ok([1, 2, 2.5, 5].some((k) => Math.abs(mantisse - k) < 1e-9), `${max} → pas ${pas}`);
+  }
+});
+
+test("la colonne retenue par défaut est la plus récente qui porte quelque chose", () => {
+  const s = ["a", "b", "c", "d"].map((cle, i) => ({ cle, entrees: 0, sorties: 0, n: i === 1 ? 3 : 0 }));
+  assert.equal(colonneParDefaut(s), 1);
+  assert.equal(colonneParDefaut(s.map((x) => ({ ...x, n: 0 }))), 3);
+});
+
+test("les montants courts de l'axe, et le nom entier d'une colonne", () => {
+  assert.equal(francsCourts(98_000_000, "fr"), "98 M");
+  assert.equal(francsCourts(1_200_000_000, "fr"), "1,2 Md");
+  assert.equal(francsCourts(1_200_000_000, "en"), "1.2B");
+  assert.equal(francsCourts(850_000, "fr"), "850 k");
+  assert.equal(francsCourts(2_500_000, "fr"), "2,5 M");
+  assert.equal(francsCourts(0, "fr"), "0");
+  assert.equal(nomDeLaColonne("2026-10-22", "jour", "fr"), "Jeudi 22 octobre");
+  assert.equal(nomDeLaColonne("2026-10", "mois", "fr"), "Octobre 2026");
+  assert.equal(nomDeLaColonne("14", "heure", "fr"), "14 h – 15 h");
+  assert.equal(nomDeLaColonne("2026-10-12", "semaine", "fr"), "Semaine du 12 oct.");
+});
+
+test("une période se redemande par SON repère : six mois par leur dernier mois", () => {
+  for (const [genre, repere] of [["jour", "2026-10-21"], ["semaine", "2026-10-21"], ["mois", "2026-10-21"],
+                                 ["6mois", "2026-10-21"], ["6mois", "2026-03-15"]] as const) {
+    const p = periode(genre, repere);
+    const encore = periodeVolumes(genre, repereDeLaPeriode(p), "2026-10-21");
+    assert.equal(encore?.de, p.de, `${genre} ${repere}`);
+    assert.equal(encore?.a, p.a, `${genre} ${repere}`);
+    // Et la flèche ‹, redemandée par son repère, recule d'UNE période.
+    const avant = periodeVoisine(p, -1, "2026-10-21")!;
+    const relue = periodeVolumes(genre, repereDeLaPeriode(avant), "2026-10-21")!;
+    assert.equal(relue.a, decalerJour(p.de, -1), `${genre} ‹ ${repere}`);
+  }
+  // TÉMOIN : redemandés par leur PREMIER jour, six mois glissaient de cinq mois.
+  const six = periode("6mois", "2026-10-21");
+  assert.equal(periodeVolumes("6mois", six.de, "2026-10-21")?.de, "2025-12-01");
+});
+
+test("une vue a UNE clé, et ses voisines désignent les bonnes périodes", () => {
+  const auj = "2026-10-22";
+  // Le mois du 22 et le mois du 1er : la même vue, la même clé.
+  assert.equal(cleDeLaDemande({ periode: "mois", jour: "2026-10-22", carte: "tout", qui: null }, auj),
+               cleDeLaDemande({ periode: "mois", jour: "2026-10-01", carte: "tout", qui: null }, auj));
+  assert.notEqual(cleDeLaDemande({ periode: "mois", jour: "2026-10-22", carte: "tout", qui: null }, auj),
+                  cleDeLaDemande({ periode: "mois", jour: "2026-10-22", carte: "89237010000000008901", qui: null }, auj));
+  // Six mois : la clé redonne mai – octobre, pas décembre – mai.
+  const six = { periode: "6mois" as const, jour: auj, carte: "tout", qui: null };
+  const relue = new URLSearchParams(cleDeLaDemande(six, auj));
+  const p = periodeVolumes("6mois", relue.get("jour"), auj)!;
+  assert.equal(p.de, "2026-05-01");
+  assert.equal(p.a, "2026-10-31");
+  // Les voisines : la période d'avant (pas d'après : le futur), et les trois
+  // autres durées pour aujourd'hui. Chacune désigne ce qu'elle annonce.
+  const v = voisinesAPrecharger(p, "tout", auj);
+  assert.equal(v.length, 4);
+  const avant = periodeDeLaDemande(v[0], auj)!;
+  assert.equal(avant.de, "2025-11-01");
+  assert.equal(avant.a, "2026-04-30");
+  assert.deepEqual(v.slice(1).map((d) => d.periode).sort(), ["jour", "mois", "semaine"]);
+});
+
+test("les raccourcis de dates tombent juste, fin de mois comprise", () => {
+  const r = Object.fromEntries(raccourcisDeDates("2026-03-01").map((x) => [x.cle, x.bornes]));
+  assert.deepEqual(r.sept, { de: "2026-02-23", a: "2026-03-01" });
+  assert.deepEqual(r.ceMois, { de: "2026-03-01", a: "2026-03-01" });
+  assert.deepEqual(r.moisDernier, { de: "2026-02-01", a: "2026-02-28" });
+  assert.equal(r.trente.de, "2026-01-31");
 });

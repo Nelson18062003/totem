@@ -423,7 +423,17 @@ for (const [format, w, h] of FORMATS.filter(([n]) => !SEUL || n === SEUL)) {
     ["cadran", "/ussd", /.+/],
   ]) {
     await page.goto(`${APERCU}${chemin}`, { waitUntil: "networkidle" });
-    try { await attendreTexte(page, preuve); } catch { /* mesuré tel quel */ }
+    // UN ÉCRAN QU'ON NE RECONNAÎT PAS NE SE MESURE PAS : il ÉCHOUE. Le
+    // banc mesurait « tel quel » ce qu'il trouvait — et un export d'avant,
+    // remis là par erreur, lui a servi la page « Unmatched Route » à la
+    // place des Volumes : douze tailles sur quatorze « ✓ ». Une page
+    // d'erreur bien rangée ne déborde de rien.
+    try { await attendreTexte(page, preuve); } catch {
+      defauts++;
+      const vu = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ").slice(0, 80);
+      resume.push(`  ✗ ${format.padEnd(18)} ${ecran.padEnd(16)} écran introuvable — à sa place : « ${vu} »`);
+      continue;
+    }
     await mesurer(ecran);
   }
 
