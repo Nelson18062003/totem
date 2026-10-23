@@ -1628,6 +1628,22 @@ effaçait sous la seconde (c'est un COMPTE maintenant) ; un journal qui
 accusait le modem d'un refus pendant une relance, où rien n'était parti.
 **Une relance, d'où qu'elle vienne, se sait partout** (`Compte.redemarrer`).
 
+**Un modem muet n'est pas un modem qui dit « aucun SMS ».** Le 23 octobre,
+Orange ·4177 a passé la matinée sur un port ouvert qui acceptait tout et ne
+répondait rien : « signal unknown · registration unreadable · USSD setting
+unreadable », chaque code « sans réponse du réseau » — et le propriétaire
+relançait tout le robot, dont la détection reprenait un port qui répond. Le
+chien de garde ne compte que ce qui LÈVE : un port débranché lève
+« Input/output error », un port muet rend une chaîne vide, et la relève en
+faisait « aucun SMS », zéro échec. La veille du réseau lisait « inconnu »,
+qui ne compte ni pour ni contre — juste. Un silence COMPLET (pas un octet
+en dix secondes) est maintenant une panne nommée (`ModemMuet`, avec le
+port et l'interface), comptée comme un débranchement : trois de suite, le
+modem est relancé et son port rouvert là où il répond. Une réponse entamée
+sans « OK » n'en est pas une : une mémoire pleine est longue à lister.
+`tests/test_modem_muet.py` porte le témoin : trente relèves muettes de
+l'ancienne relève, zéro relance.
+
 **Un nom de port n'est pas une interface.** Le noyau ne redonne pas à un
 modem revenu un bloc de cinq numéros qui se suivent : il lui donne les plus
 petits numéros libres. Le 22 octobre, le même modem est revenu sur ttyUSB

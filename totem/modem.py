@@ -88,6 +88,7 @@ TTL_ICCID = 45
 TTL_IMSI = 300
 TTL_SIM_PRESENTE = 8
 TTL_INSCRIPTION = 5
+DELAI_RELEVE = 10         # secondes laissées au modem pour lister ses SMS
 # Au-delà, on se contente de ce que le réseau a envoyé jusque-là.
 GRACE_CUSD = 1.2
 # Mode texte — repli quand le firmware refuse le mode PDU.
@@ -130,6 +131,42 @@ def _trace_du_morceau(emplacement, pdu, morceau):
 
 class ErreurModem(Exception):
     pass
+
+
+class ModemMuet(ErreurModem):
+    """Le modem n'a RIEN répondu — pas un octet — à une commande qui répond
+    toujours. Ce n'est pas un modem débranché : un port débranché lève
+    « Input/output error », et le chien de garde le voit. C'est un port
+    ouvert, qui accepte ce qu'on lui écrit, et qui se tait.
+
+    Le 23 octobre, la carte Orange ·4177 a passé la matinée ainsi sur
+    ttyUSB20 : « signal unknown · registration unreadable · USSD setting
+    unreadable », et chaque code « sans réponse du réseau ». Le réseau n'y
+    était pour rien, le modem ne répondait à aucune commande. Mais la relève
+    des SMS, toutes les dix secondes, rendait « aucun SMS » sans lever ; le
+    chien de garde comptait zéro échec ; la veille du réseau lisait
+    « inconnu », qui ne compte ni pour ni contre. Rien ne le relançait. Le
+    propriétaire relançait tout le robot à la main, dont la détection prenait
+    un port qui répond — et ça repartait, jusqu'à la fois suivante.
+
+    Un silence complet est donc une PANNE, dite avec son port, et comptée
+    comme un « Input/output error » : trois de suite, et le modem est
+    relancé, port rouvert là où il répond."""
+
+    def __init__(self, port, commande, delai):
+        self.port = port
+        nom = (port or "").rsplit("/", 1)[-1] or "?"
+        try:
+            from .detect import interface_usb
+            interface = interface_usb(port)
+        except Exception:
+            interface = None
+        ou = nom if interface is None else f"{nom} (interface {interface})"
+        super().__init__(t(
+            f"the modem answered nothing on {ou} in {delai:g} s "
+            f"({commande}): mute, not unplugged",
+            f"le modem n'a rien répondu sur {ou} en {delai:g} s "
+            f"({commande}) : muet, pas débranché"))
 
 
 class ReponseNonRecue(ErreurModem):
@@ -1059,7 +1096,13 @@ class ModemSerie:
         disparaître à jamais."""
         with self.verrou:
             commande = "AT+CMGL=4" if self.mode_pdu else 'AT+CMGL="ALL"'
-            brut = self._envoyer(commande, delai=10)
+            brut = self._envoyer(commande, delai=DELAI_RELEVE)
+        # PAS UN OCTET en dix secondes : le modem est muet, et c'est une
+        # panne (voir `ModemMuet`). Une réponse entamée mais sans « OK »
+        # n'en est pas une : une mémoire pleine met du temps à se lister, et
+        # ce qui est lu se traite ; la suite vient au tour d'après.
+        if not brut.strip():
+            raise ModemMuet(self.port, commande, DELAI_RELEVE)
         if not self.mode_pdu:
             # Le mode texte ne livre pas l'horodatage réseau : emis_le = None,
             # l'appelant retombera sur l'heure de relève du Pi.
