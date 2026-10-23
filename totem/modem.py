@@ -133,6 +133,27 @@ class ErreurModem(Exception):
     pass
 
 
+class ModemFerme(ErreurModem):
+    """Le port du modem est FERMÉ : sa relance n'a pas retrouvé le modem sur
+    le bus USB, et le robot n'a plus rien d'ouvert à lui écrire.
+
+    Le 23 octobre, MTN ·6414 a décroché deux fois en une minute ; la
+    seconde relance ne l'a pas retrouvé en quarante-cinq secondes, et les
+    relèves suivantes écrivaient au journal « argument must be an int, or
+    have a fileno() method » — le message de Python devant un port fermé,
+    que le propriétaire lisait tel quel. La relève suivante l'a bien
+    relancé, mais trois lignes de charabia entre les deux, c'est trois
+    lignes qui n'expliquent rien. Le journal dit maintenant la cause."""
+
+    def __init__(self, port):
+        nom = (port or "").rsplit("/", 1)[-1] or "?"
+        super().__init__(t(
+            f"the modem is not open ({nom}): it has not come back on the "
+            "USB bus since its restart",
+            f"le modem n'est pas ouvert ({nom}) : il n'est pas revenu sur "
+            "le bus USB depuis sa relance"))
+
+
 class ModemMuet(ErreurModem):
     """Le modem n'a RIEN répondu — pas un octet — à une commande qui répond
     toujours. Ce n'est pas un modem débranché : un port débranché lève
@@ -486,6 +507,10 @@ class ModemSerie:
         personne tapait son code, cette relève vidait le port sans le lire :
         le menu passait pour ouvert, et le code secret partait comme un
         NOUVEAU code USSD. L'annonce est gardée là où `_cusd` la cherche."""
+        # Un port FERMÉ (la relance n'a pas retrouvé le modem) se dit en
+        # français, pas par l'erreur de Python sur un descripteur absent.
+        if not getattr(self.ser, "is_open", True):
+            raise ModemFerme(self.port)
         en_attente = getattr(self.ser, "in_waiting", 0) or 0
         if en_attente:
             self._garder_les_annonces(self.ser.read(en_attente) or b"")

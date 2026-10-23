@@ -26,7 +26,8 @@ from unittest import mock
 import totem.modem
 from totem.app import Robot
 from totem.compte import Compte
-from totem.modem import RE_CMGL, DELAI_RELEVE, ModemMuet, ModemSerie, decode_auto
+from totem.modem import (RE_CMGL, DELAI_RELEVE, ModemFerme, ModemMuet, ModemSerie,
+                         decode_auto)
 from totem.storage import Journal
 from totem.textes import definir_langue, langue_active
 
@@ -171,6 +172,35 @@ class TestUnSilenceCompletEstUnePanne(EnFrancais):
             m.lire_sms()
 
     def test_un_modem_qui_repond_ne_leve_pas(self):
+        m = modem_sur(Port())
+        with horloge_arretee():
+            self.assertEqual(m.lire_sms(), [])
+
+
+class PortFerme(Port):
+    """La relance n'a pas retrouvé le modem : le port est resté fermé.
+    pyserial lève alors « argument must be an int, or have a fileno()
+    method » sur la première lecture — le 23 octobre, trois fois au journal."""
+    is_open = False
+
+    @property
+    def in_waiting(self):
+        raise TypeError("argument must be an int, or have a fileno() method.")
+
+
+class TestUnPortFermeSeDitEnFrancais(EnFrancais):
+    def test_la_releve_dit_que_le_modem_n_est_pas_revenu(self):
+        m = modem_sur(PortFerme())
+        with horloge_arretee(), self.assertRaises(ModemFerme) as cm:
+            m.lire_sms()
+        phrase = str(cm.exception)
+        self.assertIn("ttyUSB20", phrase)
+        self.assertIn("pas revenu sur le bus USB", phrase)
+        self.assertNotIn("fileno", phrase)
+
+    def test_un_port_ouvert_sans_drapeau_passe(self):
+        """Les faux ports des tests n'ont pas `is_open` : ils comptent
+        comme ouverts, et la relève suit son cours."""
         m = modem_sur(Port())
         with horloge_arretee():
             self.assertEqual(m.lire_sms(), [])
