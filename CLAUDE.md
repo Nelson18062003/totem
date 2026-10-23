@@ -1644,6 +1644,25 @@ sans « OK » n'en est pas une : une mémoire pleine est longue à lister.
 `tests/test_modem_muet.py` porte le témoin : trente relèves muettes de
 l'ancienne relève, zéro relance.
 
+**Une carte en itinérance peut mal choisir son antenne — et on peut la
+choisir pour elle.** Le 23 octobre, MTN ·6414 était la seule carte sur SFR :
+quinze pertes de réseau en une matinée, « CARD OFF THE NETWORK » avec un
+signal à 0 l'instant d'après 24, des codes refusés par le réseau (« unknown
+network message »), pendant que ·3501 et ·6299, sur Orange F, travaillaient.
+Le propriétaire contestait toute cause électrique ; plutôt que d'argumenter,
+une expérience qui ne demande que du logiciel : `[reseaux]` dans
+`totem.conf` (« 6414 = Orange F ») impose son réseau à une carte, comme
+« Choisir le réseau manuellement » sur un téléphone (`AT+COPS=1,2,code`,
+lu en codes, rendu en noms pour l'écran). Le robot le pose au démarrage et
+après chaque relance du modem, et le REND si la carte reste sans service
+cinq minutes — un réseau imposé qui manque laisserait la carte muette —,
+puis réessaie une heure plus tard. Sans réglage, il ne touche à rien, sauf
+pour rendre son choix à un modem qu'un réglage d'avant a laissé en manuel.
+Et le réseau emprunté se relit à chaque retour : il se figeait au démarrage,
+et la plateforme disait « sur SFR » d'une carte passée ailleurs.
+`tests/test_reseau_impose.py`, témoin compris : sans `[reseaux]`, aucun
+ordre, aucune ligne.
+
 **Un nom de port n'est pas une interface.** Le noyau ne redonne pas à un
 modem revenu un bloc de cinq numéros qui se suivent : il lui donne les plus
 petits numéros libres. Le 22 octobre, le même modem est revenu sur ttyUSB

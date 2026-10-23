@@ -48,6 +48,8 @@ RE_ERREUR_SMS = re.compile(
 # sens de `RE_FIN_AT` (pas de OK, pas de retour à la ligne après).
 RE_INVITE = re.compile(rb">\s*$")
 RE_COPS = re.compile(r'\+COPS:\s*\d+(?:,\d+,"([^"]*)")?')
+# Le mode aussi : 0 le modem choisit, 1 un réseau lui est imposé.
+RE_COPS_ETAT = re.compile(r'\+COPS:\s*(\d+)(?:,(\d+),"([^"]*)")?')
 # Identité de la SIM : ICCID (numéro gravé sur la carte, 18 à 22 chiffres),
 # IMSI (identité de l'abonné sur le réseau), MSISDN (le numéro de téléphone,
 # rarement provisionné sur les SIM prépayées).
@@ -89,6 +91,7 @@ TTL_IMSI = 300
 TTL_SIM_PRESENTE = 8
 TTL_INSCRIPTION = 5
 DELAI_RELEVE = 10         # secondes laissées au modem pour lister ses SMS
+DELAI_CHOIX_RESEAU = 120  # choisir un réseau peut prendre jusqu'à deux minutes (27.007)
 # Au-delà, on se contente de ce que le réseau a envoyé jusque-là.
 GRACE_CUSD = 1.2
 # Mode texte — repli quand le firmware refuse le mode PDU.
@@ -698,6 +701,51 @@ class ModemSerie:
         with self.verrou:
             m = RE_COPS.search(self._envoyer("AT+COPS?", delai=3))
         return decode_auto(m.group(1)) if m and m.group(1) else "inconnu"
+
+    # ---- le choix du réseau (AT+COPS) ----------------------------------------
+    #
+    # Une carte en itinérance choisit seule l'antenne qu'elle emprunte. Le
+    # propriétaire peut lui en imposer une (voir `reseaux.py`, [reseaux]) :
+    # c'est « Choisir le réseau manuellement » d'un téléphone. Le modem garde
+    # ce choix, même éteint — d'où `reseau_automatique`, qui le rend.
+
+    def reseau_choisi(self):
+        """(mode, code) tel que le modem le dit — mode 0 : il choisit seul,
+        1 : un réseau lui est imposé ; code « 20801 », ou "" s'il n'est sur
+        aucun réseau. None si la réponse ne se lit pas. La lecture se fait
+        en CODES (format 2), puis le format des NOMS est rendu : c'est lui
+        que `operateur()` lit pour l'écran."""
+        with self.verrou:
+            self._envoyer("AT+COPS=3,2", delai=3)
+            m = RE_COPS_ETAT.search(self._envoyer("AT+COPS?", delai=3))
+            self._envoyer("AT+COPS=3,0", delai=3)
+        if not m:
+            return None
+        return (int(m.group(1)), m.group(3) or "")
+
+    def imposer_reseau(self, code):
+        """Impose le réseau `code` à la carte (AT+COPS=1,2,"code"). Peut
+        prendre jusqu'à deux minutes : la carte se réinscrit. Rend True si
+        le modem a accepté. Le format des noms est rendu ensuite, pour que
+        l'écran continue de lire « Orange F » et non « 20801 »."""
+        with self.verrou:
+            ok = "OK" in self._envoyer(f'AT+COPS=1,2,"{code}"', delai=DELAI_CHOIX_RESEAU)
+            self._envoyer("AT+COPS=3,0", delai=3)
+            self._oublier_le_reseau()
+        return ok
+
+    def reseau_automatique(self):
+        """Rend à la carte le choix de son réseau (AT+COPS=0)."""
+        with self.verrou:
+            ok = "OK" in self._envoyer("AT+COPS=0", delai=DELAI_CHOIX_RESEAU)
+            self._oublier_le_reseau()
+        return ok
+
+    def _oublier_le_reseau(self):
+        memo = getattr(self, "_memo", None)
+        if memo is not None:
+            for cle in ("inscription", "signal", "operateur"):
+                memo.pop(cle, None)
 
     def sim_presente(self):
         return self._cache("sim_presente", TTL_SIM_PRESENTE, self._lire_sim_presente)

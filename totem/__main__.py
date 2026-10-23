@@ -273,6 +273,7 @@ def principal():
           sauvegarde_quotidienne=cfg["sauvegarde_quotidienne"],
           chemin_base=cfg["base"] if "--simulation" not in args else None,
           numeros=cfg["numeros"], recus=cfg["recus"],
+          reseaux=cfg["reseaux"],
           sms_sur_telegram=cfg["sms_sur_telegram"],
           nuage=nuage, xafe=xafe).demarrer()
 

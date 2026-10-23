@@ -106,6 +106,11 @@ class Compte:
         # doit pas lever la garde de la seconde.
         self._reglages = 0
         self._garde_des_reglages = threading.Lock()
+        # Le choix du réseau posé par le robot sur ce modem (voir
+        # `Robot._imposer_le_reseau`) : None tant qu'on n'a pas regardé,
+        # « impose », « auto », ou « refuse ». Et depuis quand.
+        self.reseau_applique = None
+        self.reseau_depuis = None
 
     # ---- état -------------------------------------------------------------
     @property
@@ -384,6 +389,62 @@ class Compte:
         except Exception:
             return (0, 0)
 
+    # ---- le choix du réseau ------------------------------------------------
+    def reseau_choisi(self):
+        """Ce que le modem dit de son choix de réseau — voir
+        `ModemSerie.reseau_choisi` — ou None (carte occupée, modem qui ne
+        sait pas le dire, lecture ratée)."""
+        lire = getattr(self.modem, "reseau_choisi", None)
+        if lire is None or self.session_ouverte:
+            return None
+        if not self.verrou.acquire(blocking=False):
+            return None
+        try:
+            return lire()
+        except Exception:
+            return None
+        finally:
+            self.verrou.release()
+
+    def choisir_reseau(self, code):
+        """Pose le choix du réseau sur le modem : `code` l'impose, None rend
+        le choix à la carte. Jamais pendant un menu ; la carte se dit « en
+        réglage » le temps du geste (jusqu'à deux minutes), et refuse les
+        demandes tout de suite au lieu de les faire attendre. Rend True si
+        le modem a pris, False s'il a refusé, None si ce n'était pas le
+        moment (carte occupée) ou si le modem ne sait pas le faire."""
+        imposer = getattr(self.modem, "imposer_reseau", None)
+        rendre = getattr(self.modem, "reseau_automatique", None)
+        if imposer is None or rendre is None or self.session_ouverte:
+            return None
+        if not self.verrou.acquire(blocking=False):
+            return None
+        try:
+            with self._reglage():
+                if self.session_ouverte:
+                    return None
+                try:
+                    ok = bool(imposer(code) if code else rendre())
+                except Exception:
+                    ok = False
+        finally:
+            self.verrou.release()
+        self.reseau_applique = ("impose" if code else "auto") if ok else "refuse"
+        self.reseau_depuis = time.monotonic()
+        service = getattr(self, "service", None)
+        if service is not None:
+            service.signaler_refus()     # relire l'inscription tout de suite
+        return ok
+
+    def relire_reseau(self):
+        """Le nom du réseau que la carte emprunte EN CE MOMENT, posé sur la
+        carte pour l'écran. Il se figeait au démarrage : une carte passée
+        de SFR à Orange F restait « sur SFR » sur la plateforme."""
+        reseau = self._lire("operateur")
+        if reseau and reseau != "inconnu":
+            self.carte.reseau = reseau
+        return getattr(self.carte, "reseau", "")
+
     # ---- le service (le réseau de la carte) ------------------------------
     def lire_service(self):
         """L'état du service de la carte, ou None si on ne lit pas cette fois.
@@ -502,6 +563,9 @@ class Compte:
             service = getattr(self, "service", None)
             if service is not None:
                 service.modem_relance(time.monotonic())
+            # Un modem relancé repart avec SES réglages : le choix du réseau
+            # se revérifie, et se repose s'il le faut.
+            self.reseau_applique = None
         self.echecs = 0
 
 

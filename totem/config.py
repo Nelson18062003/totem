@@ -138,6 +138,38 @@ def _numeros(cfg):
             if re.sub(r"\D", "", valeur)}
 
 
+def _reseaux(cfg):
+    """Section [reseaux] : le réseau IMPOSÉ à une carte, écrit à la main.
+
+        6414 = Orange F
+        mtn  = 20801
+
+    Une carte en itinérance choisit seule l'antenne française qu'elle
+    emprunte, et elle peut mal choisir : le 23 octobre, la seule carte sur
+    SFR perdait son réseau quinze fois par matinée pendant que ses sœurs,
+    sur Orange F, travaillaient. La clé est, comme pour [numeros], ce que le
+    propriétaire a sous les yeux : les quatre derniers chiffres de la carte,
+    son ICCID, son libellé ou son opérateur. La valeur est un nom connu ou
+    le code du réseau. Un réseau qu'on ne reconnaît pas refuse le fichier :
+    imposer un réseau qui n'existe pas laisserait la carte sans service."""
+    from .reseaux import code_du_reseau, noms_acceptes
+
+    if not cfg.has_section("reseaux"):
+        return {}
+    reseaux = {}
+    for cle, valeur in cfg.items("reseaux"):
+        valeur = (valeur or "").strip()
+        if not valeur:
+            continue
+        code = code_du_reseau(valeur)
+        if not code:
+            raise ErreurConfig(
+                f"[reseaux] {cle} = {valeur} : réseau inconnu. Écrivez son "
+                f"code (ex. 20801) ou un nom connu : {', '.join(noms_acceptes())}.")
+        reseaux[cle.strip().lower()] = code
+    return reseaux
+
+
 def charger():
     for chemin in CHEMINS:
         if chemin and os.path.isfile(chemin):
@@ -177,6 +209,8 @@ def charger():
                         "totem", "sauvegarde_quotidienne", fallback=True),
                     "raccourcis": _raccourcis(cfg),
                     "numeros": _numeros(cfg),
+                    # Le réseau imposé à une carte en itinérance (facultatif).
+                    "reseaux": _reseaux(cfg),
                     # Un reçu PDF joint aux opérations comprises. Se coupe
                     # d'un seul mot si l'on n'en veut pas.
                     "recus": cfg.getboolean("totem", "recus", fallback=True),

@@ -46,6 +46,7 @@ from .notification import (PEUT_ETRE_PARTIE, composer, composer_rattrapage,
                            envoyer, lire_les_accuses)
 from .nuage import lire_instant
 from .pdu import decoder, texte_du_groupe
+from .reseaux import nom_du_reseau
 from .storage import demarrage_courant
 
 # Combien de secondes laisser à Apple et Google avant de lire leurs accusés.
@@ -160,6 +161,11 @@ INTERVALLE_CONFLIT = 3600
 VERIF_CARTES_SECONDES = 60
 # Deux relances de radio (deux modems) jamais à moins de vingt secondes.
 ESPACEMENT_RADIO = 20
+# Le réseau imposé à une carte ([reseaux]) : toujours sans service cinq
+# minutes après l'imposition, on rend le choix à la carte — un réseau imposé
+# qui manque laisserait la carte muette — et on réessaie une heure plus tard.
+RESEAU_RETOUR_AUTO = 300
+RESEAU_NOUVEL_ESSAI = 3600
 
 
 def _nom_du_service(etat, langue):
@@ -296,7 +302,7 @@ class Robot:
                  delai_session=180, chemin_base=None, nuage=None,
                  seuil_confirmation=0, sauvegarde_quotidienne=True,
                  numeros=None, recus=True, sms_sur_telegram=False,
-                 xafe=None):
+                 xafe=None, reseaux=None):
         self.comptes = libelles_uniques(list(comptes))
         self.transport = transport
         self.journal = journal
@@ -346,6 +352,10 @@ class Robot:
         # prépayée ne dit presque jamais le sien : sans cette liste, TOTEM ne
         # sait pas de quel côté d'un transfert il se trouve.
         self.numeros = dict(numeros or {})
+        # Le réseau imposé à certaines cartes ([reseaux]) : vide, le robot
+        # ne touche à rien — sauf pour rendre son choix à une carte qu'un
+        # réglage d'avant aurait laissée en choix manuel.
+        self.reseaux = dict(reseaux or {})
         self.recus = recus      # joindre un reçu PDF aux opérations comprises
         self.sms_sur_telegram = sms_sur_telegram
         # Le dépôt des reçus sur la plateforme a son propre fil, réveillé dès
@@ -2071,6 +2081,8 @@ class Robot:
                 # de l'inscription est rattrapée par la relève qui suit.
                 self._etape(f"réseau {compte.libelle}",
                             lambda: self._veiller_service(compte))
+                self._etape(f"réseau imposé {compte.libelle}",
+                            lambda: self._imposer_le_reseau(compte))
                 self._relever_sms(compte)
             except Exception as e:
                 self._noter(f"relève SMS {compte.libelle} : {e}")
@@ -2100,6 +2112,11 @@ class Robot:
             reveil = getattr(self.nuage, "signe_de_vie_tot", None)
             if reveil:
                 reveil()
+        if ("episode" in evenements or "retour" in evenements) and hasattr(compte, "relire_reseau"):
+            # Le réseau emprunté se relit quand il a pu changer : il se
+            # figeait au démarrage, et la plateforme disait « sur SFR » d'une
+            # carte passée sur Orange F.
+            compte.relire_reseau()
         if "episode" in evenements:
             self.journal.evenement(t(
                 f"network {libelle}: {_nom_du_service(etat, 'en')}",
@@ -2128,6 +2145,87 @@ class Robot:
         genre = service.a_prevenir(maintenant)
         if genre:
             self._prevenir_du_service(compte, genre, groupe, maintenant)
+
+    # ---- le réseau imposé ([reseaux]) ------------------------------------
+    #
+    # Une carte en itinérance choisit seule l'antenne qu'elle emprunte, et
+    # elle peut mal choisir : le 23 octobre, MTN ·6414, seule sur SFR,
+    # perdait son réseau quinze fois par matinée pendant que ses deux sœurs,
+    # sur Orange F, travaillaient. Le propriétaire peut lui imposer un réseau
+    # dans totem.conf ; le robot le pose, le repose après chaque relance du
+    # modem, et le REND si la carte reste sans service cinq minutes : un
+    # réseau imposé qui manque laisserait la carte muette pour de bon.
+
+    def _reseau_impose(self, compte):
+        """Le code du réseau que la configuration impose à cette carte, ou
+        None. La clé est ce que le propriétaire a sous les yeux : les quatre
+        derniers chiffres, l'ICCID, le libellé, l'opérateur."""
+        if not self.reseaux:
+            return None
+        iccid = getattr(compte.carte, "iccid", "") or ""
+        for cle in (iccid, iccid[-4:] if iccid else "", compte.libelle,
+                    getattr(compte.carte, "operateur", "")):
+            if cle and cle.lower() in self.reseaux:
+                return self.reseaux[cle.lower()]
+        return None
+
+    def _imposer_le_reseau(self, compte, maintenant=None):
+        if not hasattr(compte, "choisir_reseau"):
+            return
+        maintenant = time.monotonic() if maintenant is None else maintenant
+        voulu = self._reseau_impose(compte)
+        etat = compte.reseau_applique
+        depuis = compte.reseau_depuis
+        libelle = compte.libelle
+        if voulu:
+            a_reposer = etat is None or (
+                etat in ("auto", "refuse") and depuis is not None
+                and maintenant - depuis >= RESEAU_NOUVEL_ESSAI)
+            if a_reposer:
+                ok = compte.choisir_reseau(voulu)
+                if ok is None:
+                    return              # carte occupée : au passage suivant
+                compte.reseau_depuis = maintenant
+                self.journal.evenement(t(
+                    f"network {libelle}: {nom_du_reseau(voulu)} "
+                    + ("imposed" if ok else "refused by the modem"),
+                    f"réseau {libelle} : {nom_du_reseau(voulu)} "
+                    + ("imposé" if ok else "refusé par le modem")))
+                if hasattr(compte, "relire_reseau"):
+                    compte.relire_reseau()
+                return
+            service = getattr(compte, "service", None)
+            if (etat == "impose" and service is not None and service.sans_service()
+                    and service.mauvais_depuis is not None):
+                sans = maintenant - max(service.mauvais_depuis, depuis or -1e9)
+                if sans >= RESEAU_RETOUR_AUTO and compte.choisir_reseau(None):
+                    compte.reseau_depuis = maintenant
+                    self.journal.evenement(t(
+                        f"network {libelle}: {nom_du_reseau(voulu)} not found for "
+                        f"{_duree(sans, 'en')} — back to automatic choice, "
+                        "another try in an hour",
+                        f"réseau {libelle} : {nom_du_reseau(voulu)} introuvable "
+                        f"depuis {_duree(sans, 'fr')} — retour au choix "
+                        "automatique, nouvel essai dans une heure"))
+            return
+        if etat is not None:
+            return
+        # Rien d'imposé. Si un réglage d'avant a laissé le modem en choix
+        # manuel, on le lui rend ; sinon on ne touche à rien.
+        choix = compte.reseau_choisi()
+        if choix is None:
+            return
+        mode, _ = choix
+        if mode == 1:
+            if compte.choisir_reseau(None):
+                self.journal.evenement(t(
+                    f"network {libelle}: no network imposed any more — back to "
+                    "automatic choice",
+                    f"réseau {libelle} : plus de réseau imposé — retour au "
+                    "choix automatique"))
+        else:
+            compte.reseau_applique = "auto"
+            compte.reseau_depuis = maintenant
 
     def _groupe_sans_service(self, compte):
         """« boitier » si toutes les cartes (deux au moins) sont sans
